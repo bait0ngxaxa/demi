@@ -1,0 +1,166 @@
+import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus } from "@prisma/client";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+
+import { getPrisma } from "@/lib/db/prisma";
+import { resolvePerson } from "@/modules/identity/services/identity-service";
+
+const prisma = getPrisma();
+
+async function clearDatabase(): Promise<void> {
+  await prisma.auditEvent.deleteMany();
+  await prisma.hospitalMembership.deleteMany();
+  await prisma.userRole.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.hospital.deleteMany();
+  await prisma.person.deleteMany();
+}
+
+async function createPersonRecord(identityValue: string): Promise<{ id: string }> {
+  return prisma.person.create({
+    data: {
+      identityKeyHash: `integration-${identityValue}`,
+    },
+    select: { id: true },
+  });
+}
+
+describe("Phase 1 PostgreSQL constraints", () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+    await clearDatabase();
+  });
+
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("reuses an identity and rejects a duplicate identity key", async () => {
+    const input = {
+      identity: { namespace: "integration", value: "person-1" },
+      givenName: "Integration",
+    };
+
+    const first = await resolvePerson(input);
+    const second = await resolvePerson({ ...input, givenName: "Ignored" });
+
+    expect(second.id).toBe(first.id);
+    await expect(
+      prisma.person.create({ data: { identityKeyHash: first.identityKeyHash } }),
+    ).rejects.toMatchObject({ code: "P2002" });
+    expect(await prisma.person.count()).toBe(1);
+  });
+
+  it("enforces one User for one Person", async () => {
+    const person = await createPersonRecord("one-user");
+
+    await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+    });
+
+    await expect(
+      prisma.user.create({ data: { personId: person.id, status: UserStatus.ACTIVE } }),
+    ).rejects.toMatchObject({ code: "P2002" });
+  });
+
+  it("supports multiple roles on one User", async () => {
+    const person = await createPersonRecord("multi-role");
+    const user = await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+    });
+
+    await prisma.userRole.createMany({
+      data: [
+        { userId: user.id, role: Role.OSM },
+        { userId: user.id, role: Role.PATIENT },
+      ],
+    });
+
+    const roles = await prisma.userRole.findMany({
+      where: { userId: user.id },
+      orderBy: { role: "asc" },
+      select: { role: true },
+    });
+
+    expect(roles.map(({ role }) => role)).toEqual([Role.OSM, Role.PATIENT]);
+  });
+
+  it("supports multiple hospital memberships and rejects duplicates", async () => {
+    const person = await createPersonRecord("multi-hospital");
+    const user = await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+    });
+    const hospitals = await prisma.hospital.createManyAndReturn({
+      data: [{ name: "Hospital A", status: HospitalStatus.ACTIVE }, { name: "Hospital B", status: HospitalStatus.ACTIVE }],
+      select: { id: true },
+    });
+
+    await prisma.hospitalMembership.createMany({
+      data: hospitals.map(({ id }) => ({
+        userId: user.id,
+        hospitalId: id,
+        membershipType: MembershipType.MEMBER,
+        status: MembershipStatus.ACTIVE,
+      })),
+    });
+
+    await expect(
+      prisma.hospitalMembership.create({
+        data: {
+          userId: user.id,
+          hospitalId: hospitals[0].id,
+          membershipType: MembershipType.MEMBER,
+          status: MembershipStatus.ACTIVE,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+
+    expect(await prisma.hospitalMembership.count({ where: { userId: user.id } })).toBe(2);
+  });
+
+  it("keeps hospital ownership separate from platform ADMIN", async () => {
+    const person = await createPersonRecord("hospital-owner");
+    const user = await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+    });
+    const hospital = await prisma.hospital.create({
+      data: { name: "Owner Hospital", status: HospitalStatus.ACTIVE },
+    });
+
+    await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
+    await prisma.hospitalMembership.create({
+      data: {
+        userId: user.id,
+        hospitalId: hospital.id,
+        membershipType: MembershipType.OWNER,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+
+    expect(await prisma.userRole.findUnique({ where: { userId_role: { userId: user.id, role: Role.ADMIN } } })).toBeNull();
+  });
+
+  it("retains the actor foreign key for audit history", async () => {
+    const person = await createPersonRecord("audit-actor");
+    const user = await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+    });
+
+    await prisma.auditEvent.create({
+      data: {
+        actorUserId: user.id,
+        action: "integration.test",
+        resourceType: "TestResource",
+      },
+    });
+
+    await expect(prisma.user.delete({ where: { id: user.id } })).rejects.toMatchObject({
+      code: "P2003",
+    });
+
+    expect(await prisma.auditEvent.count({ where: { actorUserId: user.id } })).toBe(1);
+  });
+});

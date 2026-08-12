@@ -20,8 +20,12 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - `Person.identityKeyHash` เป็น opaque hash ของ identity reference ที่ผ่าน validation; identity provider/external identity schema ยังไม่ถูกล็อก
 - Supabase Auth เป็น current server authentication adapter โดย provider subject map ผ่าน `User.authSubject`; Supabase user metadata ไม่ใช่ source of truth ของ DEMI authorization
 - `ActorContext` load จาก active application `User`, roles และ hospital memberships ผ่าน Prisma
-- fail-closed authorization primitives สำหรับ explicit capability, role requirement และ `GLOBAL`/`HOSPITAL`/`SELF`/`DENIED` scope เท่านั้น; ยังไม่มี capability matrix หรือ OSM scope semantics
+- Next.js 16 `proxy.ts` refreshes Supabase SSR cookies per request; `auth.getUser()` validates the provider identity before mapping to the application `User`
+- fail-closed authorization primitives สำหรับ role requirement และ `GLOBAL`/`HOSPITAL`/`SELF`/`DENIED` scope เท่านั้น; primitive นี้ยังไม่ประกาศ capability matrix หรือ OSM scope semantics
+- identity lookup ใช้ deterministic HMAC-SHA-256 ด้วย server-only `IDENTITY_HASH_SECRET`
 - audit input boundary ที่จำกัด metadata และปฏิเสธ credential/identity secrets
+- audit persistence รับ transaction-compatible Prisma client ได้ และ audit actor foreign key ไม่อนุญาต hard-delete User ที่มีประวัติ audit
+- Prisma migration scripts มี database-target safety preflight และ integration suite แยกใช้ dedicated test database
 - server-side health check ที่ไม่เปิดเผย secret หรือ internal error
 
 Implementation directories และ commands ดูได้จาก [README](../README.md) และ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md)

@@ -1,10 +1,11 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { getServerEnv } from "@/lib/env/server";
 import {
   ConflictError,
   InfrastructureError,
@@ -46,9 +47,9 @@ function parseIdentityReference(input: IdentityReference): IdentityReference {
   return result.data;
 }
 
-function hashIdentityReference(input: IdentityReference): string {
+export function hashIdentityReference(input: IdentityReference): string {
   const normalized = parseIdentityReference(input);
-  return createHash("sha256")
+  return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
     .update(`${normalized.namespace}\u0000${normalized.value}`, "utf8")
     .digest("hex");
 }

@@ -7,7 +7,7 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 
 import type { ActorContext } from "../types/actor-context";
 
-const capabilitySchema = z.string().trim().min(1).max(120);
+const roleSchema = z.nativeEnum(Role);
 
 const scopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("GLOBAL") }),
@@ -20,9 +20,8 @@ export type ScopeRequirement = z.infer<typeof scopeSchema>;
 
 export type AuthorizationInput = {
   actor: ActorContext | null | undefined;
-  capability: unknown;
-  requiredRole: Role | null | undefined;
-  scope: ScopeRequirement | null | undefined;
+  requiredRole: unknown;
+  scope: unknown;
 };
 
 export type PolicyDecision =
@@ -31,8 +30,8 @@ export type PolicyDecision =
       allowed: false;
       reason:
         | "missing_actor"
-        | "invalid_capability"
         | "missing_role_requirement"
+        | "invalid_role_requirement"
         | "role_not_present"
         | "invalid_scope"
         | "scope_denied"
@@ -40,6 +39,11 @@ export type PolicyDecision =
         | "hospital_not_active"
         | "self_scope_mismatch";
     };
+
+/**
+ * Phase 1 only validates the trusted actor role and resolved resource scope.
+ * Domain policies will add a confirmed capability matrix before allowing business actions.
+ */
 
 function hasActiveHospitalMembership(actor: ActorContext, hospitalId: string): boolean {
   return actor.hospitalMemberships.some(
@@ -60,15 +64,17 @@ export function decidePolicy(input: AuthorizationInput): PolicyDecision {
     return { allowed: false, reason: "missing_actor" };
   }
 
-  if (!capabilitySchema.safeParse(input.capability).success) {
-    return { allowed: false, reason: "invalid_capability" };
-  }
-
-  if (!input.requiredRole) {
+  if (input.requiredRole === null || input.requiredRole === undefined) {
     return { allowed: false, reason: "missing_role_requirement" };
   }
 
-  if (!input.actor.roles.includes(input.requiredRole)) {
+  const roleResult = roleSchema.safeParse(input.requiredRole);
+
+  if (!roleResult.success) {
+    return { allowed: false, reason: "invalid_role_requirement" };
+  }
+
+  if (!input.actor.roles.includes(roleResult.data)) {
     return { allowed: false, reason: "role_not_present" };
   }
 
@@ -110,6 +116,6 @@ export function assertPolicy(input: AuthorizationInput): void {
 }
 
 export const authorizationInternals = {
-  capabilitySchema,
+  roleSchema,
   scopeSchema,
 };

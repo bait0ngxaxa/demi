@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:migrate:deploy": "prisma migrate deploy"
+    "prisma:migrate:dev": "node scripts/prisma-preflight.mjs migrate-dev && prisma migrate dev",
+    "prisma:migrate:deploy": "node scripts/prisma-preflight.mjs migrate-deploy && prisma migrate deploy",
+    "test:integration": "node scripts/prisma-preflight.mjs test-integration && vitest run --config vitest.integration.config.mts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

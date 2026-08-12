@@ -988,9 +988,13 @@ These principles guide future UI work but do not define a complete design system
 Phase 1 concretizes the following implementation boundaries without closing the still-open product decisions:
 
 - Prisma uses PostgreSQL through `DATABASE_URL`; the schema contains only stable foundation entities and the migration is reproducible from an empty development database.
-- Supabase Auth is the current server authentication adapter. The authenticated provider subject is mapped to `User.authSubject`, then the application loads `Person`, roles, and memberships from Prisma.
+- Supabase Auth is the current server authentication adapter. A Next.js 16 `proxy.ts` creates a request-scoped Supabase SSR client and calls `auth.getClaims()` early so refreshed cookies propagate to both the current request and outgoing response. The authenticated provider subject is then validated with `auth.getUser()`, mapped to `User.authSubject`, and used to load `Person`, roles, and memberships from Prisma.
 - Supabase user metadata, browser state, and client-provided role or hospital values are not application authorization sources.
-- `Person.identityKeyHash` is an opaque hash used by the identity-resolution service; it is not a finalized external-provider or LINE identity schema.
+- `Person.identityKeyHash` is a deterministic HMAC-SHA-256 lookup key using the server-only `IDENTITY_HASH_SECRET`; it is not a finalized external-provider or LINE identity schema. Raw identity values and the secret are never logged.
+- Prisma migration commands run through an explicit database-target preflight. Development/test operations cannot target production; production deployment requires explicit production classification.
+- Audit persistence accepts either the global Prisma client or a transaction-compatible Prisma client, allowing a future consistency-critical Application Service to coordinate its audit write in the same transaction.
+- `AuditEvent.actorUserId` uses a restrictive foreign key in the current foundation. A User with audit history cannot be hard-deleted; `SUSPENDED` is the available deactivation state until a deletion policy is confirmed.
+- A focused integration suite verifies the PostgreSQL constraints against a dedicated test database via `npm run test:integration`; the command refuses non-test targets.
 - Future authentication providers may be added behind the authentication adapter boundary after a confirmed requirement and decision.
 
 The implementation structure and environment commands are maintained in the repository [README](../../README.md). These notes describe the current foundation implementation; they do not add capability, scope, clinical, or onboarding semantics that remain unresolved.

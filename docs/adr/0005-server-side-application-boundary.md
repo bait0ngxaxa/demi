@@ -70,7 +70,7 @@ LIFF / Native / Integration   │
 
 ## Phase 1 Implementation Note
 
-The current foundation uses Supabase Auth as the server authentication adapter. It validates the authenticated provider subject on the server, maps that subject to `User.authSubject`, and then resolves `Person`, roles, and hospital memberships from Prisma. This is an implementation boundary for the current phase, not a commitment that future external providers or native authentication flows use the same transport.
+The current foundation uses Supabase Auth as the server authentication adapter. Next.js 16 `proxy.ts` refreshes request-scoped SSR cookies with `auth.getClaims()` before rendering, while the application validates the current provider subject with `auth.getUser()`, maps that subject to `User.authSubject`, and then resolves `Person`, roles, and hospital memberships from Prisma. Unauthenticated responses remain distinct from infrastructure failures at the service/transport boundary. This is an implementation boundary for the current phase, not a commitment that future external providers or native authentication flows use the same transport.
 
 ## Rationale
 

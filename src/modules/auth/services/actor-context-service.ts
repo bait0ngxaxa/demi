@@ -12,6 +12,20 @@ export type ActorContextStore = {
   findActiveUserByAuthSubject(authSubject: string): Promise<ActorContext | null>;
 };
 
+function isUnauthenticatedAuthError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const authError = error as { name?: unknown; status?: unknown };
+
+  return (
+    authError.name === "AuthSessionMissingError" ||
+    authError.status === 401 ||
+    authError.status === 404
+  );
+}
+
 const prismaActorContextStore: ActorContextStore = {
   async findActiveUserByAuthSubject(authSubject): Promise<ActorContext | null> {
     try {
@@ -81,7 +95,15 @@ export async function resolveCurrentActorContext(
     error,
   } = await (await getServerSupabaseClient()).auth.getUser();
 
-  if (error || !user) {
+  if (error) {
+    if (isUnauthenticatedAuthError(error)) {
+      return null;
+    }
+
+    throw new InfrastructureError("Authentication service could not be reached");
+  }
+
+  if (!user) {
     return null;
   }
 

@@ -23,11 +23,10 @@ function createActor(overrides: Partial<ActorContext> = {}): ActorContext {
 }
 
 describe("authorization kernel", () => {
-  it("allows an explicit capability and active hospital scope", () => {
+  it("allows a hospital role with an active hospital scope", () => {
     const decision = decidePolicy({
-      actor: createActor(),
-      capability: "patient.read",
-      requiredRole: Role.OSM,
+      actor: createActor({ roles: [Role.HOSPITAL] }),
+      requiredRole: Role.HOSPITAL,
       scope: { kind: "HOSPITAL", hospitalId: "hospital-a" },
     });
 
@@ -44,6 +43,7 @@ describe("authorization kernel", () => {
 
   it("represents multiple hospital memberships for one User", () => {
     const actor = createActor({
+      roles: [Role.HOSPITAL],
       hospitalMemberships: [
         ...createActor().hospitalMemberships,
         {
@@ -63,8 +63,7 @@ describe("authorization kernel", () => {
     expect(
       decidePolicy({
         actor,
-        capability: "patient.read",
-        requiredRole: Role.OSM,
+        requiredRole: Role.HOSPITAL,
         scope: { kind: "HOSPITAL", hospitalId: "hospital-b" },
       }).allowed,
     ).toBe(true);
@@ -86,13 +85,11 @@ describe("authorization kernel", () => {
 
     const adminDecision = decidePolicy({
       actor: owner,
-      capability: "governance.review",
       requiredRole: Role.ADMIN,
       scope: { kind: "GLOBAL" },
     });
     const hospitalDecision = decidePolicy({
       actor: owner,
-      capability: "hospital.manage",
       requiredRole: Role.HOSPITAL,
       scope: { kind: "HOSPITAL", hospitalId: "hospital-a" },
     });
@@ -101,11 +98,10 @@ describe("authorization kernel", () => {
     expect(hospitalDecision.allowed).toBe(true);
   });
 
-  it("fails closed for missing actors, unknown capabilities, and unresolved scopes", () => {
+  it("fails closed for missing actors and unresolved authorization input", () => {
     expect(
       decidePolicy({
         actor: null,
-        capability: "patient.read",
         requiredRole: Role.PATIENT,
         scope: { kind: "SELF", personId: "person-1" },
       }).allowed,
@@ -114,8 +110,7 @@ describe("authorization kernel", () => {
     expect(
       decidePolicy({
         actor: createActor(),
-        capability: "",
-        requiredRole: Role.PATIENT,
+        requiredRole: "NOT_A_ROLE",
         scope: { kind: "SELF", personId: "person-1" },
       }).allowed,
     ).toBe(false);
@@ -123,7 +118,6 @@ describe("authorization kernel", () => {
     expect(
       decidePolicy({
         actor: createActor(),
-        capability: "patient.read",
         requiredRole: Role.PATIENT,
         scope: { kind: "DENIED" },
       }).allowed,
@@ -132,7 +126,6 @@ describe("authorization kernel", () => {
     expect(
       decidePolicy({
         actor: createActor(),
-        capability: "patient.read",
         requiredRole: Role.PATIENT,
         scope: undefined,
       }).allowed,
@@ -141,6 +134,7 @@ describe("authorization kernel", () => {
 
   it("denies inactive membership or inactive hospital scope", () => {
     const actor = createActor({
+      roles: [Role.HOSPITAL],
       hospitalMemberships: [
         {
           hospitalId: "hospital-a",
@@ -154,11 +148,49 @@ describe("authorization kernel", () => {
 
     const decision = decidePolicy({
       actor,
-      capability: "patient.read",
-      requiredRole: Role.OSM,
+      requiredRole: Role.HOSPITAL,
       scope: { kind: "HOSPITAL", hospitalId: "hospital-a" },
     });
 
     expect(decision).toEqual({ allowed: false, reason: "hospital_membership_not_active" });
+  });
+
+  it("denies an inactive hospital, a wrong hospital, and a mismatched SELF scope", () => {
+    const inactiveHospitalActor = createActor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [
+        {
+          hospitalId: "hospital-a",
+          membershipType: MembershipType.MEMBER,
+          profession: null,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.SUSPENDED,
+        },
+      ],
+    });
+
+    expect(
+      decidePolicy({
+        actor: inactiveHospitalActor,
+        requiredRole: Role.HOSPITAL,
+        scope: { kind: "HOSPITAL", hospitalId: "hospital-a" },
+      }),
+    ).toEqual({ allowed: false, reason: "hospital_not_active" });
+
+    expect(
+      decidePolicy({
+        actor: createActor({ roles: [Role.HOSPITAL] }),
+        requiredRole: Role.HOSPITAL,
+        scope: { kind: "HOSPITAL", hospitalId: "hospital-missing" },
+      }),
+    ).toEqual({ allowed: false, reason: "hospital_membership_not_active" });
+
+    expect(
+      decidePolicy({
+        actor: createActor(),
+        requiredRole: Role.PATIENT,
+        scope: { kind: "SELF", personId: "another-person" },
+      }),
+    ).toEqual({ allowed: false, reason: "self_scope_mismatch" });
   });
 });

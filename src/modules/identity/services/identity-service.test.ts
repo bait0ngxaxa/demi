@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { ConflictError, ValidationError } from "@/shared/errors/application-error";
@@ -5,6 +7,7 @@ import { ConflictError, ValidationError } from "@/shared/errors/application-erro
 import {
   createPerson,
   findPersonByIdentity,
+  hashIdentityReference,
   resolvePerson,
   type IdentityStore,
   type PersonRecord,
@@ -40,6 +43,18 @@ function createMemoryStore(): IdentityStore {
 }
 
 describe("identity service", () => {
+  it("uses a deterministic keyed HMAC lookup key", () => {
+    const identity = { namespace: "Trusted-Registry", value: " person-a " };
+    const expected = createHmac(
+      "sha256",
+      "test-only-identity-hash-secret-32-characters",
+    )
+      .update("trusted-registry\u0000person-a", "utf8")
+      .digest("hex");
+
+    expect(hashIdentityReference(identity)).toBe(expected);
+  });
+
   it("reuses the existing Person for a known identity", async () => {
     const store = createMemoryStore();
     const input = {

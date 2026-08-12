@@ -1,13 +1,18 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
 import { auditEventInputSchema, type AuditEventInput } from "../schemas/audit-schemas";
 
-export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
+export type AuditDatabase = Pick<PrismaClient, "auditEvent"> | Prisma.TransactionClient;
+
+export async function recordAuditEvent(
+  input: AuditEventInput,
+  database?: AuditDatabase,
+): Promise<void> {
   const parsed = auditEventInputSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -19,7 +24,9 @@ export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
     : undefined;
 
   try {
-    await getPrisma().auditEvent.create({
+    const db = database ?? getPrisma();
+
+    await db.auditEvent.create({
       data: {
         actorUserId: parsed.data.actorUserId,
         action: parsed.data.action,
