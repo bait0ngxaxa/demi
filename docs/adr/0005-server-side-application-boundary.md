@@ -35,6 +35,39 @@ PostgreSQL / Supabase
 - ห้ามเปลี่ยน Server Action/Route Handler เป็น god module ที่รวม transport, policy, business rule และ persistence ทั้งหมด
 - ไม่เพิ่ม repository abstraction จนมี concrete benefit เช่น isolation ของ complex data access หรือ test seam ที่ต้องใช้จริง
 
+## Extension by ADR-0007
+
+[ADR-0007](./0007-client-transport-and-mobile-ready-architecture.md) extends this boundary for multiple client and transport types without superseding the original decision. Service, Policy, Prisma และ database responsibilities remain unchanged.
+
+```text
+                Web
+                 │
+          Server Action
+                 │
+                 ├────────────┐
+                              │
+LIFF / Native / Integration   │
+          │                   │
+      HTTP API                │
+          │                   │
+          └──────────┬────────┘
+                     ↓
+             Application Service
+                     ↓
+             Policy / Authorization
+                     ↓
+                   Prisma
+                     ↓
+                  Database
+```
+
+> Server Action and HTTP API are peer transport adapters above Application Service.
+
+- Server Actions remain the web adapter for the current Next.js application.
+- HTTP APIs are added only for an identified client or integration that requires an HTTP contract.
+- Both adapters resolve authenticated actor context, validate transport input, convert it to application input, invoke the same Application Service และ map the result back to their client.
+- Neither adapter owns business rules, authorization policy or Prisma orchestration.
+
 ## Rationale
 
 Boundary นี้ทำให้ transport และ UI บาง ส่วน business operation มีจุดอ้างอิงเดียว และ authorization อยู่ในเส้นทาง server-side ก่อนการเข้าถึงหรือเปลี่ยน resource ที่ protected
@@ -72,4 +105,5 @@ Boundary นี้ทำให้ transport และ UI บาง ส่วน 
 - [Architecture Baseline: Application Architecture](../architecture/DEMI_ARCHITECTURE_BASELINE.md#19-application-architecture-baseline)
 - [ADR-0002: Role, Capability and Scope Authorization](./0002-role-capability-scope-authorization.md)
 - [ADR-0006: Transactional Business Operations](./0006-transactional-business-operations.md)
+- [ADR-0007: Client Transport and Mobile-Ready Architecture](./0007-client-transport-and-mobile-ready-architecture.md)
 

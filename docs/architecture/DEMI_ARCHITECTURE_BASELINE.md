@@ -1,8 +1,11 @@
 # DEMI Redesign Architecture Baseline
 
-**Status:** Accepted as initial architecture baseline  
-**Version:** 0.1  
-**Date:** 2026-08-12  
+**Status:** Accepted as initial architecture baseline
+
+**Version:** 0.2
+
+**Date:** 2026-08-12
+
 **Purpose:** Source document for the DEMI rewrite/init phase. This document captures architectural decisions already agreed during requirement discovery. It is not the final business requirement specification.
 
 ---
@@ -844,21 +847,22 @@ This does not mean each lower actor is controlled manually for every action. It 
 
 # 19. Application Architecture Baseline
 
-Target server-side architecture:
+Target client, transport, and server-side architecture:
 
 ```text
-Client / UI
-    ↓
-Server Action / Route Handler
-    ↓
-Application Service
-    ↓
-Policy / Authorization
-    ↓
-Prisma
-    ↓
-PostgreSQL / Supabase
+Responsive Web ──→ Server Action ─────────┐
+                                          │
+LIFF ────────────→ Server Action /        │
+                    HTTP API? ────────────┼→ Application Service
+                                          │           ↓
+Native (future) ─→ HTTP API ──────────────┘  Policy / Authorization
+                                                      ↓
+                                                    Prisma
+                                                      ↓
+                                             PostgreSQL / Supabase
 ```
+
+Server Actions and HTTP APIs are peer transport adapters above Application Service. The `?` indicates that LIFF does not automatically require a dedicated HTTP endpoint; the transport depends on an identified LIFF use case.
 
 ## 19.1 Client / UI
 
@@ -878,8 +882,9 @@ Responsible for:
 - input validation
 - authentication/session resolution
 - invoking application services
+- mapping application results/errors to the client transport
 
-Avoid placing all business logic directly in actions.
+Server Actions are the web transport adapter. Route Handlers may expose versioned HTTP APIs when an identified non-Server-Action client requires them. Avoid placing business logic, authorization policy, or Prisma orchestration directly in either adapter.
 
 ## 19.3 Application Service
 
@@ -896,6 +901,8 @@ approveHospital()
 ```
 
 Services coordinate domain rules, authorization policies, and persistence.
+
+Application Services must accept application-level inputs rather than Next.js, LIFF, React, or browser-specific request objects so the same operation can be reused across transports.
 
 ## 19.4 Policy / Authorization
 
@@ -919,6 +926,60 @@ Responsible for:
 - database interaction
 
 Prisma does not replace authorization; authorization must occur before or as part of scoped data access.
+
+## 19.6 Client and Transport Architecture
+
+Current client/access channels:
+
+```text
+Responsive Web
+LIFF
+```
+
+Future client:
+
+```text
+Native mobile application
+```
+
+Architectural relationship:
+
+```text
+Web → Server Action ─────────┐
+                             │
+LIFF → HTTP API? ────────────┼→ Application Service → Policy → Prisma
+                             │
+Native → HTTP API ───────────┘
+```
+
+Accepted rules:
+
+- Responsive Web remains the primary implementation platform initially.
+- Field UX is mobile-first; `OSM` and `PATIENT` are the primary mobile-first actor experiences.
+- Platform `ADMIN` and Hospital management may use desktop-enhanced experiences where appropriate.
+- LIFF is a client/access channel, not the source of Person/User identity, role, membership, capability, or scope.
+- Native mobile development is deferred until product evidence justifies it.
+- Business logic remains transport-independent in Application Services.
+- Server Actions and HTTP APIs invoke the same Application Service and authorization policy.
+- HTTP APIs are created incrementally for actual client/integration requirements under a versioned namespace such as `/api/v1`; an equivalent Server Action alone is not a reason to create an endpoint.
+- Future native authentication remains unresolved. Do not introduce native token/OAuth architecture without an approved requirement and decision.
+
+See [ADR-0007](../adr/0007-client-transport-and-mobile-ready-architecture.md) for the accepted decision and intentionally open questions.
+
+### 19.6.1 Mobile UX Architectural Guidance
+
+For field-oriented `OSM` and `PATIENT` experiences, prefer:
+
+- responsive mobile-first layout with touch-friendly interaction targets
+- workflows that do not rely on hover or desktop-only input
+- mobile-appropriate list/card/detail patterns instead of desktop-width tables as the primary workflow
+- long forms divided into understandable sections with clear progress/context
+- predictable submission, loading, success, validation, and error states
+- duplicate-submission protection for consequential operations
+- graceful handling of slow or unstable field networks where practical
+- mobile-friendly file/camera upload flows when an approved requirement introduces them
+
+These principles guide future UI work but do not define a complete design system. Offline synchronization is not part of the current implementation scope and remains an open requirement.
 
 ---
 
@@ -1014,7 +1075,14 @@ The following decisions are accepted for project initialization:
 19. Scope is a first-class concept.
 20. Multi-record consistency-critical operations use transactions.
 21. Admin focuses on governance/recovery rather than normal operational work.
-22. The application boundary is Client → Server boundary → Service → Policy → Prisma/DB.
+22. The application boundary is Client → Transport Adapter → Application Service → Policy → Prisma/DB.
+23. Responsive Web is the primary initial implementation platform and field UX is mobile-first.
+24. `OSM` and `PATIENT` are the primary mobile-first actor experiences; Admin/Hospital experiences may be desktop-enhanced.
+25. LIFF is an initial client/access channel, not DEMI identity or authorization authority.
+26. Server Actions and HTTP APIs are peer transport adapters; business logic belongs in transport-agnostic Application Services.
+27. HTTP APIs are introduced incrementally for identified consumers rather than generated for every Server Action.
+28. Native mobile applications are future clients and will use HTTP APIs without depending on Server Actions.
+29. Future native authentication, offline behavior, synchronization, push notifications, and native framework choices remain unresolved.
 
 ---
 
@@ -1039,6 +1107,19 @@ They require confirmed business requirements:
 - What clinical data requires immutable/auditable history?
 - What reports are required and what scope applies to each actor?
 
+Mobile, LIFF, and API requirements that remain open:
+
+- Which workflows will first be exposed through LIFF?
+- Will LIFF primarily target OSM, Patient, or both?
+- What exact LINE account-linking/activation flow will be used?
+- Which future operations require `/api/v1`?
+- What authentication scheme will future native clients use?
+- Does field usage eventually require offline-first behavior?
+- Is background synchronization needed?
+- Are push notifications required from a future native app?
+- Which device capabilities may eventually require a native client?
+- When does product evidence justify creating the native application?
+
 Until confirmed, represent these as open requirements rather than implementation assumptions.
 
 ---
@@ -1059,7 +1140,8 @@ docs/
     ├── 0003-hospital-led-onboarding.md
     ├── 0004-patient-provisioning-and-activation.md
     ├── 0005-server-side-application-boundary.md
-    └── 0006-transactional-business-operations.md
+    ├── 0006-transactional-business-operations.md
+    └── 0007-client-transport-and-mobile-ready-architecture.md
 ```
 
 `CONTEXT.md` should summarize the current project state and direct agents/developers to the ADRs rather than duplicating every decision.
@@ -1109,17 +1191,17 @@ For the init phase:
 All important operations follow:
 
 ```text
-Authenticated Actor
+Client
         ↓
-Role / Membership
-        ↓
-Capability
-        ↓
-Resource Scope
-        ↓
-Server-side Policy
+Transport Adapter
         ↓
 Application Service
+        ↓
+Policy / Authorization
+  ├── Authenticated Actor
+  ├── Role / Membership
+  ├── Capability
+  └── Resource Scope
         ↓
 Transaction / Persistence
 ```

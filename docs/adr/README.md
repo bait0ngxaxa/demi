@@ -13,7 +13,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 
 ## Naming Convention
 
-ใช้ชื่อไฟล์ `NNNN-short-kebab-case-title.md` โดยเลข ADR เพิ่มขึ้นตามลำดับและไม่ reuse หมายเลขเดิม เช่น `0007-example-decision.md`
+ใช้ชื่อไฟล์ `NNNN-short-kebab-case-title.md` โดยเลข ADR เพิ่มขึ้นตามลำดับและไม่ reuse หมายเลขเดิม เช่น `0008-example-decision.md`
 
 ## Index
 
@@ -25,6 +25,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 | [ADR-0004](./0004-patient-provisioning-and-activation.md) | Accepted | Patient Provisioning and First-Time Activation |
 | [ADR-0005](./0005-server-side-application-boundary.md) | Accepted | Server-Side Application Boundary |
 | [ADR-0006](./0006-transactional-business-operations.md) | Accepted | Transactional Business Operations |
+| [ADR-0007](./0007-client-transport-and-mobile-ready-architecture.md) | Accepted | Client Transport and Mobile-Ready Architecture |
 
 ## Change Rules
 
@@ -44,4 +45,3 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 - มีเหตุผลที่มีแนวโน้มถูกถามซ้ำในอนาคต
 
 ไม่ต้องสร้าง ADR สำหรับ implementation detail ปกติ การตั้งชื่อภายใน หรือ choice ที่เปลี่ยนได้ง่ายและไม่กระทบ boundary
-

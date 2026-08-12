@@ -41,32 +41,47 @@ Top-level business roles ที่ยืนยันแล้วมี 4 รา�
 - Multi-record business operation ที่ consistency-critical ต้องเป็น transactional
 - Admin เน้น governance/recovery ไม่ใช่ routine operational workflow
 
+## Client and Transport Rules
+
+- DEMI field UX เป็น mobile-first โดย `OSM` และ `PATIENT` ต้องใช้งานหลักได้ดีบน mobile devices
+- Responsive Web เป็น implementation platform หลักในระยะแรก
+- LIFF เป็น initial client/access channel ไม่ใช่ identity หรือ authorization authority
+- Native mobile app เป็น future client และไม่อยู่ใน current implementation scope
+- Server Actions เป็น web transport adapters
+- HTTP APIs เป็น transport adapters สำหรับ client/integration ที่มี requirement จริง
+- Application Services ต้อง transport-agnostic และ reuse ได้จากทั้ง Server Action และ HTTP API
+- Business logic, Policy และ Prisma orchestration ต้องไม่อยู่ใน Server Actions หรือ Route Handlers
+- HTTP API เพิ่มแบบ incremental; ไม่สร้าง endpoint แบบ speculative สำหรับทุก business operation
+- LINE identity อาจเชื่อมเป็น external authentication method ของ DEMI User แต่ห้ามแทน `Person`, `User`, role, membership, capability หรือ scope
+
+รายละเอียดและ open questions อยู่ที่ [ADR-0007](./adr/0007-client-transport-and-mobile-ready-architecture.md)
+
 ## Application Architecture
 
 ```text
-Client / UI
-    ↓
-Server Action / Route Handler
-    ↓
-Application Service
-    ↓
-Policy / Authorization
-    ↓
-Prisma
-    ↓
-PostgreSQL / Supabase
+Web → Server Action ─────────┐
+                             │
+LIFF → HTTP API? ────────────┼→ Application Service
+                             │           ↓
+Native → HTTP API (future) ──┘  Policy / Authorization
+                                         ↓
+                                       Prisma
+                                         ↓
+                                PostgreSQL / Supabase
 ```
 
 | Layer | Responsibility |
 | --- | --- |
-| Client / UI | Rendering, form interaction และ UX; แสดงผลตามสิทธิ์ได้แต่ไม่ตัดสิน authorization ขั้นสุดท้าย |
-| Server Action / Route Handler | Transport boundary สำหรับ authentication/session resolution, input validation และเรียก application service |
+| Client / UI | Responsive Web และ LIFF ในปัจจุบัน รวมถึง native app ในอนาคต; ทำ rendering/interaction แต่ไม่ตัดสิน authorization ขั้นสุดท้าย |
+| Server Action / HTTP API | Peer transport adapters สำหรับ authentication/session resolution, transport validation, input mapping, service invocation และ client response mapping |
 | Application Service | Orchestrate business operation, business rules, policy และ persistence โดยไม่กลายเป็น god module |
 | Policy / Authorization | ประเมิน actor, role/membership, capability, target resource และ scope; ambiguity หรือ resolution failure ต้องจบด้วย deny |
 | Prisma | Typed persistence, scoped queries และ transaction; ไม่ใช่ authorization engine |
 | PostgreSQL / Supabase | เก็บและบังคับใช้ data integrity ตามที่กำหนด; managed provider ไม่ได้แทน application authorization |
 
-UI หรือ page component ต้องไม่ถือ business rule/query เป็น source of truth และห้ามย้าย logic ที่รวมศูนย์เกินไปจาก page ไปกองใน Server Action
+UI, page component, Server Action และ Route Handler ต้องไม่ถือ business rule/query เป็น source of truth
+
+> หาก agent เห็นว่า operation ต้องมี HTTP API ต้องระบุ current client/use case ที่ต้องใช้ endpoint นั้นก่อน เหตุผลว่า “native app อาจต้องใช้สักวัน” เพียงอย่างเดียวยังไม่เพียงพอ
 
 ## Open Requirements
 
@@ -83,6 +98,7 @@ UI หรือ page component ต้องไม่ถือ business rule/quer
 - activation mechanism เช่น phone OTP, email, external identity provider หรือ ThaID
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor
+- LIFF target workflows/audience, LINE account linking, `/api/v1` operations, native authentication, offline/sync, push/device capabilities และ trigger สำหรับเริ่ม native development
 
 > หาก business rule ที่จำเป็นต่อ implementation ยังไม่มีในเอกสาร ห้ามเดา ให้ mark เป็น open requirement หรือขอ clarification
 
@@ -107,6 +123,8 @@ UI หรือ page component ต้องไม่ถือ business rule/quer
 - ใช้ capability ที่มาจาก confirmed requirement ไม่สร้าง generic RBAC framework ล่วงหน้า
 - ไม่สร้าง permission เพียงเพราะ profession ต่างกัน หาก requirement ไม่ได้กำหนด behavior ต่างกัน
 - ไม่เดา OSM, hospital network หรือ patient scope
+- ไม่ bind DEMI identity/authorization เข้ากับ LINE identity หรือ client transport
+- ไม่สร้าง HTTP API โดยไม่มี identified current consumer/use case
 - ไม่ออก full database schema จาก conceptual entities ใน baseline โดยไม่มี task อนุมัติ
 - เมื่อ architecture decision เปลี่ยนสาระสำคัญ ให้สร้าง ADR ใหม่เพื่อ supersede ฉบับเดิม แล้ว sync baseline/context
 
