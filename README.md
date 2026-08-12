@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DEMI Rewrite
 
-## Getting Started
+DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-First, run the development server:
+The current implementation phase establishes only the core foundation: identity, application accounts, roles, hospital memberships, server-side authentication mapping, fail-closed authorization primitives, audit input validation, Prisma persistence, and a health check. Clinical and operational domains remain out of scope until their requirements are confirmed.
+
+## Development setup
+
+1. Copy `.env.example` to `.env.local` and provide a development PostgreSQL/Supabase connection and Supabase Auth public configuration. Set `DEMI_DATABASE_TARGET` to the non-production database target.
+2. Apply the migration and generate Prisma Client:
+
+```bash
+npm run prisma:migrate:deploy
+npm run prisma:generate
+```
+
+Use `npm run prisma:migrate:dev -- --name <migration_name>` only when creating a new migration after a confirmed schema change.
+
+3. Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The server-only health check is available at `/api/health`. It returns only `ok` or `unavailable` and never exposes credentials or stack traces.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification commands
 
-## Learn More
+```bash
+npm run lint
+npm run typecheck
+npm test
+```
 
-To learn more about Next.js, take a look at the following resources:
+The application boundary is `Client → Server Action/HTTP API → Application Service → Policy → Prisma → PostgreSQL/Supabase`. No speculative `/api/v1` endpoints, LIFF SDK, native app, or clinical business modules are implemented in this phase.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Foundation structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```text
+app/api/health/route.ts                 server infrastructure transport
+prisma/schema.prisma                    stable persistence model
+prisma/migrations/                      reproducible PostgreSQL migrations
+src/lib/env/                            server environment validation
+src/lib/auth/                           Supabase Auth server adapter
+src/lib/db/                             Prisma server singleton
+src/modules/identity/                   identity resolution service
+src/modules/auth/                       ActorContext and policy kernel
+src/modules/audit/                      bounded audit input/persistence service
+src/shared/errors/                      predictable application errors
+```
 
-## Deploy on Vercel
+## Learn more
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Next.js Learn](https://nextjs.org/learn)
+- [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying)

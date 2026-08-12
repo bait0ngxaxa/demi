@@ -983,6 +983,20 @@ These principles guide future UI work but do not define a complete design system
 
 ---
 
+## 19.7 Phase 1 Foundation Implementation Notes
+
+Phase 1 concretizes the following implementation boundaries without closing the still-open product decisions:
+
+- Prisma uses PostgreSQL through `DATABASE_URL`; the schema contains only stable foundation entities and the migration is reproducible from an empty development database.
+- Supabase Auth is the current server authentication adapter. The authenticated provider subject is mapped to `User.authSubject`, then the application loads `Person`, roles, and memberships from Prisma.
+- Supabase user metadata, browser state, and client-provided role or hospital values are not application authorization sources.
+- `Person.identityKeyHash` is an opaque hash used by the identity-resolution service; it is not a finalized external-provider or LINE identity schema.
+- Future authentication providers may be added behind the authentication adapter boundary after a confirmed requirement and decision.
+
+The implementation structure and environment commands are maintained in the repository [README](../../README.md). These notes describe the current foundation implementation; they do not add capability, scope, clinical, or onboarding semantics that remain unresolved.
+
+---
+
 # 20. Transaction and Data Integrity Baseline
 
 Any business operation that changes multiple related records must be atomic where consistency requires it.

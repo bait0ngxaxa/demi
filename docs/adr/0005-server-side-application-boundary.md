@@ -68,6 +68,10 @@ LIFF / Native / Integration   │
 - Both adapters resolve authenticated actor context, validate transport input, convert it to application input, invoke the same Application Service และ map the result back to their client.
 - Neither adapter owns business rules, authorization policy or Prisma orchestration.
 
+## Phase 1 Implementation Note
+
+The current foundation uses Supabase Auth as the server authentication adapter. It validates the authenticated provider subject on the server, maps that subject to `User.authSubject`, and then resolves `Person`, roles, and hospital memberships from Prisma. This is an implementation boundary for the current phase, not a commitment that future external providers or native authentication flows use the same transport.
+
 ## Rationale
 
 Boundary นี้ทำให้ transport และ UI บาง ส่วน business operation มีจุดอ้างอิงเดียว และ authorization อยู่ในเส้นทาง server-side ก่อนการเข้าถึงหรือเปลี่ยน resource ที่ protected
@@ -96,7 +100,7 @@ Boundary นี้ทำให้ transport และ UI บาง ส่วน 
 ## Open Questions
 
 - Module boundaries และ naming ของ application services เมื่อ business domains ชัดขึ้น
-- Authentication/session provider และวิธี map external identity ไป User/Person
+- Future authentication providers/external identity links beyond the current Supabase Auth adapter และวิธี map external identity ไป User/Person
 - Policy context ใดควรถูก load ด้วย scoped query หรือประเมินภายใน transaction
 - Background jobs/webhooks ในอนาคตต้อง reuse application operation ใดบ้าง
 
@@ -106,4 +110,3 @@ Boundary นี้ทำให้ transport และ UI บาง ส่วน 
 - [ADR-0002: Role, Capability and Scope Authorization](./0002-role-capability-scope-authorization.md)
 - [ADR-0006: Transactional Business Operations](./0006-transactional-business-operations.md)
 - [ADR-0007: Client Transport and Mobile-Ready Architecture](./0007-client-transport-and-mobile-ready-architecture.md)
-

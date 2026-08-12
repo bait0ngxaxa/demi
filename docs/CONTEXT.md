@@ -10,7 +10,21 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์อยู่ในช่วง **initialization + requirement discovery** ยังไม่มีการยืนยัน business flow โดยละเอียดครบทุก domain หรือทุก actor เอกสารชุดนี้จึงกำหนดเฉพาะ architecture baseline ที่ยอมรับแล้ว และระบุเรื่องที่ยังต้องเก็บ requirement แยกไว้
+โปรเจกต์อยู่ใน **Implementation Phase 1: Core Foundation** ต่อจากช่วง initialization + requirement discovery โดยยังไม่มีการยืนยัน business flow โดยละเอียดครบทุก domain หรือทุก actor เอกสารชุดนี้จึงกำหนดเฉพาะ foundation ที่ยืนยันแล้ว และระบุเรื่องที่ยังต้องเก็บ requirement แยกไว้
+
+## Phase 1 Foundation Implementation
+
+ส่วนที่ implement แล้วใน foundation นี้มีขอบเขตดังต่อไปนี้:
+
+- Prisma schema/migration สำหรับ `Person`, `User`, `UserRole`, `Hospital`, `HospitalMembership` และ `AuditEvent`
+- `Person.identityKeyHash` เป็น opaque hash ของ identity reference ที่ผ่าน validation; identity provider/external identity schema ยังไม่ถูกล็อก
+- Supabase Auth เป็น current server authentication adapter โดย provider subject map ผ่าน `User.authSubject`; Supabase user metadata ไม่ใช่ source of truth ของ DEMI authorization
+- `ActorContext` load จาก active application `User`, roles และ hospital memberships ผ่าน Prisma
+- fail-closed authorization primitives สำหรับ explicit capability, role requirement และ `GLOBAL`/`HOSPITAL`/`SELF`/`DENIED` scope เท่านั้น; ยังไม่มี capability matrix หรือ OSM scope semantics
+- audit input boundary ที่จำกัด metadata และปฏิเสธ credential/identity secrets
+- server-side health check ที่ไม่เปิดเผย secret หรือ internal error
+
+Implementation directories และ commands ดูได้จาก [README](../README.md) และ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md)
 
 ## Accepted Actors
 
@@ -127,4 +141,3 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 - ไม่สร้าง HTTP API โดยไม่มี identified current consumer/use case
 - ไม่ออก full database schema จาก conceptual entities ใน baseline โดยไม่มี task อนุมัติ
 - เมื่อ architecture decision เปลี่ยนสาระสำคัญ ให้สร้าง ADR ใหม่เพื่อ supersede ฉบับเดิม แล้ว sync baseline/context
-
