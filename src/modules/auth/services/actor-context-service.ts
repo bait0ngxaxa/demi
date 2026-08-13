@@ -1,17 +1,45 @@
 import "server-only";
 
-import { UserStatus } from "@prisma/client";
+import { UserStatus, type Role } from "@prisma/client";
 import { isAuthError, isAuthSessionMissingError } from "@supabase/supabase-js";
 
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
-import type { ActorContext } from "../types/actor-context";
+import type { ActorContext, ActorHospitalMembership } from "../types/actor-context";
+
+export type ActorUserRecord = {
+  id: string;
+  personId: string;
+  status: UserStatus;
+  roles: readonly Role[];
+  hospitalMemberships: readonly ActorHospitalMembership[];
+};
 
 export type ActorContextStore = {
-  findActiveUserByAuthSubject(authSubject: string): Promise<ActorContext | null>;
+  findUserByAuthSubject(authSubject: string): Promise<ActorUserRecord | null>;
 };
+
+export type ActorAuthenticationProvider = {
+  getUser(): Promise<{
+    data: { user: { id: string } | null };
+    error: unknown;
+  }>;
+};
+
+export type ActorSubjectAccess =
+  | { status: "AUTHORIZED"; actor: ActorContext }
+  | { status: "UNMAPPED" }
+  | { status: "ACCOUNT_NOT_ACTIVE"; accountStatus: UserStatus };
+
+export type CurrentActorAccess =
+  | { status: "UNAUTHENTICATED" }
+  | { status: "AUTHORIZED"; actor: ActorContext }
+  | {
+      status: "APPLICATION_ACCESS_DENIED";
+      reason: "UNMAPPED" | "ACCOUNT_NOT_ACTIVE";
+    };
 
 const unauthenticatedAuthErrorCodes = new Set([
   "bad_jwt",
@@ -37,7 +65,7 @@ export function isUnauthenticatedAuthError(error: unknown): boolean {
 }
 
 const prismaActorContextStore: ActorContextStore = {
-  async findActiveUserByAuthSubject(authSubject): Promise<ActorContext | null> {
+  async findUserByAuthSubject(authSubject): Promise<ActorUserRecord | null> {
     try {
       const user = await getPrisma().user.findUnique({
         where: { authSubject },
@@ -62,13 +90,14 @@ const prismaActorContextStore: ActorContextStore = {
         },
       });
 
-      if (!user || user.status !== UserStatus.ACTIVE) {
+      if (!user) {
         return null;
       }
 
       return {
-        userId: user.id,
+        id: user.id,
         personId: user.personId,
+        status: user.status,
         roles: user.roles.map(({ role }) => role),
         hospitalMemberships: user.memberships.map((membership) => ({
           hospitalId: membership.hospitalId,
@@ -84,31 +113,58 @@ const prismaActorContextStore: ActorContextStore = {
   },
 };
 
+export async function resolveActorAccessByAuthSubject(
+  authSubject: string,
+  store: ActorContextStore = prismaActorContextStore,
+): Promise<ActorSubjectAccess> {
+  const normalizedSubject = authSubject.trim();
+
+  if (!normalizedSubject) {
+    return { status: "UNMAPPED" };
+  }
+
+  const user = await store.findUserByAuthSubject(normalizedSubject);
+
+  if (!user) {
+    return { status: "UNMAPPED" };
+  }
+
+  if (user.status !== UserStatus.ACTIVE) {
+    return { status: "ACCOUNT_NOT_ACTIVE", accountStatus: user.status };
+  }
+
+  return {
+    status: "AUTHORIZED",
+    actor: {
+      userId: user.id,
+      personId: user.personId,
+      roles: user.roles,
+      hospitalMemberships: user.hospitalMemberships,
+    },
+  };
+}
+
 export async function resolveActorContextByAuthSubject(
   authSubject: string,
   store: ActorContextStore = prismaActorContextStore,
 ): Promise<ActorContext | null> {
-  const normalizedSubject = authSubject.trim();
+  const access = await resolveActorAccessByAuthSubject(authSubject, store);
 
-  if (!normalizedSubject) {
-    return null;
-  }
-
-  return store.findActiveUserByAuthSubject(normalizedSubject);
+  return access.status === "AUTHORIZED" ? access.actor : null;
 }
 
-export async function resolveCurrentActorContext(
+export async function resolveCurrentActorAccess(
   store: ActorContextStore = prismaActorContextStore,
-): Promise<ActorContext | null> {
-  let authResponse: Awaited<
-    ReturnType<Awaited<ReturnType<typeof getServerSupabaseClient>>["auth"]["getUser"]>
-  >;
+  provider?: ActorAuthenticationProvider,
+): Promise<CurrentActorAccess> {
+  let authResponse: Awaited<ReturnType<ActorAuthenticationProvider["getUser"]>>;
 
   try {
-    authResponse = await (await getServerSupabaseClient()).auth.getUser();
+    const authProvider = provider ?? (await getServerSupabaseClient()).auth;
+    authResponse = await authProvider.getUser();
   } catch (error) {
     if (isUnauthenticatedAuthError(error)) {
-      return null;
+      return { status: "UNAUTHENTICATED" };
     }
 
     throw new InfrastructureError("Authentication service could not be reached");
@@ -121,15 +177,32 @@ export async function resolveCurrentActorContext(
 
   if (error) {
     if (isUnauthenticatedAuthError(error)) {
-      return null;
+      return { status: "UNAUTHENTICATED" };
     }
 
     throw new InfrastructureError("Authentication service could not be reached");
   }
 
   if (!user) {
-    return null;
+    return { status: "UNAUTHENTICATED" };
   }
 
-  return resolveActorContextByAuthSubject(user.id, store);
+  const actorAccess = await resolveActorAccessByAuthSubject(user.id, store);
+
+  if (actorAccess.status === "AUTHORIZED") {
+    return actorAccess;
+  }
+
+  return {
+    status: "APPLICATION_ACCESS_DENIED",
+    reason: actorAccess.status,
+  };
+}
+
+export async function resolveCurrentActorContext(
+  store: ActorContextStore = prismaActorContextStore,
+  provider?: ActorAuthenticationProvider,
+): Promise<ActorContext | null> {
+  const access = await resolveCurrentActorAccess(store, provider);
+  return access.status === "AUTHORIZED" ? access.actor : null;
 }

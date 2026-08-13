@@ -1,4 +1,10 @@
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import {
+  HospitalStatus,
+  MembershipStatus,
+  MembershipType,
+  Role,
+  UserStatus,
+} from "@prisma/client";
 import { AuthApiError, AuthSessionMissingError } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,9 +14,11 @@ import { InfrastructureError } from "@/shared/errors/application-error";
 import type { ActorContext } from "../types/actor-context";
 import {
   isUnauthenticatedAuthError,
+  resolveActorAccessByAuthSubject,
   resolveActorContextByAuthSubject,
   resolveCurrentActorContext,
   type ActorContextStore,
+  type ActorUserRecord,
 } from "./actor-context-service";
 
 vi.mock("@/lib/auth/supabase-server", () => ({
@@ -34,6 +42,16 @@ const actor: ActorContext = {
   ],
 };
 
+function createActorUserRecord(status: UserStatus = UserStatus.ACTIVE): ActorUserRecord {
+  return {
+    id: actor.userId,
+    personId: actor.personId,
+    status,
+    roles: actor.roles,
+    hospitalMemberships: actor.hospitalMemberships,
+  };
+}
+
 describe("ActorContext resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,27 +60,68 @@ describe("ActorContext resolution", () => {
   it("normalizes an authenticated provider subject before lookup", async () => {
     let receivedSubject = "";
     const store: ActorContextStore = {
-      async findActiveUserByAuthSubject(authSubject): Promise<ActorContext | null> {
+      async findUserByAuthSubject(authSubject): Promise<ActorUserRecord | null> {
         receivedSubject = authSubject;
-        return actor;
+        return createActorUserRecord();
       },
     };
 
     const result = await resolveActorContextByAuthSubject("  supabase-user-1  ", store);
 
     expect(receivedSubject).toBe("supabase-user-1");
-    expect(result).toBe(actor);
+    expect(result).toEqual(actor);
   });
 
   it("fails closed when the provider subject is empty", async () => {
     const store: ActorContextStore = {
-      async findActiveUserByAuthSubject(): Promise<ActorContext | null> {
+      async findUserByAuthSubject(): Promise<ActorUserRecord | null> {
         throw new Error("The store must not be called");
       },
     };
 
     await expect(resolveActorContextByAuthSubject("  ", store)).resolves.toBeNull();
   });
+
+  it("allows an ACTIVE mapped DEMI user", async () => {
+    const store: ActorContextStore = {
+      async findUserByAuthSubject(): Promise<ActorUserRecord | null> {
+        return createActorUserRecord();
+      },
+    };
+
+    await expect(resolveActorAccessByAuthSubject("provider-user-1", store)).resolves.toEqual({
+      status: "AUTHORIZED",
+      actor,
+    });
+  });
+
+  it("denies an unmapped provider user", async () => {
+    const store: ActorContextStore = {
+      async findUserByAuthSubject(): Promise<ActorUserRecord | null> {
+        return null;
+      },
+    };
+
+    await expect(resolveActorAccessByAuthSubject("provider-user-1", store)).resolves.toEqual({
+      status: "UNMAPPED",
+    });
+  });
+
+  it.each([UserStatus.PROVISIONED, UserStatus.INVITED, UserStatus.SUSPENDED])(
+    "denies a mapped %s DEMI user",
+    async (status) => {
+      const store: ActorContextStore = {
+        async findUserByAuthSubject(): Promise<ActorUserRecord | null> {
+          return createActorUserRecord(status);
+        },
+      };
+
+      await expect(resolveActorAccessByAuthSubject("provider-user-1", store)).resolves.toEqual({
+        status: "ACCOUNT_NOT_ACTIVE",
+        accountStatus: status,
+      });
+    },
+  );
 
   it("treats a missing session as unauthenticated", async () => {
     const getUser = vi.fn().mockResolvedValue({

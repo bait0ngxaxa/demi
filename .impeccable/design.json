@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T00:00:00+07:00",
+  "title": "Design System: DEMI",
+  "extensions": {
+    "colorMeta": {
+      "brand": { "role": "primary", "displayName": "DEMI Green", "canonical": "#126759", "tonalRamp": ["#07332b", "#0b5146", "#126759", "#2f7f70", "#6e9c93", "#a8cbc2", "#dceee9", "#f2faf7"] },
+      "canvas": { "role": "neutral", "displayName": "Clinical Canvas", "canonical": "#f3f7f5", "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#f3f7f5", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "heading": { "displayName": "Heading", "purpose": "หัวข้อและชื่อ DEMI" },
+      "body": { "displayName": "Body", "purpose": "ข้อความ UI ภาษาไทยและคำอธิบาย" }
+    },
+    "shadows": [
+      { "name": "primary-action", "value": "0 8px 22px rgba(18, 103, 89, 0.22)", "purpose": "แยก primary action จากพื้นผิว" }
+    ],
+    "motion": [
+      { "name": "control-state", "value": "150ms ease-out", "purpose": "การเปลี่ยน hover, focus และ pressed state" }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "ปุ่ม action หลักของ form",
+      "html": "<button class=\"ds-button-primary\">เข้าสู่ระบบ</button>",
+      "css": ".ds-button-primary { min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px; background: var(--brand, #126759); color: #fff; font: 600 16px/1.5 sans-serif; box-shadow: 0 8px 22px rgba(18,103,89,.22); transition: background-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out; } .ds-button-primary:hover { background: var(--brand-strong, #0b5146); } .ds-button-primary:focus-visible { outline: 4px solid var(--brand-soft, #dceee9); outline-offset: 2px; } .ds-button-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "ช่องกรอกข้อมูลเข้าสู่ระบบ",
+      "html": "<input class=\"ds-input\" placeholder=\"name@example.com\" />",
+      "css": ".ds-input { min-height: 48px; padding: 12px 16px; border: 1px solid var(--line, #d5e0dc); border-radius: 12px; background: #fff; color: var(--ink, #102620); font: 400 16px/1.5 sans-serif; } .ds-input:focus-visible { border-color: var(--brand, #126759); outline: 4px solid var(--brand-soft, #dceee9); } .ds-input:disabled { cursor: not-allowed; opacity: .65; }"
+    },
+    {
+      "name": "Role Chip",
+      "kind": "chip",
+      "description": "แสดงบทบาทจาก ActorContext โดยไม่ใช้เป็น control",
+      "html": "<span class=\"ds-role-chip\">บุคลากรโรงพยาบาล</span>",
+      "css": ".ds-role-chip { display: inline-flex; padding: 6px 12px; border-radius: 9999px; background: var(--brand-soft, #dceee9); color: var(--brand-strong, #0b5146); font: 600 14px/1.5 sans-serif; }"
+    },
+    {
+      "name": "Information Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "container สำหรับข้อมูล actor ที่อ่านจาก server",
+      "html": "<section class=\"ds-card\">ข้อมูลผู้ใช้งานปัจจุบัน</section>",
+      "css": ".ds-card { padding: 28px; border: 1px solid var(--line, #d5e0dc); border-radius: 16px; background: #fff; color: var(--ink, #102620); font: 600 18px/1.5 sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Quiet Clinical Access",
+    "overview": "DEMI ใช้พื้นสว่างสำหรับการทำงานในสถานพยาบาลและเขียวเข้มเป็นสี authority ของระบบ การแสดงผลเน้นสถานะที่อ่านได้ทันที ไม่มีภาพตกแต่งหรือ claim ที่อยู่นอก product truth",
+    "keyCharacteristics": ["พื้นที่ทำงานสว่างและตัวอักษรเข้มที่อ่านได้ชัด", "เขียวเข้มใช้กับ action และพื้นที่ยืนยันตัวตน", "ลำดับข้อมูลสั้น ตรง และเป็นกลางต่อทุกบทบาท", "control รองรับ touch, keyboard focus, loading, disabled และ error state"],
+    "rules": [
+      { "name": "The Authority Color Rule", "body": "ใช้ brand green เมื่อองค์ประกอบสื่อการยืนยันตัวตน primary action หรือสถานะที่เชื่อถือได้เท่านั้น", "section": "colors" }
+    ],
+    "dos": ["Do ใช้ภาษาไทยที่ตรงไปตรงมาและระบุวิธี recovery ใน error state", "Do แสดง role จาก server-resolved ActorContext เท่านั้น", "Do รักษา touch target อย่างน้อย 44px และ focus-visible ที่ชัดเจน"],
+    "donts": ["Don't ใช้ role selector หรือ browser state เป็น authority", "Don't เพิ่ม dashboard, imagery หรือ operational claim ที่ยังไม่มี requirement", "Don't ใช้ decorative gradient, glass หรือ nested cards แทนลำดับข้อมูล"]
+  }
+}

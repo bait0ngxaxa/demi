@@ -10,7 +10,24 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์อยู่ใน **Implementation Phase 1: Core Foundation** ต่อจากช่วง initialization + requirement discovery โดยยังไม่มีการยืนยัน business flow โดยละเอียดครบทุก domain หรือทุก actor เอกสารชุดนี้จึงกำหนดเฉพาะ foundation ที่ยืนยันแล้ว และระบุเรื่องที่ยังต้องเก็บ requirement แยกไว้
+โปรเจกต์อยู่ใน **Implementation Phase 2: Authentication & Application Access** ต่อจาก Phase 1 Core Foundation ระยะนี้เพิ่มเฉพาะ end-to-end login, application access check, protected shell และ logout สำหรับ DEMI User ที่ได้รับการ provision และมีสถานะ `ACTIVE` โดยยังไม่มีการยืนยัน business flow โดยละเอียดครบทุก domain หรือทุก actor
+
+## Phase 2 Authentication & Application Access
+
+ส่วนที่ implement แล้วใน Phase 2 มีขอบเขตดังต่อไปนี้:
+
+- `/login` เป็นหน้าเข้าสู่ระบบภาษาไทยแบบ responsive ใช้ Supabase email/password ผ่าน Server Action
+- Login input validate ด้วย Zod และจำกัด email/password length ก่อนเรียก provider; client ได้รับเฉพาะ error ที่ sanitize แล้ว
+- หลัง provider authentication สำเร็จ ระบบ validate provider identity ด้วย `auth.getUser()` แล้วใช้ service เดิม resolve `User.authSubject` เป็น DEMI actor
+- actor resolution แยกผล `UNAUTHENTICATED`, `APPLICATION_ACCESS_DENIED` และ `AUTHORIZED`; provider/database infrastructure failure ยังคง throw เป็น predictable infrastructure error
+- เฉพาะ mapped `User.status = ACTIVE` ที่ resolve `ActorContext` ได้จึงเข้า `/app`; `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูก deny
+- login ไม่สร้าง `Person`, `User`, role หรือ hospital membership และไม่อ่าน authority จาก provider metadata หรือ browser state
+- `/app` ตรวจ protected access ฝั่ง server และแสดง role จาก server-resolved `ActorContext` ใน shared application shell เท่านั้น
+- `/` redirect ACTIVE actor ไป `/app` และ redirect สถานะอื่นไป `/login`; infrastructure failure ไม่ถูกแปลงเป็น anonymous state
+- logout เรียก Supabase Auth server client เพื่อ invalidate session และ redirect ไป `/login` โดยไม่แก้ DEMI identity/authorization records
+- ไม่มี Prisma schema หรือ migration change ใน Phase 2
+
+Phase 2 ไม่ได้ finalize patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows
 
 ## Phase 1 Foundation Implementation
 
