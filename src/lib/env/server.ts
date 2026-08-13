@@ -30,7 +30,27 @@ const serverEnvSchema = z
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
+const supabaseAdminEnvSchema = z
+  .object({
+    NEXT_PUBLIC_SUPABASE_URL: z.url(),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().trim().min(1),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().trim().min(1),
+  })
+  .refine(
+    (value) => value.SUPABASE_SERVICE_ROLE_KEY !== value.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      path: ["SUPABASE_SERVICE_ROLE_KEY"],
+      message: "Supabase administration requires a privileged server credential",
+    },
+  );
+
+export type SupabaseAdminEnv = Pick<
+  z.infer<typeof supabaseAdminEnvSchema>,
+  "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"
+>;
+
 let cachedServerEnv: ServerEnv | undefined;
+let cachedSupabaseAdminEnv: SupabaseAdminEnv | undefined;
 
 export function getServerEnv(): ServerEnv {
   if (cachedServerEnv) {
@@ -52,4 +72,26 @@ export function getServerEnv(): ServerEnv {
 
   cachedServerEnv = result.data;
   return cachedServerEnv;
+}
+
+export function getSupabaseAdminEnv(): SupabaseAdminEnv {
+  if (cachedSupabaseAdminEnv) {
+    return cachedSupabaseAdminEnv;
+  }
+
+  const result = supabaseAdminEnvSchema.safeParse({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+
+  if (!result.success) {
+    throw new Error("Supabase administration environment is not configured correctly");
+  }
+
+  cachedSupabaseAdminEnv = {
+    NEXT_PUBLIC_SUPABASE_URL: result.data.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: result.data.SUPABASE_SERVICE_ROLE_KEY,
+  };
+  return cachedSupabaseAdminEnv;
 }

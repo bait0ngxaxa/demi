@@ -2,6 +2,10 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus } fr
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import {
+  provisionPasswordAuthIdentity,
+  type PasswordAuthAdminProvider,
+} from "@/modules/auth/services/password-auth-provisioning-service";
 import { resolvePasswordLoginIdentity } from "@/modules/auth/services/password-login-identity-service";
 import { resolvePerson } from "@/modules/identity/services/identity-service";
 
@@ -73,6 +77,61 @@ describe("Phase 1 PostgreSQL constraints", () => {
       providerLoginAlias: `${user.id}@auth.demi.internal`,
     });
     expect(person.identityKeyHash).not.toContain(nationalId);
+  });
+
+  it("persists a provisioned provider subject without changing DEMI account lifecycle", async () => {
+    const person = await createPersonRecord("auth-provisioning");
+    const user = await prisma.user.create({
+      data: {
+        personId: person.id,
+        status: UserStatus.PROVISIONED,
+      },
+    });
+    const providerSubject = "22222222-2222-4222-8222-222222222222";
+    const provider: PasswordAuthAdminProvider = {
+      async createUser(attributes) {
+        expect(attributes).toMatchObject({
+          email: `${user.id}@auth.demi.internal`,
+          email_confirm: true,
+        });
+        return {
+          data: { user: { id: providerSubject } },
+          error: null,
+        };
+      },
+      async deleteUser() {
+        return { error: null };
+      },
+    };
+
+    await expect(
+      provisionPasswordAuthIdentity(
+        { userId: user.id, password: "integration-user-owned-password" },
+        { provider },
+      ),
+    ).resolves.toEqual({ userId: user.id, authSubject: providerSubject });
+
+    await expect(
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: { authSubject: true, status: true },
+      }),
+    ).resolves.toEqual({
+      authSubject: providerSubject,
+      status: UserStatus.PROVISIONED,
+    });
+
+    const otherPerson = await createPersonRecord("auth-subject-uniqueness");
+    const otherUser = await prisma.user.create({
+      data: { personId: otherPerson.id },
+    });
+
+    await expect(
+      prisma.user.update({
+        where: { id: otherUser.id },
+        data: { authSubject: providerSubject },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
   });
 
   it("enforces one User for one Person", async () => {

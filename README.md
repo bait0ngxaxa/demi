@@ -6,7 +6,7 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 
 ## Development setup
 
-1. Copy `.env.example` to `.env` (or export the same variables in the shell) and provide a development PostgreSQL/Supabase connection and Supabase Auth public configuration. Set `DEMI_DATABASE_TARGET` to the non-production database target. Generate a server-only `IDENTITY_HASH_SECRET` with at least 32 characters. Never use production credentials for local development.
+1. Copy `.env.example` to `.env` (or export the same variables in the shell) and provide a development PostgreSQL/Supabase connection and Supabase Auth public configuration. Set `DEMI_DATABASE_TARGET` to the non-production database target. Generate a server-only `IDENTITY_HASH_SECRET` with at least 32 characters. Set `SUPABASE_SERVICE_ROLE_KEY` only in the trusted server environment that invokes provider-account provisioning; it must never be exposed to the browser. Never use production credentials for local development.
 2. Apply the migration and generate Prisma Client:
 
 ```bash
@@ -103,9 +103,23 @@ ACTIVE DEMI User + ActorContext
 - UI ภาษาไทยเป็น responsive shared shell สำหรับทุก ACTIVE actor และแสดง role จาก server-resolved `ActorContext`
 - National ID ไม่ใช่ credential secret แต่ห้าม log, ส่งกลับใน error หรือเปิดเผย identity HMAC/provider alias ต่อ browser; password ยังคงเป็น secret ที่ผู้ใช้เป็นเจ้าของและ Supabase จัดการ
 - Supabase metadata ไม่ใช่ authority; `User`, roles และ memberships ฝั่ง DEMI ยังคงเป็น source of truth
+- Trusted password-auth provisioning ใช้ dedicated server-only Supabase Admin client สร้าง provider user ด้วย opaque alias และ `email_confirm: true` ก่อน persist provider user ID ลง `User.authSubject`
+- Provisioning primitive รับเฉพาะ existing DEMI `User` และ user-owned password จาก trusted higher-level workflow; ไม่สร้าง Person, assign role/membership หรือเปลี่ยน `User.status`
+- `User.authSubject` ที่มีอยู่แล้วและ provider alias conflict จะ fail closed โดยไม่สร้าง/attach identity เพิ่ม; ownership ที่พิสูจน์ไม่ได้ต้องเข้าสู่ trusted recovery
+- หาก provider creation สำเร็จแต่การ persist `authSubject` ล้มเหลว ระบบจะ hard-delete provider user ที่เพิ่งสร้างเป็น compensation และไม่รายงาน success; cleanup failure คืน infrastructure/reconciliation error
 - Repository ยังไม่มี shared distributed login rate limiter; Phase 2.1 ใช้ bounded schema validation และ Supabase Auth safeguards ปัจจุบัน โดยต้องเพิ่ม deployment-level rate limiting ก่อนขยาย public exposure ตาม traffic/risk จริง
 
-Phase 2.1 ไม่ได้เพิ่ม Hospital onboarding, staff/OSM invitation, patient activation/provisioning UI, password recovery, LIFF, ThaID, native authentication, role capability matrix หรือ operational business workflows การสร้าง/ย้าย provider account เดิมไปใช้ internal alias และยืนยัน provider email identity ต้องเกิดใน trusted provisioning/transition process ภายหลัง โดย reuse alias helper ฝั่ง server ไม่เปลี่ยน password ของผู้ใช้ และไม่เปิด public account-creation endpoint
+Phase 2.1 ไม่ได้เพิ่ม Hospital onboarding, staff/OSM invitation, patient activation/provisioning UI, password recovery, LIFF, ThaID, native authentication, role capability matrix หรือ operational business workflows Higher-level trusted workflow ที่ตัดสิน lifecycle และรับ user-owned password ยังคงต้อง implement ภายหลัง; primitive นี้ไม่ใช่ public signup และไม่มี public account-creation endpoint
+
+### Trusted provider provisioning smoke test
+
+ใช้เฉพาะ Supabase development project และ DEMI User สำหรับทดสอบ ห้ามใช้ production identity/credential และ repository ไม่มี debug route หรือ public provisioning action
+
+1. สร้าง/resolve development `Person` และ `User` ที่ยังไม่มี `authSubject` ผ่าน trusted test setup
+2. เรียก `provisionPasswordAuthIdentity()` จาก trusted server-side test harness ด้วย password ที่ผู้ทดสอบเป็นเจ้าของ
+3. ตรวจว่า Supabase Auth user ใช้ `<User.id>@auth.demi.internal` และ confirmed โดยไม่ต้องรับอีเมล
+4. ตรวจว่า `User.authSubject` เท่ากับ Supabase user ID และ `User.status` ไม่ถูกเปลี่ยน
+5. จัดสถานะ test User เป็น `ACTIVE` ผ่าน setup ที่มีสิทธิ์ แล้วทดสอบ National-ID login, refresh `/app` และ local-session logout ตาม checklist ด้านล่าง
 
 ### Manual authentication smoke test
 

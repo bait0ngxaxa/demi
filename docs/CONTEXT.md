@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** ต่อจาก Phase 2 Authentication & Application Access ระยะนี้เปลี่ยน primary interactive login identifier เป็นเลขบัตรประชาชนไทย โดยยังคง Supabase password authentication, ACTIVE ActorContext และ protected application boundary เดิม
+โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** ต่อจาก Phase 2 Authentication & Application Access ระยะนี้เปลี่ยน primary interactive login identifier เป็นเลขบัตรประชาชนไทย และเพิ่ม trusted server-only primitive สำหรับ provision Supabase password-auth identity โดยยังคง ACTIVE ActorContext และ protected application boundary เดิม
 
 ## Phase 2.1 National ID Login Adapter
 
@@ -32,9 +32,14 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - unknown National ID และ wrong password ให้ client-facing `INVALID_CREDENTIALS` ข้อความเดียวกัน; identity/provider/database infrastructure failure ยังแยกเป็น infrastructure error ภายใน
 - National ID, `identityKeyHash`, password, provider alias, token และ cookie ไม่ถูก log หรือส่งกลับ client
 - ไม่มี Prisma schema หรือ migration change ใน Phase 2.1 เพราะ `User.id` เป็น opaque stable alias source อยู่แล้ว และ `authSubject` ยังคงหมายถึง provider subject
+- dedicated Supabase Admin client ใช้ `SUPABASE_SERVICE_ROLE_KEY` เฉพาะฝั่ง trusted server และแยกจาก SSR session client; privileged credential ไม่อยู่ใน Client Component, Server Action input หรือ response
+- `provisionPasswordAuthIdentity()` รับ existing DEMI User และ user-owned password จาก trusted application workflow, reuse alias helper, สร้าง confirmed provider account แล้ว persist Supabase user ID ลง `User.authSubject`
+- provisioning primitive ไม่สร้าง Person, ไม่ assign role/membership และไม่เปลี่ยน `User.status`; higher-level workflow ยังเป็นเจ้าของ business authorization และ lifecycle transition
+- User ที่มี `authSubject` แล้วหรือ alias ที่มีอยู่ใน provider จะ fail closed เป็น conflict โดยไม่ overwrite/attach อัตโนมัติ
+- operation ข้าม Supabase Auth กับ PostgreSQL ไม่ถูกทำเป็น fake transaction: หาก persist subject ล้มเหลวหลัง provider creation จะลบ provider user ที่เพิ่งสร้างเป็น compensation; cleanup failure เป็น infrastructure/reconciliation error และไม่รายงาน success
 - Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Trusted provisioning ในอนาคตต้อง reuse server-only alias primitive และรับผิดชอบ provider/database partial failure อย่างชัดเจน
+Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, higher-level activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Primitive นี้ไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; future trusted workflow ต้องรับผิดชอบ policy และ user-owned credential establishment ก่อนเรียกใช้
 
 ## Phase 1 Foundation Implementation
 
