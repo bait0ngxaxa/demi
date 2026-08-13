@@ -26,6 +26,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - audit input boundary ที่จำกัด metadata และปฏิเสธ credential/identity secrets
 - audit persistence รับ transaction-compatible Prisma client ได้ และ audit actor foreign key ไม่อนุญาต hard-delete User ที่มีประวัติ audit
 - Prisma migration scripts มี database-target safety preflight และ integration suite แยกใช้ dedicated test database
+- สำหรับ local integration ใช้ `.env.integration` กับ `compose.integration.yaml` ซึ่งเปิด PostgreSQL แบบ disposable ที่ `127.0.0.1:55432`; `DATABASE_URL`, `DIRECT_URL` และ `DEMI_TEST_DATABASE_URL` ต้องชี้ฐานข้อมูล test เดียวกัน
+- รัน verification แบบครบวงจรด้วย `npm run test:integration:local` หรือเปิด/ปิดฐานข้อมูลเองด้วย `npm run test:db:up`, `npm run prisma:migrate:test`, `npm run test:integration` และ `npm run test:db:down`
 - server-side health check ที่ไม่เปิดเผย secret หรือ internal error
 
 Implementation directories และ commands ดูได้จาก [README](../README.md) และ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md)

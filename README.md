@@ -36,17 +36,38 @@ npm run typecheck
 npm test
 ```
 
-For database integration tests, use a dedicated PostgreSQL test database and set all three values to the same test target before running:
+For database integration tests, the repository includes a disposable PostgreSQL container bound only to `127.0.0.1:55432`. Its committed local-only configuration is in `.env.integration`; never put Supabase or production credentials in that file.
+
+Run the complete clean-database verification and automatic cleanup with one command:
+
+```powershell
+npm run test:integration:local
+```
+
+To keep the database open and run each step manually:
+
+```powershell
+npm run test:db:reset
+npm run test:db:status
+npm run prisma:migrate:test
+npm run test:integration
+npm run test:db:down
+```
+
+The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. `npm run test:db:reset` recreates an empty database; `npm run test:db:down` removes the Compose resources. The command wrapper uses Docker from the current shell when available. On Windows it falls back to Docker in the WSL distribution configured by `DEMI_DOCKER_WSL_DISTRO` (default `Ubuntu`) and keeps that distribution alive until `test:db:down` so the container does not stop unexpectedly.
+
+To use another dedicated local PostgreSQL test database instead, export the same safety variables before running:
 
 ```bash
 export DEMI_DATABASE_TARGET=test
-export DEMI_TEST_DATABASE_URL=postgresql://postgres:password@localhost:5432/demi_test
+export DEMI_TEST_DATABASE_URL=postgresql://test-user:test-password@localhost:5432/demi_test
 export DATABASE_URL=$DEMI_TEST_DATABASE_URL
-npm run prisma:migrate:deploy
+export DIRECT_URL=$DEMI_TEST_DATABASE_URL
+npm run prisma:migrate:test
 npm run test:integration
 ```
 
-On Windows PowerShell, use `$env:...` assignments instead. The integration command refuses to run unless `DEMI_DATABASE_TARGET=test`, `DATABASE_URL` equals `DEMI_TEST_DATABASE_URL`, and the target is explicitly non-production.
+On Windows PowerShell, use `$env:...` assignments instead. Integration commands refuse to run unless `DEMI_DATABASE_TARGET=test`, both `DATABASE_URL` and `DIRECT_URL` equal `DEMI_TEST_DATABASE_URL`, and the target is explicitly non-production.
 
 The application boundary is `Client → Server Action/HTTP API → Application Service → Policy → Prisma → PostgreSQL/Supabase`. No speculative `/api/v1` endpoints, LIFF SDK, native app, or clinical business modules are implemented in this phase.
 

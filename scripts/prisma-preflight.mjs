@@ -30,6 +30,7 @@ loadDotEnvFile(".env.local");
 const target = process.env.DEMI_DATABASE_TARGET;
 const nodeEnvironment = process.env.NODE_ENV ?? "development";
 const databaseUrl = process.env.DATABASE_URL;
+const directUrl = process.env.DIRECT_URL;
 
 function fail(message) {
   console.error(`Prisma safety preflight failed: ${message}`);
@@ -46,6 +47,10 @@ if (!target || !allowedTargets.has(target)) {
 
 if (!databaseUrl || !/^postgres(?:ql)?:\/\//u.test(databaseUrl)) {
   fail("DATABASE_URL must be a PostgreSQL URL");
+}
+
+if (!directUrl || !/^postgres(?:ql)?:\/\//u.test(directUrl)) {
+  fail("DIRECT_URL must be a PostgreSQL URL");
 }
 
 if (operation === "migrate-dev" || operation === "db-push" || operation === "migrate-reset") {
@@ -73,5 +78,9 @@ if (operation === "test-integration") {
 
   if (process.env.DEMI_TEST_DATABASE_URL !== databaseUrl) {
     fail("DATABASE_URL must equal DEMI_TEST_DATABASE_URL during integration tests");
+  }
+
+  if (process.env.DEMI_TEST_DATABASE_URL !== directUrl) {
+    fail("DIRECT_URL must equal DEMI_TEST_DATABASE_URL during integration tests");
   }
 }

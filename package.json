@@ -12,7 +12,13 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "node scripts/prisma-preflight.mjs migrate-dev && prisma migrate dev",
     "prisma:migrate:deploy": "node scripts/prisma-preflight.mjs migrate-deploy && prisma migrate deploy",
-    "test:integration": "node scripts/prisma-preflight.mjs test-integration && vitest run --config vitest.integration.config.mts"
+    "test:db:up": "node scripts/integration.mjs db:up",
+    "test:db:down": "node scripts/integration.mjs db:down",
+    "test:db:reset": "node scripts/integration.mjs db:reset",
+    "test:db:status": "node scripts/integration.mjs db:status",
+    "prisma:migrate:test": "node scripts/integration.mjs migrate",
+    "test:integration": "node scripts/integration.mjs test",
+    "test:integration:local": "node scripts/integration.mjs verify"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
