@@ -13,6 +13,7 @@ import {
   authenticateWithPassword,
   signOutCurrentSession,
   type PasswordAuthenticationProvider,
+  type PasswordLoginIdentityResolver,
 } from "./authentication-service";
 
 const mockedGetServerSupabaseClient = vi.hoisted(() => vi.fn());
@@ -28,6 +29,22 @@ const activeUser: ActorUserRecord = {
   roles: [],
   hospitalMemberships: [],
 };
+
+const loginInput = {
+  nationalId: "1000000000009",
+  password: "valid-password",
+};
+
+const resolvedLoginIdentity = {
+  authSubject: "provider-user-1",
+  providerLoginAlias: "11111111-1111-4111-8111-111111111111@auth.demi.internal",
+};
+
+function createLoginIdentityResolver(
+  result: typeof resolvedLoginIdentity | null = resolvedLoginIdentity,
+): PasswordLoginIdentityResolver {
+  return vi.fn().mockResolvedValue(result);
+}
 
 function createStore(record: ActorUserRecord | null = activeUser): ActorContextStore {
   return {
@@ -64,8 +81,8 @@ describe("password authentication service", () => {
 
     await expect(
       authenticateWithPassword(
-        { email: "user@example.com", password: "wrong-password" },
-        { provider, actorStore: store },
+        { ...loginInput, password: "wrong-password" },
+        { provider, actorStore: store, resolveLoginIdentity: createLoginIdentityResolver() },
       ),
     ).resolves.toEqual({ status: "INVALID_CREDENTIALS" });
     expect(store.findUserByAuthSubject).not.toHaveBeenCalled();
@@ -80,8 +97,12 @@ describe("password authentication service", () => {
 
     await expect(
       authenticateWithPassword(
-        { email: "user@example.com", password: "valid-password" },
-        { provider, actorStore: createStore() },
+        loginInput,
+        {
+          provider,
+          actorStore: createStore(),
+          resolveLoginIdentity: createLoginIdentityResolver(),
+        },
       ),
     ).rejects.toBeInstanceOf(InfrastructureError);
   });
@@ -91,8 +112,8 @@ describe("password authentication service", () => {
     const store = createStore();
 
     const result = await authenticateWithPassword(
-      { email: "user@example.com", password: "valid-password" },
-      { provider, actorStore: store },
+      loginInput,
+      { provider, actorStore: store, resolveLoginIdentity: createLoginIdentityResolver() },
     );
 
     expect(result).toEqual({
@@ -105,7 +126,68 @@ describe("password authentication service", () => {
       },
     });
     expect(provider.getUser).toHaveBeenCalledOnce();
+    expect(provider.signInWithPassword).toHaveBeenCalledWith({
+      email: resolvedLoginIdentity.providerLoginAlias,
+      password: loginInput.password,
+    });
     expect(store.findUserByAuthSubject).toHaveBeenCalledWith("provider-user-1");
+  });
+
+  it("returns the same invalid-credentials result for an unknown National ID", async () => {
+    const provider = createProvider();
+    vi.mocked(provider.signInWithPassword).mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials"),
+    });
+
+    await expect(
+      authenticateWithPassword(loginInput, {
+        provider,
+        actorStore: createStore(),
+        resolveLoginIdentity: createLoginIdentityResolver(null),
+      }),
+    ).resolves.toEqual({ status: "INVALID_CREDENTIALS" });
+    expect(provider.signInWithPassword).toHaveBeenCalledWith({
+      email: "invalid-login@auth.demi.internal",
+      password: loginInput.password,
+    });
+  });
+
+  it("fails closed when provider authentication returns an unexpected subject", async () => {
+    const provider = createProvider();
+    const store = createStore();
+    const resolveLoginIdentity = createLoginIdentityResolver({
+      ...resolvedLoginIdentity,
+      authSubject: "expected-provider-user",
+    });
+
+    await expect(
+      authenticateWithPassword(loginInput, {
+        provider,
+        actorStore: store,
+        resolveLoginIdentity,
+      }),
+    ).resolves.toEqual({
+      status: "APPLICATION_ACCESS_DENIED",
+      reason: "SUBJECT_MISMATCH",
+    });
+    expect(store.findUserByAuthSubject).not.toHaveBeenCalled();
+    expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("does not downgrade an identity lookup infrastructure failure", async () => {
+    const provider = createProvider();
+    const failure = new InfrastructureError("Identity database unavailable");
+    const resolveLoginIdentity: PasswordLoginIdentityResolver = vi.fn().mockRejectedValue(failure);
+
+    await expect(
+      authenticateWithPassword(loginInput, {
+        provider,
+        actorStore: createStore(),
+        resolveLoginIdentity,
+      }),
+    ).rejects.toBe(failure);
+    expect(provider.signInWithPassword).not.toHaveBeenCalled();
   });
 
   it("uses a writable cookie context for provider-backed login", async () => {
@@ -114,8 +196,11 @@ describe("password authentication service", () => {
 
     await expect(
       authenticateWithPassword(
-        { email: "user@example.com", password: "valid-password" },
-        { actorStore: createStore() },
+        loginInput,
+        {
+          actorStore: createStore(),
+          resolveLoginIdentity: createLoginIdentityResolver(),
+        },
       ),
     ).resolves.toMatchObject({ status: "AUTHORIZED" });
 
@@ -141,8 +226,12 @@ describe("password authentication service", () => {
 
     await expect(
       authenticateWithPassword(
-        { email: "user@example.com", password: "valid-password" },
-        { provider, actorStore: createStore(null) },
+        loginInput,
+        {
+          provider,
+          actorStore: createStore(null),
+          resolveLoginIdentity: createLoginIdentityResolver(),
+        },
       ),
     ).resolves.toEqual({ status: "APPLICATION_ACCESS_DENIED", reason: "UNMAPPED" });
     expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
@@ -155,8 +244,12 @@ describe("password authentication service", () => {
 
       await expect(
         authenticateWithPassword(
-          { email: "user@example.com", password: "valid-password" },
-          { provider, actorStore: createStore({ ...activeUser, status }) },
+          loginInput,
+          {
+            provider,
+            actorStore: createStore({ ...activeUser, status }),
+            resolveLoginIdentity: createLoginIdentityResolver(),
+          },
         ),
       ).resolves.toEqual({
         status: "APPLICATION_ACCESS_DENIED",
@@ -176,8 +269,8 @@ describe("password authentication service", () => {
 
     await expect(
       authenticateWithPassword(
-        { email: "user@example.com", password: "valid-password" },
-        { provider, actorStore: store },
+        loginInput,
+        { provider, actorStore: store, resolveLoginIdentity: createLoginIdentityResolver() },
       ),
     ).rejects.toBeInstanceOf(InfrastructureError);
   });

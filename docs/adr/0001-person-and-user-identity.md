@@ -18,6 +18,26 @@ DEMI ต้องรองรับบุคคลที่ถูกบันท
 - ต้องทำ identity resolution ก่อนสร้าง Person ใหม่
 - Exact database columns, constraints และ external identity links ยังไม่ถูกกำหนดโดย ADR นี้
 
+### Phase 2.1 Authentication Clarification
+
+Requirement ที่ยืนยันภายหลังสำหรับ interactive login กำหนดให้เลขบัตรประชาชนไทย identify `Person` และ password ยืนยัน credential ownership โดยมี boundary ดังนี้:
+
+```text
+National ID
+  → server validation + HMAC
+  → Person.identityKeyHash
+  → Person → User
+  → opaque provider login alias
+  → Supabase password authentication
+  → User.authSubject + ACTIVE ActorContext
+```
+
+- raw National ID ไม่ถูกเพิ่มเป็น login lookup column และไม่ถูกส่งให้ Supabase
+- opaque provider alias เป็น authentication adapter detail เท่านั้น ไม่ใช่ Person identity, contact email หรือ authorization source
+- `User.authSubject` ยังคงหมายถึง provider subject และไม่ถูก overload เป็น login alias
+- `User.id` ซึ่งเป็น stable opaque UUID ใช้ derive alias ได้โดยไม่เพิ่ม schema field หรือเปิดเผย National ID
+- การ login ไม่สร้างหรือ activate Person/User และไม่กำหนด role/membership
+
 Model แบบนี้ไม่เพียงพอ:
 
 ```text
@@ -54,7 +74,7 @@ users.hospital_id
 
 ## Open Questions
 
-- Identifier และหลักฐานใดใช้ match หรือยืนยันว่าเป็น Person เดิม
+- Identifier/หลักฐานอื่นนอกเหนือจาก National ID login ใช้ match หรือยืนยันว่าเป็น Person เดิมอย่างไร
 - กรณีข้อมูลระบุตัวตนขัดแย้งกัน ใครมีสิทธิ์ resolve และต้องมี audit แบบใด
 - Exact cardinality ระหว่าง Person, User และ external identity provider links
 - Database uniqueness constraints และ merge/recovery workflow ที่เหมาะสม
@@ -64,4 +84,3 @@ users.hospital_id
 - [Architecture Baseline: Person and User](../architecture/DEMI_ARCHITECTURE_BASELINE.md#4-person-and-user-are-different-concepts)
 - [Architecture Baseline: One Human, One Core Identity](../architecture/DEMI_ARCHITECTURE_BASELINE.md#5-one-human-one-core-identity-multiple-roles)
 - [ADR-0004: Patient Provisioning and First-Time Activation](./0004-patient-provisioning-and-activation.md)
-

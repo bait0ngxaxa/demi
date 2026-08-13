@@ -2,6 +2,7 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus } fr
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { resolvePasswordLoginIdentity } from "@/modules/auth/services/password-login-identity-service";
 import { resolvePerson } from "@/modules/identity/services/identity-service";
 
 const prisma = getPrisma();
@@ -52,6 +53,26 @@ describe("Phase 1 PostgreSQL constraints", () => {
       prisma.person.create({ data: { identityKeyHash: first.identityKeyHash } }),
     ).rejects.toMatchObject({ code: "P2002" });
     expect(await prisma.person.count()).toBe(1);
+  });
+
+  it("resolves a Thai National ID to the mapped provider login identity", async () => {
+    const nationalId = "1000000000009";
+    const person = await resolvePerson({
+      identity: { namespace: "thai-national-id", value: nationalId },
+    });
+    const user = await prisma.user.create({
+      data: {
+        personId: person.id,
+        authSubject: "provider-subject-1",
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    await expect(resolvePasswordLoginIdentity(nationalId)).resolves.toEqual({
+      authSubject: "provider-subject-1",
+      providerLoginAlias: `${user.id}@auth.demi.internal`,
+    });
+    expect(person.identityKeyHash).not.toContain(nationalId);
   });
 
   it("enforces one User for one Person", async () => {

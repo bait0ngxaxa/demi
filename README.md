@@ -2,7 +2,7 @@
 
 DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-โปรเจกต์อยู่ใน **Implementation Phase 2: Authentication & Application Access** โดยต่อยอดจาก core foundation ให้ผู้ใช้ที่ได้รับการ provision และมีสถานะ `ACTIVE` สามารถเข้าสู่ protected application shell ได้จริง Clinical และ operational domains ยังคงอยู่นอก scope จนกว่า requirement จะได้รับการยืนยัน
+โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** โดยต่อยอดจาก Phase 2 ให้ผู้ใช้ที่ได้รับการ provision และมีสถานะ `ACTIVE` เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและรหัสผ่านของตนเองได้ Clinical และ operational domains ยังคงอยู่นอก scope จนกว่า requirement จะได้รับการยืนยัน
 
 ## Development setup
 
@@ -71,13 +71,16 @@ On Windows PowerShell, use `$env:...` assignments instead. Integration commands 
 
 The application boundary is `Client → Server Action/HTTP API → Application Service → Policy → Prisma → PostgreSQL/Supabase`. No speculative `/api/v1` endpoints, LIFF SDK, native app, or clinical business modules are implemented in this phase.
 
-## Phase 2 authentication and application access
+## Phase 2.1 National ID login and application access
 
-Phase 2 implements the following web flow:
+Phase 2.1 implements the following web flow:
 
 ```text
 /login
-  ↓ Supabase email/password authentication
+  ↓ Thai National ID validation
+server-side HMAC identity resolution
+  ↓ Person → User → opaque provider login alias
+Supabase password authentication
 validated provider identity
   ↓ User.authSubject
 ACTIVE DEMI User + ActorContext
@@ -87,37 +90,44 @@ ACTIVE DEMI User + ActorContext
 /login
 ```
 
-- Login ใช้ Server Action และ Zod validation พร้อมจำกัดความยาว email/password
+- Login ใช้ Server Action รับเลขบัตรประชาชนไทยและ user-owned password โดย validate เลข 13 หลักและ checksum ฝั่ง server พร้อมจำกัดความยาว input
+- เลขบัตรประชาชนใช้เพื่อ identity resolution เท่านั้น: server คำนวณ HMAC ด้วย namespace `thai-national-id` แล้วค้น `Person.identityKeyHash`; ไม่เพิ่มหรือ query plaintext National ID
+- Supabase รับ opaque internal alias ที่ derive จาก stable `User.id` เช่น `<user-uuid>@auth.demi.internal`; alias เป็น authentication adapter detail ไม่ใช่อีเมลจริง contact method หรือ authorization source
 - หลัง `signInWithPassword()` สำเร็จ ระบบเรียก provider `getUser()` เพื่อยืนยันตัวตนอีกครั้งก่อน resolve `ActorContext`
+- provider subject ต้องตรงกับ `User.authSubject` ที่ resolve จาก National ID และยังต้อง map กลับเป็น DEMI User เดิม มิฉะนั้นระบบ fail closed และจบ current session
 - เฉพาะ provider subject ที่ map กับ `User.status = ACTIVE` เท่านั้นที่เข้า `/app` ได้
 - `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูกปฏิเสธโดยไม่มี automatic Person/User/role provisioning
 - `/app` ตรวจสิทธิ์ฝั่ง server; browser state, Supabase metadata, role หรือ hospital ID จาก client ไม่ถูกใช้เป็น authority
 - Logout ใช้ Supabase Auth server client ด้วย `scope: "local"` เพื่อจบเฉพาะ current session; auth mutations ใช้ writable cookie context ส่วน read-only Server Components ยังคงมี defensive cookie handling
 - invalid/expired session แยกจาก provider, configuration และ database infrastructure failure อย่างชัดเจน
 - UI ภาษาไทยเป็น responsive shared shell สำหรับทุก ACTIVE actor และแสดง role จาก server-resolved `ActorContext`
+- National ID ไม่ใช่ credential secret แต่ห้าม log, ส่งกลับใน error หรือเปิดเผย identity HMAC/provider alias ต่อ browser; password ยังคงเป็น secret ที่ผู้ใช้เป็นเจ้าของและ Supabase จัดการ
+- Supabase metadata ไม่ใช่ authority; `User`, roles และ memberships ฝั่ง DEMI ยังคงเป็น source of truth
+- Repository ยังไม่มี shared distributed login rate limiter; Phase 2.1 ใช้ bounded schema validation และ Supabase Auth safeguards ปัจจุบัน โดยต้องเพิ่ม deployment-level rate limiting ก่อนขยาย public exposure ตาม traffic/risk จริง
 
-Phase 2 ยังไม่กำหนด patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows
+Phase 2.1 ไม่ได้เพิ่ม Hospital onboarding, staff/OSM invitation, patient activation/provisioning UI, password recovery, LIFF, ThaID, native authentication, role capability matrix หรือ operational business workflows การสร้าง/ย้าย provider account เดิมไปใช้ internal alias และยืนยัน provider email identity ต้องเกิดใน trusted provisioning/transition process ภายหลัง โดย reuse alias helper ฝั่ง server ไม่เปลี่ยน password ของผู้ใช้ และไม่เปิด public account-creation endpoint
 
 ### Manual authentication smoke test
 
-ใช้เฉพาะ Supabase development account ที่ map กับ `User.authSubject` และมีสถานะ `ACTIVE`; ห้ามใช้ production credentials
+ใช้เฉพาะ Supabase development account ที่มี opaque internal alias, map กับ `User.authSubject`, เชื่อมกับ Person ผ่าน HMAC ของ National ID และมีสถานะ `ACTIVE`; ห้ามใช้ production credentials
 
 1. เปิด `/login`
-2. Login ด้วยบัญชี Supabase ที่ provision แล้ว
+2. กรอกเลขบัตรประชาชนไทยที่ provision แล้วและรหัสผ่านที่ถูกต้อง
 3. ยืนยันว่า redirect ไป `/app`
 4. Refresh `/app`
 5. ยืนยันว่า session ยังคงอยู่
-6. เปิด browser หรือ device ที่สองด้วยบัญชีเดียวกัน
-7. Logout จาก session แรก
-8. ยืนยันว่า session แรกเข้า `/app` ไม่ได้อีก
-9. ยืนยันว่า session ที่สองยัง authenticated อยู่
-10. ยืนยันว่า `/app` ของ session แรก redirect หรือ deny อย่างถูกต้องหลัง logout
+6. Logout แล้วตรวจว่า `/app` เข้าไม่ได้
+7. Login ด้วยเลขบัตรเดิมและรหัสผ่านผิด แล้วตรวจว่าแสดงข้อความ credentials แบบ generic
+8. Login ด้วยเลขบัตรที่ checksum ถูกต้องแต่ไม่มีในระบบ แล้วตรวจว่าได้ข้อความ generic เดียวกัน
+9. ตรวจใน browser ว่าไม่พบ internal alias, `identityKeyHash` หรือ raw provider error
+
+สำหรับ local-session logout ให้เปิด browser/device ที่สองด้วยบัญชีเดียวกันก่อน logout session แรก แล้วตรวจว่า session ที่สองยังใช้งานได้
 
 ## Implementation structure
 
 ```text
 app/api/health/route.ts                 server infrastructure transport
-app/login/                              Thai email/password login UI
+app/login/                              Thai National ID/password login UI
 app/app/                                protected authenticated application shell
 proxy.ts                                Supabase SSR session refresh boundary
 prisma/schema.prisma                    stable persistence model

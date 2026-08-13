@@ -21,7 +21,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 ## Operating Context
 
 - Responsive Web เป็น platform ปัจจุบันและต้องใช้งานได้ดีบนหน้าจอขนาดเล็ก
-- ผู้ใช้เข้าสู่ระบบด้วยความสามารถ email/password ของ Supabase Auth ที่โปรเจกต์ตั้งค่าไว้
+- ผู้ใช้เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Hospital/OSM/Patient onboarding, activation และ invitation workflow ยังไม่อยู่ใน Phase 2
 
 ## Capabilities and Constraints
@@ -30,7 +30,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น
 - หน้า `/login`, `/app` และ logout เป็นขอบเขต UI ของ Phase 2
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
-- Patient activation, Hospital verification, staff/OSM invitation, LIFF, ThaID, native authentication และ capability matrix ยังเป็น open requirements
+- Provider account provisioning/transition, Patient activation, Hospital verification, staff/OSM invitation, LIFF, ThaID, native authentication และ capability matrix ยังเป็น open requirements
 
 ## Brand Commitments
 

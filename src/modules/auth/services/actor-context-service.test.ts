@@ -16,6 +16,7 @@ import {
   isUnauthenticatedAuthError,
   resolveActorAccessByAuthSubject,
   resolveActorContextByAuthSubject,
+  resolveCurrentActorAccess,
   resolveCurrentActorContext,
   type ActorContextStore,
   type ActorUserRecord,
@@ -179,6 +180,26 @@ describe("ActorContext resolution", () => {
     mockedGetServerSupabaseClient.mockRejectedValue(new Error("Auth configuration is invalid"));
 
     await expect(resolveCurrentActorContext()).rejects.toBeInstanceOf(InfrastructureError);
+  });
+
+  it("fails closed before actor lookup when the provider subject is unexpected", async () => {
+    const store: ActorContextStore = {
+      findUserByAuthSubject: vi.fn().mockResolvedValue(createActorUserRecord()),
+    };
+    const provider = {
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: "unexpected-provider-user" } },
+        error: null,
+      }),
+    };
+
+    await expect(
+      resolveCurrentActorAccess(store, provider, "expected-provider-user"),
+    ).resolves.toEqual({
+      status: "APPLICATION_ACCESS_DENIED",
+      reason: "SUBJECT_MISMATCH",
+    });
+    expect(store.findUserByAuthSubject).not.toHaveBeenCalled();
   });
 
   it("uses stable auth identity and codes rather than HTTP status alone", () => {

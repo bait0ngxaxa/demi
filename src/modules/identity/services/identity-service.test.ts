@@ -99,4 +99,28 @@ describe("identity service", () => {
 
     expect(found?.id).toBe(created.id);
   });
+
+  it("uses the HMAC identity key rather than raw National ID for persistence lookup", async () => {
+    const nationalId = "1000000000009";
+    let receivedLookupKey = "";
+    const store: IdentityStore = {
+      async findPersonByIdentityHash(identityKeyHash): Promise<PersonRecord | null> {
+        receivedLookupKey = identityKeyHash;
+        return null;
+      },
+      async createPerson(): Promise<PersonRecord> {
+        throw new Error("The store must not create a Person during lookup");
+      },
+    };
+
+    await findPersonByIdentity(
+      { namespace: "thai-national-id", value: nationalId },
+      store,
+    );
+
+    expect(receivedLookupKey).toBe(
+      hashIdentityReference({ namespace: "thai-national-id", value: nationalId }),
+    );
+    expect(receivedLookupKey).not.toContain(nationalId);
+  });
 });

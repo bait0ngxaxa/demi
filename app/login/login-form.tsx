@@ -32,21 +32,24 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
       ) : null}
 
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-ink" htmlFor="email">
-          อีเมล
+        <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
+          เลขบัตรประชาชน
         </label>
         <input
           aria-describedby={errorMessage ? "login-error" : undefined}
+          autoCapitalize="none"
           autoComplete="username"
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
           disabled={pending}
-          id="email"
-          inputMode="email"
-          maxLength={254}
-          name="email"
-          placeholder="name@example.com"
+          id="nationalId"
+          inputMode="numeric"
+          maxLength={13}
+          name="nationalId"
+          pattern="[0-9]{13}"
+          placeholder="1234567890123"
           required
-          type="email"
+          spellCheck={false}
+          type="text"
         />
       </div>
 

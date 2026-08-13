@@ -14,11 +14,15 @@ import {
   type ActorAuthenticationProvider,
   type ActorContextStore,
 } from "./actor-context-service";
+import {
+  resolvePasswordLoginIdentity,
+  type ResolvedPasswordLoginIdentity,
+} from "./password-login-identity-service";
 
 type SupabaseSignOutOptions = Parameters<SupabaseClient["auth"]["signOut"]>[0];
 
 export type PasswordAuthenticationProvider = ActorAuthenticationProvider & {
-  signInWithPassword(credentials: LoginInput): Promise<{
+  signInWithPassword(credentials: { email: string; password: string }): Promise<{
     data: { user: { id: string } | null };
     error: unknown;
   }>;
@@ -30,13 +34,20 @@ export type AuthenticationResult =
   | { status: "INVALID_CREDENTIALS" }
   | {
       status: "APPLICATION_ACCESS_DENIED";
-      reason: "UNMAPPED" | "ACCOUNT_NOT_ACTIVE";
+      reason: "UNMAPPED" | "ACCOUNT_NOT_ACTIVE" | "SUBJECT_MISMATCH";
     };
+
+export type PasswordLoginIdentityResolver = (
+  nationalId: string,
+) => Promise<ResolvedPasswordLoginIdentity | null>;
 
 export type AuthenticationDependencies = {
   provider?: PasswordAuthenticationProvider;
   actorStore?: ActorContextStore;
+  resolveLoginIdentity?: PasswordLoginIdentityResolver;
 };
+
+const DECOY_PROVIDER_LOGIN_ALIAS = "invalid-login@auth.demi.internal";
 
 const invalidCredentialErrorCodes = new Set([
   "email_not_confirmed",
@@ -94,11 +105,17 @@ export async function authenticateWithPassword(
     throw new ValidationError("Login data is invalid");
   }
 
+  const resolveLoginIdentity =
+    dependencies.resolveLoginIdentity ?? resolvePasswordLoginIdentity;
+  const loginIdentity = await resolveLoginIdentity(parsed.data.nationalId);
   const provider = dependencies.provider ?? (await getPasswordAuthenticationProvider());
   let response: Awaited<ReturnType<PasswordAuthenticationProvider["signInWithPassword"]>>;
 
   try {
-    response = await provider.signInWithPassword(parsed.data);
+    response = await provider.signInWithPassword({
+      email: loginIdentity?.providerLoginAlias ?? DECOY_PROVIDER_LOGIN_ALIAS,
+      password: parsed.data.password,
+    });
   } catch (error) {
     if (isInvalidCredentialsError(error)) {
       return { status: "INVALID_CREDENTIALS" };
@@ -119,7 +136,16 @@ export async function authenticateWithPassword(
     throw new InfrastructureError("Authentication service returned an invalid response");
   }
 
-  const access = await resolveCurrentActorAccess(dependencies.actorStore, provider);
+  if (!loginIdentity) {
+    await signOutCurrentSession(provider);
+    return { status: "INVALID_CREDENTIALS" };
+  }
+
+  const access = await resolveCurrentActorAccess(
+    dependencies.actorStore,
+    provider,
+    loginIdentity.authSubject,
+  );
 
   if (access.status === "UNAUTHENTICATED") {
     throw new InfrastructureError("Authenticated identity could not be validated");

@@ -10,15 +10,18 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์อยู่ใน **Implementation Phase 2: Authentication & Application Access** ต่อจาก Phase 1 Core Foundation ระยะนี้เพิ่มเฉพาะ end-to-end login, application access check, protected shell และ logout สำหรับ DEMI User ที่ได้รับการ provision และมีสถานะ `ACTIVE` โดยยังไม่มีการยืนยัน business flow โดยละเอียดครบทุก domain หรือทุก actor
+โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** ต่อจาก Phase 2 Authentication & Application Access ระยะนี้เปลี่ยน primary interactive login identifier เป็นเลขบัตรประชาชนไทย โดยยังคง Supabase password authentication, ACTIVE ActorContext และ protected application boundary เดิม
 
-## Phase 2 Authentication & Application Access
+## Phase 2.1 National ID Login Adapter
 
-ส่วนที่ implement แล้วใน Phase 2 มีขอบเขตดังต่อไปนี้:
+ส่วนที่ implement แล้วใน Phase 2.1 มีขอบเขตดังต่อไปนี้:
 
-- `/login` เป็นหน้าเข้าสู่ระบบภาษาไทยแบบ responsive ใช้ Supabase email/password ผ่าน Server Action
-- Login input validate ด้วย Zod และจำกัด email/password length ก่อนเรียก provider; client ได้รับเฉพาะ error ที่ sanitize แล้ว
+- `/login` เป็นหน้าเข้าสู่ระบบภาษาไทยแบบ responsive รับเลขบัตรประชาชนไทยและ user-owned password ผ่าน Server Action โดยไม่ต้องแสดงหรือขออีเมล
+- Login input validate ด้วย Zod ฝั่ง server: trim เฉพาะช่องว่างรอบนอก, ต้องเป็นเลข ASCII 13 หลัก, checksum ไทยถูกต้อง และมี length bound ก่อนทำ HMAC/database/provider work
+- server ใช้ identity service source เดิมคำนวณ HMAC ด้วย namespace `thai-national-id` แล้ว resolve `Person.identityKeyHash → Person → User`
+- Supabase password authentication ใช้ opaque internal alias ที่ derive จาก stable `User.id`; alias ไม่บรรจุ National ID ไม่ใช่อีเมลจริง/contact method และไม่ถูก expose ใน `ActorContext` หรือ browser
 - หลัง provider authentication สำเร็จ ระบบ validate provider identity ด้วย `auth.getUser()` แล้วใช้ service เดิม resolve `User.authSubject` เป็น DEMI actor
+- subject ที่ provider คืนต้องตรงกับ `User.authSubject` ที่ National ID resolution เลือกไว้; mismatch ถูก deny และ local sign-out แบบ fail closed
 - actor resolution แยกผล `UNAUTHENTICATED`, `APPLICATION_ACCESS_DENIED` และ `AUTHORIZED`; provider/database infrastructure failure ยังคง throw เป็น predictable infrastructure error
 - เฉพาะ mapped `User.status = ACTIVE` ที่ resolve `ActorContext` ได้จึงเข้า `/app`; `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูก deny
 - login ไม่สร้าง `Person`, `User`, role หรือ hospital membership และไม่อ่าน authority จาก provider metadata หรือ browser state
@@ -26,16 +29,19 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - `/` redirect ACTIVE actor ไป `/app` และ redirect สถานะอื่นไป `/login`; infrastructure failure ไม่ถูกแปลงเป็น anonymous state
 - logout เรียก Supabase Auth server client ด้วย `scope: "local"` เพื่อ invalidate เฉพาะ current browser/device session และ redirect ไป `/login` โดยไม่แก้ DEMI identity/authorization records
 - auth mutations ใช้ Supabase server client ที่กำหนดให้ cookie writes ต้องสำเร็จ; read-only Server Components ยังคงใช้ defensive cookie-write behavior ได้
-- ไม่มี Prisma schema หรือ migration change ใน Phase 2
+- unknown National ID และ wrong password ให้ client-facing `INVALID_CREDENTIALS` ข้อความเดียวกัน; identity/provider/database infrastructure failure ยังแยกเป็น infrastructure error ภายใน
+- National ID, `identityKeyHash`, password, provider alias, token และ cookie ไม่ถูก log หรือส่งกลับ client
+- ไม่มี Prisma schema หรือ migration change ใน Phase 2.1 เพราะ `User.id` เป็น opaque stable alias source อยู่แล้ว และ `authSubject` ยังคงหมายถึง provider subject
+- Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2 ไม่ได้ finalize patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows
+Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Trusted provisioning ในอนาคตต้อง reuse server-only alias primitive และรับผิดชอบ provider/database partial failure อย่างชัดเจน
 
 ## Phase 1 Foundation Implementation
 
 ส่วนที่ implement แล้วใน foundation นี้มีขอบเขตดังต่อไปนี้:
 
 - Prisma schema/migration สำหรับ `Person`, `User`, `UserRole`, `Hospital`, `HospitalMembership` และ `AuditEvent`
-- `Person.identityKeyHash` เป็น opaque hash ของ identity reference ที่ผ่าน validation; identity provider/external identity schema ยังไม่ถูกล็อก
+- `Person.identityKeyHash` เป็น opaque hash ของ identity reference ที่ผ่าน validation; Phase 2.1 กำหนด namespace `thai-national-id` สำหรับ interactive login แล้ว ส่วน external identity/provider link อื่นยังไม่ถูกล็อก
 - Supabase Auth เป็น current server authentication adapter โดย provider subject map ผ่าน `User.authSubject`; Supabase user metadata ไม่ใช่ source of truth ของ DEMI authorization
 - `ActorContext` load จาก active application `User`, roles และ hospital memberships ผ่าน Prisma
 - Next.js 16 `proxy.ts` refreshes Supabase SSR cookies per request; `auth.getUser()` validates the provider identity before mapping to the application `User`

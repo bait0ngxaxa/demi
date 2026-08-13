@@ -54,7 +54,7 @@ export default async function LoginPage() {
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em] text-ink">เข้าสู่ระบบ DEMI</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ใช้อีเมลและรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
+            ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
           </p>
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} />

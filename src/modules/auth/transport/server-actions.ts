@@ -17,7 +17,7 @@ export async function loginAction(
   formData: FormData,
 ): Promise<LoginActionState> {
   const parsed = loginInputSchema.safeParse({
-    email: formData.get("email"),
+    nationalId: formData.get("nationalId"),
     password: formData.get("password"),
   });
 
@@ -25,7 +25,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบอีเมลและรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบเลขบัตรประชาชนและรหัสผ่านให้ถูกต้อง",
     };
   }
 
@@ -45,7 +45,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
-      message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+      message: "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง",
     };
   }
 

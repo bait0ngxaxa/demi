@@ -38,7 +38,7 @@ export type CurrentActorAccess =
   | { status: "AUTHORIZED"; actor: ActorContext }
   | {
       status: "APPLICATION_ACCESS_DENIED";
-      reason: "UNMAPPED" | "ACCOUNT_NOT_ACTIVE";
+      reason: "UNMAPPED" | "ACCOUNT_NOT_ACTIVE" | "SUBJECT_MISMATCH";
     };
 
 const unauthenticatedAuthErrorCodes = new Set([
@@ -156,6 +156,7 @@ export async function resolveActorContextByAuthSubject(
 export async function resolveCurrentActorAccess(
   store: ActorContextStore = prismaActorContextStore,
   provider?: ActorAuthenticationProvider,
+  expectedAuthSubject?: string,
 ): Promise<CurrentActorAccess> {
   let authResponse: Awaited<ReturnType<ActorAuthenticationProvider["getUser"]>>;
 
@@ -185,6 +186,13 @@ export async function resolveCurrentActorAccess(
 
   if (!user) {
     return { status: "UNAUTHENTICATED" };
+  }
+
+  if (expectedAuthSubject && user.id !== expectedAuthSubject) {
+    return {
+      status: "APPLICATION_ACCESS_DENIED",
+      reason: "SUBJECT_MISMATCH",
+    };
   }
 
   const actorAccess = await resolveActorAccessByAuthSubject(user.id, store);

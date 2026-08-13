@@ -999,6 +999,34 @@ Phase 1 concretizes the following implementation boundaries without closing the 
 
 The implementation structure and environment commands are maintained in the repository [README](../../README.md). These notes describe the current foundation implementation; they do not add capability, scope, clinical, or onboarding semantics that remain unresolved.
 
+## 19.8 Phase 2.1 National ID Login Adapter
+
+The confirmed primary interactive login flow is:
+
+```text
+Thai National ID + user-owned password
+        ↓
+server validation + HMAC identity resolution
+        ↓
+Person.identityKeyHash → Person → User
+        ↓
+opaque provider alias derived from User.id
+        ↓
+Supabase password authentication
+        ↓
+validated provider subject = User.authSubject
+        ↓
+ACTIVE ActorContext
+```
+
+- National ID identifies the Person for login resolution; it is not the password or an authorization source.
+- Raw National ID is not stored in a new login column, sent to Supabase, logged, or returned to the browser.
+- The provider alias is a server-only adapter identifier, not a contact address or source of DEMI authority.
+- `User.authSubject` retains its established provider-subject meaning.
+- Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.
+- Supabase metadata and browser state remain non-authoritative; roles and memberships come from DEMI application data.
+- Provider account creation, account transition, patient activation, onboarding, LIFF, ThaID, and native authentication remain separate future requirements.
+
 ---
 
 # 20. Transaction and Data Integrity Baseline

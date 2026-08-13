@@ -20,9 +20,9 @@ vi.mock("../services/authentication-service", () => ({
 const mockedAuthenticateWithPassword = vi.mocked(authenticateWithPassword);
 const mockedSignOutCurrentSession = vi.mocked(signOutCurrentSession);
 
-function createLoginFormData(email: string, password: string): FormData {
+function createLoginFormData(nationalId: string, password: string): FormData {
   const formData = new FormData();
-  formData.set("email", email);
+  formData.set("nationalId", nationalId);
   formData.set("password", password);
   return formData;
 }
@@ -35,13 +35,13 @@ describe("authentication Server Actions", () => {
   it("rejects malformed transport input before authentication", async () => {
     const result = await loginAction(
       initialLoginActionState,
-      createLoginFormData("not-an-email", "password"),
+      createLoginFormData("not-a-national-id", "password"),
     );
 
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบอีเมลและรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบเลขบัตรประชาชนและรหัสผ่านให้ถูกต้อง",
     });
     expect(mockedAuthenticateWithPassword).not.toHaveBeenCalled();
   });
@@ -51,14 +51,21 @@ describe("authentication Server Actions", () => {
 
     const result = await loginAction(
       initialLoginActionState,
-      createLoginFormData("user@example.com", "wrong-password"),
+      createLoginFormData("1000000000009", "wrong-password"),
+    );
+    const unknownIdentityResult = await loginAction(
+      initialLoginActionState,
+      createLoginFormData("1234567890121", "wrong-password"),
     );
 
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
-      message: "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+      message: "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง",
     });
+    expect(unknownIdentityResult).toEqual(result);
+    expect(JSON.stringify(result)).not.toContain("1000000000009");
+    expect(JSON.stringify(result)).not.toContain("wrong-password");
   });
 
   it("sanitizes authentication infrastructure failures", async () => {
@@ -68,7 +75,7 @@ describe("authentication Server Actions", () => {
 
     const result = await loginAction(
       initialLoginActionState,
-      createLoginFormData("user@example.com", "valid-password"),
+      createLoginFormData("1000000000009", "valid-password"),
     );
 
     expect(result).toEqual({
