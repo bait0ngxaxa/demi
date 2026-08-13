@@ -2,9 +2,9 @@
 
 **Status:** Accepted as initial architecture baseline
 
-**Version:** 0.2
+**Version:** 0.3
 
-**Date:** 2026-08-12
+**Date:** 2026-08-13
 
 **Purpose:** Source document for the DEMI rewrite/init phase. This document captures architectural decisions already agreed during requirement discovery. It is not the final business requirement specification.
 
@@ -496,24 +496,58 @@ Hospital signup
         ↓
 Select/match hospital from trusted hospital master
         ↓
-Provide organization/contact information
+Resolve/reuse applicant Person + User
         ↓
-Verify contact method
+HospitalOnboardingApplication PENDING
         ↓
-PENDING_VERIFICATION
+Manual DEMI Platform ADMIN review
         ↓
-DEMI Platform Admin review
-        ↓
-APPROVED
+APPROVED or REJECTED
         ↓
 Hospital ACTIVE
         ↓
 Applicant becomes HOSPITAL + OWNER
 ```
 
-Where possible, hospital identity should come from a trusted hospital master instead of free-text organization creation.
+Hospital identity must come from a controlled canonical Hospital Master entry instead of applicant-controlled free-text organization creation. `hospitalCode` เป็น stable canonical business identifier และต้อง unique เมื่อกลายเป็น `Hospital`
 
-Exact verification evidence/process is not yet defined.
+Authoritative external Hospital Master source/provider ยังไม่ได้รับเลือก Application/domain layer ต้องใช้ replaceable master-data boundary และ MVP ใช้ controlled development/test master data ได้โดยไม่ bind business logic กับ provider ภายนอก
+
+MVP verification เป็น manual Platform `ADMIN` decision ผู้สมัครที่อนุมัติแล้วได้รับ `HOSPITAL` role และ `OWNER` membership เฉพาะ Hospital นั้น Hospital Owner ไม่ได้รับ Platform `ADMIN`
+
+Exact real-world verification evidence, contact proof, production master-data ownership และ future automated mechanism ยังไม่กำหนด
+
+## 9.3 Phase 3A Application and Approval Contract
+
+Hospital onboarding application ต้องแยก persistence/lifecycle จาก `Hospital`:
+
+```text
+HospitalOnboardingApplication
+  PENDING → APPROVED
+          └→ REJECTED
+```
+
+การแยก application มีไว้เพื่อเก็บ rejected history/reviewer, รองรับ audit/reconciliation และไม่สร้าง active organization ก่อน approval `Hospital.status` จึงแทน organization lifecycle ไม่ใช่ application decision
+
+Submission ต้อง resolve Thai National ID ด้วย Phase 2.1 HMAC identity service แล้ว reuse `Person`/`User` เดิมก่อนสร้างใหม่ National ID เป็น lookup input ไม่ใช่ proof ว่า public caller เป็นเจ้าของ existing identity; ambiguity ต้อง fail closed ไป trusted review/reconciliation Existing `HOSPITAL` member สามารถเป็น member/owner ของอีก Hospital ได้โดยไม่ duplicate core identity
+
+Approval เป็น consistency-critical Application Service operation โดย PostgreSQL writes ต่อไปนี้ต้อง commit/rollback ร่วมกัน:
+
+```text
+guard PENDING application
++ validate canonical hospital match / unique hospitalCode
++ create Hospital ACTIVE
++ reuse applicant Person/User
++ assign or reuse HOSPITAL role
++ create ACTIVE OWNER membership
++ activate User when credential preconditions are satisfied
++ mark application APPROVED with reviewer
++ record audit event
+```
+
+Supabase Auth และ PostgreSQL ไม่มี distributed transaction Credential establishment ที่จำเป็นต้องใช้ user-owned password ผ่าน trusted Phase 2.1 provisioning primitive พร้อม compensation/reconciliation ห้ามให้ Admin อ่านหรือกำหนด password และห้าม expose primitive เป็น public account-creation API
+
+Detailed Phase 3B data model, identity cases, capabilities, transaction boundary และ acceptance checklist อยู่ที่ [Phase 3A Hospital Onboarding Contract](../phases/PHASE_3A_HOSPITAL_ONBOARDING.md)
 
 ---
 
@@ -690,6 +724,15 @@ ACTIVE
 SUSPENDED
 ```
 
+Hospital onboarding application ใช้ lifecycle แยกต่างหาก:
+
+```text
+PENDING → APPROVED
+        └→ REJECTED
+```
+
+สำหรับ Phase 3B public onboarding flow ไม่สร้าง Hospital จนกว่า application จะได้รับอนุมัติ แล้วสร้าง organization เป็น `ACTIVE` โดยตรง `PENDING_VERIFICATION` ยังคงเป็น foundation state ของ Hospital model แต่ห้ามนำไปแทน application history
+
 ## Staff / OSM
 
 ```text
@@ -756,6 +799,17 @@ data:reconcile
 ```
 
 This list is a starting vocabulary, not a final permission matrix.
+
+Phase 3B Hospital Onboarding slice ใช้ vocabulary ขั้นต่ำที่ยืนยันแล้ว:
+
+```text
+hospital:onboard
+hospital:review
+hospital:approve
+hospital:reject
+```
+
+`hospital:onboard` เป็น public operation admission policy ที่จำกัดเฉพาะการ submit application ไม่ได้ grant Role หรือ authority เพื่อสร้าง `OWNER`/activate Hospital ส่วน review/approve/reject เป็น Platform `ADMIN` governance capability และต้อง resolve ฝั่ง server
 
 Detailed role-to-capability mapping must be derived from business requirements.
 
@@ -1025,7 +1079,32 @@ ACTIVE ActorContext
 - `User.authSubject` retains its established provider-subject meaning.
 - Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.
 - Supabase metadata and browser state remain non-authoritative; roles and memberships come from DEMI application data.
-- Provider account creation, account transition, patient activation, onboarding, LIFF, ThaID, and native authentication remain separate future requirements.
+- Provider account transition, patient activation, staff/OSM onboarding, LIFF, ThaID, and native authentication remain separate future requirements. Phase 3A defines the higher-level Hospital Onboarding contract but does not implement it or change the Phase 2.1 authentication adapter.
+
+## 19.9 Phase 3A Hospital Onboarding Contract
+
+Phase 3A adds no runtime feature or database migration. It fixes the Phase 3B dependency direction:
+
+```text
+Public/Admin Web UI
+        ↓
+Server Action
+        ↓
+Hospital Onboarding Application Service
+        ↓
+Policy + Identity/Auth Services + Hospital Master Boundary
+        ↓
+Prisma transaction / PostgreSQL
+        ↕ explicit compensation only when required
+Supabase Auth provisioning primitive
+```
+
+- Public submission validates bounded input, resolves canonical hospital code and reuses Person/User identity
+- Admin review/approve/reject derives Platform `ADMIN` authority from server-resolved `ActorContext`
+- Application Service owns duplicate/conflict rules, lifecycle guards, policy and transaction orchestration
+- Server Action is not the business source of truth and no `/api/v1` endpoint is added without an identified consumer
+- Hospital Master provider remains replaceable and unresolved; controlled development/test data is sufficient for the MVP adapter
+- Prisma schema gaps are documented rather than implemented in Phase 3A: canonical master data, unique Hospital code and separate onboarding application history
 
 ---
 
@@ -1064,6 +1143,25 @@ ALL ROLLBACK
 ```
 
 Do not leave partial business state such as a Person without the required Patient profile because a later write failed.
+
+Phase 3B hospital approval เป็นอีก cohesive business operation:
+
+```text
+PENDING application guard
++ canonical hospitalCode uniqueness
++ Hospital ACTIVE
++ applicant identity reuse
++ HOSPITAL role
++ ACTIVE OWNER membership
++ User lifecycle transition when credential preconditions are satisfied
++ APPROVED decision attribution
++ Audit event
+= ALL COMMIT or ALL ROLLBACK
+```
+
+Reject operation ต้อง transactionally เปลี่ยนเฉพาะ pending application เป็น `REJECTED` พร้อม reviewer/audit และห้ามสร้างหรือ activate Hospital, role หรือ membership
+
+Provider account provisioning อยู่นอก PostgreSQL transaction หากจำเป็นต้องเกิดใน onboarding orchestration ต้องใช้ compensation/reconciliation boundary ที่ Phase 2.1 วางไว้ และห้ามรายงาน approval success เมื่อ required state ยังคลุมเครือ
 
 ---
 
@@ -1129,6 +1227,15 @@ The following decisions are accepted for project initialization:
 27. HTTP APIs are introduced incrementally for identified consumers rather than generated for every Server Action.
 28. Native mobile applications are future clients and will use HTTP APIs without depending on Server Actions.
 29. Future native authentication, offline behavior, synchronization, push notifications, and native framework choices remain unresolved.
+30. Phase 3B Hospital Onboarding matches a controlled canonical Hospital Master entry by stable `hospitalCode`; applicant-controlled free text is not organization authority.
+31. The authoritative external Hospital Master provider remains unresolved and is isolated behind a replaceable boundary; controlled development/test master data is allowed for MVP.
+32. MVP Hospital verification is a manual Platform `ADMIN` decision.
+33. Hospital Onboarding Application lifecycle is separate from Hospital lifecycle and uses only `PENDING`, `APPROVED`, and `REJECTED`.
+34. Phase 3B reuses Phase 2.1 National-ID/password identity and authentication architecture; it does not create a parallel login or mandatory email identifier.
+35. Approved applicant receives `HOSPITAL` role plus an ACTIVE `OWNER` membership for the approved Hospital and never receives Platform `ADMIN` by implication.
+36. Hospital approval/rejection and their consistency-critical PostgreSQL/audit writes are atomic business operations.
+37. PostgreSQL and Supabase Auth effects use explicit compensation/reconciliation rather than a simulated distributed transaction.
+38. Phase 3A is a documentation/architecture contract only; Prisma changes and the vertical slice are deferred to Phase 3B.
 
 ---
 
@@ -1149,7 +1256,11 @@ They require confirmed business requirements:
 - Can OSM transfer or reassign a patient?
 - Can patients change their hospital affiliation?
 - What evidence is required to verify a hospital signup?
-- Which channel will be used for activation: phone OTP, email, external identity provider, ThaID, or another mechanism?
+- Which external source/provider is authoritative for the Hospital Master, and who owns production imports/updates?
+- What is the self-service reapplication rule after a rejected hospital application?
+- How are competing hospital claims and existing non-active/provider-conflicting applicant accounts reconciled?
+- Will hospital verification ever be automated, and by which approved mechanism?
+- Which channel will future Patient/staff activation use: phone OTP, email, external identity provider, ThaID, or another mechanism? This does not replace the accepted Phase 2.1 National-ID/password Hospital applicant login contract.
 - What clinical data requires immutable/auditable history?
 - What reports are required and what scope applies to each actor?
 
@@ -1179,6 +1290,8 @@ docs/
 ├── CONTEXT.md
 ├── architecture/
 │   └── DEMI_ARCHITECTURE_BASELINE.md
+├── phases/
+│   └── PHASE_3A_HOSPITAL_ONBOARDING.md
 └── adr/
     ├── README.md
     ├── 0001-person-and-user-identity.md
@@ -1192,12 +1305,15 @@ docs/
 
 `CONTEXT.md` should summarize the current project state and direct agents/developers to the ADRs rather than duplicating every decision.
 
+Phase documents translate accepted decisions into a bounded implementation contract/checklist for the next phase without duplicating ADR rationale.
+
 ADRs should record why each decision exists, alternatives rejected, consequences, and unresolved follow-up questions.
 
 Operational entry points:
 
 - [Project context](../CONTEXT.md)
 - [ADR index](../adr/README.md)
+- [Phase 3A Hospital Onboarding Contract](../phases/PHASE_3A_HOSPITAL_ONBOARDING.md)
 
 ---
 

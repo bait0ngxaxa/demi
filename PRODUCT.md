@@ -8,11 +8,11 @@ web
 
 ## Users
 
-ผู้ใช้งาน DEMI ที่ได้รับการ provision แล้วใน 4 บทบาทระดับบน ได้แก่ `ADMIN`, `HOSPITAL`, `OSM` และ `PATIENT` โดยหน้าเข้าสู่ระบบและ application shell ระยะนี้เป็น shared experience สำหรับทุกบทบาท
+ผู้ใช้งาน DEMI มี 4 บทบาทระดับบน ได้แก่ `ADMIN`, `HOSPITAL`, `OSM` และ `PATIENT` Phase 3B target เพิ่ม public Hospital applicant ซึ่งยังไม่เป็น role ของระบบจนกว่า Platform `ADMIN` จะอนุมัติ application ผู้สมัครที่อนุมัติแล้วจึงเป็น `HOSPITAL` พร้อม OWNER membership ของ Hospital ที่เกี่ยวข้อง
 
 ## Product Purpose
 
-DEMI เป็นระบบสำหรับงานบริการสุขภาพที่แยกบุคคลจริง (`Person`) ออกจากบัญชีแอปพลิเคชัน (`User`) และกำหนดสิทธิ์จากข้อมูล application-side ที่ตรวจสอบบน server เป้าหมายของ Phase 2 คือให้ผู้ใช้ DEMI ที่ได้รับอนุญาตและมีสถานะ `ACTIVE` เข้าสู่ protected application shell ได้อย่างปลอดภัย
+DEMI เป็นระบบสำหรับงานบริการสุขภาพที่แยกบุคคลจริง (`Person`) ออกจากบัญชีแอปพลิเคชัน (`User`) และกำหนดสิทธิ์จากข้อมูล application-side ที่ตรวจสอบบน server Phase 2.1 ให้ผู้ใช้ `ACTIVE` เข้าสู่ protected application shell ได้อย่างปลอดภัย ส่วน Phase 3A กำหนด contract สำหรับ trusted Hospital organization onboarding ก่อนเริ่ม Phase 3B implementation
 
 ## Positioning
 
@@ -22,15 +22,18 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 
 - Responsive Web เป็น platform ปัจจุบันและต้องใช้งานได้ดีบนหน้าจอขนาดเล็ก
 - ผู้ใช้เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
-- Hospital/OSM/Patient onboarding, activation และ invitation workflow ยังไม่อยู่ใน Phase 2
+- Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
+- Staff/OSM invitation, Patient onboarding/activation และ clinical workflows ยังไม่อยู่ใน Phase 3A/3B target
 
 ## Capabilities and Constraints
 
 - ไม่มี public role selection หรือ automatic provisioning ระหว่าง login
+- Public applicant สร้างได้เฉพาะ Hospital Onboarding Application ที่ match controlled Hospital Master entry; ผู้สมัครสร้าง role, OWNER membership หรือ ACTIVE Hospital เองไม่ได้
+- MVP ใช้ manual Platform `ADMIN` approval; approved applicant เป็น `HOSPITAL + OWNER` เฉพาะ Hospital นั้นและไม่เป็น Platform Admin
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น
-- หน้า `/login`, `/app` และ logout เป็นขอบเขต UI ของ Phase 2
+- Phase 3B capability vocabulary จำกัดที่ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
-- Provider account provisioning/transition, Patient activation, Hospital verification, staff/OSM invitation, LIFF, ThaID, native authentication และ capability matrix ยังเป็น open requirements
+- External Hospital Master provider, exact verification evidence, provider-account recovery, Patient activation, staff/OSM invitation, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements
 
 ## Brand Commitments
 
@@ -45,6 +48,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 ## Product Principles
 
 - DEMI authorization ต้องแยกจาก provider authentication อย่างชัดเจน
+- Hospital organization identity ต้องมาจาก canonical `hospitalCode` ไม่ใช่ applicant-controlled free-text name
 - ทุก protected access ต้องตรวจฝั่ง server และ fail closed
 - ผู้ใช้ไม่กำหนดบทบาทหรือขอบเขตสิทธิ์ให้ตนเอง
 - ใช้งานง่ายบน mobile โดยไม่ลดทอนความปลอดภัยหรือความชัดเจน

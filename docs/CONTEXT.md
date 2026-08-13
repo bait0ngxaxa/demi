@@ -10,7 +10,29 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** ต่อจาก Phase 2 Authentication & Application Access ระยะนี้เปลี่ยน primary interactive login identifier เป็นเลขบัตรประชาชนไทย และเพิ่ม trusted server-only primitive สำหรับ provision Supabase password-auth identity โดยยังคง ACTIVE ActorContext และ protected application boundary เดิม
+โปรเจกต์ปิด **Phase 3A: Hospital Onboarding Requirement Closure and Architecture Contract** แล้ว โดย Phase นี้เป็น documentation/design contract ก่อน implementation เท่านั้น ยังไม่มี Hospital Onboarding UI, service, schema หรือ migration ของ Phase 3B ส่วน Phase 2.1 National ID Login Adapter และ trusted password-auth provisioning เป็น authentication foundation ที่ Phase 3B ต้อง reuse
+
+Implementation contract สำหรับงานถัดไปอยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md)
+
+## Phase 3A Hospital Onboarding Contract
+
+ส่วนที่ยืนยันแล้วสำหรับ Phase 3B:
+
+- public onboarding มีเฉพาะ Hospital organization application ไม่มี generic signup หรือ role selection
+- applicant ต้อง match controlled canonical Hospital Master entry โดย `hospitalCode` เป็น stable business identifier; external master provider ยัง unresolved
+- manual Platform `ADMIN` เป็นผู้ review/approve/reject สำหรับ MVP
+- onboarding application แยกจาก `Hospital` และใช้ lifecycle `PENDING → APPROVED | REJECTED` เพื่อเก็บ rejected history และไม่สร้าง active Hospital ก่อน approval
+- applicant identity ต้อง resolve ด้วย Thai National ID validation + HMAC และ reuse `Person`/`User` เดิมก่อนสร้างใหม่เสมอ
+- National ID เป็น identity lookup input ไม่ใช่ ownership proof; existing account ที่พิสูจน์ไม่ได้ต้อง fail closed และคง non-active จน trusted review/reconciliation
+- applicant ที่มีหลาย role หรือหลาย hospital membership ต้องใช้ core identity เดิม
+- credential establishment ที่จำเป็นต้องใช้ user-owned password และ Phase 2.1 `provisionPasswordAuthIdentity()` จาก higher-level workflow; primitive นี้ไม่ใช่ public API
+- approved applicant ได้ `HOSPITAL` role + ACTIVE `OWNER` HospitalMembership ของ Hospital ที่เป็น `ACTIVE`; Hospital Owner ไม่ได้ Platform `ADMIN`
+- approval/rejection และ consistency-critical PostgreSQL writes รวม audit event ต้องเป็น atomic business operation
+- cross-system Supabase Auth/PostgreSQL effect ใช้ compensation/reconciliation ไม่ใช่ fake distributed transaction
+- capabilities ของ slice นี้มีเฉพาะ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject` และยังไม่ใช่ full capability matrix
+- Server Actions เป็น web adapters; onboarding business operation อยู่ใน transport-agnostic Application Service และไม่ต้องสร้าง speculative `/api/v1`
+
+Phase 3A ไม่แก้ Prisma schema ข้อเสนอสำหรับ Phase 3B คือเพิ่ม canonical Hospital Master store/boundary, unique `Hospital.hospitalCode` และ `HospitalOnboardingApplication` พร้อม review attribution/constraints ดู rationale และ checklist ใน phase contract
 
 ## Phase 2.1 National ID Login Adapter
 
@@ -39,7 +61,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - operation ข้าม Supabase Auth กับ PostgreSQL ไม่ถูกทำเป็น fake transaction: หาก persist subject ล้มเหลวหลัง provider creation จะลบ provider user ที่เพิ่งสร้างเป็น compensation; cleanup failure เป็น infrastructure/reconciliation error และไม่รายงาน success
 - Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, higher-level activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Primitive นี้ไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; future trusted workflow ต้องรับผิดชอบ policy และ user-owned credential establishment ก่อนเรียกใช้
+Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, higher-level activation mechanism, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Primitive นี้ไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; Phase 3A กำหนดเพียง contract ที่ future trusted Hospital Onboarding workflow ต้องรับผิดชอบ policy และ user-owned credential establishment ก่อนเรียกใช้
 
 ## Phase 1 Foundation Implementation
 
@@ -82,6 +104,8 @@ Top-level business roles ที่ยืนยันแล้วมี 4 รา�
 - Hospital Owner คือ `HOSPITAL` + owner membership และไม่ใช่ Platform `ADMIN`
 - ไม่มี generic public signup ที่ให้ผู้ใช้เลือก role เอง
 - Public signup ใช้สำหรับ Hospital organization onboarding
+- Public hospital application ต้อง match canonical Hospital Master ด้วย stable `hospitalCode`; external provider ยังไม่ถูกเลือก
+- MVP hospital verification เป็น manual Platform `ADMIN` decision และเก็บ application history แยกจาก Hospital lifecycle
 - Staff/OSM ถูก provision หรือ invite จาก trusted hospital context และไม่ self-assign role
 - Patient ที่ Hospital/OSM provision แล้วไม่ register ซ้ำ แต่ใช้ first-time account activation
 - Provisioning identity แยกจาก credential ownership; staff/OSM ต้องไม่รู้หรือกำหนด patient secret
@@ -144,7 +168,9 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 - ผู้สร้าง เปลี่ยนเวลา หรือยกเลิก appointment
 - การ transfer/reassign patient โดย OSM และการเปลี่ยน hospital affiliation โดย patient
 - หลักฐานและขั้นตอนสำหรับ hospital verification
-- activation mechanism เช่น phone OTP, email, external identity provider หรือ ThaID
+- authoritative external Hospital Master provider และ production master-data ownership/update process
+- hospital onboarding reapplication, competing claim และ existing account recovery semantics
+- activation mechanism สำหรับ future Patient/staff workflows เช่น phone OTP, email, external identity provider หรือ ThaID; ไม่แทน Phase 2.1 Hospital applicant login contract
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor
 - LIFF target workflows/audience, LINE account linking, `/api/v1` operations, native authentication, offline/sync, push/device capabilities และ trigger สำหรับเริ่ม native development

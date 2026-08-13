@@ -2,7 +2,29 @@
 
 DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-โปรเจกต์อยู่ใน **Implementation Phase 2.1: National ID Login Adapter** โดยต่อยอดจาก Phase 2 ให้ผู้ใช้ที่ได้รับการ provision และมีสถานะ `ACTIVE` เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและรหัสผ่านของตนเองได้ Clinical และ operational domains ยังคงอยู่นอก scope จนกว่า requirement จะได้รับการยืนยัน
+โปรเจกต์ปิด **Phase 3A: Hospital Onboarding Requirement Closure and Architecture Contract** แล้ว โดยยังไม่ implement Hospital Onboarding feature หรือ migration ของ Phase 3B ระบบที่ทำงานอยู่ยังเป็น Phase 2.1 ซึ่งให้ผู้ใช้ที่ได้รับการ provision และมีสถานะ `ACTIVE` เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและรหัสผ่านของตนเองได้
+
+## Phase 3A Hospital onboarding contract
+
+[Phase 3A implementation contract](docs/phases/PHASE_3A_HOSPITAL_ONBOARDING.md) กำหนด vertical slice สำหรับ Phase 3B ดังนี้:
+
+```text
+/hospital/onboarding
+  → canonical Hospital Master match by hospitalCode
+  → identity resolution / Person + User reuse
+  → HospitalOnboardingApplication PENDING
+  → manual Platform ADMIN approve or reject
+  → APPROVED: Hospital ACTIVE + HOSPITAL role + ACTIVE OWNER membership
+  → existing National ID/password login and /app boundary
+```
+
+- ไม่มี generic public signup หรือหน้าที่ให้ผู้สมัครเลือก role
+- Hospital Owner เป็น hospital-scoped `HOSPITAL + OWNER` และไม่ใช่ Platform `ADMIN`
+- application history แยกจาก Hospital lifecycle ด้วย `PENDING → APPROVED | REJECTED`
+- Phase 3B ต้อง reuse HMAC identity resolution, opaque Supabase alias, `User.authSubject` และ trusted password-auth provisioning ของ Phase 2.1
+- approval/rejection เป็น consistency-critical Application Service operation; PostgreSQL writes และ audit ที่รับรองผลต้อง atomic
+- authoritative external Hospital Master provider และ exact real-world verification evidence ยัง unresolved; controlled development/test master data ใช้ผ่าน replaceable boundary ได้
+- Phase 3A ไม่แก้ `prisma/schema.prisma`; phase contract ระบุ schema gaps และ Phase 3B acceptance checklist ไว้แล้ว
 
 ## Development setup
 
