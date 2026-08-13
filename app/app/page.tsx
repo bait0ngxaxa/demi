@@ -1,5 +1,6 @@
 import { Role } from "@prisma/client";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
@@ -89,6 +90,21 @@ export default async function ApplicationPage() {
             )}
           </div>
         </section>
+
+        {actor.roles.includes(Role.ADMIN) ? (
+          <section className="mt-6 max-w-3xl rounded-[16px] border border-line bg-white p-5 sm:p-7">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">งาน Platform Admin</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              ตรวจสอบคำขอ onboarding ของโรงพยาบาลที่รอการตัดสินใจ
+            </p>
+            <Link
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-[12px] bg-brand px-5 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
+              href="/app/admin/hospital-onboarding"
+            >
+              เปิดรายการคำขอ
+            </Link>
+          </section>
+        ) : null}
       </div>
     </main>
   );

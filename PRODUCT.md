@@ -12,7 +12,7 @@ web
 
 ## Product Purpose
 
-DEMI เป็นระบบสำหรับงานบริการสุขภาพที่แยกบุคคลจริง (`Person`) ออกจากบัญชีแอปพลิเคชัน (`User`) และกำหนดสิทธิ์จากข้อมูล application-side ที่ตรวจสอบบน server Phase 2.1 ให้ผู้ใช้ `ACTIVE` เข้าสู่ protected application shell ได้อย่างปลอดภัย ส่วน Phase 3A กำหนด contract สำหรับ trusted Hospital organization onboarding ก่อนเริ่ม Phase 3B implementation
+DEMI เป็นระบบสำหรับงานบริการสุขภาพที่แยกบุคคลจริง (`Person`) ออกจากบัญชีแอปพลิเคชัน (`User`) และกำหนดสิทธิ์จากข้อมูล application-side ที่ตรวจสอบบน server Phase 2.1 ให้ผู้ใช้ `ACTIVE` เข้าสู่ protected application shell ได้อย่างปลอดภัย Phase 3B เพิ่ม trusted Hospital organization onboarding และ manual governance review โดยไม่เปลี่ยน authentication foundation
 
 ## Positioning
 
@@ -32,6 +32,8 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - MVP ใช้ manual Platform `ADMIN` approval; approved applicant เป็น `HOSPITAL + OWNER` เฉพาะ Hospital นั้นและไม่เป็น Platform Admin
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น
 - Phase 3B capability vocabulary จำกัดที่ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject`
+- Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; fixture และ seed script เป็น source ของ development/test data และไม่ bind กับ external provider
+- Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
 - External Hospital Master provider, exact verification evidence, provider-account recovery, Patient activation, staff/OSM invitation, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements
 
@@ -53,6 +55,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - ผู้ใช้ไม่กำหนดบทบาทหรือขอบเขตสิทธิ์ให้ตนเอง
 - ใช้งานง่ายบน mobile โดยไม่ลดทอนความปลอดภัยหรือความชัดเจน
 - Implement เฉพาะ requirement ที่ยืนยันแล้วและคง architecture ให้พร้อมต่อ transport อื่นในอนาคต
+- ก่อนเปิด public traffic ต้องมี shared/deployment-level abuse protection/rate limiting และ owner/process สำหรับ production master-data updates กับ verification evidence
 
 ## Accessibility & Inclusion
 

@@ -53,6 +53,15 @@ export type PasswordAuthProvisioningDependencies = {
   store?: PasswordAuthProvisioningStore;
 };
 
+export class PasswordAuthProvisioningReconciliationError extends InfrastructureError {
+  readonly requiresReconciliation = true;
+
+  constructor() {
+    super("Password authentication identity requires provider reconciliation");
+    this.name = "PasswordAuthProvisioningReconciliationError";
+  }
+}
+
 const provisionPasswordAuthIdentitySchema = z
   .object({
     userId: z.uuid(),
@@ -137,9 +146,7 @@ async function compensateProviderAccount(
       throw error;
     }
   } catch {
-    throw new InfrastructureError(
-      "Password authentication identity requires provider reconciliation",
-    );
+    throw new PasswordAuthProvisioningReconciliationError();
   }
 
   throw persistenceError;

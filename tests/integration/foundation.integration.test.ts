@@ -13,9 +13,11 @@ const prisma = getPrisma();
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -174,7 +176,10 @@ describe("Phase 1 PostgreSQL constraints", () => {
       data: { personId: person.id, status: UserStatus.ACTIVE },
     });
     const hospitals = await prisma.hospital.createManyAndReturn({
-      data: [{ name: "Hospital A", status: HospitalStatus.ACTIVE }, { name: "Hospital B", status: HospitalStatus.ACTIVE }],
+      data: [
+        { hospitalCode: "INTEGRATION-A", name: "Hospital A", status: HospitalStatus.ACTIVE },
+        { hospitalCode: "INTEGRATION-B", name: "Hospital B", status: HospitalStatus.ACTIVE },
+      ],
       select: { id: true },
     });
 
@@ -207,7 +212,7 @@ describe("Phase 1 PostgreSQL constraints", () => {
       data: { personId: person.id, status: UserStatus.ACTIVE },
     });
     const hospital = await prisma.hospital.create({
-      data: { name: "Owner Hospital", status: HospitalStatus.ACTIVE },
+      data: { hospitalCode: "INTEGRATION-OWNER", name: "Owner Hospital", status: HospitalStatus.ACTIVE },
     });
 
     await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });

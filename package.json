@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
+    "prisma:seed:hospital-master": "node scripts/seed-hospital-master.mjs",
     "prisma:migrate:dev": "node scripts/prisma-preflight.mjs migrate-dev && prisma migrate dev",
     "prisma:migrate:deploy": "node scripts/prisma-preflight.mjs migrate-deploy && prisma migrate deploy",
     "test:db:up": "node scripts/integration.mjs db:up",

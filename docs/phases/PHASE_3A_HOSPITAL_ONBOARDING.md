@@ -187,7 +187,7 @@ authenticate + authorize Platform ADMIN
 + verify canonical Hospital Master match is still valid
 + verify manual identity/organization review preconditions are satisfied without trusting browser assertions
 + ensure hospitalCode is not already claimed
-+ create Hospital as ACTIVE from canonical master data
++ activate the existing canonical Hospital Master row as `ACTIVE`
 + reuse applicant User/Person
 + upsert HOSPITAL role
 + create ACTIVE OWNER HospitalMembership
@@ -233,12 +233,12 @@ Existing models ที่ reuse ได้:
 
 Schema gap ที่ Phase 3B ควรเพิ่มผ่าน migration:
 
-- canonical Hospital Master record/adapter-backed store สำหรับ controlled MVP data
+- canonical Hospital Master data ใช้ `Hospital` rows เป็น controlled MVP store โดยมี replaceable source boundary ที่ seed/import layer; ไม่ parse XLSX runtime
 - unique stable `Hospital.hospitalCode` หรือ relation ที่ enforce identity เดียวกันได้ที่ database layer
 - `HospitalOnboardingApplication` พร้อม applicant relation, canonical hospital reference, three-state lifecycle และ review attribution
 - database constraints/concurrency guard ที่ป้องกัน duplicate Hospital code, duplicate pending claim และ repeated approval side effects
 
-ไม่แก้ Prisma schema ใน Phase 3A และไม่ใช้ JSON/free-text เป็นทางลัดเพื่อหลบ invariant เหล่านี้
+Phase 3A ไม่แก้ Prisma schema; Phase 3B implementation เพิ่ม fields/model เหล่านี้ผ่าน migration และใช้ committed JSON fixture เป็น seed input เท่านั้น ไม่ parse Excel ใน runtime และไม่ใช้ free-text เป็น master identity
 
 ## 12. Intentionally Open Requirements
 
@@ -271,7 +271,22 @@ Staff/OSM invitation implementation, patient provisioning/activation UI, clinica
 - web transport เรียก transport-agnostic Application Service และไม่มี speculative API
 - documentation/open requirements ไม่ถูกปิดโดย implementation assumption
 
-## 15. Evidence Classification
+## 15. Phase 3B Implementation Record
+
+สัญญานี้ถูกนำไป implement เป็น MVP vertical slice แล้ว:
+
+- `prisma/seed/hospital-master-v2.json` มี 78 records, canonical codes ไม่ซ้ำ, ไม่มี `HH`, มี `KANG`/`KHON` ตาม approved artifact และ seed script ทำงานแบบ idempotent เฉพาะ development/test
+- `Hospital.hospitalCode` เป็น unique canonical key; `parentHospitalId` เก็บ hierarchy reference เท่านั้นและไม่ถูกใช้ใน authorization
+- `HospitalOnboardingApplication` เก็บ `PENDING`, `APPROVED`, `REJECTED`, reviewer/timestamps และ bounded rejection reason; partial unique index ป้องกัน pending claim ซ้ำต่อ Hospital โดยไม่ลบ history
+- Public submit จะ fail closed เมื่อ Hospital มี application history อยู่แล้ว (รวม `REJECTED`) เพื่อไม่เดา reapplication policy; การเปิด reapply ต้องเป็น requirement/follow-up แยกต่างหาก
+- `/hospital/onboarding` สร้างเฉพาะ `Person` + `User(PROVISIONED)` + provider mapping + `PENDING` application หลัง identity ไม่พบ existing Person; existing identity fail closed
+- Multi-hospital identity model ยังรองรับหลาย membership ใน schema และ approval operation แต่ anonymous public submit ที่ resolve existing Person/User จะหยุดที่ safe existing-account path; authenticated reuse flow ถูกเลื่อนไป follow-up เพื่อไม่สร้าง unproven identity claim
+- `/app/admin/hospital-onboarding` ใช้ session/ActorContext เดิมและ server-side Platform `ADMIN` capability checks
+- approve/reject อยู่ใน Application Service; approval transaction guard/claim, activate Hospital/User, upsert `HOSPITAL`, create `OWNER`, audit และ rollback เมื่อ precondition/side effect ใดไม่ผ่าน
+- Supabase provider provisioning อยู่ข้าม PostgreSQL transaction; failure ที่ cleanup ไม่พิสูจน์ได้ถูกยกระดับเป็น reconciliation error และไม่สร้าง application ที่อนุมัติได้
+- shared/deployment-level rate limiting ยังเป็น release prerequisite ก่อนเปิด public traffic กว้าง ๆ; Phase 3B ไม่เพิ่ม paid infrastructure ใหม่
+
+## 16. Evidence Classification
 
 ### Confirmed current requirement
 

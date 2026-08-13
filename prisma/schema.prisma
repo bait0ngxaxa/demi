@@ -28,6 +28,12 @@ enum HospitalStatus {
   SUSPENDED
 }
 
+enum HospitalOnboardingApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum MembershipType {
   OWNER
   MEMBER
@@ -72,6 +78,8 @@ model User {
   roles       UserRole[]
   memberships HospitalMembership[]
   auditEvents AuditEvent[]
+  hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
+  hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
 }
 
 model UserRole {
@@ -86,13 +94,20 @@ model UserRole {
 }
 
 model Hospital {
-  id        String         @id @default(uuid()) @db.Uuid
-  name      String         @db.VarChar(200)
-  status    HospitalStatus @default(PENDING_VERIFICATION)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id              String         @id @default(uuid()) @db.Uuid
+  hospitalCode    String         @unique @db.VarChar(32)
+  name            String         @db.VarChar(200)
+  status          HospitalStatus @default(PENDING_VERIFICATION)
+  parentHospitalId String?       @db.Uuid
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  memberships HospitalMembership[]
+  memberships              HospitalMembership[]
+  onboardingApplications   HospitalOnboardingApplication[]
+  parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
+  childHospitals            Hospital[] @relation("HospitalHierarchy")
+
+  @@index([status, name])
 }
 
 model HospitalMembership {
@@ -110,6 +125,26 @@ model HospitalMembership {
 
   @@unique([userId, hospitalId])
   @@index([hospitalId, status])
+}
+
+model HospitalOnboardingApplication {
+  id              String                              @id @default(uuid()) @db.Uuid
+  hospitalId      String                              @db.Uuid
+  applicantUserId String                              @db.Uuid
+  status          HospitalOnboardingApplicationStatus @default(PENDING)
+  createdAt       DateTime                            @default(now())
+  reviewedAt      DateTime?
+  reviewedByUserId String?                            @db.Uuid
+  rejectionReason String?                             @db.VarChar(500)
+  updatedAt       DateTime                            @updatedAt
+
+  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  applicantUser User     @relation("HospitalOnboardingApplicant", fields: [applicantUserId], references: [id], onDelete: Restrict)
+  reviewedByUser User?   @relation("HospitalOnboardingReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([hospitalId, status])
+  @@index([applicantUserId, status])
 }
 
 model AuditEvent {

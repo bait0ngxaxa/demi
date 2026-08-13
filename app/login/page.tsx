@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
@@ -58,6 +59,16 @@ export default async function LoginPage() {
           </p>
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} />
+
+          <p className="mt-7 text-center text-sm leading-6 text-muted">
+            ต้องการลงทะเบียนโรงพยาบาล?{" "}
+            <Link
+              className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              href="/hospital/onboarding"
+            >
+              ส่งคำขอ onboarding
+            </Link>
+          </p>
 
           <p className="mt-8 text-sm leading-6 text-muted">
             การเข้าสู่ระบบสำเร็จไม่ได้หมายถึงได้รับสิทธิ์ใช้งานโดยอัตโนมัติ

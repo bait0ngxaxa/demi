@@ -2,7 +2,7 @@
 
 DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-โปรเจกต์ปิด **Phase 3A: Hospital Onboarding Requirement Closure and Architecture Contract** แล้ว โดยยังไม่ implement Hospital Onboarding feature หรือ migration ของ Phase 3B ระบบที่ทำงานอยู่ยังเป็น Phase 2.1 ซึ่งให้ผู้ใช้ที่ได้รับการ provision และมีสถานะ `ACTIVE` เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและรหัสผ่านของตนเองได้
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP
 
 ## Phase 3A Hospital onboarding contract
 
@@ -24,7 +24,17 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 - Phase 3B ต้อง reuse HMAC identity resolution, opaque Supabase alias, `User.authSubject` และ trusted password-auth provisioning ของ Phase 2.1
 - approval/rejection เป็น consistency-critical Application Service operation; PostgreSQL writes และ audit ที่รับรองผลต้อง atomic
 - authoritative external Hospital Master provider และ exact real-world verification evidence ยัง unresolved; controlled development/test master data ใช้ผ่าน replaceable boundary ได้
-- Phase 3A ไม่แก้ `prisma/schema.prisma`; phase contract ระบุ schema gaps และ Phase 3B acceptance checklist ไว้แล้ว
+- Hospital Master เริ่มต้นมาจาก `demi_hospital_master_v2.xlsx` ที่ normalize แล้วเป็น fixture 78 records; `HH` ถูก exclude และ `KANG`/`KHON` เป็น canonical codes ตาม decision ที่ยืนยันแล้ว
+- Phase 3B เพิ่ม `Hospital.hospitalCode`, parent reference แบบ metadata เท่านั้น และ `HospitalOnboardingApplication` lifecycle `PENDING → APPROVED | REJECTED` พร้อม migration และ idempotent seed script
+- Public submit ทำให้ applicant เป็น `User.PROVISIONED` และ application เป็น `PENDING`; approve จึงเปลี่ยน Hospital/User เป็น `ACTIVE`, ให้ `HOSPITAL` + `OWNER` และเขียน audit ใน PostgreSQL transaction เดียว
+
+## Phase 3B implementation
+
+- Public route: `/hospital/onboarding` — เลือก Hospital Master จากรายการที่ควบคุม, Thai National ID, ชื่อ และ user-owned password โดยไม่มี role/status input
+- Platform review: `/app/admin/hospital-onboarding` และรายละเอียด application — ใช้ existing session/ActorContext และ server-side `ADMIN` capability checks
+- Application Service อยู่ใน `src/modules/hospital-onboarding/`; Server Actions เป็น transport adapter เท่านั้น และใช้ Phase 2.1 HMAC identity resolution กับ trusted password provisioning
+- Seed ใช้ `npm run prisma:seed:hospital-master` ได้เฉพาะ `DEMI_DATABASE_TARGET=development|test`; script ไม่ลบ record อื่นและไม่ reset `ACTIVE` status
+- ก่อนเปิด public traffic ต้องมี shared/deployment-level rate limiting และ production owner/process สำหรับ master data กับ verification evidence; ยังไม่มีการเพิ่ม Redis หรือ provider integration ใน slice นี้
 
 ## Development setup
 
@@ -164,16 +174,21 @@ Phase 2.1 ไม่ได้เพิ่ม Hospital onboarding, staff/OSM invit
 ```text
 app/api/health/route.ts                 server infrastructure transport
 app/login/                              Thai National ID/password login UI
+app/hospital/onboarding/                public hospital onboarding UI
+app/app/admin/hospital-onboarding/      protected Platform Admin review UI
 app/app/                                protected authenticated application shell
 proxy.ts                                Supabase SSR session refresh boundary
 prisma/schema.prisma                    stable persistence model
 prisma/migrations/                      reproducible PostgreSQL migrations
+prisma/seed/hospital-master-v2.json     approved 78-record Hospital Master fixture
+scripts/seed-hospital-master.mjs        development/test-only idempotent master import
 scripts/prisma-preflight.mjs            Prisma CLI database-target safety guard
 src/lib/env/                            server environment validation
 src/lib/auth/                           Supabase Auth server adapter
 src/lib/db/                             Prisma server singleton
 src/modules/identity/                   identity resolution service
 src/modules/auth/                       authentication service, ActorContext and policy kernel
+src/modules/hospital-onboarding/        onboarding service, policy, transport and master lookup
 src/modules/audit/                      bounded audit input/persistence service
 src/shared/errors/                      predictable application errors
 tests/integration/                      focused PostgreSQL/Prisma constraint tests

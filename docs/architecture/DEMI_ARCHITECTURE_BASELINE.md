@@ -536,7 +536,7 @@ Approval เป็น consistency-critical Application Service operation โด�
 ```text
 guard PENDING application
 + validate canonical hospital match / unique hospitalCode
-+ create Hospital ACTIVE
++ activate the canonical Hospital Master row as Hospital ACTIVE (or create only when a future master boundary requires a new operational row)
 + reuse applicant Person/User
 + assign or reuse HOSPITAL role
 + create ACTIVE OWNER membership
@@ -731,7 +731,7 @@ PENDING → APPROVED
         └→ REJECTED
 ```
 
-สำหรับ Phase 3B public onboarding flow ไม่สร้าง Hospital จนกว่า application จะได้รับอนุมัติ แล้วสร้าง organization เป็น `ACTIVE` โดยตรง `PENDING_VERIFICATION` ยังคงเป็น foundation state ของ Hospital model แต่ห้ามนำไปแทน application history
+สำหรับ Phase 3B master rows ถูก seed ไว้ใน `PENDING_VERIFICATION` เพื่อเป็น canonical selection data แต่ยังไม่เป็น active organization ก่อน approval เมื่อ approve แล้วระบบจึง activate canonical row เป็น `ACTIVE`; `PENDING_VERIFICATION` ห้ามนำไปแทน application history
 
 ## Staff / OSM
 
@@ -1079,11 +1079,11 @@ ACTIVE ActorContext
 - `User.authSubject` retains its established provider-subject meaning.
 - Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.
 - Supabase metadata and browser state remain non-authoritative; roles and memberships come from DEMI application data.
-- Provider account transition, patient activation, staff/OSM onboarding, LIFF, ThaID, and native authentication remain separate future requirements. Phase 3A defines the higher-level Hospital Onboarding contract but does not implement it or change the Phase 2.1 authentication adapter.
+- Provider account transition beyond hospital onboarding, patient activation, staff/OSM onboarding, LIFF, ThaID, and native authentication remain separate future requirements. Phase 3B is the first higher-level workflow using the Phase 2.1 provisioning primitive; it does not change the authentication adapter.
 
-## 19.9 Phase 3A Hospital Onboarding Contract
+## 19.9 Phase 3A/3B Hospital Onboarding Contract
 
-Phase 3A adds no runtime feature or database migration. It fixes the Phase 3B dependency direction:
+Phase 3A fixed the dependency direction and Phase 3B implements the first vertical slice:
 
 ```text
 Public/Admin Web UI
@@ -1104,7 +1104,8 @@ Supabase Auth provisioning primitive
 - Application Service owns duplicate/conflict rules, lifecycle guards, policy and transaction orchestration
 - Server Action is not the business source of truth and no `/api/v1` endpoint is added without an identified consumer
 - Hospital Master provider remains replaceable and unresolved; controlled development/test data is sufficient for the MVP adapter
-- Prisma schema gaps are documented rather than implemented in Phase 3A: canonical master data, unique Hospital code and separate onboarding application history
+- Phase 3B resolves the MVP schema gaps with unique `Hospital.hospitalCode`, optional non-authoritative parent reference, separate onboarding application history, review attribution and a database partial unique guard for one pending claim per Hospital
+- The approved 78-record normalized Hospital Master is committed as a JSON seed fixture; the import is idempotent, development/test-only, does not delete unrelated rows, and preserves an existing `ACTIVE` status
 
 ---
 
@@ -1235,7 +1236,7 @@ The following decisions are accepted for project initialization:
 35. Approved applicant receives `HOSPITAL` role plus an ACTIVE `OWNER` membership for the approved Hospital and never receives Platform `ADMIN` by implication.
 36. Hospital approval/rejection and their consistency-critical PostgreSQL/audit writes are atomic business operations.
 37. PostgreSQL and Supabase Auth effects use explicit compensation/reconciliation rather than a simulated distributed transaction.
-38. Phase 3A is a documentation/architecture contract only; Prisma changes and the vertical slice are deferred to Phase 3B.
+38. Phase 3A is the accepted documentation/architecture contract; Phase 3B implements its first vertical slice without changing the Phase 2.1 authentication foundation.
 
 ---
 

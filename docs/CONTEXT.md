@@ -10,9 +10,9 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3A: Hospital Onboarding Requirement Closure and Architecture Contract** แล้ว โดย Phase นี้เป็น documentation/design contract ก่อน implementation เท่านั้น ยังไม่มี Hospital Onboarding UI, service, schema หรือ migration ของ Phase 3B ส่วน Phase 2.1 National ID Login Adapter และ trusted password-auth provisioning เป็น authentication foundation ที่ Phase 3B ต้อง reuse
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดย implementation ทำตาม contract ของ Phase 3A และ reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation
 
-Implementation contract สำหรับงานถัดไปอยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md)
+สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
 ## Phase 3A Hospital Onboarding Contract
 
@@ -21,6 +21,7 @@ Implementation contract สำหรับงานถัดไปอยู่�
 - public onboarding มีเฉพาะ Hospital organization application ไม่มี generic signup หรือ role selection
 - applicant ต้อง match controlled canonical Hospital Master entry โดย `hospitalCode` เป็น stable business identifier; external master provider ยัง unresolved
 - manual Platform `ADMIN` เป็นผู้ review/approve/reject สำหรับ MVP
+- approved normalized Hospital Master artifact มี 78 records; `HH` ถูก exclude และ `KANG`/`KHON` เป็น canonical corrections ที่ห้ามเปลี่ยน
 - onboarding application แยกจาก `Hospital` และใช้ lifecycle `PENDING → APPROVED | REJECTED` เพื่อเก็บ rejected history และไม่สร้าง active Hospital ก่อน approval
 - applicant identity ต้อง resolve ด้วย Thai National ID validation + HMAC และ reuse `Person`/`User` เดิมก่อนสร้างใหม่เสมอ
 - National ID เป็น identity lookup input ไม่ใช่ ownership proof; existing account ที่พิสูจน์ไม่ได้ต้อง fail closed และคง non-active จน trusted review/reconciliation
@@ -32,7 +33,7 @@ Implementation contract สำหรับงานถัดไปอยู่�
 - capabilities ของ slice นี้มีเฉพาะ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject` และยังไม่ใช่ full capability matrix
 - Server Actions เป็น web adapters; onboarding business operation อยู่ใน transport-agnostic Application Service และไม่ต้องสร้าง speculative `/api/v1`
 
-Phase 3A ไม่แก้ Prisma schema ข้อเสนอสำหรับ Phase 3B คือเพิ่ม canonical Hospital Master store/boundary, unique `Hospital.hospitalCode` และ `HospitalOnboardingApplication` พร้อม review attribution/constraints ดู rationale และ checklist ใน phase contract
+Phase 3B implement persistence ตาม contract แล้ว: `Hospital` มี unique `hospitalCode` และ optional parent reference ที่ไม่ใช่ authorization primitive, ส่วน `HospitalOnboardingApplication` แยก lifecycle/history พร้อม reviewer attribution และ database guard สำหรับ pending claim เดียวต่อ Hospital การ import master ใช้ `prisma/seed/hospital-master-v2.json` และ `npm run prisma:seed:hospital-master` แบบ idempotent สำหรับ development/test เท่านั้น
 
 ## Phase 2.1 National ID Login Adapter
 
@@ -61,7 +62,7 @@ Phase 3A ไม่แก้ Prisma schema ข้อเสนอสำหรั�
 - operation ข้าม Supabase Auth กับ PostgreSQL ไม่ถูกทำเป็น fake transaction: หาก persist subject ล้มเหลวหลัง provider creation จะลบ provider user ที่เพิ่งสร้างเป็น compensation; cleanup failure เป็น infrastructure/reconciliation error และไม่รายงาน success
 - Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, higher-level activation mechanism, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows Primitive นี้ไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; Phase 3A กำหนดเพียง contract ที่ future trusted Hospital Onboarding workflow ต้องรับผิดชอบ policy และ user-owned credential establishment ก่อนเรียกใช้
+Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ clinical workflows Primitive นี้ยังไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; Phase 3B Hospital Onboarding เป็น higher-level workflow แรกที่รับผิดชอบ policy, user-owned credential establishment และ approval lifecycle ก่อนเปิดใช้งาน applicant
 
 ## Phase 1 Foundation Implementation
 
