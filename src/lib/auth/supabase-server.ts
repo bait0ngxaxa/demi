@@ -6,7 +6,13 @@ import { cookies } from "next/headers";
 
 import { getServerEnv } from "@/lib/env/server";
 
-export async function getServerSupabaseClient(): Promise<SupabaseClient> {
+export type ServerSupabaseClientOptions = {
+  requireWritableCookies?: boolean;
+};
+
+export async function getServerSupabaseClient(
+  clientOptions: ServerSupabaseClientOptions = {},
+): Promise<SupabaseClient> {
   const cookieStore = await cookies();
   const env = getServerEnv();
 
@@ -17,10 +23,14 @@ export async function getServerSupabaseClient(): Promise<SupabaseClient> {
       },
       setAll(cookiesToSet) {
         try {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
+          cookiesToSet.forEach(({ name, value, options: cookieOptions }) => {
+            cookieStore.set(name, value, cookieOptions);
           });
-        } catch {
+        } catch (error) {
+          if (clientOptions.requireWritableCookies) {
+            throw error;
+          }
+
           // Cookie writes are unavailable in read-only server components.
         }
       },

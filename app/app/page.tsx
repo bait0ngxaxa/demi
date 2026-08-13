@@ -71,20 +71,7 @@ export default async function ApplicationPage() {
             </span>
           </div>
 
-          <dl className="mt-7 grid gap-6 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm font-medium text-muted">รหัสบัญชี DEMI</dt>
-              <dd className="mt-2 break-all font-mono text-sm leading-6 text-ink">{actor.userId}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium text-muted">รหัสบุคคล</dt>
-              <dd className="mt-2 break-all font-mono text-sm leading-6 text-ink">
-                {actor.personId}
-              </dd>
-            </div>
-          </dl>
-
-          <div className="mt-8 border-t border-line pt-6">
+          <div className="mt-7 border-t border-line pt-6">
             <h3 className="text-sm font-semibold text-ink">บทบาทจาก DEMI ActorContext</h3>
             {actor.roles.length > 0 ? (
               <ul className="mt-3 flex flex-wrap gap-2" aria-label="บทบาทของผู้ใช้งาน">

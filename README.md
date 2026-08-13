@@ -92,11 +92,26 @@ ACTIVE DEMI User + ActorContext
 - เฉพาะ provider subject ที่ map กับ `User.status = ACTIVE` เท่านั้นที่เข้า `/app` ได้
 - `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูกปฏิเสธโดยไม่มี automatic Person/User/role provisioning
 - `/app` ตรวจสิทธิ์ฝั่ง server; browser state, Supabase metadata, role หรือ hospital ID จาก client ไม่ถูกใช้เป็น authority
-- Logout ใช้ Supabase Auth server client และปล่อยให้ provider จัดการ session cookies
+- Logout ใช้ Supabase Auth server client ด้วย `scope: "local"` เพื่อจบเฉพาะ current session; auth mutations ใช้ writable cookie context ส่วน read-only Server Components ยังคงมี defensive cookie handling
 - invalid/expired session แยกจาก provider, configuration และ database infrastructure failure อย่างชัดเจน
 - UI ภาษาไทยเป็น responsive shared shell สำหรับทุก ACTIVE actor และแสดง role จาก server-resolved `ActorContext`
 
 Phase 2 ยังไม่กำหนด patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows
+
+### Manual authentication smoke test
+
+ใช้เฉพาะ Supabase development account ที่ map กับ `User.authSubject` และมีสถานะ `ACTIVE`; ห้ามใช้ production credentials
+
+1. เปิด `/login`
+2. Login ด้วยบัญชี Supabase ที่ provision แล้ว
+3. ยืนยันว่า redirect ไป `/app`
+4. Refresh `/app`
+5. ยืนยันว่า session ยังคงอยู่
+6. เปิด browser หรือ device ที่สองด้วยบัญชีเดียวกัน
+7. Logout จาก session แรก
+8. ยืนยันว่า session แรกเข้า `/app` ไม่ได้อีก
+9. ยืนยันว่า session ที่สองยัง authenticated อยู่
+10. ยืนยันว่า `/app` ของ session แรก redirect หรือ deny อย่างถูกต้องหลัง logout
 
 ## Implementation structure
 

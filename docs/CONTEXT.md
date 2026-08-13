@@ -24,7 +24,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - login ไม่สร้าง `Person`, `User`, role หรือ hospital membership และไม่อ่าน authority จาก provider metadata หรือ browser state
 - `/app` ตรวจ protected access ฝั่ง server และแสดง role จาก server-resolved `ActorContext` ใน shared application shell เท่านั้น
 - `/` redirect ACTIVE actor ไป `/app` และ redirect สถานะอื่นไป `/login`; infrastructure failure ไม่ถูกแปลงเป็น anonymous state
-- logout เรียก Supabase Auth server client เพื่อ invalidate session และ redirect ไป `/login` โดยไม่แก้ DEMI identity/authorization records
+- logout เรียก Supabase Auth server client ด้วย `scope: "local"` เพื่อ invalidate เฉพาะ current browser/device session และ redirect ไป `/login` โดยไม่แก้ DEMI identity/authorization records
+- auth mutations ใช้ Supabase server client ที่กำหนดให้ cookie writes ต้องสำเร็จ; read-only Server Components ยังคงใช้ defensive cookie-write behavior ได้
 - ไม่มี Prisma schema หรือ migration change ใน Phase 2
 
 Phase 2 ไม่ได้ finalize patient activation mechanism, Hospital onboarding verification, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ operational business workflows

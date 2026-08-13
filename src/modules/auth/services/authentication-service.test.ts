@@ -1,6 +1,6 @@
 import { UserStatus } from "@prisma/client";
 import { AuthApiError } from "@supabase/supabase-js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InfrastructureError } from "@/shared/errors/application-error";
 
@@ -14,6 +14,12 @@ import {
   signOutCurrentSession,
   type PasswordAuthenticationProvider,
 } from "./authentication-service";
+
+const mockedGetServerSupabaseClient = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/auth/supabase-server", () => ({
+  getServerSupabaseClient: mockedGetServerSupabaseClient,
+}));
 
 const activeUser: ActorUserRecord = {
   id: "user-1",
@@ -44,6 +50,10 @@ function createProvider(): PasswordAuthenticationProvider {
 }
 
 describe("password authentication service", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("returns a safe invalid-credentials result", async () => {
     const provider = createProvider();
     vi.mocked(provider.signInWithPassword).mockResolvedValue({
@@ -98,6 +108,34 @@ describe("password authentication service", () => {
     expect(store.findUserByAuthSubject).toHaveBeenCalledWith("provider-user-1");
   });
 
+  it("uses a writable cookie context for provider-backed login", async () => {
+    const provider = createProvider();
+    mockedGetServerSupabaseClient.mockResolvedValue({ auth: provider });
+
+    await expect(
+      authenticateWithPassword(
+        { email: "user@example.com", password: "valid-password" },
+        { actorStore: createStore() },
+      ),
+    ).resolves.toMatchObject({ status: "AUTHORIZED" });
+
+    expect(mockedGetServerSupabaseClient).toHaveBeenCalledWith({
+      requireWritableCookies: true,
+    });
+  });
+
+  it("uses a writable cookie context and local scope for provider-backed logout", async () => {
+    const provider = createProvider();
+    mockedGetServerSupabaseClient.mockResolvedValue({ auth: provider });
+
+    await signOutCurrentSession();
+
+    expect(mockedGetServerSupabaseClient).toHaveBeenCalledWith({
+      requireWritableCookies: true,
+    });
+    expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
   it("denies and signs out a provider user with no mapped DEMI account", async () => {
     const provider = createProvider();
 
@@ -107,7 +145,7 @@ describe("password authentication service", () => {
         { provider, actorStore: createStore(null) },
       ),
     ).resolves.toEqual({ status: "APPLICATION_ACCESS_DENIED", reason: "UNMAPPED" });
-    expect(provider.signOut).toHaveBeenCalledOnce();
+    expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
   it.each([UserStatus.PROVISIONED, UserStatus.INVITED, UserStatus.SUSPENDED])(
@@ -124,7 +162,7 @@ describe("password authentication service", () => {
         status: "APPLICATION_ACCESS_DENIED",
         reason: "ACCOUNT_NOT_ACTIVE",
       });
-      expect(provider.signOut).toHaveBeenCalledOnce();
+      expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
     },
   );
 
@@ -158,9 +196,30 @@ describe("password authentication service", () => {
 
     await signOutCurrentSession(provider);
 
+    expect(provider.signOut).toHaveBeenCalledWith({ scope: "local" });
+
     await expect(resolveCurrentActorAccess(createStore(), provider)).resolves.toEqual({
       status: "UNAUTHENTICATED",
     });
+  });
+
+  it("does not terminate another session during local logout", async () => {
+    let currentSessionAvailable = true;
+    const otherSessionAvailable = true;
+    const provider = createProvider();
+    vi.mocked(provider.signOut).mockImplementation(async (options) => {
+      if (options?.scope !== "local") {
+        throw new Error("logout scope must be local");
+      }
+
+      currentSessionAvailable = false;
+      return { error: null };
+    });
+
+    await signOutCurrentSession(provider);
+
+    expect(currentSessionAvailable).toBe(false);
+    expect(otherSessionAvailable).toBe(true);
   });
 
   it("does not report logout success when the provider fails", async () => {

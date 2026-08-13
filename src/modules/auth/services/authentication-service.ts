@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isAuthError } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
@@ -14,12 +15,14 @@ import {
   type ActorContextStore,
 } from "./actor-context-service";
 
+type SupabaseSignOutOptions = Parameters<SupabaseClient["auth"]["signOut"]>[0];
+
 export type PasswordAuthenticationProvider = ActorAuthenticationProvider & {
   signInWithPassword(credentials: LoginInput): Promise<{
     data: { user: { id: string } | null };
     error: unknown;
   }>;
-  signOut(): Promise<{ error: unknown }>;
+  signOut(options?: SupabaseSignOutOptions): Promise<{ error: unknown }>;
 };
 
 export type AuthenticationResult =
@@ -51,7 +54,7 @@ function isInvalidCredentialsError(error: unknown): boolean {
 
 async function getPasswordAuthenticationProvider(): Promise<PasswordAuthenticationProvider> {
   try {
-    return (await getServerSupabaseClient()).auth;
+    return (await getServerSupabaseClient({ requireWritableCookies: true })).auth;
   } catch {
     throw new InfrastructureError("Authentication service could not be reached");
   }
@@ -63,7 +66,7 @@ export async function signOutCurrentSession(
   const authProvider = provider ?? (await getPasswordAuthenticationProvider());
 
   try {
-    const { error } = await authProvider.signOut();
+    const { error } = await authProvider.signOut({ scope: "local" });
 
     if (error && !isUnauthenticatedAuthError(error)) {
       throw new InfrastructureError("Authentication session could not be invalidated");
