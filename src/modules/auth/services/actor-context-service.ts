@@ -1,6 +1,7 @@
 import "server-only";
 
 import { UserStatus } from "@prisma/client";
+import { isAuthError, isAuthSessionMissingError } from "@supabase/supabase-js";
 
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getPrisma } from "@/lib/db/prisma";
@@ -12,18 +13,27 @@ export type ActorContextStore = {
   findActiveUserByAuthSubject(authSubject: string): Promise<ActorContext | null>;
 };
 
-function isUnauthenticatedAuthError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
+const unauthenticatedAuthErrorCodes = new Set([
+  "bad_jwt",
+  "invalid_jwt",
+  "no_authorization",
+  "refresh_token_already_used",
+  "refresh_token_not_found",
+  "session_expired",
+  "session_not_found",
+  "user_not_found",
+]);
+
+export function isUnauthenticatedAuthError(error: unknown): boolean {
+  if (isAuthSessionMissingError(error)) {
+    return true;
+  }
+
+  if (!isAuthError(error) || typeof error.code !== "string") {
     return false;
   }
 
-  const authError = error as { name?: unknown; status?: unknown };
-
-  return (
-    authError.name === "AuthSessionMissingError" ||
-    authError.status === 401 ||
-    authError.status === 404
-  );
+  return unauthenticatedAuthErrorCodes.has(error.code);
 }
 
 const prismaActorContextStore: ActorContextStore = {
@@ -90,10 +100,24 @@ export async function resolveActorContextByAuthSubject(
 export async function resolveCurrentActorContext(
   store: ActorContextStore = prismaActorContextStore,
 ): Promise<ActorContext | null> {
+  let authResponse: Awaited<
+    ReturnType<Awaited<ReturnType<typeof getServerSupabaseClient>>["auth"]["getUser"]>
+  >;
+
+  try {
+    authResponse = await (await getServerSupabaseClient()).auth.getUser();
+  } catch (error) {
+    if (isUnauthenticatedAuthError(error)) {
+      return null;
+    }
+
+    throw new InfrastructureError("Authentication service could not be reached");
+  }
+
   const {
     data: { user },
     error,
-  } = await (await getServerSupabaseClient()).auth.getUser();
+  } = authResponse;
 
   if (error) {
     if (isUnauthenticatedAuthError(error)) {
