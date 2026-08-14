@@ -557,8 +557,7 @@ export async function approveHospitalOnboarding(
 
       if (
         !application.applicantUser.authSubject?.trim() ||
-        application.applicantUser.status !== UserStatus.PROVISIONED &&
-        application.applicantUser.status !== UserStatus.ACTIVE
+        application.applicantUser.status !== UserStatus.PROVISIONED
       ) {
         throw new ConflictError("Applicant account is not ready for activation");
       }
@@ -606,7 +605,7 @@ export async function approveHospitalOnboarding(
         where: {
           id: application.applicantUser.id,
           authSubject: { not: null },
-          status: { in: [UserStatus.PROVISIONED, UserStatus.ACTIVE] },
+          status: UserStatus.PROVISIONED,
         },
         data: { status: UserStatus.ACTIVE },
       });

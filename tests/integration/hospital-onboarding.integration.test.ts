@@ -318,10 +318,14 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
     expect(await prisma.user.count({ where: { status: UserStatus.PROVISIONED } })).toBe(1);
   });
 
-  it("rolls back approval state when applicant preconditions are inconsistent", async () => {
-    const result = await submit("KANG", "1000000000092", "ffffffff-ffff-4fff-8fff-ffffffffffff");
-    const admin = await createAdmin("rollback");
-    await prisma.user.update({ where: { id: result.applicantUserId }, data: { status: UserStatus.SUSPENDED } });
+  it.each([
+    [UserStatus.ACTIVE, "1000000000092"],
+    [UserStatus.INVITED, "1000000000106"],
+    [UserStatus.SUSPENDED, "1000000000114"],
+  ] as const)("rejects approval when applicant is %s before approval", async (status, nationalId) => {
+    const result = await submit("KANG", nationalId, "ffffffff-ffff-4fff-8fff-ffffffffffff");
+    const admin = await createAdmin(`inconsistent-${status}`);
+    await prisma.user.update({ where: { id: result.applicantUserId }, data: { status } });
 
     await expect(
       approveHospitalOnboarding({ applicationId: result.applicationId, reviewerUserId: admin.id }),
@@ -335,13 +339,19 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
       where: { hospitalCode: "KANG" },
       select: { status: true },
     });
-    const membershipCount = await prisma.hospitalMembership.count({
-      where: { userId: result.applicantUserId },
+    const applicant = await prisma.user.findUnique({
+      where: { id: result.applicantUserId },
+      select: { status: true, roles: true, memberships: true },
     });
 
     expect(application?.status).toBe(HospitalOnboardingApplicationStatus.PENDING);
     expect(hospital?.status).toBe(HospitalStatus.PENDING_VERIFICATION);
-    expect(membershipCount).toBe(0);
+    expect(applicant?.status).toBe(status);
+    expect(applicant?.roles).toHaveLength(0);
+    expect(applicant?.memberships).toHaveLength(0);
+    expect(
+      await prisma.auditEvent.count({ where: { action: "hospital_onboarding.approved" } }),
+    ).toBe(0);
   });
 
   it("denies review to a hospital owner who is not a Platform ADMIN", async () => {
