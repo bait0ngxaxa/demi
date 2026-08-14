@@ -9,6 +9,7 @@ import {
 
 import {
   provisionPasswordAuthIdentity,
+  PasswordAuthProvisioningReconciliationError,
   type PasswordAuthAdminProvider,
   type PasswordAuthProvisioningStore,
 } from "./password-auth-provisioning-service";
@@ -108,7 +109,21 @@ describe("password auth identity provisioning", () => {
 
     await expect(
       provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
-    ).rejects.toBeInstanceOf(ConflictError);
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
+    expect(store.setAuthSubject).not.toHaveBeenCalled();
+    expect(provider.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("reports reconciliation when the provider throws an alias conflict", async () => {
+    const provider = createProvider();
+    const store = createStore();
+    vi.mocked(provider.createUser).mockRejectedValue(
+      new AuthApiError("User already registered", 422, "user_already_exists"),
+    );
+
+    await expect(
+      provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
     expect(store.setAuthSubject).not.toHaveBeenCalled();
     expect(provider.deleteUser).not.toHaveBeenCalled();
   });

@@ -557,6 +557,25 @@ async function assertActivationTargetRelationship(
   }
 }
 
+async function assertTargetUserCanReceiveWorkforce(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  const adminRole = await transaction.userRole.findUnique({
+    where: {
+      userId_role: {
+        userId,
+        role: Role.ADMIN,
+      },
+    },
+    select: { userId: true },
+  });
+
+  if (adminRole) {
+    throw new ConflictError("The existing account requires explicit reconciliation");
+  }
+}
+
 async function createOrReuseWorkforceIdentity(
   transaction: Prisma.TransactionClient,
   input: {
@@ -611,6 +630,7 @@ async function createOrReuseWorkforceIdentity(
     });
   }
 
+  await assertTargetUserCanReceiveWorkforce(transaction, user.id);
   assertUserAccountCanReceiveWorkforce(user);
 
   const consumedActivation = await transaction.workforceActivation.findFirst({
@@ -1017,17 +1037,21 @@ async function regenerateActivationInTransaction(
 
   const current = await findCurrentActivation(transaction, user.id);
 
+  if (current?.claimedAt) {
+    throw new ConflictError("The activation credential is currently being used");
+  }
+
   if (current) {
     const revoked = await transaction.workforceActivation.updateMany({
       where: {
         id: current.id,
         userId: user.id,
+        claimedAt: null,
         usedAt: null,
         revokedAt: null,
       },
       data: {
         revokedAt: input.now,
-        claimedAt: null,
       },
     });
 
@@ -1174,14 +1198,19 @@ export async function revokeWorkforceActivation(
           return;
         }
 
+        if (current.claimedAt) {
+          throw new ConflictError("The activation credential is currently being used");
+        }
+
         const revoked = await transaction.workforceActivation.updateMany({
           where: {
             id: current.id,
             userId: user.id,
+            claimedAt: null,
             usedAt: null,
             revokedAt: null,
           },
-          data: { revokedAt: getNow(dependencies), claimedAt: null },
+          data: { revokedAt: getNow(dependencies) },
         });
 
         if (revoked.count !== 1) {
@@ -1514,7 +1543,7 @@ export async function completeWorkforceActivation(
     });
   } catch (error: unknown) {
     if (error instanceof PasswordAuthProvisioningReconciliationError) {
-      throw error;
+      throw new WorkforceActivationReconciliationError();
     }
 
     await releaseWorkforceActivationClaim(claim, dependencies);

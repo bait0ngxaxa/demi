@@ -8,11 +8,13 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 import {
   completeWorkforceActivation,
   provisionHospitalMember,
   provisionOsm,
   regenerateWorkforceActivation,
+  revokeWorkforceActivation,
 } from "@/modules/workforce/services/workforce-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
@@ -27,6 +29,8 @@ const nationalIds = {
   concurrent: "1000000000033",
   providerFailure: "1000000000041",
   activationConcurrent: "1000000000050",
+  adminStaff: "1000000000068",
+  adminOsm: "1000000000076",
 };
 
 async function clearDatabase(): Promise<void> {
@@ -98,6 +102,45 @@ function createProvisioner(authSubject: string) {
     expect(password).toBe("integration-workforce-password");
     await prisma.user.update({ where: { id: userId }, data: { authSubject } });
     return { userId, authSubject };
+  };
+}
+
+async function createAdminTarget(nationalId: string): Promise<{ userId: string }> {
+  const person = await prisma.person.create({
+    data: {
+      identityKeyHash: hashIdentityReference({
+        namespace: "thai-national-id",
+        value: nationalId,
+      }),
+    },
+    select: { id: true },
+  });
+  const user = await prisma.user.create({
+    data: {
+      personId: person.id,
+      authSubject: "66666666-6666-4666-8666-666666666666",
+      status: UserStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  await prisma.userRole.create({ data: { userId: user.id, role: Role.ADMIN } });
+
+  return { userId: user.id };
+}
+
+function createDeferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolvePromise: (() => void) | null = null;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve: () => resolvePromise?.(),
   };
 }
 
@@ -238,6 +281,51 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     });
   });
 
+  it("rejects an existing ADMIN User as Hospital staff without changing workforce state", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const target = await createAdminTarget(nationalIds.adminStaff);
+
+    await expect(
+      provisionHospitalMember(actor, {
+        nationalId: nationalIds.adminStaff,
+        givenName: "ผู้ดูแล",
+        familyName: "ระบบ",
+        targetHospitalId: hospitalId,
+        profession: "OTHER",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await expect(
+      prisma.userRole.findMany({ where: { userId: target.userId }, select: { role: true } }),
+    ).resolves.toEqual([{ role: Role.ADMIN }]);
+    await expect(prisma.hospitalMembership.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.osmHospitalRelationship.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.workforceActivation.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.auditEvent.count()).resolves.toBe(0);
+  });
+
+  it("rejects an existing ADMIN User as OSM without changing workforce state", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const target = await createAdminTarget(nationalIds.adminOsm);
+
+    await expect(
+      provisionOsm(actor, {
+        nationalId: nationalIds.adminOsm,
+        givenName: "ผู้ดูแล",
+        familyName: "ระบบ",
+        targetHospitalId: hospitalId,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await expect(
+      prisma.userRole.findMany({ where: { userId: target.userId }, select: { role: true } }),
+    ).resolves.toEqual([{ role: Role.ADMIN }]);
+    await expect(prisma.hospitalMembership.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.osmHospitalRelationship.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.workforceActivation.count({ where: { userId: target.userId } })).resolves.toBe(0);
+    await expect(prisma.auditEvent.count()).resolves.toBe(0);
+  });
+
   it("regeneration revokes the old credential and only the new credential works", async () => {
     const { actor, hospitalId } = await createOwner();
     const result = await provisionOsm(actor, {
@@ -280,6 +368,62 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     expect(await prisma.workforceActivation.count({ where: { userId: result.userId, revokedAt: { not: null } } })).toBe(1);
   });
 
+  it("rejects regeneration and revocation while an activation claim is in flight", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const result = await provisionOsm(actor, {
+      nationalId: nationalIds.activationConcurrent,
+      givenName: "ผู้ใช้",
+      familyName: "กำลังเปิดใช้งาน",
+      targetHospitalId: hospitalId,
+    });
+    const providerGate = createDeferred();
+    const providerStarted = createDeferred();
+    const provisionIdentity = vi.fn(async ({ userId, password }: { userId: string; password: string }) => {
+      expect(password).toBe("integration-workforce-password");
+      providerStarted.resolve();
+      await providerGate.promise;
+      const authSubject = "77777777-7777-4777-8777-777777777777";
+      await prisma.user.update({ where: { id: userId }, data: { authSubject } });
+      return { userId, authSubject };
+    });
+
+    const completion = completeWorkforceActivation(
+      result.activationToken!,
+      {
+        password: "integration-workforce-password",
+        passwordConfirmation: "integration-workforce-password",
+      },
+      { provisionIdentity },
+    );
+    await providerStarted.promise;
+
+    await expect(
+      regenerateWorkforceActivation(actor, {
+        userId: result.userId,
+        targetHospitalId: hospitalId,
+        kind: "OSM",
+        mode: "REMOTE",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      revokeWorkforceActivation(actor, {
+        userId: result.userId,
+        targetHospitalId: hospitalId,
+        kind: "OSM",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    await expect(
+      prisma.workforceActivation.findUnique({
+        where: { tokenHash: hashWorkforceActivationToken(result.activationToken!) },
+        select: { claimedAt: true, usedAt: true, revokedAt: true },
+      }),
+    ).resolves.toMatchObject({ claimedAt: expect.any(Date), usedAt: null, revokedAt: null });
+
+    providerGate.resolve();
+    await completion;
+  });
+
   it("keeps local workforce state provisioned when provider establishment fails", async () => {
     const { actor, hospitalId } = await createOwner();
     const result = await provisionHospitalMember(actor, {
@@ -313,6 +457,71 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await expect(
       prisma.workforceActivation.findFirst({ where: { userId: result.userId }, select: { claimedAt: true } }),
     ).resolves.toEqual({ claimedAt: null });
+
+    const regenerated = await regenerateWorkforceActivation(actor, {
+      userId: result.userId,
+      targetHospitalId: hospitalId,
+      kind: "HOSPITAL_MEMBER",
+      mode: "REMOTE",
+    });
+    expect(regenerated.activationToken).not.toBe(result.activationToken);
+    await expect(
+      prisma.workforceActivation.findUnique({
+        where: { tokenHash: hashWorkforceActivationToken(result.activationToken!) },
+        select: { revokedAt: true },
+      }),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+  });
+
+  it("keeps a claimed activation in reconciliation when provider identity ownership is ambiguous", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const result = await provisionHospitalMember(actor, {
+      nationalId: nationalIds.providerFailure,
+      givenName: "ผู้ใช้",
+      familyName: "provider conflict",
+      targetHospitalId: hospitalId,
+      profession: "OTHER",
+    });
+    const provisionIdentity = vi
+      .fn()
+      .mockRejectedValue(new PasswordAuthProvisioningReconciliationError());
+
+    await expect(
+      completeWorkforceActivation(
+        result.activationToken!,
+        {
+          password: "integration-workforce-password",
+          passwordConfirmation: "integration-workforce-password",
+        },
+        { provisionIdentity },
+      ),
+    ).rejects.toMatchObject({
+      code: "INFRASTRUCTURE",
+      requiresReconciliation: true,
+    });
+
+    expect(provisionIdentity).toHaveBeenCalledOnce();
+    await expect(
+      prisma.workforceActivation.findUnique({
+        where: { tokenHash: hashWorkforceActivationToken(result.activationToken!) },
+        select: { claimedAt: true, usedAt: true, revokedAt: true },
+      }),
+    ).resolves.toMatchObject({ claimedAt: expect.any(Date), usedAt: null, revokedAt: null });
+    await expect(
+      prisma.user.findUnique({ where: { id: result.userId }, select: { status: true, authSubject: true } }),
+    ).resolves.toEqual({ status: UserStatus.PROVISIONED, authSubject: null });
+
+    await expect(
+      completeWorkforceActivation(
+        result.activationToken!,
+        {
+          password: "integration-workforce-password",
+          passwordConfirmation: "integration-workforce-password",
+        },
+        { provisionIdentity },
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(provisionIdentity).toHaveBeenCalledOnce();
   });
 
   it("handles concurrent exact provisioning without duplicate identity or activation", async () => {

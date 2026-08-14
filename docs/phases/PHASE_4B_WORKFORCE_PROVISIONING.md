@@ -259,6 +259,22 @@ Supabase Auth/provider กับ PostgreSQL ไม่ใช่ distributed trans
 Activation credential ที่ใช้แล้วหรืออยู่ใน reconciliation state ไม่ถูกปลดล็อกโดย
 การ retry แบบเงียบ ๆ Owner ต้อง regenerate อย่าง explicit เมื่อจำเป็น
 
+### 8.1 Hardening and review closure
+
+- target User ที่มี `Role.ADMIN` ถูกปฏิเสธจาก normal Hospital workforce
+  provisioning ทั้ง staff และ OSM ภายใน transaction เดียวกัน โดยไม่เพิ่ม role,
+  relationship, activation หรือ success audit
+- activation ที่มี `claimedAt` แล้วถือเป็น in-flight และ Owner ไม่สามารถ
+  regenerate หรือ revoke ได้; claim เดิมยังคง authoritative จน workflow จบหรือ
+  เข้าสู่ reconciliation
+- provider identity/alias conflict ที่ไม่สามารถพิสูจน์ ownership กับ DEMI User
+  ได้ถูกยกระดับเป็น reconciliation-required ไม่ปล่อย claim เพื่อ retry และไม่
+  สร้าง provider identity ซ้ำ ส่วน provider failure ชั่วคราวยัง release claim ได้
+  เมื่อ state ownership ยังพิสูจน์ได้
+- concurrent exact provisioning และ activation claim ถูกตรวจด้วย PostgreSQL
+  integration suite จริง โดยคง single Person/User/relationship/activation
+  invariant
+
 ## 9. Audit Contract
 
 ใช้ repository audit boundary และเขียน event ใน local transaction ที่รับรอง state:
@@ -307,19 +323,16 @@ activation claim ใน:
 Validation commands ที่ผ่านใน working environment:
 
 ```text
-npx prisma generate
+npm run prisma:generate
 npx prisma validate
-npm ci --dry-run --ignore-scripts --no-audit --no-fund
-npx tsc --noEmit
 npm run lint
+npm run typecheck
 npm test
+npm run test:integration
 ```
 
-`npm run test:integration:local` ถูกเรียกแล้วแต่ environment นี้ไม่มี Docker
-Engine ใน WSL (`Docker Engine is unavailable in WSL distribution Ubuntu`) จึงยัง
-ไม่สามารถ execute PostgreSQL integration suite จริงได้ การทดสอบ integration จะ
-ต้องรันใน Docker-enabled environment และ apply migration ด้วย
-`npm run test:integration`
+ผล integration ล่าสุด: `4` test files ผ่าน และ `39` tests ผ่านบน PostgreSQL
+integration database จริง ไม่มี migration ค้างอยู่
 
 ## 12. Explicitly Deferred
 

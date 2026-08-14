@@ -191,7 +191,7 @@ export async function provisionPasswordAuthIdentity(
     });
   } catch (error: unknown) {
     if (isProviderIdentityConflict(error)) {
-      throw new ConflictError("Password authentication identity already exists at provider");
+      throw new PasswordAuthProvisioningReconciliationError();
     }
 
     throw new InfrastructureError("Password authentication identity could not be created");
@@ -199,7 +199,7 @@ export async function provisionPasswordAuthIdentity(
 
   if (providerResponse.error) {
     if (isProviderIdentityConflict(providerResponse.error)) {
-      throw new ConflictError("Password authentication identity already exists at provider");
+      throw new PasswordAuthProvisioningReconciliationError();
     }
 
     throw new InfrastructureError("Password authentication identity could not be created");
