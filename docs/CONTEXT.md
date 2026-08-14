@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** ปิด decision contract แล้ว และ next implementation คือ Phase 4B Workforce Provisioning + Activation MVP
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
@@ -51,6 +51,19 @@ Fresh environment ที่ยังไม่มี Platform `ADMIN` ใช้ t
 
 รายละเอียด contract และ acceptance path อยู่ที่ [Phase 3C Platform Admin Bootstrap](./phases/PHASE_3C_PLATFORM_ADMIN_BOOTSTRAP.md)
 
+## Phase 4A Workforce Provisioning and Activation Contract
+
+Decision ที่ยืนยันแล้วสำหรับ Phase 4B อยู่ที่ [Phase 4A Workforce Provisioning](./phases/PHASE_4A_WORKFORCE_PROVISIONING.md) และ [ADR-0008](./adr/0008-workforce-provisioning-and-activation.md):
+
+- Routine workforce provisioning ทำได้เฉพาะ actor ที่เป็น `HOSPITAL` + ACTIVE `OWNER` membership โดยตรงใน target Hospital ที่เป็น `ACTIVE`; ordinary Hospital member, Platform `ADMIN` และ parent/child hierarchy ไม่ bypass policy
+- Hospital staff ใช้ `HOSPITAL` role + `HospitalMembership(MEMBER)` กับ `DOCTOR`, `NURSE`, `COORDINATOR` หรือ `OTHER`; profession เป็น classification ไม่ใช่ top-level role/authority
+- OSM ใช้ `OSM` role + `OsmHospitalRelationship` แยก โดย unique `(userId, hospitalId)` และ row หมายถึง OSM–Hospital association เท่านั้น ไม่ใช่ area, assigned patient หรือ clinical scope
+- Resolve/reuse `Person`/`User` และ preserve roles/relationships เดิมเสมอ; existing `ACTIVE` User ที่ `authSubject` map ถูกต้องเพิ่ม relationship เป็น `ACTIVE` ได้ทันทีโดยไม่ activate credential หรือเรียก provider ซ้ำ
+- New workforce User/relationship เริ่ม `PROVISIONED`; first-time activation ใช้ opaque one-time activation credential โดย copy URL, QR และ assisted in-person เป็น presentation ของ capability เดียวกัน
+- Target user เป็นผู้ตั้ง password เอง; Hospital staff ไม่รู้หรือกำหนด password, token plaintext ไม่เก็บใน DB และ activation ใช้ secure hash, expiry, single-use, revocation/regeneration และ concurrency-safe claim
+- Copy link/QR ใช้ expiry default 24 ชั่วโมง และ assisted ใช้ 15 นาที; email, SMS และ LINE/LIFF ไม่ใช่ core dependency แต่อาจเป็น future delivery channels ส่วน ThaID และ external identity ต้องมี decision แยก
+- Provider I/O อยู่นอก local PostgreSQL transaction และใช้ compensation/reconciliation เดิม หาก provider/local finalization ไม่สอดคล้อง
+
 ## Phase 2.1 National ID Login Adapter
 
 ส่วนที่ implement แล้วใน Phase 2.1 มีขอบเขตดังต่อไปนี้:
@@ -78,7 +91,7 @@ Fresh environment ที่ยังไม่มี Platform `ADMIN` ใช้ t
 - operation ข้าม Supabase Auth กับ PostgreSQL ไม่ถูกทำเป็น fake transaction: หาก persist subject ล้มเหลวหลัง provider creation จะลบ provider user ที่เพิ่งสร้างเป็น compensation; cleanup failure เป็น infrastructure/reconciliation error และไม่รายงาน success
 - Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2.1 ไม่ได้ finalize provider-account transition สำหรับบัญชี development เดิม, staff/OSM invitation mechanism, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ clinical workflows Primitive นี้ยังไม่มี public endpoint และไม่ตัดสินว่า caller ใดมีสิทธิ์ activate account; Phase 3B Hospital Onboarding เป็น higher-level workflow แรกที่รับผิดชอบ policy, user-owned credential establishment และ approval lifecycle ก่อนเปิดใช้งาน applicant
+Phase 2.1 ไม่ได้ implement provider-account transition สำหรับ workforce, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ clinical workflows และ primitive นี้ยังไม่มี public endpoint หรือ caller-specific activation policy; Phase 3B Hospital Onboarding เป็น higher-level workflow แรกที่รับผิดชอบ policy, user-owned credential establishment และ approval lifecycle ของ applicant ส่วน Phase 4A เป็น decision contract ที่กำหนด workforce one-time activation และ Phase 4B จะ implement workflow นี้โดยไม่เปลี่ยน authentication adapter
 
 ## Phase 1 Foundation Implementation
 
@@ -123,9 +136,11 @@ Top-level business roles ที่ยืนยันแล้วมี 4 รา�
 - Public signup ใช้สำหรับ Hospital organization onboarding
 - Public hospital application ต้อง match canonical Hospital Master ด้วย stable `hospitalCode`; external provider ยังไม่ถูกเลือก
 - MVP hospital verification เป็น manual Platform `ADMIN` decision และเก็บ application history แยกจาก Hospital lifecycle
-- Staff/OSM ถูก provision หรือ invite จาก trusted hospital context และไม่ self-assign role
+- Staff/OSM ถูก provision จาก trusted Hospital context และไม่ self-assign role; Phase 4B จำกัด routine provisioning ที่ ACTIVE Hospital Owner ของ target Hospital โดยตรง
 - Patient ที่ Hospital/OSM provision แล้วไม่ register ซ้ำ แต่ใช้ first-time account activation
-- Provisioning identity แยกจาก credential ownership; staff/OSM ต้องไม่รู้หรือกำหนด patient secret
+- Workforce provisioning แยกจาก credential ownership; new staff/OSM ใช้ opaque one-time activation และ target user ตั้ง password เอง ส่วน existing ACTIVE User reuse credential เดิมโดยไม่ activate ซ้ำ
+- Hospital/OSM ต้องไม่รู้หรือกำหนด patient secret credential
+- OSM Hospital association แยกจาก `HospitalMembership` และยังไม่ใช่ patient, area หรือ clinical scope
 - Authorization ตัดสินด้วย `Role + Capability + Scope` ผ่าน server-side policy และต้อง fail closed
 - Browser, client state หรือ request parameter ไม่ใช่ authority สำหรับ permission หรือ scope
 - Multi-record business operation ที่ consistency-critical ต้องเป็น transactional
@@ -187,7 +202,8 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 - หลักฐานและขั้นตอนสำหรับ hospital verification
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
-- activation mechanism สำหรับ future Patient/staff workflows เช่น phone OTP, email, external identity provider หรือ ThaID; ไม่แทน Phase 2.1 Hospital applicant login contract
+- Patient activation mechanism และ identity-proofing; ห้ามนำ workforce one-time activation มาใช้แทน ADR-0004 โดย implicit
+- additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor
 - LIFF target workflows/audience, LINE account linking, `/api/v1` operations, native authentication, offline/sync, push/device capabilities และ trigger สำหรับเริ่ม native development

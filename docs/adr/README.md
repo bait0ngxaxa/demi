@@ -26,6 +26,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 | [ADR-0005](./0005-server-side-application-boundary.md) | Accepted | Server-Side Application Boundary |
 | [ADR-0006](./0006-transactional-business-operations.md) | Accepted | Transactional Business Operations |
 | [ADR-0007](./0007-client-transport-and-mobile-ready-architecture.md) | Accepted | Client Transport and Mobile-Ready Architecture |
+| [ADR-0008](./0008-workforce-provisioning-and-activation.md) | Accepted | Workforce Provisioning and First-Time Activation |
 
 ## Change Rules
 

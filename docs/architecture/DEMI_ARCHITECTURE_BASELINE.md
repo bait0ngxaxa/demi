@@ -196,14 +196,22 @@ measurement:create
 referral:create
 ```
 
-The final OSM scope is intentionally unresolved. Possible models include:
+The minimum Hospital association is accepted as a separate relationship from
+Hospital personnel membership:
 
-- assigned patients
-- geographic area
-- hospital + assignment
-- another business-defined scope
+```text
+OsmHospitalRelationship
+  user_id
+  hospital_id
+  status
+```
 
-This must be decided from real workflow requirements.
+The relationship means only `OSM ↔ Hospital association`. It does not represent
+geographic area, village/subdistrict/district, assigned patients, patient
+ownership, care-team assignment, or clinical resource access. `Role.OSM` alone
+must not grant patient or clinical access. The model may contain multiple rows
+for one User to preserve identity reuse, but Phase 4B does not define
+cross-Hospital OSM workflow semantics. The future OSM scope remains unresolved.
 
 ---
 
@@ -560,7 +568,7 @@ Conceptual flow:
 ```text
 Hospital Owner
        ↓
-Add / Invite personnel
+Provision personnel or OSM
        ↓
 Select trusted business classification
        ↓
@@ -570,9 +578,9 @@ Create Person only if no identity exists
        ↓
 Create membership / role
        ↓
-Provision account if required
+Create activation capability for a new User if required
        ↓
-User activation
+Target-owned first-time activation
 ```
 
 The target user does not choose their own role.
@@ -604,10 +612,14 @@ HospitalMembership:
 ```text
 Role = OSM
 
-OSMMembership:
+OsmHospitalRelationship:
   hospital = A
-  area/assignment = TBD
+  status = PROVISIONED | ACTIVE | SUSPENDED
 ```
+
+The OSM relationship is only the direct Hospital association. It does not
+encode area, assigned patients, patient ownership, or clinical/resource scope.
+OSM scope remains an open requirement.
 
 ---
 
@@ -736,12 +748,19 @@ PENDING → APPROVED
 ## Staff / OSM
 
 ```text
-PROVISIONED / INVITED
+PROVISIONED
         ↓
 ACTIVE
         ↓
 SUSPENDED
 ```
+
+Phase 4B new workforce users start `PROVISIONED` and become `ACTIVE` only after
+target-owned first-time activation. Existing `ACTIVE` Users with a valid
+provider mapping and established credential ownership do not activate again
+when a trusted operation adds a workforce role or relationship. `INVITED` is
+reserved for a future invitation lifecycle and is not required by the Phase 4B
+activation-link contract.
 
 ## Patient
 
@@ -810,6 +829,23 @@ hospital:reject
 ```
 
 `hospital:onboard` เป็น public operation admission policy ที่จำกัดเฉพาะการ submit application ไม่ได้ grant Role หรือ authority เพื่อสร้าง `OWNER`/activate Hospital ส่วน review/approve/reject เป็น Platform `ADMIN` governance capability และต้อง resolve ฝั่ง server
+
+Phase 4B workforce provisioning ใช้ operation vocabulary ขั้นต่ำ:
+
+```text
+membership:read
+membership:create
+osm:provision
+```
+
+ทุก operation ต้องผ่าน active `HOSPITAL` Owner membership โดยตรงใน target
+Hospital ที่เป็น `ACTIVE`; ordinary Hospital member, Platform `ADMIN` และ
+parent/child hierarchy ไม่ bypass policy ระหว่าง Phase 4B การเพิ่ม vocabulary นี้
+ไม่ใช่การสร้าง generic RBAC/ACL framework และยังไม่ตัดสิน clinical capabilities
+
+Phase 4B ใช้ `HOSPITAL + HospitalMembership(MEMBER) + profession` สำหรับ staff
+และ `OSM + OsmHospitalRelationship` สำหรับ OSM โดย profession ไม่ใช่ authority
+และ OSM relationship ไม่ใช่ patient/clinical scope
 
 Detailed role-to-capability mapping must be derived from business requirements.
 
@@ -1080,7 +1116,7 @@ ACTIVE ActorContext
 - `User.authSubject` retains its established provider-subject meaning.
 - Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.
 - Supabase metadata and browser state remain non-authoritative; roles and memberships come from DEMI application data.
-- Provider account transition beyond hospital onboarding, patient activation, staff/OSM onboarding, LIFF, ThaID, and native authentication remain separate future requirements. Phase 3B is the first higher-level workflow using the Phase 2.1 provisioning primitive; it does not change the authentication adapter.
+- Provider account transition beyond hospital onboarding, patient activation, staff/OSM onboarding implementation, LIFF, ThaID, and native authentication remain separate workflow concerns. Phase 4A now accepts the workforce activation-link boundary; Phase 4B will use the Phase 2.1 provisioning primitive without changing the authentication adapter.
 
 ## 19.9 Phase 3A/3B Hospital Onboarding Contract
 
@@ -1107,6 +1143,42 @@ Supabase Auth provisioning primitive
 - Hospital Master provider remains replaceable and unresolved; the approved controlled v2 seed data is the current input for the MVP adapter and deployment environments
 - Phase 3B resolves the MVP schema gaps with unique `Hospital.hospitalCode`, optional non-authoritative parent reference, separate onboarding application history, review attribution and a database partial unique guard for one pending claim per Hospital
 - The approved 78-record normalized Hospital Master is committed as the JSON seed input; `npm run db:seed` imports it idempotently with stable `hospitalCode` upserts, does not delete unrelated rows, and preserves an existing `ACTIVE` status. The external provider and long-term production update ownership remain unresolved and replaceable.
+
+## 19.10 Phase 4A Workforce Provisioning and Activation Contract
+
+Phase 4A closes the durable cross-module contract for the next workforce slice.
+The detailed checklist is in the [Phase 4A Workforce Provisioning Contract](../phases/PHASE_4A_WORKFORCE_PROVISIONING.md) and the rationale is in [ADR-0008](../adr/0008-workforce-provisioning-and-activation.md).
+
+- Routine Phase 4B workforce provisioning is limited to an actor with
+  `Role.HOSPITAL`, direct `HospitalMembership.membershipType = OWNER`,
+  `HospitalMembership.status = ACTIVE`, and an `ACTIVE` target Hospital. An
+  ordinary Hospital member, Platform `ADMIN` global role, or parent/child
+  relationship does not bypass this policy.
+- Hospital personnel use the existing `HospitalMembership` with
+  `membershipType = MEMBER` and `profession = DOCTOR | NURSE | COORDINATOR |
+  OTHER`. Profession is classification, not a top-level role or authority.
+- OSM uses `Role.OSM` plus a separate `OsmHospitalRelationship` with a unique
+  `(userId, hospitalId)` relationship and an existing lifecycle enum. The row
+  means only direct OSM–Hospital association; it does not encode area, assigned
+  patients, patient ownership, care-team, or clinical/resource scope.
+- Identity resolution always reuses `Person` and `User` when present. Existing
+  `ACTIVE` Users with valid provider mapping and established credential ownership
+  do not activate again or call the provider when a trusted operation adds a
+  workforce role/relationship.
+- New workforce Users and relationships start `PROVISIONED`. First-time
+  activation uses one opaque, one-time activation capability. Copy URL, QR and
+  assisted in-person activation are presentations of the same capability, and
+  the target user establishes their own password.
+- Copy/QR activation has a default `24 hours` expiry and assisted activation has
+  a default `15 minutes` expiry. The activation record stores only a secure
+  deterministic digest and bounded lifecycle timestamps; it is single-use,
+  revocable, regeneratable, and concurrency-safe.
+- Email, SMS and LINE/LIFF are not core activation dependencies and may become
+  future delivery channels for an activation URL. External identity providers
+  and ThaID are also outside Phase 4B and require a separate future decision.
+- Provider I/O remains outside long PostgreSQL transaction locks. Provider and
+  local effects use the existing compensation/reconciliation boundary and never
+  report success or create a duplicate provider identity from ambiguous state.
 
 ---
 
@@ -1238,6 +1310,15 @@ The following decisions are accepted for project initialization:
 36. Hospital approval/rejection and their consistency-critical PostgreSQL/audit writes are atomic business operations.
 37. PostgreSQL and Supabase Auth effects use explicit compensation/reconciliation rather than a simulated distributed transaction.
 38. Phase 3A is the accepted documentation/architecture contract; Phase 3B implements its first vertical slice without changing the Phase 2.1 authentication foundation.
+39. Phase 4B routine workforce provisioning is restricted to an ACTIVE Hospital Owner with direct membership in an ACTIVE target Hospital; ordinary members, Platform `ADMIN`, and parent/child hierarchy do not bypass this policy.
+40. Hospital staff use `HOSPITAL` plus `HospitalMembership(MEMBER)`; `DOCTOR`, `NURSE`, `COORDINATOR`, and `OTHER` remain profession classifications rather than top-level roles.
+41. OSM uses `OSM` plus a separate `OsmHospitalRelationship` with unique `(userId, hospitalId)`; the relationship is only an OSM–Hospital association and does not encode clinical/resource scope.
+42. Existing `ACTIVE` Users with valid provider mapping and established credential ownership reuse their identity and do not re-activate credentials when a trusted operation adds a workforce role or relationship.
+43. New workforce accounts start `PROVISIONED` and require target-owned first-time activation before entering `/app`.
+44. Workforce first-time activation uses one opaque, one-time activation capability; activation URL, QR, and assisted in-person flow are presentations of the same capability.
+45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 24 hours and assisted activation to 15 minutes.
+46. Workforce target users set their own passwords; Hospital staff must not know or set them, and email/SMS/LINE/LIFF/ThaID/external identity are not core activation dependencies.
+47. Workforce provider effects remain behind the existing server-only authentication boundary and use compensation/reconciliation outside the local PostgreSQL transaction boundary.
 
 ---
 
@@ -1262,7 +1343,8 @@ They require confirmed business requirements:
 - What is the self-service reapplication rule after a rejected hospital application?
 - How are competing hospital claims and existing non-active/provider-conflicting applicant accounts reconciled?
 - Will hospital verification ever be automated, and by which approved mechanism?
-- Which channel will future Patient/staff activation use: phone OTP, email, external identity provider, ThaID, or another mechanism? This does not replace the accepted Phase 2.1 National-ID/password Hospital applicant login contract.
+- Which Patient activation and identity-proofing mechanism will be used? This remains separate from the accepted workforce activation-link contract and the Phase 2.1 National-ID/password Hospital applicant login contract.
+- Which additional staff/OSM profile fields beyond the Phase 4A minimum input are required, and what validation/PII policy applies to them?
 - What clinical data requires immutable/auditable history?
 - What reports are required and what scope applies to each actor?
 
@@ -1293,7 +1375,9 @@ docs/
 ├── architecture/
 │   └── DEMI_ARCHITECTURE_BASELINE.md
 ├── phases/
-│   └── PHASE_3A_HOSPITAL_ONBOARDING.md
+│   ├── PHASE_3A_HOSPITAL_ONBOARDING.md
+│   ├── PHASE_3C_PLATFORM_ADMIN_BOOTSTRAP.md
+│   └── PHASE_4A_WORKFORCE_PROVISIONING.md
 └── adr/
     ├── README.md
     ├── 0001-person-and-user-identity.md
@@ -1302,7 +1386,8 @@ docs/
     ├── 0004-patient-provisioning-and-activation.md
     ├── 0005-server-side-application-boundary.md
     ├── 0006-transactional-business-operations.md
-    └── 0007-client-transport-and-mobile-ready-architecture.md
+    ├── 0007-client-transport-and-mobile-ready-architecture.md
+    └── 0008-workforce-provisioning-and-activation.md
 ```
 
 `CONTEXT.md` should summarize the current project state and direct agents/developers to the ADRs rather than duplicating every decision.
@@ -1316,6 +1401,8 @@ Operational entry points:
 - [Project context](../CONTEXT.md)
 - [ADR index](../adr/README.md)
 - [Phase 3A Hospital Onboarding Contract](../phases/PHASE_3A_HOSPITAL_ONBOARDING.md)
+- [Phase 4A Workforce Provisioning Contract](../phases/PHASE_4A_WORKFORCE_PROVISIONING.md)
+- [ADR-0008: Workforce Provisioning and First-Time Activation](../adr/0008-workforce-provisioning-and-activation.md)
 
 ---
 

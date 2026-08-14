@@ -8,7 +8,7 @@ web
 
 ## Users
 
-ผู้ใช้งาน DEMI มี 4 บทบาทระดับบน ได้แก่ `ADMIN`, `HOSPITAL`, `OSM` และ `PATIENT` Phase 3B target เพิ่ม public Hospital applicant ซึ่งยังไม่เป็น role ของระบบจนกว่า Platform `ADMIN` จะอนุมัติ application ผู้สมัครที่อนุมัติแล้วจึงเป็น `HOSPITAL` พร้อม OWNER membership ของ Hospital ที่เกี่ยวข้อง
+ผู้ใช้งาน DEMI มี 4 บทบาทระดับบน ได้แก่ `ADMIN`, `HOSPITAL`, `OSM` และ `PATIENT` Phase 3B target เพิ่ม public Hospital applicant ซึ่งยังไม่เป็น role ของระบบจนกว่า Platform `ADMIN` จะอนุมัติ application ผู้สมัครที่อนุมัติแล้วจึงเป็น `HOSPITAL` พร้อม OWNER membership ของ Hospital ที่เกี่ยวข้อง Hospital personnel ใช้ `HOSPITAL` กับ `HospitalMembership(MEMBER)` และ profession classification ส่วน OSM ใช้ `OSM` กับ Hospital association model แยก
 
 ## Product Purpose
 
@@ -24,7 +24,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - ผู้ใช้ Hospital เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password; Platform Admin ใช้ตัวระบุที่ตั้งจาก trusted bootstrap ในช่อง login เดียวกัน โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
 - Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
-- Staff/OSM invitation, Patient onboarding/activation และ clinical workflows ยังไม่อยู่ใน Phase 3A/3B target
+- Phase 4A ปิด contract สำหรับ Phase 4B workforce provisioning + first-time activation; implementation ยังไม่เริ่มในเอกสารนี้
 
 ## Capabilities and Constraints
 
@@ -34,10 +34,16 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - MVP ใช้ manual Platform `ADMIN` approval; approved applicant เป็น `HOSPITAL + OWNER` เฉพาะ Hospital นั้นและไม่เป็น Platform Admin
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น
 - Phase 3B capability vocabulary จำกัดที่ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject`
+- Phase 4B workforce provisioning จำกัดที่ active Hospital Owner ของ target Hospital โดยใช้ operation vocabulary `membership:read`, `membership:create` และ `osm:provision`; ordinary Hospital member และ Platform `ADMIN` ไม่ bypass policy
+- Hospital personnel ใช้ `HOSPITAL + HospitalMembership(MEMBER)` กับ `DOCTOR`, `NURSE`, `COORDINATOR` หรือ `OTHER`; profession ไม่ใช่ top-level role หรือ authority ด้วยตัวเอง
+- OSM ใช้ `OsmHospitalRelationship` แยกจาก `HospitalMembership` และ relationship นี้หมายถึง OSM–Hospital association เท่านั้น ไม่ใช่ area, assigned patient หรือ clinical scope
+- New workforce account เริ่ม `PROVISIONED` และ target user activate ด้วย opaque one-time activation URL; QR และ assisted in-person เป็น presentation ของ capability เดียวกัน โดย target เป็นผู้ตั้ง password เอง
+- Copy link/QR มี expiry default 24 ชั่วโมง และ assisted activation 15 นาที; email, SMS และ LINE/LIFF ไม่ใช่ core activation dependency แต่อาจเป็น future delivery channels ส่วน ThaID และ external identity ต้องมี decision แยก
+- Existing `ACTIVE` user ที่มี valid provider mapping และ credential ownership แล้ว reuse identity และเพิ่ม relationship ได้โดยไม่เรียก provider หรือ activation ซ้ำ
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
-- External Hospital Master provider, exact verification evidence, provider-account recovery, Patient activation, staff/OSM invitation, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements
+- External Hospital Master provider, exact verification evidence, provider-account recovery, Patient activation, OSM clinical/geographic scope, patient assignment, ownership governance, parent/child authority, staff transfer, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements
 
 ## Brand Commitments
 

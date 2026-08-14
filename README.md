@@ -2,7 +2,19 @@
 
 DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP ส่วน **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** ปิด decision contract แล้ว และงานถัดไปคือ Phase 4B implementation
+
+## Phase 4A Workforce provisioning and activation contract
+
+[Phase 4A decision contract](docs/phases/PHASE_4A_WORKFORCE_PROVISIONING.md) และ [ADR-0008](docs/adr/0008-workforce-provisioning-and-activation.md) กำหนด next vertical slice:
+
+- เฉพาะ active Hospital Owner ที่มี direct membership ใน target Hospital จึง provision workforce ได้; ordinary Hospital member, Platform `ADMIN` และ parent/child hierarchy ไม่ bypass policy
+- Hospital staff ใช้ `HOSPITAL + HospitalMembership(MEMBER) + Profession`; OSM ใช้ `OSM + OsmHospitalRelationship` แยก โดยไม่สร้าง patient/area/clinical scope
+- Person/User และ role เดิมต้องถูก reuse; existing `ACTIVE` user ที่ provider mapping ถูกต้องเพิ่ม relationship ได้ทันทีโดยไม่ activate credential หรือเรียก provider ซ้ำ
+- New workforce user เริ่ม `PROVISIONED` และ activate ด้วย opaque one-time activation URL; QR และ assisted in-person เป็น presentation ของ capability เดียวกัน ผู้ใช้ตั้ง password ของตนเอง
+- Copy link/QR ใช้ expiry 24 ชั่วโมง และ assisted activation ใช้ 15 นาที; email, SMS, LINE/LIFF, ThaID และ external identity ไม่ใช่ core activation dependency
+
+Phase 4B จะ implement workforce provisioning + activation MVP ตาม contract นี้ โดย Phase 4A ยังไม่มี feature code, token generation code, Prisma schema หรือ migration ใหม่
 
 ## Phase 3A Hospital onboarding contract
 
