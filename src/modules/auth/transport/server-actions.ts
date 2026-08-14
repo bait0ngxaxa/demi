@@ -25,7 +25,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบเลขบัตรประชาชนและรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบตัวระบุเข้าสู่ระบบและรหัสผ่านให้ถูกต้อง",
     };
   }
 
@@ -45,7 +45,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
-      message: "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง",
+      message: "ตัวระบุเข้าสู่ระบบหรือรหัสผ่านไม่ถูกต้อง",
     };
   }
 

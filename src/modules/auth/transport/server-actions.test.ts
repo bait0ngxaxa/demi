@@ -35,15 +35,38 @@ describe("authentication Server Actions", () => {
   it("rejects malformed transport input before authentication", async () => {
     const result = await loginAction(
       initialLoginActionState,
-      createLoginFormData("not-a-national-id", "password"),
+      createLoginFormData("", "password"),
     );
 
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบเลขบัตรประชาชนและรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบตัวระบุเข้าสู่ระบบและรหัสผ่านให้ถูกต้อง",
     });
     expect(mockedAuthenticateWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("accepts a custom first-admin identifier at the login transport boundary", async () => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+      },
+    });
+
+    await loginAction(
+      initialLoginActionState,
+      createLoginFormData("DEMI-ADMIN-ROOT", "valid-password"),
+    );
+
+    expect(mockedAuthenticateWithPassword).toHaveBeenCalledWith({
+      nationalId: "DEMI-ADMIN-ROOT",
+      password: "valid-password",
+    });
+    expect(mockedRedirect).toHaveBeenCalledWith("/app");
   });
 
   it("maps invalid credentials to a generic Thai response", async () => {
@@ -61,7 +84,7 @@ describe("authentication Server Actions", () => {
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
-      message: "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง",
+      message: "ตัวระบุเข้าสู่ระบบหรือรหัสผ่านไม่ถูกต้อง",
     });
     expect(unknownIdentityResult).toEqual(result);
     expect(JSON.stringify(result)).not.toContain("1000000000009");

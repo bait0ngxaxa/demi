@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 
 export const hospitalCodeSchema = z
@@ -9,7 +10,6 @@ export const hospitalCodeSchema = z
   .regex(/^[A-Z0-9][A-Z0-9_-]{0,31}$/, "Hospital code is invalid");
 
 const personNameSchema = z.string().trim().min(1).max(120);
-const onboardingPasswordSchema = z.string().min(12).max(128);
 
 export const hospitalOnboardingSubmissionSchema = z
   .object({
@@ -17,8 +17,8 @@ export const hospitalOnboardingSubmissionSchema = z
     nationalId: thaiNationalIdSchema,
     givenName: personNameSchema,
     familyName: personNameSchema,
-    password: onboardingPasswordSchema,
-    passwordConfirmation: onboardingPasswordSchema,
+    password: userOwnedPasswordSchema,
+    passwordConfirmation: userOwnedPasswordSchema,
   })
   .strict()
   .superRefine((input, context) => {

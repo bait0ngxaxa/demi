@@ -1058,7 +1058,7 @@ The implementation structure and environment commands are maintained in the repo
 The confirmed primary interactive login flow is:
 
 ```text
-Thai National ID + user-owned password
+Thai National ID or trusted Admin identifier + user-owned password
         ↓
 server validation + HMAC identity resolution
         ↓
@@ -1073,8 +1073,9 @@ validated provider subject = User.authSubject
 ACTIVE ActorContext
 ```
 
-- National ID identifies the Person for login resolution; it is not the password or an authorization source.
-- Raw National ID is not stored in a new login column, sent to Supabase, logged, or returned to the browser.
+- The login identifier identifies the Person for login resolution; normal Hospital identities use Thai National ID, while the trusted first-admin bootstrap may choose a bounded custom identifier in the same login field. The identifier is not the password or an authorization source.
+- Raw National ID or custom Admin identifier is not stored in a new login column, sent to Supabase, logged, or returned to the browser.
+- Hospital onboarding and other role-creation paths retain strict Thai National ID validation; the relaxed identifier rule exists only so the trusted first-admin identity can use the shared login adapter.
 - The provider alias is a server-only adapter identifier, not a contact address or source of DEMI authority.
 - `User.authSubject` retains its established provider-subject meaning.
 - Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.

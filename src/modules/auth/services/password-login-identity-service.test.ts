@@ -10,6 +10,7 @@ import {
 } from "./password-login-identity-service";
 
 const nationalId = "1000000000009";
+const adminIdentifier = "DEMI-ADMIN-ROOT";
 const personId = "22222222-2222-4222-8222-222222222222";
 const userId = "11111111-1111-4111-8111-111111111111";
 
@@ -49,6 +50,23 @@ describe("password login identity resolution", () => {
     expect(JSON.stringify(vi.mocked(store.findUserByPersonId).mock.calls)).not.toContain(
       nationalId,
     );
+  });
+
+  it("resolves a custom first-admin identifier through the same identity namespace", async () => {
+    const findPerson = createPersonResolver();
+    const store = createStore();
+
+    await expect(
+      resolvePasswordLoginIdentity(adminIdentifier, { findPerson, store }),
+    ).resolves.toMatchObject({
+      authSubject: "provider-subject-1",
+      providerLoginAlias: `${userId}@auth.demi.internal`,
+    });
+
+    expect(findPerson).toHaveBeenCalledWith({
+      namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
+      value: adminIdentifier,
+    });
   });
 
   it("returns no login identity when the Person is unknown", async () => {

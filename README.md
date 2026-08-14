@@ -36,6 +36,26 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 - `npm run db:seed` เป็น production-safe entrypoint ที่ import `prisma/seed/hospital-master-v2.json` ไปยัง database ตาม `DATABASE_URL` และ `DIRECT_URL` ด้วย stable `hospitalCode` upsert; ไม่ลบ record อื่นและไม่ reset `ACTIVE` status
 - ก่อนเปิด public traffic ต้องมี shared/deployment-level rate limiting และ production owner/process สำหรับ master data กับ verification evidence; ยังไม่มีการเพิ่ม Redis หรือ provider integration ใน slice นี้
 
+## Phase 3C Platform Admin bootstrap
+
+Fresh DEMI environment ที่ยังไม่มี Platform `ADMIN` ต้องสร้างผู้ดูแลระบบคนแรกผ่าน trusted server/developer environment เท่านั้น:
+
+```bash
+npm run admin:bootstrap
+```
+
+คำสั่งนี้เป็น interactive CLI ภาษาไทย รับ Thai National ID/ตัวระบุ Admin ที่ตั้งเอง, ชื่อ และ user-owned password โดยไม่รับข้อมูลตัวตนหรือ password ผ่าน command-line arguments และไม่ echo password บน terminal เมื่อ terminal รองรับ โครงการไม่มี public “Create Admin”, admin signup page, anonymous Server Action หรือ HTTP endpoint สำหรับ bootstrap
+
+- bootstrap จะหยุดด้วย conflict ทันทีเมื่อมี `UserRole.ADMIN` อยู่แล้ว ไม่ว่าสถานะ User จะเป็น `ACTIVE`, `SUSPENDED`, `PROVISIONED` หรือ `INVITED`
+- Admin ใช้ตัวระบุในช่องเดียวกับ National ID ได้อย่างอิสระภายใน bounded login schema โดยไม่ตรวจ category/checksum; Hospital onboarding และ role อื่นยังตรวจ Thai National ID แบบ strict เดิม
+- ทั้ง Admin identifier และ Thai National ID ใช้ HMAC namespace `thai-national-id` เดิม; ไม่ persist raw identifier
+- provider password identity ใช้ `provisionPasswordAuthIdentity()` และ opaque `User.id`-derived alias เดิม; operator จะไม่เห็น alias หรือ secret
+- final authority grant ใช้ PostgreSQL `Serializable` transaction ตรวจ guard ซ้ำ แล้วจึงสร้าง `UserRole.ADMIN`, เปลี่ยน User เป็น `ACTIVE` และเขียน audit event
+- การสร้าง admin จะไม่สร้าง HOSPITAL role หรือ HospitalMembership; admin login ใช้ `/login` ด้วยตัวระบุที่ตั้งตอน bootstrap + password ส่วน Hospital applicant ใช้ Thai National ID + password ตาม flow เดิม
+- `DATABASE_URL`, `DIRECT_URL` และ Supabase credentials เป็นตัวกำหนด environment target ปัจจุบันเหมือนคำสั่งอื่น ผู้ปฏิบัติงานต้องตรวจ credentials ก่อนรัน และห้ามใช้ production credentials ใน local development
+
+Additional Platform Admin management, invitation, recovery, removal และ password reset ยังไม่อยู่ใน scope ของ Phase 3C ดู contract ได้ที่ [Phase 3C document](docs/phases/PHASE_3C_PLATFORM_ADMIN_BOOTSTRAP.md)
+
 ## Development setup
 
 1. Copy `.env.example` to `.env` (or export the same variables in the shell). For local development, `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` must belong to the same Supabase development project. Production supplies the same variable names with credentials for the Supabase production project. Generate a server-only `IDENTITY_HASH_SECRET` with at least 32 characters. `SUPABASE_SERVICE_ROLE_KEY` must only be used in the trusted server environment and must never be exposed to the browser. Never use production credentials for local development.
@@ -120,7 +140,7 @@ Phase 2.1 implements the following web flow:
 
 ```text
 /login
-  ↓ Thai National ID validation
+  ↓ login identifier validation (Thai National ID หรือ Admin identifier)
 server-side HMAC identity resolution
   ↓ Person → User → opaque provider login alias
 Supabase password authentication
@@ -133,11 +153,12 @@ ACTIVE DEMI User + ActorContext
 /login
 ```
 
-- Login ใช้ Server Action รับเลขบัตรประชาชนไทยและ user-owned password โดย validate เลข 13 หลักและ checksum ฝั่ง server พร้อมจำกัดความยาว input
-- เลขบัตรประชาชนใช้เพื่อ identity resolution เท่านั้น: server คำนวณ HMAC ด้วย namespace `thai-national-id` แล้วค้น `Person.identityKeyHash`; ไม่เพิ่มหรือ query plaintext National ID
+- Login ใช้ Server Action รับ Thai National ID หรือ bounded Admin identifier และ user-owned password โดย trim/validate ความยาวฝั่ง server
+- Thai National ID ของ Hospital applicant ยังคง validate เลข 13 หลักและ checksum ใน onboarding; Admin identifier ที่ trusted bootstrap ตั้งได้ไม่ต้องผ่าน strict Thai National ID validation
+- ตัวระบุใช้เพื่อ identity resolution เท่านั้น: server คำนวณ HMAC ด้วย namespace `thai-national-id` แล้วค้น `Person.identityKeyHash`; ไม่เพิ่มหรือ query plaintext identifier
 - Supabase รับ opaque internal alias ที่ derive จาก stable `User.id` เช่น `<user-uuid>@auth.demi.internal`; alias เป็น authentication adapter detail ไม่ใช่อีเมลจริง contact method หรือ authorization source
 - หลัง `signInWithPassword()` สำเร็จ ระบบเรียก provider `getUser()` เพื่อยืนยันตัวตนอีกครั้งก่อน resolve `ActorContext`
-- provider subject ต้องตรงกับ `User.authSubject` ที่ resolve จาก National ID และยังต้อง map กลับเป็น DEMI User เดิม มิฉะนั้นระบบ fail closed และจบ current session
+- provider subject ต้องตรงกับ `User.authSubject` ที่ resolve จาก login identifier และยังต้อง map กลับเป็น DEMI User เดิม มิฉะนั้นระบบ fail closed และจบ current session
 - เฉพาะ provider subject ที่ map กับ `User.status = ACTIVE` เท่านั้นที่เข้า `/app` ได้
 - `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูกปฏิเสธโดยไม่มี automatic Person/User/role provisioning
 - `/app` ตรวจสิทธิ์ฝั่ง server; browser state, Supabase metadata, role หรือ hospital ID จาก client ไม่ถูกใช้เป็น authority
@@ -169,7 +190,7 @@ Phase 2.1 ไม่ได้เพิ่ม Hospital onboarding, staff/OSM invit
 ใช้เฉพาะ Supabase development account ที่มี opaque internal alias, map กับ `User.authSubject`, เชื่อมกับ Person ผ่าน HMAC ของ National ID และมีสถานะ `ACTIVE`; ห้ามใช้ production credentials
 
 1. เปิด `/login`
-2. กรอกเลขบัตรประชาชนไทยที่ provision แล้วและรหัสผ่านที่ถูกต้อง
+2. กรอก Thai National ID ที่ provision แล้ว หรือ Admin identifier ที่ bootstrap ไว้ และรหัสผ่านที่ถูกต้อง
 3. ยืนยันว่า redirect ไป `/app`
 4. Refresh `/app`
 5. ยืนยันว่า session ยังคงอยู่
@@ -193,12 +214,14 @@ prisma/schema.prisma                    stable persistence model
 prisma/migrations/                      reproducible PostgreSQL migrations
 prisma/seed/hospital-master-v2.json     approved 78-record Hospital Master seed data
 scripts/seed-hospital-master.mjs        environment-agnostic idempotent Hospital Master seed
+scripts/admin-bootstrap.mjs             trusted interactive first Platform Admin CLI
 src/lib/env/                            server environment validation
 src/lib/auth/                           Supabase Auth server adapter
 src/lib/db/                             Prisma server singleton
 src/modules/identity/                   identity resolution service
 src/modules/auth/                       authentication service, ActorContext and policy kernel
 src/modules/hospital-onboarding/        onboarding service, policy, transport and master lookup
+src/modules/platform-admin-bootstrap/   trusted first-admin Application Service and schemas
 src/modules/audit/                      bounded audit input/persistence service
 src/shared/errors/                      predictable application errors
 tests/integration/                      focused PostgreSQL/Prisma constraint tests

@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดย implementation ทำตาม contract ของ Phase 3A และ reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
@@ -35,16 +35,32 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 Phase 3B implement persistence ตาม contract แล้ว: `Hospital` มี unique `hospitalCode` และ optional parent reference ที่ไม่ใช่ authorization primitive, ส่วน `HospitalOnboardingApplication` แยก lifecycle/history พร้อม reviewer attribution และ database guard สำหรับ pending claim เดียวต่อ Hospital การ import master ใช้ `prisma/seed/hospital-master-v2.json` และ `npm run db:seed` แบบ idempotent โดยใช้ stable `hospitalCode` upsert ไม่ลบ unrelated rows และไม่ reset `ACTIVE` status
 
+## Phase 3C Platform Admin Bootstrap
+
+Fresh environment ที่ยังไม่มี Platform `ADMIN` ใช้ trusted interactive CLI เป็น operational entry point เดียวสำหรับสร้าง Platform Admin คนแรก:
+
+- รัน `npm run admin:bootstrap` จาก developer/server environment ที่ credentials ชี้ไปยัง DEMI database และ Supabase project ที่ต้องการ
+- CLI รับ Thai National ID/ตัวระบุ Admin ที่ตั้งเอง, given name, family name และ user-owned password แบบ interactive; ไม่รับ identity/password ผ่าน argv และไม่แสดง password
+- Admin identifier ใช้ bounded login schema เดียวกับ `/login` โดยไม่ตรวจ category/checksum; Hospital onboarding และ role อื่นยังใช้ strict Thai National ID schema เดิม
+- Application Service ใช้ HMAC namespace `thai-national-id`, ปฏิเสธ existing Person/User และตรวจ `UserRole.ADMIN` โดยไม่กรอง User status
+- สร้างเฉพาะ `Person` + `User(PROVISIONED)` แล้วเรียก `provisionPasswordAuthIdentity()` เดิม; หลังตรวจ `authSubject` mapping ใช้ final PostgreSQL `Serializable` transaction re-check ADMIN, เปลี่ยน User เป็น `ACTIVE`, สร้าง `ADMIN` role และ audit event `platform_admin.bootstrapped`
+- Supabase Auth กับ PostgreSQL ใช้ explicit compensation/reconciliation; provider/local identity ที่สร้างโดย operation จะถูกลบได้เฉพาะเมื่อ ownership และ expected state ตรงกัน และไม่สร้าง success จาก partial authority
+- ผลลัพธ์ไม่มี `HOSPITAL` role, `HospitalMembership` หรือ OWNER membership; Admin login ใช้ `/login` ด้วยตัวระบุที่ตั้งตอน bootstrap + password ส่วน role อื่นใช้ Thai National ID + password ตามปกติ
+- ไม่มี public admin signup, hidden browser route, HTTP API หรือ client-controlled role input และยังไม่เพิ่ม admin management/recovery/invitation/password-reset governance
+- database target ไม่ใช้ selector ใหม่: `DATABASE_URL`, `DIRECT_URL` และ Supabase credentials ของ process เป็นตัวกำหนด environment เช่นเดียวกับ setup เดิม ผู้ปฏิบัติงานต้องตรวจ target ก่อนรัน
+
+รายละเอียด contract และ acceptance path อยู่ที่ [Phase 3C Platform Admin Bootstrap](./phases/PHASE_3C_PLATFORM_ADMIN_BOOTSTRAP.md)
+
 ## Phase 2.1 National ID Login Adapter
 
 ส่วนที่ implement แล้วใน Phase 2.1 มีขอบเขตดังต่อไปนี้:
 
-- `/login` เป็นหน้าเข้าสู่ระบบภาษาไทยแบบ responsive รับเลขบัตรประชาชนไทยและ user-owned password ผ่าน Server Action โดยไม่ต้องแสดงหรือขออีเมล
-- Login input validate ด้วย Zod ฝั่ง server: trim เฉพาะช่องว่างรอบนอก, ต้องเป็นเลข ASCII 13 หลัก, checksum ไทยถูกต้อง และมี length bound ก่อนทำ HMAC/database/provider work
-- server ใช้ identity service source เดิมคำนวณ HMAC ด้วย namespace `thai-national-id` แล้ว resolve `Person.identityKeyHash → Person → User`
+- `/login` เป็นหน้าเข้าสู่ระบบภาษาไทยแบบ responsive รับ Thai National ID หรือ bounded Admin identifier และ user-owned password ผ่าน Server Action โดยไม่ต้องแสดงหรือขออีเมล
+- Login input validate ด้วย Zod ฝั่ง server: trim เฉพาะช่องว่างรอบนอก, ต้องไม่ว่างและมี length bound ก่อนทำ HMAC/database/provider work; strict Thai National ID checksum ยังคงอยู่ที่ Hospital onboarding และ role อื่น
+- server ใช้ identity service source เดิมคำนวณ HMAC ด้วย namespace `thai-national-id` แล้ว resolve `Person.identityKeyHash → Person → User` สำหรับทั้งสอง identifier แบบไม่เก็บ raw value
 - Supabase password authentication ใช้ opaque internal alias ที่ derive จาก stable `User.id`; alias ไม่บรรจุ National ID ไม่ใช่อีเมลจริง/contact method และไม่ถูก expose ใน `ActorContext` หรือ browser
 - หลัง provider authentication สำเร็จ ระบบ validate provider identity ด้วย `auth.getUser()` แล้วใช้ service เดิม resolve `User.authSubject` เป็น DEMI actor
-- subject ที่ provider คืนต้องตรงกับ `User.authSubject` ที่ National ID resolution เลือกไว้; mismatch ถูก deny และ local sign-out แบบ fail closed
+- subject ที่ provider คืนต้องตรงกับ `User.authSubject` ที่ login identifier resolution เลือกไว้; mismatch ถูก deny และ local sign-out แบบ fail closed
 - actor resolution แยกผล `UNAUTHENTICATED`, `APPLICATION_ACCESS_DENIED` และ `AUTHORIZED`; provider/database infrastructure failure ยังคง throw เป็น predictable infrastructure error
 - เฉพาะ mapped `User.status = ACTIVE` ที่ resolve `ActorContext` ได้จึงเข้า `/app`; `PROVISIONED`, `INVITED`, `SUSPENDED` และ unmapped provider user ถูก deny
 - login ไม่สร้าง `Person`, `User`, role หรือ hospital membership และไม่อ่าน authority จาก provider metadata หรือ browser state

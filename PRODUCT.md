@@ -21,13 +21,15 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 ## Operating Context
 
 - Responsive Web เป็น platform ปัจจุบันและต้องใช้งานได้ดีบนหน้าจอขนาดเล็ก
-- ผู้ใช้เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
+- ผู้ใช้ Hospital เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password; Platform Admin ใช้ตัวระบุที่ตั้งจาก trusted bootstrap ในช่อง login เดียวกัน โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
+- Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
 - Staff/OSM invitation, Patient onboarding/activation และ clinical workflows ยังไม่อยู่ใน Phase 3A/3B target
 
 ## Capabilities and Constraints
 
 - ไม่มี public role selection หรือ automatic provisioning ระหว่าง login
+- มีเฉพาะ first-admin bootstrap แบบ trusted CLI/server-side operation; bootstrap ปฏิเสธทันทีเมื่อมี `UserRole.ADMIN` ใด ๆ อยู่แล้ว และไม่ใช่ generic admin-management system
 - Public applicant สร้างได้เฉพาะ Hospital Onboarding Application ที่ match controlled Hospital Master entry; ผู้สมัครสร้าง role, OWNER membership หรือ ACTIVE Hospital เองไม่ได้
 - MVP ใช้ manual Platform `ADMIN` approval; approved applicant เป็น `HOSPITAL + OWNER` เฉพาะ Hospital นั้นและไม่เป็น Platform Admin
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น

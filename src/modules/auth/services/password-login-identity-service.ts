@@ -3,12 +3,12 @@ import "server-only";
 import { getPrisma } from "@/lib/db/prisma";
 import {
   THAI_NATIONAL_IDENTITY_NAMESPACE,
-  thaiNationalIdSchema,
   type IdentityReference,
 } from "@/modules/identity/schemas/identity-schemas";
 import { findPersonByIdentity } from "@/modules/identity/services/identity-service";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
+import { passwordLoginIdentifierSchema } from "../schemas/login-schema";
 import { createProviderLoginAlias } from "./provider-login-alias";
 
 export type ResolvedPasswordLoginIdentity = {
@@ -54,10 +54,10 @@ export async function resolvePasswordLoginIdentity(
   nationalId: string,
   dependencies: PasswordLoginIdentityDependencies = {},
 ): Promise<ResolvedPasswordLoginIdentity | null> {
-  const parsed = thaiNationalIdSchema.safeParse(nationalId);
+  const parsed = passwordLoginIdentifierSchema.safeParse(nationalId);
 
   if (!parsed.success) {
-    throw new ValidationError("Thai National ID is invalid");
+    throw new ValidationError("Login identity is invalid");
   }
 
   const findPerson = dependencies.findPerson ?? findPersonByIdentity;

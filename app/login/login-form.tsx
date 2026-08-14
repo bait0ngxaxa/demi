@@ -33,7 +33,7 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
-          เลขบัตรประชาชน
+          เลขบัตรประชาชน / ตัวระบุ Admin
         </label>
         <input
           aria-describedby={errorMessage ? "login-error" : undefined}
@@ -42,11 +42,10 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
           disabled={pending}
           id="nationalId"
-          inputMode="numeric"
-          maxLength={13}
+          inputMode="text"
+          maxLength={32}
           name="nationalId"
-          pattern="[0-9]{13}"
-          placeholder="1234567890123"
+          placeholder="เลขบัตรประชาชน หรือรหัส Admin"
           required
           spellCheck={false}
           type="text"
