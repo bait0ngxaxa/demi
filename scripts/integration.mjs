@@ -282,6 +282,12 @@ function migrate(environment) {
   });
 }
 
+function generate(environment) {
+  run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "generate"], {
+    env: environment,
+  });
+}
+
 function test(environment) {
   run(
     process.execPath,
@@ -293,6 +299,12 @@ function test(environment) {
     ],
     { env: environment },
   );
+}
+
+function verifyIntegration(environment) {
+  generate(environment);
+  migrate(environment);
+  test(environment);
 }
 
 const action = process.argv[2];
@@ -309,7 +321,7 @@ if (action === "migrate") {
 }
 
 if (action === "test") {
-  test(environment);
+  verifyIntegration(environment);
   process.exit(0);
 }
 
@@ -328,8 +340,7 @@ if (action === "db:up") {
   try {
     databaseDown(runtime, environment);
     databaseUp(runtime, environment);
-    migrate(environment);
-    test(environment);
+    verifyIntegration(environment);
   } finally {
     databaseDown(runtime, environment);
   }

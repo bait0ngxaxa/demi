@@ -78,23 +78,27 @@ npm test
 
 For database integration tests, the repository includes a disposable PostgreSQL container bound only to `127.0.0.1:55432`. Its committed local-only configuration is in `.env.integration`; never put Supabase or production credentials in that file.
 
-Run the complete clean-database verification and automatic cleanup with one command:
+The integration test runner expects the disposable PostgreSQL container to already be running. Start it from a Docker-enabled WSL terminal and leave it running:
 
-```powershell
-npm run test:integration:local
+```bash
+docker compose --env-file .env.integration -f compose.integration.yaml up -d --wait --wait-timeout 60
 ```
 
-To keep the database open and run each step manually:
+Then run the complete integration verification with one command:
 
 ```powershell
-npm run test:db:reset
-npm run test:db:status
-npm run prisma:migrate:test
 npm run test:integration
-npm run test:db:down
 ```
 
-The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. `npm run test:db:reset` recreates an empty database; `npm run test:db:down` removes the Compose resources. The command wrapper uses Docker from the current shell when available. On Windows it falls back to Docker in the WSL distribution configured by `DEMI_DOCKER_WSL_DISTRO` (default `Ubuntu`) and keeps that distribution alive until `test:db:down` so the container does not stop unexpectedly.
+`npm run test:integration` validates the local integration environment, runs `prisma generate`, applies migrations with `prisma migrate deploy`, and runs Vitest. It does not invoke Docker or WSL, so an agent can run it while the container remains available.
+
+When finished, stop and remove the disposable container from WSL:
+
+```bash
+docker compose --env-file .env.integration -f compose.integration.yaml down --volumes --remove-orphans
+```
+
+The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. The optional `npm run test:integration:local` command still manages the full Docker lifecycle automatically through the repository wrapper; use the manual WSL workflow above when the test runner must avoid Docker/WSL discovery.
 
 To use another dedicated local PostgreSQL test database instead, export these local connection variables before running:
 
