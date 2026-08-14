@@ -18,6 +18,7 @@ function createActor(overrides: Partial<ActorContext> = {}): ActorContext {
         hospitalStatus: HospitalStatus.ACTIVE,
       },
     ],
+    osmHospitalRelationships: [],
     ...overrides,
   };
 }

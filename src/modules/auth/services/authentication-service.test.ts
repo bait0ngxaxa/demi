@@ -28,6 +28,7 @@ const activeUser: ActorUserRecord = {
   status: UserStatus.ACTIVE,
   roles: [],
   hospitalMemberships: [],
+  osmHospitalRelationships: [],
 };
 
 const loginInput = {
@@ -123,6 +124,7 @@ describe("password authentication service", () => {
         personId: "person-1",
         roles: [],
         hospitalMemberships: [],
+        osmHospitalRelationships: [],
       },
     });
     expect(provider.getUser).toHaveBeenCalledOnce();

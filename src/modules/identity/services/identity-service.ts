@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/lib/env/server";
@@ -37,6 +37,8 @@ export type IdentityStore = {
   }): Promise<PersonRecord>;
 };
 
+export type IdentityDatabase = Pick<PrismaClient, "person"> | Prisma.TransactionClient;
+
 function parseIdentityReference(input: IdentityReference): IdentityReference {
   const result = identityReferenceSchema.safeParse(input);
 
@@ -47,6 +49,10 @@ function parseIdentityReference(input: IdentityReference): IdentityReference {
   return result.data;
 }
 
+function isSerializationConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+}
+
 export function hashIdentityReference(input: IdentityReference): string {
   const normalized = parseIdentityReference(input);
   return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
@@ -54,29 +60,48 @@ export function hashIdentityReference(input: IdentityReference): string {
     .digest("hex");
 }
 
-const prismaIdentityStore: IdentityStore = {
-  async findPersonByIdentityHash(identityKeyHash): Promise<PersonRecord | null> {
-    try {
-      return await getPrisma().person.findUnique({
-        where: { identityKeyHash },
-      });
-    } catch {
-      throw new InfrastructureError();
-    }
-  },
+export function createIdentityStore(database: IdentityDatabase): IdentityStore {
+  return {
+    async findPersonByIdentityHash(identityKeyHash): Promise<PersonRecord | null> {
+      try {
+        return await database.person.findUnique({
+          where: { identityKeyHash },
+        });
+      } catch (error: unknown) {
+        if (isSerializationConflict(error)) {
+          throw error;
+        }
 
-  async createPerson(input): Promise<PersonRecord> {
-    try {
-      return await getPrisma().person.create({
-        data: input,
-      });
-    } catch (error: unknown) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw new ConflictError("A person with this identity already exists");
+        throw new InfrastructureError();
       }
+    },
 
-      throw new InfrastructureError();
-    }
+    async createPerson(input): Promise<PersonRecord> {
+      try {
+        return await database.person.create({
+          data: input,
+        });
+      } catch (error: unknown) {
+        if (isSerializationConflict(error)) {
+          throw error;
+        }
+
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new ConflictError("A person with this identity already exists");
+        }
+
+        throw new InfrastructureError();
+      }
+    },
+  };
+}
+
+const prismaIdentityStore: IdentityStore = {
+  findPersonByIdentityHash(identityKeyHash) {
+    return createIdentityStore(getPrisma()).findPersonByIdentityHash(identityKeyHash);
+  },
+  createPerson(input) {
+    return createIdentityStore(getPrisma()).createPerson(input);
   },
 };
 

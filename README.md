@@ -2,7 +2,7 @@
 
 DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP ส่วน **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** ปิด decision contract แล้ว และงานถัดไปคือ Phase 4B implementation
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP ส่วน **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** และ **Phase 4B: Workforce Provisioning + First-Time Activation MVP Vertical Slice** เสร็จแล้ว
 
 ## Phase 4A Workforce provisioning and activation contract
 
@@ -14,7 +14,7 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 - New workforce user เริ่ม `PROVISIONED` และ activate ด้วย opaque one-time activation URL; QR และ assisted in-person เป็น presentation ของ capability เดียวกัน ผู้ใช้ตั้ง password ของตนเอง
 - Copy link/QR ใช้ expiry 24 ชั่วโมง และ assisted activation ใช้ 15 นาที; email, SMS, LINE/LIFF, ThaID และ external identity ไม่ใช่ core activation dependency
 
-Phase 4B จะ implement workforce provisioning + activation MVP ตาม contract นี้ โดย Phase 4A ยังไม่มี feature code, token generation code, Prisma schema หรือ migration ใหม่
+Phase 4B implementation อยู่ใน `src/modules/workforce/`, `/app/workforce` และ `/activate/workforce` โดยมีรายละเอียด handoff ที่ [Phase 4B Workforce Provisioning](docs/phases/PHASE_4B_WORKFORCE_PROVISIONING.md) งานนี้ไม่รวม patient/clinical workflow หรือ OSM scope ที่ยังไม่ยืนยัน
 
 ## Phase 3A Hospital onboarding contract
 

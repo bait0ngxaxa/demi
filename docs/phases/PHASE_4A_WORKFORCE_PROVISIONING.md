@@ -1,12 +1,12 @@
 # Phase 4A — Hospital Workforce Provisioning Requirement Closure and Architecture Contract
 
-- สถานะ: Requirement/architecture contract สำหรับ Phase 4B; ยังไม่มี feature code หรือ migration ใน Phase 4A
+- สถานะ: Accepted requirement/architecture contract สำหรับ Phase 4B; Phase 4A เองไม่มี feature code หรือ migration
 - วันที่: 2026-08-14
-- ขอบเขต: Hospital personnel/OSM provisioning และ first-time activation contract; ยังไม่มี implementation
-- งานถัดไป: Phase 4B — Workforce Provisioning MVP Vertical Slice Implementation
+- ขอบเขต: Hospital personnel/OSM provisioning และ first-time activation contract
+- Implementation handoff: [Phase 4B Workforce Provisioning](./PHASE_4B_WORKFORCE_PROVISIONING.md)
 - Decision closure: Owner-confirmed workforce authority, OSM persistence และ first-time activation ถูกบันทึกใน [ADR-0008](../adr/0008-workforce-provisioning-and-activation.md)
 
-เอกสารนี้ปิดขอบเขตและกติกาที่ implementation agent ต้องใช้ต่อ โดยแยกสิ่งที่ยืนยันแล้วออกจากข้อเสนอและ open requirement อย่างชัดเจน ไม่ขยายไปยัง patient หรือ clinical workflow
+เอกสารนี้ปิดขอบเขตและกติกาที่ Phase 4B implementation ใช้ โดยแยกสิ่งที่ยืนยันแล้วออกจากข้อเสนอและ open requirement อย่างชัดเจน ไม่ขยายไปยัง patient หรือ clinical workflow
 
 ## หลักฐานและระดับความแน่นอน
 
@@ -798,8 +798,8 @@ workforce provisioning MVP เว้นแต่ implementation จะขยา�
 ### Validation gate
 
 - Claim สำคัญในเอกสารนี้ผูกกับ current schema, ADR, Phase 3 contract, source/tests หรือ legacy links และถูกทำเครื่องหมายเป็นข้อเสนอ/open เมื่อยังไม่ยืนยัน
-- Scope ตรงกับ Phase 4A decision closure; ไม่มี UI, Server Action, route,
-  migration, token generation code, provider integration หรือ product code ถูกเพิ่ม
+- Scope ตรงกับ Phase 4A decision closure; Phase 4A ไม่ได้เพิ่ม UI, Server Action,
+  route, migration, token generation code, provider integration หรือ product code
 - Handoff แยก accepted activation/OSM model/owner policy ออกจาก remaining OSM
   scope, governance และ profile-field questions
 - Contract ยืนยันว่า browser ไม่สามารถกำหนด role, membership, profession, status หรือ scope เป็น authority
@@ -822,5 +822,5 @@ ADR-0008 ถูกสร้างเป็น Accepted cross-module decision แ
   membership, OSM association, provisioning/activation boundary, existing
   ACTIVE reuse และ delivery-channel independence
 
-รายละเอียด implementation, schema/migration และ feature code ยังเป็น Phase 4B
-เท่านั้น
+รายละเอียด implementation, schema/migration และ feature code อยู่ใน [Phase 4B
+implementation handoff](./PHASE_4B_WORKFORCE_PROVISIONING.md)

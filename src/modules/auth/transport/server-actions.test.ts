@@ -54,6 +54,7 @@ describe("authentication Server Actions", () => {
         personId: "person-1",
         roles: [],
         hospitalMemberships: [],
+        osmHospitalRelationships: [],
       },
     });
 

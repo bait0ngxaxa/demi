@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** ปิด decision contract แล้ว และ next implementation คือ Phase 4B Workforce Provisioning + Activation MVP
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract และ **Phase 4B Workforce Provisioning + Activation MVP** implement แล้ว
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
@@ -64,6 +64,16 @@ Decision ที่ยืนยันแล้วสำหรับ Phase 4B อ�
 - Copy link/QR ใช้ expiry default 24 ชั่วโมง และ assisted ใช้ 15 นาที; email, SMS และ LINE/LIFF ไม่ใช่ core dependency แต่อาจเป็น future delivery channels ส่วน ThaID และ external identity ต้องมี decision แยก
 - Provider I/O อยู่นอก local PostgreSQL transaction และใช้ compensation/reconciliation เดิม หาก provider/local finalization ไม่สอดคล้อง
 
+## Phase 4B Workforce Provisioning Implementation
+
+Implementation handoff อยู่ที่ [Phase 4B Workforce Provisioning](./phases/PHASE_4B_WORKFORCE_PROVISIONING.md) และยึด invariant เหล่านี้:
+
+- Staff ใช้ `HOSPITAL + HospitalMembership(MEMBER)` ส่วน OSM ใช้ `OSM + OsmHospitalRelationship` แยก โดย relationship ไม่ใช่ clinical/resource scope
+- เฉพาะ `HOSPITAL` ที่มี direct `ACTIVE OWNER` membership ใน `ACTIVE` target Hospital จึง provision workforce ได้; Platform `ADMIN` และ parent/child relation ไม่ bypass policy
+- New User เริ่ม `PROVISIONED` และใช้ one-time activation URL; QR/assisted เป็น presentation เดียวกัน, token เก็บเป็น digest, และ target user ตั้ง password เอง
+- Existing `ACTIVE` User ที่ provider mapping ถูกต้อง reuse credential และรับ relationship ใหม่เป็น `ACTIVE` โดยไม่ activate หรือเรียก provider ซ้ำ
+- Activation provider I/O อยู่นอก long local transaction และใช้ guarded compensation/reconciliation; provisioned/ambiguous account เข้า `/app` ไม่ได้
+
 ## Phase 2.1 National ID Login Adapter
 
 ส่วนที่ implement แล้วใน Phase 2.1 มีขอบเขตดังต่อไปนี้:
@@ -91,7 +101,7 @@ Decision ที่ยืนยันแล้วสำหรับ Phase 4B อ�
 - operation ข้าม Supabase Auth กับ PostgreSQL ไม่ถูกทำเป็น fake transaction: หาก persist subject ล้มเหลวหลัง provider creation จะลบ provider user ที่เพิ่งสร้างเป็น compensation; cleanup failure เป็น infrastructure/reconciliation error และไม่รายงาน success
 - Repository ยังไม่มี shared distributed login rate limiter; bounded validation และ provider safeguards เป็น boundary ปัจจุบัน ส่วน deployment-level rate limiting เป็น security follow-up ก่อนขยาย public exposure
 
-Phase 2.1 ไม่ได้ implement provider-account transition สำหรับ workforce, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ clinical workflows และ primitive นี้ยังไม่มี public endpoint หรือ caller-specific activation policy; Phase 3B Hospital Onboarding เป็น higher-level workflow แรกที่รับผิดชอบ policy, user-owned credential establishment และ approval lifecycle ของ applicant ส่วน Phase 4A เป็น decision contract ที่กำหนด workforce one-time activation และ Phase 4B จะ implement workflow นี้โดยไม่เปลี่ยน authentication adapter
+Phase 2.1 ไม่ได้ implement provider-account transition สำหรับ workforce, LIFF identity linking, ThaID, native authentication, role capability matrix หรือ clinical workflows และ primitive นี้ยังไม่มี public endpoint หรือ caller-specific activation policy; Phase 3B Hospital Onboarding เป็น higher-level workflow แรกที่รับผิดชอบ policy, user-owned credential establishment และ approval lifecycle ของ applicant ส่วน Phase 4A เป็น decision contract และ Phase 4B implement workforce one-time activation workflow โดยไม่เปลี่ยน authentication adapter
 
 ## Phase 1 Foundation Implementation
 

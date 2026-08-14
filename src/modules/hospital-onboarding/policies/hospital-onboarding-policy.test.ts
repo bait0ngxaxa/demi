@@ -23,6 +23,7 @@ function actor(roles: Role[]): ActorContext {
         hospitalStatus: HospitalStatus.ACTIVE,
       },
     ],
+    osmHospitalRelationships: [],
   };
 }
 

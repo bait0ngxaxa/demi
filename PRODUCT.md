@@ -24,7 +24,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - ผู้ใช้ Hospital เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password; Platform Admin ใช้ตัวระบุที่ตั้งจาก trusted bootstrap ในช่อง login เดียวกัน โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
 - Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
-- Phase 4A ปิด contract สำหรับ Phase 4B workforce provisioning + first-time activation; implementation ยังไม่เริ่มในเอกสารนี้
+- Phase 4A ปิด contract และ Phase 4B implement แล้วสำหรับ workforce provisioning + first-time activation MVP; รายละเอียด implementation อยู่ที่ [Phase 4B handoff](docs/phases/PHASE_4B_WORKFORCE_PROVISIONING.md)
 
 ## Capabilities and Constraints
 
@@ -40,6 +40,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - New workforce account เริ่ม `PROVISIONED` และ target user activate ด้วย opaque one-time activation URL; QR และ assisted in-person เป็น presentation ของ capability เดียวกัน โดย target เป็นผู้ตั้ง password เอง
 - Copy link/QR มี expiry default 24 ชั่วโมง และ assisted activation 15 นาที; email, SMS และ LINE/LIFF ไม่ใช่ core activation dependency แต่อาจเป็น future delivery channels ส่วน ThaID และ external identity ต้องมี decision แยก
 - Existing `ACTIVE` user ที่มี valid provider mapping และ credential ownership แล้ว reuse identity และเพิ่ม relationship ได้โดยไม่เรียก provider หรือ activation ซ้ำ
+- New staff/OSM activation ใช้ one-time URL ที่เก็บเฉพาะ digest, รองรับ QR และ assisted handoff; target user ตั้ง password เอง แล้วกลับเข้าสู่ existing `/login`
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement

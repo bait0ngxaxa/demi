@@ -7,7 +7,11 @@ import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
-import type { ActorContext, ActorHospitalMembership } from "../types/actor-context";
+import type {
+  ActorContext,
+  ActorHospitalMembership,
+  ActorOsmHospitalRelationship,
+} from "../types/actor-context";
 
 export type ActorUserRecord = {
   id: string;
@@ -15,6 +19,7 @@ export type ActorUserRecord = {
   status: UserStatus;
   roles: readonly Role[];
   hospitalMemberships: readonly ActorHospitalMembership[];
+  osmHospitalRelationships: readonly ActorOsmHospitalRelationship[];
 };
 
 export type ActorContextStore = {
@@ -87,6 +92,15 @@ const prismaActorContextStore: ActorContextStore = {
               },
             },
           },
+          osmHospitalRelationships: {
+            select: {
+              hospitalId: true,
+              status: true,
+              hospital: {
+                select: { status: true },
+              },
+            },
+          },
         },
       });
 
@@ -105,6 +119,11 @@ const prismaActorContextStore: ActorContextStore = {
           profession: membership.profession,
           status: membership.status,
           hospitalStatus: membership.hospital.status,
+        })),
+        osmHospitalRelationships: user.osmHospitalRelationships.map((relationship) => ({
+          hospitalId: relationship.hospitalId,
+          status: relationship.status,
+          hospitalStatus: relationship.hospital.status,
         })),
       };
     } catch {
@@ -140,6 +159,7 @@ export async function resolveActorAccessByAuthSubject(
       personId: user.personId,
       roles: user.roles,
       hospitalMemberships: user.hospitalMemberships,
+      osmHospitalRelationships: user.osmHospitalRelationships,
     },
   };
 }

@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -36,6 +36,14 @@ async function resolveProtectedActor(): Promise<ActorContext> {
 export default async function ApplicationPage() {
   await connection();
   const actor = await resolveProtectedActor();
+  const canManageWorkforce =
+    actor.roles.includes(Role.HOSPITAL) &&
+    actor.hospitalMemberships.some(
+      (membership) =>
+        membership.membershipType === MembershipType.OWNER &&
+        membership.status === MembershipStatus.ACTIVE &&
+        membership.hospitalStatus === HospitalStatus.ACTIVE,
+    );
 
   return (
     <main className="min-h-svh bg-canvas text-ink">
@@ -102,6 +110,21 @@ export default async function ApplicationPage() {
               href="/app/admin/hospital-onboarding"
             >
               เปิดรายการคำขอ
+            </Link>
+          </section>
+        ) : null}
+
+        {canManageWorkforce ? (
+          <section className="mt-6 max-w-3xl rounded-[16px] border border-line bg-white p-5 sm:p-7">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">งานบุคลากรโรงพยาบาล</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              เพิ่มบุคลากรโรงพยาบาลหรือ อสม. ให้กับโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง
+            </p>
+            <Link
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-[12px] bg-brand px-5 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
+              href="/app/workforce"
+            >
+              เปิดการจัดการบุคลากร
             </Link>
           </section>
         ) : null}

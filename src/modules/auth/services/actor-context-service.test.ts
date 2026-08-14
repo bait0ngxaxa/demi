@@ -41,6 +41,7 @@ const actor: ActorContext = {
       hospitalStatus: HospitalStatus.ACTIVE,
     },
   ],
+  osmHospitalRelationships: [],
 };
 
 function createActorUserRecord(status: UserStatus = UserStatus.ACTIVE): ActorUserRecord {
@@ -50,6 +51,7 @@ function createActorUserRecord(status: UserStatus = UserStatus.ACTIVE): ActorUse
     status,
     roles: actor.roles,
     hospitalMemberships: actor.hospitalMemberships,
+    osmHospitalRelationships: actor.osmHospitalRelationships,
   };
 }
 
@@ -71,6 +73,35 @@ describe("ActorContext resolution", () => {
 
     expect(receivedSubject).toBe("supabase-user-1");
     expect(result).toEqual(actor);
+  });
+
+  it("preserves OSM Hospital relationships in the resolved ActorContext", async () => {
+    const osmActor: ActorContext = {
+      ...actor,
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [
+        {
+          hospitalId: "hospital-osm",
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    };
+    const store: ActorContextStore = {
+      async findUserByAuthSubject(): Promise<ActorUserRecord | null> {
+        return {
+          ...createActorUserRecord(),
+          roles: osmActor.roles,
+          hospitalMemberships: osmActor.hospitalMemberships,
+          osmHospitalRelationships: osmActor.osmHospitalRelationships,
+        };
+      },
+    };
+
+    await expect(resolveActorContextByAuthSubject("provider-user-osm", store)).resolves.toEqual(
+      osmActor,
+    );
   });
 
   it("fails closed when the provider subject is empty", async () => {

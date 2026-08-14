@@ -14,6 +14,7 @@ const actor: ActorContext = {
   personId: "person-1",
   roles: [],
   hospitalMemberships: [],
+  osmHospitalRelationships: [],
 };
 
 describe("protected application access", () => {

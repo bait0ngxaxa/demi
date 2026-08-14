@@ -33,6 +33,8 @@ const baseInput = {
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.workforceActivation.deleteMany();
+  await prisma.osmHospitalRelationship.deleteMany();
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();

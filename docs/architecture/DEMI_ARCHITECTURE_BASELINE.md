@@ -1116,7 +1116,7 @@ ACTIVE ActorContext
 - `User.authSubject` retains its established provider-subject meaning.
 - Provider success remains insufficient without matching the expected subject and resolving an ACTIVE DEMI actor.
 - Supabase metadata and browser state remain non-authoritative; roles and memberships come from DEMI application data.
-- Provider account transition beyond hospital onboarding, patient activation, staff/OSM onboarding implementation, LIFF, ThaID, and native authentication remain separate workflow concerns. Phase 4A now accepts the workforce activation-link boundary; Phase 4B will use the Phase 2.1 provisioning primitive without changing the authentication adapter.
+- Provider account transition beyond hospital onboarding, patient activation, LIFF, ThaID, and native authentication remain separate workflow concerns. Phase 4A accepted the workforce activation-link boundary; Phase 4B implements it through the Phase 2.1 provisioning primitive without changing the authentication adapter.
 
 ## 19.9 Phase 3A/3B Hospital Onboarding Contract
 
@@ -1179,6 +1179,25 @@ The detailed checklist is in the [Phase 4A Workforce Provisioning Contract](../p
 - Provider I/O remains outside long PostgreSQL transaction locks. Provider and
   local effects use the existing compensation/reconciliation boundary and never
   report success or create a duplicate provider identity from ambiguous state.
+
+## 19.11 Phase 4B Workforce Provisioning Implementation Notes
+
+Phase 4B implements the accepted contract without expanding the role or scope
+model. The implementation handoff is in
+[PHASE_4B_WORKFORCE_PROVISIONING.md](../phases/PHASE_4B_WORKFORCE_PROVISIONING.md).
+
+- `OsmHospitalRelationship` is a separate direct OSM–Hospital association with
+  unique `(userId, hospitalId)`; it is not `HospitalMembership` and does not
+  encode clinical or geographic scope.
+- `WorkforceActivation` is purpose-specific, stores only a token digest, and
+  enforces one current usable credential per User. URL fragment, QR and assisted
+  handoff are presentations of the same capability.
+- New workforce accounts remain `PROVISIONED` until target-owned password
+  activation completes. Existing ACTIVE accounts reuse their provider identity
+  and receive trusted relationship state without re-activation.
+- `/app/workforce` and `/activate/workforce` are transport/UI surfaces only;
+  application services re-authorize direct active Owner scope and keep provider
+  I/O outside long PostgreSQL transactions.
 
 ---
 
