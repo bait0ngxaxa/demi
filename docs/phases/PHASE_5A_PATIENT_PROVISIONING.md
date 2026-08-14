@@ -29,16 +29,17 @@ Phase 5A does not treat a legacy form field, a legacy authorization check, or an
 
 ## 2. Evidence and source hierarchy
 
-The current repository source-of-truth hierarchy is:
+The canonical project source-of-truth hierarchy remains:
 
-1. Explicit owner/product requirements and decisions.
+1. Confirmed current business requirements.
 2. Accepted ADRs.
-3. The architecture baseline and current phase contracts.
-4. Current implementation and tests, as evidence of already-built boundaries.
-5. Legacy DEMI code, as behavioral evidence only.
-6. Engineering recommendations in this document, which are not accepted requirements until approved.
+3. Architecture baseline.
+4. CONTEXT.md.
+5. Legacy code only as behavioral reference.
 
-The inspected current sources include:
+Current phase contracts, implementation, schema, and tests are supporting evidence for already-established implementation boundaries. They do not replace or outrank the hierarchy above. Engineering recommendations in this document remain proposed until explicitly approved.
+
+The following canonical and supporting materials were inspected. Their presence in this list does not change their precedence:
 
 - [docs/CONTEXT.md](../CONTEXT.md)
 - [PRODUCT.md](../../PRODUCT.md)
@@ -84,8 +85,11 @@ The following are binding constraints for Phase 5B. They are not reopened as pat
 - A Person may exist before a User. Identity resolution must happen before creating a new Person.
 - A User may hold multiple roles. PATIENT is a top-level role and adding it must preserve existing roles.
 - Provisioning is not activation. A trusted actor may create a provisioned patient account, but the patient owns credential establishment.
+- ADR-0004 already accepts Hospital and OSM as patient provisioning actor classes where server-side policy permits. The exact authorized actors, trusted relationships, capabilities, provisioning scopes, and fail-closed conditions remain owner requirements.
 - An existing ACTIVE User with a valid authentication mapping and credential ownership is reused. Adding PATIENT must not force unnecessary credential reactivation or create a second provider account.
 - A patient already provisioned by a trusted actor must not use a second public registration path.
+- Patient domain existence and operational usability are independent from the patient's interactive account activation. An appropriately authorized operational workflow may use an already-provisioned patient domain record while the patient's User remains PROVISIONED and unable to log in.
+- User.status, PatientProfile lifecycle, and PatientHospitalRelationship lifecycle are separate concepts. Phase 5B must not copy the Phase 4B workforce relationship lifecycle or assume patient activation changes patient-domain status without a confirmed business rule.
 
 ### Credentials and activation
 
@@ -130,8 +134,9 @@ The current authentication boundary already provides the relevant constraints:
 
 Phase 4B provides a proven workforce pattern for identity reuse, local transactional persistence, one-time activation, provider compensation, reconciliation, and concurrency handling. Its workforce policy is not automatically the patient policy. In particular, the following remain patient decisions:
 
-- who may provision a patient;
-- what Hospital and OSM scope means;
+- which Hospital actors may provision and under what server-resolved relationship and provisioning scope;
+- which OSM actors may provision, what trusted OSM-Hospital relationship proves authority, what provisioning scope applies, and which conditions fail closed;
+- what separate post-provision patient:read, patient:update, assignment, and clinical resource scopes mean if those operations enter a future slice;
 - whether a patient may have one or multiple Hospital relationships;
 - the minimum Patient Profile;
 - the patient activation proof and channel;
@@ -220,8 +225,9 @@ The following is a **PROPOSED MVP CONTRACT**, not an accepted business rule. It 
 - → create the required Hospital relationship
 - → create an OSM assignment only if that requirement and scope are confirmed
 - → create patient activation persistence if activation is required
-- → write the audit event atomically
-- → new/non-active account remains PROVISIONED
+- → write the audit event atomically and commit the patient domain state
+- → the patient domain record may be used by separately authorized operational workflows
+- → a new eligible User remains PROVISIONED and cannot log in
 - → patient-owned first-time activation
 - → User becomes ACTIVE only after provider/local finalization
 - → existing /login resolves the existing ActorContext
@@ -232,9 +238,12 @@ The slice should have these boundaries:
 - No patient password field on the provisioning form or import path.
 - No raw activation token or password in the database, audit metadata, server logs, or durable client state. If an opaque bearer URL/QR is selected, the raw token exists only in the controlled one-time delivery artifact.
 - No clinical screening, measurements, care plan, goals, visits, appointments, follow-up, reporting, or bulk clinical import.
-- No inferred OSM geographic scope, assigned-patient scope, or parent/child authority.
+- No inferred OSM post-provision geographic or assigned-patient scope, and no reuse of those access concepts as provisioning scope.
+- No inferred parent/child Hospital provisioning or visibility authority.
 - No account duplication when an existing Person/User is found.
 - No forced credential reactivation for an existing ACTIVE User with a valid authentication mapping.
+- Patient account activation controls the patient's interactive authentication and access. It does not determine whether the committed patient domain record is valid or usable by authorized operational workflows.
+- No automatic PatientProfile or PatientHospitalRelationship status transition is tied to User activation.
 - No generic universal activation abstraction is selected merely to share code with WorkforceActivation.
 
 ### 7.1 Safe engineering default pending owner decisions
@@ -242,11 +251,11 @@ The slice should have these boundaries:
 If the product owner wants a narrow implementation starting point, the safest proposed default is:
 
 - a direct active Hospital OWNER may provision within that Hospital;
-- an OSM may provision only after an explicit capability and exact active OsmHospitalRelationship scope are confirmed;
+- OSM is an accepted patient provisioning actor class under ADR-0004, but allow must remain unavailable until the exact authorized OSM actor, trusted relationship, patient:provision capability, provisioning scope, and fail-closed conditions are confirmed;
 - ordinary Hospital members and ADMIN do not receive routine patient provisioning by implication;
-- parent/child relationships do not expand authority;
+- parent/child relationships do not expand provisioning authority or post-provision access;
 - the provisioning request carries identity and patient data, but the server derives actor and scope;
-- a patient Hospital relationship is created in the same local transaction as the identity and role changes;
+- a patient Hospital relationship is created in the same local transaction as the identity and role changes, independently from whether the patient can log in;
 - OSM assignment is omitted unless explicitly required;
 - an activation mechanism is not chosen until the owner confirms the proofing/channel decision.
 
@@ -256,8 +265,8 @@ This is a risk-minimizing recommendation, not a replacement for the owner decisi
 
 | Actor or component | May be trusted for | Must not be trusted for | Phase 5A position |
 | --- | --- | --- | --- |
-| Hospital operator | Authenticated actor identity and server-resolved Hospital membership, subject to policy | Browser-selected Hospital, role, patient identity match, HN uniqueness, OSM assignment, or password | Hospital authority is open; direct OWNER is the safe proposed default. |
-| OSM | Authenticated OSM role and a server-resolved active Hospital relationship | Patient scope, geographic area, assignment authority, or password | OSM provisioning and exact scope require owner confirmation. |
+| Hospital operator | Authenticated actor identity and server-resolved Hospital relationship as policy input | Browser-selected Hospital, role, patient identity match, HN uniqueness, OSM assignment, or password | Hospital is an accepted actor class; exact authorized actors and provisioning scope are open. Direct OWNER is the safe proposed default. |
+| OSM | Authenticated ACTIVE User with OSM role and a server-resolved OSM-Hospital relationship as policy input | The relationship alone as provisioning authority, patient ownership, post-provision access, geographic area, assignment authority, or password | OSM is an accepted actor class; exact authorized OSM actors, trusted relationship, provisioning scope, and fail-closed conditions require owner confirmation. |
 | Patient | Their own activation proof and credential choice | Provisioning authority or another person's identity | Patient owns activation, not registration. |
 | ADMIN | Platform administration only where an explicit policy says so | Routine patient provisioning by role alone | Do not infer bypass; reconciliation/support authority is a separate future decision. |
 | Browser/UI | User-entered form values and display intent | Actor, authorization, scope, identity resolution, lifecycle, or persistence truth | UI is a transport adapter only. |
@@ -272,24 +281,43 @@ Only the capability needed by the selected provisioning mutation should be intro
 
 | Proposed capability | Status | Use |
 | --- | --- | --- |
-| patient:provision | PROPOSED MVP CONTRACT; owner policy still open | Create or complete the minimum patient identity, role, profile, Hospital relationship, and activation state. |
+| patient:provision | PROPOSED MVP CONTRACT; actor policy and provisioning scope still open | Create or complete the minimum patient identity, role, profile, and Hospital relationship. It does not activate the User or grant post-provision patient access. |
 | patient:read | Conditional proposal, not implied | Add only if the Phase 5B UI needs a bounded roster or confirmation view. It must be defined separately from create authority. |
 
 Do not add clinical, appointment, transfer, reporting, geographic assignment, or complete patient-management capabilities in Phase 5A.
 
 No patient:activate capability is added at this stage. Activation is a separate proofing and credential-establishment boundary; if it needs an explicit policy capability, that decision must be made with the activation mechanism rather than inferred from patient:provision.
 
-| Actor | Required relationship or membership | Capability | Scope and target resource | Fail-closed behavior |
-| --- | --- | --- | --- | --- |
-| HOSPITAL | Proposed: direct active OWNER membership in the target active Hospital | patient:provision | Target Hospital is the server-resolved direct Hospital scope; patient identity and relationship are resolved server-side | Deny if role, direct active OWNER membership, target Hospital status, or target scope is missing or inactive. |
-| HOSPITAL member | Active HospitalMembership MEMBER with profession | patient:provision | No authority is implied by membership or profession | Deny until an owner decision defines a narrower capability policy. |
-| OSM | Active OSM role plus an active OsmHospitalRelationship to the target Hospital | patient:provision | Exact patient resource scope is unresolved: self-created, explicitly assigned, Hospital-wide, geographic, or another rule | Deny if the relationship or exact resource scope cannot be proven server-side. |
-| ADMIN | ADMIN role alone | patient:provision | No routine patient scope is implied | Deny by default; any break-glass/reconciliation path needs a separate explicit policy and audit contract. |
-| PATIENT | No provisioning relationship | patient:provision | No authority over another patient | Deny. Activation proof is not a general provisioning capability. |
+### 9.1 Provisioning authority
 
-Being allowed to provision a patient must not silently grant unrestricted patient:read, patient:update, clinical, appointment, export, delete, restore, or assignment authority.
+Provisioning authority answers only: can this actor create or provision a patient relationship into this target Hospital/context?
 
-The matrix is deliberately not an accepted final policy. The Hospital actor policy, OSM scope, hierarchy behavior, and ADMIN exception require owner confirmation.
+Actor + trusted relationship + patient:provision + provisioning scope + target Hospital/context → ALLOW or DENY
+
+| Actor class | Required actor state and role | Trusted relationship input | Capability | Provisioning scope and target | Fail-closed behavior |
+| --- | --- | --- | --- | --- | --- |
+| HOSPITAL | ACTIVE User with HOSPITAL role | Exact eligible Hospital actor and relationship/membership policy remain OWNER CONFIRMATION REQUIRED; direct active OWNER membership is only the safe proposed default | patient:provision | Owner-confirmed provisioning scope into the server-resolved target active Hospital/context | Deny when actor state, role, trusted relationship, capability, target Hospital status, or provisioning scope is missing, inactive, ambiguous, or unconfirmed. |
+| OSM | ACTIVE User with OSM role | Exact trusted server-resolved OSM-Hospital relationship remains OWNER CONFIRMATION REQUIRED; OsmHospitalRelationship is association evidence but does not define authority by itself | patient:provision | Owner-confirmed provisioning scope into the server-resolved target Hospital/context; it is not inferred from assigned-patient, self-created, Hospital-wide, or geographic access models | Deny when actor state, role, trusted relationship, capability, target context, or provisioning scope is missing, inactive, ambiguous, or unconfirmed. |
+| ADMIN | ACTIVE User with ADMIN role only | No routine patient provisioning relationship is accepted | patient:provision | No routine provisioning scope is implied | Deny by default; any break-glass or reconciliation path needs a separate explicit policy and audit contract. |
+| PATIENT | PATIENT role only | No trusted provisioning relationship | patient:provision | No authority to provision another patient | Deny. Activation proof is not a general provisioning capability. |
+
+An existing patient assignment cannot be required to authorize creation of a patient who does not yet exist. If a future policy uses creator identity, assignment, or area information, it must define a non-circular provisioning scope independently from post-provision resource access.
+
+### 9.2 Post-provision patient access
+
+Post-provision access answers a different question: after a patient exists, which patient resources may this actor read, update, manage, assign, or use in a clinical workflow?
+
+The contract is explicit:
+
+patient:provision ≠ patient:read ≠ patient:update
+
+Potential future post-provision resource scopes include explicitly assigned patients, self-created patients, an area, a Hospital, an explicit care assignment, or another confirmed relationship. These are candidate access models only. They are not automatically the scope of patient:provision and are not accepted by this document.
+
+Provisioning a patient does not grant the actor ownership of that patient, Hospital-wide patient access, assigned-patient access, geographic access, or clinical access. OsmHospitalRelationship and PatientHospitalRelationship do not grant those permissions by themselves.
+
+If the Phase 5B UI requires a bounded patient roster, detail, or confirmation read beyond the result of the provisioning operation itself, patient:read requires its own actor relationship, capability, resource scope, target, and fail-closed contract. The smallest provisioning mutation does not depend on closing that future access policy unless such a read surface is included.
+
+The provisioning matrix is deliberately not an accepted final policy. The exact Hospital actor policy, OSM actor/relationship/provisioning scope, hierarchy behavior, and ADMIN exception require owner confirmation.
 
 ## 10. Identity resolution contract
 
@@ -358,6 +386,18 @@ If assignment is not required to create a patient, omit it from the core transac
 
 Whether patient activation needs its own persistence, can reuse an existing user activation state, or needs an external proof reference depends on the owner-selected mechanism. No universal activation model is accepted by Phase 5A.
 
+### 11.5 Independent patient-domain and account lifecycles
+
+PatientProfile and PatientHospitalRelationship establish patient domain existence. Once the local provisioning transaction commits a valid domain state, appropriately authorized Hospital/OSM operational workflows may use that record even when the patient's User remains PROVISIONED and cannot log in.
+
+Patient account activation governs the patient's interactive application authentication and access only. It must not determine whether an already-provisioned patient domain record is valid or usable by authorized operational workflows.
+
+User.status, PatientProfile lifecycle, and PatientHospitalRelationship lifecycle are separate concepts. The exact patient-domain statuses remain OWNER CONFIRMATION REQUIRED. Phase 5B must not blindly copy WorkforceActivation or HospitalMembership lifecycle behavior, and must not assume:
+
+PatientHospitalRelationship PROVISIONED → patient activates → PatientHospitalRelationship ACTIVE
+
+That transition exists only if a future confirmed business requirement explicitly defines it.
+
 ## 12. Hospital relationship and HN analysis
 
 ### 12.1 Hospital cardinality
@@ -393,26 +433,38 @@ Creating a PatientHospitalRelationship does not by itself define which Hospital 
 
 ## 13. OSM assignment analysis
 
-The legacy coach selector and doctors lookup do not establish the meaning of an OSM assignment. The current OsmHospitalRelationship is explicitly only an OSM-to-Hospital association.
+ADR-0004 already accepts OSM as a patient provisioning actor class where server-side policy permits. The unresolved provisioning contract is which OSM actors are authorized, which trusted server-resolved OSM-Hospital relationship proves authority, what provisioning scope they may provision into, and which conditions fail closed.
+
+The legacy coach selector and doctors lookup do not establish the meaning of an OSM assignment. The current OsmHospitalRelationship is explicitly only an OSM-to-Hospital association; by itself it defines neither patient provisioning authority nor post-provision patient access.
 
 The following are therefore open:
 
-- May an OSM provision patients at all?
-- What exact active relationship proves that authority?
-- Is the OSM scope limited to patients created by that OSM, explicitly assigned patients, the whole Hospital, an area, or another resource set?
+- Which OSM actors may perform patient provisioning?
+- What exact server-resolved OSM-Hospital relationship proves provisioning authority?
+- What provisioning scope may that actor provision into?
+- Which missing, inactive, conflicting, or ambiguous policy inputs must cause provisioning to fail closed?
 - Must an OSM-provisioned patient receive an OSM assignment immediately?
 - Can a Hospital provision a patient without assigning an OSM?
 - Can a patient have one or multiple OSM assignments?
 - Who may assign, replace, end, or view an assignment?
 - What status and history are required for assignment?
+- After provisioning, what separate resource scope controls patient:read, patient:update, assignment, and clinical access?
 
-**Safe proposed default:** do not create an OSM assignment in the core Phase 5B slice unless the owner confirms both the requirement and its authority. If an OSM is eventually permitted to provision, the server must prove the exact target scope; an active Hospital relationship alone must not be treated as Hospital-wide patient ownership.
+Self-created patients, explicitly assigned patients, Hospital scope, geographic area, and care assignment are possible future post-provision access models. They are not automatically patient:provision scopes. Requiring an existing patient assignment to authorize creation would be circular because the target patient does not yet exist.
+
+**Safe proposed default:** do not create an OSM assignment in the core Phase 5B slice unless the owner confirms both the requirement and its authority. OSM provisioning must use its own confirmed server-side relationship, capability, provisioning scope, and target context. An OSM-Hospital association alone must not be treated as Hospital-wide patient ownership or post-provision access.
 
 ## 14. Account lifecycle and activation analysis
 
-### 14.1 Lifecycle contract
+### 14.1 Independent domain and account lifecycle contract
 
-The existing User lifecycle remains authoritative:
+The patient domain and interactive account have separate lifecycle purposes:
+
+- PatientProfile plus PatientHospitalRelationship establish a valid patient domain state usable by appropriately authorized operational actors.
+- User.status = PROVISIONED means the patient cannot log in yet; it does not invalidate the committed patient domain state.
+- Patient completes first-time activation, then User.status = ACTIVE, then the patient may use separately authorized patient-facing application features.
+
+The existing User lifecycle remains authoritative for interactive authentication and account access:
 
 | Case | Proposed patient behavior |
 | --- | --- |
@@ -423,7 +475,7 @@ The existing User lifecycle remains authoritative:
 | Activation provider succeeds but local finalization fails | Compensate when safe; otherwise retain an explicit reconciliation state and never claim success. |
 | Activation is replayed after use/revocation/expiry | Deny; do not create a second credential or silently issue a new one from the replay. |
 
-The exact meaning of a Patient Profile status and PatientHospitalRelationship status is not yet accepted. They must not be conflated with User.status.
+The exact meaning of a PatientProfile status and PatientHospitalRelationship status is not yet accepted. They must not be conflated with User.status. Patient activation must not automatically change either domain status, and Phase 5B must not copy the Phase 4B relationship transition from PROVISIONED to ACTIVE unless a confirmed patient business requirement explicitly defines that behavior.
 
 ### 14.2 Activation options
 
@@ -471,6 +523,8 @@ A successful patient provisioning operation should be one local consistency-crit
 - plus AuditEvent
 
 The operation must not report success with partial authoritative patient state. A failure rolls back the local transaction. Provider authentication remains a separate side effect handled with compensation/reconciliation.
+
+The committed provisioning transaction establishes the patient domain state independently from interactive account activation. A PROVISIONED User may be unable to log in while the PatientProfile and PatientHospitalRelationship are valid for separately authorized operational workflows. Later activation completion updates the User/provider/activation state; it must not automatically update PatientProfile or PatientHospitalRelationship lifecycle state without a confirmed rule.
 
 ### 15.2 Idempotency and concurrency
 
@@ -532,7 +586,7 @@ The following remain outside Phase 5B unless a separate requirement proves a str
 - screening, measurements, diabetes care, PAM scoring, zones, notes, care plans, goals, visits, appointments, follow-up, and clinical reporting;
 - patient update, delete, restore, permanent deletion, transfer, merge, or deduplication UI;
 - patient self-editable profile policy;
-- OSM geographic scope, assigned-patient scope, and care-team semantics;
+- post-provision OSM geographic scope, assigned-patient scope, and care-team semantics;
 - OSM assignment management, reassignment, and bulk assignment;
 - Hospital parent/child authority and cross-Hospital visibility;
 - multi-Hospital transfer and longitudinal patient identity policy;
@@ -552,10 +606,12 @@ The following decisions are **OWNER CONFIRMATION REQUIRED**. They are not hidden
 | Decision | Why it blocks Phase 5B |
 | --- | --- |
 | Which Hospital actors may provision: direct OWNER only, all authorized HOSPITAL members, selected professions, or another capability policy? | Determines the server policy and prevents legacy client role checks from becoming accidental authority. |
-| May OSM provision patients? | Determines whether OSM is an actor for the core mutation at all. |
-| If OSM may provision, what exact active Hospital/OSM relationship proves authority? | An OsmHospitalRelationship currently proves association only, not patient scope. |
-| What is an OSM's patient resource scope: self-created, explicitly assigned, Hospital-wide, geographic, or another rule? | Without a target scope, fail-closed authorization cannot be implemented safely. |
-| Does parent/child Hospital membership grant patient provisioning or visibility authority? | Current architecture does not grant it by implication; the legacy network expansion cannot be copied silently. |
+| Which OSM actors may perform patient provisioning? | ADR-0004 accepts OSM as a provisioning actor class, but the eligible OSM actor policy remains unresolved. |
+| What exact server-resolved OSM-Hospital relationship proves provisioning authority? | OsmHospitalRelationship currently proves association only; its presence alone does not define authority. |
+| What provisioning scope may an authorized OSM provision into? | patient:provision needs a target Hospital/context scope independent from future patient read/update scopes. |
+| Which OSM provisioning conditions must fail closed? | Missing/inactive role, missing or inactive trusted relationship, missing capability, ambiguous target context, and unconfirmed scope need an explicit policy outcome. |
+| After provisioning, what separate scope controls patient:read, patient:update, assignment, and clinical access: explicitly assigned patients, self-created patients, Hospital scope, geographic area, care assignment, or another relationship? | This is a separate future access contract. It blocks only read/update/clinical surfaces included in Phase 5B, not the smallest provisioning mutation by itself. |
+| Does parent/child Hospital membership grant patient provisioning authority? | Current architecture does not grant it by implication; the legacy network expansion cannot be copied silently. Post-provision visibility remains a separate access decision. |
 | Must a patient belong to exactly one Hospital, or may relationships span multiple Hospitals? | Determines PatientHospitalRelationship cardinality and uniqueness. |
 | Is HN mandatory? | Determines minimum profile/relationship data and whether a patient can be provisioned without HN. |
 | Is HN unique globally, per Hospital, per relationship, or only among active relationships? | Determines the database invariant and conflict behavior. |
@@ -566,7 +622,7 @@ The following decisions are **OWNER CONFIRMATION REQUIRED**. They are not hidden
 | Which legacy clinical fields must not be part of provisioning? | Keeps screening and care workflows outside this phase. |
 | Is OSM assignment mandatory when an OSM provisions a patient? | Determines whether assignment is in the consistency boundary. |
 | Can Hospital provision without immediately assigning an OSM? | Determines whether assignment is optional and whether an unassigned state exists. |
-| What lifecycle/status is required for Patient Profile and Hospital relationships? | User.status cannot be overloaded for domain relationships. |
+| What lifecycle/status is required for PatientProfile and PatientHospitalRelationship, and does any confirmed rule link those statuses to account activation? | User.status cannot be overloaded for domain relationships. The default architecture keeps patient-domain usability independent from interactive activation. |
 | What patient activation proof is acceptable for MVP? | Registration and activation are separate; proofing is the unresolved security/product decision. |
 | Should the opaque one-time URL/QR/assisted pattern be used, or is OTP/phone/email/ThaID/assisted proof required? | Determines persistence, delivery, abuse, expiry, and recovery design. |
 | What is the safe workflow when a patient has no private phone or email? | Legacy contact fields are optional; activation cannot assume a private channel. |
@@ -595,21 +651,26 @@ These are not permission to implement the deferred clinical or assignment workfl
 Phase 5B should not begin until the following are true:
 
 - [ ] The owner has selected the Hospital provisioning authority and its exact server scope.
-- [ ] The owner has decided whether OSM may provision and, if so, the exact relationship and resource scope.
-- [ ] Parent/child Hospital authority is explicitly accepted or explicitly denied for patient work.
-- [ ] Patient-Hospital cardinality and lifecycle are decided.
+- [ ] OSM provisioning authority is closed: eligible OSM actors, trusted server-resolved OSM-Hospital relationship, patient:provision capability, provisioning scope, target context, and fail-closed conditions are confirmed.
+- [ ] Provisioning scope is explicitly separated from post-provision patient:read, patient:update, assignment, and clinical resource scope.
+- [ ] Any post-provision read/update surface included in Phase 5B has its own capability and resource-scope contract; otherwise that access policy remains explicitly deferred.
+- [ ] Parent/child Hospital effect on provisioning scope is explicitly accepted or denied; any effect on post-provision visibility is decided separately or remains deferred when Phase 5B has no read surface.
+- [ ] Patient-Hospital cardinality and patient-domain lifecycle are decided independently from User activation.
 - [ ] HN requiredness, normalization, and uniqueness scope are decided.
 - [ ] Thai National ID requirements and the no-ID/ambiguous-identity workflow are decided.
 - [ ] The minimum Patient Profile and required/optional demographic/contact fields are approved.
 - [ ] Legacy clinical fields excluded from Phase 5B are recorded as deferred.
 - [ ] OSM assignment requiredness and Hospital-without-OSM behavior are decided.
 - [ ] The activation proof/channel, no-private-contact path, expiry, retry, revocation, recovery, and reconciliation behavior are approved.
+- [ ] Patient account activation is confirmed to control patient interactive authentication/access only, unless a separate confirmed business rule defines a PatientProfile or PatientHospitalRelationship transition.
+- [ ] User.status, PatientProfile lifecycle, and PatientHospitalRelationship lifecycle are explicitly separate; Phase 4B workforce relationship transitions are not copied by default.
 - [ ] Existing ACTIVE, PROVISIONED, privileged-role, PATIENT-role, duplicate, conflict, and provider-ambiguity outcomes are approved.
 - [ ] The conceptual persistence invariants are approved without using HospitalMembership for patients or OsmHospitalRelationship as patient ownership.
 - [ ] The minimum capability/policy matrix is approved and patient:provision does not imply unrestricted patient read/update/clinical access.
 - [ ] The local transaction boundary, database uniqueness constraints, concurrency retry, and idempotency behavior are approved.
 - [ ] Audit events and privacy-safe metadata are approved.
 - [ ] The application service and current authentication/ActorContext boundary are mapped to the selected slice.
+- [ ] The canonical source-of-truth hierarchy matches CONTEXT.md; phase contracts, schema, code, and tests remain supporting implementation evidence.
 - [ ] Integration tests cover identity reuse, existing ACTIVE User reuse, exact duplicate, concurrent duplicate, HN/relationship conflict, ambiguous identity, provider/local inconsistency, activation replay, and audit atomicity.
 - [ ] If the selected activation mechanism materially extends ADR-0004, a new ADR is drafted with Status: Proposed before any claim of architectural acceptance. No new ADR is silently accepted by Phase 5A.
 
@@ -619,13 +680,16 @@ The proposed contract was compared against the current sources:
 
 - It preserves ADR-0001 identity reuse and server-side identity resolution.
 - It preserves ADR-0002 fail-closed Role + Capability + Scope authorization without a generic RBAC/ACL framework.
-- It preserves ADR-0004 Registration ≠ Account Activation and patient-owned credential establishment. It does not choose an activation mechanism that ADR-0004 leaves open.
+- It preserves ADR-0004 Registration ≠ Account Activation and patient-owned credential establishment. It recognizes Hospital/OSM as accepted provisioning actor classes under server policy and does not reopen whether OSM may participate. It does not choose the exact OSM policy or an activation mechanism that ADR-0004 leaves open.
 - It preserves ADR-0005's server-side application boundary and transport-independent services.
 - It preserves ADR-0006's local transaction boundary and provider compensation/reconciliation.
 - It preserves ADR-0007's current Server Action/Route Handler boundary and avoids speculative mobile APIs.
 - It uses ADR-0008 and Phase 4B as a proven workforce implementation pattern while keeping patient policy and activation semantics explicit.
 - It matches the current schema's deliberate absence of patient domain models; no schema change was made.
 - It uses the current authentication and ActorContext states rather than the legacy raw credential flow.
+- It separates patient:provision provisioning scope from later patient:read, patient:update, assignment, and clinical resource scope, preventing circular assignment-based creation policy.
+- It separates valid patient-domain state from interactive User activation and does not copy the Phase 4B workforce relationship lifecycle.
+- It restores the canonical source-of-truth hierarchy from CONTEXT.md and treats current phase contracts, schema, implementation, and tests as supporting evidence.
 - It identifies the legacy client-side authorization, hierarchy expansion, single-role/single-Hospital account shape, direct Supabase writes, predictable password, and sequential persistence as contradictions, not requirements.
 
 No new architectural decision is silently marked Accepted here. If the owner later selects a patient activation mechanism or another decision that materially extends ADR-0004, that decision must be captured in a separate ADR with Status: Proposed before it is treated as accepted architecture.
