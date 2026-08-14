@@ -32,7 +32,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - MVP ใช้ manual Platform `ADMIN` approval; approved applicant เป็น `HOSPITAL + OWNER` เฉพาะ Hospital นั้นและไม่เป็น Platform Admin
 - Role, membership, capability และ scope ต้องมาจากข้อมูล DEMI ฝั่ง server เท่านั้น
 - Phase 3B capability vocabulary จำกัดที่ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject`
-- Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; fixture และ seed script เป็น source ของ development/test data และไม่ bind กับ external provider
+- Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
 - External Hospital Master provider, exact verification evidence, provider-account recovery, Patient activation, staff/OSM invitation, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements

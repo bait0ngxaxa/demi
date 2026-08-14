@@ -14,9 +14,36 @@ import {
 } from "../services/hospital-onboarding-service";
 import { hospitalOnboardingSubmissionSchema } from "../schemas/hospital-onboarding-schemas";
 import type {
+  HospitalOnboardingFieldErrors,
   HospitalOnboardingReviewActionState,
   HospitalOnboardingSubmitActionState,
 } from "./action-state";
+
+function getSubmissionFieldErrors(
+  issues: readonly { path: readonly unknown[] }[],
+): HospitalOnboardingFieldErrors {
+  const fieldErrors: HospitalOnboardingFieldErrors = {};
+
+  for (const issue of issues) {
+    const field = issue.path[0];
+
+    if (field === "hospitalCode" && !fieldErrors.hospitalCode) {
+      fieldErrors.hospitalCode = "กรุณาเลือกโรงพยาบาลจากรายการ";
+    } else if (field === "nationalId" && !fieldErrors.nationalId) {
+      fieldErrors.nationalId = "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง";
+    } else if (field === "givenName" && !fieldErrors.givenName) {
+      fieldErrors.givenName = "กรุณากรอกชื่อ";
+    } else if (field === "familyName" && !fieldErrors.familyName) {
+      fieldErrors.familyName = "กรุณากรอกนามสกุล";
+    } else if (field === "password" && !fieldErrors.password) {
+      fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
+    } else if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
+      fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
+    }
+  }
+
+  return fieldErrors;
+}
 
 function mapPublicSubmissionError(error: unknown): HospitalOnboardingSubmitActionState {
   if (error instanceof ApplicationError) {
@@ -88,7 +115,12 @@ export async function submitHospitalOnboardingAction(
   });
 
   if (!parsed.success) {
-    return mapPublicSubmissionError(new ApplicationError("VALIDATION", "Invalid onboarding data"));
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
+      fieldErrors: getSubmissionFieldErrors(parsed.error.issues),
+    };
   }
 
   try {

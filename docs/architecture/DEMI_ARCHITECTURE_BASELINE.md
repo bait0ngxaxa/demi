@@ -511,7 +511,7 @@ Applicant becomes HOSPITAL + OWNER
 
 Hospital identity must come from a controlled canonical Hospital Master entry instead of applicant-controlled free-text organization creation. `hospitalCode` เป็น stable canonical business identifier และต้อง unique เมื่อกลายเป็น `Hospital`
 
-Authoritative external Hospital Master source/provider ยังไม่ได้รับเลือก Application/domain layer ต้องใช้ replaceable master-data boundary และ MVP ใช้ controlled development/test master data ได้โดยไม่ bind business logic กับ provider ภายนอก
+Authoritative external Hospital Master source/provider ยังไม่ได้รับเลือก Application/domain layer ต้องใช้ replaceable master-data boundary และ current environments ใช้ approved v2 seed data โดยไม่ bind business logic กับ provider ภายนอก
 
 MVP verification เป็น manual Platform `ADMIN` decision ผู้สมัครที่อนุมัติแล้วได้รับ `HOSPITAL` role และ `OWNER` membership เฉพาะ Hospital นั้น Hospital Owner ไม่ได้รับ Platform `ADMIN`
 
@@ -1045,10 +1045,10 @@ Phase 1 concretizes the following implementation boundaries without closing the 
 - Supabase Auth is the current server authentication adapter. A Next.js 16 `proxy.ts` creates a request-scoped Supabase SSR client and calls `auth.getClaims()` early so refreshed cookies propagate to both the current request and outgoing response. The authenticated provider subject is then validated with `auth.getUser()`, mapped to `User.authSubject`, and used to load `Person`, roles, and memberships from Prisma.
 - Supabase user metadata, browser state, and client-provided role or hospital values are not application authorization sources.
 - `Person.identityKeyHash` is a deterministic HMAC-SHA-256 lookup key using the server-only `IDENTITY_HASH_SECRET`; it is not a finalized external-provider or LINE identity schema. Raw identity values and the secret are never logged.
-- Prisma migration commands run through an explicit database-target preflight. Development/test operations cannot target production; production deployment requires explicit production classification.
+- Prisma migration commands use standard Prisma semantics: schema work uses `prisma migrate dev`, deployment uses `prisma migrate deploy`, and client generation uses `prisma generate`. The configured `DATABASE_URL` and `DIRECT_URL` credentials determine the actual database project; DEMI has no application-level database target selector.
 - Audit persistence accepts either the global Prisma client or a transaction-compatible Prisma client, allowing a future consistency-critical Application Service to coordinate its audit write in the same transaction.
 - `AuditEvent.actorUserId` uses a restrictive foreign key in the current foundation. A User with audit history cannot be hard-deleted; `SUSPENDED` is the available deactivation state until a deletion policy is confirmed.
-- A focused integration suite verifies the PostgreSQL constraints against a dedicated test database. Local development uses the disposable PostgreSQL service in `compose.integration.yaml`, configured by `.env.integration` and bound only to `127.0.0.1:55432`. `npm run test:integration:local` recreates the empty database, applies migrations, runs integration tests, and removes the Compose resources; the manual commands are documented in the repository [README](../../README.md). Integration commands require `DEMI_DATABASE_TARGET=test` and require `DATABASE_URL`, `DIRECT_URL`, and `DEMI_TEST_DATABASE_URL` to identify the same test database.
+- A focused integration suite verifies the PostgreSQL constraints against a dedicated test database. Local development uses the disposable PostgreSQL service in `compose.integration.yaml`, configured by `.env.integration` and bound only to `127.0.0.1:55432`. `npm run test:integration:local` recreates the empty database, applies migrations, runs integration tests, and removes the Compose resources; the manual commands are documented in the repository [README](../../README.md). Integration commands reject `NODE_ENV=production`, require `DATABASE_URL`, `DIRECT_URL`, and `DEMI_TEST_DATABASE_URL` to identify the same test database, and validate that the database host is local.
 - Future authentication providers may be added behind the authentication adapter boundary after a confirmed requirement and decision.
 
 The implementation structure and environment commands are maintained in the repository [README](../../README.md). These notes describe the current foundation implementation; they do not add capability, scope, clinical, or onboarding semantics that remain unresolved.
@@ -1103,9 +1103,9 @@ Supabase Auth provisioning primitive
 - Admin review/approve/reject derives Platform `ADMIN` authority from server-resolved `ActorContext`
 - Application Service owns duplicate/conflict rules, lifecycle guards, policy and transaction orchestration
 - Server Action is not the business source of truth and no `/api/v1` endpoint is added without an identified consumer
-- Hospital Master provider remains replaceable and unresolved; controlled development/test data is sufficient for the MVP adapter
+- Hospital Master provider remains replaceable and unresolved; the approved controlled v2 seed data is the current input for the MVP adapter and deployment environments
 - Phase 3B resolves the MVP schema gaps with unique `Hospital.hospitalCode`, optional non-authoritative parent reference, separate onboarding application history, review attribution and a database partial unique guard for one pending claim per Hospital
-- The approved 78-record normalized Hospital Master is committed as a JSON seed fixture; the import is idempotent, development/test-only, does not delete unrelated rows, and preserves an existing `ACTIVE` status
+- The approved 78-record normalized Hospital Master is committed as the JSON seed input; `npm run db:seed` imports it idempotently with stable `hospitalCode` upserts, does not delete unrelated rows, and preserves an existing `ACTIVE` status. The external provider and long-term production update ownership remain unresolved and replaceable.
 
 ---
 
@@ -1229,7 +1229,7 @@ The following decisions are accepted for project initialization:
 28. Native mobile applications are future clients and will use HTTP APIs without depending on Server Actions.
 29. Future native authentication, offline behavior, synchronization, push notifications, and native framework choices remain unresolved.
 30. Phase 3B Hospital Onboarding matches a controlled canonical Hospital Master entry by stable `hospitalCode`; applicant-controlled free text is not organization authority.
-31. The authoritative external Hospital Master provider remains unresolved and is isolated behind a replaceable boundary; controlled development/test master data is allowed for MVP.
+31. The authoritative external Hospital Master provider remains unresolved and is isolated behind a replaceable boundary; the approved v2 Hospital Master seed is used without binding the application to an external provider.
 32. MVP Hospital verification is a manual Platform `ADMIN` decision.
 33. Hospital Onboarding Application lifecycle is separate from Hospital lifecycle and uses only `PENDING`, `APPROVED`, and `REJECTED`.
 34. Phase 3B reuses Phase 2.1 National-ID/password identity and authentication architecture; it does not create a parallel login or mandatory email identifier.

@@ -33,7 +33,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 - capabilities ของ slice นี้มีเฉพาะ `hospital:onboard`, `hospital:review`, `hospital:approve`, `hospital:reject` และยังไม่ใช่ full capability matrix
 - Server Actions เป็น web adapters; onboarding business operation อยู่ใน transport-agnostic Application Service และไม่ต้องสร้าง speculative `/api/v1`
 
-Phase 3B implement persistence ตาม contract แล้ว: `Hospital` มี unique `hospitalCode` และ optional parent reference ที่ไม่ใช่ authorization primitive, ส่วน `HospitalOnboardingApplication` แยก lifecycle/history พร้อม reviewer attribution และ database guard สำหรับ pending claim เดียวต่อ Hospital การ import master ใช้ `prisma/seed/hospital-master-v2.json` และ `npm run prisma:seed:hospital-master` แบบ idempotent สำหรับ development/test เท่านั้น
+Phase 3B implement persistence ตาม contract แล้ว: `Hospital` มี unique `hospitalCode` และ optional parent reference ที่ไม่ใช่ authorization primitive, ส่วน `HospitalOnboardingApplication` แยก lifecycle/history พร้อม reviewer attribution และ database guard สำหรับ pending claim เดียวต่อ Hospital การ import master ใช้ `prisma/seed/hospital-master-v2.json` และ `npm run db:seed` แบบ idempotent โดยใช้ stable `hospitalCode` upsert ไม่ลบ unrelated rows และไม่ reset `ACTIVE` status
 
 ## Phase 2.1 National ID Login Adapter
 
@@ -77,7 +77,7 @@ Phase 2.1 ไม่ได้ finalize provider-account transition สำหร�
 - identity lookup ใช้ deterministic HMAC-SHA-256 ด้วย server-only `IDENTITY_HASH_SECRET`
 - audit input boundary ที่จำกัด metadata และปฏิเสธ credential/identity secrets
 - audit persistence รับ transaction-compatible Prisma client ได้ และ audit actor foreign key ไม่อนุญาต hard-delete User ที่มีประวัติ audit
-- Prisma migration scripts มี database-target safety preflight และ integration suite แยกใช้ dedicated test database
+- Prisma migration scripts ใช้ standard `prisma migrate dev`, `prisma migrate deploy` และ `prisma generate`; database/environment selection มาจาก credentials ที่ process ได้รับโดยตรง และ integration suite แยกใช้ dedicated test database
 - สำหรับ local integration ใช้ `.env.integration` กับ `compose.integration.yaml` ซึ่งเปิด PostgreSQL แบบ disposable ที่ `127.0.0.1:55432`; `DATABASE_URL`, `DIRECT_URL` และ `DEMI_TEST_DATABASE_URL` ต้องชี้ฐานข้อมูล test เดียวกัน
 - รัน verification แบบครบวงจรด้วย `npm run test:integration:local` หรือเปิด/ปิดฐานข้อมูลเองด้วย `npm run test:db:up`, `npm run prisma:migrate:test`, `npm run test:integration` และ `npm run test:db:down`
 - server-side health check ที่ไม่เปิดเผย secret หรือ internal error

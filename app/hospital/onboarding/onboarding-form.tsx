@@ -42,6 +42,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     );
   }, [hospitalQuery, hospitals]);
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
+  const fieldErrors = state.status === "ERROR" ? state.fieldErrors ?? {} : {};
 
   if (state.status === "SUCCESS") {
     return (
@@ -72,66 +73,102 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
 
       <fieldset className="space-y-4">
         <legend className="text-lg font-semibold tracking-[-0.02em]">เลือกโรงพยาบาล</legend>
-        <div className="space-y-2">
-          <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
-            ค้นหาจากชื่อหรือรหัสโรงพยาบาล
-          </label>
-          <input
-            autoComplete="off"
-            className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
-            disabled={pending || hospitals.length === 0}
-            id="hospitalSearch"
-            onChange={(event) => setHospitalQuery(event.target.value)}
-            placeholder="เช่น โรงพยาบาลแก่งคอย หรือ KANG"
-            type="search"
-            value={hospitalQuery}
-          />
-        </div>
+        {selectedHospital ? (
+          <div
+            aria-label="โรงพยาบาลที่เลือก"
+            className="flex items-start justify-between gap-4 rounded-[12px] border border-brand bg-brand-soft p-4"
+            role="status"
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-brand-strong">เลือกแล้ว</p>
+              <p className="mt-1 font-semibold text-ink">{selectedHospital.name}</p>
+              <p className="mt-1 text-sm text-brand-deep">
+                รหัส {selectedHospital.hospitalCode}
+                {selectedHospital.parentHospitalCode
+                  ? ` · หน่วยบริการในเครือ ${selectedHospital.parentHospitalCode}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              className="min-h-11 shrink-0 rounded-[12px] border border-line bg-white px-3 text-sm font-semibold text-ink transition-[border-color,color,background-color] hover:border-brand hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              disabled={pending}
+              onClick={() => {
+                setSelectedHospitalCode("");
+                setHospitalQuery("");
+              }}
+              type="button"
+            >
+              เปลี่ยนโรงพยาบาล
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
+                ค้นหาจากชื่อหรือรหัสโรงพยาบาล
+              </label>
+              <input
+                autoComplete="off"
+                className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
+                disabled={pending || hospitals.length === 0}
+                id="hospitalSearch"
+                onChange={(event) => setHospitalQuery(event.target.value)}
+                placeholder="เช่น โรงพยาบาลแก่งคอย หรือ KANG"
+                type="search"
+                value={hospitalQuery}
+              />
+            </div>
 
-        <div
-          aria-label="รายการโรงพยาบาลที่เลือกได้"
-          className="max-h-64 space-y-2 overflow-y-auto rounded-[12px] border border-line bg-canvas p-2"
-          role="listbox"
-        >
-          {hospitals.length === 0 ? (
-            <p className="px-3 py-4 text-sm leading-6 text-muted">
-              ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้
-            </p>
-          ) : filteredHospitals.length === 0 ? (
-            <p className="px-3 py-4 text-sm leading-6 text-muted">ไม่พบโรงพยาบาลที่ค้นหา</p>
-          ) : (
-            filteredHospitals.map((hospital) => {
-              const selected = hospital.hospitalCode === selectedHospitalCode;
-
-              return (
-                <button
-                  aria-selected={selected}
-                  className={`w-full rounded-[10px] border px-3 py-3 text-left transition-[border-color,background-color,box-shadow] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft ${
-                    selected
-                      ? "border-brand bg-white shadow-[0_4px_12px_rgba(18,103,89,0.12)]"
-                      : "border-transparent bg-white/70 hover:border-line hover:bg-white"
-                  }`}
-                  disabled={pending}
-                  key={hospital.id}
-                  onClick={() => setSelectedHospitalCode(hospital.hospitalCode)}
-                  role="option"
-                  type="button"
-                >
-                  <span className="block font-semibold text-ink">{hospital.name}</span>
-                  <span className="mt-1 block text-sm text-muted">
-                    รหัส {hospital.hospitalCode}
-                    {hospital.parentHospitalCode ? ` · หน่วยบริการในเครือ ${hospital.parentHospitalCode}` : ""}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
+            <div
+              aria-label="รายการโรงพยาบาลที่เลือกได้"
+              aria-describedby={fieldErrors.hospitalCode ? "hospitalCode-error" : undefined}
+              aria-invalid={fieldErrors.hospitalCode ? true : undefined}
+              className="max-h-64 space-y-2 overflow-y-auto rounded-[12px] border border-line bg-canvas p-2"
+              role="listbox"
+            >
+              {hospitals.length === 0 ? (
+                <p className="px-3 py-4 text-sm leading-6 text-muted">
+                  ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้
+                </p>
+              ) : filteredHospitals.length === 0 ? (
+                <p className="px-3 py-4 text-sm leading-6 text-muted">ไม่พบโรงพยาบาลที่ค้นหา</p>
+              ) : (
+                filteredHospitals.map((hospital) => (
+                  <button
+                    aria-selected={false}
+                    className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+                    disabled={pending}
+                    key={hospital.id}
+                    onClick={() => {
+                      setSelectedHospitalCode(hospital.hospitalCode);
+                      setHospitalQuery("");
+                    }}
+                    role="option"
+                    type="button"
+                  >
+                    <span className="block font-semibold text-ink">{hospital.name}</span>
+                    <span className="mt-1 block text-sm text-muted">
+                      รหัส {hospital.hospitalCode}
+                      {hospital.parentHospitalCode
+                        ? ` · หน่วยบริการในเครือ ${hospital.parentHospitalCode}`
+                        : ""}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
+        )}
 
         <input name="hospitalCode" type="hidden" value={selectedHospitalCode} />
         <p className="min-h-6 text-sm leading-6 text-muted" aria-live="polite">
           {selectedHospital ? `เลือกแล้ว: ${selectedHospital.name}` : "กรุณาเลือกโรงพยาบาลจากรายการ"}
         </p>
+        {fieldErrors.hospitalCode ? (
+          <p className="text-sm leading-6 text-danger" id="hospitalCode-error" role="alert">
+            {fieldErrors.hospitalCode}
+          </p>
+        ) : null}
       </fieldset>
 
       <fieldset className="space-y-5 border-t border-line pt-7">
@@ -143,6 +180,8 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
               ชื่อ
             </label>
             <input
+              aria-describedby={fieldErrors.givenName ? "givenName-error" : undefined}
+              aria-invalid={fieldErrors.givenName ? true : undefined}
               autoComplete="given-name"
               className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
               disabled={pending}
@@ -152,12 +191,19 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
               required
               type="text"
             />
+            {fieldErrors.givenName ? (
+              <p className="text-sm leading-6 text-danger" id="givenName-error" role="alert">
+                {fieldErrors.givenName}
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-ink" htmlFor="familyName">
               นามสกุล
             </label>
             <input
+              aria-describedby={fieldErrors.familyName ? "familyName-error" : undefined}
+              aria-invalid={fieldErrors.familyName ? true : undefined}
               autoComplete="family-name"
               className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
               disabled={pending}
@@ -167,6 +213,11 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
               required
               type="text"
             />
+            {fieldErrors.familyName ? (
+              <p className="text-sm leading-6 text-danger" id="familyName-error" role="alert">
+                {fieldErrors.familyName}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -175,6 +226,8 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             เลขบัตรประชาชน
           </label>
           <input
+            aria-describedby={fieldErrors.nationalId ? "nationalId-error" : undefined}
+            aria-invalid={fieldErrors.nationalId ? true : undefined}
             autoCapitalize="none"
             autoComplete="username"
             className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
@@ -189,6 +242,11 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             spellCheck={false}
             type="text"
           />
+          {fieldErrors.nationalId ? (
+            <p className="text-sm leading-6 text-danger" id="nationalId-error" role="alert">
+              {fieldErrors.nationalId}
+            </p>
+          ) : null}
         </div>
       </fieldset>
 
@@ -203,6 +261,8 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             รหัสผ่าน
           </label>
           <input
+            aria-describedby={fieldErrors.password ? "password-error" : undefined}
+            aria-invalid={fieldErrors.password ? true : undefined}
             autoComplete="new-password"
             className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
             disabled={pending}
@@ -213,6 +273,11 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             required
             type="password"
           />
+          {fieldErrors.password ? (
+            <p className="text-sm leading-6 text-danger" id="password-error" role="alert">
+              {fieldErrors.password}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -220,6 +285,10 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             ยืนยันรหัสผ่าน
           </label>
           <input
+            aria-describedby={
+              fieldErrors.passwordConfirmation ? "passwordConfirmation-error" : undefined
+            }
+            aria-invalid={fieldErrors.passwordConfirmation ? true : undefined}
             autoComplete="new-password"
             className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
             disabled={pending}
@@ -230,6 +299,15 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             required
             type="password"
           />
+          {fieldErrors.passwordConfirmation ? (
+            <p
+              className="text-sm leading-6 text-danger"
+              id="passwordConfirmation-error"
+              role="alert"
+            >
+              {fieldErrors.passwordConfirmation}
+            </p>
+          ) : null}
         </div>
       </fieldset>
 
@@ -243,7 +321,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
 
       <button
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || hospitals.length === 0}
+        disabled={pending || hospitals.length === 0 || !selectedHospitalCode}
         type="submit"
       >
         {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอลงทะเบียน"}

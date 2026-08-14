@@ -24,8 +24,8 @@ type CookieStore = {
 
 const serverEnv: ServerEnv = {
   NODE_ENV: "test",
-  DEMI_DATABASE_TARGET: "test",
   DATABASE_URL: "postgresql://test:test@localhost:5432/test",
+  DIRECT_URL: "postgresql://test:test@localhost:5432/test",
   IDENTITY_HASH_SECRET: "test-secret-test-secret-test-secret",
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",

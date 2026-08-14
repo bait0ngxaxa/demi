@@ -23,8 +23,8 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 - application history แยกจาก Hospital lifecycle ด้วย `PENDING → APPROVED | REJECTED`
 - Phase 3B ต้อง reuse HMAC identity resolution, opaque Supabase alias, `User.authSubject` และ trusted password-auth provisioning ของ Phase 2.1
 - approval/rejection เป็น consistency-critical Application Service operation; PostgreSQL writes และ audit ที่รับรองผลต้อง atomic
-- authoritative external Hospital Master provider และ exact real-world verification evidence ยัง unresolved; controlled development/test master data ใช้ผ่าน replaceable boundary ได้
-- Hospital Master เริ่มต้นมาจาก `demi_hospital_master_v2.xlsx` ที่ normalize แล้วเป็น fixture 78 records; `HH` ถูก exclude และ `KANG`/`KHON` เป็น canonical codes ตาม decision ที่ยืนยันแล้ว
+- authoritative external Hospital Master provider/update process และ exact real-world verification evidence ยัง unresolved; approved v2 seed data ใช้ผ่าน replaceable boundary ได้
+- Hospital Master เริ่มต้นมาจาก `demi_hospital_master_v2.xlsx` ที่ normalize แล้วเป็น approved seed dataset 78 records; `HH` ถูก exclude และ `KANG`/`KHON` เป็น canonical codes ตาม decision ที่ยืนยันแล้ว
 - Phase 3B เพิ่ม `Hospital.hospitalCode`, parent reference แบบ metadata เท่านั้น และ `HospitalOnboardingApplication` lifecycle `PENDING → APPROVED | REJECTED` พร้อม migration และ idempotent seed script
 - Public submit ทำให้ applicant เป็น `User.PROVISIONED` และ application เป็น `PENDING`; approve จึงเปลี่ยน Hospital/User เป็น `ACTIVE`, ให้ `HOSPITAL` + `OWNER` และเขียน audit ใน PostgreSQL transaction เดียว
 
@@ -33,22 +33,30 @@ DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](do
 - Public route: `/hospital/onboarding` — เลือก Hospital Master จากรายการที่ควบคุม, Thai National ID, ชื่อ และ user-owned password โดยไม่มี role/status input
 - Platform review: `/app/admin/hospital-onboarding` และรายละเอียด application — ใช้ existing session/ActorContext และ server-side `ADMIN` capability checks
 - Application Service อยู่ใน `src/modules/hospital-onboarding/`; Server Actions เป็น transport adapter เท่านั้น และใช้ Phase 2.1 HMAC identity resolution กับ trusted password provisioning
-- Seed ใช้ `npm run prisma:seed:hospital-master` ได้เฉพาะ `DEMI_DATABASE_TARGET=development|test`; script ไม่ลบ record อื่นและไม่ reset `ACTIVE` status
+- `npm run db:seed` เป็น production-safe entrypoint ที่ import `prisma/seed/hospital-master-v2.json` ไปยัง database ตาม `DATABASE_URL` และ `DIRECT_URL` ด้วย stable `hospitalCode` upsert; ไม่ลบ record อื่นและไม่ reset `ACTIVE` status
 - ก่อนเปิด public traffic ต้องมี shared/deployment-level rate limiting และ production owner/process สำหรับ master data กับ verification evidence; ยังไม่มีการเพิ่ม Redis หรือ provider integration ใน slice นี้
 
 ## Development setup
 
-1. Copy `.env.example` to `.env` (or export the same variables in the shell) and provide a development PostgreSQL/Supabase connection and Supabase Auth public configuration. Set `DEMI_DATABASE_TARGET` to the non-production database target. Generate a server-only `IDENTITY_HASH_SECRET` with at least 32 characters. Set `SUPABASE_SERVICE_ROLE_KEY` only in the trusted server environment that invokes provider-account provisioning; it must never be exposed to the browser. Never use production credentials for local development.
-2. Apply the migration and generate Prisma Client:
+1. Copy `.env.example` to `.env` (or export the same variables in the shell). For local development, `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` must belong to the same Supabase development project. Production supplies the same variable names with credentials for the Supabase production project. Generate a server-only `IDENTITY_HASH_SECRET` with at least 32 characters. `SUPABASE_SERVICE_ROLE_KEY` must only be used in the trusted server environment and must never be exposed to the browser. Never use production credentials for local development.
+2. For local schema development, use standard Prisma migration and generation commands:
 
 ```bash
-npm run prisma:migrate:deploy
+npm run prisma:migrate:dev
 npm run prisma:generate
 ```
 
-Use `npm run prisma:migrate:dev -- --name <migration_name>` only when creating a new migration after a confirmed schema change.
+Use `npm run prisma:migrate:dev -- --name <migration_name>` when creating a new migration after a confirmed schema change. Production deployment uses `npm run prisma:migrate:deploy` against the production credentials supplied by the deployment environment.
 
-The Prisma migration scripts run a safety preflight before invoking Prisma. Development migration commands refuse `DEMI_DATABASE_TARGET=production`; production deployment requires an explicit production target and `NODE_ENV=production`.
+These scripts invoke standard Prisma commands; the configured `DATABASE_URL` and `DIRECT_URL` determine the actual database project. No application-level database target selector is required.
+
+The environment-agnostic seed entrypoint is:
+
+```bash
+npm run db:seed
+```
+
+It validates the approved 78-record Hospital Master dataset and imports it idempotently into the database selected by the current environment credentials. The external provider and long-term update ownership remain replaceable/open requirements, but the committed v2 dataset is the current seed input.
 
 3. Run the development server:
 
@@ -88,10 +96,9 @@ npm run test:db:down
 
 The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. `npm run test:db:reset` recreates an empty database; `npm run test:db:down` removes the Compose resources. The command wrapper uses Docker from the current shell when available. On Windows it falls back to Docker in the WSL distribution configured by `DEMI_DOCKER_WSL_DISTRO` (default `Ubuntu`) and keeps that distribution alive until `test:db:down` so the container does not stop unexpectedly.
 
-To use another dedicated local PostgreSQL test database instead, export the same safety variables before running:
+To use another dedicated local PostgreSQL test database instead, export these local connection variables before running:
 
 ```bash
-export DEMI_DATABASE_TARGET=test
 export DEMI_TEST_DATABASE_URL=postgresql://test-user:test-password@localhost:5432/demi_test
 export DATABASE_URL=$DEMI_TEST_DATABASE_URL
 export DIRECT_URL=$DEMI_TEST_DATABASE_URL
@@ -99,7 +106,7 @@ npm run prisma:migrate:test
 npm run test:integration
 ```
 
-On Windows PowerShell, use `$env:...` assignments instead. Integration commands refuse to run unless `DEMI_DATABASE_TARGET=test`, both `DATABASE_URL` and `DIRECT_URL` equal `DEMI_TEST_DATABASE_URL`, and the target is explicitly non-production.
+On Windows PowerShell, use `$env:...` assignments instead. Integration commands refuse to run with `NODE_ENV=production`, require both `DATABASE_URL` and `DIRECT_URL` to equal `DEMI_TEST_DATABASE_URL`, and validate that the resulting PostgreSQL host is local/disposable.
 
 The application boundary is `Client → Server Action/HTTP API → Application Service → Policy → Prisma → PostgreSQL/Supabase`. No speculative `/api/v1` endpoints, LIFF SDK, native app, or clinical business modules are implemented in this phase.
 
@@ -180,9 +187,8 @@ app/app/                                protected authenticated application shel
 proxy.ts                                Supabase SSR session refresh boundary
 prisma/schema.prisma                    stable persistence model
 prisma/migrations/                      reproducible PostgreSQL migrations
-prisma/seed/hospital-master-v2.json     approved 78-record Hospital Master fixture
-scripts/seed-hospital-master.mjs        development/test-only idempotent master import
-scripts/prisma-preflight.mjs            Prisma CLI database-target safety guard
+prisma/seed/hospital-master-v2.json     approved 78-record Hospital Master seed data
+scripts/seed-hospital-master.mjs        environment-agnostic idempotent Hospital Master seed
 src/lib/env/                            server environment validation
 src/lib/auth/                           Supabase Auth server adapter
 src/lib/db/                             Prisma server singleton

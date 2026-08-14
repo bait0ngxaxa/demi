@@ -238,7 +238,7 @@ Schema gap ที่ Phase 3B ควรเพิ่มผ่าน migration:
 - `HospitalOnboardingApplication` พร้อม applicant relation, canonical hospital reference, three-state lifecycle และ review attribution
 - database constraints/concurrency guard ที่ป้องกัน duplicate Hospital code, duplicate pending claim และ repeated approval side effects
 
-Phase 3A ไม่แก้ Prisma schema; Phase 3B implementation เพิ่ม fields/model เหล่านี้ผ่าน migration และใช้ committed JSON fixture เป็น seed input เท่านั้น ไม่ parse Excel ใน runtime และไม่ใช้ free-text เป็น master identity
+Phase 3A ไม่แก้ Prisma schema; Phase 3B implementation เพิ่ม fields/model เหล่านี้ผ่าน migration และใช้ committed JSON เป็น seed input เท่านั้น ไม่ parse Excel ใน runtime และไม่ใช้ free-text เป็น master identity
 
 ## 12. Intentionally Open Requirements
 
@@ -251,7 +251,7 @@ Phase 3A ไม่แก้ Prisma schema; Phase 3B implementation เพิ่�
 - staff/OSM invitation และ activation mechanism
 - recovery path สำหรับ existing non-active/conflicting provider identity
 
-ประเด็นเหล่านี้ห้ามถูกแปลงเป็น implementation assumption Phase 3B MVP ใช้ controlled development/test Hospital Master, manual Platform Admin decision และ safe reconciliation path ได้
+ประเด็นเหล่านี้ห้ามถูกแปลงเป็น implementation assumption Phase 3B MVP ใช้ approved controlled Hospital Master seed, manual Platform Admin decision และ safe reconciliation path ได้
 
 ## 13. Explicitly Out of Phase 3B
 
@@ -275,7 +275,7 @@ Staff/OSM invitation implementation, patient provisioning/activation UI, clinica
 
 สัญญานี้ถูกนำไป implement เป็น MVP vertical slice แล้ว:
 
-- `prisma/seed/hospital-master-v2.json` มี 78 records, canonical codes ไม่ซ้ำ, ไม่มี `HH`, มี `KANG`/`KHON` ตาม approved artifact และ seed script ทำงานแบบ idempotent เฉพาะ development/test
+- `prisma/seed/hospital-master-v2.json` มี 78 records, canonical codes ไม่ซ้ำ, ไม่มี `HH`, มี `KANG`/`KHON` ตาม approved artifact และ `npm run db:seed` ทำงานแบบ idempotent กับ database ที่ environment credentials ชี้ไป
 - `Hospital.hospitalCode` เป็น unique canonical key; `parentHospitalId` เก็บ hierarchy reference เท่านั้นและไม่ถูกใช้ใน authorization
 - `HospitalOnboardingApplication` เก็บ `PENDING`, `APPROVED`, `REJECTED`, reviewer/timestamps และ bounded rejection reason; partial unique index ป้องกัน pending claim ซ้ำต่อ Hospital โดยไม่ลบ history
 - Public submit จะ fail closed เมื่อ Hospital มี application history อยู่แล้ว (รวม `REJECTED`) เพื่อไม่เดา reapplication policy; การเปิด reapply ต้องเป็น requirement/follow-up แยกต่างหาก

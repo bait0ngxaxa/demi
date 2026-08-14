@@ -1,9 +1,22 @@
+export type HospitalOnboardingField =
+  | "hospitalCode"
+  | "nationalId"
+  | "givenName"
+  | "familyName"
+  | "password"
+  | "passwordConfirmation";
+
+export type HospitalOnboardingFieldErrors = Partial<
+  Record<HospitalOnboardingField, string>
+>;
+
 export type HospitalOnboardingSubmitActionState =
   | { status: "IDLE" }
   | {
       status: "ERROR";
       code: "INVALID_INPUT" | "CONFLICT" | "UNAVAILABLE";
       message: string;
+      fieldErrors?: HospitalOnboardingFieldErrors;
     }
   | { status: "SUCCESS" };
 

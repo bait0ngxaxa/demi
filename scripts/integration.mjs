@@ -46,17 +46,16 @@ function parseEnvFile(filePath) {
 }
 
 function getIntegrationEnvironment() {
-  const inheritedTestEnvironment =
-    process.env.DEMI_DATABASE_TARGET === "test" &&
+  const inheritedIntegrationEnvironment =
     process.env.DATABASE_URL &&
     process.env.DIRECT_URL &&
     process.env.DEMI_TEST_DATABASE_URL;
-  const configuredEnvironment = inheritedTestEnvironment ? {} : parseEnvFile(integrationEnvPath);
+  const configuredEnvironment = inheritedIntegrationEnvironment ? {} : parseEnvFile(integrationEnvPath);
   const environment = { ...process.env, ...configuredEnvironment };
   const testUrl = environment.DEMI_TEST_DATABASE_URL;
 
-  if (environment.NODE_ENV === "production" || environment.DEMI_DATABASE_TARGET !== "test") {
-    fail("integration commands require NODE_ENV other than production and DEMI_DATABASE_TARGET=test");
+  if (environment.NODE_ENV === "production") {
+    fail("integration commands require NODE_ENV other than production");
   }
 
   if (!testUrl || environment.DATABASE_URL !== testUrl || environment.DIRECT_URL !== testUrl) {
@@ -278,18 +277,12 @@ function databaseDown(runtime, environment) {
 }
 
 function migrate(environment) {
-  run(process.execPath, [resolve(repositoryRoot, "scripts", "prisma-preflight.mjs"), "migrate-deploy"], {
-    env: environment,
-  });
   run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], {
     env: environment,
   });
 }
 
 function test(environment) {
-  run(process.execPath, [resolve(repositoryRoot, "scripts", "prisma-preflight.mjs"), "test-integration"], {
-    env: environment,
-  });
   run(
     process.execPath,
     [
