@@ -9,6 +9,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
 import {
   initialPatientActivationIssueActionState,
@@ -66,13 +68,13 @@ function IssueForm({
       <input name="userId" type="hidden" value={userId} />
       <input name="targetHospitalId" type="hidden" value={hospitalId} />
       <input name="reissue" type="hidden" value={String(reissue)} />
-      <button
-        className="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted"
+      <Button
         disabled={pending}
+        size="compact"
         type="submit"
       >
         {pending ? "กำลังดำเนินการ..." : label}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -154,11 +156,11 @@ function ActivationPresentation({
   }
 
   return (
-    <div className="mt-4 rounded-[12px] border border-brand/20 bg-brand-soft/60 px-4 py-4 text-sm leading-6 text-ink">
+    <Alert className="mt-4" variant="info">
       <p className="font-semibold">ลิงก์เปิดใช้งานพร้อมส่งต่อ</p>
       <p className="mt-1 text-muted">ส่งลิงก์หรือ QR นี้ให้ผู้ป่วยตั้งรหัสผ่านของตนเอง</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex h-52 w-52 shrink-0 items-center justify-center rounded-[12px] bg-white p-2">
+        <div className="flex h-52 w-52 shrink-0 items-center justify-center rounded-control bg-surface p-2">
           {visibleQrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -172,20 +174,20 @@ function ActivationPresentation({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-strong">
-            Activation link
+            ลิงก์เปิดใช้งาน
           </p>
-          <p className="mt-2 break-all rounded-[10px] border border-line bg-white px-3 py-3 text-xs leading-5 text-muted">
+          <p className="mt-2 break-all rounded-control border border-border bg-surface px-3 py-3 text-xs leading-5 text-text-muted">
             {activationUrl ?? "กำลังเตรียมลิงก์..."}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className="inline-flex min-h-10 items-center justify-center rounded-[10px] bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted"
+            <Button
               disabled={pending || !activationUrl}
               onClick={() => void copyActivationLink()}
+              size="compact"
               type="button"
             >
               {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
-            </button>
+            </Button>
             <IssueForm
               action={action}
               hospitalId={result.hospitalId}
@@ -205,7 +207,7 @@ function ActivationPresentation({
           </p>
         </div>
       </div>
-    </div>
+    </Alert>
   );
 }
 
@@ -225,10 +227,10 @@ export function PatientActivationHandoff({
 
   if (reconciliationRequired) {
     return (
-      <div className="mt-4 rounded-[12px] border border-danger/20 bg-danger/10 px-4 py-4 text-sm leading-6 text-danger" role="alert">
+      <Alert className="mt-4" variant="danger">
         <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่</p>
         <p className="mt-1">ระบบจะไม่สร้างหรือเปลี่ยนตัวตนผู้ให้บริการโดยอัตโนมัติ</p>
-      </div>
+      </Alert>
     );
   }
 
@@ -237,19 +239,19 @@ export function PatientActivationHandoff({
     result?.outcome === "ALREADY_ACTIVE"
   ) {
     return (
-      <div className="mt-4 rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
+      <Alert className="mt-4" variant="success">
         <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
         <p className="mt-1 text-muted">ไม่ต้องออกลิงก์ใหม่ และระบบคงตัวตน/รหัสผ่านเดิมไว้</p>
-      </div>
+      </Alert>
     );
   }
 
   if (candidate.activationStatus === "IN_PROGRESS") {
     return (
-      <div className="mt-4 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950" role="status">
+      <Alert className="mt-4" variant="warning">
         <p className="font-semibold">ผู้ป่วยกำลังเปิดใช้งานบัญชีอยู่</p>
         <p className="mt-1">รอให้ผู้ป่วยดำเนินการเสร็จสิ้น หรือลองตรวจสอบใหม่ภายหลัง</p>
-      </div>
+      </Alert>
     );
   }
 
@@ -259,7 +261,7 @@ export function PatientActivationHandoff({
 
   if (result?.outcome === "ALREADY_ISSUED") {
     return (
-      <div className="mt-4 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950" role="status">
+      <Alert className="mt-4" variant="warning">
         <p className="font-semibold">มีลิงก์เปิดใช้งานที่ยังใช้ได้แล้ว</p>
         <p className="mt-1">ลิงก์เดิมไม่สามารถแสดงซ้ำได้ หากต้องการลิงก์ใหม่ให้ยกเลิกลิงก์เดิม</p>
         <p className="mt-1 text-xs leading-5">ลิงก์เดิมหมดอายุ: {formatDate(result.activationExpiresAt)}</p>
@@ -271,7 +273,7 @@ export function PatientActivationHandoff({
           reissue
           userId={result.userId}
         />
-      </div>
+      </Alert>
     );
   }
 

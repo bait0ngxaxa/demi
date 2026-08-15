@@ -2,9 +2,14 @@
 
 :root {
   --canvas: #f3f7f5;
+  --surface: #ffffff;
+  --surface-muted: #eef3f1;
+  --surface-raised: #ffffff;
   --ink: #102620;
   --muted: #536b64;
+  --subtle: #60736d;
   --line: #d5e0dc;
+  --line-strong: #aebfba;
   --brand: #126759;
   --brand-strong: #0b5146;
   --brand-muted: #6e9c93;
@@ -13,15 +18,40 @@
   --brand-pale: #cce2dc;
   --brand-bright: #6fd2ba;
   --danger: #a23a3a;
+  --danger-soft: #f9e8e8;
   --success: #176b50;
   --success-soft: #e0f1e9;
+  --warning: #805313;
+  --warning-soft: #fff3d6;
+  --info: #315f74;
+  --info-soft: #e5f0f4;
+  --focus-ring: #126759;
+  --navigation-background: #0e3c35;
+  --navigation-hover: #174d45;
+  --navigation-active: #dceee9;
+  --demi-radius-control: 0.75rem;
+  --demi-radius-panel: 0.875rem;
+  --demi-radius-dialog: 1rem;
+  --demi-shadow-surface: 0 1px 2px rgb(16 38 32 / 0.06);
+  --demi-shadow-floating: 0 18px 48px rgb(8 35 31 / 0.22);
+  --app-sidebar-width: 17rem;
+  --app-header-height: 4.5rem;
+  --app-content-max-width: 80rem;
 }
 
 @theme inline {
   --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
   --color-ink: var(--ink);
+  --color-text: var(--ink);
   --color-muted: var(--muted);
+  --color-text-muted: var(--muted);
+  --color-text-subtle: var(--subtle);
   --color-line: var(--line);
+  --color-border: var(--line);
+  --color-border-strong: var(--line-strong);
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
   --color-brand-muted: var(--brand-muted);
@@ -30,8 +60,28 @@
   --color-brand-pale: var(--brand-pale);
   --color-brand-bright: var(--brand-bright);
   --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-focus-ring: var(--focus-ring);
+  --color-action-primary: var(--brand);
+  --color-action-primary-hover: var(--brand-strong);
+  --color-action-primary-muted: var(--brand-muted);
+  --color-navigation-background: var(--navigation-background);
+  --color-navigation-hover: var(--navigation-hover);
+  --color-navigation-active: var(--navigation-active);
+  --radius-control: var(--demi-radius-control);
+  --radius-panel: var(--demi-radius-panel);
+  --radius-dialog: var(--demi-radius-dialog);
+  --shadow-surface: var(--demi-shadow-surface);
+  --shadow-floating: var(--demi-shadow-floating);
+  --spacing-app-sidebar: var(--app-sidebar-width);
+  --spacing-app-header: var(--app-header-height);
+  --container-app-content: var(--app-content-max-width);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

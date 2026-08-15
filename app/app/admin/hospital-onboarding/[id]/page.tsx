@@ -1,8 +1,11 @@
+import { HospitalOnboardingApplicationStatus } from "@prisma/client";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
   assertHospitalOnboardingCapability,
@@ -21,7 +24,7 @@ export const metadata: Metadata = {
   title: "รายละเอียดคำขอโรงพยาบาล",
 };
 
-async function requirePlatformAdmin() {
+async function requirePlatformAdmin(): Promise<void> {
   try {
     const actor = await getProtectedApplicationActor();
     assertHospitalOnboardingCapability(actor, HOSPITAL_ONBOARDING_CAPABILITIES.review);
@@ -40,7 +43,7 @@ async function requirePlatformAdmin() {
 
 export default async function HospitalOnboardingDetailPage({
   params,
-}: HospitalOnboardingDetailPageProps) {
+}: HospitalOnboardingDetailPageProps): Promise<React.JSX.Element> {
   await connection();
   await requirePlatformAdmin();
   const { id } = await params;
@@ -64,30 +67,26 @@ export default async function HospitalOnboardingDetailPage({
     APPROVED: "อนุมัติแล้ว",
     REJECTED: "ปฏิเสธแล้ว",
   }[application.status];
+  const statusVariant = {
+    [HospitalOnboardingApplicationStatus.PENDING]: "warning",
+    [HospitalOnboardingApplicationStatus.APPROVED]: "success",
+    [HospitalOnboardingApplicationStatus.REJECTED]: "danger",
+  } satisfies Record<HospitalOnboardingApplicationStatus, StatusVariant>;
 
   return (
-    <main className="min-h-svh bg-canvas text-ink">
-      <div className="mx-auto w-full max-w-4xl px-5 py-8 sm:px-8 sm:py-12">
-        <Link
-          className="text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-          href="/app/admin/hospital-onboarding"
-        >
-          ← กลับไปรายการคำขอ
-        </Link>
+    <div className="max-w-4xl">
+      <PageHeader
+        actions={<StatusBadge variant={statusVariant[application.status]}>{statusLabel}</StatusBadge>}
+        breadcrumbs={[
+          { label: "ผู้ดูแลระบบ" },
+          { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียนโรงพยาบาล" },
+          { label: "รายละเอียดคำขอ" },
+        ]}
+        description="ตรวจสอบข้อมูลที่จำเป็นต่อการตัดสินใจของผู้ดูแลระบบ DEMI"
+        title="รายละเอียดคำขอ"
+      />
 
-        <header className="mt-7 flex flex-col gap-4 border-b border-line pb-8 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-[-0.03em]">รายละเอียดคำขอ</h1>
-            <p className="mt-3 text-base leading-7 text-muted">
-              ตรวจสอบข้อมูลที่จำเป็นต่อการตัดสินใจของ Platform Admin
-            </p>
-          </div>
-          <span className="inline-flex w-fit rounded-full bg-brand-soft px-3 py-1.5 text-sm font-semibold text-brand-strong">
-            {statusLabel}
-          </span>
-        </header>
-
-        <section className="mt-8 rounded-[16px] border border-line bg-white p-5 sm:p-8">
+      <Panel className="mt-8 sm:p-8">
           <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-semibold text-muted">โรงพยาบาล</dt>
@@ -130,16 +129,15 @@ export default async function HospitalOnboardingDetailPage({
               <p className="mt-2 whitespace-pre-wrap text-base leading-7">{application.rejectionReason}</p>
             </div>
           ) : null}
-        </section>
+      </Panel>
 
-        {application.status === "PENDING" ? (
-          <ReviewActions applicationId={application.id} />
-        ) : (
-          <p className="mt-6 text-sm leading-6 text-muted">
-            คำขอนี้ถูกตัดสินแล้ว การกดซ้ำจะไม่เปลี่ยนแปลงประวัติการตรวจสอบ
-          </p>
-        )}
-      </div>
-    </main>
+      {application.status === "PENDING" ? (
+        <ReviewActions applicationId={application.id} />
+      ) : (
+        <p className="mt-6 text-sm leading-6 text-muted">
+          คำขอนี้ถูกตัดสินแล้ว การกดซ้ำจะไม่เปลี่ยนแปลงประวัติการตรวจสอบ
+        </p>
+      )}
+    </div>
   );
 }

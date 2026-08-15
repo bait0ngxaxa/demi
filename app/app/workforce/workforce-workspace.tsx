@@ -4,6 +4,13 @@ import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   initialWorkforceActivationActionState,
   initialWorkforceProvisionActionState,
@@ -58,14 +65,14 @@ function ProvisionResult({ result }: { result: WorkforceProvisionResultState }):
 
   if (!activationToken) {
     return (
-      <div className="rounded-[14px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink">
+      <Alert variant="success">
         <p className="font-semibold">เพิ่มสิทธิ์เรียบร้อยแล้ว</p>
         <p className="mt-1 text-muted">
           {result.accountStatus === "ACTIVE"
             ? "ผู้ใช้นี้มีบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว ไม่ต้องเปิดใช้งานบัญชีอีกครั้ง"
             : "ระบบบันทึกข้อมูลแล้ว กรุณาออกลิงก์เปิดใช้งานใหม่จากรายการเมื่อจำเป็น"}
         </p>
-      </div>
+      </Alert>
     );
   }
 
@@ -121,11 +128,11 @@ function ActivationPresentation({
   }
 
   return (
-    <div className="rounded-[14px] border border-brand/20 bg-brand-soft/60 px-4 py-4 text-sm leading-6 text-ink">
+    <Alert variant="info">
       <p className="font-semibold">สร้างบุคลากรแล้ว · รอเปิดใช้งาน</p>
       <p className="mt-1 text-muted">ส่งลิงก์นี้ให้ผู้ใช้งานตั้งรหัสผ่านของตนเอง</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex h-52 w-52 items-center justify-center rounded-[12px] bg-white p-2">
+        <div className="flex h-52 w-52 items-center justify-center rounded-control bg-surface p-2">
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="QR Code ลิงก์เปิดใช้งาน DEMI" className="h-full w-full" src={qrDataUrl} />
@@ -135,22 +142,23 @@ function ActivationPresentation({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-strong">
-            Activation link
+            ลิงก์เปิดใช้งาน
           </p>
-          <p className="mt-2 break-all rounded-[10px] border border-line bg-white px-3 py-3 text-xs leading-5 text-muted">
+          <p className="mt-2 break-all rounded-control border border-border bg-surface px-3 py-3 text-xs leading-5 text-text-muted">
             {activationUrl}
           </p>
-          <button
-            className="mt-3 inline-flex h-10 items-center justify-center rounded-[10px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+          <Button
+            className="mt-3"
             onClick={() => void copyActivationLink()}
+            size="compact"
             type="button"
           >
             {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์เปิดใช้งาน"}
-          </button>
+          </Button>
           <p className="mt-3 text-xs leading-5 text-muted">ลิงก์หมดอายุ: {formatDate(expiresAt)}</p>
         </div>
       </div>
-    </div>
+    </Alert>
   );
 }
 
@@ -176,13 +184,13 @@ function WorkforceRow({
       : isInvited
         ? "อยู่ระหว่างเชิญ"
         : "รอเปิดใช้งาน";
-  const statusClass = isActive
-    ? "bg-success-soft text-success"
+  const statusVariant = isActive
+    ? "success"
     : isSuspended
-      ? "bg-danger text-white"
+      ? "danger"
       : isInvited
-        ? "bg-canvas text-muted"
-        : "bg-amber-50 text-amber-950";
+        ? "neutral"
+        : "warning";
 
   return (
     <li className="border-t border-line px-4 py-5 first:border-t-0 sm:px-6">
@@ -193,15 +201,13 @@ function WorkforceRow({
             {row.kind === "OSM" ? "อสม." : `บุคลากรโรงพยาบาล · ${row.profession ? professionLabels[row.profession] : "ยังไม่ระบุวิชาชีพ"}`}
           </p>
         </div>
-        <span
-          className={`inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-semibold ${statusClass}`}
-        >
+        <StatusBadge variant={statusVariant}>
           {statusLabel}
-        </span>
+        </StatusBadge>
       </div>
 
       {row.activationRequired ? (
-        <div className="mt-4 flex flex-col gap-3 rounded-[12px] bg-canvas px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-4 flex flex-col gap-3 rounded-control bg-surface-muted px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs leading-5 text-muted">
             <p>บัญชีและความสัมพันธ์ยังไม่เปิดใช้งาน</p>
             <p>
@@ -215,23 +221,24 @@ function WorkforceRow({
               <input name="userId" type="hidden" value={row.userId} />
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
-              <button
-                className="inline-flex h-9 items-center justify-center rounded-[9px] border border-brand px-3 text-xs font-semibold text-brand-strong transition hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              <Button
+                size="compact"
                 type="submit"
+                variant="secondary"
               >
                 ออกลิงก์ใหม่
-              </button>
+              </Button>
             </form>
             <form action={assistedAction}>
               <input name="userId" type="hidden" value={row.userId} />
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
-              <button
-                className="inline-flex h-9 items-center justify-center rounded-[9px] bg-brand px-3 text-xs font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              <Button
+                size="compact"
                 type="submit"
               >
                 เริ่มแบบช่วยเหลือ
-              </button>
+              </Button>
             </form>
           </div>
         </div>
@@ -279,36 +286,21 @@ export function WorkforceWorkspace({
   const anyPending = staffPending || osmPending || remotePending || assistedPending;
 
   return (
-    <main className="min-h-svh bg-canvas text-ink">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6 px-5 py-5 sm:items-center sm:px-8 lg:px-10">
-          <div>
-            <a
-              className="text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/app"
-            >
-              ← กลับไปพื้นที่ทำงาน
-            </a>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-              จัดการบุคลากรโรงพยาบาล
-            </h1>
-            <p className="mt-2 max-w-2xl text-base leading-7 text-muted">
-              เพิ่มบุคลากรและ อสม. ให้กับโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง
-            </p>
-          </div>
-          <span className="hidden rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand-strong sm:inline-flex">
-            Hospital Owner
-          </span>
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
+        breadcrumbs={[{ label: "บุคลากร" }, { label: "จัดการบุคลากร" }]}
+        description="เพิ่มบุคลากรและ อสม. ให้กับโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
+        title="จัดการบุคลากรโรงพยาบาล"
+      />
 
-      <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12 lg:px-10">
-        <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+      <div className="pt-8">
+        <Panel>
           <label className="block text-sm font-semibold text-ink" htmlFor="targetHospitalId">
             โรงพยาบาลที่จัดการ
           </label>
-          <select
-            className="mt-2 h-12 w-full max-w-xl rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+          <Select
+            className="mt-2 max-w-xl"
             id="targetHospitalId"
             onChange={(event) => {
               router.push(`/app/workforce?hospitalId=${encodeURIComponent(event.target.value)}`);
@@ -320,18 +312,18 @@ export function WorkforceWorkspace({
                 {hospital.name} · {hospital.hospitalCode}
               </option>
             ))}
-          </select>
+          </Select>
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายการและการดำเนินการทุกครั้งจะตรวจสอบสิทธิ์ Owner กับโรงพยาบาลนี้จากฝั่งเซิร์ฟเวอร์
+            รายการและการดำเนินการทุกครั้งจะตรวจสอบสิทธิ์เจ้าของโรงพยาบาลจากฝั่งเซิร์ฟเวอร์
           </p>
-        </section>
+        </Panel>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+          <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                กำหนดวิชาชีพจากฝั่งโรงพยาบาล ระบบจะสร้างความสัมพันธ์แบบ MEMBER ให้เอง
+                กำหนดวิชาชีพจากฝั่งโรงพยาบาล ระบบจะสร้างสิทธิ์บุคลากรโรงพยาบาลให้เอง
               </p>
             </div>
             <form action={staffAction} className="mt-6 space-y-4">
@@ -339,35 +331,35 @@ export function WorkforceWorkspace({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
                   <span>ชื่อ</span>
-                  <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="givenName" required type="text" />
+                  <Input name="givenName" required type="text" />
                 </label>
                 <label className="space-y-2 text-sm font-semibold">
                   <span>นามสกุล</span>
-                  <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="familyName" required type="text" />
+                  <Input name="familyName" required type="text" />
                 </label>
               </div>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>เลขบัตรประชาชน</span>
-                <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
+                <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
               </label>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>วิชาชีพ</span>
-                <select className="h-11 w-full rounded-[10px] border border-line bg-white px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" defaultValue="" name="profession" required>
+                <Select defaultValue="" name="profession" required>
                   <option disabled value="">เลือกวิชาชีพ</option>
                   {Object.entries(professionLabels).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               {staffState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{staffState.message}</p> : null}
               {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
-              <button className="flex h-11 w-full items-center justify-center rounded-[10px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={anyPending} type="submit">
+              <Button className="w-full" disabled={anyPending} type="submit">
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
-              </button>
+              </Button>
             </form>
-          </section>
+          </Panel>
 
-          <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+          <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่ม อสม.</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
@@ -379,27 +371,27 @@ export function WorkforceWorkspace({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
                   <span>ชื่อ</span>
-                  <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="givenName" required type="text" />
+                  <Input name="givenName" required type="text" />
                 </label>
                 <label className="space-y-2 text-sm font-semibold">
                   <span>นามสกุล</span>
-                  <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="familyName" required type="text" />
+                  <Input name="familyName" required type="text" />
                 </label>
               </div>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>เลขบัตรประชาชน</span>
-                <input className="h-11 w-full rounded-[10px] border border-line px-3 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
+                <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
               </label>
-              <div className="min-h-11 rounded-[10px] border border-dashed border-line bg-canvas px-3 py-2 text-sm leading-6 text-muted">
-                บทบาท OSM และสถานะความสัมพันธ์กำหนดโดยบริการฝั่งเซิร์ฟเวอร์
+              <div className="min-h-12 rounded-control border border-dashed border-border bg-surface-muted px-4 py-3 text-sm leading-6 text-text-muted">
+                บทบาท อสม. และสถานะความสัมพันธ์กำหนดโดยบริการฝั่งเซิร์ฟเวอร์
               </div>
               {osmState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{osmState.message}</p> : null}
               {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
-              <button className="flex h-11 w-full items-center justify-center rounded-[10px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={anyPending} type="submit">
+              <Button className="w-full" disabled={anyPending} type="submit">
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
-              </button>
+              </Button>
             </form>
-          </section>
+          </Panel>
         </div>
 
         {remoteState.status === "ERROR" ? <p className="mt-6 text-sm leading-6 text-danger" role="alert">{remoteState.message}</p> : null}
@@ -407,13 +399,13 @@ export function WorkforceWorkspace({
 
         <div className="mt-8 grid gap-6 xl:grid-cols-2">
           {([
-            ["บุคลากรโรงพยาบาล", staffRows, "MEMBER"],
-            ["อสม.", osmRows, "OSM"],
+            ["บุคลากรโรงพยาบาล", staffRows],
+            ["อสม.", osmRows],
           ] as const).map(([title, rows]) => (
-            <section className="overflow-hidden rounded-[16px] border border-line bg-white" key={title}>
+            <section className="overflow-hidden rounded-panel border border-border bg-surface" key={title}>
               <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
-                <span className="rounded-full bg-canvas px-3 py-1.5 text-xs font-semibold text-muted">{rows.length} รายการ</span>
+                <StatusBadge>{rows.length} รายการ</StatusBadge>
               </div>
               {rows.length === 0 ? (
                 <p className="px-4 py-10 text-center text-sm leading-6 text-muted sm:px-6">ยังไม่มีรายการในโรงพยาบาลนี้</p>
@@ -434,6 +426,6 @@ export function WorkforceWorkspace({
           ))}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

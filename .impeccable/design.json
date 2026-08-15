@@ -1,21 +1,81 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-13T00:00:00+07:00",
+  "generatedAt": "2026-08-15T00:00:00+07:00",
   "title": "Design System: DEMI",
   "extensions": {
     "colorMeta": {
-      "brand": { "role": "primary", "displayName": "DEMI Green", "canonical": "#126759", "tonalRamp": ["#07332b", "#0b5146", "#126759", "#2f7f70", "#6e9c93", "#a8cbc2", "#dceee9", "#f2faf7"] },
-      "canvas": { "role": "neutral", "displayName": "Clinical Canvas", "canonical": "#f3f7f5", "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#f3f7f5", "#ffffff"] }
+      "brand": {
+        "role": "primary",
+        "displayName": "DEMI Green",
+        "canonical": "#126759",
+        "tonalRamp": ["#07332b", "#0b5146", "#126759", "#2f7f70", "#6e9c93", "#a8cbc2", "#dceee9", "#f2faf7"]
+      },
+      "brand-strong": {
+        "role": "primary",
+        "displayName": "Deep Authority Green",
+        "canonical": "#0b5146",
+        "tonalRamp": ["#062920", "#0b5146", "#126759", "#2f7f70", "#6e9c93", "#a8cbc2", "#dceee9", "#f2faf7"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Clinical Canvas",
+        "canonical": "#f3f7f5",
+        "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#f3f7f5", "#ffffff"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Working Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#f3f7f5", "#ffffff"]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "Muted Surface",
+        "canonical": "#eef3f1",
+        "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#eef3f1", "#ffffff"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Quiet Line",
+        "canonical": "#d5e0dc",
+        "tonalRamp": ["#18201d", "#33413c", "#536b64", "#80928c", "#aebcb7", "#d5e0dc", "#eef3f1", "#ffffff"]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success Green",
+        "canonical": "#176b50",
+        "tonalRamp": ["#07392a", "#0d503b", "#176b50", "#39836a", "#71aa94", "#a8d0bd", "#e0f1e9", "#f5fbf8"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Review Amber",
+        "canonical": "#805313",
+        "tonalRamp": ["#3b2506", "#5e3d0b", "#805313", "#a5772e", "#c59f5f", "#e5cda0", "#fff3d6", "#fffaf0"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#a23a3a",
+        "tonalRamp": ["#4b1717", "#722525", "#a23a3a", "#bd5d5d", "#d68d8d", "#edbebe", "#f9e8e8", "#fff7f7"]
+      },
+      "info": {
+        "role": "tertiary",
+        "displayName": "Information Blue",
+        "canonical": "#315f74",
+        "tonalRamp": ["#102631", "#1e4050", "#315f74", "#557f93", "#83a6b4", "#b6d0d8", "#e5f0f4", "#f7fbfc"]
+      }
     },
     "typographyMeta": {
-      "heading": { "displayName": "Heading", "purpose": "หัวข้อและชื่อ DEMI" },
-      "body": { "displayName": "Body", "purpose": "ข้อความ UI ภาษาไทยและคำอธิบาย" }
+      "heading": { "displayName": "Heading", "purpose": "Page title, section title และชื่อ DEMI" },
+      "body": { "displayName": "Body", "purpose": "ข้อความ UI ภาษาไทยและคำอธิบาย" },
+      "label": { "displayName": "Label", "purpose": "Form label, navigation label และสถานะสั้น" }
     },
     "shadows": [
-      { "name": "primary-action", "value": "0 8px 22px rgba(18, 103, 89, 0.22)", "purpose": "แยก primary action จากพื้นผิว" }
+      { "name": "surface", "value": "0 1px 2px rgb(16 38 32 / 0.06)", "purpose": "ยก selected local navigation หรือ surface ขึ้นเล็กน้อย" },
+      { "name": "floating", "value": "0 18px 48px rgb(8 35 31 / 0.22)", "purpose": "แยก mobile navigation drawer จากหน้า" }
     ],
     "motion": [
-      { "name": "control-state", "value": "150ms ease-out", "purpose": "การเปลี่ยน hover, focus และ pressed state" }
+      { "name": "control-state", "value": "150ms ease-out", "purpose": "การเปลี่ยน hover, focus, active และ drawer state" }
     ],
     "breakpoints": [
       { "name": "sm", "value": "640px" },
@@ -27,42 +87,74 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "ปุ่ม action หลักของ form",
-      "html": "<button class=\"ds-button-primary\">เข้าสู่ระบบ</button>",
-      "css": ".ds-button-primary { min-height: 48px; padding: 12px 20px; border: 0; border-radius: 12px; background: var(--brand, #126759); color: #fff; font: 600 16px/1.5 sans-serif; box-shadow: 0 8px 22px rgba(18,103,89,.22); transition: background-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out; } .ds-button-primary:hover { background: var(--brand-strong, #0b5146); } .ds-button-primary:focus-visible { outline: 4px solid var(--brand-soft, #dceee9); outline-offset: 2px; } .ds-button-primary:active { transform: translateY(1px); }"
+      "description": "ปุ่ม action หลักของ form และ operation ที่ยืนยันได้",
+      "html": "<button class=\"ds-button-primary\" type=\"button\">ดำเนินการ</button>",
+      "css": ".ds-button-primary { min-height: 48px; padding: 10px 20px; border: 0; border-radius: 12px; background: var(--brand, #126759); color: #fff; font-family: var(--font-geist-sans, sans-serif); font-size: 14px; font-weight: 600; line-height: 1.5; transition: background-color 150ms ease-out; } .ds-button-primary:hover { background: var(--brand-strong, #0b5146); } .ds-button-primary:focus-visible { outline: 4px solid var(--focus-ring, #126759); outline-offset: 2px; } .ds-button-primary:disabled { cursor: not-allowed; background: var(--brand-muted, #6e9c93); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "ปุ่มรองสำหรับ action ที่ไม่ใช่ primary path",
+      "html": "<button class=\"ds-button-secondary\" type=\"button\">ยกเลิก</button>",
+      "css": ".ds-button-secondary { min-height: 48px; padding: 10px 20px; border: 1px solid var(--line-strong, #aebfba); border-radius: 12px; background: var(--surface, #fff); color: var(--ink, #102620); font-family: var(--font-geist-sans, sans-serif); font-size: 14px; font-weight: 600; line-height: 1.5; transition: border-color 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out; } .ds-button-secondary:hover { border-color: var(--brand, #126759); background: var(--brand-soft, #dceee9); color: var(--brand-strong, #0b5146); } .ds-button-secondary:focus-visible { outline: 4px solid var(--focus-ring, #126759); outline-offset: 2px; } .ds-button-secondary:disabled { cursor: not-allowed; color: var(--subtle, #60736d); }"
+    },
+    {
+      "name": "Compact Button",
+      "kind": "button",
+      "refersTo": "button-compact",
+      "description": "ปุ่มขนาด compact ที่ยังรักษา touch target 44px",
+      "html": "<button class=\"ds-button-compact\" type=\"button\">ค้นหา</button>",
+      "css": ".ds-button-compact { min-height: 44px; padding: 8px 14px; border: 0; border-radius: 12px; background: var(--brand, #126759); color: #fff; font-family: var(--font-geist-sans, sans-serif); font-size: 14px; font-weight: 600; line-height: 1.5; transition: background-color 150ms ease-out; } .ds-button-compact:hover { background: var(--brand-strong, #0b5146); } .ds-button-compact:focus-visible { outline: 4px solid var(--focus-ring, #126759); outline-offset: 2px; }"
     },
     {
       "name": "Text Input",
       "kind": "input",
-      "refersTo": "input",
-      "description": "ช่องกรอกข้อมูลเข้าสู่ระบบ",
-      "html": "<input class=\"ds-input\" placeholder=\"name@example.com\" />",
-      "css": ".ds-input { min-height: 48px; padding: 12px 16px; border: 1px solid var(--line, #d5e0dc); border-radius: 12px; background: #fff; color: var(--ink, #102620); font: 400 16px/1.5 sans-serif; } .ds-input:focus-visible { border-color: var(--brand, #126759); outline: 4px solid var(--brand-soft, #dceee9); } .ds-input:disabled { cursor: not-allowed; opacity: .65; }"
+      "refersTo": "input-control",
+      "description": "ช่องกรอกข้อมูล native สำหรับ form และ lookup",
+      "html": "<input class=\"ds-input\" aria-label=\"เลขบัตรประชาชน\" inputmode=\"numeric\" />",
+      "css": ".ds-input { width: 100%; min-height: 48px; padding: 12px 16px; border: 1px solid var(--line, #d5e0dc); border-radius: 12px; background: var(--surface, #fff); color: var(--ink, #102620); font-family: var(--font-geist-sans, sans-serif); font-size: 16px; font-weight: 400; line-height: 1.5; transition: border-color 150ms ease-out, box-shadow 150ms ease-out; } .ds-input::placeholder { color: var(--subtle, #60736d); } .ds-input:focus-visible { border-color: var(--brand, #126759); outline: 4px solid var(--focus-ring, #126759); outline-offset: 0; } .ds-input:disabled { cursor: not-allowed; background: var(--surface-muted, #eef3f1); color: var(--subtle, #60736d); }"
     },
     {
-      "name": "Role Chip",
-      "kind": "chip",
-      "description": "แสดงบทบาทจาก ActorContext โดยไม่ใช้เป็น control",
-      "html": "<span class=\"ds-role-chip\">บุคลากรโรงพยาบาล</span>",
-      "css": ".ds-role-chip { display: inline-flex; padding: 6px 12px; border-radius: 9999px; background: var(--brand-soft, #dceee9); color: var(--brand-strong, #0b5146); font: 600 14px/1.5 sans-serif; }"
-    },
-    {
-      "name": "Information Card",
+      "name": "Panel Surface",
       "kind": "card",
-      "refersTo": "card",
-      "description": "container สำหรับข้อมูล actor ที่อ่านจาก server",
-      "html": "<section class=\"ds-card\">ข้อมูลผู้ใช้งานปัจจุบัน</section>",
-      "css": ".ds-card { padding: 28px; border: 1px solid var(--line, #d5e0dc); border-radius: 16px; background: #fff; color: var(--ink, #102620); font: 600 18px/1.5 sans-serif; }"
+      "refersTo": "panel-surface",
+      "description": "พื้นผิว bounded สำหรับ form, context และ grouped result",
+      "html": "<section class=\"ds-panel\"><h2>บริบทโรงพยาบาล</h2></section>",
+      "css": ".ds-panel { padding: 20px; border: 1px solid var(--line, #d5e0dc); border-radius: 14px; background: var(--surface, #fff); color: var(--ink, #102620); } @media (min-width: 640px) { .ds-panel { padding: 28px; } }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "description": "สถานะหรือ role ที่ scan ได้เร็วและไม่เป็น control",
+      "html": "<span class=\"ds-status-badge\">พร้อมใช้งาน</span>",
+      "css": ".ds-status-badge { display: inline-flex; width: fit-content; align-items: center; padding: 6px 12px; border-radius: 9999px; background: var(--success-soft, #e0f1e9); color: var(--success, #176b50); font-family: var(--font-geist-sans, sans-serif); font-size: 12px; font-weight: 600; line-height: 1.5; }"
+    },
+    {
+      "name": "Alert",
+      "kind": "custom",
+      "description": "ข้อความผลลัพธ์หรือสถานะสำคัญที่ต้องมี containment",
+      "html": "<div class=\"ds-alert\" role=\"status\">บันทึกข้อมูลเรียบร้อยแล้ว</div>",
+      "css": ".ds-alert { padding: 16px; border: 1px solid color-mix(in srgb, var(--success, #176b50) 20%, transparent); border-radius: 14px; background: var(--success-soft, #e0f1e9); color: var(--ink, #102620); font-family: var(--font-geist-sans, sans-serif); font-size: 14px; line-height: 1.5; }"
+    },
+    {
+      "name": "Application Navigation",
+      "kind": "nav",
+      "description": "navigation แบบ grouped ที่แสดงตาม ActorContext และ route state",
+      "html": "<nav class=\"ds-nav\" aria-label=\"เมนูหลัก\"><a class=\"ds-nav-link is-active\" aria-current=\"page\" href=\"/app\">หน้าหลัก</a><a class=\"ds-nav-link\" href=\"/app/workforce\">จัดการบุคลากร</a></nav>",
+      "css": ".ds-nav { display: grid; gap: 4px; padding: 16px; background: var(--navigation-background, #0e3c35); } .ds-nav-link { min-height: 44px; display: flex; align-items: center; padding: 8px 12px; border-radius: 12px; color: rgb(255 255 255 / 82%); font-family: var(--font-geist-sans, sans-serif); font-size: 14px; font-weight: 600; text-decoration: none; transition: background-color 150ms ease-out, color 150ms ease-out; } .ds-nav-link:hover { background: var(--navigation-hover, #174d45); color: #fff; } .ds-nav-link.is-active { background: var(--navigation-active, #dceee9); color: var(--brand-deep, #0e3c35); } .ds-nav-link:focus-visible { outline: 4px solid var(--brand-bright, #6fd2ba); outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "Quiet Clinical Access",
-    "overview": "DEMI ใช้พื้นสว่างสำหรับการทำงานในสถานพยาบาลและเขียวเข้มเป็นสี authority ของระบบ การแสดงผลเน้นสถานะที่อ่านได้ทันที ไม่มีภาพตกแต่งหรือ claim ที่อยู่นอก product truth",
-    "keyCharacteristics": ["พื้นที่ทำงานสว่างและตัวอักษรเข้มที่อ่านได้ชัด", "เขียวเข้มใช้กับ action และพื้นที่ยืนยันตัวตน", "ลำดับข้อมูลสั้น ตรง และเป็นกลางต่อทุกบทบาท", "control รองรับ touch, keyboard focus, loading, disabled และ error state"],
+    "overview": "DEMI เป็นพื้นที่ทำงานด้านสุขภาพที่ให้ผู้ปฏิบัติงานอ่านสถานะและทำงานต่อได้ทันที พื้น canvas สีเขียวเทาอ่อนกับ surface สีขาวทำหน้าที่เป็นพื้นทำงาน ส่วนเขียวเข้มทำหน้าที่เป็นสี authority ของแบรนด์และ navigation\n\nระบบใช้ hierarchy แบบ operational: page header, local context, bounded sections และ status ที่มีข้อความกำกับ พื้นผิว flat ที่มีเส้นขอบชัดเจนสำคัญกว่าการสร้าง depth ด้วยเงา ไม่มีภาพตกแต่ง, gradient, glass หรือ claim ที่อยู่นอก product truth",
+    "keyCharacteristics": ["พื้นที่ทำงานสว่าง ตัวอักษรเข้ม และการแบ่งส่วนอ่านได้เร็ว", "เขียวเข้มใช้กับ identity, primary action และ navigation authority", "Thai-first copy ที่สุภาพ ตรงไปตรงมา และเป็นกลางต่อทุกบทบาท", "Controls รองรับ touch, focus-visible, pending, disabled และ error state", "Mobile ใช้ information architecture เดียวกับ desktop ผ่าน compact header และ drawer"],
     "rules": [
-      { "name": "The Authority Color Rule", "body": "ใช้ brand green เมื่อองค์ประกอบสื่อการยืนยันตัวตน primary action หรือสถานะที่เชื่อถือได้เท่านั้น", "section": "colors" }
+      { "name": "The Authority Color Rule", "body": "ใช้ brand green เมื่อองค์ประกอบสื่อ identity, primary action, active navigation หรือสถานะที่เชื่อถือได้เท่านั้น ไม่ใช้แทนทุกความหมายของ status", "section": "colors" },
+      { "name": "The Thai-First Rule", "body": "ใช้ภาษาไทยเป็นภาษาหลักของ UI; English ที่คงไว้ควรเป็นคำเทคนิคที่จำเป็นใน source หรือ provider boundary เท่านั้น", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "เริ่มจาก background + border + whitespace ก่อนเพิ่ม shadow; elevation ต้องสื่อ interaction hierarchy ไม่ใช่เพิ่มความสวยงามเฉย ๆ", "section": "elevation" }
     ],
-    "dos": ["Do ใช้ภาษาไทยที่ตรงไปตรงมาและระบุวิธี recovery ใน error state", "Do แสดง role จาก server-resolved ActorContext เท่านั้น", "Do รักษา touch target อย่างน้อย 44px และ focus-visible ที่ชัดเจน"],
-    "donts": ["Don't ใช้ role selector หรือ browser state เป็น authority", "Don't เพิ่ม dashboard, imagery หรือ operational claim ที่ยังไม่มี requirement", "Don't ใช้ decorative gradient, glass หรือ nested cards แทนลำดับข้อมูล"]
+    "dos": ["Do ใช้ semantic tokens และ shared primitives แทน raw color, radius และ shadow ใหม่", "Do รักษา control touch target อย่างน้อย 44px และ focus-visible ที่มี contrast ชัดเจน", "Do ใช้ PageHeader, Panel, Alert และ StatusBadge เพื่อทำให้ hierarchy และ state สม่ำเสมอ", "Do ใช้ native form semantics, label association, aria-current และ accessible drawer controls", "Do ใช้ border + whitespace + status text ก่อนเพิ่ม elevation"],
+    "donts": ["Don't ใช้ hidden navigation หรือ hidden button เป็น authorization", "Don't เพิ่ม arbitrary color/radius/shadow เช่น hex หรือ pixel value ใหม่โดยไม่เพิ่ม token ที่มีความหมายร่วม", "Don't สร้าง dashboard metrics, clinical statistics, imagery หรือ claim ที่ยังไม่มี product requirement", "Don't รวม Patient Provisioning กับ Patient Activation หรือแยก Excel เป็น application-level destination ใหม่", "Don't ใช้ decorative gradient, glass, nested cards หรือ card ทุก section แทนข้อมูล hierarchy"]
   }
 }

@@ -3,6 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientActivationScope } from "@/modules/patient-activation/services/patient-activation-query-service";
 import {
   findPatientActivationCandidatesAction,
@@ -61,37 +67,23 @@ export function PatientActivationActionsWorkspace({
   const errorMessage = mapLookupError(lookupState);
 
   return (
-    <main className="min-h-svh bg-canvas text-ink">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex w-full max-w-6xl items-start justify-between gap-6 px-5 py-5 sm:items-center sm:px-8 lg:px-10">
-          <div>
-            <a
-              className="text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/app"
-            >
-              ← กลับไปพื้นที่ทำงาน
-            </a>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
-              เปิดใช้งานบัญชีผู้ป่วย
-            </h1>
-            <p className="mt-2 max-w-2xl text-base leading-7 text-muted">
-              ค้นหาผู้ป่วยที่จำเป็นต้องเข้าใช้งาน DEMI แล้วออกลิงก์ครั้งเดียวให้ผู้ป่วยตั้งรหัสผ่านเอง
-            </p>
-          </div>
-          <span className="hidden rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand-strong sm:inline-flex">
-            patient:activation:issue
-          </span>
-        </div>
-      </header>
+    <div className="max-w-6xl">
+      <PageHeader
+        actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
+        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
+        description="ออกสิทธิ์เข้าใช้งานเฉพาะผู้ป่วยที่จำเป็นต้องใช้ DEMI โดยผู้ป่วยเป็นผู้ตั้งรหัสผ่านเอง"
+        title="เปิดใช้งานบัญชีผู้ป่วย"
+      />
 
-      <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-12 lg:px-10">
-        <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+      <div className="pt-8">
+        <Panel>
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-muted">โรงพยาบาลที่ดำเนินการ</p>
               {scopes.length > 1 ? (
-                <select
-                  className="mt-2 h-12 w-full max-w-xl rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+                <Select
+                  aria-label="โรงพยาบาลที่ดำเนินการ"
+                  className="mt-2 max-w-xl"
                   onChange={(event) => changeHospital(event.target.value)}
                   value={selectedHospitalId}
                 >
@@ -100,7 +92,7 @@ export function PatientActivationActionsWorkspace({
                       {scope.hospitalName} · {scope.hospitalCode}
                     </option>
                   ))}
-                </select>
+                </Select>
               ) : (
                 <p className="mt-2 text-lg font-semibold text-brand-strong">
                   {selectedScope.hospitalName} · {selectedScope.hospitalCode}
@@ -122,8 +114,7 @@ export function PatientActivationActionsWorkspace({
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <label className="block space-y-2 text-sm font-semibold">
                 <span>ค้นหาด้วย</span>
-                <select
-                  className="h-12 w-full rounded-[12px] border border-line bg-white px-4 font-normal text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+                <Select
                   name="lookupType"
                   onChange={(event) =>
                     setLookupType(
@@ -136,12 +127,11 @@ export function PatientActivationActionsWorkspace({
                 >
                   <option value="NATIONAL_ID">เลขบัตรประชาชน</option>
                   <option value="HOSPITAL_NUMBER">HN</option>
-                </select>
+                </Select>
               </label>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>{lookupType === "NATIONAL_ID" ? "เลขบัตรประชาชน" : "HN"}</span>
-                <input
-                  className="h-12 w-full rounded-[12px] border border-line px-4 font-normal text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+                <Input
                   inputMode={lookupType === "NATIONAL_ID" ? "numeric" : "text"}
                   maxLength={lookupType === "NATIONAL_ID" ? 13 : 64}
                   name="value"
@@ -149,13 +139,12 @@ export function PatientActivationActionsWorkspace({
                   type="text"
                 />
               </label>
-              <button
-                className="flex min-h-12 items-center justify-center rounded-[12px] bg-brand px-5 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted"
+              <Button
                 disabled={lookupPending}
                 type="submit"
               >
                 {lookupPending ? "กำลังค้นหา..." : "ค้นหา"}
-              </button>
+              </Button>
             </form>
             {errorMessage ? (
               <p className="mt-4 text-sm leading-6 text-danger" role="alert">
@@ -163,7 +152,7 @@ export function PatientActivationActionsWorkspace({
               </p>
             ) : null}
           </div>
-        </section>
+        </Panel>
 
         {lookupState.status === "SUCCESS" ? (
           <section className="mt-6" aria-live="polite">
@@ -175,7 +164,7 @@ export function PatientActivationActionsWorkspace({
               <div className="mt-4 space-y-4">
                 {lookupState.candidates.map((candidate) => (
                   <article
-                    className="rounded-[16px] border border-line bg-white p-5 sm:p-7"
+                    className="rounded-panel border border-border bg-surface p-5 sm:p-7"
                     key={`${candidate.userId}-${candidate.hospitalId}`}
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -210,13 +199,13 @@ export function PatientActivationActionsWorkspace({
                 ))}
               </div>
             ) : (
-              <div className="mt-4 rounded-[16px] border border-dashed border-line bg-white px-5 py-8 text-center text-sm leading-6 text-muted sm:px-7">
+              <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center text-sm leading-6 text-text-muted sm:px-7">
                 ไม่พบผู้ป่วยตามข้อมูลค้นหาในโรงพยาบาลนี้
               </div>
             )}
           </section>
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }

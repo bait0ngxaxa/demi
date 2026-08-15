@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { LocalNavigation } from "@/components/ui/local-navigation";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
+import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type {
   PatientImportClassification,
   PatientImportPreviewRow,
@@ -31,6 +39,8 @@ type PatientProvisioningWorkspaceProps = {
   selectedScope: PatientProvisioningScope;
 };
 
+type ProvisioningMode = "SINGLE" | "EXCEL";
+
 const classificationLabels: Record<PatientImportClassification, string> = {
   READY: "พร้อมนำเข้า",
   ALREADY_EXISTS: "มีอยู่แล้ว",
@@ -39,12 +49,12 @@ const classificationLabels: Record<PatientImportClassification, string> = {
   CONFLICT: "ข้อมูลขัดแย้ง",
 };
 
-const classificationClasses: Record<PatientImportClassification, string> = {
-  READY: "bg-success-soft text-success",
-  ALREADY_EXISTS: "bg-canvas text-muted",
-  DUPLICATE_IN_FILE: "bg-amber-50 text-amber-950",
-  INVALID: "bg-danger/10 text-danger",
-  CONFLICT: "bg-danger/10 text-danger",
+const classificationVariants: Record<PatientImportClassification, StatusVariant> = {
+  READY: "success",
+  ALREADY_EXISTS: "neutral",
+  DUPLICATE_IN_FILE: "warning",
+  INVALID: "danger",
+  CONFLICT: "danger",
 };
 
 const importResultLabels: Record<PatientImportRowResult["result"], string> = {
@@ -56,13 +66,13 @@ const importResultLabels: Record<PatientImportRowResult["result"], string> = {
   FAILED: "บันทึกไม่สำเร็จ",
 };
 
-const importResultClasses: Record<PatientImportRowResult["result"], string> = {
-  IMPORTED: "bg-success-soft text-success",
-  ALREADY_EXISTS: "bg-canvas text-muted",
-  DUPLICATE_IN_FILE: "bg-amber-50 text-amber-950",
-  INVALID: "bg-danger/10 text-danger",
-  CONFLICT: "bg-danger/10 text-danger",
-  FAILED: "bg-danger/10 text-danger",
+const importResultVariants: Record<PatientImportRowResult["result"], StatusVariant> = {
+  IMPORTED: "success",
+  ALREADY_EXISTS: "neutral",
+  DUPLICATE_IN_FILE: "warning",
+  INVALID: "danger",
+  CONFLICT: "danger",
+  FAILED: "danger",
 };
 
 function fieldError(
@@ -104,18 +114,18 @@ function ProvisionResult({
 
   if (state.result.outcome === "ALREADY_PROVISIONED") {
     return (
-      <div className="mt-4 rounded-[12px] border border-line bg-canvas px-4 py-4 text-sm leading-6 text-ink" role="status">
+      <Alert className="mt-4" variant="neutral">
         <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
         <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
         {state.result.accountStatus === "PROVISIONED" ? (
           <Link
-            className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+            className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
             href="/app/patients/activation"
           >
             จัดการการเปิดใช้งานบัญชีผู้ป่วย
           </Link>
         ) : null}
-      </div>
+      </Alert>
     );
   }
 
@@ -125,33 +135,33 @@ function ProvisionResult({
       : "สร้างข้อมูลผู้ป่วยแล้ว บัญชีอยู่ในสถานะรอเปิดใช้งานและยังเข้าสู่ระบบไม่ได้";
 
   return (
-    <div className="mt-4 rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
+    <Alert className="mt-4" variant="success">
       <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
       {state.result.accountStatus === "PROVISIONED" ? (
         <Link
-          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           href="/app/patients/activation"
         >
           จัดการการเปิดใช้งานบัญชีผู้ป่วย
         </Link>
       ) : null}
-    </div>
+    </Alert>
   );
 }
 
 function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.Element {
   if (rows.length === 0) {
     return (
-      <p className="rounded-[12px] border border-dashed border-line bg-canvas px-4 py-8 text-center text-sm leading-6 text-muted">
+      <p className="rounded-panel border border-dashed border-border bg-surface-muted px-4 py-8 text-center text-sm leading-6 text-text-muted">
         ไม่พบแถวข้อมูลที่พร้อมตรวจสอบในไฟล์นี้
       </p>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-[12px] border border-line">
+    <div className="overflow-x-auto rounded-panel border border-border">
       <table className="min-w-full divide-y divide-line text-left text-sm">
         <thead className="bg-canvas text-xs font-semibold text-muted">
           <tr>
@@ -172,9 +182,9 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
               </td>
               <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
               <td className="min-w-44 px-3 py-3">
-                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${classificationClasses[row.classification]}`}>
+                <StatusBadge variant={classificationVariants[row.classification]}>
                   {classificationLabels[row.classification]}
-                </span>
+                </StatusBadge>
                 {row.reason ? <p className="mt-1 text-xs leading-5 text-muted">{row.reason}</p> : null}
               </td>
             </tr>
@@ -190,7 +200,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
   const hasAttentionRows = attentionRows.length > 0;
 
   return (
-    <div className={`rounded-[12px] border px-4 py-4 text-sm leading-6 text-ink ${hasAttentionRows ? "border-amber-200 bg-amber-50" : "border-success/20 bg-success-soft"}`} role="status">
+    <Alert variant={hasAttentionRows ? "warning" : "success"}>
       <p className="font-semibold">{hasAttentionRows ? "นำเข้าข้อมูลเสร็จแล้ว มีบางแถวต้องตรวจสอบ" : "นำเข้าข้อมูลเสร็จแล้ว"}</p>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         <div><dt className="text-muted">เพิ่มใหม่</dt><dd className="font-semibold">{summary.imported}</dd></div>
@@ -203,7 +213,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
       {hasAttentionRows ? (
         <div className="mt-5 border-t border-amber-200 pt-4">
           <h3 className="font-semibold">แถวที่ต้องตรวจสอบ</h3>
-          <div className="mt-3 overflow-x-auto rounded-[12px] border border-line bg-white">
+          <div className="mt-3 overflow-x-auto rounded-panel border border-border bg-surface">
             <table className="min-w-full divide-y divide-line text-left text-sm">
               <thead className="bg-canvas text-xs font-semibold text-muted">
                 <tr>
@@ -224,9 +234,9 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
                     <td className="min-w-52 px-3 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${importResultClasses[row.result]}`}>
+                      <StatusBadge variant={importResultVariants[row.result]}>
                         {importResultLabels[row.result]}
-                      </span>
+                      </StatusBadge>
                       {row.reason ? <p className="mt-1 text-xs leading-5 text-muted">{row.reason}</p> : null}
                     </td>
                   </tr>
@@ -238,7 +248,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
       ) : (
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
-    </div>
+    </Alert>
   );
 }
 
@@ -263,6 +273,7 @@ export function PatientProvisioningWorkspace({
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
+  const [mode, setMode] = useState<ProvisioningMode>("SINGLE");
   const importContextVersion = useRef(0);
   const previousHospitalId = useRef(selectedHospitalId);
 
@@ -291,6 +302,7 @@ export function PatientProvisioningWorkspace({
     previewFile === selectedFile &&
     previewState.status === "SUCCESS" &&
     previewState.preview.targetHospitalId === selectedHospitalId;
+  const activeMode: ProvisioningMode = selectedScope.canBulkImport ? mode : "SINGLE";
 
   function invalidateImportPreview(): void {
     importContextVersion.current += 1;
@@ -377,36 +389,23 @@ export function PatientProvisioningWorkspace({
   }
 
   return (
-    <main className="min-h-svh bg-canvas text-ink">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-6 px-5 py-5 sm:items-center sm:px-8 lg:px-10">
-          <div>
-            <a
-              className="text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/app"
-            >
-              ← กลับไปพื้นที่ทำงาน
-            </a>
-            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">เพิ่มผู้ป่วย</h1>
-            <p className="mt-2 max-w-2xl text-base leading-7 text-muted">
-              สร้างข้อมูลผู้ป่วยในระบบโดยไม่สร้างบัญชีซ้ำ และไม่ต้องใช้รหัสผ่านจากผู้ดำเนินการ
-            </p>
-          </div>
-          <span className="hidden rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand-strong sm:inline-flex">
-            patient:provision
-          </span>
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        actions={<StatusBadge variant="info">เพิ่มผู้ป่วย</StatusBadge>}
+        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "เพิ่ม / นำเข้าผู้ป่วย" }]}
+        description="เพิ่มข้อมูลผู้ป่วยเข้าสู่ DEMI โดยไม่สร้างบัญชีซ้ำ และไม่รับรหัสผ่านจากผู้ดำเนินการ"
+        title="เพิ่ม / นำเข้าผู้ป่วย"
+      />
 
-      <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 sm:py-12 lg:px-10">
-        <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+      <div className="pt-8">
+        <Panel>
           {scopes.length > 1 ? (
             <>
               <label className="block text-sm font-semibold text-ink" htmlFor="targetHospitalId">
                 โรงพยาบาลที่ดำเนินการ
               </label>
-              <select
-                className="mt-2 h-12 w-full max-w-xl rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft"
+              <Select
+                className="mt-2 max-w-xl"
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -416,7 +415,7 @@ export function PatientProvisioningWorkspace({
                     {scope.hospitalName} · {scope.hospitalCode}
                   </option>
                 ))}
-              </select>
+              </Select>
             </>
           ) : (
             <div>
@@ -427,16 +426,31 @@ export function PatientProvisioningWorkspace({
             </div>
           )}
           <p className="mt-2 text-sm leading-6 text-muted">
-            ขอบเขตโรงพยาบาลและสิทธิ์ patient:provision ตรวจสอบจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
+            ขอบเขตโรงพยาบาลและสิทธิ์เพิ่มผู้ป่วยตรวจสอบจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
           </p>
-        </section>
+        </Panel>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+        {selectedScope.canBulkImport ? (
+          <div className="mt-6">
+            <LocalNavigation
+              ariaLabel="รูปแบบการเพิ่มผู้ป่วย"
+              items={[
+                { label: "เพิ่มรายบุคคล", value: "SINGLE" },
+                { label: "นำเข้าจาก Excel", value: "EXCEL" },
+              ]}
+              onChange={setMode}
+              value={activeMode}
+            />
+          </div>
+        ) : null}
+
+        <div className="mt-6 max-w-4xl">
+          {activeMode === "SINGLE" ? (
+          <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มผู้ป่วยรายบุคคล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                ใช้ข้อมูลขั้นต่ำเพื่อสร้าง PatientProfile และความสัมพันธ์กับโรงพยาบาลนี้
+                ใช้ข้อมูลขั้นต่ำเพื่อสร้างข้อมูลผู้ป่วยและความสัมพันธ์กับโรงพยาบาลนี้
               </p>
             </div>
             <form action={provisionAction} className="mt-6 space-y-4">
@@ -444,35 +458,36 @@ export function PatientProvisioningWorkspace({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
                   <span>ชื่อ</span>
-                  <input className="h-12 w-full rounded-[12px] border border-line px-4 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="givenName" required type="text" />
+                  <Input aria-invalid={Boolean(fieldError(provisionState, "givenName"))} name="givenName" required type="text" />
                   {fieldError(provisionState, "givenName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "givenName")}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm font-semibold">
                   <span>นามสกุล</span>
-                  <input className="h-12 w-full rounded-[12px] border border-line px-4 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" name="familyName" required type="text" />
+                  <Input aria-invalid={Boolean(fieldError(provisionState, "familyName"))} name="familyName" required type="text" />
                   {fieldError(provisionState, "familyName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "familyName")}</span> : null}
                 </label>
               </div>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>เลขบัตรประชาชน</span>
-                <input className="h-12 w-full rounded-[12px] border border-line px-4 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
+                <Input aria-invalid={Boolean(fieldError(provisionState, "nationalId"))} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
                 {fieldError(provisionState, "nationalId") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "nationalId")}</span> : null}
               </label>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>HN <span className="font-normal text-muted">(ไม่บังคับ)</span></span>
-                <input className="h-12 w-full rounded-[12px] border border-line px-4 font-normal outline-none focus:border-brand focus:ring-4 focus:ring-brand-soft" maxLength={64} name="hospitalNumber" type="text" />
+                <Input aria-invalid={Boolean(fieldError(provisionState, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
               {provisionState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{provisionState.message}</p> : null}
-              <button className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={provisionPending} type="submit">
+              <Button className="w-full" disabled={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
-              </button>
+              </Button>
             </form>
             <ProvisionResult state={provisionState} />
-          </section>
+          </Panel>
+          ) : null}
 
-          {selectedScope.canBulkImport ? (
-            <section className="rounded-[16px] border border-line bg-white p-5 sm:p-7">
+          {selectedScope.canBulkImport && activeMode === "EXCEL" ? (
+            <Panel>
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
@@ -485,7 +500,7 @@ export function PatientProvisioningWorkspace({
                   <span>ไฟล์ Excel (.xlsx)</span>
                   <input
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    className="block min-h-12 w-full rounded-[12px] border border-line bg-white px-3 py-3 text-sm font-normal file:mr-3 file:rounded-[8px] file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-strong focus:outline-none focus:ring-4 focus:ring-brand-soft"
+                    className="block min-h-12 w-full rounded-control border border-border bg-surface px-3 py-3 text-sm font-normal file:mr-3 file:rounded-control file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-strong focus:outline-none focus:ring-4 focus:ring-focus-ring"
                     id="patient-import-file"
                     key={fileInputKey}
                     name="file"
@@ -496,34 +511,34 @@ export function PatientProvisioningWorkspace({
                 </label>
                 {selectedFile ? <p className="text-xs leading-5 text-muted">ไฟล์ที่เลือก: {selectedFile.name}</p> : null}
                 <p className="text-xs leading-5 text-muted">
-                  ระบบจะอ่านแถวข้อมูล ตรวจซ้ำและตรวจความขัดแย้งก่อนยืนยันนำเข้า โดยไม่รับ Hospital ID จากไฟล์
+                  ระบบจะอ่านแถวข้อมูล ตรวจซ้ำและตรวจความขัดแย้งก่อนยืนยันนำเข้า โดยไม่รับรหัสอ้างอิงโรงพยาบาลจากไฟล์
                 </p>
                 {previewState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{previewState.message}</p> : null}
-                <button className="flex h-12 w-full items-center justify-center rounded-[12px] border border-brand px-4 text-sm font-semibold text-brand-strong transition hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:opacity-60" disabled={previewPending || importPending} type="submit">
+                <Button className="w-full" disabled={previewPending || importPending} type="submit" variant="secondary">
                   {previewPending ? "กำลังตรวจสอบไฟล์..." : "ตรวจสอบและแสดงตัวอย่าง"}
-                </button>
+                </Button>
                 {previewState.status === "SUCCESS" ? (
                   <>
                     <div className="space-y-3">
                       <div>
                         <h3 className="text-base font-semibold">ตัวอย่างผลตรวจสอบ</h3>
                         <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์และโรงพยาบาลที่เลือก หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
-                        <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลทีละแถว แต่ละแถวมี transaction แยกกัน</p>
+                        <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลและบันทึกแต่ละแถวแยกกัน</p>
                       </div>
                       <PreviewTable rows={previewState.preview.rows} />
                     </div>
                     {importState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{importState.message}</p> : null}
                     {importState.status === "SUCCESS" ? <ImportSummary summary={importState.summary} /> : null}
-                    <button className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} onClick={handleImport} type="button">
+                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} onClick={handleImport} type="button">
                       {importPending ? "กำลังนำเข้า..." : "ยืนยันนำเข้ารายการที่พร้อม"}
-                    </button>
+                    </Button>
                   </>
                 ) : null}
               </form>
-            </section>
+            </Panel>
           ) : null}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

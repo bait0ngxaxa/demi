@@ -21,6 +21,9 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 ## Operating Context
 
 - Responsive Web เป็น platform ปัจจุบันและต้องใช้งานได้ดีบนหน้าจอขนาดเล็ก
+- Protected application อยู่ภายใต้ `/app/*` และใช้ authenticated application shell ร่วมกัน ซึ่ง resolve server-side `ActorContext` เพื่อแสดง application navigation; `/login` และ `/activate/patient` เป็น public routes ที่ไม่ใช้ shell นี้
+- พื้นที่ทำงานหลักแบ่งตาม domain เป็น Dashboard, Workforce, Patients และ Platform Admin โดยเมนูถูก project ตาม capability/scope ที่ actor ใช้งานได้
+- Hospital selection ยังเป็น local screen context ของงาน Patient Provisioning และ Patient Activation ไม่ใช่ global application state
 - ผู้ใช้ Hospital เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password; Platform Admin ใช้ตัวระบุที่ตั้งจาก trusted bootstrap ในช่อง login เดียวกัน โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
 - Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
@@ -42,6 +45,10 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Existing `ACTIVE` user ที่มี valid provider mapping และ credential ownership แล้ว reuse identity และเพิ่ม relationship ได้โดยไม่เรียก provider หรือ activation ซ้ำ
 - New staff/OSM activation ใช้ one-time URL ที่เก็บเฉพาะ digest, รองรับ QR และ assisted handoff; target user ตั้ง password เอง แล้วกลับเข้าสู่ existing `/login`
 - Patient activation เป็น optional operation ที่แยก purpose จาก WorkforceActivation; Patient provisioning และ Excel import ไม่ imply activation และ Hospital actor ที่มี direct active membership จึงค้นหาผู้ป่วยจาก dedicated Activation Actions แล้วออก one-time link/QR ให้ Patient ตั้ง password เอง ก่อนกลับเข้าสู่ existing `/login`
+- Patient single provisioning และ Excel import เป็น execution modes ของ Patient Provisioning destination เดียวกัน ส่วน Patient Activation ยังคงเป็น destination แยก และไม่มีการออก activation โดยอัตโนมัติจาก provisioning/import
+- Navigation visibility เป็น UX projection เท่านั้น ไม่ใช่ authorization; ทุก page, Server Action และ service ยังคงตรวจ Role + Capability + Scope ฝั่ง server แบบ fail closed และ Hospital context จาก browser ไม่ใช่ authority
+- Dashboard แสดงเฉพาะข้อมูล account/context ที่ยืนยันแล้วและข้อความว่างอย่างเป็นกลางเมื่อยังไม่มี dashboard requirement; ระบบไม่สร้าง metrics หรือ clinical/operational claims สมมติ
+- Patient-only actor ที่ยังไม่มี Patient-specific module ใช้งานได้เฉพาะพื้นที่หลักแบบเป็นกลาง และระบบไม่สร้าง clinical workflow ที่ยังไม่ได้กำหนด
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
@@ -55,7 +62,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 
 ## Evidence on Hand
 
-เอกสาร architecture baseline, accepted ADRs, Prisma schema และ Phase 1 authentication/authorization tests ภายใน repository เป็นหลักฐานของ product boundary ปัจจุบัน ไม่มีโลโก้ ภาพประกอบ คำรับรอง หรือข้อมูลเชิงพาณิชย์สำหรับนำมาใช้ใน UI
+เอกสาร architecture baseline, accepted ADRs, Prisma schema, authentication/authorization tests, protected application shell และ [DEMI UI Foundation](docs/ui/DEMI_UI_FOUNDATION.md) ภายใน repository เป็นหลักฐานของ product boundary ปัจจุบัน ไม่มีโลโก้ ภาพประกอบ คำรับรอง หรือข้อมูลเชิงพาณิชย์สำหรับนำมาใช้ใน UI
 
 ## Product Principles
 
@@ -64,9 +71,11 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - ทุก protected access ต้องตรวจฝั่ง server และ fail closed
 - ผู้ใช้ไม่กำหนดบทบาทหรือขอบเขตสิทธิ์ให้ตนเอง
 - ใช้งานง่ายบน mobile โดยไม่ลดทอนความปลอดภัยหรือความชัดเจน
+- Navigation ช่วยให้ผู้ใช้เข้าถึงงานที่เกี่ยวข้องได้เร็ว โดยไม่กลายเป็นแหล่งอนุญาตสิทธิ์
+- Patient provisioning และ patient activation ต้องคงเป็นคนละ operation แม้จะอยู่ใน domain ผู้ป่วยเดียวกัน
 - Implement เฉพาะ requirement ที่ยืนยันแล้วและคง architecture ให้พร้อมต่อ transport อื่นในอนาคต
 - ก่อนเปิด public traffic ต้องมี shared/deployment-level abuse protection/rate limiting และ owner/process สำหรับ production master-data updates กับ verification evidence
 
 ## Accessibility & Inclusion
 
-หน้า login และ application shell ต้องรองรับ keyboard, label ที่ชัดเจน, loading/error state ที่อ่านได้ และ responsive layout สำหรับหน้าจอขนาดเล็ก
+หน้า login และ application shell ต้องรองรับ keyboard, skip-to-content, semantic landmarks, `aria-current`, accessible labels, focus-visible state, loading/error state ที่อ่านได้ และ responsive layout สำหรับหน้าจอขนาดเล็ก; mobile navigation ต้องเปิด/ปิดและคืน focus ได้โดยไม่ค้าง scroll lock
