@@ -24,6 +24,8 @@ import {
   type PatientProvisionActionState,
 } from "@/modules/patient-provisioning/transport/action-state";
 
+import { PatientActivationHandoff } from "./patient-activation-handoff";
+
 type PatientProvisioningWorkspaceProps = {
   scopes: PatientProvisioningScope[];
   selectedHospitalId: string;
@@ -103,9 +105,14 @@ function ProvisionResult({
 
   if (state.result.outcome === "ALREADY_PROVISIONED") {
     return (
-      <div className="rounded-[12px] border border-line bg-canvas px-4 py-4 text-sm leading-6 text-ink" role="status">
+      <div className="mt-4 rounded-[12px] border border-line bg-canvas px-4 py-4 text-sm leading-6 text-ink" role="status">
         <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
         <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
+        <PatientActivationHandoff
+          accountStatus={state.result.accountStatus}
+          hospitalId={state.result.hospitalId}
+          userId={state.result.userId}
+        />
       </div>
     );
   }
@@ -116,10 +123,15 @@ function ProvisionResult({
       : "สร้างข้อมูลผู้ป่วยแล้ว บัญชีอยู่ในสถานะรอเปิดใช้งานและยังเข้าสู่ระบบไม่ได้";
 
   return (
-    <div className="rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
+    <div className="mt-4 rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
       <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
+      <PatientActivationHandoff
+        accountStatus={state.result.accountStatus}
+        hospitalId={state.result.hospitalId}
+        userId={state.result.userId}
+      />
     </div>
   );
 }
@@ -447,11 +459,11 @@ export function PatientProvisioningWorkspace({
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
               {provisionState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{provisionState.message}</p> : null}
-              <ProvisionResult state={provisionState} />
               <button className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
               </button>
             </form>
+            <ProvisionResult state={provisionState} />
           </section>
 
           {selectedScope.canBulkImport ? (

@@ -86,6 +86,8 @@ model User {
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
   workforceActivations WorkforceActivation[] @relation("WorkforceActivationTarget")
   workforceActivationsCreated WorkforceActivation[] @relation("WorkforceActivationCreator")
+  patientActivations PatientActivation[] @relation("PatientActivationTarget")
+  patientActivationsCreated PatientActivation[] @relation("PatientActivationCreator")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -114,6 +116,7 @@ model Hospital {
   memberships              HospitalMembership[]
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
   patientRelationships     PatientHospitalRelationship[]
+  patientActivations      PatientActivation[]
   onboardingApplications   HospitalOnboardingApplication[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
@@ -162,6 +165,28 @@ model PatientHospitalRelationship {
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
+}
+
+model PatientActivation {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  hospitalId      String   @db.Uuid
+  tokenHash       String   @unique @db.VarChar(64)
+  expiresAt       DateTime
+  claimedAt       DateTime?
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  createdByUserId String   @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user          User     @relation("PatientActivationTarget", fields: [userId], references: [id], onDelete: Cascade)
+  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdByUser User     @relation("PatientActivationCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([hospitalId])
+  @@index([expiresAt])
 }
 
 model OsmHospitalRelationship {

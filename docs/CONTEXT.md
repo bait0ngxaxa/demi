@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract และ **Phase 4B Workforce Provisioning + Activation MVP** implement แล้ว
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
@@ -73,6 +73,17 @@ Implementation handoff อยู่ที่ [Phase 4B Workforce Provisioning](.
 - New User เริ่ม `PROVISIONED` และใช้ one-time activation URL; QR/assisted เป็น presentation เดียวกัน, token เก็บเป็น digest, และ target user ตั้ง password เอง
 - Existing `ACTIVE` User ที่ provider mapping ถูกต้อง reuse credential และรับ relationship ใหม่เป็น `ACTIVE` โดยไม่ activate หรือเรียก provider ซ้ำ
 - Activation provider I/O อยู่นอก long local transaction และใช้ guarded compensation/reconciliation; provisioned/ambiguous account เข้า `/app` ไม่ได้
+
+## Phase 5B.2 Patient First-Time Activation Implementation
+
+Implementation handoff อยู่ที่ [Phase 5B.2 Patient First-Time Activation](./phases/PHASE_5B2_PATIENT_FIRST_TIME_ACTIVATION.md) และยึด invariant เหล่านี้:
+
+- Patient activation แยกจาก Patient provisioning และใช้ `PatientActivation` purpose-specific; ไม่ใช้ `WorkforceActivation` ร่วมกัน
+- เฉพาะ ACTIVE `HOSPITAL` actor ที่มี direct active HospitalMembership ใน target Hospital ที่เป็น ACTIVE จึงออก activation ได้; capability แยกเป็น `patient:activation:issue` และ OSM ยังไม่อยู่ใน scope นี้
+- Patient activation ไม่เปลี่ยน `PatientProfile` หรือ `PatientHospitalRelationship`; เปลี่ยนเฉพาะ `User.authSubject`, `User.status` และ activation state ที่เกี่ยวข้อง
+- One-time token เป็น random 256-bit URL-safe secret, เก็บเฉพาะ SHA-256 digest, มี expiry 24 ชั่วโมงใน reversible MVP และ QR เป็น presentation ของ URL เท่านั้น
+- Provider I/O reuse existing server-only password-auth provisioning boundary และมี claim lock, local transaction, compensation/reconciliation เมื่อ provider/local state ไม่สอดคล้องกัน
+- Existing ACTIVE User ที่มี valid provider mapping และ PATIENT domain state ไม่ต้อง activate ซ้ำและไม่แทนที่ `authSubject` เดิม
 
 ## Phase 2.1 National ID Login Adapter
 
@@ -212,7 +223,7 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 - หลักฐานและขั้นตอนสำหรับ hospital verification
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
-- Patient activation mechanism และ identity-proofing; ห้ามนำ workforce one-time activation มาใช้แทน ADR-0004 โดย implicit
+- Long-term Patient activation proofing, delivery/recovery channels และ identity-proofing นอกเหนือจาก reversible Phase 5B.2 handoff; implementation นี้ไม่ทำให้ workforce/patient semantics เป็น model เดียวกัน
 - additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor
