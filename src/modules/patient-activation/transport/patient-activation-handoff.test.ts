@@ -78,6 +78,20 @@ describe("Patient activation handoff presentation", () => {
     expect(markup).not.toContain("<form");
   });
 
+  it("prioritizes reconciliation when an ACTIVE account has an invalid provider mapping", () => {
+    const markup = render({
+      ...baseCandidate,
+      accountStatus: UserStatus.ACTIVE,
+      activationStatus: "RECONCILIATION_REQUIRED",
+    });
+
+    expect(markup).toContain("บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่");
+    expect(markup).not.toContain("บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว");
+    expect(markup).not.toContain("ออกลิงก์เปิดใช้งาน");
+    expect(markup).not.toContain("<button");
+    expect(markup).not.toContain("<form");
+  });
+
   it("uses the newly issued token for the fragment link presentation", () => {
     mockedUseActionState.mockReturnValue([
       {

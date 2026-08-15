@@ -120,6 +120,13 @@ RECONCILIATION_REQUIRED
 
 No persistent UI status enum is introduced.
 
+The derived activation status is authoritative for Activation Actions
+presentation. Raw `User.status = ACTIVE` is not sufficient to display a safe
+active state when the provider mapping is missing or invalid. Changing the
+selected Hospital remounts the activation workspace, clearing lookup results,
+forms, action messages, raw link, copy state, and QR from the previous Hospital
+context.
+
 ## 4. Issue, reissue, link, and QR
 
 `PatientActivationService.issuePatientActivation` is transport-independent:

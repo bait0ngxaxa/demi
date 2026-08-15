@@ -223,24 +223,23 @@ export function PatientActivationHandoff({
     result?.outcome === "RECONCILIATION_REQUIRED" ||
     (state.status === "ERROR" && state.code === "RECONCILIATION_REQUIRED");
 
+  if (reconciliationRequired) {
+    return (
+      <div className="mt-4 rounded-[12px] border border-danger/20 bg-danger/10 px-4 py-4 text-sm leading-6 text-danger" role="alert">
+        <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่</p>
+        <p className="mt-1">ระบบจะไม่สร้างหรือเปลี่ยนตัวตนผู้ให้บริการโดยอัตโนมัติ</p>
+      </div>
+    );
+  }
+
   if (
     candidate.activationStatus === "ACTIVE" ||
-    candidate.accountStatus === "ACTIVE" ||
     result?.outcome === "ALREADY_ACTIVE"
   ) {
     return (
       <div className="mt-4 rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
         <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
         <p className="mt-1 text-muted">ไม่ต้องออกลิงก์ใหม่ และระบบคงตัวตน/รหัสผ่านเดิมไว้</p>
-      </div>
-    );
-  }
-
-  if (reconciliationRequired) {
-    return (
-      <div className="mt-4 rounded-[12px] border border-danger/20 bg-danger/10 px-4 py-4 text-sm leading-6 text-danger" role="alert">
-        <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่</p>
-        <p className="mt-1">ระบบจะไม่สร้างหรือเปลี่ยนตัวตนผู้ให้บริการโดยอัตโนมัติ</p>
       </div>
     );
   }

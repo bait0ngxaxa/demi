@@ -64,6 +64,7 @@ export default async function PatientActivationPage({
 
   return (
     <PatientActivationActionsWorkspace
+      key={selectedScope.hospitalId}
       scopes={scopes}
       selectedHospitalId={selectedScope.hospitalId}
       selectedScope={selectedScope}
