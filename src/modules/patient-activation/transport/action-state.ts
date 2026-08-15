@@ -1,6 +1,9 @@
 import type {
   PatientActivationIssueOutcome,
 } from "../services/patient-activation-service";
+import type {
+  PatientActivationCandidate,
+} from "../services/patient-activation-query-service";
 
 export type PatientActivationIssueResultState = {
   outcome: PatientActivationIssueOutcome;
@@ -15,10 +18,31 @@ export type PatientActivationIssueActionState =
   | { status: "IDLE" }
   | {
       status: "ERROR";
-      code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+      code:
+        | "INVALID_INPUT"
+        | "FORBIDDEN"
+        | "CONFLICT"
+        | "RECONCILIATION_REQUIRED"
+        | "UNAVAILABLE";
       message: string;
     }
   | { status: "SUCCESS"; result: PatientActivationIssueResultState };
+
+export type PatientActivationCandidateState = Omit<
+  PatientActivationCandidate,
+  "activationExpiresAt"
+> & {
+  activationExpiresAt: string | null;
+};
+
+export type PatientActivationLookupActionState =
+  | { status: "IDLE" }
+  | { status: "SUCCESS"; candidates: PatientActivationCandidateState[] }
+  | {
+      status: "ERROR";
+      code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";
+      message: string;
+    };
 
 export type PatientActivationDetailsActionState =
   | {
@@ -40,6 +64,10 @@ export type PatientActivationCompletionActionState =
   | { status: "SUCCESS" };
 
 export const initialPatientActivationIssueActionState: PatientActivationIssueActionState = {
+  status: "IDLE",
+};
+
+export const initialPatientActivationLookupActionState: PatientActivationLookupActionState = {
   status: "IDLE",
 };
 

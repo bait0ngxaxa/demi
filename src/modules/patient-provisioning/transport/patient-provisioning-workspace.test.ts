@@ -23,29 +23,16 @@ vi.mock("./server-actions", () => ({
   previewPatientImportAction: vi.fn(),
 }));
 
-vi.mock(
-  "../../../../app/app/patients/provision/patient-activation-handoff",
-  async () => {
-    const react = await vi.importActual<typeof import("react")>("react");
-
-    return {
-      PatientActivationHandoff: () =>
-        react.createElement("form", { "data-activation-form": "true" }),
-    };
-  },
-);
-
 const successState = {
   status: "SUCCESS",
   result: {
     outcome: "CREATED",
-    userId: "11111111-1111-4111-8111-111111111111",
-    patientProfileId: "22222222-2222-4222-8222-222222222222",
-    hospitalId: "33333333-3333-4333-8333-333333333333",
     accountStatus: "PROVISIONED",
     reusedExistingUser: false,
   },
 } satisfies PatientProvisionActionState;
+
+const hospitalId = "33333333-3333-4333-8333-333333333333";
 
 function getMaximumFormDepth(markup: string): number {
   let depth = 0;
@@ -69,9 +56,9 @@ describe("PatientProvisioningWorkspace form structure", () => {
     mockedUseActionState.mockReturnValue([successState, vi.fn(), false]);
   });
 
-  it("keeps the activation form outside the Patient provisioning form", () => {
+  it("keeps activation issuance out of the Patient provisioning form", () => {
     const scope = {
-      hospitalId: successState.result.hospitalId,
+      hospitalId,
       hospitalCode: "TEST-HOSPITAL",
       hospitalName: "โรงพยาบาลทดสอบ",
       canBulkImport: false,
@@ -84,7 +71,8 @@ describe("PatientProvisioningWorkspace form structure", () => {
       }),
     );
 
-    expect(markup).toContain("data-activation-form");
+    expect(markup).toContain("จัดการการเปิดใช้งานบัญชีผู้ป่วย");
+    expect(markup).not.toContain("ออกลิงก์เปิดใช้งาน");
     expect(getMaximumFormDepth(markup)).toBe(1);
   });
 });

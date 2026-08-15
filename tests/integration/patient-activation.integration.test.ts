@@ -10,13 +10,20 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  PasswordAuthProvisioningProviderRejectedError,
+  PasswordAuthProvisioningReconciliationError,
+} from "@/modules/auth/services/password-auth-provisioning-service";
+import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import {
   completePatientActivation,
   issuePatientActivation,
+  PatientActivationReconciliationError,
 } from "@/modules/patient-activation/services/patient-activation-service";
 import {
   hashPatientActivationToken,
 } from "@/modules/patient-activation/services/activation-token-service";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { findPatientActivationCandidates } from "@/modules/patient-activation/services/patient-activation-query-service";
 
 const prisma = getPrisma();
 const password = "patient-activation-password";
@@ -111,6 +118,8 @@ async function createPatient(input: {
   status?: UserStatus;
   authSubject?: string | null;
   extraRoles?: Role[];
+  identity?: { namespace: string; value: string };
+  hospitalNumber?: string | null;
 }): Promise<{
   userId: string;
   patientProfileId: string;
@@ -120,7 +129,9 @@ async function createPatient(input: {
   sequence += 1;
   const person = await prisma.person.create({
     data: {
-      identityKeyHash: `patient-activation-target-${sequence}`,
+      identityKeyHash: input.identity
+        ? hashIdentityReference(input.identity)
+        : `patient-activation-target-${sequence}`,
       givenName: "สมชาย",
       familyName: "ผู้ป่วย",
     },
@@ -151,7 +162,11 @@ async function createPatient(input: {
     select: { id: true },
   });
   const relationship = await prisma.patientHospitalRelationship.create({
-    data: { patientProfileId: profile.id, hospitalId: input.hospitalId },
+    data: {
+      patientProfileId: profile.id,
+      hospitalId: input.hospitalId,
+      hospitalNumber: input.hospitalNumber ?? null,
+    },
     select: { id: true },
   });
 
@@ -325,11 +340,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     ).resolves.toEqual(expect.arrayContaining([{ role: Role.OSM }, { role: Role.PATIENT }]));
   });
 
-  it.each([
-    [UserStatus.ACTIVE, null],
-    [UserStatus.PROVISIONED, "33333333-3333-4333-8333-333333333333"],
-    [UserStatus.PROVISIONED, ""],
-  ])("fails closed for an unexpected User/auth mapping state (%s)", async (status, authSubject) => {
+  it("fails closed for a PROVISIONED User with a provider mapping", async () => {
     const hospital = await createHospital("INTEGRATION-PA-CONFLICT");
     const { actor } = await createHospitalActor({
       hospitalId: hospital.id,
@@ -337,8 +348,30 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     });
     const patient = await createPatient({
       hospitalId: hospital.id,
-      status,
-      authSubject,
+      status: UserStatus.PROVISIONED,
+      authSubject: "33333333-3333-4333-8333-333333333333",
+    });
+
+    await expect(
+      issuePatientActivation(actor, {
+        userId: patient.userId,
+        targetHospitalId: hospital.id,
+        reissue: false,
+      }),
+    ).resolves.toMatchObject({ outcome: "RECONCILIATION_REQUIRED", activationToken: null });
+    await expect(prisma.patientActivation.count()).resolves.toBe(0);
+  });
+
+  it("fails closed for an invalid PROVISIONED auth mapping", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-CONFLICT-INVALID");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({
+      hospitalId: hospital.id,
+      status: UserStatus.PROVISIONED,
+      authSubject: "",
     });
 
     await expect(
@@ -512,7 +545,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       { generateCredential: credentialGenerator(token) },
     );
     const provisioner = vi.fn(async () => {
-      throw new InfrastructureError("provider unavailable");
+      throw new PasswordAuthProvisioningProviderRejectedError();
     });
 
     await expect(
@@ -526,8 +559,16 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       prisma.user.findUnique({ where: { id: patient.userId }, select: { status: true, authSubject: true } }),
     ).resolves.toEqual({ status: UserStatus.PROVISIONED, authSubject: null });
     await expect(
-      prisma.patientActivation.findFirst({ where: { userId: patient.userId }, select: { claimedAt: true, usedAt: true } }),
-    ).resolves.toEqual({ claimedAt: null, usedAt: null });
+        prisma.patientActivation.findFirst({
+          where: { userId: patient.userId },
+          select: { claimedAt: true, claimExpiresAt: true, reconciliationRequiredAt: true, usedAt: true },
+        }),
+    ).resolves.toEqual({
+      claimedAt: null,
+      claimExpiresAt: null,
+      reconciliationRequiredAt: null,
+      usedAt: null,
+    });
   });
 
   it("compensates provider success when local finalization fails", async () => {
@@ -568,6 +609,328 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     ).resolves.toEqual({ claimedAt: null, usedAt: null });
   });
 
+  it("keeps a bounded claim lease while provider provisioning is in progress", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-LEASE");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-lease-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+
+    const started = createDeferred();
+    const release = createDeferred();
+    const provisioner = vi.fn(async ({ userId }: { userId: string }) => {
+      started.resolve();
+      await release.promise;
+      await prisma.user.update({
+        where: { id: userId },
+        data: { authSubject: "99999999-9999-4999-8999-999999999999" },
+      });
+      return { userId, authSubject: "99999999-9999-4999-8999-999999999999" };
+    });
+
+    const completion = completePatientActivation(
+      token,
+      { password, passwordConfirmation: password },
+      { provisionIdentity: provisioner },
+    );
+    await started.promise;
+
+    const claimed = await prisma.patientActivation.findFirstOrThrow({
+      where: { userId: patient.userId },
+      select: { claimedAt: true, claimExpiresAt: true, usedAt: true },
+    });
+    expect(claimed.claimedAt).toEqual(expect.any(Date));
+    expect(claimed.claimExpiresAt).toEqual(expect.any(Date));
+    expect(claimed.claimExpiresAt!.getTime()).toBeGreaterThan(claimed.claimedAt!.getTime());
+    expect(claimed.usedAt).toBeNull();
+
+    release.resolve();
+    await expect(completion).resolves.toEqual({ userId: patient.userId, hospitalId: hospital.id });
+  });
+
+  it("recovers a stale clean claim and lets the Patient retry", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-STALE-CLEAN");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-stale-clean-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    const claimedAt = new Date("2026-08-15T10:00:00.000Z");
+    await prisma.patientActivation.updateMany({
+      where: { userId: patient.userId },
+      data: {
+        claimedAt,
+        claimExpiresAt: new Date("2026-08-15T10:05:00.000Z"),
+      },
+    });
+
+    await expect(
+      completePatientActivation(
+        token,
+        { password, passwordConfirmation: password },
+        {
+          now: () => new Date("2026-08-15T10:10:00.000Z"),
+          provisionIdentity: createProvisioner("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        },
+      ),
+    ).resolves.toEqual({ userId: patient.userId, hospitalId: hospital.id });
+    await expect(
+      prisma.auditEvent.count({ where: { action: "patient_activation.stale_claim_released" } }),
+    ).resolves.toBe(1);
+  });
+
+  it("allows Hospital reissue after a stale clean claim", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-STALE-REISSUE");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const oldToken = "patient-activation-stale-old-token";
+    const newToken = "patient-activation-stale-new-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(oldToken) },
+    );
+    await prisma.patientActivation.updateMany({
+      where: { userId: patient.userId },
+      data: {
+        claimedAt: new Date("2026-08-15T10:00:00.000Z"),
+        claimExpiresAt: new Date("2026-08-15T10:05:00.000Z"),
+      },
+    });
+
+    await expect(
+      issuePatientActivation(
+        actor,
+        { userId: patient.userId, targetHospitalId: hospital.id, reissue: true },
+        {
+          now: () => new Date("2026-08-15T10:10:00.000Z"),
+          generateCredential: credentialGenerator(newToken),
+        },
+      ),
+    ).resolves.toMatchObject({ outcome: "ISSUED", activationToken: newToken });
+    await expect(
+      prisma.patientActivation.findFirst({
+        where: { tokenHash: hashPatientActivationToken(oldToken) },
+        select: { revokedAt: true },
+      }),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+    await expect(
+      prisma.patientActivation.count({
+        where: { userId: patient.userId, usedAt: null, revokedAt: null },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("marks a stale claim with a local authSubject as reconciliation-required", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-STALE-UNSAFE");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-stale-unsafe-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    await prisma.patientActivation.updateMany({
+      where: { userId: patient.userId },
+      data: {
+        claimedAt: new Date("2026-08-15T10:00:00.000Z"),
+        claimExpiresAt: new Date("2026-08-15T10:05:00.000Z"),
+      },
+    });
+    await prisma.user.update({
+      where: { id: patient.userId },
+      data: { authSubject: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+    });
+
+    await expect(
+      issuePatientActivation(
+        actor,
+        { userId: patient.userId, targetHospitalId: hospital.id, reissue: true },
+        { now: () => new Date("2026-08-15T10:10:00.000Z") },
+      ),
+    ).resolves.toMatchObject({ outcome: "RECONCILIATION_REQUIRED", activationToken: null });
+    await expect(
+      prisma.patientActivation.findFirst({
+        where: { userId: patient.userId },
+        select: { reconciliationRequiredAt: true, claimExpiresAt: true },
+      }),
+    ).resolves.toMatchObject({
+      reconciliationRequiredAt: expect.any(Date),
+      claimExpiresAt: null,
+    });
+    await expect(
+      completePatientActivation(token, { password, passwordConfirmation: password }),
+    ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
+  });
+
+  it("keeps an ambiguous provider outcome reserved and blocks normal reissue", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-PROV-AMBIG");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-provider-ambiguous-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    const provisioner = vi.fn(async () => {
+      throw new PasswordAuthProvisioningReconciliationError();
+    });
+
+    await expect(
+      completePatientActivation(
+        token,
+        { password, passwordConfirmation: password },
+        { provisionIdentity: provisioner },
+      ),
+    ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
+    await expect(
+      prisma.patientActivation.findFirst({
+        where: { userId: patient.userId },
+        select: { claimedAt: true, claimExpiresAt: true, reconciliationRequiredAt: true, usedAt: true },
+      }),
+    ).resolves.toMatchObject({
+      claimedAt: expect.any(Date),
+      claimExpiresAt: null,
+      reconciliationRequiredAt: expect.any(Date),
+      usedAt: null,
+    });
+    await expect(
+      issuePatientActivation(actor, {
+        userId: patient.userId,
+        targetHospitalId: hospital.id,
+        reissue: true,
+      }),
+    ).resolves.toMatchObject({ outcome: "RECONCILIATION_REQUIRED", activationToken: null });
+  });
+
+  it("marks ambiguous compensation as reconciliation-required", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-COMP-AMBIG");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-compensate-ambiguous-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    const providerSubject = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const provisioner = vi.fn(async ({ userId }: { userId: string }) => {
+      await prisma.user.update({ where: { id: userId }, data: { authSubject: providerSubject } });
+      await prisma.patientHospitalRelationship.delete({ where: { id: patient.relationshipId } });
+      return { userId, authSubject: providerSubject };
+    });
+    const deleteProviderIdentity = vi.fn(async () => {
+      throw new PatientActivationReconciliationError();
+    });
+
+    await expect(
+      completePatientActivation(
+        token,
+        { password, passwordConfirmation: password },
+        { provisionIdentity: provisioner, deleteProviderIdentity },
+      ),
+    ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
+    await expect(
+      prisma.patientActivation.findFirst({
+        where: { userId: patient.userId },
+        select: { reconciliationRequiredAt: true, usedAt: true },
+      }),
+    ).resolves.toMatchObject({ reconciliationRequiredAt: expect.any(Date), usedAt: null });
+  });
+
+  it("uses a narrow Hospital-scoped activation lookup without exposing identity data", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-LOOKUP");
+    const unrelatedHospital = await createHospital("INTEGRATION-PA-LOOKUP-OTHER");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const nationalId = "1000000000009";
+    const byNationalId = await createPatient({
+      hospitalId: hospital.id,
+      identity: { namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId },
+      hospitalNumber: "LOOKUP-001",
+    });
+    await createPatient({ hospitalId: hospital.id, hospitalNumber: "LOOKUP-DUP" });
+    await createPatient({ hospitalId: hospital.id, hospitalNumber: "LOOKUP-DUP" });
+
+    const nationalIdResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "NATIONAL_ID",
+      value: nationalId,
+    });
+    expect(nationalIdResults).toHaveLength(1);
+    expect(nationalIdResults[0]).toMatchObject({
+      userId: byNationalId.userId,
+      patientProfileId: byNationalId.patientProfileId,
+      hospitalNumber: "LOOKUP-001",
+      activationStatus: "NOT_ISSUED",
+      activationMayBeIssued: true,
+    });
+    expect(JSON.stringify(nationalIdResults)).not.toContain(nationalId);
+    expect(JSON.stringify(nationalIdResults)).not.toContain("identityKeyHash");
+
+    const hnResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "HOSPITAL_NUMBER",
+      value: "LOOKUP-DUP",
+    });
+    expect(hnResults).toHaveLength(2);
+    expect(hnResults.every((candidate) => candidate.hospitalNumber === "LOOKUP-DUP")).toBe(true);
+
+    const { actor: unrelatedActor } = await createHospitalActor({
+      hospitalId: unrelatedHospital.id,
+      hospitalStatus: unrelatedHospital.status,
+    });
+    await expect(
+      findPatientActivationCandidates(unrelatedActor, {
+        targetHospitalId: hospital.id,
+        lookupType: "HOSPITAL_NUMBER",
+        value: "LOOKUP-001",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const { actor: inactiveMembershipActor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+      membershipStatus: MembershipStatus.SUSPENDED,
+    });
+    await expect(
+      findPatientActivationCandidates(inactiveMembershipActor, {
+        targetHospitalId: hospital.id,
+        lookupType: "HOSPITAL_NUMBER",
+        value: "LOOKUP-001",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("allows only one concurrent claim and calls the provider once", async () => {
     const hospital = await createHospital("INTEGRATION-PA-CONCURRENT");
     const { actor } = await createHospitalActor({
@@ -600,6 +963,12 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       { provisionIdentity: provisioner },
     );
     await started.promise;
+    const claimed = await prisma.patientActivation.findFirstOrThrow({
+      where: { userId: patient.userId },
+      select: { claimedAt: true, claimExpiresAt: true },
+    });
+    expect(claimed.claimedAt).toEqual(expect.any(Date));
+    expect(claimed.claimExpiresAt).toEqual(expect.any(Date));
     const second = completePatientActivation(
       token,
       { password, passwordConfirmation: password },

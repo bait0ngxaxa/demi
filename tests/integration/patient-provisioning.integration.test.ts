@@ -43,6 +43,7 @@ let actorSequence = 0;
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.patientActivation.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -294,6 +295,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       accountStatus: UserStatus.PROVISIONED,
       reusedExistingUser: false,
     });
+    await expect(prisma.patientActivation.count()).resolves.toBe(0);
     await expect(
       prisma.user.findUnique({
         where: { id: result.userId },
@@ -522,6 +524,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     ]);
     expect(summary.rows.every(({ identityDisplay }) => !identityDisplay.includes(nationalIds.bulkConflict))).toBe(true);
     expect(await prisma.patientHospitalRelationship.count()).toBe(3);
+    expect(await prisma.patientActivation.count()).toBe(0);
   });
 
   it("revalidates current database state during Excel confirmation instead of trusting the earlier preview", async () => {

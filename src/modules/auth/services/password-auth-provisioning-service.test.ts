@@ -9,6 +9,8 @@ import {
 
 import {
   provisionPasswordAuthIdentity,
+  PasswordAuthProvisioningIdentityConflictError,
+  PasswordAuthProvisioningProviderRejectedError,
   PasswordAuthProvisioningReconciliationError,
   type PasswordAuthAdminProvider,
   type PasswordAuthProvisioningStore,
@@ -94,9 +96,35 @@ describe("password auth identity provisioning", () => {
 
     await expect(
       provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
-    ).rejects.toBeInstanceOf(InfrastructureError);
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
     expect(store.setAuthSubject).not.toHaveBeenCalled();
     expect(provider.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes a definitive provider rejection from an ambiguous outcome", async () => {
+    const provider = createProvider();
+    const store = createStore();
+    vi.mocked(provider.createUser).mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError("Password rejected", 400, "invalid_request"),
+    });
+
+    await expect(
+      provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningProviderRejectedError);
+  });
+
+  it("treats a transport exception as an ambiguous provider outcome", async () => {
+    const provider = createProvider();
+    const store = createStore();
+    vi.mocked(provider.createUser).mockRejectedValue(new Error("connection reset"));
+
+    await expect(
+      provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
+    ).rejects.toMatchObject({
+      outcome: "AMBIGUOUS_PROVIDER_OUTCOME",
+      requiresReconciliation: true,
+    });
   });
 
   it("fails closed when the provider alias already exists", async () => {
@@ -109,7 +137,10 @@ describe("password auth identity provisioning", () => {
 
     await expect(
       provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
-    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningIdentityConflictError);
+    await expect(
+      provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
+    ).rejects.toMatchObject({ outcome: "PROVIDER_IDENTITY_CONFLICT" });
     expect(store.setAuthSubject).not.toHaveBeenCalled();
     expect(provider.deleteUser).not.toHaveBeenCalled();
   });
@@ -123,7 +154,7 @@ describe("password auth identity provisioning", () => {
 
     await expect(
       provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
-    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningIdentityConflictError);
     expect(store.setAuthSubject).not.toHaveBeenCalled();
     expect(provider.deleteUser).not.toHaveBeenCalled();
   });
@@ -141,7 +172,7 @@ describe("password auth identity provisioning", () => {
 
     await expect(
       provisionPasswordAuthIdentity({ userId, password }, { provider, store }),
-    ).rejects.toBeInstanceOf(InfrastructureError);
+    ).rejects.toBeInstanceOf(PasswordAuthProvisioningReconciliationError);
     expect(store.setAuthSubject).not.toHaveBeenCalled();
     expect(provider.deleteUser).not.toHaveBeenCalled();
   });

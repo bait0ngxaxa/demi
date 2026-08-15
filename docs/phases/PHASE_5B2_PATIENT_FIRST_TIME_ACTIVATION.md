@@ -1,36 +1,42 @@
 # Phase 5B.2 — Patient First-Time Activation
 
-- Status: Implemented MVP vertical slice
-- Baseline: `91cdb6583d189d9d2625113d428569a11072baa7`
+- Status: Implemented hardening MVP
+- Baseline: `1637fc28540da901fb5b212f1f1f4e7b2ee1ac53`
 - Related implementation: [Phase 5B.1 Patient Provisioning Core](./PHASE_5B1_PATIENT_PROVISIONING_CORE.md)
-- Architecture references: ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007, and the provider consistency pattern from ADR-0008
+- Architecture references: ADR-0004 and the provider consistency pattern from ADR-0008
 
-เอกสารนี้บันทึก implementation ของ Phase 5B.2 เท่านั้น ไม่ได้เปลี่ยนความหมาย
-ของ `PatientProfile`, `PatientHospitalRelationship` หรือทำให้ unresolved
+เอกสารนี้บันทึก implementation ของ Patient activation เท่านั้น ไม่ได้เปลี่ยน
+ความหมายของ `PatientProfile`, `PatientHospitalRelationship` หรือทำให้ unresolved
 requirements กลายเป็น permanent product decision
 
-## 1. Implemented scope
+## 1. Domain boundary and optional activation
 
-The slice implements:
+Patient provisioning and Patient activation are independent operations:
 
-- Hospital-side Patient activation issuance at the existing
-  `/app/patients/provision` handoff surface;
-- a Patient-specific `PatientActivation` model and migration;
-- one-time opaque activation credentials with expiry, reissue, revocation, and replay protection;
-- a public `/activate/patient` page using the existing fragment-token handoff pattern;
-- QR and copy-link presentation without storing URL or QR data in PostgreSQL;
-- Patient-owned password creation using the existing 12–128 character password policy;
-- Supabase Auth provisioning through the existing server-only password-auth boundary;
-- local `User.authSubject` mapping and `PROVISIONED → ACTIVE` transition;
-- local/provider compensation or reconciliation-safe failure behavior;
-- audit events and focused unit/integration/transport coverage.
+```text
+provisioning
+  → Person / User / PATIENT / PatientProfile / PatientHospitalRelationship
+  → User may remain PROVISIONED indefinitely
 
-The slice does not add a Patient roster, clinical workflow, dashboard, recovery
-system, or new delivery provider.
+explicit Hospital activation action
+  → one activation credential
+  → Patient-owned password
+  → User.authSubject + User.status = ACTIVE
+```
 
-## 2. PatientActivation persistence
+Single Patient provisioning does not issue an activation. The provisioning result
+only reports the account state and may link to `/app/patients/activation`.
+Excel import is provisioning-only: it creates no `PatientActivation`, token, URL,
+QR result, or raw activation token. This is intentional; the Hospital activates
+only Patients who actually need interactive DEMI access.
 
-The migration `20260815110000_patient_first_time_activation` adds:
+Activation does not change `PatientProfile` or
+`PatientHospitalRelationship`. Existing roles are preserved.
+
+## 2. Persistence
+
+`PatientActivation` is Patient-specific and is not shared with
+`WorkforceActivation`:
 
 ```text
 PatientActivation
@@ -40,6 +46,8 @@ PatientActivation
   tokenHash
   expiresAt
   claimedAt?
+  claimExpiresAt?
+  reconciliationRequiredAt?
   usedAt?
   revokedAt?
   createdByUserId
@@ -47,237 +55,270 @@ PatientActivation
   updatedAt
 ```
 
-`hospitalId` binds a handoff to the Hospital relationship for which the link
-was issued. This is needed because one Patient may have relationships with
-multiple Hospitals. `claimedAt` reserves the credential while provider I/O is
-in progress; it is not a separate lifecycle enum.
+Migration `20260815130000_patient_activation_claim_hardening` adds the bounded
+claim lease and reconciliation marker to the existing Patient activation table.
+The existing unique token hash and partial unique index continue to prevent more
+than one non-used/non-revoked activation for a User. A claimed or
+reconciliation-required row therefore still blocks unsafe replacement.
 
-The database stores only the SHA-256 digest of the raw token. `tokenHash` is
-unique, and a partial unique index allows at most one activation per User where
-`usedAt IS NULL AND revokedAt IS NULL`. The raw token, URL, QR image, password,
-provider subject, and provider alias are not stored in this model.
+Only the SHA-256 digest of the opaque token is stored. The database never stores
+the raw token, activation URL, QR image/data URL, password, provider alias, or
+provider secret.
 
-## 3. Issuance authorization and eligibility
+## 3. Issuance policy and dedicated query boundary
 
-Issuance has its own capability:
+The issuance capability is separate from provisioning:
 
 ```text
 patient:activation:issue
 ```
 
 The reversible MVP policy is centralized in
-`src/modules/patient-activation/policies/patient-activation-policy.ts`:
+`src/modules/patient-activation/policies/patient-activation-policy.ts` and is
+rechecked against PostgreSQL for every mutation:
 
-- actor `User.status` must be `ACTIVE`;
-- actor must have `Role.HOSPITAL`;
-- actor must have an active direct `OWNER` or `MEMBER` `HospitalMembership` to the target Hospital;
-- target Hospital must be `ACTIVE`;
-- target Patient must have `Role.PATIENT`, a `PatientProfile`, and a
-  `PatientHospitalRelationship` to that Hospital;
-- target User must be `PROVISIONED` with `authSubject = null`, or already
-  `ACTIVE` with a valid existing provider mapping.
+- actor User is `ACTIVE`;
+- actor has `Role.HOSPITAL`;
+- actor has a direct active `OWNER` or `MEMBER` `HospitalMembership`;
+- target Hospital is `ACTIVE`;
+- target Patient has `PATIENT`, `PatientProfile`, and a relationship to that Hospital.
 
-The policy is checked from the supplied `ActorContext` and rechecked from the
-database inside the serializable transaction. Parent/child Hospital authority,
-OSM authority, and browser-selected state do not grant this capability.
+OSM, parent/child Hospital authority, geography, patient ownership, and clinical
+scope do not grant this capability.
 
-An `ACTIVE` mapped Patient returns `ALREADY_ACTIVE`; no activation is created,
-the existing provider subject is not replaced, and other roles remain intact.
-Unexpected states such as `PROVISIONED` with an `authSubject`, `ACTIVE` without
-a valid mapping, or unsupported User status fail closed.
+The protected `/app/patients/activation` route is a narrow Activation Actions
+surface, not a general Patient management page. Its query boundary supports:
 
-## 4. Issuance, reissue, and handoff
+- exact Thai National ID lookup through the existing HMAC identity-resolution
+  infrastructure;
+- exact HN lookup constrained to the selected Hospital;
+- a bounded result set of at most 25 matches, so duplicate HN values are handled
+  as multiple candidates rather than treated as unique.
 
-`issuePatientActivation` is transport-independent:
+The projection contains only User/Profile identifiers needed by the activation
+action, display name, HN, account status, derived activation status, expiry, and
+whether issue/reissue is currently possible. It does not return raw National ID,
+`identityKeyHash`, provider subject/alias, clinical data, or generic Patient-read
+data.
+
+Derived statuses are computed in the application layer:
 
 ```text
-policy check
-  → database actor/scope recheck
-  → target Patient/User/domain eligibility check
-  → find current unused activation
-  → revoke it when expired or explicit reissue is requested
-  → generate 256-bit random URL-safe token
-  → store tokenHash and expiry
-  → write audit event
+ACTIVE
+  User ACTIVE + valid authSubject
+NOT_ISSUED
+  eligible PROVISIONED User with no usable activation
+ISSUED
+  unused, unrevoked, unexpired activation
+IN_PROGRESS
+  activation has a non-expired claim lease
+EXPIRED
+  latest activation expired and no usable activation remains
+RECONCILIATION_REQUIRED
+  known ambiguous local/provider state
+```
+
+No persistent UI status enum is introduced.
+
+## 4. Issue, reissue, link, and QR
+
+`PatientActivationService.issuePatientActivation` is transport-independent:
+
+```text
+authorize and re-resolve DB state
+  → validate Patient/User eligibility
+  → recover only a safe stale claim, or fail closed
+  → revoke the previous unused activation when reissue is explicit
+  → generate an opaque random credential
+  → store tokenHash and expiry in a transaction
+  → audit issuance/revocation
   → return raw token once
 ```
 
-The default MVP expiry is 24 hours. This is a **REVERSIBLE MVP IMPLEMENTATION
-CONSTRAINT**, aligned with the existing copy-link/QR convention; it is not a
-permanent Patient business requirement or configuration framework.
+The token is generated with a cryptographically secure 256-bit random source and
+encoded URL-safely. The default activation lifetime is 24 hours. This is a
+**REVERSIBLE MVP IMPLEMENTATION CONSTRAINT**, not a permanent business rule or
+configuration system.
 
-When a valid unused activation already exists, a normal issue request returns
-`ALREADY_ISSUED` without exposing the raw token again. An explicit reissue
-revokes the old row, writes `patient_activation.revoked`, creates a new row,
-and returns the new raw token. The old token cannot be claimed after commit.
-
-The Hospital UI shows the activation URL, expiry, QR, copy action, and reissue
-action. The URL is built as:
+Link and QR are two presentations of the same backend credential:
 
 ```text
-/activate/patient#<opaque-token>
+raw token → /activate/patient#<opaque-token> → copy link / QR
 ```
 
-The fragment keeps the raw bearer out of the server request path. QR is rendered
-from that URL with the existing `qrcode` dependency and no QR domain model is
-introduced.
+The token is placed in the URL fragment, not the pathname or query string. QR is
+rendered with the existing `qrcode` dependency and is not persisted. A previous
+raw link cannot be recovered after the issuance response is lost; explicit
+reissue revokes the old credential and returns a new raw token for presentation.
 
-## 5. Public landing and claim flow
+## 5. Public Patient claim flow
 
-The public route `/activate/patient` does not require an existing login. The
-browser reads the URL fragment, removes it from the visible history entry, and
-asks a server action to validate the token. The public response is either a
-minimal safe state or a generic invalid state. Safe display data is limited to
-Patient display name, Hospital name, and expiry; it does not expose National ID,
-identity hash, User ID, provider identifiers, or medical information.
+The public `/activate/patient` page does not require login. The browser reads the
+fragment, removes it from the visible history entry, and requests informational
+details from the server. Safe details are limited to display name, Hospital name,
+and expiry. Unknown, expired, revoked, used, and reconciliation-required links
+share a generic safe invalid state.
 
-On submit, the server validates the token again and performs:
+The final form submit always revalidates server state. The Patient supplies both
+password fields and owns the credential. The existing 12–128 character password
+policy is reused. Hospital staff never submit or see the password.
 
-```text
-hash token
-  → serializable conditional claim (`claimedAt`)
-  → recheck expiry/revocation/use/User/PATIENT/domain state
-  → patient-submitted password validation
-  → Supabase Auth identity provisioning
-  → local authSubject/status finalization transaction
-  → mark activation used
-  → write completion audit
-  → redirect to `/login?activated=1`
-```
-
-The Patient enters both password fields. Hospital staff never receive or set
-the password, and the password is not written to any DEMI domain table, audit
-metadata, URL, or QR payload.
-
-## 6. Provider interaction and consistency
-
-The current authentication boundary uses the existing opaque provider alias:
-
-```text
-<User.id>@auth.demi.internal
-```
-
-This is an internal provider login alias, not an invented Patient email or phone
-ownership claim. Existing `/login` already resolves the Thai National ID to the
-local User and then uses this alias, so Patient activation reuses the confirmed
-technical pattern without creating a Patient-specific login system.
-
-Provider calls use `provisionPasswordAuthIdentity`, which creates a confirmed
-Supabase Auth password identity and conditionally maps its provider subject to
-the local User. PostgreSQL and Supabase Auth are not treated as one distributed
-transaction:
-
-- provider failure releases `claimedAt` and leaves the User `PROVISIONED`;
-- provider alias conflict or ambiguous provider outcome raises a
-  reconciliation-required error and leaves the claim reserved rather than
-  blindly retrying;
-- provider success followed by local finalization failure detaches the local
-  subject, deletes the known provider identity, and releases the claim when
-  both compensations succeed;
-- if detach/delete/release is ambiguous, the operation fails closed with a
-  reconciliation-required error and does not report activation success;
-- a provider/local subject mismatch is never silently overwritten.
-
-The service does not add a generic identity-provider abstraction or background
-reconciliation worker. The existing server-only auth boundary remains the
-replaceable integration point.
-
-## 7. Concurrency and replay behavior
-
-Claim uses a serializable transaction plus a conditional update requiring:
-
-```text
-claimedAt IS NULL
-usedAt IS NULL
-revokedAt IS NULL
-expiresAt > now
-```
-
-Only one concurrent submit can reserve the activation. Double click, a second
-tab, a second QR scan, and a used/revoked/expired/unknown token receive a safe
-invalid/conflict result. No second provider provisioning call is made after a
-claim loses the race.
-
-The final local transaction checks the exact claim timestamp, activation
-Hospital, current provider mapping, User status, PATIENT role, PatientProfile,
-and Hospital relationship before setting `User.status = ACTIVE`. It then marks
-`usedAt` and records the completion audit in the same local transaction.
-
-## 8. Account lifecycle post-conditions
-
-For a new Patient:
+Successful local post-conditions are:
 
 ```text
 User.status: PROVISIONED → ACTIVE
 User.authSubject: null → valid provider subject
 PATIENT role: preserved
-other User roles: preserved
+other roles: preserved
 PatientProfile: unchanged
 PatientHospitalRelationship: unchanged
 PatientActivation.usedAt: set
 ```
 
-Activation does not transition or invent a lifecycle state for PatientProfile
-or PatientHospitalRelationship. An existing `ACTIVE` multi-role User does not
-receive a new provider identity, password reset, or activation record.
+The Patient is redirected to `/login?activated=1`; no Patient dashboard is part
+of this phase.
 
-## 9. Audit
+## 6. Crash-safe claim lease and stale recovery
 
-The implementation writes the following events using current audit validation:
+The claim is a bounded lease, not an infinite lock. The lease is defined once in
+`activation-token-service.ts`:
+
+```text
+PATIENT_ACTIVATION_CLAIM_LEASE_MS = 5 minutes
+```
+
+This duration is a **REVERSIBLE MVP IMPLEMENTATION CONSTRAINT** chosen for the
+expected Supabase request duration.
+
+An active claim requires:
+
+```text
+claimedAt IS NOT NULL
+claimExpiresAt > now
+reconciliationRequiredAt IS NULL
+usedAt IS NULL
+revokedAt IS NULL
+```
+
+A stale claim has an expired (or legacy missing) lease. It is not automatically
+trusted. The service first checks current local authentication state:
+
+- `User.PROVISIONED` + `authSubject IS NULL` + no reconciliation marker: clear
+  `claimedAt` and `claimExpiresAt`, record
+  `patient_activation.stale_claim_released`, and allow a guarded retry/reissue;
+- `User.PROVISIONED` + a valid `authSubject`: set
+  `reconciliationRequiredAt`, clear the lease, record
+  `patient_activation.reconciliation_required`, and block normal claim/reissue;
+- any existing reconciliation marker: remain blocked.
+
+The same logic handles a process crash after the claim transaction commits. A
+process crash after local provider mapping but before `User.ACTIVE` is therefore
+not silently converted into a new activation or an automatic status repair.
+
+## 7. Provider outcome contract and compensation
+
+Supabase Auth remains behind the existing server-only
+`provisionPasswordAuthIdentity` boundary. It uses the established opaque
+internal alias (`<User.id>@auth.demi.internal`) required by the current `/login`
+architecture; no Patient email or phone ownership is invented.
+
+The shared boundary now classifies outcomes with typed errors:
+
+- `PasswordAuthProvisioningProviderRejectedError`: a known definitive provider
+  rejection where remote creation is proven absent; Patient releases the claim
+  and remains retryable;
+- `PasswordAuthProvisioningIdentityConflictError`: provider alias conflict;
+  fail closed as reconciliation-required;
+- `PasswordAuthProvisioningReconciliationError`: transport loss, timeout,
+  reset, unknown provider failure, 5xx, or malformed mutation success where
+  remote creation may have happened; retain the reserved Patient activation and
+  mark reconciliation-required.
+
+The shared callers used by Workforce and Platform Admin continue to catch the
+reconciliation class and preserve their existing fail-closed compensation
+behavior. No generic provider abstraction is introduced.
+
+When provider success returns a valid subject but local finalization fails, the
+Patient flow attempts, in order, to detach the known local subject, delete the
+known provider identity, and release the claim. It releases the claim only when
+the compensation path is definitive. Any ambiguous detach/delete/release result
+sets or preserves `reconciliationRequiredAt` and reports no success. It never
+overwrites an existing mapping or removes an unknown remote provider identity.
+
+## 8. Concurrency and replay protection
+
+Claim and finalization use serializable PostgreSQL transactions plus guarded
+conditional updates. The exact activation row, claim timestamps, User mapping,
+PATIENT role, PatientProfile, relationship, and Hospital state are checked again
+before finalization. Double submit, two tabs, repeated QR scans, and replay of a
+used/revoked token allow at most one claimant to reach provider provisioning.
+
+The raw token is never logged or audited. Passwords, National IDs,
+`identityKeyHash`, provider aliases, provider subjects, and provider secrets are
+also excluded from audit metadata.
+
+## 9. Audit events
+
+The implementation records the following minimal events where applicable:
 
 - `patient_activation.issued`
 - `patient_activation.revoked`
 - `patient_activation.completed`
+- `patient_activation.stale_claim_released`
+- `patient_activation.reconciliation_required`
 
-Audit metadata is bounded and may identify the target Hospital, PatientProfile,
-User lifecycle outcome, and source. It never contains raw token, tokenHash,
-password, National ID, phone, email, provider secret, provider alias, or
-provider subject.
+Audit and authoritative local state changes are kept transactionally consistent
+inside local PostgreSQL transactions where possible. Reconciliation marking is
+deliberately fail-closed if the marker/audit write cannot be made authoritative.
 
 ## 10. Tests and validation
 
-Focused coverage includes:
+Coverage includes:
 
-- active Hospital member issuance and all required inactive/unrelated/relationship checks;
-- already-active and unexpected User/auth mapping states;
-- token digest-at-rest, expiry, reissue, revocation, and replay prevention;
-- successful status/mapping completion with role/profile/relationship preservation;
-- unknown, expired, revoked, and used credentials;
-- provider failure, provider/local compensation, and retry-safe claim release;
-- concurrent claim protection and single provider invocation;
-- transport validation, safe public details, already-active UI result, QR/link result, and password confirmation.
+- Hospital issuance policy, inactive/unrelated scope, active-user no-op, and
+  unexpected mapping states;
+- token hashing, expiry, reissue/revocation, replay, raw-token audit exclusion;
+- bounded claim lease, active-claim concurrency, stale clean recovery, stale
+  mapped-state blocking, and reconciliation-required reissue blocking;
+- definitive provider rejection, transport/5xx ambiguity, alias conflict,
+  malformed success, safe compensation, and ambiguous compensation;
+- successful activation preserving roles, PatientProfile, and Hospital
+  relationship;
+- exact National ID HMAC lookup, Hospital-scoped HN lookup, duplicate HN safety,
+  minimal projection, and derived status projections;
+- provisioning and Excel regression coverage proving no activation rows/tokens
+  are created;
+- Server Action validation, safe public invalid state, password confirmation,
+  issue/reissue result serialization, and no nested provisioning forms.
 
-Commands run for this slice:
+Final repository validation:
 
 ```text
 npx prisma validate       PASS
 npx prisma generate       PASS
 npm run lint              PASS
 npm run typecheck         PASS
-npm test                  PASS (31 files, 156 tests)
-npm run test:integration  PASS (6 files, 69 tests; wrapper run before the final regression-test additions)
-integration Vitest current PASS (6 files, 70 tests)
+npm test                  PASS (33 files, 171 tests)
+npm run test:integration  PASS (6 files, 76 tests)
 ```
 
-One later wrapper rerun stopped before test execution because an already-running
-local `next dev` process held the Prisma Windows query-engine DLL during its
-`prisma generate` step (`EPERM` on rename). The current integration Vitest
-configuration and code were rerun directly against the already-generated
-client and passed.
+## 11. Explicitly deferred
 
-## 11. Explicitly deferred and reversible constraints
+This phase does not add:
 
-The following remain out of scope:
+- Patient dashboard, generic Patient roster/read/update/delete framework, or
+  Patient profile editing;
+- clinical records, screening, HbA1c, care plans, appointments, PAM, or clinical
+  assignment;
+- OSM Patient assignment or OSM activation issuance;
+- OTP, SMS, email verification/delivery, ThaID, LIFF, or another identity
+  provider;
+- password reset redesign, account recovery, CAPTCHA, or new rate-limit
+  infrastructure;
+- automatic or generic reconciliation console/workflow, workers, queues, Redis,
+  background jobs, or a generic lease/workflow/IAM/provider abstraction.
 
-- Patient dashboard, profile edit, list-management, read/update/delete capability framework;
-- clinical records, screening, HbA1c, care plans, appointments, and PAM;
-- OSM-to-Patient assignment and OSM activation issuance;
-- OTP, SMS, email verification, ThaID, LIFF, and delivery-provider integration;
-- password reset redesign, account recovery, CAPTCHA, and new rate-limit infrastructure;
-- generic IAM/provider abstraction, workflow engine, queue, Redis, and background jobs.
-
-The 24-hour expiry, direct Hospital `OWNER`/`MEMBER` eligibility, fragment URL
-presentation, and existing internal provider alias are implementation choices
-that can be replaced at the policy/transport/integration boundary. Abuse
-protection beyond the existing application boundary remains deferred and must
-be added before broader public exposure.
+Manual administrative recovery for `RECONCILIATION_REQUIRED` remains deferred.
+The claim lease, 24-hour expiry, direct Hospital `OWNER`/`MEMBER` policy, QR
+presentation, and internal provider alias remain replaceable at their service,
+policy, transport, and integration boundaries.

@@ -78,11 +78,13 @@ Implementation handoff อยู่ที่ [Phase 4B Workforce Provisioning](.
 
 Implementation handoff อยู่ที่ [Phase 5B.2 Patient First-Time Activation](./phases/PHASE_5B2_PATIENT_FIRST_TIME_ACTIVATION.md) และยึด invariant เหล่านี้:
 
-- Patient activation แยกจาก Patient provisioning และใช้ `PatientActivation` purpose-specific; ไม่ใช้ `WorkforceActivation` ร่วมกัน
+- Patient activation เป็น optional operation ที่แยกจาก Patient provisioning และใช้ `PatientActivation` purpose-specific; single provisioning และ Excel import ไม่สร้าง activation และไม่ใช้ `WorkforceActivation` ร่วมกัน
 - เฉพาะ ACTIVE `HOSPITAL` actor ที่มี direct active HospitalMembership ใน target Hospital ที่เป็น ACTIVE จึงออก activation ได้; capability แยกเป็น `patient:activation:issue` และ OSM ยังไม่อยู่ใน scope นี้
+- Hospital จัดการ activation ผ่าน dedicated `/app/patients/activation` โดยค้นหาด้วย exact Thai National ID ผ่าน HMAC หรือ exact HN ใน Hospital scope; query คืนเฉพาะ activation projection แบบ bounded ไม่ใช่ generic Patient roster/read
 - Patient activation ไม่เปลี่ยน `PatientProfile` หรือ `PatientHospitalRelationship`; เปลี่ยนเฉพาะ `User.authSubject`, `User.status` และ activation state ที่เกี่ยวข้อง
 - One-time token เป็น random 256-bit URL-safe secret, เก็บเฉพาะ SHA-256 digest, มี expiry 24 ชั่วโมงใน reversible MVP และ QR เป็น presentation ของ URL เท่านั้น
-- Provider I/O reuse existing server-only password-auth provisioning boundary และมี claim lock, local transaction, compensation/reconciliation เมื่อ provider/local state ไม่สอดคล้องกัน
+- Provider I/O reuse existing server-only password-auth provisioning boundary และมี bounded 5-minute claim lease, stale-claim recovery เฉพาะเมื่อ local state สะอาด, compensation/reconciliation เมื่อ provider/local state ไม่สอดคล้องกัน
+- Provider transport failure/timeout/5xx และ provider alias conflict แยกจาก definitive provider rejection; ambiguous outcome จะคง claim และ mark `reconciliationRequiredAt` เพื่อป้องกัน blind retry
 - Existing ACTIVE User ที่มี valid provider mapping และ PATIENT domain state ไม่ต้อง activate ซ้ำและไม่แทนที่ `authSubject` เดิม
 
 ## Phase 2.1 National ID Login Adapter
@@ -158,7 +160,7 @@ Top-level business roles ที่ยืนยันแล้วมี 4 รา�
 - Public hospital application ต้อง match canonical Hospital Master ด้วย stable `hospitalCode`; external provider ยังไม่ถูกเลือก
 - MVP hospital verification เป็น manual Platform `ADMIN` decision และเก็บ application history แยกจาก Hospital lifecycle
 - Staff/OSM ถูก provision จาก trusted Hospital context และไม่ self-assign role; Phase 4B จำกัด routine provisioning ที่ ACTIVE Hospital Owner ของ target Hospital โดยตรง
-- Patient ที่ Hospital/OSM provision แล้วไม่ register ซ้ำ แต่ใช้ first-time account activation
+- Patient ที่ Hospital/OSM provision แล้วไม่ register ซ้ำ; หากจำเป็นต้องใช้ interactive account จึงใช้ first-time account activation แยกภายหลัง
 - Workforce provisioning แยกจาก credential ownership; new staff/OSM ใช้ opaque one-time activation และ target user ตั้ง password เอง ส่วน existing ACTIVE User reuse credential เดิมโดยไม่ activate ซ้ำ
 - Hospital/OSM ต้องไม่รู้หรือกำหนด patient secret credential
 - OSM Hospital association แยกจาก `HospitalMembership` และยังไม่ใช่ patient, area หรือ clinical scope

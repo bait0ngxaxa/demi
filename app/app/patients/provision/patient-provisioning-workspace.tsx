@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 
@@ -23,8 +24,6 @@ import {
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
 } from "@/modules/patient-provisioning/transport/action-state";
-
-import { PatientActivationHandoff } from "./patient-activation-handoff";
 
 type PatientProvisioningWorkspaceProps = {
   scopes: PatientProvisioningScope[];
@@ -108,11 +107,14 @@ function ProvisionResult({
       <div className="mt-4 rounded-[12px] border border-line bg-canvas px-4 py-4 text-sm leading-6 text-ink" role="status">
         <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
         <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
-        <PatientActivationHandoff
-          accountStatus={state.result.accountStatus}
-          hospitalId={state.result.hospitalId}
-          userId={state.result.userId}
-        />
+        {state.result.accountStatus === "PROVISIONED" ? (
+          <Link
+            className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+            href="/app/patients/activation"
+          >
+            จัดการการเปิดใช้งานบัญชีผู้ป่วย
+          </Link>
+        ) : null}
       </div>
     );
   }
@@ -127,11 +129,14 @@ function ProvisionResult({
       <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
-      <PatientActivationHandoff
-        accountStatus={state.result.accountStatus}
-        hospitalId={state.result.hospitalId}
-        userId={state.result.userId}
-      />
+      {state.result.accountStatus === "PROVISIONED" ? (
+        <Link
+          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+          href="/app/patients/activation"
+        >
+          จัดการการเปิดใช้งานบัญชีผู้ป่วย
+        </Link>
+      ) : null}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   hasDirectHospitalProvisioningScope,
   hasOsmHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
+import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { LogoutButton } from "./logout-button";
@@ -55,6 +56,9 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
     actor.osmHospitalRelationships.some(({ hospitalId }) =>
       hasOsmHospitalProvisioningScope(actor, hospitalId),
     );
+  const canManagePatientActivations = actor.hospitalMemberships.some(({ hospitalId }) =>
+    hasPatientActivationHospitalScope(actor, hospitalId),
+  );
 
   return (
     <main className="min-h-svh bg-canvas text-ink">
@@ -151,6 +155,21 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
               href="/app/patients/provision"
             >
               เปิดการเพิ่มผู้ป่วย
+            </Link>
+          </section>
+        ) : null}
+
+        {canManagePatientActivations ? (
+          <section className="mt-6 max-w-3xl rounded-[16px] border border-line bg-white p-5 sm:p-7">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">เปิดใช้งานบัญชีผู้ป่วย</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              ค้นหาผู้ป่วยที่จำเป็นต้องเข้าใช้งาน DEMI แล้วออกลิงก์หรือ QR ให้ผู้ป่วยตั้งรหัสผ่านเอง
+            </p>
+            <Link
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-[12px] bg-brand px-5 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
+              href="/app/patients/activation"
+            >
+              เปิดงาน Activation Actions
             </Link>
           </section>
         ) : null}

@@ -35,6 +35,16 @@ function hasActiveDirectHospitalScope(
   );
 }
 
+export function hasPatientActivationHospitalScope(
+  actor: ActorContext | null | undefined,
+  targetHospitalId: string,
+): boolean {
+  return Boolean(
+    actor?.roles.includes(Role.HOSPITAL) &&
+      hasActiveDirectHospitalScope(actor, targetHospitalId),
+  );
+}
+
 export function canIssuePatientActivation(
   actor: ActorContext | null | undefined,
   targetPatient: PatientActivationIssueTarget,
@@ -43,7 +53,7 @@ export function canIssuePatientActivation(
   return Boolean(
     actor &&
       actor.roles.includes(Role.HOSPITAL) &&
-      hasActiveDirectHospitalScope(actor, targetHospitalId) &&
+      hasPatientActivationHospitalScope(actor, targetHospitalId) &&
       targetPatient.hasPatientRole &&
       targetPatient.hasPatientProfile &&
       targetPatient.hasHospitalRelationship &&
@@ -85,11 +95,14 @@ export function decidePatientActivationIssuePolicy(input: {
     return { allowed: false, reason: "hospital_role_required" };
   }
 
-  if (!hasActiveDirectHospitalScope(input.actor, input.targetHospitalId.trim())) {
+  if (!hasPatientActivationHospitalScope(input.actor, input.targetHospitalId.trim())) {
     return { allowed: false, reason: "active_direct_hospital_scope_required" };
   }
 
   return { allowed: true, reason: "active_direct_hospital_scope" };
 }
 
-export const patientActivationPolicyInternals = { hasActiveDirectHospitalScope };
+export const patientActivationPolicyInternals = {
+  hasActiveDirectHospitalScope,
+  hasPatientActivationHospitalScope,
+};

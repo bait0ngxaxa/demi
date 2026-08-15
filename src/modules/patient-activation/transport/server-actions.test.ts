@@ -8,12 +8,14 @@ import {
   getPatientActivationDetails,
   issuePatientActivation,
 } from "../services/patient-activation-service";
+import { findPatientActivationCandidates } from "../services/patient-activation-query-service";
 import {
   initialPatientActivationCompletionActionState,
   initialPatientActivationIssueActionState,
 } from "./action-state";
 import {
   completePatientActivationAction,
+  findPatientActivationCandidatesAction,
   getPatientActivationDetailsAction,
   issuePatientActivationAction,
 } from "./server-actions";
@@ -31,11 +33,15 @@ vi.mock("../services/patient-activation-service", () => ({
   getPatientActivationDetails: vi.fn(),
   issuePatientActivation: vi.fn(),
 }));
+vi.mock("../services/patient-activation-query-service", () => ({
+  findPatientActivationCandidates: vi.fn(),
+}));
 
 const mockedGetProtectedApplicationActor = vi.mocked(getProtectedApplicationActor);
 const mockedIssuePatientActivation = vi.mocked(issuePatientActivation);
 const mockedGetPatientActivationDetails = vi.mocked(getPatientActivationDetails);
 const mockedCompletePatientActivation = vi.mocked(completePatientActivation);
+const mockedFindPatientActivationCandidates = vi.mocked(findPatientActivationCandidates);
 
 function createIssueFormData(reissue = false): FormData {
   const formData = new FormData();
@@ -44,6 +50,14 @@ function createIssueFormData(reissue = false): FormData {
   formData.set("reissue", String(reissue));
   formData.set("role", "ADMIN");
   formData.set("status", "ACTIVE");
+  return formData;
+}
+
+function createLookupFormData(lookupType = "NATIONAL_ID", value = "1000000000009"): FormData {
+  const formData = new FormData();
+  formData.set("targetHospitalId", "22222222-2222-4222-8222-222222222222");
+  formData.set("lookupType", lookupType);
+  formData.set("value", value);
   return formData;
 }
 
@@ -75,6 +89,66 @@ describe("patient activation Server Actions", () => {
     expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
     expect(mockedIssuePatientActivation).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve an actor for malformed activation lookup input", async () => {
+    const result = await findPatientActivationCandidatesAction(
+      { status: "IDLE" },
+      new FormData(),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedFindPatientActivationCandidates).not.toHaveBeenCalled();
+  });
+
+  it("serializes only the activation lookup projection", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "33333333-3333-4333-8333-333333333333",
+      personId: "44444444-4444-4444-8444-444444444444",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedFindPatientActivationCandidates.mockResolvedValue([
+      {
+        userId: "11111111-1111-4111-8111-111111111111",
+        patientProfileId: "55555555-5555-4555-8555-555555555555",
+        hospitalId: "22222222-2222-4222-8222-222222222222",
+        displayName: "สมชาย ผู้ป่วย",
+        hospitalNumber: "HN-001",
+        accountStatus: "PROVISIONED",
+        activationStatus: "NOT_ISSUED",
+        activationExpiresAt: null,
+        activationMayBeIssued: true,
+      },
+    ]);
+
+    const result = await findPatientActivationCandidatesAction(
+      { status: "IDLE" },
+      createLookupFormData(),
+    );
+
+    expect(mockedFindPatientActivationCandidates).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        targetHospitalId: "22222222-2222-4222-8222-222222222222",
+        lookupType: "NATIONAL_ID",
+        value: "1000000000009",
+      },
+    );
+    expect(result).toEqual({
+      status: "SUCCESS",
+      candidates: [
+        expect.objectContaining({
+          displayName: "สมชาย ผู้ป่วย",
+          activationStatus: "NOT_ISSUED",
+          activationExpiresAt: null,
+        }),
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("1000000000009");
+    expect(JSON.stringify(result)).not.toContain("identityKeyHash");
   });
 
   it("passes only the explicit activation request and serializes an ephemeral URL token", async () => {
@@ -115,7 +189,7 @@ describe("patient activation Server Actions", () => {
         activationExpiresAt: "2026-08-16T00:00:00.000Z",
       },
     });
-    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/patients/provision");
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/patients/activation");
     expect(JSON.stringify(result)).not.toContain("ADMIN");
   });
 

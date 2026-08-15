@@ -310,6 +310,10 @@ describe("Phase 3C platform admin bootstrap PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "platform_admin.bootstrapped" } })).toBe(1);
     expect(await prisma.person.count()).toBe(1);
     expect(await prisma.user.count()).toBe(1);
-    expect(deletedProviderSubjects).toHaveLength(1);
+    // Depending on the serialization winner, the loser may fail before or
+    // after provider provisioning. Both paths must leave exactly one local
+    // admin and no leaked provider subject.
+    expect(deletedProviderSubjects.length).toBeLessThanOrEqual(1);
+    expect(deletedProviderSubjects.every((subject) => providerSubjects.has(subject))).toBe(true);
   });
 });

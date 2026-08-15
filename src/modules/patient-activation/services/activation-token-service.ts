@@ -7,6 +7,7 @@ import { ValidationError } from "@/shared/errors/application-error";
 import { patientActivationTokenSchema } from "../schemas/patient-activation-schemas";
 
 export const PATIENT_ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
+export const PATIENT_ACTIVATION_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 export type PatientActivationCredential = {
   plaintextToken: string;
@@ -36,4 +37,8 @@ export function generatePatientActivationCredential(): PatientActivationCredenti
 
 export function getPatientActivationExpiry(now: Date): Date {
   return new Date(now.getTime() + PATIENT_ACTIVATION_TTL_MS);
+}
+
+export function getPatientActivationClaimExpiry(now: Date): Date {
+  return new Date(now.getTime() + PATIENT_ACTIVATION_CLAIM_LEASE_MS);
 }

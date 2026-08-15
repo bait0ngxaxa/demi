@@ -41,7 +41,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Copy link/QR มี expiry default 24 ชั่วโมง และ assisted activation 15 นาที; email, SMS และ LINE/LIFF ไม่ใช่ core activation dependency แต่อาจเป็น future delivery channels ส่วน ThaID และ external identity ต้องมี decision แยก
 - Existing `ACTIVE` user ที่มี valid provider mapping และ credential ownership แล้ว reuse identity และเพิ่ม relationship ได้โดยไม่เรียก provider หรือ activation ซ้ำ
 - New staff/OSM activation ใช้ one-time URL ที่เก็บเฉพาะ digest, รองรับ QR และ assisted handoff; target user ตั้ง password เอง แล้วกลับเข้าสู่ existing `/login`
-- Patient activation ใช้ `PatientActivation` แยก purpose จาก WorkforceActivation; Hospital actor ที่มี direct active membership ออก one-time link/QR ให้ Patient ตั้ง password เอง แล้วกลับเข้าสู่ existing `/login`
+- Patient activation เป็น optional operation ที่แยก purpose จาก WorkforceActivation; Patient provisioning และ Excel import ไม่ imply activation และ Hospital actor ที่มี direct active membership จึงค้นหาผู้ป่วยจาก dedicated Activation Actions แล้วออก one-time link/QR ให้ Patient ตั้ง password เอง ก่อนกลับเข้าสู่ existing `/login`
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement

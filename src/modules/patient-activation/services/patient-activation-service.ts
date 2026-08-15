@@ -43,12 +43,16 @@ import {
 } from "../schemas/patient-activation-schemas";
 import {
   generatePatientActivationCredential,
+  getPatientActivationClaimExpiry,
   getPatientActivationExpiry,
   hashPatientActivationToken,
   type PatientActivationCredentialGenerator,
 } from "./activation-token-service";
 
 export type PatientActivationDatabase = PrismaClient;
+export type PatientActivationAuthorizationDatabase =
+  | Pick<PrismaClient, "user" | "hospitalMembership">
+  | Prisma.TransactionClient;
 
 export type PatientActivationServiceDependencies = {
   database?: PatientActivationDatabase;
@@ -66,7 +70,8 @@ export type PatientActivationServiceDependencies = {
 export type PatientActivationIssueOutcome =
   | "ISSUED"
   | "ALREADY_ISSUED"
-  | "ALREADY_ACTIVE";
+  | "ALREADY_ACTIVE"
+  | "RECONCILIATION_REQUIRED";
 
 export type PatientActivationIssueResult = {
   outcome: PatientActivationIssueOutcome;
@@ -88,6 +93,7 @@ type PatientActivationClaim = {
   userId: string;
   hospitalId: string;
   claimedAt: Date;
+  claimExpiresAt: Date;
 };
 
 type PatientActivationTargetRecord = {
@@ -103,6 +109,15 @@ type PatientActivationTargetRecord = {
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
 const GENERIC_ACTIVATION_ERROR = "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ";
+
+export class PatientActivationReconciliationError extends InfrastructureError {
+  readonly requiresReconciliation = true;
+
+  constructor() {
+    super("Patient activation requires provider reconciliation");
+    this.name = "PatientActivationReconciliationError";
+  }
+}
 
 function getDatabase(dependencies: PatientActivationServiceDependencies): PatientActivationDatabase {
   return dependencies.database ?? getPrisma();
@@ -158,9 +173,36 @@ async function runSerializable<T>(
   }
 }
 
-function isProviderSubject(value: string): boolean {
+export function isProviderSubject(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
     value,
+  );
+}
+
+function hasActiveClaim(
+  activation: Pick<CurrentPatientActivation, "claimedAt" | "claimExpiresAt" | "reconciliationRequiredAt" | "usedAt" | "revokedAt">,
+  now: Date,
+): boolean {
+  return Boolean(
+    activation.claimedAt &&
+      activation.claimExpiresAt &&
+      activation.claimExpiresAt > now &&
+      !activation.reconciliationRequiredAt &&
+      !activation.usedAt &&
+      !activation.revokedAt,
+  );
+}
+
+function hasStaleClaim(
+  activation: Pick<CurrentPatientActivation, "claimedAt" | "claimExpiresAt" | "reconciliationRequiredAt" | "usedAt" | "revokedAt">,
+  now: Date,
+): boolean {
+  return Boolean(
+    activation.claimedAt &&
+      (!activation.claimExpiresAt || activation.claimExpiresAt <= now) &&
+      !activation.reconciliationRequiredAt &&
+      !activation.usedAt &&
+      !activation.revokedAt,
   );
 }
 
@@ -191,10 +233,32 @@ function assertIssuePolicy(
   }
 }
 
-async function assertHospitalActorInDatabase(
-  transaction: Prisma.TransactionClient,
+export async function assertPatientActivationActorInDatabase(
+  transaction: PatientActivationAuthorizationDatabase,
   actorUserId: string,
   targetHospitalId: string,
+): Promise<void> {
+  await assertPatientActivationActorIdentityInDatabase(transaction, actorUserId);
+
+  const membership = await transaction.hospitalMembership.findFirst({
+    where: {
+      userId: actorUserId,
+      hospitalId: targetHospitalId,
+      membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+      status: MembershipStatus.ACTIVE,
+      hospital: { status: HospitalStatus.ACTIVE },
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw new ForbiddenError();
+  }
+}
+
+export async function assertPatientActivationActorIdentityInDatabase(
+  transaction: PatientActivationAuthorizationDatabase,
+  actorUserId: string,
 ): Promise<void> {
   const actor = await transaction.user.findUnique({
     where: { id: actorUserId },
@@ -209,21 +273,6 @@ async function assertHospitalActorInDatabase(
     actor.status !== UserStatus.ACTIVE ||
     !actor.roles.some(({ role }) => role === Role.HOSPITAL)
   ) {
-    throw new ForbiddenError();
-  }
-
-  const membership = await transaction.hospitalMembership.findFirst({
-    where: {
-      userId: actorUserId,
-      hospitalId: targetHospitalId,
-      membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
-      status: MembershipStatus.ACTIVE,
-      hospital: { status: HospitalStatus.ACTIVE },
-    },
-    select: { id: true },
-  });
-
-  if (!membership) {
     throw new ForbiddenError();
   }
 }
@@ -301,6 +350,10 @@ function assertPatientActivationEligibility(
     return target;
   }
 
+  if (target.status === UserStatus.PROVISIONED && isProviderSubject(target.authSubject ?? "")) {
+    return target;
+  }
+
   throw new ConflictError("The Patient account requires reconciliation before activation");
 }
 
@@ -310,6 +363,8 @@ type CurrentPatientActivation = {
   hospitalId: string;
   expiresAt: Date;
   claimedAt: Date | null;
+  claimExpiresAt: Date | null;
+  reconciliationRequiredAt: Date | null;
   usedAt: Date | null;
   revokedAt: Date | null;
 };
@@ -331,10 +386,146 @@ async function findCurrentPatientActivation(
       hospitalId: true,
       expiresAt: true,
       claimedAt: true,
+      claimExpiresAt: true,
+      reconciliationRequiredAt: true,
       usedAt: true,
       revokedAt: true,
     },
   });
+}
+
+type ClaimStateResolution = "AVAILABLE" | "ACTIVE" | "RECOVERED" | "RECONCILIATION_REQUIRED";
+
+async function resolveClaimStateInTransaction(
+  transaction: Prisma.TransactionClient,
+  activation: CurrentPatientActivation,
+  target: PatientActivationTargetRecord,
+  now: Date,
+  actorUserId: string | null,
+): Promise<ClaimStateResolution> {
+  if (activation.reconciliationRequiredAt) {
+    return "RECONCILIATION_REQUIRED";
+  }
+
+  if (activation.claimedAt && target.authSubject !== null) {
+    const marked = await transaction.patientActivation.updateMany({
+      where: {
+        id: activation.id,
+        userId: activation.userId,
+        claimedAt: activation.claimedAt,
+        usedAt: null,
+        revokedAt: null,
+        reconciliationRequiredAt: null,
+      },
+      data: {
+        reconciliationRequiredAt: now,
+        claimExpiresAt: null,
+      },
+    });
+
+    if (marked.count !== 1) {
+      return "RECONCILIATION_REQUIRED";
+    }
+
+    await recordAuditEvent(
+      {
+        actorUserId,
+        action: "patient_activation.reconciliation_required",
+        resourceType: "PatientActivation",
+        resourceId: activation.id,
+        metadata: {
+          hospitalId: activation.hospitalId,
+          reason: "claim_has_local_auth_mapping",
+        },
+      },
+      transaction,
+    );
+
+    return "RECONCILIATION_REQUIRED";
+  }
+
+  if (hasActiveClaim(activation, now)) {
+    return "ACTIVE";
+  }
+
+  if (!hasStaleClaim(activation, now)) {
+    return "AVAILABLE";
+  }
+
+  const locallyClean =
+    target.status === UserStatus.PROVISIONED && target.authSubject === null;
+
+  if (locallyClean) {
+    const released = await transaction.patientActivation.updateMany({
+      where: {
+        id: activation.id,
+        userId: activation.userId,
+        claimedAt: activation.claimedAt,
+        usedAt: null,
+        revokedAt: null,
+        reconciliationRequiredAt: null,
+      },
+      data: {
+        claimedAt: null,
+        claimExpiresAt: null,
+      },
+    });
+
+    if (released.count !== 1) {
+      return "RECONCILIATION_REQUIRED";
+    }
+
+    await recordAuditEvent(
+      {
+        actorUserId,
+        action: "patient_activation.stale_claim_released",
+        resourceType: "PatientActivation",
+        resourceId: activation.id,
+        metadata: {
+          hospitalId: activation.hospitalId,
+          reason: "expired_claim_lease",
+        },
+      },
+      transaction,
+    );
+
+    return "RECOVERED";
+  }
+
+  const marked = await transaction.patientActivation.updateMany({
+    where: {
+      id: activation.id,
+      userId: activation.userId,
+      claimedAt: activation.claimedAt,
+      usedAt: null,
+      revokedAt: null,
+      reconciliationRequiredAt: null,
+    },
+    data: {
+      reconciliationRequiredAt: now,
+      claimExpiresAt: null,
+    },
+  });
+
+  if (marked.count !== 1) {
+    return "RECONCILIATION_REQUIRED";
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId,
+      action: "patient_activation.reconciliation_required",
+      resourceType: "PatientActivation",
+      resourceId: activation.id,
+      metadata: {
+        hospitalId: activation.hospitalId,
+        reason: "stale_claim_has_local_auth_mapping",
+      },
+    },
+    transaction,
+  );
+
+  return "RECONCILIATION_REQUIRED";
 }
 
 async function revokePatientActivationInTransaction(
@@ -344,7 +535,7 @@ async function revokePatientActivationInTransaction(
   now: Date,
   source: "explicit_reissue" | "expired_reissue",
 ): Promise<void> {
-  if (activation.claimedAt) {
+  if (activation.reconciliationRequiredAt || activation.claimedAt) {
     throw new ConflictError("The Patient activation credential is currently being used");
   }
 
@@ -355,8 +546,12 @@ async function revokePatientActivationInTransaction(
       claimedAt: null,
       usedAt: null,
       revokedAt: null,
+      reconciliationRequiredAt: null,
     },
-    data: { revokedAt: now },
+    data: {
+      revokedAt: now,
+      claimExpiresAt: null,
+    },
   });
 
   if (revoked.count !== 1) {
@@ -396,10 +591,50 @@ async function issuePatientActivationInTransaction(
     };
   }
 
-  const current = await findCurrentPatientActivation(transaction, input.target.id);
+  let current = await findCurrentPatientActivation(transaction, input.target.id);
 
-  if (current && current.claimedAt) {
-    throw new ConflictError("The Patient activation credential is currently being used");
+  if (current) {
+    const claimState = await resolveClaimStateInTransaction(
+      transaction,
+      current,
+      input.target,
+      input.now,
+      input.actorUserId,
+    );
+
+    if (claimState === "RECONCILIATION_REQUIRED") {
+      return {
+        outcome: "RECONCILIATION_REQUIRED",
+        userId: input.target.id,
+        patientProfileId: input.target.patientProfileId,
+        hospitalId: input.request.targetHospitalId,
+        activationToken: null,
+        activationExpiresAt: current.expiresAt,
+      };
+    }
+
+    if (claimState === "ACTIVE") {
+      throw new ConflictError("The Patient activation credential is currently being used");
+    }
+
+    if (claimState === "RECOVERED") {
+      current = {
+        ...current,
+        claimedAt: null,
+        claimExpiresAt: null,
+      };
+    }
+  }
+
+  if (input.target.status === UserStatus.PROVISIONED && input.target.authSubject !== null) {
+    return {
+      outcome: "RECONCILIATION_REQUIRED",
+      userId: input.target.id,
+      patientProfileId: input.target.patientProfileId,
+      hospitalId: input.request.targetHospitalId,
+      activationToken: null,
+      activationExpiresAt: current?.expiresAt ?? null,
+    };
   }
 
   if (current && current.expiresAt > input.now && !input.request.reissue) {
@@ -483,7 +718,7 @@ export async function issuePatientActivation(
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
-        await assertHospitalActorInDatabase(
+        await assertPatientActivationActorInDatabase(
           transaction,
           actor.userId,
           parsed.data.targetHospitalId,
@@ -497,7 +732,19 @@ export async function issuePatientActivation(
           ),
         );
 
-        if (!canIssuePatientActivation(actor, toPatientActivationTarget(target), parsed.data.targetHospitalId)) {
+        const canIssue = canIssuePatientActivation(
+          actor,
+          toPatientActivationTarget(target),
+          parsed.data.targetHospitalId,
+        );
+        const hasAmbiguousProvisionedMapping =
+          target.status === UserStatus.PROVISIONED &&
+          isProviderSubject(target.authSubject ?? "") &&
+          target.hasPatientRole &&
+          Boolean(target.patientProfileId) &&
+          target.hasHospitalRelationship;
+
+        if (!canIssue && !hasAmbiguousProvisionedMapping) {
           throw new ConflictError("The Patient account is not eligible for activation issuance");
         }
 
@@ -520,6 +767,8 @@ function assertUsablePatientActivationState(input: {
   activation: {
     expiresAt: Date;
     claimedAt: Date | null;
+    claimExpiresAt: Date | null;
+    reconciliationRequiredAt: Date | null;
     usedAt: Date | null;
     revokedAt: Date | null;
   };
@@ -530,7 +779,7 @@ function assertUsablePatientActivationState(input: {
   if (
     input.activation.usedAt ||
     input.activation.revokedAt ||
-    input.activation.claimedAt ||
+    input.activation.reconciliationRequiredAt ||
     input.activation.expiresAt <= input.now ||
     input.hospitalStatus !== HospitalStatus.ACTIVE
   ) {
@@ -576,6 +825,8 @@ export async function getPatientActivationDetails(
         hospitalId: true,
         expiresAt: true,
         claimedAt: true,
+        claimExpiresAt: true,
+        reconciliationRequiredAt: true,
         usedAt: true,
         revokedAt: true,
         hospital: { select: { name: true, status: true } },
@@ -657,7 +908,10 @@ async function claimPatientActivation(
   const now = getNow(dependencies);
 
   try {
-    return await runSerializable(
+    const result = await runSerializable<
+      | { kind: "CLAIM"; claim: PatientActivationClaim }
+      | { kind: "RECONCILIATION_REQUIRED" }
+    >(
       database,
       async (transaction) => {
         const activation = await transaction.patientActivation.findUnique({
@@ -668,6 +922,8 @@ async function claimPatientActivation(
             hospitalId: true,
             expiresAt: true,
             claimedAt: true,
+            claimExpiresAt: true,
+            reconciliationRequiredAt: true,
             usedAt: true,
             revokedAt: true,
             hospital: { select: { status: true } },
@@ -682,20 +938,49 @@ async function claimPatientActivation(
             )
           : null;
 
+        if (!activation || !target || activation.usedAt || activation.revokedAt) {
+          throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+        }
+
         if (
-          !activation ||
-          !target ||
-          activation.usedAt ||
-          activation.revokedAt ||
-          activation.claimedAt ||
           activation.expiresAt <= now ||
           activation.hospital.status !== HospitalStatus.ACTIVE ||
           target.status !== UserStatus.PROVISIONED ||
-          target.authSubject !== null ||
           !target.hasPatientRole ||
           !target.patientProfileId ||
           !target.hasHospitalRelationship
         ) {
+          throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+        }
+
+        const current: CurrentPatientActivation = {
+          id: activation.id,
+          userId: activation.userId,
+          hospitalId: activation.hospitalId,
+          expiresAt: activation.expiresAt,
+          claimedAt: activation.claimedAt,
+          claimExpiresAt: activation.claimExpiresAt,
+          reconciliationRequiredAt: activation.reconciliationRequiredAt,
+          usedAt: activation.usedAt,
+          revokedAt: activation.revokedAt,
+        };
+        const claimState = await resolveClaimStateInTransaction(
+          transaction,
+          current,
+          target,
+          now,
+          null,
+        );
+
+        if (claimState === "RECONCILIATION_REQUIRED") {
+          return { kind: "RECONCILIATION_REQUIRED" };
+        }
+
+        if (claimState === "ACTIVE") {
+          throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+        }
+
+        if (target.authSubject !== null) {
           throw new ConflictError(GENERIC_ACTIVATION_ERROR);
         }
 
@@ -704,11 +989,16 @@ async function claimPatientActivation(
             id: activation.id,
             tokenHash,
             claimedAt: null,
+            claimExpiresAt: null,
+            reconciliationRequiredAt: null,
             usedAt: null,
             revokedAt: null,
             expiresAt: { gt: now },
           },
-          data: { claimedAt: now },
+          data: {
+            claimedAt: now,
+            claimExpiresAt: getPatientActivationClaimExpiry(now),
+          },
         });
 
         if (claimed.count !== 1) {
@@ -716,14 +1006,24 @@ async function claimPatientActivation(
         }
 
         return {
-          activationId: activation.id,
-          userId: activation.userId,
-          hospitalId: activation.hospitalId,
-          claimedAt: now,
+          kind: "CLAIM",
+          claim: {
+            activationId: activation.id,
+            userId: activation.userId,
+            hospitalId: activation.hospitalId,
+            claimedAt: now,
+            claimExpiresAt: getPatientActivationClaimExpiry(now),
+          },
         };
       },
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
+
+    if (result.kind === "RECONCILIATION_REQUIRED") {
+      throw new PatientActivationReconciliationError();
+    }
+
+    return result.claim;
   } catch (error: unknown) {
     if (error instanceof ConflictError) {
       throw error;
@@ -737,20 +1037,32 @@ async function releasePatientActivationClaim(
   claim: PatientActivationClaim,
   dependencies: PatientActivationServiceDependencies,
 ): Promise<void> {
+  const database = getDatabase(dependencies);
+
   try {
-    const result = await getDatabase(dependencies).patientActivation.updateMany({
+    const result = await database.patientActivation.updateMany({
       where: {
         id: claim.activationId,
         userId: claim.userId,
         hospitalId: claim.hospitalId,
         claimedAt: claim.claimedAt,
+        claimExpiresAt: claim.claimExpiresAt,
+        reconciliationRequiredAt: null,
         usedAt: null,
         revokedAt: null,
       },
-      data: { claimedAt: null },
+      data: {
+        claimedAt: null,
+        claimExpiresAt: null,
+      },
     });
 
     if (result.count !== 1) {
+      await markPatientActivationReconciliationRequired(
+        claim,
+        dependencies,
+        "claim_release_conflict",
+      );
       throw new PatientActivationReconciliationError();
     }
   } catch (error: unknown) {
@@ -758,6 +1070,70 @@ async function releasePatientActivationClaim(
       throw error;
     }
 
+    try {
+      await markPatientActivationReconciliationRequired(
+        claim,
+        dependencies,
+        "claim_release_failure",
+      );
+    } catch {
+      // The reconciliation error below is the safe outcome even when the
+      // marker itself cannot be persisted because the database is unavailable.
+    }
+
+    throw new PatientActivationReconciliationError();
+  }
+}
+
+async function markPatientActivationReconciliationRequired(
+  claim: PatientActivationClaim,
+  dependencies: PatientActivationServiceDependencies,
+  reason: "provider_ambiguous" | "claim_release_conflict" | "claim_release_failure" | "local_finalize_ambiguous",
+): Promise<void> {
+  const database = getDatabase(dependencies);
+  const now = getNow(dependencies);
+
+  try {
+    const marked = await database.patientActivation.updateMany({
+      where: {
+        id: claim.activationId,
+        userId: claim.userId,
+        hospitalId: claim.hospitalId,
+        usedAt: null,
+        revokedAt: null,
+        reconciliationRequiredAt: null,
+      },
+      data: {
+        reconciliationRequiredAt: now,
+        claimExpiresAt: null,
+      },
+    });
+
+    if (marked.count === 1) {
+      await recordAuditEvent({
+        actorUserId: null,
+        action: "patient_activation.reconciliation_required",
+        resourceType: "PatientActivation",
+        resourceId: claim.activationId,
+        metadata: {
+          hospitalId: claim.hospitalId,
+          reason,
+        },
+      }, database);
+      return;
+    }
+
+    const existing = await database.patientActivation.findUnique({
+      where: { id: claim.activationId },
+      select: { reconciliationRequiredAt: true },
+    });
+
+    if (existing?.reconciliationRequiredAt) {
+      return;
+    }
+
+    throw new Error("Patient activation reconciliation marker could not be written");
+  } catch {
     throw new PatientActivationReconciliationError();
   }
 }
@@ -781,6 +1157,8 @@ async function finalizePatientActivationLocally(
           hospitalId: true,
           expiresAt: true,
           claimedAt: true,
+          claimExpiresAt: true,
+          reconciliationRequiredAt: true,
           usedAt: true,
           revokedAt: true,
           hospital: { select: { status: true } },
@@ -795,6 +1173,10 @@ async function finalizePatientActivationLocally(
         activation.userId !== claim.userId ||
         activation.hospitalId !== claim.hospitalId ||
         activation.claimedAt?.getTime() !== claim.claimedAt.getTime() ||
+        activation.claimExpiresAt?.getTime() !== claim.claimExpiresAt.getTime() ||
+        !activation.claimExpiresAt ||
+        activation.claimExpiresAt <= now ||
+        activation.reconciliationRequiredAt ||
         activation.expiresAt <= now ||
         activation.usedAt ||
         activation.revokedAt ||
@@ -828,10 +1210,16 @@ async function finalizePatientActivationLocally(
           userId: claim.userId,
           hospitalId: claim.hospitalId,
           claimedAt: claim.claimedAt,
+          claimExpiresAt: claim.claimExpiresAt,
+          reconciliationRequiredAt: null,
           usedAt: null,
           revokedAt: null,
         },
-        data: { usedAt: now },
+        data: {
+          usedAt: now,
+          claimedAt: null,
+          claimExpiresAt: null,
+        },
       });
 
       if (consumed.count !== 1) {
@@ -856,15 +1244,6 @@ async function finalizePatientActivationLocally(
     },
     dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
   );
-}
-
-export class PatientActivationReconciliationError extends InfrastructureError {
-  readonly requiresReconciliation = true;
-
-  constructor() {
-    super("Patient activation requires provider reconciliation");
-    this.name = "PatientActivationReconciliationError";
-  }
 }
 
 async function deleteProviderIdentityByDefault(authSubject: string): Promise<void> {
@@ -942,6 +1321,11 @@ export async function completePatientActivation(
     });
   } catch (error: unknown) {
     if (error instanceof PasswordAuthProvisioningReconciliationError) {
+      await markPatientActivationReconciliationRequired(
+        claim,
+        dependencies,
+        "provider_ambiguous",
+      );
       throw new PatientActivationReconciliationError();
     }
 
@@ -958,6 +1342,11 @@ export async function completePatientActivation(
     provisionedIdentity.userId !== claim.userId ||
     !isProviderSubject(provisionedIdentity.authSubject)
   ) {
+    await markPatientActivationReconciliationRequired(
+      claim,
+      dependencies,
+      "provider_ambiguous",
+    );
     throw new PatientActivationReconciliationError();
   }
 
@@ -972,6 +1361,17 @@ export async function completePatientActivation(
       );
       await releasePatientActivationClaim(claim, dependencies);
     } catch (compensationError: unknown) {
+      try {
+        await markPatientActivationReconciliationRequired(
+          claim,
+          dependencies,
+          "local_finalize_ambiguous",
+        );
+      } catch {
+        // The typed reconciliation error below is still the safe result when
+        // the marker cannot be persisted because the database is unavailable.
+      }
+
       if (compensationError instanceof PatientActivationReconciliationError) {
         throw compensationError;
       }

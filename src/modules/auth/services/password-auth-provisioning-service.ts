@@ -53,12 +53,35 @@ export type PasswordAuthProvisioningDependencies = {
   store?: PasswordAuthProvisioningStore;
 };
 
-export class PasswordAuthProvisioningReconciliationError extends InfrastructureError {
-  readonly requiresReconciliation = true;
+export type PasswordAuthProvisioningReconciliationKind =
+  | "AMBIGUOUS_PROVIDER_OUTCOME"
+  | "PROVIDER_IDENTITY_CONFLICT";
+
+export class PasswordAuthProvisioningProviderRejectedError extends InfrastructureError {
+  readonly outcome = "DEFINITIVE_PROVIDER_REJECTION" as const;
+  readonly requiresReconciliation = false;
 
   constructor() {
+    super("Password authentication provider rejected the identity request");
+    this.name = "PasswordAuthProvisioningProviderRejectedError";
+  }
+}
+
+export class PasswordAuthProvisioningReconciliationError extends InfrastructureError {
+  readonly requiresReconciliation = true;
+  readonly outcome: PasswordAuthProvisioningReconciliationKind;
+
+  constructor(outcome: PasswordAuthProvisioningReconciliationKind = "AMBIGUOUS_PROVIDER_OUTCOME") {
     super("Password authentication identity requires provider reconciliation");
     this.name = "PasswordAuthProvisioningReconciliationError";
+    this.outcome = outcome;
+  }
+}
+
+export class PasswordAuthProvisioningIdentityConflictError extends PasswordAuthProvisioningReconciliationError {
+  constructor() {
+    super("PROVIDER_IDENTITY_CONFLICT");
+    this.name = "PasswordAuthProvisioningIdentityConflictError";
   }
 }
 
@@ -116,6 +139,27 @@ function isProviderIdentityConflict(error: unknown): boolean {
     typeof error.code === "string" &&
     providerIdentityConflictCodes.has(error.code)
   );
+}
+
+function isDefinitiveProviderRejection(error: unknown): boolean {
+  return (
+    isAuthError(error) &&
+    typeof error.status === "number" &&
+    error.status >= 400 &&
+    error.status < 500
+  );
+}
+
+function classifyProviderFailure(error: unknown): never {
+  if (isProviderIdentityConflict(error)) {
+    throw new PasswordAuthProvisioningIdentityConflictError();
+  }
+
+  if (isDefinitiveProviderRejection(error)) {
+    throw new PasswordAuthProvisioningProviderRejectedError();
+  }
+
+  throw new PasswordAuthProvisioningReconciliationError();
 }
 
 function getPasswordAuthAdminProvider(): PasswordAuthAdminProvider {
@@ -190,27 +234,17 @@ export async function provisionPasswordAuthIdentity(
       email_confirm: true,
     });
   } catch (error: unknown) {
-    if (isProviderIdentityConflict(error)) {
-      throw new PasswordAuthProvisioningReconciliationError();
-    }
-
-    throw new InfrastructureError("Password authentication identity could not be created");
+    classifyProviderFailure(error);
   }
 
   if (providerResponse.error) {
-    if (isProviderIdentityConflict(providerResponse.error)) {
-      throw new PasswordAuthProvisioningReconciliationError();
-    }
-
-    throw new InfrastructureError("Password authentication identity could not be created");
+    classifyProviderFailure(providerResponse.error);
   }
 
   const providerSubject = providerSubjectSchema.safeParse(providerResponse.data.user?.id);
 
   if (!providerSubject.success) {
-    throw new InfrastructureError(
-      "Password authentication provider returned an invalid identity",
-    );
+    throw new PasswordAuthProvisioningReconciliationError();
   }
 
   let persisted: boolean;

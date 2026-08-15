@@ -8,6 +8,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   patientActivationCompletionSchema,
+  patientActivationLookupSchema,
   patientActivationRequestSchema,
 } from "../schemas/patient-activation-schemas";
 import {
@@ -15,11 +16,14 @@ import {
   getPatientActivationDetails,
   issuePatientActivation,
 } from "../services/patient-activation-service";
+import { findPatientActivationCandidates } from "../services/patient-activation-query-service";
 import type {
+  PatientActivationCandidateState,
   PatientActivationCompletionActionState,
   PatientActivationDetailsActionState,
   PatientActivationIssueActionState,
   PatientActivationIssueResultState,
+  PatientActivationLookupActionState,
 } from "./action-state";
 
 function getString(formData: FormData, field: string): string {
@@ -28,7 +32,12 @@ function getString(formData: FormData, field: string): string {
 }
 
 function mapIssueError(error: unknown): {
-  code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+  code:
+    | "INVALID_INPUT"
+    | "FORBIDDEN"
+    | "CONFLICT"
+    | "RECONCILIATION_REQUIRED"
+    | "UNAVAILABLE";
   message: string;
 } {
   if (error instanceof ApplicationError) {
@@ -49,11 +58,47 @@ function mapIssueError(error: unknown): {
         message: "ไม่สามารถออกลิงก์เปิดใช้งานให้ผู้ป่วยรายนี้ได้ กรุณาตรวจสอบสถานะแล้วลองใหม่",
       };
     }
+
+    if (
+      "requiresReconciliation" in error &&
+      error.requiresReconciliation === true
+    ) {
+      return {
+        code: "RECONCILIATION_REQUIRED",
+        message: "บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่",
+      };
+    }
   }
 
   return {
     code: "UNAVAILABLE",
     message: "ระบบไม่พร้อมออกลิงก์เปิดใช้งานในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
+function mapLookupError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION") {
+      return {
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือ HN ให้ถูกต้อง",
+      };
+    }
+
+    if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+      return {
+        code: "FORBIDDEN",
+        message: "บัญชีนี้ไม่มีสิทธิ์ค้นหาผู้ป่วยเพื่อเปิดใช้งานบัญชี",
+      };
+    }
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "ระบบไม่พร้อมค้นหาผู้ป่วยในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 
@@ -93,6 +138,45 @@ function toIssueResultState(
   };
 }
 
+function toCandidateState(
+  candidate: Awaited<ReturnType<typeof findPatientActivationCandidates>>[number],
+): PatientActivationCandidateState {
+  return {
+    ...candidate,
+    activationExpiresAt: candidate.activationExpiresAt?.toISOString() ?? null,
+  };
+}
+
+export async function findPatientActivationCandidatesAction(
+  _previousState: PatientActivationLookupActionState,
+  formData: FormData,
+): Promise<PatientActivationLookupActionState> {
+  const parsed = patientActivationLookupSchema.safeParse({
+    targetHospitalId: getString(formData, "targetHospitalId"),
+    lookupType: getString(formData, "lookupType"),
+    value: getString(formData, "value"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือ HN ให้ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const candidates = await findPatientActivationCandidates(actor, parsed.data);
+    return {
+      status: "SUCCESS",
+      candidates: candidates.map(toCandidateState),
+    };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapLookupError(error) };
+  }
+}
+
 export async function issuePatientActivationAction(
   _previousState: PatientActivationIssueActionState,
   formData: FormData,
@@ -116,7 +200,7 @@ export async function issuePatientActivationAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await issuePatientActivation(actor, parsed.data);
-    revalidatePath("/app/patients/provision");
+    revalidatePath("/app/patients/activation");
     return { status: "SUCCESS", result: toIssueResultState(result) };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapIssueError(error) };
