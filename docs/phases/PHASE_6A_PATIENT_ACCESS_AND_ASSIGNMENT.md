@@ -1,16 +1,18 @@
 # Phase 6A — Patient Access and Assignment Requirement Closure
 
-**Status:** Architecture and requirements handoff. No Phase 6B product code is implemented by this document.
+**Status:** Phase 6A owner decisions accepted. This is the accepted architecture and requirements handoff for Phase 6B; no Phase 6B product code is implemented by this document.
 
 **Date:** 2026-08-15
 
 **Scope:** Define the smallest safe contract for Patient read access, operational assignment, and future Patient management before implementing Patient operations. Clinical workflows, lifecycle mutations, and speculative transport infrastructure remain outside this phase.
 
-**Result:** Phase 6B is not implementation-ready until the blocking owner decisions in Section 17 are accepted. The proposed defaults below are engineering recommendations, not confirmed product requirements.
+**Phase status:** `Phase 6A — ACCEPTED`; `Phase 6B.1 — IMPLEMENTATION READY`; `Phase 6B.2 — IMPLEMENTATION READY after B6.1`; `Phase 6B.3 — DEFERRED / REQUIREMENTS REQUIRED`.
+
+**Result:** The direct Hospital Patient read contract and the Hospital OWNER-controlled, Hospital-specific OSM assignment contract are accepted. B6.1 may start with the Hospital directory/minimal-detail slice; B6.2 follows it. Patient profile editing, lifecycle mutations, transfer, self-service expansion, and clinical workflows remain deferred.
 
 ## 1. Phase status and objective
 
-Phase 5 closed Patient provisioning and optional first-time account activation. It did not define the authority to read, update, assign, transfer, deactivate, or restore a Patient. Phase 6A closes those requirements or keeps them explicitly open.
+Phase 5 closed Patient provisioning and optional first-time account activation. Phase 6A now closes the Patient read and assignment contract for the next operational slices, while keeping profile editing, lifecycle mutations, transfer, self-service expansion, and clinical workflows explicitly deferred.
 
 The classification used throughout this document is:
 
@@ -19,8 +21,8 @@ The classification used throughout this document is:
 | **CONFIRMED CURRENT REQUIREMENT** | Directly supported by current requirements, accepted ADRs, or the current architecture baseline. |
 | **LEGACY BEHAVIOR ONLY** | Observed in the pinned legacy repository; useful domain evidence, but not accepted for the rewrite. |
 | **ARCHITECTURE-CONFLICTING LEGACY BEHAVIOR** | Legacy behavior that the accepted rewrite architecture prohibits. It must not be copied. |
-| **PROPOSED MVP CONTRACT** | A minimal, fail-closed engineering recommendation awaiting product acceptance. |
-| **OWNER CONFIRMATION REQUIRED** | A business, privacy, or authority decision that cannot be inferred safely. |
+| **PROPOSED MVP CONTRACT** | A minimal, fail-closed engineering recommendation for a decision not covered by the accepted Phase 6A contract. |
+| **OWNER CONFIRMATION REQUIRED** | A business, privacy, or authority decision outside the accepted Phase 6A contract that cannot be inferred safely. |
 | **DEFERRED** | Intentionally outside the Phase 6B operational access slice. |
 
 The working rule is:
@@ -41,6 +43,8 @@ The source-of-truth order remains:
 4. `docs/CONTEXT.md`.
 5. Current schema, implementation, and tests as supporting implementation evidence.
 6. Legacy DEMI only as behavioral and terminology reference.
+
+The owner-provided Phase 6A decision set in the current task is the accepted requirement input for this phase. It resolves the Patient access, assignment, B6.1 projection, and pagination decisions described below without rewriting accepted ADR history.
 
 The following current sources were inspected:
 
@@ -162,50 +166,49 @@ The pinned legacy code is useful evidence of historical workflow expectations, b
 
 `patient:provision` and `patient:activation:issue` do not imply `patient:read`. A read policy must independently identify the capability, the actor relationship, the target Hospital context, the resource scope, and the projection.
 
-| Actor | Current evidence | Proposed minimum read scope | Classification and blocker |
+| Actor | Current evidence | Accepted minimum read scope | Phase 6 status |
 | --- | --- | --- | --- |
-| `HOSPITAL` | Current provisioning and activation revalidate a direct active `OWNER`/`MEMBER` relationship. No Patient read capability exists. Profession is only classification. | `patient:read` over Patient–Hospital relationships whose `hospitalId` equals an active Hospital directly related to the actor. Start with direct active `OWNER`/`MEMBER`; do not use profession or parent/child metadata as authority. | **PROPOSED MVP CONTRACT**; Hospital read-scope acceptance blocks B6.1. |
-| `OSM` | `OsmHospitalRelationship` is only OSM–Hospital association. Current implementation has no assignment model or post-provision read scope. Legacy coach/network filtering is not authoritative. | Deny routine Patient read until an active first-class Patient–OSM assignment exists. If assignment is accepted, use `ASSIGNED_PATIENTS` scoped to the same Patient–Hospital relationship and active OSM–Hospital association; do not grant Hospital-wide, area-wide, or clinical access by role. | **OWNER CONFIRMATION REQUIRED**; blocks OSM read and B6.2. The deny default is **PROPOSED MVP CONTRACT**. |
-| `PATIENT` | The accepted architecture defines Patient scope as normally `SELF`. Patient activation establishes interactive account access but no Patient portal exists. | `SELF` only: the actor's server-resolved `personId` and explicitly approved Patient projection. Do not expose another Patient or a cross-Hospital relationship by changing request parameters. | `SELF` is **CONFIRMED CURRENT REQUIREMENT**; the minimum self projection is **OWNER CONFIRMATION REQUIRED** and blocks self-detail implementation. |
-| `ADMIN` | The baseline positions Platform Admin in governance/control-plane work and outside normal Patient operations. | Deny routine operational `patient:read`. A future governance/reconciliation projection or break-glass operation must be separately named, scoped, audited, and approved. | The governance boundary is **CONFIRMED CURRENT REQUIREMENT**; routine-deny is **PROPOSED MVP CONTRACT**. It blocks an Admin roster branch, not Hospital/Patient B6.1 if accepted separately. |
+| `HOSPITAL` | Current provisioning and activation revalidate a direct active `OWNER`/`MEMBER` relationship. Profession is only classification. | `patient:read` over Patient–Hospital relationships whose `hospitalId` equals an active Hospital directly related to the actor. Require active `HOSPITAL` role, active direct `OWNER`/`MEMBER` membership, and an active target Hospital; do not use profession or parent/child metadata as authority. | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT.** This is the B6.1 implementation scope. |
+| `OSM` | `OsmHospitalRelationship` is only OSM–Hospital association. Current implementation has no assignment model or post-provision read scope. Legacy coach/network filtering is not authoritative. | `ASSIGNED_PATIENTS` only: deny generic Patient-directory access until B6.2 creates the active first-class assignment. After B6.2, require active OSM role, active OSM–Hospital relationship, active assignment, and the same Patient–Hospital context; never grant Hospital-wide, area-wide, or clinical access by role. | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT.** OSM access is not part of the first B6.1 directory slice. |
+| `PATIENT` | The accepted architecture defines Patient scope as normally `SELF`. Patient activation establishes interactive account access but no Patient portal exists. | `SELF` only: use the actor's server-resolved `personId` and an explicitly approved Patient projection. Do not expose another Patient or a cross-Hospital relationship by changing request parameters. | `SELF` is **CONFIRMED CURRENT REQUIREMENT**. Patient self-service UI/read projection is **DEFERRED** and is not required by B6.1. |
+| `ADMIN` | The baseline positions Platform Admin in governance/control-plane work and outside normal Patient operations. | Deny routine operational `patient:read`. A future governance/reconciliation projection or break-glass operation must be separately named, scoped, audited, and approved. | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT.** No Admin roster branch is in B6.1. |
 
 ### Hospital owner/member and profession
 
-**PROPOSED MVP CONTRACT:** Use the same direct active `OWNER`/`MEMBER` relationship boundary already used by the reversible provisioning and activation MVPs, because it is the smallest existing server-resolved Hospital scope. Do not infer a broader read permission from the fact that an actor is a Hospital `OWNER`, and do not infer a narrower or broader permission from `DOCTOR`, `NURSE`, `COORDINATOR`, or `OTHER` without a confirmed requirement.
-
-If product requirements distinguish owner/member or profession, that is a new capability-policy decision; it must not be hidden in UI filtering.
+**CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:** Use the direct active `OWNER`/`MEMBER` relationship boundary already used by the current Patient provisioning and activation MVPs. An active `HOSPITAL` actor may read only the Patient–Hospital relationships for that same Hospital. `DOCTOR`, `NURSE`, `COORDINATOR`, and `OTHER` do not change Patient visibility. A future requirement may introduce narrower field or mutation rights, but it must not be hidden in UI filtering.
 
 ## 7. Patient directory and read-model contract
 
-### 7.1 Proposed minimal projection
+### 7.1 Accepted minimal projection
 
 The first directory/detail slice should be a bounded operational projection, not a copy of the legacy profile or clinical dashboard.
 
 | Projection field | Phase 6A position |
 | --- | --- |
-| Opaque PatientProfile/relationship identifier | **PROPOSED MVP CONTRACT**, only where needed for navigation or a subsequent server command. |
-| Display name from the resolved Person | **PROPOSED MVP CONTRACT**, subject to the normal Person data policy. |
-| Hospital identity and Hospital-local HN for the authorized relationship | **PROPOSED MVP CONTRACT**; HN belongs to the relationship context, not Person. |
-| Account status / activation summary | **PROPOSED MVP CONTRACT** only when needed for operational activation support; reuse the existing safe status projection. Never expose provider identifiers or tokens. |
-| Assignment summary | **DEFERRED** until B6.2 defines assignment and read authority. |
-| Phone, email, address, birth date, emergency contact, or other demographics | **OWNER CONFIRMATION REQUIRED**; omit from the first roster/detail projection unless a concrete workflow requires each field. |
+| Opaque `PatientProfile` identifier | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT**, only when required internally for navigation or a subsequent server command. |
+| Opaque `PatientHospitalRelationship` identifier | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT**, only when required internally for navigation or a subsequent server command. |
+| Display name from the resolved Person | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT**, subject to the normal Person data policy. |
+| Hospital identity/context and Hospital-local HN for the authorized relationship | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT**; HN belongs to the relationship context, not Person. |
+| Account status / activation summary / activation eligibility | **DEFERRED / EXCLUDED FROM B6.1**. Patient activation has a dedicated operational workflow; do not add these fields to the general directory by default. |
+| Assignment summary | **DEFERRED** from B6.1; assignment scope is implemented in B6.2 and must not be a B6.1 dependency. |
+| Phone, email, address, birth date, emergency contact, or other demographics | **DEFERRED / EXCLUDED FROM B6.1**. These fields are not rejected forever; each requires a concrete future operational workflow and field policy. |
 | Screening, measurements, PAM, HbA1c, goals, appointments, follow-up, notes, or clinical summaries | **DEFERRED** to future clinical modules. |
-| Raw National ID, `identityKeyHash`, provider subject, provider alias, password, activation token, or secret | **ARCHITECTURE-CONFLICTING** to expose; never return. |
+| Raw National ID, `identityKeyHash`, provider subject, provider alias, password, activation token, or secret | **CONFIRMED CURRENT REQUIREMENT** to exclude; never return. |
 
 ### 7.2 Query behavior
 
-**PROPOSED MVP CONTRACT:**
+**CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:**
 
 - Resolve the actor and authorized Hospital context on the server. Revalidate the target Hospital and relationship before the query is executed.
 - Filter through `PatientHospitalRelationship.hospitalId`; do not use a browser-selected Hospital as authority and do not expand through parent/child metadata.
-- Support bounded server-side name search and Hospital-local HN lookup. The safest first default is name search plus exact HN lookup; partial HN search is not identity resolution and should not be added without a concrete UX need.
-- Use bounded cursor/keyset pagination with a stable order. Do not load the Patient table into application memory or use an unbounded `findMany` for the directory.
-- Keep sorting to an allow-list of safe operational fields. A sort choice must not alter the authorization predicate.
+- Support bounded server-side name search and Hospital-local HN lookup. The B6.1 default is name search plus exact HN lookup; partial HN search is not identity resolution and is not required.
+- Use bounded server-side pagination with stable deterministic ordering. Offset pagination or cursor/keyset pagination are both valid implementation choices for the MVP. Do not load the Patient table into application memory or use an unbounded `findMany` for the directory.
+- Keep sorting to an explicit allow-list of safe operational fields. A sort choice must not alter or weaken the authorization predicate.
 - Do not include deleted/archived records until a lifecycle contract defines what those states mean.
-- Do not add an OSM/coach filter until a first-class assignment relationship exists and its visibility semantics are accepted.
+- B6.1 does not add an OSM/coach filter. Assignment filtering begins only in B6.2 through the accepted first-class assignment relationship and visibility predicate.
 - Return safe empty/error states without revealing whether an unauthorized Patient exists.
 
-The legacy list's name/HN search, Hospital filter, coach filter, sorting, and pagination are **LEGACY BEHAVIOR ONLY**. The bounded server-side shape above is a **PROPOSED MVP CONTRACT**.
+The legacy list's name/HN search, Hospital filter, coach filter, sorting, and pagination are **LEGACY BEHAVIOR ONLY**. The bounded server-side shape above is the **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT** for B6.1. The first implementation is Hospital-focused; it does not require a Patient self-service portal or an OSM assignment filter.
 
 ## 8. Exact identity lookup
 
@@ -213,7 +216,7 @@ Identity resolution and directory search are different operations.
 
 **CONFIRMED CURRENT REQUIREMENT:** The existing identity service uses server-only HMAC lookup with the `thai-national-id` namespace. `Person.identityKeyHash` is unique, and raw Thai National ID is not persisted, logged, sent to the provider, or returned to the browser.
 
-**PROPOSED MVP CONTRACT:** When an authorized operator must locate an exact identity, use a dedicated exact National ID input that:
+**CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:** When an authorized B6.1 workflow must locate an exact identity, use a dedicated exact National ID input that:
 
 1. validates the input on the server;
 2. computes the existing HMAC lookup value;
@@ -233,11 +236,11 @@ If HN is not unique in the current schema, an HN lookup may return multiple cand
 
 **LEGACY BEHAVIOR ONLY:** The legacy profile had an optional single `coach_id`; registration/import could select a coach, and a batch flow matched a coach by name and updated the profile directly. The code does not prove whether a coach was an OSM, doctor, care-team member, display label, or authorization boundary.
 
-### 9.2 Conceptual contract if assignment is accepted
+### 9.2 Accepted conceptual contract
 
-**PROPOSED MVP CONTRACT:** Model assignment as a first-class relationship associated with a specific `PatientHospitalRelationship` and an OSM User. Do not add a `coach_id` to `PatientProfile` and do not overload `OsmHospitalRelationship`.
+**CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:** Model assignment as a first-class relationship associated with a specific `PatientHospitalRelationship` and an OSM User. Do not add a `coach_id` to `PatientProfile` and do not overload `OsmHospitalRelationship`.
 
-The conceptual relationship may need, subject to owner decisions:
+The conceptual relationship must preserve:
 
 ```text
 Patient–Hospital relationship
@@ -248,22 +251,22 @@ created/changed attribution
 history or closure information
 ```
 
-This is a conceptual evaluation only. Phase 6A does not finalize table names, columns, indexes, or migrations.
+This is an accepted domain contract, not a final schema design. Phase 6A does not finalize table names, columns, indexes, or migrations.
 
-### 9.3 Questions that remain owner decisions
+### 9.3 Accepted assignment invariants
 
-| Question | Evidence and recommended default |
+| Invariant | Accepted Phase 6 contract |
 | --- | --- |
-| Is assignment required? | Current Phase 5 does not require it. **PROPOSED:** Patient provisioning remains valid without assignment; assignment is a later optional operation. **OWNER CONFIRMATION REQUIRED** for B6.2. |
-| Who may assign, unassign, or reassign? | No current capability exists. **PROPOSED:** a directly scoped active Hospital actor with an explicit assignment capability; use Hospital `OWNER` as the conservative first default until delegation is confirmed. OSM must not grant assignment authority to itself by role alone. **OWNER CONFIRMATION REQUIRED.** |
-| May one Patient have multiple OSMs? | Legacy shows one current `coach_id`, but that is weak evidence. **PROPOSED:** at most one active OSM per Patient–Hospital relationship for the first slice; one OSM may have many Patients; preserve ended assignment history. **OWNER CONFIRMATION REQUIRED.** |
-| Is assignment Hospital-specific? | Multiple Patient–Hospital relationships are supported today. **PROPOSED:** yes; assignment attaches to the Patient–Hospital relationship, so the same human may have different OSM assignments at different Hospitals. **OWNER CONFIRMATION REQUIRED.** |
-| Is historical assignment required? | Audit is already a current boundary, but assignment history is not modeled. **PROPOSED:** close the previous assignment and create a new state; do not overwrite history if reassignment is accepted. **OWNER CONFIRMATION REQUIRED.** |
-| Does assignment grant OSM read/update access? | Current association does not. **PROPOSED:** active assignment is necessary for `ASSIGNED_PATIENTS` read/update, but never grants clinical authority by itself. **OWNER CONFIRMATION REQUIRED.** |
-| What happens when an OSM is suspended or leaves? | No current lifecycle operation exists. **PROPOSED:** deny access immediately from active server state; do not silently transfer Patients or invent a reassignment job. An explicit reassign/closure workflow is required. **OWNER CONFIRMATION REQUIRED.** |
-| What happens when a Patient–Hospital relationship changes? | Relationship has no lifecycle/status today. **PROPOSED:** do not silently preserve or move an assignment across Hospitals; resolve assignment state explicitly when a relationship is closed or added. **OWNER CONFIRMATION REQUIRED.** |
+| Requiredness | Patient provisioning remains valid without an OSM assignment. Assignment is a separate optional operational step; no circular provisioning dependency exists. |
+| Assignment authority | Only an active `HOSPITAL` actor with direct active `OWNER` membership in the same Hospital and explicit `patient:assign-osm` capability may assign, unassign, or reassign. Hospital `MEMBER` is not authorized in the first slice. An OSM cannot self-assign by role or relationship alone. |
+| Cardinality | At most one active OSM per `PatientHospitalRelationship`. One OSM may have many Patients. A Patient may have different active OSMs at different Hospitals. |
+| Hospital context | Assignment attaches to the Hospital-specific Patient relationship, never globally to `PatientProfile`. The OSM must also have an active `OsmHospitalRelationship` to that same Hospital. |
+| History | Reassignment/unassignment must preserve reconstructable history. The clean conceptual operation is to close/end the previous active assignment and create a new active state where appropriate; do not overwrite the previous OSM without retaining history. |
+| Access effect | Active assignment grants only operational `ASSIGNED_PATIENTS` scope for the matching Patient–Hospital context. It does not grant Hospital-wide read, unrestricted Patient-field update, or clinical authority. |
+| Suspension or relationship loss | If the OSM becomes inactive/suspended or loses the active Hospital relationship, Patient access fails immediately from authoritative server state. Do not auto-reassign, silently select another OSM, or introduce a speculative reassignment job. |
+| Patient–Hospital relationship change | Do not silently move an assignment across Hospitals or make a new relationship inherit another Hospital's assignment. Assignment state must be handled explicitly by a future relationship/lifecycle operation. |
 
-Until these decisions are accepted, `Role.OSM + OsmHospitalRelationship` must not authorize Patient read, update, assignment, or clinical work.
+Until B6.2 is implemented, `Role.OSM + OsmHospitalRelationship` must not authorize generic Patient-directory read. After B6.2, only the accepted active-assignment predicate authorizes `ASSIGNED_PATIENTS` read; assignment never authorizes clinical work by itself.
 
 ## 10. Patient update and field ownership
 
@@ -271,20 +274,20 @@ There is no safe generic `patient:update` payload in the current model. The futu
 
 | Data area | Current schema/evidence | Phase 6 position |
 | --- | --- | --- |
-| Core identity | `Person.identityKeyHash`, `givenName`, and `familyName`; provisioning fills missing names and rejects conflicting names. | Identity hash is never edited by a normal Patient update. Name correction needs an explicit identity/reconciliation policy. **OWNER CONFIRMATION REQUIRED.** |
-| Demographic/contact information | `PatientProfile` currently has no demographic/contact columns. Legacy has many fields, but they are not accepted. | Do not invent editable fields. Approve an explicit allow-list and owner per field before B6.3. **OWNER CONFIRMATION REQUIRED.** |
-| Hospital-local information | `PatientHospitalRelationship.hospitalNumber` is optional and scoped to Hospital. Provisioning may fill a missing value and rejects a conflicting value. | Treat HN as a separate Hospital-local operation with explicit normalization/uniqueness semantics. **PROPOSED:** directly scoped Hospital authority only; no generic Patient self-edit or OSM edit by default. **OWNER CONFIRMATION REQUIRED.** |
-| Operational assignment | No current field/model. | Assignment must be a separate operation and audit boundary; it must not be a Patient profile field. **DEFERRED** until B6.2. |
+| Core identity | `Person.identityKeyHash`, `givenName`, and `familyName`; provisioning fills missing names and rejects conflicting names. | Identity hash is never edited by a normal Patient update. Name correction requires a future explicit identity/reconciliation requirement. **DEFERRED / REQUIREMENTS REQUIRED.** |
+| Demographic/contact information | `PatientProfile` currently has no demographic/contact columns. Legacy has many fields, but they are not accepted. | Do not invent editable fields. Field allow-list and ownership remain future B6.3 requirements. **DEFERRED / REQUIREMENTS REQUIRED.** |
+| Hospital-local information | `PatientHospitalRelationship.hospitalNumber` is optional and scoped to Hospital. Provisioning may fill a missing value and rejects a conflicting value. | HN remains Hospital-local. Do not edit HN or introduce a new uniqueness invariant in B6.1; normalization, mutation ownership, and uniqueness remain future B6.3 requirements. **DEFERRED / REQUIREMENTS REQUIRED.** |
+| Operational assignment | No current field/model. | Assignment is a separate first-class operation and audit boundary; it must not be a Patient profile field. **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT** for B6.2. |
 | Clinical data | No current Patient clinical model; Phase 5 explicitly excludes it. | Screening, measurement, care-plan, appointment, follow-up, note, and reporting updates are **DEFERRED** to future clinical modules. |
 
-Actor defaults, pending explicit field decisions:
+Actor defaults for the current Phase 6 scope:
 
-- `HOSPITAL`: may update only approved fields within a directly authorized Hospital relationship. Existing membership does not authorize every future field.
-- `OSM`: no update until assignment scope and field ownership are accepted; assignment must not be treated as clinical authority.
-- `PATIENT`: no self-edit fields are accepted in Phase 6A. If approved later, use an explicit self-scoped allow-list and keep identity, HN, assignment, and clinical fields separate.
+- `HOSPITAL`: no Patient profile mutation is part of B6.1. Future B6.3 commands may update only explicitly approved fields within a directly authorized Hospital relationship.
+- `OSM`: no Patient update is authorized by assignment; assignment is operational scope and not clinical or unrestricted field authority.
+- `PATIENT`: no self-edit is part of the first implementation. If approved later, use an explicit self-scoped allow-list and keep identity, HN, assignment, and clinical fields separate.
 - `ADMIN`: no routine Patient update. Governance or reconciliation changes require a separately named, audited operation.
 
-`patient:update` is therefore a **PROPOSED MVP CONTRACT** vocabulary item only. It is not implementation-ready until the field allow-list, actor ownership, scope, conflict behavior, and audit metadata are accepted.
+`patient:update` remains **DEFERRED / REQUIREMENTS REQUIRED**. It is not implementation-ready until the field allow-list, actor ownership, scope, conflict behavior, and audit metadata are explicitly approved.
 
 ## 11. Patient delete, restore, and deactivation
 
@@ -302,7 +305,7 @@ That behavior does not define one operation. It mixes at least:
 
 The current rewrite makes these distinctions material: `Person` and `User` are reused across roles, `Person` and audit relationships restrict unsafe hard deletion, `PatientProfile` has no lifecycle enum, and `User.status` is account state rather than Patient domain state.
 
-**PROPOSED MVP CONTRACT:** Do not add Patient delete, restore, permanent-delete, or generic deactivation in Phase 6. Do not add `patient:delete` or `patient:restore` capabilities. Prefer a future explicit relationship-close/archive/suspend model only after retention, audit, authentication, clinical-history, and multi-Hospital semantics are confirmed.
+**CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:** Do not add Patient delete, restore, permanent-delete, or generic deactivation in Phase 6. Do not add `patient:delete` or `patient:restore` capabilities. Future relationship-close/archive/suspend semantics remain a separate requirements decision.
 
 This is **DEFERRED**, not an accepted statement that Patients can never be deactivated.
 
@@ -326,7 +329,7 @@ Possible business meanings include:
 
 The legacy single-Hospital profile is **LEGACY BEHAVIOR ONLY** and cannot override the current multi-relationship schema.
 
-**OWNER CONFIRMATION REQUIRED:** Define the business meaning, relationship lifecycle, HN effect, assignment effect, audit event, and historical retention before a transfer operation exists. **PROPOSED MVP CONTRACT:** no transfer service, schema, UI, or capability in Phase 6; this is **DEFERRED**.
+The future business meaning, relationship lifecycle, HN effect, assignment effect, audit event, and historical retention still require explicit requirements before a transfer operation exists. **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT:** no transfer service, schema, UI, or capability in Phase 6; this is **DEFERRED**.
 
 ## 13. Parent/child Hospital authority
 
@@ -334,12 +337,12 @@ The legacy single-Hospital profile is **LEGACY BEHAVIOR ONLY** and cannot overri
 | --- | --- |
 | Legacy behavior | Parent/child metadata expands the visible/selected Hospital network and therefore expands Patient filtering. This is **LEGACY BEHAVIOR ONLY**. |
 | Current accepted architecture | `parentHospitalId` is metadata. Current workforce, Patient provisioning, and Patient activation policies use direct active relationships and do not grant hierarchy bypass. This is **CONFIRMED CURRENT REQUIREMENT**. |
-| Phase 6 default | A Hospital may read or mutate Patients only through its own accepted direct scope. A parent Hospital does not automatically see or manage child-Hospital Patients, and a child does not automatically see its parent or siblings. This is a **PROPOSED MVP CONTRACT** consistent with fail-closed behavior. |
-| Unresolved decision | If a Hospital network must be an authority scope, the owner must define direction, depth, operations, and data projection separately from metadata. This is **OWNER CONFIRMATION REQUIRED**. |
+| Phase 6 accepted contract | A Hospital may read or mutate Patients only through its own accepted direct scope. A parent Hospital does not automatically see or manage child-Hospital Patients, and a child does not automatically see its parent or siblings. This is a **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT**. |
+| Scope outside Patient access | Any future non-Patient Hospital-network authority remains outside this contract and requires its own explicit requirement. It does not weaken the direct Patient scope. |
 
-Do not update accepted ADR history or the architecture baseline with a proposed network rule. If an owner later accepts hierarchy as authority and that decision materially changes the accepted boundary, record a new/superseding ADR and then synchronize current-state documentation before implementation.
+The owner decision resolves Patient authorization without rewriting accepted ADR history. If a future non-Patient hierarchy authority materially changes an accepted architectural boundary, record a new/superseding ADR before implementation.
 
-## 14. Capability and authorization proposal
+## 14. Capability and authorization contract
 
 ### 14.1 Minimum vocabulary
 
@@ -350,23 +353,23 @@ Existing capabilities are not expanded by this document:
 | `patient:provision` | **CONFIRMED CURRENT REQUIREMENT** *(implemented)* | Create/reuse the minimum Patient identity, role, profile, and Hospital relationship under the Phase 5B provisioning policy. |
 | `patient:activation:issue` | **CONFIRMED CURRENT REQUIREMENT** *(implemented)* | Issue a Patient activation credential for an eligible Patient in a direct Hospital scope. |
 
-Only the following future vocabulary is proposed:
+The next slices use the following accepted vocabulary:
 
 | Capability | Status | Boundary |
 | --- | --- | --- |
-| `patient:read` | **PROPOSED MVP CONTRACT** | B6.1 bounded directory/detail projection under an actor-specific scope. |
-| `patient:update` | **PROPOSED MVP CONTRACT** | B6.3 explicit field commands only; no unrestricted patch. |
-| `patient:assign-osm` | **PROPOSED MVP CONTRACT** | B6.2 assignment command only if assignment semantics are accepted. It may cover reassign/close only if that lifecycle is explicitly approved. |
+| `patient:read` | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT** | B6.1 direct Hospital directory/detail projection; later B6.2 assigned OSM scope. |
+| `patient:assign-osm` | **CONFIRMED CURRENT REQUIREMENT / ACCEPTED PHASE 6 CONTRACT** | B6.2 assign, unassign, and reassign within the same Hospital under active Hospital `OWNER` authority. |
+| `patient:update` | **DEFERRED / REQUIREMENTS REQUIRED** | Future B6.3 explicit field commands only; no unrestricted patch. |
 
-Do not add clinical, appointment, screening, measurement, reporting, referral, transfer, delete, restore, or generic RBAC capabilities in Phase 6A. A separate `patient:unassign-osm` capability is not needed until the product proves that unassignment has a different authority boundary from assignment.
+Do not add clinical, appointment, screening, measurement, reporting, referral, transfer, delete, restore, or generic RBAC capabilities in Phase 6A. A separate `patient:unassign-osm` capability is not needed because the accepted B6.2 authority covers assign, unassign, and reassign in the same Hospital context.
 
-### 14.2 Proposed policy matrix
+### 14.2 Accepted policy matrix for Phase 6
 
 | Actor | `patient:read` default | `patient:update` default | Assignment default |
 | --- | --- | --- | --- |
-| `HOSPITAL` | Direct active Hospital relationship only; no hierarchy. | Explicitly approved Hospital-local/demographic fields only. | Conservative default: direct Hospital `OWNER` with explicit capability; member delegation requires confirmation. |
-| `OSM` | Deny until active first-class assignment; then assigned Patient–Hospital relationship only. | Deny until assignment and field ownership are approved; never clinical authority by role alone. | OSM cannot assign itself by role. |
-| `PATIENT` | `SELF` only, minimal approved projection. | No fields until self-edit allow-list is approved. | Deny. |
+| `HOSPITAL` | Direct active `OWNER`/`MEMBER` relationship to the same active Hospital only; no hierarchy or profession expansion. | No B6.1 profile update; future B6.3 fields require explicit requirements. | Active direct Hospital `OWNER` with `patient:assign-osm`; `MEMBER` is not authorized in B6.2. |
+| `OSM` | Deny generic directory access in B6.1; after B6.2, active assignment in the matching Patient–Hospital context only. | Deny; assignment is not unrestricted field or clinical authority. | OSM cannot assign itself by role or relationship. |
+| `PATIENT` | `SELF` only at the architecture level; Patient-facing projection/UI is deferred. | No fields in the first implementation. | Deny. |
 | `ADMIN` | Deny routine operational read; future governance projection only. | Deny routine operational update; future reconciliation operation only. | Deny routine assignment. |
 
 Every future operation must resolve the authenticated actor server-side, parse input, re-read authoritative relationships and target state immediately before persistence, apply the capability and scope policy, and return a sanitized result. Missing, inactive, ambiguous, or conflicting state must deny or enter explicit reconciliation.
@@ -379,7 +382,7 @@ Routine directory reads do not need a transaction or an audit row merely because
 
 ### 15.2 Assignment mutations
 
-If B6.2 is approved, an assignment operation should conceptually be:
+The accepted B6.2 assignment operation should conceptually be:
 
 ```text
 resolve actor
@@ -394,47 +397,52 @@ resolve actor
 
 Provider authentication I/O is not part of this operation. Use a Prisma transaction only for the local records that must change together.
 
-Potential minimum events, pending owner acceptance:
+Every successful B6.2 assignment state change must be audited. The implementation may use the following bounded event vocabulary:
 
 - `patient.osm_assigned`
-- `patient.osm_unassigned` only if unassignment is a distinct supported operation
-- `patient.updated` for approved Patient field commands
+- `patient.osm_unassigned`
+- `patient.osm_reassigned`, or an equivalent bounded transition representation
 
 Minimum safe metadata should be limited to server-resolved actor ID, resource type/opaque resource ID, Hospital/relationship IDs, OSM User ID where needed, outcome, and a bounded field/category marker. Do not log raw National ID, `identityKeyHash`, HN value, phone, email, password, activation token, provider alias/subject, provider secret, or clinical payload.
 
-The existing [audit service](../../src/modules/audit/services/audit-service.ts) accepts a transaction-compatible Prisma client, and the [audit schema](../../src/modules/audit/schemas/audit-schemas.ts) rejects sensitive metadata keys. A future Patient mutation must still choose safe values; schema validation is not permission to log sensitive data.
+The existing [audit service](../../src/modules/audit/services/audit-service.ts) accepts a transaction-compatible Prisma client, and the [audit schema](../../src/modules/audit/schemas/audit-schemas.ts) rejects sensitive metadata keys. B6.2 must still choose safe values; schema validation is not permission to log sensitive data.
 
 ### 15.3 Update mutations
 
 An approved Patient update should keep the local field write and its success audit event atomic. Identity/provider changes are not part of Patient profile management; if a future operation crosses the provider boundary, keep provider I/O outside the local transaction and use the established compensation/reconciliation contract.
 
-## 16. Proposed Phase 6B slices
+## 16. Phase 6B slices and status
 
-| Slice | Smallest proposed scope | Status |
+| Slice | Smallest accepted scope | Status |
 | --- | --- | --- |
-| **Phase 6B.1 — Patient Directory / Detail** | Server-authorized Hospital/Patient read projections; bounded name/HN search; exact identity lookup only through HMAC boundary; Hospital-local HN context; cursor pagination; no clinical data, raw identity, deletion view, hierarchy expansion, or assignment filter. | **BLOCKED BY OWNER DECISION** on read scopes and minimum projection. The query/data boundary is otherwise mapped. |
-| **Phase 6B.2 — OSM ↔ Patient Assignment** | First-class Hospital-specific assignment; assign/unassign/reassign only as confirmed; server policy, transaction, audit, and bounded assignment projection. | **BLOCKED BY OWNER DECISION** on requiredness, authority, cardinality, lifecycle/history, and OSM read consequence. |
-| **Phase 6B.3 — Patient Profile Management** | Only explicitly approved identity-adjacent/demographic/contact/HN field commands, with actor-specific ownership and audit. | **BLOCKED BY OWNER DECISION** on editable fields, HN semantics, self-edit, and conflict behavior. |
+| **Phase 6B.1 — Patient Directory / Minimal Detail** | Hospital-focused, server-authorized Patient directory/detail projection; bounded name/HN search; exact identity lookup only through HMAC boundary when needed; Hospital-local HN context; bounded server-side pagination with stable deterministic ordering; offset or cursor/keyset allowed; no account/activation status, clinical data, raw identity, deletion view, hierarchy expansion, assignment filter, or Patient self-service portal. | **IMPLEMENTATION READY** |
+| **Phase 6B.2 — OSM ↔ Patient Assignment** | Following B6.1: first-class Hospital-specific assignment; active Hospital `OWNER` only; assign/unassign/reassign with reconstructable history; server policy, transaction, audit, and assigned-Patient read scope. | **IMPLEMENTATION READY AFTER B6.1** |
+| **Phase 6B.3 — Patient Profile Management** | Only explicitly approved identity-adjacent/demographic/contact/HN field commands, with actor-specific ownership and audit. | **DEFERRED / REQUIREMENTS REQUIRED** |
 | Delete/restore/deactivation | No implementation in Phase 6. | **DEFERRED** until lifecycle and retention semantics are confirmed. |
-| Transfer/Hospital change | No implementation in Phase 6. | **DEFERRED**; a future transfer slice requires **OWNER CONFIRMATION REQUIRED** semantics. |
+| Transfer/Hospital change | No implementation in Phase 6. | **DEFERRED / REQUIREMENTS REQUIRED**; no implicit delete-old/add-new behavior. |
 
 No Phase 6B slice includes screening, measurements, PAM, HbA1c, care plans, goals, appointments, visits, follow-up, notes, referrals, clinical reporting, queues, workers, Redis, or background jobs.
 
-## 17. Owner decision table
+## 17. Accepted owner decisions and deferred boundaries
 
-| Decision | Evidence | Recommended MVP Default | Risk if Wrong | Blocking? |
+| Decision | Evidence | Accepted Phase 6 contract / deferred boundary | Risk if wrong | Status |
 | --- | --- | --- | --- | --- |
-| Hospital Patient read scope | Current provisioning/activation use direct active `OWNER`/`MEMBER`; no read capability exists; hierarchy is metadata. | Direct active `HOSPITAL` `OWNER`/`MEMBER` may read only Patient relationships in that same Hospital; profession does not change scope. | Overexposure if Hospital membership is broader than intended, or unusable workflow if member access should be narrower. | **YES — B6.1** |
-| OSM Patient read scope | OSM–Hospital association is not Patient scope; no assignment model exists; legacy coach/network behavior is unverified. | Deny until first-class active assignment; then `ASSIGNED_PATIENTS` within a Hospital-specific relationship. | Hospital-wide or area-wide exposure, or an OSM workflow that cannot operate. | **YES — OSM B6.1/B6.2** |
-| OSM assignment semantics | No current model; legacy optional `coach_id`/name mapping does not prove meaning. | Optional after provisioning; use a separate Hospital-specific assignment operation and do not use assignment as clinical authority. | Circular provisioning rules, wrong ownership, lost or cross-Hospital assignments. | **YES — B6.2** |
-| Assignment cardinality | Legacy shows one current coach, but current architecture supports multiple Hospital relationships and no assignment constraints. | At most one active OSM per Patient–Hospital relationship; one OSM may have many Patients; retain reassignment history. | Cannot represent multi-OSM care or creates accidental shared access. | **YES — B6.2** |
-| Hospital hierarchy authority | Legacy expands parent/child visibility; current schema/policies treat hierarchy as metadata. | No hierarchy authority in Phase 6; require direct scope. | Cross-Hospital disclosure or unauthorized mutation. | **YES — B6.1/B6.2** |
-| Patient self-edit fields | Baseline allows self-service where appropriate; current `PatientProfile` has no editable fields and Phase 5 defers profile editing. | No self-edit in the first B6.3 implementation; later use an explicit allow-list under `SELF`. | Patient changes identity, HN, assignment, or clinical data without an approved policy. | **YES — B6.3** |
-| Patient delete/restore/deactivation | Legacy conflates soft delete, restore, account flag, and hard deletion; current schema has no Patient lifecycle. | Defer all delete/restore/deactivation operations; keep Person/User/clinical/audit history intact by default. | Irreversible data loss, broken multi-role identity, lost audit history, or unsafe account state. | **NO for B6.1/B6.2; YES for lifecycle work** |
-| Patient transfer semantics | Current Patient–Hospital relationship is many-capable and has no status/primary/transfer model. | Defer; never implement transfer as implicit delete-old/add-new. | Loss of relationship history, HN confusion, and accidental assignment movement. | **NO for B6.1/B6.2; YES for transfer work** |
-| Admin routine Patient read | Baseline places Admin outside normal Patient operations. | Deny routine operational read; define a separate governance/reconciliation projection if needed. | Platform-wide sensitive-data exposure or an accidental Admin happy path. | **YES for Admin roster branch** |
-| Minimum directory/detail projection | Current activation projection is narrow; legacy detail is clinical and broad; current PatientProfile has minimal data. | Name, opaque resource identifiers, authorized Hospital relationship, Hospital-local HN, and operational account summary only when needed. | Privacy overexposure or a projection that cannot support the workflow. | **YES — B6.1** |
-| HN update and uniqueness semantics | HN is optional and not unique globally or per Hospital in the current schema; provisioning detects only same-relationship conflicts. | Treat HN as Hospital-local; require explicit normalization/uniqueness decision before editing or enforcing new constraints. | Duplicate/misassigned HN or cross-Hospital identity confusion. | **YES — B6.3/HN mutation** |
+| Hospital Patient read scope | Current provisioning/activation use direct active `OWNER`/`MEMBER`; no read capability exists; hierarchy is metadata. | Active `HOSPITAL` `OWNER`/`MEMBER` may read only Patient relationships in that same active Hospital. Profession does not change scope. | Overexposure if the predicate is widened beyond the direct Hospital relationship. | **ACCEPTED — B6.1** |
+| OSM Patient read scope | OSM–Hospital association is not Patient scope; no assignment model exists; legacy coach/network behavior is not authoritative. | Generic OSM directory read is denied in B6.1. After B6.2, read is limited to `ASSIGNED_PATIENTS` in the matching Patient–Hospital context. | Hospital-wide, area-wide, or cross-Hospital exposure. | **ACCEPTED — B6.2** |
+| OSM assignment requiredness and semantics | Phase 5 provisioning has no assignment model or requirement; legacy `coach_id` does not prove semantics. | Provisioning remains valid without assignment. B6.2 adds a separate first-class Hospital-specific assignment and never makes assignment clinical authority. | Circular provisioning, wrong ownership, or cross-Hospital assignment. | **ACCEPTED — B6.2** |
+| Assignment authority | No current assignment capability exists; the owner accepted a conservative Hospital authority. | Active `HOSPITAL` `OWNER` with direct active membership in the same Hospital and `patient:assign-osm` may assign, unassign, and reassign. `MEMBER` and OSM self-assignment are denied. | Unauthorized assignment or privilege escalation. | **ACCEPTED — B6.2** |
+| Assignment cardinality and history | Legacy shows one current coach, but the current schema permits multiple Hospital relationships. | At most one active OSM per `PatientHospitalRelationship`; one OSM may have many Patients; close/end prior states so history remains reconstructable. | Shared or lost assignments and irrecoverable operational history. | **ACCEPTED — B6.2** |
+| OSM suspension or Hospital relationship loss | Current ActorContext already exposes authoritative active relationship state; no reassignment job exists. | Patient access fails immediately when OSM or its Hospital relationship is inactive. Do not auto-reassign or silently select another OSM. | Continued access after suspension or hidden reassignment. | **ACCEPTED — B6.2** |
+| Hospital hierarchy authority | Legacy expands parent/child visibility; current schema/policies treat hierarchy as metadata. | Parent, child, sibling, and network relationships do not grant Patient authority. Phase 6 uses direct Hospital scope only. | Cross-Hospital disclosure or unauthorized mutation. | **ACCEPTED — B6.1/B6.2** |
+| Patient self access | Baseline defines Patient scope as normally `SELF`; no Patient portal exists. | Preserve `SELF` as the architecture rule, but do not require Patient self-service UI or projection in B6.1. | Unintended cross-Patient access or unnecessary B6.1 expansion. | **ACCEPTED SCOPE; SELF UI DEFERRED** |
+| Admin routine Patient read | Baseline places Admin outside normal Patient operations. | Deny routine operational read. Future governance/reconciliation access must use a separately named, scoped, audited operation. | Platform-wide sensitive-data exposure. | **ACCEPTED — NO ADMIN ROSTER** |
+| Minimum B6.1 projection | Current activation projection is narrow; legacy detail is broad and clinical; current `PatientProfile` is minimal. | `displayName`, Hospital identity/context, Hospital-local HN, and opaque `PatientProfile`/`PatientHospitalRelationship` identifiers only when required internally. Exclude account/activation status by default. | Privacy overexposure or accidental coupling to activation workflow. | **ACCEPTED — B6.1** |
+| B6.1 search and identity lookup | Existing activation query proves HMAC National-ID lookup and Hospital-scoped HN lookup; legacy search is broader and unsafe. | Bounded server-side name search and Hospital-local HN lookup. Exact National-ID resolution may reuse server-side HMAC when needed; no raw ID persistence/return or weak identity substitute. | Identity confusion or raw identity disclosure. | **ACCEPTED — B6.1** |
+| B6.1 pagination and sorting | Legacy uses offset pagination; current architecture requires bounded server queries. | Use bounded server-side pagination with stable deterministic ordering; offset or cursor/keyset are both allowed. Sorting uses an explicit allow-list and cannot change authorization. | Unbounded memory/query cost or unstable page results. | **ACCEPTED — B6.1** |
+| Patient self-edit/profile management | `PatientProfile` has no editable fields; Phase 5 deferred profile editing. | No self-edit or generic `patient:update` in the first implementation. B6.3 requires explicit field, ownership, conflict, and audit requirements. | Unauthorized identity, HN, demographic, or clinical changes. | **DEFERRED — B6.3 REQUIREMENTS** |
+| HN mutation and uniqueness | HN is optional and not globally/per-Hospital unique in the current schema. | HN remains Hospital-local. Do not edit HN or add a new uniqueness invariant in B6.1; defer normalization/mutation/uniqueness to B6.3 requirements. | Duplicate or misassigned HN. | **DEFERRED — B6.3 REQUIREMENTS** |
+| Patient delete/restore/deactivation | Legacy conflates soft delete, restore, account state, and hard deletion; current schema has no Patient lifecycle. | No delete, restore, permanent-delete, or generic deactivation capability in Phase 6. Future lifecycle semantics remain open. | Irreversible data loss or broken multi-role identity/audit history. | **DEFERRED** |
+| Patient transfer/Hospital change | Current Patient–Hospital relationship is many-capable and has no status/primary/transfer model. | No transfer operation in Phase 6; never implement it as implicit delete-old/add-new. Future business semantics remain open. | Lost relationship history, HN confusion, or accidental assignment movement. | **DEFERRED** |
 
 ## 18. Explicitly deferred clinical and lifecycle requirements
 
@@ -453,21 +461,38 @@ The following are intentionally not specified as Phase 6 access requirements:
 
 Legacy evidence may inform future domain relationships, but it must not promote any of these items into Phase 6 requirements.
 
-## 19. Acceptance criteria for starting Phase 6B
+## 19. Acceptance criteria and safe next actions
 
-Phase 6B may start only when the relevant owner decisions above are accepted and recorded. At minimum:
+Phase 6A is accepted. No owner decision blocks B6.1 or B6.2. The next agent may proceed with the following bounded implementation handoff:
 
-- The Hospital `patient:read` scope and whether direct `OWNER`/`MEMBER` access is correct are accepted.
-- The OSM read model is either explicitly denied for B6.1 or assignment-based scope is accepted with a first-class assignment contract.
-- Assignment requiredness, authority, Hospital context, cardinality, lifecycle/history, suspension behavior, and effect on OSM read/update are accepted before B6.2.
-- Parent/child Hospital authority is explicitly denied or accepted; no hierarchy behavior is inferred from legacy UI.
-- The minimum B6.1 projection, search fields, exact identity lookup behavior, pagination/sort bounds, and raw-identity exclusions are accepted.
-- HN requiredness, normalization, uniqueness, and update ownership are accepted before HN mutation or a new database invariant is introduced.
-- Patient self-edit fields and actor ownership are explicitly listed before B6.3. No generic update payload is permitted.
-- Delete/restore/deactivation and transfer are either explicitly out of scope for the planned slice or have separate approved lifecycle contracts.
-- The capability vocabulary is limited to the selected slice; no clinical capabilities are introduced.
-- Each consistency-critical mutation has a local transaction boundary, idempotency/concurrency behavior, safe audit metadata, and server-side revalidation plan.
-- Tests cover allow and deny paths for each actor/scope, cross-Hospital isolation, inactive relationships, ambiguous identity, duplicate/HN conflicts, concurrent mutation, audit atomicity, and projection redaction.
-- If an accepted owner decision materially changes an accepted ADR or the architecture baseline, a new/superseding ADR is drafted and current-state documentation is updated before implementation. Phase 6A itself does not rewrite accepted ADR history.
+### 19.1 B6.1 Patient Directory / Minimal Detail
 
-**Handoff conclusion:** The safe implementation shape is mapped, but Phase 6B is not declared implementation-ready. The first actionable next step is to resolve the blocking read-scope and assignment decisions, then record the accepted contract before adding Patient directory, assignment, or profile-management code.
+- Enforce active `HOSPITAL` role, active direct `OWNER`/`MEMBER` membership, active Hospital, and `PatientHospitalRelationship.hospitalId` equality on the server.
+- Do not expand the predicate through parent/child/sibling Hospital metadata or profession.
+- Return only `displayName`, Hospital identity/context, Hospital-local HN, and opaque PatientProfile/relationship identifiers when internally required.
+- Exclude account status, activation status/expiry/eligibility, raw identity/authentication data, demographics/contact data, clinical data, deleted views, assignment filters, and Patient self-service UI.
+- Implement bounded server-side name search and Hospital-local HN lookup with explicit input bounds.
+- Use bounded server-side pagination with stable deterministic ordering; offset or cursor/keyset are both acceptable. Sorting must use an explicit allow-list and never alter authorization.
+- Reuse the existing server-only HMAC identity boundary for exact National-ID lookup only when a concrete B6.1 workflow needs it; never persist or return raw National ID.
+- Cover allow/deny paths, cross-Hospital isolation, inactive actor/relationship states, ambiguous identity, projection redaction, and pagination/sort bounds.
+
+### 19.2 B6.2 OSM ↔ Patient Assignment
+
+B6.2 follows B6.1 and is implementation-ready under the accepted contract:
+
+- Keep provisioning valid without assignment and keep assignment separate from Patient creation.
+- Require active Hospital `OWNER`, direct active membership in the same Hospital, and `patient:assign-osm` for assign/unassign/reassign.
+- Bind the first-class assignment to `PatientHospitalRelationship`, not `PatientProfile` or legacy `coach_id`.
+- Enforce at most one active OSM per Patient–Hospital relationship, active OSM–Hospital association, and reconstructable assignment history.
+- Deny OSM Patient access immediately when the OSM or its Hospital relationship becomes inactive; do not auto-reassign.
+- Keep assignment operational only; it does not authorize unrestricted Patient updates or clinical work.
+- Persist consistency-critical assignment state and its success audit event atomically with server-side revalidation and concurrency/idempotency behavior.
+- Cover owner/member/OSM denial paths, cross-Hospital isolation, duplicate active assignment conflicts, reassignment history, suspension/relationship loss, concurrent mutation, audit atomicity, and safe metadata.
+
+### 19.3 Deferred work
+
+- B6.3 cannot start until explicit requirements define field ownership, name correction, demographics/contact fields, HN mutation/normalization/uniqueness, Patient self-edit, OSM edit rights, conflict behavior, and audit behavior. No generic update payload is permitted.
+- Delete/restore/deactivation, transfer/Hospital change, Patient self-service expansion, and clinical modules remain outside the accepted Phase 6 implementation scope.
+- If implementation exposes a material contradiction with an accepted ADR or architecture baseline, draft a new/superseding ADR before changing that boundary. Phase 6A itself does not rewrite accepted ADR history.
+
+**Handoff conclusion:** Phase 6A is accepted. Phase 6B.1 is **IMPLEMENTATION READY** for the Hospital-focused Patient Directory / Minimal Detail slice. Phase 6B.2 is **IMPLEMENTATION READY AFTER B6.1** under the accepted first-class assignment contract. Phase 6B.3 is **DEFERRED / REQUIREMENTS REQUIRED**.

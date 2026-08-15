@@ -23,11 +23,13 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Responsive Web เป็น platform ปัจจุบันและต้องใช้งานได้ดีบนหน้าจอขนาดเล็ก
 - Protected application อยู่ภายใต้ `/app/*` และใช้ authenticated application shell ร่วมกัน ซึ่ง resolve server-side `ActorContext` เพื่อแสดง application navigation; `/login` และ `/activate/patient` เป็น public routes ที่ไม่ใช้ shell นี้
 - พื้นที่ทำงานหลักแบ่งตาม domain เป็น Dashboard, Workforce, Patients และ Platform Admin โดยเมนูถูก project ตาม capability/scope ที่ actor ใช้งานได้
-- Hospital selection ยังเป็น local screen context ของงาน Patient Provisioning และ Patient Activation ไม่ใช่ global application state
+- Hospital selection ยังเป็น local screen context ของงาน Patient Provisioning, Patient Activation และ B6.1 Patient Directory ไม่ใช่ global application state
 - ผู้ใช้ Hospital เข้าสู่ระบบด้วยเลขบัตรประชาชนไทยและ user-owned password; Platform Admin ใช้ตัวระบุที่ตั้งจาก trusted bootstrap ในช่อง login เดียวกัน โดย server resolve HMAC identity ไปยัง opaque Supabase Auth login alias
 - Phase 3B target คือ `/hospital/onboarding` และ Platform Admin review UI โดย business operation อยู่ใน transport-agnostic Application Service
 - Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
 - Phase 4A ปิด contract และ Phase 4B implement แล้วสำหรับ workforce provisioning + first-time activation MVP; Phase 5B.2 implement แล้วสำหรับ Patient first-time activation MVP; รายละเอียด implementation อยู่ที่ [Phase 4B handoff](docs/phases/PHASE_4B_WORKFORCE_PROVISIONING.md) และ [Phase 5B.2 handoff](docs/phases/PHASE_5B2_PATIENT_FIRST_TIME_ACTIVATION.md)
+- Phase 6A ปิด owner decisions สำหรับ Patient access และ assignment แล้ว: Hospital อ่าน Patient ได้เฉพาะ direct Hospital scope, OSM อ่านได้เฉพาะ assigned Patient scope หลังมี first-class Hospital-specific assignment, และ parent/child Hospital hierarchy ไม่ใช่ Patient authorization
+- Phase 6B.1 Patient Directory / Minimal Detail เป็น implementation-ready สำหรับ Hospital-focused slice; Phase 6B.2 OSM ↔ Patient Assignment เป็น implementation-ready หลัง B6.1; Patient profile editing, lifecycle, transfer, Patient self-service expansion และ clinical workflows ยัง deferred
 
 ## Capabilities and Constraints
 
@@ -49,10 +51,11 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Navigation visibility เป็น UX projection เท่านั้น ไม่ใช่ authorization; ทุก page, Server Action และ service ยังคงตรวจ Role + Capability + Scope ฝั่ง server แบบ fail closed และ Hospital context จาก browser ไม่ใช่ authority
 - Dashboard แสดงเฉพาะข้อมูล account/context ที่ยืนยันแล้วและข้อความว่างอย่างเป็นกลางเมื่อยังไม่มี dashboard requirement; ระบบไม่สร้าง metrics หรือ clinical/operational claims สมมติ
 - Patient-only actor ที่ยังไม่มี Patient-specific module ใช้งานได้เฉพาะพื้นที่หลักแบบเป็นกลาง และระบบไม่สร้าง clinical workflow ที่ยังไม่ได้กำหนด
+- Capability vocabulary ที่ยืนยันสำหรับ Phase 6 คือ `patient:read` และ `patient:assign-osm`; `patient:update` ยัง deferred จนกว่าจะมี field-level requirements
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
-- External Hospital Master provider, exact verification evidence, provider-account recovery, long-term Patient identity-proofing/recovery, OSM clinical/geographic scope, patient assignment, ownership governance, parent/child authority, staff transfer, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements
+- External Hospital Master provider, exact verification evidence, provider-account recovery, long-term Patient identity-proofing/recovery, OSM clinical/geographic scope นอกเหนือจาก assigned-Patient access, Patient profile/lifecycle/transfer semantics, ownership governance, staff transfer, LIFF, ThaID, native authentication และ complete capability matrix ยังเป็น open requirements; Phase 6A direct Patient scope, assignment contract และ Patient hierarchy boundary ถูกยืนยันแยกแล้ว
 
 ## Brand Commitments
 

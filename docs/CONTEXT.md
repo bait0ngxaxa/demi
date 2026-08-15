@@ -10,13 +10,25 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว โดย B6.1 พร้อมเริ่ม, B6.2 พร้อมเริ่มหลัง B6.1 และ B6.3 ยัง deferred/ต้องมี requirements เพิ่มเติม
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
-สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
+## Phase 6A Patient Access and Assignment Contract
+
+Phase 6A owner decisions are accepted. The implementation handoff is [Phase 6A Patient Access and Assignment](./phases/PHASE_6A_PATIENT_ACCESS_AND_ASSIGNMENT.md):
+
+- An active `HOSPITAL` actor with a direct active `OWNER` or `MEMBER` membership may read Patients only through `PatientHospitalRelationship` rows for that same active Hospital. Profession does not change visibility.
+- Parent/child Hospital hierarchy is not Patient authorization. Parent, child, sibling, and network metadata do not expand Patient read or mutation scope.
+- OSM Patient read scope is `ASSIGNED_PATIENTS`, not Hospital-wide access. `OsmHospitalRelationship` alone is insufficient; B6.2 will use a first-class Hospital-specific assignment attached to `PatientHospitalRelationship`.
+- Patient provisioning remains valid without assignment. B6.2 assignment is optional after provisioning, is controlled by active direct Hospital `OWNER` plus `patient:assign-osm`, allows one active OSM per Patient–Hospital relationship, preserves history, and fails access immediately when the OSM or its Hospital relationship is inactive.
+- Platform `ADMIN` has no routine Patient-directory access. Governance/reconciliation access, if later needed, must be separately named, scoped, audited, and authorized.
+- Phase 6B.1 is Hospital-focused and implementation-ready: minimal display name/Hospital context/HN/opaque identifiers, bounded server-side search and pagination, stable ordering, no account/activation status by default, no clinical fields, and no Patient self-service portal. Offset or cursor/keyset pagination are both allowed.
+- Phase 6B.2 is implementation-ready after B6.1. Phase 6B.3 profile editing, delete/restore/deactivation, transfer/Hospital change, Patient self-service expansion, and clinical workflows remain deferred or require future requirements.
 
 ## Phase 3A Hospital Onboarding Contract
+
+สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
 
 ส่วนที่ยืนยันแล้วสำหรับ Phase 3B:
 
@@ -127,7 +139,7 @@ Phase 2.1 ไม่ได้ implement provider-account transition สำหร�
 - Supabase Auth เป็น current server authentication adapter โดย provider subject map ผ่าน `User.authSubject`; Supabase user metadata ไม่ใช่ source of truth ของ DEMI authorization
 - `ActorContext` load จาก active application `User`, roles และ hospital memberships ผ่าน Prisma
 - Next.js 16 `proxy.ts` refreshes Supabase SSR cookies per request; `auth.getUser()` validates the provider identity before mapping to the application `User`
-- fail-closed authorization primitives สำหรับ role requirement และ `GLOBAL`/`HOSPITAL`/`SELF`/`DENIED` scope เท่านั้น; primitive นี้ยังไม่ประกาศ capability matrix หรือ OSM scope semantics
+- fail-closed authorization primitives สำหรับ role requirement และ `GLOBAL`/`HOSPITAL`/`SELF`/`DENIED` scope เท่านั้น; primitive นี้ยังไม่ประกาศ full capability matrix หรือ OSM scope semantics นอกเหนือจาก Patient assignment contract ของ Phase 6A
 - identity lookup ใช้ deterministic HMAC-SHA-256 ด้วย server-only `IDENTITY_HASH_SECRET`
 - audit input boundary ที่จำกัด metadata และปฏิเสธ credential/identity secrets
 - audit persistence รับ transaction-compatible Prisma client ได้ และ audit actor foreign key ไม่อนุญาต hard-delete User ที่มีประวัติ audit
@@ -146,7 +158,7 @@ Top-level business roles ที่ยืนยันแล้วมี 4 รา�
 | --- | --- |
 | `ADMIN` | DEMI Platform Admin ดูแล governance, hospital verification, audit, recovery, reconciliation และ exceptional cases ไม่ใช่ผู้ปฏิบัติงานประจำใน patient workflow |
 | `HOSPITAL` | สมาชิกของโรงพยาบาลหรือองค์กรบริการสุขภาพ เป็น actor ฝั่งบริการ/ดูแลเคสภายใน capability และ scope ที่ business requirement อนุญาต |
-| `OSM` | อสม. หรือ field operator ทำงานภาคสนามภายใน assignment/scope ที่จะต้องยืนยันจาก requirement |
+| `OSM` | อสม. หรือ field operator ทำงานภาคสนามภายใน assigned-Patient scope ที่ Phase 6A ยืนยัน; geographic/clinical scope อื่นยังต้องมี requirement แยก |
 | `PATIENT` | ผู้ป่วยที่เป็น actor ของระบบและทำ self-service ได้เฉพาะข้อมูลหรือ action ของตนที่ policy อนุญาต |
 
 ## Critical Architecture Rules
@@ -217,8 +229,8 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
 
-- OSM scope: area, assigned patients, hospital หรือการผสมกัน
-- สิทธิ์ของ parent/main hospital ต่อ child hospitals
+- OSM scope นอกเหนือจาก Patient `ASSIGNED_PATIENTS`: area, geographic หรือ clinical scope ยังไม่ตัดสิน
+- สิทธิ์ของ parent/main hospital ต่อ child hospitals ใน workflow ที่ไม่ใช่ Patient access ยังไม่ตัดสิน; Patient authorization ใช้ direct Hospital scope เท่านั้น
 - การแต่งตั้ง Hospital Owner เพิ่มเติม
 - ความแตกต่างด้าน permission ระหว่าง Doctor/Nurse และผู้อนุมัติ care plan
 - patient-editable fields และ health measurements ที่ผู้ป่วยส่งเองได้
@@ -255,7 +267,7 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 - สร้าง authorization ฝั่ง server และ fail closed เสมอ; UI ใช้เพื่อ UX เท่านั้น
 - ใช้ capability ที่มาจาก confirmed requirement ไม่สร้าง generic RBAC framework ล่วงหน้า
 - ไม่สร้าง permission เพียงเพราะ profession ต่างกัน หาก requirement ไม่ได้กำหนด behavior ต่างกัน
-- ไม่เดา OSM, hospital network หรือ patient scope
+- ไม่เดา OSM scope นอกเหนือจาก accepted Phase 6A assigned-Patient rule, hospital-network authority หรือ Patient scope อื่นที่ยังไม่มี requirement
 - ไม่ bind DEMI identity/authorization เข้ากับ LINE identity หรือ client transport
 - ไม่สร้าง HTTP API โดยไม่มี identified current consumer/use case
 - ไม่ออก full database schema จาก conceptual entities ใน baseline โดยไม่มี task อนุมัติ
