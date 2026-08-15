@@ -6,6 +6,10 @@ import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  hasDirectHospitalProvisioningScope,
+  hasOsmHospitalProvisioningScope,
+} from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { LogoutButton } from "./logout-button";
@@ -33,7 +37,7 @@ async function resolveProtectedActor(): Promise<ActorContext> {
   }
 }
 
-export default async function ApplicationPage() {
+export default async function ApplicationPage(): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveProtectedActor();
   const canManageWorkforce =
@@ -43,6 +47,13 @@ export default async function ApplicationPage() {
         membership.membershipType === MembershipType.OWNER &&
         membership.status === MembershipStatus.ACTIVE &&
         membership.hospitalStatus === HospitalStatus.ACTIVE,
+    );
+  const canProvisionPatients =
+    actor.hospitalMemberships.some(({ hospitalId }) =>
+      hasDirectHospitalProvisioningScope(actor, hospitalId),
+    ) ||
+    actor.osmHospitalRelationships.some(({ hospitalId }) =>
+      hasOsmHospitalProvisioningScope(actor, hospitalId),
     );
 
   return (
@@ -125,6 +136,21 @@ export default async function ApplicationPage() {
               href="/app/workforce"
             >
               เปิดการจัดการบุคลากร
+            </Link>
+          </section>
+        ) : null}
+
+        {canProvisionPatients ? (
+          <section className="mt-6 max-w-3xl rounded-[16px] border border-line bg-white p-5 sm:p-7">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">งานผู้ป่วย</h2>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              เพิ่มข้อมูลผู้ป่วยรายบุคคล หรือเตรียมนำเข้ารายการจาก Excel ตามขอบเขตโรงพยาบาลที่ได้รับอนุญาต
+            </p>
+            <Link
+              className="mt-5 inline-flex h-11 items-center justify-center rounded-[12px] bg-brand px-5 text-sm font-semibold text-white transition-[background-color,box-shadow] hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
+              href="/app/patients/provision"
+            >
+              เปิดการเพิ่มผู้ป่วย
             </Link>
           </section>
         ) : null}

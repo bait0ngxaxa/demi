@@ -67,6 +67,7 @@ model Person {
   updatedAt       DateTime @updatedAt
 
   user User?
+  patientProfile PatientProfile?
 
   @@index([familyName, givenName])
 }
@@ -112,6 +113,7 @@ model Hospital {
 
   memberships              HospitalMembership[]
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
+  patientRelationships     PatientHospitalRelationship[]
   onboardingApplications   HospitalOnboardingApplication[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
@@ -134,6 +136,32 @@ model HospitalMembership {
 
   @@unique([userId, hospitalId])
   @@index([hospitalId, status])
+}
+
+model PatientProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  personId  String   @unique @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  person                Person                       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  hospitalRelationships PatientHospitalRelationship[]
+}
+
+model PatientHospitalRelationship {
+  id               String   @id @default(uuid()) @db.Uuid
+  patientProfileId String   @db.Uuid
+  hospitalId       String   @db.Uuid
+  hospitalNumber   String?  @db.VarChar(64)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
+  hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+
+  @@unique([patientProfileId, hospitalId])
+  @@index([hospitalId])
+  @@index([hospitalId, hospitalNumber])
 }
 
 model OsmHospitalRelationship {
