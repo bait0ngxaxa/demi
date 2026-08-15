@@ -55,6 +55,7 @@ export default async function WorkforcePage({ searchParams }: WorkforcePageProps
 
   return (
     <WorkforceWorkspace
+      key={selectedHospitalId}
       hospitals={hospitals}
       selectedHospitalId={selectedHospitalId}
       workforce={workforce}

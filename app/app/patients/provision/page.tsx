@@ -57,6 +57,7 @@ export default async function PatientProvisioningPage({
 
   return (
     <PatientProvisioningWorkspace
+      key={selectedHospitalId}
       scopes={scopes}
       selectedHospitalId={selectedHospitalId}
       selectedScope={selectedScope}

@@ -92,5 +92,6 @@ Application chrome อยู่ใน `src/components/app-shell/`: `AppShell`, `
 - รักษาข้อความภาษาไทยและ UTF-8; ห้ามแปลหรือทำ mojibake
 - navigation condition ต้องรวมศูนย์และ reuse policy helper แต่ operation authorization ต้องอยู่ฝั่ง server เสมอ
 - Hospital context คงเป็น local screen state จนกว่าจะมี requirement สำหรับ global context
+- สำหรับ operation workspace ที่เก็บ transient action/result state ให้ใช้ Server-validated Hospital context เป็น remount/reset boundary ตามความเหมาะสม เพื่อไม่แสดง state ข้าม Hospital
 - อย่าสร้าง metrics, workflow, global state, theme engine หรือ permission framework ที่ยังไม่มี requirement
 - งาน UI/style ห้ามเปลี่ยน business logic, schema, transaction หรือ service contract โดยไม่ได้รับคำสั่ง

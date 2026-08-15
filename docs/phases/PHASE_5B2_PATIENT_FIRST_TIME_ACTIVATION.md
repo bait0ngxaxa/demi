@@ -305,8 +305,8 @@ npx prisma validate       PASS
 npx prisma generate       PASS
 npm run lint              PASS
 npm run typecheck         PASS
-npm test                  PASS (33 files, 171 tests)
-npm run test:integration  PASS (6 files, 76 tests)
+npm test                  PASS
+npm run test:integration  PASS
 ```
 
 ## 11. Explicitly deferred

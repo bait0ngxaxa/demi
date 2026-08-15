@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
+import {
+  DESKTOP_NAV_MEDIA_QUERY,
+  setupMobileNavigationLifecycle,
+} from "./mobile-navigation-lifecycle";
 import type { ApplicationNavigationGroup } from "./navigation-types";
 import { NavigationList } from "./navigation-list";
 
@@ -15,23 +19,17 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const skipFocusRestoreRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
     const trigger = triggerRef.current;
-    document.body.style.overflow = "hidden";
-    panelRef.current?.querySelector<HTMLButtonElement>("[data-drawer-close]")?.focus();
+    const desktopMedia = window.matchMedia(DESKTOP_NAV_MEDIA_QUERY);
 
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        setOpen(false);
-        return;
-      }
-
+    function handleTabKeyDown(event: KeyboardEvent): void {
       if (event.key !== "Tab" || !panelRef.current) {
         return;
       }
@@ -58,12 +56,29 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
       }
     }
 
-    document.addEventListener("keydown", handleKeyDown);
+    const cleanupLifecycle = setupMobileNavigationLifecycle({
+      document,
+      mediaQueryList: desktopMedia,
+      onDesktopTransition: () => {
+        skipFocusRestoreRef.current = true;
+        setOpen(false);
+      },
+      onEscape: () => setOpen(false),
+      onTabKeyDown: handleTabKeyDown,
+    });
+
+    if (!desktopMedia.matches) {
+      panelRef.current?.querySelector<HTMLButtonElement>("[data-drawer-close]")?.focus();
+    }
 
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-      trigger?.focus();
+      cleanupLifecycle();
+      const shouldRestoreFocus = !skipFocusRestoreRef.current;
+      skipFocusRestoreRef.current = false;
+
+      if (shouldRestoreFocus) {
+        trigger?.focus();
+      }
     };
   }, [open]);
 
