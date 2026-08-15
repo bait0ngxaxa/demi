@@ -96,7 +96,11 @@ The temporary MVP policy is centralized in
 - inactive or ambiguous actor, relationship, or Hospital context fails closed.
 
 The service reloads the actor's relevant database state inside the transaction,
-so ActorContext and browser scope are not the final authority. The direct
+so ActorContext and browser scope are not the final authority. Single
+provisioning uses the `SINGLE` database authorization mode and accepts either
+the direct Hospital scope or the OSM relationship. Preview and every row of a
+bulk import use the explicit `BULK` mode, which accepts only the direct Hospital
+scope; an active OSM relationship is never a fallback for bulk. The direct
 Hospital `OWNER`/`MEMBER` choice is intentionally a replaceable policy decision,
 not a new permanent RBAC framework.
 
@@ -141,6 +145,27 @@ same patient service. Each row has its own transaction, so an unrelated failure
 does not roll back successful rows. The returned summary distinguishes imported,
 already-existing, invalid, conflict, and failed rows.
 
+Preview/Confirm is bound to the exact file and context. The server computes a
+SHA-256 fingerprint from the uploaded bytes and returns it with the client-side
+preview result. It also returns an opaque HMAC binding using the existing
+server-only `IDENTITY_HASH_SECRET` with a patient-import domain separator, the
+actor, the Hospital, and the fingerprint. The fingerprint is not an
+authentication secret and raw file bytes are not persisted.
+
+The client keeps the selected `File` in component state and submits explicit
+`FormData` from event handlers, so React form reset cannot remove the file
+between preview and confirmation. Changing the file or target Hospital clears
+the preview, result, and binding. Confirmation sends the selected file again;
+the server verifies the target Hospital, binding, and recomputed SHA-256 before
+parsing the file again. The service then re-runs current preview/classification
+against the database before processing rows, so the browser cannot authorize
+from stale classifications.
+
+The UI keeps the aggregate counts and displays every non-imported row under
+`แถวที่ต้องตรวจสอบ`, including row number, masked identity, name, HN, result,
+and a safe reason. Raw National ID, identity hashes, and infrastructure errors
+are not returned to the browser.
+
 ExcelJS is used for `.xlsx` parsing. No queue, worker, Redis, or background-job
 infrastructure was introduced.
 
@@ -163,8 +188,12 @@ Added coverage includes:
 - policy unit tests for Hospital, OSM, inactive, and bulk boundaries;
 - PostgreSQL integration tests for new and reused identities, role preservation,
   lifecycle behavior, idempotency, policy denial, identity/HN conflicts,
-  rollback, atomic audit, concurrency, Excel preview classification, partial
-  import results, and bulk authorization.
+  rollback, atomic audit, concurrency, Excel preview classification, confirmation
+  revalidation, partial import results, row-level masked results, bulk
+  authorization, and the multi-role Hospital plus OSM TOCTOU regression;
+- transport tests for deterministic file fingerprints, actor/Hospital binding,
+  changed-file and changed-Hospital rejection, and confirmation re-parse
+  delegation.
 
 The verification commands completed for this handoff are:
 
@@ -174,15 +203,15 @@ npx prisma generate       passed
 npm ci --dry-run          passed
 npm run lint              passed
 npm run typecheck         passed
-npm test                  25 files / 135 tests passed
-npm run test:integration  5 files / 50 tests passed
+npm test                  27 files / 141 tests passed
+npm run test:integration  5 files / 52 tests passed
 ```
 
 The integration command applies all five migrations to the local PostgreSQL
-database before running the integration suite. A prior full-suite run had one
-non-reproducible failure in an unrelated platform-admin compensation test; the
-isolated test and subsequent full integration run both passed, so no unrelated
-application code was changed.
+database before running the integration suite. During this hardening pass one
+run reproduced the existing unrelated platform-admin compensation assertion;
+the patient integration file still passed, no platform-admin code was changed,
+and the immediate full-suite rerun passed all 52 integration tests.
 
 The ExcelJS dependency is pinned with an `uuid@11.1.1` override because the
 parser only uses the `uuid.v4` API and the older transitive UUID release had a

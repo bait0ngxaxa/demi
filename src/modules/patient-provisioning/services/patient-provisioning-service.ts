@@ -44,6 +44,8 @@ export type { ProvisionPatientInput } from "../schemas/patient-provisioning-sche
 export type PatientDatabase = PrismaClient;
 export type PatientTransactionDatabase = Prisma.TransactionClient | PrismaClient;
 
+type PatientProvisioningAuthorizationMode = "SINGLE" | "BULK";
+
 export type PatientProvisioningServiceDependencies = {
   database?: PatientDatabase;
   transactionRetries?: number;
@@ -223,6 +225,7 @@ async function assertActorCanProvisionInDatabase(
   database: PatientTransactionDatabase,
   actorUserId: string,
   targetHospitalId: string,
+  authorizationMode: PatientProvisioningAuthorizationMode,
 ): Promise<void> {
   const actor = await database.user.findUnique({
     where: { id: actorUserId },
@@ -246,7 +249,8 @@ async function assertActorCanProvisionInDatabase(
   }
 
   const hasHospitalRole = actor.roles.some(({ role }) => role === Role.HOSPITAL);
-  const hasOsmRole = actor.roles.some(({ role }) => role === Role.OSM);
+  const hasOsmRole =
+    authorizationMode === "SINGLE" && actor.roles.some(({ role }) => role === Role.OSM);
 
   const directMembership = hasHospitalRole
     ? await database.hospitalMembership.findFirst({
@@ -287,7 +291,10 @@ async function assertActorCanProvisionInDatabase(
       }),
   );
 
-  if (!hasDirectScope && !hasOsmScope) {
+  const authorized =
+    authorizationMode === "BULK" ? hasDirectScope : hasDirectScope || hasOsmScope;
+
+  if (!authorized) {
     throw new ForbiddenError();
   }
 }
@@ -356,8 +363,14 @@ async function createOrReusePatientState(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
   input: ProvisionPatientInput,
+  authorizationMode: PatientProvisioningAuthorizationMode,
 ): Promise<PatientProvisioningResult> {
-  await assertActorCanProvisionInDatabase(transaction, actorUserId, input.targetHospitalId);
+  await assertActorCanProvisionInDatabase(
+    transaction,
+    actorUserId,
+    input.targetHospitalId,
+    authorizationMode,
+  );
 
   const personState = await resolvePatientPerson(transaction, input);
   let user = await transaction.user.findUnique({
@@ -485,10 +498,11 @@ async function createOrReusePatientState(
   };
 }
 
-export async function provisionPatient(
+async function provisionPatientWithAuthorizationMode(
   actor: ActorContext | null | undefined,
   input: ProvisionPatientInput,
   dependencies: PatientProvisioningServiceDependencies = {},
+  authorizationMode: PatientProvisioningAuthorizationMode,
 ): Promise<PatientProvisioningResult> {
   const parsed = patientProvisionInputSchema.safeParse(input);
 
@@ -496,11 +510,19 @@ export async function provisionPatient(
     throw new ValidationError("Patient provisioning data is invalid");
   }
 
-  assertPatientProvisioningPolicy({
-    actor,
-    capability: PATIENT_PROVISIONING_CAPABILITY,
-    targetHospitalId: parsed.data.targetHospitalId,
-  });
+  if (authorizationMode === "BULK") {
+    assertPatientBulkProvisioningPolicy({
+      actor,
+      capability: PATIENT_PROVISIONING_CAPABILITY,
+      targetHospitalId: parsed.data.targetHospitalId,
+    });
+  } else {
+    assertPatientProvisioningPolicy({
+      actor,
+      capability: PATIENT_PROVISIONING_CAPABILITY,
+      targetHospitalId: parsed.data.targetHospitalId,
+    });
+  }
 
   if (!actor) {
     throw new ForbiddenError();
@@ -510,7 +532,12 @@ export async function provisionPatient(
     const result = await runSerializable(
       getDatabase(dependencies),
       (transaction) =>
-        createOrReusePatientState(transaction, actor.userId, parsed.data),
+        createOrReusePatientState(
+          transaction,
+          actor.userId,
+          parsed.data,
+          authorizationMode,
+        ),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
 
@@ -518,6 +545,14 @@ export async function provisionPatient(
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);
   }
+}
+
+export async function provisionPatient(
+  actor: ActorContext | null | undefined,
+  input: ProvisionPatientInput,
+  dependencies: PatientProvisioningServiceDependencies = {},
+): Promise<PatientProvisioningResult> {
+  return provisionPatientWithAuthorizationMode(actor, input, dependencies, "SINGLE");
 }
 
 export async function listPatientProvisioningScopes(
@@ -773,6 +808,7 @@ export async function previewPatientProvisioning(
       database,
       actor.userId,
       parsedScope.data.targetHospitalId,
+      "BULK",
     );
 
     const hashByRow = new Map<number, string>();
@@ -920,7 +956,12 @@ export async function importPatientProvisioning(
     }
 
     try {
-      const result = await provisionPatient(actor, candidate.input, dependencies);
+      const result = await provisionPatientWithAuthorizationMode(
+        actor,
+        candidate.input,
+        dependencies,
+        "BULK",
+      );
 
       if (result.outcome === "CREATED") {
         imported += 1;

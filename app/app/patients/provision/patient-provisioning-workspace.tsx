@@ -1,18 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 
 import type {
   PatientImportClassification,
   PatientImportPreviewRow,
+  PatientImportRowResult,
   PatientImportResultSummary,
   PatientProvisioningScope,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import {
   confirmPatientImportAction,
-  previewPatientImportAction,
   provisionPatientAction,
+  previewPatientImportAction,
 } from "@/modules/patient-provisioning/transport/server-actions";
 import {
   initialPatientImportActionState,
@@ -45,11 +46,50 @@ const classificationClasses: Record<PatientImportClassification, string> = {
   CONFLICT: "bg-danger/10 text-danger",
 };
 
+const importResultLabels: Record<PatientImportRowResult["result"], string> = {
+  IMPORTED: "นำเข้าสำเร็จ",
+  ALREADY_EXISTS: "มีอยู่แล้ว",
+  DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
+  INVALID: "ข้อมูลไม่ถูกต้อง",
+  CONFLICT: "ข้อมูลขัดแย้ง",
+  FAILED: "บันทึกไม่สำเร็จ",
+};
+
+const importResultClasses: Record<PatientImportRowResult["result"], string> = {
+  IMPORTED: "bg-success-soft text-success",
+  ALREADY_EXISTS: "bg-canvas text-muted",
+  DUPLICATE_IN_FILE: "bg-amber-50 text-amber-950",
+  INVALID: "bg-danger/10 text-danger",
+  CONFLICT: "bg-danger/10 text-danger",
+  FAILED: "bg-danger/10 text-danger",
+};
+
 function fieldError(
   state: PatientProvisionActionState,
   field: "nationalId" | "givenName" | "familyName" | "hospitalNumber",
 ): string | null {
   return state.status === "ERROR" ? state.fieldErrors?.[field] ?? null : null;
+}
+
+function createPatientImportFormData(file: File, targetHospitalId: string): FormData {
+  const formData = new FormData();
+  formData.set("targetHospitalId", targetHospitalId);
+  formData.set("file", file, file.name);
+  return formData;
+}
+
+function createPatientImportConfirmFormData(
+  file: File,
+  targetHospitalId: string,
+  previewTargetHospitalId: string,
+  fileFingerprint: string,
+  previewBinding: string,
+): FormData {
+  const formData = createPatientImportFormData(file, targetHospitalId);
+  formData.set("previewTargetHospitalId", previewTargetHospitalId);
+  formData.set("fileFingerprint", fileFingerprint);
+  formData.set("previewBinding", previewBinding);
+  return formData;
 }
 
 function ProvisionResult({
@@ -129,9 +169,12 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
 }
 
 function ImportSummary({ summary }: { summary: PatientImportResultSummary }): React.JSX.Element {
+  const attentionRows = summary.rows.filter((row) => row.result !== "IMPORTED");
+  const hasAttentionRows = attentionRows.length > 0;
+
   return (
-    <div className="rounded-[12px] border border-success/20 bg-success-soft px-4 py-4 text-sm leading-6 text-ink" role="status">
-      <p className="font-semibold">นำเข้าข้อมูลเสร็จแล้ว</p>
+    <div className={`rounded-[12px] border px-4 py-4 text-sm leading-6 text-ink ${hasAttentionRows ? "border-amber-200 bg-amber-50" : "border-success/20 bg-success-soft"}`} role="status">
+      <p className="font-semibold">{hasAttentionRows ? "นำเข้าข้อมูลเสร็จแล้ว มีบางแถวต้องตรวจสอบ" : "นำเข้าข้อมูลเสร็จแล้ว"}</p>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
         <div><dt className="text-muted">เพิ่มใหม่</dt><dd className="font-semibold">{summary.imported}</dd></div>
         <div><dt className="text-muted">มีอยู่แล้ว</dt><dd className="font-semibold">{summary.alreadyExists}</dd></div>
@@ -140,6 +183,44 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <div><dt className="text-muted">ขัดแย้ง</dt><dd className="font-semibold">{summary.conflict}</dd></div>
         <div><dt className="text-muted">ล้มเหลว</dt><dd className="font-semibold">{summary.failed}</dd></div>
       </dl>
+      {hasAttentionRows ? (
+        <div className="mt-5 border-t border-amber-200 pt-4">
+          <h3 className="font-semibold">แถวที่ต้องตรวจสอบ</h3>
+          <div className="mt-3 overflow-x-auto rounded-[12px] border border-line bg-white">
+            <table className="min-w-full divide-y divide-line text-left text-sm">
+              <thead className="bg-canvas text-xs font-semibold text-muted">
+                <tr>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">แถว</th>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">ตัวตน</th>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">ชื่อ-นามสกุล</th>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">HN</th>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">ผลลัพธ์</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {attentionRows.map((row) => (
+                  <tr key={row.rowNumber}>
+                    <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">{row.identityDisplay}</td>
+                    <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
+                      {[row.givenName, row.familyName].filter(Boolean).join(" ") || "ไม่ระบุชื่อ"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
+                    <td className="min-w-52 px-3 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${importResultClasses[row.result]}`}>
+                        {importResultLabels[row.result]}
+                      </span>
+                      {row.reason ? <p className="mt-1 text-xs leading-5 text-muted">{row.reason}</p> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
+      )}
     </div>
   );
 }
@@ -154,15 +235,33 @@ export function PatientProvisioningWorkspace({
     PatientProvisionActionState,
     FormData
   >(provisionPatientAction, initialPatientProvisionActionState);
-  const [previewState, previewAction, previewPending] = useActionState<
-    PatientImportPreviewActionState,
-    FormData
-  >(previewPatientImportAction, initialPatientImportPreviewActionState);
-  const [importState, importAction, importPending] = useActionState<
-    PatientImportActionState,
-    FormData
-  >(confirmPatientImportAction, initialPatientImportActionState);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [previewState, setPreviewState] = useState<PatientImportPreviewActionState>(
+    initialPatientImportPreviewActionState,
+  );
+  const [importState, setImportState] = useState<PatientImportActionState>(
+    initialPatientImportActionState,
+  );
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [previewPending, startPreviewTransition] = useTransition();
+  const [importPending, startImportTransition] = useTransition();
+  const importContextVersion = useRef(0);
+  const previousHospitalId = useRef(selectedHospitalId);
+
+  useEffect(() => {
+    if (previousHospitalId.current === selectedHospitalId) {
+      return;
+    }
+
+    previousHospitalId.current = selectedHospitalId;
+    importContextVersion.current += 1;
+    setSelectedFile(null);
+    setPreviewFile(null);
+    setPreviewState(initialPatientImportPreviewActionState);
+    setImportState(initialPatientImportActionState);
+    setFileInputKey((current) => current + 1);
+  }, [selectedHospitalId]);
 
   const hasReadyRows =
     previewState.status === "SUCCESS" &&
@@ -170,7 +269,93 @@ export function PatientProvisioningWorkspace({
       (row) => row.classification === "READY" || row.classification === "ALREADY_EXISTS",
     );
 
+  const previewIsCurrent =
+    selectedFile !== null &&
+    previewFile === selectedFile &&
+    previewState.status === "SUCCESS" &&
+    previewState.preview.targetHospitalId === selectedHospitalId;
+
+  function invalidateImportPreview(): void {
+    importContextVersion.current += 1;
+    setPreviewFile(null);
+    setPreviewState(initialPatientImportPreviewActionState);
+    setImportState(initialPatientImportActionState);
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    invalidateImportPreview();
+    setSelectedFile(event.currentTarget.files?.[0] ?? null);
+  }
+
+  function handlePreview(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    invalidateImportPreview();
+
+    const file = selectedFile;
+
+    if (!file) {
+      setPreviewState({
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message: "กรุณาเลือกไฟล์ Excel ก่อนตรวจสอบ",
+      });
+      return;
+    }
+
+    const requestVersion = importContextVersion.current;
+    const targetHospitalId = selectedHospitalId;
+
+    startPreviewTransition(async () => {
+      const result = await previewPatientImportAction(
+        createPatientImportFormData(file, targetHospitalId),
+      );
+
+      if (requestVersion !== importContextVersion.current) {
+        return;
+      }
+
+      setPreviewState(result);
+      setPreviewFile(result.status === "SUCCESS" ? file : null);
+    });
+  }
+
+  function handleImport(event: React.MouseEvent<HTMLButtonElement>): void {
+    event.preventDefault();
+
+    if (!previewIsCurrent || previewState.status !== "SUCCESS" || !selectedFile) {
+      return;
+    }
+
+    const requestVersion = importContextVersion.current;
+    const file = selectedFile;
+    const preview = previewState.preview;
+
+    startImportTransition(async () => {
+      const result = await confirmPatientImportAction(
+        createPatientImportConfirmFormData(
+          file,
+          selectedHospitalId,
+          preview.targetHospitalId,
+          preview.fileFingerprint,
+          preview.previewBinding,
+        ),
+      );
+
+      if (requestVersion !== importContextVersion.current) {
+        return;
+      }
+
+      setImportState(result);
+    });
+  }
+
   function changeHospital(hospitalId: string): void {
+    importContextVersion.current += 1;
+    setSelectedFile(null);
+    setPreviewFile(null);
+    setPreviewState(initialPatientImportPreviewActionState);
+    setImportState(initialPatientImportActionState);
+    setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
   }
 
@@ -277,7 +462,7 @@ export function PatientProvisioningWorkspace({
                   ใช้คอลัมน์ Thai National ID, First name, Last name และ HN (ถ้ามี) รองรับไม่เกิน 500 แถว
                 </p>
               </div>
-              <form action={previewAction} className="mt-6 space-y-4" encType="multipart/form-data">
+              <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>
                 <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
                 <label className="block space-y-2 text-sm font-semibold" htmlFor="patient-import-file">
                   <span>ไฟล์ Excel (.xlsx)</span>
@@ -285,13 +470,14 @@ export function PatientProvisioningWorkspace({
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="block min-h-12 w-full rounded-[12px] border border-line bg-white px-3 py-3 text-sm font-normal file:mr-3 file:rounded-[8px] file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-strong focus:outline-none focus:ring-4 focus:ring-brand-soft"
                     id="patient-import-file"
+                    key={fileInputKey}
                     name="file"
-                    onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)}
+                    onChange={handleFileChange}
                     required
                     type="file"
                   />
                 </label>
-                {fileName ? <p className="text-xs leading-5 text-muted">ไฟล์ที่เลือก: {fileName}</p> : null}
+                {selectedFile ? <p className="text-xs leading-5 text-muted">ไฟล์ที่เลือก: {selectedFile.name}</p> : null}
                 <p className="text-xs leading-5 text-muted">
                   ระบบจะอ่านแถวข้อมูล ตรวจซ้ำและตรวจความขัดแย้งก่อนยืนยันนำเข้า โดยไม่รับ Hospital ID จากไฟล์
                 </p>
@@ -304,13 +490,14 @@ export function PatientProvisioningWorkspace({
                     <div className="space-y-3">
                       <div>
                         <h3 className="text-base font-semibold">ตัวอย่างผลตรวจสอบ</h3>
+                        <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์และโรงพยาบาลที่เลือก หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
                         <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลทีละแถว แต่ละแถวมี transaction แยกกัน</p>
                       </div>
                       <PreviewTable rows={previewState.preview.rows} />
                     </div>
                     {importState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{importState.message}</p> : null}
                     {importState.status === "SUCCESS" ? <ImportSummary summary={importState.summary} /> : null}
-                    <button className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={!hasReadyRows || importPending || previewPending} formAction={importAction} type="submit">
+                    <button className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:bg-brand-muted" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} onClick={handleImport} type="button">
                       {importPending ? "กำลังนำเข้า..." : "ยืนยันนำเข้ารายการที่พร้อม"}
                     </button>
                   </>

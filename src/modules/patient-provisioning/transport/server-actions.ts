@@ -8,6 +8,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 import { readPatientImportCandidates, type PatientImportUpload } from "../adapters/excel-patient-import-adapter";
 import {
   patientImportFileSchema,
+  patientImportConfirmSchema,
   patientProvisionFormSchema,
 } from "../schemas/patient-provisioning-schemas";
 import {
@@ -16,6 +17,12 @@ import {
   previewPatientProvisioning,
   provisionPatient,
 } from "../services/patient-provisioning-service";
+import {
+  createPatientImportPreviewBinding,
+  hashPatientImportFile,
+  matchesPatientImportFileFingerprint,
+  matchesPatientImportPreviewBinding,
+} from "./patient-import-file-binding";
 import type {
   PatientImportActionState,
   PatientImportPreviewActionState,
@@ -178,8 +185,58 @@ function getImportRequest(formData: FormData): {
   };
 }
 
+function getImportPreviewBindingRequest(formData: FormData): {
+  targetHospitalId: string;
+  previewTargetHospitalId: string;
+  fileFingerprint: string;
+  previewBinding: string;
+  file: unknown;
+} {
+  const request = getImportRequest(formData);
+
+  return {
+    ...request,
+    previewTargetHospitalId: getString(formData, "previewTargetHospitalId"),
+    fileFingerprint: getString(formData, "fileFingerprint"),
+    previewBinding: getString(formData, "previewBinding"),
+  };
+}
+
+class PatientImportPreviewBindingError extends ApplicationError {
+  constructor() {
+    super("VALIDATION", "The patient import preview is stale");
+    this.name = "PatientImportPreviewBindingError";
+  }
+}
+
+async function assertPatientImportPreviewBinding(input: {
+  actorUserId: string;
+  targetHospitalId: string;
+  previewTargetHospitalId: string;
+  fileFingerprint: string;
+  previewBinding: string;
+  file: PatientImportUpload;
+}): Promise<void> {
+  if (
+    input.targetHospitalId !== input.previewTargetHospitalId ||
+    !matchesPatientImportPreviewBinding(
+      input.previewBinding,
+      input.fileFingerprint,
+      input.previewTargetHospitalId,
+      input.actorUserId,
+    )
+  ) {
+    throw new PatientImportPreviewBindingError();
+  }
+
+  const actualFingerprint = await hashPatientImportFile(input.file);
+
+  if (!matchesPatientImportFileFingerprint(actualFingerprint, input.fileFingerprint)) {
+    throw new PatientImportPreviewBindingError();
+  }
+}
+
 export async function previewPatientImportAction(
-  _previousState: PatientImportPreviewActionState,
   formData: FormData,
 ): Promise<PatientImportPreviewActionState> {
   try {
@@ -203,8 +260,20 @@ export async function previewPatientImportAction(
       parsed.data.targetHospitalId,
       candidates,
     );
+    const fileFingerprint = await hashPatientImportFile(request.file);
 
-    return { status: "SUCCESS", preview };
+    return {
+      status: "SUCCESS",
+      preview: {
+        ...preview,
+        fileFingerprint,
+        previewBinding: createPatientImportPreviewBinding(
+          fileFingerprint,
+          parsed.data.targetHospitalId,
+          actor.userId,
+        ),
+      },
+    };
   } catch (error: unknown) {
     const mapped = mapPatientError(error);
     return {
@@ -216,14 +285,16 @@ export async function previewPatientImportAction(
 }
 
 export async function confirmPatientImportAction(
-  _previousState: PatientImportActionState,
   formData: FormData,
 ): Promise<PatientImportActionState> {
   try {
     const actor = await getProtectedApplicationActor();
-    const request = getImportRequest(formData);
-    const parsed = patientImportFileSchema.safeParse({
+    const request = getImportPreviewBindingRequest(formData);
+    const parsed = patientImportConfirmSchema.safeParse({
       targetHospitalId: request.targetHospitalId,
+      previewTargetHospitalId: request.previewTargetHospitalId,
+      fileFingerprint: request.fileFingerprint,
+      previewBinding: request.previewBinding,
     });
 
     if (!parsed.success || !isPatientImportUpload(request.file)) {
@@ -233,6 +304,15 @@ export async function confirmPatientImportAction(
         message: "กรุณาเลือกไฟล์ Excel และโรงพยาบาลที่ถูกต้อง",
       };
     }
+
+    await assertPatientImportPreviewBinding({
+      actorUserId: actor.userId,
+      targetHospitalId: parsed.data.targetHospitalId,
+      previewTargetHospitalId: parsed.data.previewTargetHospitalId,
+      fileFingerprint: parsed.data.fileFingerprint,
+      previewBinding: parsed.data.previewBinding,
+      file: request.file,
+    });
 
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
     const summary = await importPatientProvisioning(
@@ -244,6 +324,14 @@ export async function confirmPatientImportAction(
     revalidatePath("/app/patients/provision");
     return { status: "SUCCESS", summary };
   } catch (error: unknown) {
+    if (error instanceof PatientImportPreviewBindingError) {
+      return {
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message: "ไฟล์หรือโรงพยาบาลเปลี่ยนแปลงแล้ว กรุณาตรวจสอบไฟล์ใหม่ก่อนยืนยันนำเข้า",
+      };
+    }
+
     const mapped = mapPatientError(error);
     return {
       status: "ERROR",

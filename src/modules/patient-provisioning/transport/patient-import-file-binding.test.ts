@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  createPatientImportPreviewBinding,
+  hashPatientImportFile,
+  matchesPatientImportFileFingerprint,
+  matchesPatientImportPreviewBinding,
+} from "./patient-import-file-binding";
+
+const targetHospitalId = "11111111-1111-4111-8111-111111111111";
+const actorUserId = "22222222-2222-4222-8222-222222222222";
+
+function createFileSource(contents: string): { arrayBuffer(): Promise<ArrayBuffer> } {
+  const bytes = new TextEncoder().encode(contents);
+
+  return {
+    arrayBuffer: async () => bytes.slice().buffer,
+  };
+}
+
+describe("patient import file binding", () => {
+  it("hashes the actual uploaded bytes deterministically", async () => {
+    const firstFingerprint = await hashPatientImportFile(createFileSource("file-a"));
+    const secondFingerprint = await hashPatientImportFile(createFileSource("file-a"));
+    const changedFingerprint = await hashPatientImportFile(createFileSource("file-b"));
+
+    expect(firstFingerprint).toHaveLength(64);
+    expect(firstFingerprint).toBe(secondFingerprint);
+    expect(firstFingerprint).not.toBe(changedFingerprint);
+    expect(matchesPatientImportFileFingerprint(firstFingerprint, secondFingerprint)).toBe(true);
+    expect(matchesPatientImportFileFingerprint(firstFingerprint, changedFingerprint)).toBe(false);
+  });
+
+  it("binds the fingerprint to the actor and Hospital context", async () => {
+    const fingerprint = await hashPatientImportFile(createFileSource("file-a"));
+    const binding = createPatientImportPreviewBinding(
+      fingerprint,
+      targetHospitalId,
+      actorUserId,
+    );
+
+    expect(matchesPatientImportPreviewBinding(
+      binding,
+      fingerprint,
+      targetHospitalId,
+      actorUserId,
+    )).toBe(true);
+    expect(matchesPatientImportPreviewBinding(
+      binding,
+      fingerprint,
+      "33333333-3333-4333-8333-333333333333",
+      actorUserId,
+    )).toBe(false);
+    expect(matchesPatientImportPreviewBinding(
+      binding,
+      fingerprint,
+      targetHospitalId,
+      "44444444-4444-4444-8444-444444444444",
+    )).toBe(false);
+  });
+});

@@ -47,6 +47,18 @@ export const patientImportFileSchema = z
   .object({ targetHospitalId: z.uuid() })
   .strict();
 
+const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+
+export const patientImportConfirmSchema = z
+  .object({
+    targetHospitalId: z.uuid(),
+    previewTargetHospitalId: z.uuid(),
+    fileFingerprint: sha256HexSchema,
+    previewBinding: sha256HexSchema,
+  })
+  .strict();
+
 export type ProvisionPatientInput = z.infer<typeof patientProvisionInputSchema>;
 export type PatientProvisionFormInput = z.infer<typeof patientProvisionFormSchema>;
 export type PatientProvisionScopeInput = z.infer<typeof patientProvisionScopeSchema>;
+export type PatientImportConfirmInput = z.infer<typeof patientImportConfirmSchema>;

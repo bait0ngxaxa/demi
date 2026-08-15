@@ -4,6 +4,11 @@ import type {
   PatientProvisioningOutcome,
 } from "../services/patient-provisioning-service";
 
+export type PatientImportPreviewBinding = PatientImportPreview & {
+  fileFingerprint: string;
+  previewBinding: string;
+};
+
 export type PatientProvisionResultState = {
   outcome: PatientProvisioningOutcome;
   accountStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED";
@@ -25,7 +30,7 @@ export type PatientProvisionActionState =
 
 export type PatientImportPreviewActionState =
   | { status: "IDLE" }
-  | { status: "SUCCESS"; preview: PatientImportPreview }
+  | { status: "SUCCESS"; preview: PatientImportPreviewBinding }
   | {
       status: "ERROR";
       code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";

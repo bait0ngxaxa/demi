@@ -35,6 +35,8 @@ const nationalIds = {
   bulkSecond: "1000000000076",
   bulkConflict: "1000000000084",
   osm: "1000000000092",
+  multiRoleBulk: "1000000000106",
+  bulkRevalidation: "1000000000114",
 };
 
 let actorSequence = 0;
@@ -198,6 +200,67 @@ function createFailingTransactionDatabase(): PrismaClient {
           await operation(transaction);
           throw new Error("forced transaction failure");
         });
+    },
+  }) as unknown as PrismaClient;
+}
+
+async function createMultiRoleHospitalOsmActor(
+  hospitalId: string,
+): Promise<{ actor: ActorContext; userId: string; personId: string }> {
+  const created = await createActor({ kind: "HOSPITAL", hospitalId });
+  const hospital = await prisma.hospital.findUniqueOrThrow({
+    where: { id: hospitalId },
+    select: { status: true },
+  });
+
+  await prisma.userRole.create({ data: { userId: created.userId, role: Role.OSM } });
+  await prisma.osmHospitalRelationship.create({
+    data: {
+      userId: created.userId,
+      hospitalId,
+      status: MembershipStatus.ACTIVE,
+    },
+  });
+
+  return {
+    ...created,
+    actor: {
+      ...created.actor,
+      roles: [Role.HOSPITAL, Role.OSM],
+      osmHospitalRelationships: [
+        {
+          hospitalId,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: hospital.status,
+        },
+      ],
+    },
+  };
+}
+
+function createDatabaseThatRevokesHospitalBulkScope(
+  userId: string,
+  hospitalId: string,
+): PrismaClient {
+  let revoked = false;
+
+  return new Proxy(prisma, {
+    get(target, property, receiver): unknown {
+      if (property !== "$transaction") {
+        return Reflect.get(target, property, receiver);
+      }
+
+      return async (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>) => {
+        if (!revoked) {
+          revoked = true;
+          await prisma.hospitalMembership.update({
+            where: { userId_hospitalId: { userId, hospitalId } },
+            data: { status: MembershipStatus.SUSPENDED },
+          });
+        }
+
+        return target.$transaction(operation);
+      };
     },
   }) as unknown as PrismaClient;
 }
@@ -457,7 +520,30 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       "CONFLICT",
       "INVALID",
     ]);
+    expect(summary.rows.every(({ identityDisplay }) => !identityDisplay.includes(nationalIds.bulkConflict))).toBe(true);
     expect(await prisma.patientHospitalRelationship.count()).toBe(3);
+  });
+
+  it("revalidates current database state during Excel confirmation instead of trusting the earlier preview", async () => {
+    const hospital = await createHospital("PATIENT-IMPORT-REVALIDATE");
+    const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
+    const upload = await createXlsxUpload([[nationalIds.bulkRevalidation, "สมชาย", "ตรวจซ้ำ", "HN-NEW"]]);
+    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
+
+    expect(preview.rows[0]?.classification).toBe("READY");
+    await provisionPatient(
+      actor,
+      patientInput(nationalIds.bulkRevalidation, hospital.id, {
+        familyName: "ตรวจซ้ำ",
+        hospitalNumber: "HN-OLD",
+      }),
+    );
+
+    const summary = await importPatientProvisioning(actor, hospital.id, candidates);
+
+    expect(summary).toMatchObject({ imported: 0, conflict: 1, failed: 0 });
+    expect(summary.rows[0]).toMatchObject({ result: "CONFLICT", reason: "HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน" });
   });
 
   it("does not allow OSM to use the Hospital-only bulk import adapter", async () => {
@@ -468,5 +554,24 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
 
     await expect(previewPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(importPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("does not let a multi-role actor fall back to OSM scope after Hospital bulk scope is revoked", async () => {
+    const hospital = await createHospital("PATIENT-MULTI-ROLE-BULK");
+    const { actor, userId } = await createMultiRoleHospitalOsmActor(hospital.id);
+    const upload = await createXlsxUpload([[nationalIds.multiRoleBulk, "หลายบทบาท", "ทดสอบ", ""]]);
+    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const database = createDatabaseThatRevokesHospitalBulkScope(userId, hospital.id);
+
+    await expect(
+      importPatientProvisioning(actor, hospital.id, candidates, { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(
+      await prisma.osmHospitalRelationship.findUnique({
+        where: { userId_hospitalId: { userId, hospitalId: hospital.id } },
+        select: { status: true },
+      }),
+    ).toEqual({ status: MembershipStatus.ACTIVE });
+    expect(await prisma.patientHospitalRelationship.count()).toBe(0);
   });
 });
