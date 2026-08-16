@@ -27,6 +27,15 @@ describe("Screening question-set registry", () => {
     )).toBe(true);
   });
 
+  it("keeps every PROMs question directionally compatible with scoring", () => {
+    const questionSet = getQuestionSet(SCREENING_QUESTION_SET_KEY, SCREENING_QUESTION_SET_VERSION);
+
+    expect(questionSet?.questions
+      .filter((question) => question.section === "PROMs")
+      .every((question) => question.scoreDirection === "HIGHER_IS_BETTER"))
+      .toBe(true);
+  });
+
   it("fails closed for an unknown version", () => {
     expect(getQuestionSet(SCREENING_QUESTION_SET_KEY, "customer-approved-v1")).toBeNull();
   });

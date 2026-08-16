@@ -130,7 +130,7 @@ When finished, stop and remove the disposable container from WSL:
 docker compose --env-file .env.integration -f compose.integration.yaml down --volumes --remove-orphans
 ```
 
-The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. The optional `npm run test:integration:local` command still manages the full Docker lifecycle automatically through the repository wrapper; use the manual WSL workflow above when the test runner must avoid Docker/WSL discovery.
+The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. Use the manual WSL workflow above to manage the Docker lifecycle; `npm run test:integration` is the single integration test command and does not invoke Docker/WSL discovery.
 
 To use another dedicated local PostgreSQL test database instead, export these local connection variables before running:
 

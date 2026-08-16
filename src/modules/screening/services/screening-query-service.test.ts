@@ -8,7 +8,29 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+
+import { questionSetRegistry } from "../domain/question-sets";
+
+const { alternateScoringVersion } = vi.hoisted(() => ({
+  alternateScoringVersion: "customer-approved-test-v1",
+}));
+
+vi.mock("../domain/scoring", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../domain/scoring")>();
+  const prototypeDefinition = actual.getScoringDefinition(actual.LEGACY_PROTOTYPE_SCORING_VERSION);
+
+  if (!prototypeDefinition) {
+    throw new Error("The source registry must contain the prototype scoring definition");
+  }
+
+  return {
+    ...actual,
+    getScoringDefinition: (version: string) => version === alternateScoringVersion
+      ? { ...prototypeDefinition, version }
+      : actual.getScoringDefinition(version),
+  };
+});
 
 import {
   getScreeningDetail,
@@ -49,6 +71,9 @@ const result = {
 
 function createDatabase(overrides: {
   hospitalMembership?: boolean;
+  questionSetKey?: string;
+  questionSetVersion?: string;
+  scoringVersion?: string;
   records?: Array<{
     id: string;
     submittedAt: Date;
@@ -98,9 +123,9 @@ function createDatabase(overrides: {
       findFirst: vi.fn().mockResolvedValue({
         id: screeningId,
         submittedAt: new Date("2026-08-16T05:00:00.000Z"),
-        questionSetKey: "demi-screening",
-        questionSetVersion: "legacy-prototype-v1",
-        scoringVersion: "legacy-prototype-v1",
+        questionSetKey: overrides.questionSetKey ?? "demi-screening",
+        questionSetVersion: overrides.questionSetVersion ?? "legacy-prototype-v1",
+        scoringVersion: overrides.scoringVersion ?? "legacy-prototype-v1",
         responses: {
           pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
           proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
@@ -161,6 +186,36 @@ describe("Screening query service", () => {
       responses: { confidenceScore: 7, confidenceImprovementPlan: null },
       result,
     });
+  });
+
+  it("resolves persisted definitions through the source registries", async () => {
+    const questionSet = questionSetRegistry[0];
+
+    if (!questionSet) {
+      throw new Error("The source registry must contain the prototype question set");
+    }
+
+    const { database } = createDatabase({
+      questionSetKey: questionSet.key,
+      questionSetVersion: questionSet.version,
+      scoringVersion: alternateScoringVersion,
+    });
+
+    const detail = await getScreeningDetail(actor, relationshipId, screeningId, { database });
+
+    expect(detail.questionSetVersion).toBe(questionSet.version);
+    expect(detail.scoringVersion).toBe(alternateScoringVersion);
+  });
+
+  it.each([
+    ["question set version", { questionSetVersion: "unknown-question-set-version" }],
+    ["scoring version", { scoringVersion: "unknown-scoring-version" }],
+  ])("fails closed when the persisted %s is unavailable", async (_label, overrides) => {
+    const { database } = createDatabase(overrides);
+
+    await expect(getScreeningDetail(actor, relationshipId, screeningId, { database })).rejects.toBeInstanceOf(
+      InfrastructureError,
+    );
   });
 
   it("denies a Hospital actor without a direct active membership", async () => {

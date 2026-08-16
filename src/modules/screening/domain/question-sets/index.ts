@@ -6,6 +6,7 @@ export type {
   ScreeningAnswerOption,
   ScreeningQuestion,
   ScreeningQuestionSection,
+  ScreeningQuestionScoreDirection,
   ScreeningQuestionSet,
 } from "./types";
 

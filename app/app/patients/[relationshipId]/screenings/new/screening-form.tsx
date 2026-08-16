@@ -119,6 +119,16 @@ export function ScreeningForm({
   }, [relationshipId, router, state]);
 
   const questions = questionSet.questions;
+  const pamQuestions = useMemo(
+    () => questions.filter((question) => question.section === "PAM"),
+    [questions],
+  );
+  const promsQuestions = useMemo(
+    () => questions.filter((question) => question.section === "PROMs"),
+    [questions],
+  );
+  const pamAnswered = pamQuestions.filter((question) => Boolean(answers[question.key])).length;
+  const promsAnswered = promsQuestions.filter((question) => Boolean(answers[question.key])).length;
   const answeredCount = useMemo(
     () => questions.filter((question) => Boolean(answers[question.key])).length,
     [answers, questions],
@@ -174,24 +184,22 @@ export function ScreeningForm({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 1 — PAM</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง 5 ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง {pamQuestions.length} ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
             </div>
-            <StatusBadge variant={questions.filter((question) => question.section === "PAM" && answers[question.key]).length === 5 ? "success" : "neutral"}>
-              {questions.filter((question) => question.section === "PAM" && answers[question.key]).length}/5
+            <StatusBadge variant={pamAnswered === pamQuestions.length ? "success" : "neutral"}>
+              {pamAnswered}/{pamQuestions.length}
             </StatusBadge>
           </div>
           <div className="mt-6 space-y-6">
-            {questions
-              .filter((question) => question.section === "PAM")
-              .map((question) => (
-                <QuestionGroup
-                  disabled={pending}
-                  key={question.key}
-                  onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
-                  question={question}
-                  value={answers[question.key]}
-                />
-              ))}
+            {pamQuestions.map((question) => (
+              <QuestionGroup
+                disabled={pending}
+                key={question.key}
+                onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
+                question={question}
+                value={answers[question.key]}
+              />
+            ))}
           </div>
         </Panel>
 
@@ -199,24 +207,22 @@ export function ScreeningForm({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 2 — PROMs</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง 4 ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง {promsQuestions.length} ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
             </div>
-            <StatusBadge variant={questions.filter((question) => question.section === "PROMs" && answers[question.key]).length === 4 ? "success" : "neutral"}>
-              {questions.filter((question) => question.section === "PROMs" && answers[question.key]).length}/4
+            <StatusBadge variant={promsAnswered === promsQuestions.length ? "success" : "neutral"}>
+              {promsAnswered}/{promsQuestions.length}
             </StatusBadge>
           </div>
           <div className="mt-6 space-y-6">
-            {questions
-              .filter((question) => question.section === "PROMs")
-              .map((question) => (
-                <QuestionGroup
-                  disabled={pending}
-                  key={question.key}
-                  onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
-                  question={question}
-                  value={answers[question.key]}
-                />
-              ))}
+            {promsQuestions.map((question) => (
+              <QuestionGroup
+                disabled={pending}
+                key={question.key}
+                onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
+                question={question}
+                value={answers[question.key]}
+              />
+            ))}
           </div>
         </Panel>
 
@@ -272,16 +278,14 @@ export function ScreeningForm({
               <div key={section}>
                 <h3 className="font-semibold text-text">{section}</h3>
                 <ul className="mt-2 space-y-2 text-sm leading-6 text-text-muted">
-                  {questions
-                    .filter((question) => question.section === section)
-                    .map((question) => (
-                      <li className="flex gap-2" key={question.key}>
-                        <span aria-hidden="true">•</span>
-                        <span>
-                          {question.key}: {questionOptionLabel(question, answers[question.key] ?? "")}
-                        </span>
-                      </li>
-                    ))}
+                  {(section === "PAM" ? pamQuestions : promsQuestions).map((question) => (
+                    <li className="flex gap-2" key={question.key}>
+                      <span aria-hidden="true">•</span>
+                      <span>
+                        {question.key}: {questionOptionLabel(question, answers[question.key] ?? "")}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}

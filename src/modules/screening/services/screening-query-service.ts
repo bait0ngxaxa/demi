@@ -12,9 +12,8 @@ import {
 
 import {
   getQuestionSet,
-  SCREENING_QUESTION_SET_KEY,
 } from "../domain/question-sets";
-import { LEGACY_PROTOTYPE_SCORING_VERSION } from "../domain/scoring";
+import { getScoringDefinition } from "../domain/scoring";
 import {
   SCREENING_READ_CAPABILITY,
   SCREENING_SUBMIT_CAPABILITY,
@@ -169,15 +168,12 @@ function toDetail(
   };
 }
 
-function assertPrototypeDefinitions(detail: ScreeningDetailRecord): void {
+function assertHistoricalDefinitions(detail: ScreeningDetailRecord): void {
   const questionSet = getQuestionSet(detail.questionSetKey, detail.questionSetVersion);
+  const scoringDefinition = getScoringDefinition(detail.scoringVersion);
 
-  if (!questionSet || detail.scoringVersion !== LEGACY_PROTOTYPE_SCORING_VERSION) {
+  if (!questionSet || !scoringDefinition) {
     throw new InfrastructureError("Persisted Screening definitions are unavailable");
-  }
-
-  if (questionSet.key !== SCREENING_QUESTION_SET_KEY) {
-    throw new InfrastructureError("Persisted Screening question set is unavailable");
   }
 }
 
@@ -269,7 +265,7 @@ export async function getScreeningDetail(
       throw new NotFoundError();
     }
 
-    assertPrototypeDefinitions(record);
+    assertHistoricalDefinitions(record);
     return toDetail(record, access.patient);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

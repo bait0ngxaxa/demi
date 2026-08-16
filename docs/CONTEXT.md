@@ -145,7 +145,7 @@ Phase 2.1 ไม่ได้ implement provider-account transition สำหร�
 - audit persistence รับ transaction-compatible Prisma client ได้ และ audit actor foreign key ไม่อนุญาต hard-delete User ที่มีประวัติ audit
 - Prisma migration scripts ใช้ standard `prisma migrate dev`, `prisma migrate deploy` และ `prisma generate`; database/environment selection มาจาก credentials ที่ process ได้รับโดยตรง และ integration suite แยกใช้ dedicated test database
 - สำหรับ local integration ใช้ `.env.integration` กับ `compose.integration.yaml` ซึ่งเปิด PostgreSQL แบบ disposable ที่ `127.0.0.1:55432`; `DATABASE_URL`, `DIRECT_URL` และ `DEMI_TEST_DATABASE_URL` ต้องชี้ฐานข้อมูล test เดียวกัน
-- ให้เปิด disposable PostgreSQL ค้างไว้จาก Docker-enabled WSL terminal แล้วใช้ `npm run test:integration` คำสั่งเดียวเพื่อ `prisma generate`, apply migrations และรัน integration tests; `test:integration` ไม่เรียก Docker/WSL ส่วน `npm run test:integration:local` ยังเป็น optional full-lifecycle wrapper
+- ให้เปิด disposable PostgreSQL ค้างไว้จาก Docker-enabled WSL terminal แล้วใช้ `npm run test:integration` เป็นคำสั่ง integration เดียวเพื่อ `prisma generate`, apply migrations และรัน integration tests; คำสั่งนี้ไม่เรียก Docker/WSL
 - server-side health check ที่ไม่เปิดเผย secret หรือ internal error
 
 Implementation directories และ commands ดูได้จาก [README](../README.md) และ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md)

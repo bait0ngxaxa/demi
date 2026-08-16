@@ -19,8 +19,7 @@
     "test:db:reset": "node scripts/integration.mjs db:reset",
     "test:db:status": "node scripts/integration.mjs db:status",
     "prisma:migrate:test": "node scripts/integration.mjs migrate",
-    "test:integration": "node scripts/integration.mjs test",
-    "test:integration:local": "node scripts/integration.mjs verify"
+    "test:integration": "node scripts/integration.mjs test"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

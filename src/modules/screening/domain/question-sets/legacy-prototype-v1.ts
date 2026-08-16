@@ -69,7 +69,8 @@ export const legacyPrototypeV1QuestionSet = {
     {
       key: "proms-1",
       section: "PROMs",
-      prompt: "ในช่วงเวลาที่ประเมิน สุขภาพของฉันรบกวนการทำกิจวัตรประจำวันมากเพียงใด",
+      scoreDirection: "HIGHER_IS_BETTER",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันสามารถทำกิจวัตรประจำวันได้ตามปกติมากเพียงใด",
       minAnswer: 1,
       maxAnswer: 6,
       required: true,
@@ -78,7 +79,8 @@ export const legacyPrototypeV1QuestionSet = {
     {
       key: "proms-2",
       section: "PROMs",
-      prompt: "ในช่วงเวลาที่ประเมิน ฉันมีความกังวลเกี่ยวกับสุขภาพมากเพียงใด",
+      scoreDirection: "HIGHER_IS_BETTER",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันสามารถจัดการความกังวลเกี่ยวกับสุขภาพของตนเองได้มากเพียงใด",
       minAnswer: 1,
       maxAnswer: 6,
       required: true,
@@ -87,6 +89,7 @@ export const legacyPrototypeV1QuestionSet = {
     {
       key: "proms-3",
       section: "PROMs",
+      scoreDirection: "HIGHER_IS_BETTER",
       prompt: "ในช่วงเวลาที่ประเมิน ฉันสามารถทำกิจกรรมที่สำคัญต่อฉันได้มากเพียงใด",
       minAnswer: 1,
       maxAnswer: 6,
@@ -96,7 +99,8 @@ export const legacyPrototypeV1QuestionSet = {
     {
       key: "proms-4",
       section: "PROMs",
-      prompt: "ในช่วงเวลาที่ประเมิน ฉันรู้สึกว่าคุณภาพชีวิตของฉันเป็นอย่างไร",
+      scoreDirection: "HIGHER_IS_BETTER",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันรู้สึกว่าคุณภาพชีวิตโดยรวมของฉันอยู่ในระดับที่ดีมากเพียงใด",
       minAnswer: 1,
       maxAnswer: 6,
       required: true,

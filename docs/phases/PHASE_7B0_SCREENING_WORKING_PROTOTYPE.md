@@ -90,6 +90,12 @@ editing this one silently. Persisted version identifiers are implemented for
 prototype reproducibility; owner acceptance of the minimal versioning contract
 is still pending under Phase 7A.
 
+This pre-demo wording correction keeps the current `legacy-prototype-v1`
+identifier because the repository is still in the unaccepted requirement-
+validation stage and contains no accepted customer/production questionnaire
+contract. Once persisted data must be treated as historical customer evidence,
+any further wording change must use a new immutable source version.
+
 ### Temporary Thai mock wording
 
 The prototype uses neutral temporary Thai wording to make the workflow usable:
@@ -100,6 +106,12 @@ The prototype uses neutral temporary Thai wording to make the workflow usable:
 - Confidence score is `0–10`.
 - Confidence improvement plan is optional, validated to 1,000 characters, and
   treated as sensitive free text.
+
+The four temporary PROMs prompts are written so that `1` represents a poorer or
+less positive state and `6` represents a better or more positive state. A small
+source-level `HIGHER_IS_BETTER` marker and a focused test protect this direction
+against accidental wording drift. This is a prototype consistency rule, not a
+clinical validation of the questions.
 
 The UI displays this notice:
 
@@ -148,6 +160,10 @@ validates exact question membership and ranges, recalculates totals and
 classification, and persists the canonical result. Client-supplied totals,
 percentage, level, Zone, conductor, Hospital, or assignment values are rejected
 or ignored by the transport boundary.
+
+Historical detail resolves the persisted question-set key/version and scoring
+version through their source registries. Unknown historical definitions fail
+closed; the system never substitutes the currently active definition.
 
 ## 5. Persistence and historical boundary
 
@@ -248,6 +264,9 @@ responsive for phone/tablet field use and contains:
 5. completion counter and answer review before submit;
 6. server error feedback and result navigation.
 
+Section totals, completion state, and displayed denominators are derived from
+the source-defined question arrays rather than hardcoded runtime counts.
+
 The result/detail page shows the submitted date/time, conductor display name,
 raw recorded answers, Confidence, canonical totals, level, Zone, percentage
 where applicable, and source versions. It does not show treatment instructions
@@ -262,6 +281,7 @@ historical and is never silently overwritten.
 Focused tests cover:
 
 - source registry counts, stable keys, scales, and unknown-version failure;
+- PROMs higher-is-better direction metadata and wording consistency;
 - scoring threshold boundaries, including 50% and 75%;
 - missing, extra, duplicate, and out-of-range answers;
 - rejection of browser-supplied canonical result fields;
@@ -270,6 +290,8 @@ Focused tests cover:
 - transactional submission, canonical persistence, bounded audit, same-retry
   deduplication, changed-payload nonce conflict, and deliberate repeat event;
 - relationship-scoped history/detail projections and nullable Confidence plan;
+- historical detail resolution through question/scoring registries, including
+  fail-closed unknown-definition cases;
 - PostgreSQL integration coverage for Hospital isolation, OSM assignment scope,
   persistence, history, audit, and retry behavior.
 
@@ -281,7 +303,7 @@ npx prisma generate
 npm run typecheck
 npm run lint
 npx vitest run src/modules/screening
-npm run test:integration:local
+npm run test:integration
 ```
 
 ## 9. Explicitly deferred
