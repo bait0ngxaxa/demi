@@ -91,6 +91,7 @@ model User {
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
+  screeningAssessmentsConducted ScreeningAssessment[] @relation("ScreeningAssessmentConductedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -165,6 +166,7 @@ model PatientHospitalRelationship {
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   osmAssignments PatientOsmAssignment[]
+  screeningAssessments ScreeningAssessment[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -187,6 +189,26 @@ model PatientOsmAssignment {
 
   @@index([patientHospitalRelationshipId, createdAt])
   @@index([osmUserId, endedAt])
+}
+
+model ScreeningAssessment {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  conductedByUserId             String   @db.Uuid
+  submissionNonce               String   @unique @db.Uuid
+  questionSetKey                String   @db.VarChar(64)
+  questionSetVersion            String   @db.VarChar(64)
+  scoringVersion                String   @db.VarChar(64)
+  responses                     Json
+  result                        Json
+  submittedAt                   DateTime @default(now())
+  createdAt                     DateTime @default(now())
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  conductedByUser             User                       @relation("ScreeningAssessmentConductedBy", fields: [conductedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientHospitalRelationshipId, submittedAt])
+  @@index([conductedByUserId, submittedAt])
 }
 
 model PatientActivation {

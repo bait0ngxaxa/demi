@@ -105,6 +105,12 @@ export default async function PatientDetailPage({
             </Link>
           ) : null}
           <Link
+            className="inline-flex min-h-11 items-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/screenings`}
+          >
+            ประวัติ Screening
+          </Link>
+          <Link
             className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={backHref}
           >

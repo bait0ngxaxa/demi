@@ -1,0 +1,106 @@
+import type { ScreeningQuestionSet } from "./types";
+
+const pamOptions = [
+  { value: 1, label: "ไม่เห็นด้วยอย่างยิ่ง" },
+  { value: 2, label: "ไม่เห็นด้วย" },
+  { value: 3, label: "เห็นด้วย" },
+  { value: 4, label: "เห็นด้วยอย่างยิ่ง" },
+] as const;
+
+const promsOptions = [
+  { value: 1, label: "ไม่เลย" },
+  { value: 2, label: "เล็กน้อย" },
+  { value: 3, label: "ปานกลาง" },
+  { value: 4, label: "ค่อนข้างมาก" },
+  { value: 5, label: "มาก" },
+  { value: 6, label: "มากที่สุด" },
+] as const;
+
+export const legacyPrototypeV1QuestionSet = {
+  key: "demi-screening",
+  version: "legacy-prototype-v1",
+  label: "DEMI Screening — ต้นแบบเพื่อเก็บ Requirement",
+  questions: [
+    {
+      key: "pam-1",
+      section: "PAM",
+      prompt: "ฉันมั่นใจว่าฉันสามารถดูแลสุขภาพของตนเองได้",
+      minAnswer: 1,
+      maxAnswer: 4,
+      required: true,
+      options: pamOptions,
+    },
+    {
+      key: "pam-2",
+      section: "PAM",
+      prompt: "ฉันรู้ว่าควรทำอะไรเมื่ออาการหรือสุขภาพของฉันเปลี่ยนแปลง",
+      minAnswer: 1,
+      maxAnswer: 4,
+      required: true,
+      options: pamOptions,
+    },
+    {
+      key: "pam-3",
+      section: "PAM",
+      prompt: "ฉันสามารถปฏิบัติตามแผนการดูแลสุขภาพที่ได้รับ",
+      minAnswer: 1,
+      maxAnswer: 4,
+      required: true,
+      options: pamOptions,
+    },
+    {
+      key: "pam-4",
+      section: "PAM",
+      prompt: "ฉันมีทักษะในการแก้ปัญหาเกี่ยวกับการดูแลสุขภาพของตนเอง",
+      minAnswer: 1,
+      maxAnswer: 4,
+      required: true,
+      options: pamOptions,
+    },
+    {
+      key: "pam-5",
+      section: "PAM",
+      prompt: "ฉันสามารถขอความช่วยเหลือที่เหมาะสมเมื่อจำเป็น",
+      minAnswer: 1,
+      maxAnswer: 4,
+      required: true,
+      options: pamOptions,
+    },
+    {
+      key: "proms-1",
+      section: "PROMs",
+      prompt: "ในช่วงเวลาที่ประเมิน สุขภาพของฉันรบกวนการทำกิจวัตรประจำวันมากเพียงใด",
+      minAnswer: 1,
+      maxAnswer: 6,
+      required: true,
+      options: promsOptions,
+    },
+    {
+      key: "proms-2",
+      section: "PROMs",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันมีความกังวลเกี่ยวกับสุขภาพมากเพียงใด",
+      minAnswer: 1,
+      maxAnswer: 6,
+      required: true,
+      options: promsOptions,
+    },
+    {
+      key: "proms-3",
+      section: "PROMs",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันสามารถทำกิจกรรมที่สำคัญต่อฉันได้มากเพียงใด",
+      minAnswer: 1,
+      maxAnswer: 6,
+      required: true,
+      options: promsOptions,
+    },
+    {
+      key: "proms-4",
+      section: "PROMs",
+      prompt: "ในช่วงเวลาที่ประเมิน ฉันรู้สึกว่าคุณภาพชีวิตของฉันเป็นอย่างไร",
+      minAnswer: 1,
+      maxAnswer: 6,
+      required: true,
+      options: promsOptions,
+    },
+  ],
+} as const satisfies ScreeningQuestionSet;
