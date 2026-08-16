@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว, **Phase 6B.1 Patient Directory** และ **Phase 6B.2 OSM ↔ Patient Assignment** implement แล้ว และ B6.3 ยัง deferred/ต้องมี requirements เพิ่มเติม
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว, **Phase 6B.1 Patient Directory**, **Phase 6B.2 OSM ↔ Patient Assignment**, **Phase 7A/7B.0 Screening working prototype** และ **Phase 8A/8B.0 Goals & Activity Plan working prototype** implement แล้ว โดย Screening/Goals ยังคงเป็น requirement-validation prototypes และ B6.3 รวมถึง clinical behavior ที่ยังไม่ยืนยันยัง deferred/ต้องมี requirements เพิ่มเติม
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -25,6 +25,24 @@ Phase 6A owner decisions are accepted. The implementation handoff is [Phase 6A P
 - Platform `ADMIN` has no routine Patient-directory access. Governance/reconciliation access, if later needed, must be separately named, scoped, audited, and authorized.
 - Phase 6B.1 is implemented as a Hospital-focused read-only slice: minimal display name/Hospital context/HN/opaque identifiers, bounded server-side name/HN search and offset pagination, stable ordering, no account/activation status by default, no clinical fields, and no Patient self-service portal. Authorization is enforced through the direct Hospital relationship predicate; OSM generic directory read and ADMIN routine read remain denied.
 - Phase 6B.2 is implemented after B6.1 with `/app/patients/assigned` and OWNER assignment management under the existing Patient detail route. Phase 6B.3 profile editing, delete/restore/deactivation, transfer/Hospital change, Patient self-service expansion, and clinical workflows remain deferred or require future requirements.
+
+## Phase 7B.0 Screening Working Prototype
+
+Phase 7B.0 is implemented as a relationship-scoped requirement-validation workflow. The handoffs are [Phase 7A Screening Requirements](./phases/PHASE_7A_SCREENING_REQUIREMENTS.md) and [Phase 7B.0 Screening Working Prototype](./phases/PHASE_7B0_SCREENING_WORKING_PROTOTYPE.md):
+
+- `/app/patients/[relationshipId]/screenings`, `/new`, and detail routes read through the authoritative `PatientHospitalRelationship` scope.
+- Source-defined question/scoring versions, server-side response validation/scoring, serializable atomic persistence, bounded retry nonce, historical detail, and `screening.submitted` audit are implemented.
+- Screening results do not automatically create or mutate Goals. Any Goal Plan is a separate explicit operation.
+- Question sets and scoring remain provisional prototype definitions and are not clinical recommendations or final customer requirements.
+
+## Phase 8A/8B.0 Goals & Activity Plan Working Prototype
+
+The Phase 8A contract and Phase 8B.0 handoff are [Phase 8A Goals & Activity Plan Requirements](./phases/PHASE_8A_GOALS_AND_ACTIVITY_PLAN_REQUIREMENTS.md) and [Phase 8B.0 Goals & Activity Plan Working Prototype](./phases/PHASE_8B0_GOALS_AND_ACTIVITY_PLAN_WORKING_PROTOTYPE.md):
+
+- `/app/patients/[relationshipId]/goals`, `/new`, and detail routes provide relationship-scoped Goal Plan history, explicit creation, and historical detail for authorized Hospital users and exactly assigned OSM users.
+- The prototype uses source-defined `demi-goals` / `legacy-prototype-v1` definitions, immutable `PatientGoalPlan` rounds with `PatientGoalItem` snapshots, optional Screening context, server-side template validation, serializable round allocation, per-form retry nonce, and bounded `goal_plan.created` audit.
+- Prototype capabilities are `goal:read` and `goal:plan`: active direct Hospital OWNER/MEMBER and active exact-assignment OSM are allowed; PATIENT and Platform ADMIN are denied; profession does not independently change authority.
+- Goal Plan creation is never automatic from Screening. Primary goals, activity mappings, target defaults, units, authority, approval, visibility, and correction semantics remain provisional/open customer requirements. Patient self-service, edit/delete/amendment, adherence/progress, care plans, and clinical recommendations are not implemented.
 
 ## Phase 3A Hospital Onboarding Contract
 

@@ -92,6 +92,7 @@ model User {
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
   screeningAssessmentsConducted ScreeningAssessment[] @relation("ScreeningAssessmentConductedBy")
+  goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -167,6 +168,7 @@ model PatientHospitalRelationship {
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   osmAssignments PatientOsmAssignment[]
   screeningAssessments ScreeningAssessment[]
+  goalPlans PatientGoalPlan[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -206,9 +208,49 @@ model ScreeningAssessment {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   conductedByUser             User                       @relation("ScreeningAssessmentConductedBy", fields: [conductedByUserId], references: [id], onDelete: Restrict)
+  goalPlansSourced             PatientGoalPlan[]          @relation("GoalPlanSourceScreening")
 
   @@index([patientHospitalRelationshipId, submittedAt])
   @@index([conductedByUserId, submittedAt])
+}
+
+model PatientGoalPlan {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  createdByUserId               String   @db.Uuid
+  sourceScreeningAssessmentId   String?  @db.Uuid
+  submissionNonce               String   @unique @db.Uuid
+  templateKey                   String   @db.VarChar(64)
+  templateVersion               String   @db.VarChar(64)
+  roundNumber                   Int
+  primaryGoalCode               String   @db.VarChar(64)
+  primaryGoalNote               String?  @db.VarChar(1000)
+  weeklyNote                    String?  @db.VarChar(2000)
+  createdAt                     DateTime @default(now())
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  createdByUser               User                       @relation("PatientGoalPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  sourceScreeningAssessment   ScreeningAssessment?       @relation("GoalPlanSourceScreening", fields: [sourceScreeningAssessmentId], references: [id], onDelete: Restrict)
+  items                       PatientGoalItem[]
+
+  @@unique([patientHospitalRelationshipId, roundNumber])
+  @@index([patientHospitalRelationshipId, createdAt])
+}
+
+model PatientGoalItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  goalPlanId  String   @db.Uuid
+  activityCode String  @db.VarChar(64)
+  targetDays  Int
+  targetValue Float?
+  targetUnit  String?  @db.VarChar(32)
+  sortOrder   Int
+  createdAt   DateTime @default(now())
+
+  goalPlan PatientGoalPlan @relation(fields: [goalPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([goalPlanId, activityCode])
+  @@index([goalPlanId, sortOrder])
 }
 
 model PatientActivation {

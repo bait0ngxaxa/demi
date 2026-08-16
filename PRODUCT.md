@@ -30,6 +30,8 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Phase 4A ปิด contract และ Phase 4B implement แล้วสำหรับ workforce provisioning + first-time activation MVP; Phase 5B.2 implement แล้วสำหรับ Patient first-time activation MVP; รายละเอียด implementation อยู่ที่ [Phase 4B handoff](docs/phases/PHASE_4B_WORKFORCE_PROVISIONING.md) และ [Phase 5B.2 handoff](docs/phases/PHASE_5B2_PATIENT_FIRST_TIME_ACTIVATION.md)
 - Phase 6A ปิด owner decisions สำหรับ Patient access และ assignment แล้ว: Hospital อ่าน Patient ได้เฉพาะ direct Hospital scope, OSM อ่านได้เฉพาะ assigned Patient scope หลังมี first-class Hospital-specific assignment, และ parent/child Hospital hierarchy ไม่ใช่ Patient authorization
 - Phase 6B.1 Patient Directory / Minimal Detail implement แล้วสำหรับ Hospital-focused slice โดยใช้ `patient:read`, direct Hospital scope, bounded search/pagination และ minimal projection; Phase 6B.2 OSM ↔ Patient Assignment implement แล้วด้วย first-class Hospital-specific assignment, OWNER-only mutation, assignment history และ `ASSIGNED_PATIENTS` read scope; Patient profile editing, lifecycle, transfer, Patient self-service expansion และ clinical workflows ยัง deferred
+- Phase 7B.0 Screening working prototype implement แล้วสำหรับ relationship-scoped Screening history, server-side PAM + PROMs + Confidence validation/scoring, atomic persistence, retry-safe submission, audit และ historical detail; Screening result ไม่สร้าง Goal Plan อัตโนมัติ และ prototype definitions ยังไม่ใช่ข้อกำหนดทางคลินิกสุดท้าย
+- Phase 8B.0 Goals & Activity Plan working prototype implement แล้วภายใต้ Patient detail สำหรับดู history, สร้าง Goal Plan รอบใหม่, เลือก Primary Goal, configure weekly activities, review และดู immutable detail โดยใช้ Screening ได้เฉพาะ context/default ที่ผู้ใช้ review และ submit เอง
 
 ## Capabilities and Constraints
 
@@ -52,6 +54,8 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Dashboard แสดงเฉพาะข้อมูล account/context ที่ยืนยันแล้วและข้อความว่างอย่างเป็นกลางเมื่อยังไม่มี dashboard requirement; ระบบไม่สร้าง metrics หรือ clinical/operational claims สมมติ
 - Patient-only actor ที่ยังไม่มี Patient-specific module ใช้งานได้เฉพาะพื้นที่หลักแบบเป็นกลาง และระบบไม่สร้าง clinical workflow ที่ยังไม่ได้กำหนด
 - Capability vocabulary ที่ยืนยันสำหรับ Phase 6 คือ `patient:read` และ `patient:assign-osm`; `patient:update` ยัง deferred จนกว่าจะมี field-level requirements
+- Phase 8B.0 ใช้ provisional capability vocabulary `goal:read` และ `goal:plan`; active direct Hospital OWNER/MEMBER และ active OSM ที่มี exact Patient assignment เข้าถึงได้ตาม PatientHospitalRelationship scope ส่วน PATIENT และ Platform ADMIN ยังไม่มี routine Goal access; policy นี้ใช้สำหรับ requirement validation และยังรอ customer confirmation
+- Phase 8B.0 เก็บ Goal Plan เป็น immutable rounds (`PatientGoalPlan` + `PatientGoalItem`) พร้อม source template key/version, optional Screening reference, bounded retry nonce และ atomic `goal_plan.created` audit; ไม่มี edit/delete/correction/adherence/progress หรือ clinical recommendation
 - Hospital Master เริ่มต้นมี 78 canonical records จาก approved normalized artifact; JSON seed เป็น source ของ controlled reference data และไม่ bind กับ external provider
 - Submit ทำให้ applicant เป็น `PROVISIONED` และ application เป็น `PENDING`; approval เท่านั้นจึง activate Hospital/User และสร้าง `HOSPITAL + OWNER`
 - UI ต้องเรียบง่ายและไม่สร้าง dashboard หรือ operational workflow ที่ยังไม่มี requirement
