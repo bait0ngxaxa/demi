@@ -390,7 +390,7 @@ PatientHospitalRelationship
 | --- | --- | --- |
 | Screening / assessment event | Required if Screening is accepted; one event per submission | **PROPOSED MVP CONTRACT** |
 | Question set | One explicitly approved PAM/PROMs set only; no builder | **OWNER CONFIRMATION REQUIRED** |
-| Question set version | Required to reconstruct the exact questionnaire used | **PROPOSED MVP CONTRACT** |
+| Question set version | Recommended to reconstruct the exact questionnaire used | **PROPOSED MVP CONTRACT** |
 | Question | Fixed definitions keyed by the approved version; may live in trusted code/seed data rather than a generic editor | **PROPOSED MVP CONTRACT** |
 | Response | Required raw validated answers; unknown, duplicate, missing, and out-of-range answers fail validation | **PROPOSED MVP CONTRACT** |
 | Calculated result | Required only after the scoring rule is approved; persisted from server calculation | **PROPOSED MVP CONTRACT** |
@@ -520,15 +520,16 @@ The service must:
 
 ### 11.2 Minimal versioning
 
-**PROPOSED MVP CONTRACT:** Historical results must retain enough information to
-answer both questions:
+**PROPOSED MVP CONTRACT:** To preserve reproducibility of historical Screening
+results, the recommended MVP contract is to retain enough information to answer
+both questions:
 
 ```text
 Which question wording/answer definition was used?
 Which scoring rule was applied?
 ```
 
-The smallest understandable mechanism is:
+The recommended, smallest understandable contract is:
 
 - one stable question-set key and explicit `questionSetVersion`;
 - one explicit `scoringVersion`;
@@ -541,9 +542,10 @@ There is no need for a generic questionnaire builder, rules engine, FHIR
 terminology service, event-sourcing model, or external clinical terminology
 system.
 
-Whether the owner accepts the observed legacy questionnaire and formula as
-version `1` is **OWNER CONFIRMATION REQUIRED**. A version number must not make an
-unapproved formula authoritative.
+Owner confirmation is required before this becomes the accepted implementation
+contract. Whether the owner accepts the observed legacy questionnaire and
+formula as version `1` is also **OWNER CONFIRMATION REQUIRED**. A version number
+must not make an unapproved questionnaire or scoring formula authoritative.
 
 ## 12. Screening lifecycle and history
 
@@ -727,12 +729,15 @@ notification, Goal creation, or unrelated read belongs inside this transaction.
 ### 17.2 Retry and duplicate submission
 
 Screenings are legitimately repeatable over time, so deduplicating by Patient,
-score, or timestamp would be unsafe. **PROPOSED MVP CONTRACT:** the future
-submission operation must bind a bounded request idempotency key to the actor,
-target relationship, and operation, or return a safe conflict for a repeated
-request. It must not create duplicate events merely because a browser retries
-the same submission. This is a narrow Screening submission concern, not a
-generic idempotency platform.
+score, or timestamp would be unsafe. **PROPOSED MVP CONTRACT:** the submission
+boundary must distinguish an accidental retry of an already accepted request
+from a deliberate new assessment. An accidental retry of the same submission
+must not silently create a second assessment event; a deliberate new assessment
+later remains a valid new Screening event.
+
+The exact retry-protection mechanism is an implementation decision for Phase
+7B. A bounded idempotency key is one acceptable option, but it is not an
+owner-level business decision and Phase 7A does not require that mechanism.
 
 ### 17.3 Amendment/review
 
@@ -861,7 +866,7 @@ not silent answers.
 | 16 | What result/details may OSM see? | OSM assignment is operational only; no clinical projection policy exists. | Legacy OSM sees broad Patient detail and Screening content through role check. | Least privilege: result summary only until raw responses/narrative visibility is approved. | OSM may see more health data than required for field work. | Define OSM history/detail projection and redaction. |
 | 17 | What result/details may Hospital users see? | Direct Patient read does not imply clinical read. Profession authority is unresolved. | Legacy Hospital-like roles see full Screening responses and profile details. | Minimum result/status/date/conductor projection; raw responses only after explicit approval. | Hospital MEMBER or profession may receive excessive or insufficient clinical data. | Define OWNER/MEMBER/profession-specific projections. |
 | 18 | Should routine Screening reads be audited? | Existing B6.1/B6.2 routine reads are not automatically audited; mutations are audited. | Legacy code logs browser debug details and does not implement bounded application audit. | Do not add read audit automatically; audit submission/amend/review state changes. | Under-auditing may violate governance; over-auditing may create sensitive access logs and cost. | Confirm read-audit requirement, metadata, retention, and access. |
-| 19 | Must historical results preserve question/scoring versions? | Reproducibility is required for health-related historical results; legacy has no version fields. | Questions are loaded by active type/order and history recomputes a total from current response rows. | **Require recoverable `questionSetVersion` and `scoringVersion`**. | A later question/formula change can make old results impossible to explain. | Confirm retention and whether controlled code/seed definitions are sufficient. |
+| 19 | Should the first Screening MVP preserve explicit question-set and scoring version identifiers for historical reproducibility? | Reproducibility is a proposed engineering/domain goal for health-related historical results; legacy has no version fields. | Questions are loaded by active type/order and history recomputes a total from current response rows. | **Yes — PROPOSED MVP CONTRACT:** retain recoverable `questionSetVersion` and `scoringVersion` using controlled immutable definitions, subject to owner acceptance. | A later question/formula change can make old results impossible to explain. | Confirm whether to accept the proposed reproducibility contract and whether controlled code/seed definitions are sufficient. |
 | 20 | Is separate `occurredAt` / backdating required? | Legacy uses `screening_date`; rewrite has no event-time contract. | Client writes a database date and does not expose an explicit occurrence workflow. | Use server `submittedAt` as the MVP assessment time; do not trust arbitrary client time. | Field assessments entered later may need their actual occurrence time, or backdating may falsify history. | Confirm whether a validated occurred-at field and correction policy are needed. |
 
 ## 21. Proposed Phase 7B slices
@@ -881,7 +886,7 @@ Implement only after the owner confirms:
 - question-set/scoring version strategy;
 - no-draft versus draft lifecycle;
 - result visibility and sensitive-data projection;
-- audit events and duplicate-submission/idempotency behavior.
+- audit events and any review/correction state changes.
 
 Scope after approval:
 
@@ -961,9 +966,11 @@ small, reversible contract compared with reconstructing old results later.
 ### 23.4 Duplicate event risk
 
 A Screening is repeatable by design, so a database uniqueness rule on Patient
-and date would be wrong. The future service needs a bounded request-level
-idempotency behavior that distinguishes a retried submission from a new
-assessment.
+and date would be wrong. The future service must enforce the proposed safety
+invariant that an accidental retry of an already accepted submission does not
+create a second assessment event, while a deliberate new assessment remains
+valid. The retry-protection mechanism is a Phase 7B implementation choice; a
+bounded request idempotency key is one acceptable option.
 
 ### 23.5 Sensitive projection risk
 
@@ -976,7 +983,8 @@ rendering raw responses or narratives.
 
 The proposed first slice uses server submission time and one Hospital context.
 Backdated field assessments, offline capture, drafts, review, and amendments
-would change lifecycle and idempotency semantics and must be explicitly added.
+would change lifecycle and retry-protection behavior and must be explicitly
+added.
 
 ### 23.7 ADR and documentation decision
 
@@ -1017,7 +1025,7 @@ Phase 7B is **not implementation-ready**. The exact blockers are:
 5. Immediate-final versus review-gated submission, and whether correction is needed.
 6. If correction is needed, amendment/revision semantics and authority.
 7. Approved Hospital/OSM result and response visibility.
-8. Confirmation that version identifiers and server-defined question/scoring definitions are required and sufficient.
+8. Acceptance of the proposed minimal question/scoring versioning contract and confirmation that server-defined question/scoring definitions are sufficient.
 
 Measurements, Goals/Care Plans, automatic side effects, Patient self-service,
 Admin routine operation, network scope, and generic clinical infrastructure are
