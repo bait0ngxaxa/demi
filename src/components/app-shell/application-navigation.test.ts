@@ -60,6 +60,7 @@ describe("application navigation projection", () => {
 
     expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
     expect(labels).toContain("เปิดใช้งานบัญชีผู้ป่วย");
+    expect(labels).toContain("รายชื่อผู้ป่วย");
     expect(labels).not.toContain("จัดการบุคลากร");
   });
 
@@ -97,7 +98,14 @@ describe("application navigation projection", () => {
     );
 
     expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
+    expect(labels).not.toContain("รายชื่อผู้ป่วย");
     expect(labels).not.toContain("เปิดใช้งานบัญชีผู้ป่วย");
+  });
+
+  it("does not show Patient Directory navigation to Platform ADMIN", () => {
+    const labels = navigationLabels(actor({ roles: [Role.ADMIN] }));
+
+    expect(labels).not.toContain("รายชื่อผู้ป่วย");
   });
 
   it("omits unavailable groups instead of rendering them empty", () => {

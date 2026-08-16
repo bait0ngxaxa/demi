@@ -29,7 +29,7 @@ DEMI เป็นระบบสำหรับงานบริการสุ
 - Fresh environment ใช้ trusted interactive `npm run admin:bootstrap` เพื่อสร้าง Platform `ADMIN` คนแรก; ไม่มี public admin signup และ target environment มาจาก credentials ของ process ปัจจุบัน
 - Phase 4A ปิด contract และ Phase 4B implement แล้วสำหรับ workforce provisioning + first-time activation MVP; Phase 5B.2 implement แล้วสำหรับ Patient first-time activation MVP; รายละเอียด implementation อยู่ที่ [Phase 4B handoff](docs/phases/PHASE_4B_WORKFORCE_PROVISIONING.md) และ [Phase 5B.2 handoff](docs/phases/PHASE_5B2_PATIENT_FIRST_TIME_ACTIVATION.md)
 - Phase 6A ปิด owner decisions สำหรับ Patient access และ assignment แล้ว: Hospital อ่าน Patient ได้เฉพาะ direct Hospital scope, OSM อ่านได้เฉพาะ assigned Patient scope หลังมี first-class Hospital-specific assignment, และ parent/child Hospital hierarchy ไม่ใช่ Patient authorization
-- Phase 6B.1 Patient Directory / Minimal Detail เป็น implementation-ready สำหรับ Hospital-focused slice; Phase 6B.2 OSM ↔ Patient Assignment เป็น implementation-ready หลัง B6.1; Patient profile editing, lifecycle, transfer, Patient self-service expansion และ clinical workflows ยัง deferred
+- Phase 6B.1 Patient Directory / Minimal Detail implement แล้วสำหรับ Hospital-focused slice โดยใช้ `patient:read`, direct Hospital scope, bounded search/pagination และ minimal projection; Phase 6B.2 OSM ↔ Patient Assignment เป็น implementation-ready หลัง B6.1; Patient profile editing, lifecycle, transfer, Patient self-service expansion และ clinical workflows ยัง deferred
 
 ## Capabilities and Constraints
 

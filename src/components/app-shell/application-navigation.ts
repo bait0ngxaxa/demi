@@ -7,6 +7,7 @@ import {
   HOSPITAL_ONBOARDING_CAPABILITIES,
 } from "@/modules/hospital-onboarding/policies/hospital-onboarding-policy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
   hasDirectHospitalProvisioningScope,
   hasOsmHospitalProvisioningScope,
@@ -46,6 +47,12 @@ function canActivatePatients(actor: ActorContext): boolean {
   );
 }
 
+function canReadPatients(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    hasDirectHospitalPatientReadScope(actor, hospitalId),
+  );
+}
+
 export function projectApplicationNavigation(
   actor: ActorContext,
 ): readonly ApplicationNavigationGroup[] {
@@ -64,6 +71,14 @@ export function projectApplicationNavigation(
   }
 
   const patientItems = [];
+
+  if (canReadPatients(actor)) {
+    patientItems.push({
+      href: "/app/patients",
+      label: "รายชื่อผู้ป่วย",
+      match: "exact" as const,
+    });
+  }
 
   if (canProvisionPatients(actor)) {
     patientItems.push({
