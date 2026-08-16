@@ -43,6 +43,7 @@ let actorSequence = 0;
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();

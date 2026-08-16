@@ -88,6 +88,9 @@ model User {
   workforceActivationsCreated WorkforceActivation[] @relation("WorkforceActivationCreator")
   patientActivations PatientActivation[] @relation("PatientActivationTarget")
   patientActivationsCreated PatientActivation[] @relation("PatientActivationCreator")
+  patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
+  patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
+  patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -161,10 +164,29 @@ model PatientHospitalRelationship {
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  osmAssignments PatientOsmAssignment[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
+}
+
+model PatientOsmAssignment {
+  id                            String    @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String    @db.Uuid
+  osmUserId                     String    @db.Uuid
+  assignedByUserId              String    @db.Uuid
+  createdAt                     DateTime  @default(now())
+  endedAt                       DateTime?
+  endedByUserId                 String?   @db.Uuid
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  osmUser                     User                       @relation("PatientOsmAssignments", fields: [osmUserId], references: [id], onDelete: Restrict)
+  assignedByUser              User                       @relation("PatientOsmAssignmentsCreated", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+  endedByUser                 User?                      @relation("PatientOsmAssignmentsEnded", fields: [endedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientHospitalRelationshipId, createdAt])
+  @@index([osmUserId, endedAt])
 }
 
 model PatientActivation {

@@ -9,6 +9,20 @@ export const PATIENT_READ_CAPABILITY = "patient:read" as const;
 
 export type PatientReadCapability = typeof PATIENT_READ_CAPABILITY;
 
+export type OsmAssignedPatientReadPolicyDecision =
+  | {
+      allowed: true;
+      reason: "active_osm_actor";
+    }
+  | {
+      allowed: false;
+      reason:
+        | "missing_actor"
+        | "invalid_capability"
+        | "osm_role_required"
+        | "active_osm_hospital_scope_required";
+    };
+
 export type PatientReadPolicyDecision =
   | {
       allowed: true;
@@ -82,6 +96,46 @@ export function assertPatientReadPolicy(input: {
   targetHospitalId: string;
 }): void {
   const decision = decidePatientReadPolicy(input);
+
+  if (!decision.allowed) {
+    throw new ForbiddenError();
+  }
+}
+
+export function decideOsmAssignedPatientReadPolicy(input: {
+  actor: ActorContext | null | undefined;
+  capability: unknown;
+}): OsmAssignedPatientReadPolicyDecision {
+  if (!input.actor) {
+    return { allowed: false, reason: "missing_actor" };
+  }
+
+  if (input.capability !== PATIENT_READ_CAPABILITY) {
+    return { allowed: false, reason: "invalid_capability" };
+  }
+
+  if (!input.actor.roles.includes(Role.OSM)) {
+    return { allowed: false, reason: "osm_role_required" };
+  }
+
+  if (
+    !input.actor.osmHospitalRelationships.some(
+      (relationship) =>
+        relationship.status === MembershipStatus.ACTIVE &&
+        relationship.hospitalStatus === HospitalStatus.ACTIVE,
+    )
+  ) {
+    return { allowed: false, reason: "active_osm_hospital_scope_required" };
+  }
+
+  return { allowed: true, reason: "active_osm_actor" };
+}
+
+export function assertOsmAssignedPatientReadPolicy(input: {
+  actor: ActorContext | null | undefined;
+  capability: PatientReadCapability;
+}): void {
+  const decision = decideOsmAssignedPatientReadPolicy(input);
 
   if (!decision.allowed) {
     throw new ForbiddenError();

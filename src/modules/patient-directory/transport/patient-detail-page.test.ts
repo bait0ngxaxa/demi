@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 
 import PatientDetailPage from "../../../../app/app/patients/[relationshipId]/page";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const {
@@ -45,11 +47,49 @@ const patient = {
   hospitalNumber: "HN-001",
 };
 
+const actor = {
+  userId: "44444444-4444-4444-8444-444444444444",
+  personId: "55555555-5555-4555-8555-555555555555",
+  roles: [Role.HOSPITAL],
+  hospitalMemberships: [
+    {
+      hospitalId: patient.hospital.id,
+      membershipType: MembershipType.OWNER,
+      profession: null,
+      status: MembershipStatus.ACTIVE,
+      hospitalStatus: HospitalStatus.ACTIVE,
+    },
+  ],
+  osmHospitalRelationships: [],
+} satisfies ActorContext;
+
+function containsString(value: unknown, needle: string, seen = new Set<object>()): boolean {
+  if (typeof value === "string") {
+    return value.includes(needle);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  if (seen.has(value)) {
+    return false;
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((item) => containsString(item, needle, seen));
+  }
+
+  return Object.values(value).some((item) => containsString(item, needle, seen));
+}
+
 describe("Patient detail page authorization boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedConnection.mockResolvedValue(undefined);
-    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "actor" });
+    mockedGetProtectedApplicationActor.mockResolvedValue(actor);
     mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
     mockedNotFound.mockImplementation(() => {
       throw new Error("NEXT_NOT_FOUND");
@@ -69,6 +109,27 @@ describe("Patient detail page authorization boundary", () => {
       patient.patientHospitalRelationshipId,
     );
     expect(page).toBeDefined();
+  });
+
+  it("shows assignment management only for a Hospital OWNER", async () => {
+    const ownerPage = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    expect(containsString(ownerPage, "/assignment")).toBe(true);
+
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      ...actor,
+      hospitalMemberships: [
+        {
+          ...actor.hospitalMemberships[0],
+          membershipType: MembershipType.MEMBER,
+        },
+      ],
+    });
+    const memberPage = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    expect(containsString(memberPage, "/assignment")).toBe(false);
   });
 
   it("uses the safe not-found path for an inaccessible Hospital relationship", async () => {

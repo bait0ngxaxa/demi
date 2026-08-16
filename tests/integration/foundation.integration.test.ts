@@ -13,6 +13,7 @@ const prisma = getPrisma();
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.patientOsmAssignment.deleteMany();
   await prisma.workforceActivation.deleteMany();
   await prisma.osmHospitalRelationship.deleteMany();
   await prisma.hospitalOnboardingApplication.deleteMany();

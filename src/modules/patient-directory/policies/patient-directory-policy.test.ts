@@ -5,6 +5,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import {
   assertPatientReadPolicy,
+  decideOsmAssignedPatientReadPolicy,
   decidePatientReadPolicy,
   PATIENT_READ_CAPABILITY,
 } from "./patient-directory-policy";
@@ -148,6 +149,56 @@ describe("patient:read policy", () => {
         targetHospitalId: hospitalA,
       }),
     ).toEqual({ allowed: false, reason: "hospital_role_required" });
+  });
+
+  it("allows an OSM actor only at the assigned-read actor boundary", () => {
+    const actor = hospitalActor(
+      MembershipType.MEMBER,
+      null,
+      {
+        roles: [Role.OSM],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [
+          {
+            hospitalId: hospitalA,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      },
+    );
+
+    expect(
+      decideOsmAssignedPatientReadPolicy({
+        actor,
+        capability: PATIENT_READ_CAPABILITY,
+      }),
+    ).toEqual({ allowed: true, reason: "active_osm_actor" });
+  });
+
+  it("denies OSM without an active Hospital relationship", () => {
+    const actor = hospitalActor(
+      MembershipType.MEMBER,
+      null,
+      {
+        roles: [Role.OSM],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [
+          {
+            hospitalId: hospitalA,
+            status: MembershipStatus.SUSPENDED,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      },
+    );
+
+    expect(
+      decideOsmAssignedPatientReadPolicy({
+        actor,
+        capability: PATIENT_READ_CAPABILITY,
+      }),
+    ).toEqual({ allowed: false, reason: "active_osm_hospital_scope_required" });
   });
 
   it("fails closed for an invalid capability and missing target", () => {

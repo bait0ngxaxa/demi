@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, Role } from "@prisma/client";
 
 import {
   decideHospitalOnboardingPolicy,
@@ -53,6 +53,16 @@ function canReadPatients(actor: ActorContext): boolean {
   );
 }
 
+function canReadAssignedPatients(actor: ActorContext): boolean {
+  return (
+    actor.roles.includes(Role.OSM) &&
+    actor.osmHospitalRelationships.some(
+      ({ status, hospitalStatus }) =>
+        status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE,
+    )
+  );
+}
+
 export function projectApplicationNavigation(
   actor: ActorContext,
 ): readonly ApplicationNavigationGroup[] {
@@ -71,6 +81,14 @@ export function projectApplicationNavigation(
   }
 
   const patientItems = [];
+
+  if (canReadAssignedPatients(actor)) {
+    patientItems.push({
+      href: "/app/patients/assigned",
+      label: "ผู้ป่วยที่รับผิดชอบ",
+      match: "exact" as const,
+    });
+  }
 
   if (canReadPatients(actor)) {
     patientItems.push({

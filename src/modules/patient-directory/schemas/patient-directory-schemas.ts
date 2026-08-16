@@ -47,7 +47,36 @@ export const patientDirectoryQuerySchema = z
     }
   });
 
+export const patientAssignedDirectoryQuerySchema = z
+  .object({
+    lookupType: patientDirectoryLookupTypeSchema,
+    value: optionalLookupValueSchema,
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .refine(Number.isSafeInteger, "Page must be a safe integer"),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.lookupType === "HOSPITAL_NUMBER" &&
+      input.value !== undefined &&
+      input.value.length > PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH
+    ) {
+      context.addIssue({
+        code: "too_big",
+        maximum: PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
+        origin: "string",
+        inclusive: true,
+        path: ["value"],
+        message: "Hospital number is too long",
+      });
+    }
+  });
+
 export const patientDirectoryRelationshipIdSchema = z.uuid();
 
 export type PatientDirectoryLookupType = z.infer<typeof patientDirectoryLookupTypeSchema>;
 export type PatientDirectoryQueryInput = z.infer<typeof patientDirectoryQuerySchema>;
+export type PatientAssignedDirectoryQueryInput = z.infer<typeof patientAssignedDirectoryQuerySchema>;

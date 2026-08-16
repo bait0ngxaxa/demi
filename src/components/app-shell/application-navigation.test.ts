@@ -99,7 +99,25 @@ describe("application navigation projection", () => {
 
     expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
     expect(labels).not.toContain("รายชื่อผู้ป่วย");
+    expect(labels).toContain("ผู้ป่วยที่รับผิดชอบ");
     expect(labels).not.toContain("เปิดใช้งานบัญชีผู้ป่วย");
+  });
+
+  it("does not show assigned Patient navigation without an active OSM Hospital relationship", () => {
+    const labels = navigationLabels(
+      actor({
+        roles: [Role.OSM],
+        osmHospitalRelationships: [
+          {
+            hospitalId,
+            status: MembershipStatus.SUSPENDED,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }),
+    );
+
+    expect(labels).not.toContain("ผู้ป่วยที่รับผิดชอบ");
   });
 
   it("does not show Patient Directory navigation to Platform ADMIN", () => {

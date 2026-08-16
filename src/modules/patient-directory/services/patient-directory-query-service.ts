@@ -14,13 +14,17 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   assertPatientReadPolicy,
+  decideOsmAssignedPatientReadPolicy,
+  assertOsmAssignedPatientReadPolicy,
   PATIENT_READ_CAPABILITY,
 } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
   patientDirectoryQuerySchema,
   patientDirectoryRelationshipIdSchema,
+  patientAssignedDirectoryQuerySchema,
   PATIENT_DIRECTORY_PAGE_SIZE,
   type PatientDirectoryLookupType,
+  type PatientAssignedDirectoryQueryInput,
   type PatientDirectoryQueryInput,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import {
@@ -61,11 +65,23 @@ export type PatientDirectoryPage = {
   hasNextPage: boolean;
 };
 
+export type PatientAssignedDirectoryPage = {
+  items: PatientDirectoryItem[];
+  lookupType: PatientDirectoryLookupType;
+  value: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
 export type PatientDirectoryQueryDependencies = {
   database?: PatientDirectoryDatabase;
 };
 
-const patientDirectorySelect = {
+export const patientDirectorySelect = {
   id: true,
   hospitalNumber: true,
   hospital: {
@@ -87,7 +103,7 @@ const patientDirectorySelect = {
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
 
-type PatientDirectoryRecord = Prisma.PatientHospitalRelationshipGetPayload<{
+export type PatientDirectoryRecord = Prisma.PatientHospitalRelationshipGetPayload<{
   select: typeof patientDirectorySelect;
 }>;
 
@@ -134,7 +150,7 @@ function buildAuthorizedHospitalWhere(actorUserId: string): Prisma.HospitalWhere
   };
 }
 
-function buildNameWhere(value: string): Prisma.PersonWhereInput {
+export function buildNameWhere(value: string): Prisma.PersonWhereInput {
   const terms = value.split(/\s+/u).filter(Boolean);
 
   return {
@@ -166,7 +182,47 @@ function buildPatientRelationshipWhere(
   };
 }
 
-function toDisplayName(person: PatientDirectoryRecord["patientProfile"]["person"]): string {
+function buildOsmAssignedPatientRelationshipWhere(
+  actorUserId: string,
+  input?: PatientAssignedDirectoryQueryInput,
+): Prisma.PatientHospitalRelationshipWhereInput {
+  const personWhere: Prisma.PersonWhereInput = {
+    user: { roles: { some: { role: Role.PATIENT } } },
+    ...(input?.lookupType === "NAME" && input.value ? buildNameWhere(input.value) : {}),
+  };
+
+  return {
+    patientProfile: { person: personWhere },
+    hospital: {
+      status: HospitalStatus.ACTIVE,
+      osmHospitalRelationships: {
+        some: {
+          userId: actorUserId,
+          status: MembershipStatus.ACTIVE,
+          user: {
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.OSM } },
+          },
+        },
+      },
+    },
+    osmAssignments: {
+      some: {
+        osmUserId: actorUserId,
+        endedAt: null,
+        osmUser: {
+          status: UserStatus.ACTIVE,
+          roles: { some: { role: Role.OSM } },
+        },
+      },
+    },
+    ...(input?.lookupType === "HOSPITAL_NUMBER" && input.value
+      ? { hospitalNumber: input.value }
+      : {}),
+  };
+}
+
+export function toDisplayName(person: PatientDirectoryRecord["patientProfile"]["person"]): string {
   const nameParts = [person.givenName, person.familyName]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
@@ -174,7 +230,7 @@ function toDisplayName(person: PatientDirectoryRecord["patientProfile"]["person"
   return nameParts.join(" ") || "ผู้ป่วย";
 }
 
-function toPatientDirectoryItem(record: PatientDirectoryRecord): PatientDirectoryItem {
+export function toPatientDirectoryItem(record: PatientDirectoryRecord): PatientDirectoryItem {
   return {
     patientProfileId: record.patientProfile.id,
     patientHospitalRelationshipId: record.id,
@@ -294,24 +350,42 @@ export async function getPatientDirectoryDetail(
   relationshipId: unknown,
   dependencies: PatientDirectoryQueryDependencies = {},
 ): Promise<PatientDirectoryItem> {
-  assertHospitalActor(actor);
-
   const parsedRelationshipId = patientDirectoryRelationshipIdSchema.safeParse(relationshipId);
 
   if (!parsedRelationshipId.success) {
     throw new NotFoundError();
   }
 
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
+
+  if (actor.roles.includes(Role.HOSPITAL)) {
+    accessPredicates.push({ hospital: buildAuthorizedHospitalWhere(actor.userId) });
+  }
+
+  if (actor.roles.includes(Role.OSM)) {
+    const osmReadDecision = decideOsmAssignedPatientReadPolicy({
+      actor,
+      capability: PATIENT_READ_CAPABILITY,
+    });
+
+    if (osmReadDecision.allowed) {
+      accessPredicates.push(buildOsmAssignedPatientRelationshipWhere(actor.userId));
+    }
+  }
+
+  if (accessPredicates.length === 0) {
+    throw new ForbiddenError();
+  }
+
   try {
     const relationship = await getDatabase(dependencies.database).patientHospitalRelationship.findFirst({
       where: {
         id: parsedRelationshipId.data,
-        hospital: buildAuthorizedHospitalWhere(actor.userId),
-        patientProfile: {
-          person: {
-            user: { roles: { some: { role: Role.PATIENT } } },
-          },
-        },
+        OR: accessPredicates,
       },
       select: patientDirectorySelect,
     });
@@ -330,12 +404,73 @@ export async function getPatientDirectoryDetail(
   }
 }
 
+function parseAssignedDirectoryQuery(input: unknown): PatientAssignedDirectoryQueryInput {
+  const parsed = patientAssignedDirectoryQuerySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Assigned Patient directory query data is invalid");
+  }
+
+  return parsed.data;
+}
+
+export async function findAssignedPatientDirectory(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientDirectoryQueryDependencies = {},
+): Promise<PatientAssignedDirectoryPage> {
+  const parsed = parseAssignedDirectoryQuery(input);
+  assertOsmAssignedPatientReadPolicy({
+    actor,
+    capability: PATIENT_READ_CAPABILITY,
+  });
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const database = getDatabase(dependencies.database);
+    const where = buildOsmAssignedPatientRelationshipWhere(actor.userId, parsed);
+    const total = await database.patientHospitalRelationship.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / PATIENT_DIRECTORY_PAGE_SIZE));
+    const page = Math.min(parsed.page, totalPages);
+    const relationships = await database.patientHospitalRelationship.findMany({
+      where,
+      orderBy: patientDirectoryOrderBy,
+      skip: (page - 1) * PATIENT_DIRECTORY_PAGE_SIZE,
+      take: PATIENT_DIRECTORY_PAGE_SIZE,
+      select: patientDirectorySelect,
+    });
+
+    return {
+      items: relationships.map(toPatientDirectoryItem),
+      lookupType: parsed.lookupType,
+      value: parsed.value ?? "",
+      page,
+      pageSize: PATIENT_DIRECTORY_PAGE_SIZE,
+      total,
+      totalPages,
+      hasPreviousPage: page > 1,
+      hasNextPage: page < totalPages,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError || error instanceof ValidationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Assigned Patient directory could not be loaded");
+  }
+}
+
 export const patientDirectoryInternals = {
   buildAuthorizedHospitalWhere,
   buildNameWhere,
   buildPatientRelationshipWhere,
+  buildOsmAssignedPatientRelationshipWhere,
   patientDirectoryOrderBy,
   patientDirectorySelect,
+  parseAssignedDirectoryQuery,
   parseDirectoryQuery,
   toPatientDirectoryItem,
 };

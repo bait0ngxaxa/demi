@@ -10,7 +10,7 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว โดย B6.1 พร้อมเริ่ม, B6.2 พร้อมเริ่มหลัง B6.1 และ B6.3 ยัง deferred/ต้องมี requirements เพิ่มเติม
+โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว, **Phase 6B.1 Patient Directory** และ **Phase 6B.2 OSM ↔ Patient Assignment** implement แล้ว และ B6.3 ยัง deferred/ต้องมี requirements เพิ่มเติม
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -20,11 +20,11 @@ Phase 6A owner decisions are accepted. The implementation handoff is [Phase 6A P
 
 - An active `HOSPITAL` actor with a direct active `OWNER` or `MEMBER` membership may read Patients only through `PatientHospitalRelationship` rows for that same active Hospital. Profession does not change visibility.
 - Parent/child Hospital hierarchy is not Patient authorization. Parent, child, sibling, and network metadata do not expand Patient read or mutation scope.
-- OSM Patient read scope is `ASSIGNED_PATIENTS`, not Hospital-wide access. `OsmHospitalRelationship` alone is insufficient; B6.2 will use a first-class Hospital-specific assignment attached to `PatientHospitalRelationship`.
-- Patient provisioning remains valid without assignment. B6.2 assignment is optional after provisioning, is controlled by active direct Hospital `OWNER` plus `patient:assign-osm`, allows one active OSM per Patient–Hospital relationship, preserves history, and fails access immediately when the OSM or its Hospital relationship is inactive.
+- OSM Patient read scope is `ASSIGNED_PATIENTS`, not Hospital-wide access. `OsmHospitalRelationship` alone is insufficient; B6.2 uses a first-class Hospital-specific assignment attached to `PatientHospitalRelationship`.
+- Patient provisioning remains valid without assignment. B6.2 assignment is optional after provisioning, is controlled by active direct Hospital `OWNER` plus `patient:assign-osm`, allows one active OSM per Patient–Hospital relationship through a PostgreSQL partial unique index, preserves history, and fails access immediately when the OSM or its Hospital relationship is inactive.
 - Platform `ADMIN` has no routine Patient-directory access. Governance/reconciliation access, if later needed, must be separately named, scoped, audited, and authorized.
 - Phase 6B.1 is implemented as a Hospital-focused read-only slice: minimal display name/Hospital context/HN/opaque identifiers, bounded server-side name/HN search and offset pagination, stable ordering, no account/activation status by default, no clinical fields, and no Patient self-service portal. Authorization is enforced through the direct Hospital relationship predicate; OSM generic directory read and ADMIN routine read remain denied.
-- Phase 6B.2 is implementation-ready after B6.1. Phase 6B.3 profile editing, delete/restore/deactivation, transfer/Hospital change, Patient self-service expansion, and clinical workflows remain deferred or require future requirements.
+- Phase 6B.2 is implemented after B6.1 with `/app/patients/assigned` and OWNER assignment management under the existing Patient detail route. Phase 6B.3 profile editing, delete/restore/deactivation, transfer/Hospital change, Patient self-service expansion, and clinical workflows remain deferred or require future requirements.
 
 ## Phase 3A Hospital Onboarding Contract
 
