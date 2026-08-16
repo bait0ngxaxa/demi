@@ -240,6 +240,21 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
     expect(retry.roundNumber).toBe(1);
     expect(await prisma.patientGoalPlan.count({ where: { patientHospitalRelationshipId: patient.relationshipId } })).toBe(1);
     expect(await prisma.patientGoalItem.count({ where: { goalPlanId: first.goalPlanId } })).toBe(2);
+    expect(
+      await prisma.patientGoalPlan.findUnique({
+        where: { id: first.goalPlanId },
+        select: {
+          sourceScreeningAssessmentId: true,
+          items: { orderBy: { sortOrder: "asc" }, select: { activityCode: true, targetDays: true } },
+        },
+      }),
+    ).toEqual({
+      sourceScreeningAssessmentId: screening.screeningAssessmentId,
+      items: [
+        { activityCode: "stop_sweet", targetDays: 4 },
+        { activityCode: "exercise_walk", targetDays: 3 },
+      ],
+    });
     expect(await prisma.auditEvent.count({ where: { action: "goal_plan.created" } })).toBe(1);
 
     await expect(
@@ -249,11 +264,25 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
       }),
     ).rejects.toBeInstanceOf(ConflictError);
 
+    const newerScreening = await submitScreening(owner.actor, screeningInput(patient.relationshipId));
+    await expect(
+      createGoalPlan(owner.actor, {
+        ...firstInput,
+        sourceScreeningAssessmentId: newerScreening.screeningAssessmentId,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
     const second = await createGoalPlan(
       member.actor,
       goalInput(patient.relationshipId, { primaryGoalCode: "glucose" }),
     );
     expect(second.roundNumber).toBe(2);
+    expect(
+      await prisma.patientGoalPlan.findUnique({
+        where: { id: second.goalPlanId },
+        select: { sourceScreeningAssessmentId: true },
+      }),
+    ).toEqual({ sourceScreeningAssessmentId: null });
 
     const firstDetail = await getGoalPlanDetail(owner.actor, patient.relationshipId, first.goalPlanId);
     expect(firstDetail).toMatchObject({ roundNumber: 1, primaryGoalCode: "weight", primaryGoalNote: "เป้าหมายต้นแบบ" });
@@ -346,12 +375,19 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
       givenName: "สมหญิง",
       familyName: "ธุรกรรม",
     });
+    const otherPatient = await provisionPatient(owner.actor, {
+      identity: { namespace: "goals-integration", value: "patient-atomic-other" },
+      targetHospitalId: hospital.id,
+      givenName: "สมชาย",
+      familyName: "อีกคน",
+    });
+    const otherScreening = await submitScreening(owner.actor, screeningInput(otherPatient.relationshipId));
 
     await expect(
       createGoalPlan(
         owner.actor,
         goalInput(patient.relationshipId, {
-          sourceScreeningAssessmentId: randomUUID(),
+          sourceScreeningAssessmentId: otherScreening.screeningAssessmentId,
         }),
       ),
     ).rejects.toBeInstanceOf(NotFoundError);

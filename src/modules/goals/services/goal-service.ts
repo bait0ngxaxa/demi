@@ -5,12 +5,12 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { getAccessibleScreeningSummary } from "@/modules/screening/services/screening-query-service";
 import {
   ApplicationError,
   ConflictError,
   ForbiddenError,
   InfrastructureError,
-  NotFoundError,
   ValidationError,
 } from "@/shared/errors/application-error";
 
@@ -174,25 +174,21 @@ function hasSamePlanPayload(
   );
 }
 
-async function assertSourceScreeningBelongsToRelationship(
+async function assertSourceScreeningIsAccessible(
   transaction: Prisma.TransactionClient,
+  actor: ActorContext,
   input: ValidatedGoalPlan,
 ): Promise<void> {
   if (!input.sourceScreeningAssessmentId) {
     return;
   }
 
-  const source = await transaction.screeningAssessment.findFirst({
-    where: {
-      id: input.sourceScreeningAssessmentId,
-      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-    },
-    select: { id: true },
-  });
-
-  if (!source) {
-    throw new NotFoundError();
-  }
+  await getAccessibleScreeningSummary(
+    actor,
+    input.patientHospitalRelationshipId,
+    input.sourceScreeningAssessmentId,
+    { database: transaction },
+  );
 }
 
 function toSubmissionResult(input: {
@@ -224,7 +220,7 @@ async function createInTransaction(
   }
 
   const validated = validateGoalPlanInput(input, template);
-  await assertSourceScreeningBelongsToRelationship(transaction, validated);
+  await assertSourceScreeningIsAccessible(transaction, actor, validated);
 
   const existing = await transaction.patientGoalPlan.findUnique({
     where: { submissionNonce: validated.submissionNonce },
@@ -339,7 +335,7 @@ export async function createGoalPlan(
 }
 
 export const goalServiceInternals = {
-  assertSourceScreeningBelongsToRelationship,
+  assertSourceScreeningIsAccessible,
   canonicalizeItems,
   createInTransaction,
   hasSamePlanPayload,

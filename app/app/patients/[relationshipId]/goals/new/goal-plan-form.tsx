@@ -220,11 +220,10 @@ export function GoalPlanForm({
     submitGoalPlanAction,
     initialGoalPlanActionState,
   );
-  const [primaryGoalCode, setPrimaryGoalCode] = useState(template.primaryGoals[0]?.code ?? "");
+  const [primaryGoalCode, setPrimaryGoalCode] = useState("");
   const [items, setItems] = useState<FormItem[]>(() => getInitialItems(template, latestScreening));
   const [primaryGoalNote, setPrimaryGoalNote] = useState("");
   const [weeklyNote, setWeeklyNote] = useState("");
-  const [includeScreening, setIncludeScreening] = useState(Boolean(latestScreening));
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
@@ -244,7 +243,7 @@ export function GoalPlanForm({
     [template.activities],
   );
   const formComplete =
-    primaryGoalCode !== "" &&
+    template.primaryGoals.some((goal) => goal.code === primaryGoalCode) &&
     items.length > 0 &&
     items.every((item) => {
       const activity = getGoalActivity(template, item.activityCode);
@@ -302,7 +301,7 @@ export function GoalPlanForm({
         <input
           name="sourceScreeningAssessmentId"
           type="hidden"
-          value={includeScreening ? latestScreening?.screeningAssessmentId ?? "" : ""}
+          value={latestScreening?.screeningAssessmentId ?? ""}
         />
         <input name="items" type="hidden" value={JSON.stringify(serializedItems)} />
 
@@ -351,16 +350,10 @@ export function GoalPlanForm({
               <p className="text-sm leading-6 text-text">
                 Screening ล่าสุดส่งเมื่อ {formatDate(latestScreening.submittedAt)}
               </p>
-              <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 text-sm font-semibold text-text">
-                <input
-                  checked={includeScreening}
-                  className="mt-1 h-4 w-4 accent-brand"
-                  disabled={pending}
-                  onChange={(event) => setIncludeScreening(event.target.checked)}
-                  type="checkbox"
-                />
-                <span>แนบ Screening นี้เป็นแหล่งบริบทของ Goal Plan รอบนี้</span>
-              </label>
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                Screening นี้ใช้เป็นบริบทสำหรับค่าเริ่มต้นของ Goal Plan รอบนี้
+                ผู้ใช้ยังสามารถปรับ เพิ่ม หรือนำกิจกรรมออกก่อนส่งได้ และไม่ใช่การบังคับทางคลินิก
+              </p>
             </div>
           ) : (
             <p className="mt-5 border-t border-border pt-5 text-sm leading-6 text-text-muted">

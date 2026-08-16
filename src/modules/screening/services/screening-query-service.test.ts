@@ -33,6 +33,7 @@ vi.mock("../domain/scoring", async (importOriginal) => {
 });
 
 import {
+  getLatestAccessibleScreeningSummary,
   getScreeningDetail,
   getScreeningHistory,
   type ScreeningQueryDatabase,
@@ -145,6 +146,20 @@ function createDatabase(overrides: {
 }
 
 describe("Screening query service", () => {
+  it("returns only the minimal latest summary through the Screening read boundary", async () => {
+    const { database } = createDatabase();
+
+    const summary = await getLatestAccessibleScreeningSummary(actor, relationshipId, { database });
+
+    expect(summary).toEqual({
+      screeningAssessmentId: screeningId,
+      submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+      result: { level: "L3", zone: "YELLOW" },
+    });
+    expect(summary).not.toHaveProperty("responses");
+    expect(summary).not.toHaveProperty("result.pamTotal");
+  });
+
   it("returns relationship-scoped minimal history projections", async () => {
     const { database, screeningAssessment } = createDatabase({
       records: [
@@ -222,5 +237,8 @@ describe("Screening query service", () => {
     const { database } = createDatabase({ hospitalMembership: false });
 
     await expect(getScreeningHistory(actor, relationshipId, { database })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      getLatestAccessibleScreeningSummary(actor, relationshipId, { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

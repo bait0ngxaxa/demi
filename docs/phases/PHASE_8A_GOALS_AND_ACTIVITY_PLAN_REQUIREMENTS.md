@@ -328,14 +328,23 @@ immutable version, following the Phase 7B.0 policy.
 
 ### 5.3 Screening context and default behavior
 
-- The Goals page reads the latest relationship-scoped Screening summary when
-  one exists.
+- The Goals page requests the latest relationship-scoped Screening summary
+  through the Screening module's `screening:read` policy boundary when one
+  exists. Goals does not infer Screening readability from `goal:read` or
+  `goal:plan`.
 - The latest result is context/default input only. It never creates, edits,
   archives, or invalidates a Goal Plan.
-- The form may attach the selected/latest Screening assessment ID as a
-  historical source reference; the service rechecks that it belongs to the
-  same relationship. A browser cannot attach a Screening from another Patient
-  or Hospital.
+- The form starts with no Primary Goal selected. The operator must explicitly
+  choose one of the provisional template goals before submission; the server
+  remains authoritative for membership validation.
+- When an accessible latest Screening exists, its level is used to derive the
+  initial prototype activity suggestions/default days and its assessment ID is
+  automatically retained as the Goal Plan's source context for that form
+  session. The operator may edit, add, or remove every suggested activity, but
+  cannot detach that automatically-used source in the same form session.
+- The service rechecks that a supplied source Screening is readable by the
+  actor and belongs to the exact same relationship. A browser cannot attach a
+  Screening from another Patient or Hospital.
 - A Goal Plan may be created without any Screening. This follows the legacy
   Patient Goals entry point and keeps the prototype demonstrable when no
   assessment exists. Without Screening context, no PAM-based default set is
@@ -396,6 +405,7 @@ The service revalidates:
 - target-value range, step, and exact unit where the template allows a value;
 - no target value/unit for activities that do not support one;
 - source Screening relationship, if supplied;
+- `screening:read` authorization for a supplied source Screening;
 - active actor/relationship/Hospital/assignment policy.
 
 Plan, items, and `goal_plan.created` audit event commit or roll back together.

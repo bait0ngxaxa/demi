@@ -54,27 +54,37 @@ function createDatabase(overrides: {
   detailRecord?: Record<string, unknown> | null;
   latestScreening?: Record<string, unknown> | null;
   membership?: boolean;
+  screeningMembership?: boolean;
 } = {}): GoalQueryDatabase {
+  const actorRecord = {
+    id: actorUserId,
+    personId: actor.personId,
+    status: UserStatus.ACTIVE,
+    roles: [{ role: Role.HOSPITAL }],
+    memberships: overrides.membership === false
+      ? []
+      : [
+          {
+            hospitalId,
+            membershipType: MembershipType.MEMBER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospital: { status: HospitalStatus.ACTIVE },
+          },
+        ],
+    osmHospitalRelationships: [],
+  };
+  const actorLookup = vi.fn().mockResolvedValue(actorRecord);
+
+  if (overrides.screeningMembership === false) {
+    actorLookup
+      .mockResolvedValueOnce(actorRecord)
+      .mockResolvedValueOnce({ ...actorRecord, memberships: [] });
+  }
+
   const database = {
     user: {
-      findUnique: vi.fn().mockResolvedValue({
-        id: actorUserId,
-        personId: actor.personId,
-        status: UserStatus.ACTIVE,
-        roles: [{ role: Role.HOSPITAL }],
-        memberships: overrides.membership === false
-          ? []
-          : [
-              {
-                hospitalId,
-                membershipType: MembershipType.MEMBER,
-                profession: null,
-                status: MembershipStatus.ACTIVE,
-                hospital: { status: HospitalStatus.ACTIVE },
-              },
-            ],
-        osmHospitalRelationships: [],
-      }),
+      findUnique: actorLookup,
     },
     patientHospitalRelationship: {
       findUnique: vi.fn().mockResolvedValue({
@@ -159,6 +169,14 @@ function detailRecord(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 describe("Goal Plan query service", () => {
+  it("does not treat Goal access as Screening read authority", async () => {
+    const database = createDatabase({ screeningMembership: false });
+
+    await expect(getGoalPlanOverview(actor, relationshipId, { database })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+  });
+
   it("returns a relationship-scoped newest-first history projection", async () => {
     const database = createDatabase({ goalRecords: [historyRecord()] });
 
@@ -197,6 +215,14 @@ describe("Goal Plan query service", () => {
         { activityCode: "exercise_walk", targetValue: 15, targetUnit: "minutes" },
       ],
     });
+  });
+
+  it("does not expose a historical Screening source when Screening read is denied", async () => {
+    const database = createDatabase({ detailRecord: detailRecord(), screeningMembership: false });
+
+    await expect(getGoalPlanDetail(actor, relationshipId, goalPlanId, { database })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
   });
 
   it.each([

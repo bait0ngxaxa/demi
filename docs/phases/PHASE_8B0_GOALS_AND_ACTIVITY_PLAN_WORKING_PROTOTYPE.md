@@ -19,7 +19,7 @@ Patient Detail
   → latest Screening context, if available
   → Goal Plan history
   → Create Goal Plan
-  → choose Primary Goal
+  → explicitly choose Primary Goal (no default selection)
   → select/configure weekly activities
   → review
   → submit
@@ -37,6 +37,12 @@ The UI shows the Thai prototype notice:
 Screening is never submitted as a side effect of Goal creation, and Goal
 creation is never a side effect of Screening submission.
 
+When the latest Screening is used for prototype activity suggestions, the form
+automatically preserves that assessment ID as source context. The operator can
+freely change, add, or remove suggested activities before submission; this is
+provenance retention, not clinical enforcement. If no Screening exists, the
+form starts with no suggested activities and persists a null source.
+
 ## 2. Inherited architecture and security boundaries
 
 - `PatientHospitalRelationship` is the resource boundary. Goal routes do not
@@ -51,6 +57,10 @@ creation is never a side effect of Screening submission.
   prototype. Parent/child Hospital hierarchy never widens scope.
 - Browser role, Hospital, Patient, assignment, creator, Screening, template,
   PAM, level, Zone, and derived values are not authoritative.
+- Screening context shown in Goals is requested through the Screening-owned
+  `screening:read` query boundary. Goal capability alone does not authorize
+  Screening context, and only a minimal level/Zone summary crosses the module
+  boundary.
 - UI → Server Action → application service → policy/access resolution → Prisma
   remains the implementation boundary. Prisma is not an authorization engine.
 
@@ -167,6 +177,8 @@ accepted values against the source template:
 - exact unit, finite value, range, and step alignment;
 - no value/unit for activities without a target rule;
 - source Screening belongs to the same relationship when supplied;
+- source Screening is accessible under the Screening module's `screening:read`
+  policy when supplied;
 - active actor/relationship/Hospital/assignment policy.
 
 Creation executes as one serializable operation:
@@ -227,6 +239,11 @@ available, latest Goal Plan, and bounded newest-first history. History includes
 round, created date, Primary Goal label, creator display name, item count,
 template version, and source Screening summary.
 
+History is bounded to the newest 50 rows in this prototype; the UI says
+“แสดงล่าสุดไม่เกิน 50 รอบ” and does not claim that the returned row count is the
+complete historical total. Any displayed Screening context still requires the
+Screening module's `screening:read` boundary.
+
 Detail displays Patient/Hospital, round/date/creator, Primary Goal and notes,
 activities with target days/value/unit, template key/version, and the optional
 historical Screening context. Unknown template/activity history fails closed.
@@ -242,8 +259,8 @@ Focused tests are under `src/modules/goals/`:
 
 - source template key/version, Primary Goals, activity definitions, mappings,
   and unknown-version behavior;
-- strict input, unknown/duplicate values, target-day/value/unit rules, and
-  unexpected fields;
+- strict input, unknown/duplicate values, target-day/value/unit rules,
+  unexpected fields, including empty Primary Goal selection;
 - Hospital OWNER/MEMBER, profession neutrality, wrong/inactive Hospital or
   membership, exact OSM assignment, wrong Hospital assignment, PATIENT, and
   ADMIN policy behavior;
@@ -251,7 +268,8 @@ Focused tests are under `src/modules/goals/`:
   deduplication, changed-payload conflict, deliberate new round, and bounded
   audit metadata;
 - relationship-scoped newest-first history, minimal projection, detail source
-  context, unknown historical definitions, and cross-relationship denial;
+  context, Screening read-boundary enforcement, unknown historical definitions,
+  and cross-relationship denial;
 - Server Action transport allow-list, safe errors, and no client authority
   fields.
 
@@ -259,6 +277,8 @@ PostgreSQL integration coverage is in
 `tests/integration/goals.integration.test.ts` and covers:
 
 - no automatic Goal creation from Screening;
+- Screening-derived source retention with edited activities, null source when no
+  Screening exists, and cross-relationship source rejection;
 - first round, same-nonce retry, changed-payload rejection, second round,
   historical detail, and newest-first history;
 - exact active OSM assignment and denial for another Hospital, unassigned OSM,

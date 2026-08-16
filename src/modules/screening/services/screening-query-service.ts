@@ -22,6 +22,7 @@ import {
   screeningIdSchema,
   screeningResultSchema,
   type ScreeningResponses,
+  type ScreeningResult,
   screeningResponsesSchema,
 } from "../schemas/screening-schemas";
 import {
@@ -51,6 +52,12 @@ export type ScreeningHistoryItem = {
 export type ScreeningHistory = {
   patient: ScreeningPatientSummary;
   items: ScreeningHistoryItem[];
+};
+
+export type ScreeningSummary = {
+  screeningAssessmentId: string;
+  submittedAt: Date;
+  result: Pick<ScreeningResult, "level" | "zone">;
 };
 
 export type ScreeningDetail = {
@@ -91,12 +98,22 @@ const screeningDetailSelect = {
   responses: true,
 } satisfies Prisma.ScreeningAssessmentSelect;
 
+const screeningSummarySelect = {
+  id: true,
+  submittedAt: true,
+  result: true,
+} satisfies Prisma.ScreeningAssessmentSelect;
+
 type ScreeningHistoryRecord = Prisma.ScreeningAssessmentGetPayload<{
   select: typeof screeningHistorySelect;
 }>;
 
 type ScreeningDetailRecord = Prisma.ScreeningAssessmentGetPayload<{
   select: typeof screeningDetailSelect;
+}>;
+
+type ScreeningSummaryRecord = Prisma.ScreeningAssessmentGetPayload<{
+  select: typeof screeningSummarySelect;
 }>;
 
 function getDatabase(dependencies: ScreeningQueryDependencies): ScreeningQueryDatabase {
@@ -132,6 +149,19 @@ function parsePersistedResponses(value: Prisma.JsonValue): ScreeningResponses {
   }
 
   return parsed.data;
+}
+
+function toSummary(record: ScreeningSummaryRecord): ScreeningSummary {
+  const result = parsePersistedResult(record.result);
+
+  return {
+    screeningAssessmentId: record.id,
+    submittedAt: record.submittedAt,
+    result: {
+      level: result.level,
+      zone: result.zone,
+    },
+  };
 }
 
 function toHistoryItem(record: ScreeningHistoryRecord): ScreeningHistoryItem {
@@ -174,6 +204,77 @@ function assertHistoricalDefinitions(detail: ScreeningDetailRecord): void {
 
   if (!questionSet || !scoringDefinition) {
     throw new InfrastructureError("Persisted Screening definitions are unavailable");
+  }
+}
+
+export async function getLatestAccessibleScreeningSummary(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: ScreeningQueryDependencies = {},
+): Promise<ScreeningSummary | null> {
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveScreeningAccessContext(
+      actor,
+      relationshipId,
+      SCREENING_READ_CAPABILITY,
+      database,
+    );
+    const record = await database.screeningAssessment.findFirst({
+      where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
+      orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+      select: screeningSummarySelect,
+    });
+
+    return record ? toSummary(record) : null;
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Latest Screening summary could not be loaded");
+  }
+}
+
+export async function getAccessibleScreeningSummary(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  screeningId: unknown,
+  dependencies: ScreeningQueryDependencies = {},
+): Promise<ScreeningSummary> {
+  const parsedScreeningId = screeningIdSchema.safeParse(screeningId);
+
+  if (!parsedScreeningId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveScreeningAccessContext(
+      actor,
+      relationshipId,
+      SCREENING_READ_CAPABILITY,
+      database,
+    );
+    const record = await database.screeningAssessment.findFirst({
+      where: {
+        id: parsedScreeningId.data,
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      },
+      select: screeningSummarySelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    return toSummary(record);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Screening summary could not be loaded");
   }
 }
 
@@ -279,8 +380,10 @@ export async function getScreeningDetail(
 export const screeningQueryInternals = {
   parsePersistedResponses,
   parsePersistedResult,
+  toSummary,
   toDisplayName,
   toHistoryItem,
   screeningHistorySelect,
   screeningDetailSelect,
+  screeningSummarySelect,
 };

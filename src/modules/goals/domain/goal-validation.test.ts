@@ -50,6 +50,7 @@ describe("Goal Plan validation", () => {
 
   it.each([
     ["missing primary goal", { primaryGoalCode: undefined }],
+    ["empty primary goal", { primaryGoalCode: "" }],
     ["unknown primary goal", { primaryGoalCode: "unknown" }],
     ["unknown activity", { items: [{ activityCode: "unknown", targetDays: 3 }] }],
     [

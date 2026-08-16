@@ -9,6 +9,10 @@ import {
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
+import {
+  getAccessibleScreeningSummary,
+  getLatestAccessibleScreeningSummary,
+} from "@/modules/screening/services/screening-query-service";
 
 import {
   getGoalActivity,
@@ -258,6 +262,7 @@ function toHistoryItem(record: GoalHistoryRecord): GoalHistoryItem {
 function toDetail(
   record: GoalDetailRecord,
   patient: GoalPatientSummary,
+  sourceScreening: GoalScreeningContext | null,
 ): GoalPlanDetail {
   const template = getHistoricalTemplate(record.templateKey, record.templateVersion);
   assertHistoricalItems(template, record.items);
@@ -274,7 +279,7 @@ function toDetail(
     weeklyNote: record.weeklyNote,
     templateKey: record.templateKey,
     templateVersion: record.templateVersion,
-    sourceScreening: parseScreeningContext(record.sourceScreeningAssessment),
+    sourceScreening,
     items: record.items.map((item) => {
       const activity = getGoalActivity(template, item.activityCode);
 
@@ -296,20 +301,11 @@ function toDetail(
 }
 
 async function getLatestScreening(
+  actor: ActorContext | null | undefined,
   database: GoalQueryDatabase,
   relationshipId: string,
 ): Promise<GoalScreeningContext | null> {
-  const record = await database.screeningAssessment.findFirst({
-    where: { patientHospitalRelationshipId: relationshipId },
-    orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
-    select: {
-      id: true,
-      submittedAt: true,
-      result: true,
-    },
-  });
-
-  return parseScreeningContext(record);
+  return getLatestAccessibleScreeningSummary(actor, relationshipId, { database });
 }
 
 export async function getGoalPlanOverview(
@@ -325,6 +321,11 @@ export async function getGoalPlanOverview(
       GOAL_READ_CAPABILITY,
       database,
     );
+    const latestScreening = await getLatestScreening(
+      actor,
+      database,
+      access.patient.patientHospitalRelationshipId,
+    );
     const records = await database.patientGoalPlan.findMany({
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
       orderBy: [{ roundNumber: "desc" }],
@@ -334,10 +335,7 @@ export async function getGoalPlanOverview(
 
     return {
       patient: access.patient,
-      latestScreening: await getLatestScreening(
-        database,
-        access.patient.patientHospitalRelationshipId,
-      ),
+      latestScreening,
       latest: records[0] ? toHistoryItem(records[0]) : null,
       items: records.map(toHistoryItem),
     };
@@ -364,13 +362,15 @@ export async function getGoalPlanCreateContext(
       database,
     );
     const template = getHistoricalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
+    const latestScreening = await getLatestScreening(
+      actor,
+      database,
+      access.patient.patientHospitalRelationshipId,
+    );
 
     return {
       patient: access.patient,
-      latestScreening: await getLatestScreening(
-        database,
-        access.patient.patientHospitalRelationshipId,
-      ),
+      latestScreening,
       template,
     };
   } catch (error: unknown) {
@@ -415,7 +415,16 @@ export async function getGoalPlanDetail(
       throw new NotFoundError();
     }
 
-    return toDetail(record, access.patient);
+    const sourceScreening = record.sourceScreeningAssessment
+      ? await getAccessibleScreeningSummary(
+          actor,
+          parsedRelationshipId.data,
+          record.sourceScreeningAssessment.id,
+          { database },
+        )
+      : null;
+
+    return toDetail(record, access.patient, sourceScreening);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

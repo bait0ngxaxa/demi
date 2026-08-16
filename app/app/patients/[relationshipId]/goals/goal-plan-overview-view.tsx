@@ -196,9 +196,8 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="goal-plan-history-heading">
                 ประวัติ Goal Plan
               </h2>
-              <p className="mt-1 text-sm text-text-muted">รายการแสดงสูงสุด 50 รอบ เรียงใหม่ไปเก่า</p>
+              <p className="mt-1 text-sm text-text-muted">แสดงล่าสุดไม่เกิน 50 รอบ เรียงใหม่ไปเก่า</p>
             </div>
-            <p className="text-sm text-text-muted">ทั้งหมด {overview.items.length} รายการ</p>
           </div>
 
           {overview.items.length > 0 ? (
