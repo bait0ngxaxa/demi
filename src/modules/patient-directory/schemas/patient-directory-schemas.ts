@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const PATIENT_DIRECTORY_PAGE_SIZE = 25;
-export const PATIENT_DIRECTORY_MAX_PAGE = 1_000;
 export const PATIENT_DIRECTORY_NAME_MAX_LENGTH = 120;
 export const PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH = 64;
 
@@ -24,7 +23,11 @@ export const patientDirectoryQuerySchema = z
     targetHospitalId: z.uuid(),
     lookupType: patientDirectoryLookupTypeSchema,
     value: optionalLookupValueSchema,
-    page: z.coerce.number().int().min(1).max(PATIENT_DIRECTORY_MAX_PAGE),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .refine(Number.isSafeInteger, "Page must be a safe integer"),
   })
   .strict()
   .superRefine((input, context) => {

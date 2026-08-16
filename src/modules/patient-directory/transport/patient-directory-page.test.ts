@@ -65,6 +65,9 @@ describe("Patient Directory page Hospital context", () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "actor" });
     mockedListPatientDirectoryScopes.mockResolvedValue(scopes);
     mockedFindPatientDirectory.mockResolvedValue(result);
+    mockedRedirect.mockImplementation((location: string): never => {
+      throw new Error(`REDIRECT:${location}`);
+    });
   });
 
   it("uses the server-validated Hospital as the workspace key and query context", async () => {
@@ -79,19 +82,34 @@ describe("Patient Directory page Hospital context", () => {
     );
   });
 
-  it("does not pass a forged Hospital context to the read service", async () => {
-    const page = await PatientDirectoryPage({
-      searchParams: Promise.resolve({ hospitalId: "33333333-3333-4333-8333-333333333333" }),
-    });
+  it("uses the first authorized Hospital when no Hospital context is provided", async () => {
+    const page = await PatientDirectoryPage({ searchParams: Promise.resolve({}) });
 
     expect(page.key).toBe(scopes[0].hospitalId);
     expect(mockedFindPatientDirectory).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
     );
+  });
+
+  it("redirects an invalid explicit Hospital context without querying another Hospital", async () => {
+    const forgedHospitalId = "33333333-3333-4333-8333-333333333333";
+
+    await expect(
+      PatientDirectoryPage({
+        searchParams: Promise.resolve({ hospitalId: forgedHospitalId }),
+      }),
+    ).rejects.toThrow("REDIRECT:/app/patients");
+
+    expect(mockedRedirect).toHaveBeenCalledWith("/app/patients");
+    expect(mockedFindPatientDirectory).not.toHaveBeenCalled();
     expect(mockedFindPatientDirectory).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ targetHospitalId: "33333333-3333-4333-8333-333333333333" }),
+      expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
+    );
+    expect(mockedFindPatientDirectory).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetHospitalId: forgedHospitalId }),
     );
   });
 

@@ -1,15 +1,65 @@
-import { describe, expect, it } from "vitest";
+import {
+  HospitalStatus,
+  MembershipStatus,
+  MembershipType,
+  Role,
+} from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   PATIENT_DIRECTORY_PAGE_SIZE,
   patientDirectoryQuerySchema,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 
-import { patientDirectoryInternals } from "./patient-directory-query-service";
+import {
+  findPatientDirectory,
+  patientDirectoryInternals,
+  type PatientDirectoryDatabase,
+} from "./patient-directory-query-service";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
 const patientProfileId = "33333333-3333-4333-8333-333333333333";
+
+const directoryActor: ActorContext = {
+  userId: "44444444-4444-4444-8444-444444444444",
+  personId: "55555555-5555-4555-8555-555555555555",
+  roles: [Role.HOSPITAL],
+  hospitalMemberships: [
+    {
+      hospitalId,
+      membershipType: MembershipType.MEMBER,
+      profession: null,
+      status: MembershipStatus.ACTIVE,
+      hospitalStatus: HospitalStatus.ACTIVE,
+    },
+  ],
+  osmHospitalRelationships: [],
+};
+
+function createDirectoryDatabase(total: number): {
+  database: PatientDirectoryDatabase;
+  count: ReturnType<typeof vi.fn>;
+  findMany: ReturnType<typeof vi.fn>;
+} {
+  const count = vi.fn().mockResolvedValue(total);
+  const findMany = vi.fn().mockResolvedValue([]);
+
+  return {
+    database: {
+      hospital: {
+        findFirst: vi.fn().mockResolvedValue({ id: hospitalId, name: "โรงพยาบาลทดสอบ" }),
+      },
+      patientHospitalRelationship: {
+        count,
+        findMany,
+      },
+    } as unknown as PatientDirectoryDatabase,
+    count,
+    findMany,
+  };
+}
 
 describe("Patient directory query boundary", () => {
   it("normalizes bounded query input and defaults an empty lookup value", () => {
@@ -36,7 +86,7 @@ describe("Patient directory query boundary", () => {
     ).toBe(true);
   });
 
-  it("rejects unbounded page/search input and arbitrary sort values", () => {
+  it("rejects unbounded search input and unsafe page values while accepting large safe pages", () => {
     expect(
       patientDirectoryQuerySchema.safeParse({
         targetHospitalId: hospitalId,
@@ -58,7 +108,15 @@ describe("Patient directory query boundary", () => {
         targetHospitalId: hospitalId,
         lookupType: "NAME",
         value: "สมชาย",
-        page: String(1_001),
+        page: String(Number.MAX_SAFE_INTEGER),
+      }).success,
+    ).toBe(true);
+    expect(
+      patientDirectoryQuerySchema.safeParse({
+        targetHospitalId: hospitalId,
+        lookupType: "NAME",
+        value: "สมชาย",
+        page: String(Number.MAX_SAFE_INTEGER + 1),
       }).success,
     ).toBe(false);
     expect(
@@ -111,6 +169,65 @@ describe("Patient directory query boundary", () => {
       { patientProfile: { person: { familyName: "asc" } } },
       { id: "asc" },
     ]);
+  });
+
+  it("keeps next-page transitions valid beyond the former 1,000-page ceiling", async () => {
+    const { database, findMany } = createDirectoryDatabase(30_000);
+
+    const result = await findPatientDirectory(
+      directoryActor,
+      {
+        targetHospitalId: hospitalId,
+        lookupType: "NAME",
+        value: "",
+        page: "1000",
+      },
+      { database },
+    );
+
+    expect(result.totalPages).toBe(1_200);
+    expect(result.page).toBe(1_000);
+    expect(result.hasNextPage).toBe(true);
+    expect(
+      patientDirectoryQuerySchema.safeParse({
+        targetHospitalId: hospitalId,
+        lookupType: result.lookupType,
+        value: result.value,
+        page: result.page + 1,
+      }).success,
+    ).toBe(true);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: (1_000 - 1) * PATIENT_DIRECTORY_PAGE_SIZE,
+        take: PATIENT_DIRECTORY_PAGE_SIZE,
+      }),
+    );
+  });
+
+  it("clamps a very large safe page before calculating the database offset", async () => {
+    const { database, count, findMany } = createDirectoryDatabase(30_000);
+
+    const result = await findPatientDirectory(
+      directoryActor,
+      {
+        targetHospitalId: hospitalId,
+        lookupType: "NAME",
+        value: "",
+        page: String(Number.MAX_SAFE_INTEGER),
+      },
+      { database },
+    );
+
+    expect(count).toHaveBeenCalledOnce();
+    expect(result.page).toBe(result.totalPages);
+    expect(result.totalPages).toBe(1_200);
+    expect(result.hasNextPage).toBe(false);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: (1_200 - 1) * PATIENT_DIRECTORY_PAGE_SIZE,
+        take: PATIENT_DIRECTORY_PAGE_SIZE,
+      }),
+    );
   });
 
   it("projects only the accepted minimal detail fields", () => {

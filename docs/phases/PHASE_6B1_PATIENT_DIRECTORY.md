@@ -53,8 +53,9 @@ active application User
 ```
 
 `/app/patients` ใช้ Hospital เป็น local screen context ผ่าน query parameter ที่ถูก
-เลือกใหม่จาก server-resolved scopes เท่านั้น หากมี forged/unknown Hospital ID ระบบจะ
-กลับไปใช้ scope ที่อนุญาต ไม่ใช้ค่าดังกล่าว query Patient
+ตรวจสอบกับ server-resolved scopes เท่านั้น หากไม่มี Hospital ID จะใช้ scope แรกที่อนุญาต
+เป็นค่าเริ่มต้น แต่หากมี forged/unknown Hospital ID ระบบจะ redirect ไปยัง canonical
+`/app/patients` โดยไม่ query Patient ใน request เดิม
 
 UI เป็น Thai-first, responsive และอยู่ใน application shell เดิม มี:
 
@@ -94,7 +95,10 @@ Prisma `select` ไม่ join หรือคืน `identityKeyHash`, raw Nati
 - HN: exact match ของ `PatientHospitalRelationship.hospitalNumber` และอยู่ใน
   authorized Hospital เสมอ; duplicate HN คืนได้หลาย candidate โดยไม่เดา identity
 - Input search สูงสุด 120 ตัวอักษร; HN สูงสุด 64 ตัวอักษร
-- page size คงที่ 25 รายการ และ page number bounded สูงสุด 1,000
+- page size คงที่ 25 รายการ และ page number ต้องเป็น positive safe integer
+- requested page จะถูก clamp หลังนับ authorized result set แล้วให้อยู่ใน `totalPages`
+  จริง จึงไม่เกิด next-page link ที่ schema ปฏิเสธ และ offset ไม่ได้ถูกกำหนดโดยค่า
+  page ที่เกินขอบเขตของ result set
 - ใช้ offset pagination เพราะเหมาะกับ bounded MVP UI และไม่ต้องเพิ่ม cursor state หรือ
   schema ใหม่
 - ordering คงที่ด้วย `givenName ASC`, `familyName ASC`, `PatientHospitalRelationship.id ASC`
@@ -137,8 +141,8 @@ Validation commands ที่ใช้สำหรับ handoff ทั้งห
 npx tsc --noEmit                         PASS
 npm run lint                             PASS
 npm test -- src/modules/patient-directory src/components/app-shell/application-navigation.test.ts
-  5 files / 31 tests                    PASS
-npm test                                 42 files / 212 tests PASS
+  5 files / 34 tests                    PASS
+npm test                                 42 files / 215 tests PASS
 npx prisma validate                      PASS
 npm run test:integration                 7 files / 79 tests PASS
 ```

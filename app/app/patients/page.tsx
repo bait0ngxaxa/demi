@@ -81,7 +81,14 @@ export default async function PatientDirectoryPage({
   const params = await searchParams;
   const requestedHospitalId = firstSearchParam(params.hospitalId);
   const selectedScope =
-    scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId) ?? scopes[0];
+    requestedHospitalId === undefined
+      ? scopes[0]
+      : scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId);
+
+  if (!selectedScope) {
+    redirect("/app/patients");
+  }
+
   const requestedLookupType = firstSearchParam(params.lookupType);
   const lookupType: PatientDirectoryLookupType =
     requestedLookupType === "HOSPITAL_NUMBER" ? "HOSPITAL_NUMBER" : "NAME";
