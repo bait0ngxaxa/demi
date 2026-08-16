@@ -181,11 +181,3 @@ export async function submitScreeningAction(
     return { status: "ERROR", ...mapScreeningError(error) };
   }
 }
-
-export const screeningTransportInternals = {
-  buildAnswerMap,
-  buildSubmissionInput,
-  containsUnexpectedFields,
-  getAnswerValue,
-  mapScreeningError,
-};

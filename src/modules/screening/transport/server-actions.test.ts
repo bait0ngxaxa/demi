@@ -17,6 +17,7 @@ vi.mock("../services/screening-service", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
 
 import { initialScreeningActionState } from "./action-state";
+import * as serverActions from "./server-actions";
 import { submitScreeningAction } from "./server-actions";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
@@ -63,6 +64,11 @@ describe("Screening Server Action", () => {
         zone: "YELLOW",
       },
     });
+  });
+
+  it("exports only async Server Action functions", () => {
+    expect(Object.keys(serverActions)).toEqual(["submitScreeningAction"]);
+    expect(serverActions.submitScreeningAction.constructor.name).toBe("AsyncFunction");
   });
 
   it("passes only raw validated answers and opaque references to the service", async () => {
