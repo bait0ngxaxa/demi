@@ -53,6 +53,7 @@ function createDatabase(overrides: {
   goalRecords?: Array<Record<string, unknown>>;
   detailRecord?: Record<string, unknown> | null;
   latestScreening?: Record<string, unknown> | null;
+  screeningRecords?: Array<Record<string, unknown>>;
   membership?: boolean;
   screeningMembership?: boolean;
 } = {}): GoalQueryDatabase {
@@ -74,13 +75,13 @@ function createDatabase(overrides: {
         ],
     osmHospitalRelationships: [],
   };
-  const actorLookup = vi.fn().mockResolvedValue(actorRecord);
+  const actorLookup = vi.fn().mockImplementation(async () => {
+    if (overrides.screeningMembership === false && actorLookup.mock.calls.length > 1) {
+      return { ...actorRecord, memberships: [] };
+    }
 
-  if (overrides.screeningMembership === false) {
-    actorLookup
-      .mockResolvedValueOnce(actorRecord)
-      .mockResolvedValueOnce({ ...actorRecord, memberships: [] });
-  }
+    return actorRecord;
+  });
 
   const database = {
     user: {
@@ -112,6 +113,15 @@ function createDatabase(overrides: {
             }
           : overrides.latestScreening,
       ),
+      findMany: vi.fn().mockResolvedValue(
+        overrides.screeningRecords ?? [
+          {
+            id: screeningId,
+            submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+            result,
+          },
+        ],
+      ),
     },
     patientGoalPlan: {
       findMany: vi.fn().mockResolvedValue(overrides.goalRecords ?? []),
@@ -130,11 +140,7 @@ function historyRecord(overrides: Record<string, unknown> = {}): Record<string, 
     primaryGoalCode: "weight",
     templateKey: "demi-goals",
     templateVersion: "legacy-prototype-v1",
-    sourceScreeningAssessment: {
-      id: screeningId,
-      submittedAt: new Date("2026-08-16T05:00:00.000Z"),
-      result,
-    },
+    sourceScreeningAssessmentId: screeningId,
     createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "แผน" } },
     _count: { items: 2 },
     ...overrides,
@@ -169,12 +175,15 @@ function detailRecord(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 describe("Goal Plan query service", () => {
-  it("does not treat Goal access as Screening read authority", async () => {
-    const database = createDatabase({ screeningMembership: false });
+  it("keeps Goal history readable when optional Screening context is denied", async () => {
+    const database = createDatabase({ screeningMembership: false, goalRecords: [historyRecord()] });
 
-    await expect(getGoalPlanOverview(actor, relationshipId, { database })).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    const overview = await getGoalPlanOverview(actor, relationshipId, { database });
+
+    expect(overview.latestScreening).toBeNull();
+    expect(overview.items).toHaveLength(1);
+    expect(overview.items[0]?.sourceScreening).toBeNull();
+    expect(JSON.stringify(overview)).not.toContain("pamTotal");
   });
 
   it("returns a relationship-scoped newest-first history projection", async () => {
@@ -196,6 +205,38 @@ describe("Goal Plan query service", () => {
     expect(overview.items).toHaveLength(1);
     expect(overview.items[0]).not.toHaveProperty("primaryGoalNote");
     expect(JSON.stringify(overview)).not.toContain("identityKeyHash");
+    expect(database.patientGoalPlan.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ sourceScreeningAssessmentId: true }),
+      }),
+    );
+    const goalQuery = vi.mocked(database.patientGoalPlan.findMany).mock.calls[0]?.[0];
+
+    if (!goalQuery) {
+      throw new Error("The Goal history query was not captured");
+    }
+
+    expect(goalQuery.select).not.toHaveProperty(
+      "sourceScreeningAssessment",
+    );
+  });
+
+  it("batch-enriches historical Screening sources without an N+1 query", async () => {
+    const database = createDatabase({
+      goalRecords: [
+        historyRecord(),
+        historyRecord({
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          roundNumber: 1,
+        }),
+      ],
+    });
+
+    const overview = await getGoalPlanOverview(actor, relationshipId, { database });
+
+    expect(overview.items).toHaveLength(2);
+    expect(overview.items.every((item) => item.sourceScreening !== null)).toBe(true);
+    expect(vi.mocked(database.screeningAssessment.findMany)).toHaveBeenCalledTimes(1);
   });
 
   it("resolves detail against the historical template and includes source context", async () => {
@@ -220,9 +261,9 @@ describe("Goal Plan query service", () => {
   it("does not expose a historical Screening source when Screening read is denied", async () => {
     const database = createDatabase({ detailRecord: detailRecord(), screeningMembership: false });
 
-    await expect(getGoalPlanDetail(actor, relationshipId, goalPlanId, { database })).rejects.toBeInstanceOf(
-      ForbiddenError,
-    );
+    const detail = await getGoalPlanDetail(actor, relationshipId, goalPlanId, { database });
+
+    expect(detail.sourceScreening).toBeNull();
   });
 
   it.each([

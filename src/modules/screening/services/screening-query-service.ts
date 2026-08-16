@@ -8,6 +8,7 @@ import {
   ApplicationError,
   InfrastructureError,
   NotFoundError,
+  ValidationError,
 } from "@/shared/errors/application-error";
 
 import {
@@ -73,6 +74,7 @@ export type ScreeningDetail = {
 };
 
 const SCREENING_HISTORY_LIMIT = 50;
+const SCREENING_SUMMARY_BATCH_LIMIT = 50;
 
 const screeningHistorySelect = {
   id: true,
@@ -275,6 +277,60 @@ export async function getAccessibleScreeningSummary(
     }
 
     throw new InfrastructureError("Screening summary could not be loaded");
+  }
+}
+
+export async function getAccessibleScreeningSummaries(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  screeningIds: readonly unknown[],
+  dependencies: ScreeningQueryDependencies = {},
+): Promise<ScreeningSummary[]> {
+  if (screeningIds.length === 0) {
+    return [];
+  }
+
+  if (screeningIds.length > SCREENING_SUMMARY_BATCH_LIMIT) {
+    throw new ValidationError("Too many Screening summaries were requested");
+  }
+
+  const parsedScreeningIds = [...new Set(screeningIds.map((screeningId) => {
+    const parsed = screeningIdSchema.safeParse(screeningId);
+
+    if (!parsed.success) {
+      throw new NotFoundError();
+    }
+
+    return parsed.data;
+  }))];
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveScreeningAccessContext(
+      actor,
+      relationshipId,
+      SCREENING_READ_CAPABILITY,
+      database,
+    );
+    const records = await database.screeningAssessment.findMany({
+      where: {
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        id: { in: parsedScreeningIds },
+      },
+      select: screeningSummarySelect,
+    });
+    const summariesById = new Map(records.map((record) => [record.id, toSummary(record)]));
+
+    return parsedScreeningIds.flatMap((screeningId) => {
+      const summary = summariesById.get(screeningId);
+      return summary ? [summary] : [];
+    });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Screening summaries could not be loaded");
   }
 }
 

@@ -165,9 +165,9 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
           </ul>
         </Panel>
 
-        <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Screening ที่ใช้เป็นบริบท</h2>
-          {detail.sourceScreening ? (
+        {detail.sourceScreening ? (
+          <Panel>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">Screening ที่ใช้เป็นบริบท</h2>
             <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge variant="info">{detail.sourceScreening.result.level}</StatusBadge>
@@ -185,10 +185,8 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
                 ดูรายละเอียด Screening ที่อ้างอิง
               </Link>
             </div>
-          ) : (
-            <p className="mt-4 text-sm leading-6 text-text-muted">Goal Plan รอบนี้ไม่ได้อ้างอิง Screening</p>
-          )}
-        </Panel>
+          </Panel>
+        ) : null}
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">แหล่งนิยามของต้นแบบ</h2>

@@ -160,11 +160,7 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
                 screening={overview.latestScreening}
               />
             </div>
-          ) : (
-            <p className="mt-5 border-t border-border pt-5 text-sm leading-6 text-text-muted">
-              ยังไม่มี Screening ล่าสุดในบริบทนี้ Goal Plan prototype ยังสามารถสร้างได้โดยไม่ผูกกับ Screening
-            </p>
-          )}
+          ) : null}
         </Panel>
 
         <section aria-labelledby="latest-goal-plan-heading">

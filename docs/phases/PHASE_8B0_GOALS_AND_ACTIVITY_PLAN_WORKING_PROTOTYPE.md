@@ -57,10 +57,13 @@ form starts with no suggested activities and persists a null source.
   prototype. Parent/child Hospital hierarchy never widens scope.
 - Browser role, Hospital, Patient, assignment, creator, Screening, template,
   PAM, level, Zone, and derived values are not authoritative.
-- Screening context shown in Goals is requested through the Screening-owned
-  `screening:read` query boundary. Goal capability alone does not authorize
-  Screening context, and only a minimal level/Zone summary crosses the module
-  boundary.
+- Screening context shown in Goals is optional enrichment requested through the
+  Screening-owned `screening:read` query boundary. Goal capability alone does
+  not authorize Screening context, and only a minimal level/Zone summary
+  crosses the module boundary. If `screening:read` is denied, otherwise-
+  authorized Goal history/detail remains readable with Screening context
+  omitted; the Goal page does not fail solely because optional context is
+  unavailable.
 - UI → Server Action → application service → policy/access resolution → Prisma
   remains the implementation boundary. Prisma is not an authorization engine.
 
@@ -197,6 +200,13 @@ The service retries bounded PostgreSQL serialization/unique conflicts. A
 database failure or audit failure cannot produce a successful partial result;
 Prisma transaction semantics roll the local operation back.
 
+The explicit source check above remains strict for mutations. Optional overview
+and detail enrichment suppresses only an expected `screening:read` denial; it
+propagates database failures, invalid persisted Screening results, and other
+unexpected errors. When the latest Screening is not readable, the create form
+starts without Screening-derived defaults and persists a null source unless the
+operator explicitly supplies a readable source.
+
 ## 6. Retry and duplicate-submission behavior
 
 Every form gets an opaque UUID `submissionNonce`.
@@ -237,12 +247,17 @@ this slice.
 The overview displays Patient/Hospital context, latest Screening level/Zone if
 available, latest Goal Plan, and bounded newest-first history. History includes
 round, created date, Primary Goal label, creator display name, item count,
-template version, and source Screening summary.
+template version, and an optional source Screening summary. Goal history selects
+only `sourceScreeningAssessmentId`; the Screening module resolves historical
+summaries in one bounded batch query (maximum 50 IDs), so Goals never reads
+Screening result JSON directly and does not create an N+1 query pattern.
 
 History is bounded to the newest 50 rows in this prototype; the UI says
 “แสดงล่าสุดไม่เกิน 50 รอบ” and does not claim that the returned row count is the
 complete historical total. Any displayed Screening context still requires the
-Screening module's `screening:read` boundary.
+Screening module's `screening:read` boundary. If that optional boundary denies
+the read, the Goal history/detail remains visible and the Screening section is
+omitted rather than described as absent.
 
 Detail displays Patient/Hospital, round/date/creator, Primary Goal and notes,
 activities with target days/value/unit, template key/version, and the optional
@@ -268,8 +283,9 @@ Focused tests are under `src/modules/goals/`:
   deduplication, changed-payload conflict, deliberate new round, and bounded
   audit metadata;
 - relationship-scoped newest-first history, minimal projection, detail source
-  context, Screening read-boundary enforcement, unknown historical definitions,
-  and cross-relationship denial;
+  context, independent optional Screening enrichment, bounded batch summaries,
+  Screening read-boundary enforcement, unknown historical definitions, and
+  cross-relationship denial;
 - Server Action transport allow-list, safe errors, and no client authority
   fields.
 

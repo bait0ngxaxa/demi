@@ -6,12 +6,15 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ApplicationError,
+  ForbiddenError,
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
 import {
   getAccessibleScreeningSummary,
+  getAccessibleScreeningSummaries,
   getLatestAccessibleScreeningSummary,
+  type ScreeningSummary,
 } from "@/modules/screening/services/screening-query-service";
 
 import {
@@ -26,7 +29,6 @@ import {
   goalPlanIdSchema,
   goalPlanRelationshipIdSchema,
 } from "../schemas/goal-schemas";
-import { screeningResultSchema, type ScreeningResult } from "@/modules/screening/schemas/screening-schemas";
 import {
   resolveGoalAccessContext,
   type GoalPatientSummary,
@@ -38,11 +40,7 @@ export type GoalQueryDependencies = {
   database?: GoalQueryDatabase;
 };
 
-export type GoalScreeningContext = {
-  screeningAssessmentId: string;
-  submittedAt: Date;
-  result: Pick<ScreeningResult, "level" | "zone">;
-};
+export type GoalScreeningContext = ScreeningSummary;
 
 export type GoalHistoryItem = {
   goalPlanId: string;
@@ -105,13 +103,7 @@ const goalHistorySelect = {
   primaryGoalCode: true,
   templateKey: true,
   templateVersion: true,
-  sourceScreeningAssessment: {
-    select: {
-      id: true,
-      submittedAt: true,
-      result: true,
-    },
-  },
+  sourceScreeningAssessmentId: true,
   createdByUser: {
     select: {
       person: {
@@ -136,13 +128,7 @@ const goalDetailSelect = {
   weeklyNote: true,
   templateKey: true,
   templateVersion: true,
-  sourceScreeningAssessment: {
-    select: {
-      id: true,
-      submittedAt: true,
-      result: true,
-    },
-  },
+  sourceScreeningAssessmentId: true,
   createdByUser: {
     select: {
       person: {
@@ -189,31 +175,6 @@ function toDisplayName(person: {
   return nameParts.join(" ") || "ไม่ระบุชื่อ";
 }
 
-function parseScreeningContext(value: {
-  id: string;
-  submittedAt: Date;
-  result: Prisma.JsonValue;
-} | null): GoalScreeningContext | null {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = screeningResultSchema.safeParse(value.result);
-
-  if (!parsed.success) {
-    throw new InfrastructureError("Persisted Screening result is invalid");
-  }
-
-  return {
-    screeningAssessmentId: value.id,
-    submittedAt: value.submittedAt,
-    result: {
-      level: parsed.data.level,
-      zone: parsed.data.zone,
-    },
-  };
-}
-
 function getHistoricalTemplate(templateKey: string, templateVersion: string): GoalTemplate {
   const template = getGoalTemplate(templateKey, templateVersion);
 
@@ -242,7 +203,10 @@ function assertHistoricalItems(template: GoalTemplate, records: Array<{ activity
   }
 }
 
-function toHistoryItem(record: GoalHistoryRecord): GoalHistoryItem {
+function toHistoryItem(
+  record: GoalHistoryRecord,
+  sourceScreening: GoalScreeningContext | null,
+): GoalHistoryItem {
   const template = getHistoricalTemplate(record.templateKey, record.templateVersion);
 
   return {
@@ -255,7 +219,7 @@ function toHistoryItem(record: GoalHistoryRecord): GoalHistoryItem {
     activityCount: record._count.items,
     templateKey: record.templateKey,
     templateVersion: record.templateVersion,
-    sourceScreening: parseScreeningContext(record.sourceScreeningAssessment),
+    sourceScreening,
   };
 }
 
@@ -305,7 +269,51 @@ async function getLatestScreening(
   database: GoalQueryDatabase,
   relationshipId: string,
 ): Promise<GoalScreeningContext | null> {
-  return getLatestAccessibleScreeningSummary(actor, relationshipId, { database });
+  try {
+    return await getLatestAccessibleScreeningSummary(actor, relationshipId, { database });
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function getHistoricalScreeningMap(
+  actor: ActorContext | null | undefined,
+  database: GoalQueryDatabase,
+  relationshipId: string,
+  records: GoalHistoryRecord[],
+): Promise<Map<string, GoalScreeningContext>> {
+  const screeningIds = [
+    ...new Set(
+      records
+        .map((record) => record.sourceScreeningAssessmentId)
+        .filter((screeningId): screeningId is string => screeningId !== null),
+    ),
+  ];
+
+  if (screeningIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const summaries = await getAccessibleScreeningSummaries(
+      actor,
+      relationshipId,
+      screeningIds,
+      { database },
+    );
+
+    return new Map(summaries.map((summary) => [summary.screeningAssessmentId, summary]));
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      return new Map();
+    }
+
+    throw error;
+  }
 }
 
 export async function getGoalPlanOverview(
@@ -321,23 +329,37 @@ export async function getGoalPlanOverview(
       GOAL_READ_CAPABILITY,
       database,
     );
-    const latestScreening = await getLatestScreening(
-      actor,
-      database,
-      access.patient.patientHospitalRelationshipId,
-    );
     const records = await database.patientGoalPlan.findMany({
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
       orderBy: [{ roundNumber: "desc" }],
       take: GOAL_HISTORY_LIMIT,
       select: goalHistorySelect,
     });
+    const latestScreening = await getLatestScreening(
+      actor,
+      database,
+      access.patient.patientHospitalRelationshipId,
+    );
+    const historicalScreenings = await getHistoricalScreeningMap(
+      actor,
+      database,
+      access.patient.patientHospitalRelationshipId,
+      records,
+    );
+    const items = records.map((record) =>
+      toHistoryItem(
+        record,
+        record.sourceScreeningAssessmentId
+          ? historicalScreenings.get(record.sourceScreeningAssessmentId) ?? null
+          : null,
+      ),
+    );
 
     return {
       patient: access.patient,
       latestScreening,
-      latest: records[0] ? toHistoryItem(records[0]) : null,
-      items: records.map(toHistoryItem),
+      latest: items[0] ?? null,
+      items,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -415,14 +437,22 @@ export async function getGoalPlanDetail(
       throw new NotFoundError();
     }
 
-    const sourceScreening = record.sourceScreeningAssessment
-      ? await getAccessibleScreeningSummary(
+    let sourceScreening: GoalScreeningContext | null = null;
+
+    if (record.sourceScreeningAssessmentId) {
+      try {
+        sourceScreening = await getAccessibleScreeningSummary(
           actor,
           parsedRelationshipId.data,
-          record.sourceScreeningAssessment.id,
+          record.sourceScreeningAssessmentId,
           { database },
-        )
-      : null;
+        );
+      } catch (error: unknown) {
+        if (!(error instanceof ForbiddenError)) {
+          throw error;
+        }
+      }
+    }
 
     return toDetail(record, access.patient, sourceScreening);
   } catch (error: unknown) {
@@ -437,9 +467,9 @@ export async function getGoalPlanDetail(
 export const goalQueryInternals = {
   assertHistoricalItems,
   getHistoricalTemplate,
+  getHistoricalScreeningMap,
   getLatestScreening,
   getPrimaryGoalLabel,
-  parseScreeningContext,
   toDisplayName,
   toHistoryItem,
   toDetail,

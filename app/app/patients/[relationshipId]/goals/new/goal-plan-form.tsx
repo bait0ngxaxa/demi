@@ -331,21 +331,19 @@ export function GoalPlanForm({
           </p>
         </Panel>
 
-        <Panel>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบท Screening</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                Screening เป็นบริบทหรือค่าเริ่มต้นเท่านั้น ไม่ได้สร้างหรือบังคับ Goal Plan อัตโนมัติ
-              </p>
-            </div>
-            {latestScreening ? (
+        {latestScreening ? (
+          <Panel>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบท Screening</h2>
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  Screening เป็นบริบทหรือค่าเริ่มต้นเท่านั้น ไม่ได้สร้างหรือบังคับ Goal Plan อัตโนมัติ
+                </p>
+              </div>
               <StatusBadge variant={zoneVariant(latestScreening.result.zone)}>
                 {latestScreening.result.level} · {latestScreening.result.zone}
               </StatusBadge>
-            ) : null}
-          </div>
-          {latestScreening ? (
+            </div>
             <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
               <p className="text-sm leading-6 text-text">
                 Screening ล่าสุดส่งเมื่อ {formatDate(latestScreening.submittedAt)}
@@ -355,12 +353,8 @@ export function GoalPlanForm({
                 ผู้ใช้ยังสามารถปรับ เพิ่ม หรือนำกิจกรรมออกก่อนส่งได้ และไม่ใช่การบังคับทางคลินิก
               </p>
             </div>
-          ) : (
-            <p className="mt-5 border-t border-border pt-5 text-sm leading-6 text-text-muted">
-              ยังไม่มี Screening ล่าสุด คุณยังสร้าง Goal Plan รอบนี้ได้ตาม prototype policy
-            </p>
-          )}
-        </Panel>
+          </Panel>
+        ) : null}
 
         <Panel>
           <fieldset disabled={pending}>
@@ -421,7 +415,8 @@ export function GoalPlanForm({
           <div>
             <h2 className="text-xl font-semibold tracking-[-0.02em]">Weekly Activities</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              ค่าเริ่มต้นด้านล่างเป็นข้อมูลต้นแบบจากระดับ Screening และสามารถเพิ่มหรือนำกิจกรรมออกเป็นรายรายการ
+              กิจกรรมและค่าเริ่มต้น (ถ้ามี) เป็นข้อมูลต้นแบบจากระดับ Screening
+              สามารถเพิ่มหรือนำกิจกรรมออกเป็นรายรายการ และหากไม่มี Screening ให้เลือกกิจกรรมด้วยตนเอง
             </p>
           </div>
 

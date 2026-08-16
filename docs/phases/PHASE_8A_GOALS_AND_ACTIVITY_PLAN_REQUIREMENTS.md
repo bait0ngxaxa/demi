@@ -132,6 +132,13 @@ UI
   mutate a Goal Plan.
 - A Goal Plan may use a server-validated Screening result as context or a
   default suggestion only. It is a separate explicit user-reviewed submission.
+- `goal:read` and `screening:read` remain independent capabilities. Screening
+  context is optional enrichment: denying `screening:read` must not remove an
+  otherwise-authorized Goal history or detail projection.
+- Goals must consume Screening context through a Screening-owned authorized
+  summary boundary. Goal Prisma projections retain only the opaque source
+  Screening ID and never project Screening result JSON, responses, PAM/PROMs,
+  or Confidence data directly.
 - Goal creation must not become an automatic treatment recommendation or a
   hidden clinical rules engine.
 
@@ -328,10 +335,21 @@ immutable version, following the Phase 7B.0 policy.
 
 ### 5.3 Screening context and default behavior
 
-- The Goals page requests the latest relationship-scoped Screening summary
-  through the Screening module's `screening:read` policy boundary when one
-  exists. Goals does not infer Screening readability from `goal:read` or
-  `goal:plan`.
+- The Goals page requests the latest relationship-scoped Screening summary as
+  optional enrichment through the Screening module's `screening:read` policy
+  boundary when one exists. Goals does not infer Screening readability from
+  `goal:read` or `goal:plan`.
+- If optional `screening:read` enrichment is denied, an otherwise-authorized
+  Goals overview/create context remains available with no latest Screening and
+  no Screening-derived defaults. Goal history/detail remains available with
+  Screening context omitted. Only the expected authorization denial is
+  suppressible; database, invalid persisted-result, and unexpected errors are
+  not converted into missing context.
+- Goal history retains only each plan's opaque
+  `sourceScreeningAssessmentId`. Historical level/Zone summaries are resolved
+  through one bounded Screening-owned batch query for the newest 50 plans, not
+  from an embedded Goal Prisma relation projection. Goal detail uses the same
+  Screening-owned single-summary boundary.
 - The latest result is context/default input only. It never creates, edits,
   archives, or invalidates a Goal Plan.
 - The form starts with no Primary Goal selected. The operator must explicitly
@@ -407,6 +425,12 @@ The service revalidates:
 - source Screening relationship, if supplied;
 - `screening:read` authorization for a supplied source Screening;
 - active actor/relationship/Hospital/assignment policy.
+
+An explicit `sourceScreeningAssessmentId` on a Goal submission is different from
+optional display enrichment: it must be readable through the Screening-owned
+`screening:read` boundary and belong to the exact relationship, or the mutation
+is rejected. A missing source remains valid for a manually configured prototype
+plan.
 
 Plan, items, and `goal_plan.created` audit event commit or roll back together.
 Audit metadata contains only bounded opaque IDs and template/round values; it

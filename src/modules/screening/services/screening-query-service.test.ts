@@ -33,6 +33,7 @@ vi.mock("../domain/scoring", async (importOriginal) => {
 });
 
 import {
+  getAccessibleScreeningSummaries,
   getLatestAccessibleScreeningSummary,
   getScreeningDetail,
   getScreeningHistory,
@@ -42,6 +43,7 @@ import {
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
 const screeningId = "33333333-3333-4333-8333-333333333333";
+const secondScreeningId = "66666666-6666-4666-8666-666666666666";
 const actorUserId = "44444444-4444-4444-8444-444444444444";
 
 const actor: ActorContext = {
@@ -75,6 +77,11 @@ function createDatabase(overrides: {
   questionSetKey?: string;
   questionSetVersion?: string;
   scoringVersion?: string;
+  summaryRecords?: Array<{
+    id: string;
+    submittedAt: Date;
+    result: unknown;
+  }>;
   records?: Array<{
     id: string;
     submittedAt: Date;
@@ -120,7 +127,7 @@ function createDatabase(overrides: {
       }),
     },
     screeningAssessment: {
-      findMany: vi.fn().mockResolvedValue(overrides.records ?? []),
+      findMany: vi.fn().mockResolvedValue(overrides.summaryRecords ?? overrides.records ?? []),
       findFirst: vi.fn().mockResolvedValue({
         id: screeningId,
         submittedAt: new Date("2026-08-16T05:00:00.000Z"),
@@ -158,6 +165,100 @@ describe("Screening query service", () => {
     });
     expect(summary).not.toHaveProperty("responses");
     expect(summary).not.toHaveProperty("result.pamTotal");
+  });
+
+  it("returns deduplicated, relationship-scoped minimal summaries in request order", async () => {
+    const { database, screeningAssessment } = createDatabase({
+      summaryRecords: [
+        {
+          id: screeningId,
+          submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          result,
+        },
+        {
+          id: secondScreeningId,
+          submittedAt: new Date("2026-08-16T06:00:00.000Z"),
+          result,
+        },
+      ],
+    });
+
+    const summaries = await getAccessibleScreeningSummaries(
+      actor,
+      relationshipId,
+      [secondScreeningId, screeningId, screeningId],
+      { database },
+    );
+
+    expect(summaries.map((summary) => summary.screeningAssessmentId)).toEqual([
+      secondScreeningId,
+      screeningId,
+    ]);
+    expect(summaries[0]).toEqual({
+      screeningAssessmentId: secondScreeningId,
+      submittedAt: new Date("2026-08-16T06:00:00.000Z"),
+      result: { level: "L3", zone: "YELLOW" },
+    });
+    expect(summaries[0]).not.toHaveProperty("responses");
+    expect(summaries[0]).not.toHaveProperty("result.pamTotal");
+    expect(screeningAssessment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          patientHospitalRelationshipId: relationshipId,
+          id: { in: [secondScreeningId, screeningId] },
+        },
+      }),
+    );
+  });
+
+  it("omits a requested Screening that is absent from the authorized relationship result", async () => {
+    const { database } = createDatabase({
+      summaryRecords: [
+        {
+          id: screeningId,
+          submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          result,
+        },
+      ],
+    });
+
+    await expect(
+      getAccessibleScreeningSummaries(actor, relationshipId, [secondScreeningId], { database }),
+    ).resolves.toEqual([]);
+  });
+
+  it("returns no summaries without querying or authorizing an empty request", async () => {
+    const { database, screeningAssessment } = createDatabase();
+
+    await expect(getAccessibleScreeningSummaries(actor, relationshipId, [], { database })).resolves.toEqual([]);
+    expect(screeningAssessment.findMany).not.toHaveBeenCalled();
+    expect(vi.mocked(database.patientHospitalRelationship.findUnique)).not.toHaveBeenCalled();
+    expect(vi.mocked(database.user.findUnique)).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Screening read boundary authoritative for batch summaries", async () => {
+    const { database, screeningAssessment } = createDatabase({ hospitalMembership: false });
+
+    await expect(
+      getAccessibleScreeningSummaries(actor, relationshipId, [screeningId], { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(screeningAssessment.findMany).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a persisted batch summary result is invalid", async () => {
+    const { database } = createDatabase({
+      summaryRecords: [
+        {
+          id: screeningId,
+          submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          result: { level: "L3", zone: "YELLOW" },
+        },
+      ],
+    });
+
+    await expect(
+      getAccessibleScreeningSummaries(actor, relationshipId, [screeningId], { database }),
+    ).rejects.toBeInstanceOf(InfrastructureError);
   });
 
   it("returns relationship-scoped minimal history projections", async () => {
