@@ -44,6 +44,13 @@ The Phase 8A contract and Phase 8B.0 handoff are [Phase 8A Goals & Activity Plan
 - Prototype capabilities are `goal:read` and `goal:plan`: active direct Hospital OWNER/MEMBER and active exact-assignment OSM are allowed; PATIENT and Platform ADMIN are denied; profession does not independently change authority.
 - Goal Plan creation is never automatic from Screening. Primary goals, activity mappings, target defaults, units, authority, approval, visibility, and correction semantics remain provisional/open customer requirements. Patient self-service, edit/delete/amendment, adherence/progress, care plans, and clinical recommendations are not implemented.
 
+## Phase 9A Appointment & Follow-up Requirement Contract
+
+Phase 9A is complete as analysis/documentation: [Appointment & Follow-up Requirement Analysis](./phases/PHASE_9A_APPOINTMENT_AND_FOLLOWUP_REQUIREMENTS.md) records the pinned legacy evidence and the provisional contract for the future Phase 9B.0 Appointment and Phase 9C.0 Follow-up / Progress prototypes. It adds no Appointment or Follow-up implementation and does not make provisional business or clinical behavior customer-approved.
+
+- The proposed slices inherit `PatientHospitalRelationship` scope, direct Hospital authorization, exact active `PatientOsmAssignment` for OSM access, server-side ActorContext/policy authority, profession neutrality, and the Platform ADMIN governance boundary.
+- The proposed Follow-up contract keeps Goal Plan provenance explicit, favors immutable relationship-scoped rounds, and defers correction/amendment, attachments, clinical rules, and generic workflow behavior until requirements are confirmed.
+
 ## Phase 3A Hospital Onboarding Contract
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
