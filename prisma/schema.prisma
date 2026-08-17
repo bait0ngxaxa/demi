@@ -77,6 +77,13 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum FollowupActivityProgressStatus {
+  DONE
+  PARTIAL
+  NOT_DONE
+  NOT_APPLICABLE
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -114,6 +121,7 @@ model User {
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
+  followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -191,6 +199,7 @@ model PatientHospitalRelationship {
   screeningAssessments ScreeningAssessment[]
   goalPlans PatientGoalPlan[]
   appointments PatientAppointment[]
+  followups PatientFollowup[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -254,6 +263,7 @@ model PatientGoalPlan {
   createdByUser               User                       @relation("PatientGoalPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   sourceScreeningAssessment   ScreeningAssessment?       @relation("GoalPlanSourceScreening", fields: [sourceScreeningAssessmentId], references: [id], onDelete: Restrict)
   items                       PatientGoalItem[]
+  followupsSourced             PatientFollowup[]          @relation("PatientFollowupSourceGoalPlan")
 
   @@unique([patientHospitalRelationshipId, roundNumber])
   @@index([patientHospitalRelationshipId, createdAt])
@@ -295,10 +305,58 @@ model PatientAppointment {
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   responsibleUser             User?                      @relation("PatientAppointmentResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
   createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  followups                   PatientFollowup[]
 
   @@index([patientHospitalRelationshipId, scheduledAt])
   @@index([responsibleUserId])
   @@index([status])
+}
+
+model PatientFollowup {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  appointmentId                String?  @db.Uuid
+  sourceGoalPlanId              String?  @db.Uuid
+  createdByUserId               String   @db.Uuid
+  roundNumber                  Int
+  submissionNonce              String   @unique @db.Uuid
+  submissionRequestHash        String   @db.VarChar(64)
+  recordedAt                   DateTime @default(now()) @db.Timestamptz(3)
+  weight                       Float?
+  waistCircumference           Float?
+  systolicBloodPressure        Float?
+  diastolicBloodPressure       Float?
+  bloodSugar                   Float?
+  confidenceScore              Int?
+  reflectionNote               String?  @db.VarChar(2000)
+  confidencePlan               String?  @db.VarChar(2000)
+  generalNote                  String?  @db.VarChar(2000)
+  createdAt                    DateTime @default(now()) @db.Timestamptz(3)
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  appointment                 PatientAppointment?         @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  sourceGoalPlan              PatientGoalPlan?            @relation("PatientFollowupSourceGoalPlan", fields: [sourceGoalPlanId], references: [id], onDelete: Restrict)
+  createdByUser               User                       @relation("PatientFollowupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  activityProgress            PatientFollowupActivityProgress[]
+
+  @@unique([patientHospitalRelationshipId, roundNumber])
+  @@index([patientHospitalRelationshipId, recordedAt])
+  @@index([appointmentId])
+  @@index([sourceGoalPlanId])
+}
+
+model PatientFollowupActivityProgress {
+  id          String                         @id @default(uuid()) @db.Uuid
+  followupId  String                         @db.Uuid
+  goalActivityCode String                    @db.VarChar(64)
+  status      FollowupActivityProgressStatus
+  note        String?                        @db.VarChar(1000)
+  createdAt   DateTime                       @default(now()) @db.Timestamptz(3)
+
+  followup PatientFollowup @relation(fields: [followupId], references: [id], onDelete: Restrict)
+
+  @@unique([followupId, goalActivityCode])
+  @@index([followupId, createdAt])
 }
 
 model PatientActivation {

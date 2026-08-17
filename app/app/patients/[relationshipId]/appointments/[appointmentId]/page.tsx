@@ -106,7 +106,15 @@ function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React
             ประเภท สถานะ ผู้รับผิดชอบ และอำนาจของผู้ใช้งานเป็นพฤติกรรมต้นแบบที่ยังรอการยืนยันจากลูกค้า
           </p>
           {detail.status === "COMPLETED" ? (
-            <p className="mt-2">Appointment นี้พร้อมสำหรับการบันทึก Follow-up ในขั้นตอนถัดไป</p>
+            <p className="mt-2">
+              Appointment นี้เสร็จสิ้นแล้ว สามารถบันทึก Follow-up แยกเป็น historical round ได้
+              <Link
+                className="ml-2 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`}
+              >
+                บันทึก Follow-up
+              </Link>
+            </p>
           ) : null}
         </Alert>
 

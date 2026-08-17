@@ -60,7 +60,18 @@ requirement-validation workflow in [the Phase 9B.0 handoff](./phases/PHASE_9B0_A
 - `PatientAppointment` is owned by the exact `PatientHospitalRelationship`; it stores a real PostgreSQL `TIMESTAMPTZ`, uses strict provisional type/status/location values, and retains creator/responsible-user distinctions.
 - Provisional `appointment:read` and `appointment:manage` policy allows active direct Hospital OWNER/MEMBER, allows read-only exact-assigned OSM, and denies unassigned OSM, PATIENT, and Platform ADMIN. Profession and Hospital hierarchy do not widen authority.
 - Create, reschedule, and terminal mutations use server-side validation, serializable transactions, conditional stale-update checks, unique nonce retry semantics, and atomic bounded Appointment audit events. History/detail projections remain minimal and relationship-scoped.
-- This is not customer-approved Appointment behavior. Follow-up persistence, forms, progress, measurements, and all Phase 9C.0 behavior remain unimplemented; completion only displays a neutral future-step message without a broken link.
+- This is not customer-approved Appointment behavior. Phase 9C.0 now adds a separate Follow-up / Progress requirement-validation prototype; Appointment completion remains independent and does not create a Follow-up automatically.
+
+## Phase 9C.0 Follow-up / Progress Working Prototype
+
+Phase 9C.0 is implemented as a provisional, relationship-scoped Follow-up workflow in [the Phase 9C.0 handoff](./phases/PHASE_9C0_FOLLOWUP_PROGRESS_WORKING_PROTOTYPE.md):
+
+- `/app/patients/[relationshipId]/followups`, `/new`, and detail routes provide bounded newest-first immutable Follow-up history, standalone recording, and optional linkage to a server-validated `COMPLETED` Appointment.
+- `PatientFollowup` is owned by the exact `PatientHospitalRelationship`; relationship-scoped rounds use a database uniqueness invariant, serializable transaction, bounded retry, UUID nonce, and immutable request fingerprint.
+- An explicitly selected historical Goal Plan may provide exact activity progress context. Activity codes are checked through the Goal-owned boundary; no Goal Plan means no fabricated progress rows.
+- Provisional `followup:read` and `followup:record` policy allows active direct Hospital OWNER/MEMBER and exact active-assignment OSM, and denies unassigned OSM, PATIENT, and Platform ADMIN. Profession and Hospital hierarchy do not widen authority.
+- Follow-up, activity progress, and `followup.created` audit persist atomically. Measurements, confidence, notes, and other sensitive clinical/free-text values are excluded from audit metadata. Follow-up creation has no hidden Appointment, Goal Plan, or Screening side effects.
+- Measurements, progress statuses, confidence, actor authority, Patient visibility, correction semantics, and clinical meaning remain provisional/open customer requirements. Implemented prototype behavior is not confirmed customer requirement.
 
 ## Phase 3A Hospital Onboarding Contract
 

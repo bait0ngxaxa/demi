@@ -94,6 +94,19 @@ export type GoalPlanDetail = {
   items: GoalPlanItemDetail[];
 };
 
+export type GoalPlanActivityReference = GoalPlanItemDetail;
+
+export type AccessibleGoalPlanReference = {
+  goalPlanId: string;
+  roundNumber: number;
+  createdAt: Date;
+  primaryGoalCode: string;
+  primaryGoalLabel: string;
+  primaryGoalNote: string | null;
+  weeklyNote: string | null;
+  items: GoalPlanActivityReference[];
+};
+
 const GOAL_HISTORY_LIMIT = 50;
 
 const goalHistorySelect = {
@@ -152,12 +165,38 @@ const goalDetailSelect = {
   },
 } satisfies Prisma.PatientGoalPlanSelect;
 
+const goalPlanReferenceSelect = {
+  id: true,
+  roundNumber: true,
+  createdAt: true,
+  primaryGoalCode: true,
+  primaryGoalNote: true,
+  weeklyNote: true,
+  templateKey: true,
+  templateVersion: true,
+  items: {
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      activityCode: true,
+      targetDays: true,
+      targetValue: true,
+      targetUnit: true,
+      sortOrder: true,
+    },
+  },
+} satisfies Prisma.PatientGoalPlanSelect;
+
 type GoalHistoryRecord = Prisma.PatientGoalPlanGetPayload<{
   select: typeof goalHistorySelect;
 }>;
 
 type GoalDetailRecord = Prisma.PatientGoalPlanGetPayload<{
   select: typeof goalDetailSelect;
+}>;
+
+type GoalPlanReferenceRecord = Prisma.PatientGoalPlanGetPayload<{
+  select: typeof goalPlanReferenceSelect;
 }>;
 
 function getDatabase(dependencies: GoalQueryDependencies): GoalQueryDatabase {
@@ -244,6 +283,38 @@ function toDetail(
     templateKey: record.templateKey,
     templateVersion: record.templateVersion,
     sourceScreening,
+    items: record.items.map((item) => {
+      const activity = getGoalActivity(template, item.activityCode);
+
+      if (!activity) {
+        throw new InfrastructureError("The historical Goal activity is unavailable");
+      }
+
+      return {
+        goalPlanItemId: item.id,
+        activityCode: item.activityCode,
+        activityLabel: activity.label,
+        targetDays: item.targetDays,
+        targetValue: item.targetValue,
+        targetUnit: item.targetUnit,
+        sortOrder: item.sortOrder,
+      };
+    }),
+  };
+}
+
+function toGoalPlanReference(record: GoalPlanReferenceRecord): AccessibleGoalPlanReference {
+  const template = getHistoricalTemplate(record.templateKey, record.templateVersion);
+  assertHistoricalItems(template, record.items);
+
+  return {
+    goalPlanId: record.id,
+    roundNumber: record.roundNumber,
+    createdAt: record.createdAt,
+    primaryGoalCode: record.primaryGoalCode,
+    primaryGoalLabel: getPrimaryGoalLabel(template, record.primaryGoalCode),
+    primaryGoalNote: record.primaryGoalNote,
+    weeklyNote: record.weeklyNote,
     items: record.items.map((item) => {
       const activity = getGoalActivity(template, item.activityCode);
 
@@ -464,6 +535,79 @@ export async function getGoalPlanDetail(
   }
 }
 
+export async function getAccessibleGoalPlanOptions(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference[]> {
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalAccessContext(
+      actor,
+      relationshipId,
+      GOAL_READ_CAPABILITY,
+      database,
+    );
+    const records = await database.patientGoalPlan.findMany({
+      where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
+      orderBy: [{ roundNumber: "desc" }],
+      take: GOAL_HISTORY_LIMIT,
+      select: goalPlanReferenceSelect,
+    });
+
+    return records.map(toGoalPlanReference);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Accessible Goal Plan references could not be loaded");
+  }
+}
+
+export async function getAccessibleGoalPlanActivityContext(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  goalPlanId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference> {
+  const parsedRelationshipId = goalPlanRelationshipIdSchema.safeParse(relationshipId);
+  const parsedGoalPlanId = goalPlanIdSchema.safeParse(goalPlanId);
+
+  if (!parsedRelationshipId.success || !parsedGoalPlanId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalAccessContext(
+      actor,
+      parsedRelationshipId.data,
+      GOAL_READ_CAPABILITY,
+      database,
+    );
+    const record = await database.patientGoalPlan.findFirst({
+      where: {
+        id: parsedGoalPlanId.data,
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      },
+      select: goalPlanReferenceSelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    return toGoalPlanReference(record);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Goal Plan context could not be loaded");
+  }
+}
+
 export const goalQueryInternals = {
   assertHistoricalItems,
   getHistoricalTemplate,
@@ -473,6 +617,8 @@ export const goalQueryInternals = {
   toDisplayName,
   toHistoryItem,
   toDetail,
+  toGoalPlanReference,
   goalHistorySelect,
   goalDetailSelect,
+  goalPlanReferenceSelect,
 };
