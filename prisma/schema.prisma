@@ -58,6 +58,25 @@ enum WorkforceActivationMode {
   ASSISTED
 }
 
+enum AppointmentType {
+  FOLLOW_UP
+  CONSULTATION
+}
+
+enum AppointmentLocationType {
+  CLINIC
+  ONLINE
+  HOME_VISIT
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -93,6 +112,8 @@ model User {
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
   screeningAssessmentsConducted ScreeningAssessment[] @relation("ScreeningAssessmentConductedBy")
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
+  appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
+  appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -169,6 +190,7 @@ model PatientHospitalRelationship {
   osmAssignments PatientOsmAssignment[]
   screeningAssessments ScreeningAssessment[]
   goalPlans PatientGoalPlan[]
+  appointments PatientAppointment[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -251,6 +273,31 @@ model PatientGoalItem {
 
   @@unique([goalPlanId, activityCode])
   @@index([goalPlanId, sortOrder])
+}
+
+model PatientAppointment {
+  id                            String                  @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String                  @db.Uuid
+  responsibleUserId            String?                 @db.Uuid
+  createdByUserId               String                  @db.Uuid
+  type                          AppointmentType
+  scheduledAt                   DateTime                @db.Timestamptz(3)
+  durationMinutes               Int?
+  locationType                  AppointmentLocationType?
+  locationDetail                String?                 @db.VarChar(500)
+  note                          String?                 @db.VarChar(2000)
+  status                        AppointmentStatus       @default(SCHEDULED)
+  submissionNonce               String                  @unique @db.Uuid
+  createdAt                     DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime                @updatedAt @db.Timestamptz(3)
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  responsibleUser             User?                      @relation("PatientAppointmentResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientHospitalRelationshipId, scheduledAt])
+  @@index([responsibleUserId])
+  @@index([status])
 }
 
 model PatientActivation {

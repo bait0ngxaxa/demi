@@ -51,6 +51,17 @@ Phase 9A is complete as analysis/documentation: [Appointment & Follow-up Require
 - The proposed slices inherit `PatientHospitalRelationship` scope, direct Hospital authorization, exact active `PatientOsmAssignment` for OSM access, server-side ActorContext/policy authority, profession neutrality, and the Platform ADMIN governance boundary.
 - The proposed Follow-up contract keeps Goal Plan provenance explicit, favors immutable relationship-scoped rounds, and defers correction/amendment, attachments, clinical rules, and generic workflow behavior until requirements are confirmed.
 
+## Phase 9B.0 Appointment Working Prototype
+
+Phase 9B.0 is implemented as the relationship-scoped Appointment
+requirement-validation workflow in [the Phase 9B.0 handoff](./phases/PHASE_9B0_APPOINTMENT_WORKING_PROTOTYPE.md):
+
+- `/app/patients/[relationshipId]/appointments`, `/new`, detail, and edit/reschedule routes provide bounded newest-first Appointment history and explicit create/reschedule/cancel/complete/no-show operations.
+- `PatientAppointment` is owned by the exact `PatientHospitalRelationship`; it stores a real PostgreSQL `TIMESTAMPTZ`, uses strict provisional type/status/location values, and retains creator/responsible-user distinctions.
+- Provisional `appointment:read` and `appointment:manage` policy allows active direct Hospital OWNER/MEMBER, allows read-only exact-assigned OSM, and denies unassigned OSM, PATIENT, and Platform ADMIN. Profession and Hospital hierarchy do not widen authority.
+- Create, reschedule, and terminal mutations use server-side validation, serializable transactions, conditional stale-update checks, unique nonce retry semantics, and atomic bounded Appointment audit events. History/detail projections remain minimal and relationship-scoped.
+- This is not customer-approved Appointment behavior. Follow-up persistence, forms, progress, measurements, and all Phase 9C.0 behavior remain unimplemented; completion only displays a neutral future-step message without a broken link.
+
 ## Phase 3A Hospital Onboarding Contract
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
