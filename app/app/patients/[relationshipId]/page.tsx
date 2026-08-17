@@ -12,6 +12,8 @@ import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/p
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
+import { PatientProfileView } from "./patient-profile-view";
+
 export const metadata: Metadata = {
   title: "รายละเอียดผู้ป่วย",
 };
@@ -94,6 +96,8 @@ export default async function PatientDetailPage({
             </div>
           </dl>
         </Panel>
+
+        <PatientProfileView profile={patient.profile} />
 
         <div className="mt-6 flex flex-wrap gap-3">
           {canManageAssignment ? (

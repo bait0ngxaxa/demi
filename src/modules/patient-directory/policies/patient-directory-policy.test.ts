@@ -151,6 +151,18 @@ describe("patient:read policy", () => {
     ).toEqual({ allowed: false, reason: "hospital_role_required" });
   });
 
+  it("preserves a valid direct Hospital path for an actor with an additional ADMIN role", () => {
+    expect(
+      decidePatientReadPolicy({
+        actor: hospitalActor(MembershipType.MEMBER, null, {
+          roles: [Role.ADMIN, Role.HOSPITAL],
+        }),
+        capability: PATIENT_READ_CAPABILITY,
+        targetHospitalId: hospitalA,
+      }),
+    ).toEqual({ allowed: true, reason: "active_direct_hospital_scope" });
+  });
+
   it("allows an OSM actor only at the assigned-read actor boundary", () => {
     const actor = hospitalActor(
       MembershipType.MEMBER,

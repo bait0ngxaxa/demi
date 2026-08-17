@@ -10,9 +10,9 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-ขณะนี้ **Phase 9 เสร็จสมบูรณ์แล้ว**: **Phase 9B.0 Appointment working prototype** และ **Phase 9C.0 Follow-up / Progress working prototype** implement แล้ว ส่วน **Phase 10A Patient Profile / Baseline / Status Tracking analysis** เสร็จสมบูรณ์ในฐานะ provisional requirement/domain contract และยังไม่ใช่ customer-approved behavior โดยไม่มี product implementation เพิ่มใน Phase 10A
+ขณะนี้ **Phase 10B.0 Patient Profile working prototype implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** ซึ่งยังคงเป็น provisional requirement/domain contract และไม่ใช่ customer-approved behavior โดย 10B.0 เพิ่มเฉพาะ bounded, read-only profile projection ใน Patient Detail เดิม
 
-ลำดับถัดไปคือ **10B.0 Patient Profile**, **10C.0 Baseline / Initial State** และ **10D.0 Patient Status Artifacts / Attachment Boundary** โดย 10B.0 ขณะนี้ทำได้อย่างปลอดภัยเฉพาะ bounded read/projection slice ที่ต่อยอดจาก Patient Detail เดิม และต้องเลือก read-only profile field subset ก่อนเริ่ม implementation; profile editing ยังต้องรอการยืนยัน ownership, visibility, correction และ actor-specific editability
+ลำดับถัดไปคือ **Phase 10C.0 — Baseline / Initial State** ส่วน profile editing, Patient self-service, field ownership, visibility, correction และ actor-specific editability ยังต้องรอการยืนยัน requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -90,7 +90,18 @@ The provisional ownership conclusions are:
 - Artifacts are provisionally owned by one concrete business record, with metadata separate from binary storage and visibility inherited from the owner. A generic enterprise attachment framework and Patient self-service uploads remain deferred.
 - Authorization continues to be server-side and fail-closed: direct active Hospital membership or exact active OSM assignment governs relationship access; hierarchy, profession, and ADMIN-only status do not silently widen routine patient authority. Patient self-service remains open.
 
-The next sequence is `10B.0` Patient Profile, `10C.0` Baseline / Initial State, and `10D.0` Patient Status Artifacts / Attachment Boundary. The existing Patient Detail page is the 10B.0 foundation; 10B.0 must select a small provisional read-only profile field subset before implementation, otherwise it would duplicate that page. Profile editing is blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+The existing Patient Detail page was the 10B.0 foundation. Phase 10B.0 now provides the selected provisional read-only profile subset; profile editing remains blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. The next sequence is `10C.0` Baseline / Initial State and `10D.0` Patient Status Artifacts / Attachment Boundary. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+
+## Phase 10B.0 Patient Profile Working Prototype
+
+Phase 10B.0 is implemented as a provisional, read-only Patient Profile subset in the existing relationship-scoped Patient Detail workspace; details are in [the Phase 10B.0 handoff](./phases/PHASE_10B0_PATIENT_PROFILE_WORKING_PROTOTYPE.md):
+
+- `PatientProfile` stores eight nullable prototype fields: date of birth, gender, phone number, address, emergency contact name/phone, occupation, and education level. This does not permanently resolve ownership; date of birth and gender may later belong to `Person`.
+- Detail reuses the exact `PatientHospitalRelationship` authorization boundary for direct Hospital access and exact-assigned OSM access. ADMIN-only remains denied, while a valid scoped path on a multi-role actor remains usable.
+- Profile values appear only in the authorized Patient Detail projection. Patient directory/list projections remain minimal and do not expose these fields; missing values render `ไม่ระบุ`.
+- Profile editing, Patient self-service, clinical data, Baseline, Status Tracking, artifacts, and uploads remain deferred.
+
+The next planned slice is **Phase 10C.0 — Baseline / Initial State**.
 
 ## Phase 3A Hospital Onboarding Contract
 

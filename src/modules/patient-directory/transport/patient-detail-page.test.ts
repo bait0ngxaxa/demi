@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 
 import PatientDetailPage from "../../../../app/app/patients/[relationshipId]/page";
+import { PatientProfileView } from "../../../../app/app/patients/[relationshipId]/patient-profile-view";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -45,6 +46,16 @@ const patient = {
     name: "โรงพยาบาล ก",
   },
   hospitalNumber: "HN-001",
+  profile: {
+    dateOfBirth: new Date("1977-01-01T00:00:00.000Z"),
+    gender: "ชาย",
+    phoneNumber: "0812345678",
+    addressText: "99 ถนนตัวอย่าง แขวงตัวอย่าง",
+    emergencyContactName: "สมหญิง ผู้ติดต่อ",
+    emergencyContactPhone: "0898765432",
+    occupation: "เกษตรกร",
+    educationLevel: "มัธยมศึกษา",
+  },
 };
 
 const actor = {
@@ -108,6 +119,68 @@ describe("Patient detail page authorization boundary", () => {
       expect.anything(),
       patient.patientHospitalRelationshipId,
     );
+    expect(page).toBeDefined();
+  });
+
+  it("renders the selected Patient Profile fields as a read-only detail section", async () => {
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    const profileView = PatientProfileView({ profile: patient.profile });
+
+    for (const value of [
+      "ข้อมูลผู้ป่วย",
+      "ข้อมูลทั่วไป",
+      "วันเกิด",
+      "1 มกราคม 2520",
+      "ชาย",
+      "0812345678",
+      "99 ถนนตัวอย่าง แขวงตัวอย่าง",
+      "สมหญิง ผู้ติดต่อ",
+      "0898765432",
+      "เกษตรกร",
+      "มัธยมศึกษา",
+    ]) {
+      expect(containsString(profileView, value)).toBe(true);
+    }
+    expect(containsString(page, "0812345678")).toBe(true);
+    expect(containsString(page, "แก้ไขข้อมูลโปรไฟล์")).toBe(false);
+  });
+
+  it("keeps the profile structure visible and uses the missing-value label", async () => {
+    mockedGetPatientDirectoryDetail.mockResolvedValue({
+      ...patient,
+      profile: {
+        dateOfBirth: null,
+        gender: null,
+        phoneNumber: null,
+        addressText: null,
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+      },
+    });
+
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    const profileView = PatientProfileView({
+      profile: {
+        dateOfBirth: null,
+        gender: null,
+        phoneNumber: null,
+        addressText: null,
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+      },
+    });
+
+    expect(containsString(profileView, "ข้อมูลทั่วไป")).toBe(true);
+    expect(containsString(profileView, "ผู้ติดต่อกรณีฉุกเฉิน")).toBe(true);
+    expect(containsString(profileView, "ไม่ระบุ")).toBe(true);
     expect(page).toBeDefined();
   });
 

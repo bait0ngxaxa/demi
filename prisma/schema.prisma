@@ -176,10 +176,18 @@ model HospitalMembership {
 }
 
 model PatientProfile {
-  id        String   @id @default(uuid()) @db.Uuid
-  personId  String   @unique @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    String    @id @default(uuid()) @db.Uuid
+  personId              String    @unique @db.Uuid
+  dateOfBirth           DateTime? @db.Date
+  gender                String?   @db.VarChar(64)
+  phoneNumber           String?   @db.VarChar(32)
+  addressText           String?   @db.VarChar(500)
+  emergencyContactName  String?   @db.VarChar(200)
+  emergencyContactPhone String?   @db.VarChar(32)
+  occupation            String?   @db.VarChar(200)
+  educationLevel        String?   @db.VarChar(200)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   person                Person                       @relation(fields: [personId], references: [id], onDelete: Restrict)
   hospitalRelationships PatientHospitalRelationship[]

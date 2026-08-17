@@ -207,6 +207,26 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
       });
     }
 
+    const firstPatient = await prisma.patientHospitalRelationship.findFirstOrThrow({
+      where: { hospitalId: hospital.id, hospitalNumber: "HN-SAME" },
+      orderBy: { id: "asc" },
+      select: { patientProfileId: true, id: true },
+    });
+    const dateOfBirth = new Date("1977-01-01T00:00:00.000Z");
+    await prisma.patientProfile.update({
+      where: { id: firstPatient.patientProfileId },
+      data: {
+        dateOfBirth,
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: "สมหญิง ผู้ติดต่อ",
+        emergencyContactPhone: "0898765432",
+        occupation: "เกษตรกร",
+        educationLevel: "มัธยมศึกษา",
+      },
+    });
+
     const firstPage = await findPatientDirectory(owner.actor, {
       targetHospitalId: hospital.id,
       lookupType: "NAME",
@@ -283,6 +303,18 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
     expect(JSON.stringify(firstPage)).not.toContain("authSubject");
     expect(JSON.stringify(firstPage)).not.toContain("activation");
     expect(JSON.stringify(firstPage)).not.toContain("clinical");
+
+    const detail = await getPatientDirectoryDetail(member.actor, firstPatient.id);
+    expect(detail.profile).toEqual({
+      dateOfBirth,
+      gender: "ชาย",
+      phoneNumber: "0812345678",
+      addressText: "99 ถนนตัวอย่าง",
+      emergencyContactName: "สมหญิง ผู้ติดต่อ",
+      emergencyContactPhone: "0898765432",
+      occupation: "เกษตรกร",
+      educationLevel: "มัธยมศึกษา",
+    });
   });
 
   it("keeps Patient reads inside the direct Hospital boundary and denies hierarchy, OSM, and ADMIN access", async () => {
@@ -309,6 +341,11 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
       familyName: "โรงพยาบาลพี่น้อง",
       hospitalNumber: "HN-SIBLING",
     });
+    await prisma.userRole.create({ data: { userId: parentActor.userId, role: Role.ADMIN } });
+    const multiRoleParentActor: ActorContext = {
+      ...parentActor.actor,
+      roles: [Role.HOSPITAL, Role.ADMIN],
+    };
     const osm = await createOsmActor(parent.id);
     const admin = await createStandaloneAdmin();
 
@@ -350,6 +387,12 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
     await expect(getPatientDirectoryDetail(childActor.actor, siblingPatient.relationshipId)).rejects.toBeInstanceOf(
       NotFoundError,
     );
+    await expect(getPatientDirectoryDetail(admin, parentPatient.relationshipId)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    await expect(getPatientDirectoryDetail(multiRoleParentActor, parentPatient.relationshipId)).resolves.toMatchObject({
+      patientHospitalRelationshipId: parentPatient.relationshipId,
+    });
   });
 
   it("fails closed for inactive membership, inactive Hospital, forged Hospital context, and inaccessible detail IDs", async () => {

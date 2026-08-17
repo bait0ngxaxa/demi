@@ -14,6 +14,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import {
   findPatientDirectory,
+  getPatientDirectoryDetail,
   patientDirectoryInternals,
   type PatientDirectoryDatabase,
 } from "./patient-directory-query-service";
@@ -258,5 +259,68 @@ describe("Patient directory query boundary", () => {
     expect(JSON.stringify(item)).not.toContain("authSubject");
     expect(JSON.stringify(item)).not.toContain("activation");
     expect(JSON.stringify(item)).not.toContain("clinical");
+  });
+
+  it("projects the selected profile fields only through the authorized relationship detail query", async () => {
+    const dateOfBirth = new Date("1977-01-01T00:00:00.000Z");
+    const findFirst = vi.fn().mockResolvedValue({
+      id: relationshipId,
+      hospitalNumber: "HN-001",
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      patientProfile: {
+        id: patientProfileId,
+        dateOfBirth,
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: "สมหญิง ผู้ติดต่อ",
+        emergencyContactPhone: "0898765432",
+        occupation: "เกษตรกร",
+        educationLevel: "มัธยมศึกษา",
+        person: { givenName: "สมชาย", familyName: "ผู้ป่วย" },
+      },
+    });
+    const database = {
+      patientHospitalRelationship: { findFirst },
+    } as unknown as PatientDirectoryDatabase;
+
+    const result = await getPatientDirectoryDetail(directoryActor, relationshipId, { database });
+
+    expect(result).toEqual({
+      patientProfileId,
+      patientHospitalRelationshipId: relationshipId,
+      displayName: "สมชาย ผู้ป่วย",
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      hospitalNumber: "HN-001",
+      profile: {
+        dateOfBirth,
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: "สมหญิง ผู้ติดต่อ",
+        emergencyContactPhone: "0898765432",
+        occupation: "เกษตรกร",
+        educationLevel: "มัธยมศึกษา",
+      },
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: relationshipId, OR: expect.any(Array) }),
+        select: patientDirectoryInternals.patientDetailSelect,
+      }),
+    );
+    expect(Object.keys(result.profile)).toEqual([
+      "dateOfBirth",
+      "gender",
+      "phoneNumber",
+      "addressText",
+      "emergencyContactName",
+      "emergencyContactPhone",
+      "occupation",
+      "educationLevel",
+    ]);
+    expect(JSON.stringify(result)).not.toContain("identityKeyHash");
+    expect(JSON.stringify(result)).not.toContain("authSubject");
+    expect(JSON.stringify(result)).not.toContain("clinical");
   });
 });

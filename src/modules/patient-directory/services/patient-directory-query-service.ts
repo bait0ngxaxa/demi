@@ -52,6 +52,21 @@ export type PatientDirectoryItem = {
   hospitalNumber: string | null;
 };
 
+export type PatientProfileDetail = {
+  dateOfBirth: Date | null;
+  gender: string | null;
+  phoneNumber: string | null;
+  addressText: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  occupation: string | null;
+  educationLevel: string | null;
+};
+
+export type PatientDirectoryDetail = PatientDirectoryItem & {
+  profile: PatientProfileDetail;
+};
+
 export type PatientDirectoryPage = {
   hospital: PatientDirectoryScope;
   items: PatientDirectoryItem[];
@@ -103,8 +118,42 @@ export const patientDirectorySelect = {
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
 
+export const patientDetailSelect = {
+  id: true,
+  hospitalNumber: true,
+  hospital: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  patientProfile: {
+    select: {
+      id: true,
+      dateOfBirth: true,
+      gender: true,
+      phoneNumber: true,
+      addressText: true,
+      emergencyContactName: true,
+      emergencyContactPhone: true,
+      occupation: true,
+      educationLevel: true,
+      person: {
+        select: {
+          givenName: true,
+          familyName: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.PatientHospitalRelationshipSelect;
+
 export type PatientDirectoryRecord = Prisma.PatientHospitalRelationshipGetPayload<{
   select: typeof patientDirectorySelect;
+}>;
+
+export type PatientDirectoryDetailRecord = Prisma.PatientHospitalRelationshipGetPayload<{
+  select: typeof patientDetailSelect;
 }>;
 
 const patientDirectoryOrderBy = [
@@ -240,6 +289,24 @@ export function toPatientDirectoryItem(record: PatientDirectoryRecord): PatientD
   };
 }
 
+export function toPatientDirectoryDetail(
+  record: PatientDirectoryDetailRecord,
+): PatientDirectoryDetail {
+  return {
+    ...toPatientDirectoryItem(record),
+    profile: {
+      dateOfBirth: record.patientProfile.dateOfBirth,
+      gender: record.patientProfile.gender,
+      phoneNumber: record.patientProfile.phoneNumber,
+      addressText: record.patientProfile.addressText,
+      emergencyContactName: record.patientProfile.emergencyContactName,
+      emergencyContactPhone: record.patientProfile.emergencyContactPhone,
+      occupation: record.patientProfile.occupation,
+      educationLevel: record.patientProfile.educationLevel,
+    },
+  };
+}
+
 async function resolveAuthorizedHospital(
   database: PatientDirectoryDatabase,
   actorUserId: string,
@@ -349,7 +416,7 @@ export async function getPatientDirectoryDetail(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: PatientDirectoryQueryDependencies = {},
-): Promise<PatientDirectoryItem> {
+): Promise<PatientDirectoryDetail> {
   const parsedRelationshipId = patientDirectoryRelationshipIdSchema.safeParse(relationshipId);
 
   if (!parsedRelationshipId.success) {
@@ -387,14 +454,14 @@ export async function getPatientDirectoryDetail(
         id: parsedRelationshipId.data,
         OR: accessPredicates,
       },
-      select: patientDirectorySelect,
+      select: patientDetailSelect,
     });
 
     if (!relationship) {
       throw new NotFoundError();
     }
 
-    return toPatientDirectoryItem(relationship);
+    return toPatientDirectoryDetail(relationship);
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;
@@ -470,7 +537,9 @@ export const patientDirectoryInternals = {
   buildOsmAssignedPatientRelationshipWhere,
   patientDirectoryOrderBy,
   patientDirectorySelect,
+  patientDetailSelect,
   parseAssignedDirectoryQuery,
   parseDirectoryQuery,
+  toPatientDirectoryDetail,
   toPatientDirectoryItem,
 };

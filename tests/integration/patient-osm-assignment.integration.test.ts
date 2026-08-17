@@ -439,6 +439,19 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
       familyName: "โรงพยาบาลเอ",
       hospitalNumber: "HN-B",
     });
+    await prisma.patientProfile.update({
+      where: { id: patientA.patientProfileId },
+      data: {
+        dateOfBirth: new Date("1977-01-01T00:00:00.000Z"),
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: "สมหญิง ผู้ติดต่อ",
+        emergencyContactPhone: "0898765432",
+        occupation: "เกษตรกร",
+        educationLevel: "มัธยมศึกษา",
+      },
+    });
     const unassigned = await createPatient(ownerA.actor, hospitalA.id, {
       identity: "unassigned-human",
       givenName: "ผู้ป่วย",
@@ -467,6 +480,10 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
     ).resolves.toMatchObject({ total: 0, items: [] });
     await expect(getPatientDirectoryDetail(osmA.actor, patientA.relationshipId)).resolves.toMatchObject({
       hospitalNumber: "HN-A",
+      profile: {
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+      },
     });
     await expect(getPatientDirectoryDetail(osmA.actor, patientB.relationshipId)).rejects.toBeInstanceOf(
       NotFoundError,
