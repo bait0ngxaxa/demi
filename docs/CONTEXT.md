@@ -10,9 +10,9 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-ขณะนี้ **Phase 10B.0 Patient Profile working prototype implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** ซึ่งยังคงเป็น provisional requirement/domain contract และไม่ใช่ customer-approved behavior โดย 10B.0 เพิ่มเฉพาะ bounded, read-only profile projection ใน Patient Detail เดิม
+ขณะนี้ **Phase 10C.0 Baseline / Initial State working prototype implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** และ Phase 10B.0 read-only Patient Profile โดย 10C.0 เพิ่ม dedicated, immutable, relationship-scoped Baseline สำหรับ requirement validation และยังไม่ใช่ customer-approved behavior
 
-ลำดับถัดไปคือ **Phase 10C.0 — Baseline / Initial State** ส่วน profile editing, Patient self-service, field ownership, visibility, correction และ actor-specific editability ยังต้องรอการยืนยัน requirements
+ลำดับถัดไปคือ **Phase 10D.0 — Patient Status Artifacts / Attachment Boundary** ส่วน profile editing, Patient self-service, field ownership, visibility, correction และ actor-specific editability ยังต้องรอการยืนยัน requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -99,9 +99,17 @@ Phase 10B.0 is implemented as a provisional, read-only Patient Profile subset in
 - `PatientProfile` stores eight nullable prototype fields: date of birth, gender, phone number, address, emergency contact name/phone, occupation, and education level. This does not permanently resolve ownership; date of birth and gender may later belong to `Person`.
 - Detail reuses the exact `PatientHospitalRelationship` authorization boundary for direct Hospital access and exact-assigned OSM access. ADMIN-only remains denied, while a valid scoped path on a multi-role actor remains usable.
 - Profile values appear only in the authorized Patient Detail projection. Patient directory/list projections remain minimal and do not expose these fields; missing values render `ไม่ระบุ`.
-- Profile editing, Patient self-service, clinical data, Baseline, Status Tracking, artifacts, and uploads remain deferred.
+- Profile editing, Patient self-service, Status Tracking, artifacts, and uploads remain deferred.
 
-The next planned slice is **Phase 10C.0 — Baseline / Initial State**.
+## Phase 10C.0 Baseline / Initial State Working Prototype
+
+Phase 10C.0 is implemented as a provisional, immutable initial-state snapshot in [the Phase 10C.0 handoff](./phases/PHASE_10C0_BASELINE_INITIAL_STATE_WORKING_PROTOTYPE.md):
+
+- `PatientBaseline` is a dedicated record owned by the exact `PatientHospitalRelationship`; it is not Follow-up round zero, Screening round zero, a PatientProfile field group, or a current-health status record. A unique relationship key allows one Baseline per relationship.
+- `/app/patients/[relationshipId]/baseline` provides a mobile-friendly create form when absent and a read-only snapshot after creation. Patient Detail provides a bounded existence/date navigation card without loading the full Baseline payload.
+- Creation uses the narrow `patient:baseline:create` capability, reuses the exact relationship `patient:read` boundary, derives `recordedByUserId` server-side, and allows active direct Hospital OWNER/MEMBER or exact active assigned OSM scope. ADMIN-only, unassigned OSM, Hospital hierarchy, profession, and Patient self-service do not widen authority.
+- Baseline creation and minimal `patient_baseline.created` audit metadata commit atomically. Measurements and clinical/context text are excluded from audit metadata, and no Screening, Goal, Appointment, Follow-up, PatientProfile, assignment, classification, or artifact side effect is performed.
+- The provisional field set, confidence scale, units, requiredness, correction/amendment behavior, care-episode cardinality, and future comparison semantics remain open owner requirements. The next planned slice is **Phase 10D.0 — Patient Status Artifacts / Attachment Boundary**.
 
 ## Phase 3A Hospital Onboarding Contract
 

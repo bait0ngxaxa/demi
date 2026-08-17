@@ -122,6 +122,7 @@ model User {
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
+  patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -208,6 +209,7 @@ model PatientHospitalRelationship {
   goalPlans PatientGoalPlan[]
   appointments PatientAppointment[]
   followups PatientFollowup[]
+  baseline             PatientBaseline?
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -351,6 +353,29 @@ model PatientFollowup {
   @@index([patientHospitalRelationshipId, recordedAt])
   @@index([appointmentId])
   @@index([sourceGoalPlanId])
+}
+
+model PatientBaseline {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @unique @db.Uuid
+  recordedOn                    DateTime @db.Date
+  recordedByUserId              String   @db.Uuid
+  weight                        Float?
+  waistCircumference            Float?
+  bloodPressureSystolic         Float?
+  bloodPressureDiastolic        Float?
+  bloodSugarDtx                 Float?
+  adaptationSummary             String?  @db.VarChar(2000)
+  adaptationObstacles           String?  @db.VarChar(2000)
+  adaptationOpportunities       String?  @db.VarChar(2000)
+  confidenceScore               Int?
+  confidenceImprovementPlan     String?  @db.VarChar(2000)
+  summary                       String?  @db.VarChar(2000)
+  recommendations               String?  @db.VarChar(2000)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  recordedBy                  User                        @relation("PatientBaselineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
 }
 
 model PatientFollowupActivityProgress {

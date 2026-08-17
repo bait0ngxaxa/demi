@@ -7,6 +7,8 @@ import { decidePatientOsmAssignmentPolicy } from "@/modules/patient-assignment/p
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getPatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
+import type { PatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -60,6 +62,28 @@ export default async function PatientDetailPage({
     throw error;
   }
 
+  let baselineNavigation: PatientBaselineNavigationState;
+
+  try {
+    baselineNavigation = await getPatientBaselineNavigationState(actor, relationshipId);
+  } catch (error: unknown) {
+    if (error instanceof NotFoundError) {
+      notFound();
+    }
+
+    if (error instanceof ForbiddenError) {
+      redirect("/app");
+    }
+
+    throw error;
+  }
+
+  const formatDateOnly = (value: Date): string =>
+    new Intl.DateTimeFormat("th-TH", {
+      dateStyle: "long",
+      timeZone: "UTC",
+    }).format(value);
+
   const canManageAssignment = decidePatientOsmAssignmentPolicy({
     actor,
     capability: "patient:assign-osm",
@@ -98,6 +122,36 @@ export default async function PatientDetailPage({
         </Panel>
 
         <PatientProfileView profile={patient.profile} />
+
+        <Panel>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ข้อมูลตั้งต้น</h2>
+              {baselineNavigation.baseline ? (
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  บันทึกเมื่อ {formatDateOnly(baselineNavigation.baseline.recordedOn)} · ข้อมูลอ่านอย่างเดียว
+                </p>
+              ) : (
+                <p className="mt-1 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลตั้งต้น</p>
+              )}
+            </div>
+            {baselineNavigation.baseline ? (
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
+              >
+                ดูข้อมูลตั้งต้น
+              </Link>
+            ) : baselineNavigation.canCreate ? (
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
+              >
+                บันทึกข้อมูลตั้งต้น
+              </Link>
+            ) : null}
+          </div>
+        </Panel>
 
         <div className="mt-6 flex flex-wrap gap-3">
           {canManageAssignment ? (

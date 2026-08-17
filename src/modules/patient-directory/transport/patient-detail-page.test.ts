@@ -8,12 +8,14 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 
 const {
   mockedConnection,
+  mockedGetPatientBaselineNavigationState,
   mockedGetPatientDirectoryDetail,
   mockedGetProtectedApplicationActor,
   mockedNotFound,
   mockedRedirect,
 } = vi.hoisted(() => ({
   mockedConnection: vi.fn(),
+  mockedGetPatientBaselineNavigationState: vi.fn(),
   mockedGetPatientDirectoryDetail: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
   mockedNotFound: vi.fn(),
@@ -35,6 +37,10 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 
 vi.mock("@/modules/patient-directory/services/patient-directory-query-service", () => ({
   getPatientDirectoryDetail: mockedGetPatientDirectoryDetail,
+}));
+
+vi.mock("@/modules/patient-baseline/services/patient-baseline-query-service", () => ({
+  getPatientBaselineNavigationState: mockedGetPatientBaselineNavigationState,
 }));
 
 const patient = {
@@ -102,6 +108,7 @@ describe("Patient detail page authorization boundary", () => {
     mockedConnection.mockResolvedValue(undefined);
     mockedGetProtectedApplicationActor.mockResolvedValue(actor);
     mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: true });
     mockedNotFound.mockImplementation(() => {
       throw new Error("NEXT_NOT_FOUND");
     });
@@ -182,6 +189,35 @@ describe("Patient detail page authorization boundary", () => {
     expect(containsString(profileView, "ผู้ติดต่อกรณีฉุกเฉิน")).toBe(true);
     expect(containsString(profileView, "ไม่ระบุ")).toBe(true);
     expect(page).toBeDefined();
+  });
+
+  it("shows the Baseline creation entry point when no Baseline exists", async () => {
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+
+    expect(containsString(page, "ข้อมูลตั้งต้น")).toBe(true);
+    expect(containsString(page, "ยังไม่มีข้อมูลตั้งต้น")).toBe(true);
+    expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(true);
+    expect(mockedGetPatientBaselineNavigationState).toHaveBeenCalledWith(
+      expect.anything(),
+      patient.patientHospitalRelationshipId,
+    );
+  });
+
+  it("shows an existing Baseline as read-only navigation", async () => {
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({
+      baseline: { recordedOn: new Date("2026-08-01T00:00:00.000Z") },
+      canCreate: true,
+    });
+
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+
+    expect(containsString(page, "ดูข้อมูลตั้งต้น")).toBe(true);
+    expect(containsString(page, "ข้อมูลอ่านอย่างเดียว")).toBe(true);
+    expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(false);
   });
 
   it("shows assignment management only for a Hospital OWNER", async () => {
