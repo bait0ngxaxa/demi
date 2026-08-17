@@ -10,9 +10,9 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-ขณะนี้ **Phase 10C.0 Baseline / Initial State working prototype implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** และ Phase 10B.0 read-only Patient Profile โดย 10C.0 เพิ่ม dedicated, immutable, relationship-scoped Baseline สำหรับ requirement validation และยังไม่ใช่ customer-approved behavior
+ขณะนี้ **Phase 10B.0–10D.0 prototype slices implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** โดย 10C.0 เพิ่ม dedicated, immutable, relationship-scoped Baseline และ 10D.0 เพิ่ม relationship-level image evidence แบบ append-only สำหรับ requirement validation ทั้งหมดนี้ยังไม่ใช่ customer-approved behavior รายละเอียดอยู่ที่ [Phase 10D.0 handoff](./phases/PHASE_10D0_PATIENT_STATUS_ARTIFACTS_WORKING_PROTOTYPE.md)
 
-ลำดับถัดไปคือ **Phase 10D.0 — Patient Status Artifacts / Attachment Boundary** ส่วน profile editing, Patient self-service, field ownership, visibility, correction และ actor-specific editability ยังต้องรอการยืนยัน requirements
+คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -90,7 +90,7 @@ The provisional ownership conclusions are:
 - Artifacts are provisionally owned by one concrete business record, with metadata separate from binary storage and visibility inherited from the owner. A generic enterprise attachment framework and Patient self-service uploads remain deferred.
 - Authorization continues to be server-side and fail-closed: direct active Hospital membership or exact active OSM assignment governs relationship access; hierarchy, profession, and ADMIN-only status do not silently widen routine patient authority. Patient self-service remains open.
 
-The existing Patient Detail page was the 10B.0 foundation. Phase 10B.0 now provides the selected provisional read-only profile subset; profile editing remains blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. The next sequence is `10C.0` Baseline / Initial State and `10D.0` Patient Status Artifacts / Attachment Boundary. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+The existing Patient Detail page was the 10B.0 foundation. Phase 10B.0 now provides the selected provisional read-only profile subset; profile editing remains blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Phase 10C.0 adds the Baseline / Initial State prototype and Phase 10D.0 adds relationship-level Patient Status Evidence / Artifact. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, final artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
 
 ## Phase 10B.0 Patient Profile Working Prototype
 
@@ -99,7 +99,7 @@ Phase 10B.0 is implemented as a provisional, read-only Patient Profile subset in
 - `PatientProfile` stores eight nullable prototype fields: date of birth, gender, phone number, address, emergency contact name/phone, occupation, and education level. This does not permanently resolve ownership; date of birth and gender may later belong to `Person`.
 - Detail reuses the exact `PatientHospitalRelationship` authorization boundary for direct Hospital access and exact-assigned OSM access. ADMIN-only remains denied, while a valid scoped path on a multi-role actor remains usable.
 - Profile values appear only in the authorized Patient Detail projection. Patient directory/list projections remain minimal and do not expose these fields; missing values render `ไม่ระบุ`.
-- Profile editing, Patient self-service, Status Tracking, artifacts, and uploads remain deferred.
+- Profile editing, Patient self-service, generic artifacts, and arbitrary uploads remain deferred. Relationship-level image evidence is implemented separately in Phase 10D.0.
 
 ## Phase 10C.0 Baseline / Initial State Working Prototype
 
@@ -109,7 +109,17 @@ Phase 10C.0 is implemented as a provisional, immutable initial-state snapshot in
 - `/app/patients/[relationshipId]/baseline` provides a mobile-friendly create form when absent and a read-only snapshot after creation. Patient Detail provides a bounded existence/date navigation card without loading the full Baseline payload.
 - Creation uses the narrow `patient:baseline:create` capability, reuses the exact relationship `patient:read` boundary, derives `recordedByUserId` server-side, and allows active direct Hospital OWNER/MEMBER or exact active assigned OSM scope. ADMIN-only, unassigned OSM, Hospital hierarchy, profession, and Patient self-service do not widen authority.
 - Baseline creation and minimal `patient_baseline.created` audit metadata commit atomically. Measurements and clinical/context text are excluded from audit metadata, and no Screening, Goal, Appointment, Follow-up, PatientProfile, assignment, classification, or artifact side effect is performed.
-- The provisional field set, confidence scale, units, requiredness, correction/amendment behavior, care-episode cardinality, and future comparison semantics remain open owner requirements. The next planned slice is **Phase 10D.0 — Patient Status Artifacts / Attachment Boundary**.
+- The provisional field set, confidence scale, units, requiredness, correction/amendment behavior, care-episode cardinality, and future comparison semantics remain open owner requirements. Phase 10D.0 is implemented as a separate relationship-level image evidence prototype; Baseline attachments remain deferred.
+
+## Phase 10D.0 Relationship-Level Patient Status Evidence / Artifact Prototype
+
+Phase 10D.0 is implemented as a narrow, provisional relationship-level image evidence workflow; the full boundary and operational setup are documented in [the Phase 10D.0 handoff](./phases/PHASE_10D0_PATIENT_STATUS_ARTIFACTS_WORKING_PROTOTYPE.md):
+
+- `PatientEvidenceArtifact` has exactly one concrete owner: `PatientHospitalRelationship`. Metadata is stored in PostgreSQL while the binary is stored in a private Supabase Storage bucket through a server-only adapter. No polymorphic attachment model, Baseline owner, or Follow-up owner was introduced.
+- JPEG, PNG, and WEBP are accepted only when the server-side signature agrees with the declared media type and the file is non-empty and no larger than the provisional 5 MiB limit. SHA-256 integrity metadata is computed from the uploaded bytes; identical content does not imply clinical duplicate meaning.
+- Upload, list, and protected view use exact relationship authorization. Direct active Hospital OWNER/MEMBER and exact active assigned OSM paths are allowed; valid multi-role paths remain valid, while ADMIN-only, PATIENT, hierarchy-only, wrong-Hospital, and unassigned OSM paths remain denied or hidden under the established anti-enumeration convention.
+- Upload uses a narrow authenticated multipart Route Handler. Storage upload precedes a PostgreSQL transaction containing metadata plus bounded creation audit; a failed transaction triggers best-effort object compensation. Signed URLs are short-lived and never persisted.
+- The UI supports create/list/view with Thai-first mobile cards. Delete, replacement, supersession, lifecycle, retention, Patient self-service, PDFs/documents, and generic document management remain explicitly deferred.
 
 ## Phase 3A Hospital Onboarding Contract
 

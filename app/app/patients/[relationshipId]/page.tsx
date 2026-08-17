@@ -153,6 +153,27 @@ export default async function PatientDetailPage({
           </div>
         </Panel>
 
+        <section className="mt-6">
+          <Panel>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
+                  หลักฐาน / รูปภาพสถานะ
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  ดูหลักฐานและรูปภาพที่เกี่ยวข้องกับการดูแลผู้ป่วยรายนี้
+                </p>
+              </div>
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/evidence`}
+              >
+                ดูหลักฐาน
+              </Link>
+            </div>
+          </Panel>
+        </section>
+
         <div className="mt-6 flex flex-wrap gap-3">
           {canManageAssignment ? (
             <Link

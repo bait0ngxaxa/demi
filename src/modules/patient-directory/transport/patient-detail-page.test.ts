@@ -220,6 +220,16 @@ describe("Patient detail page authorization boundary", () => {
     expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(false);
   });
 
+  it("exposes the relationship-scoped Evidence entry point without changing profile behavior", async () => {
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+
+    expect(containsString(page, "หลักฐาน / รูปภาพสถานะ")).toBe(true);
+    expect(containsString(page, "ดูหลักฐานและรูปภาพที่เกี่ยวข้องกับการดูแลผู้ป่วยรายนี้")).toBe(true);
+    expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/evidence`)).toBe(true);
+  });
+
   it("shows assignment management only for a Hospital OWNER", async () => {
     const ownerPage = await PatientDetailPage({
       params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),

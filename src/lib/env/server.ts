@@ -39,8 +39,17 @@ export type SupabaseAdminEnv = Pick<
   "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"
 >;
 
+const patientEvidenceStorageEnvSchema = z.object({
+  SUPABASE_PATIENT_EVIDENCE_BUCKET: z.string().trim().min(1).max(100),
+});
+
+export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
+  SUPABASE_PATIENT_EVIDENCE_BUCKET: string;
+};
+
 let cachedServerEnv: ServerEnv | undefined;
 let cachedSupabaseAdminEnv: SupabaseAdminEnv | undefined;
+let cachedPatientEvidenceStorageEnv: PatientEvidenceStorageEnv | undefined;
 
 export function getServerEnv(): ServerEnv {
   if (cachedServerEnv) {
@@ -84,4 +93,25 @@ export function getSupabaseAdminEnv(): SupabaseAdminEnv {
     SUPABASE_SERVICE_ROLE_KEY: result.data.SUPABASE_SERVICE_ROLE_KEY,
   };
   return cachedSupabaseAdminEnv;
+}
+
+export function getPatientEvidenceStorageEnv(): PatientEvidenceStorageEnv {
+  if (cachedPatientEvidenceStorageEnv) {
+    return cachedPatientEvidenceStorageEnv;
+  }
+
+  const result = patientEvidenceStorageEnvSchema.safeParse({
+    SUPABASE_PATIENT_EVIDENCE_BUCKET: process.env.SUPABASE_PATIENT_EVIDENCE_BUCKET,
+  });
+
+  if (!result.success) {
+    throw new Error("Patient evidence storage environment is not configured correctly");
+  }
+
+  cachedPatientEvidenceStorageEnv = {
+    ...getSupabaseAdminEnv(),
+    SUPABASE_PATIENT_EVIDENCE_BUCKET: result.data.SUPABASE_PATIENT_EVIDENCE_BUCKET,
+  };
+
+  return cachedPatientEvidenceStorageEnv;
 }

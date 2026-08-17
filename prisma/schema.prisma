@@ -123,6 +123,7 @@ model User {
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
+  patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -210,6 +211,7 @@ model PatientHospitalRelationship {
   appointments PatientAppointment[]
   followups PatientFollowup[]
   baseline             PatientBaseline?
+  evidenceArtifacts    PatientEvidenceArtifact[]
 
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
@@ -376,6 +378,23 @@ model PatientBaseline {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   recordedBy                  User                        @relation("PatientBaselineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+}
+
+model PatientEvidenceArtifact {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  storageObjectKey              String   @unique @db.VarChar(512)
+  mediaType                     String   @db.VarChar(100)
+  byteSize                      Int
+  contentSha256                 String   @db.VarChar(64)
+  caption                       String?  @db.VarChar(500)
+  createdByUserId               String   @db.Uuid
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  createdByUser               User                        @relation("PatientEvidenceArtifactCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientHospitalRelationshipId, createdAt])
 }
 
 model PatientFollowupActivityProgress {
