@@ -282,6 +282,23 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const afterReschedule = await getAppointmentDetail(owner.actor, patient.relationshipId, first.appointmentId);
     expect(afterReschedule).toMatchObject({ type: "FOLLOW_UP", locationType: "ONLINE", durationMinutes: 45 });
 
+    const replayAfterReschedule = await createAppointment(owner.actor, input);
+    expect(replayAfterReschedule).toMatchObject({
+      appointmentId: first.appointmentId,
+      status: AppointmentStatus.SCHEDULED,
+    });
+    const detailAfterReplay = await getAppointmentDetail(owner.actor, patient.relationshipId, first.appointmentId);
+    expect(detailAfterReplay).toMatchObject({
+      type: "FOLLOW_UP",
+      locationType: "ONLINE",
+      durationMinutes: 45,
+      note: "หมายเหตุหลังเลื่อนนัด",
+    });
+    await expect(createAppointment(member.actor, input)).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      createAppointment(owner.actor, { ...input, note: "เปลี่ยน payload เดิม" }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
     const cancelled = await cancelAppointment(
       owner.actor,
       transitionInput(patient.relationshipId, first.appointmentId, rescheduled.updatedAt),
@@ -335,7 +352,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const appointment = await createAppointment(owner.actor, appointmentInput(patient.relationshipId));
+    const nonceInput = appointmentInput(patient.relationshipId);
+    const appointment = await createAppointment(owner.actor, nonceInput);
 
     await expect(getAppointmentHistory(otherOwner.actor, patient.relationshipId)).rejects.toBeInstanceOf(
       ForbiddenError,
@@ -343,6 +361,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     await expect(
       getAppointmentDetail(owner.actor, secondPatient.relationshipId, appointment.appointmentId),
     ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      createAppointment(owner.actor, { ...nonceInput, patientHospitalRelationshipId: secondPatient.relationshipId }),
+    ).rejects.toBeInstanceOf(ConflictError);
     await expect(createAppointment(otherOwner.actor, appointmentInput(patient.relationshipId))).rejects.toBeInstanceOf(
       ForbiddenError,
     );
@@ -380,7 +401,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       familyName: "วงจรสถานะ",
     });
 
-    const future = await createAppointment(owner.actor, appointmentInput(patient.relationshipId));
+    const futureInput = appointmentInput(patient.relationshipId);
+    const future = await createAppointment(owner.actor, futureInput);
     await expect(
       markAppointmentNoShow(owner.actor, transitionInput(patient.relationshipId, future.appointmentId, future.updatedAt)),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -390,6 +412,12 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       transitionInput(patient.relationshipId, future.appointmentId, future.updatedAt),
     );
     expect(completed.status).toBe(AppointmentStatus.COMPLETED);
+    const completedReplay = await createAppointment(owner.actor, futureInput);
+    expect(completedReplay).toMatchObject({
+      appointmentId: future.appointmentId,
+      status: AppointmentStatus.COMPLETED,
+    });
+    expect(await prisma.auditEvent.count({ where: { action: "appointment.created" } })).toBe(1);
     await expect(
       cancelAppointment(owner.actor, transitionInput(patient.relationshipId, future.appointmentId, completed.updatedAt)),
     ).rejects.toBeInstanceOf(ConflictError);

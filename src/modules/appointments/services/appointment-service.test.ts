@@ -24,6 +24,7 @@ import {
   createAppointment,
   markAppointmentNoShow,
   rescheduleAppointment,
+  appointmentServiceInternals,
   type AppointmentDatabase,
 } from "./appointment-service";
 
@@ -84,6 +85,29 @@ function rescheduleInput(overrides: Record<string, unknown> = {}): Record<string
   };
 }
 
+type AppointmentHashFields = Parameters<
+  typeof appointmentServiceInternals.createAppointmentRequestHash
+>[2];
+
+function requestHash(
+  actor: ActorContext = hospitalActor,
+  patientRelationshipId = relationshipId,
+  overrides: Partial<AppointmentHashFields> = {},
+): string {
+  const fields: AppointmentHashFields = {
+    scheduledAt,
+    type: "FOLLOW_UP",
+    responsibleUserId,
+    durationMinutes: 30,
+    locationType: "CLINIC",
+    locationDetail: "ห้องตรวจ 1",
+    note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
+    ...overrides,
+  };
+
+  return appointmentServiceInternals.createAppointmentRequestHash(actor, patientRelationshipId, fields);
+}
+
 function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: appointmentId,
@@ -98,6 +122,7 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
     status: AppointmentStatus.SCHEDULED,
     submissionNonce: nonce,
+    creationRequestHash: requestHash(),
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -106,6 +131,7 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
 
 function createDatabase(input: {
   existing?: Record<string, unknown> | null;
+  findUniqueResults?: Array<Record<string, unknown> | null>;
   findFirstResults?: Array<Record<string, unknown> | null>;
   createResult?: Record<string, unknown>;
   updateCount?: number;
@@ -124,6 +150,7 @@ function createDatabase(input: {
 } {
   const findFirstResults = input.findFirstResults ?? [];
   let findFirstIndex = 0;
+  let findUniqueIndex = 0;
   const transaction = {
     user: {
       findUnique: vi.fn().mockResolvedValue({
@@ -165,7 +192,15 @@ function createDatabase(input: {
       ),
     },
     patientAppointment: {
-      findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
+      findUnique: vi.fn().mockImplementation(async () => {
+        if (input.findUniqueResults) {
+          const result = input.findUniqueResults[findUniqueIndex];
+          findUniqueIndex += 1;
+          return result ?? null;
+        }
+
+        return input.existing ?? null;
+      }),
       findFirst: vi.fn().mockImplementation(async () => {
         const result = findFirstResults[findFirstIndex];
         findFirstIndex += 1;
@@ -220,6 +255,7 @@ describe("Appointment service", () => {
         createdByUserId: hospitalUserId,
         status: AppointmentStatus.SCHEDULED,
         type: "FOLLOW_UP",
+        creationRequestHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       }),
       select: expect.anything(),
     });
@@ -248,6 +284,154 @@ describe("Appointment service", () => {
     await expect(
       createAppointment(hospitalActor, validInput({ note: "เปลี่ยน payload" }), { database }),
     ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it("keeps the original create retry idempotent after reschedule", async () => {
+    const original = appointmentRecord();
+    const rescheduled = appointmentRecord({
+      scheduledAt: new Date("2026-08-21T03:30:00.000Z"),
+      type: "CONSULTATION",
+      durationMinutes: 45,
+      locationType: "ONLINE",
+      locationDetail: "ห้องประชุมออนไลน์",
+      note: "หมายเหตุหลังเลื่อนนัด",
+      updatedAt: new Date("2026-08-17T05:00:02.000Z"),
+      creationRequestHash: original.creationRequestHash,
+    });
+    const { database, transaction } = createDatabase({
+      findUniqueResults: [null, rescheduled],
+      findFirstResults: [original, rescheduled],
+      createResult: original,
+    });
+
+    const first = await createAppointment(hospitalActor, validInput(), { database, now: () => now });
+    const updated = await rescheduleAppointment(
+      hospitalActor,
+      rescheduleInput({ expectedUpdatedAt: first.updatedAt.toISOString() }),
+      { database, now: () => now },
+    );
+
+    transaction.hospitalMembership.findFirst.mockResolvedValue(null);
+
+    const replay = await createAppointment(hospitalActor, validInput(), { database, now: () => now });
+
+    expect(updated.status).toBe(AppointmentStatus.SCHEDULED);
+    expect(replay).toMatchObject({ appointmentId, status: AppointmentStatus.SCHEDULED });
+    expect(transaction.patientAppointment.create).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledTimes(2);
+    expect(mockedAudit.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ action: "appointment.created" }),
+    );
+    expect(mockedAudit.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ action: "appointment.rescheduled" }),
+    );
+  });
+
+  it("compares a changed retry against the immutable original create fingerprint", async () => {
+    const original = appointmentRecord();
+    const rescheduled = appointmentRecord({
+      scheduledAt: new Date("2026-08-21T03:30:00.000Z"),
+      note: "หมายเหตุหลังเลื่อนนัด",
+      updatedAt: new Date("2026-08-17T05:00:02.000Z"),
+      creationRequestHash: original.creationRequestHash,
+    });
+    const { database, transaction } = createDatabase({
+      findUniqueResults: [null, rescheduled],
+      findFirstResults: [original, rescheduled],
+      createResult: original,
+    });
+
+    const first = await createAppointment(hospitalActor, validInput(), { database, now: () => now });
+    await rescheduleAppointment(
+      hospitalActor,
+      rescheduleInput({ expectedUpdatedAt: first.updatedAt.toISOString() }),
+      { database, now: () => now },
+    );
+
+    await expect(
+      createAppointment(hospitalActor, validInput({ note: "เปลี่ยน payload เดิม" }), { database }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(transaction.patientAppointment.create).toHaveBeenCalledOnce();
+  });
+
+  it("returns the current terminal state when the original create is replayed", async () => {
+    const original = appointmentRecord();
+    const completed = appointmentRecord({
+      status: AppointmentStatus.COMPLETED,
+      updatedAt: new Date("2026-08-17T05:00:02.000Z"),
+      creationRequestHash: original.creationRequestHash,
+    });
+    const { database, transaction } = createDatabase({
+      findUniqueResults: [null, completed],
+      findFirstResults: [original, completed],
+      createResult: original,
+    });
+
+    const first = await createAppointment(hospitalActor, validInput(), { database, now: () => now });
+    const completion = await completeAppointment(
+      hospitalActor,
+      transitionInput({ expectedUpdatedAt: first.updatedAt.toISOString() }),
+      { database, now: () => now },
+    );
+    const replay = await createAppointment(hospitalActor, validInput(), { database, now: () => now });
+
+    expect(completion.status).toBe(AppointmentStatus.COMPLETED);
+    expect(replay).toMatchObject({ appointmentId, status: AppointmentStatus.COMPLETED });
+    expect(transaction.patientAppointment.create).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledTimes(2);
+    expect(mockedAudit.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ action: "appointment.created" }),
+    );
+    expect(mockedAudit.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ action: "appointment.completed" }),
+    );
+  });
+
+  it("normalizes equivalent note and timestamp spellings to the same create identity", async () => {
+    const existing = appointmentRecord({
+      responsibleUserId: null,
+      creationRequestHash: requestHash(hospitalActor, relationshipId, {
+        responsibleUserId: null,
+        note: "note",
+      }),
+    });
+    const { database, transaction } = createDatabase({
+      findUniqueResults: [null, existing],
+      createResult: existing,
+    });
+
+    await createAppointment(
+      hospitalActor,
+      validInput({ responsibleUserId: null, note: " note " }),
+      { database },
+    );
+    await expect(
+      createAppointment(
+        hospitalActor,
+        validInput({ responsibleUserId: null, note: "note", scheduledAt: "2026-08-20T03:30:00Z" }),
+        { database },
+      ),
+    ).resolves.toMatchObject({ appointmentId });
+
+    expect(transaction.patientAppointment.create).toHaveBeenCalledOnce();
+  });
+
+  it("rejects the same nonce when replayed by another actor", async () => {
+    const otherActor: ActorContext = {
+      ...hospitalActor,
+      userId: "88888888-8888-4888-8888-888888888888",
+    };
+    const { database, transaction } = createDatabase({ existing: appointmentRecord() });
+
+    await expect(createAppointment(otherActor, validInput(), { database })).rejects.toBeInstanceOf(ConflictError);
+    expect(transaction.patientAppointment.create).not.toHaveBeenCalled();
+  });
+
+  it("fails safely when a pre-fix row has no immutable create fingerprint", async () => {
+    const { database, transaction } = createDatabase({ existing: appointmentRecord({ creationRequestHash: null }) });
+
+    await expect(createAppointment(hospitalActor, validInput(), { database })).rejects.toBeInstanceOf(ConflictError);
+    expect(transaction.patientAppointment.create).not.toHaveBeenCalled();
   });
 
   it("revalidates responsible staff against active direct membership in the same Hospital", async () => {

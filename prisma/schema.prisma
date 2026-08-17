@@ -288,6 +288,7 @@ model PatientAppointment {
   note                          String?                 @db.VarChar(2000)
   status                        AppointmentStatus       @default(SCHEDULED)
   submissionNonce               String                  @unique @db.Uuid
+  creationRequestHash           String?                 @db.VarChar(64)
   createdAt                     DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt                     DateTime                @updatedAt @db.Timestamptz(3)
 

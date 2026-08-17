@@ -68,7 +68,8 @@ src/modules/appointments/
 
 ## 3. Persistence model
 
-Migration: `20260817090000_appointment_working_prototype`.
+Migrations: `20260817090000_appointment_working_prototype` plus the forward
+fix migration `20260817100000_appointment_creation_request_hash`.
 
 `PatientAppointment` contains:
 
@@ -86,6 +87,7 @@ Migration: `20260817090000_appointment_working_prototype`.
 | `note` | Optional bounded free text |
 | `status` | `SCHEDULED`, `COMPLETED`, `CANCELLED`, or `NO_SHOW` |
 | `submissionNonce` | Required unique UUID used for create retry semantics |
+| `creationRequestHash` | Nullable SHA-256 fingerprint of the immutable accepted create request; new rows always receive it |
 | `createdAt`, `updatedAt` | Timestamp metadata |
 
 Indexes support relationship/time history, responsible-user lookup, and
@@ -177,9 +179,26 @@ same nonce + changed accepted scope/payload    → conflict
 new nonce                                      → new Appointment
 ```
 
-The unique database constraint protects the retry boundary; serializable
-retry handling covers transient transaction conflicts without introducing a
-generic idempotency framework.
+After authorization and server normalization, the service stores a lowercase
+hexadecimal SHA-256 `creationRequestHash` over a fixed-order canonical payload
+containing the actor User ID, exact PatientHospitalRelationship ID, normalized
+scheduled instant, type, responsible User ID, duration, location values, and
+note. The hash is not exposed to the browser or audit metadata. A retry checks
+the actor, exact relationship, and immutable hash rather than the Appointment's
+current mutable fields, so a later reschedule or terminal status does not break
+replay detection. A successful replay returns the Appointment's current state
+and does not revalidate the responsible person's current membership.
+
+Responsible-person eligibility is still checked for a genuinely new create.
+The unique database constraint protects the retry boundary; serializable retry
+handling covers transient transaction conflicts without introducing a generic
+idempotency framework.
+
+The forward migration leaves `creationRequestHash` nullable for prototype rows
+created before this fix. Their original request cannot be reconstructed
+honestly, so a nonce replay against a row with a null hash fails safely with a
+conflict rather than guessing from current mutable fields. All newly created
+rows receive a non-null hash.
 
 ## 9. Audit and privacy
 
@@ -196,7 +215,7 @@ appointment.no_show
 Metadata contains only bounded opaque identifiers and status values such as
 Appointment ID, PatientHospitalRelationship ID, Hospital ID, and transition
 states. It excludes Patient names, HN, National ID, notes, location detail,
-credentials, provider subjects, and identity hashes.
+credentials, provider subjects, identity hashes, and the create-request hash.
 
 Routine reads are not audited. History and detail projections contain only
 relationship context and Appointment fields needed by the UI; unrelated
@@ -213,16 +232,19 @@ Focused tests cover:
 - strict schema allow-lists, unknown/authority fields, UUIDs, timestamp
   offsets, enum values, optional bounds, and transition inputs;
 - service create, responsible-person validation, creator/status derivation,
-  nonce retry/conflict, atomic audit, reschedule stale protection, terminal
-  transitions, idempotency/conflict, and server-time no-show behavior;
+  immutable request-fingerprint retry/conflict behavior after reschedule and
+  terminal transitions, actor/relationship nonce misuse, normalized equivalent
+  payloads, safe pre-fix null-hash handling, atomic audit, reschedule stale
+  protection, terminal transitions, and server-time no-show behavior;
 - Server Action field filtering, safe error mapping, relationship-scoped
   revalidation, and transition transport;
 - query projections, bounded history, exact OSM read behavior, safe cross-
   relationship detail denial, and direct responsible-member query;
 - PostgreSQL migration, relationship scope, OSM assignment, responsible
-  membership, retry uniqueness, audit persistence, reschedule, terminal
-  transitions, server-time no-show, competing updates, and absence of Goal or
-  Screening side effects.
+  membership, retry uniqueness, immutable create replay after reschedule and
+  completion, changed-payload/actor/relationship conflicts, audit persistence,
+  reschedule, terminal transitions, server-time no-show, competing updates,
+  and absence of Goal or Screening side effects.
 
 ## 11. Explicitly deferred
 

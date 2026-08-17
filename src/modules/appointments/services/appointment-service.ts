@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import {
   AppointmentStatus,
   MembershipStatus,
@@ -64,14 +66,8 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const appointmentRetrySelect = {
   id: true,
   patientHospitalRelationshipId: true,
-  responsibleUserId: true,
   createdByUserId: true,
-  type: true,
-  scheduledAt: true,
-  durationMinutes: true,
-  locationType: true,
-  locationDetail: true,
-  note: true,
+  creationRequestHash: true,
   status: true,
   submissionNonce: true,
   createdAt: true,
@@ -81,6 +77,15 @@ const appointmentRetrySelect = {
 type AppointmentRetryRecord = Prisma.PatientAppointmentGetPayload<{
   select: typeof appointmentRetrySelect;
 }>;
+
+const appointmentCurrentSelect = {
+  id: true,
+  patientHospitalRelationshipId: true,
+  scheduledAt: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.PatientAppointmentSelect;
 
 const appointmentMutationSelect = {
   id: true,
@@ -172,12 +177,32 @@ function normalizeAppointmentFields(
   return {
     scheduledAt: toDate(input.scheduledAt, "Appointment scheduled time"),
     type: input.type,
-    responsibleUserId: input.responsibleUserId ?? null,
+    responsibleUserId: input.responsibleUserId?.toLowerCase() ?? null,
     durationMinutes: input.durationMinutes ?? null,
     locationType: input.locationType ?? null,
     locationDetail: nullableText(input.locationDetail),
     note: nullableText(input.note),
   };
+}
+
+function createAppointmentRequestHash(
+  actor: ActorContext,
+  patientHospitalRelationshipId: string,
+  fields: NormalizedAppointmentFields,
+): string {
+  const canonicalPayload = {
+    actorUserId: actor.userId,
+    patientHospitalRelationshipId,
+    scheduledAt: fields.scheduledAt.toISOString(),
+    type: fields.type,
+    responsibleUserId: fields.responsibleUserId,
+    durationMinutes: fields.durationMinutes,
+    locationType: fields.locationType,
+    locationDetail: fields.locationDetail,
+    note: fields.note,
+  };
+
+  return createHash("sha256").update(JSON.stringify(canonicalPayload), "utf8").digest("hex");
 }
 
 function toMutationResult(
@@ -194,23 +219,16 @@ function toMutationResult(
   };
 }
 
-function hasSameCreatePayload(
+function hasSameCreateRequestIdentity(
   existing: AppointmentRetryRecord,
   actor: ActorContext,
-  input: AppointmentCreateRequest,
-  fields: NormalizedAppointmentFields,
+  patientHospitalRelationshipId: string,
+  creationRequestHash: string,
 ): boolean {
   return (
-    existing.patientHospitalRelationshipId === input.patientHospitalRelationshipId &&
+    existing.patientHospitalRelationshipId === patientHospitalRelationshipId &&
     existing.createdByUserId === actor.userId &&
-    existing.submissionNonce === input.submissionNonce &&
-    existing.type === fields.type &&
-    existing.scheduledAt.getTime() === fields.scheduledAt.getTime() &&
-    existing.responsibleUserId === fields.responsibleUserId &&
-    existing.durationMinutes === fields.durationMinutes &&
-    existing.locationType === fields.locationType &&
-    existing.locationDetail === fields.locationDetail &&
-    existing.note === fields.note
+    existing.creationRequestHash === creationRequestHash
   );
 }
 
@@ -251,8 +269,11 @@ async function createInTransaction(
     transaction,
   );
   const fields = normalizeAppointmentFields(input);
-
-  await assertResponsibleUserIsEligible(transaction, access.target.hospitalId, fields.responsibleUserId);
+  const creationRequestHash = createAppointmentRequestHash(
+    actor,
+    access.patient.patientHospitalRelationshipId,
+    fields,
+  );
 
   const existing = await transaction.patientAppointment.findUnique({
     where: { submissionNonce: input.submissionNonce },
@@ -260,12 +281,21 @@ async function createInTransaction(
   });
 
   if (existing) {
-    if (!hasSameCreatePayload(existing, actor, input, fields)) {
+    if (
+      !hasSameCreateRequestIdentity(
+        existing,
+        actor,
+        access.patient.patientHospitalRelationshipId,
+        creationRequestHash,
+      )
+    ) {
       throw new ConflictError("This Appointment submission token has already been used");
     }
 
     return toMutationResult(existing, access.target.hospitalId);
   }
+
+  await assertResponsibleUserIsEligible(transaction, access.target.hospitalId, fields.responsibleUserId);
 
   const appointment = await transaction.patientAppointment.create({
     data: {
@@ -280,6 +310,7 @@ async function createInTransaction(
       note: fields.note,
       status: AppointmentStatus.SCHEDULED,
       submissionNonce: input.submissionNonce,
+      creationRequestHash,
       createdAt: now,
       updatedAt: now,
     },
@@ -357,7 +388,7 @@ async function rescheduleInTransaction(
       id: input.appointmentId,
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     },
-    select: appointmentRetrySelect,
+    select: appointmentCurrentSelect,
   });
 
   if (!current) {
@@ -475,7 +506,7 @@ async function terminalTransitionInTransaction(
       id: input.appointmentId,
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     },
-    select: appointmentRetrySelect,
+    select: appointmentCurrentSelect,
   });
 
   if (!current) {
@@ -621,7 +652,8 @@ export async function markAppointmentNoShow(
 export const appointmentServiceInternals = {
   assertResponsibleUserIsEligible,
   createInTransaction,
-  hasSameCreatePayload,
+  createAppointmentRequestHash,
+  hasSameCreateRequestIdentity,
   isRetryableTransactionError,
   nextUpdatedAt,
   normalizeAppointmentFields,
