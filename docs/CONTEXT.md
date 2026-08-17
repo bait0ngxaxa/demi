@@ -75,6 +75,21 @@ Phase 9C.0 is implemented as a provisional, relationship-scoped Follow-up workfl
 - PostgreSQL integration tests verify relationship-scoped concurrent round allocation, concurrent identical nonce replay, and changed-payload nonce conflict behavior under the real serializable transaction and uniqueness constraints.
 - Measurements, progress statuses, confidence, actor authority, Patient visibility, correction semantics, and clinical meaning remain provisional/open customer requirements. Implemented prototype behavior is not confirmed customer requirement.
 
+## Phase 10A Patient Profile / Baseline / Status Tracking Requirements
+
+Phase 9 is complete. Phase 10A is now complete as an analysis/provisional-contract phase in [the Phase 10A requirements and domain boundary document](./phases/PHASE_10A_PATIENT_PROFILE_BASELINE_STATUS_REQUIREMENTS.md); no product code, Prisma model, migration, route, form, or storage/upload behavior was added.
+
+The provisional ownership conclusions are:
+
+- `Person` remains the human identity source and `User` remains the authentication/account source. PatientProfile must stay bounded and must not absorb Hospital-local, clinical-history, status, or artifact data merely because legacy displayed them on one form.
+- `PatientHospitalRelationship` owns HN and Hospital-specific context. Screening, Goal Plan, Appointment, and Follow-up retain their existing relationship-scoped ownership and explicit cross-domain references.
+- Baseline is provisionally a dedicated relationship-owned Initial Snapshot. It must not be silently represented as `Followup(round = 0)`, derived from the first Screening/Follow-up, or populated with fabricated values.
+- Legacy status tracking is primarily an image/evidence gallery. No generic status table or second Follow-up model is accepted; relationship lifecycle, clinical classification, event history, artifact metadata, and derived summaries must remain separate decisions.
+- Artifacts are provisionally owned by one concrete business record, with metadata separate from binary storage and visibility inherited from the owner. A generic enterprise attachment framework and Patient self-service uploads remain deferred.
+- Authorization continues to be server-side and fail-closed: direct active Hospital membership or exact active OSM assignment governs relationship access; hierarchy, profession, and ADMIN-only status do not silently widen routine patient authority. Patient self-service remains open.
+
+The next sequence is `10B.0` Patient Profile, `10C.0` Baseline / Initial State, and `10D.0` Patient Status Artifacts / Attachment Boundary. `10B.0` is ready only as a bounded read/projection prototype; profile editing is blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+
 ## Phase 3A Hospital Onboarding Contract
 
 สัญญาและ checklist ของ slice นี้อยู่ที่ [Phase 3A Hospital Onboarding](./phases/PHASE_3A_HOSPITAL_ONBOARDING.md) ส่วน implementation อยู่ใน `src/modules/hospital-onboarding/`, `/hospital/onboarding` และ `/app/admin/hospital-onboarding`
