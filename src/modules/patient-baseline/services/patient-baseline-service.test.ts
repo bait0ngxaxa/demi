@@ -122,7 +122,7 @@ function createDatabase(input: {
   database: PatientBaselineDatabase;
   transaction: {
     user: { findUnique: ReturnType<typeof vi.fn> };
-    patientHospitalRelationship: { findUnique: ReturnType<typeof vi.fn> };
+    patientHospitalRelationship: { findFirst: ReturnType<typeof vi.fn> };
     patientBaseline: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
@@ -134,7 +134,7 @@ function createDatabase(input: {
       findUnique: vi.fn().mockResolvedValue(input.authoritativeActor ?? actorRecord()),
     },
     patientHospitalRelationship: {
-      findUnique: vi.fn().mockResolvedValue(relationshipRecord()),
+      findFirst: vi.fn().mockResolvedValue(relationshipRecord()),
     },
     patientBaseline: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),

@@ -171,7 +171,7 @@ export function PatientBaselineForm({
                 id="baseline-weight"
                 inputMode="decimal"
                 max={1_000_000}
-                min={0}
+                min={0.01}
                 name="weight"
                 onChange={(event) => setWeight(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -187,7 +187,7 @@ export function PatientBaselineForm({
                 id="baseline-waist"
                 inputMode="decimal"
                 max={1_000_000}
-                min={0}
+                min={0.01}
                 name="waistCircumference"
                 onChange={(event) => setWaistCircumference(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -203,7 +203,7 @@ export function PatientBaselineForm({
                 id="baseline-blood-pressure-systolic"
                 inputMode="decimal"
                 max={1_000_000}
-                min={0}
+                min={0.01}
                 name="bloodPressureSystolic"
                 onChange={(event) => setBloodPressureSystolic(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -219,7 +219,7 @@ export function PatientBaselineForm({
                 id="baseline-blood-pressure-diastolic"
                 inputMode="decimal"
                 max={1_000_000}
-                min={0}
+                min={0.01}
                 name="bloodPressureDiastolic"
                 onChange={(event) => setBloodPressureDiastolic(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -235,7 +235,7 @@ export function PatientBaselineForm({
                 id="baseline-blood-sugar-dtx"
                 inputMode="decimal"
                 max={1_000_000}
-                min={0}
+                min={0.01}
                 name="bloodSugarDtx"
                 onChange={(event) => setBloodSugarDtx(event.target.value)}
                 placeholder="ไม่บังคับ"

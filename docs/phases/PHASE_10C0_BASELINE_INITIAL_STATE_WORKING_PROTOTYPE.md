@@ -77,6 +77,11 @@ integer values from 0 through 10 because the legacy UI clearly exposed that
 scale. It is a requirement-validation scale, not a clinical score or scoring
 engine.
 
+All measurement fields are optional. When supplied, they must be finite,
+positive technical values within the existing structural payload limit; zero,
+negative values, and non-finite values are rejected. These are input-shape
+guards only and do not represent clinical ranges or interpretation.
+
 Missing optional values remain `NULL` and render as `ไม่ระบุ`. The service does
 not copy values from PatientProfile, Screening, Follow-up, Goals, or
 Appointments.
@@ -120,10 +125,10 @@ Follow-up.
 
 Reads use the existing relationship `patient:read` capability boundary. Creation
 uses the narrow `patient:baseline:create` capability. Both paths first resolve
-the exact `PatientHospitalRelationship`, active Hospital, Patient role, current
-assignment, and authoritative actor from the database. Browser-supplied
-Hospital IDs, Patient IDs, roles, professions, or recorder IDs are not
-authoritative.
+the exact `PatientHospitalRelationship` through an authorization-scoped query,
+then re-check the active Hospital, Patient role, current assignment, and
+authoritative actor from the database. Browser-supplied Hospital IDs, Patient
+IDs, roles, professions, or recorder IDs are not authoritative.
 
 The provisional policy matrix is:
 
@@ -141,6 +146,13 @@ The provisional policy matrix is:
 
 Profession alone and Hospital hierarchy do not grant access. Navigation is only
 UX; the service and Server Action enforce authorization independently.
+
+The access boundary preserves the Patient Detail anti-enumeration convention:
+an actor with no possible Baseline role path, such as ADMIN-only or
+PATIENT-only, receives `Forbidden`. A potentially valid Hospital/OSM actor who
+cannot access the exact relationship receives `NotFound` whether the UUID is
+inaccessible or nonexistent. The scoped query is applied before relationship
+details are returned.
 
 ## 10. Creation transaction and audit
 
@@ -205,7 +217,9 @@ It excludes auth subjects, roles, credentials, identity hashes, memberships,
 unrelated relationships, assignments, audit history, and unrelated domain
 payloads. Patient directory/list queries do not load Baseline data. Patient
 Detail uses a separate small navigation projection containing only the
-recorded date and `canCreate` state.
+recorded date and `canCreate` state. `canCreate` means the actor can currently
+create the missing Baseline; it is always `false` once the one allowed Baseline
+already exists.
 
 ## 12. UI workflow
 
@@ -277,10 +291,10 @@ projections, missing-value rendering, Patient Detail navigation, create/read-onl
 route branching, and safe transport errors.
 
 The PostgreSQL integration suite covers direct Hospital create/read, exact OSM
-assignment create/read, unassigned OSM denial, ADMIN-only denial, a valid
-multi-role Hospital path, cross-Hospital denial, duplicate concurrency with one
-row, audit metadata privacy, and unchanged Screening/Goal/Appointment/Follow-up
-counts.
+assignment create/read, unassigned OSM anti-enumeration, ADMIN-only denial, a
+valid multi-role Hospital path, cross-Hospital and nonexistent-relationship
+`NotFound` behavior, duplicate concurrency with one row, audit metadata
+privacy, and unchanged Screening/Goal/Appointment/Follow-up counts.
 
 The migration adds only `PatientBaseline`, its unique relationship constraint,
 restrictive foreign keys, and the required model relations. It does not backfill

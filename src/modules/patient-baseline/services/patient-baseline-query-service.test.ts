@@ -8,7 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   getPatientBaseline,
@@ -46,6 +46,7 @@ const actor: ActorContext = {
 function createDatabase(input: {
   baseline?: Record<string, unknown> | null;
   membership?: boolean;
+  relationship?: Record<string, unknown> | null;
 } = {}): PatientBaselineQueryDatabase & {
   patientBaseline: { findUnique: ReturnType<typeof vi.fn> };
 } {
@@ -71,20 +72,24 @@ function createDatabase(input: {
       }),
     },
     patientHospitalRelationship: {
-      findUnique: vi.fn().mockResolvedValue({
-        id: relationshipId,
-        hospitalId,
-        hospitalNumber: "HN-001",
-        hospital: { id: hospitalId, name: "โรงพยาบาล ก", status: HospitalStatus.ACTIVE },
-        patientProfile: {
-          person: {
-            givenName: "สมชาย",
-            familyName: "ผู้ป่วย",
-            user: { roles: [{ role: Role.PATIENT }] },
-          },
-        },
-        osmAssignments: [],
-      }),
+      findFirst: vi.fn().mockResolvedValue(
+        input.relationship === undefined
+          ? {
+              id: relationshipId,
+              hospitalId,
+              hospitalNumber: "HN-001",
+              hospital: { id: hospitalId, name: "โรงพยาบาล ก", status: HospitalStatus.ACTIVE },
+              patientProfile: {
+                person: {
+                  givenName: "สมชาย",
+                  familyName: "ผู้ป่วย",
+                  user: { roles: [{ role: Role.PATIENT }] },
+                },
+              },
+              osmAssignments: [],
+            }
+          : input.relationship,
+      ),
     },
     patientBaseline: {
       findUnique: vi.fn().mockResolvedValue(input.baseline ?? null),
@@ -147,6 +152,13 @@ describe("Patient Baseline query service", () => {
     });
     expect(JSON.stringify(result)).not.toContain("authSubject");
     expect(JSON.stringify(result)).not.toContain("memberships");
+    expect(database.patientHospitalRelationship.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: relationshipId,
+        OR: expect.any(Array),
+      }),
+      select: expect.anything(),
+    });
     expect(database.patientBaseline.findUnique).toHaveBeenCalledWith({
       where: { patientHospitalRelationshipId: relationshipId },
       select: patientBaselineSelect,
@@ -167,6 +179,24 @@ describe("Patient Baseline query service", () => {
     });
   });
 
+  it("allows creation in page context when no Baseline exists", async () => {
+    const database = createDatabase();
+
+    await expect(getPatientBaselinePageContext(actor, relationshipId, { database })).resolves.toMatchObject({
+      baseline: null,
+      canCreate: true,
+    });
+  });
+
+  it("marks navigation creation unavailable when the Baseline already exists", async () => {
+    const database = createDatabase({ baseline: baselineRecord() });
+
+    await expect(getPatientBaselineNavigationState(actor, relationshipId, { database })).resolves.toEqual({
+      baseline: { recordedOn },
+      canCreate: false,
+    });
+  });
+
   it("returns the page context without exposing unrelated actor data", async () => {
     const database = createDatabase({ baseline: baselineRecord() });
 
@@ -181,12 +211,21 @@ describe("Patient Baseline query service", () => {
       id: actorUserId,
       displayName: "ผู้บันทึก ข้อมูลตั้งต้น",
     });
-    expect(context.canCreate).toBe(true);
+    expect(context.canCreate).toBe(false);
     expect(JSON.stringify(context)).not.toContain("roles");
     expect(JSON.stringify(context)).not.toContain("credentials");
   });
 
-  it("does not read a relationship when the actor loses the exact Hospital scope", async () => {
+  it("returns NotFound when the exact relationship is outside the actor scope", async () => {
+    const database = createDatabase({ relationship: null });
+
+    await expect(getPatientBaseline(actor, relationshipId, { database })).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(database.patientBaseline.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the authoritative actor before reading the Baseline", async () => {
     const database = createDatabase({ membership: false });
 
     await expect(getPatientBaseline(actor, relationshipId, { database })).rejects.toBeInstanceOf(

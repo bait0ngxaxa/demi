@@ -63,6 +63,30 @@ describe("Patient Baseline transport", () => {
     });
   });
 
+  it("maps every empty optional measurement to null", () => {
+    const formData = validFormData();
+
+    for (const field of [
+      "weight",
+      "waistCircumference",
+      "bloodPressureSystolic",
+      "bloodPressureDiastolic",
+      "bloodSugarDtx",
+    ]) {
+      formData.set(field, "");
+    }
+
+    const input = patientBaselineTransportInternals.buildSubmissionInput(formData) as Record<string, unknown>;
+
+    expect(input).toMatchObject({
+      weight: null,
+      waistCircumference: null,
+      bloodPressureSystolic: null,
+      bloodPressureDiastolic: null,
+      bloodSugarDtx: null,
+    });
+  });
+
   it("rejects duplicate, unknown, and browser authority fields", () => {
     const duplicate = validFormData();
     duplicate.append("weight", "73");

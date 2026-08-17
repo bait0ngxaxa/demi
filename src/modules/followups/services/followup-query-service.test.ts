@@ -329,7 +329,62 @@ describe("Follow-up query service", () => {
       goalPlanId,
       expect.objectContaining({ database }),
     );
+    const query = vi.mocked(database.patientFollowup.findFirst).mock.calls[0]?.[0];
+    expect(query?.select).toMatchObject({
+      activityProgress: {
+        orderBy: [{ goalActivityCode: "asc" }, { id: "asc" }],
+        take: 50,
+      },
+    });
     expect(JSON.stringify(detail)).toContain("สะท้อน");
+  });
+
+  it("keeps activity progress in historical Goal Plan order", async () => {
+    mockedGoalDetail.mockResolvedValueOnce({
+      ...goalPlan,
+      items: [
+        {
+          ...goalPlan.items[0],
+          goalPlanItemId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          activityCode: "stop_sweet",
+          activityLabel: "งดหวาน",
+          targetDays: 4,
+          targetValue: null,
+          targetUnit: null,
+          sortOrder: 0,
+        },
+        {
+          ...goalPlan.items[0],
+          goalPlanItemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          sortOrder: 1,
+        },
+      ],
+    });
+    const database = createDatabase({
+      detail: detailRecord({
+        activityProgress: [
+          {
+            id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            goalActivityCode: "exercise_walk",
+            status: "DONE",
+            note: null,
+          },
+          {
+            id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            goalActivityCode: "stop_sweet",
+            status: "PARTIAL",
+            note: "ทำได้บางส่วน",
+          },
+        ],
+      }),
+    });
+
+    const detail = await getFollowupDetail(actor, relationshipId, followupId, { database });
+
+    expect(detail.activityProgress.map((progress) => progress.goalActivityCode)).toEqual([
+      "stop_sweet",
+      "exercise_walk",
+    ]);
   });
 
   it("does not read a cross-relationship Follow-up and denies inactive direct membership", async () => {

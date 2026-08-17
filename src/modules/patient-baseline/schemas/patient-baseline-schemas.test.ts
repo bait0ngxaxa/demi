@@ -72,6 +72,9 @@ describe("Patient Baseline schemas", () => {
         patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: 0 }).success,
       ).toBe(false);
       expect(
+        patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: -1 }).success,
+      ).toBe(false);
+      expect(
         patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: Number.NaN }).success,
       ).toBe(false);
     }
@@ -82,6 +85,23 @@ describe("Patient Baseline schemas", () => {
         summary: "x".repeat(2_001),
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts every optional measurement as null when it is absent", () => {
+    for (const field of [
+      "weight",
+      "waistCircumference",
+      "bloodPressureSystolic",
+      "bloodPressureDiastolic",
+      "bloodSugarDtx",
+    ]) {
+      const result = patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: null });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data[field as keyof typeof result.data]).toBeNull();
+      }
+    }
   });
 
   it("keeps the provisional confidence scale structural at 0–10", () => {

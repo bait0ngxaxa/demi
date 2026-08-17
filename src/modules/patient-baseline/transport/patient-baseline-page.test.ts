@@ -109,7 +109,7 @@ describe("Patient Baseline page workflow", () => {
   });
 
   it("switches to the read-only snapshot when a Baseline exists", async () => {
-    mockedGetPatientBaselinePageContext.mockResolvedValueOnce(context({ baseline }));
+    mockedGetPatientBaselinePageContext.mockResolvedValueOnce(context({ baseline, canCreate: false }));
 
     const page = await PatientBaselinePage({ params: Promise.resolve({ relationshipId }) });
 

@@ -14,6 +14,10 @@ import type {
   ActorHospitalMembership,
   ActorOsmHospitalRelationship,
 } from "@/modules/auth/types/actor-context";
+import {
+  buildAuthorizedHospitalWhere,
+  buildOsmAssignedPatientRelationshipWhere,
+} from "@/modules/patient-directory/services/patient-directory-query-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
@@ -100,6 +104,40 @@ function hasPatientRole(record: PatientBaselineRelationshipAccessRecord): boolea
   );
 }
 
+function buildAuthorizedPatientBaselineRelationshipWhere(
+  actor: ActorContext,
+  relationshipId: string,
+): Prisma.PatientHospitalRelationshipWhereInput {
+  const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
+  const patientRoleWhere: Prisma.PatientHospitalRelationshipWhereInput = {
+    patientProfile: {
+      person: {
+        user: { roles: { some: { role: Role.PATIENT } } },
+      },
+    },
+  };
+
+  if (actor.roles.includes(Role.HOSPITAL)) {
+    accessPredicates.push({
+      ...patientRoleWhere,
+      hospital: buildAuthorizedHospitalWhere(actor.userId),
+    });
+  }
+
+  if (actor.roles.includes(Role.OSM)) {
+    accessPredicates.push(buildOsmAssignedPatientRelationshipWhere(actor.userId));
+  }
+
+  if (accessPredicates.length === 0) {
+    throw new ForbiddenError();
+  }
+
+  return {
+    id: relationshipId,
+    OR: accessPredicates,
+  };
+}
+
 async function loadAuthoritativeActor(
   database: PatientBaselineAccessDatabase,
   actorUserId: string,
@@ -177,8 +215,11 @@ export async function resolvePatientBaselineAccessContext(
   }
 
   const db = getDatabase(database);
-  const record = await db.patientHospitalRelationship.findUnique({
-    where: { id: parsedRelationshipId.data.toLowerCase() },
+  const record = await db.patientHospitalRelationship.findFirst({
+    where: buildAuthorizedPatientBaselineRelationshipWhere(
+      actor,
+      parsedRelationshipId.data.toLowerCase(),
+    ),
     select: patientBaselineRelationshipAccessSelect,
   });
 
@@ -215,6 +256,7 @@ export async function resolvePatientBaselineAccessContext(
 }
 
 export const patientBaselineAccessInternals = {
+  buildAuthorizedPatientBaselineRelationshipWhere,
   hasPatientRole,
   loadAuthoritativeActor,
   toDisplayName,

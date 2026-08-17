@@ -166,7 +166,7 @@ const followupDetailSelect = {
     },
   },
   activityProgress: {
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [{ goalActivityCode: "asc" }, { id: "asc" }],
     take: FOLLOWUP_MAX_PROGRESS_ROWS,
     select: {
       id: true,
@@ -298,6 +298,41 @@ async function getOptionalGoalPlanOptions(
   }
 }
 
+function toActivityProgress(
+  progressRows: FollowupDetailRecord["activityProgress"],
+  sourceGoalPlan: AccessibleGoalPlanReference | null,
+): FollowupActivityProgressDetail[] {
+  const sortOrderByActivityCode = new Map(
+    sourceGoalPlan?.items.map((item) => [item.activityCode, item.sortOrder]) ?? [],
+  );
+
+  return progressRows
+    .map((progress) => ({
+      progressId: progress.id,
+      goalActivityCode: progress.goalActivityCode,
+      status: progress.status,
+      note: progress.note,
+    }))
+    .sort((left, right) => {
+      const leftSortOrder = sortOrderByActivityCode.get(left.goalActivityCode);
+      const rightSortOrder = sortOrderByActivityCode.get(right.goalActivityCode);
+
+      if (leftSortOrder !== undefined && rightSortOrder !== undefined) {
+        return leftSortOrder - rightSortOrder || left.goalActivityCode.localeCompare(right.goalActivityCode);
+      }
+
+      if (leftSortOrder !== undefined) {
+        return -1;
+      }
+
+      if (rightSortOrder !== undefined) {
+        return 1;
+      }
+
+      return left.goalActivityCode.localeCompare(right.goalActivityCode);
+    });
+}
+
 function toDetail(
   record: FollowupDetailRecord,
   patient: FollowupPatientSummary,
@@ -321,12 +356,7 @@ function toDetail(
     reflectionNote: record.reflectionNote,
     confidencePlan: record.confidencePlan,
     generalNote: record.generalNote,
-    activityProgress: record.activityProgress.map((progress) => ({
-      progressId: progress.id,
-      goalActivityCode: progress.goalActivityCode,
-      status: progress.status,
-      note: progress.note,
-    })),
+    activityProgress: toActivityProgress(record.activityProgress, sourceGoalPlan),
   };
 }
 
@@ -483,6 +513,7 @@ export const followupQueryInternals = {
   getOptionalGoalPlanOptions,
   listCompletedAppointments,
   resolveRecordProjection,
+  toActivityProgress,
   toAppointmentContext,
   toDetail,
   toDisplayName,

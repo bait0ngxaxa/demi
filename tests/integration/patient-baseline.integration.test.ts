@@ -13,7 +13,7 @@ import { assignOsmToPatient } from "@/modules/patient-assignment/services/patien
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
-import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -256,17 +256,20 @@ describe("Phase 10C.0 Patient Baseline PostgreSQL workflow", () => {
     });
 
     await expect(createPatientBaseline(unassignedOsm.actor, baselineInput(patient.relationshipId))).rejects.toBeInstanceOf(
-      ForbiddenError,
+      NotFoundError,
     );
     await expect(createPatientBaseline(admin, baselineInput(patient.relationshipId))).rejects.toBeInstanceOf(
       ForbiddenError,
     );
     await expect(createPatientBaseline(otherOwner.actor, baselineInput(patient.relationshipId))).rejects.toBeInstanceOf(
-      ForbiddenError,
+      NotFoundError,
     );
 
     const directBaseline = await createPatientBaseline(owner.actor, baselineInput(patient.relationshipId));
-    await expect(getPatientBaseline(otherOwner.actor, patient.relationshipId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getPatientBaseline(otherOwner.actor, patient.relationshipId)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      getPatientBaseline(owner.actor, "99999999-9999-4999-8999-999999999999"),
+    ).rejects.toBeInstanceOf(NotFoundError);
     expect((await getPatientBaseline(owner.actor, patient.relationshipId))?.id).toBe(directBaseline.patientBaselineId);
 
     const osmPatient = await provisionPatient(owner.actor, {

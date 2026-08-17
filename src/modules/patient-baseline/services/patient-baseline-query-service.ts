@@ -223,15 +223,18 @@ export async function getPatientBaselinePageContext(
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
       select: patientBaselineSelect,
     });
+    const baseline = record ? toProjection(record) : null;
 
     return {
       patient: access.patient,
-      baseline: record ? toProjection(record) : null,
-      canCreate: await resolveCanCreate(
-        actor,
-        access.patient.patientHospitalRelationshipId,
-        database,
-      ),
+      baseline,
+      canCreate: baseline
+        ? false
+        : await resolveCanCreate(
+            actor,
+            access.patient.patientHospitalRelationshipId,
+            database,
+          ),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -262,11 +265,13 @@ export async function getPatientBaselineNavigationState(
 
     return {
       baseline: record ? toNavigationState(record) : null,
-      canCreate: await resolveCanCreate(
-        actor,
-        access.patient.patientHospitalRelationshipId,
-        database,
-      ),
+      canCreate: record
+        ? false
+        : await resolveCanCreate(
+            actor,
+            access.patient.patientHospitalRelationshipId,
+            database,
+          ),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

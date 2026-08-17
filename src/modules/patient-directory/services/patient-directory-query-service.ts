@@ -182,7 +182,7 @@ function assertHospitalActor(actor: ActorContext | null | undefined): asserts ac
   }
 }
 
-function buildAuthorizedHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+export function buildAuthorizedHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
   return {
     status: HospitalStatus.ACTIVE,
     memberships: {
@@ -231,7 +231,7 @@ function buildPatientRelationshipWhere(
   };
 }
 
-function buildOsmAssignedPatientRelationshipWhere(
+export function buildOsmAssignedPatientRelationshipWhere(
   actorUserId: string,
   input?: PatientAssignedDirectoryQueryInput,
 ): Prisma.PatientHospitalRelationshipWhereInput {
