@@ -315,4 +315,101 @@ describe("Phase 9C.0 Follow-up PostgreSQL workflow", () => {
     expect(osmRound.roundNumber).toBe(2);
     expect(first.roundNumber).toBe(1);
   });
+
+  it("allocates distinct relationship rounds for concurrent submissions with different nonces", async () => {
+    const hospital = await createHospital("CONCURRENT-ROUNDS");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "followup-integration", value: "concurrent-rounds-patient" },
+      targetHospitalId: hospital.id,
+      givenName: "สมชาย",
+      familyName: "พร้อมกัน",
+    });
+
+    const [first, second] = await Promise.all([
+      createFollowup(owner.actor, followupInput(patient.relationshipId)),
+      createFollowup(owner.actor, followupInput(patient.relationshipId)),
+    ]);
+
+    expect(new Set([first.followupId, second.followupId]).size).toBe(2);
+    expect(new Set([first.roundNumber, second.roundNumber])).toEqual(new Set([1, 2]));
+    expect(
+      await prisma.patientFollowup.count({
+        where: { patientHospitalRelationshipId: patient.relationshipId },
+      }),
+    ).toBe(2);
+    expect(await prisma.auditEvent.count({ where: { action: "followup.created" } })).toBe(2);
+  });
+
+  it("replays one committed Follow-up for concurrent identical nonce and payload", async () => {
+    const hospital = await createHospital("CONCURRENT-REPLAY");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "followup-integration", value: "concurrent-replay-patient" },
+      targetHospitalId: hospital.id,
+      givenName: "สมหญิง",
+      familyName: "ส่งซ้ำ",
+    });
+    const input = followupInput(patient.relationshipId);
+
+    const [first, second] = await Promise.all([
+      createFollowup(owner.actor, input),
+      createFollowup(owner.actor, input),
+    ]);
+
+    expect(first.followupId).toBe(second.followupId);
+    expect(first.roundNumber).toBe(1);
+    expect(second.roundNumber).toBe(1);
+    expect(
+      await prisma.patientFollowup.count({
+        where: { patientHospitalRelationshipId: patient.relationshipId },
+      }),
+    ).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "followup.created" } })).toBe(1);
+  });
+
+  it("conflicts safely when concurrent requests reuse a nonce with changed payload", async () => {
+    const hospital = await createHospital("CONCURRENT-CONFLICT");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "followup-integration", value: "concurrent-conflict-patient" },
+      targetHospitalId: hospital.id,
+      givenName: "สมชาย",
+      familyName: "ขัดแย้ง",
+    });
+    const submissionNonce = randomUUID();
+    const firstInput = followupInput(patient.relationshipId, {
+      submissionNonce,
+      generalNote: "payload หนึ่ง",
+    });
+    const secondInput = followupInput(patient.relationshipId, {
+      submissionNonce,
+      generalNote: "payload สอง",
+    });
+
+    const outcomes = await Promise.allSettled([
+      createFollowup(owner.actor, firstInput),
+      createFollowup(owner.actor, secondInput),
+    ]);
+    const fulfilled = outcomes.filter(
+      (outcome): outcome is PromiseFulfilledResult<Awaited<ReturnType<typeof createFollowup>>> =>
+        outcome.status === "fulfilled",
+    );
+    const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
+    expect(await prisma.patientFollowup.count({ where: { submissionNonce } })).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "followup.created" } })).toBe(1);
+  });
 });

@@ -10,10 +10,16 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ConflictError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import {
+  ConflictError,
+  ForbiddenError,
+  InfrastructureError,
+  ValidationError,
+} from "@/shared/errors/application-error";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
 const mockedGoalContext = vi.hoisted(() => vi.fn());
+const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
 
 vi.mock("@/modules/audit/services/audit-service", () => ({
   recordAuditEvent: mockedAudit,
@@ -22,6 +28,28 @@ vi.mock("@/modules/audit/services/audit-service", () => ({
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanActivityContext: mockedGoalContext,
 }));
+
+vi.mock("./followup-access-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./followup-access-service")>();
+
+  return {
+    ...actual,
+    resolveFollowupAccessContext: vi.fn(
+      async (
+        actor: Parameters<typeof actual.resolveFollowupAccessContext>[0],
+        relationshipId: Parameters<typeof actual.resolveFollowupAccessContext>[1],
+        capability: Parameters<typeof actual.resolveFollowupAccessContext>[2],
+        database: Parameters<typeof actual.resolveFollowupAccessContext>[3],
+      ) => {
+        if (mockedFollowupAccessState.denyRecord && capability === "followup:record") {
+          throw new ForbiddenError();
+        }
+
+        return actual.resolveFollowupAccessContext(actor, relationshipId, capability, database);
+      },
+    ),
+  };
+});
 
 import {
   createFollowup,
@@ -196,12 +224,22 @@ const goalPlanContext = {
       targetUnit: "minutes",
       sortOrder: 0,
     },
+    {
+      goalPlanItemId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      activityCode: "stop_sweet",
+      activityLabel: "ลดเครื่องดื่มหวาน",
+      targetDays: 4,
+      targetValue: null,
+      targetUnit: null,
+      sortOrder: 1,
+    },
   ],
 };
 
 describe("Follow-up service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedFollowupAccessState.denyRecord = false;
     mockedAudit.mockResolvedValue(undefined);
     mockedGoalContext.mockResolvedValue(goalPlanContext);
   });
@@ -241,6 +279,16 @@ describe("Follow-up service", () => {
     );
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("สะท้อนแบบต้นแบบ");
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("72.5");
+  });
+
+  it("enforces followup:record at the create mutation boundary", async () => {
+    mockedFollowupAccessState.denyRecord = true;
+    const { database, transaction } = createDatabase();
+
+    await expect(createFollowup(hospitalActor, validInput(), { database })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect(transaction.patientFollowup.create).not.toHaveBeenCalled();
   });
 
   it("validates a completed Appointment and exact Goal Plan activities before nested persistence", async () => {
@@ -337,6 +385,44 @@ describe("Follow-up service", () => {
     expect(transaction.patientFollowup.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ roundNumber: 4 }) }),
     );
+  });
+
+  it("allows progress for only a subset of activities in the selected Goal Plan", async () => {
+    const { database, transaction } = createDatabase({
+      createResult: followupRecord({ sourceGoalPlanId: goalPlanId }),
+    });
+
+    await createFollowup(
+      hospitalActor,
+      validInput({
+        sourceGoalPlanId: goalPlanId,
+        activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE" }],
+      }),
+      { database, now: () => now },
+    );
+
+    expect(transaction.patientFollowup.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        activityProgress: {
+          create: [expect.objectContaining({ goalActivityCode: "exercise_walk", status: "DONE" })],
+        },
+      }),
+      select: expect.anything(),
+    });
+  });
+
+  it("rejects a selected Goal Plan when the Goal-owned boundary denies access", async () => {
+    mockedGoalContext.mockRejectedValueOnce(new ForbiddenError());
+    const { database, transaction } = createDatabase();
+
+    await expect(
+      createFollowup(
+        hospitalActor,
+        validInput({ sourceGoalPlanId: goalPlanId }),
+        { database },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(transaction.patientFollowup.create).not.toHaveBeenCalled();
   });
 
   it("returns the existing round for the same nonce and immutable request", async () => {

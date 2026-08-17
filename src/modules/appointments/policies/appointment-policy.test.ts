@@ -158,25 +158,55 @@ describe("Appointment policy", () => {
     ).toBe(false);
   });
 
-  it("does not let Platform ADMIN gain routine access through another membership", () => {
-    const adminWithMembership: ActorContext = {
+  it("evaluates a multi-role ADMIN through valid direct Hospital scope", () => {
+    const adminWithHospitalScope: ActorContext = {
       ...actor(),
       roles: [Role.ADMIN, Role.HOSPITAL],
     };
 
     expect(
       decideAppointmentPolicy({
-        actor: adminWithMembership,
+        actor: adminWithHospitalScope,
         capability: APPOINTMENT_READ_CAPABILITY,
         target: target(),
       }),
-    ).toMatchObject({ allowed: false, reason: "platform_admin_not_allowed" });
+    ).toMatchObject({ allowed: true, reason: "active_direct_hospital_scope" });
     expect(
       decideAppointmentPolicy({
-        actor: adminWithMembership,
+        actor: adminWithHospitalScope,
         capability: APPOINTMENT_MANAGE_CAPABILITY,
         target: target(),
       }),
-    ).toMatchObject({ allowed: false, reason: "platform_admin_not_allowed" });
+    ).toMatchObject({ allowed: true, reason: "active_direct_hospital_scope" });
+  });
+
+  it("allows multi-role ADMIN read through exact OSM assignment but not manage", () => {
+    const adminWithOsmScope: ActorContext = {
+      ...actor(),
+      roles: [Role.ADMIN, Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [
+        {
+          hospitalId: hospitalA,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    };
+
+    expect(
+      decideAppointmentPolicy({
+        actor: adminWithOsmScope,
+        capability: APPOINTMENT_READ_CAPABILITY,
+        target: target({ assignedOsmUserId: actorUserId }),
+      }),
+    ).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
+    expect(
+      decideAppointmentPolicy({
+        actor: adminWithOsmScope,
+        capability: APPOINTMENT_MANAGE_CAPABILITY,
+        target: target({ assignedOsmUserId: actorUserId }),
+      }),
+    ).toMatchObject({ allowed: false, reason: "osm_manage_not_allowed" });
   });
 });

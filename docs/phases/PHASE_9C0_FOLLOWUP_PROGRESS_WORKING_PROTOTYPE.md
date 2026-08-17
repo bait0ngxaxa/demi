@@ -56,7 +56,12 @@ followup:read
 followup:record
 ```
 
-Both capabilities use this matrix:
+The two capabilities are evaluated independently. The current provisional
+policy happens to allow the same actor/scope combinations for both, but the
+history read projection does not imply record authority and the New Follow-up
+setup requires `followup:record` directly.
+
+The current provisional matrix is:
 
 | Actor | Read | Record |
 | --- | --- | --- |
@@ -67,9 +72,15 @@ Both capabilities use this matrix:
 | OSM assigned to another relationship | deny | deny |
 | inactive or wrong-Hospital membership | deny | deny |
 | PATIENT | deny | deny |
-| Platform ADMIN | deny | deny |
+| Platform ADMIN alone | deny | deny |
 
-Profession does not change authority. The server reloads the actor, relationship, Hospital, and active assignment before policy evaluation. Navigation visibility is not authorization.
+An `ADMIN` role does not grant routine clinical access and does not revoke
+authority from another valid role/scope on the same actor. Therefore an
+`ADMIN + HOSPITAL` actor with valid direct active membership is evaluated as a
+Hospital actor, and an `ADMIN + OSM` actor with an exact active assignment is
+evaluated as an OSM actor. Profession does not change authority. The server
+reloads the actor, relationship, Hospital, and active assignment before policy
+evaluation. Navigation visibility is not authorization.
 
 ## Persistence model
 
@@ -144,9 +155,9 @@ The form can also select from server-resolved completed Appointment options. A U
 
 ## Goal Plan provenance and activity progress
 
-`sourceGoalPlanId` is optional. The user explicitly chooses either no Goal Plan context or one accessible historical Goal Plan. The Goal-owned query boundary resolves the exact relationship and validates the historical template and activity definitions.
+`sourceGoalPlanId` is optional. The user explicitly chooses either no Goal Plan context or one accessible historical Goal Plan. The Goal-owned query boundary resolves the exact relationship and validates the historical template and activity definitions. Goal Plan options are optional enrichment for New Follow-up setup: if `goal:read` is denied, the setup returns no Goal Plan options and standalone recording remains usable. Infrastructure failures are propagated. A submitted Goal Plan ID still requires strict Goal-owned authorization and exact relationship validation.
 
-When a Goal Plan is selected, the form renders the activities from that exact immutable plan. The server rejects every submitted activity code that is not present in the selected plan. When no Goal Plan is selected, no activity rows are fabricated and submitted activity progress is rejected.
+When a Goal Plan is selected, the form renders the activities from that exact immutable plan. Activity progress is optional per activity: zero, one, some, or all activities may be submitted. A blank UI status produces no progress row. The server rejects every submitted activity code that is not present in the selected plan. When no Goal Plan is selected, no activity rows are fabricated and submitted activity progress is rejected.
 
 The provisional progress vocabulary is:
 
@@ -202,7 +213,9 @@ History is newest-first, relationship-scoped, minimal, and limited to the latest
 
 ## Tests and validation
 
-Focused Follow-up tests cover policy, strict input validation, duplicate activity codes, structural measurements, confidence range, transport allowlisting, safe errors, standalone creation, completed Appointment linkage, exact Goal Plan activity membership, no-plan behavior, server-derived creator/round, immutable request retry/conflict behavior, atomic audit failure handling, no Appointment/Goal/Screening side effects, bounded relationship-scoped queries, and historical Goal Plan rendering.
+Focused Follow-up tests cover independent read/record capability projections, strict input validation, duplicate activity codes, structural measurements, confidence range, transport allowlisting, safe errors, standalone creation, completed Appointment linkage, exact Goal Plan activity membership, optional Goal access, partial activity progress, no-plan behavior, server-derived creator/round, immutable request retry/conflict behavior, atomic audit failure handling, no Appointment/Goal/Screening side effects, bounded relationship-scoped queries, and historical Goal Plan rendering. Policy tests cover ADMIN-only denial and valid multi-role Hospital/OSM scope for both Follow-up and Appointment.
+
+The PostgreSQL integration suite also covers concurrent distinct submissions receiving relationship rounds `{1, 2}`, concurrent identical nonce/request replaying one committed Follow-up and audit event, and concurrent changed-payload nonce reuse resolving to one accepted row plus a `ConflictError`. These tests exercise the real serializable transaction, database uniqueness constraints, and bounded retry behavior.
 
 The migration is forward-only and does not modify the Phase 9B Appointment migrations or data.
 

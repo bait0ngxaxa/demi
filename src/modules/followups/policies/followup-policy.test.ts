@@ -182,13 +182,51 @@ describe("Follow-up policy", () => {
     ).toBe(false);
   });
 
-  it("does not let Platform ADMIN gain access through another membership", () => {
+  it("evaluates a multi-role ADMIN through valid direct Hospital scope", () => {
+    const adminWithHospitalScope = actor({ roles: [Role.ADMIN, Role.HOSPITAL] });
+
     expect(
       decideFollowupPolicy({
-        actor: actor({ roles: [Role.ADMIN, Role.HOSPITAL] }),
+        actor: adminWithHospitalScope,
+        capability: FOLLOWUP_READ_CAPABILITY,
+        target: target(),
+      }),
+    ).toMatchObject({ allowed: true, reason: "active_direct_hospital_scope" });
+    expect(
+      decideFollowupPolicy({
+        actor: adminWithHospitalScope,
         capability: FOLLOWUP_RECORD_CAPABILITY,
         target: target(),
       }),
-    ).toMatchObject({ allowed: false, reason: "platform_admin_not_allowed" });
+    ).toMatchObject({ allowed: true, reason: "active_direct_hospital_scope" });
+  });
+
+  it("evaluates a multi-role ADMIN through exact active OSM assignment", () => {
+    const adminWithOsmScope = actor({
+      roles: [Role.ADMIN, Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [
+        {
+          hospitalId: hospitalA,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+
+    expect(
+      decideFollowupPolicy({
+        actor: adminWithOsmScope,
+        capability: FOLLOWUP_READ_CAPABILITY,
+        target: target({ assignedOsmUserId: actorUserId }),
+      }),
+    ).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
+    expect(
+      decideFollowupPolicy({
+        actor: adminWithOsmScope,
+        capability: FOLLOWUP_RECORD_CAPABILITY,
+        target: target({ assignedOsmUserId: actorUserId }),
+      }),
+    ).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
   });
 });

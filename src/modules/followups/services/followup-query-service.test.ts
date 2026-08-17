@@ -8,10 +8,37 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import {
+  ForbiddenError,
+  InfrastructureError,
+  NotFoundError,
+} from "@/shared/errors/application-error";
 
 const mockedGoalOptions = vi.hoisted(() => vi.fn());
 const mockedGoalDetail = vi.hoisted(() => vi.fn());
+const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
+
+vi.mock("./followup-access-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./followup-access-service")>();
+
+  return {
+    ...actual,
+    resolveFollowupAccessContext: vi.fn(
+      async (
+        actor: Parameters<typeof actual.resolveFollowupAccessContext>[0],
+        relationshipId: Parameters<typeof actual.resolveFollowupAccessContext>[1],
+        capability: Parameters<typeof actual.resolveFollowupAccessContext>[2],
+        database: Parameters<typeof actual.resolveFollowupAccessContext>[3],
+      ) => {
+        if (mockedFollowupAccessState.denyRecord && capability === "followup:record") {
+          throw new ForbiddenError();
+        }
+
+        return actual.resolveFollowupAccessContext(actor, relationshipId, capability, database);
+      },
+    ),
+  };
+});
 
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanOptions: mockedGoalOptions,
@@ -185,6 +212,10 @@ function detailRecord(overrides: Record<string, unknown> = {}): Record<string, u
 describe("Follow-up query service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedFollowupAccessState.denyRecord = false;
+    mockedGoalOptions.mockReset();
+    mockedGoalOptions.mockResolvedValue([]);
+    mockedGoalDetail.mockReset();
   });
 
   it("returns relationship-scoped newest-first minimal history with a bounded query", async () => {
@@ -215,6 +246,24 @@ describe("Follow-up query service", () => {
     expect(JSON.stringify(history)).not.toContain("สะท้อน");
   });
 
+  it("derives canRecord independently and keeps history readable when record is denied", async () => {
+    const database = createDatabase({ followupHistory: [historyRecord()] });
+    mockedFollowupAccessState.denyRecord = true;
+
+    const history = await getFollowupHistory(actor, relationshipId, { database });
+
+    expect(history.canRecord).toBe(false);
+    expect(history.items).toHaveLength(1);
+  });
+
+  it("requires followup:record for New Follow-up setup", async () => {
+    mockedFollowupAccessState.denyRecord = true;
+
+    await expect(getFollowupCreateContext(actor, relationshipId, undefined, { database: createDatabase() })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+  });
+
   it("loads only completed Appointment options and explicit historical Goal Plan options", async () => {
     mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
     const database = createDatabase();
@@ -232,6 +281,24 @@ describe("Follow-up query service", () => {
       relationshipId,
       expect.objectContaining({ database }),
     );
+  });
+
+  it("keeps standalone setup usable when Goal read access is denied", async () => {
+    mockedGoalOptions.mockRejectedValueOnce(new ForbiddenError());
+
+    const context = await getFollowupCreateContext(actor, relationshipId, undefined, {
+      database: createDatabase(),
+    });
+
+    expect(context.goalPlans).toEqual([]);
+  });
+
+  it("propagates optional Goal infrastructure failures", async () => {
+    mockedGoalOptions.mockRejectedValueOnce(new InfrastructureError("Goal service unavailable"));
+
+    await expect(
+      getFollowupCreateContext(actor, relationshipId, undefined, { database: createDatabase() }),
+    ).rejects.toBeInstanceOf(InfrastructureError);
   });
 
   it("rejects a requested Appointment that is not in the exact relationship projection", async () => {

@@ -227,9 +227,6 @@ export function FollowupForm({
           : [];
       })
     : [];
-  const progressComplete =
-    !selectedGoalPlan || selectedGoalPlan.items.every((activity) => Boolean(progress[activity.activityCode]?.status));
-  const formComplete = progressComplete;
   const measurementCount = [
     weight,
     waistCircumference,
@@ -436,6 +433,9 @@ export function FollowupForm({
                 แสดงกิจกรรมจาก Goal Plan รอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
                 สถานะด้านล่างเป็นค่าตั้งต้นเพื่อคุยกับลูกค้า ไม่ใช่ข้อสรุป adherence หรือผลลัพธ์ทางคลินิก
               </p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                เลือกบันทึกเฉพาะกิจกรรมที่ต้องการติดตามในรอบนี้ได้ กิจกรรมที่ไม่เลือกสถานะจะไม่ถูกบันทึกเป็น progress
+              </p>
             </div>
             <ul className="mt-6 space-y-5">
               {selectedGoalPlan.items.map((activity) => (
@@ -535,14 +535,9 @@ export function FollowupForm({
               <dd className="mt-1 font-semibold text-text">กรอกแล้ว {measurementCount} รายการ</dd>
             </div>
           </dl>
-          {!formComplete ? (
-            <p className="mt-3 text-sm font-semibold text-danger">
-              กรุณาเลือกสถานะให้ครบทุกกิจกรรมก่อนส่ง
-            </p>
-          ) : null}
           <ActionFeedback state={state} />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !formComplete} type="submit">
+            <Button disabled={pending} type="submit">
               {pending ? "กำลังบันทึก…" : "ส่ง Follow-up"}
             </Button>
             <Link

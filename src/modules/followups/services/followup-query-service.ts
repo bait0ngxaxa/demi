@@ -11,6 +11,7 @@ import {
 } from "@/modules/goals/services/goal-query-service";
 import {
   ApplicationError,
+  ForbiddenError,
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
@@ -19,7 +20,10 @@ import {
   FOLLOWUP_HISTORY_LIMIT,
   type FollowupProgressStatus,
 } from "../domain/followup-definitions";
-import { FOLLOWUP_READ_CAPABILITY } from "../policies/followup-policy";
+import {
+  FOLLOWUP_READ_CAPABILITY,
+  FOLLOWUP_RECORD_CAPABILITY,
+} from "../policies/followup-policy";
 import {
   followupAppointmentIdSchema,
   followupIdSchema,
@@ -256,6 +260,44 @@ async function listCompletedAppointments(
   );
 }
 
+async function resolveRecordProjection(
+  actor: ActorContext | null | undefined,
+  relationshipId: string,
+  database: FollowupAccessDatabase,
+): Promise<boolean> {
+  try {
+    await resolveFollowupAccessContext(
+      actor,
+      relationshipId,
+      FOLLOWUP_RECORD_CAPABILITY,
+      database,
+    );
+    return true;
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function getOptionalGoalPlanOptions(
+  actor: ActorContext | null | undefined,
+  relationshipId: string,
+  database: FollowupQueryDatabase,
+): Promise<AccessibleGoalPlanReference[]> {
+  try {
+    return await getAccessibleGoalPlanOptions(actor, relationshipId, { database });
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
 function toDetail(
   record: FollowupDetailRecord,
   patient: FollowupPatientSummary,
@@ -307,13 +349,18 @@ export async function getFollowupHistory(
       take: FOLLOWUP_HISTORY_LIMIT,
       select: followupHistorySelect,
     });
+    const canRecord = await resolveRecordProjection(
+      actor,
+      access.patient.patientHospitalRelationshipId,
+      database,
+    );
 
     return {
       patient: access.patient,
       items: records.map((record) =>
         toHistoryItem(record, access.patient.patientHospitalRelationshipId),
       ),
-      canRecord: true,
+      canRecord,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -344,7 +391,7 @@ export async function getFollowupCreateContext(
     const access = await resolveFollowupAccessContext(
       actor,
       relationshipId,
-      FOLLOWUP_READ_CAPABILITY,
+      FOLLOWUP_RECORD_CAPABILITY,
       database,
     );
     const appointments = await listCompletedAppointments(
@@ -362,10 +409,10 @@ export async function getFollowupCreateContext(
     return {
       patient: access.patient,
       appointments,
-      goalPlans: await getAccessibleGoalPlanOptions(
+      goalPlans: await getOptionalGoalPlanOptions(
         actor,
         access.patient.patientHospitalRelationshipId,
-        { database },
+        database,
       ),
       selectedAppointmentId: requestedId,
     };
@@ -433,7 +480,9 @@ export async function getFollowupDetail(
 export const followupQueryInternals = {
   followupDetailSelect,
   followupHistorySelect,
+  getOptionalGoalPlanOptions,
   listCompletedAppointments,
+  resolveRecordProjection,
   toAppointmentContext,
   toDetail,
   toDisplayName,

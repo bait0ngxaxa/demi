@@ -36,6 +36,18 @@ describe("Follow-up transport", () => {
     });
   });
 
+  it("passes through a partial Goal activity progress selection", () => {
+    const formData = validFormData();
+    formData.set(
+      "activityProgress",
+      JSON.stringify([{ goalActivityCode: "exercise_walk", status: "DONE" }]),
+    );
+
+    expect(followupTransportInternals.buildSubmissionInput(formData)).toMatchObject({
+      activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE" }],
+    });
+  });
+
   it("rejects duplicate, unknown, and browser authority fields", () => {
     const duplicate = validFormData();
     duplicate.append("weight", "73");

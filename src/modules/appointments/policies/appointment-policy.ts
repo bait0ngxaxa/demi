@@ -30,7 +30,6 @@ export type AppointmentPolicyDecision =
         | "invalid_capability"
         | "invalid_target_hospital"
         | "inactive_target_hospital"
-        | "platform_admin_not_allowed"
         | "appointment_role_required"
         | "active_direct_hospital_scope_required"
         | "active_osm_assignment_scope_required"
@@ -82,10 +81,6 @@ export function decideAppointmentPolicy(input: {
 
   if (input.target.hospitalStatus !== HospitalStatus.ACTIVE) {
     return { allowed: false, reason: "inactive_target_hospital" };
-  }
-
-  if (input.actor.roles.includes(Role.ADMIN)) {
-    return { allowed: false, reason: "platform_admin_not_allowed" };
   }
 
   if (
