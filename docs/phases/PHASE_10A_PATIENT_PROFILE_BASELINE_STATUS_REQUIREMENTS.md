@@ -27,8 +27,8 @@ Baseline / Initial Snapshot
     → a possible explicit starting-state record
 Follow-up
     → an existing relationship-scoped longitudinal observation
-Status / Classification
-    → lifecycle state, event, classification, evidence, or projection depending on the confirmed meaning
+Relationship lifecycle state / clinical classification
+    → open requirements until lifecycle, event, classification, and projection meanings are confirmed
 Artifact Metadata
     → a bounded reference to evidence owned by one concrete business record
 ```
@@ -87,10 +87,11 @@ The table records observed behavior, not requirements. Where the same concept is
 | E10-01 | [`app/admin/patients/new/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/patients/new/page.tsx), `formData`, `handleSubmit` | Registration form combines HN, Thai ID, name, birth date, gender, contact, address/geography, emergency contact, occupation/education, Hospital/coach selection, and health-like values such as weight, height, waist, blood sugar, HbA1c, diabetes type, notes, PAM, and zone. | Client session/role list includes `admin`, `doctor`, `helper`, and `osm`; Hospital and coach selectors are loaded in the browser. | Direct browser-side registration writes the legacy user/profile records. Some fields are required by the form, others are optional/defaulted. | Direct evidence of one broad form only. It does not prove global ownership, clinical meaning, patient editability, or that defaults are valid health data. |
 | E10-02 | [`app/admin/patients/%5Bid%5D/edit/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/patients/%5Bid%5D/edit/page.tsx) | Edit form exposes identity, HN, birth date, gender, contact, address, emergency/contact, occupation/education, Hospital/coach, and current health-like fields in one mutable screen. | Same client-side role/session pattern. | Direct update of the broad legacy profile; no evidence of append-only history, amendment records, or field-level ownership. | Direct evidence of mutable legacy UI, not evidence that all fields should remain mutable in DEMI. Raw identity/account data is also exposed by the legacy path, which conflicts with the current identity boundary. |
 | E10-03 | [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts): `registerPatient`, `getPatientDetail`, `importPatientsBatch` | Legacy stores a raw patient/user identifier and a broad profile row containing HN, Hospital, demographics, addresses, emergency data, coach, measurements, PAM/zone/current-step defaults, and status-like values. Patient detail reads profile plus account data and Hospital data together. | Browser query helpers accept caller/session data and direct-write fields. | Registration and import use sequential inserts with cleanup on profile failure; edit/delete/restore and clinical updates are separate mutable operations. | Architecture-conflicting legacy persistence. Hierarchy expansion in `getAccessibleHospitalIds` is not accepted DEMI authorization. Broad `*`-style detail projections do not define the new projection contract. |
-| E10-04 | [`app/admin/patients/%5Bid%5D/baseline/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), `baselineData`, submit handler | Dedicated UI is titled “initial information” / “round 0” and states that the data is a basis for later comparison. It collects weight, waist, blood pressure, DTX, adaptation/context notes, activity statuses, confidence, summary, recommendations, a status value, and images loaded from `patient_status_images`. | Browser role check for the four legacy roles; `conducted_by` is supplied from client state. | It inserts an `appointment_followups` row with `appointment_id: null`, `user_id: patientId`, and `followup_round: 0`. No separate baseline record exists. | Strong evidence that a baseline concept existed in the UI, but not that it is a Follow-up. The page comment says the form uses `fair` instead of `baseline`; history can recognize `followup_status === 'baseline'`, while the submit path stores `fair`. This is an explicit legacy inconsistency. |
+| E10-04 | [`app/admin/patients/%5Bid%5D/baseline/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), `baselineData`, submit handler | Dedicated UI is titled “initial information” / “round 0” and states that the data is a basis for later comparison. It collects weight, waist, blood pressure, DTX, adaptation/context notes, activity statuses, confidence, summary, recommendations, a status value, and reads an existing image gallery from `patient_status_images`. | Browser role check for the four legacy roles; `conducted_by` is supplied from client state. | It inserts an `appointment_followups` row with `appointment_id: null`, `user_id: patientId`, and `followup_round: 0`. A selected Baseline image is uploaded to `patient-status-images`, converted to a signed URL, held in `formData.life_schedule_image_url`, and persisted on that row; this upload path does not insert a `patient_status_images` metadata row. No separate baseline record exists. | Strong evidence that a baseline concept existed in the UI, but not that it is a Follow-up. The page comment says the form uses `fair` instead of `baseline`; history can recognize `followup_status === 'baseline'`, while the submit path stores `fair`. This is an explicit legacy inconsistency. The gallery read and the Baseline row's embedded URL are separate artifact representations. |
 | E10-05 | [`app/admin/appointments/followup/%5Bid%5D/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts): `saveAppointmentFollowup*`, `getPatientFollowupHistory` | Follow-up collects the same measurement-like values, reflection/adaptation notes, food/activity statuses, confidence, summary/recommendations, `followup_status`, and three image URL fields (`life_schedule_image_url`, `floating_chart_image_url`, `dream_card_image_url`). | Browser role check; actor and date are client-controlled in the legacy form. | Existing follow-ups can be edited in place; create/update/upsert behavior exists. Round counts are calculated globally by patient user ID and are not relationship-scoped. A completed Appointment may be updated separately after saving a Follow-up. | This behavior is already replaced by the Phase 9C relationship-scoped immutable `PatientFollowup` contract. It is evidence for terms and data categories, not permission or persistence design. |
 | E10-06 | [`app/admin/patients/%5Bid%5D/status-tracking/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e) | “Status tracking” is a gallery of patient images with an optional caption. It queries `patient_status_images` by the patient/global legacy `user_id`; it does not show a scalar status lifecycle or a status event history. | Browser role check for `admin`, `doctor`, `helper`, and `osm`. | Image upload creates a row and a storage object; delete removes the object and row. File names use a timestamp/random suffix. | Direct evidence that the legacy status screen is primarily an evidence-artifact flow. It does not justify a generic status table or workflow engine. |
-| E10-07 | `patient_status_images` usage in the baseline and status-tracking pages | Metadata includes patient/global ID, image path/URL, caption, created time, and creator. Upload accepts client `image/*` files up to 5 MB, writes to `patient-status-images`, and stores a one-year signed URL. Status display later uses `getPublicUrl(image_path)`. | Browser-side Supabase client. | Delete removes storage and metadata. No committed retention policy, stable file record, server MIME validation, replacement/supersession semantics, or shared access boundary was found. | Direct evidence of inconsistent URL handling and incomplete artifact lifecycle. It is not a safe storage contract to copy. |
+| E10-07A | [`app/admin/patients/%5Bid%5D/status-tracking/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), `handleImageUpload`, `loadImages` | Status Tracking uploads an image to `patient-status-images`, creates a one-year signed URL, and inserts a `patient_status_images` row containing `user_id`, `image_url`, `image_path`, optional `caption`, and `created_by`. The gallery is later read from that metadata table. | Browser-side Supabase client; page checks a legacy role list and supplies the current user as `created_by`. | Delete removes the storage object and the metadata row. | Direct evidence that Status Tracking has its own metadata-backed image flow. It is not evidence that Baseline uploads use the same metadata ownership. |
+| E10-07B | [`app/admin/patients/%5Bid%5D/baseline/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), `handleImageUpload`, `baselineData` | Baseline uploads to the same `patient-status-images` bucket and creates a signed URL, but stores that URL in `formData.life_schedule_image_url`. On submit the URL is persisted as `appointment_followups.life_schedule_image_url` on the baseline-shaped row. The upload path does not create a corresponding `patient_status_images` metadata row, although the page separately reads that table to display an existing gallery. | Browser-side Supabase client; Baseline row uses client-supplied `conducted_by`. | The selected storage object may be removed during replacement/delete handling, but no separate Baseline artifact metadata lifecycle exists. | Direct evidence that shared storage does not imply shared metadata ownership. Baseline image representation is embedded in the Follow-up-shaped business row. |
 | E10-08 | Legacy screening pages and [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e): `saveScreening`, `createDefaultGoals` | Screening calculates PAM/PROM-style results in the client, saves screening rows, then updates profile PAM/zone and creates default Goals. | Browser role/session checks and client-calculated result/actor values. | Multiple screening history rows exist; profile classification is overwritten as a current value and Goals are created as a side effect. | Phase 7 explicitly separated Screening from Goals and measurements in the rewrite. The legacy side effect is not a Phase 10 status contract. |
 | E10-09 | [`app/admin/patients/%5Bid%5D/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e) | Patient detail aggregates HN, demographic/contact/address fields, Hospital data, current health-like values, PAM/zone, notes, Screening/Goal/Appointment/Follow-up counts and links. | Broad Hospital/admin-style patient page. | Counts and summaries are read from several legacy tables; no single detail record owns all concepts. | Direct evidence for a requirement-validation workspace and minimal projections. It is not evidence for denormalizing all domains into `PatientProfile`. |
 | E10-10 | Broad legacy search for `baseline`, `status`, `attachment`, `document`, `file`, and storage/table names | Dedicated baseline and status-tracking pages were found. No committed medical/supporting-document metadata model or policy was found; the concrete patient-related artifacts are images and Follow-up URL fields. | Legacy browser flows. | Storage behavior is embedded in pages and direct queries. | Absence is evidence of what was not found, not proof that customers do not need documents. Document support remains an open requirement. |
@@ -99,7 +100,7 @@ The table records observed behavior, not requirements. Where the same concept is
 
 1. A baseline-looking record uses the `appointment_followups` table and `followup_round = 0`, but the same application also treats Follow-up as ongoing progress and allows later Follow-up edits. The baseline page stores `fair` while some history rendering recognizes `baseline`.
 2. Status-tracking images are patient-global in legacy, while the new architecture makes routine clinical records relationship-scoped. The legacy `user_id` does not identify the Hospital relationship.
-3. Baseline/status images use one metadata table and client-managed signed URLs, while Follow-up images are embedded as URL fields in a Follow-up row. There is no consistent artifact owner or retention contract.
+3. Baseline and Status Tracking reuse the `patient-status-images` storage bucket but do not share the same metadata path: Status Tracking inserts `patient_status_images` rows, while Baseline embeds its selected signed URL in `appointment_followups.life_schedule_image_url` and only reads the status-image table for an adjacent gallery. Follow-up images are also embedded as URL fields in Follow-up-shaped rows and use their own upload path. There is no consistent artifact owner, retention, or correction contract.
 4. Legacy hierarchy access, client role checks, client-supplied actor IDs, and direct writes conflict with accepted DEMI authorization and application-boundary decisions. They are not copied for parity.
 
 ## 4. Current architecture constraints
@@ -161,17 +162,22 @@ flowchart TD
     Relationship -->|owns longitudinal rounds| Followup[Follow-up]
     Followup -.->|optional provenance reference| Appointment
     Followup -.->|optional provenance reference| Goals
-    Relationship -->|proposed ownership| Baseline[Baseline / Initial Snapshot]
-    Relationship -.->|possible lifecycle state| Status[Status / Classification]
-    Relationship -.->|authorization scope, not ownership| Assignment
-    Baseline -.->|one possible business owner| Artifact[Artifact metadata]
-    Followup -.->|one possible business owner| Artifact
-    Status -.->|supporting evidence only| Artifact
+    Relationship -->|proposed ownership| Baseline[Baseline / Initial Snapshot<br/>PROPOSED]
+    Relationship -->|proposed primary owner| Artifact[Relationship Evidence Artifact<br/>PROPOSED]
+    Baseline -.->|optional/future event owner| Artifact
+    Followup -.->|optional/future event owner| Artifact
     Screening -.->|source for derived summary only| Projection[Detail / trend projection]
     Followup -.->|source for derived summary only| Projection
     Goals -.->|source for derived summary only| Projection
     Appointment -.->|source for derived summary only| Projection
 ```
+
+The diagram deliberately does not introduce a generic `Status` entity. The remaining concepts are notes about unresolved meaning, not accepted persistence models:
+
+- Relationship lifecycle state = **OPEN REQUIREMENT**.
+- Clinical/business classification = **OPEN REQUIREMENT**.
+- Derived status/trend = **PROJECTION**.
+- Baseline- and Follow-up-owned artifacts are optional/future relationships; the relationship-level evidence artifact is the proposed first slice.
 
 | Arrow | Classification | Boundary consequence |
 | --- | --- | --- |
@@ -183,8 +189,8 @@ flowchart TD
 | `Relationship → Screening`, `Goal Plan`, `Appointment`, `Follow-up` | Ownership | Existing phase boundaries remain authoritative. No duplicate Phase 10 copies. |
 | `Follow-up → Appointment` and `Follow-up → Goal Plan` | Optional reference/provenance | A selected Appointment or Goal explains context; it does not transfer ownership or trigger a hidden mutation. |
 | `Relationship → Baseline` | Provisional ownership | Baseline should be relationship-specific if adopted; it must not be a global Person snapshot. |
-| `Relationship → Status` | Open current-state or event ownership | A lifecycle status, clinical classification, and observation must be separated before persistence is chosen. |
-| `Baseline/Follow-up/Status → Artifact metadata` | One concrete business owner, optional provenance | An artifact must not have multiple primary domain owners. Access scope can inherit from the relationship. |
+| `Relationship → Relationship Evidence Artifact` | Proposed primary business ownership | The first artifact slice may be relationship-level evidence; one artifact has one primary owner and inherits relationship authorization scope. |
+| `Baseline/Follow-up -.-> Artifact metadata` | Optional/future event ownership or provenance | Event-specific ownership is not accepted by default and must not create a generic Status entity. If adopted, an artifact still has one primary owner. |
 | `Screening/Goal/Appointment/Follow-up → Projection` | Derived projection | Patient detail summaries are computed views, not a new authoritative record. |
 
 ## 6. Patient Profile provisional contract
@@ -218,15 +224,25 @@ The existing `Person.givenName` and `Person.familyName` are the current source f
 
 ### 6.3 Phase 10B.0 provisional read contract
 
-The smallest safe Phase 10B.0 workflow is an authorized Hospital/OSM read view from an exact relationship:
+The current Patient Detail page is already the foundation for Phase 10B.0. It provides an authorized Hospital/OSM read view from an exact relationship with:
+
+- display name from `Person`;
+- relationship HN;
+- Hospital name and ID;
+- opaque relationship/profile context; and
+- links to the existing Screening, Goals, Appointments, and Follow-ups domains.
+
+Phase 10B.0 must therefore be a **bounded Patient Profile requirement-validation workspace**, not a second copy of that minimal relationship detail screen. Before implementation, it must select a small provisional, read-only field subset from the still-open legacy groups—for example demographics, contact, address, emergency contact, or occupation/education/background. No additional subset is accepted by this document yet. If no subset is selected, implementing 10B.0 would merely duplicate the existing Patient Detail page.
+
+The safe implementation boundary is:
 
 1. Resolve the actor server-side.
 2. Resolve and authorize the exact `PatientHospitalRelationship`.
-3. Project the current directory fields: opaque relationship/profile IDs, display name from `Person`, HN, and Hospital name/ID.
-4. Show only additional profile fields whose owner, visibility, and source of truth have been explicitly selected for the prototype.
+3. Reuse the existing minimal relationship projection as the shell.
+4. Add only the selected read-only profile fields, with their provisional owner, visibility, source, and privacy classification stated before coding.
 5. Keep Screening, Goals, Appointments, Follow-ups, Baseline, and Status/Evidence as separate linked domains or bounded panels.
 
-Profile editing is not part of the safe default. If Phase 10B.0 is expanded to edit, the owner must first decide which fields are PatientProfile versus relationship-owned and which actors may update each field. Patient self-service remains an explicit open requirement; it is neither enabled nor permanently denied by this document.
+Profile editing is not part of the safe default. If Phase 10B.0 is expanded to edit, the owner must first decide which fields are PatientProfile versus relationship-owned and which actors may update each field (P10-01 through P10-04). Patient self-service remains an explicit open requirement; it is neither enabled nor permanently denied by this document.
 
 ## 7. Baseline / Initial State provisional contract
 
@@ -303,9 +319,11 @@ After Phase 9C, the missing concerns are not another Follow-up model. They are:
 | Legacy artifact behavior | Observed owner | Observed metadata | Boundary problem |
 | --- | --- | --- | --- |
 | Status-tracking gallery | Global patient `user_id` | image path/URL, caption, created time, creator | Does not identify Hospital relationship; access is client-side. |
-| Baseline images | Same `patient_status_images` table | Same image metadata | A baseline artifact and a general status image are indistinguishable in the table. |
-| Follow-up images | Embedded URL fields on `appointment_followups` | Three URL columns, no stable artifact record | Cannot express retention, replacement, provenance, or policy independently. |
+| Baseline image | Baseline-shaped `appointment_followups` row (`appointment_id = null`, `followup_round = 0`) | `life_schedule_image_url` embedded on that row; the page may also display the separately queried `patient_status_images` gallery | The Baseline upload reuses the `patient-status-images` bucket but does not create a `patient_status_images` metadata row. The displayed gallery is not the Baseline upload's persisted artifact metadata. |
+| Follow-up images | Follow-up-shaped `appointment_followups` row | Three URL columns, no stable artifact record; the inspected Follow-up page uploads to `followup-images` | Cannot express retention, replacement, provenance, or policy independently. |
 | Documents/medical files | No concrete patient artifact record found | Not established | Requirement remains open; do not infer a document system. |
+
+The Baseline page's read of `patient_status_images` is therefore a display dependency, not evidence that the Baseline owns those metadata rows. Legacy reuses the same storage bucket for Baseline and Status Tracking while assigning metadata differently: Status Tracking creates the metadata row, whereas Baseline embeds its own URL in the baseline-shaped business record.
 
 ### 9.2 Provisional ownership model
 
@@ -428,7 +446,7 @@ Patient detail must remain a bounded server projection. It must not load the ful
 
 | Planned slice | Minimum server projection for the first prototype | Explicitly excluded by default |
 | --- | --- | --- |
-| 10B.0 Profile | Exact relationship ID, patient profile ID, display name, HN, Hospital ID/name, and only the approved profile field subset. | Auth subject, roles, credentials, raw identity values, all Hospital memberships, all Screening/Goal/Appointment/Follow-up records, unrelated relationships. |
+| 10B.0 Profile | Existing exact relationship ID, patient profile ID, display name, HN, Hospital ID/name, plus only the small provisional read-only profile field subset selected for requirement validation. | Auth subject, roles, credentials, raw identity values, all Hospital memberships, all Screening/Goal/Appointment/Follow-up records, unrelated relationships. |
 | 10C.0 Baseline | Authorized relationship summary, Baseline ID/state, recorded date, recorder display name if needed, and explicitly approved baseline values. | Full clinical history, unrelated Hospital data, generated values, hidden status/Goal/Appointment mutations. |
 | 10D.0 Artifacts | Authorized owner ID, opaque artifact ID, safe media/caption/status metadata, timestamps, and a short-lived access handle only when needed. | Storage secrets/keys, permanent signed URLs, unrelated owner artifacts, raw clinical notes in URLs/logs/audit. |
 | Patient detail workspace | Separate bounded panels/links for Profile, Screening, Goals, Appointments, Follow-ups, Baseline, and Status/Evidence. | A denormalized “everything” record or a generic dashboard/statistics layer. |
@@ -439,12 +457,12 @@ Sensitive data must not be placed in query strings, audit metadata, logs, or cli
 
 ### 14.1 Phase 10B.0 — Patient Profile Working Prototype
 
-- **Goal:** Demonstrate a bounded patient profile/relationship workspace without turning Profile into a clinical dump.
-- **Minimum user-visible workflow:** An authorized Hospital user or exact-assigned OSM opens an existing relationship and sees the current minimal identity/relationship projection. Additional profile fields appear only after their owner, visibility, and source are selected.
+- **Goal:** Validate which small, read-only subset of legacy Patient Profile concepts belongs in the new DEMI model and how it should be presented, using the existing Patient Detail page as the starting shell—not duplicate that page.
+- **Minimum user-visible workflow:** An authorized Hospital user or exact-assigned OSM opens the existing relationship detail, sees the already-implemented display name/HN/Hospital foundation, and reviews the selected provisional profile field subset. The subset must be selected before implementation; without it, 10B.0 has no meaningful feature beyond the current page.
 - **Expected ownership:** Name from `Person`; patient-specific fields from `PatientProfile` only when confirmed; HN and Hospital context from `PatientHospitalRelationship`; existing domain panels remain separate.
 - **Dependencies:** Current patient directory/detail query, actor context, relationship-scoped policies, existing assignment scope, and minimal projection conventions.
 - **Explicit non-goals:** Profile edit by default, Hospital governance, HN transfer, clinical measurements, Screening/Goal/Appointment/Follow-up duplication, artifact upload, Patient self-service, import, dashboard/statistics.
-- **Remaining owner questions:** Field ownership for birth date/gender/contact/address/emergency/background; editability and Patient visibility; correction/audit; relationship lifecycle/HN mutation.
+- **Remaining owner questions:** The provisional read-only subset, field ownership for birth date/gender/contact/address/emergency/background, editability and Patient visibility, correction/audit, and relationship lifecycle/HN mutation.
 
 ### 14.2 Phase 10C.0 — Baseline / Initial State Working Prototype
 
@@ -490,28 +508,28 @@ The following questions must be resolved or explicitly deferred before their cor
 
 These are requirements questions, not implementation TODOs to solve by copying the legacy schema.
 
-## 16. Phase 10A acceptance checklist
+## 16. Phase 10A acceptance checklist (verified closure)
 
-Phase 10A is safe to hand off to 10B.0 when all of the following are true:
+The following criteria were verified for this documentation correction. They establish Phase 10A closure as an analysis/provisional contract; they do not represent customer approval or complete the owner decisions listed in Section 15.
 
-- [ ] Legacy patient profile, baseline, status, progress, detail, and artifact behavior has a concrete path/symbol evidence map.
-- [ ] Legacy contradictions—especially baseline-as-Follow-up, `fair` versus `baseline`, global image ownership, and embedded Follow-up URLs—are recorded rather than silently normalized.
-- [ ] `Person`, `User`, `PatientProfile`, and `PatientHospitalRelationship` ownership rules are explicit, and unresolved field ownership is visible.
-- [ ] HN and Hospital-specific data remain relationship-owned; no clinical data is moved into `Person` or global Profile by form proximity.
-- [ ] Screening, Goal Plan, Appointment, and Follow-up remain existing owners; no duplicate status/follow-up domain is proposed.
-- [ ] Baseline has a provisional dedicated relationship-owned direction, with no automatic cross-domain creation and no fabricated values.
-- [ ] Status concepts are classified as lifecycle state, observation/event, classification, artifact, or derived projection before persistence is chosen.
-- [ ] Artifact ownership is bounded to one concrete business record, with metadata separated from binary storage and no generic enterprise framework assumed.
-- [ ] Server-side, fail-closed authorization preserves direct Hospital scope, exact OSM assignment, multi-role paths, and explicit Patient self-service decisions.
-- [ ] Mutation, history, correction, transaction, and audit expectations are stated for each proposed domain.
-- [ ] Minimum projections for 10B.0–10D.0 exclude auth data, unrelated memberships, full history, and unnecessary sensitive payloads.
-- [ ] Open customer/clinical requirements are assigned to an owner decision rather than hidden in a schema or UI assumption.
-- [ ] No Prisma model, migration, Server Action, route, UI, storage bucket, upload flow, or production code was added in Phase 10A.
-- [ ] Markdown links resolve, Thai text remains valid UTF-8, and the working tree contains no unrelated changes.
+- [x] Legacy patient profile, baseline, status, progress, detail, and artifact behavior has a concrete path/symbol evidence map.
+- [x] Legacy contradictions—especially baseline-as-Follow-up, `fair` versus `baseline`, distinct Baseline versus Status Tracking image ownership, and embedded Follow-up URLs—are recorded rather than silently normalized.
+- [x] `Person`, `User`, `PatientProfile`, and `PatientHospitalRelationship` ownership rules are explicit, and unresolved field ownership is visible.
+- [x] HN and Hospital-specific data remain relationship-owned; no clinical data is moved into `Person` or global Profile by form proximity.
+- [x] Screening, Goal Plan, Appointment, and Follow-up remain existing owners; no duplicate status/follow-up domain is proposed.
+- [x] Baseline has a provisional dedicated relationship-owned direction, with no automatic cross-domain creation and no fabricated values.
+- [x] Status concepts are classified as lifecycle state, observation/event, classification, artifact, or derived projection before persistence is chosen.
+- [x] Artifact ownership is bounded to one concrete business record, with metadata separated from binary storage and no generic enterprise framework assumed.
+- [x] Server-side, fail-closed authorization preserves direct Hospital scope, exact OSM assignment, multi-role paths, and explicit Patient self-service decisions.
+- [x] Mutation, history, correction, transaction, and audit expectations are stated for each proposed domain.
+- [x] Minimum projections for 10B.0–10D.0 exclude auth data, unrelated memberships, full history, and unnecessary sensitive payloads.
+- [x] Open customer/clinical requirements are assigned to an owner decision rather than hidden in a schema or UI assumption.
+- [x] No Prisma model, migration, Server Action, route, UI, storage bucket, upload flow, or production code was added in Phase 10A.
+- [x] Markdown links resolve, Thai text remains valid UTF-8, and the working tree contains no unrelated changes.
 
-### 16.1 Readiness decision
+### 16.1 Phase 10B.0 handoff preconditions
 
-**Phase 10B.0 is ready to start only as a bounded read/projection prototype** using the current display name, HN, Hospital, and relationship scope. It is **not ready for profile editing** until P10-01 through P10-04 are decided—especially field ownership and actor-specific editability. That is the exact blocker for any mutation-oriented interpretation of “Patient Profile”.
+The existing Patient Detail page is the implemented foundation. **Phase 10B.0 is not ready to implement as a duplicate of that page:** a small provisional, read-only profile field subset must be selected first. If no subset is selected, the correct action is to defer 10B.0 implementation rather than repeat the current display name/HN/Hospital projection. Profile editing remains blocked until P10-01 through P10-04 are decided—especially field ownership and actor-specific editability. These are 10B.0 preconditions, not unresolved defects in the Phase 10A analysis.
 
 ## 17. ADR and architecture decision assessment
 

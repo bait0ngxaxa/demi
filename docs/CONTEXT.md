@@ -10,7 +10,9 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ## Current Phase
 
-โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว และเพิ่ม **Phase 3C: Platform Admin Bootstrap** เพื่อปิด operational deadlock ของ fresh environment โดย implementation ยังคง reuse Phase 2.1 National ID Login Adapter กับ trusted password-auth provisioning เป็น authentication foundation ขณะนี้ **Phase 4A** ปิด decision contract, **Phase 4B Workforce Provisioning + Activation MVP** และ **Phase 5B.2 Patient First-Time Activation MVP** implement แล้ว; **Phase 6A Patient Access and Assignment** ได้รับ owner acceptance แล้ว, **Phase 6B.1 Patient Directory**, **Phase 6B.2 OSM ↔ Patient Assignment**, **Phase 7A/7B.0 Screening working prototype** และ **Phase 8A/8B.0 Goals & Activity Plan working prototype** implement แล้ว โดย Screening/Goals ยังคงเป็น requirement-validation prototypes และ B6.3 รวมถึง clinical behavior ที่ยังไม่ยืนยันยัง deferred/ต้องมี requirements เพิ่มเติม
+ขณะนี้ **Phase 9 เสร็จสมบูรณ์แล้ว**: **Phase 9B.0 Appointment working prototype** และ **Phase 9C.0 Follow-up / Progress working prototype** implement แล้ว ส่วน **Phase 10A Patient Profile / Baseline / Status Tracking analysis** เสร็จสมบูรณ์ในฐานะ provisional requirement/domain contract และยังไม่ใช่ customer-approved behavior โดยไม่มี product implementation เพิ่มใน Phase 10A
+
+ลำดับถัดไปคือ **10B.0 Patient Profile**, **10C.0 Baseline / Initial State** และ **10D.0 Patient Status Artifacts / Attachment Boundary** โดย 10B.0 ขณะนี้ทำได้อย่างปลอดภัยเฉพาะ bounded read/projection slice ที่ต่อยอดจาก Patient Detail เดิม และต้องเลือก read-only profile field subset ก่อนเริ่ม implementation; profile editing ยังต้องรอการยืนยัน ownership, visibility, correction และ actor-specific editability
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
 
@@ -88,7 +90,7 @@ The provisional ownership conclusions are:
 - Artifacts are provisionally owned by one concrete business record, with metadata separate from binary storage and visibility inherited from the owner. A generic enterprise attachment framework and Patient self-service uploads remain deferred.
 - Authorization continues to be server-side and fail-closed: direct active Hospital membership or exact active OSM assignment governs relationship access; hierarchy, profession, and ADMIN-only status do not silently widen routine patient authority. Patient self-service remains open.
 
-The next sequence is `10B.0` Patient Profile, `10C.0` Baseline / Initial State, and `10D.0` Patient Status Artifacts / Attachment Boundary. `10B.0` is ready only as a bounded read/projection prototype; profile editing is blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+The next sequence is `10B.0` Patient Profile, `10C.0` Baseline / Initial State, and `10D.0` Patient Status Artifacts / Attachment Boundary. The existing Patient Detail page is the 10B.0 foundation; 10B.0 must select a small provisional read-only profile field subset before implementation, otherwise it would duplicate that page. Profile editing is blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
 
 ## Phase 3A Hospital Onboarding Contract
 
