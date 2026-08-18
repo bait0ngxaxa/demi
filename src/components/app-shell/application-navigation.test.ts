@@ -38,6 +38,7 @@ describe("application navigation projection", () => {
     const hospitalLabels = navigationLabels(actor({ roles: [Role.HOSPITAL] }));
 
     expect(adminLabels).toContain("ผู้ดูแลระบบ");
+    expect(adminLabels).toContain("การกำกับดูแลโรงพยาบาล");
     expect(adminLabels).toContain("คำขอขึ้นทะเบียนโรงพยาบาล");
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
   });

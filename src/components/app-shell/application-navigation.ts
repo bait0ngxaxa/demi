@@ -6,6 +6,10 @@ import {
   decideHospitalOnboardingPolicy,
   HOSPITAL_ONBOARDING_CAPABILITIES,
 } from "@/modules/hospital-onboarding/policies/hospital-onboarding-policy";
+import {
+  decideHospitalGovernancePolicy,
+  HOSPITAL_GOVERNANCE_CAPABILITIES,
+} from "@/modules/hospital-governance/policies/hospital-governance-policy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
@@ -122,17 +126,33 @@ export function projectApplicationNavigation(
     actor,
     capability: HOSPITAL_ONBOARDING_CAPABILITIES.review,
   }).allowed;
+  const canReadHospitalGovernance = decideHospitalGovernancePolicy({
+    actor,
+    capability: HOSPITAL_GOVERNANCE_CAPABILITIES.readGovernance,
+  }).allowed;
+
+  const adminItems = [];
+
+  if (canReadHospitalGovernance) {
+    adminItems.push({
+      href: "/app/admin/hospitals",
+      label: "การกำกับดูแลโรงพยาบาล",
+      match: "prefix" as const,
+    });
+  }
 
   if (actor.roles.includes(Role.ADMIN) && canReviewOnboarding) {
+    adminItems.push({
+      href: "/app/admin/hospital-onboarding",
+      label: "คำขอขึ้นทะเบียนโรงพยาบาล",
+      match: "prefix" as const,
+    });
+  }
+
+  if (adminItems.length > 0) {
     groups.push({
       label: "ผู้ดูแลระบบ",
-      items: [
-        {
-          href: "/app/admin/hospital-onboarding",
-          label: "คำขอขึ้นทะเบียนโรงพยาบาล",
-          match: "prefix",
-        },
-      ],
+      items: adminItems,
     });
   }
 
