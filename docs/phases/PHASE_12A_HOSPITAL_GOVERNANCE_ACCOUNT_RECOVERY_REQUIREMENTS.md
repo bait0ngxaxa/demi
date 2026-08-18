@@ -210,6 +210,8 @@ Hospital.status
 
 This is a **provisional proposal**, not a confirmed customer requirement. It is the safest initial candidate because current access predicates already consume Hospital status as a boundary and because no current service requires a cascade to another lifecycle.
 
+For the Phase 12B.0 requirement-validation prototype, the transition is immediate when the transaction commits. It does not require a suspension reason, a future effective time, a multi-step approval workflow, or automatic notification. It is a narrow synchronous state transition; it does not start an asynchronous cascade or workflow.
+
 The proposal deliberately does **not** automatically change:
 
 ```text
@@ -221,8 +223,16 @@ PatientOsmAssignment
 UserRole
 credentials
 activation records
+provider identity
+provider sessions
+appointments
 clinical records
+historical records
 ```
+
+Only an authenticated, active Platform `ADMIN` may execute this future governance transition. Hospital Owner, Hospital Member, OSM, Patient, hierarchy metadata, and browser-provided state do not authorize it. This is a **provisional governance contract for requirement validation**, not customer-approved authority.
+
+The existing authorization architecture’s fail-closed behavior and the selected preservation of lower-level lifecycle rows have different evidence status: fail-closed denial is a **direct current implementation consequence**; preserving the lower-level rows without cascade is the **provisional Phase 12B.0 contract**.
 
 ### 7.3 Benefits and risks
 
@@ -239,8 +249,8 @@ Risks that require customer or operational decisions:
 
 - an issued provider session may exist until a later ActorContext/policy check rejects the suspended Hospital scope;
 - an already open page may be stale and needs a safe conflict/error response;
-- restoring a Hospital could make a previously current, active relationship and assignment usable again unless a separate policy says otherwise;
-- scheduled appointments may become operationally inaccessible without being cancelled or rescheduled;
+- restoring a Hospital will make a previously preserved scope usable again only when its own existing predicates pass; whether production should add exceptions or require separate resumption remains open;
+- stored appointments may become operationally inaccessible without being cancelled or rescheduled; Phase 12B.0 intentionally performs neither business-continuity action; and
 - members may need a read-only explanation or may need the Hospital hidden from their routine navigation; and
 - a status-only mutation does not repair pre-existing inconsistent rows, which is a reason to avoid silently adding reconciliation to this slice.
 
@@ -250,7 +260,9 @@ The recommended conceptual behavior is:
 
 > Restore changes `Hospital.status` from `SUSPENDED` to `ACTIVE`; it does not reconstruct relationships, accounts, credentials, assignments, or history because suspension did not destroy them.
 
-This is a **provisional proposal** supported by the current implementation shape. The current predicates would naturally begin allowing a previously valid direct/assigned scope again after the Hospital becomes active, subject to the existing User, membership, OSM relationship, assignment, and exact-Hospital checks. No current restore service exists, so “what becomes operational immediately after restore” remains an open customer/operations requirement.
+For Phase 12B.0, restore is also immediate when the transaction commits. Once the Hospital becomes `ACTIVE`, any previously preserved scope that independently still satisfies all existing authorization and lifecycle predicates becomes usable again through those rules. For example, an active membership with an active User, an active OSM relationship, or a still-current valid Patient–OSM assignment may become usable again. An independently suspended membership, OSM relationship, User, invalid assignment, or otherwise invalid scope remains denied. Restore does not reconstruct, reactivate, regenerate, replace, reconcile, or otherwise mutate lower-level state.
+
+This deterministic restore consequence is a **provisional Phase 12B.0 requirement-validation behavior**, not a confirmed production/customer policy. Final decisions about resumption, operational continuity, and exceptions remain open.
 
 ## 8. Hospital Suspension / Restore Consequence Analysis
 
@@ -264,12 +276,18 @@ This is a **provisional proposal** supported by the current implementation shape
 | Patient assignment | Assignment policy/service requires active exact Hospital, active Owner authority, active target OSM relationship, and the existing assignment invariant. | New, reassignment, unassignment, and routine assignment management are unavailable. Existing assignment rows are preserved and not automatically ended. | **Direct current implementation evidence / Provisional proposal** |
 | Screening | Relationship-scoped access/service paths require an active Hospital and valid direct/assigned scope. | Screening reads and mutations in that Hospital fail closed; Screening history is preserved. | **Direct current implementation evidence / Provisional proposal** |
 | Goals | Goal access requires the active exact relationship/Hospital boundary and applicable direct/assigned authority. | Goal history and operations are inaccessible through the suspended Hospital; Goal Plans are not deleted or rewritten. | **Direct current implementation evidence / Provisional proposal** |
-| Appointments | Appointment access and management require the active relationship/Hospital boundary. | Routine Appointment access and mutations fail closed. Stored scheduled/terminal Appointment rows are not automatically cancelled, rescheduled, or completed. | **Direct current implementation evidence for access; Open requirement for scheduling operations** |
+| Appointments | Appointment access and management require the active relationship/Hospital boundary. | Routine Appointment access and mutations fail closed. Stored scheduled/terminal Appointment rows are not automatically cancelled, rescheduled, or completed. | **Direct current implementation evidence for access; Provisional prototype preservation; Open final scheduling requirement** |
 | Follow-up | Follow-up access/recording requires active relationship/Hospital scope. | Follow-up reads and recording fail closed; existing Follow-up history is preserved. | **Direct current implementation evidence / Provisional proposal** |
 | Baseline | Baseline access requires active direct/assigned Hospital scope. | Baseline reads/mutations fail closed; Baseline history remains. | **Direct current implementation evidence / Provisional proposal** |
 | Evidence | Evidence access requires active direct/assigned Hospital scope. | Evidence reads/mutations fail closed; append-only evidence history remains. | **Direct current implementation evidence / Provisional proposal** |
 
 Within these reviewed modules, the status-only effect is coherent: the Hospital boundary becomes unusable while the lower-level identity and historical rows remain intact. This conclusion does not approve customer-facing scheduling, Patient self-service, notification, retention, or visibility behavior. **Inference from direct current implementation evidence.**
+
+#### Appointments and historical operations
+
+For the Phase 12B.0 prototype, stored Appointments remain unchanged when a Hospital is suspended. Scheduled Appointments are not automatically cancelled, completed, rescheduled, or deleted. Routine Hospital-scoped Appointment access and management fail closed because the Hospital is inactive. After restore, the same persisted Appointments become accessible/manageable again only when their normal authorization and lifecycle predicates still permit it.
+
+The same preservation-and-policy-gating rule applies to Screening, Goals, Follow-ups, Baseline, Evidence, assignments, and historical clinical records. Phase 12B.0 does not invent compensating clinical, scheduling, staffing, notification, or business-continuity workflows. The real-world operational handling of scheduled Appointments during a Hospital suspension remains an **open customer requirement**.
 
 ### 8.2 Hospital Owner and Staff
 
@@ -285,10 +303,10 @@ Whether suspended Hospitals remain visible to their members, and whether a membe
 - The `OsmHospitalRelationship` row remains at its current status if Hospital status alone changes.
 - A current `PatientOsmAssignment` remains a current historical/operational row; it is not silently ended or recreated.
 - Existing OSM assigned access becomes unusable while the Hospital is inactive because the current access predicates require both the active Hospital and active exact relationship/assignment path.
-- Restoring the Hospital may make a previously active relationship and current assignment usable again, if all existing status checks pass. This is an **inference/provisional proposal**, not a confirmed operational policy.
+- After restore, the preserved relationship and current assignment become usable again only if the Hospital is `ACTIVE`, the OSM relationship is independently `ACTIVE`, the assignment is still current, the target User/account state is valid, and all existing assignment/relationship policy predicates pass. This is the **provisional Phase 12B.0 behavior**, not a confirmed customer-approved assignment policy.
 - The Phase 11D.0 rule that an OSM relationship cannot be suspended while it has current assignments is a relationship-specific working-prototype rule. It must not be incorrectly applied as a requirement that Hospital suspension end assignments.
 
-The repository does not support automatic reassignment, assignment expiry, emergency override, or “paused assignment” semantics. Those are **open requirements**.
+Hospital suspension does not end an assignment, set `endedAt`, reassign the Patient, suspend the OSM relationship, or introduce a paused-assignment state. The assignment remains structurally current if it was current before suspension. Automatic reassignment, assignment expiry, emergency override, and paused-assignment semantics remain **open requirements**.
 
 ### 8.4 Patient
 
@@ -309,7 +327,7 @@ hospital:suspend
 hospital:restore
 ```
 
-These names are illustrative and **not final capability declarations**. They should be implemented only after the exact projection, approval/reason requirement, and audit contract are accepted. Platform ADMIN governance access must not imply Patient lists, clinical records, OSM assignment read authority, or Hospital hierarchy inheritance. **Provisional proposal / current accepted authorization direction.**
+These names are illustrative and **not final capability declarations**. For Phase 12B.0, the provisional actor and projection contract in Section 25 is sufficient; no suspension/reason field or multi-step approval workflow is required. Final capability names, business approval, reason, and audit requirements remain open. Platform ADMIN governance access must not imply Patient lists, clinical records, OSM assignment read authority, or Hospital hierarchy inheritance. **Provisional proposal / current accepted authorization direction.**
 
 ## 9. Hospital Governance Authorization Boundary
 
@@ -351,7 +369,7 @@ The smallest useful Platform Admin governance projection is:
 | Hospital name | Operator recognition | Required. |
 | Hospital lifecycle status | Current governance state and transition choice | Required. |
 | `createdAt` / `updatedAt` | Context and stale-read diagnostics | Useful and bounded. |
-| active Owner count | Optional governance diagnostic | Provisional: useful for detecting a dangerous ownerless state, but not needed to execute status-only suspend/restore. Must not be presented as an accepted Owner policy. |
+| active Owner count | Optional future governance diagnostic | Not required by Phase 12B.0, not an authorization input, not an ownership invariant, and not evidence that a multiple-Owner or last-Owner policy is accepted. It may be considered later as a bounded diagnostic only. |
 
 The projection does not need Patient lists, HN, names of Patients, clinical records, OSM assignments, Screening, Goal Plans, Appointments, Follow-ups, Baseline, Evidence, or free-text clinical data. Platform governance visibility and clinical read authority are separate. **Provisional proposal.**
 
@@ -586,6 +604,20 @@ The exact email, phone OTP, external identity provider, ThaID, assisted/manual p
 | Credential changed/recovered | No local session registry or global revocation implementation exists. | Prefer revoking superseded sessions and recovery capabilities, subject to provider support and an accepted risk policy. | **Open requirement / Provisional security proposal** |
 | Activation capability reissued | Existing activation service revokes/replaces the current unclaimed activation capability for that purpose. | Keep this separate from active-account recovery. | **Direct current implementation evidence** |
 
+For Phase 12B.0, Hospital suspension is Hospital-scoped. It does not mutate `User.status`, revoke unrelated access to another Hospital, and does not implement global provider-session revocation. The deterministic prototype sequence is:
+
+```text
+successful transaction commit
+        ↓
+Hospital.status changed
+        ↓
+subsequent server authorization observes the new Hospital state
+        ↓
+suspended Hospital scope is rejected
+```
+
+Account-level session revocation remains part of the future account-governance/recovery contract, not the Hospital lifecycle prototype.
+
 The current `signOut` behavior is session/provider scoped, not a general global-revocation mechanism. Any future claim that credential recovery logs out all devices requires a provider-specific design or a DEMI session boundary that does not currently exist. **Direct current implementation evidence.**
 
 ## 19. Identity Reconciliation Boundary
@@ -668,8 +700,8 @@ The following are future conceptual event categories, not final action constants
 
 | Category | Actor | Target | Bounded metadata that may be useful | Must not be logged |
 | --- | --- | --- | --- | --- |
-| `hospital.suspended` | Platform ADMIN | Exact Hospital | From/to status, exact Hospital ID, bounded reason only if reason becomes required | Patients, clinical counts, raw reason free text, credentials, tokens, identity evidence |
-| `hospital.restored` | Platform ADMIN | Exact Hospital | From/to status, exact Hospital ID, bounded reason only if required | Same sensitive data as above |
+| `hospital.suspended` | Platform ADMIN | Exact Hospital | Phase 12B.0: from/to status and exact Hospital ID; no reason | Patients, clinical counts, raw reason free text, credentials, tokens, identity evidence |
+| `hospital.restored` | Platform ADMIN | Exact Hospital | Phase 12B.0: from/to status and exact Hospital ID; no reason | Same sensitive data as above |
 | `hospital_owner.added` | Authorized governance/Hospital actor | Exact membership/User/Hospital | Opaque IDs, from/to membership type/status, bounded policy reference | Passwords, recovery data, identity numbers |
 | `hospital_owner.removed` | Authorized governance/Hospital actor | Exact membership/User/Hospital | Opaque IDs and bounded state transition | Same sensitive data |
 | `hospital_owner.transferred` | Authorized actor | Exact Hospital and source/target membership IDs | Source/target opaque IDs, transition model/version | Identity documents, credentials, raw tokens |
@@ -681,6 +713,8 @@ The existing audit validator already bounds metadata and rejects sensitive key p
 
 Successful state-transition audit should be coordinated with the committed local state transition. Unsuccessful attempts should not automatically become application audit events; whether security telemetry records them is a separate concrete security/operations requirement. **Current accepted transaction/audit contract / provisional event taxonomy.**
 
+Phase 12B.0 does not establish a final reason vocabulary, reason visibility rule, or production audit taxonomy. Its bounded Hospital lifecycle audit contains only the committed state transition and safe identifiers unless an already-accepted convention requires otherwise.
+
 ## 23. Open Customer Requirements
 
 The following questions remain open and must not be silently resolved by Phase 12B.0:
@@ -689,15 +723,16 @@ The following questions remain open and must not be silently resolved by Phase 1
 
 - What is the exact Hospital suspend/restore business approval process?
 - Who may suspend or restore a Hospital, and is Platform ADMIN approval sufficient?
+- Does a production suspension/restoration require one approval or multiple approvals?
 - Should suspension require a reason, and what bounded reason vocabulary is acceptable?
 - Should suspension take immediate operational effect, or is there a scheduled/effective time?
 - Should a suspended Hospital remain visible to its members, and with what non-clinical explanation?
 - Should a suspended Hospital remain visible in Platform Admin governance views?
 - What, if anything, happens to scheduled Appointments while a Hospital is suspended?
 - What happens to current OSM assignments while the Hospital is suspended?
-- Should existing assignments become usable automatically after restore?
+- Should preserved assignments automatically resume after restore in the final production behavior?
 - Should Patients retain any self-service access while a Hospital is suspended?
-- Are any notification, export, retention, or legal-hold actions required?
+- Should users receive notifications, and are any export, retention, or legal-hold actions required?
 
 ### Ownership
 
@@ -726,6 +761,8 @@ The following questions remain open and must not be silently resolved by Phase 1
 - What is the policy for provider-subject changes, duplicate Users, and suspicious identity evidence?
 
 These are **open requirements**, not omissions to fill with generic IAM behavior.
+
+Phase 12B.0 intentionally selects immediate committed-state behavior, no reason field, no approval workflow, no notification delivery, preserved lower-level rows, and policy-gated resumption so that a prototype can be implemented without inventing semantics. These selections remain provisional and do not close the corresponding production/customer questions above.
 
 ## 24. Rejected Legacy Architecture
 
@@ -767,18 +804,33 @@ This recommendation is a **provisional proposal for requirement validation**, no
 
 ### 25.2 Bounded contract to validate
 
-The prototype should be limited to:
+For requirement validation, the prototype contract is:
 
-- active Platform `ADMIN` governance authority;
-- exact Hospital targeting by opaque ID;
-- a bounded projection of Hospital ID/code/name/status/timestamps;
-- optional bounded active-Owner count only if it is needed to expose an ownerless-risk state;
-- only `Hospital.status` changing between `ACTIVE` and `SUSPENDED`;
-- stale-write protection using expected current state/version and a safe conflict result;
-- atomic bounded audit for successful transitions; and
-- multi-Hospital isolation.
+- **Actor:** only an authenticated, active Platform `ADMIN` may execute the transition through the future governance capability. Hospital Owner, Hospital Member, OSM, Patient, hierarchy relationships, and browser-provided state do not authorize it.
+- **Target:** use the exact Hospital opaque ID; do not target through a Hospital name, hierarchy path, or browser-provided accessible-Hospital list.
+- **Projection:** expose only a bounded Hospital ID/code/name/status/timestamp projection. An active Owner count is not required to execute either transition, is not an authorization input, is not an ownership invariant, and is not evidence that a multiple-Owner or last-Owner policy is accepted. It may be considered later as a separate bounded diagnostic.
+- **Transitions:** support only `ACTIVE -> SUSPENDED` and `SUSPENDED -> ACTIVE`.
+- **Immediate effect:** a successful commit changes the state synchronously and immediately:
 
-The prototype should not mutate User status, membership status, OSM relationship status, Patient relationships, assignments, roles, credentials, activation records, appointments, clinical records, or audit history other than the new governance event.
+  ```text
+  successful transaction commit
+          ↓
+  Hospital.status changed
+          ↓
+  subsequent server authorization observes the new Hospital state
+  ```
+
+- **Suspension:** do not require a reason, add a reason field, schedule a future effective time, run a multi-step approval workflow, notify users, or process an asynchronous cascade.
+- **Restore:** do not reconstruct, reactivate, regenerate, replace, reconcile, or otherwise mutate lower-level state. A preserved scope becomes usable again only when its own existing authorization and lifecycle predicates still pass.
+- **No lifecycle cascade:** the only domain state mutated is `Hospital.status`. Do not automatically change `User.status`, `HospitalMembership.status`, `OsmHospitalRelationship.status`, `PatientHospitalRelationship`, `PatientOsmAssignment`, `UserRole`, activation records, credentials, provider identity, provider sessions, appointments, clinical records, or historical records.
+- **OSM assignments:** do not end an assignment, set `endedAt`, reassign the Patient, suspend the OSM relationship, or introduce a paused-assignment state. A structurally current assignment remains current while the Hospital is suspended and can authorize access after restore only when the Hospital, OSM relationship, assignment, User/account, and all existing policy predicates are valid.
+- **Appointments:** leave stored Appointments unchanged. Do not cancel, complete, reschedule, or delete them. Routine Hospital-scoped Appointment access/management fails closed while the Hospital is suspended and becomes available after restore only when normal authorization and lifecycle predicates permit it.
+- **Sessions:** do not mutate credentials or provider sessions and do not implement global session revocation. Suspending one Hospital must not revoke unrelated access to another Hospital.
+- **Scope consequence:** the current authorization architecture’s existing Hospital-`ACTIVE` predicates cause reviewed Hospital-scoped workforce, OSM, Patient, assignment, and clinical operations to fail closed while the Hospital is `SUSPENDED`. Preserving the lower-level rows and allowing independently valid scopes to become usable again after restore is the provisional prototype contract.
+- **Exclusions:** do not implement Owner governance, active-Owner invariants, Owner transfer, account suspension/restoration, account recovery, notifications, scheduling/business-continuity workflows, or generic IAM/RBAC.
+- **Integrity:** require stale-write protection using the expected current state/version, exact-Hospital isolation, and an atomic bounded audit for a successful transition. Phase 12B.0 audit may record the lifecycle transition and safe identifiers only; it must not establish a final reason/audit taxonomy.
+
+All of these rules are **provisional Phase 12B.0 requirement-validation behavior**, not customer-approved production semantics. The unresolved business questions listed in Section 23 remain open.
 
 ### 25.3 Why this order is safe
 
@@ -853,11 +905,13 @@ When a future implementation begins, it must preserve these constraints:
 5. Use an exact target and stale-write/conditional transition inside an appropriately scoped transaction.
 6. Coordinate successful status transition and bounded governance audit atomically.
 7. Keep the mutation to `Hospital.status`; do not cascade into User, membership, OSM, Patient, assignment, role, activation, credential, appointment, or clinical lifecycles.
-8. Keep the read projection governance-only and bounded; do not expose Patient or clinical data to Platform ADMIN through this slice.
-9. Do not add Owner transfer or account recovery as convenience actions in the Hospital status UI.
-10. Do not log passwords, hashes, raw activation/recovery tokens, provider secrets, national IDs, identity hashes, OTPs, session tokens, or credential material.
-11. Add integration coverage for exact Hospital targeting, Platform ADMIN/non-ADMIN authorization, stale transitions, multi-Hospital isolation, preservation of memberships/relationships/assignments/history, and restore behavior before broadening scope.
-12. If implementation discovers an existing module that ignores Hospital status or a required side effect that contradicts status-only suspension, stop and revise the boundary rather than adding an unreviewed cascade.
+8. Treat the committed state transition as immediate and synchronous. Do not add a reason field, scheduled timing, grace period, multi-step approval, notification delivery, asynchronous cascade, or workflow processing.
+9. Do not require or use active Owner count for authorization or transition safety; Owner governance remains Phase 12C.
+10. Keep the read projection governance-only and bounded; do not expose Patient or clinical data to Platform ADMIN through this slice.
+11. Do not add Owner transfer or account recovery as convenience actions in the Hospital status UI.
+12. Do not log passwords, hashes, raw activation/recovery tokens, provider secrets, national IDs, identity hashes, OTPs, session tokens, or credential material.
+13. Add integration coverage for exact Hospital targeting, Platform ADMIN/non-ADMIN authorization, stale transitions, multi-Hospital isolation, preservation of memberships/relationships/assignments/history, fail-closed suspended access, and predicate-gated restore behavior before broadening scope.
+14. If implementation discovers an existing module that ignores Hospital status or a required side effect that contradicts status-only suspension, stop and revise the boundary rather than adding an unreviewed cascade.
 
 No ADR is created by Phase 12A. The status-only slice, Owner models, recovery authority, and session policy remain provisional/open; no sufficiently supported, difficult-to-reverse architectural decision requires acceptance at this stage.
 
