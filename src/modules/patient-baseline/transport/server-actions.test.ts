@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ensureServerEntryExports } from "next/dist/build/webpack/loaders/next-flight-loader/action-validate";
 
 import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
@@ -19,10 +20,9 @@ vi.mock("../services/patient-baseline-service", () => ({
 }));
 
 import { initialPatientBaselineActionState } from "./action-state";
-import {
-  createPatientBaselineAction,
-  patientBaselineTransportInternals,
-} from "./server-actions";
+import { patientBaselineTransportInternals } from "./server-action-helpers";
+import * as patientBaselineServerActions from "./server-actions";
+import { createPatientBaselineAction } from "./server-actions";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const baselineId = "22222222-2222-4222-8222-222222222222";
@@ -48,6 +48,10 @@ function validFormData(): FormData {
 }
 
 describe("Patient Baseline transport", () => {
+  it("exports only values accepted by the Next.js Server Action runtime", () => {
+    expect(() => ensureServerEntryExports(Object.values(patientBaselineServerActions))).not.toThrow();
+  });
+
   it("parses allowed form fields and structural numbers only", () => {
     const input = patientBaselineTransportInternals.buildSubmissionInput(validFormData()) as Record<
       string,

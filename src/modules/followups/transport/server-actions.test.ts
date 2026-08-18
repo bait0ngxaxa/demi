@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { ensureServerEntryExports } from "next/dist/build/webpack/loaders/next-flight-loader/action-validate";
 
 import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
-import { followupTransportInternals } from "./server-actions";
+import { followupTransportInternals } from "./server-action-helpers";
+import * as followupServerActions from "./server-actions";
 
 function validFormData(): FormData {
   const formData = new FormData();
@@ -24,6 +26,10 @@ function validFormData(): FormData {
 }
 
 describe("Follow-up transport", () => {
+  it("exports only values accepted by the Next.js Server Action runtime", () => {
+    expect(() => ensureServerEntryExports(Object.values(followupServerActions))).not.toThrow();
+  });
+
   it("parses the allowed form fields and numeric values only", () => {
     const input = followupTransportInternals.buildSubmissionInput(validFormData()) as Record<string, unknown>;
 
