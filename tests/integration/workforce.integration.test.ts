@@ -5,16 +5,21 @@ import {
   Role,
   UserStatus,
 } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 import {
   completeWorkforceActivation,
+  getWorkforceDetail,
   provisionHospitalMember,
   provisionOsm,
   regenerateWorkforceActivation,
   revokeWorkforceActivation,
+  restoreHospitalMembership,
+  suspendHospitalMembership,
+  updateHospitalMembershipProfession,
 } from "@/modules/workforce/services/workforce-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
@@ -31,6 +36,12 @@ const nationalIds = {
   activationConcurrent: "1000000000050",
   adminStaff: "1000000000068",
   adminOsm: "1000000000076",
+  lifecycleStaff: "1000000000084",
+  lifecycleOtherHospital: "1000000000092",
+  lifecycleProvisioned: "1000000000106",
+  lifecycleInvited: "1000000000114",
+  lifecycleSuspended: "1000000000122",
+  lifecycleProjection: "1000000000130",
 };
 
 async function clearDatabase(): Promise<void> {
@@ -58,7 +69,7 @@ async function createOwner(hospitalCode = "INTEGRATION-WF"): Promise<{
   const user = await prisma.user.create({
     data: {
       personId: person.id,
-      authSubject: "11111111-1111-4111-8111-111111111111",
+      authSubject: randomUUID(),
       status: UserStatus.ACTIVE,
     },
     select: { id: true },
@@ -128,6 +139,53 @@ async function createAdminTarget(nationalId: string): Promise<{ userId: string }
   await prisma.userRole.create({ data: { userId: user.id, role: Role.ADMIN } });
 
   return { userId: user.id };
+}
+
+async function createStaffRelationship(input: {
+  hospitalId: string;
+  nationalId: string;
+  userStatus?: UserStatus;
+  membershipStatus?: MembershipStatus;
+  profession?: "DOCTOR" | "NURSE" | "COORDINATOR" | "OTHER";
+  extraRoles?: Role[];
+}): Promise<{ userId: string; membershipId: string; personId: string }> {
+  const person = await prisma.person.create({
+    data: {
+      identityKeyHash: hashIdentityReference({
+        namespace: "thai-national-id",
+        value: input.nationalId,
+      }),
+      givenName: "สมชาย",
+      familyName: "บุคลากรต้นแบบ",
+    },
+    select: { id: true },
+  });
+  const userStatus = input.userStatus ?? UserStatus.ACTIVE;
+  const user = await prisma.user.create({
+    data: {
+      personId: person.id,
+      authSubject: userStatus === UserStatus.PROVISIONED ? null : `integration-${input.nationalId}`,
+      status: userStatus,
+    },
+    select: { id: true },
+  });
+
+  for (const role of [Role.HOSPITAL, ...(input.extraRoles ?? [])]) {
+    await prisma.userRole.create({ data: { userId: user.id, role } });
+  }
+
+  const membership = await prisma.hospitalMembership.create({
+    data: {
+      userId: user.id,
+      hospitalId: input.hospitalId,
+      membershipType: MembershipType.MEMBER,
+      profession: input.profession ?? "DOCTOR",
+      status: input.membershipStatus ?? MembershipStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  return { userId: user.id, membershipId: membership.id, personId: person.id };
 }
 
 function createDeferred(): {
@@ -570,5 +628,383 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     expect(await prisma.user.findUnique({ where: { id: result.userId }, select: { status: true } })).toEqual({
       status: UserStatus.ACTIVE,
     });
+  });
+
+  it("updates only the exact Hospital membership and returns a safe detail projection", async () => {
+    const primary = await createOwner("INTEGRATION-LIFECYCLE-A");
+    const other = await createOwner("INTEGRATION-LIFECYCLE-B");
+    const target = await createStaffRelationship({
+      hospitalId: primary.hospitalId,
+      nationalId: nationalIds.lifecycleStaff,
+      extraRoles: [Role.PATIENT],
+      profession: "DOCTOR",
+    });
+    const otherMembership = await prisma.hospitalMembership.create({
+      data: {
+        userId: target.userId,
+        hospitalId: other.hospitalId,
+        membershipType: MembershipType.MEMBER,
+        profession: "NURSE",
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, profession: true, status: true },
+    });
+    const osmRelationship = await prisma.osmHospitalRelationship.create({
+      data: {
+        userId: target.userId,
+        hospitalId: other.hospitalId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true, status: true },
+    });
+    const activation = await prisma.workforceActivation.create({
+      data: {
+        userId: target.userId,
+        tokenHash: hashWorkforceActivationToken("lifecycle-projection-token"),
+        mode: "REMOTE",
+        expiresAt: new Date("2026-09-01T00:00:00.000Z"),
+        createdByUserId: primary.actor.userId,
+      },
+      select: { id: true, tokenHash: true },
+    });
+    const membershipBefore = await prisma.hospitalMembership.findUniqueOrThrow({
+      where: { id: target.membershipId },
+      select: { updatedAt: true, profession: true, status: true },
+    });
+
+    const result = await updateHospitalMembershipProfession(primary.actor, {
+      relationshipId: target.membershipId,
+      targetHospitalId: primary.hospitalId,
+      expectedUpdatedAt: membershipBefore.updatedAt.toISOString(),
+      profession: "COORDINATOR",
+    });
+
+    expect(result).toMatchObject({
+      relationshipId: target.membershipId,
+      hospitalId: primary.hospitalId,
+      membershipStatus: MembershipStatus.ACTIVE,
+      profession: "COORDINATOR",
+    });
+    await expect(
+      prisma.hospitalMembership.findUnique({
+        where: { id: target.membershipId },
+        select: { profession: true, status: true },
+      }),
+    ).resolves.toEqual({ profession: "COORDINATOR", status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.hospitalMembership.findUnique({ where: { id: otherMembership.id }, select: { profession: true, status: true } }),
+    ).resolves.toEqual({ profession: "NURSE", status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.user.findUnique({
+        where: { id: target.userId },
+        select: { status: true, roles: { select: { role: true }, orderBy: { role: "asc" } } },
+      }),
+    ).resolves.toEqual({
+      status: UserStatus.ACTIVE,
+      roles: [{ role: Role.HOSPITAL }, { role: Role.PATIENT }],
+    });
+    await expect(
+      prisma.osmHospitalRelationship.findUnique({ where: { id: osmRelationship.id }, select: { status: true } }),
+    ).resolves.toEqual({ status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.workforceActivation.findUnique({ where: { id: activation.id }, select: { id: true, tokenHash: true } }),
+    ).resolves.toEqual(activation);
+
+    await expect(
+      prisma.auditEvent.findMany({
+        where: {
+          action: "hospital_membership.profession_changed",
+          resourceId: target.membershipId,
+        },
+        select: { actorUserId: true, metadata: true },
+      }),
+    ).resolves.toEqual([
+      {
+        actorUserId: primary.actor.userId,
+        metadata: { fromProfession: "DOCTOR", toProfession: "COORDINATOR" },
+      },
+    ]);
+
+    const detail = await getWorkforceDetail(primary.actor, {
+      kind: "staff",
+      relationshipId: target.membershipId,
+    });
+    expect(detail).toMatchObject({
+      displayName: "สมชาย บุคลากรต้นแบบ",
+      membershipType: MembershipType.MEMBER,
+      profession: "COORDINATOR",
+      relationshipStatus: MembershipStatus.ACTIVE,
+      accountStatus: UserStatus.ACTIVE,
+      actions: { updateProfession: true, suspend: true, restore: false },
+    });
+    const serializedDetail = JSON.stringify(detail);
+    expect(serializedDetail).not.toContain("identityKeyHash");
+    expect(serializedDetail).not.toContain("authSubject");
+    expect(serializedDetail).not.toContain(activation.tokenHash);
+    expect(serializedDetail).not.toContain("lifecycle-projection-token");
+  });
+
+  it("suspends and restores only one Hospital membership with expected-state checks", async () => {
+    const primary = await createOwner("INTEGRATION-TRANSITION-A");
+    const other = await createOwner("INTEGRATION-TRANSITION-B");
+    const target = await createStaffRelationship({
+      hospitalId: primary.hospitalId,
+      nationalId: nationalIds.lifecycleOtherHospital,
+      profession: "DOCTOR",
+    });
+    const otherMembership = await prisma.hospitalMembership.create({
+      data: {
+        userId: target.userId,
+        hospitalId: other.hospitalId,
+        membershipType: MembershipType.MEMBER,
+        profession: "NURSE",
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    const osmRelationship = await prisma.osmHospitalRelationship.create({
+      data: {
+        userId: target.userId,
+        hospitalId: other.hospitalId,
+        status: MembershipStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    const initial = await prisma.hospitalMembership.findUniqueOrThrow({
+      where: { id: target.membershipId },
+      select: { updatedAt: true },
+    });
+
+    const suspended = await suspendHospitalMembership(primary.actor, {
+      relationshipId: target.membershipId,
+      targetHospitalId: primary.hospitalId,
+      expectedUpdatedAt: initial.updatedAt.toISOString(),
+    });
+
+    expect(suspended.membershipStatus).toBe(MembershipStatus.SUSPENDED);
+    await expect(
+      prisma.hospitalMembership.findUnique({ where: { id: target.membershipId }, select: { status: true } }),
+    ).resolves.toEqual({ status: MembershipStatus.SUSPENDED });
+    await expect(
+      prisma.hospitalMembership.findUnique({ where: { id: otherMembership.id }, select: { status: true } }),
+    ).resolves.toEqual({ status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.osmHospitalRelationship.findUnique({ where: { id: osmRelationship.id }, select: { status: true } }),
+    ).resolves.toEqual({ status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.user.findUnique({ where: { id: target.userId }, select: { status: true } }),
+    ).resolves.toEqual({ status: UserStatus.ACTIVE });
+    await expect(
+      prisma.auditEvent.count({ where: { action: "hospital_membership.suspended" } }),
+    ).resolves.toBe(1);
+
+    await expect(
+      suspendHospitalMembership(primary.actor, {
+        relationshipId: target.membershipId,
+        targetHospitalId: primary.hospitalId,
+        expectedUpdatedAt: suspended.updatedAt.toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      prisma.auditEvent.count({ where: { action: "hospital_membership.suspended" } }),
+    ).resolves.toBe(1);
+
+    const restored = await restoreHospitalMembership(primary.actor, {
+      relationshipId: target.membershipId,
+      targetHospitalId: primary.hospitalId,
+      expectedUpdatedAt: suspended.updatedAt.toISOString(),
+    });
+
+    expect(restored.membershipStatus).toBe(MembershipStatus.ACTIVE);
+    await expect(
+      prisma.hospitalMembership.findUnique({ where: { id: target.membershipId }, select: { status: true } }),
+    ).resolves.toEqual({ status: MembershipStatus.ACTIVE });
+    await expect(
+      prisma.user.findUnique({ where: { id: target.userId }, select: { status: true } }),
+    ).resolves.toEqual({ status: UserStatus.ACTIVE });
+    await expect(
+      prisma.auditEvent.count({ where: { action: "hospital_membership.restored" } }),
+    ).resolves.toBe(1);
+  });
+
+  it("fails closed for non-owner roles, wrong or hierarchical Hospitals, and inactive boundaries", async () => {
+    const parent = await createOwner("INTEGRATION-AUTH-PARENT");
+    const child = await createOwner("INTEGRATION-AUTH-CHILD");
+    await prisma.hospital.update({
+      where: { id: child.hospitalId },
+      data: { parentHospitalId: parent.hospitalId },
+    });
+    const parentTarget = await createStaffRelationship({
+      hospitalId: parent.hospitalId,
+      nationalId: nationalIds.lifecycleProjection,
+    });
+    const childTarget = await createStaffRelationship({
+      hospitalId: child.hospitalId,
+      nationalId: nationalIds.lifecycleOtherHospital,
+    });
+    const parentVersion = await prisma.hospitalMembership.findUniqueOrThrow({
+      where: { id: parentTarget.membershipId },
+      select: { updatedAt: true },
+    });
+    const childVersion = await prisma.hospitalMembership.findUniqueOrThrow({
+      where: { id: childTarget.membershipId },
+      select: { updatedAt: true },
+    });
+    const parentInput = {
+      relationshipId: parentTarget.membershipId,
+      targetHospitalId: parent.hospitalId,
+      expectedUpdatedAt: parentVersion.updatedAt.toISOString(),
+      profession: "NURSE" as const,
+    };
+    const childInput = {
+      relationshipId: childTarget.membershipId,
+      targetHospitalId: child.hospitalId,
+      expectedUpdatedAt: childVersion.updatedAt.toISOString(),
+      profession: "NURSE" as const,
+    };
+
+    await expect(updateHospitalMembershipProfession(parent.actor, childInput)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await expect(
+      getWorkforceDetail(parent.actor, {
+        kind: "staff",
+        relationshipId: childTarget.membershipId,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(updateHospitalMembershipProfession(child.actor, parentInput)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await expect(
+      updateHospitalMembershipProfession({ ...parent.actor, roles: [Role.ADMIN] }, parentInput),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      updateHospitalMembershipProfession({
+        ...parent.actor,
+        hospitalMemberships: [
+          {
+            ...parent.actor.hospitalMemberships[0],
+            membershipType: MembershipType.MEMBER,
+          },
+        ],
+      }, parentInput),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      updateHospitalMembershipProfession({ ...parent.actor, roles: [Role.OSM] }, parentInput),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      updateHospitalMembershipProfession({ ...parent.actor, roles: [Role.PATIENT] }, parentInput),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await prisma.user.update({ where: { id: parent.actor.userId }, data: { status: UserStatus.SUSPENDED } });
+    await expect(updateHospitalMembershipProfession(parent.actor, parentInput)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await prisma.user.update({ where: { id: parent.actor.userId }, data: { status: UserStatus.ACTIVE } });
+
+    await prisma.hospital.update({ where: { id: parent.hospitalId }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(updateHospitalMembershipProfession(parent.actor, parentInput)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await prisma.hospital.update({ where: { id: parent.hospitalId }, data: { status: HospitalStatus.ACTIVE } });
+
+    const ownerMembership = await prisma.hospitalMembership.findFirstOrThrow({
+      where: {
+        userId: parent.actor.userId,
+        hospitalId: parent.hospitalId,
+        membershipType: MembershipType.OWNER,
+      },
+      select: { id: true, updatedAt: true },
+    });
+    await expect(
+      updateHospitalMembershipProfession(parent.actor, {
+        relationshipId: ownerMembership.id,
+        targetHospitalId: parent.hospitalId,
+        expectedUpdatedAt: ownerMembership.updatedAt.toISOString(),
+        profession: "NURSE",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("requires the linked User to be ACTIVE for profession, suspend, and restore", async () => {
+    const { actor, hospitalId } = await createOwner("INTEGRATION-TARGET-STATUS");
+    const targets = [
+      [UserStatus.PROVISIONED, nationalIds.lifecycleProvisioned],
+      [UserStatus.INVITED, nationalIds.lifecycleInvited],
+      [UserStatus.SUSPENDED, nationalIds.lifecycleSuspended],
+    ] as const;
+
+    for (const [userStatus, nationalId] of targets) {
+      const target = await createStaffRelationship({ hospitalId, nationalId, userStatus });
+      const activeVersion = await prisma.hospitalMembership.findUniqueOrThrow({
+        where: { id: target.membershipId },
+        select: { updatedAt: true },
+      });
+      const professionInput = {
+        relationshipId: target.membershipId,
+        targetHospitalId: hospitalId,
+        expectedUpdatedAt: activeVersion.updatedAt.toISOString(),
+        profession: "NURSE" as const,
+      };
+      const transitionInput = {
+        relationshipId: target.membershipId,
+        targetHospitalId: hospitalId,
+        expectedUpdatedAt: activeVersion.updatedAt.toISOString(),
+      };
+
+      await expect(updateHospitalMembershipProfession(actor, professionInput)).rejects.toMatchObject({
+        code: "CONFLICT",
+      });
+      await expect(suspendHospitalMembership(actor, transitionInput)).rejects.toMatchObject({
+        code: "CONFLICT",
+      });
+
+      await prisma.hospitalMembership.update({
+        where: { id: target.membershipId },
+        data: { status: MembershipStatus.SUSPENDED },
+      });
+      const suspendedVersion = await prisma.hospitalMembership.findUniqueOrThrow({
+        where: { id: target.membershipId },
+        select: { updatedAt: true, status: true },
+      });
+      await expect(
+        restoreHospitalMembership(actor, {
+          relationshipId: target.membershipId,
+          targetHospitalId: hospitalId,
+          expectedUpdatedAt: suspendedVersion.updatedAt.toISOString(),
+        }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(
+        prisma.hospitalMembership.findUnique({ where: { id: target.membershipId }, select: { status: true } }),
+      ).resolves.toEqual({ status: MembershipStatus.SUSPENDED });
+    }
+
+    await expect(prisma.auditEvent.count()).resolves.toBe(0);
+  });
+
+  it("exposes no lifecycle actions for an OSM or OWNER detail", async () => {
+    const { actor, hospitalId } = await createOwner("INTEGRATION-DETAIL-READONLY");
+    const osm = await provisionOsm(actor, {
+      nationalId: nationalIds.osm,
+      givenName: "อาสา",
+      familyName: "ทดสอบ",
+      targetHospitalId: hospitalId,
+    });
+    const osmDetail = await getWorkforceDetail(actor, {
+      kind: "osm",
+      relationshipId: osm.relationshipId,
+    });
+    expect(osmDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false });
+
+    const ownerMembership = await prisma.hospitalMembership.findFirstOrThrow({
+      where: { userId: actor.userId, hospitalId, membershipType: MembershipType.OWNER },
+      select: { id: true },
+    });
+    const ownerDetail = await getWorkforceDetail(actor, {
+      kind: "staff",
+      relationshipId: ownerMembership.id,
+    });
+    expect(ownerDetail.membershipType).toBe(MembershipType.OWNER);
+    expect(ownerDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false });
   });
 });

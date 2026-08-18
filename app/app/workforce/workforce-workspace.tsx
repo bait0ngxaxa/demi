@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState } from "react";
@@ -205,6 +206,13 @@ function WorkforceRow({
           {statusLabel}
         </StatusBadge>
       </div>
+
+      <Link
+        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        href={`/app/workforce/${row.kind === "OSM" ? "osm" : "staff"}/${encodeURIComponent(row.id)}`}
+      >
+        ดูรายละเอียดความสัมพันธ์
+      </Link>
 
       {row.activationRequired ? (
         <div className="mt-4 flex flex-col gap-3 rounded-control bg-surface-muted px-3 py-3 sm:flex-row sm:items-center sm:justify-between">

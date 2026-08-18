@@ -9,6 +9,9 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 export const WORKFORCE_CAPABILITIES = {
   read: "membership:read",
   create: "membership:create",
+  update: "membership:update",
+  suspend: "membership:suspend",
+  restore: "membership:restore",
   osmProvision: "osm:provision",
 } as const;
 

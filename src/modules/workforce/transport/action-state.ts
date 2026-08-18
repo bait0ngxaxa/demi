@@ -1,4 +1,8 @@
-import type { WorkforceActivationMode, WorkforceKind } from "../schemas/workforce-schemas";
+import type {
+  HospitalMemberProvisionInput,
+  WorkforceActivationMode,
+  WorkforceKind,
+} from "../schemas/workforce-schemas";
 
 export type WorkforceProvisionResultState = {
   kind: WorkforceKind;
@@ -24,13 +28,23 @@ export type WorkforceActivationResultState = {
   activationMode: WorkforceActivationMode;
 };
 
+export type WorkforceMembershipMutationResultState = {
+  relationshipId: string;
+  hospitalId: string;
+  membershipStatus: "ACTIVE" | "SUSPENDED";
+  profession: HospitalMemberProvisionInput["profession"] | null;
+  updatedAt: string;
+};
+
 export type WorkforceField =
   | "nationalId"
   | "givenName"
   | "familyName"
   | "targetHospitalId"
   | "profession"
-  | "userId";
+  | "userId"
+  | "relationshipId"
+  | "expectedUpdatedAt";
 
 export type WorkforceErrorCode =
   | "INVALID_INPUT"
@@ -68,6 +82,15 @@ export type WorkforceCompletionActionState =
     }
   | { status: "SUCCESS" };
 
+export type WorkforceMembershipMutationActionState =
+  | { status: "IDLE" }
+  | {
+      status: "ERROR";
+      code: WorkforceErrorCode;
+      message: string;
+    }
+  | { status: "SUCCESS"; result: WorkforceMembershipMutationResultState };
+
 export const initialWorkforceProvisionActionState: WorkforceProvisionActionState = {
   status: "IDLE",
 };
@@ -77,5 +100,9 @@ export const initialWorkforceActivationActionState: WorkforceActivationActionSta
 };
 
 export const initialWorkforceCompletionActionState: WorkforceCompletionActionState = {
+  status: "IDLE",
+};
+
+export const initialWorkforceMembershipMutationActionState: WorkforceMembershipMutationActionState = {
   status: "IDLE",
 };

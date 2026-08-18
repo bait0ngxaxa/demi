@@ -9,6 +9,8 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   hospitalMemberProvisionSchema,
+  hospitalMembershipProfessionUpdateSchema,
+  hospitalMembershipTransitionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
   workforceActivationRequestSchema,
@@ -19,11 +21,16 @@ import {
   provisionOsm,
   regenerateWorkforceActivation,
   revokeWorkforceActivation,
+  restoreHospitalMembership,
+  suspendHospitalMembership,
+  updateHospitalMembershipProfession,
 } from "../services/workforce-service";
 import type {
   WorkforceActivationActionState,
   WorkforceCompletionActionState,
   WorkforceField,
+  WorkforceMembershipMutationActionState,
+  WorkforceMembershipMutationResultState,
   WorkforceProvisionActionState,
   WorkforceProvisionResultState,
 } from "./action-state";
@@ -49,6 +56,8 @@ function mapFieldErrors(
         targetHospitalId: "กรุณาเลือกโรงพยาบาลที่มีสิทธิ์จัดการ",
         profession: "กรุณาเลือกวิชาชีพที่กำหนด",
         userId: "ไม่พบผู้ใช้งานที่ต้องการดำเนินการ",
+        relationshipId: "ไม่พบความสัมพันธ์บุคลากรที่ต้องการดำเนินการ",
+        expectedUpdatedAt: "ข้อมูลบุคลากรล้าสมัย กรุณาโหลดข้อมูลใหม่",
       };
       const message = messages[field as WorkforceField];
 
@@ -135,6 +144,42 @@ function getProvisionInput(formData: FormData) {
   };
 }
 
+function getMembershipMutationInput(formData: FormData) {
+  return {
+    relationshipId: getString(formData, "relationshipId"),
+    targetHospitalId: getString(formData, "targetHospitalId"),
+    expectedUpdatedAt: getString(formData, "expectedUpdatedAt"),
+  };
+}
+
+function getProfessionUpdateInput(formData: FormData) {
+  return {
+    ...getMembershipMutationInput(formData),
+    profession: getString(formData, "profession"),
+  };
+}
+
+function toMembershipMutationResultState(
+  result: Awaited<ReturnType<typeof updateHospitalMembershipProfession>>,
+): WorkforceMembershipMutationResultState {
+  if (result.membershipStatus !== "ACTIVE" && result.membershipStatus !== "SUSPENDED") {
+    throw new Error("Unexpected Hospital membership lifecycle status");
+  }
+
+  return {
+    relationshipId: result.relationshipId,
+    hospitalId: result.hospitalId,
+    membershipStatus: result.membershipStatus,
+    profession: result.profession,
+    updatedAt: result.updatedAt.toISOString(),
+  };
+}
+
+function revalidateWorkforceMembership(relationshipId: string): void {
+  revalidatePath("/app/workforce");
+  revalidatePath(`/app/workforce/staff/${relationshipId}`);
+}
+
 export async function provisionHospitalMemberAction(
   _previousState: WorkforceProvisionActionState,
   formData: FormData,
@@ -185,6 +230,84 @@ export async function provisionOsmAction(
     const result = await provisionOsm(actor, parsed.data);
     revalidatePath("/app/workforce");
     return { status: "SUCCESS", result: toProvisionResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function updateHospitalMembershipProfessionAction(
+  _previousState: WorkforceMembershipMutationActionState,
+  formData: FormData,
+): Promise<WorkforceMembershipMutationActionState> {
+  const parsed = hospitalMembershipProfessionUpdateSchema.safeParse(
+    getProfessionUpdateInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบข้อมูลวิชาชีพและโหลดข้อมูลใหม่หากจำเป็น",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await updateHospitalMembershipProfession(actor, parsed.data);
+    revalidateWorkforceMembership(result.relationshipId);
+    return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function suspendHospitalMembershipAction(
+  _previousState: WorkforceMembershipMutationActionState,
+  formData: FormData,
+): Promise<WorkforceMembershipMutationActionState> {
+  const parsed = hospitalMembershipTransitionSchema.safeParse(
+    getMembershipMutationInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการระงับความสัมพันธ์บุคลากรไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await suspendHospitalMembership(actor, parsed.data);
+    revalidateWorkforceMembership(result.relationshipId);
+    return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function restoreHospitalMembershipAction(
+  _previousState: WorkforceMembershipMutationActionState,
+  formData: FormData,
+): Promise<WorkforceMembershipMutationActionState> {
+  const parsed = hospitalMembershipTransitionSchema.safeParse(
+    getMembershipMutationInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการคืนสถานะความสัมพันธ์บุคลากรไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await restoreHospitalMembership(actor, parsed.data);
+    revalidateWorkforceMembership(result.relationshipId);
+    return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapWorkforceError(error) };
   }

@@ -7,14 +7,21 @@ import { signOutCurrentSession } from "@/modules/auth/services/authentication-se
 import {
   completeWorkforceActivation,
   provisionHospitalMember,
+  restoreHospitalMembership,
+  suspendHospitalMembership,
+  updateHospitalMembershipProfession,
 } from "../services/workforce-service";
 import {
   initialWorkforceCompletionActionState,
+  initialWorkforceMembershipMutationActionState,
   initialWorkforceProvisionActionState,
 } from "./action-state";
 import {
   completeWorkforceActivationAction,
   provisionHospitalMemberAction,
+  restoreHospitalMembershipAction,
+  suspendHospitalMembershipAction,
+  updateHospitalMembershipProfessionAction,
 } from "./server-actions";
 
 const mockedRedirect = vi.hoisted(() => vi.fn());
@@ -34,12 +41,18 @@ vi.mock("../services/workforce-service", () => ({
   provisionOsm: vi.fn(),
   regenerateWorkforceActivation: vi.fn(),
   revokeWorkforceActivation: vi.fn(),
+  restoreHospitalMembership: vi.fn(),
+  suspendHospitalMembership: vi.fn(),
+  updateHospitalMembershipProfession: vi.fn(),
 }));
 
 const mockedGetProtectedApplicationActor = vi.mocked(getProtectedApplicationActor);
 const mockedSignOutCurrentSession = vi.mocked(signOutCurrentSession);
 const mockedCompleteWorkforceActivation = vi.mocked(completeWorkforceActivation);
 const mockedProvisionHospitalMember = vi.mocked(provisionHospitalMember);
+const mockedRestoreHospitalMembership = vi.mocked(restoreHospitalMembership);
+const mockedSuspendHospitalMembership = vi.mocked(suspendHospitalMembership);
+const mockedUpdateHospitalMembershipProfession = vi.mocked(updateHospitalMembershipProfession);
 
 function createStaffFormData(): FormData {
   const formData = new FormData();
@@ -141,5 +154,100 @@ describe("workforce Server Actions", () => {
     );
     expect(mockedRedirect).toHaveBeenCalledWith("/login?activated=1");
     expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
+  });
+
+  it("validates and forwards only the bounded profession mutation input", async () => {
+    const expectedUpdatedAt = "2026-08-18T05:00:00.000Z";
+    const formData = new FormData();
+    formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("expectedUpdatedAt", expectedUpdatedAt);
+    formData.set("profession", "NURSE");
+    formData.set("role", "ADMIN");
+    formData.set("status", "SUSPENDED");
+    formData.set("userId", "untrusted-user");
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedUpdateHospitalMembershipProfession.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      membershipStatus: MembershipStatus.ACTIVE,
+      profession: "NURSE",
+      updatedAt: new Date(expectedUpdatedAt),
+    });
+
+    const result = await updateHospitalMembershipProfessionAction(
+      initialWorkforceMembershipMutationActionState,
+      formData,
+    );
+
+    expect(mockedUpdateHospitalMembershipProfession).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt,
+        profession: "NURSE",
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { membershipStatus: MembershipStatus.ACTIVE, profession: "NURSE" },
+    });
+    expect(JSON.stringify(result)).not.toContain("ADMIN");
+    expect(JSON.stringify(result)).not.toContain("untrusted-user");
+  });
+
+  it("rejects lifecycle transport input before resolving the actor", async () => {
+    const result = await suspendHospitalMembershipAction(
+      initialWorkforceMembershipMutationActionState,
+      new FormData(),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedSuspendHospitalMembership).not.toHaveBeenCalled();
+  });
+
+  it("uses the server action boundary for restore without accepting client status", async () => {
+    const formData = new FormData();
+    formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("expectedUpdatedAt", "2026-08-18T05:00:00.000Z");
+    formData.set("status", "ACTIVE");
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedRestoreHospitalMembership.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      membershipStatus: MembershipStatus.ACTIVE,
+      profession: "NURSE",
+      updatedAt: new Date("2026-08-18T05:00:01.000Z"),
+    });
+
+    const result = await restoreHospitalMembershipAction(
+      initialWorkforceMembershipMutationActionState,
+      formData,
+    );
+
+    expect(mockedRestoreHospitalMembership).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt: "2026-08-18T05:00:00.000Z",
+      },
+    );
+    expect(result).toMatchObject({ status: "SUCCESS" });
   });
 });

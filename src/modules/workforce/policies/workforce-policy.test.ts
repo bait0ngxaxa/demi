@@ -42,6 +42,20 @@ describe("workforce policy", () => {
   });
 
   it.each([
+    WORKFORCE_CAPABILITIES.update,
+    WORKFORCE_CAPABILITIES.suspend,
+    WORKFORCE_CAPABILITIES.restore,
+  ])("applies the direct active Owner boundary to %s", (capability) => {
+    expect(
+      decideWorkforcePolicy({
+        actor: createActor(),
+        capability,
+        targetHospitalId: hospitalId,
+      }),
+    ).toEqual({ allowed: true, reason: "active_hospital_owner" });
+  });
+
+  it.each([
     ["ordinary member", MembershipType.MEMBER, MembershipStatus.ACTIVE, HospitalStatus.ACTIVE],
     ["inactive membership", MembershipType.OWNER, MembershipStatus.SUSPENDED, HospitalStatus.ACTIVE],
     ["inactive Hospital", MembershipType.OWNER, MembershipStatus.ACTIVE, HospitalStatus.SUSPENDED],
