@@ -1,12 +1,16 @@
 import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { PATIENT_ARTIFACT_CREATE_CAPABILITY } from "@/modules/patient-evidence/policies/patient-evidence-policy";
 import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
-import {
-  PatientEvidenceInputError,
-  PATIENT_EVIDENCE_MAX_BYTES,
-} from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
+import { resolvePatientEvidenceAccessContext } from "@/modules/patient-evidence/services/patient-evidence-access-service";
+import { PatientEvidenceInputError } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
 import { PatientEvidenceStorageError } from "@/modules/patient-evidence/storage/patient-evidence-storage";
+import {
+  PATIENT_EVIDENCE_MAX_MULTIPART_BYTES,
+  parsePatientEvidenceMultipart,
+  PatientEvidenceMultipartError,
+} from "@/modules/patient-evidence/transport/patient-evidence-upload-parser";
 import {
   ApplicationError,
   ConflictError,
@@ -20,7 +24,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_MULTIPART_REQUEST_BYTES = PATIENT_EVIDENCE_MAX_BYTES + 128 * 1024;
+const MAX_MULTIPART_REQUEST_BYTES = PATIENT_EVIDENCE_MAX_MULTIPART_BYTES;
 
 type UploadRouteParams = {
   params: Promise<{ relationshipId: string }>;
@@ -28,6 +32,22 @@ type UploadRouteParams = {
 
 function jsonError(message: string, status: number, code: string): Response {
   return Response.json({ error: { code, message } }, { status });
+}
+
+function hasOversizedDeclaredContentLength(contentLength: string | null): boolean {
+  if (!contentLength) {
+    return false;
+  }
+
+  const normalized = contentLength.trim();
+
+  if (!/^\d+$/.test(normalized)) {
+    return false;
+  }
+
+  const parsedContentLength = Number(normalized);
+
+  return Number.isFinite(parsedContentLength) && parsedContentLength > MAX_MULTIPART_REQUEST_BYTES;
 }
 
 function inputErrorMessage(error: PatientEvidenceInputError): string {
@@ -49,6 +69,14 @@ function inputErrorMessage(error: PatientEvidenceInputError): string {
 }
 
 function mapUploadError(error: unknown): Response {
+  if (error instanceof PatientEvidenceMultipartError) {
+    if (error.reason === "REQUEST_TOO_LARGE" || error.reason === "FILE_TOO_LARGE") {
+      return jsonError("รูปต้องมีขนาดไม่เกิน 5 MB", 413, "FILE_TOO_LARGE");
+    }
+
+    return jsonError("ข้อมูลการอัปโหลดไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", 400, "INVALID_INPUT");
+  }
+
   if (error instanceof UnauthenticatedError) {
     return jsonError("กรุณาเข้าสู่ระบบใหม่", 401, "UNAUTHENTICATED");
   }
@@ -84,62 +112,28 @@ function mapUploadError(error: unknown): Response {
   return jsonError("ไม่สามารถบันทึกหลักฐานได้ กรุณาลองใหม่ภายหลัง", 503, "UNAVAILABLE");
 }
 
-function hasOnlyAllowedFields(formData: FormData): boolean {
-  for (const key of formData.keys()) {
-    if (key !== "file" && key !== "caption") {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 export async function POST(request: Request, { params }: UploadRouteParams): Promise<Response> {
   const contentLength = request.headers.get("content-length");
 
-  if (contentLength) {
-    const parsedContentLength = Number(contentLength);
-
-    if (Number.isFinite(parsedContentLength) && parsedContentLength > MAX_MULTIPART_REQUEST_BYTES) {
-      return jsonError("รูปต้องมีขนาดไม่เกิน 5 MB", 413, "FILE_TOO_LARGE");
-    }
+  if (hasOversizedDeclaredContentLength(contentLength)) {
+    return jsonError("รูปต้องมีขนาดไม่เกิน 5 MB", 413, "FILE_TOO_LARGE");
   }
 
   try {
     const actor = await getProtectedApplicationActor();
     const { relationshipId } = await params;
-    let formData: FormData;
+    await resolvePatientEvidenceAccessContext(
+      actor,
+      relationshipId,
+      PATIENT_ARTIFACT_CREATE_CAPABILITY,
+    );
 
-    try {
-      formData = await request.formData();
-    } catch {
-      return jsonError("ข้อมูลการอัปโหลดไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", 400, "INVALID_INPUT");
-    }
-
-    if (!hasOnlyAllowedFields(formData)) {
-      return jsonError("ข้อมูลการอัปโหลดไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", 400, "INVALID_INPUT");
-    }
-
-    const files = formData.getAll("file");
-    const captions = formData.getAll("caption");
-
-    if (files.length !== 1 || captions.length > 1 || !(files[0] instanceof File)) {
-      return jsonError("กรุณาเลือกรูปหลักฐานหนึ่งรูป", 400, "INVALID_INPUT");
-    }
-
-    const caption = captions[0];
-
-    if (caption !== undefined && typeof caption !== "string") {
-      return jsonError("ข้อมูลการอัปโหลดไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", 400, "INVALID_INPUT");
-    }
-
-    const file = files[0];
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const parsedMultipart = await parsePatientEvidenceMultipart(request);
     const result = await createPatientEvidenceArtifact(actor, {
       relationshipId,
-      declaredMediaType: file.type,
-      bytes,
-      caption: caption ?? null,
+      declaredMediaType: parsedMultipart.declaredMediaType,
+      bytes: parsedMultipart.bytes,
+      caption: parsedMultipart.caption,
     });
 
     revalidatePath(`/app/patients/${encodeURIComponent(result.patientHospitalRelationshipId)}/evidence`);
@@ -159,7 +153,7 @@ export async function POST(request: Request, { params }: UploadRouteParams): Pro
 
 export const patientEvidenceUploadRouteInternals = {
   MAX_MULTIPART_REQUEST_BYTES,
-  hasOnlyAllowedFields,
+  hasOversizedDeclaredContentLength,
   inputErrorMessage,
   mapUploadError,
 };

@@ -190,6 +190,31 @@ describe("Patient Evidence creation service", () => {
     });
   });
 
+  it("compensates when metadata creation succeeds but audit persistence fails", async () => {
+    const storage = createStorage();
+    const { database, transaction } = createDatabase();
+    mockedRecordAuditEvent.mockRejectedValueOnce(new Error("audit unavailable"));
+
+    await expect(
+      createPatientEvidenceArtifact(
+        actor,
+        {
+          relationshipId,
+          declaredMediaType: "image/jpeg",
+          bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+        },
+        { artifactIdFactory: () => artifactId, database, storage },
+      ),
+    ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+
+    expect(storage.uploadObject).toHaveBeenCalled();
+    expect(transaction.patientEvidenceArtifact.create).toHaveBeenCalled();
+    expect(mockedRecordAuditEvent).toHaveBeenCalled();
+    expect(storage.removeObject).toHaveBeenCalledWith({
+      objectKey: `relationship-evidence/${artifactId}`,
+    });
+  });
+
   it("reports failure and records only a safe opaque id when compensation fails", async () => {
     const storage = createStorage();
     storage.removeObject.mockRejectedValue(new PatientEvidenceStorageError("remove"));
@@ -210,6 +235,43 @@ describe("Patient Evidence creation service", () => {
     ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
 
     expect(logOperationalError).toHaveBeenCalledWith({
+      category: "storage_compensation_failed",
+      artifactId,
+    });
+  });
+
+  it("still fails and logs only an opaque id when audit and compensation both fail", async () => {
+    const storage = createStorage();
+    storage.removeObject.mockRejectedValue(new PatientEvidenceStorageError("remove"));
+    const { database, transaction } = createDatabase();
+    mockedRecordAuditEvent.mockRejectedValueOnce(new Error("audit unavailable"));
+    const logOperationalError = vi.fn();
+
+    await expect(
+      createPatientEvidenceArtifact(
+        actor,
+        {
+          relationshipId,
+          declaredMediaType: "image/jpeg",
+          bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+          caption: "ข้อมูลที่ไม่ควรอยู่ใน log",
+        },
+        { artifactIdFactory: () => artifactId, database, logOperationalError, storage },
+      ),
+    ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+
+    expect(storage.uploadObject).toHaveBeenCalled();
+    expect(transaction.patientEvidenceArtifact.create).toHaveBeenCalled();
+    expect(mockedRecordAuditEvent).toHaveBeenCalled();
+    expect(storage.removeObject).toHaveBeenCalledWith({
+      objectKey: `relationship-evidence/${artifactId}`,
+    });
+    expect(logOperationalError).toHaveBeenCalledTimes(1);
+    expect(logOperationalError).toHaveBeenCalledWith({
+      category: "storage_compensation_failed",
+      artifactId,
+    });
+    expect(logOperationalError.mock.calls[0]?.[0]).toEqual({
       category: "storage_compensation_failed",
       artifactId,
     });

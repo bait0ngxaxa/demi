@@ -129,18 +129,20 @@ The upload boundary is:
 
 `POST /app/patients/[relationshipId]/evidence/upload`
 
-It is a narrow authenticated multipart Route Handler. Route Handler transport was selected after checking the installed Next.js behavior because Server Actions have a default request body limit and changing a global limit would be an unnecessarily broad transport change. No global Next.js request limit was changed for this phase.
+It is a narrow authenticated multipart Route Handler. Route Handler transport was selected after checking the installed Next.js behavior because Server Actions have a default request body limit and changing a global limit would be an unnecessarily broad transport change. No global Next.js request limit was changed for this phase. The endpoint uses the pinned `@fastify/busboy` `3.2.1` streaming parser only at this upload boundary; it supports Node stream limits without introducing a generic upload subsystem.
+
+`Content-Length` is only a cheap early rejection for an obviously oversized declaration. The route authenticates, resolves the route relationship ID, and pre-authorizes exact `patient-artifact:create` access before consuming `request.body`. It then converts the Web request stream to a bounded Node stream. The total multipart request is limited to `5 MiB + 128 KiB`; the 128 KiB allowance is bounded overhead for two small multipart parts, their headers/boundaries, and the caption field. Busboy independently limits the actual file stream to 5 MiB, one file, one caption, two parts, bounded field/header sizes, and rejects unknown or duplicate fields. Therefore a streamed or understated/no-Content-Length request is still rejected when the actual body or file crosses its limit, without waiting for an unbounded `formData()`/`arrayBuffer()` buffer. The service/schema validation remains a second authoritative layer, and both the create service and the PostgreSQL transaction re-authorize the exact relationship after this transport pre-authorization.
 
 The application service performs the following bounded workflow:
 
-1. Check the multipart request size when a Content-Length is available.
-2. Authenticate the actor.
-3. Accept only the server-supplied relationship route parameter and the allowlisted `file`/`caption` form fields.
-4. Resolve the exact authorized relationship and reload authoritative actor state.
+1. Reject an obviously oversized declared Content-Length when present; this is only an optimization.
+2. Authenticate the actor and resolve the relationship route parameter.
+3. Pre-authorize exact relationship create access with `PATIENT_ARTIFACT_CREATE_CAPABILITY`.
+4. Stream and bound the multipart request, accepting only one `file` and at most one `caption` field.
 5. Normalize the caption and validate bytes, size, signature, media type, and SHA-256.
 6. Generate an opaque artifact UUID and `relationship-evidence/<artifact-id>` object key.
 7. Upload the bytes to the configured private bucket through the storage adapter.
-8. Run the PostgreSQL transaction for metadata and audit.
+8. Run the PostgreSQL transaction for metadata and audit, including its authoritative access re-check.
 9. Revalidate the evidence page and relationship detail path.
 10. Return only bounded artifact/relationship identifiers.
 
@@ -233,6 +235,7 @@ Focused tests cover:
 - bounded list projection and 300-second signed access;
 - adapter upload, signed URL, and compensation calls without Supabase network access;
 - upload transport field allowlist, request-size rejection, and safe errors;
+- exact relationship pre-authorization before body consumption, bounded streamed multipart parsing with and without Content-Length, duplicate/unknown/missing fields, and oversized file rejection;
 - Evidence page/form constraints and Patient Detail regression;
 - PostgreSQL metadata/audit workflow with an in-memory fake storage adapter and no Supabase network dependency.
 
