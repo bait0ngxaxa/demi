@@ -60,6 +60,16 @@ export const hospitalMembershipTransitionSchema = z
   .object(hospitalMembershipLifecycleFields)
   .strict();
 
+const osmRelationshipLifecycleFields = {
+  relationshipId: workforceRelationshipIdSchema,
+  targetHospitalId: workforceTargetHospitalIdSchema,
+  expectedUpdatedAt: workforceExpectedUpdatedAtSchema,
+} as const;
+
+export const osmRelationshipTransitionSchema = z
+  .object(osmRelationshipLifecycleFields)
+  .strict();
+
 export const workforceActivationRequestSchema = z
   .object({
     userId: z.uuid(),
@@ -96,6 +106,9 @@ export type HospitalMembershipProfessionUpdateInput = z.infer<
 >;
 export type HospitalMembershipTransitionInput = z.infer<
   typeof hospitalMembershipTransitionSchema
+>;
+export type OsmRelationshipTransitionInput = z.infer<
+  typeof osmRelationshipTransitionSchema
 >;
 export type WorkforceActivationRequestInput = z.infer<
   typeof workforceActivationRequestSchema

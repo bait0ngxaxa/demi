@@ -35,6 +35,10 @@ import {
 
 export type PatientOsmAssignmentQueryDatabase = PrismaClient;
 
+export type PatientOsmAssignmentCountDatabase =
+  | Pick<PrismaClient, "patientOsmAssignment">
+  | Pick<Prisma.TransactionClient, "patientOsmAssignment">;
+
 export type PatientOsmAssignmentQueryDependencies = {
   database?: PatientOsmAssignmentQueryDatabase;
 };
@@ -55,6 +59,21 @@ export type PatientOsmCandidate = {
   userId: string;
   displayName: string;
 };
+
+export async function countCurrentAssignmentsForOsmInHospital(
+  database: PatientOsmAssignmentCountDatabase,
+  input: { osmUserId: string; hospitalId: string },
+): Promise<number> {
+  return database.patientOsmAssignment.count({
+    where: {
+      osmUserId: input.osmUserId,
+      endedAt: null,
+      patientHospitalRelationship: {
+        hospitalId: input.hospitalId,
+      },
+    },
+  });
+}
 
 const assignmentManagementSelect = {
   ...patientDirectorySelect,

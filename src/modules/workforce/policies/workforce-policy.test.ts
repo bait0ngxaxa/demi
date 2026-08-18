@@ -55,6 +55,19 @@ describe("workforce policy", () => {
     ).toEqual({ allowed: true, reason: "active_hospital_owner" });
   });
 
+  it.each([WORKFORCE_CAPABILITIES.osmSuspend, WORKFORCE_CAPABILITIES.osmRestore])(
+    "allows an exact active Hospital Owner for OSM lifecycle capability %s",
+    (capability) => {
+      expect(
+        decideWorkforcePolicy({
+          actor: createActor(),
+          capability,
+          targetHospitalId: hospitalId,
+        }),
+      ).toEqual({ allowed: true, reason: "active_hospital_owner" });
+    },
+  );
+
   it.each([
     ["ordinary member", MembershipType.MEMBER, MembershipStatus.ACTIVE, HospitalStatus.ACTIVE],
     ["inactive membership", MembershipType.OWNER, MembershipStatus.SUSPENDED, HospitalStatus.ACTIVE],
@@ -103,13 +116,80 @@ describe("workforce policy", () => {
     ).toBe(false);
   });
 
-  it("fails closed for a missing actor", () => {
-    expect(() =>
-      assertWorkforcePolicy({
-        actor: null,
-        capability: WORKFORCE_CAPABILITIES.osmProvision,
-        targetHospitalId: hospitalId,
+  it("denies OSM lifecycle capability without an exact active Owner membership", () => {
+    const deniedActors: ActorContext[] = [
+      createActor({ roles: [] }),
+      createActor({ roles: [Role.OSM] }),
+      createActor({ roles: [Role.PATIENT] }),
+      createActor({ roles: [Role.ADMIN] }),
+      createActor({
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.MEMBER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
       }),
-    ).toThrow();
+      createActor({
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.OWNER,
+            profession: null,
+            status: MembershipStatus.SUSPENDED,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }),
+      createActor({
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.OWNER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.SUSPENDED,
+          },
+        ],
+      }),
+    ];
+
+    for (const capability of [WORKFORCE_CAPABILITIES.osmSuspend, WORKFORCE_CAPABILITIES.osmRestore]) {
+      for (const actor of deniedActors) {
+        expect(
+          decideWorkforcePolicy({
+            actor,
+            capability,
+            targetHospitalId: hospitalId,
+          }).allowed,
+        ).toBe(false);
+      }
+    }
+
+    for (const capability of [WORKFORCE_CAPABILITIES.osmSuspend, WORKFORCE_CAPABILITIES.osmRestore]) {
+      expect(
+        decideWorkforcePolicy({
+          actor: createActor(),
+          capability,
+          targetHospitalId: "44444444-4444-4444-8444-444444444444",
+        }).allowed,
+      ).toBe(false);
+    }
   });
+
+  it.each([WORKFORCE_CAPABILITIES.osmSuspend, WORKFORCE_CAPABILITIES.osmRestore])(
+    "fails closed for a missing actor for %s",
+    (capability) => {
+      expect(() =>
+        assertWorkforcePolicy({
+          actor: null,
+          capability,
+          targetHospitalId: hospitalId,
+        }),
+      ).toThrow();
+    },
+  );
 });

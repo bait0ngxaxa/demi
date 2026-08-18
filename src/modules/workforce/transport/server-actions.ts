@@ -11,6 +11,7 @@ import {
   hospitalMemberProvisionSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipTransitionSchema,
+  osmRelationshipTransitionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
   workforceActivationRequestSchema,
@@ -21,7 +22,9 @@ import {
   provisionOsm,
   regenerateWorkforceActivation,
   revokeWorkforceActivation,
+  restoreOsmRelationship,
   restoreHospitalMembership,
+  suspendOsmRelationship,
   suspendHospitalMembership,
   updateHospitalMembershipProfession,
 } from "../services/workforce-service";
@@ -31,6 +34,8 @@ import type {
   WorkforceField,
   WorkforceMembershipMutationActionState,
   WorkforceMembershipMutationResultState,
+  WorkforceOsmRelationshipMutationActionState,
+  WorkforceOsmRelationshipMutationResultState,
   WorkforceProvisionActionState,
   WorkforceProvisionResultState,
 } from "./action-state";
@@ -144,6 +149,33 @@ function getProvisionInput(formData: FormData) {
   };
 }
 
+function mapOsmRelationshipError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION") {
+      return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบข้อมูลความสัมพันธ์ อสม. ให้ถูกต้อง" };
+    }
+
+    if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์จัดการความสัมพันธ์ อสม. ของโรงพยาบาลนี้" };
+    }
+
+    if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
+      return {
+        code: "CONFLICT",
+        message: "ไม่สามารถเปลี่ยนสถานะความสัมพันธ์ อสม. ได้ กรุณาตรวจสอบสถานะและจำนวนผู้ป่วยแล้วลองใหม่",
+      };
+    }
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "ระบบไม่พร้อมเปลี่ยนสถานะความสัมพันธ์ อสม. ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
 function getMembershipMutationInput(formData: FormData) {
   return {
     relationshipId: getString(formData, "relationshipId"),
@@ -175,9 +207,29 @@ function toMembershipMutationResultState(
   };
 }
 
+function toOsmRelationshipMutationResultState(
+  result: Awaited<ReturnType<typeof suspendOsmRelationship>>,
+): WorkforceOsmRelationshipMutationResultState {
+  if (result.relationshipStatus !== "ACTIVE" && result.relationshipStatus !== "SUSPENDED") {
+    throw new Error("Unexpected OSM relationship lifecycle status");
+  }
+
+  return {
+    relationshipId: result.relationshipId,
+    hospitalId: result.hospitalId,
+    relationshipStatus: result.relationshipStatus,
+    updatedAt: result.updatedAt.toISOString(),
+  };
+}
+
 function revalidateWorkforceMembership(relationshipId: string): void {
   revalidatePath("/app/workforce");
   revalidatePath(`/app/workforce/staff/${relationshipId}`);
+}
+
+function revalidateOsmRelationship(relationshipId: string): void {
+  revalidatePath("/app/workforce");
+  revalidatePath(`/app/workforce/osm/${relationshipId}`);
 }
 
 export async function provisionHospitalMemberAction(
@@ -310,6 +362,54 @@ export async function restoreHospitalMembershipAction(
     return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function suspendOsmRelationshipAction(
+  _previousState: WorkforceOsmRelationshipMutationActionState,
+  formData: FormData,
+): Promise<WorkforceOsmRelationshipMutationActionState> {
+  const parsed = osmRelationshipTransitionSchema.safeParse(getMembershipMutationInput(formData));
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการระงับความสัมพันธ์ อสม. ไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await suspendOsmRelationship(actor, parsed.data);
+    revalidateOsmRelationship(result.relationshipId);
+    return { status: "SUCCESS", result: toOsmRelationshipMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapOsmRelationshipError(error) };
+  }
+}
+
+export async function restoreOsmRelationshipAction(
+  _previousState: WorkforceOsmRelationshipMutationActionState,
+  formData: FormData,
+): Promise<WorkforceOsmRelationshipMutationActionState> {
+  const parsed = osmRelationshipTransitionSchema.safeParse(getMembershipMutationInput(formData));
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการคืนสถานะความสัมพันธ์ อสม. ไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await restoreOsmRelationship(actor, parsed.data);
+    revalidateOsmRelationship(result.relationshipId);
+    return { status: "SUCCESS", result: toOsmRelationshipMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapOsmRelationshipError(error) };
   }
 }
 

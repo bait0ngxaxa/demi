@@ -13,6 +13,8 @@ export const WORKFORCE_CAPABILITIES = {
   suspend: "membership:suspend",
   restore: "membership:restore",
   osmProvision: "osm:provision",
+  osmSuspend: "osm:suspend",
+  osmRestore: "osm:restore",
 } as const;
 
 export type WorkforceCapability =

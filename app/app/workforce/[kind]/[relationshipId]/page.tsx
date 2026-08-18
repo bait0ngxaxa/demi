@@ -19,6 +19,7 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
+import { OsmRelationshipControls } from "./osm-relationship-controls";
 import { StaffMembershipControls } from "./staff-membership-controls";
 
 export const metadata: Metadata = {
@@ -154,6 +155,14 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
                 {relationshipStatusLabel(detail.relationshipStatus)}
               </dd>
             </div>
+            {!isStaff ? (
+              <div>
+                <dt className="text-sm text-text-muted">ผู้ป่วยที่รับผิดชอบอยู่ในโรงพยาบาลนี้</dt>
+                <dd className="mt-1 font-semibold text-text">
+                  {detail.currentAssignmentCount ?? 0} ราย
+                </dd>
+              </div>
+            ) : null}
           </dl>
         </Panel>
 
@@ -181,10 +190,16 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             targetHospitalId={detail.hospital.id}
           />
         ) : (
-          <Alert variant="info">
-            <p className="font-semibold">รายละเอียด อสม. แบบอ่านอย่างเดียว</p>
-            <p className="mt-1">ต้นแบบ Phase 11B.0 ยังไม่รองรับการเปลี่ยนสถานะความสัมพันธ์ อสม.</p>
-          </Alert>
+          <OsmRelationshipControls
+            accountStatus={detail.accountStatus}
+            actions={detail.actions}
+            currentAssignmentCount={detail.currentAssignmentCount ?? 0}
+            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
+            lifecycleBlockReason={detail.lifecycleBlockReason}
+            relationshipId={detail.relationshipId}
+            relationshipStatus={detail.relationshipStatus}
+            targetHospitalId={detail.hospital.id}
+          />
         )}
 
         <Link

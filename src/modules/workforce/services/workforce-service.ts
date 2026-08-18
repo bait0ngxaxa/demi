@@ -20,6 +20,7 @@ import {
 } from "@/modules/auth/services/password-auth-provisioning-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
   createIdentityStore,
   resolvePerson,
@@ -43,10 +44,12 @@ import {
   workforceDetailRequestSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipTransitionSchema,
+  osmRelationshipTransitionSchema,
   workforceListSchema,
   type HospitalMemberProvisionInput,
   type HospitalMembershipProfessionUpdateInput,
   type HospitalMembershipTransitionInput,
+  type OsmRelationshipTransitionInput,
   type OsmProvisionInput,
   type WorkforceActivationCompletionInput,
   type WorkforceActivationRequestInput,
@@ -135,6 +138,14 @@ export type WorkforceDetail = {
   activationRequired: boolean;
   activationExpiresAt: Date | null;
   activationMode: WorkforceActivationModeValue | null;
+  currentAssignmentCount: number | null;
+  lifecycleBlockReason:
+    | "CURRENT_ASSIGNMENTS"
+    | "INACTIVE_ACCOUNT"
+    | "MISSING_OSM_ROLE"
+    | "INACTIVE_HOSPITAL"
+    | "INVALID_RELATIONSHIP_STATE"
+    | null;
   relationshipUpdatedAt: Date;
   actions: {
     updateProfession: boolean;
@@ -148,6 +159,13 @@ export type WorkforceMembershipMutationResult = {
   hospitalId: string;
   membershipStatus: MembershipStatus;
   profession: HospitalMemberProvisionInput["profession"] | null;
+  updatedAt: Date;
+};
+
+export type WorkforceOsmRelationshipMutationResult = {
+  relationshipId: string;
+  hospitalId: string;
+  relationshipStatus: MembershipStatus;
   updatedAt: Date;
 };
 
@@ -232,6 +250,7 @@ const workforceOsmDetailSelect = {
   user: {
     select: {
       status: true,
+      roles: { select: { role: true } },
       person: {
         select: {
           givenName: true,
@@ -1006,29 +1025,82 @@ function toWorkforceDetailActions(input: {
   accountStatus: UserStatus;
   relationshipStatus: MembershipStatus;
   hospitalStatus: HospitalStatus;
+  hasOsmRole: boolean;
+  currentAssignmentCount: number | null;
 }): WorkforceDetail["actions"] {
   const canManageStaff =
     input.kind === "staff" &&
     input.membershipType === MembershipType.MEMBER &&
     input.accountStatus === UserStatus.ACTIVE &&
     input.hospitalStatus === HospitalStatus.ACTIVE;
+  const canManageOsm =
+    input.kind === "osm" &&
+    input.hasOsmRole &&
+    input.accountStatus === UserStatus.ACTIVE &&
+    input.hospitalStatus === HospitalStatus.ACTIVE &&
+    input.currentAssignmentCount === 0;
 
   return {
     updateProfession: canManageStaff && input.relationshipStatus === MembershipStatus.ACTIVE,
-    suspend: canManageStaff && input.relationshipStatus === MembershipStatus.ACTIVE,
-    restore: canManageStaff && input.relationshipStatus === MembershipStatus.SUSPENDED,
+    suspend:
+      (canManageStaff || canManageOsm) && input.relationshipStatus === MembershipStatus.ACTIVE,
+    restore:
+      (canManageStaff || canManageOsm) && input.relationshipStatus === MembershipStatus.SUSPENDED,
   };
+}
+
+function toWorkforceLifecycleBlockReason(input: {
+  kind: WorkforceDetailKind;
+  accountStatus: UserStatus;
+  relationshipStatus: MembershipStatus;
+  hospitalStatus: HospitalStatus;
+  hasOsmRole: boolean;
+  currentAssignmentCount: number | null;
+}): WorkforceDetail["lifecycleBlockReason"] {
+  if (input.kind !== "osm") {
+    return null;
+  }
+
+  if (input.accountStatus !== UserStatus.ACTIVE) {
+    return "INACTIVE_ACCOUNT";
+  }
+
+  if (input.hospitalStatus !== HospitalStatus.ACTIVE) {
+    return "INACTIVE_HOSPITAL";
+  }
+
+  if (!input.hasOsmRole) {
+    return "MISSING_OSM_ROLE";
+  }
+
+  if (input.currentAssignmentCount !== null && input.currentAssignmentCount > 0) {
+    return "CURRENT_ASSIGNMENTS";
+  }
+
+  if (
+    input.relationshipStatus !== MembershipStatus.ACTIVE &&
+    input.relationshipStatus !== MembershipStatus.SUSPENDED
+  ) {
+    return "INVALID_RELATIONSHIP_STATE";
+  }
+
+  return null;
 }
 
 function toWorkforceDetail(
   kind: WorkforceDetailKind,
   record: WorkforceMembershipDetailRecord | WorkforceOsmDetailRecord,
   activation: Awaited<ReturnType<typeof findDetailActivation>>,
+  currentAssignmentCount: number | null,
 ): WorkforceDetail {
   const membershipType = kind === "staff" ? (record as WorkforceMembershipDetailRecord).membershipType : null;
   const profession = kind === "staff" ? (record as WorkforceMembershipDetailRecord).profession : null;
   const relationshipStatus = record.status;
   const accountStatus = record.user.status;
+  const hasOsmRole =
+    kind === "osm"
+      ? (record as WorkforceOsmDetailRecord).user.roles.some(({ role }) => role === Role.OSM)
+      : true;
 
   return {
     relationshipId: record.id,
@@ -1042,6 +1114,15 @@ function toWorkforceDetail(
     activationRequired: accountStatus === UserStatus.PROVISIONED,
     activationExpiresAt: activation?.expiresAt ?? null,
     activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
+    currentAssignmentCount: kind === "osm" ? currentAssignmentCount : null,
+    lifecycleBlockReason: toWorkforceLifecycleBlockReason({
+      kind,
+      accountStatus,
+      relationshipStatus,
+      hospitalStatus: record.hospital.status,
+      hasOsmRole,
+      currentAssignmentCount,
+    }),
     relationshipUpdatedAt: record.updatedAt,
     actions: toWorkforceDetailActions({
       kind,
@@ -1049,6 +1130,8 @@ function toWorkforceDetail(
       accountStatus,
       relationshipStatus,
       hospitalStatus: record.hospital.status,
+      hasOsmRole,
+      currentAssignmentCount,
     }),
   };
 }
@@ -1093,8 +1176,16 @@ export async function getWorkforceDetail(
 
     assertActorPolicy(actor, WORKFORCE_CAPABILITIES.read, record.hospital.id);
 
-    const activation = await findDetailActivation(database, record.userId);
-    return toWorkforceDetail(parsed.data.kind, record, activation);
+    const [activation, currentAssignmentCount] = await Promise.all([
+      findDetailActivation(database, record.userId),
+      parsed.data.kind === "osm"
+        ? countCurrentAssignmentsForOsmInHospital(database, {
+            osmUserId: record.userId,
+            hospitalId: record.hospital.id,
+          })
+        : Promise.resolve(null),
+    ]);
+    return toWorkforceDetail(parsed.data.kind, record, activation, currentAssignmentCount);
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;
@@ -1551,6 +1642,240 @@ export async function restoreHospitalMembership(
       expectedStatus: MembershipStatus.SUSPENDED,
       nextStatus: MembershipStatus.ACTIVE,
       action: "hospital_membership.restored",
+    },
+    dependencies,
+  );
+}
+
+type OsmRelationshipMutationTarget = {
+  id: string;
+  userId: string;
+  hospitalId: string;
+  status: MembershipStatus;
+  updatedAt: Date;
+  hospital: { status: HospitalStatus };
+  user: {
+    status: UserStatus;
+    roles: { role: Role }[];
+  };
+};
+
+const osmRelationshipMutationTargetSelect = {
+  id: true,
+  userId: true,
+  hospitalId: true,
+  status: true,
+  updatedAt: true,
+  hospital: { select: { status: true } },
+  user: {
+    select: {
+      status: true,
+      roles: { select: { role: true } },
+    },
+  },
+} satisfies Prisma.OsmHospitalRelationshipSelect;
+
+type OsmRelationshipStatusTransition = {
+  capability:
+    | (typeof WORKFORCE_CAPABILITIES)["osmSuspend"]
+    | (typeof WORKFORCE_CAPABILITIES)["osmRestore"];
+  expectedStatus: MembershipStatus;
+  nextStatus: MembershipStatus;
+  action: "osm_relationship.suspended" | "osm_relationship.restored";
+};
+
+function parseExpectedOsmRelationshipUpdatedAt(value: string): Date {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ValidationError("OSM relationship version is invalid");
+  }
+
+  return parsed;
+}
+
+async function assertOsmRelationshipMutationTarget(
+  transaction: Prisma.TransactionClient,
+  input: OsmRelationshipTransitionInput,
+  expectedStatus: MembershipStatus,
+): Promise<OsmRelationshipMutationTarget> {
+  const relationship = await transaction.osmHospitalRelationship.findFirst({
+    where: {
+      id: input.relationshipId,
+      hospitalId: input.targetHospitalId,
+    },
+    select: osmRelationshipMutationTargetSelect,
+  });
+
+  if (!relationship) {
+    throw new NotFoundError("The OSM relationship was not found");
+  }
+
+  if (relationship.hospital.status !== HospitalStatus.ACTIVE) {
+    throw new ForbiddenError();
+  }
+
+  if (relationship.user.status !== UserStatus.ACTIVE) {
+    throw new ConflictError("The target OSM account is not active");
+  }
+
+  if (!relationship.user.roles.some(({ role }) => role === Role.OSM)) {
+    throw new ConflictError("The target account does not have the OSM role");
+  }
+
+  if (relationship.status !== expectedStatus) {
+    throw new ConflictError("The OSM relationship changed before this operation");
+  }
+
+  const expectedUpdatedAt = parseExpectedOsmRelationshipUpdatedAt(input.expectedUpdatedAt);
+
+  if (relationship.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+    throw new ConflictError("The OSM relationship changed before this operation");
+  }
+
+  return relationship;
+}
+
+async function transitionOsmRelationshipInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: OsmRelationshipTransitionInput,
+  actorUserId: string,
+  transition: OsmRelationshipStatusTransition,
+): Promise<WorkforceOsmRelationshipMutationResult> {
+  const current = await assertOsmRelationshipMutationTarget(
+    transaction,
+    input,
+    transition.expectedStatus,
+  );
+  const currentAssignmentCount = await countCurrentAssignmentsForOsmInHospital(transaction, {
+    osmUserId: current.userId,
+    hospitalId: current.hospitalId,
+  });
+
+  if (currentAssignmentCount > 0) {
+    throw new ConflictError(
+      "The OSM relationship cannot change while current Patient assignments exist",
+    );
+  }
+
+  const updated = await transaction.osmHospitalRelationship.updateMany({
+    where: {
+      id: current.id,
+      hospitalId: current.hospitalId,
+      status: transition.expectedStatus,
+      updatedAt: current.updatedAt,
+    },
+    data: { status: transition.nextStatus },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError("The OSM relationship changed before this operation");
+  }
+
+  const result = await transaction.osmHospitalRelationship.findUnique({
+    where: { id: current.id },
+    select: {
+      id: true,
+      hospitalId: true,
+      status: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!result) {
+    throw new InfrastructureError("The updated OSM relationship could not be read");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId,
+      action: transition.action,
+      resourceType: "OsmHospitalRelationship",
+      resourceId: result.id,
+      metadata: {
+        fromStatus: transition.expectedStatus,
+        toStatus: transition.nextStatus,
+      },
+    },
+    transaction,
+  );
+
+  return {
+    relationshipId: result.id,
+    hospitalId: result.hospitalId,
+    relationshipStatus: result.status,
+    updatedAt: result.updatedAt,
+  };
+}
+
+async function transitionOsmRelationship(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  transition: OsmRelationshipStatusTransition,
+  dependencies: WorkforceServiceDependencies,
+): Promise<WorkforceOsmRelationshipMutationResult> {
+  const parsed = osmRelationshipTransitionSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("OSM relationship transition data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  assertActorPolicy(actor, transition.capability, parsed.data.targetHospitalId);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
+        return transitionOsmRelationshipInTransaction(
+          transaction,
+          parsed.data,
+          actor.userId,
+          transition,
+        );
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "OSM relationship lifecycle operation could not be completed");
+  }
+}
+
+export async function suspendOsmRelationship(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceOsmRelationshipMutationResult> {
+  return transitionOsmRelationship(
+    actor,
+    input,
+    {
+      capability: WORKFORCE_CAPABILITIES.osmSuspend,
+      expectedStatus: MembershipStatus.ACTIVE,
+      nextStatus: MembershipStatus.SUSPENDED,
+      action: "osm_relationship.suspended",
+    },
+    dependencies,
+  );
+}
+
+export async function restoreOsmRelationship(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceOsmRelationshipMutationResult> {
+  return transitionOsmRelationship(
+    actor,
+    input,
+    {
+      capability: WORKFORCE_CAPABILITIES.osmRestore,
+      expectedStatus: MembershipStatus.SUSPENDED,
+      nextStatus: MembershipStatus.ACTIVE,
+      action: "osm_relationship.restored",
     },
     dependencies,
   );

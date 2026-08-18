@@ -8,7 +8,9 @@ import {
   completeWorkforceActivation,
   provisionHospitalMember,
   restoreHospitalMembership,
+  restoreOsmRelationship,
   suspendHospitalMembership,
+  suspendOsmRelationship,
   updateHospitalMembershipProfession,
 } from "../services/workforce-service";
 import {
@@ -20,7 +22,9 @@ import {
   completeWorkforceActivationAction,
   provisionHospitalMemberAction,
   restoreHospitalMembershipAction,
+  restoreOsmRelationshipAction,
   suspendHospitalMembershipAction,
+  suspendOsmRelationshipAction,
   updateHospitalMembershipProfessionAction,
 } from "./server-actions";
 
@@ -42,7 +46,9 @@ vi.mock("../services/workforce-service", () => ({
   regenerateWorkforceActivation: vi.fn(),
   revokeWorkforceActivation: vi.fn(),
   restoreHospitalMembership: vi.fn(),
+  restoreOsmRelationship: vi.fn(),
   suspendHospitalMembership: vi.fn(),
+  suspendOsmRelationship: vi.fn(),
   updateHospitalMembershipProfession: vi.fn(),
 }));
 
@@ -51,7 +57,9 @@ const mockedSignOutCurrentSession = vi.mocked(signOutCurrentSession);
 const mockedCompleteWorkforceActivation = vi.mocked(completeWorkforceActivation);
 const mockedProvisionHospitalMember = vi.mocked(provisionHospitalMember);
 const mockedRestoreHospitalMembership = vi.mocked(restoreHospitalMembership);
+const mockedRestoreOsmRelationship = vi.mocked(restoreOsmRelationship);
 const mockedSuspendHospitalMembership = vi.mocked(suspendHospitalMembership);
+const mockedSuspendOsmRelationship = vi.mocked(suspendOsmRelationship);
 const mockedUpdateHospitalMembershipProfession = vi.mocked(updateHospitalMembershipProfession);
 
 function createStaffFormData(): FormData {
@@ -249,5 +257,82 @@ describe("workforce Server Actions", () => {
       },
     );
     expect(result).toMatchObject({ status: "SUCCESS" });
+  });
+
+  it("validates and forwards bounded OSM lifecycle input without trusting client state", async () => {
+    const formData = new FormData();
+    formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("expectedUpdatedAt", "2026-08-18T05:00:00.000Z");
+    formData.set("status", "ACTIVE");
+    formData.set("osmUserId", "untrusted-user");
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedSuspendOsmRelationship.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      relationshipStatus: MembershipStatus.SUSPENDED,
+      updatedAt: new Date("2026-08-18T05:00:01.000Z"),
+    });
+
+    const result = await suspendOsmRelationshipAction(
+      { status: "IDLE" },
+      formData,
+    );
+
+    expect(mockedSuspendOsmRelationship).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt: "2026-08-18T05:00:00.000Z",
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { relationshipStatus: MembershipStatus.SUSPENDED },
+    });
+    expect(JSON.stringify(result)).not.toContain("untrusted-user");
+  });
+
+  it("uses the OSM restore server action and keeps client status out of service input", async () => {
+    const formData = new FormData();
+    formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("expectedUpdatedAt", "2026-08-18T05:00:00.000Z");
+    formData.set("status", "SUSPENDED");
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedRestoreOsmRelationship.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      relationshipStatus: MembershipStatus.ACTIVE,
+      updatedAt: new Date("2026-08-18T05:00:01.000Z"),
+    });
+
+    const result = await restoreOsmRelationshipAction({ status: "IDLE" }, formData);
+
+    expect(mockedRestoreOsmRelationship).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt: "2026-08-18T05:00:00.000Z",
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { relationshipStatus: MembershipStatus.ACTIVE },
+    });
   });
 });

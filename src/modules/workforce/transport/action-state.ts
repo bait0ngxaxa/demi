@@ -36,6 +36,13 @@ export type WorkforceMembershipMutationResultState = {
   updatedAt: string;
 };
 
+export type WorkforceOsmRelationshipMutationResultState = {
+  relationshipId: string;
+  hospitalId: string;
+  relationshipStatus: "ACTIVE" | "SUSPENDED";
+  updatedAt: string;
+};
+
 export type WorkforceField =
   | "nationalId"
   | "givenName"
@@ -91,6 +98,15 @@ export type WorkforceMembershipMutationActionState =
     }
   | { status: "SUCCESS"; result: WorkforceMembershipMutationResultState };
 
+export type WorkforceOsmRelationshipMutationActionState =
+  | { status: "IDLE" }
+  | {
+      status: "ERROR";
+      code: WorkforceErrorCode;
+      message: string;
+    }
+  | { status: "SUCCESS"; result: WorkforceOsmRelationshipMutationResultState };
+
 export const initialWorkforceProvisionActionState: WorkforceProvisionActionState = {
   status: "IDLE",
 };
@@ -104,5 +120,9 @@ export const initialWorkforceCompletionActionState: WorkforceCompletionActionSta
 };
 
 export const initialWorkforceMembershipMutationActionState: WorkforceMembershipMutationActionState = {
+  status: "IDLE",
+};
+
+export const initialWorkforceOsmRelationshipMutationActionState: WorkforceOsmRelationshipMutationActionState = {
   status: "IDLE",
 };
