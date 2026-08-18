@@ -62,6 +62,8 @@ The implementation was read directly rather than treating the phase documents as
 
 The legacy evidence below is pinned to commit [`7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e`](https://github.com/raviut-max/demi-plus-web-v2/tree/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e), the commit referenced by the Phase 4 documents.
 
+Every legacy GitHub evidence URL in this document uses this exact ref. The `updateStaff` and `updateIdCard` evidence both resolve through `lib/supabase/queries.ts` at this pinned snapshot; no current DEMI commit is used as a legacy evidence ref.
+
 Inspected legacy paths:
 
 - [`app/admin/staff/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/page.tsx)
@@ -126,7 +128,7 @@ The legacy repository contains useful workflow vocabulary and evidence that oper
 | Legacy behavior | Evidence inspected | Classification and DEMI interpretation |
 | --- | --- | --- |
 | Staff list with active/deactivated tabs, search, sorting, role, Hospital, ID Card, name, and specialization | [`app/admin/staff/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/page.tsx), `getStaffList`/`getDeactivatedStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** a workforce directory and status view are meaningful operator needs. The exact fields and scope are not accepted for DEMI. |
-| Staff edit modal changes name, specialization, phone, email, birth date, Hospital, ID Card, and optionally resets password | [`app/admin/staff/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/page.tsx), `updateStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** staff correction/edit behavior exists. **Open requirement:** DEMI field ownership, visibility, and which fields Hospital Owners may edit. Password and raw identity editing are rejected for the rewrite. |
+| Staff edit modal changes name, specialization, phone, email, birth date, Hospital, ID Card, and optionally resets password | [`app/admin/staff/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/page.tsx), `updateStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** staff correction/edit behavior exists. **Open requirement:** DEMI field ownership, visibility, and which fields Hospital Owners may edit. Password and raw identity editing are rejected for the rewrite. |
 | Staff deactivate and restore update `users.is_active` and `doctors.is_active` | `deactivateStaff` and `restoreStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) and handlers in [`app/admin/staff/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/page.tsx) | **Direct legacy evidence:** operators expect disable/restore controls. **Rejected legacy architecture:** one account-level boolean is not a Hospital membership lifecycle. |
 | Permanent staff deletion deletes the `doctors` and `users` rows | `permanentlyDeleteStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** hard deletion was exposed. **Rejected legacy architecture / open requirement:** DEMI must preserve identity and historical records unless a confirmed deletion policy exists. |
 | Standard add-staff flow accepts ID Card, birth date, name, role, specialization, phone/email, Hospital, and admin type | [`app/admin/staff/add/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/add/page.tsx), `addStaff` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** these are historical operator-entered fields and role labels. **Rejected legacy architecture:** `users.role`, `users.hospital_id`, direct browser writes, plaintext passwords, and immediate active accounts. |
@@ -139,7 +141,7 @@ The legacy repository contains useful workflow vocabulary and evidence that oper
 | Legacy access helper gives a main Hospital itself plus active children, and a child Hospital its parent, siblings, and itself | `getAccessibleHospitalIds` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Direct legacy evidence:** inherited/network-shaped query scope existed. **Rejected legacy architecture:** hierarchy metadata must not grant DEMI authorization. |
 | Hospital edit and delete controls change `is_active`; edit also changes parent/type metadata | [`app/admin/hospitals/[id]/edit/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/hospitals/%5Bid%5D/edit/page.tsx), [`app/admin/hospitals/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/hospitals/page.tsx) | **Direct legacy evidence:** operators expected Hospital enable/disable and metadata editing. **Open requirement:** exact suspension effect, recovery actor, and governance scope in DEMI. |
 | Settings page links staff, temporary, verification, Hospital, and maintenance tools; it also uses a hardcoded password gate | [`app/admin/settings/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/settings/page.tsx) | **Direct legacy evidence:** these workflows were grouped as administration. **Rejected legacy architecture:** client-side role/session checks and hardcoded settings credentials are not authority. |
-| Temporary-ID verification UI claims an audit record, but no corresponding audit service/table write was found in the inspected target paths | [`app/admin/staff/[id]/verify-id/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/%5Bid%5D/verify-id/page.tsx), `updateIdCard` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Inference:** the UI text is not evidence that audit persistence existed. DEMI should use its existing server-side atomic audit boundary for future lifecycle events. |
+| Temporary-ID verification UI claims an audit record, but no corresponding audit service/table write was found in the inspected target paths | [`app/admin/staff/[id]/verify-id/page.tsx`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/app/admin/staff/%5Bid%5D/verify-id/page.tsx), `updateIdCard` in [`lib/supabase/queries.ts`](https://github.com/raviut-max/demi-plus-web-v2/blob/7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e/lib/supabase/queries.ts) | **Inference:** the UI text is not evidence that audit persistence existed. DEMI should use its existing server-side atomic audit boundary for future lifecycle events. |
 
 Legacy paths consistently use a single `users.role` and `users.hospital_id` model, direct browser Supabase operations, or broad client-derived Hospital ID lists. These are **rejected legacy architecture**, not requirements.
 
@@ -167,14 +169,26 @@ The legacy directory provides evidence for a clearer detail/lifecycle workspace,
 
 | Candidate operation | Legacy evidence | Current DEMI support | State owner and User/other-relationship effect | Actor/capability and audit if proposed | Prototype assessment |
 | --- | --- | --- | --- | --- | --- |
-| Edit profession | Legacy edits role-specific text such as specialization, but does not prove the current `Profession` enum semantics. Current schema has `HospitalMembership.profession`; no mutation service exists. | Row exists, but no update policy/service. | `HospitalMembership.profession` only. It must not change `User.status`, `UserRole`, another Hospital membership, OSM relationship, or clinical record. | Direct active Owner in the same Hospital; provisional `membership:update`; `hospital_membership.profession_changed`. | **Provisional proposal:** allow only `MEMBER` + `ACTIVE` in 11B.0, with a narrow enum update and audit. Owner profession remains out of scope. |
-| Suspend membership | Legacy “deactivate staff” changes account-wide `is_active` and a doctor row. Current architecture has relationship-level `SUSPENDED` and active-scope predicates. | Enum and predicates exist; no mutation service. | `HospitalMembership.status` for one User/Hospital pair. It must not disable the User or any other membership/role. | Direct active Owner in the same Hospital; provisional `membership:suspend`; `hospital_membership.suspended`. | **Provisional proposal:** allow only a non-Owner `MEMBER` transition `ACTIVE → SUSPENDED`, scoped to the selected active Hospital. |
-| Restore/reactivate membership | Legacy has a restore action for deactivated staff. Current status enum exists. | No mutation service. | Same relationship row, `SUSPENDED → ACTIVE`; it must not activate a User or issue a credential. | Direct active Owner in the same Hospital; provisional `membership:restore`; `hospital_membership.restored`. | **Provisional proposal:** allow only a non-Owner `MEMBER` transition `SUSPENDED → ACTIVE`. |
+| Edit profession | Legacy edits role-specific text such as specialization, but does not prove the current `Profession` enum semantics. Current schema has `HospitalMembership.profession`; no mutation service exists. | Row exists, but no update policy/service. | `HospitalMembership.profession` only. The linked `User.status` must already be `ACTIVE`; the operation must not change `User.status`, `UserRole`, another Hospital membership, OSM relationship, or clinical record. | Direct active Owner in the same Hospital; provisional `membership:update`; `hospital_membership.profession_changed`. | **Provisional proposal:** allow only a non-Owner `MEMBER` + `ACTIVE` membership with an `ACTIVE` User in 11B.0, with a narrow enum update and audit. Owner profession remains out of scope. |
+| Suspend membership | Legacy “deactivate staff” changes account-wide `is_active` and a doctor row. Current architecture has relationship-level `SUSPENDED` and active-scope predicates. | Enum and predicates exist; no mutation service. | `HospitalMembership.status` for one User/Hospital pair. The linked User must already be `ACTIVE`; the operation must not disable the User or any other membership/role. | Direct active Owner in the same Hospital; provisional `membership:suspend`; `hospital_membership.suspended`. | **Provisional proposal:** allow only a non-Owner `MEMBER` with an `ACTIVE` User to transition `ACTIVE → SUSPENDED`, scoped to the selected active Hospital. |
+| Restore/reactivate membership | Legacy has a restore action for deactivated staff. Current status enum exists. | No mutation service. | Same relationship row, `SUSPENDED → ACTIVE`; the linked User must already be `ACTIVE`; it must not activate a User or issue a credential. | Direct active Owner in the same Hospital; provisional `membership:restore`; `hospital_membership.restored`. | **Provisional proposal:** allow only a non-Owner `MEMBER` with an `ACTIVE` User to transition `SUSPENDED → ACTIVE`. |
 | Remove membership | Legacy hard-deletes the User and doctor row, not a membership. Current membership is unique per User/Hospital and is referenced by ongoing identity and historical operations. | No relationship-removal service. | Meaning is unresolved: end this Hospital relationship, retain a historical membership, or delete a person/account. It may affect other roles/memberships if implemented incorrectly. | Actor, capability, record-end semantics, and audit action are all open. | **Open requirement:** exclude from 11B.0; do not hard-delete. |
 | Transfer between Hospitals | Legacy edits a single `users.hospital_id`. Current architecture explicitly supports multiple memberships and does not model transfer as a single-column move. | No transfer service or invariant. | Would affect source membership, target membership, possible Owner state, role reuse, OSM relation, and active work. It must not change the User identity. | Source/target authority, likely separate capabilities, and audit semantics are open. | **Open requirement:** exclude. A transfer must not be approximated by editing a target ID. |
 | Promote `MEMBER → OWNER` | Legacy has admin types but no accepted DEMI Owner appointment contract. Current onboarding creates the first Owner only. | No owner-management capability/service or database rule for multiple Owners. | `HospitalMembership.membershipType` for one relationship, with last-Owner and recovery implications. User account and Person remain the same, but governance changes materially. | Owner-governance actor/capability and `hospital_owner.promoted` audit are open. | **Open requirement:** exclude. |
 | Demote `OWNER → MEMBER` | No accepted legacy equivalent for the new membership model. | Existing provisioning explicitly avoids silently downgrading an Owner. | Owner membership type; may make a Hospital unrecoverable if it is the last usable Owner. | Owner-governance actor/capability and `hospital_owner.demoted` audit are open. | **Open requirement:** exclude. |
 | Owner self-demotion | No current support or accepted requirement. | No policy. | Same Owner governance risk, plus actor/session consequences. It must not disable the User account. | Actor/capability and audit are open; last-Owner protection would be mandatory. | **Open requirement:** exclude. |
+
+### 6.2.1 Provisional mutation preconditions
+
+The proposed 11B.0 profession update, membership suspension, and membership restoration are fail-closed operations. Each requires the authenticated actor, target Hospital, target User, and target membership conditions below; the expected current state is part of the mutation contract.
+
+| Operation | Actor precondition | Target precondition | Mutation |
+| --- | --- | --- | --- |
+| Profession update | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in the target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = ACTIVE`. | Change `HospitalMembership.profession` only. |
+| Suspend membership | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in the target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = ACTIVE`. | Change `HospitalMembership.status` `ACTIVE → SUSPENDED` only. |
+| Restore membership | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in the target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = SUSPENDED`. | Change `HospitalMembership.status` `SUSPENDED → ACTIVE` only. |
+
+If `User.status` is `PROVISIONED`, `INVITED`, or `SUSPENDED`, any of these three mutations is rejected or unavailable with a safe lifecycle/account-state conflict or denial. The operation must not activate or recover the User, create or regenerate an activation, modify credentials or `authSubject`, change `User.status`, call an auth/provider recovery operation, or infer an account-recovery workflow.
 
 ### 6.3 User/account effects for a membership action
 
@@ -185,8 +199,9 @@ The following are **provisional safety invariants** for any future staff members
 3. If the same User is also an OSM in the same Hospital, the OSM relationship is unchanged. OSM access is governed by its own relationship and assignment predicates.
 4. If the same User has another active Hospital membership, that other relationship remains active and usable under its own scope.
 5. If the same User is also a Patient, the Patient identity and PatientHospitalRelationship remain unchanged.
-6. A membership restore does not activate a `PROVISIONED`, `INVITED`, or `SUSPENDED` User. Account recovery/activation remains a separate workflow.
-7. An account suspension does not substitute for suspending one Hospital membership.
+6. Profession update, membership suspension, and membership restoration require the linked target `User.status = ACTIVE`. If it is `PROVISIONED`, `INVITED`, or `SUSPENDED`, return a safe lifecycle/account-state conflict or denial and leave both records unchanged.
+7. A membership restore never activates or recovers the User account. Account recovery/activation remains a separate workflow.
+8. An account suspension does not substitute for suspending one Hospital membership.
 
 These rules preserve the existing `Person != User` and multi-role/multi-Hospital invariants.
 
@@ -317,11 +332,11 @@ No Phase 11B.0 read or mutation may widen scope through a parent, child, sibling
 
 | State | Owns the state | Meaning | Current/known changes | Must not imply automatically |
 | --- | --- | --- | --- | --- |
-| `User.status` / account status | `User` account and authentication boundary | Whether the application account is provisioned, invited, active, or suspended. | First-time activation can make a provisioned workforce account active; auth context denies non-active accounts. Other account suspension/recovery rules are not implemented here. | It must not be changed merely because one Hospital membership is suspended, restored, removed, or transferred. It does not decide a specific Hospital relationship's scope. |
+| `User.status` / account status | `User` account and authentication boundary | Whether the application account is provisioned, invited, active, or suspended. | First-time activation can make a provisioned workforce account active; auth context denies non-active accounts. Other account suspension/recovery rules are not implemented here. For the proposed 11B.0 staff lifecycle actions, the linked target User must already be `ACTIVE`; a non-active target is rejected, not recovered. | It must not be changed merely because one Hospital membership is suspended, restored, removed, or transferred. It does not decide a specific Hospital relationship's scope. |
 | `Hospital.status` | Hospital organization | Whether the organization is pending verification, active, or suspended. | Onboarding approval creates `ACTIVE`; suspension/restoration is not implemented. | It must not delete or rewrite memberships, OSM relations, Patients, assignments, clinical records, or artifacts. |
-| `HospitalMembership.status` | One User–Hospital staff relationship | Whether this specific staff relationship is provisioned, invited, active, or suspended. | Provisioning/activation creates or activates the row; general lifecycle mutation is not implemented. | It must not disable the User, change other Hospital memberships, change OSM relations, or change Patient assignments. |
+| `HospitalMembership.status` | One User–Hospital staff relationship | Whether this specific staff relationship is provisioned, invited, active, or suspended. | Provisioning/activation creates or activates the row; general lifecycle mutation is not implemented. The proposed 11B.0 profession/suspend/restore actions require linked `User.status = ACTIVE` and leave `User.status` unchanged. | It must not disable the User, change other Hospital memberships, change OSM relations, or change Patient assignments. Restoring the membership never restores the User account. |
 | `OsmHospitalRelationship.status` | One User–Hospital OSM relationship | Whether this specific OSM association is provisioned, active, or suspended. | OSM provisioning/activation creates or activates it; general lifecycle mutation is not implemented. | It must not change the User account, HospitalMembership, OSM geographic scope, or automatically reassign Patients. |
-| `WorkforceActivation` state | One activation capability for a target User | Whether a first-time workforce activation has been issued, claimed, completed, revoked, expired, or requires reconciliation. | The activation service issues, claims, completes, regenerates, and revokes within its own contract. | It must not be used as a staff membership suspension mechanism or as proof that a User's business relationship is active. |
+| `WorkforceActivation` state | One activation capability for a target User | Whether a first-time workforce activation has been issued, claimed, completed, revoked, expired, or requires reconciliation. | The activation service issues, claims, completes, regenerates, and revokes within its own contract. A staff lifecycle mutation neither changes this state nor creates/reissues an activation. | It must not be used as a staff membership suspension mechanism or as proof that a User's business relationship is active. |
 
 The distinction is a **current accepted architectural boundary**. Phase 11B.0 must not collapse any of these states into one “active/inactive” flag.
 
@@ -348,11 +363,13 @@ The following is a **provisional proposal**, not an authoritative implementation
 | `membership:read` | Read the bounded Staff/OSM list and target relationship detail. | Exact selected active Hospital and exact target relationship. | Active direct Hospital Owner. Reuse the existing current policy. |
 | `membership:create` | Existing staff provisioning. | Exact selected active Hospital. | Active direct Hospital Owner. Already current. |
 | `osm:provision` | Existing OSM provisioning. | Exact selected active Hospital. | Active direct Hospital Owner. Already current. |
-| `membership:update` | Change `HospitalMembership.profession` for a non-Owner active staff membership. | Exact target membership in the Owner's active Hospital. | Active direct Hospital Owner. Provisional. |
-| `membership:suspend` | Suspend a non-Owner active staff membership. | Exact target membership in the Owner's active Hospital. | Active direct Hospital Owner. Provisional. |
-| `membership:restore` | Restore a suspended non-Owner staff membership. | Exact target membership in the Owner's active Hospital. | Active direct Hospital Owner. Provisional. |
+| `membership:update` | Change `HospitalMembership.profession` for a non-Owner active staff membership whose linked User is already `ACTIVE`. | Exact target membership in the Owner's active Hospital; target User `ACTIVE`. | Active direct Hospital Owner. Provisional. |
+| `membership:suspend` | Suspend a non-Owner active staff membership whose linked User is already `ACTIVE`. | Exact target membership in the Owner's active Hospital; target User `ACTIVE`. | Active direct Hospital Owner. Provisional. |
+| `membership:restore` | Restore a suspended non-Owner staff membership whose linked User is already `ACTIVE`. | Exact target membership in the Owner's active Hospital; target User `ACTIVE`. | Active direct Hospital Owner. Provisional. |
 
 No new OSM lifecycle or Hospital governance capability is recommended for 11B.0. The following remain **open candidates only**: `osm:update`, `osm:suspend`, `osm:restore`, `hospital:manage`, `hospital:suspend`, `hospital:restore`, and `hospital-owner:manage`.
+
+These capabilities do not include account recovery. A target `User.status != ACTIVE` is a target-state precondition failure for all three proposed membership mutations, not a request to add a recovery capability or invoke an external auth/provider workflow.
 
 ### 12.3 Provisional actor matrix
 
@@ -391,12 +408,13 @@ Each profession update, membership suspend, or membership restore should be one 
 1. Resolve the authenticated actor server-side.
 2. Validate the capability and exact selected Hospital scope.
 3. Re-read the actor's direct active Owner membership and target active Hospital inside the operation.
-4. Re-read the target `HospitalMembership` with an expected current state and require a non-Owner `MEMBER` row.
-5. Update only the target `profession` or `status` field.
-6. Create the bounded audit event in the same transaction.
-7. Commit or return a safe conflict/error; do not report success after a partial write.
+4. Re-read the target User and require `User.status = ACTIVE`. If the User is `PROVISIONED`, `INVITED`, or `SUSPENDED`, return a safe lifecycle/account-state conflict or denial before any write.
+5. Re-read the target `HospitalMembership`, require a non-Owner `MEMBER` row, and require the expected current membership state (`ACTIVE` for profession update/suspend; `SUSPENDED` for restore).
+6. Update only the target `profession` or `status` field.
+7. Create the bounded audit event in the same transaction.
+8. Commit or return a safe conflict/error; do not report success after a partial write.
 
-No provider I/O is needed. No User, role, OSM relation, Patient assignment, clinical record, or activation record is mutated by these operations. A serializable transaction and stale-state check are appropriate because two Owners could otherwise act on a changed row concurrently.
+No provider I/O is needed. A failed target User state check leaves both the User and HospitalMembership unchanged and creates no success AuditEvent. No User, role, OSM relation, Patient assignment, clinical record, or activation record is mutated by these operations. A serializable transaction and stale-state check are appropriate because two Owners could otherwise act on a changed row concurrently.
 
 ### Deferred boundaries
 
@@ -462,11 +480,11 @@ These decisions are deliberately narrow and are not customer-approved requiremen
 
 1. Keep `/app/workforce` as the entry workspace and add one bounded detail/lifecycle surface in the future implementation, preferably `/app/workforce/[kind]/[relationshipId]` where `kind` is `staff` or `osm`. Do not create an admin-only parallel workforce architecture.
 2. Keep the detail read projection target-Hospital-scoped. Do not display all Hospitals belonging to a reused User until cross-Hospital visibility is confirmed. If a workshop needs this question, show it as an explicit unresolved state rather than silently exposing it.
-3. In the first lifecycle slice, support only Staff `HospitalMembership` actions: change profession, suspend, and restore for non-Owner `MEMBER` rows. Restrict transitions to `ACTIVE ↔ SUSPENDED` for lifecycle actions; leave `PROVISIONED`/`INVITED` to activation/provisioning workflows.
+3. In the first lifecycle slice, support only Staff `HospitalMembership` actions: change profession, suspend, and restore for non-Owner `MEMBER` rows. Restrict transitions to `ACTIVE ↔ SUSPENDED` for lifecycle actions; require the linked target `User.status = ACTIVE` for all three actions; reject `PROVISIONED`, `INVITED`, or `SUSPENDED` Users and leave those account states to separate activation/recovery requirements.
 4. Do not expose OSM relationship suspend/restore/remove/transfer in the first slice. Show relationship status read-only and retain the current assignment-dependent fail-closed access behavior.
 5. Do not expose Owner promotion, demotion, self-demotion, transfer, last-Owner removal, or Hospital suspension/restoration.
 6. Use the existing direct active Owner policy and the provisional capability names in Section 12; do not authorize by legacy role labels, localStorage, parent/child metadata, or a client-selected list.
-7. Persist each staff membership mutation and its audit event atomically. Do not call an external provider and do not mutate User account state as a side effect.
+7. Persist each staff membership mutation and its audit event atomically after an authoritative target User `ACTIVE` check. A failed check produces no membership mutation, User mutation, or success AuditEvent. Do not call an external provider and do not mutate User account state as a side effect.
 8. Preserve all other memberships, roles, OSM relationships, assignments, and historical business records exactly as they are.
 
 ## 18. Explicitly open customer requirements
@@ -486,7 +504,8 @@ The following questions must remain visible for requirement workshops:
 - Is “suspend” the canonical reversible relationship state, or is there a separate “deactivate”/“remove” business meaning?
 - Can a membership be permanently ended while retaining history? What should the historical state be called?
 - What is the supported transfer workflow between Hospitals, including source/target approval and active work?
-- Can a membership be restored after the User account is suspended, and who separately restores the account?
+- Can a membership be restored after the User account is suspended, and who separately restores the account? The 11B.0 slice rejects that mutation until `User.status = ACTIVE`; the account-recovery actor, mechanism, UI, and credential-reset semantics remain open.
+- Which actor and workflow may transition `User.status` from `PROVISIONED`, `INVITED`, or `SUSPENDED` to `ACTIVE`? Account activation/recovery is separate from membership lifecycle and is not specified by this phase.
 - Are profession changes allowed for suspended/provisioned rows or only active members?
 
 ### OSM and assignment lifecycle
@@ -564,6 +583,18 @@ Do not expose raw National ID, password, activation token, `authSubject`, identi
 
 The slice does not mutate `User.status`, `UserRole`, Person data, activation, OSM relationships, Patient assignments, or clinical records. Existing provisioning and activation controls remain separate.
 
+#### Explicit target User account-state precondition
+
+For each supported mutation, the actor and target preconditions are explicit:
+
+| Mutation | Actor | Target | Allowed mutation |
+| --- | --- | --- | --- |
+| Profession update | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = ACTIVE`. | Change `HospitalMembership.profession` only. |
+| Membership suspension | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = ACTIVE`. | Change `HospitalMembership.status` `ACTIVE → SUSPENDED` only. |
+| Membership restoration | Authenticated `HOSPITAL` User; direct `ACTIVE OWNER` membership in target Hospital; target Hospital `ACTIVE`. | Target `User.status = ACTIVE`; target `HospitalMembership.membershipType = MEMBER`; target `HospitalMembership.status = SUSPENDED`. | Change `HospitalMembership.status` `SUSPENDED → ACTIVE` only. |
+
+If `User.status != ACTIVE`, including `PROVISIONED`, `INVITED`, or `SUSPENDED`, the mutation is rejected or unavailable. Both records remain unchanged, no success AuditEvent is written, and the operation does not activate/recover the User, create/regenerate an activation, modify credentials or `authSubject`, change `User.status`, call Supabase Auth/provider recovery, or infer an account-recovery workflow. Restoring a membership never restores the application account.
+
 ### Capability checks
 
 - Reuse `membership:read` for the bounded list/detail read.
@@ -578,6 +609,8 @@ The slice does not mutate `User.status`, `UserRole`, Person data, activation, OS
 - Never rewrite another Hospital membership or OSM relationship for the same User.
 - Never use parent/child metadata to widen access.
 - Never silently transfer, delete, or reassign Patient work.
+- Require the target `User.status = ACTIVE` for profession update, membership suspension, and membership restoration. A non-active User is a fail-closed account-state conflict, not a recovery request.
+- Restoring a membership never activates or recovers the target User account; activation records and credentials remain unchanged.
 - Only `ACTIVE → SUSPENDED` and `SUSPENDED → ACTIVE` are lifecycle transitions in this slice.
 - The operation is safe to retry only with expected-state/stale-update protection; no blind duplicate write should be reported as success.
 
@@ -596,13 +629,16 @@ One serializable local transaction per mutation:
 ```text
 server ActorContext
   → exact Owner + Hospital policy re-check
-  → target MEMBER row/state re-check
-  → one membership field update
-  → one bounded AuditEvent
+  → target User re-check: User.status = ACTIVE
+  → target HospitalMembership re-check
+  → require membershipType = MEMBER
+  → require expected current membership state
+  → update exactly one membership field
+  → write one bounded AuditEvent
   → commit
 ```
 
-No provider I/O, activation issuance, assignment update, relationship cascade, or historical-record rewrite is part of the transaction.
+If the target User state check fails, the transaction returns a safe lifecycle/account-state conflict or denial with no HospitalMembership mutation, no User mutation, and no success AuditEvent. No provider I/O, activation issuance, assignment update, relationship cascade, or historical-record rewrite is part of the transaction.
 
 ### Required UX states
 
@@ -610,6 +646,7 @@ No provider I/O, activation issuance, assignment update, relationship cascade, o
 - Target not found or not in the selected Hospital.
 - Actor not authorized, rendered as a safe denied state.
 - Hospital suspended, with lifecycle actions unavailable.
+- Target User is `PROVISIONED`, `INVITED`, or `SUSPENDED`, with lifecycle actions unavailable and a safe account-state conflict; no recovery or activation action is offered.
 - Target already suspended/restored by another operator, with a stale-state conflict and reload path.
 - Owner row or non-member row, with no lifecycle controls.
 - Successful mutation with the resulting relationship status and no secret values.
@@ -619,11 +656,17 @@ No provider I/O, activation issuance, assignment update, relationship cascade, o
 
 - Policy tests for direct active Owner allow and Member/Admin/OSM/Patient/hierarchy-only deny.
 - Scope tests for wrong Hospital and parent/child Hospital denial.
-- Profession update changes only the target membership and writes one audit event.
-- Suspend/restore changes only the target membership and writes one audit event.
+- Profession update succeeds only when target `User.status = ACTIVE`; it changes only the target membership and writes one audit event.
+- Profession update is rejected for target User `PROVISIONED`, `INVITED`, or `SUSPENDED`.
+- Membership suspension succeeds only when target `User.status = ACTIVE`; it changes `ACTIVE → SUSPENDED` only and writes one audit event.
+- Membership suspension is rejected when target User is not `ACTIVE`.
+- Membership restoration succeeds only when target `User.status = ACTIVE`; it changes `SUSPENDED → ACTIVE` only and writes one audit event.
+- Membership restoration is rejected when target User is not `ACTIVE`.
+- Every rejected User-state mutation leaves `User.status` and `HospitalMembership` unchanged and creates no success AuditEvent.
+- Membership restoration never activates, recovers, or otherwise changes the target User account.
 - A User with another active Hospital membership remains active there.
-- A User with an OSM relationship or Patient role retains those relationships unchanged.
-- User account status, activation state, roles, Patient assignments, and clinical history remain unchanged.
+- A User with an OSM relationship or Patient role retains those relationships unchanged; PatientHospitalRelationship remains unchanged.
+- User account status, activation state/records, roles, Patient assignments, and clinical history remain unchanged.
 - Owner rows cannot be mutated; the future last-Owner guard remains unbroken.
 - Stale concurrent mutation returns a conflict without an incorrect audit event.
 - Transaction rollback removes both the state change and its audit event.
@@ -632,6 +675,7 @@ No provider I/O, activation issuance, assignment update, relationship cascade, o
 ### Explicit non-goals for 11B.0
 
 - OSM relationship suspend/restore/remove/transfer.
+- User account activation/recovery, credential reset, provider/Auth recovery, or activation issuance as a side effect of membership lifecycle.
 - Patient reassignment automation or assignment-resolution workflow.
 - Owner appointment, demotion, transfer, self-demotion, or recovery.
 - Hospital suspend/restore or cascade policy.
