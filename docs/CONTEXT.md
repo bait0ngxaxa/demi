@@ -12,6 +12,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 ขณะนี้ **Phase 10B.0–10D.0 prototype slices implement แล้ว** ต่อจาก **Phase 10A Patient Profile / Baseline / Status Tracking analysis** โดย 10C.0 เพิ่ม dedicated, immutable, relationship-scoped Baseline และ 10D.0 เพิ่ม relationship-level image evidence แบบ append-only สำหรับ requirement validation ทั้งหมดนี้ยังไม่ใช่ customer-approved behavior รายละเอียดอยู่ที่ [Phase 10D.0 handoff](./phases/PHASE_10D0_PATIENT_STATUS_ARTIFACTS_WORKING_PROTOTYPE.md)
 
+**Phase 11A Workforce Lifecycle & Hospital Governance requirements/domain-boundary analysis เสร็จแล้ว** โดยไม่มี product-code, Prisma schema/migration, Server Action, Route Handler หรือ UI workflow ใหม่ ผลวิเคราะห์และ handoff อยู่ที่ [Phase 11A requirements](./phases/PHASE_11A_WORKFORCE_LIFECYCLE_HOSPITAL_GOVERNANCE_REQUIREMENTS.md) ส่วน Phase 11B.0 ยังไม่เริ่ม implementation และข้อเสนอ Staff Membership Lifecycle ที่อยู่ในเอกสารยังเป็น provisional proposal จนกว่าจะได้รับการยืนยันจาก requirement workshop
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
