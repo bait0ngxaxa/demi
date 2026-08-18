@@ -246,6 +246,12 @@ current in persistence, while OSM access is fail-closed**. That is useful
 security behavior, but it does not by itself resolve whether the business
 should allow an operator to create that state through a lifecycle mutation.
 
+This is also why a future restore must not be a raw status update. Even though
+the current predicates would make a manually restored relationship effective
+again, the provisional lifecycle service must count exact-Hospital current
+assignments inside its restore transaction and fail closed when that count is
+non-zero.
+
 ## 7. Legacy evidence
 
 ### 7.1 What the pinned legacy system did show
@@ -310,9 +316,14 @@ The candidate transition is:
 OsmHospitalRelationship: SUSPENDED → ACTIVE
 ```
 
-The strong default is that the linked User must already be `ACTIVE`. Restoring
-the relationship is not User account recovery, credential reset, activation
-issuance, or role creation.
+The strong default is that the linked User must already be `ACTIVE`. Under the
+provisional BLOCK policy, restore also requires zero exact-Hospital current
+`PatientOsmAssignment` rows. A non-zero count is an inconsistent/reconciliation
+state: restore must be rejected without changing the relationship or any
+Patient data. Restoring the relationship is not User account recovery,
+credential reset, activation issuance, or role creation. The future operation
+also retains exact Owner authorization, an active target Hospital, an existing
+`Role.OSM`, the expected `SUSPENDED` source state, and stale-write protection.
 
 ### 8.3 Remove/delete
 
@@ -471,6 +482,25 @@ legacy/manual data has already become inconsistent with the OSM relationship
 status. A future service should fail safely on such a count rather than hide
 or rewrite the inconsistency.
 
+The same invariant applies to restore:
+
+After the normal authorization, active-state, exact-relationship, and
+expected-state checks pass, apply this additional assignment guard:
+
+```text
+if exactHospitalCurrentAssignments > 0:
+    reject restore with a safe reconciliation/lifecycle conflict
+    preserve OsmHospitalRelationship
+    preserve PatientOsmAssignment and PatientHospitalRelationship rows
+    preserve Patient, User, and Role.OSM state
+    write no successful restore lifecycle audit event
+else:
+    allow SUSPENDED → ACTIVE
+```
+
+The count is a defensive consistency guard, not an assignment-resolution
+operation.
+
 ## 11. Restore semantics
 
 ### 11.1 User account precondition
@@ -485,26 +515,36 @@ or rewrite the inconsistency.
 ### 11.2 Assignment consequences under the recommended BLOCK policy
 
 Under the supported BLOCK flow, a relationship cannot become suspended while
-current assignments remain. Therefore:
+current assignments remain. Therefore a valid supported suspended relationship
+should have zero exact-Hospital current assignments. Restore must nevertheless
+repeat that count as a defensive reconciliation guard because legacy/manual
+data or an operation outside the future service may have created an inconsistent
+state.
+
+If the exact-Hospital current assignment count is greater than zero, restore
+must return a safe reconciliation/lifecycle conflict and perform no writes:
+
+- do not mutate `OsmHospitalRelationship`;
+- do not mutate `PatientOsmAssignment`, `PatientHospitalRelationship`, or Patient data;
+- do not mutate `User` or `Role.OSM`;
+- do not end, unassign, reassign, or rewrite assignment history;
+- do not write a successful restore lifecycle audit event.
+
+When the count is zero:
 
 - restore does not recreate any previous assignment;
 - ended assignment rows remain ended and historical;
 - a restored OSM is only eligible for future assignment after all current eligibility predicates pass;
 - restore does not change `PatientOsmAssignment`, `PatientHospitalRelationship`, Patient role, or Patient data.
 
-If an active assignment exists alongside a suspended relationship because of
-legacy/manual data or an operation outside the future service, restore must not
-silently resolve or recreate work. That is an inconsistent state requiring a
-separate reconciliation decision.
-
 ### 11.3 Contrast with PRESERVE-assignment policy
 
-Under Option B, restoring `SUSPENDED → ACTIVE` while a row still has
-`endedAt = NULL` would make the old assignment eligible again under the current
-access predicate. That is implicit access reactivation and potentially an
-implicit return of responsibility. It may be acceptable only if the customer
-explicitly approves that semantic; it is not a safe assumption for the
-prototype.
+If a future customer-approved Option B were chosen, restoring
+`SUSPENDED → ACTIVE` while a row still has `endedAt = NULL` would make the old
+assignment eligible again under the current access predicate. That is implicit
+access reactivation and potentially an implicit return of responsibility. It
+is not the supported restore contract in this provisional BLOCK prototype:
+the future service must block on the exact-Hospital count instead.
 
 ### 11.4 Assignment eligibility after restore
 
@@ -610,6 +650,10 @@ The server must additionally re-check:
 - client-provided Hospital ID is only a selector, never authority;
 - parent/child/sibling/network metadata does not widen authority.
 
+For restore, authorization is not sufficient by itself: the exact-Hospital
+current assignment count must also be zero. That is a lifecycle consistency
+precondition, not a new authorization scope.
+
 Routine authority is not recommended for:
 
 - ordinary Hospital Members;
@@ -668,17 +712,39 @@ blindly retry a blocked business conflict.
 server ActorContext
   → exact direct Owner + target Hospital authorization re-check
   → target Hospital re-check: ACTIVE
-  → target User re-check: ACTIVE and Role.OSM
+  → target User re-check: ACTIVE
+  → target Role.OSM re-check: exists
   → target OsmHospitalRelationship re-check: SUSPENDED
-  → conditional update SUSPENDED → ACTIVE
-  → write bounded osm relationship audit event
-  → commit
+  → count exact-Hospital current PatientOsmAssignment rows
+  → if count > 0:
+       safe reconciliation/lifecycle conflict
+       no relationship, assignment, Patient, User, or Role.OSM writes
+       no successful restore lifecycle audit
+  → otherwise:
+       conditional update SUSPENDED → ACTIVE
+       write bounded osm relationship audit event
+       commit
 ```
 
+The count uses the same exact-Hospital path as suspension:
+
+```text
+PatientOsmAssignment.osmUserId = targetOsmUserId
+AND PatientOsmAssignment.endedAt IS NULL
+AND PatientOsmAssignment
+      → PatientHospitalRelationship.hospitalId = targetHospitalId
+```
+
+The count and conditional relationship update must run in the same serializable
+transaction. A retry must re-read relationship state, target User state,
+target Hospital state, `Role.OSM`, and the exact-Hospital current assignment
+count. It must not blindly retry a real reconciliation conflict.
+
 Restore does not create, end, update, or reassign a Patient assignment. It does
-not restore a User account or add a role. Under the recommended BLOCK policy,
-the supported suspend path has already established that no current assignment
-remained when the relationship was suspended.
+not restore a User account, change `User.status`, change `authSubject`, add a
+role, or recreate historical assignments. Under the recommended BLOCK policy,
+the supported suspend path should already have established zero current
+assignments, while this restore check protects against inconsistent data.
 
 ### 15.3 Boundary constraints
 
@@ -714,12 +780,19 @@ suspension has count zero. Patient IDs, Patient names, HN, clinical data, raw
 identity, National ID, `authSubject`, provider identifiers, credentials, and
 tokens must not be placed in lifecycle audit metadata.
 
-### 16.2 Blocked suspension
+### 16.2 Blocked suspension or restore
 
 **Provisional recommendation:** do not write a success lifecycle event when
-suspension is blocked by current assignments. The normal prototype need not
-write a denied-attempt audit event until a real audit requirement defines its
-retention, actor visibility, failure taxonomy, and abuse implications.
+suspension is blocked by current assignments or restore is blocked by an
+inconsistent non-zero current-assignment count. The normal prototype need not
+write a denied-attempt or reconciliation audit event until a real audit
+requirement defines its retention, actor visibility, failure taxonomy, and
+abuse implications.
+
+A blocked restore writes no successful `osm_relationship.restored` event, no
+Patient assignment audit event, and no fake assignment-resolution event. The
+relationship and all assignment, Patient, User, and role state remain
+unchanged.
 
 The safe conflict response may contain a bounded assignment count for the
 operator. That response is not a Patient assignment mutation and is not a
@@ -744,6 +817,11 @@ future slice may add only the minimum lifecycle information:
 - active current Patient assignment count in the exact Hospital;
 - lifecycle action availability;
 - an explicit reason when the action is unavailable.
+
+If a suspended relationship has one or more exact-Hospital current assignments,
+the future Restore action should be unavailable with a safe reconciliation
+explanation. This is an inconsistent state signal, not an invitation to end,
+unassign, reassign, or otherwise mutate assignments automatically.
 
 Example future state:
 
@@ -790,10 +868,12 @@ provisional future mutation rule.
 | `ACTIVE` | `ACTIVE` | 0 current; ended history allowed | `ACTIVE` | Present | Suspend is potentially allowed after exact Owner authorization and stale-state checks. |
 | `ACTIVE` | `ACTIVE` | 8 current (`endedAt IS NULL`) | `ACTIVE` | Present | **Provisional BLOCK:** reject suspension; preserve relationship and assignment history. |
 | `SUSPENDED` | `ACTIVE` | Any | `ACTIVE` | Present | Lifecycle mutation fails closed; User account recovery is separate. |
-| `ACTIVE` | `SUSPENDED` | 0 current; historical ended rows only | `ACTIVE` | Present | Restore is potentially allowed; it does not recreate historical assignments. |
-| `ACTIVE` | `SUSPENDED` | Current row exists due to legacy/manual inconsistency | `ACTIVE` | Present | Unsupported inconsistent state; do not silently resolve or reassign during restore. |
+| `ACTIVE` | `SUSPENDED` | 0 exact-Hospital current; historical ended rows only | `ACTIVE` | Present | Restore is provisionally allowed after authorization and stale-state checks; it does not recreate historical assignments. |
+| `ACTIVE` | `SUSPENDED` | 1+ exact-Hospital current rows due to legacy/manual or out-of-band inconsistency | `ACTIVE` | Present | Restore is blocked with a safe reconciliation/lifecycle conflict; no automatic assignment mutation and no successful restore audit. |
+| `SUSPENDED` | `SUSPENDED` | 0 exact-Hospital current; historical ended rows only | `ACTIVE` | Present | Restore is blocked because the User account is not `ACTIVE`; account recovery is separate. |
 | `ACTIVE` | `ACTIVE` | Any | `SUSPENDED` | Present | OSM lifecycle action is unavailable/fails closed because the target Hospital is inactive. |
-| `ACTIVE` | `SUSPENDED` in Hospital A; `ACTIVE` in Hospital B | Hospital B assignments unchanged | `ACTIVE` | Present | Hospital B is unaffected; no account, role, or cross-Hospital mutation. |
+| `ACTIVE` | `SUSPENDED` in Hospital A; `ACTIVE` in Hospital B | 0 current in A; current assignments in B | `ACTIVE` | Present | Restore of A is not blocked by Hospital B assignments; Hospital B remains unaffected. |
+| `ACTIVE` | `SUSPENDED` | 0 exact-Hospital current; historical ended rows only | `SUSPENDED` | Present | Restore is unavailable/fails closed because the target Hospital is inactive. |
 | `ACTIVE` | `ACTIVE` | Any | `ACTIVE` | Missing | Relationship/role invariant is invalid; fail closed and reconcile rather than add a role implicitly. |
 | `ACTIVE` | `PROVISIONED` or `INVITED` | No lifecycle current state | `ACTIVE` | Present | Provisioning/activation workflow state, not a suspend/restore target. |
 | `PROVISIONED` | `PROVISIONED` | No supported current assignment | `ACTIVE` | Present | Existing activation boundary applies; relationship lifecycle does not activate the User. |
@@ -835,9 +915,11 @@ Supported scope:
 - add `osm:suspend` and `osm:restore` as separate future capabilities;
 - allow only the exact direct active Hospital Owner scope;
 - require the target User to be `ACTIVE`;
+- require `Role.OSM` to exist;
 - require the target Hospital to be `ACTIVE`;
+- require the expected source relationship state and stale-write protection;
 - allow `ACTIVE → SUSPENDED` only when exact-Hospital current assignment count is zero;
-- allow `SUSPENDED → ACTIVE` with no assignment recreation;
+- allow `SUSPENDED → ACTIVE` only when exact-Hospital current assignment count is zero; for restore, this is a defensive reconciliation guard;
 - keep User account, provider credentials, and `User.status` unchanged;
 - keep `Role.OSM` unchanged;
 - make no Patient assignment mutation;
@@ -867,7 +949,9 @@ Before implementation approval, the next phase should demonstrate:
 - active assignment count resolved through `PatientHospitalRelationship.hospitalId`;
 - blocked suspension leaves relationship, assignments, and success-audit count unchanged;
 - zero-assignment suspension changes only the target relationship and writes one bounded event;
-- restore requires an active User and does not change User, role, or assignment rows;
+- restore with zero exact-Hospital current assignments requires an active User and changes only the target relationship plus one bounded success audit;
+- restore with one or more exact-Hospital current assignments returns a safe reconciliation conflict and leaves relationship, assignment, Patient, User, role, and success-audit state unchanged;
+- restore of Hospital A is not blocked by current assignments belonging to Hospital B;
 - stale expected-state and concurrent assignment/lifecycle conflicts fail safely;
 - multi-Hospital relationship B remains unchanged when relationship A changes;
 - no automatic assignment mutation and no hidden Patient identifiers in lifecycle audit metadata.
