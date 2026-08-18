@@ -16,6 +16,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 11C OSM Relationship Lifecycle & Patient Assignment Consequence Analysis เสร็จแล้ว** ตาม [Phase 11C analysis](./phases/PHASE_11C_OSM_RELATIONSHIP_LIFECYCLE_ASSIGNMENT_CONSEQUENCES.md) และ **Phase 11D.0 OSM Relationship Suspend / Restore working prototype implement แล้ว** ตาม [Phase 11D.0 handoff](./phases/PHASE_11D0_OSM_RELATIONSHIP_LIFECYCLE_WORKING_PROTOTYPE.md) โดยยังคงเป็น narrowly scoped prototype: exact active Hospital Owner เท่านั้น, ต้องไม่มี current Patient assignment ใน Hospital เดียวกัน, และ restore มี defensive reconciliation guard. Emergency suspension, transfer, deletion, geography, governance, account recovery และ customer requirements อื่น ๆ ยังเป็น open requirements
 
+**Phase 12A Hospital Governance & Account Recovery analysis เสร็จแล้ว** ตาม [Phase 12A analysis](./phases/PHASE_12A_HOSPITAL_GOVERNANCE_ACCOUNT_RECOVERY_REQUIREMENTS.md) โดยยืนยันขอบเขต Hospital status-only lifecycle เป็น provisional candidate สำหรับ Phase 12B.0 และยังไม่มี Phase 12 product implementation เริ่มขึ้น. Owner governance, account recovery, session consequences และ business approval requirements สำคัญยังคงเป็น provisional/open requirements
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
