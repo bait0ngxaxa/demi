@@ -14,6 +14,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 11A Workforce Lifecycle & Hospital Governance requirements/domain-boundary analysis เสร็จแล้ว** และ **Phase 11B.0 Staff Membership Lifecycle working prototype implement แล้ว** แบบ narrowly scoped MVP สำหรับ validation โดยใช้ direct active Hospital Owner boundary, bounded Staff detail, profession update, membership suspend/restore และ atomic audit ตาม [Phase 11B.0 handoff](./phases/PHASE_11B0_STAFF_MEMBERSHIP_LIFECYCLE_WORKING_PROTOTYPE.md) ส่วน OSM lifecycle, User account recovery, Hospital/Owner governance และ workforce lifecycle อื่น ๆ ยังไม่เริ่มและยังเป็น open requirements ตาม [Phase 11A requirements](./phases/PHASE_11A_WORKFORCE_LIFECYCLE_HOSPITAL_GOVERNANCE_REQUIREMENTS.md)
 
+**Phase 11C OSM Relationship Lifecycle & Patient Assignment Consequence Analysis เสร็จแล้ว** ตาม [Phase 11C analysis](./phases/PHASE_11C_OSM_RELATIONSHIP_LIFECYCLE_ASSIGNMENT_CONSEQUENCES.md) โดยข้อเสนอ BLOCK suspension เมื่อมี current Patient assignment เป็นเพียง provisional prototype recommendation; **Phase 11D.0 ยังไม่เริ่มและยังไม่มี OSM lifecycle implementation**
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
