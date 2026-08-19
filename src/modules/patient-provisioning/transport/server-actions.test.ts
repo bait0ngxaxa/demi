@@ -1,8 +1,9 @@
-import { Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { PatientImportUpload } from "../adapters/excel-patient-import-adapter";
+import type { PatientProvisionActionState } from "./action-state";
 import {
   createPatientImportPreviewBinding,
   hashPatientImportFile,
@@ -34,17 +35,36 @@ vi.mock("../services/patient-provisioning-service", () => ({
   PatientProvisioningConflictError: class PatientProvisioningConflictError extends Error {},
 }));
 
+const hospitalId = "11111111-1111-4111-8111-111111111111";
+const otherHospitalId = "44444444-4444-4444-8444-444444444444";
+const relationshipId = "55555555-5555-4555-8555-555555555555";
+
+const directHospitalMembership = {
+  hospitalId,
+  membershipType: MembershipType.MEMBER,
+  profession: null,
+  status: MembershipStatus.ACTIVE,
+  hospitalStatus: HospitalStatus.ACTIVE,
+} satisfies ActorContext["hospitalMemberships"][number];
+
 const actor = {
   userId: "22222222-2222-4222-8222-222222222222",
   personId: "33333333-3333-4333-8333-333333333333",
   roles: [Role.HOSPITAL],
-  hospitalMemberships: [],
+  hospitalMemberships: [directHospitalMembership],
   osmHospitalRelationships: [],
 } satisfies ActorContext;
 
-const hospitalId = "11111111-1111-4111-8111-111111111111";
-const otherHospitalId = "44444444-4444-4444-8444-444444444444";
-const relationshipId = "55555555-5555-4555-8555-555555555555";
+const osmOnlyActor = {
+  ...actor,
+  roles: [Role.OSM],
+  hospitalMemberships: [],
+} satisfies ActorContext;
+
+const multiRoleActor = {
+  ...actor,
+  roles: [Role.OSM, Role.HOSPITAL],
+} satisfies ActorContext;
 
 function createUpload(contents: string, name = "patients.xlsx"): PatientImportUpload {
   return new File([new TextEncoder().encode(contents)], name, {
@@ -126,7 +146,7 @@ describe("patient import Server Actions", () => {
     });
   });
 
-  it("preserves the authoritative single-provisioning relationship ID", async () => {
+  async function provisionSinglePatient(): Promise<PatientProvisionActionState> {
     const formData = new FormData();
     formData.set("nationalId", "1000000000009");
     formData.set("givenName", "สมชาย");
@@ -134,7 +154,11 @@ describe("patient import Server Actions", () => {
     formData.set("hospitalNumber", "HN-001");
     formData.set("targetHospitalId", hospitalId);
 
-    const result = await provisionPatientAction({ status: "IDLE" }, formData);
+    return provisionPatientAction({ status: "IDLE" }, formData);
+  }
+
+  it("preserves the authoritative single-provisioning relationship ID", async () => {
+    const result = await provisionSinglePatient();
 
     expect(result).toEqual({
       status: "SUCCESS",
@@ -144,6 +168,64 @@ describe("patient import Server Actions", () => {
         hospitalId,
         accountStatus: "PROVISIONED",
         reusedExistingUser: false,
+        canOpenPatientDetail: true,
+        canManagePatientActivation: true,
+      },
+    });
+  });
+
+  it("does not collapse provisioning, read, and activation authority for an OSM-only actor", async () => {
+    mockedActor.mockResolvedValue(osmOnlyActor);
+
+    const result = await provisionSinglePatient();
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: {
+        relationshipId,
+        hospitalId,
+        canOpenPatientDetail: false,
+        canManagePatientActivation: false,
+      },
+    });
+  });
+
+  it("uses direct Hospital scope for a multi-role actor", async () => {
+    mockedActor.mockResolvedValue(multiRoleActor);
+
+    const result = await provisionSinglePatient();
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: {
+        canOpenPatientDetail: true,
+        canManagePatientActivation: true,
+      },
+    });
+  });
+
+  it("applies the same server-derived capabilities to an existing relationship", async () => {
+    mockedActor.mockResolvedValue(osmOnlyActor);
+    mockedProvisionPatient.mockResolvedValue({
+      outcome: "ALREADY_PROVISIONED",
+      personId: "66666666-6666-4666-8666-666666666666",
+      userId: "77777777-7777-4777-8777-777777777777",
+      patientProfileId: "88888888-8888-4888-8888-888888888888",
+      relationshipId,
+      hospitalId,
+      accountStatus: "ACTIVE",
+      reusedExistingUser: true,
+    });
+
+    const result = await provisionSinglePatient();
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: {
+        outcome: "ALREADY_PROVISIONED",
+        accountStatus: "ACTIVE",
+        canOpenPatientDetail: false,
+        canManagePatientActivation: false,
       },
     });
   });

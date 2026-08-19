@@ -22,8 +22,9 @@ Phase นี้เชื่อมต่อ workflow ที่มีอยู่�
 ### P13-H2 — Patient provisioning continuation
 
 - `provisionPatientAction` ส่งต่อ `relationshipId` และ `hospitalId` ที่ service คืนมาโดยตรง
-- single-record success แสดง `เปิดข้อมูลผู้ป่วย` ไปยัง `/app/patients/[relationshipId]`
-- แสดง activation-management continuation เฉพาะเมื่อ account status เป็น `PROVISIONED`
+- single-record success แสดง `เปิดข้อมูลผู้ป่วย` ไปยัง `/app/patients/[relationshipId]` เฉพาะเมื่อ actor มี direct Hospital Patient read scope ใน Hospital เป้าหมาย
+- แสดง activation-management continuation เฉพาะเมื่อ account status เป็น `PROVISIONED` และ actor มี existing Patient activation Hospital scope ใน Hospital เป้าหมาย
+- OSM provisioning ไม่ imply Patient Detail access หรือ Patient activation authority และไม่ทำการ assign Patient ให้ OSM อัตโนมัติ; หากไม่มี continuation ที่ actor ใช้ได้ UI ยังคงแสดง success state ที่อธิบายตามสิทธิ์ปัจจุบัน
 - `ACTIVE` User ที่ถูก reuse แสดง Patient Detail เป็น continuation หลักและไม่แสดง activation-required state
 - bulk import ยังคงใช้ summary เดิมและมีเพียง link กลับ Patient directory ที่ผูกกับ `summary.targetHospitalId`; ไม่เพิ่ม per-row persistence หรือเดา relationship ID
 
@@ -79,7 +80,8 @@ Phase นี้เชื่อมต่อ workflow ที่มีอยู่�
 เพิ่ม regression coverage สำหรับ:
 
 - actor projection ของ ADMIN, Hospital Owner, Hospital Member, OSM, PATIENT และ suspended Hospital
-- authoritative Patient provisioning relationship ID, Patient Detail continuation และ activation เฉพาะ `PROVISIONED`
+- authoritative Patient provisioning relationship ID, capability-aware Patient Detail continuation และ activation เฉพาะ `PROVISIONED` + existing activation scope
+- provisioning/read/activation authority แยกกันสำหรับ Hospital, OSM-only, multi-role และ `ALREADY_PROVISIONED` cases
 - ACTIVE User reuse ไม่แสดง activation-required link
 - approved onboarding state แสดง separate-login continuation เฉพาะเมื่อ approved
 - Screening context และ Goal Plan context ต้องอยู่ใน relationship projection เดียวกัน

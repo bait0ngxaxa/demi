@@ -23,6 +23,7 @@ import {
   matchesPatientImportFileFingerprint,
   matchesPatientImportPreviewBinding,
 } from "./patient-import-file-binding";
+import { projectPatientProvisionContinuation } from "./patient-provisioning-continuation";
 import type {
   PatientImportActionState,
   PatientImportPreviewActionState,
@@ -161,6 +162,7 @@ export async function provisionPatientAction(
     });
 
     revalidatePath("/app/patients/provision");
+    const continuation = projectPatientProvisionContinuation(actor, result.hospitalId);
 
     return {
       status: "SUCCESS",
@@ -170,6 +172,7 @@ export async function provisionPatientAction(
         hospitalId: result.hospitalId,
         accountStatus: result.accountStatus,
         reusedExistingUser: result.reusedExistingUser,
+        ...continuation,
       },
     };
   } catch (error: unknown) {

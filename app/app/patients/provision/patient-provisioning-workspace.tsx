@@ -31,6 +31,7 @@ import {
   type PatientImportActionState,
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
+  type PatientProvisionResultState,
 } from "@/modules/patient-provisioning/transport/action-state";
 
 type PatientProvisioningWorkspaceProps = {
@@ -103,6 +104,44 @@ function createPatientImportConfirmFormData(
   return formData;
 }
 
+function ProvisionContinuation({
+  result,
+}: {
+  result: PatientProvisionResultState;
+}): React.JSX.Element {
+  const canManageActivation =
+    result.accountStatus === "PROVISIONED" && result.canManagePatientActivation;
+
+  if (!result.canOpenPatientDetail && !canManageActivation) {
+    return (
+      <p className="mt-3 text-sm leading-6 text-muted">
+        ขณะนี้บัญชีนี้ยังไม่มีสิทธิ์ดำเนินการต่อในรายละเอียดหรือการเปิดใช้งานของผู้ป่วยรายนี้
+      </p>
+    );
+  }
+
+  return (
+    <>
+      {result.canOpenPatientDetail ? (
+        <Link
+          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href={`/app/patients/${encodeURIComponent(result.relationshipId)}`}
+        >
+          เปิดข้อมูลผู้ป่วย
+        </Link>
+      ) : null}
+      {canManageActivation ? (
+        <Link
+          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href={`/app/patients/activation?hospitalId=${encodeURIComponent(result.hospitalId)}`}
+        >
+          จัดการการเปิดใช้งานบัญชีผู้ป่วย
+        </Link>
+      ) : null}
+    </>
+  );
+}
+
 function ProvisionResult({
   state,
 }: {
@@ -117,20 +156,7 @@ function ProvisionResult({
       <Alert className="mt-4" variant="neutral">
         <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
         <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
-        <Link
-          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href={`/app/patients/${encodeURIComponent(state.result.relationshipId)}`}
-        >
-          เปิดข้อมูลผู้ป่วย
-        </Link>
-        {state.result.accountStatus === "PROVISIONED" ? (
-          <Link
-            className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-            href={`/app/patients/activation?hospitalId=${encodeURIComponent(state.result.hospitalId)}`}
-          >
-            จัดการการเปิดใช้งานบัญชีผู้ป่วย
-          </Link>
-        ) : null}
+        <ProvisionContinuation result={state.result} />
       </Alert>
     );
   }
@@ -145,20 +171,7 @@ function ProvisionResult({
       <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
-      <Link
-        className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-        href={`/app/patients/${encodeURIComponent(state.result.relationshipId)}`}
-      >
-        เปิดข้อมูลผู้ป่วย
-      </Link>
-      {state.result.accountStatus === "PROVISIONED" ? (
-        <Link
-          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href={`/app/patients/activation?hospitalId=${encodeURIComponent(state.result.hospitalId)}`}
-        >
-          จัดการการเปิดใช้งานบัญชีผู้ป่วย
-        </Link>
-      ) : null}
+      <ProvisionContinuation result={state.result} />
     </Alert>
   );
 }

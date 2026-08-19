@@ -31,6 +31,8 @@ const successState = {
     hospitalId: "33333333-3333-4333-8333-333333333333",
     accountStatus: "PROVISIONED",
     reusedExistingUser: false,
+    canOpenPatientDetail: true,
+    canManagePatientActivation: true,
   },
 } satisfies PatientProvisionActionState;
 
@@ -116,5 +118,108 @@ describe("PatientProvisioningWorkspace form structure", () => {
     );
     expect(markup).not.toContain('href="/app/patients/activation');
     expect(markup).not.toContain("อยู่ในสถานะรอเปิดใช้งาน");
+  });
+
+  it("keeps an OSM-only success truthful without unauthorized continuations", () => {
+    mockedUseActionState.mockReturnValue([
+      {
+        status: "SUCCESS",
+        result: {
+          ...successState.result,
+          canOpenPatientDetail: false,
+          canManagePatientActivation: false,
+        },
+      },
+      vi.fn(),
+      false,
+    ]);
+    const scope = {
+      hospitalId,
+      hospitalCode: "TEST-HOSPITAL",
+      hospitalName: "โรงพยาบาลทดสอบ",
+      canBulkImport: false,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes: [scope],
+        selectedHospitalId: scope.hospitalId,
+        selectedScope: scope,
+      }),
+    );
+
+    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว");
+    expect(markup).toContain("ยังไม่มีสิทธิ์ดำเนินการต่อ");
+    expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
+    expect(markup).not.toContain('href="/app/patients/activation');
+  });
+
+  it("applies capability-aware continuations to already provisioned results", () => {
+    mockedUseActionState.mockReturnValue([
+      {
+        status: "SUCCESS",
+        result: {
+          ...successState.result,
+          outcome: "ALREADY_PROVISIONED",
+          canOpenPatientDetail: false,
+          canManagePatientActivation: false,
+        },
+      },
+      vi.fn(),
+      false,
+    ]);
+    const scope = {
+      hospitalId,
+      hospitalCode: "TEST-HOSPITAL",
+      hospitalName: "โรงพยาบาลทดสอบ",
+      canBulkImport: false,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes: [scope],
+        selectedHospitalId: scope.hospitalId,
+        selectedScope: scope,
+      }),
+    );
+
+    expect(markup).toContain("ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว");
+    expect(markup).toContain("ยังไม่มีสิทธิ์ดำเนินการต่อ");
+    expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
+    expect(markup).not.toContain('href="/app/patients/activation');
+  });
+
+  it("does not advertise activation management for an ACTIVE OSM-only reuse", () => {
+    mockedUseActionState.mockReturnValue([
+      {
+        status: "SUCCESS",
+        result: {
+          ...successState.result,
+          accountStatus: "ACTIVE",
+          reusedExistingUser: true,
+          canOpenPatientDetail: false,
+          canManagePatientActivation: false,
+        },
+      },
+      vi.fn(),
+      false,
+    ]);
+    const scope = {
+      hospitalId,
+      hospitalCode: "TEST-HOSPITAL",
+      hospitalName: "โรงพยาบาลทดสอบ",
+      canBulkImport: false,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes: [scope],
+        selectedHospitalId: scope.hospitalId,
+        selectedScope: scope,
+      }),
+    );
+
+    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว");
+    expect(markup).not.toContain("อยู่ในสถานะรอเปิดใช้งาน");
+    expect(markup).not.toContain("จัดการการเปิดใช้งานบัญชีผู้ป่วย");
+    expect(markup).not.toContain('href="/app/patients/activation');
+    expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
   });
 });

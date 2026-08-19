@@ -3,13 +3,14 @@ import type {
   PatientImportResultSummary,
   PatientProvisioningOutcome,
 } from "../services/patient-provisioning-service";
+import type { PatientProvisionContinuation } from "./patient-provisioning-continuation";
 
 export type PatientImportPreviewBinding = PatientImportPreview & {
   fileFingerprint: string;
   previewBinding: string;
 };
 
-export type PatientProvisionResultState = {
+export type PatientProvisionResultState = PatientProvisionContinuation & {
   outcome: PatientProvisioningOutcome;
   relationshipId: string;
   hospitalId: string;
