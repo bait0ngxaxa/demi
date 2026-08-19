@@ -184,6 +184,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             actions={detail.actions}
             expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
             membershipType={detail.membershipType}
+            ownerGovernance={detail.ownerGovernance}
             profession={detail.profession}
             relationshipId={detail.relationshipId}
             relationshipStatus={detail.relationshipStatus}

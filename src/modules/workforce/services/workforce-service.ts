@@ -36,6 +36,10 @@ import {
 
 import { assertWorkforcePolicy, WORKFORCE_CAPABILITIES } from "../policies/workforce-policy";
 import {
+  assertHospitalOwnerPolicy,
+  HOSPITAL_OWNER_CAPABILITIES,
+} from "../policies/hospital-owner-policy";
+import {
   hospitalMemberProvisionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
@@ -44,11 +48,13 @@ import {
   workforceDetailRequestSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipTransitionSchema,
+  hospitalOwnerGovernanceMutationSchema,
   osmRelationshipTransitionSchema,
   workforceListSchema,
   type HospitalMemberProvisionInput,
   type HospitalMembershipProfessionUpdateInput,
   type HospitalMembershipTransitionInput,
+  type HospitalOwnerGovernanceMutationInput,
   type OsmRelationshipTransitionInput,
   type OsmProvisionInput,
   type WorkforceActivationCompletionInput,
@@ -108,6 +114,7 @@ export type WorkforceListRow = {
   userId: string;
   displayName: string;
   kind: WorkforceKind;
+  membershipType: MembershipType | null;
   profession: HospitalMemberProvisionInput["profession"] | null;
   relationshipStatus: MembershipStatus;
   accountStatus: UserStatus;
@@ -147,6 +154,10 @@ export type WorkforceDetail = {
     | "INVALID_RELATIONSHIP_STATE"
     | null;
   relationshipUpdatedAt: Date;
+  ownerGovernance: {
+    canPromote: boolean;
+    canDemote: boolean;
+  };
   actions: {
     updateProfession: boolean;
     suspend: boolean;
@@ -166,6 +177,13 @@ export type WorkforceOsmRelationshipMutationResult = {
   relationshipId: string;
   hospitalId: string;
   relationshipStatus: MembershipStatus;
+  updatedAt: Date;
+};
+
+export type WorkforceOwnerGovernanceMutationResult = {
+  relationshipId: string;
+  hospitalId: string;
+  membershipType: MembershipType;
   updatedAt: Date;
 };
 
@@ -224,6 +242,7 @@ const workforceMembershipDetailSelect = {
   user: {
     select: {
       status: true,
+      roles: { select: { role: true } },
       person: {
         select: {
           givenName: true,
@@ -1002,6 +1021,23 @@ function activeOwnerHospitalWhere(actorUserId: string): Prisma.HospitalWhereInpu
   };
 }
 
+async function countEligibleOwners(
+  database: WorkforceDatabase,
+  hospitalId: string,
+): Promise<number> {
+  return database.hospitalMembership.count({
+    where: {
+      hospitalId,
+      membershipType: MembershipType.OWNER,
+      status: MembershipStatus.ACTIVE,
+      user: {
+        status: UserStatus.ACTIVE,
+        roles: { some: { role: Role.HOSPITAL } },
+      },
+    },
+  });
+}
+
 async function findDetailActivation(
   database: WorkforceDatabase,
   userId: string,
@@ -1092,6 +1128,7 @@ function toWorkforceDetail(
   record: WorkforceMembershipDetailRecord | WorkforceOsmDetailRecord,
   activation: Awaited<ReturnType<typeof findDetailActivation>>,
   currentAssignmentCount: number | null,
+  eligibleOwnerCount: number | null,
 ): WorkforceDetail {
   const membershipType = kind === "staff" ? (record as WorkforceMembershipDetailRecord).membershipType : null;
   const profession = kind === "staff" ? (record as WorkforceMembershipDetailRecord).profession : null;
@@ -1101,6 +1138,13 @@ function toWorkforceDetail(
     kind === "osm"
       ? (record as WorkforceOsmDetailRecord).user.roles.some(({ role }) => role === Role.OSM)
       : true;
+  const hasHospitalRole = record.user.roles.some(({ role }) => role === Role.HOSPITAL);
+  const targetIsEligibleOwnerGovernanceState =
+    kind === "staff" &&
+    record.status === MembershipStatus.ACTIVE &&
+    accountStatus === UserStatus.ACTIVE &&
+    record.hospital.status === HospitalStatus.ACTIVE &&
+    hasHospitalRole;
 
   return {
     relationshipId: record.id,
@@ -1124,6 +1168,14 @@ function toWorkforceDetail(
       currentAssignmentCount,
     }),
     relationshipUpdatedAt: record.updatedAt,
+    ownerGovernance: {
+      canPromote:
+        targetIsEligibleOwnerGovernanceState && membershipType === MembershipType.MEMBER,
+      canDemote:
+        targetIsEligibleOwnerGovernanceState &&
+        membershipType === MembershipType.OWNER &&
+        (eligibleOwnerCount ?? 0) > 1,
+    },
     actions: toWorkforceDetailActions({
       kind,
       membershipType,
@@ -1176,16 +1228,33 @@ export async function getWorkforceDetail(
 
     assertActorPolicy(actor, WORKFORCE_CAPABILITIES.read, record.hospital.id);
 
-    const [activation, currentAssignmentCount] = await Promise.all([
+    if (parsed.data.kind === "staff") {
+      assertHospitalOwnerPolicy({
+        actor,
+        capability: HOSPITAL_OWNER_CAPABILITIES.readGovernance,
+        targetHospitalId: record.hospital.id,
+      });
+    }
+
+    const [activation, currentAssignmentCount, eligibleOwnerCount] = await Promise.all([
       findDetailActivation(database, record.userId),
       parsed.data.kind === "osm"
         ? countCurrentAssignmentsForOsmInHospital(database, {
             osmUserId: record.userId,
             hospitalId: record.hospital.id,
-          })
+        })
+        : Promise.resolve(null),
+      parsed.data.kind === "staff"
+        ? countEligibleOwners(database, record.hospital.id)
         : Promise.resolve(null),
     ]);
-    return toWorkforceDetail(parsed.data.kind, record, activation, currentAssignmentCount);
+    return toWorkforceDetail(
+      parsed.data.kind,
+      record,
+      activation,
+      currentAssignmentCount,
+      eligibleOwnerCount,
+    );
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;
@@ -1218,6 +1287,10 @@ export async function listWorkforce(
             userId: actor!.userId,
             membershipType: MembershipType.OWNER,
             status: MembershipStatus.ACTIVE,
+            user: {
+              status: UserStatus.ACTIVE,
+              roles: { some: { role: Role.HOSPITAL } },
+            },
           },
         },
       },
@@ -1230,14 +1303,12 @@ export async function listWorkforce(
 
     const [memberships, osmRelationships] = await Promise.all([
       database.hospitalMembership.findMany({
-        where: {
-          hospitalId: hospital.id,
-          membershipType: MembershipType.MEMBER,
-        },
+        where: { hospitalId: hospital.id },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: {
           id: true,
           userId: true,
+          membershipType: true,
           profession: true,
           status: true,
           user: {
@@ -1299,6 +1370,7 @@ export async function listWorkforce(
             membership.user.person.familyName,
           ),
           kind: "HOSPITAL_MEMBER" as const,
+          membershipType: membership.membershipType,
           profession: membership.profession,
           relationshipStatus: membership.status,
           accountStatus: membership.user.status,
@@ -1317,6 +1389,7 @@ export async function listWorkforce(
             relationship.user.person.familyName,
           ),
           kind: "OSM" as const,
+          membershipType: null,
           profession: null,
           relationshipStatus: relationship.status,
           accountStatus: relationship.user.status,
@@ -1335,6 +1408,300 @@ export async function listWorkforce(
 
     throw new InfrastructureError("Workforce data could not be loaded");
   }
+}
+
+type HospitalOwnerGovernanceTarget = {
+  id: string;
+  userId: string;
+  hospitalId: string;
+  membershipType: MembershipType;
+  status: MembershipStatus;
+  updatedAt: Date;
+  hospital: { status: HospitalStatus };
+  user: {
+    status: UserStatus;
+    roles: { role: Role }[];
+  };
+};
+
+const hospitalOwnerGovernanceTargetSelect = {
+  id: true,
+  userId: true,
+  hospitalId: true,
+  membershipType: true,
+  status: true,
+  updatedAt: true,
+  hospital: { select: { status: true } },
+  user: {
+    select: {
+      status: true,
+      roles: { select: { role: true } },
+    },
+  },
+} satisfies Prisma.HospitalMembershipSelect;
+
+function parseExpectedOwnerGovernanceUpdatedAt(value: string): Date {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new ValidationError("Hospital Owner membership version is invalid");
+  }
+
+  return parsed;
+}
+
+async function assertHospitalOwnerGovernanceTarget(
+  transaction: Prisma.TransactionClient,
+  input: HospitalOwnerGovernanceMutationInput,
+  expectedMembershipType: MembershipType,
+): Promise<HospitalOwnerGovernanceTarget> {
+  const membership = await transaction.hospitalMembership.findFirst({
+    where: {
+      id: input.relationshipId,
+      hospitalId: input.targetHospitalId,
+    },
+    select: hospitalOwnerGovernanceTargetSelect,
+  });
+
+  if (!membership) {
+    throw new NotFoundError("The Hospital membership was not found");
+  }
+
+  if (membership.hospital.status !== HospitalStatus.ACTIVE) {
+    throw new ConflictError("Owner governance requires an active Hospital");
+  }
+
+  if (membership.membershipType !== expectedMembershipType) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  if (membership.status !== MembershipStatus.ACTIVE) {
+    throw new ConflictError("The target Hospital membership is not active");
+  }
+
+  if (membership.user.status !== UserStatus.ACTIVE) {
+    throw new ConflictError("The target account is not active for Owner governance");
+  }
+
+  if (!membership.user.roles.some(({ role }) => role === Role.HOSPITAL)) {
+    throw new ConflictError("The target account is missing the Hospital role");
+  }
+
+  const expectedUpdatedAt = parseExpectedOwnerGovernanceUpdatedAt(input.expectedUpdatedAt);
+
+  if (membership.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  return membership;
+}
+
+function toOwnerGovernanceMutationResult(
+  membership: Pick<HospitalOwnerGovernanceTarget, "id" | "hospitalId" | "membershipType" | "updatedAt">,
+): WorkforceOwnerGovernanceMutationResult {
+  return {
+    relationshipId: membership.id,
+    hospitalId: membership.hospitalId,
+    membershipType: membership.membershipType,
+    updatedAt: membership.updatedAt,
+  };
+}
+
+async function promoteHospitalOwnerInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: HospitalOwnerGovernanceMutationInput,
+  actorUserId: string,
+): Promise<WorkforceOwnerGovernanceMutationResult> {
+  const current = await assertHospitalOwnerGovernanceTarget(
+    transaction,
+    input,
+    MembershipType.MEMBER,
+  );
+
+  const updated = await transaction.hospitalMembership.updateMany({
+    where: {
+      id: current.id,
+      hospitalId: current.hospitalId,
+      membershipType: MembershipType.MEMBER,
+      status: MembershipStatus.ACTIVE,
+      updatedAt: current.updatedAt,
+    },
+    data: { membershipType: MembershipType.OWNER },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  const result = await transaction.hospitalMembership.findUnique({
+    where: { id: current.id },
+    select: { id: true, hospitalId: true, membershipType: true, updatedAt: true },
+  });
+
+  if (!result) {
+    throw new InfrastructureError("The updated Hospital membership could not be read");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId,
+      action: "hospital_owner.promoted",
+      resourceType: "HospitalMembership",
+      resourceId: result.id,
+      metadata: {
+        hospitalId: result.hospitalId,
+        targetMembershipId: result.id,
+        targetUserId: current.userId,
+        fromMembershipType: MembershipType.MEMBER,
+        toMembershipType: MembershipType.OWNER,
+      },
+    },
+    transaction,
+  );
+
+  return toOwnerGovernanceMutationResult(result);
+}
+
+async function demoteHospitalOwnerInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: HospitalOwnerGovernanceMutationInput,
+  actorUserId: string,
+): Promise<WorkforceOwnerGovernanceMutationResult> {
+  const current = await assertHospitalOwnerGovernanceTarget(
+    transaction,
+    input,
+    MembershipType.OWNER,
+  );
+
+  const eligibleOwnerCount = await transaction.hospitalMembership.count({
+    where: {
+      hospitalId: current.hospitalId,
+      membershipType: MembershipType.OWNER,
+      status: MembershipStatus.ACTIVE,
+      user: {
+        status: UserStatus.ACTIVE,
+        roles: { some: { role: Role.HOSPITAL } },
+      },
+    },
+  });
+
+  if (eligibleOwnerCount < 2) {
+    throw new ConflictError("At least one eligible Hospital Owner must remain");
+  }
+
+  const updated = await transaction.hospitalMembership.updateMany({
+    where: {
+      id: current.id,
+      hospitalId: current.hospitalId,
+      membershipType: MembershipType.OWNER,
+      status: MembershipStatus.ACTIVE,
+      updatedAt: current.updatedAt,
+    },
+    data: { membershipType: MembershipType.MEMBER },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  const result = await transaction.hospitalMembership.findUnique({
+    where: { id: current.id },
+    select: { id: true, hospitalId: true, membershipType: true, updatedAt: true },
+  });
+
+  if (!result) {
+    throw new InfrastructureError("The updated Hospital membership could not be read");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId,
+      action: "hospital_owner.demoted",
+      resourceType: "HospitalMembership",
+      resourceId: result.id,
+      metadata: {
+        hospitalId: result.hospitalId,
+        targetMembershipId: result.id,
+        targetUserId: current.userId,
+        fromMembershipType: MembershipType.OWNER,
+        toMembershipType: MembershipType.MEMBER,
+      },
+    },
+    transaction,
+  );
+
+  return toOwnerGovernanceMutationResult(result);
+}
+
+async function executeHospitalOwnerMutation(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  capability:
+    | (typeof HOSPITAL_OWNER_CAPABILITIES.promote)
+    | (typeof HOSPITAL_OWNER_CAPABILITIES.demote),
+  operation: (
+    transaction: Prisma.TransactionClient,
+    input: HospitalOwnerGovernanceMutationInput,
+    actorUserId: string,
+  ) => Promise<WorkforceOwnerGovernanceMutationResult>,
+  dependencies: WorkforceServiceDependencies,
+): Promise<WorkforceOwnerGovernanceMutationResult> {
+  const parsed = hospitalOwnerGovernanceMutationSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital Owner governance data is invalid");
+  }
+
+  assertHospitalOwnerPolicy({
+    actor,
+    capability,
+    targetHospitalId: parsed.data.targetHospitalId,
+  });
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
+        return operation(transaction, parsed.data, actor.userId);
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital Owner governance operation could not be completed");
+  }
+}
+
+export async function promoteHospitalOwner(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceOwnerGovernanceMutationResult> {
+  return executeHospitalOwnerMutation(
+    actor,
+    input,
+    HOSPITAL_OWNER_CAPABILITIES.promote,
+    promoteHospitalOwnerInTransaction,
+    dependencies,
+  );
+}
+
+export async function demoteHospitalOwner(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceOwnerGovernanceMutationResult> {
+  return executeHospitalOwnerMutation(
+    actor,
+    input,
+    HOSPITAL_OWNER_CAPABILITIES.demote,
+    demoteHospitalOwnerInTransaction,
+    dependencies,
+  );
 }
 
 type StaffMembershipMutationTarget = {

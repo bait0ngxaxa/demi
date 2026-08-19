@@ -199,7 +199,11 @@ function WorkforceRow({
         <div>
           <p className="font-semibold text-ink">{row.displayName}</p>
           <p className="mt-1 text-sm text-muted">
-            {row.kind === "OSM" ? "อสม." : `บุคลากรโรงพยาบาล · ${row.profession ? professionLabels[row.profession] : "ยังไม่ระบุวิชาชีพ"}`}
+            {row.kind === "OSM"
+              ? "อสม."
+              : row.membershipType === "OWNER"
+                ? "เจ้าของโรงพยาบาล"
+                : `บุคลากรโรงพยาบาล · ${row.profession ? professionLabels[row.profession] : "ยังไม่ระบุวิชาชีพ"}`}
           </p>
         </div>
         <StatusBadge variant={statusVariant}>
@@ -214,7 +218,7 @@ function WorkforceRow({
         ดูรายละเอียดความสัมพันธ์
       </Link>
 
-      {row.activationRequired ? (
+      {row.activationRequired && row.membershipType !== "OWNER" ? (
         <div className="mt-4 flex flex-col gap-3 rounded-control bg-surface-muted px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs leading-5 text-muted">
             <p>บัญชีและความสัมพันธ์ยังไม่เปิดใช้งาน</p>
@@ -298,7 +302,7 @@ export function WorkforceWorkspace({
       <PageHeader
         actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
         breadcrumbs={[{ label: "บุคลากร" }, { label: "จัดการบุคลากร" }]}
-        description="เพิ่มบุคลากรและ อสม. ให้กับโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
+        description="เพิ่มบุคลากรและ อสม. รวมถึงจัดการสถานะ Owner/Member ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
         title="จัดการบุคลากรโรงพยาบาล"
       />
 

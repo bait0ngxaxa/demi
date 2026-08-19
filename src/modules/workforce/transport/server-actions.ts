@@ -11,6 +11,7 @@ import {
   hospitalMemberProvisionSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipTransitionSchema,
+  hospitalOwnerGovernanceMutationSchema,
   osmRelationshipTransitionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
@@ -18,6 +19,8 @@ import {
 } from "../schemas/workforce-schemas";
 import {
   completeWorkforceActivation,
+  demoteHospitalOwner,
+  promoteHospitalOwner,
   provisionHospitalMember,
   provisionOsm,
   regenerateWorkforceActivation,
@@ -36,6 +39,8 @@ import type {
   WorkforceMembershipMutationResultState,
   WorkforceOsmRelationshipMutationActionState,
   WorkforceOsmRelationshipMutationResultState,
+  WorkforceOwnerGovernanceMutationActionState,
+  WorkforceOwnerGovernanceMutationResultState,
   WorkforceProvisionActionState,
   WorkforceProvisionResultState,
 } from "./action-state";
@@ -176,6 +181,40 @@ function mapOsmRelationshipError(error: unknown): {
   };
 }
 
+function mapHospitalOwnerGovernanceError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION") {
+      return {
+        code: "INVALID_INPUT",
+        message: "ข้อมูลการเปลี่ยนแปลงสิทธิ์เจ้าของโรงพยาบาลไม่ถูกต้อง",
+      };
+    }
+
+    if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+      return {
+        code: "FORBIDDEN",
+        message: "บัญชีนี้ไม่มีสิทธิ์จัดการสิทธิ์เจ้าของโรงพยาบาล",
+      };
+    }
+
+    if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
+      return {
+        code: "CONFLICT",
+        message:
+          "ไม่สามารถเปลี่ยนสิทธิ์เจ้าของโรงพยาบาลได้ กรุณาโหลดข้อมูลล่าสุดแล้วตรวจสอบสถานะสมาชิกอีกครั้ง",
+      };
+    }
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "ระบบไม่พร้อมเปลี่ยนสิทธิ์เจ้าของโรงพยาบาลในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
 function getMembershipMutationInput(formData: FormData) {
   return {
     relationshipId: getString(formData, "relationshipId"),
@@ -222,6 +261,21 @@ function toOsmRelationshipMutationResultState(
   };
 }
 
+function toOwnerGovernanceMutationResultState(
+  result: Awaited<ReturnType<typeof promoteHospitalOwner>>,
+): WorkforceOwnerGovernanceMutationResultState {
+  if (result.membershipType !== "OWNER" && result.membershipType !== "MEMBER") {
+    throw new Error("Unexpected Hospital Owner governance membership type");
+  }
+
+  return {
+    relationshipId: result.relationshipId,
+    hospitalId: result.hospitalId,
+    membershipType: result.membershipType,
+    updatedAt: result.updatedAt.toISOString(),
+  };
+}
+
 function revalidateWorkforceMembership(relationshipId: string): void {
   revalidatePath("/app/workforce");
   revalidatePath(`/app/workforce/staff/${relationshipId}`);
@@ -230,6 +284,11 @@ function revalidateWorkforceMembership(relationshipId: string): void {
 function revalidateOsmRelationship(relationshipId: string): void {
   revalidatePath("/app/workforce");
   revalidatePath(`/app/workforce/osm/${relationshipId}`);
+}
+
+function revalidateHospitalOwnerGovernance(relationshipId: string): void {
+  revalidatePath("/app/workforce");
+  revalidatePath(`/app/workforce/staff/${relationshipId}`);
 }
 
 export async function provisionHospitalMemberAction(
@@ -362,6 +421,58 @@ export async function restoreHospitalMembershipAction(
     return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function promoteHospitalOwnerAction(
+  _previousState: WorkforceOwnerGovernanceMutationActionState,
+  formData: FormData,
+): Promise<WorkforceOwnerGovernanceMutationActionState> {
+  const parsed = hospitalOwnerGovernanceMutationSchema.safeParse(
+    getMembershipMutationInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการเลื่อนสถานะเป็นเจ้าของโรงพยาบาลไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await promoteHospitalOwner(actor, parsed.data);
+    revalidateHospitalOwnerGovernance(result.relationshipId);
+    return { status: "SUCCESS", result: toOwnerGovernanceMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapHospitalOwnerGovernanceError(error) };
+  }
+}
+
+export async function demoteHospitalOwnerAction(
+  _previousState: WorkforceOwnerGovernanceMutationActionState,
+  formData: FormData,
+): Promise<WorkforceOwnerGovernanceMutationActionState> {
+  const parsed = hospitalOwnerGovernanceMutationSchema.safeParse(
+    getMembershipMutationInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลการลดสถานะเจ้าของโรงพยาบาลไม่ถูกต้อง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await demoteHospitalOwner(actor, parsed.data);
+    revalidateHospitalOwnerGovernance(result.relationshipId);
+    return { status: "SUCCESS", result: toOwnerGovernanceMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapHospitalOwnerGovernanceError(error) };
   }
 }
 

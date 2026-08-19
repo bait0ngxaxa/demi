@@ -18,6 +18,8 @@ import {
   updateHospitalMembershipProfessionAction,
 } from "@/modules/workforce/transport/server-actions";
 
+import { HospitalOwnerGovernanceControls } from "./hospital-owner-governance-controls";
+
 const professionLabels = {
   DOCTOR: "แพทย์",
   NURSE: "พยาบาล",
@@ -30,6 +32,7 @@ type StaffMembershipControlsProps = {
   actions: WorkforceDetail["actions"];
   expectedUpdatedAt: string;
   membershipType: WorkforceDetail["membershipType"];
+  ownerGovernance: WorkforceDetail["ownerGovernance"];
   profession: WorkforceDetail["profession"];
   relationshipId: string;
   relationshipStatus: WorkforceDetail["relationshipStatus"];
@@ -65,6 +68,7 @@ export function StaffMembershipControls({
   actions,
   expectedUpdatedAt,
   membershipType,
+  ownerGovernance,
   profession,
   relationshipId,
   relationshipStatus,
@@ -85,6 +89,18 @@ export function StaffMembershipControls({
   >(restoreHospitalMembershipAction, initialWorkforceMembershipMutationActionState);
   const pending = professionPending || suspendPending || restorePending;
 
+  const ownerControls = (
+    <HospitalOwnerGovernanceControls
+      accountStatus={accountStatus}
+      expectedUpdatedAt={expectedUpdatedAt}
+      membershipType={membershipType}
+      ownerGovernance={ownerGovernance}
+      relationshipId={relationshipId}
+      relationshipStatus={relationshipStatus}
+      targetHospitalId={targetHospitalId}
+    />
+  );
+
   useEffect(() => {
     if (
       professionState.status === "SUCCESS" ||
@@ -97,108 +113,120 @@ export function StaffMembershipControls({
 
   if (membershipType === "OWNER") {
     return (
-      <Alert variant="neutral">
-        <p className="font-semibold">ความสัมพันธ์เจ้าของโรงพยาบาล</p>
-        <p className="mt-1">ต้นแบบนี้ไม่รองรับการแก้ไขหรือระงับความสัมพันธ์ OWNER</p>
-      </Alert>
+      <div className="space-y-6">
+        {ownerControls}
+        <Alert variant="neutral">
+          <p className="font-semibold">ความสัมพันธ์เจ้าของโรงพยาบาล</p>
+          <p className="mt-1">การแก้ไขวิชาชีพหรือระงับความสัมพันธ์ OWNER อยู่นอกขอบเขตต้นแบบนี้</p>
+        </Alert>
+      </div>
     );
   }
 
   if (accountStatus !== "ACTIVE") {
     return (
-      <Alert variant="warning">
-        <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
-        <p className="mt-1">
-          บัญชีผู้ใช้งานยังไม่อยู่ในสถานะ ACTIVE จึงไม่สามารถเปลี่ยนวิชาชีพ ระงับ หรือคืนสถานะได้
-        </p>
-      </Alert>
+      <div className="space-y-6">
+        {ownerControls}
+        <Alert variant="warning">
+          <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
+          <p className="mt-1">
+            บัญชีผู้ใช้งานยังไม่อยู่ในสถานะ ACTIVE จึงไม่สามารถเปลี่ยนวิชาชีพ ระงับ หรือคืนสถานะได้
+          </p>
+        </Alert>
+      </div>
     );
   }
 
   if (!actions.updateProfession && !actions.suspend && !actions.restore) {
     return (
-      <Alert variant="neutral">
-        <p className="font-semibold">ไม่มีการดำเนินการสำหรับสถานะนี้</p>
-        <p className="mt-1">กรุณาตรวจสอบสถานะความสัมพันธ์ล่าสุดแล้วโหลดหน้านี้ใหม่</p>
-      </Alert>
+      <div className="space-y-6">
+        {ownerControls}
+        <Alert variant="neutral">
+          <p className="font-semibold">ไม่มีการดำเนินการสำหรับสถานะนี้</p>
+          <p className="mt-1">กรุณาตรวจสอบสถานะความสัมพันธ์ล่าสุดแล้วโหลดหน้านี้ใหม่</p>
+        </Alert>
+      </div>
     );
   }
 
   return (
-    <Panel>
-      <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการความสัมพันธ์บุคลากร</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">
-        การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
-      </p>
+    <div className="space-y-6">
+      {ownerControls}
+      <Panel>
+        <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการความสัมพันธ์บุคลากร</h2>
+        <p className="mt-2 text-sm leading-6 text-text-muted">
+          การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
+        </p>
 
-      {actions.updateProfession ? (
-        <form action={professionAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-          <input name="relationshipId" type="hidden" value={relationshipId} />
-          <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
-          <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <label className="block max-w-sm flex-1 space-y-2 text-sm font-semibold" htmlFor="profession">
-            <span>วิชาชีพ</span>
-            <Select defaultValue={profession ?? ""} id="profession" name="profession" required>
-              <option disabled value="">
-                เลือกวิชาชีพ
-              </option>
-              {Object.entries(professionLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
+        {actions.updateProfession ? (
+          <form action={professionAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <input name="relationshipId" type="hidden" value={relationshipId} />
+            <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
+            <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
+            <label className="block max-w-sm flex-1 space-y-2 text-sm font-semibold" htmlFor="profession">
+              <span>วิชาชีพ</span>
+              <Select defaultValue={profession ?? ""} id="profession" name="profession" required>
+                <option disabled value="">
+                  เลือกวิชาชีพ
                 </option>
-              ))}
-            </Select>
-          </label>
-          <Button disabled={pending} size="compact" type="submit">
-            {professionPending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
-          </Button>
-        </form>
-      ) : null}
+                {Object.entries(professionLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <Button disabled={pending} size="compact" type="submit">
+              {professionPending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
+            </Button>
+          </form>
+        ) : null}
 
-      {actions.suspend ? (
-        <form action={suspendAction} className="mt-6 border-t border-border pt-5">
-          <input name="relationshipId" type="hidden" value={relationshipId} />
-          <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
-          <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <p className="text-sm leading-6 text-text-muted">
-            ระงับเฉพาะความสัมพันธ์ของบุคลากรกับโรงพยาบาลนี้ ความสัมพันธ์กับโรงพยาบาลอื่นและบัญชีผู้ใช้งานจะคงเดิม
-          </p>
-          <Button
-            className="mt-3"
-            disabled={pending}
-            onClick={(event) => {
-              if (!window.confirm("ยืนยันการระงับความสัมพันธ์บุคลากรกับโรงพยาบาลนี้หรือไม่")) {
-                event.preventDefault();
-              }
-            }}
-            size="compact"
-            type="submit"
-            variant="danger"
-          >
-            {suspendPending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
-          </Button>
-        </form>
-      ) : null}
+        {actions.suspend ? (
+          <form action={suspendAction} className="mt-6 border-t border-border pt-5">
+            <input name="relationshipId" type="hidden" value={relationshipId} />
+            <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
+            <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
+            <p className="text-sm leading-6 text-text-muted">
+              ระงับเฉพาะความสัมพันธ์ของบุคลากรกับโรงพยาบาลนี้ ความสัมพันธ์กับโรงพยาบาลอื่นและบัญชีผู้ใช้งานจะคงเดิม
+            </p>
+            <Button
+              className="mt-3"
+              disabled={pending}
+              onClick={(event) => {
+                if (!window.confirm("ยืนยันการระงับความสัมพันธ์บุคลากรกับโรงพยาบาลนี้หรือไม่")) {
+                  event.preventDefault();
+                }
+              }}
+              size="compact"
+              type="submit"
+              variant="danger"
+            >
+              {suspendPending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
+            </Button>
+          </form>
+        ) : null}
 
-      {actions.restore ? (
-        <form action={restoreAction} className="mt-5 border-t border-border pt-5">
-          <input name="relationshipId" type="hidden" value={relationshipId} />
-          <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
-          <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <p className="text-sm leading-6 text-text-muted">
-            คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีผู้ใช้งานต้องอยู่ในสถานะ ACTIVE อยู่แล้ว
-          </p>
-          <Button className="mt-3" disabled={pending} size="compact" type="submit">
-            {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
-          </Button>
-        </form>
-      ) : null}
+        {actions.restore ? (
+          <form action={restoreAction} className="mt-5 border-t border-border pt-5">
+            <input name="relationshipId" type="hidden" value={relationshipId} />
+            <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
+            <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
+            <p className="text-sm leading-6 text-text-muted">
+              คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีผู้ใช้งานต้องอยู่ในสถานะ ACTIVE อยู่แล้ว
+            </p>
+            <Button className="mt-3" disabled={pending} size="compact" type="submit">
+              {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
+            </Button>
+          </form>
+        ) : null}
 
-      <Feedback states={[professionState, suspendState, restoreState]} />
+        <Feedback states={[professionState, suspendState, restoreState]} />
 
-      {relationshipStatus === "SUSPENDED" && !actions.restore ? (
-        <p className="mt-4 text-sm leading-6 text-text-muted">สถานะนี้ไม่พร้อมให้คืนสถานะจากหน้าปัจจุบัน</p>
-      ) : null}
-    </Panel>
+        {relationshipStatus === "SUSPENDED" && !actions.restore ? (
+          <p className="mt-4 text-sm leading-6 text-text-muted">สถานะนี้ไม่พร้อมให้คืนสถานะจากหน้าปัจจุบัน</p>
+        ) : null}
+      </Panel>
+    </div>
   );
 }

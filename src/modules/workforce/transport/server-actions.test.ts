@@ -1,4 +1,4 @@
-import { MembershipStatus, UserStatus } from "@prisma/client";
+import { MembershipStatus, MembershipType, UserStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -6,6 +6,8 @@ import { signOutCurrentSession } from "@/modules/auth/services/authentication-se
 
 import {
   completeWorkforceActivation,
+  demoteHospitalOwner,
+  promoteHospitalOwner,
   provisionHospitalMember,
   restoreHospitalMembership,
   restoreOsmRelationship,
@@ -16,11 +18,14 @@ import {
 import {
   initialWorkforceCompletionActionState,
   initialWorkforceMembershipMutationActionState,
+  initialWorkforceOwnerGovernanceMutationActionState,
   initialWorkforceProvisionActionState,
 } from "./action-state";
 import {
   completeWorkforceActivationAction,
+  demoteHospitalOwnerAction,
   provisionHospitalMemberAction,
+  promoteHospitalOwnerAction,
   restoreHospitalMembershipAction,
   restoreOsmRelationshipAction,
   suspendHospitalMembershipAction,
@@ -41,6 +46,8 @@ vi.mock("@/modules/auth/services/authentication-service", () => ({
 }));
 vi.mock("../services/workforce-service", () => ({
   completeWorkforceActivation: vi.fn(),
+  demoteHospitalOwner: vi.fn(),
+  promoteHospitalOwner: vi.fn(),
   provisionHospitalMember: vi.fn(),
   provisionOsm: vi.fn(),
   regenerateWorkforceActivation: vi.fn(),
@@ -55,6 +62,8 @@ vi.mock("../services/workforce-service", () => ({
 const mockedGetProtectedApplicationActor = vi.mocked(getProtectedApplicationActor);
 const mockedSignOutCurrentSession = vi.mocked(signOutCurrentSession);
 const mockedCompleteWorkforceActivation = vi.mocked(completeWorkforceActivation);
+const mockedDemoteHospitalOwner = vi.mocked(demoteHospitalOwner);
+const mockedPromoteHospitalOwner = vi.mocked(promoteHospitalOwner);
 const mockedProvisionHospitalMember = vi.mocked(provisionHospitalMember);
 const mockedRestoreHospitalMembership = vi.mocked(restoreHospitalMembership);
 const mockedRestoreOsmRelationship = vi.mocked(restoreOsmRelationship);
@@ -72,6 +81,18 @@ function createStaffFormData(): FormData {
   formData.set("role", "ADMIN");
   formData.set("status", "ACTIVE");
   formData.set("scope", "GLOBAL");
+  return formData;
+}
+
+function createOwnerGovernanceFormData(): FormData {
+  const formData = new FormData();
+  formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+  formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+  formData.set("expectedUpdatedAt", "2026-08-18T05:00:00.000Z");
+  formData.set("role", "ADMIN");
+  formData.set("membershipType", MembershipType.OWNER);
+  formData.set("admin", "true");
+  formData.set("status", MembershipStatus.SUSPENDED);
   return formData;
 }
 
@@ -334,5 +355,95 @@ describe("workforce Server Actions", () => {
       status: "SUCCESS",
       result: { relationshipStatus: MembershipStatus.ACTIVE },
     });
+  });
+
+  it("keeps promotion transport bounded and ignores browser authority fields", async () => {
+    const formData = createOwnerGovernanceFormData();
+    const expectedUpdatedAt = "2026-08-18T05:00:00.000Z";
+
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedPromoteHospitalOwner.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      membershipType: MembershipType.OWNER,
+      updatedAt: new Date("2026-08-18T05:00:01.000Z"),
+    });
+
+    const result = await promoteHospitalOwnerAction(
+      initialWorkforceOwnerGovernanceMutationActionState,
+      formData,
+    );
+
+    expect(mockedPromoteHospitalOwner).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt,
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { membershipType: MembershipType.OWNER },
+    });
+    expect(JSON.stringify(result)).not.toContain("ADMIN");
+    expect(JSON.stringify(result)).not.toContain(MembershipStatus.SUSPENDED);
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/workforce");
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      "/app/workforce/staff/22222222-2222-4222-8222-222222222222",
+    );
+  });
+
+  it("uses a separate bounded demotion action", async () => {
+    const formData = createOwnerGovernanceFormData();
+
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "owner-1",
+      personId: "person-1",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedDemoteHospitalOwner.mockResolvedValue({
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      membershipType: MembershipType.MEMBER,
+      updatedAt: new Date("2026-08-18T05:00:01.000Z"),
+    });
+
+    const result = await demoteHospitalOwnerAction(
+      initialWorkforceOwnerGovernanceMutationActionState,
+      formData,
+    );
+
+    expect(mockedDemoteHospitalOwner).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        relationshipId: "22222222-2222-4222-8222-222222222222",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        expectedUpdatedAt: "2026-08-18T05:00:00.000Z",
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { membershipType: MembershipType.MEMBER },
+    });
+  });
+
+  it("rejects malformed Owner governance input before resolving the actor", async () => {
+    const result = await promoteHospitalOwnerAction(
+      initialWorkforceOwnerGovernanceMutationActionState,
+      new FormData(),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedPromoteHospitalOwner).not.toHaveBeenCalled();
   });
 });
