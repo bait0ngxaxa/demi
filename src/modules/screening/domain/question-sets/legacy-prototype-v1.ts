@@ -19,7 +19,7 @@ const promsOptions = [
 export const legacyPrototypeV1QuestionSet = {
   key: "demi-screening",
   version: "legacy-prototype-v1",
-  label: "DEMI Screening — ต้นแบบเพื่อเก็บ Requirement",
+  label: "DEMI — แบบประเมินสุขภาพ",
   questions: [
     {
       key: "pam-1",

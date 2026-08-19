@@ -11,7 +11,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { ScreeningForm } from "./screening-form";
 
 export const metadata: Metadata = {
-  title: "Screening ใหม่",
+  title: "แบบประเมินใหม่",
 };
 
 type NewScreeningPageProps = {

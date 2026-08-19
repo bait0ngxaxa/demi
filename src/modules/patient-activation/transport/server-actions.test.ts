@@ -151,6 +151,30 @@ describe("patient activation Server Actions", () => {
     expect(JSON.stringify(result)).not.toContain("identityKeyHash");
   });
 
+  it("returns actionable guidance when a name search is ambiguous", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "33333333-3333-4333-8333-333333333333",
+      personId: "44444444-4444-4444-8444-444444444444",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
+    mockedFindPatientActivationCandidates.mockRejectedValue(
+      new ConflictError("Patient activation lookup returned too many matches"),
+    );
+
+    const result = await findPatientActivationCandidatesAction(
+      { status: "IDLE" },
+      createLookupFormData("NAME", "สมชาย"),
+    );
+
+    expect(result).toEqual({
+      status: "ERROR",
+      code: "TOO_MANY_RESULTS",
+      message: "พบผู้ป่วยหลายรายการ กรุณาระบุชื่อให้ละเอียดขึ้น",
+    });
+  });
+
   it("passes only the explicit activation request and serializes an ephemeral URL token", async () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({
       userId: "33333333-3333-4333-8333-333333333333",

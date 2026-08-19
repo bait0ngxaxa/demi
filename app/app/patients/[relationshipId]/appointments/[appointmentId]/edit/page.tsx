@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { AppointmentForm } from "../../new/appointment-form";
 
 export const metadata: Metadata = {
-  title: "Reschedule Appointment",
+  title: "เลื่อนนัดหมาย",
 };
 
 type RescheduleAppointmentPageProps = {

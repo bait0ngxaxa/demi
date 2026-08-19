@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
@@ -10,6 +11,10 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientActivationScope } from "@/modules/patient-activation/services/patient-activation-query-service";
+import {
+  PATIENT_ACTIVATION_HOSPITAL_NUMBER_MAX_LENGTH,
+  PATIENT_ACTIVATION_NAME_MAX_LENGTH,
+} from "@/modules/patient-activation/schemas/patient-activation-schemas";
 import {
   findPatientActivationCandidatesAction,
 } from "@/modules/patient-activation/transport/server-actions";
@@ -28,19 +33,29 @@ type PatientActivationActionsWorkspaceProps = {
 
 const accountStatusLabels: Record<string, string> = {
   ACTIVE: "เปิดใช้งานแล้ว",
-  PROVISIONED: "ยังไม่เปิดใช้งาน",
+  PROVISIONED: "ยังไม่ได้เปิดใช้งาน",
   INVITED: "ต้องตรวจสอบ",
   SUSPENDED: "ต้องตรวจสอบ",
 };
 
 const activationStatusLabels: Record<string, string> = {
   ACTIVE: "ไม่ต้องออกลิงก์",
-  NOT_ISSUED: "ยังไม่ได้ออก",
-  ISSUED: "ออกแล้ว",
-  IN_PROGRESS: "กำลังดำเนินการ",
+  NOT_ISSUED: "ยังไม่ได้ออกลิงก์",
+  ISSUED: "ออกลิงก์แล้ว",
+  IN_PROGRESS: "กำลังเปิดใช้งาน",
   EXPIRED: "หมดอายุ",
-  RECONCILIATION_REQUIRED: "ต้องตรวจสอบ",
+  RECONCILIATION_REQUIRED: "ต้องตรวจสอบข้อมูล",
 };
+
+type PatientActivationLookupType = "NAME" | "NATIONAL_ID" | "HOSPITAL_NUMBER";
+
+function parseLookupType(value: string): PatientActivationLookupType {
+  if (value === "NATIONAL_ID" || value === "HOSPITAL_NUMBER") {
+    return value;
+  }
+
+  return "NAME";
+}
 
 function mapLookupError(state: PatientActivationLookupActionState): string | null {
   return state.status === "ERROR" ? state.message : null;
@@ -56,9 +71,7 @@ export function PatientActivationActionsWorkspace({
     findPatientActivationCandidatesAction,
     initialPatientActivationLookupActionState,
   );
-  const [lookupType, setLookupType] = useState<"NATIONAL_ID" | "HOSPITAL_NUMBER">(
-    "NATIONAL_ID",
-  );
+  const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
 
   function changeHospital(hospitalId: string): void {
     router.push(`/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}`);
@@ -100,64 +113,99 @@ export function PatientActivationActionsWorkspace({
               )}
             </div>
             <p className="max-w-xl text-sm leading-6 text-muted">
-              ระบบตรวจสอบสิทธิ์และขอบเขตโรงพยาบาลจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
-              การค้นหานี้แสดงเฉพาะข้อมูลที่จำเป็นต่อการเปิดใช้งานบัญชี
+              ค้นหาได้เฉพาะผู้ป่วยของโรงพยาบาลที่เลือก และจะแสดงข้อมูลเท่าที่จำเป็นต่อการเปิดใช้งานบัญชี
             </p>
           </div>
 
           <div className="mt-7 border-t border-line pt-6">
             <h2 className="text-xl font-semibold tracking-[-0.02em]">ค้นหาผู้ป่วย</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              ใช้เลขบัตรประชาชนแบบตรงตัว หรือ HN แบบตรงตัวภายในโรงพยาบาลนี้
+            <p className="mt-2 text-sm leading-6 text-muted" id="patient-activation-lookup-help">
+              {lookupType === "NAME"
+                ? "ค้นหาจากชื่อหรือนามสกุล พิมพ์หลายคำเพื่อระบุผู้ป่วยให้ละเอียดขึ้น"
+                : lookupType === "NATIONAL_ID"
+                  ? "ใช้เลขบัตรประชาชน 13 หลักของผู้ป่วย"
+                  : "ใช้ HN ของผู้ป่วยในโรงพยาบาลนี้แบบตรงตัว"}
             </p>
-            <form action={lookupAction} className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end">
+            <form
+              action={lookupAction}
+              className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end"
+            >
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <label className="block space-y-2 text-sm font-semibold">
                 <span>ค้นหาด้วย</span>
                 <Select
                   name="lookupType"
-                  onChange={(event) =>
-                    setLookupType(
-                      event.target.value === "HOSPITAL_NUMBER"
-                        ? "HOSPITAL_NUMBER"
-                        : "NATIONAL_ID",
-                    )
-                  }
+                  onChange={(event) => setLookupType(parseLookupType(event.target.value))}
                   value={lookupType}
                 >
+                  <option value="NAME">ชื่อผู้ป่วย</option>
                   <option value="NATIONAL_ID">เลขบัตรประชาชน</option>
                   <option value="HOSPITAL_NUMBER">HN</option>
                 </Select>
               </label>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>{lookupType === "NATIONAL_ID" ? "เลขบัตรประชาชน" : "HN"}</span>
+                <label className="block space-y-2 text-sm font-semibold">
+                <span>
+                  {lookupType === "NAME"
+                    ? "ชื่อผู้ป่วย"
+                    : lookupType === "NATIONAL_ID"
+                      ? "เลขบัตรประชาชน"
+                      : "HN"}
+                </span>
                 <Input
+                  aria-describedby="patient-activation-lookup-help"
                   inputMode={lookupType === "NATIONAL_ID" ? "numeric" : "text"}
-                  maxLength={lookupType === "NATIONAL_ID" ? 13 : 64}
+                  maxLength={
+                    lookupType === "NAME"
+                      ? PATIENT_ACTIVATION_NAME_MAX_LENGTH
+                      : lookupType === "NATIONAL_ID"
+                        ? 13
+                        : PATIENT_ACTIVATION_HOSPITAL_NUMBER_MAX_LENGTH
+                  }
                   name="value"
+                  placeholder={
+                    lookupType === "NAME"
+                      ? "เช่น สมชาย ใจดี"
+                      : lookupType === "NATIONAL_ID"
+                        ? "เลข 13 หลัก"
+                        : "เช่น HN-001"
+                  }
                   required
                   type="text"
                 />
               </label>
-              <Button
-                disabled={lookupPending}
-                type="submit"
-              >
+              <Button disabled={lookupPending} loading={lookupPending} type="submit">
                 {lookupPending ? "กำลังค้นหา..." : "ค้นหา"}
               </Button>
             </form>
-            {errorMessage ? (
-              <p className="mt-4 text-sm leading-6 text-danger" role="alert">
-                {errorMessage}
+            {lookupPending ? (
+              <p className="mt-4 text-sm text-muted" role="status">
+                กำลังค้นหาผู้ป่วย...
               </p>
+            ) : null}
+            {errorMessage ? (
+              <Alert className="mt-4" variant="danger">
+                <p className="font-semibold">
+                  {lookupState.status === "ERROR" && lookupState.code === "TOO_MANY_RESULTS"
+                    ? "พบผู้ป่วยหลายรายการ"
+                    : "ค้นหาผู้ป่วยไม่สำเร็จ"}
+                </p>
+                <p className="mt-1">{errorMessage}</p>
+              </Alert>
             ) : null}
           </div>
         </Panel>
 
         {lookupState.status === "SUCCESS" ? (
-          <section className="mt-6" aria-live="polite">
+          <section aria-busy={lookupPending} className="mt-6" aria-live="polite">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ผลการค้นหา</h2>
+              <div>
+                <h2 className="text-xl font-semibold tracking-[-0.02em]">ผลการค้นหา</h2>
+                {lookupPending ? (
+                  <p className="mt-1 text-sm text-muted" role="status">
+                    กำลังอัปเดตผลการค้นหา...
+                  </p>
+                ) : null}
+              </div>
               <p className="text-sm text-muted">พบ {lookupState.candidates.length} รายการ</p>
             </div>
             {lookupState.candidates.length > 0 ? (
@@ -186,7 +234,7 @@ export function PatientActivationActionsWorkspace({
                             </dd>
                           </div>
                           <div>
-                            <dt className="inline">Activation: </dt>
+                            <dt className="inline">การเปิดใช้งานบัญชี: </dt>
                             <dd className="inline font-semibold text-ink">
                               {activationStatusLabels[candidate.activationStatus] ?? "ต้องตรวจสอบ"}
                             </dd>
@@ -200,7 +248,8 @@ export function PatientActivationActionsWorkspace({
               </div>
             ) : (
               <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center text-sm leading-6 text-text-muted sm:px-7">
-                ไม่พบผู้ป่วยตามข้อมูลค้นหาในโรงพยาบาลนี้
+                <p className="font-semibold text-ink">ไม่พบผู้ป่วยตามข้อมูลค้นหา</p>
+                <p className="mt-1">ลองตรวจสอบการสะกดชื่อ หรือเลือกค้นหาด้วย HN/เลขบัตรประชาชน</p>
               </div>
             )}
           </section>

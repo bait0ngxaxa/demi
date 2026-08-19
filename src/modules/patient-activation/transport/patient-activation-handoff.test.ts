@@ -60,7 +60,7 @@ describe("Patient activation handoff presentation", () => {
       activationExpiresAt: "2026-08-16T12:00:00.000Z",
     });
 
-    expect(markup).toContain("ระบบเก็บเฉพาะ hash ของ token");
+    expect(markup).toContain("ลิงก์เดิมไม่สามารถเปิดดูซ้ำได้");
     expect(markup).toContain("ออกลิงก์ใหม่");
     expect(markup).not.toContain("patient-activation-token");
     expect((markup.match(/<form\b/gu) ?? []).length).toBe(1);

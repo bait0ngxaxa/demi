@@ -20,12 +20,17 @@ import {
   getGoalActivity,
   getGoalSuggestion,
 } from "@/modules/goals/domain/goal-templates";
+import { getGoalTargetUnitLabel } from "@/modules/goals/presentation/goal-labels";
 import type { GoalPatientSummary } from "@/modules/goals/services/goal-access-service";
 import {
   initialGoalPlanActionState,
   type GoalPlanActionState,
 } from "@/modules/goals/transport/action-state";
 import { submitGoalPlanAction } from "@/modules/goals/transport/server-actions";
+import {
+  SCREENING_LEVEL_LABELS,
+  SCREENING_ZONE_LABELS,
+} from "@/modules/screening/presentation/screening-labels";
 
 type GoalScreeningContextForForm = {
   screeningAssessmentId: string;
@@ -132,7 +137,7 @@ function ActionFeedback({ state }: { state: GoalPlanActionState }): React.JSX.El
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">ส่ง Goal Plan ไม่สำเร็จ</p>
+      <p className="font-semibold">บันทึกแผนเป้าหมายไม่สำเร็จ</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -152,13 +157,13 @@ function ActivityEditor({
   onRemove: () => void;
 }): React.JSX.Element {
   const targetRule = activity.targetRule;
+  const targetUnitLabel = targetRule ? getGoalTargetUnitLabel(targetRule.unit) : null;
 
   return (
     <li className="border-t border-border pt-5 first:border-t-0 first:pt-0">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="font-semibold text-text">{activity.label}</h3>
-          <p className="mt-1 text-sm leading-6 text-text-muted">รหัสกิจกรรม: {activity.code}</p>
         </div>
         <Button disabled={disabled} onClick={onRemove} size="compact" type="button" variant="ghost">
           นำออก
@@ -182,7 +187,7 @@ function ActivityEditor({
         </label>
         {targetRule ? (
           <label className="block space-y-2 text-sm font-semibold sm:col-span-2">
-            <span>ค่าเป้าหมาย ({targetRule.unit})</span>
+            <span>ค่าเป้าหมาย ({targetUnitLabel})</span>
             <input
               aria-describedby={`${activity.code}-target-help`}
               className="min-h-12 w-full rounded-control border border-border bg-surface px-4 text-base font-normal text-text outline-none transition-[border-color,box-shadow] focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
@@ -195,12 +200,12 @@ function ActivityEditor({
               value={item.targetValue}
             />
             <span className="block text-xs font-normal text-text-subtle" id={`${activity.code}-target-help`}>
-              ช่วงต้นแบบ {targetRule.min}–{targetRule.max} {targetRule.unit} · ค่าเริ่มต้น {targetRule.defaultValue}
+              ช่วงที่กำหนด {targetRule.min}–{targetRule.max} {targetUnitLabel} · ค่าเริ่มต้น {targetRule.defaultValue}
             </span>
           </label>
         ) : (
           <p className="text-sm leading-6 text-text-muted sm:col-span-2">
-            กิจกรรมนี้ยังไม่มีค่าเป้าหมายเชิงตัวเลขใน template ต้นแบบ
+            กิจกรรมนี้ยังไม่มีการกำหนดค่าเป้าหมายเชิงตัวเลข
           </p>
         )}
       </div>
@@ -283,16 +288,16 @@ export function GoalPlanForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">แผนเป้าหมาย</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/goals`,
-            label: "Goals / Activity Plan",
+            label: "แผนเป้าหมาย",
           },
-          { label: "สร้าง Goal Plan" },
+          { label: "สร้างแผนเป้าหมาย" },
         ]}
-        description="สร้าง Goal Plan รอบใหม่เพื่อทดลอง workflow และเก็บ feedback จากลูกค้า"
-        title="สร้าง Goal Plan"
+        description="สร้างแผนเป้าหมายและกิจกรรมของผู้ป่วยสำหรับรอบใหม่"
+        title="สร้างแผนเป้าหมาย"
       />
 
       <form action={action} className="space-y-6 pt-8">
@@ -304,15 +309,6 @@ export function GoalPlanForm({
           value={latestScreening?.screeningAssessmentId ?? ""}
         />
         <input name="items" type="hidden" value={JSON.stringify(serializedItems)} />
-
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            เป้าหมาย กิจกรรม ค่าเริ่มต้น และความสัมพันธ์กับผล Screening ในหน้านี้เป็นต้นแบบอ้างอิงรูปแบบจากระบบ DEMI เดิม
-            และยังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย
-          </p>
-          <p className="mt-2 text-xs">Template: {template.key} · {template.version}</p>
-        </Alert>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
@@ -335,22 +331,22 @@ export function GoalPlanForm({
           <Panel>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบท Screening</h2>
+                <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบทจากแบบประเมิน</h2>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  Screening เป็นบริบทหรือค่าเริ่มต้นเท่านั้น ไม่ได้สร้างหรือบังคับ Goal Plan อัตโนมัติ
+                  แบบประเมินเป็นบริบทหรือค่าเริ่มต้นเท่านั้น ไม่ได้สร้างหรือบังคับแผนเป้าหมายโดยอัตโนมัติ
                 </p>
               </div>
               <StatusBadge variant={zoneVariant(latestScreening.result.zone)}>
-                {latestScreening.result.level} · {latestScreening.result.zone}
+                {SCREENING_LEVEL_LABELS[latestScreening.result.level]} · {SCREENING_ZONE_LABELS[latestScreening.result.zone]}
               </StatusBadge>
             </div>
             <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
               <p className="text-sm leading-6 text-text">
-                Screening ล่าสุดส่งเมื่อ {formatDate(latestScreening.submittedAt)}
+                แบบประเมินล่าสุดบันทึกเมื่อ {formatDate(latestScreening.submittedAt)}
               </p>
               <p className="mt-3 text-sm leading-6 text-text-muted">
-                Screening นี้ใช้เป็นบริบทสำหรับค่าเริ่มต้นของ Goal Plan รอบนี้
-                ผู้ใช้ยังสามารถปรับ เพิ่ม หรือนำกิจกรรมออกก่อนส่งได้ และไม่ใช่การบังคับทางคลินิก
+                แบบประเมินนี้ใช้เป็นบริบทสำหรับค่าเริ่มต้นของแผนเป้าหมายรอบนี้
+                คุณยังสามารถปรับ เพิ่ม หรือนำกิจกรรมออกก่อนบันทึกได้
               </p>
             </div>
           </Panel>
@@ -358,8 +354,8 @@ export function GoalPlanForm({
 
         <Panel>
           <fieldset disabled={pending}>
-            <legend className="text-xl font-semibold tracking-[-0.02em]">Primary Goal</legend>
-            <p className="mt-2 text-sm leading-6 text-text-muted">เลือกเป้าหมายหลักหนึ่งรายการสำหรับ Goal Plan รอบนี้</p>
+            <legend className="text-xl font-semibold tracking-[-0.02em]">เป้าหมายหลัก</legend>
+            <p className="mt-2 text-sm leading-6 text-text-muted">เลือกเป้าหมายหลักหนึ่งรายการสำหรับแผนเป้าหมายรอบนี้</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {template.primaryGoals.map((goal) => (
                 <label
@@ -385,14 +381,14 @@ export function GoalPlanForm({
           </fieldset>
           <div className="mt-6 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
             <label className="block space-y-2 text-sm font-semibold">
-              <span>หมายเหตุ Primary Goal (ไม่บังคับ)</span>
+              <span>หมายเหตุเป้าหมายหลัก (ไม่บังคับ)</span>
               <textarea
                 className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
                 disabled={pending}
                 maxLength={1000}
                 name="primaryGoalNote"
                 onChange={(event) => setPrimaryGoalNote(event.target.value)}
-                placeholder="บันทึกเฉพาะที่จำเป็นต่อการทดลองต้นแบบ"
+                placeholder="บันทึกเฉพาะที่จำเป็น"
                 value={primaryGoalNote}
               />
             </label>
@@ -404,7 +400,7 @@ export function GoalPlanForm({
                 maxLength={2000}
                 name="weeklyNote"
                 onChange={(event) => setWeeklyNote(event.target.value)}
-                placeholder="บันทึกเฉพาะที่จำเป็นต่อการทดลองต้นแบบ"
+                placeholder="บันทึกเฉพาะที่จำเป็น"
                 value={weeklyNote}
               />
             </label>
@@ -413,10 +409,10 @@ export function GoalPlanForm({
 
         <Panel>
           <div>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">Weekly Activities</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">กิจกรรมประจำสัปดาห์</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              กิจกรรมและค่าเริ่มต้น (ถ้ามี) เป็นข้อมูลต้นแบบจากระดับ Screening
-              สามารถเพิ่มหรือนำกิจกรรมออกเป็นรายรายการ และหากไม่มี Screening ให้เลือกกิจกรรมด้วยตนเอง
+              กิจกรรมและค่าเริ่มต้น (ถ้ามี) มาจากผลการประเมิน
+              สามารถเพิ่มหรือนำกิจกรรมออกเป็นรายรายการ และหากไม่มีผลการประเมินให้เลือกกิจกรรมด้วยตนเอง
             </p>
           </div>
 
@@ -479,7 +475,7 @@ export function GoalPlanForm({
               </ul>
             ) : (
               <p className="mt-3 rounded-control border border-dashed border-border px-4 py-4 text-sm leading-6 text-text-muted">
-                ยังไม่ได้เลือกกิจกรรม กรุณาเลือกอย่างน้อยหนึ่งรายการเพื่อส่ง Goal Plan
+                ยังไม่ได้เลือกกิจกรรม กรุณาเลือกอย่างน้อยหนึ่งรายการเพื่อบันทึกแผนเป้าหมาย
               </p>
             )}
           </div>
@@ -488,11 +484,11 @@ export function GoalPlanForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนส่ง</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            รอบใหม่จะถูกบันทึกเป็นประวัติอีกหนึ่งรายการ และจะไม่แก้ไข Goal Plan รอบเดิม
+            รอบใหม่จะถูกบันทึกเป็นประวัติอีกหนึ่งรายการ และจะไม่แก้ไขแผนเป้าหมายรอบเดิม
           </p>
           <dl className="mt-5 grid gap-4 border-y border-border py-5 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-text-muted">Primary Goal</dt>
+              <dt className="text-sm text-text-muted">เป้าหมายหลัก</dt>
               <dd className="mt-1 font-semibold text-text">
                 {template.primaryGoals.find((goal) => goal.code === primaryGoalCode)?.label ?? "ยังไม่ได้เลือก"}
               </dd>
@@ -503,12 +499,12 @@ export function GoalPlanForm({
             </div>
           </dl>
           <p className="mt-5 text-xs leading-5 text-text-subtle">
-            ค่าทั้งหมดจะถูกตรวจสอบซ้ำกับ template ต้นแบบฝั่งเซิร์ฟเวอร์ อำนาจการยืนยันไม่ได้อยู่ที่เบราว์เซอร์
+            ตรวจสอบข้อมูลให้เรียบร้อยก่อนส่ง ระบบจะบันทึกเป็นรอบใหม่โดยไม่แก้ไขประวัติเดิม
           </p>
           <ActionFeedback state={state} />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !formComplete} type="submit">
-              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและส่ง Goal Plan"}
+            <Button disabled={pending || !formComplete} loading={pending} type="submit">
+              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแผนเป้าหมาย"}
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

@@ -33,7 +33,7 @@ export default async function HospitalOnboardingPage() {
           </div>
 
           <div className="relative mt-14 max-w-xl lg:my-auto lg:py-16">
-            <p className="text-sm font-semibold text-brand-bright">Hospital onboarding</p>
+            <p className="text-sm font-semibold text-brand-bright">ลงทะเบียนโรงพยาบาล</p>
             <h1 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">
               เริ่มต้นพื้นที่ทำงานของโรงพยาบาลคุณ
             </h1>

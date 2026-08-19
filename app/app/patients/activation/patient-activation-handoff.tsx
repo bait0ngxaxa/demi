@@ -70,10 +70,11 @@ function IssueForm({
       <input name="reissue" type="hidden" value={String(reissue)} />
       <Button
         disabled={pending}
+        loading={pending}
         size="compact"
         type="submit"
       >
-        {pending ? "กำลังดำเนินการ..." : label}
+        {pending ? `กำลัง${label}...` : label}
       </Button>
     </form>
   );
@@ -164,12 +165,12 @@ function ActivationPresentation({
           {visibleQrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              alt="QR Code ลิงก์เปิดใช้งานบัญชีผู้ป่วย DEMI"
+              alt="คิวอาร์โค้ดสำหรับเปิดใช้งานบัญชีผู้ป่วย DEMI"
               className="h-full w-full"
               src={visibleQrDataUrl}
             />
           ) : (
-            <span className="text-center text-xs text-muted">กำลังสร้าง QR Code...</span>
+            <span className="text-center text-xs text-muted">กำลังสร้างคิวอาร์โค้ด...</span>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -229,7 +230,7 @@ export function PatientActivationHandoff({
     return (
       <Alert className="mt-4" variant="danger">
         <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่</p>
-        <p className="mt-1">ระบบจะไม่สร้างหรือเปลี่ยนตัวตนผู้ให้บริการโดยอัตโนมัติ</p>
+        <p className="mt-1">กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบข้อมูลก่อนดำเนินการต่อ</p>
       </Alert>
     );
   }
@@ -241,7 +242,7 @@ export function PatientActivationHandoff({
     return (
       <Alert className="mt-4" variant="success">
         <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
-        <p className="mt-1 text-muted">ไม่ต้องออกลิงก์ใหม่ และระบบคงตัวตน/รหัสผ่านเดิมไว้</p>
+        <p className="mt-1 text-muted">ไม่ต้องออกลิงก์ใหม่ และระบบจะคงบัญชีและรหัสผ่านเดิมไว้</p>
       </Alert>
     );
   }
@@ -289,7 +290,7 @@ export function PatientActivationHandoff({
       </p>
       <p className="mt-1 text-sm leading-6 text-muted">
         {candidate.activationStatus === "ISSUED"
-          ? "ระบบเก็บเฉพาะ hash ของ token หากต้องการคัดลอกลิงก์อีกครั้งต้องออกลิงก์ใหม่"
+          ? "ลิงก์เดิมไม่สามารถเปิดดูซ้ำได้ หากต้องการส่งลิงก์อีกครั้งให้เลือกออกลิงก์ใหม่"
           : "ออกลิงก์ครั้งเดียวให้ผู้ป่วยตั้งรหัสผ่านด้วยตนเอง โรงพยาบาลจะไม่เห็นรหัสผ่าน"}
       </p>
       {candidate.activationExpiresAt ? (

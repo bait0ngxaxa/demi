@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { LoadingSpinner } from "@/components/ui/button";
 import {
   initialLoginActionState,
   type LoginActionState,
@@ -33,7 +34,7 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
-          เลขบัตรประชาชน / ตัวระบุ Admin
+          เลขบัตรประชาชน / ตัวระบุผู้ดูแลระบบ
         </label>
         <input
           aria-describedby={errorMessage ? "login-error" : undefined}
@@ -45,7 +46,7 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
           inputMode="text"
           maxLength={32}
           name="nationalId"
-          placeholder="เลขบัตรประชาชน หรือรหัส Admin"
+          placeholder="เลขบัตรประชาชน หรือรหัสผู้ดูแลระบบ"
           required
           spellCheck={false}
           type="text"
@@ -78,10 +79,12 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
       </div>
 
       <button
+        aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
         disabled={pending}
         type="submit"
       >
+        {pending ? <LoadingSpinner className="mr-2" /> : null}
         {pending ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
       </button>
     </form>

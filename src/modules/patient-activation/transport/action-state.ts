@@ -40,7 +40,7 @@ export type PatientActivationLookupActionState =
   | { status: "SUCCESS"; candidates: PatientActivationCandidateState[] }
   | {
       status: "ERROR";
-      code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";
+      code: "INVALID_INPUT" | "FORBIDDEN" | "TOO_MANY_RESULTS" | "UNAVAILABLE";
       message: string;
     };
 

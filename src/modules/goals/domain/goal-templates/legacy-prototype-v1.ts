@@ -11,12 +11,12 @@ const exerciseTarget = {
 export const legacyPrototypeV1GoalTemplate = {
   key: "demi-goals",
   version: "legacy-prototype-v1",
-  label: "DEMI Goals & Activity Plan — ต้นแบบเพื่อเก็บ Requirement",
+  label: "DEMI — แผนเป้าหมายและกิจกรรม",
   primaryGoals: [
-    { code: "weight", label: "น้ำหนักลด (Weight Reduction)" },
-    { code: "glucose", label: "น้ำตาลลง (Glucose Control)" },
-    { code: "medication", label: "ลดยาได้ (Medication De-escalation)" },
-    { code: "remission", label: "ภาวะเบาหวานสงบ (Remission)" },
+    { code: "weight", label: "น้ำหนักลด" },
+    { code: "glucose", label: "ควบคุมระดับน้ำตาล" },
+    { code: "medication", label: "ลดการใช้ยา" },
+    { code: "remission", label: "ภาวะเบาหวานสงบ" },
   ],
   activities: [
     { code: "stop_sweet", label: "ลดหวาน", category: "FOOD", targetRule: null },
@@ -40,7 +40,12 @@ export const legacyPrototypeV1GoalTemplate = {
     { code: "stretching", label: "ยืดเหยียด", category: "EXERCISE", targetRule: exerciseTarget },
     { code: "cardio", label: "คาร์ดิโอ", category: "EXERCISE", targetRule: exerciseTarget },
     { code: "strengthening", label: "เสริมสร้างกล้ามเนื้อ", category: "EXERCISE", targetRule: exerciseTarget },
-    { code: "hiit", label: "HIIT", category: "EXERCISE", targetRule: exerciseTarget },
+    {
+      code: "hiit",
+      label: "ออกกำลังกายแบบหนักสลับเบา (HIIT)",
+      category: "EXERCISE",
+      targetRule: exerciseTarget,
+    },
     { code: "sleep", label: "นอนหลับ", category: "REST", targetRule: null },
   ],
   activitySuggestions: [

@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -105,7 +104,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
               className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}
             >
-              สร้าง Appointment
+              สร้างนัดหมาย
             </Link>
           ) : null
         }
@@ -114,21 +113,13 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
             label: "รายละเอียดผู้ป่วย",
           },
-          { label: "Appointments" },
+          { label: "นัดหมาย" },
         ]}
-        description="ประวัติ Appointment ของผู้ป่วยในบริบทของโรงพยาบาลนี้ เรียงจากรายการล่าสุด"
-        title="Appointments"
+        description="ประวัตินัดหมายของผู้ป่วยในโรงพยาบาลนี้ เรียงจากรายการล่าสุด"
+        title="นัดหมาย"
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            ประเภท สถานะ ผู้รับผิดชอบ และอำนาจของผู้ใช้งานเป็นพฤติกรรมชั่วคราวสำหรับตรวจสอบ Requirement
-            กับลูกค้า ยังไม่ใช่ข้อกำหนดการปฏิบัติงานฉบับสุดท้าย
-          </p>
-        </Alert>
-
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -147,7 +138,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="appointment-history-heading">
-                ประวัติ Appointment
+                ประวัตินัดหมาย
               </h2>
               <p className="mt-1 text-sm text-text-muted">แสดงรายการล่าสุดไม่เกิน 50 รายการ</p>
             </div>
@@ -156,7 +147,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
 
           {history.items.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-panel border border-border bg-surface">
-              <ul className="divide-y divide-border" aria-label="ประวัติ Appointment">
+              <ul className="divide-y divide-border" aria-label="ประวัตินัดหมาย">
                 {history.items.map((item) => (
                   <AppointmentHistoryRow item={item} key={item.appointmentId} relationshipId={relationshipId} />
                 ))}
@@ -164,16 +155,16 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
-              <p className="font-semibold text-text">ยังไม่มี Appointment สำหรับผู้ป่วยรายนี้</p>
+              <p className="font-semibold text-text">ยังไม่มีนัดหมายสำหรับผู้ป่วยรายนี้</p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                สร้างรายการแรกเพื่อทดลอง workflow และเก็บ feedback จากลูกค้า
+                สร้างรายการแรกเพื่อบันทึกกำหนดการดูแลผู้ป่วย
               </p>
               {history.canManage ? (
                 <Link
                   className="mt-5 inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                   href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}
                 >
-                  สร้าง Appointment แรก
+                  สร้างนัดหมายแรก
                 </Link>
               ) : null}
             </div>

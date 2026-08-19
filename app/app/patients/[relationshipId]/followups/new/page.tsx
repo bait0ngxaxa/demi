@@ -10,7 +10,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { FollowupForm } from "./followup-form";
 
 export const metadata: Metadata = {
-  title: "บันทึก Follow-up",
+  title: "บันทึกการติดตามผล",
 };
 
 type NewFollowupPageProps = {

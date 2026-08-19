@@ -60,7 +60,7 @@ export const followupCreateRequestSchema = z
           if (seen.has(row.goalActivityCode)) {
             context.addIssue({
               code: "custom",
-              message: "Duplicate Goal activity codes are not allowed",
+              message: "ไม่สามารถเลือกกิจกรรมซ้ำกันในแผนเป้าหมายได้",
               path: [index, "goalActivityCode"],
             });
           }

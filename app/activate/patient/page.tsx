@@ -42,7 +42,7 @@ export default async function PatientActivationPage(): Promise<React.JSX.Element
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em]">ตั้งรหัสผ่านของคุณ</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ใช้ลิงก์นี้ครั้งเดียวเพื่อสร้างรหัสผ่าน แล้วเข้าสู่ระบบผ่านหน้า login ของ DEMI
+            ใช้ลิงก์นี้ครั้งเดียวเพื่อสร้างรหัสผ่าน แล้วเข้าสู่ระบบผ่านหน้าเข้าสู่ระบบของ DEMI
           </p>
           <PatientActivationForm />
         </div>

@@ -121,6 +121,8 @@ async function createPatient(input: {
   extraRoles?: Role[];
   identity?: { namespace: string; value: string };
   hospitalNumber?: string | null;
+  givenName?: string;
+  familyName?: string;
 }): Promise<{
   userId: string;
   patientProfileId: string;
@@ -133,8 +135,8 @@ async function createPatient(input: {
       identityKeyHash: input.identity
         ? hashIdentityReference(input.identity)
         : `patient-activation-target-${sequence}`,
-      givenName: "สมชาย",
-      familyName: "ผู้ป่วย",
+      givenName: input.givenName ?? "สมชาย",
+      familyName: input.familyName ?? "ผู้ป่วย",
     },
     select: { id: true },
   });
@@ -878,9 +880,49 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       hospitalId: hospital.id,
       identity: { namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId },
       hospitalNumber: "LOOKUP-001",
+      givenName: "สมหญิง",
+      familyName: "ใจดี",
+    });
+    const sameNameInOtherHospital = await createPatient({
+      hospitalId: unrelatedHospital.id,
+      givenName: "สมหญิง",
+      familyName: "ใจดี",
+      hospitalNumber: "OTHER-001",
     });
     await createPatient({ hospitalId: hospital.id, hospitalNumber: "LOOKUP-DUP" });
     await createPatient({ hospitalId: hospital.id, hospitalNumber: "LOOKUP-DUP" });
+
+    const firstNameResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "NAME",
+      value: "สมหญิง",
+    });
+    expect(firstNameResults).toHaveLength(1);
+    expect(firstNameResults[0]?.userId).toBe(byNationalId.userId);
+
+    const surnameResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "NAME",
+      value: "ใจดี",
+    });
+    expect(surnameResults).toHaveLength(1);
+    expect(surnameResults[0]?.userId).toBe(byNationalId.userId);
+
+    const multipleTermResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "NAME",
+      value: "สมหญิง ใจดี",
+    });
+    expect(multipleTermResults).toHaveLength(1);
+    expect(multipleTermResults[0]?.userId).toBe(byNationalId.userId);
+
+    const noNameResults = await findPatientActivationCandidates(actor, {
+      targetHospitalId: hospital.id,
+      lookupType: "NAME",
+      value: "ไม่มีผู้ป่วยชื่อนี้",
+    });
+    expect(noNameResults).toEqual([]);
+    expect(sameNameInOtherHospital.userId).not.toBe(byNationalId.userId);
 
     const nationalIdResults = await findPatientActivationCandidates(actor, {
       targetHospitalId: hospital.id,

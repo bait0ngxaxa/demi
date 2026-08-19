@@ -118,14 +118,14 @@ function mapScreeningError(error: unknown): {
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์ทำ Screening สำหรับผู้ป่วยรายนี้",
+        message: "บัญชีนี้ไม่มีสิทธิ์ทำแบบประเมินสำหรับผู้ป่วยรายนี้",
       };
     }
 
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "การส่ง Screening นี้ถูกบันทึกแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเปิดประวัติอีกครั้ง",
+        message: "การบันทึกแบบประเมินนี้เสร็จสิ้นแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเปิดประวัติอีกครั้ง",
       };
     }
 
@@ -139,7 +139,7 @@ function mapScreeningError(error: unknown): {
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมบันทึก Screening ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "ระบบไม่พร้อมบันทึกแบบประเมินในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 

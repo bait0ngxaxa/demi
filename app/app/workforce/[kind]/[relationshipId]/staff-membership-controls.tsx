@@ -117,7 +117,7 @@ export function StaffMembershipControls({
         {ownerControls}
         <Alert variant="neutral">
           <p className="font-semibold">ความสัมพันธ์เจ้าของโรงพยาบาล</p>
-          <p className="mt-1">การแก้ไขวิชาชีพหรือระงับความสัมพันธ์ OWNER อยู่นอกขอบเขตต้นแบบนี้</p>
+          <p className="mt-1">การแก้ไขวิชาชีพหรือระงับความสัมพันธ์ของเจ้าของโรงพยาบาลจัดการจากขั้นตอนเฉพาะ</p>
         </Alert>
       </div>
     );
@@ -130,7 +130,7 @@ export function StaffMembershipControls({
         <Alert variant="warning">
           <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
           <p className="mt-1">
-            บัญชีผู้ใช้งานยังไม่อยู่ในสถานะ ACTIVE จึงไม่สามารถเปลี่ยนวิชาชีพ ระงับ หรือคืนสถานะได้
+            บัญชีนี้ยังไม่พร้อมใช้งาน จึงไม่สามารถเปลี่ยนวิชาชีพ ระงับ หรือคืนสถานะได้
           </p>
         </Alert>
       </div>
@@ -176,7 +176,7 @@ export function StaffMembershipControls({
                 ))}
               </Select>
             </label>
-            <Button disabled={pending} size="compact" type="submit">
+            <Button disabled={pending} loading={professionPending} size="compact" type="submit">
               {professionPending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
             </Button>
           </form>
@@ -193,6 +193,7 @@ export function StaffMembershipControls({
             <Button
               className="mt-3"
               disabled={pending}
+              loading={suspendPending}
               onClick={(event) => {
                 if (!window.confirm("ยืนยันการระงับความสัมพันธ์บุคลากรกับโรงพยาบาลนี้หรือไม่")) {
                   event.preventDefault();
@@ -213,9 +214,9 @@ export function StaffMembershipControls({
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
             <p className="text-sm leading-6 text-text-muted">
-              คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีผู้ใช้งานต้องอยู่ในสถานะ ACTIVE อยู่แล้ว
+              คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีต้องพร้อมใช้งานอยู่แล้ว
             </p>
-            <Button className="mt-3" disabled={pending} size="compact" type="submit">
+            <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
               {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
             </Button>
           </form>

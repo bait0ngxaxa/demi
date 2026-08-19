@@ -95,7 +95,7 @@ export function PatientBaselineForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">ข้อมูลตั้งต้น</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
@@ -103,7 +103,7 @@ export function PatientBaselineForm({
           },
           { label: "ข้อมูลตั้งต้น" },
         ]}
-        description="บันทึกภาพรวมสถานะเริ่มต้นของผู้ป่วยภายใต้ Patient–Hospital relationship นี้"
+        description="บันทึกข้อมูลอ้างอิงเริ่มต้นของผู้ป่วยในโรงพยาบาลนี้"
         title="ข้อมูลตั้งต้น"
       />
 
@@ -113,7 +113,7 @@ export function PatientBaselineForm({
         <Alert variant="warning">
           <p className="font-semibold">ตรวจสอบข้อมูลก่อนบันทึก</p>
           <p className="mt-1">
-            ข้อมูลตั้งต้นจะถูกบันทึกเป็นข้อมูลอ้างอิงเริ่มต้นและยังไม่รองรับการแก้ไขในต้นแบบนี้ กรุณาตรวจสอบข้อมูลก่อนบันทึก
+            ข้อมูลตั้งต้นจะถูกบันทึกเป็นข้อมูลอ้างอิงและยังไม่รองรับการแก้ไข กรุณาตรวจสอบข้อมูลก่อนบันทึก
           </p>
           <p className="mt-2">
             ช่องว่างหมายถึงยังไม่มีข้อมูล ระบบจะไม่เติมค่าแทนและจะไม่คำนวณการแปลผลทางคลินิกอัตโนมัติ
@@ -162,7 +162,7 @@ export function PatientBaselineForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ข้อมูลสุขภาพตั้งต้น</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ช่องวัดผลเป็นข้อมูลที่ผู้ใช้กรอกเพื่อเก็บ Requirement หน่วยและความหมายยังเป็น provisional และไม่มีการจัดกลุ่มความเสี่ยง
+            กรอกเฉพาะข้อมูลที่มี โดยระบบจะเก็บตามหน่วยที่ระบุและยังไม่แปลผลหรือจัดกลุ่มความเสี่ยงอัตโนมัติ
           </p>
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <label className={labelClassName} htmlFor="baseline-weight">
@@ -296,7 +296,7 @@ export function PatientBaselineForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ความมั่นใจ</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            คะแนน 0–10 เป็นมาตรวัดต้นแบบตามหลักฐานเดิม ไม่ใช่คะแนนวินิจฉัยหรือผลลัพธ์ทางคลินิก
+            คะแนน 0–10 ใช้เพื่อบันทึกระดับความมั่นใจ ไม่ใช่คะแนนวินิจฉัยหรือผลลัพธ์ทางคลินิก
           </p>
           <div className="mt-6 grid gap-5 sm:grid-cols-2">
             <label className={labelClassName} htmlFor="baseline-confidence-score">
@@ -366,7 +366,7 @@ export function PatientBaselineForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ตรวจสอบและบันทึก</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            เมื่อบันทึกแล้ว ข้อมูลตั้งต้นในต้นแบบนี้จะเป็นข้อมูลอ่านอย่างเดียว ไม่มีการแก้ไข ลบ หรือแทนที่รายการเดิม
+            เมื่อบันทึกแล้ว ข้อมูลตั้งต้นจะเป็นข้อมูลอ่านอย่างเดียว ไม่มีการแก้ไข ลบ หรือแทนที่รายการเดิม
           </p>
           <ActionFeedback state={state} />
           {confirmationRequested ? (
@@ -374,7 +374,7 @@ export function PatientBaselineForm({
               <p className="font-semibold">ยืนยันการบันทึกข้อมูลตั้งต้น</p>
               <p className="mt-1">ตรวจสอบข้อมูลครบแล้วหรือยัง? การบันทึกครั้งนี้จะสร้างข้อมูลอ้างอิงเริ่มต้นแบบอ่านอย่างเดียว</p>
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                <Button disabled={pending} type="submit">
+                <Button disabled={pending} loading={pending} type="submit">
                   {pending ? "กำลังบันทึก…" : "ยืนยันบันทึกข้อมูลตั้งต้น"}
                 </Button>
                 <Button
@@ -389,7 +389,7 @@ export function PatientBaselineForm({
             </Alert>
           ) : (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button disabled={pending} type="submit">
+              <Button disabled={pending} loading={pending} type="submit">
                 ตรวจสอบข้อมูลก่อนบันทึก
               </Button>
               <Link

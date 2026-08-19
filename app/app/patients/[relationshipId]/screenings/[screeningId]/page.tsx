@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -13,10 +12,14 @@ import {
   getScreeningDetail,
   type ScreeningDetail,
 } from "@/modules/screening/services/screening-query-service";
+import {
+  SCREENING_LEVEL_LABELS,
+  SCREENING_ZONE_LABELS,
+} from "@/modules/screening/presentation/screening-labels";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const metadata: Metadata = {
-  title: "รายละเอียด Screening",
+  title: "รายละเอียดการประเมิน",
 };
 
 type ScreeningDetailPageProps = {
@@ -93,8 +96,10 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
       <PageHeader
         actions={
           <div className="flex flex-wrap gap-2">
-            <StatusBadge variant="info">{detail.result.level}</StatusBadge>
-            <StatusBadge variant={zoneVariant(detail.result.zone)}>{detail.result.zone}</StatusBadge>
+            <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[detail.result.level]}</StatusBadge>
+            <StatusBadge variant={zoneVariant(detail.result.zone)}>
+              {SCREENING_ZONE_LABELS[detail.result.zone]}
+            </StatusBadge>
           </div>
         }
         breadcrumbs={[
@@ -104,23 +109,15 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
           },
           {
             href: `/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/screenings`,
-            label: "ประวัติ Screening",
+            label: "ประวัติการประเมิน",
           },
           { label: "รายละเอียดการประเมิน" },
         ]}
-        description="ผลลัพธ์และคำตอบของ Screening ที่บันทึกไว้ในบริบทของโรงพยาบาลนี้"
-        title="รายละเอียด Screening"
+        description="ผลลัพธ์และคำตอบของแบบประเมินที่บันทึกไว้ในบริบทของโรงพยาบาลนี้"
+        title="รายละเอียดการประเมิน"
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ผลลัพธ์นี้เป็นข้อมูลจากต้นแบบ</p>
-          <p className="mt-1">
-            ข้อคำถามและเกณฑ์การประเมินอ้างอิงรูปแบบจากระบบ DEMI เดิม
-            และยังรอการยืนยันจากลูกค้า ไม่ใช่คำแนะนำหรือการตัดสินใจทางการแพทย์อัตโนมัติ
-          </p>
-        </Alert>
-
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -148,39 +145,41 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ผลลัพธ์ต้นแบบ</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">คำนวณจากคำตอบที่ตรวจสอบฝั่งเซิร์ฟเวอร์</p>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">ผลลัพธ์การประเมิน</h2>
+        <p className="mt-1 text-sm leading-6 text-text-muted">คำนวณจากคำตอบที่บันทึกไว้</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <StatusBadge variant="info">{detail.result.level}</StatusBadge>
-              <StatusBadge variant={zoneVariant(detail.result.zone)}>{detail.result.zone}</StatusBadge>
+              <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[detail.result.level]}</StatusBadge>
+              <StatusBadge variant={zoneVariant(detail.result.zone)}>
+                {SCREENING_ZONE_LABELS[detail.result.zone]}
+              </StatusBadge>
             </div>
           </div>
           <dl className="mt-6 grid gap-4 border-y border-border py-5 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <dt className="text-sm text-text-muted">PAM total</dt>
+              <dt className="text-sm text-text-muted">คะแนนรวม PAM</dt>
               <dd className="mt-1 text-xl font-semibold text-text">{detail.result.pamTotal}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">PROMs total</dt>
+              <dt className="text-sm text-text-muted">คะแนนรวม PROMs</dt>
               <dd className="mt-1 text-xl font-semibold text-text">{detail.result.promsTotal}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">PROMs minimum</dt>
+              <dt className="text-sm text-text-muted">คะแนนต่ำสุด PROMs</dt>
               <dd className="mt-1 text-xl font-semibold text-text">{detail.result.promsMin}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">Combined total</dt>
+              <dt className="text-sm text-text-muted">คะแนนรวมทั้งหมด</dt>
               <dd className="mt-1 text-xl font-semibold text-text">{detail.result.combinedTotal}</dd>
             </div>
           </dl>
           {detail.result.percentage !== null ? (
             <p className="mt-5 text-sm leading-6 text-text-muted">
-              Combined percentage: <span className="font-semibold text-text">{detail.result.percentage.toFixed(2)}%</span>
+              เปอร์เซ็นต์รวม: <span className="font-semibold text-text">{detail.result.percentage.toFixed(2)}%</span>
             </p>
           ) : (
             <p className="mt-5 text-sm leading-6 text-text-muted">
-              ไม่แสดง Combined percentage เนื่องจากผลลัพธ์เข้าเงื่อนไข L1 โดยตรง
+              ไม่แสดงเปอร์เซ็นต์รวม เนื่องจากผลการประเมินอยู่ในระดับ 1 ตามเงื่อนไขของแบบประเมิน
             </p>
           )}
         </Panel>
@@ -196,7 +195,7 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Confidence</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ</h2>
           <dl className="mt-5 divide-y divide-border border-y border-border">
             <div className="grid gap-1 py-4 sm:grid-cols-[14rem_minmax(0,1fr)] sm:gap-6">
               <dt className="text-sm text-text-muted">คะแนนความมั่นใจ</dt>
@@ -207,20 +206,6 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
               <dd className="whitespace-pre-wrap text-sm leading-6 text-text">
                 {detail.responses.confidenceImprovementPlan ?? "ไม่ได้ระบุ"}
               </dd>
-            </div>
-          </dl>
-        </Panel>
-
-        <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">แหล่งนิยามของต้นแบบ</h2>
-          <dl className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-text-muted">Question set</dt>
-              <dd className="mt-1 break-words font-mono text-sm text-text">{detail.questionSetKey} · {detail.questionSetVersion}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-text-muted">Scoring</dt>
-              <dd className="mt-1 break-words font-mono text-sm text-text">{detail.scoringVersion}</dd>
             </div>
           </dl>
         </Panel>
@@ -236,7 +221,7 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/screenings`}
           >
-            กลับไปประวัติ Screening
+            กลับไปประวัติการประเมิน
           </Link>
         </div>
       </div>

@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { FollowupHistoryView } from "./followup-history-view";
 
 export const metadata: Metadata = {
-  title: "Follow-up / Progress",
+  title: "ประวัติการติดตามผล",
 };
 
 type FollowupHistoryPageProps = {

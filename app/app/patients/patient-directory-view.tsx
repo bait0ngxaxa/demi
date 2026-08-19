@@ -195,7 +195,7 @@ export function PatientDirectoryView({
               )}
             </div>
             <p className="max-w-xl text-sm leading-6 text-text-muted">
-              ระบบตรวจสอบสิทธิ์ของคุณและขอบเขตโรงพยาบาลจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
+              แสดงเฉพาะผู้ป่วยของโรงพยาบาลที่เลือก
             </p>
           </div>
         </Panel>
@@ -227,7 +227,7 @@ export function PatientDirectoryView({
             <Button type="submit">ค้นหา</Button>
           </form>
           <p className="mt-3 text-xs leading-5 text-text-subtle">
-            จำกัดความยาวคำค้นหาเพื่อให้การค้นหาปลอดภัยและตอบสนองได้สม่ำเสมอ
+            พิมพ์ชื่อบางส่วนได้ ส่วน HN ต้องตรงกับข้อมูลในโรงพยาบาลที่เลือก
           </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">

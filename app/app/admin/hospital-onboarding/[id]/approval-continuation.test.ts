@@ -19,7 +19,7 @@ describe("hospital onboarding approval continuation", () => {
     );
 
     expect(approved).toContain("โรงพยาบาลได้รับการอนุมัติแล้ว");
-    expect(approved).toContain("ผู้สมัครได้รับสถานะ Hospital Owner แล้ว");
+    expect(approved).toContain("ผู้สมัครได้รับบทบาทเจ้าของโรงพยาบาลแล้ว");
     expect(approved).toContain('href="/login"');
     expect(pending).toBe("");
   });

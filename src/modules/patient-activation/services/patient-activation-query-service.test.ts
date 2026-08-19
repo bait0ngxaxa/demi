@@ -20,6 +20,27 @@ const activation = {
 };
 
 describe("patient activation query projection", () => {
+  it("builds a case-insensitive, term-by-term name filter", () => {
+    expect(
+      patientActivationQueryInternals.buildNameWhere("  สมชาย   ใจดี "),
+    ).toEqual({
+      AND: [
+        {
+          OR: [
+            { givenName: { contains: "สมชาย", mode: "insensitive" } },
+            { familyName: { contains: "สมชาย", mode: "insensitive" } },
+          ],
+        },
+        {
+          OR: [
+            { givenName: { contains: "ใจดี", mode: "insensitive" } },
+            { familyName: { contains: "ใจดี", mode: "insensitive" } },
+          ],
+        },
+      ],
+    });
+  });
+
   it.each([
     ["no activation", [], "NOT_ISSUED"],
     ["valid activation", [activation], "ISSUED"],

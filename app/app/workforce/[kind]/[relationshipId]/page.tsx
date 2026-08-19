@@ -170,7 +170,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           <Alert variant="warning">
             <p className="font-semibold">บัญชียังไม่เปิดใช้งาน</p>
             <p className="mt-1">
-              การเปิดใช้งานบัญชีอยู่นอกขอบเขตการจัดการสถานะความสัมพันธ์ในต้นแบบนี้
+              การเปิดใช้งานบัญชีดำเนินการผ่านลิงก์เฉพาะจากโรงพยาบาล
             </p>
             {detail.activationExpiresAt ? (
               <p className="mt-1 text-sm">ลิงก์ล่าสุดหมดอายุ: {formatDate(detail.activationExpiresAt)}</p>

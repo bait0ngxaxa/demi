@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { AppointmentHistoryView } from "./appointment-history-view";
 
 export const metadata: Metadata = {
-  title: "Appointments",
+  title: "นัดหมาย",
 };
 
 type AppointmentHistoryPageProps = {

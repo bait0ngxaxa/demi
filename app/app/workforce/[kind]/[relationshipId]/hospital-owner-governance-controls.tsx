@@ -45,7 +45,7 @@ function Feedback({
 
   return successState ? (
     <Alert className="mt-4" variant="success">
-      บันทึกสถานะ Owner/Member เรียบร้อยแล้ว
+      บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว
     </Alert>
   ) : null;
 }
@@ -88,9 +88,9 @@ export function HospitalOwnerGovernanceControls({
 
   return (
     <Panel>
-      <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการ Owner โรงพยาบาล</h2>
+      <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการเจ้าของโรงพยาบาล</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        เปลี่ยนเฉพาะประเภทสมาชิกของโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี Role.HOSPITAL ข้อมูลรับรอง หรือความสัมพันธ์อื่น
+        การเปลี่ยนแปลงนี้มีผลเฉพาะบทบาทในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี ข้อมูลเข้าสู่ระบบ หรือความสัมพันธ์อื่น
       </p>
 
       {ownerGovernance.canPromote ? (
@@ -99,10 +99,10 @@ export function HospitalOwnerGovernanceControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            เลื่อนสมาชิก ACTIVE รายนี้เป็น Owner ของโรงพยาบาลนี้เท่านั้น
+            เปลี่ยนสมาชิกที่พร้อมใช้งานรายนี้เป็นเจ้าของโรงพยาบาลนี้
           </p>
-          <Button className="mt-3" disabled={pending} size="compact" type="submit">
-            {promotePending ? "กำลังเลื่อนสถานะ..." : "เลื่อนเป็น Owner"}
+          <Button className="mt-3" disabled={pending} loading={promotePending} size="compact" type="submit">
+            {promotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นเจ้าของโรงพยาบาล"}
           </Button>
         </form>
       ) : null}
@@ -113,13 +113,14 @@ export function HospitalOwnerGovernanceControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            ลดสถานะเป็น Member และคงความสัมพันธ์ ACTIVE ไว้ ระบบต้องเหลือ Owner ที่มีสิทธิ์อย่างน้อยหนึ่งราย
+            เปลี่ยนเป็นสมาชิก และคงความสัมพันธ์กับโรงพยาบาลนี้ไว้ ระบบต้องมีเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย
           </p>
           <Button
             className="mt-3"
             disabled={pending}
+            loading={demotePending}
             onClick={(event) => {
-              if (!window.confirm("ยืนยันการลดสถานะ Owner เป็น Member หรือไม่")) {
+              if (!window.confirm("ยืนยันการเปลี่ยนเจ้าของโรงพยาบาลเป็นสมาชิกหรือไม่")) {
                 event.preventDefault();
               }
             }}
@@ -127,15 +128,15 @@ export function HospitalOwnerGovernanceControls({
             type="submit"
             variant="secondary"
           >
-            {demotePending ? "กำลังลดสถานะ..." : "ลดสถานะเป็น Member"}
+            {demotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นสมาชิก"}
           </Button>
         </form>
       ) : null}
 
       {membershipType === "OWNER" && isActiveTarget && !ownerGovernance.canDemote ? (
         <Alert className="mt-6" variant="warning">
-          <p className="font-semibold">ยังไม่สามารถลดสถานะ Owner ได้</p>
-          <p className="mt-1">การดำเนินการต้องเหลือ Owner ที่มีสิทธิ์อย่างน้อยหนึ่งราย ระบบจะตรวจสอบเงื่อนไขนี้ซ้ำที่เซิร์ฟเวอร์</p>
+          <p className="font-semibold">ยังไม่สามารถเปลี่ยนเจ้าของโรงพยาบาลรายนี้เป็นสมาชิกได้</p>
+          <p className="mt-1">ต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>
         </Alert>
       ) : null}
 

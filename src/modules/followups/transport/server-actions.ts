@@ -27,7 +27,7 @@ export async function createFollowupAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบข้อมูล Follow-up ก่อนส่งอีกครั้ง",
+      message: "กรุณาตรวจสอบข้อมูลการติดตามผลก่อนส่งอีกครั้ง",
     };
   }
 

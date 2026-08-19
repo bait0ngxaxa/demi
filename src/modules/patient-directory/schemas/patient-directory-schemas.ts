@@ -42,7 +42,7 @@ export const patientDirectoryQuerySchema = z
         origin: "string",
         inclusive: true,
         path: ["value"],
-        message: "Hospital number is too long",
+        message: "HN ยาวเกินจำนวนที่รองรับ",
       });
     }
   });
@@ -70,7 +70,7 @@ export const patientAssignedDirectoryQuerySchema = z
         origin: "string",
         inclusive: true,
         path: ["value"],
-        message: "Hospital number is too long",
+        message: "HN ยาวเกินจำนวนที่รองรับ",
       });
     }
   });

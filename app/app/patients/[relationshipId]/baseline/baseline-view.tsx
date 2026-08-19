@@ -98,7 +98,7 @@ export function PatientBaselineView({
           },
           { label: "ข้อมูลตั้งต้น" },
         ]}
-        description="ภาพรวมสถานะเริ่มต้นของผู้ป่วยภายใต้ Patient–Hospital relationship นี้"
+        description="ภาพรวมข้อมูลอ้างอิงเริ่มต้นของผู้ป่วยในโรงพยาบาลนี้"
         title="ข้อมูลตั้งต้น"
       />
 
@@ -106,7 +106,8 @@ export function PatientBaselineView({
         <Alert variant="info">
           <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น (อ่านอย่างเดียว)</p>
           <p className="mt-1">
-            ข้อมูลนี้เป็น snapshot สำหรับเก็บ Requirement และยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับ Follow-up
+            ข้อมูลนี้เป็นข้อมูลอ้างอิงที่อ่านได้อย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
+            ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
           </p>
         </Alert>
 

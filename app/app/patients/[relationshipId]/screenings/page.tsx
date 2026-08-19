@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { ScreeningHistoryView } from "./screening-history-view";
 
 export const metadata: Metadata = {
-  title: "ประวัติ Screening",
+  title: "ประวัติการประเมิน",
 };
 
 type ScreeningHistoryPageProps = {

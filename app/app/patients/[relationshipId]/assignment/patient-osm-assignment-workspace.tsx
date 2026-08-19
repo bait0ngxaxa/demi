@@ -158,7 +158,7 @@ export function PatientOsmAssignmentWorkspace({
               </p>
               <form action={unassignAction} className="mt-4">
                 <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
-                <Button disabled={busy} size="compact" type="submit" variant="danger">
+                <Button disabled={busy} loading={unassignPending} size="compact" type="submit" variant="danger">
                   {unassignPending ? "กำลังยกเลิก..." : "ยกเลิกการมอบหมาย"}
                 </Button>
               </form>
@@ -214,7 +214,7 @@ export function PatientOsmAssignmentWorkspace({
                   ))}
                 </Select>
               </label>
-              <Button disabled={busy} type="submit">
+              <Button disabled={busy} loading={assignPending} type="submit">
                 {assignPending
                   ? "กำลังบันทึก..."
                   : currentAssignment

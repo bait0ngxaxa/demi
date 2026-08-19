@@ -23,7 +23,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
 
 export const metadata: Metadata = {
-  title: "รายละเอียด Appointment",
+  title: "รายละเอียดนัดหมาย",
 };
 
 type AppointmentDetailPageProps = {
@@ -91,32 +91,27 @@ function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React
           },
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/appointments`,
-            label: "Appointments",
+            label: "นัดหมาย",
           },
-          { label: "รายละเอียด Appointment" },
+          { label: "รายละเอียดนัดหมาย" },
         ]}
-        description="รายละเอียด Appointment ในขอบเขต Patient–Hospital relationship เดียวกัน"
-        title="รายละเอียด Appointment"
+        description="รายละเอียดนัดหมายของผู้ป่วยในโรงพยาบาลนี้"
+        title="รายละเอียดนัดหมาย"
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            ประเภท สถานะ ผู้รับผิดชอบ และอำนาจของผู้ใช้งานเป็นพฤติกรรมต้นแบบที่ยังรอการยืนยันจากลูกค้า
-          </p>
-          {detail.status === "COMPLETED" ? (
-            <p className="mt-2">
-              Appointment นี้เสร็จสิ้นแล้ว สามารถบันทึก Follow-up แยกเป็น historical round ได้
-              <Link
-                className="ml-2 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`}
-              >
-                บันทึก Follow-up
-              </Link>
-            </p>
-          ) : null}
-        </Alert>
+        {detail.status === "COMPLETED" ? (
+          <Alert variant="info">
+            <p className="font-semibold">นัดหมายนี้เสร็จสิ้นแล้ว</p>
+            <p className="mt-1">คุณสามารถบันทึกการติดตามผลเป็นรายการใหม่ได้</p>
+            <Link
+              className="mt-3 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`}
+            >
+              บันทึกการติดตามผล
+            </Link>
+          </Alert>
+        ) : null}
 
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -193,14 +188,14 @@ function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React
           <Panel>
             <h2 className="text-xl font-semibold tracking-[-0.02em]">การดำเนินการ</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              การเปลี่ยนสถานะต้องทำผ่านเซิร์ฟเวอร์และจะตรวจสอบสถานะล่าสุดอีกครั้ง
+                ตรวจสอบข้อมูลล่าสุดก่อนดำเนินการทุกครั้ง
             </p>
             <div className="mt-5 flex flex-col gap-5">
               <Link
                 className="inline-flex min-h-11 w-fit items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/${encodeURIComponent(detail.appointmentId)}/edit`}
               >
-                Reschedule Appointment
+                เลื่อนนัดหมาย
               </Link>
               <AppointmentMutationControls
                 appointmentId={detail.appointmentId}
@@ -218,7 +213,7 @@ function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments`}
           >
-            กลับไปประวัติ Appointment
+            กลับไปประวัตินัดหมาย
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

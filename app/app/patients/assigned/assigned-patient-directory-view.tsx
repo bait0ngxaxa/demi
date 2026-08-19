@@ -165,7 +165,7 @@ export function AssignedPatientDirectoryView({
             <Button type="submit">ค้นหา</Button>
           </form>
           <p className="mt-3 text-xs leading-5 text-text-subtle">
-            ระบบตรวจสอบขอบเขตผู้ป่วยจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
+            แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้
           </p>
           {errorMessage ? (
             <Alert className="mt-5" variant="danger">
@@ -182,7 +182,7 @@ export function AssignedPatientDirectoryView({
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
                   รายชื่อผู้ป่วยที่รับผิดชอบ
                 </h2>
-                <p className="mt-1 text-sm text-text-muted">รวมทุกโรงพยาบาลที่มีสิทธิ์และ assignment ปัจจุบัน</p>
+                <p className="mt-1 text-sm text-text-muted">รวมทุกโรงพยาบาลที่คุณมีสิทธิ์และผู้ป่วยที่ได้รับมอบหมาย</p>
               </div>
               <p className="text-sm text-text-muted">พบ {result.total} รายการ</p>
             </div>
@@ -204,7 +204,7 @@ export function AssignedPatientDirectoryView({
                   {result.value ? "ไม่พบผู้ป่วยตามข้อมูลค้นหา" : "ยังไม่มีผู้ป่วยที่ได้รับมอบหมาย"}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
-                  หากต้องการให้มีผู้ป่วยในรายการนี้ กรุณาติดต่อเจ้าของโรงพยาบาลเพื่อจัดการ assignment
+                  หากต้องการให้มีผู้ป่วยในรายการนี้ กรุณาติดต่อเจ้าของโรงพยาบาลเพื่อจัดการการมอบหมายผู้ป่วย
                 </p>
               </div>
             )}

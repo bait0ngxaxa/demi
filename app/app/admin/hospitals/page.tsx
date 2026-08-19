@@ -81,7 +81,7 @@ export default async function HospitalGovernanceDirectoryPage(): Promise<React.J
     <div className="max-w-6xl">
       <PageHeader
         breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "การกำกับดูแลโรงพยาบาล" }]}
-        description="ตรวจสอบสถานะโรงพยาบาลที่เข้าสู่วงจรการกำกับดูแลของ DEMI ต้นแบบนี้แสดงเฉพาะข้อมูลกำกับดูแลที่จำเป็น"
+        description="ตรวจสอบสถานะโรงพยาบาลในวงจรการกำกับดูแลของ DEMI และดำเนินการที่เกี่ยวข้อง"
         title="การกำกับดูแลโรงพยาบาล"
       />
 
@@ -92,7 +92,7 @@ export default async function HospitalGovernanceDirectoryPage(): Promise<React.J
               รายชื่อโรงพยาบาล
             </h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              เลือกโรงพยาบาลเพื่อดูรายละเอียดและดำเนินการเฉพาะสถานะ ACTIVE หรือ SUSPENDED
+          เลือกโรงพยาบาลเพื่อดูรายละเอียดและจัดการสถานะที่พร้อมดำเนินการหรือถูกระงับ
             </p>
           </div>
           <StatusBadge variant="info">ข้อมูลกำกับดูแลแบบจำกัดขอบเขต</StatusBadge>
@@ -102,7 +102,7 @@ export default async function HospitalGovernanceDirectoryPage(): Promise<React.J
           <Panel className="mt-6 border-dashed text-center">
             <p className="font-semibold">ยังไม่มีโรงพยาบาลในวงจรนี้</p>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              โรงพยาบาลที่รอการยืนยันยังอยู่ในขั้นตอน onboarding และไม่แสดงเป็นรายการ lifecycle
+              โรงพยาบาลที่รอการยืนยันยังอยู่ในขั้นตอนลงทะเบียน และยังไม่แสดงในรายการสถานะการดำเนินงาน
             </p>
           </Panel>
         ) : (

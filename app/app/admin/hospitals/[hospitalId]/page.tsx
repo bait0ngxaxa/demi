@@ -148,7 +148,7 @@ export default async function HospitalGovernanceDetailPage({
           { href: "/app/admin/hospitals", label: "การกำกับดูแลโรงพยาบาล" },
           { label: "รายละเอียดโรงพยาบาล" },
         ]}
-        description="รายละเอียดนี้ใช้สำหรับการกำกับดูแลสถานะโรงพยาบาลเท่านั้น ไม่ใช่หน้าจัดการบัญชีหรือข้อมูลผู้ป่วย"
+        description="ใช้สำหรับตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล ไม่รวมการจัดการบัญชีหรือข้อมูลผู้ป่วย"
         title={hospital.name}
       />
 
@@ -158,7 +158,7 @@ export default async function HospitalGovernanceDetailPage({
         <Alert variant={hospital.status === HospitalStatus.SUSPENDED ? "warning" : "info"}>
           <p className="font-semibold">ขอบเขตการเปลี่ยนสถานะ</p>
           <p className="mt-1">
-            การระงับหรือคืนสถานะมีผลเฉพาะ Hospital.status ของโรงพยาบาลนี้ ไม่ลบบัญชี ไม่เปลี่ยนความสัมพันธ์หรือ assignment และไม่แก้ไขนัดหมายหรือข้อมูลประวัติ
+            การระงับหรือคืนสถานะมีผลเฉพาะโรงพยาบาลนี้ ไม่ลบบัญชี ไม่เปลี่ยนความสัมพันธ์หรือการมอบหมายผู้ป่วย และไม่แก้ไขนัดหมายหรือข้อมูลประวัติ
           </p>
         </Alert>
 
@@ -172,7 +172,7 @@ export default async function HospitalGovernanceDetailPage({
           <Alert variant="neutral">
             <p className="font-semibold">ยังไม่อยู่ในวงจรการระงับ/คืนสถานะ</p>
             <p className="mt-1">
-              โรงพยาบาลนี้ยังอยู่ในขั้นตอน onboarding จึงไม่มีปุ่ม Suspend หรือ Restore ในหน้านี้
+              โรงพยาบาลนี้ยังอยู่ในขั้นตอนลงทะเบียน จึงยังไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้
             </p>
           </Alert>
         )}

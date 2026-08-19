@@ -134,7 +134,7 @@ function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">บันทึก Appointment ไม่สำเร็จ</p>
+      <p className="font-semibold">บันทึกนัดหมายไม่สำเร็จ</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -179,7 +179,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
     }
   }, [props.relationshipId, router, state]);
 
-  const title = props.mode === "create" ? "สร้าง Appointment" : "Reschedule Appointment";
+  const title = props.mode === "create" ? "สร้างนัดหมาย" : "เลื่อนนัดหมาย";
   const description =
     props.mode === "create"
       ? "สร้างนัดหมายในประวัติของผู้ป่วยและโรงพยาบาลนี้"
@@ -188,7 +188,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">นัดหมาย</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(props.relationshipId)}`,
@@ -196,7 +196,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
           },
           {
             href: `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments`,
-            label: "Appointments",
+            label: "นัดหมาย",
           },
           { label: title },
         ]}
@@ -225,17 +225,6 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
         <input name="locationType" readOnly type="hidden" value={locationType} />
         <input name="locationDetail" readOnly type="hidden" value={locationDetail} />
         <input name="note" readOnly type="hidden" value={note} />
-
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            ประเภท สถานะ ผู้รับผิดชอบ และอำนาจของผู้ใช้งานในหน้านี้เป็นพฤติกรรมต้นแบบ
-            ที่รอการยืนยันจากลูกค้า ยังไม่ใช่ข้อกำหนดทางคลินิกหรือการปฏิบัติงานฉบับสุดท้าย
-          </p>
-          <p className="mt-2 text-xs">
-            เวลาในฟอร์มตีความเป็นเวลาไทย (Asia/Bangkok, UTC+07:00) และส่งเป็น ISO timestamp ที่มี offset
-          </p>
-        </Alert>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
@@ -273,7 +262,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             </label>
 
             <label className={labelClassName} htmlFor="appointment-type">
-              <span>ประเภท Appointment</span>
+              <span>ประเภทนัดหมาย</span>
               <Select
                 id="appointment-type"
                 onChange={(event) => setType(event.target.value as AppointmentTypeValue)}
@@ -305,7 +294,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                รายการนี้มาจากสมาชิกที่ active โดยตรงของโรงพยาบาลนี้เท่านั้น
+                รายการนี้มาจากสมาชิกที่พร้อมใช้งานของโรงพยาบาลนี้เท่านั้น
               </span>
             </label>
 
@@ -321,7 +310,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 value={durationMinutes}
               />
               <span className="text-xs font-normal leading-5 text-text-muted">
-                ค่าเริ่มต้น 30 นาทีเป็นค่าชั่วคราวสำหรับการทดลองต้นแบบ
+                ค่าเริ่มต้น 30 นาที
               </span>
             </label>
 
@@ -365,7 +354,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 value={note}
               />
               <span className="text-xs font-normal leading-5 text-text-muted">
-                หมายเหตุจะแสดงเฉพาะใน Appointment ที่ผู้ใช้มีสิทธิ์เข้าถึง และไม่ถูกเขียนลง audit metadata
+                หมายเหตุจะแสดงเฉพาะในนัดหมายที่ผู้ใช้มีสิทธิ์เข้าถึง
               </span>
             </label>
           </fieldset>
@@ -374,12 +363,12 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนบันทึก</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ระบบจะตรวจสอบสิทธิ์ ขอบเขตผู้ป่วย และสมาชิกผู้รับผิดชอบซ้ำฝั่งเซิร์ฟเวอร์
+            นัดหมายนี้จะผูกกับผู้ป่วยและผู้รับผิดชอบในโรงพยาบาลที่เลือก
           </p>
           <ActionFeedback state={state} />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !scheduledAtLocal} type="submit">
-              {pending ? "กำลังตรวจสอบและบันทึก..." : props.mode === "create" ? "บันทึก Appointment" : "บันทึกการ Reschedule"}
+            <Button disabled={pending || !scheduledAtLocal} loading={pending} type="submit">
+              {pending ? "กำลังตรวจสอบและบันทึก..." : props.mode === "create" ? "บันทึกนัดหมาย" : "บันทึกการเลื่อนนัดหมาย"}
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

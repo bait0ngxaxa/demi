@@ -15,9 +15,6 @@ export function AppSidebar({ navigation }: AppSidebarProps): React.JSX.Element {
       <nav aria-label="เมนูหลัก" className="flex-1 overflow-y-auto px-4 py-6">
         <NavigationList groups={navigation} />
       </nav>
-      <p className="border-t border-white/12 px-6 py-5 text-xs leading-5 text-white/55">
-        เมนูแสดงตามขอบเขตงาน ส่วนสิทธิ์ดำเนินการตรวจสอบที่เซิร์ฟเวอร์ทุกครั้ง
-      </p>
     </aside>
   );
 }

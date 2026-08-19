@@ -123,7 +123,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
   return (
     <div className="max-w-4xl">
       <PageHeader
-        description="พื้นที่ทำงานถัดไปตามบทบาทและขอบเขตงานที่ DEMI ยืนยันจากฝั่งเซิร์ฟเวอร์"
+        description="พื้นที่ทำงานตามบทบาทและงานที่พร้อมให้คุณดำเนินการ"
         title="ยินดีต้อนรับสู่ DEMI"
       />
 
@@ -158,14 +158,14 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
           งานถัดไป
         </h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          เลือกงานจากขอบเขตที่ยืนยันแล้ว ระบบจะตรวจสิทธิ์ของปลายทางอีกครั้งเสมอ
+          เลือกงานที่ต้องการดำเนินการจากรายการด้านล่าง
         </p>
 
         <div className="mt-5 space-y-5">
           {projection.governanceActions.length > 0 ? (
             <Panel>
               <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">งานกำกับดูแล</h3>
-              <p className="mt-1 text-sm leading-6 text-text-muted">รายการสำหรับ Platform Admin ตามสิทธิ์ปัจจุบัน</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">รายการสำหรับผู้ดูแลระบบแพลตฟอร์มตามสิทธิ์ปัจจุบัน</p>
               <div className="mt-5">
                 <WorkspaceActionList actions={projection.governanceActions} />
               </div>
@@ -188,7 +188,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
           {projection.patientOnly ? (
             <Alert variant="info">
               <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานแล้ว</p>
-              <p className="mt-1">ฟังก์ชันสำหรับผู้ป่วยยังไม่อยู่ในต้นแบบนี้</p>
+              <p className="mt-1">ขณะนี้ยังไม่มีรายการงานสำหรับผู้ป่วยในหน้านี้</p>
             </Alert>
           ) : null}
 

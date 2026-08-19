@@ -119,7 +119,7 @@ describe("Screening Server Action", () => {
     await expect(submitScreeningAction(initialScreeningActionState, screeningFormData())).resolves.toEqual({
       status: "ERROR",
       code: "FORBIDDEN",
-      message: "บัญชีนี้ไม่มีสิทธิ์ทำ Screening สำหรับผู้ป่วยรายนี้",
+      message: "บัญชีนี้ไม่มีสิทธิ์ทำแบบประเมินสำหรับผู้ป่วยรายนี้",
     });
   });
 });

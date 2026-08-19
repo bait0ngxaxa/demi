@@ -126,28 +126,28 @@ export function mapFollowupError(error: unknown): {
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์บันทึก Follow-up สำหรับผู้ป่วยรายนี้",
+        message: "บัญชีนี้ไม่มีสิทธิ์บันทึกการติดตามผลสำหรับผู้ป่วยรายนี้",
       };
     }
 
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "การส่ง Follow-up นี้ขัดแย้งกับข้อมูลล่าสุด หรือ submission token ถูกใช้แล้ว",
+        message: "การบันทึกการติดตามผลนี้ขัดแย้งกับข้อมูลล่าสุด หรือคำขอนี้ถูกใช้แล้ว",
       };
     }
 
     if (error.code === "NOT_FOUND") {
       return {
         code: "FORBIDDEN",
-        message: "ไม่พบผู้ป่วย Appointment หรือ Goal Plan ในขอบเขตที่บัญชีนี้เข้าถึงได้",
+        message: "ไม่พบผู้ป่วย นัดหมาย หรือแผนเป้าหมายในขอบเขตที่บัญชีนี้เข้าถึงได้",
       };
     }
   }
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมบันทึก Follow-up ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "ระบบไม่พร้อมบันทึกการติดตามผลในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 

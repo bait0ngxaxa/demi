@@ -98,7 +98,7 @@ export const workforceActivationCompletionSchema = z
       context.addIssue({
         code: "custom",
         path: ["passwordConfirmation"],
-        message: "Password confirmation does not match",
+        message: "รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน",
       });
     }
   });

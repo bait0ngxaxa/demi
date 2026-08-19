@@ -180,9 +180,9 @@ function ActivationPresentation({
         <div className="flex h-52 w-52 items-center justify-center rounded-control bg-surface p-2">
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img alt="QR Code ลิงก์เปิดใช้งาน DEMI" className="h-full w-full" src={qrDataUrl} />
+            <img alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI" className="h-full w-full" src={qrDataUrl} />
           ) : (
-            <span className="text-center text-xs text-muted">กำลังสร้าง QR Code...</span>
+            <span className="text-center text-xs text-muted">กำลังสร้างคิวอาร์โค้ด...</span>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -211,12 +211,18 @@ function WorkforceRow({
   row,
   hospitalId,
   remoteAction,
+  remotePending,
   assistedAction,
+  assistedPending,
+  anyPending,
 }: {
   row: WorkforceListRow;
   hospitalId: string;
   remoteAction: (formData: FormData) => void;
+  remotePending: boolean;
   assistedAction: (formData: FormData) => void;
+  assistedPending: boolean;
+  anyPending: boolean;
 }): React.JSX.Element {
   const isActive = row.accountStatus === "ACTIVE" && row.relationshipStatus === "ACTIVE";
   const isSuspended =
@@ -278,11 +284,13 @@ function WorkforceRow({
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
               <Button
+                disabled={anyPending}
+                loading={remotePending}
                 size="compact"
                 type="submit"
                 variant="secondary"
               >
-                ออกลิงก์ใหม่
+                {remotePending ? "กำลังออกลิงก์..." : "ออกลิงก์ใหม่"}
               </Button>
             </form>
             <form action={assistedAction}>
@@ -290,10 +298,12 @@ function WorkforceRow({
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
               <Button
+                disabled={anyPending}
+                loading={assistedPending}
                 size="compact"
                 type="submit"
               >
-                เริ่มแบบช่วยเหลือ
+                {assistedPending ? "กำลังเตรียมการช่วยเหลือ..." : "เริ่มแบบช่วยเหลือ"}
               </Button>
             </form>
           </div>
@@ -346,7 +356,7 @@ export function WorkforceWorkspace({
       <PageHeader
         actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
         breadcrumbs={[{ label: "บุคลากร" }, { label: "จัดการบุคลากร" }]}
-        description="เพิ่มบุคลากรและ อสม. รวมถึงจัดการสถานะ Owner/Member ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
+        description="เพิ่มบุคลากรและ อสม. รวมถึงจัดการบทบาทเจ้าของโรงพยาบาลและสมาชิกในโรงพยาบาลที่คุณดูแล"
         title="จัดการบุคลากรโรงพยาบาล"
       />
 
@@ -370,7 +380,7 @@ export function WorkforceWorkspace({
             ))}
           </Select>
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายการและการดำเนินการทุกครั้งจะตรวจสอบสิทธิ์เจ้าของโรงพยาบาลจากฝั่งเซิร์ฟเวอร์
+            การดำเนินการจะแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
           </p>
         </Panel>
 
@@ -379,7 +389,7 @@ export function WorkforceWorkspace({
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                กำหนดวิชาชีพจากฝั่งโรงพยาบาล ระบบจะสร้างสิทธิ์บุคลากรโรงพยาบาลให้เอง
+                เลือกวิชาชีพของบุคลากร ระบบจะเพิ่มความสัมพันธ์กับโรงพยาบาลนี้ให้
               </p>
             </div>
             <form action={staffAction} className="mt-6 space-y-4">
@@ -407,9 +417,9 @@ export function WorkforceWorkspace({
                   ))}
                 </Select>
               </label>
-              {staffState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{staffState.message}</p> : null}
+              {staffState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{staffState.message}</Alert> : null}
               {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
-              <Button className="w-full" disabled={anyPending} type="submit">
+              <Button className="w-full" disabled={anyPending} loading={staffPending} type="submit">
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
               </Button>
             </form>
@@ -439,18 +449,18 @@ export function WorkforceWorkspace({
                 <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
               </label>
               <div className="min-h-12 rounded-control border border-dashed border-border bg-surface-muted px-4 py-3 text-sm leading-6 text-text-muted">
-                บทบาท อสม. และสถานะความสัมพันธ์กำหนดโดยบริการฝั่งเซิร์ฟเวอร์
+                ระบบจะกำหนดบทบาท อสม. และสถานะความสัมพันธ์ให้ตามขั้นตอนนี้
               </div>
-              {osmState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{osmState.message}</p> : null}
+              {osmState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{osmState.message}</Alert> : null}
               {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
-              <Button className="w-full" disabled={anyPending} type="submit">
+              <Button className="w-full" disabled={anyPending} loading={osmPending} type="submit">
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
               </Button>
             </form>
           </Panel>
         </div>
 
-        {remoteState.status === "ERROR" ? <p className="mt-6 text-sm leading-6 text-danger" role="alert">{remoteState.message}</p> : null}
+        {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
 
         <div className="mt-8 grid gap-6 xl:grid-cols-2">
@@ -470,9 +480,12 @@ export function WorkforceWorkspace({
                   {rows.map((row) => (
                     <WorkforceRow
                       assistedAction={assistedAction}
+                      assistedPending={assistedPending}
+                      anyPending={anyPending}
                       hospitalId={selectedHospitalId}
                       key={`${row.kind}-${row.id}`}
                       remoteAction={remoteAction}
+                      remotePending={remotePending}
                       row={row}
                     />
                   ))}

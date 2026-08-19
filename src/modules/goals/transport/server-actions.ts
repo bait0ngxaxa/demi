@@ -108,28 +108,28 @@ function mapGoalPlanError(error: unknown): {
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์สร้าง Goal Plan สำหรับผู้ป่วยรายนี้",
+        message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนเป้าหมายสำหรับผู้ป่วยรายนี้",
       };
     }
 
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "การส่ง Goal Plan นี้ถูกบันทึกแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเริ่มรอบใหม่",
+        message: "การบันทึกแผนเป้าหมายนี้เสร็จสิ้นแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเริ่มรอบใหม่",
       };
     }
 
     if (error.code === "NOT_FOUND") {
       return {
         code: "FORBIDDEN",
-        message: "ไม่พบผู้ป่วยหรือ Screening ในขอบเขตที่บัญชีนี้เข้าถึงได้",
+        message: "ไม่พบผู้ป่วยหรือแบบประเมินในขอบเขตที่บัญชีนี้เข้าถึงได้",
       };
     }
   }
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมบันทึก Goal Plan ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "ระบบไม่พร้อมบันทึกแผนเป้าหมายในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 
@@ -150,7 +150,7 @@ export async function submitGoalPlanAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบเป้าหมาย กิจกรรม และค่าเป้าหมายก่อนส่งอีกครั้ง",
+      message: "กรุณาตรวจสอบเป้าหมาย กิจกรรม และค่าเป้าหมายก่อนบันทึกอีกครั้ง",
     };
   }
 

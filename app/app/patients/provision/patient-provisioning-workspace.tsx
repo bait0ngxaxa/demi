@@ -191,7 +191,7 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
         <thead className="bg-canvas text-xs font-semibold text-muted">
           <tr>
             <th className="whitespace-nowrap px-3 py-3" scope="col">แถว</th>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">ตัวตน</th>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">เลขบัตรประชาชน</th>
             <th className="whitespace-nowrap px-3 py-3" scope="col">ชื่อ-นามสกุล</th>
             <th className="whitespace-nowrap px-3 py-3" scope="col">HN</th>
             <th className="whitespace-nowrap px-3 py-3" scope="col">สถานะ</th>
@@ -243,7 +243,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
               <thead className="bg-canvas text-xs font-semibold text-muted">
                 <tr>
                   <th className="whitespace-nowrap px-3 py-3" scope="col">แถว</th>
-                  <th className="whitespace-nowrap px-3 py-3" scope="col">ตัวตน</th>
+                  <th className="whitespace-nowrap px-3 py-3" scope="col">เลขบัตรประชาชน</th>
                   <th className="whitespace-nowrap px-3 py-3" scope="col">ชื่อ-นามสกุล</th>
                   <th className="whitespace-nowrap px-3 py-3" scope="col">HN</th>
                   <th className="whitespace-nowrap px-3 py-3" scope="col">ผลลัพธ์</th>
@@ -457,7 +457,7 @@ export function PatientProvisioningWorkspace({
             </div>
           )}
           <p className="mt-2 text-sm leading-6 text-muted">
-            ขอบเขตโรงพยาบาลและสิทธิ์เพิ่มผู้ป่วยตรวจสอบจากข้อมูลฝั่งเซิร์ฟเวอร์ทุกครั้ง
+              เพิ่มผู้ป่วยได้เฉพาะโรงพยาบาลที่เลือก
           </p>
         </Panel>
 
@@ -508,8 +508,8 @@ export function PatientProvisioningWorkspace({
                 <Input aria-invalid={Boolean(fieldError(provisionState, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
-              {provisionState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{provisionState.message}</p> : null}
-              <Button className="w-full" disabled={provisionPending} type="submit">
+              {provisionState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionState.message}</Alert> : null}
+              <Button className="w-full" disabled={provisionPending} loading={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
               </Button>
             </form>
@@ -544,8 +544,8 @@ export function PatientProvisioningWorkspace({
                 <p className="text-xs leading-5 text-muted">
                   ระบบจะอ่านแถวข้อมูล ตรวจซ้ำและตรวจความขัดแย้งก่อนยืนยันนำเข้า โดยไม่รับรหัสอ้างอิงโรงพยาบาลจากไฟล์
                 </p>
-                {previewState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{previewState.message}</p> : null}
-                <Button className="w-full" disabled={previewPending || importPending} type="submit" variant="secondary">
+                {previewState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{previewState.message}</Alert> : null}
+                <Button className="w-full" disabled={previewPending || importPending} loading={previewPending} type="submit" variant="secondary">
                   {previewPending ? "กำลังตรวจสอบไฟล์..." : "ตรวจสอบและแสดงตัวอย่าง"}
                 </Button>
                 {previewState.status === "SUCCESS" ? (
@@ -558,9 +558,9 @@ export function PatientProvisioningWorkspace({
                       </div>
                       <PreviewTable rows={previewState.preview.rows} />
                     </div>
-                    {importState.status === "ERROR" ? <p className="text-sm leading-6 text-danger" role="alert">{importState.message}</p> : null}
+                    {importState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{importState.message}</Alert> : null}
                     {importState.status === "SUCCESS" ? <ImportSummary summary={importState.summary} /> : null}
-                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} onClick={handleImport} type="button">
+                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} loading={importPending} onClick={handleImport} type="button">
                       {importPending ? "กำลังนำเข้า..." : "ยืนยันนำเข้ารายการที่พร้อม"}
                     </Button>
                   </>

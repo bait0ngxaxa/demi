@@ -171,7 +171,7 @@ describe("Appointment Server Actions", () => {
     await expect(createAppointmentAction(initialAppointmentActionState, createFormData())).resolves.toEqual({
       status: "ERROR",
       code: "FORBIDDEN",
-      message: "บัญชีนี้ไม่มีสิทธิ์จัดการ Appointment สำหรับผู้ป่วยรายนี้",
+      message: "บัญชีนี้ไม่มีสิทธิ์จัดการนัดหมายสำหรับผู้ป่วยรายนี้",
     });
   });
 

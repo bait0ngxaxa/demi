@@ -89,9 +89,9 @@ export function HospitalGovernanceControls({
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            ขอบเขตที่อาศัย Hospital นี้จะตรวจสิทธิ์ไม่ผ่านขณะสถานะเป็น SUSPENDED โดยข้อมูลเดิมจะไม่ถูกลบหรือปรับแก้
+            เมื่อระงับโรงพยาบาล ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้ ข้อมูลเดิมจะไม่ถูกลบหรือปรับแก้
           </p>
-          <Button className="mt-3" disabled={pending} size="compact" type="submit" variant="danger">
+          <Button className="mt-3" disabled={pending} loading={suspendPending} size="compact" type="submit" variant="danger">
             {suspendPending ? "กำลังระงับ..." : "ระงับโรงพยาบาล"}
           </Button>
         </form>
@@ -100,9 +100,9 @@ export function HospitalGovernanceControls({
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            คืนเฉพาะสถานะโรงพยาบาลเป็น ACTIVE ขอบเขตที่ยังมีสถานะและเงื่อนไขของตนเองไม่ผ่านจะยังคงถูกปฏิเสธ
+            คืนสถานะโรงพยาบาลเพื่อให้กลับมาดำเนินงานได้ หากส่วนงานใดยังไม่พร้อม ส่วนนั้นจะยังใช้งานไม่ได้
           </p>
-          <Button className="mt-3" disabled={pending} size="compact" type="submit">
+          <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
             {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะโรงพยาบาล"}
           </Button>
         </form>

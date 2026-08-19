@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -13,10 +12,15 @@ import {
   type GoalPlanDetail,
   type GoalScreeningContext,
 } from "@/modules/goals/services/goal-query-service";
+import { getGoalTargetUnitLabel } from "@/modules/goals/presentation/goal-labels";
+import {
+  SCREENING_LEVEL_LABELS,
+  SCREENING_ZONE_LABELS,
+} from "@/modules/screening/presentation/screening-labels";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const metadata: Metadata = {
-  title: "รายละเอียด Goal Plan",
+  title: "รายละเอียดแผนเป้าหมาย",
 };
 
 type GoalPlanDetailPageProps = {
@@ -64,7 +68,7 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">แผนเป้าหมาย</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
@@ -72,22 +76,15 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
           },
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/goals`,
-            label: "Goals / Activity Plan",
+            label: "แผนเป้าหมาย",
           },
-          { label: "รายละเอียด Goal Plan" },
+          { label: "รายละเอียดแผนเป้าหมาย" },
         ]}
-        description="รายละเอียด Goal Plan ที่บันทึกเป็นประวัติในบริบทของโรงพยาบาลนี้"
-        title={`Goal Plan รอบที่ ${detail.roundNumber}`}
+        description="รายละเอียดแผนเป้าหมายที่บันทึกเป็นประวัติในบริบทของโรงพยาบาลนี้"
+        title={`แผนเป้าหมายรอบที่ ${detail.roundNumber}`}
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ข้อมูลจากต้นแบบ</p>
-          <p className="mt-1">
-            Goal Plan นี้เป็น snapshot ของ template และค่าที่ส่งในเวลานั้น ไม่ใช่คำแนะนำหรือการตัดสินใจทางการแพทย์อัตโนมัติ
-          </p>
-        </Alert>
-
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -115,15 +112,15 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">Primary Goal</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">เป้าหมายหลัก</h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">เป้าหมายหลักของรอบนี้</p>
             </div>
-            <StatusBadge variant="info">{detail.primaryGoalCode}</StatusBadge>
+            <StatusBadge variant="info">{detail.primaryGoalLabel}</StatusBadge>
           </div>
           <p className="mt-5 text-lg font-semibold text-text">{detail.primaryGoalLabel}</p>
           <dl className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-text-muted">หมายเหตุ Primary Goal</dt>
+              <dt className="text-sm text-text-muted">หมายเหตุเป้าหมายหลัก</dt>
               <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
                 {detail.primaryGoalNote ?? "ไม่ได้ระบุ"}
               </dd>
@@ -140,8 +137,8 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">Weekly Activities</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">รายการกิจกรรมที่ส่งใน Goal Plan รอบนี้</p>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">กิจกรรมประจำสัปดาห์</h2>
+          <p className="mt-1 text-sm leading-6 text-text-muted">รายการกิจกรรมที่บันทึกในแผนเป้าหมายรอบนี้</p>
             </div>
             <StatusBadge variant="neutral">{detail.items.length} รายการ</StatusBadge>
           </div>
@@ -151,13 +148,12 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h3 className="font-semibold text-text">{item.activityLabel}</h3>
-                    <p className="mt-1 font-mono text-xs text-text-subtle">{item.activityCode}</p>
                   </div>
                   <p className="text-sm font-semibold text-text">{item.targetDays} วัน/สัปดาห์</p>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-text-muted">
-                  ค่าเป้าหมาย: {item.targetValue !== null && item.targetUnit
-                    ? `${item.targetValue} ${item.targetUnit}`
+                    ค่าเป้าหมาย: {item.targetValue !== null && item.targetUnit
+                    ? `${item.targetValue} ${getGoalTargetUnitLabel(item.targetUnit)}`
                     : "ไม่ได้ระบุค่าเชิงตัวเลข"}
                 </p>
               </li>
@@ -167,12 +163,12 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
 
         {detail.sourceScreening ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">Screening ที่ใช้เป็นบริบท</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">แบบประเมินที่ใช้เป็นบริบท</h2>
             <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge variant="info">{detail.sourceScreening.result.level}</StatusBadge>
+                <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[detail.sourceScreening.result.level]}</StatusBadge>
                 <StatusBadge variant={zoneVariant(detail.sourceScreening.result.zone)}>
-                  {detail.sourceScreening.result.zone}
+                  {SCREENING_ZONE_LABELS[detail.sourceScreening.result.zone]}
                 </StatusBadge>
               </div>
               <p className="mt-2 text-sm leading-6 text-text-muted">
@@ -182,25 +178,11 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
                 className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                 href={`/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(detail.sourceScreening.screeningAssessmentId)}`}
               >
-                ดูรายละเอียด Screening ที่อ้างอิง
+                ดูรายละเอียดแบบประเมินที่อ้างอิง
               </Link>
             </div>
           </Panel>
         ) : null}
-
-        <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">แหล่งนิยามของต้นแบบ</h2>
-          <dl className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-text-muted">Template key</dt>
-              <dd className="mt-1 break-words font-mono text-sm text-text">{detail.templateKey}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-text-muted">Template version</dt>
-              <dd className="mt-1 break-words font-mono text-sm text-text">{detail.templateVersion}</dd>
-            </div>
-          </dl>
-        </Panel>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
@@ -213,13 +195,13 @@ function GoalPlanDetailView({ detail }: { detail: GoalPlanDetail }): React.JSX.E
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/goals/new`}
           >
-            สร้าง Goal Plan รอบใหม่
+            สร้างแผนเป้าหมายรอบใหม่
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/goals`}
           >
-            กลับไปประวัติ Goal Plan
+            กลับไปประวัติแผนเป้าหมาย
           </Link>
         </div>
       </div>

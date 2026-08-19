@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -45,6 +46,7 @@ export function ReviewActions({ applicationId }: ReviewActionsProps): React.JSX.
           <Button
             className="w-full"
             disabled={pending}
+            loading={approving}
             type="submit"
           >
             {approving ? "กำลังอนุมัติ..." : "อนุมัติคำขอ"}
@@ -67,6 +69,7 @@ export function ReviewActions({ applicationId }: ReviewActionsProps): React.JSX.
           <Button
             className="w-full"
             disabled={pending}
+            loading={rejecting}
             type="submit"
             variant="danger"
           >
@@ -77,9 +80,9 @@ export function ReviewActions({ applicationId }: ReviewActionsProps): React.JSX.
 
       <div aria-live="polite" className="min-h-6">
         {errorMessage ? (
-          <p className="mt-5 text-sm leading-6 text-danger" role="alert">
+          <Alert className="mt-5" variant="danger">
             {errorMessage}
-          </p>
+          </Alert>
         ) : null}
       </div>
     </Panel>

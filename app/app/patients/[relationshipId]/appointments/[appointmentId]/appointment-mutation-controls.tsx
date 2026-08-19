@@ -82,14 +82,15 @@ export function AppointmentMutationControls({
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
             disabled={pending}
+            loading={completePending}
             onClick={(event) => {
-              if (!window.confirm("ยืนยันว่าต้องการทำเครื่องหมาย Appointment นี้ว่าเสร็จสิ้นหรือไม่")) {
+              if (!window.confirm("ยืนยันว่าต้องการทำเครื่องหมายนัดหมายนี้ว่าเสร็จสิ้นหรือไม่")) {
                 event.preventDefault();
               }
             }}
             type="submit"
           >
-            ทำเครื่องหมายว่าเสร็จสิ้น
+            {completePending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าเสร็จสิ้น"}
           </Button>
         </form>
 
@@ -97,8 +98,8 @@ export function AppointmentMutationControls({
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <Button disabled={pending} type="submit" variant="secondary">
-            ทำเครื่องหมายว่าไม่มาตามนัด
+          <Button disabled={pending} loading={noShowPending} type="submit" variant="secondary">
+            {noShowPending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าไม่มาตามนัด"}
           </Button>
         </form>
 
@@ -108,15 +109,16 @@ export function AppointmentMutationControls({
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
             disabled={pending}
+            loading={cancelPending}
             onClick={(event) => {
-              if (!window.confirm("ยืนยันว่าต้องการยกเลิก Appointment นี้หรือไม่")) {
+              if (!window.confirm("ยืนยันว่าต้องการยกเลิกนัดหมายนี้หรือไม่")) {
                 event.preventDefault();
               }
             }}
             type="submit"
             variant="danger"
           >
-            ยกเลิก Appointment
+            {cancelPending ? "กำลังยกเลิก..." : "ยกเลิกนัดหมาย"}
           </Button>
         </form>
       </div>

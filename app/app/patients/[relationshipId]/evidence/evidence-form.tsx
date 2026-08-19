@@ -154,7 +154,7 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
         ) : null}
         {pending ? <Alert variant="info">กำลังอัปโหลดและบันทึกหลักฐาน…</Alert> : null}
 
-        <Button disabled={pending} type="submit">
+        <Button disabled={pending} loading={pending} type="submit">
           {pending ? "กำลังบันทึก…" : "บันทึกหลักฐาน"}
         </Button>
       </form>

@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { GoalPlanOverviewView } from "./goal-plan-overview-view";
 
 export const metadata: Metadata = {
-  title: "Goals / Activity Plan",
+  title: "แผนเป้าหมายและกิจกรรม",
 };
 
 type GoalPlanOverviewPageProps = {

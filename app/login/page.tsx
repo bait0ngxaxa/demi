@@ -47,7 +47,7 @@ export default async function LoginPage() {
         </div>
 
         <p className="relative mt-12 hidden max-w-md text-sm leading-6 text-brand-pale/80 lg:block">
-          ระบบบริการสุขภาพที่ยืนยันสิทธิ์จากข้อมูล DEMI ฝั่งเซิร์ฟเวอร์
+          ระบบบริการสุขภาพสำหรับงานที่ได้รับมอบหมายอย่างชัดเจน
         </p>
       </section>
 
@@ -55,7 +55,7 @@ export default async function LoginPage() {
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em] text-ink">เข้าสู่ระบบ DEMI</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ใช้เลขบัตรประชาชน หรือตัวระบุ Admin และรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
+            ใช้เลขบัตรประชาชน หรือตัวระบุผู้ดูแลระบบ และรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
           </p>
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} />
@@ -66,7 +66,7 @@ export default async function LoginPage() {
               className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
               href="/hospital/onboarding"
             >
-              ส่งคำขอ onboarding
+              ส่งคำขอลงทะเบียนโรงพยาบาล
             </Link>
           </p>
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -9,6 +8,10 @@ import type {
   GoalPlanOverview,
   GoalScreeningContext,
 } from "@/modules/goals/services/goal-query-service";
+import {
+  SCREENING_LEVEL_LABELS,
+  SCREENING_ZONE_LABELS,
+} from "@/modules/screening/presentation/screening-labels";
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -39,9 +42,11 @@ function ScreeningSummary({
   return (
     <div className="rounded-control border border-border bg-surface-muted px-4 py-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-text">Screening ล่าสุด</span>
-        <StatusBadge variant="info">{screening.result.level}</StatusBadge>
-        <StatusBadge variant={zoneVariant(screening.result.zone)}>{screening.result.zone}</StatusBadge>
+        <span className="text-sm font-semibold text-text">แบบประเมินล่าสุด</span>
+        <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[screening.result.level]}</StatusBadge>
+        <StatusBadge variant={zoneVariant(screening.result.zone)}>
+          {SCREENING_ZONE_LABELS[screening.result.zone]}
+        </StatusBadge>
       </div>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ส่งเมื่อ {formatDate(screening.submittedAt)} · ใช้เป็นบริบทหรือค่าเริ่มต้นเท่านั้น
@@ -50,7 +55,7 @@ function ScreeningSummary({
         className="mt-3 inline-flex min-h-10 items-center text-sm font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
         href={`/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(screening.screeningAssessmentId)}`}
       >
-        ดูรายละเอียด Screening
+        ดูรายละเอียดแบบประเมิน
       </Link>
     </div>
   );
@@ -83,19 +88,15 @@ function HistoryRow({
             <StatusBadge variant="info">{item.primaryGoalLabel}</StatusBadge>
             {item.sourceScreening ? (
               <StatusBadge variant={zoneVariant(item.sourceScreening.result.zone)}>
-                {item.sourceScreening.result.level} · {item.sourceScreening.result.zone}
+                {SCREENING_LEVEL_LABELS[item.sourceScreening.result.level]} · {SCREENING_ZONE_LABELS[item.sourceScreening.result.zone]}
               </StatusBadge>
             ) : null}
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-3">
+        <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-text-muted">กิจกรรม</dt>
             <dd className="mt-1 font-semibold text-text">{item.activityCount} รายการ</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">Template</dt>
-            <dd className="mt-1 break-words font-mono text-xs text-text">{item.templateVersion}</dd>
           </div>
           <div className="sm:text-right">
             <dt className="text-text-muted">สถานะ</dt>
@@ -118,7 +119,7 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
             className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/goals/new`}
           >
-            สร้าง Goal Plan รอบใหม่
+            สร้างแผนเป้าหมายรอบใหม่
           </Link>
         }
         breadcrumbs={[
@@ -126,21 +127,13 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
             label: "รายละเอียดผู้ป่วย",
           },
-          { label: "Goals / Activity Plan" },
+          { label: "แผนเป้าหมาย" },
         ]}
         description="แผนเป้าหมายและกิจกรรมของผู้ป่วยในบริบทของโรงพยาบาลนี้ เรียงจากรอบล่าสุด"
-        title="Goals / Activity Plan"
+        title="แผนเป้าหมายและกิจกรรม"
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            เป้าหมาย กิจกรรม ค่าเริ่มต้น และความสัมพันธ์กับผล Screening ในหน้านี้เป็นต้นแบบอ้างอิงรูปแบบจากระบบ DEMI เดิม
-            และยังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย
-          </p>
-        </Alert>
-
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -167,7 +160,7 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="latest-goal-plan-heading">
-                Goal Plan ล่าสุด
+                แผนเป้าหมายล่าสุด
               </h2>
               <p className="mt-1 text-sm text-text-muted">รอบล่าสุดเป็นข้อมูลอ้างอิงเท่านั้น รอบเก่ายังคงอ่านได้</p>
             </div>
@@ -178,9 +171,9 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
-              <p className="font-semibold text-text">ยังไม่มี Goal Plan สำหรับผู้ป่วยรายนี้</p>
+              <p className="font-semibold text-text">ยังไม่มีแผนเป้าหมายสำหรับผู้ป่วยรายนี้</p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                สร้างรอบแรกเพื่อทดลองรูปแบบและตรวจสอบ Requirement กับลูกค้า
+                สร้างรอบแรกเพื่อบันทึกเป้าหมายและกิจกรรมของผู้ป่วย
               </p>
             </div>
           )}
@@ -190,7 +183,7 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="goal-plan-history-heading">
-                ประวัติ Goal Plan
+                ประวัติแผนเป้าหมาย
               </h2>
               <p className="mt-1 text-sm text-text-muted">แสดงล่าสุดไม่เกิน 50 รอบ เรียงใหม่ไปเก่า</p>
             </div>
@@ -198,7 +191,7 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
 
           {overview.items.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-panel border border-border bg-surface">
-              <ul aria-label="ประวัติ Goal Plan" className="divide-y divide-border">
+              <ul aria-label="ประวัติแผนเป้าหมาย" className="divide-y divide-border">
                 {overview.items.map((item) => (
                   <HistoryRow item={item} key={item.goalPlanId} relationshipId={relationshipId} />
                 ))}
@@ -206,8 +199,8 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
-              <p className="font-semibold text-text">ยังไม่มีประวัติ Goal Plan</p>
-              <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลจะปรากฏหลังจากส่ง Goal Plan รอบแรก</p>
+              <p className="font-semibold text-text">ยังไม่มีประวัติแผนเป้าหมาย</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลจะปรากฏหลังจากบันทึกแผนเป้าหมายรอบแรก</p>
             </div>
           )}
         </section>

@@ -65,7 +65,7 @@ function BlockedReason({
       <Alert variant="warning">
         <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
         <p className="mt-1">
-          บัญชีผู้ใช้งานยังไม่อยู่ในสถานะ ACTIVE จึงไม่สามารถระงับหรือคืนสถานะความสัมพันธ์ อสม. ได้
+          บัญชีนี้ยังไม่พร้อมใช้งาน จึงไม่สามารถระงับหรือคืนสถานะความสัมพันธ์ อสม. ได้
         </p>
       </Alert>
     );
@@ -174,6 +174,7 @@ export function OsmRelationshipControls({
           <Button
             className="mt-3"
             disabled={pending}
+            loading={suspendPending}
             onClick={(event) => {
               if (!window.confirm("ยืนยันการระงับความสัมพันธ์ อสม. กับโรงพยาบาลนี้หรือไม่")) {
                 event.preventDefault();
@@ -194,9 +195,9 @@ export function OsmRelationshipControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            คืนสถานะเฉพาะความสัมพันธ์นี้ โดยไม่สร้างหรือคืน assignment ผู้ป่วยเดิม
+            คืนสถานะเฉพาะความสัมพันธ์นี้ โดยไม่สร้างหรือคืนการมอบหมายผู้ป่วยเดิม
           </p>
-          <Button className="mt-3" disabled={pending} size="compact" type="submit">
+            <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
             {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์ อสม."}
           </Button>
         </form>

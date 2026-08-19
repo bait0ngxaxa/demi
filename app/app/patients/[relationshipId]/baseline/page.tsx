@@ -77,7 +77,7 @@ export default async function PatientBaselinePage({
           },
           { label: "ข้อมูลตั้งต้น" },
         ]}
-        description="ข้อมูลตั้งต้นของผู้ป่วยภายใต้ Patient–Hospital relationship นี้"
+        description="ข้อมูลตั้งต้นของผู้ป่วยในโรงพยาบาลนี้"
         title="ข้อมูลตั้งต้น"
       />
       <div className="pt-8">

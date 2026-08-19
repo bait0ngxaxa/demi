@@ -10,7 +10,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { GoalPlanForm } from "./goal-plan-form";
 
 export const metadata: Metadata = {
-  title: "สร้าง Goal Plan",
+  title: "สร้างแผนเป้าหมาย",
 };
 
 type NewGoalPlanPageProps = {

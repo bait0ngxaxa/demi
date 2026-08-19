@@ -3,6 +3,24 @@ import { z } from "zod";
 const optionalPersonName = z.string().trim().min(1).max(120).optional();
 
 export const THAI_NATIONAL_IDENTITY_NAMESPACE = "thai-national-id";
+export const TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE = "DEMI_ALLOW_TEST_NATIONAL_IDS";
+
+export type IdentityEnvironment = {
+  nodeEnv?: string;
+  allowTestNationalIds?: string;
+};
+
+export function isTestNationalIdBypassEnabled(
+  environment: IdentityEnvironment = {
+    nodeEnv: process.env.NODE_ENV,
+    allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
+  },
+): boolean {
+  return (
+    environment.nodeEnv !== "production" &&
+    environment.allowTestNationalIds === "true"
+  );
+}
 
 function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
   const digits = Array.from(nationalId, Number);
@@ -14,20 +32,36 @@ function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
   return digits[12] === expectedCheckDigit;
 }
 
-export const thaiNationalIdSchema = z
-  .string()
-  .max(32)
-  .transform((value) => value.trim())
-  .pipe(
-    z
-      .string()
-      .regex(/^\d{13}$/, "Thai National ID must contain exactly 13 digits")
-      .refine(
-        (nationalId) => /^[1-8]/.test(nationalId),
-        "Thai National ID category digit is invalid",
-      )
-      .refine(hasValidThaiNationalIdChecksum, "Thai National ID checksum is invalid"),
-  );
+export function createThaiNationalIdSchema({
+  allowChecksumBypass = false,
+  environment = {
+    nodeEnv: process.env.NODE_ENV,
+  },
+}: {
+  allowChecksumBypass?: boolean;
+  environment?: Pick<IdentityEnvironment, "nodeEnv">;
+} = {}): z.ZodType<string> {
+  const nationalIdChecks = z
+    .string()
+    .regex(/^\d{13}$/, "Thai National ID must contain exactly 13 digits")
+    .refine(
+      (nationalId) => /^[1-8]/.test(nationalId),
+      "Thai National ID category digit is invalid",
+    );
+
+  const validatedNationalId = allowChecksumBypass && environment.nodeEnv !== "production"
+    ? nationalIdChecks
+    : nationalIdChecks.refine(
+        hasValidThaiNationalIdChecksum,
+        "Thai National ID checksum is invalid",
+      );
+
+  return z.string().max(32).transform((value) => value.trim()).pipe(validatedNationalId);
+}
+
+export const thaiNationalIdSchema = createThaiNationalIdSchema({
+  allowChecksumBypass: isTestNationalIdBypassEnabled(),
+});
 
 export const identityReferenceSchema = z
   .object({

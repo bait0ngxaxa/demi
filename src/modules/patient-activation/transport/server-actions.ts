@@ -77,14 +77,14 @@ function mapIssueError(error: unknown): {
 }
 
 function mapLookupError(error: unknown): {
-  code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";
+  code: "INVALID_INPUT" | "FORBIDDEN" | "TOO_MANY_RESULTS" | "UNAVAILABLE";
   message: string;
 } {
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือ HN ให้ถูกต้อง",
+        message: "กรุณาตรวจสอบข้อมูลค้นหาให้ถูกต้อง",
       };
     }
 
@@ -92,6 +92,13 @@ function mapLookupError(error: unknown): {
       return {
         code: "FORBIDDEN",
         message: "บัญชีนี้ไม่มีสิทธิ์ค้นหาผู้ป่วยเพื่อเปิดใช้งานบัญชี",
+      };
+    }
+
+    if (error.code === "CONFLICT") {
+      return {
+        code: "TOO_MANY_RESULTS",
+        message: "พบผู้ป่วยหลายรายการ กรุณาระบุชื่อให้ละเอียดขึ้น",
       };
     }
   }
@@ -161,7 +168,7 @@ export async function findPatientActivationCandidatesAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือ HN ให้ถูกต้อง",
+      message: "กรุณาตรวจสอบข้อมูลค้นหาให้ถูกต้อง",
     };
   }
 

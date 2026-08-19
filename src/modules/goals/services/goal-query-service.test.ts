@@ -199,7 +199,7 @@ describe("Goal Plan query service", () => {
     expect(overview.latest).toMatchObject({
       goalPlanId,
       roundNumber: 2,
-      primaryGoalLabel: "น้ำหนักลด (Weight Reduction)",
+      primaryGoalLabel: "น้ำหนักลด",
       activityCount: 2,
       sourceScreening: { result: { level: "L3", zone: "YELLOW" } },
     });
@@ -248,7 +248,7 @@ describe("Goal Plan query service", () => {
     expect(detail).toMatchObject({
       goalPlanId,
       roundNumber: 2,
-      primaryGoalLabel: "น้ำหนักลด (Weight Reduction)",
+      primaryGoalLabel: "น้ำหนักลด",
       primaryGoalNote: "หมายเหตุเป้าหมาย",
       weeklyNote: "หมายเหตุรายสัปดาห์",
       sourceScreening: { screeningAssessmentId: screeningId, result: { level: "L3" } },

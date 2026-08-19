@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { FollowupDetailView } from "./followup-detail-view";
 
 export const metadata: Metadata = {
-  title: "รายละเอียด Follow-up",
+  title: "รายละเอียดการติดตามผล",
 };
 
 type FollowupDetailPageProps = {

@@ -178,22 +178,22 @@ function mapAppointmentError(error: unknown, operation: "create" | "reschedule" 
         code: "INVALID_INPUT",
         message:
           operation === "transition"
-            ? "ข้อมูลการเปลี่ยนสถานะไม่ถูกต้อง กรุณาเปิดรายละเอียด Appointment อีกครั้ง"
-            : "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียด Appointment ก่อนส่งอีกครั้ง",
+            ? "ข้อมูลการเปลี่ยนสถานะไม่ถูกต้อง กรุณาเปิดรายละเอียดนัดหมายอีกครั้ง"
+            : "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียดนัดหมายก่อนส่งอีกครั้ง",
       };
     }
 
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์จัดการ Appointment สำหรับผู้ป่วยรายนี้",
+        message: "บัญชีนี้ไม่มีสิทธิ์จัดการนัดหมายสำหรับผู้ป่วยรายนี้",
       };
     }
 
     if (error.code === "NOT_FOUND") {
       return {
         code: "NOT_FOUND",
-        message: "ไม่พบ Appointment ในขอบเขตที่บัญชีนี้เข้าถึงได้",
+        message: "ไม่พบนัดหมายในขอบเขตที่บัญชีนี้เข้าถึงได้",
       };
     }
 
@@ -203,14 +203,14 @@ function mapAppointmentError(error: unknown, operation: "create" | "reschedule" 
         message:
           operation === "transition"
             ? "ไม่สามารถเปลี่ยนสถานะได้ อาจยังไม่ถึงเวลานัดหรือข้อมูลเปลี่ยนแปลงแล้ว กรุณาเปิดรายละเอียดอีกครั้ง"
-            : "Appointment ถูกบันทึกหรือเปลี่ยนแปลงแล้ว กรุณาเปิดรายละเอียดอีกครั้ง",
+            : "นัดหมายถูกบันทึกหรือเปลี่ยนแปลงแล้ว กรุณาเปิดรายละเอียดอีกครั้ง",
       };
     }
   }
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมบันทึก Appointment ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "ระบบไม่พร้อมบันทึกนัดหมายในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 
@@ -247,7 +247,7 @@ export async function createAppointmentAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียด Appointment ก่อนส่งอีกครั้ง",
+      message: "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียดนัดหมายก่อนส่งอีกครั้ง",
     };
   }
 
@@ -272,7 +272,7 @@ export async function rescheduleAppointmentAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียด Appointment ก่อนส่งอีกครั้ง",
+      message: "กรุณาตรวจสอบวันเวลา ประเภท และรายละเอียดนัดหมายก่อนส่งอีกครั้ง",
     };
   }
 
@@ -304,7 +304,7 @@ async function runTransitionAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการเปลี่ยนสถานะไม่ถูกต้อง กรุณาเปิดรายละเอียด Appointment อีกครั้ง",
+      message: "ข้อมูลการเปลี่ยนสถานะไม่ถูกต้อง กรุณาเปิดรายละเอียดนัดหมายอีกครั้ง",
     };
   }
 

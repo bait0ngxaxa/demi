@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -51,7 +50,7 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="info">Historical round · immutable</StatusBadge>}
+        actions={<StatusBadge variant="info">บันทึกแล้ว</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
@@ -59,25 +58,15 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
           },
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/followups`,
-            label: "Follow-ups",
+            label: "ประวัติการติดตามผล",
           },
           { label: `รอบที่ ${detail.roundNumber}` },
         ]}
-        description="รายละเอียด Follow-up รอบประวัติศาสตร์ใน relationship เดียวกัน"
-        title={`Follow-up รอบที่ ${detail.roundNumber}`}
+        description="รายละเอียดการติดตามผลรอบที่บันทึกไว้ในโรงพยาบาลนี้"
+        title={`การติดตามผลรอบที่ ${detail.roundNumber}`}
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            measurement semantics, progress statuses และ confidence behavior ที่แสดงเป็น provisional และยังรอการยืนยันจากลูกค้า
-          </p>
-          <p className="mt-2">
-            รอบนี้แก้ไข ลบ หรือ overwrite ไม่ได้ใน Phase 9C.0 และระบบไม่แปลผล ไม่ให้คำแนะนำ หรือสร้าง clinical conclusion อัตโนมัติ
-          </p>
-        </Alert>
-
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -103,43 +92,43 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Context</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">รายการที่อ้างอิง</h2>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <div>
-              <p className="text-sm text-text-muted">Appointment</p>
+              <p className="text-sm text-text-muted">นัดหมาย</p>
               {detail.appointment ? (
                 <p className="mt-1 font-semibold text-text">
                   {APPOINTMENT_TYPE_LABELS[detail.appointment.type as AppointmentTypeValue]} · {formatDate(detail.appointment.scheduledAt)}
                 </p>
               ) : (
-                <p className="mt-1 font-semibold text-text">ไม่มี Appointment context</p>
+                <p className="mt-1 font-semibold text-text">ไม่มีการเชื่อมโยงนัดหมาย</p>
               )}
             </div>
             <div>
-              <p className="text-sm text-text-muted">Goal Plan</p>
+              <p className="text-sm text-text-muted">แผนเป้าหมาย</p>
               {detail.sourceGoalPlan ? (
                 <p className="mt-1 font-semibold text-text">
                   รอบที่ {detail.sourceGoalPlan.roundNumber} · {detail.sourceGoalPlan.primaryGoalLabel}
                 </p>
               ) : (
-                <p className="mt-1 font-semibold text-text">ไม่มี Goal Plan context</p>
+                <p className="mt-1 font-semibold text-text">ไม่มีการเชื่อมโยงแผนเป้าหมาย</p>
               )}
             </div>
           </div>
           {detail.sourceGoalPlan ? (
             <div className="mt-5 border-t border-border pt-5">
               <p className="text-sm leading-6 text-text-muted">
-                กิจกรรมและเป้าหมายด้านล่างอ้างอิงจาก Goal Plan รอบนี้โดยตรง ไม่ได้เปลี่ยนตาม Goal Plan ล่าสุด
+                กิจกรรมและเป้าหมายด้านล่างอ้างอิงจากแผนเป้าหมายรอบนี้โดยตรง ไม่ได้เปลี่ยนตามแผนเป้าหมายล่าสุด
               </p>
               <p className="mt-2 text-sm text-text-muted">
-                {detail.sourceGoalPlan.primaryGoalNote ?? "ไม่มีหมายเหตุ Primary Goal"} · {detail.sourceGoalPlan.weeklyNote ?? "ไม่มีหมายเหตุรายสัปดาห์"}
+                {detail.sourceGoalPlan.primaryGoalNote ?? "ไม่มีหมายเหตุเป้าหมายหลัก"} · {detail.sourceGoalPlan.weeklyNote ?? "ไม่มีหมายเหตุรายสัปดาห์"}
               </p>
             </div>
           ) : null}
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Measurements (provisional)</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ค่าที่บันทึกในการติดตามผล</h2>
           <dl className="mt-5 grid gap-4 border-y border-border py-5 sm:grid-cols-2">
             <div>
               <dt className="text-sm text-text-muted">น้ำหนัก</dt>
@@ -169,13 +158,13 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
             </div>
           </dl>
           <p className="mt-4 text-sm leading-6 text-text-muted">
-            ค่าที่แสดงเป็นค่าที่บันทึกไว้เท่านั้น ไม่มีการคำนวณ BMI, threshold, trend, alert หรือคำแนะนำ
+            แสดงเฉพาะค่าที่บันทึกไว้ ไม่มีการคำนวณผลหรือคำแนะนำอัตโนมัติ
           </p>
         </Panel>
 
         {detail.sourceGoalPlan ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">Goal Activity Progress (provisional)</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนเป้าหมาย</h2>
             <ul className="mt-6 space-y-5">
               {detail.activityProgress.map((progress) => (
                 <li className="border-t border-border pt-5 first:border-t-0 first:pt-0" key={progress.progressId}>
@@ -184,7 +173,6 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
                       <h3 className="font-semibold text-text">
                         {activityLabels.get(progress.goalActivityCode) ?? progress.goalActivityCode}
                       </h3>
-                      <p className="mt-1 text-sm text-text-muted">รหัสกิจกรรม: {progress.goalActivityCode}</p>
                     </div>
                     <StatusBadge variant={progressVariant(progress.status)}>
                       {FOLLOWUP_PROGRESS_STATUS_LABELS[progress.status]}
@@ -197,34 +185,34 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
               ))}
             </ul>
             {detail.activityProgress.length === 0 ? (
-              <p className="mt-5 text-sm leading-6 text-text-muted">รอบนี้ไม่มีรายการ activity progress ที่บันทึกไว้</p>
+              <p className="mt-5 text-sm leading-6 text-text-muted">รอบนี้ไม่มีรายการความคืบหน้าที่บันทึกไว้</p>
             ) : null}
           </Panel>
         ) : null}
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Confidence / Reflection / Notes</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ</h2>
           <dl className="mt-5 space-y-5 border-y border-border py-5">
             <div>
-              <dt className="text-sm text-text-muted">Confidence score (provisional 0–10)</dt>
+              <dt className="text-sm text-text-muted">คะแนนความมั่นใจ (0–10)</dt>
               <dd className="mt-1 font-semibold text-text">
                 {detail.confidenceScore === null ? "ไม่ได้ระบุ" : detail.confidenceScore}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">Reflection</dt>
+              <dt className="text-sm text-text-muted">สิ่งที่ต้องการสะท้อน</dt>
               <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
                 {detail.reflectionNote ?? "ไม่ได้ระบุ"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">Confidence plan</dt>
+              <dt className="text-sm text-text-muted">แผนต่อเนื่อง</dt>
               <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
                 {detail.confidencePlan ?? "ไม่ได้ระบุ"}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">General note</dt>
+              <dt className="text-sm text-text-muted">หมายเหตุทั่วไป</dt>
               <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
                 {detail.generalNote ?? "ไม่ได้ระบุ"}
               </dd>
@@ -237,7 +225,7 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/followups`}
           >
-            กลับไปประวัติ Follow-up
+            กลับไปประวัติการติดตามผล
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

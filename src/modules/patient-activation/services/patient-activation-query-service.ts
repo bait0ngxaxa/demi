@@ -200,6 +200,19 @@ function toDisplayName(user: CandidateUser): string {
     .join(" ") || "ผู้ป่วย";
 }
 
+function buildNameWhere(value: string): Prisma.PersonWhereInput {
+  const terms = value.split(/\s+/u).filter(Boolean);
+
+  return {
+    AND: terms.map((term) => ({
+      OR: [
+        { givenName: { contains: term, mode: "insensitive" } },
+        { familyName: { contains: term, mode: "insensitive" } },
+      ],
+    })),
+  };
+}
+
 export async function listPatientActivationScopes(
   actor: ActorContext | null | undefined,
   database?: PatientActivationQueryDatabase,
@@ -299,10 +312,15 @@ export async function findPatientActivationCandidates(
             },
           },
         }
-      : {
-          hospitalId: parsed.data.targetHospitalId,
-          hospitalNumber: lookupValue,
-        };
+      : parsed.data.lookupType === "NAME"
+        ? {
+            hospitalId: parsed.data.targetHospitalId,
+            patientProfile: { person: buildNameWhere(lookupValue) },
+          }
+        : {
+            hospitalId: parsed.data.targetHospitalId,
+            hospitalNumber: lookupValue,
+          };
 
   try {
     const relationships = await db.patientHospitalRelationship.findMany({
@@ -417,5 +435,6 @@ export async function findPatientActivationCandidates(
 }
 
 export const patientActivationQueryInternals = {
+  buildNameWhere,
   projectActivationStatus,
 };

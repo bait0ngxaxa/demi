@@ -89,7 +89,7 @@ function ActionFeedback({ state }: { state: ScreeningActionState }): React.JSX.E
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">ส่ง Screening ไม่สำเร็จ</p>
+      <p className="font-semibold">บันทึกแบบประเมินไม่สำเร็จ</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -138,30 +138,21 @@ export function ScreeningForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">แบบประเมิน</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/screenings`,
-            label: "ประวัติ Screening",
+            label: "ประวัติการประเมิน",
           },
-          { label: "Screening ใหม่" },
+          { label: "แบบประเมินใหม่" },
         ]}
-        description="แบบประเมินต้นแบบสำหรับทดลอง workflow และเก็บ feedback จากลูกค้า"
-        title="เริ่ม Screening ใหม่"
+        description="บันทึกคำตอบและผลการประเมินของผู้ป่วยในโรงพยาบาลนี้"
+        title="เริ่มแบบประเมินใหม่"
       />
 
       <form action={action} className="space-y-6 pt-8">
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
-
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            ข้อคำถามและเกณฑ์การประเมินในหน้านี้เป็นต้นแบบอ้างอิงรูปแบบจากระบบ DEMI เดิม
-            และยังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย
-          </p>
-          <p className="mt-2 text-xs">Question set: {questionSet.version} · Scoring: legacy-prototype-v1</p>
-        </Alert>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
@@ -227,9 +218,9 @@ export function ScreeningForm({
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 3 — Confidence</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 3 — ความมั่นใจ</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ส่วนนี้เป็นข้อมูลต้นแบบและอาจมีความอ่อนไหว กรุณากรอกเท่าที่จำเป็นต่อการทดลอง workflow
+            ส่วนนี้อาจมีความอ่อนไหว กรุณากรอกเท่าที่จำเป็นต่อการดูแลผู้ป่วย
           </p>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <label className="block space-y-2 text-sm font-semibold">
@@ -259,7 +250,7 @@ export function ScreeningForm({
                 maxLength={1000}
                 name="confidenceImprovementPlan"
                 onChange={(event) => setConfidencePlan(event.target.value)}
-                placeholder="บันทึกสั้น ๆ เฉพาะที่จำเป็นต่อการทดลองต้นแบบ"
+                placeholder="บันทึกสั้น ๆ เฉพาะที่จำเป็น"
                 value={confidencePlan}
               />
               <span className="block text-xs font-normal text-text-subtle">ไม่เกิน 1,000 ตัวอักษร</span>
@@ -271,7 +262,7 @@ export function ScreeningForm({
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนส่ง</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ตอบแล้ว {answeredCount}/{questions.length} ข้อ
-            {confidenceScore === "" ? " · ยังไม่ได้เลือก Confidence" : " · Confidence พร้อมแล้ว"}
+            {confidenceScore === "" ? " · ยังไม่ได้เลือกคะแนนความมั่นใจ" : " · คะแนนความมั่นใจพร้อมแล้ว"}
           </p>
           <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
             {(["PAM", "PROMs"] as const).map((section) => (
@@ -291,12 +282,12 @@ export function ScreeningForm({
             ))}
           </div>
           <p className="mt-5 text-xs leading-5 text-text-subtle">
-            ผลลัพธ์จะคำนวณใหม่จากคำตอบฝั่งเซิร์ฟเวอร์เสมอ ค่าที่คำนวณในเบราว์เซอร์ไม่มีอำนาจยืนยันผล
+            ผลลัพธ์จะคำนวณจากคำตอบที่ส่งเมื่อบันทึกแบบประเมิน
           </p>
           <ActionFeedback state={state} />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !formComplete} type="submit">
-              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและส่ง Screening"}
+            <Button disabled={pending || !formComplete} loading={pending} type="submit">
+              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแบบประเมิน"}
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

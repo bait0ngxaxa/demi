@@ -26,7 +26,7 @@ export default async function WorkforceActivationPage() {
           <span className="text-2xl font-bold tracking-[-0.03em]">DEMI</span>
         </div>
         <div className="relative mt-14 max-w-xl lg:my-auto lg:py-16">
-          <p className="text-sm font-semibold text-brand-bright">Workforce activation</p>
+          <p className="text-sm font-semibold text-brand-bright">การเปิดใช้งานบัญชีบุคลากร</p>
           <h1 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">
             เปิดใช้งานบัญชี DEMI ครั้งแรก
           </h1>
@@ -43,7 +43,7 @@ export default async function WorkforceActivationPage() {
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em]">เปิดใช้งานครั้งแรก</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ตั้งรหัสผ่านที่คุณเป็นเจ้าของเอง แล้วเข้าสู่ระบบผ่านหน้า login ของ DEMI
+            ตั้งรหัสผ่านที่คุณเป็นเจ้าของเอง แล้วเข้าสู่ระบบผ่านหน้าเข้าสู่ระบบของ DEMI
           </p>
           <WorkforceActivationForm />
         </div>

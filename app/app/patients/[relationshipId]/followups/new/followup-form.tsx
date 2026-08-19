@@ -84,13 +84,13 @@ function formatDate(value: string): string {
 }
 
 function appointmentTypeLabel(type: AppointmentOption["type"]): string {
-  return type === "FOLLOW_UP" ? "Follow-up" : "Consultation";
+  return type === "FOLLOW_UP" ? "ติดตามผล" : "ให้คำปรึกษา";
 }
 
 function targetSummary(activity: GoalPlanActivityOption): string {
   const target = activity.targetValue === null
     ? "ไม่มีค่าเป้าหมายตัวเลข"
-    : `${activity.targetValue} ${activity.targetUnit ?? "หน่วยต้นแบบ"}`;
+    : `${activity.targetValue} ${activity.targetUnit ?? "หน่วย"}`;
 
   return `เป้าหมาย ${activity.targetDays} วัน/สัปดาห์ · ${target}`;
 }
@@ -115,7 +115,7 @@ function ActionFeedback({ state }: { state: FollowupActionState }): React.JSX.El
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">บันทึก Follow-up ไม่สำเร็จ</p>
+      <p className="font-semibold">บันทึกการติดตามผลไม่สำเร็จ</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -137,12 +137,12 @@ function ProgressEditor({
       <div>
         <h3 className="font-semibold text-text">{activity.activityLabel}</h3>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          รหัสกิจกรรม: {activity.activityCode} · {targetSummary(activity)}
+          {targetSummary(activity)}
         </p>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className={labelClassName} htmlFor={`progress-status-${activity.activityCode}`}>
-          <span>สถานะความคืบหน้า (ค่าตั้งต้น)</span>
+          <span>สถานะความคืบหน้า</span>
           <Select
             disabled={disabled}
             id={`progress-status-${activity.activityCode}`}
@@ -242,7 +242,7 @@ export function FollowupForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="warning">ต้นแบบเพื่อเก็บ Requirement</StatusBadge>}
+        actions={<StatusBadge variant="info">การติดตามผล</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
@@ -250,12 +250,12 @@ export function FollowupForm({
           },
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/followups`,
-            label: "Follow-ups",
+            label: "ประวัติการติดตามผล",
           },
-          { label: "บันทึก Follow-up" },
+          { label: "บันทึกการติดตามผล" },
         ]}
-        description="บันทึก Follow-up เป็น historical round ใหม่ภายใต้ Patient–Hospital relationship นี้"
-        title="บันทึก Follow-up"
+        description="บันทึกการติดตามผลของผู้ป่วยเป็นรายการใหม่ในโรงพยาบาลนี้"
+        title="บันทึกการติดตามผล"
       />
 
       <form action={action} className="space-y-6 pt-8">
@@ -273,16 +273,6 @@ export function FollowupForm({
         <input name="confidencePlan" readOnly type="hidden" value={confidencePlan} />
         <input name="generalNote" readOnly type="hidden" value={generalNote} />
         <input name="activityProgress" readOnly type="hidden" value={JSON.stringify(serializedProgress)} />
-
-        <Alert variant="warning">
-          <p className="font-semibold">ต้นแบบเพื่อเก็บ Requirement</p>
-          <p className="mt-1">
-            semantics ของ measurement, สถานะ progress และพฤติกรรม confidence ในฟอร์มนี้เป็น provisional เพื่อเก็บ Requirement
-          </p>
-          <p className="mt-2">
-            อำนาจของผู้บันทึกขั้นสุดท้ายยังรอการยืนยันจากลูกค้า และต้นแบบนี้ไม่ให้คำแนะนำ การวินิจฉัย หรือข้อสรุปทางคลินิกอัตโนมัติ
-          </p>
-        </Alert>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
@@ -304,18 +294,18 @@ export function FollowupForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบทที่เลือก (ไม่บังคับ)</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            เลือก Appointment ที่สถานะ COMPLETED หรือ Goal Plan historical round ที่ต้องการอ้างอิงอย่างชัดเจน
+            เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนเป้าหมายย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน
             ระบบจะไม่แนบรายการล่าสุดให้โดยอัตโนมัติ
           </p>
           <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending}>
             <label className={labelClassName} htmlFor="followup-appointment">
-              <span>Appointment context</span>
+              <span>นัดหมายที่อ้างอิง</span>
               <Select
                 id="followup-appointment"
                 onChange={(event) => setAppointmentId(event.target.value)}
                 value={appointmentId}
               >
-                <option value="">ไม่มี Appointment context</option>
+                <option value="">ไม่เชื่อมโยงนัดหมาย</option>
                 {appointments.map((appointment) => (
                   <option key={appointment.appointmentId} value={appointment.appointmentId}>
                     {appointmentTypeLabel(appointment.type)} · {formatDate(appointment.scheduledAt)}
@@ -323,11 +313,11 @@ export function FollowupForm({
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                แสดงเฉพาะ Appointment ที่ server ตรวจว่า COMPLETED ใน relationship นี้
+            เลือกได้เฉพาะนัดหมายของผู้ป่วยรายนี้ที่เสร็จสิ้นแล้ว
               </span>
             </label>
             <label className={labelClassName} htmlFor="followup-goal-plan">
-              <span>Goal Plan context</span>
+              <span>แผนเป้าหมายที่อ้างอิง</span>
               <Select
                 id="followup-goal-plan"
                 onChange={(event) => {
@@ -341,7 +331,7 @@ export function FollowupForm({
                 }}
                 value={goalPlanId}
               >
-                <option value="">ไม่มี Goal Plan context</option>
+                <option value="">ไม่เชื่อมโยงแผนเป้าหมาย</option>
                 {goalPlans.map((plan) => (
                   <option key={plan.goalPlanId} value={plan.goalPlanId}>
                     รอบที่ {plan.roundNumber} · {plan.primaryGoalLabel} · {formatDate(plan.createdAt)}
@@ -349,16 +339,16 @@ export function FollowupForm({
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                เลือกได้จาก historical Goal Plan ที่เข้าถึงได้ไม่เกิน 50 รอบล่าสุด
+                เลือกได้จากแผนเป้าหมายย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด
               </span>
             </label>
           </fieldset>
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Measurements (provisional)</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ค่าที่บันทึกในการติดตามผล</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ช่องเหล่านี้มีไว้ทดลองเก็บ Requirement เท่านั้น หน่วยและความหมายยังไม่ final และระบบจะไม่คำนวณผลทางการแพทย์
+            กรอกเท่าที่มี ระบบจะเก็บค่าที่บันทึกไว้และไม่คำนวณผลทางการแพทย์อัตโนมัติ
           </p>
           <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending}>
             <label className={labelClassName} htmlFor="followup-weight">
@@ -432,13 +422,13 @@ export function FollowupForm({
         {selectedGoalPlan ? (
           <Panel>
             <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">Goal Activity Progress (provisional)</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนเป้าหมาย</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                แสดงกิจกรรมจาก Goal Plan รอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
-                สถานะด้านล่างเป็นค่าตั้งต้นเพื่อคุยกับลูกค้า ไม่ใช่ข้อสรุป adherence หรือผลลัพธ์ทางคลินิก
+                แสดงกิจกรรมจากแผนเป้าหมายรอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
+                เลือกสถานะตามข้อมูลที่ต้องการบันทึกในการติดตามผลรอบนี้
               </p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                เลือกบันทึกเฉพาะกิจกรรมที่ต้องการติดตามในรอบนี้ได้ กิจกรรมที่ไม่เลือกสถานะจะไม่ถูกบันทึกเป็น progress
+                เลือกบันทึกเฉพาะกิจกรรมที่ต้องการติดตามในรอบนี้ได้ กิจกรรมที่ไม่เลือกสถานะจะไม่ถูกบันทึก
               </p>
             </div>
             <ul className="mt-6 space-y-5">
@@ -458,13 +448,13 @@ export function FollowupForm({
         ) : null}
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Confidence / Reflection / Notes</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            confidence 0–10 และข้อความทั้งหมดเป็น provisional สำหรับ requirement validation ยังไม่ใช่เครื่องมือที่ผ่านการรับรอง
+            บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา
           </p>
           <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending}>
             <label className={labelClassName} htmlFor="followup-confidence-score">
-              <span>Confidence score (0–10)</span>
+              <span>คะแนนความมั่นใจ (0–10)</span>
               <input
                 className={inputClassName}
                 id="followup-confidence-score"
@@ -480,7 +470,7 @@ export function FollowupForm({
               เลือกใส่เมื่อเหมาะสม ไม่ใช้เพื่อคำนวณคะแนนหรือแนะนำการรักษา
             </div>
             <label className={labelClassName} htmlFor="followup-reflection">
-              <span>Reflection (ไม่บังคับ)</span>
+              <span>สิ่งที่ต้องการสะท้อน (ไม่บังคับ)</span>
               <textarea
                 className={`${inputClassName} min-h-28 py-3`}
                 id="followup-reflection"
@@ -491,24 +481,24 @@ export function FollowupForm({
               />
             </label>
             <label className={labelClassName} htmlFor="followup-confidence-plan">
-              <span>Confidence plan (ไม่บังคับ)</span>
+              <span>แผนต่อเนื่อง (ไม่บังคับ)</span>
               <textarea
                 className={`${inputClassName} min-h-28 py-3`}
                 id="followup-confidence-plan"
                 maxLength={2_000}
                 onChange={(event) => setConfidencePlan(event.target.value)}
-                placeholder="แผนหรือสิ่งที่อยากทดลองต่อ โดยไม่ใช่คำแนะนำทางคลินิก"
+                placeholder="แผนหรือสิ่งที่ต้องการติดตามต่อ"
                 value={confidencePlan}
               />
             </label>
             <label className={`${labelClassName} sm:col-span-2`} htmlFor="followup-general-note">
-              <span>General note (ไม่บังคับ)</span>
+              <span>หมายเหตุทั่วไป (ไม่บังคับ)</span>
               <textarea
                 className={`${inputClassName} min-h-28 py-3`}
                 id="followup-general-note"
                 maxLength={2_000}
                 onChange={(event) => setGeneralNote(event.target.value)}
-                placeholder="บันทึกทั่วไปที่จำเป็นต่อการเก็บ Requirement"
+                placeholder="บันทึกทั่วไปที่จำเป็น"
                 value={generalNote}
               />
             </label>
@@ -516,33 +506,32 @@ export function FollowupForm({
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">Review / Submit</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนบันทึก</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            การกดส่งจะสร้าง Follow-up historical round ใหม่และทำให้ข้อมูลรอบนี้ immutable ใน prototype นี้
-            ไม่มีการแก้ไข ลบ หรือ silent correction
+            การบันทึกจะสร้างรายการติดตามผลใหม่ และเก็บข้อมูลรอบนี้เป็นประวัติที่แก้ไขหรือลบไม่ได้
           </p>
           <dl className="mt-5 grid gap-4 border-y border-border py-5 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-text-muted">Appointment context</dt>
+              <dt className="text-text-muted">นัดหมายที่อ้างอิง</dt>
               <dd className="mt-1 font-semibold text-text">
-                {appointmentId ? "เลือกแล้ว" : "ไม่ได้เลือก"}
+                {appointmentId ? "เลือกแล้ว" : "ไม่ได้เชื่อมโยง"}
               </dd>
             </div>
             <div>
-              <dt className="text-text-muted">Goal Plan context</dt>
+              <dt className="text-text-muted">แผนเป้าหมายที่อ้างอิง</dt>
               <dd className="mt-1 font-semibold text-text">
-                {selectedGoalPlan ? `รอบที่ ${selectedGoalPlan.roundNumber}` : "ไม่ได้เลือก"}
+                {selectedGoalPlan ? `รอบที่ ${selectedGoalPlan.roundNumber}` : "ไม่ได้เชื่อมโยง"}
               </dd>
             </div>
             <div>
-              <dt className="text-text-muted">Measurements</dt>
+              <dt className="text-text-muted">ข้อมูลที่บันทึก</dt>
               <dd className="mt-1 font-semibold text-text">กรอกแล้ว {measurementCount} รายการ</dd>
             </div>
           </dl>
           <ActionFeedback state={state} />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending} type="submit">
-              {pending ? "กำลังบันทึก…" : "ส่ง Follow-up"}
+            <Button disabled={pending} loading={pending} type="submit">
+              {pending ? "กำลังบันทึก…" : "บันทึกการติดตามผล"}
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
