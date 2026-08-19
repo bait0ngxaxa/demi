@@ -40,6 +40,10 @@ export type GoalQueryDependencies = {
   database?: GoalQueryDatabase;
 };
 
+export type GoalPlanCreateDependencies = GoalQueryDependencies & {
+  requestedScreeningId?: unknown;
+};
+
 export type GoalScreeningContext = ScreeningSummary;
 
 export type GoalHistoryItem = {
@@ -444,7 +448,7 @@ export async function getGoalPlanOverview(
 export async function getGoalPlanCreateContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
-  dependencies: GoalQueryDependencies = {},
+  dependencies: GoalPlanCreateDependencies = {},
 ): Promise<GoalPlanCreateContext> {
   try {
     const database = getDatabase(dependencies);
@@ -455,11 +459,20 @@ export async function getGoalPlanCreateContext(
       database,
     );
     const template = getHistoricalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
-    const latestScreening = await getLatestScreening(
-      actor,
-      database,
-      access.patient.patientHospitalRelationshipId,
-    );
+    const requestedScreeningId = dependencies.requestedScreeningId;
+    const latestScreening =
+      requestedScreeningId === undefined || requestedScreeningId === null || requestedScreeningId === ""
+        ? await getLatestScreening(
+            actor,
+            database,
+            access.patient.patientHospitalRelationshipId,
+          )
+        : await getAccessibleScreeningSummary(
+            actor,
+            access.patient.patientHospitalRelationshipId,
+            requestedScreeningId,
+            { database },
+          );
 
     return {
       patient: access.patient,

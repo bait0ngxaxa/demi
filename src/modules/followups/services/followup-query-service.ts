@@ -9,6 +9,7 @@ import {
   getAccessibleGoalPlanOptions,
   type AccessibleGoalPlanReference,
 } from "@/modules/goals/services/goal-query-service";
+import { goalPlanIdSchema } from "@/modules/goals/schemas/goal-schemas";
 import {
   ApplicationError,
   ForbiddenError,
@@ -40,6 +41,7 @@ export type FollowupQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
 export type FollowupQueryDependencies = {
   database?: FollowupQueryDatabase;
+  requestedGoalPlanId?: unknown;
 };
 
 export type FollowupAppointmentContext = {
@@ -71,6 +73,7 @@ export type FollowupCreateContext = {
   appointments: FollowupAppointmentContext[];
   goalPlans: AccessibleGoalPlanReference[];
   selectedAppointmentId: string | null;
+  selectedGoalPlanId: string | null;
 };
 
 export type FollowupActivityProgressDetail = {
@@ -436,15 +439,32 @@ export async function getFollowupCreateContext(
       throw new NotFoundError();
     }
 
+    const goalPlans = await getOptionalGoalPlanOptions(
+      actor,
+      access.patient.patientHospitalRelationshipId,
+      database,
+    );
+    const requestedGoalPlanId = dependencies.requestedGoalPlanId;
+    const parsedRequestedGoalPlanId =
+      requestedGoalPlanId === undefined || requestedGoalPlanId === null || requestedGoalPlanId === ""
+        ? null
+        : goalPlanIdSchema.safeParse(requestedGoalPlanId);
+    const selectedGoalPlanId = parsedRequestedGoalPlanId
+      ? parsedRequestedGoalPlanId.success
+        ? goalPlans.find(({ goalPlanId }) => goalPlanId === parsedRequestedGoalPlanId.data)?.goalPlanId ?? null
+        : null
+      : null;
+
+    if (requestedGoalPlanId !== undefined && requestedGoalPlanId !== null && requestedGoalPlanId !== "" && !selectedGoalPlanId) {
+      throw new NotFoundError();
+    }
+
     return {
       patient: access.patient,
       appointments,
-      goalPlans: await getOptionalGoalPlanOptions(
-        actor,
-        access.patient.patientHospitalRelationshipId,
-        database,
-      ),
+      goalPlans,
       selectedAppointmentId: requestedId,
+      selectedGoalPlanId,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

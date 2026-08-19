@@ -66,6 +66,7 @@ type FollowupFormProps = {
   appointments: AppointmentOption[];
   goalPlans: GoalPlanOption[];
   selectedAppointmentId: string | null;
+  selectedGoalPlanId: string | null;
   submissionNonce: string;
 };
 
@@ -184,6 +185,7 @@ export function FollowupForm({
   appointments,
   goalPlans,
   selectedAppointmentId,
+  selectedGoalPlanId,
   submissionNonce,
 }: FollowupFormProps): React.JSX.Element {
   const router = useRouter();
@@ -192,7 +194,7 @@ export function FollowupForm({
     initialFollowupActionState,
   );
   const [appointmentId, setAppointmentId] = useState(selectedAppointmentId ?? "");
-  const [goalPlanId, setGoalPlanId] = useState("");
+  const [goalPlanId, setGoalPlanId] = useState(selectedGoalPlanId ?? "");
   const [weight, setWeight] = useState("");
   const [waistCircumference, setWaistCircumference] = useState("");
   const [systolicBloodPressure, setSystolicBloodPressure] = useState("");
@@ -207,7 +209,9 @@ export function FollowupForm({
     [goalPlanId, goalPlans],
   );
   const [progress, setProgress] = useState<Record<string, ProgressDraft>>(() =>
-    getInitialProgress(null),
+    getInitialProgress(
+      goalPlans.find((plan) => plan.goalPlanId === selectedGoalPlanId) ?? null,
+    ),
   );
 
   useEffect(() => {

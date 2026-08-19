@@ -27,6 +27,8 @@ const successState = {
   status: "SUCCESS",
   result: {
     outcome: "CREATED",
+    relationshipId: "44444444-4444-4444-8444-444444444444",
+    hospitalId: "33333333-3333-4333-8333-333333333333",
     accountStatus: "PROVISIONED",
     reusedExistingUser: false,
   },
@@ -72,7 +74,47 @@ describe("PatientProvisioningWorkspace form structure", () => {
     );
 
     expect(markup).toContain("จัดการการเปิดใช้งานบัญชีผู้ป่วย");
+    expect(markup).toContain(
+      'href="/app/patients/44444444-4444-4444-8444-444444444444"',
+    );
+    expect(markup).toContain(
+      'href="/app/patients/activation?hospitalId=33333333-3333-4333-8333-333333333333"',
+    );
     expect(markup).not.toContain("ออกลิงก์เปิดใช้งาน");
     expect(getMaximumFormDepth(markup)).toBe(1);
+  });
+
+  it("keeps Patient Detail primary when an ACTIVE User is reused", () => {
+    mockedUseActionState.mockReturnValue([
+      {
+        status: "SUCCESS",
+        result: {
+          ...successState.result,
+          accountStatus: "ACTIVE",
+          reusedExistingUser: true,
+        },
+      },
+      vi.fn(),
+      false,
+    ]);
+    const scope = {
+      hospitalId,
+      hospitalCode: "TEST-HOSPITAL",
+      hospitalName: "โรงพยาบาลทดสอบ",
+      canBulkImport: false,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes: [scope],
+        selectedHospitalId: scope.hospitalId,
+        selectedScope: scope,
+      }),
+    );
+
+    expect(markup).toContain(
+      'href="/app/patients/44444444-4444-4444-8444-444444444444"',
+    );
+    expect(markup).not.toContain('href="/app/patients/activation');
+    expect(markup).not.toContain("อยู่ในสถานะรอเปิดใช้งาน");
   });
 });

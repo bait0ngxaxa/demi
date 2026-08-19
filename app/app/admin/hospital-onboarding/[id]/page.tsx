@@ -15,6 +15,7 @@ import { getHospitalOnboardingApplication } from "@/modules/hospital-onboarding/
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { ReviewActions } from "./review-actions";
+import { ApprovalContinuation } from "./approval-continuation";
 
 type HospitalOnboardingDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -130,6 +131,8 @@ export default async function HospitalOnboardingDetailPage({
             </div>
           ) : null}
       </Panel>
+
+      <ApprovalContinuation status={application.status} />
 
       {application.status === "PENDING" ? (
         <ReviewActions applicationId={application.id} />

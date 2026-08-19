@@ -61,23 +61,67 @@ function formatDate(date: string | Date | null): string {
   }).format(new Date(date));
 }
 
+function ProvisionContinuation({
+  result,
+}: {
+  result: WorkforceProvisionResultState;
+}): React.JSX.Element {
+  const workforceKind = result.kind === "OSM" ? "osm" : "staff";
+  const linkClassName =
+    "inline-flex min-h-10 items-center justify-center rounded-control border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="text-sm font-semibold text-text">ดำเนินการต่อในโรงพยาบาลนี้</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link
+          className={linkClassName}
+          href={`/app/workforce/${workforceKind}/${encodeURIComponent(result.relationshipId)}`}
+        >
+          ดูรายละเอียดความสัมพันธ์
+        </Link>
+        <Link
+          className={linkClassName}
+          href={`/app/patients?hospitalId=${encodeURIComponent(result.hospitalId)}`}
+        >
+          เปิดพื้นที่ผู้ป่วย
+        </Link>
+        <Link
+          className={linkClassName}
+          href={`/app/workforce?hospitalId=${encodeURIComponent(result.hospitalId)}`}
+        >
+          จัดการบุคลากรต่อ
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function ProvisionResult({ result }: { result: WorkforceProvisionResultState }): React.JSX.Element {
   const activationToken = result.activationToken;
 
   if (!activationToken) {
     return (
-      <Alert variant="success">
-        <p className="font-semibold">เพิ่มสิทธิ์เรียบร้อยแล้ว</p>
-        <p className="mt-1 text-muted">
-          {result.accountStatus === "ACTIVE"
-            ? "ผู้ใช้นี้มีบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว ไม่ต้องเปิดใช้งานบัญชีอีกครั้ง"
-            : "ระบบบันทึกข้อมูลแล้ว กรุณาออกลิงก์เปิดใช้งานใหม่จากรายการเมื่อจำเป็น"}
-        </p>
-      </Alert>
+      <div>
+        <Alert variant="success">
+          <p className="font-semibold">เพิ่มสิทธิ์เรียบร้อยแล้ว</p>
+          <p className="mt-1 text-muted">
+            {result.accountStatus === "ACTIVE"
+              ? "ผู้ใช้นี้มีบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว ไม่ต้องเปิดใช้งานบัญชีอีกครั้ง"
+              : "ระบบบันทึกข้อมูลแล้ว กรุณาออกลิงก์เปิดใช้งานใหม่จากรายการเมื่อจำเป็น"}
+          </p>
+        </Alert>
+        <ProvisionContinuation result={result} />
+      </div>
     );
   }
 
-  return <ActivationPresentation token={activationToken} expiresAt={result.activationExpiresAt} />;
+  return (
+    <div>
+      <ActivationPresentation token={activationToken} expiresAt={result.activationExpiresAt} />
+      <ProvisionContinuation result={result} />
+    </div>
+  );
 }
 
 function ActivationResult({ result }: { result: WorkforceActivationResultState }): React.JSX.Element {

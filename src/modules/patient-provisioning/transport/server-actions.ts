@@ -166,6 +166,8 @@ export async function provisionPatientAction(
       status: "SUCCESS",
       result: {
         outcome: result.outcome,
+        relationshipId: result.relationshipId,
+        hospitalId: result.hospitalId,
         accountStatus: result.accountStatus,
         reusedExistingUser: result.reusedExistingUser,
       },

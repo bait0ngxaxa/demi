@@ -11,6 +11,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
+  getGoalPlanCreateContext,
   getGoalPlanDetail,
   getGoalPlanOverview,
   type GoalQueryDatabase,
@@ -256,6 +257,36 @@ describe("Goal Plan query service", () => {
         { activityCode: "exercise_walk", targetValue: 15, targetUnit: "minutes" },
       ],
     });
+  });
+
+  it("loads an explicitly requested Screening only through the same relationship", async () => {
+    const database = createDatabase();
+
+    const context = await getGoalPlanCreateContext(actor, relationshipId, {
+      database,
+      requestedScreeningId: screeningId,
+    });
+
+    expect(context.latestScreening?.screeningAssessmentId).toBe(screeningId);
+    expect(database.screeningAssessment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: screeningId,
+          patientHospitalRelationshipId: relationshipId,
+        },
+      }),
+    );
+  });
+
+  it("rejects a requested Screening that is not present in the relationship projection", async () => {
+    const database = createDatabase({ latestScreening: null });
+
+    await expect(
+      getGoalPlanCreateContext(actor, relationshipId, {
+        database,
+        requestedScreeningId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("does not expose a historical Screening source when Screening read is denied", async () => {

@@ -283,6 +283,30 @@ describe("Follow-up query service", () => {
     );
   });
 
+  it("preselects only an exact relationship-scoped Goal Plan", async () => {
+    mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
+    const database = createDatabase();
+
+    const context = await getFollowupCreateContext(actor, relationshipId, undefined, {
+      database,
+      requestedGoalPlanId: goalPlanId,
+    });
+
+    expect(context.selectedGoalPlanId).toBe(goalPlanId);
+  });
+
+  it("rejects a Goal Plan that is not in the exact relationship projection", async () => {
+    mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
+    const database = createDatabase();
+
+    await expect(
+      getFollowupCreateContext(actor, relationshipId, undefined, {
+        database,
+        requestedGoalPlanId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("keeps standalone setup usable when Goal read access is denied", async () => {
     mockedGoalOptions.mockRejectedValueOnce(new ForbiddenError());
 

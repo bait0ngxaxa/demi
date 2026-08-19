@@ -10,12 +10,14 @@ import {
 import {
   confirmPatientImportAction,
   previewPatientImportAction,
+  provisionPatientAction,
 } from "./server-actions";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedReadCandidates = vi.hoisted(() => vi.fn());
 const mockedPreviewProvisioning = vi.hoisted(() => vi.fn());
 const mockedImportProvisioning = vi.hoisted(() => vi.fn());
+const mockedProvisionPatient = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
@@ -28,7 +30,7 @@ vi.mock("../adapters/excel-patient-import-adapter", () => ({
 vi.mock("../services/patient-provisioning-service", () => ({
   importPatientProvisioning: mockedImportProvisioning,
   previewPatientProvisioning: mockedPreviewProvisioning,
-  provisionPatient: vi.fn(),
+  provisionPatient: mockedProvisionPatient,
   PatientProvisioningConflictError: class PatientProvisioningConflictError extends Error {},
 }));
 
@@ -42,6 +44,7 @@ const actor = {
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const otherHospitalId = "44444444-4444-4444-8444-444444444444";
+const relationshipId = "55555555-5555-4555-8555-555555555555";
 
 function createUpload(contents: string, name = "patients.xlsx"): PatientImportUpload {
   return new File([new TextEncoder().encode(contents)], name, {
@@ -110,6 +113,38 @@ describe("patient import Server Actions", () => {
       conflict: 0,
       failed: 0,
       rows: [],
+    });
+    mockedProvisionPatient.mockResolvedValue({
+      outcome: "CREATED",
+      personId: "66666666-6666-4666-8666-666666666666",
+      userId: "77777777-7777-4777-8777-777777777777",
+      patientProfileId: "88888888-8888-4888-8888-888888888888",
+      relationshipId,
+      hospitalId,
+      accountStatus: "PROVISIONED",
+      reusedExistingUser: false,
+    });
+  });
+
+  it("preserves the authoritative single-provisioning relationship ID", async () => {
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("givenName", "สมชาย");
+    formData.set("familyName", "ผู้ป่วย");
+    formData.set("hospitalNumber", "HN-001");
+    formData.set("targetHospitalId", hospitalId);
+
+    const result = await provisionPatientAction({ status: "IDLE" }, formData);
+
+    expect(result).toEqual({
+      status: "SUCCESS",
+      result: {
+        outcome: "CREATED",
+        relationshipId,
+        hospitalId,
+        accountStatus: "PROVISIONED",
+        reusedExistingUser: false,
+      },
     });
   });
 

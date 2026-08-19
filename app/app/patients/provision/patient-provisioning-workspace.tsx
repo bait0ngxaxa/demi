@@ -117,10 +117,16 @@ function ProvisionResult({
       <Alert className="mt-4" variant="neutral">
         <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
         <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
+        <Link
+          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href={`/app/patients/${encodeURIComponent(state.result.relationshipId)}`}
+        >
+          เปิดข้อมูลผู้ป่วย
+        </Link>
         {state.result.accountStatus === "PROVISIONED" ? (
           <Link
             className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-            href="/app/patients/activation"
+            href={`/app/patients/activation?hospitalId=${encodeURIComponent(state.result.hospitalId)}`}
           >
             จัดการการเปิดใช้งานบัญชีผู้ป่วย
           </Link>
@@ -139,10 +145,16 @@ function ProvisionResult({
       <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
+      <Link
+        className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        href={`/app/patients/${encodeURIComponent(state.result.relationshipId)}`}
+      >
+        เปิดข้อมูลผู้ป่วย
+      </Link>
       {state.result.accountStatus === "PROVISIONED" ? (
         <Link
           className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href="/app/patients/activation"
+          href={`/app/patients/activation?hospitalId=${encodeURIComponent(state.result.hospitalId)}`}
         >
           จัดการการเปิดใช้งานบัญชีผู้ป่วย
         </Link>
@@ -248,6 +260,12 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
       ) : (
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
+      <Link
+        className="mt-5 inline-flex min-h-10 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        href={`/app/patients?hospitalId=${encodeURIComponent(summary.targetHospitalId)}`}
+      >
+        เปิดรายชื่อผู้ป่วยในโรงพยาบาลนี้
+      </Link>
     </Alert>
   );
 }

@@ -11,6 +11,8 @@ export type PatientImportPreviewBinding = PatientImportPreview & {
 
 export type PatientProvisionResultState = {
   outcome: PatientProvisioningOutcome;
+  relationshipId: string;
+  hospitalId: string;
   accountStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED";
   reusedExistingUser: boolean;
 };

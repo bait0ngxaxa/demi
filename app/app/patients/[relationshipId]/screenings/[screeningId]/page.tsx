@@ -225,12 +225,20 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
           </dl>
         </Panel>
 
-        <Link
-          className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-          href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/screenings`}
-        >
-          กลับไปประวัติ Screening
-        </Link>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/goals/new?screeningId=${encodeURIComponent(detail.screeningAssessmentId)}`}
+          >
+            ไปยังแผนเป้าหมาย
+          </Link>
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/screenings`}
+          >
+            กลับไปประวัติ Screening
+          </Link>
+        </div>
       </div>
     </div>
   );

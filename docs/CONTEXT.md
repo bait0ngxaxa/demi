@@ -20,6 +20,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 12D.0 Hospital Owner Governance working prototype implement แล้ว** ตาม [Phase 12D.0 handoff](./phases/PHASE_12D0_HOSPITAL_OWNER_GOVERNANCE_WORKING_PROTOTYPE.md) โดยจำกัดการเปลี่ยนแปลงไว้ที่ `HospitalMembership.membershipType` ระหว่าง `MEMBER <-> OWNER` ภายใน exact ACTIVE Hospital, บังคับให้มี eligible Owner อย่างน้อยหนึ่งรายด้วย serializable transaction และ atomic audit. Active-account recovery, final-Owner recovery และ User account governance ยังอยู่นอกขอบเขตและยังเป็น open requirements
 
+**Phase 13A Demo Flow Gap Analysis เสร็จแล้ว** ตาม [Phase 13A analysis](./phases/PHASE_13A_DEMO_FLOW_GAP_ANALYSIS.md) และ **Phase 13B.0 End-to-End Demo Continuity working prototype implement แล้ว** ตาม [Phase 13B.0 handoff](./phases/PHASE_13B0_DEMO_CONTINUITY_WORKING_PROTOTYPE.md) โดยเพิ่ม actor-aware `/app` workspace, Hospital lifecycle visibility, authoritative Patient Detail continuation, selected Hospital context handoff และ Screening → Goals → Follow-up navigation บน service/policy เดิม. ไม่เพิ่ม schema/migration และยังไม่เริ่ม Patient self-service, account recovery หรือ Admin reconciliation `P13-D7`
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization

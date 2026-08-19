@@ -15,7 +15,10 @@ export const metadata: Metadata = {
 
 type NewFollowupPageProps = {
   params: Promise<{ relationshipId: string }>;
-  searchParams: Promise<{ appointmentId?: string | string[] }>;
+  searchParams: Promise<{
+    appointmentId?: string | string[];
+    sourceGoalPlanId?: string | string[];
+  }>;
 };
 
 async function resolveActor() {
@@ -43,12 +46,17 @@ export default async function NewFollowupPage({
   const { relationshipId } = await params;
   const query = await searchParams;
   const requestedAppointmentId = Array.isArray(query.appointmentId)
-    ? query.appointmentId
+    ? query.appointmentId[0]
     : query.appointmentId;
+  const requestedGoalPlanId = Array.isArray(query.sourceGoalPlanId)
+    ? query.sourceGoalPlanId[0]
+    : query.sourceGoalPlanId;
   let context;
 
   try {
-    context = await getFollowupCreateContext(actor, relationshipId, requestedAppointmentId);
+    context = await getFollowupCreateContext(actor, relationshipId, requestedAppointmentId, {
+      requestedGoalPlanId,
+    });
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -78,6 +86,7 @@ export default async function NewFollowupPage({
       patient={context.patient}
       relationshipId={relationshipId}
       selectedAppointmentId={context.selectedAppointmentId}
+      selectedGoalPlanId={context.selectedGoalPlanId}
       submissionNonce={randomUUID()}
     />
   );

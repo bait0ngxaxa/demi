@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 
 type NewGoalPlanPageProps = {
   params: Promise<{ relationshipId: string }>;
+  searchParams: Promise<{ screeningId?: string | string[] }>;
 };
 
 async function resolveActor() {
@@ -35,14 +36,21 @@ async function resolveActor() {
 
 export default async function NewGoalPlanPage({
   params,
+  searchParams,
 }: NewGoalPlanPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
   const { relationshipId } = await params;
+  const query = await searchParams;
+  const requestedScreeningId = Array.isArray(query.screeningId)
+    ? query.screeningId[0]
+    : query.screeningId;
   let context;
 
   try {
-    context = await getGoalPlanCreateContext(actor, relationshipId);
+    context = await getGoalPlanCreateContext(actor, relationshipId, {
+      requestedScreeningId,
+    });
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
