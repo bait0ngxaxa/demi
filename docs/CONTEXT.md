@@ -22,6 +22,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 13A Demo Flow Gap Analysis เสร็จแล้ว** ตาม [Phase 13A analysis](./phases/PHASE_13A_DEMO_FLOW_GAP_ANALYSIS.md) และ **Phase 13B.0 End-to-End Demo Continuity working prototype implement แล้ว** ตาม [Phase 13B.0 handoff](./phases/PHASE_13B0_DEMO_CONTINUITY_WORKING_PROTOTYPE.md) โดยเพิ่ม actor-aware `/app` workspace, Hospital lifecycle visibility, authoritative Patient Detail continuation, selected Hospital context handoff และ Screening → Goals → Follow-up navigation บน service/policy เดิม. ไม่เพิ่ม schema/migration และยังไม่เริ่ม Patient self-service, account recovery หรือ Admin reconciliation `P13-D7`
 
+**Phase 13C Post-Integration Business Flow Re-Audit เสร็จแล้ว** ตาม [Phase 13C audit](./phases/PHASE_13C_POST_INTEGRATION_BUSINESS_FLOW_REAUDIT.md) โดย re-audit golden journeys A–E หลัง Phase 13B.0 และสรุปว่าไม่มี current `DEMO_BLOCKER`; rewrite มี breadth เพียงพอสำหรับ customer requirement workshop ภายใต้ demo dataset/handoff prerequisites ที่ระบุไว้. Recommendation คือ Requirements First เพื่อเก็บ customer decisions ของ recovery, reconciliation, Patient self-service, OSM scope, clinical semantics และ reporting ก่อนเริ่ม implementation slice ใหม่. **Phase 14 ยังไม่เริ่ม**
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
