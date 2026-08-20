@@ -6,7 +6,7 @@
 
 `app/app/layout.tsx` resolve `ActorContext` ด้วย `getProtectedApplicationActor()` แล้วประกอบ `AppShell` ซึ่งมี:
 
-- desktop sidebar แบบคงที่สำหรับ viewport ตั้งแต่ `lg`;
+- desktop sidebar สำหรับ viewport ตั้งแต่ `lg` ซึ่งสลับระหว่าง expanded 17rem กับ collapsed rail 4.5rem ได้;
 - compact mobile header และ modal navigation drawer ที่ใช้โครงสร้างเมนูเดียวกัน;
 - application header สำหรับ role context และ logout;
 - `<main>` เดียว พร้อม content width และ page spacing มาตรฐาน
@@ -57,7 +57,7 @@ Protected feature page ใช้ลำดับต่อไปนี้:
 - navigation: `navigation-background`, `navigation-hover`, `navigation-active`;
 - radius: `control`, `panel`, `dialog`;
 - shadow: `surface`, `floating`;
-- layout: application sidebar width, header height และ content max width
+- layout: application sidebar expanded/collapsed widths, header height และ content max width
 
 คง token ชื่อเดิม (`brand`, `ink`, `muted`, `line` ฯลฯ) เพื่อ compatibility ห้ามเพิ่ม feature-specific token หรือแทน Tailwind spacing scale ทั้งหมด
 
@@ -80,6 +80,7 @@ Application chrome อยู่ใน `src/components/app-shell/`: `AppShell`, `
 ## Responsive and accessibility
 
 - desktop sidebar และ mobile drawer ต้องใช้ information architecture เดียวกัน;
+- desktop collapse เป็น UI-only state ใน `AppSidebar`, เก็บ preference ที่ `demi:desktop-sidebar`, ซ่อน navigation ด้วย `aria-hidden` + `inert` และคง expand control ไว้ใน rail; navigation projection/capability filtering ยังมาจาก server และ mobile drawer ไม่ใช้ state นี้;
 - drawer ต้องมี accessible open/close names, Escape handling, focus containment, focus restoration และคืน body scroll เมื่อปิด;
 - active route ใช้ `aria-current="page"`;
 - คง semantic `<header>`, `<nav>`, `<main>`, heading order, native `<button>`, `<input>`, `<select>` และ label association;

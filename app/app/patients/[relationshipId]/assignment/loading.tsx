@@ -1,14 +1,34 @@
+import {
+  LoadingRegion,
+  PageHeaderSkeleton,
+  PanelSkeleton,
+} from "@/components/ui/loading-skeletons";
+import { Panel } from "@/components/ui/panel";
+import { Skeleton } from "@/components/ui/skeleton";
+
 export default function PatientOsmAssignmentLoading(): React.JSX.Element {
   return (
-    <div aria-busy="true" aria-live="polite" className="max-w-4xl">
-      <div className="border-b border-border pb-7">
-        <div className="h-10 w-72 animate-pulse rounded-control bg-border" />
-        <p className="mt-4 text-sm text-text-muted">กำลังโหลดการมอบหมาย...</p>
-      </div>
+    <LoadingRegion className="max-w-4xl" label="กำลังโหลดการมอบหมาย...">
+      <PageHeaderSkeleton actions />
       <div className="space-y-6 pt-8">
-        <div className="h-48 animate-pulse rounded-panel border border-border bg-surface" />
-        <div className="h-72 animate-pulse rounded-panel border border-border bg-surface" />
+        <PanelSkeleton rows={2} />
+        <Panel aria-hidden="true">
+          <Skeleton className="h-6 w-52" />
+          <Skeleton className="mt-3 h-4 w-3/5" />
+          <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_8rem] lg:items-end">
+            <div>
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-2 h-12 w-full" />
+            </div>
+            <Skeleton className="h-12 w-full" />
+          </div>
+          <div className="mt-6 space-y-3 border-t border-border pt-6">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-4/5" />
+          </div>
+        </Panel>
       </div>
-    </div>
+    </LoadingRegion>
   );
 }

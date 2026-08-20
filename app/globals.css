@@ -35,6 +35,7 @@
   --demi-shadow-surface: 0 1px 2px rgb(16 38 32 / 0.06);
   --demi-shadow-floating: 0 18px 48px rgb(8 35 31 / 0.22);
   --app-sidebar-width: 17rem;
+  --app-sidebar-collapsed-width: 4.5rem;
   --app-header-height: 4.5rem;
   --app-content-max-width: 80rem;
 }
@@ -80,6 +81,7 @@
   --shadow-surface: var(--demi-shadow-surface);
   --shadow-floating: var(--demi-shadow-floating);
   --spacing-app-sidebar: var(--app-sidebar-width);
+  --spacing-app-sidebar-collapsed: var(--app-sidebar-collapsed-width);
   --spacing-app-header: var(--app-header-height);
   --container-app-content: var(--app-content-max-width);
   --font-sans: var(--font-geist-sans);
@@ -99,6 +101,43 @@ body {
   color: var(--ink);
   font-family:
     var(--font-geist-sans), "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif;
+}
+
+@keyframes demi-skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.demi-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+
+.demi-skeleton::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, transparent, var(--surface), transparent);
+  opacity: 0.65;
+  transform: translateX(-100%);
+  animation: demi-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.demi-skeleton[data-tone="inverse"] {
+  background: color-mix(in srgb, var(--surface) 16%, transparent);
+}
+
+.demi-skeleton[data-tone="inverse"]::after {
+  opacity: 0.18;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demi-skeleton::after {
+    display: none;
+    animation: none;
+  }
 }
 
 ::selection {
