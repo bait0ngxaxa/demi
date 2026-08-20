@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { roleLabels } from "@/components/app-shell/actor-presentation";
 import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
 import { AppShell } from "@/components/app-shell/app-shell";
+import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -20,7 +22,7 @@ async function resolveProtectedActor(): Promise<ActorContext> {
   }
 }
 
-export default async function ProtectedApplicationLayout({
+async function ResolvedProtectedApplicationShell({
   children,
 }: Readonly<{ children: React.ReactNode }>): Promise<React.JSX.Element> {
   await connection();
@@ -34,5 +36,15 @@ export default async function ProtectedApplicationLayout({
     >
       {children}
     </AppShell>
+  );
+}
+
+export default function ProtectedApplicationLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
+  return (
+    <Suspense fallback={<ProtectedApplicationShellSkeleton />}>
+      <ResolvedProtectedApplicationShell>{children}</ResolvedProtectedApplicationShell>
+    </Suspense>
   );
 }

@@ -42,7 +42,7 @@ route/data loading เดิมใช้ pulse skeleton เฉพาะบาง
 
 `/app/patients/[relationshipId]` boundary intentionally covers screening/goal/appointment/follow-up history and detail, evidence, and other panel-oriented patient subroutes. `/app/admin/loading.tsx` intentionally covers both admin directories. `/app/loading.tsx` remains the safety net for protected routes whose geometry does not materially justify another boundary. The root `/` page is redirect-only and does not render a user-facing async workspace, so no skeleton was added there.
 
-The protected layout still resolves the authenticated actor before rendering `AppShell`; this existing fail-closed authorization architecture was not moved or weakened. During client navigation, the existing screen remains until the protected layout resolves, while page segments inside the shell use the loading boundaries above.
+The protected layout resolves the authenticated actor before rendering the real `AppShell`; this fail-closed authorization architecture remains server-owned. Phase 14B.2.1 adds an outer structural fallback for that initialization as documented below, while page segments inside an established shell continue using the loading boundaries above.
 
 ## Collapsible desktop sidebar
 
@@ -66,15 +66,29 @@ focused tests ครอบคลุม default expanded, collapse/expand toggle,
 - Journey D: patient activation, login และ patient landing มี activation/login/generic protected coverage
 - Journey E: workforce/OSM lifecycle, Hospital lifecycle และ Hospital Owner governance มี workforce/admin detail coverage
 
-ไม่พบ audited golden-journey route ที่ยังเปลี่ยนเป็น blank white loading region; leaf routes ที่ไม่เพิ่ม boundary ใช้ inherited structural fallback ที่ระบุข้างต้น
+route-family coverage ของ audited golden journeys ผ่าน source audit; leaf routes ที่ไม่เพิ่ม boundary ใช้ inherited structural fallback ที่ระบุข้างต้น Phase 14B.2.1 ตรวจ production runtime stream ของ direct unauthenticated `/app` แล้วพบทั้ง full-shell loading status และ fail-closed `/login` redirect payload ส่วน authenticated browser journeys ยังไม่ได้ visual smoke test เพราะ environment ไม่มี authenticated test session/credentials
+
+## Phase 14B.2.1 — Protected layout loading boundary
+
+`app/app/loading.tsx` ใน segment เดียวกับ `app/app/layout.tsx` ครอบ page และ descendant segments แต่ไม่ครอบ async work ของ layout เอง จึงไม่สามารถแสดง fallback ระหว่าง `connection()` และ protected actor resolution ใน implementation เดิมได้
+
+- outer `ProtectedApplicationLayout` เป็น synchronous Server Component และวาง `<Suspense>` รอบ `ResolvedProtectedApplicationShell`
+- async resolved shell ยังคงเรียก `connection()`, `getProtectedApplicationActor()`, `projectApplicationNavigation(actor)` และ role-label projection ฝั่ง server ก่อนส่งข้อมูลให้ real `AppShell`
+- `ProtectedApplicationShellSkeleton` เป็น generic full-shell fallback ที่ใช้ shared `Skeleton`, `LoadingRegion`, `PageHeaderSkeleton` และ `PanelSkeleton`; desktop แสดง expanded sidebar geometry ส่วน mobile ไม่แสดง desktop sidebar
+- fallback มี concise loading status เพียงจุดเดียว ไม่มี real navigation link, actor, role, capability หรือข้อมูลผู้ใช้ และ shimmer/reduced-motion ใช้ implementation กลางเดิม
+- unauthenticated/forbidden resolution ยัง fail closed ผ่าน error mapping และ `redirect("/login")` เดิม ไม่มีการย้าย auth หรือ authorization ไป client
+- หลัง real `AppShell` resolve แล้ว `app/app/loading.tsx` และ nested route-family `loading.tsx` ยังคงแสดงเฉพาะ content skeleton ภายใน `<main>` จึงไม่สร้าง sidebar/header ซ้อนและไม่ reset sidebar state ระหว่าง normal in-app navigation
+
+การแก้นี้ผ่าน source audit, focused skeleton/sidebar/navigation tests, lint, typecheck, full unit suite, `git diff --check` และ Next.js production build รวมถึง production runtime stream check สำหรับ direct unauthenticated protected entry; authenticated public-to-protected, in-app และ collapsed-sidebar navigation ยังไม่ได้ visual browser verification จึงไม่อ้างว่า journeys เหล่านั้นถูกสังเกตด้วยตาใน environment นี้
 
 ## Verification
 
 - `npm run lint` — ผ่าน
 - `npm run typecheck` — ผ่าน
-- focused sidebar/navigation tests — ผ่าน 15 tests ใน 3 test files
-- `npm test` — ผ่าน 619 tests ใน 96 test files
+- focused shell/sidebar/navigation tests — ผ่าน 16 tests ใน 4 test files
+- `npm test` — ผ่าน 620 tests ใน 97 test files
 - `git diff --check` — ผ่าน
+- `npm run build` — ผ่านสำหรับ Phase 14B.2.1 protected layout/Suspense structure
 - source audit: ไม่เหลือ `animate-pulse` ใน `app`/`src`; มี `demi-skeleton-shimmer` keyframe เดียว; ไม่มี blank หรือ spinner-only `loading.tsx`
 - integration tests ไม่ได้รัน เพราะเปลี่ยนเฉพาะ presentational Server/Client Components, UI-only browser preference, CSS และ route loading boundaries ไม่มี runtime business, database หรือ authorization behavior เปลี่ยน
 
