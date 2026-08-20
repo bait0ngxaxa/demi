@@ -373,6 +373,11 @@ The exact start/completion event, multiple-episode policy, and final-record repr
 
 ## 10. Implementation coverage matrix
 
+The `Current status` column describes feature coverage, not a global phase gate. A
+`NEW — REQUIRED` or `DECISION REQUIRED` item may belong to a later vertical slice.
+The decision register below records the narrower implementation or reporting scope
+that each unresolved requirement actually affects.
+
 | Concept | Customer workbook | Legacy | Rewrite | Current status | Recommended action |
 | --- | --- | --- | --- | --- | --- |
 | Patient–Hospital relationship | Context in both sheets | Global/user-centric IDs | Exact relationship access parent | IMPLEMENTED — REUSE | Reuse exact scope |
@@ -426,7 +431,9 @@ LEGACY-ALIGNED SAFE DEFAULT candidates, only if explicitly reversible and provis
 - separate food quantity, food type, and movement prompts tied to the selected Goal Plan;
 - current rewrite activity statuses DONE, PARTIAL, NOT_DONE, and NOT_APPLICABLE as structural workshop values;
 - current 0–10 confidence field as a provisional input;
-- fixed six-column report output as a projection from normalized 0..N history.
+- fixed six-column report output as a provisional projection from normalized 0..N
+  history, only when overflow handling and provisional status are explicit. This
+  does not authorize fixed six-round persistence.
 
 Not safe to default:
 
@@ -442,29 +449,37 @@ Not safe to default:
 
 ## 12. Remaining decision register
 
+The classification is scoped to the affected slice. `BLOCKS_PROGRAM_FOUNDATION`
+means that the minimum Program episode contract cannot safely be implemented yet.
+`BLOCKS_SPECIFIC_FEATURE` names the feature or calculation that must wait;
+`BLOCKS_FINAL_REPORTING` prevents an official dashboard/report/export from claiming
+the unresolved value. `CAN_USE_SAFE_PROTOTYPE_DEFAULT` is limited to reversible,
+non-clinical demo behavior. `CAN_DEFER` does not block the next implementation
+slice.
+
 | ID | Question | Why it matters | Evidence | Classification | Smallest safe recommendation |
 | --- | --- | --- | --- | --- | --- |
-| P15A-D01 | What is workbook ID: Patient ID, Hospital-local HN, relationship ID, external program ID, or alias? | Wrong identity can join reports to the wrong resource | Workbook only says ID; rewrite has relationship ID/HN; legacy has global IDs | BLOCKS_IMPLEMENTATION | Keep report ID unresolved; use opaque relationship identity internally |
-| P15A-D02 | What is the DM/Pre-DM source/rule/version? | Controls counts and sensitive grouping | Workbook counts; no formula; legacy terms not authoritative | BLOCKS_IMPLEMENTATION | Do not derive/store until source and effective date are approved |
-| P15A-D03 | What is illness-duration source, unit, and reference date? | Direct report context can be misread | Workbook column; no rewrite field; legacy unconfirmed | BLOCKS_IMPLEMENTATION | Obtain owner-defined source/unit |
-| P15A-D04 | What event opens/completes a program, and are multiple episodes allowed? | Controls start/end, uniqueness, grouping, final state | Workbook dates; legacy no episode; rewrite no entity | BLOCKS_IMPLEMENTATION | Define episode identity/lifecycle/cardinality |
-| P15A-D05 | Current OSM or OSM responsible during program? | Assignment can change and accountability differs | Workbook caregiver; rewrite assignment history; legacy broad | BLOCKS_IMPLEMENTATION | Choose an episode-responsible projection only if confirmed |
-| P15A-D06 | Is confidence ruler equivalent across Screening, Baseline, and Follow-up? | Affects comparison, requiredness, and meaning | Workbook label; legacy/rewrite repeat 0–10 | BLOCKS_IMPLEMENTATION | Confirm scale, construct, owner, source |
-| P15A-D07 | What content/requiredness do routine, chart, and dream card require? | Determines shape, validation, completeness, ownership | Workbook completion; legacy image/text only | BLOCKS_IMPLEMENTATION | Approve minimum content and image/text requirement |
-| P15A-D08 | Do activity images belong to Service 1, Baseline, Follow-up, or relationship Evidence? | Wrong owner loses provenance or leaks data | Legacy uploads; rewrite Evidence relationship-level | BLOCKS_IMPLEMENTATION | Select one owner per artifact type |
-| P15A-D09 | What CVD risk formula/version/source is approved? | Wrong official-looking value is unsafe | Workbook label only; no rewrite formula | BLOCKS_IMPLEMENTATION | Do not calculate until approved |
-| P15A-D10 | What are HbA1c/DTX units, contexts, dates, and authorities? | Same number can have different meaning | Workbook labels; legacy UI; rewrite provisional units | BLOCKS_IMPLEMENTATION | Confirm measurement metadata first |
-| P15A-D11 | Is BMI entered or derived, and which height/weight observations feed it? | Duplicate/stale values can contradict | Workbook has BMI/height; no formula/rewrite fields | BLOCKS_IMPLEMENTATION | Approve source, formula, rounding, version |
-| P15A-D12 | What exactly counts as BEFORE/AFTER and when recorded? | Determines report source and comparison | Workbook groups/dates; legacy latest Follow-up informal | BLOCKS_IMPLEMENTATION | Define timing windows and authoritative events |
-| P15A-D13 | Achievement numerator, denominator, period, and zero-target behavior? | Controls score/rate/completeness | Workbook note gives concept only; legacy ratios differ | BLOCKS_IMPLEMENTATION | Approve named calculation contract |
-| P15A-D14 | How is multi-activity achievement aggregated and what does >70% count? | AFTER output can silently misstate success | Workbook count; no formula/legacy equivalent | BLOCKS_IMPLEMENTATION | Define per-activity/per-round unit and aggregation |
-| P15A-D15 | What is the official outcome phrase/code vocabulary? | Stable report values require a controlled list | Workbook note says dropdown; file has no validation; legacy differs | BLOCKS_IMPLEMENTATION | Obtain versioned controlled list; separate narrative |
-| P15A-D16 | What does plan adjusted mean, and when does it create a new Goal Plan? | Yes/no may represent a domain mutation | Workbook yes/no; legacy archive/replace; rewrite immutable plans | BLOCKS_IMPLEMENTATION | Make adjustment an explicit event decision |
-| P15A-D17 | What correction/amendment/review rules apply? | Immutable data needs safe correction | Current phases open; legacy overwrites/edits without provenance | BLOCKS_IMPLEMENTATION | Choose append-only amendment semantics |
-| P15A-D18 | Who may read/report/export, and what may OSM/Hospital roles see? | Workbook visibility is not authorization | Accepted exact scope; workbook no policy; legacy broad | BLOCKS_IMPLEMENTATION | Define capabilities/projections; fail closed |
-| P15A-D19 | What happens beyond six visible follow-ups? | Note allows as-many-as-recorded | Workbook six-wide; rewrite normalized | BLOCKS_IMPLEMENTATION | Preserve all rounds; define continuation/overflow |
-| P15A-D20 | Can current status labels and artifact/text layout remain provisional? | Enables reversible validation | Legacy/rewrite structural pattern | CAN_USE_SAFE_PROTOTYPE_DEFAULT | Use only with no official calculation |
-| P15A-D21 | Can export formatting wait for normalized reporting contract? | Formatting cannot solve missing semantics | Workbook layout only; rewrite no export | CAN_DEFER | Defer export implementation |
+| P15A-D01 | What is workbook ID: Patient ID, Hospital-local HN, relationship ID, external program ID, or alias? | Wrong identity can join reports to the wrong resource | Workbook only says ID; rewrite has relationship ID/HN; legacy has global IDs | CAN_DEFER for Program workflow; BLOCKS_FINAL_REPORTING for the customer-facing ID projection | Continue using authoritative opaque relationship/Program identity internally. Do not select HN or another display ID until confirmed. |
+| P15A-D02 | What is the DM/Pre-DM source/rule/version? | Controls cohort classification and sensitive grouping | Workbook counts; no formula; legacy terms not authoritative | BLOCKS_SPECIFIC_FEATURE for cohort classification; BLOCKS_FINAL_REPORTING for DM/Pre-DM counts | Do not derive from legacy Screening thresholds. Keep classification/report counts absent or provisional until source and effective date are approved. |
+| P15A-D03 | What is illness-duration source, unit, and reference date? | Direct report context can be misread | Workbook column; no rewrite field; legacy unconfirmed | CAN_DEFER for Program workflow; BLOCKS_FINAL_REPORTING for this report column | Do not invent disease onset or units. Obtain an owner-defined source before projecting the value. |
+| P15A-D04 | What event opens/completes a program, and are multiple episodes allowed? | Controls episode identity, start/end, uniqueness, grouping, and final state | Workbook dates; legacy has no episode; rewrite has no entity | BLOCKS_PROGRAM_FOUNDATION | Resolve the smallest safe 15B contract: Program identity, episode cardinality, start, and completion. Defer cancellation/re-entry transitions unless the demo needs them. |
+| P15A-D05 | Current OSM or OSM responsible during program? | Assignment can change and accountability differs | Workbook caregiver; rewrite assignment history; legacy broad | CAN_DEFER for Program workflow; BLOCKS_FINAL_REPORTING for the caregiver projection | Keep exact current Patient/OSM assignment authorization. Do not choose a report projection until the responsible-OSM meaning is confirmed. |
+| P15A-D06 | Is confidence ruler equivalent across Screening, Baseline, and Follow-up? | Affects comparison, requiredness, and final clinical interpretation | Workbook label; legacy/rewrite repeat a 0–10 concept | CAN_USE_SAFE_PROTOTYPE_DEFAULT | Use the existing 0–10 structure as a provisional demo input. Do not claim final instrument equivalence or official longitudinal interpretation. |
+| P15A-D07 | What content/requiredness do routine, chart, and dream card require? | Determines validation, completeness, and final activity semantics | Workbook confirms activities; legacy shows image/text structures | CAN_USE_SAFE_PROTOTYPE_DEFAULT | Use separate provisional activity cards: routine/life schedule image, floating/sinking chart image plus summary, and dream card image plus description. Keep image/text optional unless confirmed. |
+| P15A-D08 | Do activity images belong to Service 1, Baseline, Follow-up, or relationship Evidence? | Wrong owner loses provenance or leaks data | Legacy uploads; rewrite has relationship-level Evidence | BLOCKS_SPECIFIC_FEATURE (Service 1 artifact association only) | Reuse or narrowly extend the existing relationship-scoped Evidence/storage boundary with an explicit Service 1 association if safe. Do not create a generic polymorphic attachment engine. |
+| P15A-D09 | What CVD risk formula/version/source is approved? | A wrong official-looking value is unsafe | Workbook label only; no rewrite formula | BLOCKS_SPECIFIC_FEATURE for CVD calculation; BLOCKS_FINAL_REPORTING for official CVD output | Do not calculate, persist, or report CVD risk until formula, version, source, and authority are approved. Program and Service 1 are not blocked. |
+| P15A-D10 | What are HbA1c/DTX units, contexts, dates, and authorities? | The same number can have different meaning | Workbook labels; legacy UI; rewrite has provisional DTX-like fields | CAN_USE_SAFE_PROTOTYPE_DEFAULT for existing DTX capture; BLOCKS_SPECIFIC_FEATURE for HbA1c/official measurement semantics; BLOCKS_FINAL_REPORTING for official meaning | Existing DTX recording may continue as explicitly provisional where already supported. Do not add HbA1c or claim official DTX/HbA1c units/context until the measurement contract is approved. |
+| P15A-D11 | Is BMI entered or derived, and which height/weight observations feed it? | Duplicate or stale values can contradict | Workbook has BMI/height; no formula/rewrite fields | BLOCKS_SPECIFIC_FEATURE for official BMI derivation; BLOCKS_FINAL_REPORTING for official BMI output | Do not calculate or persist BMI until source observations, formula, rounding, and version are accepted. |
+| P15A-D12 | What exactly counts as BEFORE/AFTER and when recorded? | Determines report source and comparison | Workbook groups/dates; legacy latest Follow-up is informal after; rewrite has dedicated Baseline only | BLOCKS_PROGRAM_FOUNDATION for the minimum stage association; BLOCKS_SPECIFIC_FEATURE and BLOCKS_FINAL_REPORTING for exact timing/window and official comparison | In 15B establish only the minimum Program link for an initial stage/record. Leave final timing, authoritative measurement window, and comparison semantics to the later final/outcome slice. |
+| P15A-D13 | Achievement numerator, denominator, period, and zero-target behavior? | Controls score/rate/completeness | Workbook note gives a concept only; legacy ratios differ | BLOCKS_SPECIFIC_FEATURE for achievement calculation; BLOCKS_FINAL_REPORTING for official rate | Store structural follow-up data without an official rate. Do not calculate until numerator, denominator, period, missing data, and zero-target behavior are approved. |
+| P15A-D14 | How is multi-activity achievement aggregated and what does >70% count? | AFTER output can silently misstate success | Workbook count; no formula/legacy equivalent | BLOCKS_SPECIFIC_FEATURE for aggregation/count; BLOCKS_FINAL_REPORTING for official output | Keep per-activity/per-round source data available. Defer aggregation and the `>70%` count until the counted unit and threshold contract are confirmed. |
+| P15A-D15 | What is the official outcome phrase/code vocabulary? | Stable report values require a controlled list | Workbook note says dropdown; file has no validation; legacy differs | BLOCKS_SPECIFIC_FEATURE for structured outcome; BLOCKS_FINAL_REPORTING for official output | Allow existing narrative/provisional follow-up notes where supported, but do not create an official code/value without a versioned controlled vocabulary. |
+| P15A-D16 | What does plan adjusted mean, and when does it create a new Goal Plan? | Yes/no may represent a domain mutation | Workbook yes/no; legacy archive/replace; rewrite immutable plans | BLOCKS_SPECIFIC_FEATURE (Goal Plan adjustment semantics only) | Do not automatically create a new Goal Plan from a `ปรับแผน` boolean. Service 1 and Program foundation can proceed. |
+| P15A-D17 | What correction/amendment/review rules apply? | Historical data needs safe correction semantics | Current phases open; legacy overwrites/edits without provenance | CAN_DEFER | Keep existing immutable/append-oriented behavior where applicable. Do not add broad edit/delete capabilities in the demo. |
+| P15A-D18 | Who may read/report/export, and what may OSM/Hospital roles see? | Workbook visibility is not authorization | Accepted exact scope; workbook has no policy; legacy is broad | BLOCKS_FINAL_REPORTING | Define report capabilities before enabling official reporting/export. Existing Patient/relationship authorization remains authoritative for workflow screens. |
+| P15A-D19 | What happens beyond six visible follow-ups? | The note allows as many as recorded | Workbook is six-wide; rewrite is normalized | CAN_DEFER for Program/Follow-up persistence; BLOCKS_FINAL_REPORTING for exact Excel overflow presentation | Persist normalized 0..N Follow-ups; never create round1..round6 persistence fields. Resolve continuation/overflow projection before official export. |
+| P15A-D20 | Can current status labels and artifact/text layout remain provisional? | Enables reversible demo validation | Legacy/rewrite provide structural patterns | CAN_USE_SAFE_PROTOTYPE_DEFAULT | Use current labels and artifact/text layout only as provisional UI/read projections. Do not assign final clinical meaning, official codes, or calculation semantics. |
+| P15A-D21 | Can export formatting wait for normalized reporting contract? | Formatting cannot solve missing semantics | Workbook layout only; rewrite has no export | CAN_DEFER | Defer Excel formatting/export until the normalized report contract, access scope, and overflow behavior are ready. |
 
 ## 13. Business-flow closure assessment
 
@@ -482,16 +497,78 @@ This conclusion should be reopened if the customer identifies a separate workflo
 
 ## 14. Recommended Phase 15B scope
 
-Phase 15B should close the implementation contract before building:
+### Phase 15B — Program Workflow Foundation & Service 1
 
-1. Program episode identity, cardinality, start/completion/cancellation/re-entry, BEFORE/AFTER ownership, DM/Pre-DM, illness duration, and OSM projection.
-2. Service 1 minimum content, requiredness, structured versus artifact data, artifact ownership, visibility, correction, and retention.
-3. Service 2 and Follow-up mapping for food quantity/type/movement, target period, achieved days, rate, zero denominator, aggregation, >70% count, outcome vocabulary, plan adjustment, obstacles, and summaries.
-4. Measurement/assessment rules for DTX/HbA1c, height/BMI, CVD risk, and initial/final timing.
-5. Report capabilities, actor projections, completeness, normalized-to-wide projection, overflow, export authority, and format.
-6. A small current program/report contract, an ADR only if accepted architecture changes, and an implementation-ready vertical-slice list.
+**Phase type: IMPLEMENTATION**
 
-Phase 15B must not copy legacy persistence/security patterns or begin clinical calculations before the relevant decisions are accepted.
+Phase 15A has closed macro business-flow discovery. Phase 15B should therefore
+start with an implementation-ready vertical slice, not another broad analysis or
+contract-closure phase. Unresolved requirements continue to block only the slice
+that depends on them.
+
+### 15B in scope
+
+1. Introduce the smallest safe Program episode/domain foundation needed to
+   associate existing Patient care resources with one Program episode. Resolve
+   the minimum D04 contract inside this slice: Program identity, episode
+   cardinality, start, completion, and the actor/relationship scope needed for
+   ownership. Do not add speculative workflow states; cancellation/re-entry can
+   remain deferred unless the demo requires them.
+2. Reuse and connect existing `PatientHospitalRelationship`, Screening, Baseline,
+   Goal Plan, Appointment, Follow-up, and Evidence boundaries where appropriate.
+   Do not duplicate existing domain data or make a report column a source of
+   truth.
+3. Implement Service 1 — `รู้จักตัวเอง` using the customer-confirmed activities
+   and explicitly provisional legacy-aligned interaction structure:
+   - routine/life schedule;
+   - floating/sinking chart;
+   - dream card;
+   - confidence ruler/reflection where appropriate.
+4. For the demo, use only reversible, non-dangerous defaults: optional routine
+   image artifact; optional floating/sinking chart image plus textual summary;
+   optional dream-card image plus description; and the current 0–10 confidence
+   structure. These are provisional interaction defaults, not final
+   customer-approved content or clinical equivalence.
+5. Preserve server-side authorization and the exact Patient/Hospital/OSM scope.
+   Browser-supplied role, Hospital, actor, relationship, or calculated values
+   remain non-authoritative.
+6. Reuse or narrowly extend the existing relationship-scoped Evidence/storage
+   boundary for Service 1 artifacts. Do not copy legacy browser Supabase uploads
+   and do not create a generic workflow or polymorphic attachment engine.
+7. Add coherent Service 1 history/detail/read projections and tests for policy
+   scope, Program ownership, Service 1 create/read, any explicit artifact
+   association, transaction/integrity boundaries, and normalized episode
+   behavior.
+
+### 15B explicitly excludes
+
+- official CVD calculation;
+- official BMI calculation;
+- the final HbA1c contract while unresolved;
+- achievement rate and the `>70%` count;
+- official outcome vocabulary;
+- automatic Goal Plan adjustment semantics;
+- Dashboard, reporting, Excel export, and final reporting authorization;
+- a speculative correction/amendment framework.
+
+### Likely follow-on implementation slices
+
+- **Phase 15C — Service 2 + Follow-up Data Completion:** food quantity/type
+  mapping, exercise targets, achieved days/count, obstacles, plan-adjustment
+  capture, outcome structure, and only calculations whose contracts are
+  confirmed.
+- **Phase 15D — Final / Outcome Data Contract & Implementation:** BEFORE/AFTER
+  finalization, HbA1c, height/BMI, CVD risk, and approved measurement semantics.
+- **Phase 15E — Dashboard & Reporting:** normalized reporting read model,
+  service completeness, dashboard, access policy, workbook projection, and
+  export.
+- **Phase 15F — Final Business Flow / Reporting Re-audit:** verify the delivered
+  workflow and report against customer evidence.
+
+These boundaries may be adjusted to fit repository phase conventions, but 15B
+must begin implementation rather than restart broad discovery. It must preserve
+the accepted rewrite architecture and must not copy legacy persistence or
+security patterns.
 
 ## 15. Verification and self-review
 
@@ -505,4 +582,14 @@ Phase 15B must not copy legacy persistence/security patterns or begin clinical c
 - Fixed workbook round columns were treated as report projection, not persistence design.
 - No clinical formula, threshold, authorization capability, or schema was invented or changed.
 
-After both Phase 15A documents are created, run git diff --check and inspect the diff for Thai encoding/mojibake. No build or integration suite is necessary for this documentation-only phase.
+For this correction pass, the executed checks were:
+
+- `git diff --check` — PASS.
+- UTF-8/Thai mojibake inspection of both Phase 15A Markdown files — PASS; no
+  replacement characters or corrupted Thai text were found.
+- Documentation-only scope check — PASS; only the two Phase 15A Markdown files
+  were changed by this correction. `Dashboard App Demi.xlsx`, application code,
+  Prisma schema, migrations, routes, UI, policies, and dependencies were not
+  changed.
+- No build or integration suite was run because this was a documentation-only
+  correction and the repository instructions did not require one.

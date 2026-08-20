@@ -20,7 +20,7 @@ The workbook is the strongest current customer evidence for report intent, but i
 
 The source classifications used here are CUSTOMER WORKBOOK, ACCEPTED CURRENT REQUIREMENT / ARCHITECTURE, CURRENT REWRITE IMPLEMENTATION, LEGACY BEHAVIOR, ENGINEERING RECOMMENDATION, and OPEN REQUIREMENT.
 
-Field status values are IMPLEMENTED — REUSE, IMPLEMENTED — VERIFY SEMANTICS, IMPLEMENTED — EXTEND, NEW — REQUIRED, DERIVED — DO NOT STORE BLINDLY, REPORT PROJECTION ONLY, LEGACY-ALIGNED SAFE DEFAULT, DECISION REQUIRED, and DEFERRED.
+Field status values are IMPLEMENTED — REUSE, IMPLEMENTED — VERIFY SEMANTICS, IMPLEMENTED — EXTEND, NEW — REQUIRED, DERIVED — DO NOT STORE BLINDLY, REPORT PROJECTION ONLY, LEGACY-ALIGNED SAFE DEFAULT, DECISION REQUIRED, and DEFERRED. `DECISION REQUIRED` means that a detail is unresolved; it is not shorthand for blocking all future implementation. Scoped decision-impact labels used below are `BLOCKS_PROGRAM_FOUNDATION`, `BLOCKS_SPECIFIC_FEATURE`, `BLOCKS_FINAL_REPORTING`, `CAN_USE_SAFE_PROTOTYPE_DEFAULT`, and `CAN_DEFER`.
 
 ### Canonical field classifications
 
@@ -39,6 +39,13 @@ The field tables use a compact Raw/derived column. Every meaningful workbook fie
 | OUTCOME | ASSESSMENT unless the customer confirms it is a program-state code |
 
 When a table cell combines a source value and a report projection, the table records both the business concept and its primary classification; it does not imply two persisted fields.
+
+The blocking scope is defined by P15A-D01 through P15A-D21 in the business-flow
+document. In particular, report-only uncertainty does not block Program or
+Service 1 persistence, and a clinical calculation uncertainty blocks that
+calculation and its official report projection only. A field may therefore
+remain `DECISION REQUIRED` in this map while an unrelated implementation slice
+proceeds.
 
 ## 2. Workbook sheet inventory
 
@@ -85,8 +92,8 @@ The report therefore projects service/activity presence and selected BEFORE/AFTE
 | Cell/group | Workbook field | Source business concept | Current rewrite source | Legacy source | Raw/derived | Requiredness evidence | Status | Unresolved semantics / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A1 | รพ.สต.......................... | Reporting Hospital/site | PatientHospitalRelationship.hospital and scoped directory | Legacy Hospital context and broad lists | SOURCE DATA / REPORT CONTEXT | Header only | REPORT PROJECTION ONLY | Confirm report scope and Hospital selector authority |
-| A2/C2 | จำนวนเคส; เบาหวาน...................ราย | DM case count | No classification/count query | Legacy statistics/reporting incomplete; profile terms exist | DERIVED REPORT COUNT | Header only | DECISION REQUIRED | Depends on approved DM source/rule |
-| C3 | กลุ่มเสี่ยง(Pre-DM)…...................ราย | Pre-DM case count | No classification field | Legacy terms are behavioral evidence only | DERIVED REPORT COUNT | Header only | DECISION REQUIRED | Do not derive from legacy Screening thresholds |
+| A2/C2 | จำนวนเคส; เบาหวาน...................ราย | DM case count | No classification/count query | Legacy statistics/reporting incomplete; profile terms exist | DERIVED REPORT COUNT | Header only | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D02: cohort classification and official count only; do not derive from legacy Screening thresholds |
+| C3 | กลุ่มเสี่ยง(Pre-DM)…...................ราย | Pre-DM case count | No classification field | Legacy terms are behavioral evidence only | DERIVED REPORT COUNT | Header only | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D02: cohort classification and official count only; do not derive from legacy Screening thresholds |
 
 ### 4.2 Patient and caregiver context
 
@@ -94,22 +101,22 @@ The report therefore projects service/activity presence and selected BEFORE/AFTE
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A4/A5 | ลำดับ | Report row order | Query ordering/pagination | Legacy export row index | DERIVED PRESENTATION | Column exists | REPORT PROJECTION ONLY | Not stable identity and not clinical data |
 | B4/B5 | รายชื่อ; ชื่อ; สกุล | Patient display name | Person/PatientProfile through relationship | Legacy profile name | SOURCE DATA | Column exists | IMPLEMENTED — REUSE | Exact relationship scope controls visibility |
-| C4/C5 | ID | Customer-facing Patient/program identifier | Opaque relationship ID and Hospital-local HN exist; display choice not selected | Legacy global/user/profile ID | SOURCE DATA / UNKNOWN | Column exists | DECISION REQUIRED | See P15A-D01; do not assume database primary key |
-| D4 | ระยะเวลาการเจ็บป่วย | Illness duration | No current field | Legacy source not confirmed | SOURCE DATA | Column exists | NEW — REQUIRED | Source, unit, and reference date open |
-| E4 | อสม.ที่ดูแล | OSM/caregiver context | Active and historical PatientOsmAssignment | Legacy caregiver/operator context broad | SOURCE DATA / PROJECTION | Column exists | DECISION REQUIRED | Current versus episode-responsible OSM |
+| C4/C5 | ID | Customer-facing Patient/program identifier | Opaque relationship ID and Hospital-local HN exist; display choice not selected | Legacy global/user/profile ID | SOURCE DATA / UNKNOWN | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | P15A-D01: use opaque relationship/Program identity internally; display choice remains open |
+| D4 | ระยะเวลาการเจ็บป่วย | Illness duration | No current field | Legacy source not confirmed | SOURCE DATA | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | P15A-D03: source, unit, and reference date must be confirmed before official projection |
+| E4 | อสม.ที่ดูแล | OSM/caregiver context | Active and historical PatientOsmAssignment | Legacy caregiver/operator context broad | SOURCE DATA / PROJECTION | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | P15A-D05: current exact assignment authorization remains; report projection is open |
 
 ### 4.3 BEFORE group
 
 | Cells | Workbook field | Source business concept | Current rewrite source | Legacy source | Raw/derived | Requiredness evidence | Status | Unresolved semantics / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | F4/F5 | ข้อมูลเริ่มต้น(Before) | Initial program state | Dedicated Baseline plus Screening candidate | Legacy Baseline as Follow-up round 0 | REPORT GROUP | Group heading only | IMPLEMENTED — EXTEND | Need authoritative initial event; do not equate to legacy round 0 |
-| G5 | วันที่เริ่มโปรแกรม | Program start date | No field/event | No reliable program episode start | PROGRAM STATE | Column exists | DECISION REQUIRED | Start event/backdating open |
-| H5 | CVD risk score | Cardiovascular risk result | No field/formula | Terminology but no approved formula | DERIVED/IMPORTED CLINICAL VALUE | No formula | DECISION REQUIRED | Formula/version/source/visibility required |
-| I5 | HbA1C | HbA1c measurement | No field | Legacy terminology only | MEASUREMENT | No unit/context | NEW — REQUIRED | Confirm field, unit, date, source, visibility |
+| G5 | วันที่เริ่มโปรแกรม | Program start date | No field/event | No reliable program episode start | PROGRAM STATE | Column exists | BLOCKS_PROGRAM_FOUNDATION | P15A-D04: minimum episode start contract; exact backdating policy may remain separate |
+| H5 | CVD risk score | Cardiovascular risk result | No field/formula | Terminology but no approved formula | DERIVED/IMPORTED CLINICAL VALUE | No formula | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D09: no official calculation or value until formula/version/source/visibility are approved |
+| I5 | HbA1C | HbA1c measurement | No field | Legacy terminology only | MEASUREMENT | No unit/context | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D10: HbA1c remains unimplemented until field/unit/date/source/visibility are confirmed |
 | J5 | DTX | DTX/blood glucose measurement | Baseline bloodSugarDtx; Follow-up bloodSugar | blood_sugar_dtx; DTX/mg% UI label | MEASUREMENT | No context | IMPLEMENTED — VERIFY SEMANTICS | Unit and measurement context provisional |
 | K5 | BW. | Body weight | Baseline and Follow-up weight | Legacy weight | MEASUREMENT | No unit | IMPLEMENTED — VERIFY SEMANTICS | Confirm source/unit |
 | L5 | BMI | Body-mass index | No field/formula | Legacy display/visual terminology | DERIVED | No formula | DERIVED — DO NOT STORE BLINDLY | Requires approved height/weight observations |
-| M5 | ส่วนสูง | Height | No field | Legacy profile/detail terminology; not audited Follow-up input | MEASUREMENT | No unit | NEW — REQUIRED | Confirm source/unit/date |
+| M5 | ส่วนสูง | Height | No field | Legacy profile/detail terminology; not audited Follow-up input | MEASUREMENT | No unit | BLOCKS_SPECIFIC_FEATURE | P15A-D11: confirm source/unit/date before using it for official BMI or report output |
 | N5 | รอบเอว | Waist circumference | Baseline and Follow-up waist | Legacy waist circumference | MEASUREMENT | No unit | IMPLEMENTED — VERIFY SEMANTICS | Confirm unit/timing |
 | O5/P7 | BP; ตัวบน; ตัวล่าง | Blood pressure systolic/diastolic | Baseline and Follow-up systolic/diastolic | Legacy sys/dia and mmHg UI label | MEASUREMENT | Group fields present | IMPLEMENTED — VERIFY SEMANTICS | Confirm unit/context/validation |
 
@@ -121,15 +128,15 @@ The report therefore projects service/activity presence and selected BEFORE/AFTE
 | Q5:AG5 | Round labels 1–6 | Visible report positions | PatientFollowup.roundNumber | Legacy followup_round | REPORT PRESENTATION | Six visible positions only | REPORT PROJECTION ONLY | Workbook note allows more actual Follow-ups |
 | Q6/Q7 per round | DTX | Round blood glucose | Follow-up bloodSugar | Legacy blood_sugar_dtx | MEASUREMENT | Column exists | IMPLEMENTED — VERIFY SEMANTICS | Confirm context/unit |
 | R6/R7 per round | BW | Round weight | Follow-up weight | Legacy weight | MEASUREMENT | Column exists | IMPLEMENTED — VERIFY SEMANTICS | Confirm whether every round requires it |
-| S6/S7 per round | Achieve score | Achievement rate/score | No field/formula | No official legacy rate | DERIVED | Label only | DECISION REQUIRED | See P15A-D13/D14; do not persist blind counters |
+| S6/S7 per round | Achieve score | Achievement rate/score | No field/formula | No official legacy rate | DERIVED | Label only | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D13/D14: keep source progress data, but do not persist or report an official rate/counter |
 
 ### 4.5 AFTER group
 
 | Cells | Workbook field | Source business concept | Current rewrite source | Legacy source | Raw/derived | Requiredness evidence | Status | Unresolved semantics / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| AI5 | วันที่สิ้นสุดโปรแกรม | Program end/completion date | No field/event | No reliable completion event | PROGRAM STATE | Column exists | DECISION REQUIRED | Define end/completion |
-| AJ5 | CVD risk score | Final CVD risk | No field/formula | No approved formula | DERIVED/IMPORTED CLINICAL VALUE | No formula | DECISION REQUIRED | Same formula/source issue as BEFORE |
-| AK5 | HbA1C | Final HbA1c | No field | Terminology only | MEASUREMENT | No unit/context | NEW — REQUIRED | Final source/date/visibility open |
+| AI5 | วันที่สิ้นสุดโปรแกรม | Program end/completion date | No field/event | No reliable completion event | PROGRAM STATE | Column exists | BLOCKS_PROGRAM_FOUNDATION / BLOCKS_FINAL_REPORTING | P15A-D04: minimum completion contract is foundational; official report timing remains open |
+| AJ5 | CVD risk score | Final CVD risk | No field/formula | No approved formula | DERIVED/IMPORTED CLINICAL VALUE | No formula | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D09: same formula/source issue as BEFORE |
+| AK5 | HbA1C | Final HbA1c | No field | Terminology only | MEASUREMENT | No unit/context | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D10: final source/date/visibility remain open |
 | AL5 | DTX | Final DTX | Follow-up/Baseline DTX-like fields | Legacy blood sugar DTX | MEASUREMENT | No context | IMPLEMENTED — VERIFY SEMANTICS | Final timing/authority open |
 | AM5 | BW. | Final weight | Follow-up/Baseline weight | Legacy weight | MEASUREMENT | No unit | IMPLEMENTED — VERIFY SEMANTICS | Final timing/authority open |
 | AN5 | BMI | Final BMI | No field/formula | Display terminology only | DERIVED | No formula | DERIVED — DO NOT STORE BLINDLY | Approve calculation |
@@ -144,14 +151,14 @@ The report therefore projects service/activity presence and selected BEFORE/AFTE
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | A1 | Service Process record | Service-process report title | No report module | Separate legacy workflows | PRESENTATION | Header | REPORT PROJECTION ONLY | Title does not create a domain entity |
 | A2 | รพ.สต.......................... | Hospital/site | Relationship Hospital | Legacy Hospital context | REPORT CONTEXT | Header | REPORT PROJECTION ONLY | Scope/capability open |
-| A3/C3 | จำนวนเคส; DM count | Cohort count | No classification/count query | Legacy terminology only | DERIVED COUNT | Header | DECISION REQUIRED | Classification source required |
-| C4 | Pre-DM count | Cohort count | No classification field | Legacy terminology only | DERIVED COUNT | Header | DECISION REQUIRED | Classification source required |
+| A3/C3 | จำนวนเคส; DM count | Cohort count | No classification/count query | Legacy terminology only | DERIVED COUNT | Header | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D02: classification source and official count only |
+| C4 | Pre-DM count | Cohort count | No classification field | Legacy terminology only | DERIVED COUNT | Header | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D02: classification source and official count only |
 | A5/A6 | ลำดับ; ชื่อ; สกุล | Display row/name | Person/Profile through relationship | Legacy profile name | SOURCE/ORDER | Columns exist | IMPLEMENTED — REUSE | Display remains policy-controlled |
-| C5 | ID | Patient/program identifier | Relationship ID/HN candidates | Legacy user/profile ID | SOURCE UNKNOWN | Column exists | DECISION REQUIRED | Same P15A-D01 |
-| D5 | ระยะเวลาการเจ็บป่วย | Illness duration | No field | Unconfirmed | SOURCE DATA | Column exists | NEW — REQUIRED | Same P15A-D03 |
-| E5 | อสม.ที่ดูแล | OSM/caregiver | Assignment history | Broad operator context | SOURCE/PROJECTION | Column exists | DECISION REQUIRED | Same P15A-D05 |
-| F5 | วันที่เริ่มเข้าโปรแกรม | Program start | No event | No reliable start | PROGRAM STATE | Column exists | DECISION REQUIRED | Same P15A-D04 |
-| G5 | วันที่สิ้นสุด | Program end | No event | No reliable completion | PROGRAM STATE | Column exists | DECISION REQUIRED | Same P15A-D04 |
+| C5 | ID | Patient/program identifier | Relationship ID/HN candidates | Legacy user/profile ID | SOURCE UNKNOWN | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | Same P15A-D01; do not assume database primary key |
+| D5 | ระยะเวลาการเจ็บป่วย | Illness duration | No field | Unconfirmed | SOURCE DATA | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | Same P15A-D03; source/unit/reference date open |
+| E5 | อสม.ที่ดูแล | OSM/caregiver | Assignment history | Broad operator context | SOURCE/PROJECTION | Column exists | CAN_DEFER / BLOCKS_FINAL_REPORTING | Same P15A-D05; current versus episode-responsible OSM |
+| F5 | วันที่เริ่มเข้าโปรแกรม | Program start | No event | No reliable start | PROGRAM STATE | Column exists | BLOCKS_PROGRAM_FOUNDATION | Same P15A-D04; minimum episode start contract |
+| G5 | วันที่สิ้นสุด | Program end | No event | No reliable completion | PROGRAM STATE | Column exists | BLOCKS_PROGRAM_FOUNDATION / BLOCKS_FINAL_REPORTING | Same P15A-D04; minimum completion contract plus report timing |
 
 ### 5.2 BEFORE fields
 
@@ -162,18 +169,18 @@ The report therefore projects service/activity presence and selected BEFORE/AFTE
 | J6 | BW | Initial weight | Baseline weight | Legacy weight | MEASUREMENT | Column exists | IMPLEMENTED — VERIFY SEMANTICS | Unit/timing open |
 | K6 | PAM score | Initial PAM result | Screening result JSON | Legacy PAM score/profile | ASSESSMENT/DERIVED | Column exists | IMPLEMENTED — VERIFY SEMANTICS | Questionnaire/scoring/visibility open |
 | L6 | PROMs score | Initial PROMs result | Screening result JSON | Legacy PROMs score/profile | ASSESSMENT/DERIVED | Column exists | IMPLEMENTED — VERIFY SEMANTICS | Questionnaire/scoring/visibility open |
-| M6 | คะแนนไม้บรรทัดวัดใจ | Initial confidence | Screening/Baseline confidence | Legacy 0–10 confidence | ASSESSMENT | Column exists | IMPLEMENTED — EXTEND | Equivalence/requiredness open |
+| M6 | คะแนนไม้บรรทัดวัดใจ | Initial confidence | Screening/Baseline confidence | Legacy 0–10 confidence | ASSESSMENT | Column exists | LEGACY-ALIGNED SAFE DEFAULT | P15A-D06: current 0–10 structure is provisional; final equivalence/requiredness remains open |
 | N6 | เวลาออกกำลังกาย/สัปดาห์ | Initial weekly exercise time | Goal target value/unit is available, not observed time | Legacy targets/records inconsistent | MEASUREMENT/SOURCE | Column exists | NEW — REQUIRED | Confirm self-report, target, or observation |
 
 ### 5.3 AFTER fields
 
 | Cells | Workbook field | Source business concept | Current rewrite source | Legacy source | Raw/derived | Requiredness evidence | Status | Unresolved semantics / notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| O5/O6 | After | Final state group | No final assessment | Latest Follow-up informal equivalent | REPORT GROUP | Group only | NEW — REQUIRED | Define final record |
+| O5/O6 | After | Final state group | No final assessment | Latest Follow-up informal equivalent | REPORT GROUP | Group only | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D12: define final record/timing before official comparison |
 | P6 | DTX | Final DTX | Follow-up/Baseline DTX-like field | Legacy DTX | MEASUREMENT | Column exists | IMPLEMENTED — EXTEND | Final timing/context open |
 | Q6 | BW | Final weight | Follow-up weight | Legacy weight | MEASUREMENT | Column exists | IMPLEMENTED — EXTEND | Final timing/context open |
 | R6 | เวลาออกกำลังกาย/สัปดาห์ | Final weekly exercise time | No observed weekly-time field | Legacy exercise minutes not confirmed as this value | MEASUREMENT/DERIVED | Column exists | NEW — REQUIRED | Confirm source/aggregation |
-| S6 | จำนวนครั้งที่อัตราความสำเร็จตามเป้าหมาย>70% | Count of rates over 70% | No field/formula | No structured equivalent | DERIVED | Column exists | DECISION REQUIRED | Define counted unit/denominator |
+| S6 | จำนวนครั้งที่อัตราความสำเร็จตามเป้าหมาย>70% | Count of rates over 70% | No field/formula | No structured equivalent | DERIVED | Column exists | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D14: define counted unit, denominator, and aggregation |
 
 ### 5.4 Service 1 — Know Yourself
 
@@ -181,9 +188,9 @@ The group heading is บริการครั้งที่ 1: รู้จ�
 
 | Visible activity | Workbook labels | Source business concept | Current rewrite source | Legacy source | Raw/derived | Status | Unresolved semantics |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Floating/sinking chart | กราฟวัดลอยจม; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner; relationship Evidence only | Image plus floating_chart_summary | COMPLETION + ARTIFACT | DECISION REQUIRED | Minimum content, image/text requirement, owner |
-| Dream card | การ์ดความฝัน; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner | Image plus dream_card_description | COMPLETION + ARTIFACT | DECISION REQUIRED | Minimum content, image/text requirement, owner |
-| Routine schedule | ตารางกิจวัตร; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner | Image-only life_schedule_image_url | COMPLETION + ARTIFACT | DECISION REQUIRED | Structured versus image/text content |
+| Floating/sinking chart | กราฟวัดลอยจม; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner; relationship Evidence only | Image plus floating_chart_summary | COMPLETION + ARTIFACT | LEGACY-ALIGNED SAFE DEFAULT | P15A-D07: provisional optional image + summary; P15A-D08 blocks only the explicit artifact association/owner |
+| Dream card | การ์ดความฝัน; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner | Image plus dream_card_description | COMPLETION + ARTIFACT | LEGACY-ALIGNED SAFE DEFAULT | P15A-D07: provisional optional image + description; P15A-D08 blocks only the explicit artifact association/owner |
+| Routine schedule | ตารางกิจวัตร; ทำ/ไม่ทำ | Activity completion plus artifact | No dedicated owner; relationship Evidence only | Image-only life_schedule_image_url | COMPLETION + ARTIFACT | LEGACY-ALIGNED SAFE DEFAULT | P15A-D07: provisional optional image artifact; P15A-D08 blocks only the explicit artifact association/owner |
 
 The visible pairs do not prove that the persistence model should store a boolean for each column. The underlying activity/event should be the source, with the report pair derived after requiredness is approved.
 
@@ -194,13 +201,13 @@ The group heading is บริการครั้งที่ 2 : ทำแผ
 | Cells/row | Workbook field | Source business concept | Current rewrite source | Legacy source | Raw/derived | Status | Unresolved semantics |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Y6/Z8 | เป้าหมายอาหาร; มี/ไม่มี | Food-goal presence | Generic Goal Plan items | Food status/activity codes | ACTIVITY COMPLETION | IMPLEMENTED — EXTEND | Whether no food goal is valid |
-| Y7 | การลดมื้ออาหาร | Food quantity/frequency goal | Generic activity code/target | Food amount status | GOAL DATA | DECISION REQUIRED | Quantity versus frequency meaning |
+| Y7 | การลดมื้ออาหาร | Food quantity/frequency goal | Generic activity code/target | Food amount status | GOAL DATA | BLOCKS_SPECIFIC_FEATURE (Service 2 only) | Quantity versus frequency meaning remains open; does not block Program or Service 1 |
 | AA6/AB8 | การเปลี่ยนอาหาร; มี/ไม่มี | Food type/change goal | Generic Goal Plan item | Food type status | ACTIVITY COMPLETION | IMPLEMENTED — EXTEND | Canonical code/target |
-| AC7 | จำนวนมื้อ/สัปดาห์ | Weekly meal target/value | Goal target value/unit candidate | Legacy target fields, no confirmed mapping | GOAL TARGET | DECISION REQUIRED | Target versus observed; period/unit |
+| AC7 | จำนวนมื้อ/สัปดาห์ | Weekly meal target/value | Goal target value/unit candidate | Legacy target fields, no confirmed mapping | GOAL TARGET | BLOCKS_SPECIFIC_FEATURE (Service 2 only) | Target versus observed; period/unit remains open |
 | AD6/AE8 | เป้าหมายออกกำลัง; มี/ไม่มี | Exercise-goal presence | Generic exercise Goal item | Movement/exercise status | ACTIVITY COMPLETION | IMPLEMENTED — EXTEND | Allowed activity set |
 | AD7 | มีการตั้งเป้า | Exercise target exists | Goal item presence | Legacy target value/unit | GOAL DATA | IMPLEMENTED — EXTEND | Exact meaning of “has target” |
-| AF7 | จำนวนวัน/สัปดาห์ | Exercise target days | PatientGoalItem.targetDays | Legacy target_days | GOAL TARGET | IMPLEMENTED — VERIFY SEMANTICS | Weekly denominator confirmation |
-| AG7 | รวมเวลา/สัปดาห์ | Exercise weekly time | targetValue/targetUnit candidate | Legacy exercise minute targets | GOAL TARGET | IMPLEMENTED — VERIFY SEMANTICS | Target versus calculated observation |
+| AF7 | จำนวนวัน/สัปดาห์ | Exercise target days | PatientGoalItem.targetDays | Legacy target_days | GOAL TARGET | BLOCKS_SPECIFIC_FEATURE (Service 2/achievement only) | Weekly period/denominator confirmation |
+| AG7 | รวมเวลา/สัปดาห์ | Exercise weekly time | targetValue/targetUnit candidate | Legacy exercise minute targets | GOAL TARGET | BLOCKS_SPECIFIC_FEATURE (Service 2 only) | Target versus calculated observation remains open |
 
 ### 5.6 Service 3 through Service 6 — Behavioral Follow-up
 
@@ -209,10 +216,10 @@ The workbook labels Service 3 as บริการครั้งที่ 3 : 
 | Group field | Thai label | Source business concept | Current rewrite source | Legacy source | Raw/derived | Status | Unresolved semantics |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Date | วันที่ติดตาม | Dated Follow-up event | PatientFollowup.recordedAt and optional Appointment | Editable legacy followup_date | SOURCE DATA | IMPLEMENTED — EXTEND | Occurrence date/backdating |
-| Count | จำนวนวันที่ทำได้ | Achieved days/count | No field | No structured equivalent | SOURCE/DERIVED | NEW — REQUIRED | Numerator and period |
-| Rate | อัตราความสำเร็จตามเป้า | Achievement rate | No field/formula | Legacy ratios differ | DERIVED | DECISION REQUIRED | Formula, zero target, missing observations |
-| Outcome | ผลลัพธ์ที่ได้ | Controlled outcome phrase/code | No field | Free text/status/auto-summary | OUTCOME | DECISION REQUIRED | Controlled vocabulary/version |
-| Plan adjustment | ปรับแผนใหม่; ปรับ/ไม่ปรับ | Goal Plan adjustment decision | No field; Plans immutable | Goals can archive/replace; no Follow-up flag | PROGRAM EVENT | DECISION REQUIRED | Relation to new Goal Plan |
+| Count | จำนวนวันที่ทำได้ | Achieved days/count | No field | No structured equivalent | SOURCE/DERIVED | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D13: numerator and period; source capture may proceed without official rate |
+| Rate | อัตราความสำเร็จตามเป้า | Achievement rate | No field/formula | Legacy ratios differ | DERIVED | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D13: formula, zero target, missing observations |
+| Outcome | ผลลัพธ์ที่ได้ | Controlled outcome phrase/code | No field | Free text/status/auto-summary | OUTCOME | BLOCKS_SPECIFIC_FEATURE / BLOCKS_FINAL_REPORTING | P15A-D15: controlled vocabulary/version; narrative remains possible provisionally |
+| Plan adjustment | ปรับแผนใหม่; ปรับ/ไม่ปรับ | Goal Plan adjustment decision | No field; Plans immutable | Goals can archive/replace; no Follow-up flag | PROGRAM EVENT | BLOCKS_SPECIFIC_FEATURE (Goal Plan adjustment only) | P15A-D16: relation to a new Goal Plan; do not infer mutation from a boolean |
 | Obstacle | มีอุปสรรค; มี/ไม่มี | Obstacle presence | Notes only | Adaptation obstacle text | ASSESSMENT/PROJECTION | IMPLEMENTED — EXTEND | Boolean versus detail/owner |
 
 The report has fixed visible columns, while the note at rows 35–37 says to record as many Follow-ups as occur and expects approximately 2–4 per program. The business concept is repeated Follow-up collection, not six fixed database records.
@@ -342,20 +349,31 @@ The map does not authorize:
 - direct browser Supabase access or legacy URL storage;
 - silent correction or mutable historical rewrites.
 
-## 11. Open requirements referenced by the business-flow document
+## 11. Open requirements and blocking scope
 
-The detailed register is in PHASE_15A_BUSINESS_FLOW_CONSOLIDATION.md:
+The detailed questions remain in
+`PHASE_15A_BUSINESS_FLOW_CONSOLIDATION.md`. Their reporting-map impact is
+scoped as follows; none of the report-only rows below authorize a report query,
+export, or broader role capability.
 
-- P15A-D01 report ID;
-- P15A-D02 DM/Pre-DM source;
-- P15A-D03 illness duration;
-- P15A-D04/D12 program and BEFORE/AFTER lifecycle;
-- P15A-D05 OSM context;
-- P15A-D06–D08 confidence and Service 1/artifact ownership;
-- P15A-D09–D11 CVD risk, HbA1c/DTX, height/BMI;
-- P15A-D13–D16 achievement, outcome, plan adjustment, obstacles;
-- P15A-D17 correction/amendment;
-- P15A-D18–D19 report access/export and Follow-up overflow.
+| Decision(s) | Reporting-map impact | What may proceed |
+| --- | --- | --- |
+| P15A-D01, D03, D05 | `CAN_DEFER` for Program workflow; `BLOCKS_FINAL_REPORTING` for ID, illness-duration, and OSM projections | Program persistence and Service 1 can proceed with authoritative relationship/assignment identity and no official projection of the unresolved columns. |
+| P15A-D02 | `BLOCKS_SPECIFIC_FEATURE` for cohort classification; `BLOCKS_FINAL_REPORTING` for DM/Pre-DM counts | Program and Service 1 can proceed without deriving classification from legacy Screening. |
+| P15A-D04 | `BLOCKS_PROGRAM_FOUNDATION` | The minimum Program episode identity/cardinality/start/completion contract must be resolved in the 15B implementation slice. |
+| P15A-D06, D07, D20 | `CAN_USE_SAFE_PROTOTYPE_DEFAULT` | Reversible 0–10 confidence and Service 1 image/text interaction structures may be used provisionally; final clinical/content meaning remains open. |
+| P15A-D08 | `BLOCKS_SPECIFIC_FEATURE` for Service 1 artifact association/ownership | Program foundation and text/completion flow can proceed; use only a narrow relationship-scoped Evidence association, not a generic attachment model. |
+| P15A-D09, D11 | `BLOCKS_SPECIFIC_FEATURE` and `BLOCKS_FINAL_REPORTING` for CVD/BMI | Other Program and Service 1 data can proceed without calculating or reporting these values. |
+| P15A-D10 | Existing DTX capture is a provisional safe default; HbA1c and official measurement meaning are `BLOCKS_SPECIFIC_FEATURE` / `BLOCKS_FINAL_REPORTING` | Existing structural DTX fields can remain provisional; HbA1c and official units/context wait for the measurement contract. |
+| P15A-D12 | `BLOCKS_PROGRAM_FOUNDATION` only for the minimum stage association; `BLOCKS_SPECIFIC_FEATURE` / `BLOCKS_FINAL_REPORTING` for exact final timing and comparison | 15B can establish the minimum initial-stage link; final/outcome timing and official comparison remain later-slice work. |
+| P15A-D13–D15 | `BLOCKS_SPECIFIC_FEATURE` and `BLOCKS_FINAL_REPORTING` for achievement, aggregation, and official outcome values | Capture source follow-up progress and provisional narrative without calculating official rates or assigning an unapproved code. |
+| P15A-D16 | `BLOCKS_SPECIFIC_FEATURE` for Goal Plan adjustment semantics | Program, Service 1, and existing immutable Goal Plan behavior can proceed; do not infer a new plan from a boolean. |
+| P15A-D17, D21 | `CAN_DEFER` | Existing safe append-oriented behavior and a non-export workflow can proceed. |
+| P15A-D18 | `BLOCKS_FINAL_REPORTING` | Current Patient/relationship authorization remains the workflow authority; reporting/export waits for an explicit capability contract. |
+| P15A-D19 | `CAN_DEFER` for normalized Program/Follow-up persistence; `BLOCKS_FINAL_REPORTING` for exact Excel overflow presentation | Persist normalized 0..N Follow-ups and project visible rounds later; never model six fixed persistence fields. |
+
+This separation is intentional: a field can remain unresolved in the report map
+without blocking the next Program implementation slice.
 
 ## 12. Verification
 
@@ -366,3 +384,7 @@ The detailed register is in PHASE_15A_BUSINESS_FLOW_CONSOLIDATION.md:
 - Current rewrite model/source references were checked against prisma/schema.prisma and corresponding services/schemas/routes.
 - Legacy fields cited here were verified in the pinned checkout at commit 7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e.
 - Wide report columns were explicitly treated as projections, not persistence instructions.
+- `git diff --check` for this correction — PASS.
+- UTF-8/Thai mojibake inspection of both Phase 15A Markdown files — PASS; no replacement characters or corrupted Thai text were found.
+- Documentation-only scope check — PASS; the working-tree diff contains only `PHASE_15A_BUSINESS_FLOW_CONSOLIDATION.md` and `PHASE_15A_REPORTING_DATA_MAP.md`.
+- No documentation lint script was configured; no build or integration suite was run for this documentation-only correction.
