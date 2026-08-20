@@ -317,12 +317,49 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "patient_program.created" } })).toBe(1);
   });
 
-  it("completes an episode without rewriting history and permits a later episode", async () => {
+  it("converges concurrent Program opening and Baseline creation to one linked initial context", async () => {
+    const hospital = await createHospital("PROGRAM-BASELINE-RACE");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "program-baseline-race");
+
+    const [opened, baseline] = await Promise.all([
+      openPatientProgram(owner.actor, {
+        patientHospitalRelationshipId: patient.relationshipId,
+      }),
+      createPatientBaseline(owner.actor, baselineInput(patient.relationshipId)),
+    ]);
+    const activeProgram = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: opened.patientProgramId },
+    });
+
+    expect(await prisma.patientProgram.count({
+      where: {
+        patientHospitalRelationshipId: patient.relationshipId,
+        status: PatientProgramStatus.ACTIVE,
+      },
+    })).toBe(1);
+    expect(await prisma.patientBaseline.count({
+      where: { patientHospitalRelationshipId: patient.relationshipId },
+    })).toBe(1);
+    expect(activeProgram.initialBaselineId).toBe(baseline.patientBaselineId);
+    expect(await prisma.auditEvent.count({
+      where: { action: "patient_program.created", resourceId: opened.patientProgramId },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: { action: "patient_baseline.created", resourceId: baseline.patientBaselineId },
+    })).toBe(1);
+  });
+
+  it("does not reuse a historical Baseline for a later episode", async () => {
     const hospital = await createHospital("HISTORY");
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const patient = await createPatient(owner.actor, hospital.id, "history");
+    const baseline = await createPatientBaseline(owner.actor, baselineInput(patient.relationshipId));
     const first = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const firstBeforeCompletion = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: first.patientProgramId },
     });
 
     const completed = await completePatientProgram(owner.actor, {
@@ -334,14 +371,24 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     const second = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
     });
+    const firstAfterCompletion = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: first.patientProgramId },
+    });
+    const secondStored = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: second.patientProgramId },
+    });
     const page = await getPatientProgramPageContext(owner.actor, patient.relationshipId);
 
+    expect(firstBeforeCompletion.initialBaselineId).toBe(baseline.patientBaselineId);
     expect(completed).toMatchObject({ operation: "COMPLETED", status: PatientProgramStatus.COMPLETED });
     expect(repeated).toMatchObject({
       operation: "ALREADY_COMPLETED",
       completedAt: completed.completedAt,
     });
     expect(second.status).toBe(PatientProgramStatus.ACTIVE);
+    expect(secondStored.initialBaselineId).toBeNull();
+    expect(firstAfterCompletion.initialBaselineId).toBe(baseline.patientBaselineId);
+    expect(firstAfterCompletion.status).toBe(PatientProgramStatus.COMPLETED);
     expect(page.active?.programId).toBe(second.patientProgramId);
     expect(page.history.map((program) => program.programId)).toEqual([
       second.patientProgramId,

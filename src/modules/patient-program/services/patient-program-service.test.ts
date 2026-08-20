@@ -87,6 +87,7 @@ function createDatabase(input: {
   currentProgram?: Record<string, unknown> | null;
   completedProgram?: Record<string, unknown> | null;
   baseline?: { id: string } | null;
+  baselineUsed?: { id: string } | null;
   createResult?: Record<string, unknown>;
   createError?: unknown;
   updateCount?: number;
@@ -103,9 +104,13 @@ function createDatabase(input: {
 } {
   const completionRecords = [input.currentProgram ?? null, input.completedProgram ?? null];
   const findFirst = vi.fn().mockImplementation(
-    async (args: { where?: { status?: PatientProgramStatus } }) => {
+    async (args: { where?: { status?: PatientProgramStatus; initialBaselineId?: string } }) => {
       if (args.where?.status === PatientProgramStatus.ACTIVE) {
         return input.activeProgram ?? null;
+      }
+
+      if (args.where?.initialBaselineId) {
+        return input.baselineUsed ?? null;
       }
 
       return completionRecords.shift() ?? null;
@@ -183,6 +188,21 @@ describe("Patient Program service", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("does not reuse a Baseline already used by an earlier episode", async () => {
+    const { database, transaction } = createDatabase({ baseline: { id: baselineId }, baselineUsed: { id: programId } });
+
+    await openPatientProgram(
+      actor,
+      { patientHospitalRelationshipId: relationshipId },
+      { database, now: () => startedAt },
+    );
+
+    expect(transaction.patientProgram.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ initialBaselineId: null }),
+      select: expect.anything(),
+    });
   });
 
   it("rejects a second active episode before persistence", async () => {

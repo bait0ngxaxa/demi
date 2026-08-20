@@ -186,10 +186,27 @@ async function openInTransaction(
     where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
     select: { id: true },
   });
+
+  let initialBaselineId: string | null = null;
+
+  if (baseline) {
+    const previousUse = await transaction.patientProgram.findFirst({
+      where: {
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        initialBaselineId: baseline.id,
+      },
+      select: { id: true },
+    });
+
+    if (!previousUse) {
+      initialBaselineId = baseline.id;
+    }
+  }
+
   const program = await transaction.patientProgram.create({
     data: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-      initialBaselineId: baseline?.id ?? null,
+      initialBaselineId,
       createdByUserId: access.actor.userId,
       status: PatientProgramStatus.ACTIVE,
       startedAt: now,

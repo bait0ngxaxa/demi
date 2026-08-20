@@ -26,6 +26,7 @@ export type PatientBaselineDatabase = PrismaClient;
 export type PatientBaselineServiceDependencies = {
   database?: PatientBaselineDatabase;
   now?: () => Date;
+  transactionRetries?: number;
 };
 
 export type PatientBaselineCreateResult = {
@@ -48,6 +49,8 @@ const patientBaselineMutationSelect = {
 type PatientBaselineMutationRecord = Prisma.PatientBaselineGetPayload<{
   select: typeof patientBaselineMutationSelect;
 }>;
+
+const DEFAULT_TRANSACTION_RETRIES = 2;
 
 type NormalizedPatientBaselineRequest = {
   patientHospitalRelationshipId: string;
@@ -85,16 +88,50 @@ function isKnownRequestError(error: unknown, code: string): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
 }
 
+function isRetryableTransactionError(error: unknown): boolean {
+  return isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034");
+}
+
 function normalizeDatabaseError(error: unknown): ApplicationError {
   if (error instanceof ApplicationError) {
     return error;
   }
 
-  if (isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034")) {
+  if (isKnownRequestError(error, "P2002")) {
     return new ConflictError("ข้อมูลตั้งต้นของความสัมพันธ์ผู้ป่วยนี้มีอยู่แล้ว");
   }
 
+  if (isKnownRequestError(error, "P2034")) {
+    return new ConflictError("การบันทึกข้อมูลตั้งต้นขัดแย้งกับคำขออื่น กรุณาลองอีกครั้ง");
+  }
+
+  if (isKnownRequestError(error, "P2003")) {
+    return new ConflictError("ข้อมูลความสัมพันธ์ของข้อมูลตั้งต้นไม่สอดคล้องกัน");
+  }
+
   return new InfrastructureError("Baseline could not be saved");
+}
+
+async function runSerializable<T>(
+  database: PatientBaselineDatabase,
+  operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+  retryLimit: number,
+): Promise<T> {
+  let retryCount = 0;
+
+  while (true) {
+    try {
+      return await database.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error: unknown) {
+      if (!isRetryableTransactionError(error) || retryCount >= retryLimit) {
+        throw error;
+      }
+
+      retryCount += 1;
+    }
+  }
 }
 
 function nullableText(value: string | null | undefined): string | null {
@@ -182,17 +219,27 @@ async function createInTransaction(
     select: patientBaselineMutationSelect,
   });
 
-  // A Baseline may be recorded after an episode is opened. Link it only to
-  // the current ACTIVE episode in the same transaction; completed history is
-  // never retroactively changed.
-  await transaction.patientProgram.updateMany({
+  // A Baseline may be recorded after an episode is opened. Link it only when
+  // it has never been used by any episode, and only to the current ACTIVE
+  // episode. Completed history is never retroactively changed.
+  const previousUse = await transaction.patientProgram.findFirst({
     where: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-      status: PatientProgramStatus.ACTIVE,
-      initialBaselineId: null,
+      initialBaselineId: baseline.id,
     },
-    data: { initialBaselineId: baseline.id },
+    select: { id: true },
   });
+
+  if (!previousUse) {
+    await transaction.patientProgram.updateMany({
+      where: {
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        status: PatientProgramStatus.ACTIVE,
+        initialBaselineId: null,
+      },
+      data: { initialBaselineId: baseline.id },
+    });
+  }
 
   await recordAuditEvent(
     {
@@ -227,8 +274,10 @@ export async function createPatientBaseline(
   }
 
   try {
-    return await getDatabase(dependencies).$transaction((transaction) =>
-      createInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => createInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);
@@ -238,8 +287,10 @@ export async function createPatientBaseline(
 export const patientBaselineServiceInternals = {
   createInTransaction,
   isKnownRequestError,
+  isRetryableTransactionError,
   normalizeDatabaseError,
   normalizeInput,
   nullableText,
+  runSerializable,
   toCreateResult,
 };

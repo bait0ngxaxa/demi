@@ -84,10 +84,12 @@ Multi-role actor จะได้รับสิทธิ์เฉพาะเม
 พฤติกรรม provisional ที่เลือกสำหรับ MVP/demo:
 
 - เปิด Program ได้แม้ยังไม่มี Baseline
-- ถ้ามี Baseline อยู่แล้วตอนเปิด จะเก็บเฉพาะ Baseline ID นั้น
-- ถ้าสร้าง Baseline หลังเปิด Program ระบบจะ link Baseline ให้กับ current ACTIVE Program ที่ยังไม่มี initial context ภายใน transaction เดียวกับการสร้าง Baseline
+- ถ้ามี Baseline อยู่แล้วตอนเปิด จะเก็บเฉพาะ Baseline ID นั้นเมื่อ Baseline ยังไม่เคยถูกอ้างเป็น initial context ของ Program episode ใดมาก่อน
+- ถ้า Baseline ถูกใช้โดย Program episode ก่อนหน้าแล้ว จะไม่ reuse อัตโนมัติใน episode ใหม่ และ Program ใหม่จะเปิดด้วย `initialBaselineId = null` จนกว่าจะมี requirement สำหรับ episode-specific initial context
+- ถ้าสร้าง Baseline หลังเปิด Program ระบบจะ link Baseline ให้กับ current ACTIVE Program ที่ยังไม่มี initial context ภายใน transaction เดียวกับการสร้าง Baseline และจะทำเช่นนั้นเฉพาะเมื่อ Baseline ยังไม่เคยถูกใช้เป็น initial context
 - completed history จะไม่ถูก link ย้อนหลังโดยการสร้าง Baseline ใหม่
-- เนื่องจาก Baseline ปัจจุบันเป็นหนึ่งรายการต่อ relationship หลาย episode อาจอ้าง initial Baseline เดียวกันได้ จนกว่าจะมี requirement ใหม่ที่อนุมัติ episode-specific baseline
+- เนื่องจาก Baseline ปัจจุบันเป็นหนึ่งรายการต่อ relationship จึงยังมี Baseline ได้เพียงหนึ่งรายการ แต่ episode ใหม่จะไม่ inherit Baseline ที่เคยเป็น initial context ของ episode ที่จบแล้ว
+- Program opening และ Baseline creation ใช้ PostgreSQL `Serializable` transaction พร้อม bounded retry ร่วมกับ active uniqueness rule ดังนั้นเมื่อสอง operation เดียวกันเกิดพร้อมกัน operation ที่ถูก serialization conflict จะเริ่มใหม่จาก state ล่าสุด และผลสำเร็จจะ converge เป็น ACTIVE Program ที่อ้าง Baseline ถูกต้อง ไม่เกิด silent lost association
 
 slice นี้ไม่ได้กำหนด official BEFORE/AFTER timing window, final context, outcome vocabulary หรือ reporting semantics และไม่ได้ใช้ legacy `followup_round = 0`
 
@@ -135,6 +137,8 @@ Migration นี้:
 
 ไม่มี destructive change ต่อข้อมูล Patient care เดิม
 
+Integrity fix รอบนี้ไม่เปลี่ยน Prisma schema และไม่เพิ่ม migration เพราะใช้ invariant และ index เดิมทั้งหมด โดยเพิ่ม Serializable transaction + bounded retry ให้ Baseline mutation และเพิ่มการตรวจ historical initial-Baseline usage ใน service layer
+
 ไม่มี ADR ใหม่ เพราะการเพิ่ม bounded Program episode และ minimum Baseline association เป็นการลงมือทำตาม P15A-D04/P15A-D12 และใช้ pattern ที่ accepted อยู่แล้ว ไม่ได้สร้าง architectural abstraction ใหม่
 
 ## ความแตกต่างจาก legacy
@@ -173,9 +177,10 @@ Open Phase 15A reporting/clinical decisions เหล่านี้จึงไ
 - `npx prisma validate` — PASS
 - `npx prisma generate` — PASS (`@prisma/client` 6.19.3)
 - `npm run prisma:migrate:test` — PASS; migration 15B.0 apply สำเร็จและไม่มี pending migration ใน subsequent run
-- focused Program integration — PASS, 1 file / 5 tests
-- full integration suite `npm run test:integration` — PASS, 18 files / 134 tests
-- focused unit tests — PASS, 4 files / 32 tests
+- focused Program integration — PASS, 1 file / 6 tests
+- full integration suite `npm run test:integration` — PASS, 18 files / 135 tests
+- focused Program/Baseline unit tests — PASS, 2 files / 20 tests
+- full unit suite `npm test` — PASS, 100 files / 647 tests
 - `npx tsc --noEmit` — PASS
 - `npm run lint` — PASS (ไม่มี error; มี warning ชั่วคราวที่ถูกแก้ก่อน final verification)
 - `git diff --check` — ตรวจซ้ำก่อน commit

@@ -115,8 +115,10 @@ function baselineRecord(overrides: Record<string, unknown> = {}): Record<string,
 
 function createDatabase(input: {
   existing?: Record<string, unknown> | null;
+  baselineUsage?: Record<string, unknown> | null;
   createResult?: Record<string, unknown>;
   createError?: unknown;
+  transactionErrors?: unknown[];
   authoritativeActor?: Record<string, unknown>;
 } = {}): {
   database: PatientBaselineDatabase;
@@ -127,7 +129,10 @@ function createDatabase(input: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
-    patientProgram: { updateMany: ReturnType<typeof vi.fn> };
+    patientProgram: {
+      findFirst: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
   };
 } {
   const transaction = {
@@ -144,14 +149,24 @@ function createDatabase(input: {
         : vi.fn().mockResolvedValue(input.createResult ?? baselineRecord()),
     },
     patientProgram: {
+      findFirst: vi.fn().mockResolvedValue(input.baselineUsage ?? null),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   };
 
+  let transactionAttempt = 0;
+
   const database = {
-    $transaction: vi.fn(async (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>) =>
-      operation(transaction as unknown as Prisma.TransactionClient),
-    ),
+    $transaction: vi.fn(async (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>) => {
+      const transactionError = input.transactionErrors?.[transactionAttempt];
+      transactionAttempt += 1;
+
+      if (transactionError) {
+        throw transactionError;
+      }
+
+      return operation(transaction as unknown as Prisma.TransactionClient);
+    }),
   } as unknown as PatientBaselineDatabase;
 
   return { database, transaction };
@@ -229,11 +244,57 @@ describe("Patient Baseline service", () => {
   it("rejects a second Baseline without overwriting the existing row", async () => {
     const { database, transaction } = createDatabase({ existing: baselineRecord() });
 
-    await expect(createPatientBaseline(hospitalActor, validInput(), { database })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
+    await expect(
+      createPatientBaseline(hospitalActor, validInput(), { database, transactionRetries: 0 }),
+    ).rejects.toBeInstanceOf(ConflictError);
     expect(transaction.patientBaseline.create).not.toHaveBeenCalled();
     expect(mockedAudit).not.toHaveBeenCalled();
+  });
+
+  it("retries serialization conflicts without duplicating the Baseline audit", async () => {
+    const serializationError = new Prisma.PrismaClientKnownRequestError("serialization failure", {
+      code: "P2034",
+      clientVersion: "6.19.3",
+    });
+    const { database, transaction } = createDatabase({ transactionErrors: [serializationError] });
+
+    await createPatientBaseline(hospitalActor, validInput(), { database, now: () => now });
+
+    expect(database.$transaction).toHaveBeenCalledTimes(2);
+    expect(transaction.patientBaseline.create).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledOnce();
+  });
+
+  it("maps serialization retry exhaustion to a safe conflict", async () => {
+    const serializationError = new Prisma.PrismaClientKnownRequestError("serialization failure", {
+      code: "P2034",
+      clientVersion: "6.19.3",
+    });
+    const { database, transaction } = createDatabase({ transactionErrors: [serializationError] });
+
+    await expect(
+      createPatientBaseline(hospitalActor, validInput(), { database, transactionRetries: 0 }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "การบันทึกข้อมูลตั้งต้นขัดแย้งกับคำขออื่น กรุณาลองอีกครั้ง",
+    });
+    expect(transaction.patientBaseline.create).not.toHaveBeenCalled();
+    expect(mockedAudit).not.toHaveBeenCalled();
+  });
+
+  it("does not link a newly created Baseline when historical usage already exists", async () => {
+    const { database, transaction } = createDatabase({ baselineUsage: { id: "previous-program" } });
+
+    await createPatientBaseline(hospitalActor, validInput(), { database, now: () => now });
+
+    expect(transaction.patientProgram.findFirst).toHaveBeenCalledWith({
+      where: {
+        patientHospitalRelationshipId: relationshipId,
+        initialBaselineId: patientBaselineId,
+      },
+      select: { id: true },
+    });
+    expect(transaction.patientProgram.updateMany).not.toHaveBeenCalled();
   });
 
   it("maps a concurrent database uniqueness conflict to a clean application conflict", async () => {
@@ -243,9 +304,9 @@ describe("Patient Baseline service", () => {
     });
     const { database, transaction } = createDatabase({ createError: duplicateError });
 
-    await expect(createPatientBaseline(hospitalActor, validInput(), { database })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
+    await expect(
+      createPatientBaseline(hospitalActor, validInput(), { database, transactionRetries: 0 }),
+    ).rejects.toBeInstanceOf(ConflictError);
     expect(transaction.patientBaseline.create).toHaveBeenCalledOnce();
     expect(mockedAudit).not.toHaveBeenCalled();
   });
