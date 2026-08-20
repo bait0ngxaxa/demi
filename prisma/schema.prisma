@@ -84,6 +84,11 @@ enum FollowupActivityProgressStatus {
   NOT_APPLICABLE
 }
 
+enum PatientProgramStatus {
+  ACTIVE
+  COMPLETED
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -122,6 +127,7 @@ model User {
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
+  patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   auditEvents AuditEvent[]
@@ -210,6 +216,7 @@ model PatientHospitalRelationship {
   goalPlans PatientGoalPlan[]
   appointments PatientAppointment[]
   followups PatientFollowup[]
+  programs PatientProgram[]
   baseline             PatientBaseline?
   evidenceArtifacts    PatientEvidenceArtifact[]
 
@@ -378,6 +385,29 @@ model PatientBaseline {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   recordedBy                  User                        @relation("PatientBaselineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  programsUsingAsInitial PatientProgram[] @relation("PatientProgramInitialBaseline")
+
+  @@unique([id, patientHospitalRelationshipId])
+}
+
+model PatientProgram {
+  id                            String               @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String               @db.Uuid
+  initialBaselineId             String?              @db.Uuid
+  createdByUserId               String               @db.Uuid
+  status                        PatientProgramStatus @default(ACTIVE)
+  startedAt                     DateTime             @default(now()) @db.Timestamptz(3)
+  completedAt                   DateTime?            @db.Timestamptz(3)
+  createdAt                     DateTime             @default(now()) @db.Timestamptz(3)
+
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  initialBaseline             PatientBaseline?            @relation("PatientProgramInitialBaseline", fields: [initialBaselineId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  createdByUser               User                        @relation("PatientProgramCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientHospitalRelationshipId, status])
+  @@index([patientHospitalRelationshipId, startedAt])
+  @@index([initialBaselineId])
 }
 
 model PatientEvidenceArtifact {

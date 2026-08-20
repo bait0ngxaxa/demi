@@ -10,6 +10,7 @@ const {
   mockedConnection,
   mockedGetPatientBaselineNavigationState,
   mockedGetPatientDirectoryDetail,
+  mockedGetPatientProgramPageContext,
   mockedGetProtectedApplicationActor,
   mockedNotFound,
   mockedRedirect,
@@ -17,6 +18,7 @@ const {
   mockedConnection: vi.fn(),
   mockedGetPatientBaselineNavigationState: vi.fn(),
   mockedGetPatientDirectoryDetail: vi.fn(),
+  mockedGetPatientProgramPageContext: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
   mockedNotFound: vi.fn(),
   mockedRedirect: vi.fn(),
@@ -41,6 +43,10 @@ vi.mock("@/modules/patient-directory/services/patient-directory-query-service", 
 
 vi.mock("@/modules/patient-baseline/services/patient-baseline-query-service", () => ({
   getPatientBaselineNavigationState: mockedGetPatientBaselineNavigationState,
+}));
+
+vi.mock("@/modules/patient-program/services/patient-program-query-service", () => ({
+  getPatientProgramPageContext: mockedGetPatientProgramPageContext,
 }));
 
 const patient = {
@@ -109,6 +115,18 @@ describe("Patient detail page authorization boundary", () => {
     mockedGetProtectedApplicationActor.mockResolvedValue(actor);
     mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: true });
+    mockedGetPatientProgramPageContext.mockResolvedValue({
+      patient: {
+        patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+        displayName: patient.displayName,
+        hospitalNumber: patient.hospitalNumber,
+        hospital: patient.hospital,
+      },
+      active: null,
+      history: [],
+      canOpen: true,
+      canManage: true,
+    });
     mockedNotFound.mockImplementation(() => {
       throw new Error("NEXT_NOT_FOUND");
     });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -180,6 +180,18 @@ async function createInTransaction(
       createdAt: now,
     },
     select: patientBaselineMutationSelect,
+  });
+
+  // A Baseline may be recorded after an episode is opened. Link it only to
+  // the current ACTIVE episode in the same transaction; completed history is
+  // never retroactively changed.
+  await transaction.patientProgram.updateMany({
+    where: {
+      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      status: PatientProgramStatus.ACTIVE,
+      initialBaselineId: null,
+    },
+    data: { initialBaselineId: baseline.id },
   });
 
   await recordAuditEvent(

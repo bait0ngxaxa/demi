@@ -127,6 +127,7 @@ function createDatabase(input: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+    patientProgram: { updateMany: ReturnType<typeof vi.fn> };
   };
 } {
   const transaction = {
@@ -141,6 +142,9 @@ function createDatabase(input: {
       create: input.createError
         ? vi.fn().mockRejectedValue(input.createError)
         : vi.fn().mockResolvedValue(input.createResult ?? baselineRecord()),
+    },
+    patientProgram: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   };
 

@@ -1,0 +1,146 @@
+import Link from "next/link";
+
+import { Alert } from "@/components/ui/alert";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import type { PatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+
+import { PatientProgramCompleteControl } from "../program-mutation-controls";
+
+function formatDateTime(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
+
+function formatDate(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "long",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
+
+function statusLabel(status: PatientProgramDetail["status"]): string {
+  return status === "ACTIVE" ? "กำลังดำเนินการ" : "เสร็จสิ้นแล้ว";
+}
+
+function statusVariant(status: PatientProgramDetail["status"]): StatusVariant {
+  return status === "ACTIVE" ? "success" : "neutral";
+}
+
+export function PatientProgramDetailView({
+  detail,
+}: {
+  detail: PatientProgramDetail;
+}): React.JSX.Element {
+  const relationshipId = detail.patient.patientHospitalRelationshipId;
+
+  return (
+    <div className="max-w-5xl">
+      <PageHeader
+        actions={<StatusBadge variant={statusVariant(detail.status)}>{statusLabel(detail.status)}</StatusBadge>}
+        breadcrumbs={[
+          { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
+          { label: "รายละเอียดโปรแกรม" },
+        ]}
+        description="ภาพรวม episode โปรแกรมของผู้ป่วยในความสัมพันธ์กับโรงพยาบาลนี้"
+        title="รายละเอียดโปรแกรม"
+      />
+
+      <div className="space-y-6 pt-8">
+        <Alert variant="info">
+          <p className="font-semibold">ขอบเขตของโปรแกรม</p>
+          <p className="mt-1">
+            โปรแกรมเป็นตัวแทนช่วงการเข้าร่วมเท่านั้น ไม่แทนข้อมูลความสัมพันธ์ผู้ป่วย การประเมิน
+            แผนเป้าหมาย นัดหมาย การติดตามผล หรือหลักฐานของผู้ป่วย
+          </p>
+        </Alert>
+
+        <Panel>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">
+                {detail.patient.displayName}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-text-muted">{detail.patient.hospital.name}</p>
+            </div>
+            <p className="text-sm text-text-muted">
+              HN ของโรงพยาบาลนี้: {detail.patient.hospitalNumber ?? "ไม่ระบุ"}
+            </p>
+          </div>
+          <dl className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm font-semibold text-text-muted">เริ่มโปรแกรม</dt>
+              <dd className="mt-1 font-semibold text-text">{formatDateTime(detail.startedAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-semibold text-text-muted">สิ้นสุดโปรแกรม</dt>
+              <dd className="mt-1 font-semibold text-text">
+                {detail.completedAt ? formatDateTime(detail.completedAt) : "ยังไม่สิ้นสุด"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-semibold text-text-muted">ข้อมูลตั้งต้น</dt>
+              <dd className="mt-1 font-semibold text-text">
+                {detail.initialBaseline ? (
+                  <span>
+                    บันทึกเมื่อ {formatDate(detail.initialBaseline.recordedOn)} ·{" "}
+                    <Link
+                      className="text-brand-strong underline decoration-brand-muted underline-offset-4"
+                      href={`/app/patients/${encodeURIComponent(relationshipId)}/baseline`}
+                    >
+                      ดูข้อมูลตั้งต้น
+                    </Link>
+                  </span>
+                ) : (
+                  "ยังไม่มีข้อมูลตั้งต้นที่เชื่อมโยง"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm font-semibold text-text-muted">ผู้เปิดโปรแกรม</dt>
+              <dd className="mt-1 font-semibold text-text">{detail.createdBy.displayName}</dd>
+            </div>
+          </dl>
+        </Panel>
+
+        {detail.status === "ACTIVE" && detail.canManage ? (
+          <Panel>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการ</h2>
+            <p className="mt-2 text-sm leading-6 text-text-muted">
+              การจบโปรแกรมเป็นการเปลี่ยนสถานะถาวรของ episode นี้ และไม่สามารถเปิดซ้ำได้ในขั้นตอนนี้
+            </p>
+            <div className="mt-5">
+              <PatientProgramCompleteControl programId={detail.programId} />
+            </div>
+          </Panel>
+        ) : detail.status === "COMPLETED" ? (
+          <Alert variant="success">
+            <p className="font-semibold">โปรแกรมนี้เสร็จสิ้นแล้ว</p>
+            <p className="mt-1">ประวัติของโปรแกรมยังอ่านได้ภายใต้ขอบเขตผู้ป่วยเดิม</p>
+          </Alert>
+        ) : null}
+
+        <Panel>
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
+            Service 1 — รู้จักตัวเอง
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            พื้นที่นี้เป็นจุดเริ่มต้นสำหรับ Service 1 ใน Phase 15B.1 ขณะนี้ยังไม่มีแบบบันทึกกิจกรรม
+            และยังไม่มีการสร้างข้อมูลทางคลินิกเพิ่มเติม
+          </p>
+        </Panel>
+
+        <Link
+          className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          href={`/app/patients/${encodeURIComponent(relationshipId)}`}
+        >
+          กลับไปยังรายละเอียดผู้ป่วย
+        </Link>
+      </div>
+    </div>
+  );
+}
