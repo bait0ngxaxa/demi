@@ -18,7 +18,7 @@ export function LogoutButton(): React.JSX.Element {
   return (
     <div className="flex flex-col items-end gap-2">
       <form action={formAction}>
-        <Button disabled={pending} size="compact" type="submit" variant="secondary">
+        <Button loading={pending} size="compact" type="submit" variant="secondary">
           {pending ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
         </Button>
       </form>

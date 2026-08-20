@@ -1,6 +1,6 @@
 # Phase 14B — DEMI Demo Productization & UX Polish
 
-สถานะ: เสร็จสิ้นสำหรับรอบ productization ที่กำหนดไว้
+สถานะ: ปิดแล้วหลังผ่าน Phase 14B.1 post-review fixes และ integration sign-off
 
 ## Problem statement
 
@@ -11,7 +11,7 @@
 ### Development National ID mode
 
 - เพิ่มตัวเลือก `DEMI_ALLOW_TEST_NATIONAL_IDS` ใน `.env.example`
-- เปิดใช้ได้เมื่อกำหนดค่าเป็น `true` อย่างชัดเจน และ environment ไม่ใช่ `production`
+- เปิดใช้ได้เมื่อกำหนดค่าเป็น `true` อย่างชัดเจน และ `NODE_ENV` เป็น `development` หรือ `test` เท่านั้น
 - ยังคงตรวจว่าต้องเป็นตัวเลข 13 หลักและ category digit ต้องผ่านกฎเดิม
 - bypass เฉพาะ checksum เพื่อรองรับค่า demo เช่น `1111111111111`
 - production จะบังคับ checksum เสมอ แม้มีการส่งค่า bypass เข้ามาที่ factory
@@ -21,9 +21,9 @@
 
 - เพิ่ม `NAME` เป็น lookup type ของการเปิดใช้งานบัญชีผู้ป่วย
 - ค้นหาแบบแยกคำตาม whitespace และให้ทุกคำต้องตรงกับ `givenName` หรือ `familyName` แบบไม่คำนึงถึงตัวพิมพ์
-- จำกัดผลลัพธ์ไว้ที่ 25 รายการเช่นเดิม หากมากกว่านั้นจะแจ้งให้ระบุชื่อให้ละเอียดขึ้น ไม่เลือก subset แบบเงียบ ๆ
+- จำกัดผลลัพธ์ไว้ที่ 25 รายการเช่นเดิม หากมากกว่านั้นจะ fail safely โดย NAME แนะนำให้ระบุชื่อเพิ่ม ส่วน lookup type อื่นแนะนำให้ตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ ไม่เลือก subset แบบเงียบ ๆ
 - ยังคงตรวจ actor, สิทธิ์, Hospital ที่เลือก, Patient eligibility และ result projection ฝั่ง server ก่อนคืนผล
-- NATIONAL ID และ HN lookup รวมถึงขั้นตอนออกลิงก์ยังใช้ behavior เดิม
+- เงื่อนไขค้นหาและผลสำเร็จของ NATIONAL ID และ HN lookup รวมถึงขั้นตอนออกลิงก์ยังใช้ behavior เดิม
 
 ### Interaction feedback
 
@@ -52,10 +52,17 @@ Phase นี้ไม่ได้ตัดสินหรือเปลี่�
 ## Verification performed
 
 - `npm run lint` — ผ่าน
-- `npx tsc --noEmit` — ผ่าน
-- targeted unit/transport tests สำหรับ National ID, patient activation, appointment, Goal Plan, Screening, Follow-up schema และ approval continuation — ผ่าน 58 tests ใน 8 test files
-- `npm test` — ผ่าน 604 tests ใน 94 test files
-- `npm run test:integration` — ยังรันไม่ถึง integration tests เพราะ `prisma generate` ถูกขัดขวางด้วย `EPERM` ระหว่าง rename Prisma query engine ที่ถูก process เดิมใช้งานอยู่
+- `npm run typecheck` — ผ่าน
+- targeted unit/transport tests สำหรับ National ID และ patient activation Server Action — ผ่าน 27 tests ใน 2 test files
+- `npm test` — ผ่าน 612 tests ใน 94 test files
+- `npm run test:integration` — Prisma generate และ migrations ผ่าน จากนั้น integration suite ผ่าน 129 tests ใน 17 test files
+
+## Post-review fixes / Phase 14B.1
+
+- ปรับข้อความเมื่อผลค้นหากำกวมให้สอดคล้องกับ lookup type: NAME แนะนำให้ระบุชื่อเพิ่ม, HN แนะนำให้ตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ และ NATIONAL_ID แนะนำให้ติดต่อผู้ดูแลระบบโดยไม่เปิดเผยรายละเอียดภายใน
+- เปลี่ยน National ID checksum bypass เป็น fail-closed allowlist โดยต้องมีทั้ง `DEMI_ALLOW_TEST_NATIONAL_IDS=true` และ `NODE_ENV` ที่เท่ากับ `development` หรือ `test`; production, ค่าที่ไม่รู้จัก และค่าที่หายไปยังคงตรวจ checksum อย่างเคร่งครัด
+- ปุ่มออกจากระบบใช้ shared `Button` loading behavior แล้ว จึงมี spinner, `aria-busy` และ disabled state จากจุดเดียวกัน
+- รัน integration workflow จริงสำเร็จครบทั้ง Prisma generate, migration deploy และ integration tests จึงปิด Phase 14B ได้
 
 ## Known remaining UX issues
 

@@ -10,6 +10,10 @@ export type IdentityEnvironment = {
   allowTestNationalIds?: string;
 };
 
+function isTestEnvironment(nodeEnv: string | undefined): boolean {
+  return nodeEnv === "development" || nodeEnv === "test";
+}
+
 export function isTestNationalIdBypassEnabled(
   environment: IdentityEnvironment = {
     nodeEnv: process.env.NODE_ENV,
@@ -17,7 +21,7 @@ export function isTestNationalIdBypassEnabled(
   },
 ): boolean {
   return (
-    environment.nodeEnv !== "production" &&
+    isTestEnvironment(environment.nodeEnv) &&
     environment.allowTestNationalIds === "true"
   );
 }
@@ -32,15 +36,12 @@ function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
   return digits[12] === expectedCheckDigit;
 }
 
-export function createThaiNationalIdSchema({
-  allowChecksumBypass = false,
-  environment = {
+export function createThaiNationalIdSchema(
+  environment: IdentityEnvironment = {
     nodeEnv: process.env.NODE_ENV,
+    allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
   },
-}: {
-  allowChecksumBypass?: boolean;
-  environment?: Pick<IdentityEnvironment, "nodeEnv">;
-} = {}): z.ZodType<string> {
+): z.ZodType<string> {
   const nationalIdChecks = z
     .string()
     .regex(/^\d{13}$/, "Thai National ID must contain exactly 13 digits")
@@ -49,7 +50,7 @@ export function createThaiNationalIdSchema({
       "Thai National ID category digit is invalid",
     );
 
-  const validatedNationalId = allowChecksumBypass && environment.nodeEnv !== "production"
+  const validatedNationalId = isTestNationalIdBypassEnabled(environment)
     ? nationalIdChecks
     : nationalIdChecks.refine(
         hasValidThaiNationalIdChecksum,
@@ -59,9 +60,7 @@ export function createThaiNationalIdSchema({
   return z.string().max(32).transform((value) => value.trim()).pipe(validatedNationalId);
 }
 
-export const thaiNationalIdSchema = createThaiNationalIdSchema({
-  allowChecksumBypass: isTestNationalIdBypassEnabled(),
-});
+export const thaiNationalIdSchema = createThaiNationalIdSchema();
 
 export const identityReferenceSchema = z
   .object({

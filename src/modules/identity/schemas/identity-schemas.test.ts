@@ -23,9 +23,10 @@ describe("Thai National ID validation", () => {
 
   it("rejects an invalid category digit even when the checksum bypass is enabled", () => {
     expect(
-      createThaiNationalIdSchema({ allowChecksumBypass: true }).safeParse(
-        "9000000000000",
-      ).success,
+      createThaiNationalIdSchema({
+        nodeEnv: "development",
+        allowTestNationalIds: "true",
+      }).safeParse("9000000000000").success,
     ).toBe(false);
   });
 
@@ -35,42 +36,45 @@ describe("Thai National ID validation", () => {
     );
   });
 
-  it("allows a checksum-invalid 13-digit ID only with the explicit bypass", () => {
-    expect(
-      createThaiNationalIdSchema({ allowChecksumBypass: true }).safeParse(
-        checksumInvalidNationalId,
-      ).success,
-    ).toBe(true);
+  it.each([
+    { nodeEnv: "development", allowTestNationalIds: "true", accepted: true },
+    { nodeEnv: "test", allowTestNationalIds: "true", accepted: true },
+    { nodeEnv: "production", allowTestNationalIds: "true", accepted: false },
+    { nodeEnv: undefined, allowTestNationalIds: "true", accepted: false },
+    { nodeEnv: "staging", allowTestNationalIds: "true", accepted: false },
+    { nodeEnv: "development", allowTestNationalIds: "false", accepted: false },
+    { nodeEnv: "development", allowTestNationalIds: undefined, accepted: false },
+  ])(
+    "allows checksum bypass only for the explicit environment allowlist: $nodeEnv + $allowTestNationalIds",
+    ({ nodeEnv, allowTestNationalIds, accepted }) => {
+      const environment = { nodeEnv, allowTestNationalIds };
+
+      expect(isTestNationalIdBypassEnabled(environment)).toBe(accepted);
+      expect(
+        createThaiNationalIdSchema(environment).safeParse(checksumInvalidNationalId)
+          .success,
+      ).toBe(accepted);
+    },
+  );
+
+  it("keeps format and category validation strict when checksum bypass is enabled", () => {
+    const schema = createThaiNationalIdSchema({
+      nodeEnv: "development",
+      allowTestNationalIds: "true",
+    });
+
+    expect(schema.safeParse("100000000000").success).toBe(false);
+    expect(schema.safeParse("100000000000a").success).toBe(false);
+    expect(schema.safeParse("9000000000000").success).toBe(false);
   });
 
-  it("ignores the bypass when the runtime is production", () => {
-    expect(
-      isTestNationalIdBypassEnabled({
-        nodeEnv: "production",
-        allowTestNationalIds: "true",
-      }),
-    ).toBe(false);
+  it("keeps production strict even when the bypass flag is enabled", () => {
     expect(
       createThaiNationalIdSchema({
-        allowChecksumBypass: true,
-        environment: { nodeEnv: "production" },
+        nodeEnv: "production",
+        allowTestNationalIds: "true",
       }).safeParse(checksumInvalidNationalId).success,
     ).toBe(false);
-  });
-
-  it("requires an explicit true opt-in outside production", () => {
-    expect(
-      isTestNationalIdBypassEnabled({
-        nodeEnv: "development",
-        allowTestNationalIds: "false",
-      }),
-    ).toBe(false);
-    expect(
-      isTestNationalIdBypassEnabled({
-        nodeEnv: "test",
-        allowTestNationalIds: "true",
-      }),
-    ).toBe(true);
   });
 
   it("keeps the application schema strict unless the process opt-in is enabled", () => {

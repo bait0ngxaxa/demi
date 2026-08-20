@@ -151,29 +151,53 @@ describe("patient activation Server Actions", () => {
     expect(JSON.stringify(result)).not.toContain("identityKeyHash");
   });
 
-  it("returns actionable guidance when a name search is ambiguous", async () => {
-    mockedGetProtectedApplicationActor.mockResolvedValue({
-      userId: "33333333-3333-4333-8333-333333333333",
-      personId: "44444444-4444-4444-8444-444444444444",
-      roles: [],
-      hospitalMemberships: [],
-      osmHospitalRelationships: [],
-    });
-    mockedFindPatientActivationCandidates.mockRejectedValue(
-      new ConflictError("Patient activation lookup returned too many matches"),
-    );
-
-    const result = await findPatientActivationCandidatesAction(
-      { status: "IDLE" },
-      createLookupFormData("NAME", "สมชาย"),
-    );
-
-    expect(result).toEqual({
-      status: "ERROR",
-      code: "TOO_MANY_RESULTS",
+  it.each([
+    {
+      lookupType: "NAME",
+      value: "สมชาย",
       message: "พบผู้ป่วยหลายรายการ กรุณาระบุชื่อให้ละเอียดขึ้น",
-    });
-  });
+    },
+    {
+      lookupType: "HOSPITAL_NUMBER",
+      value: "HN-001",
+      message:
+        "พบข้อมูลผู้ป่วยหลายรายการสำหรับ HN นี้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ",
+    },
+    {
+      lookupType: "NATIONAL_ID",
+      value: "1000000000009",
+      message: "พบข้อมูลผู้ป่วยหลายรายการที่ต้องตรวจสอบ กรุณาติดต่อผู้ดูแลระบบ",
+    },
+  ])(
+    "returns lookup-aware guidance when a $lookupType search is ambiguous",
+    async ({ lookupType, value, message }) => {
+      mockedGetProtectedApplicationActor.mockResolvedValue({
+        userId: "33333333-3333-4333-8333-333333333333",
+        personId: "44444444-4444-4444-8444-444444444444",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      });
+      mockedFindPatientActivationCandidates.mockRejectedValue(
+        new ConflictError("Patient activation lookup returned too many matches"),
+      );
+
+      const result = await findPatientActivationCandidatesAction(
+        { status: "IDLE" },
+        createLookupFormData(lookupType, value),
+      );
+
+      expect(result).toEqual({
+        status: "ERROR",
+        code: "TOO_MANY_RESULTS",
+        message,
+      });
+
+      if (lookupType === "HOSPITAL_NUMBER") {
+        expect(message).not.toContain("ระบุชื่อ");
+      }
+    },
+  );
 
   it("passes only the explicit activation request and serializes an ephemeral URL token", async () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({

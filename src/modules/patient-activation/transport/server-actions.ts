@@ -10,6 +10,7 @@ import {
   patientActivationCompletionSchema,
   patientActivationLookupSchema,
   patientActivationRequestSchema,
+  type PatientActivationLookupInput,
 } from "../schemas/patient-activation-schemas";
 import {
   completePatientActivation,
@@ -76,7 +77,24 @@ function mapIssueError(error: unknown): {
   };
 }
 
-function mapLookupError(error: unknown): {
+function getLookupAmbiguityMessage(
+  lookupType: PatientActivationLookupInput["lookupType"],
+): string {
+  if (lookupType === "NAME") {
+    return "พบผู้ป่วยหลายรายการ กรุณาระบุชื่อให้ละเอียดขึ้น";
+  }
+
+  if (lookupType === "HOSPITAL_NUMBER") {
+    return "พบข้อมูลผู้ป่วยหลายรายการสำหรับ HN นี้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ";
+  }
+
+  return "พบข้อมูลผู้ป่วยหลายรายการที่ต้องตรวจสอบ กรุณาติดต่อผู้ดูแลระบบ";
+}
+
+function mapLookupError(
+  error: unknown,
+  lookupType: PatientActivationLookupInput["lookupType"],
+): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "TOO_MANY_RESULTS" | "UNAVAILABLE";
   message: string;
 } {
@@ -98,7 +116,7 @@ function mapLookupError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "TOO_MANY_RESULTS",
-        message: "พบผู้ป่วยหลายรายการ กรุณาระบุชื่อให้ละเอียดขึ้น",
+        message: getLookupAmbiguityMessage(lookupType),
       };
     }
   }
@@ -180,7 +198,7 @@ export async function findPatientActivationCandidatesAction(
       candidates: candidates.map(toCandidateState),
     };
   } catch (error: unknown) {
-    return { status: "ERROR", ...mapLookupError(error) };
+    return { status: "ERROR", ...mapLookupError(error, parsed.data.lookupType) };
   }
 }
 
