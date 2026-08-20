@@ -26,7 +26,6 @@ function getSingleString(formData: FormData, field: string): string | undefined 
 
   return values[0];
 }
-
 function hasUnexpectedOrDuplicateFields(formData: FormData, allowedFields: ReadonlySet<string>): boolean {
   const seen = new Set<string>();
 
@@ -184,11 +183,3 @@ export async function completePatientProgramAction(
     return { status: "ERROR", ...mapProgramError(error, "complete") };
   }
 }
-
-export const patientProgramTransportInternals = {
-  buildCompleteInput,
-  buildOpenInput,
-  hasUnexpectedOrDuplicateFields,
-  mapProgramError,
-  toSuccessState,
-};

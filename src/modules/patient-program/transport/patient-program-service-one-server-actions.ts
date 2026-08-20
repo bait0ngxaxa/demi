@@ -30,7 +30,6 @@ function getSingleString(formData: FormData, field: string): string | undefined 
 
   return values[0];
 }
-
 function getSingleInteger(formData: FormData, field: string): number | undefined {
   const value = getSingleString(formData, field);
 
@@ -263,15 +262,3 @@ export async function recordPatientProgramServiceOneConfidenceAction(
     return { status: "ERROR", ...mapServiceOneError(error) };
   }
 }
-
-export const patientProgramServiceOneTransportInternals = {
-  buildConfidenceInput,
-  buildDreamCardInput,
-  buildFloatingChartInput,
-  buildRoutineInput,
-  getSingleInteger,
-  hasUnexpectedOrDuplicateFields,
-  mapServiceOneError,
-  revalidatePatientProgramServiceOnePaths,
-  toSuccessState,
-};
