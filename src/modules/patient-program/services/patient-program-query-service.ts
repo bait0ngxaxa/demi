@@ -24,6 +24,11 @@ import {
   resolvePatientProgramAccessContext,
   type PatientProgramPatientSummary,
 } from "./patient-program-access-service";
+import {
+  patientProgramServiceOneSelect,
+  toPatientProgramServiceOneProjection,
+  type PatientProgramServiceOneProjection,
+} from "./patient-program-service-one-query-service";
 
 export const PATIENT_PROGRAM_HISTORY_LIMIT = 50;
 
@@ -61,6 +66,7 @@ export type PatientProgramPageContext = {
 export type PatientProgramDetail = PatientProgramProjection & {
   patient: PatientProgramPatientSummary;
   canManage: boolean;
+  serviceOne: PatientProgramServiceOneProjection;
 };
 
 export const patientProgramSelect = {
@@ -87,6 +93,11 @@ export const patientProgramSelect = {
       recordedOn: true,
     },
   },
+} satisfies Prisma.PatientProgramSelect;
+
+export const patientProgramDetailSelect = {
+  ...patientProgramSelect,
+  ...patientProgramServiceOneSelect,
 } satisfies Prisma.PatientProgramSelect;
 
 type PatientProgramRecord = Prisma.PatientProgramGetPayload<{
@@ -199,7 +210,7 @@ export async function getPatientProgramDetail(
         id: parsedProgramId.data.toLowerCase(),
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
       },
-      select: patientProgramSelect,
+      select: patientProgramDetailSelect,
     });
 
     if (!record) {
@@ -210,6 +221,7 @@ export async function getPatientProgramDetail(
       ...toProjection(record),
       patient: access.patient,
       canManage: getCanManage(access.actor, access.target),
+      serviceOne: toPatientProgramServiceOneProjection(record),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -222,6 +234,7 @@ export async function getPatientProgramDetail(
 
 export const patientProgramQueryInternals = {
   getCanManage,
+  patientProgramDetailSelect,
   patientProgramSelect,
   toDisplayName,
   toProjection,

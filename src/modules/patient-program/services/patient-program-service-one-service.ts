@@ -1,0 +1,623 @@
+import "server-only";
+
+import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client";
+
+import { getPrisma } from "@/lib/db/prisma";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import {
+  ApplicationError,
+  ConflictError,
+  ForbiddenError,
+  InfrastructureError,
+  NotFoundError,
+  ValidationError,
+} from "@/shared/errors/application-error";
+
+import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "../policies/patient-program-policy";
+import {
+  patientProgramServiceOneConfidenceRequestSchema,
+  patientProgramServiceOneDreamCardRequestSchema,
+  patientProgramServiceOneFloatingChartRequestSchema,
+  patientProgramServiceOneRoutineRequestSchema,
+  type PatientProgramServiceOneConfidenceRequest,
+  type PatientProgramServiceOneDreamCardRequest,
+  type PatientProgramServiceOneFloatingChartRequest,
+  type PatientProgramServiceOneRoutineRequest,
+} from "../schemas/patient-program-service-one-schemas";
+import { resolvePatientProgramByIdAccessContext } from "./patient-program-access-service";
+
+export type PatientProgramServiceOneDatabase = PrismaClient;
+
+export type PatientProgramServiceOneServiceDependencies = {
+  database?: PatientProgramServiceOneDatabase;
+  now?: () => Date;
+  transactionRetries?: number;
+};
+
+export type PatientProgramServiceOneActivity =
+  | "ROUTINE"
+  | "FLOATING_CHART"
+  | "DREAM_CARD"
+  | "CONFIDENCE";
+
+export type PatientProgramServiceOneOperation = "RECORDED" | "ALREADY_RECORDED";
+
+export type PatientProgramServiceOneMutationResult = {
+  activity: PatientProgramServiceOneActivity;
+  operation: PatientProgramServiceOneOperation;
+  recordId: string;
+  patientProgramId: string;
+  patientHospitalRelationshipId: string;
+  hospitalId: string;
+  recordedByUserId: string;
+  recordedAt: Date;
+};
+
+const DEFAULT_TRANSACTION_RETRIES = 2;
+
+const patientProgramLifecycleSelect = {
+  id: true,
+  patientHospitalRelationshipId: true,
+  status: true,
+  completedAt: true,
+  startedAt: true,
+} satisfies Prisma.PatientProgramSelect;
+
+const routineMutationSelect = {
+  id: true,
+  patientProgramId: true,
+  recordedByUserId: true,
+  recordedAt: true,
+} satisfies Prisma.PatientProgramServiceOneRoutineSelect;
+
+const floatingChartMutationSelect = {
+  id: true,
+  patientProgramId: true,
+  recordedByUserId: true,
+  recordedAt: true,
+  summary: true,
+} satisfies Prisma.PatientProgramServiceOneFloatingChartSelect;
+
+const dreamCardMutationSelect = {
+  id: true,
+  patientProgramId: true,
+  recordedByUserId: true,
+  recordedAt: true,
+  description: true,
+} satisfies Prisma.PatientProgramServiceOneDreamCardSelect;
+
+const confidenceMutationSelect = {
+  id: true,
+  patientProgramId: true,
+  recordedByUserId: true,
+  recordedAt: true,
+  score: true,
+  improvementPlan: true,
+} satisfies Prisma.PatientProgramServiceOneConfidenceSelect;
+
+type PatientProgramLifecycleRecord = Prisma.PatientProgramGetPayload<{
+  select: typeof patientProgramLifecycleSelect;
+}>;
+function getDatabase(
+  dependencies: PatientProgramServiceOneServiceDependencies,
+): PatientProgramServiceOneDatabase {
+  return dependencies.database ?? getPrisma();
+}
+
+function getNow(dependencies: PatientProgramServiceOneServiceDependencies): Date {
+  const now = dependencies.now ? dependencies.now() : new Date();
+  const copy = new Date(now.getTime());
+
+  if (Number.isNaN(copy.getTime())) {
+    throw new InfrastructureError("Service 1 time could not be resolved");
+  }
+
+  return copy;
+}
+
+function isKnownRequestError(error: unknown, code: string): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
+}
+
+function isRetryableTransactionError(error: unknown): boolean {
+  return isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034");
+}
+
+function normalizeDatabaseError(error: unknown): ApplicationError {
+  if (error instanceof ApplicationError) {
+    return error;
+  }
+
+  if (isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034")) {
+    return new ConflictError("กิจกรรม Service 1 ถูกบันทึกพร้อมกับคำขออื่น กรุณาตรวจสอบข้อมูลล่าสุด");
+  }
+
+  if (isKnownRequestError(error, "P2003")) {
+    return new ConflictError("ข้อมูลความสัมพันธ์ของกิจกรรม Service 1 ไม่สอดคล้องกัน");
+  }
+
+  return new InfrastructureError("Service 1 could not be saved");
+}
+
+async function runSerializable<T>(
+  database: PatientProgramServiceOneDatabase,
+  operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+  retryLimit: number,
+): Promise<T> {
+  let retryCount = 0;
+
+  while (true) {
+    try {
+      return await database.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error: unknown) {
+      if (!isRetryableTransactionError(error) || retryCount >= retryLimit) {
+        throw error;
+      }
+
+      retryCount += 1;
+    }
+  }
+}
+
+async function lockActiveProgram(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  patientProgramId: string,
+): Promise<{
+  access: Awaited<ReturnType<typeof resolvePatientProgramByIdAccessContext>>;
+  program: PatientProgramLifecycleRecord;
+}> {
+  const access = await resolvePatientProgramByIdAccessContext(
+    actor,
+    patientProgramId,
+    PATIENT_PROGRAM_MANAGE_CAPABILITY,
+    transaction,
+  );
+  const program = await transaction.patientProgram.findFirst({
+    where: {
+      id: patientProgramId,
+      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    },
+    select: patientProgramLifecycleSelect,
+  });
+
+  if (!program) {
+    throw new NotFoundError();
+  }
+
+  if (program.status !== PatientProgramStatus.ACTIVE || program.completedAt !== null) {
+    throw new ConflictError("ไม่สามารถบันทึกกิจกรรม Service 1 ในโปรแกรมที่เสร็จสิ้นแล้ว");
+  }
+
+  // The conditional write takes the same Program row lock as completion. If
+  // completion wins the serialization order, this update affects zero rows.
+  const locked = await transaction.patientProgram.updateMany({
+    where: {
+      id: program.id,
+      patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+      status: PatientProgramStatus.ACTIVE,
+      completedAt: null,
+    },
+    data: { startedAt: program.startedAt },
+  });
+
+  if (locked.count !== 1) {
+    throw new ConflictError("โปรแกรมถูกเปลี่ยนสถานะแล้ว กรุณาตรวจสอบข้อมูลล่าสุด");
+  }
+
+  return { access, program };
+}
+
+function toMutationResult(
+  activity: PatientProgramServiceOneActivity,
+  operation: PatientProgramServiceOneOperation,
+  record: {
+    id: string;
+    patientProgramId: string;
+    recordedByUserId: string;
+    recordedAt: Date;
+  },
+  hospitalId: string,
+  patientHospitalRelationshipId: string,
+): PatientProgramServiceOneMutationResult {
+  return {
+    activity,
+    operation,
+    recordId: record.id,
+    patientProgramId: record.patientProgramId,
+    patientHospitalRelationshipId,
+    hospitalId,
+    recordedByUserId: record.recordedByUserId,
+    recordedAt: record.recordedAt,
+  };
+}
+
+async function auditRecordedActivity(
+  transaction: Prisma.TransactionClient,
+  input: {
+    action: string;
+    resourceType: string;
+    resourceId: string;
+    activity: PatientProgramServiceOneActivity;
+    patientProgramId: string;
+    patientHospitalRelationshipId: string;
+    hospitalId: string;
+    actorUserId: string;
+  },
+): Promise<void> {
+  await recordAuditEvent(
+    {
+      actorUserId: input.actorUserId,
+      action: input.action,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      metadata: {
+        patientProgramId: input.patientProgramId,
+        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+        hospitalId: input.hospitalId,
+        activity: input.activity,
+      },
+    },
+    transaction,
+  );
+}
+
+async function recordRoutineInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: PatientProgramServiceOneRoutineRequest,
+  now: Date,
+): Promise<PatientProgramServiceOneMutationResult> {
+  const { access, program } = await lockActiveProgram(
+    transaction,
+    actor,
+    input.patientProgramId.toLowerCase(),
+  );
+  const existing = await transaction.patientProgramServiceOneRoutine.findUnique({
+    where: { patientProgramId: program.id },
+    select: routineMutationSelect,
+  });
+
+  if (existing) {
+    return toMutationResult(
+      "ROUTINE",
+      "ALREADY_RECORDED",
+      existing,
+      access.target.hospitalId,
+      access.patient.patientHospitalRelationshipId,
+    );
+  }
+
+  const record = await transaction.patientProgramServiceOneRoutine.create({
+    data: {
+      patientProgramId: program.id,
+      recordedByUserId: access.actor.userId,
+      recordedAt: now,
+    },
+    select: routineMutationSelect,
+  });
+
+  await auditRecordedActivity(transaction, {
+    action: "patient_program.service_one.routine_recorded",
+    resourceType: "PatientProgramServiceOneRoutine",
+    resourceId: record.id,
+    activity: "ROUTINE",
+    patientProgramId: program.id,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    hospitalId: access.target.hospitalId,
+    actorUserId: access.actor.userId,
+  });
+
+  return toMutationResult(
+    "ROUTINE",
+    "RECORDED",
+    record,
+    access.target.hospitalId,
+    access.patient.patientHospitalRelationshipId,
+  );
+}
+
+async function recordFloatingChartInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: PatientProgramServiceOneFloatingChartRequest,
+  now: Date,
+): Promise<PatientProgramServiceOneMutationResult> {
+  const { access, program } = await lockActiveProgram(
+    transaction,
+    actor,
+    input.patientProgramId.toLowerCase(),
+  );
+  const existing = await transaction.patientProgramServiceOneFloatingChart.findUnique({
+    where: { patientProgramId: program.id },
+    select: floatingChartMutationSelect,
+  });
+
+  if (existing) {
+    if (existing.summary !== input.summary) {
+      throw new ConflictError("กราฟวัดลอยจมถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
+    }
+
+    return toMutationResult(
+      "FLOATING_CHART",
+      "ALREADY_RECORDED",
+      existing,
+      access.target.hospitalId,
+      access.patient.patientHospitalRelationshipId,
+    );
+  }
+
+  const record = await transaction.patientProgramServiceOneFloatingChart.create({
+    data: {
+      patientProgramId: program.id,
+      recordedByUserId: access.actor.userId,
+      recordedAt: now,
+      summary: input.summary,
+    },
+    select: floatingChartMutationSelect,
+  });
+
+  await auditRecordedActivity(transaction, {
+    action: "patient_program.service_one.floating_chart_recorded",
+    resourceType: "PatientProgramServiceOneFloatingChart",
+    resourceId: record.id,
+    activity: "FLOATING_CHART",
+    patientProgramId: program.id,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    hospitalId: access.target.hospitalId,
+    actorUserId: access.actor.userId,
+  });
+
+  return toMutationResult(
+    "FLOATING_CHART",
+    "RECORDED",
+    record,
+    access.target.hospitalId,
+    access.patient.patientHospitalRelationshipId,
+  );
+}
+
+async function recordDreamCardInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: PatientProgramServiceOneDreamCardRequest,
+  now: Date,
+): Promise<PatientProgramServiceOneMutationResult> {
+  const { access, program } = await lockActiveProgram(
+    transaction,
+    actor,
+    input.patientProgramId.toLowerCase(),
+  );
+  const existing = await transaction.patientProgramServiceOneDreamCard.findUnique({
+    where: { patientProgramId: program.id },
+    select: dreamCardMutationSelect,
+  });
+
+  if (existing) {
+    if (existing.description !== input.description) {
+      throw new ConflictError("การ์ดความฝันถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
+    }
+
+    return toMutationResult(
+      "DREAM_CARD",
+      "ALREADY_RECORDED",
+      existing,
+      access.target.hospitalId,
+      access.patient.patientHospitalRelationshipId,
+    );
+  }
+
+  const record = await transaction.patientProgramServiceOneDreamCard.create({
+    data: {
+      patientProgramId: program.id,
+      recordedByUserId: access.actor.userId,
+      recordedAt: now,
+      description: input.description,
+    },
+    select: dreamCardMutationSelect,
+  });
+
+  await auditRecordedActivity(transaction, {
+    action: "patient_program.service_one.dream_card_recorded",
+    resourceType: "PatientProgramServiceOneDreamCard",
+    resourceId: record.id,
+    activity: "DREAM_CARD",
+    patientProgramId: program.id,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    hospitalId: access.target.hospitalId,
+    actorUserId: access.actor.userId,
+  });
+
+  return toMutationResult(
+    "DREAM_CARD",
+    "RECORDED",
+    record,
+    access.target.hospitalId,
+    access.patient.patientHospitalRelationshipId,
+  );
+}
+
+async function recordConfidenceInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: PatientProgramServiceOneConfidenceRequest,
+  now: Date,
+): Promise<PatientProgramServiceOneMutationResult> {
+  const { access, program } = await lockActiveProgram(
+    transaction,
+    actor,
+    input.patientProgramId.toLowerCase(),
+  );
+  const existing = await transaction.patientProgramServiceOneConfidence.findUnique({
+    where: { patientProgramId: program.id },
+    select: confidenceMutationSelect,
+  });
+
+  if (existing) {
+    if (existing.score !== input.score || existing.improvementPlan !== input.improvementPlan) {
+      throw new ConflictError("คะแนนความมั่นใจถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
+    }
+
+    return toMutationResult(
+      "CONFIDENCE",
+      "ALREADY_RECORDED",
+      existing,
+      access.target.hospitalId,
+      access.patient.patientHospitalRelationshipId,
+    );
+  }
+
+  const record = await transaction.patientProgramServiceOneConfidence.create({
+    data: {
+      patientProgramId: program.id,
+      recordedByUserId: access.actor.userId,
+      recordedAt: now,
+      score: input.score,
+      improvementPlan: input.improvementPlan,
+    },
+    select: confidenceMutationSelect,
+  });
+
+  await auditRecordedActivity(transaction, {
+    action: "patient_program.service_one.confidence_recorded",
+    resourceType: "PatientProgramServiceOneConfidence",
+    resourceId: record.id,
+    activity: "CONFIDENCE",
+    patientProgramId: program.id,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    hospitalId: access.target.hospitalId,
+    actorUserId: access.actor.userId,
+  });
+
+  return toMutationResult(
+    "CONFIDENCE",
+    "RECORDED",
+    record,
+    access.target.hospitalId,
+    access.patient.patientHospitalRelationshipId,
+  );
+}
+
+export async function recordPatientProgramServiceOneRoutine(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramServiceOneServiceDependencies = {},
+): Promise<PatientProgramServiceOneMutationResult> {
+  const parsed = patientProgramServiceOneRoutineRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Routine Service 1 data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => recordRoutineInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export async function recordPatientProgramServiceOneFloatingChart(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramServiceOneServiceDependencies = {},
+): Promise<PatientProgramServiceOneMutationResult> {
+  const parsed = patientProgramServiceOneFloatingChartRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Floating chart Service 1 data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => recordFloatingChartInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export async function recordPatientProgramServiceOneDreamCard(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramServiceOneServiceDependencies = {},
+): Promise<PatientProgramServiceOneMutationResult> {
+  const parsed = patientProgramServiceOneDreamCardRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Dream card Service 1 data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => recordDreamCardInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export async function recordPatientProgramServiceOneConfidence(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramServiceOneServiceDependencies = {},
+): Promise<PatientProgramServiceOneMutationResult> {
+  const parsed = patientProgramServiceOneConfidenceRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Confidence Service 1 data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => recordConfidenceInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export const patientProgramServiceOneInternals = {
+  confidenceMutationSelect,
+  dreamCardMutationSelect,
+  floatingChartMutationSelect,
+  isRetryableTransactionError,
+  lockActiveProgram,
+  normalizeDatabaseError,
+  patientProgramLifecycleSelect,
+  recordConfidenceInTransaction,
+  recordDreamCardInTransaction,
+  recordFloatingChartInTransaction,
+  recordRoutineInTransaction,
+  routineMutationSelect,
+  runSerializable,
+  toMutationResult,
+};

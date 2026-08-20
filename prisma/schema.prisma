@@ -130,6 +130,10 @@ model User {
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
+  patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
+  patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
+  patientProgramServiceOneDreamCardsRecorded PatientProgramServiceOneDreamCard[] @relation("PatientProgramServiceOneDreamCardRecordedBy")
+  patientProgramServiceOneConfidencesRecorded PatientProgramServiceOneConfidence[] @relation("PatientProgramServiceOneConfidenceRecordedBy")
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
@@ -404,10 +408,66 @@ model PatientProgram {
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   initialBaseline             PatientBaseline?            @relation("PatientProgramInitialBaseline", fields: [initialBaselineId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                        @relation("PatientProgramCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  serviceOneRoutine           PatientProgramServiceOneRoutine?
+  serviceOneFloatingChart     PatientProgramServiceOneFloatingChart?
+  serviceOneDreamCard         PatientProgramServiceOneDreamCard?
+  serviceOneConfidence        PatientProgramServiceOneConfidence?
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
   @@index([initialBaselineId])
+}
+
+model PatientProgramServiceOneRoutine {
+  id               String   @id @default(uuid()) @db.Uuid
+  patientProgramId String   @unique @db.Uuid
+  recordedByUserId String   @db.Uuid
+  recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
+  recordedByUser  User           @relation("PatientProgramServiceOneRoutineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([recordedByUserId, recordedAt])
+}
+
+model PatientProgramServiceOneFloatingChart {
+  id               String   @id @default(uuid()) @db.Uuid
+  patientProgramId String   @unique @db.Uuid
+  recordedByUserId String   @db.Uuid
+  recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+  summary          String?  @db.VarChar(2000)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
+  recordedByUser  User           @relation("PatientProgramServiceOneFloatingChartRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([recordedByUserId, recordedAt])
+}
+
+model PatientProgramServiceOneDreamCard {
+  id               String   @id @default(uuid()) @db.Uuid
+  patientProgramId String   @unique @db.Uuid
+  recordedByUserId String   @db.Uuid
+  recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+  description      String?  @db.VarChar(2000)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
+  recordedByUser  User           @relation("PatientProgramServiceOneDreamCardRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([recordedByUserId, recordedAt])
+}
+
+model PatientProgramServiceOneConfidence {
+  id               String   @id @default(uuid()) @db.Uuid
+  patientProgramId String   @unique @db.Uuid
+  recordedByUserId String   @db.Uuid
+  recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+  score            Int
+  improvementPlan  String?  @db.VarChar(2000)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
+  recordedByUser  User           @relation("PatientProgramServiceOneConfidenceRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([recordedByUserId, recordedAt])
 }
 
 model PatientEvidenceArtifact {
