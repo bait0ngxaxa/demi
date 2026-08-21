@@ -19,7 +19,11 @@ import {
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
   patientProgramServiceOneFloatingChartRequestSchema,
+  patientProgramServiceOneArtifactAssociationRequestSchema,
   patientProgramServiceOneRoutineRequestSchema,
+  type PatientProgramServiceOneActivity as PatientProgramServiceOneActivitySchema,
+  type PatientProgramServiceOneArtifactActivity,
+  type PatientProgramServiceOneArtifactAssociationRequest,
   type PatientProgramServiceOneConfidenceRequest,
   type PatientProgramServiceOneDreamCardRequest,
   type PatientProgramServiceOneFloatingChartRequest,
@@ -35,11 +39,11 @@ export type PatientProgramServiceOneServiceDependencies = {
   transactionRetries?: number;
 };
 
-export type PatientProgramServiceOneActivity =
-  | "ROUTINE"
-  | "FLOATING_CHART"
-  | "DREAM_CARD"
-  | "CONFIDENCE";
+export type PatientProgramServiceOneActivity = PatientProgramServiceOneActivitySchema;
+
+export type PatientProgramServiceOneArtifactAssociationOperation =
+  | "ASSOCIATED"
+  | "ALREADY_ASSOCIATED";
 
 export type PatientProgramServiceOneOperation = "RECORDED" | "ALREADY_RECORDED";
 
@@ -52,6 +56,17 @@ export type PatientProgramServiceOneMutationResult = {
   hospitalId: string;
   recordedByUserId: string;
   recordedAt: Date;
+};
+
+export type PatientProgramServiceOneArtifactAssociationResult = {
+  activity: PatientProgramServiceOneArtifactActivity;
+  operation: PatientProgramServiceOneArtifactAssociationOperation;
+  associationId: string;
+  artifactId: string;
+  patientProgramId: string;
+  patientHospitalRelationshipId: string;
+  hospitalId: string;
+  associatedAt: Date;
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
@@ -95,6 +110,17 @@ const confidenceMutationSelect = {
   score: true,
   improvementPlan: true,
 } satisfies Prisma.PatientProgramServiceOneConfidenceSelect;
+
+const artifactAssociationSelect = {
+  id: true,
+  patientProgramId: true,
+  patientHospitalRelationshipId: true,
+  patientEvidenceArtifactId: true,
+  routineId: true,
+  floatingChartId: true,
+  dreamCardId: true,
+  createdAt: true,
+} satisfies Prisma.PatientProgramServiceOneArtifactAssociationSelect;
 
 type PatientProgramLifecycleRecord = Prisma.PatientProgramGetPayload<{
   select: typeof patientProgramLifecycleSelect;
@@ -262,6 +288,193 @@ async function auditRecordedActivity(
       },
     },
     transaction,
+  );
+}
+
+type PatientProgramServiceOneArtifactAssociationRecord = Prisma.PatientProgramServiceOneArtifactAssociationGetPayload<{
+  select: typeof artifactAssociationSelect;
+}>;
+
+function getArtifactAssociationActivity(
+  association: PatientProgramServiceOneArtifactAssociationRecord,
+): PatientProgramServiceOneArtifactActivity {
+  if (association.routineId !== null) {
+    return "ROUTINE";
+  }
+
+  if (association.floatingChartId !== null) {
+    return "FLOATING_CHART";
+  }
+
+  if (association.dreamCardId !== null) {
+    return "DREAM_CARD";
+  }
+
+  throw new InfrastructureError("Service 1 evidence association is invalid");
+}
+
+function getActivityAssociationWhere(
+  activity: PatientProgramServiceOneArtifactActivity,
+  activityRecordId: string,
+  patientProgramId: string,
+): Prisma.PatientProgramServiceOneArtifactAssociationWhereInput {
+  const base = { patientProgramId };
+
+  switch (activity) {
+    case "ROUTINE":
+      return { ...base, routineId: activityRecordId };
+    case "FLOATING_CHART":
+      return { ...base, floatingChartId: activityRecordId };
+    case "DREAM_CARD":
+      return { ...base, dreamCardId: activityRecordId };
+  }
+}
+
+async function findActivityRecord(
+  transaction: Prisma.TransactionClient,
+  activity: PatientProgramServiceOneArtifactActivity,
+  patientProgramId: string,
+): Promise<{ id: string } | null> {
+  switch (activity) {
+    case "ROUTINE":
+      return transaction.patientProgramServiceOneRoutine.findUnique({
+        where: { patientProgramId },
+        select: { id: true },
+      });
+    case "FLOATING_CHART":
+      return transaction.patientProgramServiceOneFloatingChart.findUnique({
+        where: { patientProgramId },
+        select: { id: true },
+      });
+    case "DREAM_CARD":
+      return transaction.patientProgramServiceOneDreamCard.findUnique({
+        where: { patientProgramId },
+        select: { id: true },
+      });
+  }
+}
+
+function toArtifactAssociationResult(
+  association: PatientProgramServiceOneArtifactAssociationRecord,
+  activity: PatientProgramServiceOneArtifactActivity,
+  operation: PatientProgramServiceOneArtifactAssociationOperation,
+  hospitalId: string,
+): PatientProgramServiceOneArtifactAssociationResult {
+  return {
+    activity,
+    operation,
+    associationId: association.id,
+    artifactId: association.patientEvidenceArtifactId,
+    patientProgramId: association.patientProgramId,
+    patientHospitalRelationshipId: association.patientHospitalRelationshipId,
+    hospitalId,
+    associatedAt: association.createdAt,
+  };
+}
+
+async function associateArtifactInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: PatientProgramServiceOneArtifactAssociationRequest,
+  now: Date,
+): Promise<PatientProgramServiceOneArtifactAssociationResult> {
+  const { access, program } = await lockActiveProgram(
+    transaction,
+    actor,
+    input.patientProgramId.toLowerCase(),
+  );
+  const patientProgramId = program.id;
+  const patientHospitalRelationshipId = access.patient.patientHospitalRelationshipId;
+  const patientEvidenceArtifactId = input.patientEvidenceArtifactId.toLowerCase();
+  const artifact = await transaction.patientEvidenceArtifact.findFirst({
+    where: {
+      id: patientEvidenceArtifactId,
+      patientHospitalRelationshipId,
+    },
+    select: { id: true },
+  });
+
+  if (!artifact) {
+    throw new NotFoundError();
+  }
+
+  const existingByArtifact = await transaction.patientProgramServiceOneArtifactAssociation.findFirst({
+    where: {
+      patientEvidenceArtifactId: artifact.id,
+      patientHospitalRelationshipId,
+    },
+    select: artifactAssociationSelect,
+  });
+
+  if (existingByArtifact) {
+    const existingActivity = getArtifactAssociationActivity(existingByArtifact);
+
+    if (existingByArtifact.patientProgramId !== patientProgramId) {
+      throw new ConflictError("หลักฐานรูปนี้ถูกผูกกับโปรแกรม Service 1 อื่นแล้ว");
+    }
+
+    if (existingActivity === input.activity) {
+      return toArtifactAssociationResult(
+        existingByArtifact,
+        existingActivity,
+        "ALREADY_ASSOCIATED",
+        access.target.hospitalId,
+      );
+    }
+
+    throw new ConflictError("หลักฐานรูปนี้ถูกผูกกับกิจกรรม Service 1 อื่นแล้ว");
+  }
+
+  const activityRecord = await findActivityRecord(transaction, input.activity, patientProgramId);
+
+  if (!activityRecord) {
+    throw new ConflictError("กรุณาบันทึกกิจกรรม Service 1 ก่อนแนบหลักฐานรูป");
+  }
+
+  const existingForActivity = await transaction.patientProgramServiceOneArtifactAssociation.findFirst({
+    where: getActivityAssociationWhere(input.activity, activityRecord.id, patientProgramId),
+    select: artifactAssociationSelect,
+  });
+
+  if (existingForActivity) {
+    throw new ConflictError("กิจกรรมนี้มีหลักฐานรูปแล้วและไม่สามารถเปลี่ยนแทนในรอบนี้ได้");
+  }
+
+  const association = await transaction.patientProgramServiceOneArtifactAssociation.create({
+    data: {
+      patientProgramId,
+      patientHospitalRelationshipId,
+      patientEvidenceArtifactId: artifact.id,
+      routineId: input.activity === "ROUTINE" ? activityRecord.id : null,
+      floatingChartId: input.activity === "FLOATING_CHART" ? activityRecord.id : null,
+      dreamCardId: input.activity === "DREAM_CARD" ? activityRecord.id : null,
+      createdAt: now,
+    },
+    select: artifactAssociationSelect,
+  });
+
+  await recordAuditEvent(
+    {
+      actorUserId: access.actor.userId,
+      action: "patient_program.service_one.artifact_attached",
+      resourceType: "PatientProgramServiceOneArtifactAssociation",
+      resourceId: association.id,
+      metadata: {
+        patientProgramId,
+        patientHospitalRelationshipId,
+        hospitalId: access.target.hospitalId,
+        activity: input.activity,
+        artifactId: artifact.id,
+      },
+    },
+    transaction,
+  );
+
+  return toArtifactAssociationResult(
+    association,
+    input.activity,
+    "ASSOCIATED",
+    access.target.hospitalId,
   );
 }
 
@@ -605,8 +818,39 @@ export async function recordPatientProgramServiceOneConfidence(
   }
 }
 
+export async function associatePatientProgramServiceOneArtifact(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramServiceOneServiceDependencies = {},
+): Promise<PatientProgramServiceOneArtifactAssociationResult> {
+  const parsed = patientProgramServiceOneArtifactAssociationRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Service 1 evidence association data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => associateArtifactInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
 export const patientProgramServiceOneInternals = {
+  artifactAssociationSelect,
+  associateArtifactInTransaction,
   confidenceMutationSelect,
+  findActivityRecord,
+  getActivityAssociationWhere,
+  getArtifactAssociationActivity,
   dreamCardMutationSelect,
   floatingChartMutationSelect,
   isRetryableTransactionError,

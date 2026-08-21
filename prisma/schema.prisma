@@ -412,10 +412,12 @@ model PatientProgram {
   serviceOneFloatingChart     PatientProgramServiceOneFloatingChart?
   serviceOneDreamCard         PatientProgramServiceOneDreamCard?
   serviceOneConfidence        PatientProgramServiceOneConfidence?
+  serviceOneArtifactAssociations PatientProgramServiceOneArtifactAssociation[]
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
   @@index([initialBaselineId])
+  @@unique([id, patientHospitalRelationshipId])
 }
 
 model PatientProgramServiceOneRoutine {
@@ -426,8 +428,10 @@ model PatientProgramServiceOneRoutine {
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneRoutineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation? @relation("PatientProgramServiceOneRoutineArtifact")
 
   @@index([recordedByUserId, recordedAt])
+  @@unique([id, patientProgramId])
 }
 
 model PatientProgramServiceOneFloatingChart {
@@ -439,8 +443,10 @@ model PatientProgramServiceOneFloatingChart {
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneFloatingChartRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation? @relation("PatientProgramServiceOneFloatingChartArtifact")
 
   @@index([recordedByUserId, recordedAt])
+  @@unique([id, patientProgramId])
 }
 
 model PatientProgramServiceOneDreamCard {
@@ -452,8 +458,10 @@ model PatientProgramServiceOneDreamCard {
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneDreamCardRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation? @relation("PatientProgramServiceOneDreamCardArtifact")
 
   @@index([recordedByUserId, recordedAt])
+  @@unique([id, patientProgramId])
 }
 
 model PatientProgramServiceOneConfidence {
@@ -483,7 +491,33 @@ model PatientEvidenceArtifact {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   createdByUser               User                        @relation("PatientEvidenceArtifactCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation?
 
+  @@index([patientHospitalRelationshipId, createdAt])
+  @@unique([id, patientHospitalRelationshipId])
+}
+
+model PatientProgramServiceOneArtifactAssociation {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId             String   @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  patientEvidenceArtifactId     String   @db.Uuid
+  routineId                     String?  @db.Uuid
+  floatingChartId               String?  @db.Uuid
+  dreamCardId                   String?  @db.Uuid
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProgram         PatientProgram                         @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  patientEvidenceArtifact PatientEvidenceArtifact                 @relation(fields: [patientEvidenceArtifactId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  routine                PatientProgramServiceOneRoutine?        @relation("PatientProgramServiceOneRoutineArtifact", fields: [routineId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
+  floatingChart          PatientProgramServiceOneFloatingChart?  @relation("PatientProgramServiceOneFloatingChartArtifact", fields: [floatingChartId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
+  dreamCard             PatientProgramServiceOneDreamCard?       @relation("PatientProgramServiceOneDreamCardArtifact", fields: [dreamCardId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
+
+  @@unique([routineId, patientProgramId])
+  @@unique([floatingChartId, patientProgramId])
+  @@unique([dreamCardId, patientProgramId])
+  @@unique([patientEvidenceArtifactId, patientHospitalRelationshipId])
+  @@index([patientProgramId, createdAt])
   @@index([patientHospitalRelationshipId, createdAt])
 }
 

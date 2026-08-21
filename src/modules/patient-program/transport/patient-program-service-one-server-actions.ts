@@ -7,6 +7,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   patientProgramServiceOneConfidenceRequestSchema,
+  patientProgramServiceOneArtifactAssociationRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
   patientProgramServiceOneFloatingChartRequestSchema,
   patientProgramServiceOneRoutineRequestSchema,
@@ -16,10 +17,15 @@ import {
   recordPatientProgramServiceOneDreamCard,
   recordPatientProgramServiceOneFloatingChart,
   recordPatientProgramServiceOneRoutine,
+  associatePatientProgramServiceOneArtifact,
+  type PatientProgramServiceOneArtifactAssociationResult,
   type PatientProgramServiceOneMutationResult,
 } from "../services/patient-program-service-one-service";
 
-import type { PatientProgramServiceOneActionState } from "./patient-program-service-one-action-state";
+import type {
+  PatientProgramServiceOneActionState,
+  PatientProgramServiceOneEvidenceActionState,
+} from "./patient-program-service-one-action-state";
 
 function getSingleString(formData: FormData, field: string): string | undefined {
   const values = formData.getAll(field);
@@ -103,6 +109,18 @@ function buildConfidenceInput(formData: FormData): unknown {
   };
 }
 
+function buildArtifactAssociationInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "activity", "patientEvidenceArtifactId"]))) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    activity: getSingleString(formData, "activity"),
+    patientEvidenceArtifactId: getSingleString(formData, "patientEvidenceArtifactId"),
+  };
+}
+
 function mapServiceOneError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
   message: string;
@@ -152,6 +170,62 @@ function toSuccessState(result: PatientProgramServiceOneMutationResult): Patient
       patientProgramId: result.patientProgramId,
       patientHospitalRelationshipId: result.patientHospitalRelationshipId,
       recordedAt: result.recordedAt.toISOString(),
+    },
+  };
+}
+
+function mapServiceOneEvidenceError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION") {
+      return {
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบข้อมูลหลักฐาน Service 1 ก่อนบันทึกอีกครั้ง",
+      };
+    }
+
+    if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+      return {
+        code: "FORBIDDEN",
+        message: "บัญชีนี้ไม่มีสิทธิ์แนบหลักฐานกับโปรแกรมผู้ป่วยรายนี้",
+      };
+    }
+
+    if (error.code === "NOT_FOUND") {
+      return {
+        code: "NOT_FOUND",
+        message: "ไม่พบกิจกรรมหรือหลักฐานในขอบเขตที่บัญชีนี้เข้าถึงได้",
+      };
+    }
+
+    if (error.code === "CONFLICT") {
+      return {
+        code: "CONFLICT",
+        message: "หลักฐานถูกแนบแล้ว หรือโปรแกรมถูกเปลี่ยนสถานะ กรุณาโหลดข้อมูลล่าสุด",
+      };
+    }
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "ระบบไม่พร้อมแนบหลักฐาน Service 1 ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
+function toEvidenceSuccessState(
+  result: PatientProgramServiceOneArtifactAssociationResult,
+): PatientProgramServiceOneEvidenceActionState {
+  return {
+    status: "SUCCESS",
+    result: {
+      activity: result.activity,
+      operation: result.operation,
+      patientProgramId: result.patientProgramId,
+      patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      artifactId: result.artifactId,
+      associatedAt: result.associatedAt.toISOString(),
     },
   };
 }
@@ -260,5 +334,35 @@ export async function recordPatientProgramServiceOneConfidenceAction(
     return toSuccessState(result);
   } catch (error: unknown) {
     return { status: "ERROR", ...mapServiceOneError(error) };
+  }
+}
+
+export async function associatePatientProgramServiceOneArtifactAction(
+  formData: FormData,
+): Promise<PatientProgramServiceOneEvidenceActionState> {
+  const parsed = patientProgramServiceOneArtifactAssociationRequestSchema.safeParse(
+    buildArtifactAssociationInput(formData),
+  );
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      ...mapServiceOneEvidenceError(new ApplicationError("VALIDATION", "invalid")),
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await associatePatientProgramServiceOneArtifact(actor, parsed.data);
+    revalidatePatientProgramServiceOnePaths(
+      result.patientHospitalRelationshipId,
+      result.patientProgramId,
+    );
+    revalidatePath(
+      `/app/patients/${result.patientHospitalRelationshipId}/evidence`,
+    );
+    return toEvidenceSuccessState(result);
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapServiceOneEvidenceError(error) };
   }
 }

@@ -13,6 +13,8 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
+import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
+import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import {
   getPatientProgramDetail,
   getPatientProgramPageContext,
@@ -22,6 +24,7 @@ import {
   openPatientProgram,
 } from "@/modules/patient-program/services/patient-program-service";
 import {
+  associatePatientProgramServiceOneArtifact,
   recordPatientProgramServiceOneConfidence,
   recordPatientProgramServiceOneDreamCard,
   recordPatientProgramServiceOneFloatingChart,
@@ -34,6 +37,7 @@ const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
   await prisma.patientProgramServiceOneConfidence.deleteMany();
   await prisma.patientProgramServiceOneDreamCard.deleteMany();
   await prisma.patientProgramServiceOneFloatingChart.deleteMany();
@@ -206,6 +210,18 @@ function baselineInput(relationshipId: string): Record<string, unknown> {
   };
 }
 
+function createFakeStorage(): PatientEvidenceStorage {
+  return {
+    uploadObject: async () => undefined,
+    createTemporaryAccessUrl: async ({ objectKey }) => `https://fake-storage.invalid/${objectKey}`,
+    removeObject: async () => undefined,
+  };
+}
+
+function jpegBytes(): Uint8Array {
+  return new Uint8Array([0xff, 0xd8, 0xff, 0x00]);
+}
+
 async function createPatient(
   actor: ActorContext,
   hospitalId: string,
@@ -308,6 +324,36 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         patientProgramId: opened.patientProgramId,
       }),
     ).resolves.toMatchObject({ activity: "ROUTINE", operation: "RECORDED" });
+    const artifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      {
+        relationshipId: patient.relationshipId,
+        declaredMediaType: "image/jpeg",
+        bytes: jpegBytes(),
+      },
+      { storage: createFakeStorage() },
+    );
+    await expect(
+      associatePatientProgramServiceOneArtifact(osm.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: artifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).resolves.toMatchObject({ activity: "ROUTINE", operation: "ASSOCIATED" });
+    await expect(
+      associatePatientProgramServiceOneArtifact(unrelatedOsm.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: artifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      associatePatientProgramServiceOneArtifact(admin, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: artifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
       recordPatientProgramServiceOneDreamCard(unrelatedOsm.actor, {
         patientProgramId: opened.patientProgramId,
@@ -544,6 +590,174 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     expect(JSON.stringify(auditMetadata)).not.toContain("\"score\"");
   });
 
+  it("associates one relationship-owned artifact with each explicit image-bearing activity", async () => {
+    const hospital = await createHospital("SERVICE-ONE-EVIDENCE");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "service-one-evidence");
+    const opened = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+
+    await recordPatientProgramServiceOneRoutine(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+    });
+    await recordPatientProgramServiceOneFloatingChart(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+      summary: "สรุปที่บันทึกไว้",
+    });
+    await recordPatientProgramServiceOneDreamCard(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+      description: "ความฝันที่บันทึกไว้",
+    });
+
+    const storage = createFakeStorage();
+    const routineArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const floatingChartArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const dreamCardArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: routineArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).resolves.toMatchObject({ activity: "ROUTINE", operation: "ASSOCIATED" });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: floatingChartArtifact.artifactId,
+        activity: "FLOATING_CHART",
+      }),
+    ).resolves.toMatchObject({ activity: "FLOATING_CHART", operation: "ASSOCIATED" });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: dreamCardArtifact.artifactId,
+        activity: "DREAM_CARD",
+      }),
+    ).resolves.toMatchObject({ activity: "DREAM_CARD", operation: "ASSOCIATED" });
+
+    const detail = await getPatientProgramDetail(
+      owner.actor,
+      patient.relationshipId,
+      opened.patientProgramId,
+    );
+    expect(detail.serviceOne).toMatchObject({
+      routine: { evidence: { artifactId: routineArtifact.artifactId, mediaType: "image/jpeg" } },
+      floatingChart: { evidence: { artifactId: floatingChartArtifact.artifactId } },
+      dreamCard: { evidence: { artifactId: dreamCardArtifact.artifactId } },
+    });
+    expect(detail.serviceOne.confidence).not.toHaveProperty("evidence");
+    expect(JSON.stringify(detail.serviceOne)).not.toContain("storageObjectKey");
+    expect(await prisma.patientProgramServiceOneArtifactAssociation.count({
+      where: { patientProgramId: opened.patientProgramId },
+    })).toBe(3);
+    expect(await prisma.auditEvent.count({
+      where: { action: "patient_program.service_one.artifact_attached" },
+    })).toBe(3);
+  });
+
+  it("keeps evidence immutable across activities, relationships, and Programs", async () => {
+    const hospital = await createHospital("EVID-INT");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const firstPatient = await createPatient(owner.actor, hospital.id, "service-one-evidence-first");
+    const secondPatient = await createPatient(owner.actor, hospital.id, "service-one-evidence-second");
+    const firstProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: firstPatient.relationshipId,
+    });
+    const secondProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: secondPatient.relationshipId,
+    });
+    await recordPatientProgramServiceOneRoutine(owner.actor, { patientProgramId: firstProgram.patientProgramId });
+    await recordPatientProgramServiceOneFloatingChart(owner.actor, { patientProgramId: firstProgram.patientProgramId });
+    await recordPatientProgramServiceOneRoutine(owner.actor, { patientProgramId: secondProgram.patientProgramId });
+
+    const storage = createFakeStorage();
+    const firstArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: firstPatient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const secondArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: secondPatient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const firstRoutine = await prisma.patientProgramServiceOneRoutine.findUniqueOrThrow({
+      where: { patientProgramId: firstProgram.patientProgramId },
+      select: { id: true },
+    });
+    await expect(
+      prisma.patientProgramServiceOneArtifactAssociation.create({
+        data: {
+          patientProgramId: firstProgram.patientProgramId,
+          patientHospitalRelationshipId: secondPatient.relationshipId,
+          patientEvidenceArtifactId: firstArtifact.artifactId,
+          routineId: firstRoutine.id,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await associatePatientProgramServiceOneArtifact(owner.actor, {
+      patientProgramId: firstProgram.patientProgramId,
+      patientEvidenceArtifactId: firstArtifact.artifactId,
+      activity: "ROUTINE",
+    });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: firstProgram.patientProgramId,
+        patientEvidenceArtifactId: firstArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).resolves.toMatchObject({ operation: "ALREADY_ASSOCIATED" });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: firstProgram.patientProgramId,
+        patientEvidenceArtifactId: firstArtifact.artifactId,
+        activity: "FLOATING_CHART",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: firstProgram.patientProgramId,
+        patientEvidenceArtifactId: secondArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    await completePatientProgram(owner.actor, { patientProgramId: firstProgram.patientProgramId });
+    const laterProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: firstPatient.relationshipId,
+    });
+    await recordPatientProgramServiceOneRoutine(owner.actor, { patientProgramId: laterProgram.patientProgramId });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: laterProgram.patientProgramId,
+        patientEvidenceArtifactId: firstArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: firstProgram.patientProgramId,
+        patientEvidenceArtifactId: secondArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
   it("does not overwrite one-time activity records and audits only the first successful write", async () => {
     const hospital = await createHospital("SERVICE-ONE-IMMUTABLE");
     const owner = await createHospitalActor({ hospitalId: hospital.id });
@@ -656,6 +870,98 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({
       where: { action: "patient_program.service_one.routine_recorded" },
     })).toBe(1);
+  });
+
+  it("keeps concurrent evidence associations single-owner and orders completion safely", async () => {
+    const hospital = await createHospital("EVID-RACE");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "service-one-evidence-concurrent");
+    const opened = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    await recordPatientProgramServiceOneRoutine(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+    });
+
+    const storage = createFakeStorage();
+    const firstArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const secondArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const associationOutcomes = await Promise.allSettled([
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: firstArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: secondArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+    ]);
+    const associationFulfilled = associationOutcomes.filter(
+      (outcome): outcome is PromiseFulfilledResult<Awaited<ReturnType<typeof associatePatientProgramServiceOneArtifact>>> =>
+        outcome.status === "fulfilled",
+    );
+    const associationRejected = associationOutcomes.filter((outcome) => outcome.status === "rejected");
+
+    expect(associationFulfilled).toHaveLength(1);
+    expect(associationRejected).toHaveLength(1);
+    expect(associationRejected[0]?.reason).toBeInstanceOf(ConflictError);
+    expect(await prisma.patientProgramServiceOneArtifactAssociation.count({
+      where: { patientProgramId: opened.patientProgramId },
+    })).toBe(1);
+
+    const racePatient = await createPatient(owner.actor, hospital.id, "service-one-evidence-completion-race");
+    const raceProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: racePatient.relationshipId,
+    });
+    await recordPatientProgramServiceOneRoutine(owner.actor, {
+      patientProgramId: raceProgram.patientProgramId,
+    });
+    const raceArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      { relationshipId: racePatient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+      { storage },
+    );
+    const raceOutcomes = await Promise.allSettled([
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: raceProgram.patientProgramId,
+        patientEvidenceArtifactId: raceArtifact.artifactId,
+        activity: "ROUTINE",
+      }),
+      completePatientProgram(owner.actor, { patientProgramId: raceProgram.patientProgramId }),
+    ]);
+    const storedProgram = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: raceProgram.patientProgramId },
+      select: { status: true, completedAt: true },
+    });
+    const storedAssociation = await prisma.patientProgramServiceOneArtifactAssociation.findUnique({
+      where: {
+        patientEvidenceArtifactId_patientHospitalRelationshipId: {
+          patientEvidenceArtifactId: raceArtifact.artifactId,
+          patientHospitalRelationshipId: racePatient.relationshipId,
+        },
+      },
+      select: { createdAt: true },
+    });
+
+    expect(storedProgram.status).toBe(PatientProgramStatus.COMPLETED);
+    expect(storedProgram.completedAt).not.toBeNull();
+    if (storedAssociation) {
+      expect(storedAssociation.createdAt.getTime()).toBeLessThanOrEqual(storedProgram.completedAt?.getTime() ?? 0);
+      expect(raceOutcomes[0]?.status).toBe("fulfilled");
+    } else {
+      expect(raceOutcomes[0]?.status).toBe("rejected");
+      expect((raceOutcomes[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
+    }
   });
 
   it("serializes a Service 1 write against Program completion", async () => {

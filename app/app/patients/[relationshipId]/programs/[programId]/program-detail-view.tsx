@@ -8,6 +8,8 @@ import type { PatientProgramDetail } from "@/modules/patient-program/services/pa
 
 import { PatientProgramCompleteControl } from "../program-mutation-controls";
 
+import { PatientProgramServiceOneWorkspace } from "./service-one-workspace";
+
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "long",
@@ -124,15 +126,7 @@ export function PatientProgramDetailView({
           </Alert>
         ) : null}
 
-        <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
-            Service 1 — รู้จักตัวเอง
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            พื้นที่นี้เป็นจุดเริ่มต้นสำหรับ Service 1 ใน Phase 15B.1 ขณะนี้ยังไม่มีแบบบันทึกกิจกรรม
-            และยังไม่มีการสร้างข้อมูลทางคลินิกเพิ่มเติม
-          </p>
-        </Panel>
+        <PatientProgramServiceOneWorkspace detail={detail} />
 
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

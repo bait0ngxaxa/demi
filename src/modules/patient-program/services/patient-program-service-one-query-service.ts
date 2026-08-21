@@ -16,6 +16,18 @@ export const patientProgramServiceOneSelect = {
           },
         },
       },
+      serviceOneArtifactAssociation: {
+        select: {
+          patientEvidenceArtifact: {
+            select: {
+              id: true,
+              mediaType: true,
+              byteSize: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
     },
   },
   serviceOneFloatingChart: {
@@ -32,6 +44,18 @@ export const patientProgramServiceOneSelect = {
           },
         },
       },
+      serviceOneArtifactAssociation: {
+        select: {
+          patientEvidenceArtifact: {
+            select: {
+              id: true,
+              mediaType: true,
+              byteSize: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
     },
   },
   serviceOneDreamCard: {
@@ -44,6 +68,18 @@ export const patientProgramServiceOneSelect = {
             select: {
               givenName: true,
               familyName: true,
+            },
+          },
+        },
+      },
+      serviceOneArtifactAssociation: {
+        select: {
+          patientEvidenceArtifact: {
+            select: {
+              id: true,
+              mediaType: true,
+              byteSize: true,
+              createdAt: true,
             },
           },
         },
@@ -81,13 +117,24 @@ export type PatientProgramServiceOneActivityProjection = {
   } | null;
 };
 
+export type PatientProgramServiceOneEvidenceProjection = {
+  artifactId: string;
+  mediaType: string;
+  byteSize: number;
+  createdAt: Date;
+};
+
 export type PatientProgramServiceOneProjection = {
-  routine: PatientProgramServiceOneActivityProjection;
+  routine: PatientProgramServiceOneActivityProjection & {
+    evidence: PatientProgramServiceOneEvidenceProjection | null;
+  };
   floatingChart: PatientProgramServiceOneActivityProjection & {
     summary: string | null;
+    evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   dreamCard: PatientProgramServiceOneActivityProjection & {
     description: string | null;
+    evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   confidence: PatientProgramServiceOneActivityProjection & {
     score: number | null;
@@ -117,6 +164,30 @@ function toRecordedBy(record: {
   return record ? { displayName: toDisplayName(record.recordedByUser.person) } : null;
 }
 
+function toEvidenceProjection(record: {
+  serviceOneArtifactAssociation: {
+    patientEvidenceArtifact: {
+      id: string;
+      mediaType: string;
+      byteSize: number;
+      createdAt: Date;
+    };
+  } | null;
+} | null): PatientProgramServiceOneEvidenceProjection | null {
+  const artifact = record?.serviceOneArtifactAssociation?.patientEvidenceArtifact;
+
+  if (!artifact) {
+    return null;
+  }
+
+  return {
+    artifactId: artifact.id,
+    mediaType: artifact.mediaType,
+    byteSize: artifact.byteSize,
+    createdAt: artifact.createdAt,
+  };
+}
+
 function toActivityProjection(record: {
   recordedAt: Date;
   recordedByUser: {
@@ -142,14 +213,19 @@ export function toPatientProgramServiceOneProjection(
   const confidence = record?.serviceOneConfidence ?? null;
 
   return {
-    routine: toActivityProjection(routine),
+    routine: {
+      ...toActivityProjection(routine),
+      evidence: toEvidenceProjection(routine),
+    },
     floatingChart: {
       ...toActivityProjection(floatingChart),
       summary: floatingChart?.summary ?? null,
+      evidence: toEvidenceProjection(floatingChart),
     },
     dreamCard: {
       ...toActivityProjection(dreamCard),
       description: dreamCard?.description ?? null,
+      evidence: toEvidenceProjection(dreamCard),
     },
     confidence: {
       ...toActivityProjection(confidence),
@@ -163,6 +239,7 @@ export const patientProgramServiceOneQueryInternals = {
   patientProgramServiceOneSelect,
   toActivityProjection,
   toDisplayName,
+  toEvidenceProjection,
   toPatientProgramServiceOneProjection,
   toRecordedBy,
 };

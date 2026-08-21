@@ -20,6 +20,7 @@ const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
   await prisma.patientEvidenceArtifact.deleteMany();
   await prisma.patientFollowupActivityProgress.deleteMany();
   await prisma.patientFollowup.deleteMany();
