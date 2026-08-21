@@ -8,8 +8,8 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
-  getAccessibleGoalPlanActivityContext,
   getAccessibleGoalPlanActivityContextForProgram,
+  getAccessiblePreProgramGoalPlanActivityContext,
 } from "@/modules/goals/services/goal-query-service";
 import {
   resolvePatientProgramByIdAccessContext,
@@ -300,7 +300,7 @@ async function assertGoalActivityProgress(
         input.sourceGoalPlanId,
         { database: transaction },
       )
-    : await getAccessibleGoalPlanActivityContext(
+    : await getAccessiblePreProgramGoalPlanActivityContext(
         actor,
         input.patientHospitalRelationshipId,
         input.sourceGoalPlanId,

@@ -469,7 +469,7 @@ export async function getGoalPlanOverview(
     );
     const records = await database.patientGoalPlan.findMany({
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
-      orderBy: [{ roundNumber: "desc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: GOAL_HISTORY_LIMIT,
       select: goalHistorySelect,
     });
@@ -805,7 +805,7 @@ export async function getAccessibleGoalPlanOptions(
     );
     const records = await database.patientGoalPlan.findMany({
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
-      orderBy: [{ roundNumber: "desc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: GOAL_HISTORY_LIMIT,
       select: goalPlanReferenceSelect,
     });
@@ -817,6 +817,39 @@ export async function getAccessibleGoalPlanOptions(
     }
 
     throw new InfrastructureError("Accessible Goal Plan references could not be loaded");
+  }
+}
+
+export async function getAccessiblePreProgramGoalPlanOptions(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference[]> {
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalAccessContext(
+      actor,
+      relationshipId,
+      GOAL_READ_CAPABILITY,
+      database,
+    );
+    const records = await database.patientGoalPlan.findMany({
+      where: {
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        patientProgramId: null,
+      },
+      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+      take: GOAL_HISTORY_LIMIT,
+      select: goalPlanReferenceSelect,
+    });
+
+    return records.map(toGoalPlanReference);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Pre-Program Goal Plan references could not be loaded");
   }
 }
 
@@ -894,6 +927,50 @@ export async function getAccessibleGoalPlanActivityContext(
     }
 
     throw new InfrastructureError("Goal Plan context could not be loaded");
+  }
+}
+
+export async function getAccessiblePreProgramGoalPlanActivityContext(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  goalPlanId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference> {
+  const parsedRelationshipId = goalPlanRelationshipIdSchema.safeParse(relationshipId);
+  const parsedGoalPlanId = goalPlanIdSchema.safeParse(goalPlanId);
+
+  if (!parsedRelationshipId.success || !parsedGoalPlanId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalAccessContext(
+      actor,
+      parsedRelationshipId.data,
+      GOAL_READ_CAPABILITY,
+      database,
+    );
+    const record = await database.patientGoalPlan.findFirst({
+      where: {
+        id: parsedGoalPlanId.data,
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        patientProgramId: null,
+      },
+      select: goalPlanReferenceSelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    return toGoalPlanReference(record);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Pre-Program Goal Plan context could not be loaded");
   }
 }
 

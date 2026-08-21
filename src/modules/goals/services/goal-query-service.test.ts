@@ -208,6 +208,7 @@ describe("Goal Plan query service", () => {
     expect(JSON.stringify(overview)).not.toContain("identityKeyHash");
     expect(database.patientGoalPlan.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: expect.objectContaining({ sourceScreeningAssessmentId: true }),
       }),
     );

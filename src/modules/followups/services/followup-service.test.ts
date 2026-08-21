@@ -19,6 +19,7 @@ import {
 
 const mockedAudit = vi.hoisted(() => vi.fn());
 const mockedGoalContext = vi.hoisted(() => vi.fn());
+const mockedPreProgramGoalContext = vi.hoisted(() => vi.fn());
 const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
 
 vi.mock("@/modules/audit/services/audit-service", () => ({
@@ -27,6 +28,7 @@ vi.mock("@/modules/audit/services/audit-service", () => ({
 
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanActivityContext: mockedGoalContext,
+  getAccessiblePreProgramGoalPlanActivityContext: mockedPreProgramGoalContext,
 }));
 
 vi.mock("./followup-access-service", async (importOriginal) => {
@@ -242,6 +244,7 @@ describe("Follow-up service", () => {
     mockedFollowupAccessState.denyRecord = false;
     mockedAudit.mockResolvedValue(undefined);
     mockedGoalContext.mockResolvedValue(goalPlanContext);
+    mockedPreProgramGoalContext.mockResolvedValue(goalPlanContext);
   });
 
   it("derives creator and round, persists a standalone immutable round, and audits it", async () => {
@@ -291,7 +294,7 @@ describe("Follow-up service", () => {
     expect(transaction.patientFollowup.create).not.toHaveBeenCalled();
   });
 
-  it("validates a completed Appointment and exact Goal Plan activities before nested persistence", async () => {
+  it("validates a completed Appointment and exact pre-Program Goal Plan activities before nested persistence", async () => {
     const { database, transaction } = createDatabase({
       appointment: { id: appointmentId, status: AppointmentStatus.COMPLETED },
       createResult: followupRecord({ appointmentId, sourceGoalPlanId: goalPlanId }),
@@ -311,7 +314,7 @@ describe("Follow-up service", () => {
       where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
       select: { id: true, status: true },
     });
-    expect(mockedGoalContext).toHaveBeenCalledWith(
+    expect(mockedPreProgramGoalContext).toHaveBeenCalledWith(
       hospitalActor,
       relationshipId,
       goalPlanId,
@@ -369,7 +372,7 @@ describe("Follow-up service", () => {
         { database },
       ),
     ).rejects.toBeInstanceOf(ValidationError);
-    expect(mockedGoalContext).not.toHaveBeenCalled();
+    expect(mockedPreProgramGoalContext).not.toHaveBeenCalled();
     expect(transaction.patientFollowup.create).not.toHaveBeenCalled();
   });
 
@@ -412,7 +415,7 @@ describe("Follow-up service", () => {
   });
 
   it("rejects a selected Goal Plan when the Goal-owned boundary denies access", async () => {
-    mockedGoalContext.mockRejectedValueOnce(new ForbiddenError());
+    mockedPreProgramGoalContext.mockRejectedValueOnce(new ForbiddenError());
     const { database, transaction } = createDatabase();
 
     await expect(

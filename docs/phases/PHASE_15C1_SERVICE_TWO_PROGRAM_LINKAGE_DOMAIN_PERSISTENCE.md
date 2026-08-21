@@ -182,6 +182,12 @@ createFollowupForProgram(...)
 
 Program reads never use relationship-level latest Goal Plan or latest Follow-up as Program state. Existing relationship history reads remain available and expose nullable Program ownership for separation. No Program-detail UI was added in this phase.
 
+### Final corrective note
+
+The provisional relationship-level Follow-up path now resolves Goal Plan candidates through explicit pre-Program helpers. A Follow-up with `patientProgramId = NULL` may reference only a Goal Plan from the same relationship whose `patientProgramId` is also `NULL`; Program-linked Goal Plans are excluded from compatibility selection and are rejected by the mutation boundary if submitted directly. Program-scoped Follow-ups retain the exact same-Program Goal Plan contract.
+
+Relationship-wide Goal Plan history is ordered by `createdAt DESC, id DESC`, and relationship-wide Follow-up history is ordered by `recordedAt DESC, id DESC`. Rounds are Program-local after 15C.1, so they are not a valid cross-Program chronology. Program-scoped histories remain ordered by `roundNumber DESC, id DESC`.
+
 ## 13. Integration tests
 
 The Program integration suite covers:
@@ -189,6 +195,8 @@ The Program integration suite covers:
 - Program ownership and exact relationship derivation;
 - independent Goal Plan and Follow-up rounds across Program A and B;
 - legacy `NULL` rows and relationship-history separation;
+- compatibility Follow-up rejection of Program-linked Goal Plans and acceptance of `NULL` Goal Plans;
+- chronological relationship history with Program-local round ordering preserved;
 - Program query isolation and completed-history reads;
 - cross-Program source Goal Plan rejection;
 - cross-relationship composite FK rejection;
@@ -216,7 +224,24 @@ npm test -- src/modules/goals src/modules/followups src/modules/patient-program
 npm test                                    PASS (107 files, 689 tests)
 npx tsc --noEmit                            PASS
 npm run lint                                PASS
-npm run test:integration                    PASS (18 files, 151 tests)
+npm run test:integration                    PASS (18 files, 153 tests)
+git diff --check                            PASS
+```
+
+The final corrective pass additionally completed with:
+
+```text
+npm test -- src/modules/goals/services/goal-query-service.test.ts
+            src/modules/followups/services/followup-query-service.test.ts
+            src/modules/followups/services/followup-service.test.ts
+                                             PASS (3 files, 41 tests)
+focused Patient Program integration cases   PASS (2 tests)
+npm test -- src/modules/goals src/modules/followups src/modules/patient-program
+                                             PASS (20 files, 166 tests)
+npm test                                    PASS (107 files, 689 tests)
+npx tsc --noEmit                            PASS
+npm run lint                                PASS
+npm run test:integration                    PASS (18 files, 153 tests)
 git diff --check                            PASS
 ```
 

@@ -28,6 +28,7 @@ import {
 import { createGoalPlan, createGoalPlanForProgram } from "@/modules/goals/services/goal-service";
 import { GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION } from "@/modules/goals/domain/goal-templates";
 import {
+  getFollowupCreateContext,
   getFollowupCreateContextForProgram,
   getFollowupDetailForProgram,
   getFollowupHistory,
@@ -1296,6 +1297,157 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     );
     expect(goalAHistory.items.some((item) => item.goalPlanId === legacyGoal.goalPlanId)).toBe(false);
     expect(followupAHistory.items.some((item) => item.followupId === legacyFollowup.followupId)).toBe(false);
+  });
+
+  it("keeps compatibility Follow-ups inside the pre-Program Goal Plan namespace", async () => {
+    const hospital = await createHospital("S2-COMPAT");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "service-two-compatibility-goal");
+    const legacyGoal = await createGoalPlan(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      submissionNonce: randomUUID(),
+      sourceScreeningAssessmentId: null,
+      primaryGoalCode: "weight",
+      primaryGoalNote: "แผนก่อน Program",
+      weeklyNote: null,
+      items: [{ activityCode: "stop_sweet", targetDays: 4 }],
+    });
+    const program = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const programGoal = await createGoalPlanForProgram(
+      owner.actor,
+      goalProgramInput(program.patientProgramId),
+    );
+
+    const context = await getFollowupCreateContext(owner.actor, patient.relationshipId);
+
+    expect(context.goalPlans.map((goalPlan) => goalPlan.goalPlanId)).toEqual([legacyGoal.goalPlanId]);
+    await expect(
+      createFollowup(owner.actor, {
+        patientHospitalRelationshipId: patient.relationshipId,
+        submissionNonce: randomUUID(),
+        appointmentId: null,
+        sourceGoalPlanId: programGoal.goalPlanId,
+        weight: null,
+        waistCircumference: null,
+        systolicBloodPressure: null,
+        diastolicBloodPressure: null,
+        bloodSugar: null,
+        confidenceScore: null,
+        reflectionNote: null,
+        confidencePlan: null,
+        generalNote: null,
+        activityProgress: [],
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(await prisma.patientFollowup.count({
+      where: { patientHospitalRelationshipId: patient.relationshipId },
+    })).toBe(0);
+
+    const legacyFollowup = await createFollowup(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      submissionNonce: randomUUID(),
+      appointmentId: null,
+      sourceGoalPlanId: legacyGoal.goalPlanId,
+      weight: null,
+      waistCircumference: null,
+      systolicBloodPressure: null,
+      diastolicBloodPressure: null,
+      bloodSugar: null,
+      confidenceScore: null,
+      reflectionNote: null,
+      confidencePlan: null,
+      generalNote: null,
+      activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE" }],
+    });
+    const programFollowup = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(program.patientProgramId, {
+        sourceGoalPlanId: programGoal.goalPlanId,
+        activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE" }],
+      }),
+    );
+
+    await expect(prisma.patientFollowup.findUniqueOrThrow({
+      where: { id: legacyFollowup.followupId },
+      select: { patientProgramId: true, sourceGoalPlanId: true },
+    })).resolves.toEqual({ patientProgramId: null, sourceGoalPlanId: legacyGoal.goalPlanId });
+    await expect(prisma.patientFollowup.findUniqueOrThrow({
+      where: { id: programFollowup.followupId },
+      select: { patientProgramId: true, sourceGoalPlanId: true },
+    })).resolves.toEqual({
+      patientProgramId: program.patientProgramId,
+      sourceGoalPlanId: programGoal.goalPlanId,
+    });
+  });
+
+  it("orders relationship history chronologically while retaining Program-local round order", async () => {
+    const hospital = await createHospital("S2-ORDER");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "service-two-history-order");
+    const programA = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const goalA1 = await createGoalPlanForProgram(
+      owner.actor,
+      goalProgramInput(programA.patientProgramId),
+      { now: () => new Date("2026-08-20T01:00:00.000Z") },
+    );
+    const goalA2 = await createGoalPlanForProgram(
+      owner.actor,
+      goalProgramInput(programA.patientProgramId),
+      { now: () => new Date("2026-08-20T02:00:00.000Z") },
+    );
+    const followupA1 = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programA.patientProgramId),
+      { now: () => new Date("2026-08-20T03:00:00.000Z") },
+    );
+    const followupA2 = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programA.patientProgramId),
+      { now: () => new Date("2026-08-20T04:00:00.000Z") },
+    );
+    await completePatientProgram(owner.actor, { patientProgramId: programA.patientProgramId });
+    const programB = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const goalB1 = await createGoalPlanForProgram(
+      owner.actor,
+      goalProgramInput(programB.patientProgramId),
+      { now: () => new Date("2026-08-21T01:00:00.000Z") },
+    );
+    const followupB1 = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programB.patientProgramId),
+      { now: () => new Date("2026-08-21T02:00:00.000Z") },
+    );
+
+    const relationshipGoals = await getGoalPlanOverview(owner.actor, patient.relationshipId);
+    const programAGoals = await getGoalPlanOverviewForProgram(owner.actor, programA.patientProgramId);
+    const relationshipFollowups = await getFollowupHistory(owner.actor, patient.relationshipId);
+    const programAFollowups = await getFollowupHistoryForProgram(owner.actor, programA.patientProgramId);
+
+    expect(relationshipGoals.latest?.goalPlanId).toBe(goalB1.goalPlanId);
+    expect(relationshipGoals.items.map((item) => item.goalPlanId)).toEqual([
+      goalB1.goalPlanId,
+      goalA2.goalPlanId,
+      goalA1.goalPlanId,
+    ]);
+    expect(programAGoals.items.map((item) => item.goalPlanId)).toEqual([
+      goalA2.goalPlanId,
+      goalA1.goalPlanId,
+    ]);
+    expect(relationshipFollowups.items.map((item) => item.followupId)).toEqual([
+      followupB1.followupId,
+      followupA2.followupId,
+      followupA1.followupId,
+    ]);
+    expect(programAFollowups.items.map((item) => item.followupId)).toEqual([
+      followupA2.followupId,
+      followupA1.followupId,
+    ]);
   });
 
   it("keeps completed Program history readable and rejects cross-Program, completed, and nonce-reused writes", async () => {

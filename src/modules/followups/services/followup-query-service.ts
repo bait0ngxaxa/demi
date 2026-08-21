@@ -6,9 +6,9 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   getAccessibleGoalPlanActivityContext,
-  getAccessibleGoalPlanOptions,
   getAccessibleGoalPlanActivityContextForProgram,
   getAccessibleGoalPlanOptionsForProgram,
+  getAccessiblePreProgramGoalPlanOptions,
   type AccessibleGoalPlanReference,
 } from "@/modules/goals/services/goal-query-service";
 import { goalPlanIdSchema } from "@/modules/goals/schemas/goal-schemas";
@@ -379,7 +379,7 @@ async function getOptionalGoalPlanOptions(
   database: FollowupQueryDatabase,
 ): Promise<AccessibleGoalPlanReference[]> {
   try {
-    return await getAccessibleGoalPlanOptions(actor, relationshipId, { database });
+    return await getAccessiblePreProgramGoalPlanOptions(actor, relationshipId, { database });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
       return [];
@@ -467,7 +467,7 @@ export async function getFollowupHistory(
     );
     const records = await database.patientFollowup.findMany({
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
-      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+      orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
       take: FOLLOWUP_HISTORY_LIMIT,
       select: followupHistorySelect,
     });

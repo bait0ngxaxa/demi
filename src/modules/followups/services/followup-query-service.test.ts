@@ -15,6 +15,7 @@ import {
 } from "@/shared/errors/application-error";
 
 const mockedGoalOptions = vi.hoisted(() => vi.fn());
+const mockedPreProgramGoalOptions = vi.hoisted(() => vi.fn());
 const mockedGoalDetail = vi.hoisted(() => vi.fn());
 const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
 
@@ -42,6 +43,7 @@ vi.mock("./followup-access-service", async (importOriginal) => {
 
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanOptions: mockedGoalOptions,
+  getAccessiblePreProgramGoalPlanOptions: mockedPreProgramGoalOptions,
   getAccessibleGoalPlanActivityContext: mockedGoalDetail,
 }));
 
@@ -215,6 +217,8 @@ describe("Follow-up query service", () => {
     mockedFollowupAccessState.denyRecord = false;
     mockedGoalOptions.mockReset();
     mockedGoalOptions.mockResolvedValue([]);
+    mockedPreProgramGoalOptions.mockReset();
+    mockedPreProgramGoalOptions.mockResolvedValue([]);
     mockedGoalDetail.mockReset();
   });
 
@@ -238,7 +242,7 @@ describe("Follow-up query service", () => {
     expect(database.patientFollowup.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 50,
-        orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+        orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
       }),
     );
     const query = vi.mocked(database.patientFollowup.findMany).mock.calls[0]?.[0];
@@ -264,8 +268,8 @@ describe("Follow-up query service", () => {
     );
   });
 
-  it("loads only completed Appointment options and explicit historical Goal Plan options", async () => {
-    mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
+  it("loads only completed Appointment options and pre-Program Goal Plan options", async () => {
+    mockedPreProgramGoalOptions.mockResolvedValueOnce([goalPlan]);
     const database = createDatabase();
 
     const context = await getFollowupCreateContext(actor, relationshipId, appointmentId, { database });
@@ -276,15 +280,15 @@ describe("Follow-up query service", () => {
     expect(database.patientAppointment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { patientHospitalRelationshipId: relationshipId, status: "COMPLETED" } }),
     );
-    expect(mockedGoalOptions).toHaveBeenCalledWith(
+    expect(mockedPreProgramGoalOptions).toHaveBeenCalledWith(
       actor,
       relationshipId,
       expect.objectContaining({ database }),
     );
   });
 
-  it("preselects only an exact relationship-scoped Goal Plan", async () => {
-    mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
+  it("preselects only an exact pre-Program Goal Plan", async () => {
+    mockedPreProgramGoalOptions.mockResolvedValueOnce([goalPlan]);
     const database = createDatabase();
 
     const context = await getFollowupCreateContext(actor, relationshipId, undefined, {
@@ -295,8 +299,8 @@ describe("Follow-up query service", () => {
     expect(context.selectedGoalPlanId).toBe(goalPlanId);
   });
 
-  it("rejects a Goal Plan that is not in the exact relationship projection", async () => {
-    mockedGoalOptions.mockResolvedValueOnce([goalPlan]);
+  it("rejects a Goal Plan that is not in the exact pre-Program projection", async () => {
+    mockedPreProgramGoalOptions.mockResolvedValueOnce([goalPlan]);
     const database = createDatabase();
 
     await expect(
@@ -308,7 +312,7 @@ describe("Follow-up query service", () => {
   });
 
   it("keeps standalone setup usable when Goal read access is denied", async () => {
-    mockedGoalOptions.mockRejectedValueOnce(new ForbiddenError());
+    mockedPreProgramGoalOptions.mockRejectedValueOnce(new ForbiddenError());
 
     const context = await getFollowupCreateContext(actor, relationshipId, undefined, {
       database: createDatabase(),
@@ -318,7 +322,7 @@ describe("Follow-up query service", () => {
   });
 
   it("propagates optional Goal infrastructure failures", async () => {
-    mockedGoalOptions.mockRejectedValueOnce(new InfrastructureError("Goal service unavailable"));
+    mockedPreProgramGoalOptions.mockRejectedValueOnce(new InfrastructureError("Goal service unavailable"));
 
     await expect(
       getFollowupCreateContext(actor, relationshipId, undefined, { database: createDatabase() }),
@@ -331,7 +335,7 @@ describe("Follow-up query service", () => {
     await expect(
       getFollowupCreateContext(actor, relationshipId, appointmentId, { database }),
     ).rejects.toBeInstanceOf(NotFoundError);
-    expect(mockedGoalOptions).not.toHaveBeenCalled();
+    expect(mockedPreProgramGoalOptions).not.toHaveBeenCalled();
   });
 
   it("renders detail from the exact historical Goal Plan context", async () => {
