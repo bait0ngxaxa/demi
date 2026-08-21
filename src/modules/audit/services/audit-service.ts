@@ -9,6 +9,14 @@ import { auditEventInputSchema, type AuditEventInput } from "../schemas/audit-sc
 
 export type AuditDatabase = Pick<PrismaClient, "auditEvent"> | Prisma.TransactionClient;
 
+function isKnownRequestError(error: unknown, code: string): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
+}
+
+function isRetryableTransactionError(error: unknown): boolean {
+  return isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034");
+}
+
 export async function recordAuditEvent(
   input: AuditEventInput,
   database?: AuditDatabase,
@@ -35,7 +43,18 @@ export async function recordAuditEvent(
         metadata,
       },
     });
-  } catch {
+  } catch (error: unknown) {
+    // Let the enclosing serializable service transaction retry known write
+    // conflicts instead of converting them into a terminal infrastructure error.
+    if (isRetryableTransactionError(error)) {
+      throw error;
+    }
+
     throw new InfrastructureError("Audit event could not be persisted");
   }
 }
+
+export const auditServiceInternals = {
+  isKnownRequestError,
+  isRetryableTransactionError,
+};

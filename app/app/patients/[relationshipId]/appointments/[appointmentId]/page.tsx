@@ -23,6 +23,7 @@ import {
   getPatientProgramPageContext,
   type PatientProgramProjection,
 } from "@/modules/patient-program/services/patient-program-query-service";
+import { getAppointmentFollowupContext } from "@/modules/appointments/presentation/appointment-followup-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
@@ -88,11 +89,12 @@ function AppointmentDetailView({
   const locationLabel = detail.locationType
     ? APPOINTMENT_LOCATION_LABELS[detail.locationType]
     : "ไม่ระบุสถานที่";
-  const followupHref = activeProgram && canRecordProgram
-    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`
-    : activeProgram
-      ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}`
-    : `/app/patients/${encodeURIComponent(relationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`;
+  const followupContext = getAppointmentFollowupContext({
+    activeProgram,
+    appointmentId: detail.appointmentId,
+    canRecordProgram,
+    relationshipId,
+  });
 
   return (
     <div className="max-w-5xl">
@@ -121,16 +123,12 @@ function AppointmentDetailView({
         {detail.status === "COMPLETED" ? (
           <Alert variant="info">
             <p className="font-semibold">นัดหมายนี้เสร็จสิ้นแล้ว</p>
-            <p className="mt-1">คุณสามารถบันทึกการติดตามผลเป็นรายการใหม่ได้</p>
+            <p className="mt-1">{followupContext.description}</p>
             <Link
               className="mt-3 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={followupHref}
+              href={followupContext.href}
             >
-              {activeProgram
-                ? canRecordProgram
-                  ? "บันทึกการติดตามผลในโปรแกรมปัจจุบัน"
-                  : "ดูโปรแกรมปัจจุบัน"
-                : "บันทึกการติดตามผล"}
+              {followupContext.label}
             </Link>
           </Alert>
         ) : null}

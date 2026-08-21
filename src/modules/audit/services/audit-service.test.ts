@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { recordAuditEvent, type AuditDatabase } from "./audit-service";
@@ -31,5 +32,32 @@ describe("audit service", () => {
       resourceType: "TestResource",
       resourceId: "resource-1",
     });
+  });
+
+  it("preserves retryable transaction conflicts for the enclosing service", async () => {
+    const conflict = new Prisma.PrismaClientKnownRequestError("serialization conflict", {
+      code: "P2034",
+      clientVersion: "test",
+    });
+    const database = {
+      auditEvent: {
+        create: async () => {
+          throw conflict;
+        },
+      },
+    } as unknown as AuditDatabase;
+
+    await expect(
+      recordAuditEvent(
+        {
+          actorUserId: null,
+          action: "foundation.test",
+          resourceType: "TestResource",
+          resourceId: "resource-1",
+          metadata: { result: "ok" },
+        },
+        database,
+      ),
+    ).rejects.toBe(conflict);
   });
 });
