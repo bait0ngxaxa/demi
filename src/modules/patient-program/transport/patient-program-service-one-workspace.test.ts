@@ -259,6 +259,36 @@ describe("Service 1 workspace presentation", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("does not claim association failed when the association call throws", async () => {
+    const uploadFormData = new FormData();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ artifactId }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      }),
+    );
+    const associateAction = vi.fn().mockRejectedValue(new Error("transport failure"));
+    const refresh = vi.fn();
+
+    const result = await patientProgramServiceOneWorkspaceInternals.uploadAndAssociateEvidence({
+      activityKey: "DREAM_CARD",
+      associateAction,
+      fetcher,
+      formData: uploadFormData,
+      programId,
+      refresh,
+      relationshipId,
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      message:
+        "อัปโหลดรูปเรียบร้อยแล้ว แต่ยังยืนยันสถานะการเชื่อมโยงกับกิจกรรมไม่ได้ กรุณาตรวจสอบข้อมูลล่าสุดก่อนลองอีกครั้ง",
+    });
+    expect(result.status).not.toBe("success");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes authoritative evidence state when an upload response is incomplete", async () => {
     const uploadFormData = new FormData();
     const fetcher = vi.fn().mockResolvedValue(

@@ -44,7 +44,8 @@ Server, application service, policy และ Prisma ยังคงเป็น
 - ลบคำว่า `episode` ที่แสดงต่อผู้ใช้และใช้ภาษาผลิตภัณฑ์ เช่น โปรแกรมรอบใหม่และประวัติโปรแกรม
 - Progress badge ใช้ neutral presentation เสมอ พร้อมข้อความเดิมเชิงโครงสร้างและคำอธิบายว่าไม่ใช่เกณฑ์ผ่านหรือผลลัพธ์ทางคลินิก
 - ปรับ evidence association feedback ให้แยกชัดเจนระหว่าง upload สำเร็จ กับ association สำเร็จ หาก association ล้มเหลวจะ refresh authoritative state และไม่แสดง attached success
-- กรณี upload response ไม่สมบูรณ์หรือ server action สำหรับ association โยน error จะ refresh และแสดงข้อความที่ไม่อ้างว่าผูกกับกิจกรรมแล้ว
+- กรณี upload response ไม่สมบูรณ์จะ refresh และแสดงข้อความที่ไม่อ้างว่าผูกกับกิจกรรมแล้ว
+- หาก association Server Action คืน application-level `ERROR` ถือเป็น association ที่ล้มเหลวแน่นอนและแสดง deterministic failure; หาก action โยน error จาก transport/runtime จะถือว่าผลลัพธ์ยังไม่ทราบแน่ชัด โดย refresh authoritative state และแจ้งให้ตรวจสอบข้อมูลล่าสุดก่อนลองอีกครั้ง
 
 ### Regression coverage
 
@@ -55,6 +56,7 @@ Server, application service, policy และ Prisma ยังคงเป็น
 - OSM ที่เคยเปิดหน้า Program ขณะ assigned แต่ถูก unassign ก่อน submit mutation
 - structural progress ที่ไม่ใช้ success styling เมื่อครบ 4 รายการ
 - incomplete upload response ที่ต้อง refresh และไม่เรียก association
+- association action ที่โยน error ซึ่งต้อง refresh หนึ่งครั้งและสื่อว่า association outcome ยังยืนยันไม่ได้
 
 ## Program journey after hardening
 
