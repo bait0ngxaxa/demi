@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+
 import {
   FOLLOWUP_PROGRESS_STATUS_VALUES,
   type FollowupProgressStatus,
@@ -35,9 +37,8 @@ export const followupActivityProgressInputSchema = z
   })
   .strict();
 
-export const followupCreateRequestSchema = z
+const followupPayloadSchema = z
   .object({
-    patientHospitalRelationshipId: followupRelationshipIdSchema,
     submissionNonce: followupSubmissionNonceSchema,
     appointmentId: followupAppointmentIdSchema.nullable().optional(),
     sourceGoalPlanId: followupGoalPlanIdSchema.nullable().optional(),
@@ -71,7 +72,16 @@ export const followupCreateRequestSchema = z
   })
   .strict();
 
+export const followupCreateRequestSchema = followupPayloadSchema
+  .extend({ patientHospitalRelationshipId: followupRelationshipIdSchema })
+  .strict();
+
+export const followupProgramCreateRequestSchema = followupPayloadSchema
+  .extend({ patientProgramId: patientProgramIdSchema })
+  .strict();
+
 export type FollowupCreateRequest = z.output<typeof followupCreateRequestSchema>;
+export type FollowupProgramCreateRequest = z.output<typeof followupProgramCreateRequestSchema>;
 
 export type FollowupActivityProgressInput = z.output<
   typeof followupActivityProgressInputSchema

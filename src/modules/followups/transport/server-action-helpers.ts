@@ -17,6 +17,23 @@ const FOLLOWUP_FORM_FIELDS = new Set([
   "activityProgress",
 ]);
 
+const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
+  "patientProgramId",
+  "submissionNonce",
+  "appointmentId",
+  "sourceGoalPlanId",
+  "weight",
+  "waistCircumference",
+  "systolicBloodPressure",
+  "diastolicBloodPressure",
+  "bloodSugar",
+  "confidenceScore",
+  "reflectionNote",
+  "confidencePlan",
+  "generalNote",
+  "activityProgress",
+]);
+
 function getSingleString(formData: FormData, field: string): string | undefined {
   const values = formData.getAll(field);
 
@@ -56,7 +73,10 @@ function getOptionalNumber(formData: FormData, field: string): number | null | u
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
+function hasUnexpectedOrDuplicateFieldsFor(
+  formData: FormData,
+  allowedFields: ReadonlySet<string>,
+): boolean {
   const seen = new Set<string>();
 
   for (const key of formData.keys()) {
@@ -64,7 +84,7 @@ export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
       continue;
     }
 
-    if (!FOLLOWUP_FORM_FIELDS.has(key) || seen.has(key)) {
+    if (!allowedFields.has(key) || seen.has(key)) {
       return true;
     }
 
@@ -72,6 +92,28 @@ export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
   }
 
   return false;
+}
+
+export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
+  return hasUnexpectedOrDuplicateFieldsFor(formData, FOLLOWUP_FORM_FIELDS);
+}
+
+function buildFollowupPayloadInput(formData: FormData): Record<string, unknown> {
+  return {
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+    appointmentId: getOptionalString(formData, "appointmentId"),
+    sourceGoalPlanId: getOptionalString(formData, "sourceGoalPlanId"),
+    weight: getOptionalNumber(formData, "weight"),
+    waistCircumference: getOptionalNumber(formData, "waistCircumference"),
+    systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
+    diastolicBloodPressure: getOptionalNumber(formData, "diastolicBloodPressure"),
+    bloodSugar: getOptionalNumber(formData, "bloodSugar"),
+    confidenceScore: getOptionalNumber(formData, "confidenceScore"),
+    reflectionNote: getOptionalString(formData, "reflectionNote"),
+    confidencePlan: getOptionalString(formData, "confidencePlan"),
+    generalNote: getOptionalString(formData, "generalNote"),
+    activityProgress: parseActivityProgress(formData),
+  } satisfies Record<string, unknown>;
 }
 
 export function parseActivityProgress(formData: FormData): unknown {
@@ -95,19 +137,18 @@ export function buildSubmissionInput(formData: FormData): unknown {
 
   return {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    appointmentId: getOptionalString(formData, "appointmentId"),
-    sourceGoalPlanId: getOptionalString(formData, "sourceGoalPlanId"),
-    weight: getOptionalNumber(formData, "weight"),
-    waistCircumference: getOptionalNumber(formData, "waistCircumference"),
-    systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
-    diastolicBloodPressure: getOptionalNumber(formData, "diastolicBloodPressure"),
-    bloodSugar: getOptionalNumber(formData, "bloodSugar"),
-    confidenceScore: getOptionalNumber(formData, "confidenceScore"),
-    reflectionNote: getOptionalString(formData, "reflectionNote"),
-    confidencePlan: getOptionalString(formData, "confidencePlan"),
-    generalNote: getOptionalString(formData, "generalNote"),
-    activityProgress: parseActivityProgress(formData),
+    ...buildFollowupPayloadInput(formData),
+  } satisfies Record<string, unknown>;
+}
+
+export function buildProgramSubmissionInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFieldsFor(formData, FOLLOWUP_PROGRAM_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    ...buildFollowupPayloadInput(formData),
   } satisfies Record<string, unknown>;
 }
 
@@ -153,6 +194,7 @@ export function mapFollowupError(error: unknown): {
 
 export const followupTransportInternals = {
   buildSubmissionInput,
+  buildProgramSubmissionInput,
   hasUnexpectedOrDuplicateFields,
   mapFollowupError,
   parseActivityProgress,

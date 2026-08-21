@@ -6,6 +6,7 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedCreate = vi.hoisted(() => vi.fn());
+const mockedCreateForProgram = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
@@ -13,14 +14,16 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 }));
 vi.mock("../services/goal-service", () => ({
   createGoalPlan: mockedCreate,
+  createGoalPlanForProgram: mockedCreateForProgram,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
 
 import { initialGoalPlanActionState } from "./action-state";
 import * as serverActions from "./server-actions";
-import { submitGoalPlanAction } from "./server-actions";
+import { submitGoalPlanAction, submitGoalPlanForProgramAction } from "./server-actions";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
+const programId = "77777777-7777-4777-8777-777777777777";
 const nonce = "22222222-2222-4222-8222-222222222222";
 const goalPlanId = "33333333-3333-4333-8333-333333333333";
 
@@ -50,6 +53,13 @@ function goalPlanFormData(): FormData {
   return data;
 }
 
+function programGoalPlanFormData(): FormData {
+  const data = goalPlanFormData();
+  data.delete("patientHospitalRelationshipId");
+  data.set("patientProgramId", programId);
+  return data;
+}
+
 describe("Goal Plan Server Action", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,11 +71,23 @@ describe("Goal Plan Server Action", () => {
       roundNumber: 1,
       createdAt: new Date("2026-08-16T05:00:00.000Z"),
     });
+    mockedCreateForProgram.mockResolvedValue({
+      goalPlanId,
+      patientProgramId: programId,
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId: "66666666-6666-4666-8666-666666666666",
+      roundNumber: 1,
+      createdAt: new Date("2026-08-16T05:00:00.000Z"),
+    });
   });
 
   it("exports only the async Server Action", () => {
-    expect(Object.keys(serverActions)).toEqual(["submitGoalPlanAction"]);
+    expect(Object.keys(serverActions)).toEqual([
+      "submitGoalPlanAction",
+      "submitGoalPlanForProgramAction",
+    ]);
     expect(serverActions.submitGoalPlanAction.constructor.name).toBe("AsyncFunction");
+    expect(serverActions.submitGoalPlanForProgramAction.constructor.name).toBe("AsyncFunction");
   });
 
   it("passes only raw form data and opaque references to the service", async () => {
@@ -121,6 +143,31 @@ describe("Goal Plan Server Action", () => {
       code: "FORBIDDEN",
       message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนเป้าหมายสำหรับผู้ป่วยรายนี้",
     });
+  });
+
+  it("requires only the Program identifier on the Program-scoped action", async () => {
+    const result = await submitGoalPlanForProgramAction(
+      initialGoalPlanActionState,
+      programGoalPlanFormData(),
+    );
+
+    expect(result).toMatchObject({ status: "SUCCESS", result: { goalPlanId, roundNumber: 1 } });
+    expect(mockedCreateForProgram).toHaveBeenCalledWith(actor, {
+      patientProgramId: programId,
+      submissionNonce: nonce,
+      sourceScreeningAssessmentId: null,
+      primaryGoalCode: "weight",
+      primaryGoalNote: "หมายเหตุต้นแบบ",
+      weeklyNote: "บันทึกรายสัปดาห์",
+      items: [
+        { activityCode: "stop_sweet", targetDays: 4 },
+        { activityCode: "exercise_walk", targetDays: 3, targetValue: 15, targetUnit: "minutes" },
+      ],
+    });
+    expect(mockedCreateForProgram).not.toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({ patientHospitalRelationshipId: expect.any(String) }),
+    );
   });
 });
 

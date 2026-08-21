@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { followupCreateRequestSchema } from "./followup-schemas";
+import {
+  followupCreateRequestSchema,
+  followupProgramCreateRequestSchema,
+} from "./followup-schemas";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
+const programId = "55555555-5555-4555-8555-555555555555";
 const appointmentId = "22222222-2222-4222-8222-222222222222";
 const goalPlanId = "33333333-3333-4333-8333-333333333333";
 const nonce = "44444444-4444-4444-8444-444444444444";
@@ -31,6 +35,19 @@ function validInput(): Record<string, unknown> {
 describe("Follow-up schemas", () => {
   it("accepts the strict provisional shape", () => {
     expect(followupCreateRequestSchema.safeParse(validInput()).success).toBe(true);
+  });
+
+  it("accepts Program scope without accepting a browser-supplied relationship scope", () => {
+    const programInput: Record<string, unknown> = { ...validInput(), patientProgramId: programId };
+    delete programInput.patientHospitalRelationshipId;
+
+    expect(followupProgramCreateRequestSchema.safeParse(programInput).success).toBe(true);
+    expect(
+      followupProgramCreateRequestSchema.safeParse({
+        ...programInput,
+        patientHospitalRelationshipId: relationshipId,
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects browser authority fields", () => {

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+
 export const GOAL_PLAN_PRIMARY_NOTE_MAX_LENGTH = 1_000;
 export const GOAL_PLAN_WEEKLY_NOTE_MAX_LENGTH = 2_000;
 export const GOAL_PLAN_MAX_ITEMS = 20;
@@ -18,9 +20,8 @@ export const goalPlanItemSchema = z
   })
   .strict();
 
-export const goalPlanSubmitRequestSchema = z
+const goalPlanPayloadSchema = z
   .object({
-    patientHospitalRelationshipId: goalPlanRelationshipIdSchema,
     submissionNonce: goalPlanSubmissionNonceSchema,
     sourceScreeningAssessmentId: goalPlanSourceScreeningIdSchema.nullable().optional(),
     primaryGoalCode: z.string().trim().min(1).max(64),
@@ -34,4 +35,13 @@ export const goalPlanSubmitRequestSchema = z
   })
   .strict();
 
+export const goalPlanSubmitRequestSchema = goalPlanPayloadSchema
+  .extend({ patientHospitalRelationshipId: goalPlanRelationshipIdSchema })
+  .strict();
+
+export const goalPlanProgramSubmitRequestSchema = goalPlanPayloadSchema
+  .extend({ patientProgramId: patientProgramIdSchema })
+  .strict();
+
 export type GoalPlanSubmitRequest = z.output<typeof goalPlanSubmitRequestSchema>;
+export type GoalPlanProgramSubmitRequest = z.output<typeof goalPlanProgramSubmitRequestSchema>;

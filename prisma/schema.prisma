@@ -271,6 +271,7 @@ model ScreeningAssessment {
 model PatientGoalPlan {
   id                            String   @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String   @db.Uuid
+  patientProgramId              String?  @db.Uuid
   createdByUserId               String   @db.Uuid
   sourceScreeningAssessmentId   String?  @db.Uuid
   submissionNonce               String   @unique @db.Uuid
@@ -283,13 +284,19 @@ model PatientGoalPlan {
   createdAt                     DateTime @default(now())
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  patientProgram              PatientProgram?             @relation("PatientProgramGoalPlans", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                       @relation("PatientGoalPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   sourceScreeningAssessment   ScreeningAssessment?       @relation("GoalPlanSourceScreening", fields: [sourceScreeningAssessmentId], references: [id], onDelete: Restrict)
   items                       PatientGoalItem[]
   followupsSourced             PatientFollowup[]          @relation("PatientFollowupSourceGoalPlan")
+  followupsSourcedProgramScoped PatientFollowup[]          @relation("PatientFollowupSourceGoalPlanProgramScoped")
 
-  @@unique([patientHospitalRelationshipId, roundNumber])
+  // This composite identity is the target of the linked Follow-up -> Goal Plan FK.
+  @@unique([id, patientProgramId, patientHospitalRelationshipId])
+  // The nullable historical namespace is guarded by a partial SQL index in the migration.
+  @@unique([patientProgramId, roundNumber])
   @@index([patientHospitalRelationshipId, createdAt])
+  @@index([patientProgramId, createdAt])
 }
 
 model PatientGoalItem {
@@ -338,6 +345,7 @@ model PatientAppointment {
 model PatientFollowup {
   id                            String   @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String   @db.Uuid
+  patientProgramId              String?  @db.Uuid
   appointmentId                String?  @db.Uuid
   sourceGoalPlanId              String?  @db.Uuid
   createdByUserId               String   @db.Uuid
@@ -357,13 +365,17 @@ model PatientFollowup {
   createdAt                    DateTime @default(now()) @db.Timestamptz(3)
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  patientProgram              PatientProgram?             @relation("PatientProgramFollowups", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   appointment                 PatientAppointment?         @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   sourceGoalPlan              PatientGoalPlan?            @relation("PatientFollowupSourceGoalPlan", fields: [sourceGoalPlanId], references: [id], onDelete: Restrict)
+  sourceGoalPlanProgramScoped PatientGoalPlan?            @relation("PatientFollowupSourceGoalPlanProgramScoped", fields: [sourceGoalPlanId, patientProgramId, patientHospitalRelationshipId], references: [id, patientProgramId, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                       @relation("PatientFollowupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   activityProgress            PatientFollowupActivityProgress[]
 
-  @@unique([patientHospitalRelationshipId, roundNumber])
+  // The nullable historical namespace is guarded by a partial SQL index in the migration.
+  @@unique([patientProgramId, roundNumber])
   @@index([patientHospitalRelationshipId, recordedAt])
+  @@index([patientProgramId, recordedAt])
   @@index([appointmentId])
   @@index([sourceGoalPlanId])
 }
@@ -408,6 +420,8 @@ model PatientProgram {
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   initialBaseline             PatientBaseline?            @relation("PatientProgramInitialBaseline", fields: [initialBaselineId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                        @relation("PatientProgramCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  goalPlans                    PatientGoalPlan[]           @relation("PatientProgramGoalPlans")
+  followups                    PatientFollowup[]           @relation("PatientProgramFollowups")
   serviceOneRoutine           PatientProgramServiceOneRoutine?
   serviceOneFloatingChart     PatientProgramServiceOneFloatingChart?
   serviceOneDreamCard         PatientProgramServiceOneDreamCard?

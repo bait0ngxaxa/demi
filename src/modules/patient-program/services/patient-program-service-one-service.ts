@@ -1,6 +1,6 @@
 import "server-only";
 
-import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -14,7 +14,6 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "../policies/patient-program-policy";
 import {
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
@@ -29,7 +28,10 @@ import {
   type PatientProgramServiceOneFloatingChartRequest,
   type PatientProgramServiceOneRoutineRequest,
 } from "../schemas/patient-program-service-one-schemas";
-import { resolvePatientProgramByIdAccessContext } from "./patient-program-access-service";
+import {
+  lockActivePatientProgram,
+  patientProgramLifecycleSelect,
+} from "./patient-program-lifecycle-service";
 
 export type PatientProgramServiceOneDatabase = PrismaClient;
 
@@ -70,14 +72,6 @@ export type PatientProgramServiceOneArtifactAssociationResult = {
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
-
-const patientProgramLifecycleSelect = {
-  id: true,
-  patientHospitalRelationshipId: true,
-  status: true,
-  completedAt: true,
-  startedAt: true,
-} satisfies Prisma.PatientProgramSelect;
 
 const routineMutationSelect = {
   id: true,
@@ -122,9 +116,6 @@ const artifactAssociationSelect = {
   createdAt: true,
 } satisfies Prisma.PatientProgramServiceOneArtifactAssociationSelect;
 
-type PatientProgramLifecycleRecord = Prisma.PatientProgramGetPayload<{
-  select: typeof patientProgramLifecycleSelect;
-}>;
 function getDatabase(
   dependencies: PatientProgramServiceOneServiceDependencies,
 ): PatientProgramServiceOneDatabase {
@@ -186,55 +177,6 @@ async function runSerializable<T>(
       retryCount += 1;
     }
   }
-}
-
-async function lockActiveProgram(
-  transaction: Prisma.TransactionClient,
-  actor: ActorContext,
-  patientProgramId: string,
-): Promise<{
-  access: Awaited<ReturnType<typeof resolvePatientProgramByIdAccessContext>>;
-  program: PatientProgramLifecycleRecord;
-}> {
-  const access = await resolvePatientProgramByIdAccessContext(
-    actor,
-    patientProgramId,
-    PATIENT_PROGRAM_MANAGE_CAPABILITY,
-    transaction,
-  );
-  const program = await transaction.patientProgram.findFirst({
-    where: {
-      id: patientProgramId,
-      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-    },
-    select: patientProgramLifecycleSelect,
-  });
-
-  if (!program) {
-    throw new NotFoundError();
-  }
-
-  if (program.status !== PatientProgramStatus.ACTIVE || program.completedAt !== null) {
-    throw new ConflictError("ไม่สามารถบันทึกกิจกรรม Service 1 ในโปรแกรมที่เสร็จสิ้นแล้ว");
-  }
-
-  // The conditional write takes the same Program row lock as completion. If
-  // completion wins the serialization order, this update affects zero rows.
-  const locked = await transaction.patientProgram.updateMany({
-    where: {
-      id: program.id,
-      patientHospitalRelationshipId: program.patientHospitalRelationshipId,
-      status: PatientProgramStatus.ACTIVE,
-      completedAt: null,
-    },
-    data: { startedAt: program.startedAt },
-  });
-
-  if (locked.count !== 1) {
-    throw new ConflictError("โปรแกรมถูกเปลี่ยนสถานะแล้ว กรุณาตรวจสอบข้อมูลล่าสุด");
-  }
-
-  return { access, program };
 }
 
 function toMutationResult(
@@ -378,7 +320,7 @@ async function associateArtifactInTransaction(
   input: PatientProgramServiceOneArtifactAssociationRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneArtifactAssociationResult> {
-  const { access, program } = await lockActiveProgram(
+  const { access, program } = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
@@ -484,7 +426,7 @@ async function recordRoutineInTransaction(
   input: PatientProgramServiceOneRoutineRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActiveProgram(
+  const { access, program } = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
@@ -539,7 +481,7 @@ async function recordFloatingChartInTransaction(
   input: PatientProgramServiceOneFloatingChartRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActiveProgram(
+  const { access, program } = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
@@ -599,7 +541,7 @@ async function recordDreamCardInTransaction(
   input: PatientProgramServiceOneDreamCardRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActiveProgram(
+  const { access, program } = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
@@ -659,7 +601,7 @@ async function recordConfidenceInTransaction(
   input: PatientProgramServiceOneConfidenceRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActiveProgram(
+  const { access, program } = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
@@ -854,7 +796,7 @@ export const patientProgramServiceOneInternals = {
   dreamCardMutationSelect,
   floatingChartMutationSelect,
   isRetryableTransactionError,
-  lockActiveProgram,
+  lockActiveProgram: lockActivePatientProgram,
   normalizeDatabaseError,
   patientProgramLifecycleSelect,
   recordConfidenceInTransaction,

@@ -7,7 +7,16 @@ import { AppointmentStatus, Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { getAccessibleGoalPlanActivityContext } from "@/modules/goals/services/goal-query-service";
+import {
+  getAccessibleGoalPlanActivityContext,
+  getAccessibleGoalPlanActivityContextForProgram,
+} from "@/modules/goals/services/goal-query-service";
+import {
+  resolvePatientProgramByIdAccessContext,
+  type PatientProgramAccessContext,
+} from "@/modules/patient-program/services/patient-program-access-service";
+import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
+import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
   ConflictError,
@@ -20,6 +29,8 @@ import type { FollowupProgressStatus } from "../domain/followup-definitions";
 import { FOLLOWUP_RECORD_CAPABILITY } from "../policies/followup-policy";
 import {
   followupCreateRequestSchema,
+  followupProgramCreateRequestSchema,
+  type FollowupProgramCreateRequest,
   type FollowupCreateRequest,
 } from "../schemas/followup-schemas";
 import { resolveFollowupAccessContext } from "./followup-access-service";
@@ -34,6 +45,7 @@ export type FollowupServiceDependencies = {
 
 export type FollowupSubmissionResult = {
   followupId: string;
+  patientProgramId: string | null;
   patientHospitalRelationshipId: string;
   hospitalId: string;
   roundNumber: number;
@@ -49,6 +61,7 @@ type NormalizedFollowupProgress = {
 
 type NormalizedFollowupRequest = {
   patientHospitalRelationshipId: string;
+  patientProgramId: string | null;
   submissionNonce: string;
   appointmentId: string | null;
   sourceGoalPlanId: string | null;
@@ -69,6 +82,7 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const followupRetrySelect = {
   id: true,
   patientHospitalRelationshipId: true,
+  patientProgramId: true,
   createdByUserId: true,
   submissionNonce: true,
   submissionRequestHash: true,
@@ -84,6 +98,7 @@ type FollowupRetryRecord = Prisma.PatientFollowupGetPayload<{
 const followupSubmissionSelect = {
   id: true,
   patientHospitalRelationshipId: true,
+  patientProgramId: true,
   roundNumber: true,
   recordedAt: true,
   createdAt: true,
@@ -159,9 +174,13 @@ function nullableUuid(value: string | null | undefined): string | null {
   return value ? value.toLowerCase() : null;
 }
 
-function normalizeFollowupInput(input: FollowupCreateRequest): NormalizedFollowupRequest {
+function normalizeFollowupInput(
+  input: FollowupCreateRequest,
+  patientProgramId: string | null = null,
+): NormalizedFollowupRequest {
   return {
     patientHospitalRelationshipId: input.patientHospitalRelationshipId.toLowerCase(),
+    patientProgramId: patientProgramId?.toLowerCase() ?? null,
     submissionNonce: input.submissionNonce.toLowerCase(),
     appointmentId: nullableUuid(input.appointmentId),
     sourceGoalPlanId: nullableUuid(input.sourceGoalPlanId),
@@ -192,6 +211,7 @@ function createFollowupRequestHash(
   const canonicalPayload = {
     actorUserId: actor.userId.toLowerCase(),
     patientHospitalRelationshipId,
+    ...(input.patientProgramId ? { patientProgramId: input.patientProgramId } : {}),
     appointmentId: input.appointmentId,
     sourceGoalPlanId: input.sourceGoalPlanId,
     weight: input.weight,
@@ -215,6 +235,7 @@ function toSubmissionResult(
 ): FollowupSubmissionResult {
   return {
     followupId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     patientHospitalRelationshipId: record.patientHospitalRelationshipId,
     hospitalId,
     roundNumber: record.roundNumber,
@@ -228,9 +249,11 @@ function hasSameCreateRequestIdentity(
   actor: ActorContext,
   patientHospitalRelationshipId: string,
   submissionRequestHash: string,
+  patientProgramId: string | null = null,
 ): boolean {
   return (
     existing.patientHospitalRelationshipId === patientHospitalRelationshipId &&
+    (existing.patientProgramId ?? null) === patientProgramId &&
     existing.createdByUserId === actor.userId &&
     existing.submissionRequestHash === submissionRequestHash
   );
@@ -270,12 +293,19 @@ async function assertGoalActivityProgress(
     return;
   }
 
-  const goalPlan = await getAccessibleGoalPlanActivityContext(
-    actor,
-    input.patientHospitalRelationshipId,
-    input.sourceGoalPlanId,
-    { database: transaction },
-  );
+  const goalPlan = input.patientProgramId
+    ? await getAccessibleGoalPlanActivityContextForProgram(
+        actor,
+        input.patientProgramId,
+        input.sourceGoalPlanId,
+        { database: transaction },
+      )
+    : await getAccessibleGoalPlanActivityContext(
+        actor,
+        input.patientHospitalRelationshipId,
+        input.sourceGoalPlanId,
+        { database: transaction },
+      );
   const allowedActivityCodes = new Set(goalPlan.items.map((item) => item.activityCode));
 
   for (const progress of input.activityProgress) {
@@ -290,16 +320,34 @@ async function createInTransaction(
   actor: ActorContext,
   input: FollowupCreateRequest,
   now: Date,
+  patientProgramId: string | null = null,
+  programAccessOverride?: PatientProgramAccessContext,
 ): Promise<FollowupSubmissionResult> {
-  const normalized = normalizeFollowupInput(input);
-  const access = await resolveFollowupAccessContext(
-    actor,
+  const normalizedInput = normalizeFollowupInput(input, patientProgramId);
+  const programAccess = normalizedInput.patientProgramId
+    ? programAccessOverride ??
+      (await resolvePatientProgramByIdAccessContext(
+        actor,
+        normalizedInput.patientProgramId,
+        PATIENT_PROGRAM_MANAGE_CAPABILITY,
+        transaction,
+      ))
+    : null;
+  let authoritativeActor = programAccess?.actor ?? actor;
+  const normalized = programAccess
+    ? {
+        ...normalizedInput,
+        patientHospitalRelationshipId: programAccess.patient.patientHospitalRelationshipId,
+      }
+    : normalizedInput;
+  let access = await resolveFollowupAccessContext(
+    authoritativeActor,
     normalized.patientHospitalRelationshipId,
     FOLLOWUP_RECORD_CAPABILITY,
     transaction,
   );
   const submissionRequestHash = createFollowupRequestHash(
-    actor,
+    authoritativeActor,
     access.patient.patientHospitalRelationshipId,
     normalized,
   );
@@ -313,9 +361,10 @@ async function createInTransaction(
     if (
       !hasSameCreateRequestIdentity(
         existing,
-        actor,
+        authoritativeActor,
         access.patient.patientHospitalRelationshipId,
         submissionRequestHash,
+        normalized.patientProgramId,
       )
     ) {
       throw new ConflictError("This Follow-up submission token has already been used");
@@ -332,10 +381,30 @@ async function createInTransaction(
     );
   }
 
-  await assertGoalActivityProgress(transaction, actor, normalized);
+  await assertGoalActivityProgress(transaction, authoritativeActor, normalized);
+
+  if (normalized.patientProgramId) {
+    const locked = await lockActivePatientProgram(
+      transaction,
+      actor,
+      normalized.patientProgramId,
+    );
+    access = await resolveFollowupAccessContext(
+      actor,
+      locked.access.patient.patientHospitalRelationshipId,
+      FOLLOWUP_RECORD_CAPABILITY,
+      transaction,
+    );
+    authoritativeActor = locked.access.actor;
+  }
 
   const latest = await transaction.patientFollowup.findFirst({
-    where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
+    where: normalized.patientProgramId
+      ? { patientProgramId: normalized.patientProgramId }
+      : {
+          patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+          patientProgramId: null,
+        },
     orderBy: [{ roundNumber: "desc" }],
     select: { roundNumber: true },
   });
@@ -344,9 +413,10 @@ async function createInTransaction(
   const followup = await transaction.patientFollowup.create({
     data: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      patientProgramId: normalized.patientProgramId,
       appointmentId: normalized.appointmentId,
       sourceGoalPlanId: normalized.sourceGoalPlanId,
-      createdByUserId: actor.userId,
+      createdByUserId: authoritativeActor.userId,
       roundNumber,
       submissionNonce: normalized.submissionNonce,
       submissionRequestHash,
@@ -379,12 +449,15 @@ async function createInTransaction(
 
   await recordAuditEvent(
     {
-      actorUserId: actor.userId,
+      actorUserId: authoritativeActor.userId,
       action: "followup.created",
       resourceType: "PatientFollowup",
       resourceId: followup.id,
       metadata: {
         followupId: followup.id,
+        ...(normalized.patientProgramId
+          ? { patientProgramId: normalized.patientProgramId }
+          : {}),
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
         roundNumber: followup.roundNumber,
@@ -396,6 +469,19 @@ async function createInTransaction(
   );
 
   return toSubmissionResult(followup, access.target.hospitalId);
+}
+
+function toRelationshipFollowupInput(
+  input: FollowupProgramCreateRequest,
+  patientHospitalRelationshipId: string,
+): FollowupCreateRequest {
+  const { patientProgramId, ...payload } = input;
+  void patientProgramId;
+
+  return {
+    patientHospitalRelationshipId,
+    ...payload,
+  };
 }
 
 export async function createFollowup(
@@ -424,6 +510,51 @@ export async function createFollowup(
   }
 }
 
+export async function createFollowupForProgram(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: FollowupServiceDependencies = {},
+): Promise<FollowupSubmissionResult> {
+  const parsed = followupProgramCreateRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Program Follow-up submission data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        const programAccess = await resolvePatientProgramByIdAccessContext(
+          actor,
+          parsed.data.patientProgramId.toLowerCase(),
+          PATIENT_PROGRAM_MANAGE_CAPABILITY,
+          transaction,
+        );
+
+        return createInTransaction(
+          transaction,
+          actor,
+          toRelationshipFollowupInput(
+            parsed.data,
+            programAccess.patient.patientHospitalRelationshipId,
+          ),
+          getNow(dependencies),
+          parsed.data.patientProgramId,
+          programAccess,
+        );
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
 export const followupServiceInternals = {
   assertCompletedAppointment,
   assertGoalActivityProgress,
@@ -434,4 +565,5 @@ export const followupServiceInternals = {
   normalizeDatabaseError,
   normalizeFollowupInput,
   runSerializable,
+  toRelationshipFollowupInput,
 };

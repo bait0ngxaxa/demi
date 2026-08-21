@@ -25,6 +25,13 @@ function validFormData(): FormData {
   return formData;
 }
 
+function validProgramFormData(): FormData {
+  const formData = validFormData();
+  formData.delete("patientHospitalRelationshipId");
+  formData.set("patientProgramId", "33333333-3333-4333-8333-333333333333");
+  return formData;
+}
+
 describe("Follow-up transport", () => {
   it("exports only values accepted by the Next.js Server Action runtime", () => {
     expect(() => ensureServerEntryExports(Object.values(followupServerActions))).not.toThrow();
@@ -40,6 +47,24 @@ describe("Follow-up transport", () => {
       confidenceScore: 7,
       activityProgress: [],
     });
+  });
+
+  it("parses Program-scoped input without accepting relationship authority", () => {
+    const input = followupTransportInternals.buildProgramSubmissionInput(
+      validProgramFormData(),
+    ) as Record<string, unknown>;
+
+    expect(input).toMatchObject({
+      patientProgramId: "33333333-3333-4333-8333-333333333333",
+      activityProgress: [],
+    });
+
+    const withRelationship = validProgramFormData();
+    withRelationship.set(
+      "patientHospitalRelationshipId",
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(followupTransportInternals.buildProgramSubmissionInput(withRelationship)).toBeNull();
   });
 
   it("passes through a partial Goal activity progress selection", () => {

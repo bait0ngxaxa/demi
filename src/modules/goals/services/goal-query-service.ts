@@ -1,11 +1,22 @@
 import "server-only";
 
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  resolvePatientProgramByIdAccessContext,
+  type PatientProgramAccessContext,
+} from "@/modules/patient-program/services/patient-program-access-service";
+import {
+  PATIENT_PROGRAM_MANAGE_CAPABILITY,
+  PATIENT_PROGRAM_READ_CAPABILITY,
+  type PatientProgramCapability,
+} from "@/modules/patient-program/policies/patient-program-policy";
+import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import {
   ApplicationError,
+  ConflictError,
   ForbiddenError,
   InfrastructureError,
   NotFoundError,
@@ -48,6 +59,7 @@ export type GoalScreeningContext = ScreeningSummary;
 
 export type GoalHistoryItem = {
   goalPlanId: string;
+  patientProgramId: string | null;
   roundNumber: number;
   createdAt: Date;
   createdByDisplayName: string;
@@ -66,10 +78,18 @@ export type GoalPlanOverview = {
   items: GoalHistoryItem[];
 };
 
+export type GoalPlanProgramOverview = GoalPlanOverview & {
+  patientProgramId: string;
+};
+
 export type GoalPlanCreateContext = {
   patient: GoalPatientSummary;
   latestScreening: GoalScreeningContext | null;
   template: GoalTemplate;
+};
+
+export type GoalPlanProgramCreateContext = GoalPlanCreateContext & {
+  patientProgramId: string;
 };
 
 export type GoalPlanItemDetail = {
@@ -85,6 +105,7 @@ export type GoalPlanItemDetail = {
 export type GoalPlanDetail = {
   patient: GoalPatientSummary;
   goalPlanId: string;
+  patientProgramId: string | null;
   roundNumber: number;
   createdAt: Date;
   createdByDisplayName: string;
@@ -98,10 +119,15 @@ export type GoalPlanDetail = {
   items: GoalPlanItemDetail[];
 };
 
+export type GoalPlanProgramDetail = Omit<GoalPlanDetail, "patientProgramId"> & {
+  patientProgramId: string;
+};
+
 export type GoalPlanActivityReference = GoalPlanItemDetail;
 
 export type AccessibleGoalPlanReference = {
   goalPlanId: string;
+  patientProgramId: string | null;
   roundNumber: number;
   createdAt: Date;
   primaryGoalCode: string;
@@ -115,6 +141,7 @@ const GOAL_HISTORY_LIMIT = 50;
 
 const goalHistorySelect = {
   id: true,
+  patientProgramId: true,
   roundNumber: true,
   createdAt: true,
   primaryGoalCode: true,
@@ -138,6 +165,7 @@ const goalHistorySelect = {
 
 const goalDetailSelect = {
   id: true,
+  patientProgramId: true,
   roundNumber: true,
   createdAt: true,
   primaryGoalCode: true,
@@ -171,6 +199,7 @@ const goalDetailSelect = {
 
 const goalPlanReferenceSelect = {
   id: true,
+  patientProgramId: true,
   roundNumber: true,
   createdAt: true,
   primaryGoalCode: true,
@@ -205,6 +234,37 @@ type GoalPlanReferenceRecord = Prisma.PatientGoalPlanGetPayload<{
 
 function getDatabase(dependencies: GoalQueryDependencies): GoalQueryDatabase {
   return dependencies.database ?? getPrisma();
+}
+
+function toGoalPatientSummary(
+  access: PatientProgramAccessContext,
+): GoalPatientSummary {
+  return {
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    displayName: access.patient.displayName,
+    hospitalNumber: access.patient.hospitalNumber,
+    hospital: access.patient.hospital,
+  };
+}
+
+async function resolveGoalProgramAccess(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  database: GoalQueryDatabase,
+  capability: PatientProgramCapability = PATIENT_PROGRAM_READ_CAPABILITY,
+): Promise<PatientProgramAccessContext> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  return resolvePatientProgramByIdAccessContext(
+    actor,
+    parsedProgramId.data.toLowerCase(),
+    capability,
+    database,
+  );
 }
 
 function toDisplayName(person: {
@@ -254,6 +314,7 @@ function toHistoryItem(
 
   return {
     goalPlanId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     createdAt: record.createdAt,
     createdByDisplayName: toDisplayName(record.createdByUser.person),
@@ -277,6 +338,7 @@ function toDetail(
   return {
     patient,
     goalPlanId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     createdAt: record.createdAt,
     createdByDisplayName: toDisplayName(record.createdByUser.person),
@@ -313,6 +375,7 @@ function toGoalPlanReference(record: GoalPlanReferenceRecord): AccessibleGoalPla
 
   return {
     goalPlanId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     createdAt: record.createdAt,
     primaryGoalCode: record.primaryGoalCode,
@@ -445,6 +508,63 @@ export async function getGoalPlanOverview(
   }
 }
 
+export async function getGoalPlanOverviewForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<GoalPlanProgramOverview> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalProgramAccess(actor, parsedProgramId.data, database);
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = access.patient.patientHospitalRelationshipId;
+    const records = await database.patientGoalPlan.findMany({
+      where: {
+        patientProgramId: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+      },
+      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+      take: GOAL_HISTORY_LIMIT,
+      select: goalHistorySelect,
+    });
+    const latestScreening = await getLatestScreening(actor, database, relationshipId);
+    const historicalScreenings = await getHistoricalScreeningMap(
+      actor,
+      database,
+      relationshipId,
+      records,
+    );
+    const items = records.map((record) =>
+      toHistoryItem(
+        record,
+        record.sourceScreeningAssessmentId
+          ? historicalScreenings.get(record.sourceScreeningAssessmentId) ?? null
+          : null,
+      ),
+    );
+
+    return {
+      patientProgramId: normalizedProgramId,
+      patient: toGoalPatientSummary(access),
+      latestScreening,
+      latest: items[0] ?? null,
+      items,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Goal Plan history could not be loaded");
+  }
+}
+
 export async function getGoalPlanCreateContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
@@ -548,6 +668,128 @@ export async function getGoalPlanDetail(
   }
 }
 
+export async function getGoalPlanCreateContextForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  dependencies: GoalPlanCreateDependencies = {},
+): Promise<GoalPlanProgramCreateContext> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalProgramAccess(
+      actor,
+      parsedProgramId.data,
+      database,
+      PATIENT_PROGRAM_MANAGE_CAPABILITY,
+    );
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = access.patient.patientHospitalRelationshipId;
+    const program = await database.patientProgram.findFirst({
+      where: {
+        id: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+        status: PatientProgramStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+
+    if (!program) {
+      throw new ConflictError("The Patient Program is not active");
+    }
+
+    const template = getHistoricalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
+    const requestedScreeningId = dependencies.requestedScreeningId;
+    const latestScreening =
+      requestedScreeningId === undefined || requestedScreeningId === null || requestedScreeningId === ""
+        ? await getLatestScreening(access.actor, database, relationshipId)
+        : await getAccessibleScreeningSummary(
+            access.actor,
+            relationshipId,
+            requestedScreeningId,
+            { database },
+          );
+
+    return {
+      patientProgramId: normalizedProgramId,
+      patient: toGoalPatientSummary(access),
+      latestScreening,
+      template,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Goal Plan setup could not be loaded");
+  }
+}
+
+export async function getGoalPlanDetailForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  goalPlanId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<GoalPlanProgramDetail> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+  const parsedGoalPlanId = goalPlanIdSchema.safeParse(goalPlanId);
+
+  if (!parsedProgramId.success || !parsedGoalPlanId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalProgramAccess(actor, parsedProgramId.data, database);
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = access.patient.patientHospitalRelationshipId;
+    const record = await database.patientGoalPlan.findFirst({
+      where: {
+        id: parsedGoalPlanId.data,
+        patientProgramId: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+      },
+      select: goalDetailSelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    let sourceScreening: GoalScreeningContext | null = null;
+
+    if (record.sourceScreeningAssessmentId) {
+      try {
+        sourceScreening = await getAccessibleScreeningSummary(
+          actor,
+          relationshipId,
+          record.sourceScreeningAssessmentId,
+          { database },
+        );
+      } catch (error: unknown) {
+        if (!(error instanceof ForbiddenError)) {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      ...toDetail(record, toGoalPatientSummary(access), sourceScreening),
+      patientProgramId: normalizedProgramId,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Goal Plan detail could not be loaded");
+  }
+}
+
 export async function getAccessibleGoalPlanOptions(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
@@ -575,6 +817,40 @@ export async function getAccessibleGoalPlanOptions(
     }
 
     throw new InfrastructureError("Accessible Goal Plan references could not be loaded");
+  }
+}
+
+export async function getAccessibleGoalPlanOptionsForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference[]> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalProgramAccess(actor, parsedProgramId.data, database);
+    const records = await database.patientGoalPlan.findMany({
+      where: {
+        patientProgramId: parsedProgramId.data.toLowerCase(),
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      },
+      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+      take: GOAL_HISTORY_LIMIT,
+      select: goalPlanReferenceSelect,
+    });
+
+    return records.map(toGoalPlanReference);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Goal Plan references could not be loaded");
   }
 }
 
@@ -621,11 +897,51 @@ export async function getAccessibleGoalPlanActivityContext(
   }
 }
 
+export async function getAccessibleGoalPlanActivityContextForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  goalPlanId: unknown,
+  dependencies: GoalQueryDependencies = {},
+): Promise<AccessibleGoalPlanReference> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+  const parsedGoalPlanId = goalPlanIdSchema.safeParse(goalPlanId);
+
+  if (!parsedProgramId.success || !parsedGoalPlanId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveGoalProgramAccess(actor, parsedProgramId.data, database);
+    const record = await database.patientGoalPlan.findFirst({
+      where: {
+        id: parsedGoalPlanId.data,
+        patientProgramId: parsedProgramId.data.toLowerCase(),
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      },
+      select: goalPlanReferenceSelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    return toGoalPlanReference(record);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Goal Plan context could not be loaded");
+  }
+}
+
 export const goalQueryInternals = {
   assertHistoricalItems,
   getHistoricalTemplate,
   getHistoricalScreeningMap,
   getLatestScreening,
+  resolveGoalProgramAccess,
   getPrimaryGoalLabel,
   toDisplayName,
   toHistoryItem,

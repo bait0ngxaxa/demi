@@ -5,6 +5,12 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import {
+  resolvePatientProgramByIdAccessContext,
+  type PatientProgramAccessContext,
+} from "@/modules/patient-program/services/patient-program-access-service";
+import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
+import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import { getAccessibleScreeningSummary } from "@/modules/screening/services/screening-query-service";
 import {
   ApplicationError,
@@ -18,10 +24,15 @@ import { getGoalTemplate, GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION } from "../do
 import { validateGoalPlanInput, type ValidatedGoalPlan } from "../domain/goal-validation";
 import { GOAL_PLAN_CAPABILITY } from "../policies/goal-policy";
 import {
+  goalPlanProgramSubmitRequestSchema,
   goalPlanSubmitRequestSchema,
+  type GoalPlanProgramSubmitRequest,
   type GoalPlanSubmitRequest,
 } from "../schemas/goal-schemas";
-import { resolveGoalAccessContext } from "./goal-access-service";
+import {
+  resolveGoalAccessContext,
+  type GoalAccessContext,
+} from "./goal-access-service";
 
 export type GoalDatabase = PrismaClient;
 
@@ -33,6 +44,7 @@ export type GoalServiceDependencies = {
 
 export type GoalPlanSubmissionResult = {
   goalPlanId: string;
+  patientProgramId: string | null;
   patientHospitalRelationshipId: string;
   hospitalId: string;
   roundNumber: number;
@@ -42,6 +54,7 @@ export type GoalPlanSubmissionResult = {
 type GoalPlanRetrySnapshot = {
   id: string;
   patientHospitalRelationshipId: string;
+  patientProgramId: string | null;
   createdByUserId: string;
   sourceScreeningAssessmentId: string | null;
   submissionNonce: string;
@@ -66,6 +79,7 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const goalPlanRetrySelect = {
   id: true,
   patientHospitalRelationshipId: true,
+  patientProgramId: true,
   createdByUserId: true,
   sourceScreeningAssessmentId: true,
   submissionNonce: true,
@@ -158,9 +172,11 @@ function hasSamePlanPayload(
   existing: GoalPlanRetryRecord,
   actor: ActorContext,
   input: ValidatedGoalPlan,
+  patientProgramId: string | null = null,
 ): boolean {
   return (
     existing.patientHospitalRelationshipId === input.patientHospitalRelationshipId &&
+    (existing.patientProgramId ?? null) === patientProgramId &&
     existing.createdByUserId === actor.userId &&
     existing.sourceScreeningAssessmentId === input.sourceScreeningAssessmentId &&
     existing.submissionNonce === input.submissionNonce &&
@@ -193,6 +209,7 @@ async function assertSourceScreeningIsAccessible(
 
 function toSubmissionResult(input: {
   goalPlanId: string;
+  patientProgramId: string | null;
   patientHospitalRelationshipId: string;
   hospitalId: string;
   roundNumber: number;
@@ -201,26 +218,74 @@ function toSubmissionResult(input: {
   return input;
 }
 
+function toGoalAccessContext(programAccess: PatientProgramAccessContext): GoalAccessContext {
+  return {
+    patient: {
+      patientHospitalRelationshipId: programAccess.patient.patientHospitalRelationshipId,
+      displayName: programAccess.patient.displayName,
+      hospitalNumber: programAccess.patient.hospitalNumber,
+      hospital: programAccess.patient.hospital,
+    },
+    target: programAccess.target,
+  };
+}
+
+function toRelationshipGoalPlanInput(
+  input: GoalPlanProgramSubmitRequest,
+  patientHospitalRelationshipId: string,
+): GoalPlanSubmitRequest {
+  const { patientProgramId, ...payload } = input;
+  void patientProgramId;
+
+  return {
+    patientHospitalRelationshipId,
+    ...payload,
+  };
+}
+
 async function createInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   input: GoalPlanSubmitRequest,
   now: Date,
+  patientProgramId: string | null = null,
+  programAccessOverride?: PatientProgramAccessContext,
 ): Promise<GoalPlanSubmissionResult> {
-  const access = await resolveGoalAccessContext(
-    actor,
-    input.patientHospitalRelationshipId,
-    GOAL_PLAN_CAPABILITY,
-    transaction,
-  );
+  const normalizedProgramId = patientProgramId?.toLowerCase() ?? null;
+  const programAccess = normalizedProgramId
+    ? programAccessOverride ??
+      (await resolvePatientProgramByIdAccessContext(
+        actor,
+        normalizedProgramId,
+        PATIENT_PROGRAM_MANAGE_CAPABILITY,
+        transaction,
+      ))
+    : null;
+  let access = programAccess
+    ? toGoalAccessContext(programAccess)
+    : await resolveGoalAccessContext(
+        actor,
+        input.patientHospitalRelationshipId,
+        GOAL_PLAN_CAPABILITY,
+        transaction,
+      );
+  let authoritativeActor = programAccess?.actor ?? actor;
   const template = getGoalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
 
   if (!template) {
     throw new InfrastructureError("Goal Plan prototype definitions are unavailable");
   }
 
-  const validated = validateGoalPlanInput(input, template);
-  await assertSourceScreeningIsAccessible(transaction, actor, validated);
+  const validated = validateGoalPlanInput(
+    normalizedProgramId
+      ? {
+          ...input,
+          patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        }
+      : input,
+    template,
+  );
+  await assertSourceScreeningIsAccessible(transaction, authoritativeActor, validated);
 
   const existing = await transaction.patientGoalPlan.findUnique({
     where: { submissionNonce: validated.submissionNonce },
@@ -228,12 +293,13 @@ async function createInTransaction(
   });
 
   if (existing) {
-    if (!hasSamePlanPayload(existing, actor, validated)) {
+    if (!hasSamePlanPayload(existing, authoritativeActor, validated, normalizedProgramId)) {
       throw new ConflictError("This Goal Plan submission token has already been used");
     }
 
     return toSubmissionResult({
       goalPlanId: existing.id,
+      patientProgramId: existing.patientProgramId ?? null,
       patientHospitalRelationshipId: existing.patientHospitalRelationshipId,
       hospitalId: access.target.hospitalId,
       roundNumber: existing.roundNumber,
@@ -241,8 +307,19 @@ async function createInTransaction(
     });
   }
 
+  if (normalizedProgramId) {
+    const locked = await lockActivePatientProgram(transaction, actor, normalizedProgramId);
+    access = toGoalAccessContext(locked.access);
+    authoritativeActor = locked.access.actor;
+  }
+
   const latest = await transaction.patientGoalPlan.findFirst({
-    where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
+    where: normalizedProgramId
+      ? { patientProgramId: normalizedProgramId }
+      : {
+          patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+          patientProgramId: null,
+        },
     orderBy: [{ roundNumber: "desc" }],
     select: { roundNumber: true },
   });
@@ -251,7 +328,8 @@ async function createInTransaction(
   const plan = await transaction.patientGoalPlan.create({
     data: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-      createdByUserId: actor.userId,
+      patientProgramId: normalizedProgramId,
+      createdByUserId: authoritativeActor.userId,
       sourceScreeningAssessmentId: validated.sourceScreeningAssessmentId,
       submissionNonce: validated.submissionNonce,
       templateKey: template.key,
@@ -281,12 +359,13 @@ async function createInTransaction(
 
   await recordAuditEvent(
     {
-      actorUserId: actor.userId,
+      actorUserId: authoritativeActor.userId,
       action: "goal_plan.created",
       resourceType: "PatientGoalPlan",
       resourceId: plan.id,
       metadata: {
         goalPlanId: plan.id,
+        ...(normalizedProgramId ? { patientProgramId: normalizedProgramId } : {}),
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
         roundNumber: plan.roundNumber,
@@ -301,6 +380,7 @@ async function createInTransaction(
 
   return toSubmissionResult({
     goalPlanId: plan.id,
+    patientProgramId: normalizedProgramId,
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     roundNumber: plan.roundNumber,
@@ -334,6 +414,51 @@ export async function createGoalPlan(
   }
 }
 
+export async function createGoalPlanForProgram(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: GoalServiceDependencies = {},
+): Promise<GoalPlanSubmissionResult> {
+  const parsed = goalPlanProgramSubmitRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Program Goal Plan submission data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        const programAccess = await resolvePatientProgramByIdAccessContext(
+          actor,
+          parsed.data.patientProgramId.toLowerCase(),
+          PATIENT_PROGRAM_MANAGE_CAPABILITY,
+          transaction,
+        );
+
+        return createInTransaction(
+          transaction,
+          actor,
+          toRelationshipGoalPlanInput(
+            parsed.data,
+            programAccess.patient.patientHospitalRelationshipId,
+          ),
+          getNow(dependencies),
+          parsed.data.patientProgramId,
+          programAccess,
+        );
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
 export const goalServiceInternals = {
   assertSourceScreeningIsAccessible,
   canonicalizeItems,
@@ -342,5 +467,7 @@ export const goalServiceInternals = {
   isRetryableTransactionError,
   normalizeDatabaseError,
   runSerializable,
+  toGoalAccessContext,
+  toRelationshipGoalPlanInput,
 };
 

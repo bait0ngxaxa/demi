@@ -1,17 +1,26 @@
 import "server-only";
 
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   getAccessibleGoalPlanActivityContext,
   getAccessibleGoalPlanOptions,
+  getAccessibleGoalPlanActivityContextForProgram,
+  getAccessibleGoalPlanOptionsForProgram,
   type AccessibleGoalPlanReference,
 } from "@/modules/goals/services/goal-query-service";
 import { goalPlanIdSchema } from "@/modules/goals/schemas/goal-schemas";
 import {
+  resolvePatientProgramByIdAccessContext,
+  type PatientProgramAccessContext,
+} from "@/modules/patient-program/services/patient-program-access-service";
+import { PATIENT_PROGRAM_READ_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
+import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import {
   ApplicationError,
+  ConflictError,
   ForbiddenError,
   InfrastructureError,
   NotFoundError,
@@ -52,6 +61,7 @@ export type FollowupAppointmentContext = {
 
 export type FollowupHistoryItem = {
   followupId: string;
+  patientProgramId: string | null;
   roundNumber: number;
   recordedAt: Date;
   createdByDisplayName: string;
@@ -68,12 +78,20 @@ export type FollowupHistory = {
   canRecord: boolean;
 };
 
+export type FollowupProgramHistory = FollowupHistory & {
+  patientProgramId: string;
+};
+
 export type FollowupCreateContext = {
   patient: FollowupPatientSummary;
   appointments: FollowupAppointmentContext[];
   goalPlans: AccessibleGoalPlanReference[];
   selectedAppointmentId: string | null;
   selectedGoalPlanId: string | null;
+};
+
+export type FollowupProgramCreateContext = FollowupCreateContext & {
+  patientProgramId: string;
 };
 
 export type FollowupActivityProgressDetail = {
@@ -86,6 +104,7 @@ export type FollowupActivityProgressDetail = {
 export type FollowupDetail = {
   patient: FollowupPatientSummary;
   followupId: string;
+  patientProgramId: string | null;
   roundNumber: number;
   recordedAt: Date;
   createdAt: Date;
@@ -104,8 +123,13 @@ export type FollowupDetail = {
   activityProgress: FollowupActivityProgressDetail[];
 };
 
+export type FollowupProgramDetail = Omit<FollowupDetail, "patientProgramId"> & {
+  patientProgramId: string;
+};
+
 const followupHistorySelect = {
   id: true,
+  patientProgramId: true,
   roundNumber: true,
   recordedAt: true,
   createdByUser: {
@@ -130,6 +154,7 @@ const followupHistorySelect = {
     select: {
       id: true,
       patientHospitalRelationshipId: true,
+      patientProgramId: true,
       roundNumber: true,
     },
   },
@@ -137,6 +162,7 @@ const followupHistorySelect = {
 
 const followupDetailSelect = {
   id: true,
+  patientProgramId: true,
   sourceGoalPlanId: true,
   roundNumber: true,
   recordedAt: true,
@@ -192,6 +218,36 @@ function getDatabase(dependencies: FollowupQueryDependencies): FollowupQueryData
   return dependencies.database ?? getPrisma();
 }
 
+async function resolveFollowupProgramAccess(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  database: FollowupQueryDatabase,
+): Promise<PatientProgramAccessContext> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  return resolvePatientProgramByIdAccessContext(
+    actor,
+    parsedProgramId.data.toLowerCase(),
+    PATIENT_PROGRAM_READ_CAPABILITY,
+    database,
+  );
+}
+
+function toFollowupPatientSummary(
+  access: PatientProgramAccessContext,
+): FollowupPatientSummary {
+  return {
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    displayName: access.patient.displayName,
+    hospitalNumber: access.patient.hospitalNumber,
+    hospital: access.patient.hospital,
+  };
+}
+
 function toDisplayName(person: {
   givenName: string | null;
   familyName: string | null;
@@ -221,19 +277,29 @@ function toAppointmentContext(
     : null;
 }
 
-function toHistoryItem(record: FollowupHistoryRecord, relationshipId: string): FollowupHistoryItem {
+function toHistoryItem(
+  record: FollowupHistoryRecord,
+  relationshipId: string,
+  patientProgramId?: string,
+): FollowupHistoryItem {
+  const sourceGoalPlan = record.sourceGoalPlan;
+  const sourceGoalPlanMatchesScope = Boolean(
+    sourceGoalPlan &&
+      sourceGoalPlan.patientHospitalRelationshipId === relationshipId &&
+      (patientProgramId === undefined || sourceGoalPlan.patientProgramId === patientProgramId),
+  );
+
   return {
     followupId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt,
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     appointment: toAppointmentContext(record.appointment, relationshipId),
-    sourceGoalPlan:
-      record.sourceGoalPlan &&
-      record.sourceGoalPlan.patientHospitalRelationshipId === relationshipId
+    sourceGoalPlan: sourceGoalPlanMatchesScope && sourceGoalPlan
       ? {
-          goalPlanId: record.sourceGoalPlan.id,
-          roundNumber: record.sourceGoalPlan.roundNumber,
+          goalPlanId: sourceGoalPlan.id,
+          roundNumber: sourceGoalPlan.roundNumber,
         }
       : null,
   };
@@ -283,6 +349,28 @@ async function resolveRecordProjection(
 
     throw error;
   }
+}
+
+async function resolveProgramRecordProjection(
+  actor: ActorContext | null | undefined,
+  patientProgramId: string,
+  relationshipId: string,
+  database: FollowupQueryDatabase,
+): Promise<boolean> {
+  const program = await database.patientProgram.findFirst({
+    where: {
+      id: patientProgramId,
+      patientHospitalRelationshipId: relationshipId,
+      status: PatientProgramStatus.ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  if (!program) {
+    return false;
+  }
+
+  return resolveRecordProjection(actor, relationshipId, database);
 }
 
 async function getOptionalGoalPlanOptions(
@@ -344,6 +432,7 @@ function toDetail(
   return {
     patient,
     followupId: record.id,
+    patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt,
     createdAt: record.createdAt,
@@ -401,6 +490,55 @@ export async function getFollowupHistory(
     }
 
     throw new InfrastructureError("Follow-up history could not be loaded");
+  }
+}
+
+export async function getFollowupHistoryForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  dependencies: FollowupQueryDependencies = {},
+): Promise<FollowupProgramHistory> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveFollowupProgramAccess(actor, parsedProgramId.data, database);
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = access.patient.patientHospitalRelationshipId;
+    const records = await database.patientFollowup.findMany({
+      where: {
+        patientProgramId: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+      },
+      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+      take: FOLLOWUP_HISTORY_LIMIT,
+      select: followupHistorySelect,
+    });
+    const canRecord = await resolveProgramRecordProjection(
+      actor,
+      normalizedProgramId,
+      relationshipId,
+      database,
+    );
+
+    return {
+      patientProgramId: normalizedProgramId,
+      patient: toFollowupPatientSummary(access),
+      items: records.map((record) =>
+        toHistoryItem(record, relationshipId, normalizedProgramId),
+      ),
+      canRecord,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Follow-up history could not be loaded");
   }
 }
 
@@ -475,6 +613,110 @@ export async function getFollowupCreateContext(
   }
 }
 
+export async function getFollowupCreateContextForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  requestedAppointmentId?: unknown,
+  dependencies: FollowupQueryDependencies = {},
+): Promise<FollowupProgramCreateContext> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+  const parsedRequestedAppointmentId =
+    requestedAppointmentId === undefined || requestedAppointmentId === null || requestedAppointmentId === ""
+      ? null
+      : followupAppointmentIdSchema.safeParse(requestedAppointmentId);
+
+  if (!parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  if (parsedRequestedAppointmentId && !parsedRequestedAppointmentId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const programAccess = await resolveFollowupProgramAccess(actor, parsedProgramId.data, database);
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = programAccess.patient.patientHospitalRelationshipId;
+    const program = await database.patientProgram.findFirst({
+      where: {
+        id: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+        status: PatientProgramStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+
+    if (!program) {
+      throw new ConflictError("The Patient Program is not active");
+    }
+
+    await resolveFollowupAccessContext(
+      programAccess.actor,
+      relationshipId,
+      FOLLOWUP_RECORD_CAPABILITY,
+      database,
+    );
+    const appointments = await listCompletedAppointments(database, relationshipId);
+    const requestedId = parsedRequestedAppointmentId
+      ? parsedRequestedAppointmentId.data
+      : null;
+
+    if (requestedId && !appointments.some((appointment) => appointment.appointmentId === requestedId)) {
+      throw new NotFoundError();
+    }
+
+    let goalPlans: AccessibleGoalPlanReference[] = [];
+
+    try {
+      goalPlans = await getAccessibleGoalPlanOptionsForProgram(
+        programAccess.actor,
+        normalizedProgramId,
+        { database },
+      );
+    } catch (error: unknown) {
+      if (!(error instanceof ForbiddenError)) {
+        throw error;
+      }
+    }
+
+    const requestedGoalPlanId = dependencies.requestedGoalPlanId;
+    const parsedRequestedGoalPlanId =
+      requestedGoalPlanId === undefined || requestedGoalPlanId === null || requestedGoalPlanId === ""
+        ? null
+        : goalPlanIdSchema.safeParse(requestedGoalPlanId);
+    const selectedGoalPlanId = parsedRequestedGoalPlanId
+      ? parsedRequestedGoalPlanId.success
+        ? goalPlans.find(({ goalPlanId }) => goalPlanId === parsedRequestedGoalPlanId.data)?.goalPlanId ?? null
+        : null
+      : null;
+
+    if (
+      requestedGoalPlanId !== undefined &&
+      requestedGoalPlanId !== null &&
+      requestedGoalPlanId !== "" &&
+      !selectedGoalPlanId
+    ) {
+      throw new NotFoundError();
+    }
+
+    return {
+      patientProgramId: normalizedProgramId,
+      patient: toFollowupPatientSummary(programAccess),
+      appointments,
+      goalPlans,
+      selectedAppointmentId: requestedId,
+      selectedGoalPlanId,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Follow-up setup could not be loaded");
+  }
+}
+
 export async function getFollowupDetail(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
@@ -527,11 +769,66 @@ export async function getFollowupDetail(
   }
 }
 
+export async function getFollowupDetailForProgram(
+  actor: ActorContext | null | undefined,
+  programId: unknown,
+  followupId: unknown,
+  dependencies: FollowupQueryDependencies = {},
+): Promise<FollowupProgramDetail> {
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+  const parsedFollowupId = followupIdSchema.safeParse(followupId);
+
+  if (!parsedProgramId.success || !parsedFollowupId.success) {
+    throw new NotFoundError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolveFollowupProgramAccess(actor, parsedProgramId.data, database);
+    const normalizedProgramId = parsedProgramId.data.toLowerCase();
+    const relationshipId = access.patient.patientHospitalRelationshipId;
+    const record = await database.patientFollowup.findFirst({
+      where: {
+        id: parsedFollowupId.data,
+        patientProgramId: normalizedProgramId,
+        patientHospitalRelationshipId: relationshipId,
+      },
+      select: followupDetailSelect,
+    });
+
+    if (!record) {
+      throw new NotFoundError();
+    }
+
+    const sourceGoalPlan = record.sourceGoalPlanId
+      ? await getAccessibleGoalPlanActivityContextForProgram(
+          access.actor,
+          normalizedProgramId,
+          record.sourceGoalPlanId,
+          { database },
+        )
+      : null;
+
+    return {
+      ...toDetail(record, toFollowupPatientSummary(access), sourceGoalPlan),
+      patientProgramId: normalizedProgramId,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Program Follow-up detail could not be loaded");
+  }
+}
+
 export const followupQueryInternals = {
   followupDetailSelect,
   followupHistorySelect,
   getOptionalGoalPlanOptions,
   listCompletedAppointments,
+  resolveFollowupProgramAccess,
+  resolveProgramRecordProjection,
   resolveRecordProjection,
   toActivityProgress,
   toAppointmentContext,

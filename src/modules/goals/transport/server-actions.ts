@@ -5,13 +5,26 @@ import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 
-import { goalPlanSubmitRequestSchema } from "../schemas/goal-schemas";
-import { createGoalPlan } from "../services/goal-service";
+import {
+  goalPlanProgramSubmitRequestSchema,
+  goalPlanSubmitRequestSchema,
+} from "../schemas/goal-schemas";
+import { createGoalPlan, createGoalPlanForProgram } from "../services/goal-service";
 
 import type { GoalPlanActionState } from "./action-state";
 
 const GOAL_PLAN_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
+  "submissionNonce",
+  "sourceScreeningAssessmentId",
+  "primaryGoalCode",
+  "primaryGoalNote",
+  "weeklyNote",
+  "items",
+]);
+
+const GOAL_PLAN_PROGRAM_FORM_FIELDS = new Set([
+  "patientProgramId",
   "submissionNonce",
   "sourceScreeningAssessmentId",
   "primaryGoalCode",
@@ -40,7 +53,10 @@ function getOptionalString(formData: FormData, field: string): string | undefine
   return values.length === 1 && typeof values[0] === "string" ? values[0] : undefined;
 }
 
-function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
+function hasUnexpectedOrDuplicateFields(
+  formData: FormData,
+  allowedFields: ReadonlySet<string>,
+): boolean {
   const seen = new Set<string>();
 
   for (const key of formData.keys()) {
@@ -48,7 +64,7 @@ function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
       continue;
     }
 
-    if (!GOAL_PLAN_FORM_FIELDS.has(key) || seen.has(key)) {
+    if (!allowedFields.has(key) || seen.has(key)) {
       return true;
     }
 
@@ -72,24 +88,41 @@ function parseItems(formData: FormData): unknown {
   }
 }
 
-function buildSubmissionInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData)) {
-    return null;
-  }
-
+function buildGoalPlanPayloadInput(formData: FormData): Record<string, unknown> {
   const sourceScreeningAssessmentId = getOptionalString(
     formData,
     "sourceScreeningAssessmentId",
   );
 
   return {
-    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     submissionNonce: getSingleString(formData, "submissionNonce"),
     sourceScreeningAssessmentId: sourceScreeningAssessmentId?.trim() || null,
     primaryGoalCode: getSingleString(formData, "primaryGoalCode"),
     primaryGoalNote: getOptionalString(formData, "primaryGoalNote"),
     weeklyNote: getOptionalString(formData, "weeklyNote"),
     items: parseItems(formData),
+  } satisfies Record<string, unknown>;
+}
+
+function buildSubmissionInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, GOAL_PLAN_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    ...buildGoalPlanPayloadInput(formData),
+  } satisfies Record<string, unknown>;
+}
+
+function buildProgramSubmissionInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, GOAL_PLAN_PROGRAM_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    ...buildGoalPlanPayloadInput(formData),
   } satisfies Record<string, unknown>;
 }
 
@@ -157,6 +190,39 @@ export async function submitGoalPlanAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await createGoalPlan(actor, parsed.data);
+    revalidateGoalPlanPaths(result.patientHospitalRelationshipId, result.goalPlanId);
+
+    return {
+      status: "SUCCESS",
+      result: {
+        goalPlanId: result.goalPlanId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+        roundNumber: result.roundNumber,
+      },
+    };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapGoalPlanError(error) };
+  }
+}
+
+export async function submitGoalPlanForProgramAction(
+  _previousState: GoalPlanActionState,
+  formData: FormData,
+): Promise<GoalPlanActionState> {
+  const rawInput = buildProgramSubmissionInput(formData);
+  const parsed = goalPlanProgramSubmitRequestSchema.safeParse(rawInput);
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบเป้าหมาย กิจกรรม และค่าเป้าหมายก่อนบันทึกอีกครั้ง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await createGoalPlanForProgram(actor, parsed.data);
     revalidateGoalPlanPaths(result.patientHospitalRelationshipId, result.goalPlanId);
 
     return {
