@@ -124,7 +124,7 @@ export function PatientProgramFollowupWorkspace({
                 ประวัติการติดตามผล
               </h3>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                บันทึกแล้ว {history.totalCount} รอบ · แสดงรายการล่าสุด {history.items.length} รอบ
+                บันทึกแล้ว {history.totalCount} รอบ
               </p>
             </div>
             <Link

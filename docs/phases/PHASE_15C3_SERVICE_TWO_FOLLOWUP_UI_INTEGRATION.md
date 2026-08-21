@@ -205,6 +205,8 @@ Added or updated focused coverage for:
 - Program Follow-up detail rejection for a Follow-up owned by another Program;
 - Program-scoped Goal/Follow-up transport authority and Program route revalidation.
 
+No new component-testing framework was added for the final presentation correction because the repository has no existing React component-rendering test infrastructure. The corrected workspace copy was verified by direct component inspection together with the existing Follow-up module suite.
+
 ## 16. Verification
 
 Executed successfully:
@@ -217,6 +219,17 @@ npm test                             # 107 files, 695 tests
 npx tsc --noEmit
 npm run lint
 npm run test:integration             # 18 files, 153 tests; no pending migrations
+git diff --check
+```
+
+Final corrective pass: the Program Follow-up workspace preview now reports only the authoritative total count and no longer claims that all loaded history items are visibly rendered. The existing four-item preview and `ดูประวัติทั้งหมด` navigation remain unchanged.
+
+The following corrective-pass checks were also executed successfully:
+
+```text
+npm test -- src/modules/followups
+npx tsc --noEmit
+npm run lint
 git diff --check
 ```
 
