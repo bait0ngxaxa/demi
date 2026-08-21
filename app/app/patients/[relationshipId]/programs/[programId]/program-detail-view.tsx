@@ -48,7 +48,7 @@ export function PatientProgramDetailView({
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
           { label: "รายละเอียดโปรแกรม" },
         ]}
-        description="ภาพรวม episode โปรแกรมของผู้ป่วยในความสัมพันธ์กับโรงพยาบาลนี้"
+        description="ภาพรวมช่วงการดำเนินโปรแกรมของผู้ป่วยในความสัมพันธ์กับโรงพยาบาลนี้"
         title="รายละเอียดโปรแกรม"
       />
 
@@ -113,16 +113,20 @@ export function PatientProgramDetailView({
           <Panel>
             <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการ</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              การจบโปรแกรมเป็นการเปลี่ยนสถานะถาวรของ episode นี้ และไม่สามารถเปิดซ้ำได้ในขั้นตอนนี้
+              เมื่อจบแล้ว โปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกกิจกรรมหรือแนบหลักฐาน Service 1 เพิ่มได้
+              และจะไม่สามารถเปิดโปรแกรมเดิมซ้ำได้
+            </p>
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรม ไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิกของ Service 1
             </p>
             <div className="mt-5">
               <PatientProgramCompleteControl programId={detail.programId} />
             </div>
           </Panel>
         ) : detail.status === "COMPLETED" ? (
-          <Alert variant="success">
-            <p className="font-semibold">โปรแกรมนี้เสร็จสิ้นแล้ว</p>
-            <p className="mt-1">ประวัติของโปรแกรมยังอ่านได้ภายใต้ขอบเขตผู้ป่วยเดิม</p>
+          <Alert variant="neutral">
+            <p className="font-semibold">โปรแกรมนี้จบแล้วและอยู่ในประวัติแบบอ่านอย่างเดียว</p>
+            <p className="mt-1">กิจกรรม Service 1 และหลักฐานเดิมยังอ่านได้ภายใต้ขอบเขตผู้ป่วยเดิม แต่ไม่สามารถบันทึกข้อมูลใหม่</p>
           </Alert>
         ) : null}
 

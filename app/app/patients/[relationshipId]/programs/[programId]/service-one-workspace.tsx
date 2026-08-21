@@ -95,10 +95,10 @@ function getUploadErrorMessage(payload: unknown): string {
 
 function getAssociationErrorMessage(state: PatientProgramServiceOneEvidenceActionState): string {
   if (state.status === "ERROR") {
-    return state.message;
+    return `อัปโหลดรูปแล้ว แต่ยังแนบกับกิจกรรมไม่สำเร็จ: ${state.message} รูปยังอยู่ในรายการหลักฐานของผู้ป่วย และจะไม่แสดงเป็นหลักฐานของกิจกรรมจนกว่าจะเชื่อมโยงสำเร็จ`;
   }
 
-  return "แนบหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+  return "อัปโหลดรูปแล้ว แต่ยังแนบกับกิจกรรมไม่สำเร็จ รูปยังอยู่ในรายการหลักฐานของผู้ป่วย กรุณาตรวจสอบข้อมูลล่าสุดแล้วลองใหม่";
 }
 
 type UploadAndAssociateEvidenceOptions = {
@@ -136,9 +136,10 @@ async function uploadAndAssociateEvidence({
   }
 
   if (!isUploadPayload(payload) || typeof payload.artifactId !== "string") {
+    refresh?.();
     return {
       status: "error",
-      message: "ระบบไม่พบข้อมูลหลักฐานหลังอัปโหลด กรุณาตรวจสอบข้อมูลล่าสุด",
+      message: "อัปโหลดรูปแล้ว แต่ระบบไม่พบข้อมูลหลักฐาน กรุณาตรวจสอบรายการหลักฐานและข้อมูลล่าสุด",
     };
   }
 
@@ -147,7 +148,17 @@ async function uploadAndAssociateEvidence({
   associationFormData.append("activity", activityKey);
   associationFormData.append("patientEvidenceArtifactId", payload.artifactId);
 
-  const associationState = await associateAction(associationFormData);
+  let associationState: PatientProgramServiceOneEvidenceActionState;
+
+  try {
+    associationState = await associateAction(associationFormData);
+  } catch {
+    refresh?.();
+    return {
+      status: "error",
+      message: "อัปโหลดรูปแล้ว แต่ยังเชื่อมโยงกับกิจกรรมไม่สำเร็จ กรุณาตรวจสอบข้อมูลล่าสุดแล้วลองใหม่",
+    };
+  }
 
   if (associationState.status !== "SUCCESS") {
     refresh?.();
@@ -675,7 +686,7 @@ export function PatientProgramServiceOneWorkspace({
             บันทึกกิจกรรมแยกกันได้ตามความพร้อมของงานในโปรแกรมนี้ ภาพรวมด้านล่างเป็นความคืบหน้าเชิงโครงสร้าง ไม่ใช่เกณฑ์ผ่านหรือผลลัพธ์ทางคลินิก
           </p>
         </div>
-        <StatusBadge variant={recordedCount === 4 ? "success" : "neutral"}>
+        <StatusBadge variant="neutral">
           {recordedCount} จาก 4 กิจกรรมถูกบันทึกแล้ว
         </StatusBadge>
       </div>

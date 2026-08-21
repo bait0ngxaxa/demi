@@ -126,7 +126,7 @@ export function PatientProgramView({
               ยังไม่มีโปรแกรมที่กำลังดำเนินการ
             </h3>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              สามารถเปิด episode ใหม่ได้เมื่อพร้อมดำเนินการ โดยระบบจะกำหนดเวลาเริ่มจากฝั่ง server
+              สามารถเปิดโปรแกรมรอบใหม่ได้เมื่อพร้อมดำเนินการ โดยระบบจะกำหนดเวลาเริ่มจากฝั่ง server
             </p>
             {!context.canOpen ? (
               <p className="mt-4 text-sm leading-6 text-text-muted">
@@ -143,11 +143,11 @@ export function PatientProgramView({
                 ประวัติโปรแกรมที่เสร็จสิ้น
               </h3>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                เก็บเป็นประวัติแยก episode และไม่เปิดให้แก้ไขหรือเปิดซ้ำในขั้นตอนนี้
+                แต่ละรอบเก็บเป็นประวัติแยกกัน อ่านได้อย่างเดียว และไม่สามารถเปิดโปรแกรมเดิมซ้ำ
               </p>
             </div>
             {completedPrograms.length > 0 ? (
-              <span className="text-sm text-text-muted">{completedPrograms.length} episode</span>
+              <span className="text-sm text-text-muted">มี {completedPrograms.length} โปรแกรม</span>
             ) : null}
           </div>
 

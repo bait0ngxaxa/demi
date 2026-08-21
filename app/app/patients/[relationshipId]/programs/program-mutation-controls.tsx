@@ -42,7 +42,10 @@ export function PatientProgramOpenControl({
   );
 
   useEffect(() => {
-    if (state.status === "SUCCESS") {
+    if (
+      state.status === "SUCCESS" ||
+      (state.status === "ERROR" && state.code === "CONFLICT")
+    ) {
       router.refresh();
     }
   }, [router, state]);
@@ -52,7 +55,7 @@ export function PatientProgramOpenControl({
       <form action={action}>
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         <Button disabled={pending} loading={pending} size="compact" type="submit">
-          {pending ? "กำลังเปิดโปรแกรม..." : "เปิดโปรแกรม"}
+          {pending ? "กำลังเปิดโปรแกรม…" : "เปิดโปรแกรม"}
         </Button>
       </form>
       <ErrorFeedback state={state} />
@@ -72,7 +75,10 @@ export function PatientProgramCompleteControl({
   );
 
   useEffect(() => {
-    if (state.status === "SUCCESS") {
+    if (
+      state.status === "SUCCESS" ||
+      (state.status === "ERROR" && state.code === "CONFLICT")
+    ) {
       router.refresh();
     }
   }, [router, state]);
@@ -85,13 +91,17 @@ export function PatientProgramCompleteControl({
           disabled={pending}
           loading={pending}
           onClick={(event) => {
-            if (!window.confirm("ยืนยันว่าต้องการทำเครื่องหมายว่าโปรแกรมนี้เสร็จสิ้นหรือไม่")) {
+            if (
+              !window.confirm(
+                "ยืนยันการจบโปรแกรมนี้หรือไม่? หลังจากจบแล้ว โปรแกรมจะเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกกิจกรรมหรือแนบหลักฐาน Service 1 เพิ่มได้ และการจบโปรแกรมไม่ใช่การตัดสินผลทางคลินิก",
+              )
+            ) {
               event.preventDefault();
             }
           }}
           type="submit"
         >
-          {pending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าเสร็จสิ้น"}
+          {pending ? "กำลังจบโปรแกรม…" : "จบโปรแกรมและเก็บเป็นประวัติ"}
         </Button>
       </form>
       <ErrorFeedback state={state} />

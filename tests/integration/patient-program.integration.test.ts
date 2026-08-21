@@ -10,7 +10,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
+import {
+  assignOsmToPatient,
+  unassignOsmFromPatient,
+} from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
 import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
@@ -372,6 +375,38 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         score: 5,
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("rechecks an OSM assignment when a stale Program page submits a Service 1 mutation", async () => {
+    const hospital = await createHospital("OSM-DRIFT");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const osm = await createOsmActor(hospital.id);
+    const patient = await createPatient(owner.actor, hospital.id, "osm-drift");
+
+    await assignOsmToPatient(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      osmUserId: osm.userId,
+    });
+    const opened = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+
+    await expect(
+      getPatientProgramDetail(osm.actor, patient.relationshipId, opened.patientProgramId),
+    ).resolves.toMatchObject({ programId: opened.patientProgramId });
+
+    await unassignOsmFromPatient(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+
+    await expect(
+      recordPatientProgramServiceOneRoutine(osm.actor, {
+        patientProgramId: opened.patientProgramId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      getPatientProgramDetail(osm.actor, patient.relationshipId, opened.patientProgramId),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("protects the one-active invariant under concurrent open requests", async () => {
@@ -813,6 +848,30 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     await recordPatientProgramServiceOneRoutine(owner.actor, {
       patientProgramId: opened.patientProgramId,
     });
+    const storage = createFakeStorage();
+    const historicalArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      {
+        relationshipId: patient.relationshipId,
+        declaredMediaType: "image/jpeg",
+        bytes: jpegBytes(),
+      },
+      { storage },
+    );
+    await associatePatientProgramServiceOneArtifact(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+      patientEvidenceArtifactId: historicalArtifact.artifactId,
+      activity: "ROUTINE",
+    });
+    const unassociatedArtifact = await createPatientEvidenceArtifact(
+      owner.actor,
+      {
+        relationshipId: patient.relationshipId,
+        declaredMediaType: "image/jpeg",
+        bytes: jpegBytes(),
+      },
+      { storage },
+    );
 
     const completed = await completePatientProgram(owner.actor, {
       patientProgramId: opened.patientProgramId,
@@ -821,6 +880,13 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       recordPatientProgramServiceOneConfidence(owner.actor, {
         patientProgramId: opened.patientProgramId,
         score: 10,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: unassociatedArtifact.artifactId,
+        activity: "ROUTINE",
       }),
     ).rejects.toBeInstanceOf(ConflictError);
 
@@ -832,7 +898,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     expect(historical).toMatchObject({
       status: PatientProgramStatus.COMPLETED,
       serviceOne: {
-        routine: { recorded: true },
+        routine: { recorded: true, evidence: { artifactId: historicalArtifact.artifactId } },
         confidence: { recorded: false, score: null },
       },
     });

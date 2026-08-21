@@ -103,6 +103,7 @@ describe("Service 1 workspace presentation", () => {
     expect(markup).toMatch(/(?:maxLength|maxlength)="2000"/u);
     expect(markup).toContain('value="0"');
     expect(markup).toContain("ไม่ใช่เกณฑ์ผ่าน");
+    expect(markup).not.toContain("bg-success-soft");
     expect(markup).not.toContain("แนบหลักฐานรูป");
   });
 
@@ -251,9 +252,39 @@ describe("Service 1 workspace presentation", () => {
 
     expect(result).toEqual({
       status: "error",
-      message: "หลักฐานถูกแนบแล้ว กรุณาโหลดข้อมูลล่าสุด",
+      message:
+        "อัปโหลดรูปแล้ว แต่ยังแนบกับกิจกรรมไม่สำเร็จ: หลักฐานถูกแนบแล้ว กรุณาโหลดข้อมูลล่าสุด รูปยังอยู่ในรายการหลักฐานของผู้ป่วย และจะไม่แสดงเป็นหลักฐานของกิจกรรมจนกว่าจะเชื่อมโยงสำเร็จ",
     });
     expect(result.status).not.toBe("success");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes authoritative evidence state when an upload response is incomplete", async () => {
+    const uploadFormData = new FormData();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ relationshipId }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      }),
+    );
+    const associateAction = vi.fn();
+    const refresh = vi.fn();
+
+    const result = await patientProgramServiceOneWorkspaceInternals.uploadAndAssociateEvidence({
+      activityKey: "ROUTINE",
+      associateAction,
+      fetcher,
+      formData: uploadFormData,
+      programId,
+      refresh,
+      relationshipId,
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      message: "อัปโหลดรูปแล้ว แต่ระบบไม่พบข้อมูลหลักฐาน กรุณาตรวจสอบรายการหลักฐานและข้อมูลล่าสุด",
+    });
+    expect(associateAction).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 });
