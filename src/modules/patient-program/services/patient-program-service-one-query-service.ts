@@ -18,6 +18,7 @@ export const patientProgramServiceOneSelect = {
       },
       serviceOneArtifactAssociation: {
         select: {
+          createdAt: true,
           patientEvidenceArtifact: {
             select: {
               id: true,
@@ -46,6 +47,7 @@ export const patientProgramServiceOneSelect = {
       },
       serviceOneArtifactAssociation: {
         select: {
+          createdAt: true,
           patientEvidenceArtifact: {
             select: {
               id: true,
@@ -74,6 +76,7 @@ export const patientProgramServiceOneSelect = {
       },
       serviceOneArtifactAssociation: {
         select: {
+          createdAt: true,
           patientEvidenceArtifact: {
             select: {
               id: true,
@@ -121,7 +124,8 @@ export type PatientProgramServiceOneEvidenceProjection = {
   artifactId: string;
   mediaType: string;
   byteSize: number;
-  createdAt: Date;
+  uploadedAt: Date;
+  associatedAt: Date;
 };
 
 export type PatientProgramServiceOneProjection = {
@@ -166,6 +170,7 @@ function toRecordedBy(record: {
 
 function toEvidenceProjection(record: {
   serviceOneArtifactAssociation: {
+    createdAt: Date;
     patientEvidenceArtifact: {
       id: string;
       mediaType: string;
@@ -174,9 +179,10 @@ function toEvidenceProjection(record: {
     };
   } | null;
 } | null): PatientProgramServiceOneEvidenceProjection | null {
-  const artifact = record?.serviceOneArtifactAssociation?.patientEvidenceArtifact;
+  const association = record?.serviceOneArtifactAssociation;
+  const artifact = association?.patientEvidenceArtifact;
 
-  if (!artifact) {
+  if (!association || !artifact) {
     return null;
   }
 
@@ -184,7 +190,8 @@ function toEvidenceProjection(record: {
     artifactId: artifact.id,
     mediaType: artifact.mediaType,
     byteSize: artifact.byteSize,
-    createdAt: artifact.createdAt,
+    uploadedAt: artifact.createdAt,
+    associatedAt: association.createdAt,
   };
 }
 

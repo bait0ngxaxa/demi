@@ -28,12 +28,18 @@ vi.mock("@/modules/patient-program/transport/patient-program-service-one-server-
   recordPatientProgramServiceOneRoutineAction: vi.fn(),
 }));
 
-import { PatientProgramServiceOneWorkspace } from "../../../../app/app/patients/[relationshipId]/programs/[programId]/service-one-workspace";
+import {
+  PatientProgramServiceOneWorkspace,
+  patientProgramServiceOneWorkspaceInternals,
+} from "../../../../app/app/patients/[relationshipId]/programs/[programId]/service-one-workspace";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const programId = "22222222-2222-4222-8222-222222222222";
 const hospitalId = "33333333-3333-4333-8333-333333333333";
+const artifactId = "55555555-5555-4555-8555-555555555555";
 const recordedAt = new Date("2026-08-21T05:00:00.000Z");
+const artifactUploadedAt = new Date("2026-08-21T01:00:00.000Z");
+const evidenceAssociatedAt = new Date("2026-08-21T05:00:00.000Z");
 
 const patient = {
   patientHospitalRelationshipId: relationshipId,
@@ -72,6 +78,14 @@ function detail(overrides: Partial<PatientProgramDetail> = {}): PatientProgramDe
   };
 }
 
+function formatThaiDateTime(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
+
 describe("Service 1 workspace presentation", () => {
   it("renders the progressive Thai workflow with optional evidence and bounded text", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
@@ -102,10 +116,11 @@ describe("Service 1 workspace presentation", () => {
         routine: {
           ...activity(true),
           evidence: {
-            artifactId: "55555555-5555-4555-8555-555555555555",
+            artifactId,
             mediaType: "image/jpeg",
             byteSize: 1024,
-            createdAt: recordedAt,
+            uploadedAt: artifactUploadedAt,
+            associatedAt: evidenceAssociatedAt,
           },
         },
         floatingChart: { ...activity(true), summary: "สรุปกราฟ", evidence: null },
@@ -122,8 +137,123 @@ describe("Service 1 workspace presentation", () => {
     expect(markup).toContain("อ่านกิจกรรมและหลักฐานเดิมได้");
     expect(markup).toContain("สรุปกราฟ");
     expect(markup).toContain("ความฝัน");
-    expect(markup).toContain("/evidence/55555555-5555-4555-8555-555555555555/content");
+    expect(markup).toContain(`/evidence/${artifactId}/content`);
+    expect(markup).toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(evidenceAssociatedAt)}`);
+    expect(markup).not.toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(artifactUploadedAt)}`);
     expect(markup).not.toContain("<button");
     expect(markup).not.toContain("แนบหลักฐานรูป");
+  });
+
+  it("passes the uploaded artifact to the narrow activity association and refreshes after success", async () => {
+    const uploadFormData = new FormData();
+    uploadFormData.set(
+      "file",
+      new Blob(["image-bytes"], { type: "image/jpeg" }),
+      "dream-card.jpg",
+    );
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ artifactId }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      }),
+    );
+    const associateAction = vi.fn().mockResolvedValue({
+      status: "SUCCESS",
+      result: {
+        activity: "DREAM_CARD",
+        operation: "ASSOCIATED",
+        patientProgramId: programId,
+        patientHospitalRelationshipId: relationshipId,
+        artifactId,
+        associatedAt: evidenceAssociatedAt.toISOString(),
+      },
+    });
+    const refresh = vi.fn();
+
+    const result = await patientProgramServiceOneWorkspaceInternals.uploadAndAssociateEvidence({
+      activityKey: "DREAM_CARD",
+      associateAction,
+      fetcher,
+      formData: uploadFormData,
+      programId,
+      refresh,
+      relationshipId,
+    });
+
+    expect(result).toEqual({ status: "success", message: "แนบหลักฐานรูปเรียบร้อยแล้ว" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      `/app/patients/${relationshipId}/evidence/upload`,
+    );
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
+      body: uploadFormData,
+      method: "POST",
+    });
+    expect(associateAction).toHaveBeenCalledTimes(1);
+    const associationFormData = associateAction.mock.calls[0]?.[0];
+    expect(associationFormData).toBeInstanceOf(FormData);
+    expect(associationFormData?.get("patientProgramId")).toBe(programId);
+    expect(associationFormData?.get("patientEvidenceArtifactId")).toBe(artifactId);
+    expect(associationFormData?.get("activity")).toBe("DREAM_CARD");
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not associate or refresh when the evidence upload fails", async () => {
+    const uploadFormData = new FormData();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "ไฟล์ไม่ถูกต้อง" } }), {
+        headers: { "content-type": "application/json" },
+        status: 415,
+      }),
+    );
+    const associateAction = vi.fn();
+    const refresh = vi.fn();
+
+    const result = await patientProgramServiceOneWorkspaceInternals.uploadAndAssociateEvidence({
+      activityKey: "ROUTINE",
+      associateAction,
+      fetcher,
+      formData: uploadFormData,
+      programId,
+      refresh,
+      relationshipId,
+    });
+
+    expect(result).toEqual({ status: "error", message: "ไฟล์ไม่ถูกต้อง" });
+    expect(associateAction).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("surfaces association failure as an error and does not report success", async () => {
+    const uploadFormData = new FormData();
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ artifactId }), {
+        headers: { "content-type": "application/json" },
+        status: 201,
+      }),
+    );
+    const associateAction = vi.fn().mockResolvedValue({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "หลักฐานถูกแนบแล้ว กรุณาโหลดข้อมูลล่าสุด",
+    });
+    const refresh = vi.fn();
+
+    const result = await patientProgramServiceOneWorkspaceInternals.uploadAndAssociateEvidence({
+      activityKey: "FLOATING_CHART",
+      associateAction,
+      fetcher,
+      formData: uploadFormData,
+      programId,
+      refresh,
+      relationshipId,
+    });
+
+    expect(result).toEqual({
+      status: "error",
+      message: "หลักฐานถูกแนบแล้ว กรุณาโหลดข้อมูลล่าสุด",
+    });
+    expect(result.status).not.toBe("success");
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

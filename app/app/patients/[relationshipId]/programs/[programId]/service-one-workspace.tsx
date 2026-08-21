@@ -27,8 +27,12 @@ import type {
   PatientProgramServiceOneEvidenceProjection,
   PatientProgramServiceOneProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
+import type {
+  PatientProgramServiceOneActivity,
+  PatientProgramServiceOneArtifactActivity,
+} from "@/modules/patient-program/schemas/patient-program-service-one-schemas";
 
-type ServiceOneActivityKey = "ROUTINE" | "FLOATING_CHART" | "DREAM_CARD" | "CONFIDENCE";
+type ServiceOneActivityKey = PatientProgramServiceOneActivity;
 
 type ServiceOneActivity = PatientProgramServiceOneActivityProjection;
 
@@ -97,6 +101,69 @@ function getAssociationErrorMessage(state: PatientProgramServiceOneEvidenceActio
   return "แนบหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
 }
 
+type UploadAndAssociateEvidenceOptions = {
+  activityKey: PatientProgramServiceOneArtifactActivity;
+  formData: FormData;
+  programId: string;
+  relationshipId: string;
+  fetcher?: typeof fetch;
+  associateAction?: (
+    formData: FormData,
+  ) => Promise<PatientProgramServiceOneEvidenceActionState>;
+  refresh?: () => void;
+};
+
+async function uploadAndAssociateEvidence({
+  activityKey,
+  formData,
+  programId,
+  relationshipId,
+  fetcher = fetch,
+  associateAction = associatePatientProgramServiceOneArtifactAction,
+  refresh,
+}: UploadAndAssociateEvidenceOptions): Promise<EvidenceFeedback> {
+  const response = await fetcher(
+    `/app/patients/${encodeURIComponent(relationshipId)}/evidence/upload`,
+    {
+      body: formData,
+      method: "POST",
+    },
+  );
+  const payload = await readUploadPayload(response);
+
+  if (!response.ok) {
+    return { status: "error", message: getUploadErrorMessage(payload) };
+  }
+
+  if (!isUploadPayload(payload) || typeof payload.artifactId !== "string") {
+    return {
+      status: "error",
+      message: "ระบบไม่พบข้อมูลหลักฐานหลังอัปโหลด กรุณาตรวจสอบข้อมูลล่าสุด",
+    };
+  }
+
+  const associationFormData = new FormData();
+  associationFormData.append("patientProgramId", programId);
+  associationFormData.append("activity", activityKey);
+  associationFormData.append("patientEvidenceArtifactId", payload.artifactId);
+
+  const associationState = await associateAction(associationFormData);
+
+  if (associationState.status !== "SUCCESS") {
+    refresh?.();
+    return { status: "error", message: getAssociationErrorMessage(associationState) };
+  }
+
+  refresh?.();
+  return {
+    status: "success",
+    message:
+      associationState.result.operation === "ALREADY_ASSOCIATED"
+        ? "หลักฐานรูปนี้ถูกแนบไว้แล้ว"
+        : "แนบหลักฐานรูปเรียบร้อยแล้ว",
+  };
+}
+
 function ActionFeedback({ state }: { state: PatientProgramServiceOneActionState }): React.JSX.Element | null {
   if (state.status === "IDLE") {
     return null;
@@ -150,7 +217,7 @@ function EvidencePreview({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-text">หลักฐานรูปภาพ</p>
-          <p className="mt-1 text-xs leading-5 text-text-muted">แนบแล้วเมื่อ {formatDateTime(evidence.createdAt)}</p>
+          <p className="mt-1 text-xs leading-5 text-text-muted">แนบแล้วเมื่อ {formatDateTime(evidence.associatedAt)}</p>
         </div>
         <StatusBadge variant="success">แนบแล้ว</StatusBadge>
       </div>
@@ -185,7 +252,7 @@ function EvidenceAttachmentControl({
   recorded,
   relationshipId,
 }: {
-  activityKey: ServiceOneActivityKey;
+  activityKey: PatientProgramServiceOneArtifactActivity;
   canManage: boolean;
   evidence: PatientProgramServiceOneEvidenceProjection | null;
   label: string;
@@ -222,52 +289,21 @@ function EvidenceAttachmentControl({
     setFeedback({ status: "idle" });
 
     try {
-      const response = await fetch(
-        `/app/patients/${encodeURIComponent(relationshipId)}/evidence/upload`,
-        {
-          body: new FormData(form),
-          method: "POST",
-        },
-      );
-      const payload = await readUploadPayload(response);
+      const result = await uploadAndAssociateEvidence({
+        activityKey,
+        formData: new FormData(form),
+        programId,
+        refresh: router.refresh,
+        relationshipId,
+      });
 
-      if (!response.ok) {
-        setFeedback({ status: "error", message: getUploadErrorMessage(payload) });
-        return;
-      }
-
-      if (!isUploadPayload(payload) || typeof payload.artifactId !== "string") {
-        setFeedback({
-          status: "error",
-          message: "ระบบไม่พบข้อมูลหลักฐานหลังอัปโหลด กรุณาตรวจสอบข้อมูลล่าสุด",
-        });
-        return;
-      }
-
-      const associationFormData = new FormData();
-      associationFormData.append("patientProgramId", programId);
-      associationFormData.append("activity", activityKey);
-      associationFormData.append("patientEvidenceArtifactId", payload.artifactId);
-
-      const associationState = await associatePatientProgramServiceOneArtifactAction(
-        associationFormData,
-      );
-
-      if (associationState.status !== "SUCCESS") {
-        setFeedback({ status: "error", message: getAssociationErrorMessage(associationState) });
-        router.refresh();
+      if (result.status === "error") {
+        setFeedback(result);
         return;
       }
 
       form.reset();
-      setFeedback({
-        status: "success",
-        message:
-          associationState.result.operation === "ALREADY_ASSOCIATED"
-            ? "หลักฐานรูปนี้ถูกแนบไว้แล้ว"
-            : "แนบหลักฐานรูปเรียบร้อยแล้ว",
-      });
-      router.refresh();
+      setFeedback(result);
     } catch {
       setFeedback({
         status: "error",
@@ -682,3 +718,7 @@ export function PatientProgramServiceOneWorkspace({
     </section>
   );
 }
+
+export const patientProgramServiceOneWorkspaceInternals = {
+  uploadAndAssociateEvidence,
+};

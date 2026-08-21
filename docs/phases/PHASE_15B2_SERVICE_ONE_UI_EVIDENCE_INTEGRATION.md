@@ -137,9 +137,10 @@ External object upload และ database ไม่ใช่ distributed transac
 - `artifactId`
 - `mediaType`
 - `byteSize`
-- `createdAt`
+- `uploadedAt` จาก `PatientEvidenceArtifact.createdAt`
+- `associatedAt` จาก `PatientProgramServiceOneArtifactAssociation.createdAt`
 
-Routine, Floating/Sinking Chart และ Dream Card ได้ `evidence: ... | null`; Confidence ไม่มี evidence projection ไม่ส่ง `storageObjectKey`, content hash, caption ที่ไม่จำเป็น, membership details หรือ unrelated evidence
+Routine, Floating/Sinking Chart และ Dream Card ได้ `evidence: ... | null`; Confidence ไม่มี evidence projection ไม่ส่ง `storageObjectKey`, content hash, caption ที่ไม่จำเป็น, membership details หรือ unrelated evidence ชื่อ timestamp ถูกแยกเพื่อไม่ให้สับสนระหว่างเวลา upload artifact กับเวลา attach เข้ากับกิจกรรม Service 1 โดยข้อความ `แนบแล้วเมื่อ ...` ใน UI ใช้ `associatedAt` เสมอ ไม่ใช้เวลา upload เป็นความหมายของการแนบ
 
 Program detail อ่านผ่าน exact relationship + Program scope เดิม ดังนั้น valid Hospital/OSM ที่อ่าน historical completed Program ได้จะอ่านภาพเดิมผ่าน protected route ได้ด้วย ส่วน unrelated Hospital, unrelated OSM และ ADMIN-only ไม่สามารถใช้ artifact ID เพื่อ bypass scope ได้
 
@@ -202,9 +203,9 @@ metadata มีเฉพาะ safe identifiers: Program ID, exact relationship 
 - `npx prisma validate` — PASS
 - `npx prisma generate` — PASS (Prisma Client 6.19.3)
 - `npm run prisma:migrate:test` — PASS, 20 migrations applied/no pending
-- focused Service 1 association/query/transport/UI/server-action tests — PASS, 20 tests
+- focused Service 1 association/query/transport/UI/server-action tests — PASS, 5 files / 23 tests (รวม review-fix timestamp และ upload → association interaction boundary)
 - `npm run test:integration` — PASS, 18 files / 144 tests
-- `npm test` — PASS, 107 files / 681 tests
+- `npm test` — PASS, 107 files / 684 tests
 - `npx tsc --noEmit` — PASS
 - `npm run lint` — PASS
 - `node .../impeccable/scripts/detect.mjs --json ...` — PASS, no findings

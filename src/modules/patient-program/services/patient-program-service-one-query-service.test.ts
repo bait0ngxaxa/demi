@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { toPatientProgramServiceOneProjection } from "./patient-program-service-one-query-service";
 
 const recordedAt = new Date("2026-08-20T05:00:00.000Z");
+const artifactUploadedAt = new Date("2026-08-21T01:00:00.000Z");
+const evidenceAssociatedAt = new Date("2026-08-21T05:00:00.000Z");
 
 const recordedByUser = {
   person: {
@@ -113,11 +115,12 @@ describe("Patient Program Service 1 read projection", () => {
         recordedAt,
         recordedByUser,
         serviceOneArtifactAssociation: {
+          createdAt: evidenceAssociatedAt,
           patientEvidenceArtifact: {
             id: artifactId,
             mediaType: "image/jpeg",
             byteSize: 1024,
-            createdAt: recordedAt,
+            createdAt: artifactUploadedAt,
           },
         },
       },
@@ -130,8 +133,12 @@ describe("Patient Program Service 1 read projection", () => {
       artifactId,
       mediaType: "image/jpeg",
       byteSize: 1024,
-      createdAt: recordedAt,
+      uploadedAt: artifactUploadedAt,
+      associatedAt: evidenceAssociatedAt,
     });
+    expect(projection.routine.evidence?.uploadedAt).not.toEqual(
+      projection.routine.evidence?.associatedAt,
+    );
     expect(JSON.stringify(projection)).not.toContain("storageObjectKey");
   });
 });
