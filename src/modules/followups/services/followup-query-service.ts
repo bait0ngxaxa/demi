@@ -80,6 +80,7 @@ export type FollowupHistory = {
 
 export type FollowupProgramHistory = FollowupHistory & {
   patientProgramId: string;
+  totalCount: number;
 };
 
 export type FollowupCreateContext = {
@@ -509,15 +510,19 @@ export async function getFollowupHistoryForProgram(
     const access = await resolveFollowupProgramAccess(actor, parsedProgramId.data, database);
     const normalizedProgramId = parsedProgramId.data.toLowerCase();
     const relationshipId = access.patient.patientHospitalRelationshipId;
-    const records = await database.patientFollowup.findMany({
-      where: {
-        patientProgramId: normalizedProgramId,
-        patientHospitalRelationshipId: relationshipId,
-      },
-      orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
-      take: FOLLOWUP_HISTORY_LIMIT,
-      select: followupHistorySelect,
-    });
+    const where = {
+      patientProgramId: normalizedProgramId,
+      patientHospitalRelationshipId: relationshipId,
+    };
+    const [records, totalCount] = await Promise.all([
+      database.patientFollowup.findMany({
+        where,
+        orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
+        take: FOLLOWUP_HISTORY_LIMIT,
+        select: followupHistorySelect,
+      }),
+      database.patientFollowup.count({ where }),
+    ]);
     const canRecord = await resolveProgramRecordProjection(
       actor,
       normalizedProgramId,
@@ -532,6 +537,7 @@ export async function getFollowupHistoryForProgram(
         toHistoryItem(record, relationshipId, normalizedProgramId),
       ),
       canRecord,
+      totalCount,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

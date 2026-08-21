@@ -14,6 +14,8 @@ import {
   getGoalPlanCreateContext,
   getGoalPlanDetail,
   getGoalPlanOverview,
+  getGoalPlanDetailForProgram,
+  getGoalPlanOverviewForProgram,
   type GoalQueryDatabase,
 } from "./goal-query-service";
 
@@ -23,6 +25,8 @@ const otherRelationshipId = "33333333-3333-4333-8333-333333333333";
 const goalPlanId = "44444444-4444-4444-8444-444444444444";
 const screeningId = "55555555-5555-4555-8555-555555555555";
 const actorUserId = "66666666-6666-4666-8666-666666666666";
+const programId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const otherProgramId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const result = {
   pamTotal: 10,
@@ -103,6 +107,33 @@ function createDatabase(overrides: {
         },
         osmAssignments: [],
       }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: relationshipId,
+        hospitalId,
+        hospitalNumber: "HN-001",
+        hospital: { id: hospitalId, name: "โรงพยาบาล ก", status: HospitalStatus.ACTIVE },
+        patientProfile: {
+          person: {
+            givenName: "สมชาย",
+            familyName: "ผู้ป่วย",
+            user: { roles: [{ role: Role.PATIENT }] },
+          },
+        },
+        osmAssignments: [],
+      }),
+    },
+    patientProgram: {
+      findFirst: vi.fn().mockImplementation(async (query: { where?: { id?: string } }) => {
+        const requestedProgramId = query.where?.id;
+
+        return requestedProgramId === programId
+          ? {
+              id: programId,
+              patientHospitalRelationshipId: relationshipId,
+              status: "ACTIVE",
+            }
+          : null;
+      }),
     },
     screeningAssessment: {
       findFirst: vi.fn().mockResolvedValue(
@@ -125,8 +156,24 @@ function createDatabase(overrides: {
       ),
     },
     patientGoalPlan: {
-      findMany: vi.fn().mockResolvedValue(overrides.goalRecords ?? []),
-      findFirst: vi.fn().mockResolvedValue(overrides.detailRecord ?? null),
+      findMany: vi.fn().mockImplementation(async (query: { where?: { patientProgramId?: string } }) => {
+        const records = overrides.goalRecords ?? [];
+        const requestedProgramId = query.where?.patientProgramId;
+
+        return requestedProgramId
+          ? records.filter((record) => record.patientProgramId === requestedProgramId)
+          : records;
+      }),
+      findFirst: vi.fn().mockImplementation(async (query: { where?: { patientProgramId?: string } }) => {
+        const record = overrides.detailRecord ?? null;
+        const requestedProgramId = query.where?.patientProgramId;
+
+        if (requestedProgramId && record?.patientProgramId !== requestedProgramId) {
+          return null;
+        }
+
+        return record;
+      }),
     },
   };
 
@@ -142,6 +189,7 @@ function historyRecord(overrides: Record<string, unknown> = {}): Record<string, 
     templateKey: "demi-goals",
     templateVersion: "legacy-prototype-v1",
     sourceScreeningAssessmentId: screeningId,
+    patientProgramId: null,
     createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "แผน" } },
     _count: { items: 2 },
     ...overrides,
@@ -220,6 +268,35 @@ describe("Goal Plan query service", () => {
 
     expect(goalQuery.select).not.toHaveProperty(
       "sourceScreeningAssessment",
+    );
+  });
+
+  it("keeps Program Goal history isolated from other Programs and pre-Program records", async () => {
+    const database = createDatabase({
+      goalRecords: [
+        historyRecord({ patientProgramId: programId }),
+        historyRecord({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          patientProgramId: otherProgramId,
+        }),
+        historyRecord({
+          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          patientProgramId: null,
+        }),
+      ],
+    });
+
+    const overview = await getGoalPlanOverviewForProgram(actor, programId, { database });
+
+    expect(overview.items).toHaveLength(1);
+    expect(overview.items[0]).toMatchObject({ goalPlanId, patientProgramId: programId });
+    expect(database.patientGoalPlan.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          patientProgramId: programId,
+          patientHospitalRelationshipId: relationshipId,
+        },
+      }),
     );
   });
 
@@ -315,6 +392,16 @@ describe("Goal Plan query service", () => {
     await expect(getGoalPlanDetail(actor, otherRelationshipId, goalPlanId, { database })).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+
+  it("rejects a Goal Plan from another Program in Program detail", async () => {
+    const database = createDatabase({
+      detailRecord: detailRecord({ patientProgramId: otherProgramId }),
+    });
+
+    await expect(
+      getGoalPlanDetailForProgram(actor, programId, goalPlanId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("denies a Hospital actor without an active direct membership", async () => {

@@ -3,6 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import {
+  getGoalPlanDetailForProgram,
+  getGoalPlanOverviewForProgram,
+} from "@/modules/goals/services/goal-query-service";
+import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -55,5 +60,41 @@ export default async function PatientProgramDetailPage({
     throw error;
   }
 
-  return <PatientProgramDetailView detail={detail} />;
+  let goalPlanOverview;
+  let followupHistory;
+  let latestGoalPlan = null;
+
+  try {
+    [goalPlanOverview, followupHistory] = await Promise.all([
+      getGoalPlanOverviewForProgram(actor, detail.programId),
+      getFollowupHistoryForProgram(actor, detail.programId),
+    ]);
+
+    if (goalPlanOverview.latest) {
+      latestGoalPlan = await getGoalPlanDetailForProgram(
+        actor,
+        detail.programId,
+        goalPlanOverview.latest.goalPlanId,
+      );
+    }
+  } catch (error: unknown) {
+    if (error instanceof NotFoundError) {
+      notFound();
+    }
+
+    if (error instanceof ForbiddenError) {
+      redirect("/app");
+    }
+
+    throw error;
+  }
+
+  return (
+    <PatientProgramDetailView
+      detail={detail}
+      followupHistory={followupHistory}
+      goalPlanOverview={goalPlanOverview}
+      latestGoalPlan={latestGoalPlan}
+    />
+  );
 }

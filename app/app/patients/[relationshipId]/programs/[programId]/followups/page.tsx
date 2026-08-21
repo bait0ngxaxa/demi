@@ -3,18 +3,18 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getFollowupHistory } from "@/modules/followups/services/followup-query-service";
-import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
+import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
+import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { FollowupHistoryView } from "./followup-history-view";
+import { ProgramFollowupHistoryView } from "../program-followup-history-view";
 
 export const metadata: Metadata = {
-  title: "ประวัติการติดตามผลทั้งหมด",
+  title: "ประวัติการติดตามผลในโปรแกรม",
 };
 
-type FollowupHistoryPageProps = {
-  params: Promise<{ relationshipId: string }>;
+type ProgramFollowupHistoryPageProps = {
+  params: Promise<{ relationshipId: string; programId: string }>;
 };
 
 async function resolveActor() {
@@ -33,20 +33,18 @@ async function resolveActor() {
   }
 }
 
-export default async function FollowupHistoryPage({
+export default async function ProgramFollowupHistoryPage({
   params,
-}: FollowupHistoryPageProps): Promise<React.JSX.Element> {
+}: ProgramFollowupHistoryPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
-  const { relationshipId } = await params;
+  const { relationshipId, programId } = await params;
+  let detail;
   let history;
-  let programContext;
 
   try {
-    [history, programContext] = await Promise.all([
-      getFollowupHistory(actor, relationshipId),
-      getPatientProgramPageContext(actor, relationshipId),
-    ]);
+    detail = await getPatientProgramDetail(actor, relationshipId, programId);
+    history = await getFollowupHistoryForProgram(actor, detail.programId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -59,11 +57,5 @@ export default async function FollowupHistoryPage({
     throw error;
   }
 
-  return (
-    <FollowupHistoryView
-      activeProgram={programContext.active}
-      canManage={programContext.canManage}
-      history={history}
-    />
-  );
+  return <ProgramFollowupHistoryView detail={detail} history={history} />;
 }

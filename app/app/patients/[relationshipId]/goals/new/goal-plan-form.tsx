@@ -26,7 +26,10 @@ import {
   initialGoalPlanActionState,
   type GoalPlanActionState,
 } from "@/modules/goals/transport/action-state";
-import { submitGoalPlanAction } from "@/modules/goals/transport/server-actions";
+import {
+  submitGoalPlanAction,
+  submitGoalPlanForProgramAction,
+} from "@/modules/goals/transport/server-actions";
 import {
   SCREENING_LEVEL_LABELS,
   SCREENING_ZONE_LABELS,
@@ -41,8 +44,19 @@ type GoalScreeningContextForForm = {
   };
 };
 
+export type GoalPlanFormScope =
+  | {
+      kind: "relationship";
+      relationshipId: string;
+    }
+  | {
+      kind: "program";
+      relationshipId: string;
+      patientProgramId: string;
+    };
+
 type GoalPlanFormProps = {
-  relationshipId: string;
+  scope: GoalPlanFormScope;
   patient: GoalPatientSummary;
   template: GoalTemplate;
   latestScreening: GoalScreeningContextForForm | null;
@@ -214,15 +228,19 @@ function ActivityEditor({
 }
 
 export function GoalPlanForm({
-  relationshipId,
+  scope,
   patient,
   template,
   latestScreening,
   submissionNonce,
 }: GoalPlanFormProps): React.JSX.Element {
   const router = useRouter();
+  const relationshipId = scope.relationshipId;
+  const programId = scope.kind === "program" ? scope.patientProgramId : null;
+  const submitAction =
+    scope.kind === "program" ? submitGoalPlanForProgramAction : submitGoalPlanAction;
   const [state, action, pending] = useActionState<GoalPlanActionState, FormData>(
-    submitGoalPlanAction,
+    submitAction,
     initialGoalPlanActionState,
   );
   const [primaryGoalCode, setPrimaryGoalCode] = useState("");
@@ -232,11 +250,21 @@ export function GoalPlanForm({
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
-      router.push(
-        `/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`,
-      );
+      const destination = programId
+        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`
+        : `/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`;
+
+      router.push(destination);
+      return;
     }
-  }, [relationshipId, router, state]);
+
+    if (
+      state.status === "ERROR" &&
+      (state.code === "CONFLICT" || state.code === "FORBIDDEN")
+    ) {
+      router.refresh();
+    }
+  }, [programId, relationshipId, router, state]);
 
   const selectedCodes = useMemo(() => new Set(items.map((item) => item.activityCode)), [items]);
   const itemsByCategory = useMemo(
@@ -288,20 +316,44 @@ export function GoalPlanForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="info">แผนเป้าหมาย</StatusBadge>}
+        actions={
+          <StatusBadge variant="info">
+            {scope.kind === "program"
+              ? "Service 2 — แผนสุขภาพและเป้าหมาย"
+              : "แผนเป้าหมาย"}
+          </StatusBadge>
+        }
         breadcrumbs={[
-          {
-            href: `/app/patients/${encodeURIComponent(relationshipId)}/goals`,
-            label: "แผนเป้าหมาย",
-          },
-          { label: "สร้างแผนเป้าหมาย" },
+          ...(scope.kind === "program"
+            ? [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`,
+                  label: "รายละเอียดโปรแกรม",
+                },
+                { label: "สร้างแผนสุขภาพ" },
+              ]
+            : [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}/goals`,
+                  label: "ประวัติแผนเป้าหมาย",
+                },
+                { label: "สร้างแผนเป้าหมาย" },
+              ]),
         ]}
-        description="สร้างแผนเป้าหมายและกิจกรรมของผู้ป่วยสำหรับรอบใหม่"
-        title="สร้างแผนเป้าหมาย"
+        description={
+          scope.kind === "program"
+            ? "สร้างแผนสุขภาพรอบใหม่ในโปรแกรมนี้ โดยรอบเดิมจะยังคงเป็นประวัติอ่านได้"
+            : "สร้างแผนเป้าหมายและกิจกรรมในประวัติความสัมพันธ์ของโรงพยาบาล"
+        }
+        title={scope.kind === "program" ? "สร้างแผนสุขภาพ" : "สร้างแผนเป้าหมาย"}
       />
 
       <form action={action} className="space-y-6 pt-8">
-        <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+        {scope.kind === "program" ? (
+          <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
+        ) : (
+          <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+        )}
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
         <input
           name="sourceScreeningAssessmentId"
@@ -311,7 +363,9 @@ export function GoalPlanForm({
         <input name="items" type="hidden" value={JSON.stringify(serializedItems)} />
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">
+            {scope.kind === "program" ? "ผู้ป่วยและโปรแกรม" : "ผู้ป่วยและบริบทโรงพยาบาล"}
+          </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm text-text-muted">ผู้ป่วย</p>
@@ -325,6 +379,11 @@ export function GoalPlanForm({
           <p className="mt-4 text-sm leading-6 text-text-muted">
             HN ของโรงพยาบาลนี้: {patient.hospitalNumber ?? "ไม่ระบุ"}
           </p>
+          {scope.kind === "program" ? (
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              แผนนี้จะถูกบันทึกเป็นประวัติของโปรแกรมนี้โดยตรง และไม่แก้ไขแผนรอบเดิม
+            </p>
+          ) : null}
         </Panel>
 
         {latestScreening ? (
@@ -508,7 +567,11 @@ export function GoalPlanForm({
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}/goals`}
+              href={
+                scope.kind === "program"
+                  ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`
+                  : `/app/patients/${encodeURIComponent(relationshipId)}/goals`
+              }
             >
               ยกเลิก
             </Link>

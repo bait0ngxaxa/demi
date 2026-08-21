@@ -19,7 +19,10 @@ import {
   initialFollowupActionState,
   type FollowupActionState,
 } from "@/modules/followups/transport/action-state";
-import { createFollowupAction } from "@/modules/followups/transport/server-actions";
+import {
+  createFollowupAction,
+  createFollowupForProgramAction,
+} from "@/modules/followups/transport/server-actions";
 
 type PatientContext = {
   patientHospitalRelationshipId: string;
@@ -60,8 +63,19 @@ type ProgressDraft = {
   note: string;
 };
 
+export type FollowupFormScope =
+  | {
+      kind: "relationship";
+      relationshipId: string;
+    }
+  | {
+      kind: "program";
+      relationshipId: string;
+      patientProgramId: string;
+    };
+
 type FollowupFormProps = {
-  relationshipId: string;
+  scope: FollowupFormScope;
   patient: PatientContext;
   appointments: AppointmentOption[];
   goalPlans: GoalPlanOption[];
@@ -170,7 +184,7 @@ function ProgressEditor({
             id={`progress-note-${activity.activityCode}`}
             maxLength={1_000}
             onChange={(event) => onChange({ ...draft, note: event.target.value })}
-            placeholder="บันทึกเฉพาะสิ่งที่ต้องการนำไปคุยกับลูกค้า"
+            placeholder="บันทึกเฉพาะข้อสังเกตที่เกี่ยวข้องกับกิจกรรมในรอบนี้"
             value={draft.note}
           />
         </label>
@@ -180,7 +194,7 @@ function ProgressEditor({
 }
 
 export function FollowupForm({
-  relationshipId,
+  scope,
   patient,
   appointments,
   goalPlans,
@@ -189,8 +203,12 @@ export function FollowupForm({
   submissionNonce,
 }: FollowupFormProps): React.JSX.Element {
   const router = useRouter();
+  const relationshipId = scope.relationshipId;
+  const programId = scope.kind === "program" ? scope.patientProgramId : null;
+  const createAction =
+    scope.kind === "program" ? createFollowupForProgramAction : createFollowupAction;
   const [state, action, pending] = useActionState<FollowupActionState, FormData>(
-    createFollowupAction,
+    createAction,
     initialFollowupActionState,
   );
   const [appointmentId, setAppointmentId] = useState(selectedAppointmentId ?? "");
@@ -216,11 +234,21 @@ export function FollowupForm({
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
-      router.push(
-        `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`,
-      );
+      const destination = programId
+        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/followups/${encodeURIComponent(state.result.followupId)}`
+        : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`;
+
+      router.push(destination);
+      return;
     }
-  }, [relationshipId, router, state]);
+
+    if (
+      state.status === "ERROR" &&
+      (state.code === "CONFLICT" || state.code === "FORBIDDEN")
+    ) {
+      router.refresh();
+    }
+  }, [programId, relationshipId, router, state]);
 
   const serializedProgress = selectedGoalPlan
     ? selectedGoalPlan.items.flatMap((activity) => {
@@ -242,24 +270,42 @@ export function FollowupForm({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="info">การติดตามผล</StatusBadge>}
+        actions={
+          <StatusBadge variant="info">
+            {scope.kind === "program" ? "การติดตามผลในโปรแกรม" : "การติดตามผล"}
+          </StatusBadge>
+        }
         breadcrumbs={[
-          {
-            href: `/app/patients/${encodeURIComponent(relationshipId)}`,
-            label: "รายละเอียดผู้ป่วย",
-          },
-          {
-            href: `/app/patients/${encodeURIComponent(relationshipId)}/followups`,
-            label: "ประวัติการติดตามผล",
-          },
-          { label: "บันทึกการติดตามผล" },
+          ...(scope.kind === "program"
+            ? [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`,
+                  label: "รายละเอียดโปรแกรม",
+                },
+                { label: "บันทึกการติดตามผล" },
+              ]
+            : [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}/followups`,
+                  label: "ประวัติการติดตามผล",
+                },
+                { label: "บันทึกการติดตามผล" },
+              ]),
         ]}
-        description="บันทึกการติดตามผลของผู้ป่วยเป็นรายการใหม่ในโรงพยาบาลนี้"
+        description={
+          scope.kind === "program"
+            ? "บันทึกการติดตามผลเป็นรอบใหม่ของโปรแกรมนี้ โดยไม่บังคับให้ต้องเลือกแผนเป้าหมาย"
+            : "บันทึกการติดตามผลเป็นรายการใหม่ในประวัติความสัมพันธ์ของโรงพยาบาล"
+        }
         title="บันทึกการติดตามผล"
       />
 
       <form action={action} className="space-y-6 pt-8">
-        <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+        {scope.kind === "program" ? (
+          <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
+        ) : (
+          <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+        )}
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
         <input name="appointmentId" readOnly type="hidden" value={appointmentId} />
         <input name="sourceGoalPlanId" readOnly type="hidden" value={goalPlanId} />
@@ -275,7 +321,9 @@ export function FollowupForm({
         <input name="activityProgress" readOnly type="hidden" value={JSON.stringify(serializedProgress)} />
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">
+            {scope.kind === "program" ? "ผู้ป่วยและโปรแกรม" : "ผู้ป่วยและบริบทโรงพยาบาล"}
+          </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm text-text-muted">ผู้ป่วย</p>
@@ -289,6 +337,11 @@ export function FollowupForm({
           <p className="mt-4 text-sm leading-6 text-text-muted">
             HN ของโรงพยาบาลนี้: {patient.hospitalNumber ?? "ไม่ระบุ"}
           </p>
+          {scope.kind === "program" ? (
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนเป้าหมายของโปรแกรมเดียวกันได้
+            </p>
+          ) : null}
         </Panel>
 
         <Panel>
@@ -334,12 +387,14 @@ export function FollowupForm({
                 <option value="">ไม่เชื่อมโยงแผนเป้าหมาย</option>
                 {goalPlans.map((plan) => (
                   <option key={plan.goalPlanId} value={plan.goalPlanId}>
-                    รอบที่ {plan.roundNumber} · {plan.primaryGoalLabel} · {formatDate(plan.createdAt)}
+                    {scope.kind === "program" ? "แผนเป้าหมายรอบที่" : "รอบที่"} {plan.roundNumber} · {plan.primaryGoalLabel} · {formatDate(plan.createdAt)}
                   </option>
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                เลือกได้จากแผนเป้าหมายย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด
+                {scope.kind === "program"
+                  ? "เลือกได้เฉพาะแผนเป้าหมายของโปรแกรมนี้ ไม่เกิน 50 รอบล่าสุด"
+                  : "เลือกได้จากแผนเป้าหมายย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด"}
               </span>
             </label>
           </fieldset>
@@ -535,7 +590,11 @@ export function FollowupForm({
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}/followups`}
+              href={
+                scope.kind === "program"
+                  ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`
+                  : `/app/patients/${encodeURIComponent(relationshipId)}/followups`
+              }
             >
               ยกเลิก
             </Link>

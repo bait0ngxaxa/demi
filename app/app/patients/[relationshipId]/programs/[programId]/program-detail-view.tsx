@@ -4,11 +4,18 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import type {
+  GoalPlanProgramDetail,
+  GoalPlanProgramOverview,
+} from "@/modules/goals/services/goal-query-service";
+import type { FollowupProgramHistory } from "@/modules/followups/services/followup-query-service";
 import type { PatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 
 import { PatientProgramCompleteControl } from "../program-mutation-controls";
 
 import { PatientProgramServiceOneWorkspace } from "./service-one-workspace";
+import { PatientProgramFollowupWorkspace } from "./followup-workspace";
+import { PatientProgramServiceTwoWorkspace } from "./service-two-workspace";
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -35,8 +42,14 @@ function statusVariant(status: PatientProgramDetail["status"]): StatusVariant {
 
 export function PatientProgramDetailView({
   detail,
+  followupHistory,
+  goalPlanOverview,
+  latestGoalPlan,
 }: {
   detail: PatientProgramDetail;
+  followupHistory: FollowupProgramHistory;
+  goalPlanOverview: GoalPlanProgramOverview;
+  latestGoalPlan: GoalPlanProgramDetail | null;
 }): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
 
@@ -56,8 +69,9 @@ export function PatientProgramDetailView({
         <Alert variant="info">
           <p className="font-semibold">ขอบเขตของโปรแกรม</p>
           <p className="mt-1">
-            โปรแกรมเป็นตัวแทนช่วงการเข้าร่วมเท่านั้น ไม่แทนข้อมูลความสัมพันธ์ผู้ป่วย การประเมิน
-            แผนเป้าหมาย นัดหมาย การติดตามผล หรือหลักฐานของผู้ป่วย
+            โปรแกรมเป็นช่วงการเข้าร่วมหนึ่งรอบ ข้อมูล Service 1 แผนสุขภาพ และการติดตามผลที่บันทึกผ่านเส้นทางนี้
+            จึงอยู่ภายใต้โปรแกรมรอบนี้ ส่วนข้อมูลตัวตนผู้ป่วย ความสัมพันธ์กับโรงพยาบาล ประวัติหลักฐานทั่วไป
+            ประวัติการประเมิน และประวัตินัดหมายเชิงปฏิบัติการยังคงเป็นข้อมูลคนละขอบเขต
           </p>
         </Alert>
 
@@ -109,15 +123,25 @@ export function PatientProgramDetailView({
           </dl>
         </Panel>
 
+        <PatientProgramServiceOneWorkspace detail={detail} />
+
+        <PatientProgramServiceTwoWorkspace
+          detail={detail}
+          latestGoalPlan={latestGoalPlan}
+          overview={goalPlanOverview}
+        />
+
+        <PatientProgramFollowupWorkspace detail={detail} history={followupHistory} />
+
         {detail.status === "ACTIVE" && detail.canManage ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการ</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการของโปรแกรม</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              เมื่อจบแล้ว โปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกกิจกรรมหรือแนบหลักฐาน Service 1 เพิ่มได้
-              และจะไม่สามารถเปิดโปรแกรมเดิมซ้ำได้
+              เมื่อจบแล้ว โปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกข้อมูลใน Service 1 แผนสุขภาพ
+              หรือการติดตามผลเพิ่มได้ และจะไม่สามารถเปิดโปรแกรมเดิมซ้ำได้
             </p>
             <p className="mt-3 text-sm leading-6 text-text-muted">
-              การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรม ไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิกของ Service 1
+              การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรม ไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิก
             </p>
             <div className="mt-5">
               <PatientProgramCompleteControl programId={detail.programId} />
@@ -126,11 +150,9 @@ export function PatientProgramDetailView({
         ) : detail.status === "COMPLETED" ? (
           <Alert variant="neutral">
             <p className="font-semibold">โปรแกรมนี้จบแล้วและอยู่ในประวัติแบบอ่านอย่างเดียว</p>
-            <p className="mt-1">กิจกรรม Service 1 และหลักฐานเดิมยังอ่านได้ภายใต้ขอบเขตผู้ป่วยเดิม แต่ไม่สามารถบันทึกข้อมูลใหม่</p>
+            <p className="mt-1">ประวัติ Service 1 แผนสุขภาพ และการติดตามผลเดิมยังอ่านได้ แต่ไม่สามารถบันทึกข้อมูลใหม่</p>
           </Alert>
         ) : null}
-
-        <PatientProgramServiceOneWorkspace detail={detail} />
 
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

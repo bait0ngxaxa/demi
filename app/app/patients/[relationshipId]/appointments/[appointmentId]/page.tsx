@@ -13,11 +13,16 @@ import {
   APPOINTMENT_TYPE_LABELS,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
+import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
 import {
   getAppointmentDetail,
   type AppointmentDetail,
 } from "@/modules/appointments/services/appointment-query-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import {
+  getPatientProgramPageContext,
+  type PatientProgramProjection,
+} from "@/modules/patient-program/services/patient-program-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
@@ -70,11 +75,24 @@ async function resolveActor() {
   }
 }
 
-function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React.JSX.Element {
+function AppointmentDetailView({
+  activeProgram,
+  canRecordProgram,
+  detail,
+}: {
+  activeProgram: PatientProgramProjection | null;
+  canRecordProgram: boolean;
+  detail: AppointmentDetail;
+}): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
   const locationLabel = detail.locationType
     ? APPOINTMENT_LOCATION_LABELS[detail.locationType]
     : "ไม่ระบุสถานที่";
+  const followupHref = activeProgram && canRecordProgram
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`
+    : activeProgram
+      ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`;
 
   return (
     <div className="max-w-5xl">
@@ -106,9 +124,13 @@ function AppointmentDetailView({ detail }: { detail: AppointmentDetail }): React
             <p className="mt-1">คุณสามารถบันทึกการติดตามผลเป็นรายการใหม่ได้</p>
             <Link
               className="mt-3 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/followups/new?appointmentId=${encodeURIComponent(detail.appointmentId)}`}
+              href={followupHref}
             >
-              บันทึกการติดตามผล
+              {activeProgram
+                ? canRecordProgram
+                  ? "บันทึกการติดตามผลในโปรแกรมปัจจุบัน"
+                  : "ดูโปรแกรมปัจจุบัน"
+                : "บันทึกการติดตามผล"}
             </Link>
           </Alert>
         ) : null}
@@ -234,9 +256,18 @@ export default async function AppointmentDetailPage({
   const actor = await resolveActor();
   const { relationshipId, appointmentId } = await params;
   let detail;
+  let programContext;
+  let canRecordProgram = false;
 
   try {
-    detail = await getAppointmentDetail(actor, relationshipId, appointmentId);
+    [detail, programContext] = await Promise.all([
+      getAppointmentDetail(actor, relationshipId, appointmentId),
+      getPatientProgramPageContext(actor, relationshipId),
+    ]);
+    if (programContext.active) {
+      const followupHistory = await getFollowupHistoryForProgram(actor, programContext.active.programId);
+      canRecordProgram = followupHistory.canRecord;
+    }
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -249,6 +280,12 @@ export default async function AppointmentDetailPage({
     throw error;
   }
 
-  return <AppointmentDetailView detail={detail} />;
+  return (
+    <AppointmentDetailView
+      activeProgram={programContext.active}
+      canRecordProgram={canRecordProgram}
+      detail={detail}
+    />
+  );
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -11,7 +12,23 @@ import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
   type FollowupProgressStatus,
 } from "@/modules/followups/domain/followup-definitions";
-import type { FollowupDetail } from "@/modules/followups/services/followup-query-service";
+import type {
+  FollowupDetail,
+  FollowupProgramDetail,
+} from "@/modules/followups/services/followup-query-service";
+
+export type FollowupDetailViewScope =
+  | {
+      kind: "relationship";
+      relationshipId: string;
+    }
+  | {
+      kind: "program";
+      relationshipId: string;
+      patientProgramId: string;
+      canManage: boolean;
+      programStatus: "ACTIVE" | "COMPLETED";
+    };
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -41,8 +58,19 @@ function measurementValue(value: number | null, unit: string): string {
   return value === null ? "ไม่ได้ระบุ" : `${value} ${unit}`;
 }
 
-export function FollowupDetailView({ detail }: { detail: FollowupDetail }): React.JSX.Element {
-  const relationshipId = detail.patient.patientHospitalRelationshipId;
+export function FollowupDetailView({
+  detail,
+  scope,
+}: {
+  detail: FollowupDetail | FollowupProgramDetail;
+  scope: FollowupDetailViewScope;
+}): React.JSX.Element {
+  const relationshipId = scope.relationshipId;
+  const linkedProgramId = scope.kind === "program" ? scope.patientProgramId : detail.patientProgramId;
+  const isProgramRoute = scope.kind === "program";
+  const historyHref = linkedProgramId
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(linkedProgramId)}/followups`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/followups`;
   const activityLabels = new Map(
     detail.sourceGoalPlan?.items.map((item) => [item.activityCode, item.activityLabel]) ?? [],
   );
@@ -51,18 +79,36 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
     <div className="max-w-5xl">
       <PageHeader
         actions={<StatusBadge variant="info">บันทึกแล้ว</StatusBadge>}
-        breadcrumbs={[
-          {
-            href: `/app/patients/${encodeURIComponent(relationshipId)}`,
-            label: "รายละเอียดผู้ป่วย",
-          },
-          {
-            href: `/app/patients/${encodeURIComponent(relationshipId)}/followups`,
-            label: "ประวัติการติดตามผล",
-          },
-          { label: `รอบที่ ${detail.roundNumber}` },
-        ]}
-        description="รายละเอียดการติดตามผลรอบที่บันทึกไว้ในโรงพยาบาลนี้"
+        breadcrumbs={
+          isProgramRoute
+            ? [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`,
+                  label: "รายละเอียดโปรแกรม",
+                },
+                {
+                  href: historyHref,
+                  label: "ประวัติการติดตามผล",
+                },
+                { label: `รอบที่ ${detail.roundNumber}` },
+              ]
+            : [
+                {
+                  href: `/app/patients/${encodeURIComponent(relationshipId)}`,
+                  label: "รายละเอียดผู้ป่วย",
+                },
+                {
+                  href: historyHref,
+                  label: "ประวัติการติดตามผลทั้งหมด",
+                },
+                { label: `รอบที่ ${detail.roundNumber}` },
+              ]
+        }
+        description={
+          isProgramRoute
+            ? "รายละเอียดการติดตามผลรอบที่บันทึกไว้ในโปรแกรมนี้"
+            : "รายละเอียดการติดตามผลรอบที่บันทึกไว้ในประวัติของผู้ป่วย"
+        }
         title={`การติดตามผลรอบที่ ${detail.roundNumber}`}
       />
 
@@ -90,6 +136,18 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
             </div>
           </dl>
         </Panel>
+
+        {!isProgramRoute && detail.patientProgramId ? (
+          <Alert variant="info">
+            รอบนี้บันทึกอยู่ในโปรแกรมที่ระบุไว้ จึงแสดงแยกจากประวัติก่อนมีโปรแกรม
+            <Link
+              className="ml-1 font-semibold underline decoration-brand-soft underline-offset-4"
+              href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.patientProgramId)}`}
+            >
+              เปิดรายละเอียดโปรแกรม
+            </Link>
+          </Alert>
+        ) : null}
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">รายการที่อ้างอิง</h2>
@@ -169,11 +227,9 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
               {detail.activityProgress.map((progress) => (
                 <li className="border-t border-border pt-5 first:border-t-0 first:pt-0" key={progress.progressId}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold text-text">
-                        {activityLabels.get(progress.goalActivityCode) ?? progress.goalActivityCode}
-                      </h3>
-                    </div>
+                    <h3 className="font-semibold text-text">
+                      {activityLabels.get(progress.goalActivityCode) ?? progress.goalActivityCode}
+                    </h3>
                     <StatusBadge variant={progressVariant(progress.status)}>
                       {FOLLOWUP_PROGRESS_STATUS_LABELS[progress.status]}
                     </StatusBadge>
@@ -223,7 +279,7 @@ export function FollowupDetailView({ detail }: { detail: FollowupDetail }): Reac
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={`/app/patients/${encodeURIComponent(relationshipId)}/followups`}
+            href={historyHref}
           >
             กลับไปประวัติการติดตามผล
           </Link>

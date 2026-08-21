@@ -54,5 +54,10 @@ export default async function FollowupDetailPage({
     throw error;
   }
 
-  return <FollowupDetailView detail={detail} />;
+  return (
+    <FollowupDetailView
+      detail={detail}
+      scope={{ kind: "relationship", relationshipId }}
+    />
+  );
 }

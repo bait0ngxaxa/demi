@@ -4,17 +4,23 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getGoalPlanCreateContext } from "@/modules/goals/services/goal-query-service";
-import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { getGoalPlanCreateContextForProgram } from "@/modules/goals/services/goal-query-service";
+import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthenticatedError,
+} from "@/shared/errors/application-error";
 
-import { GoalPlanForm } from "./goal-plan-form";
+import { GoalPlanForm } from "../../../../goals/new/goal-plan-form";
 
 export const metadata: Metadata = {
-  title: "สร้างแผนเป้าหมาย",
+  title: "สร้างแผนสุขภาพ",
 };
 
-type NewGoalPlanPageProps = {
-  params: Promise<{ relationshipId: string }>;
+type NewProgramGoalPlanPageProps = {
+  params: Promise<{ relationshipId: string; programId: string }>;
   searchParams: Promise<{ screeningId?: string | string[] }>;
 };
 
@@ -34,26 +40,34 @@ async function resolveActor() {
   }
 }
 
-export default async function NewGoalPlanPage({
+export default async function NewProgramGoalPlanPage({
   params,
   searchParams,
-}: NewGoalPlanPageProps): Promise<React.JSX.Element> {
+}: NewProgramGoalPlanPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
-  const { relationshipId } = await params;
+  const { relationshipId, programId } = await params;
   const query = await searchParams;
   const requestedScreeningId = Array.isArray(query.screeningId)
     ? query.screeningId[0]
     : query.screeningId;
+  let programDetail;
   let context;
 
   try {
-    context = await getGoalPlanCreateContext(actor, relationshipId, {
+    programDetail = await getPatientProgramDetail(actor, relationshipId, programId);
+    context = await getGoalPlanCreateContextForProgram(actor, programDetail.programId, {
       requestedScreeningId,
     });
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
+    }
+
+    if (error instanceof ConflictError) {
+      redirect(
+        `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}`,
+      );
     }
 
     if (error instanceof ForbiddenError) {
@@ -75,10 +89,13 @@ export default async function NewGoalPlanPage({
           : null
       }
       patient={context.patient}
-      scope={{ kind: "relationship", relationshipId }}
+      scope={{
+        kind: "program",
+        patientProgramId: context.patientProgramId,
+        relationshipId,
+      }}
       submissionNonce={randomUUID()}
       template={context.template}
     />
   );
 }
-

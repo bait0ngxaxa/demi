@@ -1,10 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureServerEntryExports } from "next/dist/build/webpack/loaders/next-flight-loader/action-validate";
 
 import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
+const mockedActor = vi.hoisted(() => vi.fn());
+const mockedCreate = vi.hoisted(() => vi.fn());
+const mockedCreateForProgram = vi.hoisted(() => vi.fn());
+const mockedRevalidatePath = vi.hoisted(() => vi.fn());
+
+vi.mock("@/modules/auth/services/application-access-service", () => ({
+  getProtectedApplicationActor: mockedActor,
+}));
+vi.mock("../services/followup-service", () => ({
+  createFollowup: mockedCreate,
+  createFollowupForProgram: mockedCreateForProgram,
+}));
+vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
+
 import { followupTransportInternals } from "./server-action-helpers";
 import * as followupServerActions from "./server-actions";
+import { createFollowupForProgramAction } from "./server-actions";
+import { initialFollowupActionState } from "./action-state";
 
 function validFormData(): FormData {
   const formData = new FormData();
@@ -33,6 +49,20 @@ function validProgramFormData(): FormData {
 }
 
 describe("Follow-up transport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedActor.mockResolvedValue({ userId: "actor" });
+    mockedCreateForProgram.mockResolvedValue({
+      followupId: "44444444-4444-4444-8444-444444444444",
+      patientProgramId: "33333333-3333-4333-8333-333333333333",
+      patientHospitalRelationshipId: "11111111-1111-4111-8111-111111111111",
+      hospitalId: "55555555-5555-4555-8555-555555555555",
+      roundNumber: 1,
+      recordedAt: new Date("2026-08-17T05:00:00.000Z"),
+      createdAt: new Date("2026-08-17T05:00:00.000Z"),
+    });
+  });
+
   it("exports only values accepted by the Next.js Server Action runtime", () => {
     expect(() => ensureServerEntryExports(Object.values(followupServerActions))).not.toThrow();
   });
@@ -87,6 +117,30 @@ describe("Follow-up transport", () => {
     const authority = validFormData();
     authority.set("hospitalId", "33333333-3333-4333-8333-333333333333");
     expect(followupTransportInternals.buildSubmissionInput(authority)).toBeNull();
+  });
+
+  it("uses Program follow-up creation and revalidates Program history", async () => {
+    const result = await createFollowupForProgramAction(
+      initialFollowupActionState,
+      validProgramFormData(),
+    );
+
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { followupId: "44444444-4444-4444-8444-444444444444", roundNumber: 1 },
+    });
+
+    const serviceInput = mockedCreateForProgram.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+    expect(serviceInput).toMatchObject({
+      patientProgramId: "33333333-3333-4333-8333-333333333333",
+    });
+    expect(serviceInput).not.toHaveProperty("patientHospitalRelationshipId");
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      "/app/patients/11111111-1111-4111-8111-111111111111/programs/33333333-3333-4333-8333-333333333333",
+    );
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      "/app/patients/11111111-1111-4111-8111-111111111111/programs/33333333-3333-4333-8333-333333333333/followups",
+    );
   });
 
   it("maps application failures to safe Thai messages without exposing internals", () => {

@@ -166,10 +166,21 @@ function mapGoalPlanError(error: unknown): {
   };
 }
 
-function revalidateGoalPlanPaths(relationshipId: string, goalPlanId: string): void {
+function revalidateGoalPlanPaths(
+  relationshipId: string,
+  goalPlanId: string,
+  patientProgramId?: string | null,
+): void {
   revalidatePath(`/app/patients/${relationshipId}`);
   revalidatePath(`/app/patients/${relationshipId}/goals`);
   revalidatePath(`/app/patients/${relationshipId}/goals/${goalPlanId}`);
+
+  if (patientProgramId) {
+    const programPath = `/app/patients/${relationshipId}/programs/${patientProgramId}`;
+    revalidatePath(programPath);
+    revalidatePath(`${programPath}/goals`);
+    revalidatePath(`${programPath}/goals/${goalPlanId}`);
+  }
 }
 
 export async function submitGoalPlanAction(
@@ -223,7 +234,11 @@ export async function submitGoalPlanForProgramAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await createGoalPlanForProgram(actor, parsed.data);
-    revalidateGoalPlanPaths(result.patientHospitalRelationshipId, result.goalPlanId);
+    revalidateGoalPlanPaths(
+      result.patientHospitalRelationshipId,
+      result.goalPlanId,
+      result.patientProgramId,
+    );
 
     return {
       status: "SUCCESS",

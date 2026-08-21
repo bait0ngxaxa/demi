@@ -16,6 +16,10 @@ import {
   SCREENING_LEVEL_LABELS,
   SCREENING_ZONE_LABELS,
 } from "@/modules/screening/presentation/screening-labels";
+import {
+  getPatientProgramPageContext,
+  type PatientProgramProjection,
+} from "@/modules/patient-program/services/patient-program-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const metadata: Metadata = {
@@ -90,7 +94,24 @@ function AnswerList({
   );
 }
 
-function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX.Element {
+function ScreeningDetailView({
+  activeProgram,
+  canManageProgram,
+  detail,
+}: {
+  activeProgram: PatientProgramProjection | null;
+  canManageProgram: boolean;
+  detail: ScreeningDetail;
+}): React.JSX.Element {
+  const relationshipId = detail.patient.patientHospitalRelationshipId;
+  const programHref = activeProgram
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}`
+    : null;
+  const goalPlanHref = activeProgram
+    ? canManageProgram
+      ? `${programHref ?? `/app/patients/${encodeURIComponent(relationshipId)}`}/goals/new?screeningId=${encodeURIComponent(detail.screeningAssessmentId)}`
+      : programHref ?? `/app/patients/${encodeURIComponent(relationshipId)}`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/goals/new?screeningId=${encodeURIComponent(detail.screeningAssessmentId)}`;
   return (
     <div className="max-w-5xl">
       <PageHeader
@@ -213,9 +234,13 @@ function ScreeningDetailView({ detail }: { detail: ScreeningDetail }): React.JSX
         <div className="flex flex-col gap-3 sm:flex-row">
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={`/app/patients/${encodeURIComponent(detail.patient.patientHospitalRelationshipId)}/goals/new?screeningId=${encodeURIComponent(detail.screeningAssessmentId)}`}
+            href={goalPlanHref}
           >
-            ไปยังแผนเป้าหมาย
+            {activeProgram
+              ? canManageProgram
+                ? "ไปยังแผนสุขภาพในโปรแกรมปัจจุบัน"
+                : "ดูโปรแกรมปัจจุบัน"
+              : "ไปยังแผนเป้าหมาย"}
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -236,9 +261,13 @@ export default async function ScreeningDetailPage({
   const actor = await resolveActor();
   const { relationshipId, screeningId } = await params;
   let detail;
+  let programContext;
 
   try {
-    detail = await getScreeningDetail(actor, relationshipId, screeningId);
+    [detail, programContext] = await Promise.all([
+      getScreeningDetail(actor, relationshipId, screeningId),
+      getPatientProgramPageContext(actor, relationshipId),
+    ]);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -251,5 +280,11 @@ export default async function ScreeningDetailPage({
     throw error;
   }
 
-  return <ScreeningDetailView detail={detail} />;
+  return (
+    <ScreeningDetailView
+      activeProgram={programContext.active}
+      canManageProgram={programContext.canManage}
+      detail={detail}
+    />
+  );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -10,6 +11,7 @@ import type {
   FollowupHistory,
   FollowupHistoryItem,
 } from "@/modules/followups/services/followup-query-service";
+import type { PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -34,11 +36,15 @@ function FollowupHistoryRow({
   item: FollowupHistoryItem;
   relationshipId: string;
 }): React.JSX.Element {
+  const detailHref = item.patientProgramId
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(item.patientProgramId)}/followups/${encodeURIComponent(item.followupId)}`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(item.followupId)}`;
+
   return (
     <li>
       <Link
         className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-        href={`/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(item.followupId)}`}
+        href={detailHref}
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
           <div className="min-w-0">
@@ -62,25 +68,46 @@ function FollowupHistoryRow({
               {item.sourceGoalPlan ? `รอบที่ ${item.sourceGoalPlan.roundNumber}` : "ไม่มีการเชื่อมโยงแผนเป้าหมาย"}
             </dd>
           </div>
+          <div>
+            <dt className="text-text-muted">ขอบเขตประวัติ</dt>
+            <dd className="mt-1 font-semibold text-text">
+              {item.patientProgramId ? "บันทึกผ่านโปรแกรม" : "ประวัติก่อนมีโปรแกรม"}
+            </dd>
+          </div>
         </dl>
       </Link>
     </li>
   );
 }
 
-export function FollowupHistoryView({ history }: { history: FollowupHistory }): React.JSX.Element {
+export function FollowupHistoryView({
+  activeProgram,
+  canManage,
+  history,
+}: {
+  activeProgram: PatientProgramProjection | null;
+  canManage: boolean;
+  history: FollowupHistory;
+}): React.JSX.Element {
   const relationshipId = history.patient.patientHospitalRelationshipId;
+  const activeProgramHref = activeProgram
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}`
+    : null;
+  const createHref = activeProgram
+    ? `${activeProgramHref}/followups/new`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/followups/new`;
+  const showCreateAction = activeProgram === null || canManage;
 
   return (
     <div className="max-w-5xl">
       <PageHeader
         actions={
-          history.canRecord ? (
+          showCreateAction && history.canRecord ? (
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}/followups/new`}
+              href={createHref}
             >
-              บันทึกการติดตามผล
+              {activeProgram ? "บันทึกในโปรแกรมปัจจุบัน" : "บันทึกการติดตามผล"}
             </Link>
           ) : null
         }
@@ -91,11 +118,23 @@ export function FollowupHistoryView({ history }: { history: FollowupHistory }): 
           },
           { label: "ประวัติการติดตามผล" },
         ]}
-        description="ประวัติการติดตามผลของผู้ป่วยในโรงพยาบาลนี้ เรียงจากรอบล่าสุด"
-        title="ประวัติการติดตามผล"
+        description="ประวัติรวมการติดตามผลของผู้ป่วย เรียงจากรอบล่าสุด"
+        title="ประวัติการติดตามผลทั้งหมด"
       />
 
       <div className="space-y-6 pt-8">
+        {activeProgram && activeProgramHref ? (
+          <Alert variant="info">
+            หน้านี้เป็นประวัติรวมของความสัมพันธ์กับโรงพยาบาล การติดตามผลรอบใหม่ให้บันทึกจากโปรแกรมปัจจุบัน
+            <Link
+              className="ml-1 font-semibold underline decoration-brand-soft underline-offset-4 hover:text-brand-strong focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              href={activeProgramHref}
+            >
+              ไปที่โปรแกรมปัจจุบัน
+            </Link>
+          </Alert>
+        ) : null}
+
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -135,12 +174,12 @@ export function FollowupHistoryView({ history }: { history: FollowupHistory }): 
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 บันทึกรอบแรกเพื่อเริ่มติดตามข้อมูลของผู้ป่วย
               </p>
-              {history.canRecord ? (
+              {showCreateAction && history.canRecord ? (
                 <Link
                   className="mt-5 inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                  href={`/app/patients/${encodeURIComponent(relationshipId)}/followups/new`}
+                  href={createHref}
                 >
-                  บันทึกการติดตามผลรอบแรก
+                  {activeProgram ? "บันทึกในโปรแกรมปัจจุบัน" : "บันทึกการติดตามผลรอบแรก"}
                 </Link>
               ) : null}
             </div>

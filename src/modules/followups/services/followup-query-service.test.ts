@@ -15,8 +15,10 @@ import {
 } from "@/shared/errors/application-error";
 
 const mockedGoalOptions = vi.hoisted(() => vi.fn());
+const mockedProgramGoalOptions = vi.hoisted(() => vi.fn());
 const mockedPreProgramGoalOptions = vi.hoisted(() => vi.fn());
 const mockedGoalDetail = vi.hoisted(() => vi.fn());
+const mockedProgramGoalDetail = vi.hoisted(() => vi.fn());
 const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
 
 vi.mock("./followup-access-service", async (importOriginal) => {
@@ -43,14 +45,19 @@ vi.mock("./followup-access-service", async (importOriginal) => {
 
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanOptions: mockedGoalOptions,
+  getAccessibleGoalPlanOptionsForProgram: mockedProgramGoalOptions,
   getAccessiblePreProgramGoalPlanOptions: mockedPreProgramGoalOptions,
   getAccessibleGoalPlanActivityContext: mockedGoalDetail,
+  getAccessibleGoalPlanActivityContextForProgram: mockedProgramGoalDetail,
 }));
 
 import {
   getFollowupCreateContext,
+  getFollowupCreateContextForProgram,
   getFollowupDetail,
+  getFollowupDetailForProgram,
   getFollowupHistory,
+  getFollowupHistoryForProgram,
   type FollowupQueryDatabase,
 } from "./followup-query-service";
 
@@ -62,6 +69,8 @@ const goalPlanId = "55555555-5555-4555-8555-555555555555";
 const actorUserId = "66666666-6666-4666-8666-666666666666";
 const personId = "77777777-7777-4777-8777-777777777777";
 const recordedAt = new Date("2026-08-17T05:00:00.000Z");
+const programId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const otherProgramId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const actor: ActorContext = {
   userId: actorUserId,
@@ -142,6 +151,31 @@ function createDatabase(overrides: {
         },
         osmAssignments: [],
       }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: relationshipId,
+        hospitalId,
+        hospitalNumber: "HN-001",
+        hospital: { id: hospitalId, name: "โรงพยาบาล ก", status: HospitalStatus.ACTIVE },
+        patientProfile: {
+          person: {
+            givenName: "สมชาย",
+            familyName: "ผู้ป่วย",
+            user: { roles: [{ role: Role.PATIENT }] },
+          },
+        },
+        osmAssignments: [],
+      }),
+    },
+    patientProgram: {
+      findFirst: vi.fn().mockImplementation(async (query: { where?: { id?: string } }) => {
+        return query.where?.id === programId
+          ? {
+              id: programId,
+              patientHospitalRelationshipId: relationshipId,
+              status: "ACTIVE",
+            }
+          : null;
+      }),
     },
     patientAppointment: {
       findMany: vi.fn().mockResolvedValue(
@@ -156,8 +190,32 @@ function createDatabase(overrides: {
       ),
     },
     patientFollowup: {
-      findMany: vi.fn().mockResolvedValue(overrides.followupHistory ?? []),
-      findFirst: vi.fn().mockResolvedValue(overrides.detail ?? null),
+      findMany: vi.fn().mockImplementation(async (query: { where?: { patientProgramId?: string } }) => {
+        const records = overrides.followupHistory ?? [];
+        const requestedProgramId = query.where?.patientProgramId;
+
+        return requestedProgramId
+          ? records.filter((record) => record.patientProgramId === requestedProgramId)
+          : records;
+      }),
+      findFirst: vi.fn().mockImplementation(async (query: { where?: { patientProgramId?: string } }) => {
+        const record = overrides.detail ?? null;
+        const requestedProgramId = query.where?.patientProgramId;
+
+        if (requestedProgramId && record?.patientProgramId !== requestedProgramId) {
+          return null;
+        }
+
+        return record;
+      }),
+      count: vi.fn().mockImplementation(async (query: { where?: { patientProgramId?: string } }) => {
+        const records = overrides.followupHistory ?? [];
+        const requestedProgramId = query.where?.patientProgramId;
+
+        return requestedProgramId
+          ? records.filter((record) => record.patientProgramId === requestedProgramId).length
+          : records.length;
+      }),
     },
   };
 
@@ -167,6 +225,7 @@ function createDatabase(overrides: {
 function historyRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: followupId,
+    patientProgramId: null,
     roundNumber: 2,
     recordedAt,
     createdByUser: { person: { givenName: "ผู้บันทึก", familyName: "รอบแรก" } },
@@ -184,6 +243,7 @@ function historyRecord(overrides: Record<string, unknown> = {}): Record<string, 
 function detailRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: followupId,
+    patientProgramId: null,
     sourceGoalPlanId: goalPlanId,
     roundNumber: 2,
     recordedAt,
@@ -217,9 +277,12 @@ describe("Follow-up query service", () => {
     mockedFollowupAccessState.denyRecord = false;
     mockedGoalOptions.mockReset();
     mockedGoalOptions.mockResolvedValue([]);
+    mockedProgramGoalOptions.mockReset();
+    mockedProgramGoalOptions.mockResolvedValue([]);
     mockedPreProgramGoalOptions.mockReset();
     mockedPreProgramGoalOptions.mockResolvedValue([]);
     mockedGoalDetail.mockReset();
+    mockedProgramGoalDetail.mockReset();
   });
 
   it("returns relationship-scoped newest-first minimal history with a bounded query", async () => {
@@ -248,6 +311,36 @@ describe("Follow-up query service", () => {
     const query = vi.mocked(database.patientFollowup.findMany).mock.calls[0]?.[0];
     expect(query?.select).not.toHaveProperty("reflectionNote");
     expect(JSON.stringify(history)).not.toContain("สะท้อน");
+  });
+
+  it("keeps Program Follow-up history isolated from other Programs and pre-Program records", async () => {
+    const database = createDatabase({
+      followupHistory: [
+        historyRecord({ patientProgramId: programId }),
+        historyRecord({
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          patientProgramId: otherProgramId,
+        }),
+        historyRecord({
+          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          patientProgramId: null,
+        }),
+      ],
+    });
+
+    const history = await getFollowupHistoryForProgram(actor, programId, { database });
+
+    expect(history.items).toHaveLength(1);
+    expect(history.items[0]).toMatchObject({ followupId, patientProgramId: programId });
+    expect(history.totalCount).toBe(1);
+    expect(database.patientFollowup.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          patientProgramId: programId,
+          patientHospitalRelationshipId: relationshipId,
+        },
+      }),
+    );
   });
 
   it("derives canRecord independently and keeps history readable when record is denied", async () => {
@@ -285,6 +378,31 @@ describe("Follow-up query service", () => {
       relationshipId,
       expect.objectContaining({ database }),
     );
+  });
+
+  it("loads only same-Program Goal Plans and allows a Follow-up with no Goal Plan", async () => {
+    mockedProgramGoalOptions.mockResolvedValueOnce([
+      { ...goalPlan, patientProgramId: programId },
+    ]);
+    const database = createDatabase();
+
+    const context = await getFollowupCreateContextForProgram(actor, programId, undefined, { database });
+
+    expect(context.goalPlans).toMatchObject([{ goalPlanId, patientProgramId: programId }]);
+    expect(mockedProgramGoalOptions).toHaveBeenCalledWith(
+      expect.any(Object),
+      programId,
+      expect.objectContaining({ database }),
+    );
+    expect(mockedPreProgramGoalOptions).not.toHaveBeenCalled();
+
+    mockedProgramGoalOptions.mockResolvedValueOnce([]);
+    const standaloneContext = await getFollowupCreateContextForProgram(actor, programId, undefined, {
+      database,
+    });
+
+    expect(standaloneContext.goalPlans).toEqual([]);
+    expect(standaloneContext.selectedGoalPlanId).toBeNull();
   });
 
   it("preselects only an exact pre-Program Goal Plan", async () => {
@@ -425,5 +543,15 @@ describe("Follow-up query service", () => {
     await expect(getFollowupHistory(actor, relationshipId, { database: deniedDatabase })).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+  });
+
+  it("rejects a Follow-up from another Program in Program detail", async () => {
+    const database = createDatabase({
+      detail: detailRecord({ patientProgramId: otherProgramId }),
+    });
+
+    await expect(
+      getFollowupDetailForProgram(actor, programId, followupId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

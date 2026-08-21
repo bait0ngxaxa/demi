@@ -168,6 +168,17 @@ describe("Goal Plan Server Action", () => {
       actor,
       expect.objectContaining({ patientHospitalRelationshipId: expect.any(String) }),
     );
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}`);
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/goals`);
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      `/app/patients/${relationshipId}/programs/${programId}`,
+    );
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      `/app/patients/${relationshipId}/programs/${programId}/goals`,
+    );
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(
+      `/app/patients/${relationshipId}/programs/${programId}/goals/${goalPlanId}`,
+    );
   });
 });
 

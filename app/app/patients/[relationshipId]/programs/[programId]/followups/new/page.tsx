@@ -4,17 +4,23 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getFollowupCreateContext } from "@/modules/followups/services/followup-query-service";
-import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { getFollowupCreateContextForProgram } from "@/modules/followups/services/followup-query-service";
+import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthenticatedError,
+} from "@/shared/errors/application-error";
 
-import { FollowupForm } from "./followup-form";
+import { FollowupForm } from "../../../../followups/new/followup-form";
 
 export const metadata: Metadata = {
-  title: "บันทึกการติดตามผล",
+  title: "บันทึกการติดตามผลในโปรแกรม",
 };
 
-type NewFollowupPageProps = {
-  params: Promise<{ relationshipId: string }>;
+type NewProgramFollowupPageProps = {
+  params: Promise<{ relationshipId: string; programId: string }>;
   searchParams: Promise<{
     appointmentId?: string | string[];
     sourceGoalPlanId?: string | string[];
@@ -37,13 +43,13 @@ async function resolveActor() {
   }
 }
 
-export default async function NewFollowupPage({
+export default async function NewProgramFollowupPage({
   params,
   searchParams,
-}: NewFollowupPageProps): Promise<React.JSX.Element> {
+}: NewProgramFollowupPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
-  const { relationshipId } = await params;
+  const { relationshipId, programId } = await params;
   const query = await searchParams;
   const requestedAppointmentId = Array.isArray(query.appointmentId)
     ? query.appointmentId[0]
@@ -51,15 +57,26 @@ export default async function NewFollowupPage({
   const requestedGoalPlanId = Array.isArray(query.sourceGoalPlanId)
     ? query.sourceGoalPlanId[0]
     : query.sourceGoalPlanId;
+  let programDetail;
   let context;
 
   try {
-    context = await getFollowupCreateContext(actor, relationshipId, requestedAppointmentId, {
-      requestedGoalPlanId,
-    });
+    programDetail = await getPatientProgramDetail(actor, relationshipId, programId);
+    context = await getFollowupCreateContextForProgram(
+      actor,
+      programDetail.programId,
+      requestedAppointmentId,
+      { requestedGoalPlanId },
+    );
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
+    }
+
+    if (error instanceof ConflictError) {
+      redirect(
+        `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}`,
+      );
     }
 
     if (error instanceof ForbiddenError) {
@@ -84,7 +101,11 @@ export default async function NewFollowupPage({
         items: plan.items,
       }))}
       patient={context.patient}
-      scope={{ kind: "relationship", relationshipId }}
+      scope={{
+        kind: "program",
+        patientProgramId: context.patientProgramId,
+        relationshipId,
+      }}
       selectedAppointmentId={context.selectedAppointmentId}
       selectedGoalPlanId={context.selectedGoalPlanId}
       submissionNonce={randomUUID()}

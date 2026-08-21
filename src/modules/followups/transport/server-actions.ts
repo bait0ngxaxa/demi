@@ -17,10 +17,21 @@ import {
   mapFollowupError,
 } from "./server-action-helpers";
 
-function revalidateFollowupPaths(relationshipId: string, followupId: string): void {
+function revalidateFollowupPaths(
+  relationshipId: string,
+  followupId: string,
+  patientProgramId?: string | null,
+): void {
   revalidatePath(`/app/patients/${relationshipId}`);
   revalidatePath(`/app/patients/${relationshipId}/followups`);
   revalidatePath(`/app/patients/${relationshipId}/followups/${followupId}`);
+
+  if (patientProgramId) {
+    const programPath = `/app/patients/${relationshipId}/programs/${patientProgramId}`;
+    revalidatePath(programPath);
+    revalidatePath(`${programPath}/followups`);
+    revalidatePath(`${programPath}/followups/${followupId}`);
+  }
 }
 
 export async function createFollowupAction(
@@ -74,7 +85,11 @@ export async function createFollowupForProgramAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await createFollowupForProgram(actor, parsed.data);
-    revalidateFollowupPaths(result.patientHospitalRelationshipId, result.followupId);
+    revalidateFollowupPaths(
+      result.patientHospitalRelationshipId,
+      result.followupId,
+      result.patientProgramId,
+    );
 
     return {
       status: "SUCCESS",

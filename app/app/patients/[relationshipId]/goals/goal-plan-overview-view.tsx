@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -8,6 +9,7 @@ import type {
   GoalPlanOverview,
   GoalScreeningContext,
 } from "@/modules/goals/services/goal-query-service";
+import type { PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
 import {
   SCREENING_LEVEL_LABELS,
   SCREENING_ZONE_LABELS,
@@ -68,11 +70,15 @@ function HistoryRow({
   item: GoalHistoryItem;
   relationshipId: string;
 }): React.JSX.Element {
+  const detailHref = item.patientProgramId
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(item.patientProgramId)}/goals/${encodeURIComponent(item.goalPlanId)}`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(item.goalPlanId)}`;
+
   return (
     <li>
       <Link
         className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-        href={`/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(item.goalPlanId)}`}
+        href={detailHref}
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
           <div className="min-w-0">
@@ -99,8 +105,10 @@ function HistoryRow({
             <dd className="mt-1 font-semibold text-text">{item.activityCount} รายการ</dd>
           </div>
           <div className="sm:text-right">
-            <dt className="text-text-muted">สถานะ</dt>
-            <dd className="mt-1 font-semibold text-text">ส่งแล้ว</dd>
+            <dt className="text-text-muted">ขอบเขตประวัติ</dt>
+            <dd className="mt-1 font-semibold text-text">
+              {item.patientProgramId ? "บันทึกผ่านโปรแกรม" : "ประวัติก่อนมีโปรแกรม"}
+            </dd>
           </div>
         </dl>
       </Link>
@@ -108,19 +116,36 @@ function HistoryRow({
   );
 }
 
-export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview }): React.JSX.Element {
+export function GoalPlanOverviewView({
+  activeProgram,
+  canManage,
+  overview,
+}: {
+  activeProgram: PatientProgramProjection | null;
+  canManage: boolean;
+  overview: GoalPlanOverview;
+}): React.JSX.Element {
   const relationshipId = overview.patient.patientHospitalRelationshipId;
+  const activeProgramHref = activeProgram
+    ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(activeProgram.programId)}`
+    : null;
+  const createHref = activeProgram
+    ? `${activeProgramHref}/goals/new`
+    : `/app/patients/${encodeURIComponent(relationshipId)}/goals/new`;
+  const showCreateAction = activeProgram === null || canManage;
 
   return (
     <div className="max-w-5xl">
       <PageHeader
         actions={
-          <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={`/app/patients/${encodeURIComponent(relationshipId)}/goals/new`}
-          >
-            สร้างแผนเป้าหมายรอบใหม่
-          </Link>
+          showCreateAction ? (
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href={createHref}
+            >
+              {activeProgram ? "สร้างแผนในโปรแกรมปัจจุบัน" : "สร้างแผนเป้าหมายรอบใหม่"}
+            </Link>
+          ) : null
         }
         breadcrumbs={[
           {
@@ -129,11 +154,23 @@ export function GoalPlanOverviewView({ overview }: { overview: GoalPlanOverview 
           },
           { label: "แผนเป้าหมาย" },
         ]}
-        description="แผนเป้าหมายและกิจกรรมของผู้ป่วยในบริบทของโรงพยาบาลนี้ เรียงจากรอบล่าสุด"
-        title="แผนเป้าหมายและกิจกรรม"
+        description="ประวัติรวมแผนเป้าหมายและกิจกรรมของผู้ป่วย เรียงจากรอบล่าสุด"
+        title="ประวัติแผนเป้าหมายทั้งหมด"
       />
 
       <div className="space-y-6 pt-8">
+        {activeProgram && activeProgramHref ? (
+          <Alert variant="info">
+            หน้านี้เป็นประวัติรวมของความสัมพันธ์กับโรงพยาบาล แผนที่บันทึกในโปรแกรมปัจจุบันให้ดูและสร้างต่อจากหน้าโปรแกรม
+            <Link
+              className="ml-1 font-semibold underline decoration-brand-soft underline-offset-4 hover:text-brand-strong focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              href={activeProgramHref}
+            >
+              ไปที่โปรแกรมปัจจุบัน
+            </Link>
+          </Alert>
+        ) : null}
+
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>

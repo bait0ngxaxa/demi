@@ -3,18 +3,18 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getGoalPlanOverview } from "@/modules/goals/services/goal-query-service";
-import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
+import { getGoalPlanOverviewForProgram } from "@/modules/goals/services/goal-query-service";
+import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { GoalPlanOverviewView } from "./goal-plan-overview-view";
+import { ProgramGoalHistoryView } from "../program-goal-history-view";
 
 export const metadata: Metadata = {
-  title: "ประวัติแผนเป้าหมายทั้งหมด",
+  title: "ประวัติแผนสุขภาพและเป้าหมายในโปรแกรม",
 };
 
-type GoalPlanOverviewPageProps = {
-  params: Promise<{ relationshipId: string }>;
+type ProgramGoalHistoryPageProps = {
+  params: Promise<{ relationshipId: string; programId: string }>;
 };
 
 async function resolveActor() {
@@ -33,20 +33,18 @@ async function resolveActor() {
   }
 }
 
-export default async function GoalPlanOverviewPage({
+export default async function ProgramGoalHistoryPage({
   params,
-}: GoalPlanOverviewPageProps): Promise<React.JSX.Element> {
+}: ProgramGoalHistoryPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
-  const { relationshipId } = await params;
+  const { relationshipId, programId } = await params;
+  let detail;
   let overview;
-  let programContext;
 
   try {
-    [overview, programContext] = await Promise.all([
-      getGoalPlanOverview(actor, relationshipId),
-      getPatientProgramPageContext(actor, relationshipId),
-    ]);
+    detail = await getPatientProgramDetail(actor, relationshipId, programId);
+    overview = await getGoalPlanOverviewForProgram(actor, detail.programId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -59,12 +57,5 @@ export default async function GoalPlanOverviewPage({
     throw error;
   }
 
-  return (
-    <GoalPlanOverviewView
-      activeProgram={programContext.active}
-      canManage={programContext.canManage}
-      overview={overview}
-    />
-  );
+  return <ProgramGoalHistoryView detail={detail} overview={overview} />;
 }
-
