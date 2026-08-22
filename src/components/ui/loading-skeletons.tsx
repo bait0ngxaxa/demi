@@ -121,7 +121,7 @@ export function DirectorySkeleton({
   const rowCount = Math.max(3, Math.min(rows, 8));
 
   return (
-    <LoadingRegion className={classNames("max-w-6xl", className)} label={label}>
+    <LoadingRegion className={className} label={label}>
       <PageHeaderSkeleton actions />
       <div className="space-y-6 pt-8">
         <Panel aria-hidden="true">
@@ -169,7 +169,7 @@ export function DetailSkeleton({
   label?: string;
 } = {}): React.JSX.Element {
   return (
-    <LoadingRegion className={classNames("max-w-5xl", className)} label={label}>
+    <LoadingRegion className={className ?? "max-w-5xl"} label={label}>
       <PageHeaderSkeleton actions />
       <div className="space-y-6 pt-8">
         <Panel aria-hidden="true">

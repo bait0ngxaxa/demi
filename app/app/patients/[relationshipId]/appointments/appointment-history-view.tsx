@@ -96,7 +96,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
   const relationshipId = history.patient.patientHospitalRelationshipId;
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           history.canManage ? (

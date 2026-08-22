@@ -58,7 +58,7 @@ export function PatientProgramDetailView({
   const relationshipId = detail.patient.patientHospitalRelationshipId;
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center justify-end gap-3">

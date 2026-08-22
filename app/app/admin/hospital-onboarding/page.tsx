@@ -40,7 +40,7 @@ export default async function HospitalOnboardingReviewPage(): Promise<React.JSX.
   const applications = await listPendingHospitalOnboardingApplications();
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PageHeader
         actions={<StatusBadge variant="info">รอตรวจสอบ {applications.length} รายการ</StatusBadge>}
         breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}

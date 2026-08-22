@@ -130,7 +130,7 @@ export function AssignedPatientDirectoryView({
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PageHeader
         actions={<StatusBadge variant="info">ขอบเขตที่รับผิดชอบ</StatusBadge>}
         breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}

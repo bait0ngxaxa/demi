@@ -475,9 +475,9 @@ export function PatientProvisioningWorkspace({
           </div>
         ) : null}
 
-        <div className="mt-6 max-w-4xl">
+        <div className="mt-6">
           {activeMode === "SINGLE" ? (
-          <Panel>
+          <Panel className="max-w-4xl">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มผู้ป่วยรายบุคคล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">

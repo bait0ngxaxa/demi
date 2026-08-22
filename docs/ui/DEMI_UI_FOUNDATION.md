@@ -9,7 +9,9 @@
 - desktop sidebar สำหรับ viewport ตั้งแต่ `lg` ซึ่งสลับระหว่าง expanded 17rem กับ collapsed rail 4.5rem ได้;
 - compact mobile header และ modal navigation drawer ที่ใช้โครงสร้างเมนูเดียวกัน;
 - application header สำหรับ role context และ logout;
-- `<main>` เดียว พร้อม content width และ page spacing มาตรฐาน
+- `<main>` เดียวที่เป็นพื้นที่ทำงานแบบ fluid พร้อม horizontal และ vertical spacing มาตรฐาน
+
+ตั้งแต่ breakpoint `lg` ความกว้างพื้นที่ทำงานคำนวณจาก viewport ลบความกว้าง sidebar โดยอาศัย flex layout ของ shell: sidebar กว้าง 17rem เมื่อ expanded และ 4.5rem เมื่อ collapsed ดังนั้นการย่อ sidebar จะคืนพื้นที่ให้ workspace โดยอัตโนมัติ AppShell ไม่กำหนด global readable-content max width และไม่ subscribe หรือคำนวณจาก state ของ sidebar
 
 Public routes เช่น `/login` และ `/activate/patient` ไม่ใช้ protected shell
 
@@ -45,6 +47,8 @@ Protected feature page ใช้ลำดับต่อไปนี้:
 
 ใช้ heading, whitespace, separator และ table เป็น hierarchy หลัก ใช้ `Panel` เมื่อข้อมูลต้องมีขอบเขตชัด เช่น form, Hospital selector หรือ grouped result ไม่ครอบทุก heading/paragraph ด้วย card และไม่ซ้อน panel โดยไม่มีเหตุผล
 
+ความกว้างเป็นความรับผิดชอบของ feature/layout ที่ใช้ข้อมูลนั้น: form, onboarding, prose และ detail ที่ต้องการ readable measure อาจใช้ `max-w-*` เฉพาะจุด ส่วน directory, table, report, dashboard, grid และ operational workspace ควรใช้พื้นที่ application ที่เพิ่มขึ้นได้ตามความเหมาะสม การกำหนดความกว้างของ shell ต้องไม่เป็นตัวตัดสิน readability ของ feature
+
 ## Design tokens
 
 `app/globals.css` กำหนด semantic tokens ผ่าน CSS custom properties และ Tailwind 4 `@theme inline`:
@@ -57,7 +61,7 @@ Protected feature page ใช้ลำดับต่อไปนี้:
 - navigation: `navigation-background`, `navigation-hover`, `navigation-active`;
 - radius: `control`, `panel`, `dialog`;
 - shadow: `surface`, `floating`;
-- layout: application sidebar expanded/collapsed widths, header height และ content max width
+- layout: application sidebar expanded/collapsed widths และ header height
 
 คง token ชื่อเดิม (`brand`, `ink`, `muted`, `line` ฯลฯ) เพื่อ compatibility ห้ามเพิ่ม feature-specific token หรือแทน Tailwind spacing scale ทั้งหมด
 
@@ -94,5 +98,6 @@ Application chrome อยู่ใน `src/components/app-shell/`: `AppShell`, `
 - navigation condition ต้องรวมศูนย์และ reuse policy helper แต่ operation authorization ต้องอยู่ฝั่ง server เสมอ
 - Hospital context คงเป็น local screen state จนกว่าจะมี requirement สำหรับ global context
 - สำหรับ operation workspace ที่เก็บ transient action/result state ให้ใช้ Server-validated Hospital context เป็น remount/reset boundary ตามความเหมาะสม เพื่อไม่แสดง state ข้าม Hospital
+- การปรับ layout และ responsive width เป็น UI-only change ต้องไม่เปลี่ยน authorization, policy, business behavior, service contract หรือ transaction
 - อย่าสร้าง metrics, workflow, global state, theme engine หรือ permission framework ที่ยังไม่มี requirement
 - งาน UI/style ห้ามเปลี่ยน business logic, schema, transaction หรือ service contract โดยไม่ได้รับคำสั่ง

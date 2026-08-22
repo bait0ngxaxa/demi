@@ -58,7 +58,7 @@ export function ProtectedApplicationShellSkeleton(): React.JSX.Element {
           <Skeleton className="h-10 w-24 shrink-0" />
         </header>
 
-        <main className="mx-auto w-full max-w-app-content px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
+        <main className="min-w-0 w-full px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12">
           <PageHeaderSkeleton actions />
           <div className="grid gap-6 pt-8 lg:grid-cols-2">
             <PanelSkeleton rows={3} />

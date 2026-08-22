@@ -20,7 +20,7 @@ export function ProgramFollowupHistoryView({
   const canCreate = detail.status === "ACTIVE" && history.canRecord;
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           canCreate ? (

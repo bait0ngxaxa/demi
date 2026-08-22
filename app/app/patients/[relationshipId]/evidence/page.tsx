@@ -146,7 +146,7 @@ export default async function PatientEvidencePage({
   }
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           context.canCreate ? (

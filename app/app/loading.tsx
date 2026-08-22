@@ -6,7 +6,7 @@ import {
 
 export default function ApplicationLoading(): React.JSX.Element {
   return (
-    <LoadingRegion className="max-w-6xl" label="กำลังโหลดข้อมูล...">
+    <LoadingRegion className="max-w-4xl" label="กำลังโหลดข้อมูล...">
       <PageHeaderSkeleton actions />
       <div className="grid gap-6 pt-8 lg:grid-cols-2">
         <PanelSkeleton rows={3} />

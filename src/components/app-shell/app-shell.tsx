@@ -27,7 +27,7 @@ export function AppShell({
       <div className="min-w-0 flex-1">
         <AppHeader navigation={navigation} roleLabels={roleLabels} />
         <main
-          className="mx-auto w-full max-w-app-content px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12"
+          className="min-w-0 w-full px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12"
           id="application-main-content"
           tabIndex={-1}
         >

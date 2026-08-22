@@ -59,7 +59,6 @@ spacing:
   compact-control-height: "44px"
   app-sidebar: "272px"
   app-header: "72px"
-  content-max-width: "1280px"
 components:
   button-primary:
     backgroundColor: "{colors.brand}"
@@ -159,9 +158,9 @@ Palette เป็น restrained clinical green: brand ทำหน้าที�
 
 ## Layout
 
-Application shell ใช้ layout แบบสองพื้นที่เมื่อ viewport ถึง `lg` (1024px): sidebar คงที่กว้าง 17rem และ main content ยืดหยุ่น ส่วน mobile ใช้ header สูง 4.5rem และ drawer ที่มี information architecture เดียวกันกับ sidebar
+Application shell ใช้ layout แบบสองพื้นที่เมื่อ viewport ถึง `lg` (1024px): sidebar คงที่กว้าง 17rem หรือ 4.5rem เมื่อย่อ และ main workspace ยืดหยุ่นตามพื้นที่ที่เหลือ ส่วน mobile ใช้ header สูง 4.5rem และ drawer ที่มี information architecture เดียวกันกับ sidebar
 
-Main content มี maximum width 80rem พร้อม horizontal padding 20px บน mobile, 32px ตั้งแต่ `sm` และ 40px ตั้งแต่ `lg`; vertical page rhythm คือ 32px, 40px และ 48px ตาม breakpoint หน้า feature จำกัด readable width ของตนเองได้เมื่อข้อมูลเป็น form หรือ review detail
+Main workspace เป็น fluid พร้อม horizontal padding 20px บน mobile, 32px ตั้งแต่ `sm` และ 40px ตั้งแต่ `lg`; vertical page rhythm คือ 32px, 40px และ 48px ตาม breakpoint หน้า feature จำกัด readable width ของตนเองได้เมื่อข้อมูลเป็น form, prose หรือ review detail ส่วน directory, report และ operational workspace ใช้พื้นที่ที่เหลือได้ตามความเหมาะสม
 
 Page hierarchy คือ `PageHeader` → optional local navigation → bounded content sections ใช้ grid เฉพาะเมื่อข้อมูลสัมพันธ์กันจริง Form และ result stack บน mobile และเปลี่ยนเป็น row/grid เมื่อมีพื้นที่เพียงพอ
 

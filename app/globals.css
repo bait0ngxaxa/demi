@@ -37,7 +37,6 @@
   --app-sidebar-width: 17rem;
   --app-sidebar-collapsed-width: 4.5rem;
   --app-header-height: 4.5rem;
-  --app-content-max-width: 80rem;
 }
 
 @theme inline {
@@ -83,7 +82,6 @@
   --spacing-app-sidebar: var(--app-sidebar-width);
   --spacing-app-sidebar-collapsed: var(--app-sidebar-collapsed-width);
   --spacing-app-header: var(--app-header-height);
-  --container-app-content: var(--app-content-max-width);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

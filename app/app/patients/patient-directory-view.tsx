@@ -159,7 +159,7 @@ export function PatientDirectoryView({
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PageHeader
         actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
         breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "รายชื่อผู้ป่วย" }]}

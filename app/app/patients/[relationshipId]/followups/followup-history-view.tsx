@@ -99,7 +99,7 @@ export function FollowupHistoryView({
   const showCreateAction = activeProgram === null || canManage;
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           showCreateAction && history.canRecord ? (

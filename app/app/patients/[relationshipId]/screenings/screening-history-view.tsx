@@ -85,7 +85,7 @@ function ScreeningHistoryRow({
 
 export function ScreeningHistoryView({ history }: ScreeningHistoryViewProps): React.JSX.Element {
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           <Link

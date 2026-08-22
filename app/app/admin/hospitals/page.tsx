@@ -78,7 +78,7 @@ export default async function HospitalGovernanceDirectoryPage(): Promise<React.J
   const hospitals = await listHospitalGovernanceDirectory(actor);
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PageHeader
         breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "การกำกับดูแลโรงพยาบาล" }]}
         description="ตรวจสอบสถานะโรงพยาบาลในวงจรการกำกับดูแลของ DEMI และดำเนินการที่เกี่ยวข้อง"

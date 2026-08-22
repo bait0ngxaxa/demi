@@ -80,7 +80,7 @@ export function PatientActivationActionsWorkspace({
   const errorMessage = mapLookupError(lookupState);
 
   return (
-    <div className="max-w-6xl">
+    <div>
       <PageHeader
         actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
         breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}

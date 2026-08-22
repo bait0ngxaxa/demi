@@ -20,7 +20,7 @@ export function ProgramGoalHistoryView({
   const canCreate = detail.status === "ACTIVE" && detail.canManage;
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           canCreate ? (

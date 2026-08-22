@@ -662,7 +662,7 @@ export function ProgramReportView({
   };
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <PageHeader
         actions={
           <div className="flex flex-wrap items-center justify-end gap-3">
