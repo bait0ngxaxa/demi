@@ -129,6 +129,7 @@ model User {
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
+  patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -221,6 +222,7 @@ model PatientHospitalRelationship {
   appointments PatientAppointment[]
   followups PatientFollowup[]
   programs PatientProgram[]
+  finalAssessments PatientFinalAssessment[]
   baseline             PatientBaseline?
   evidenceArtifacts    PatientEvidenceArtifact[]
 
@@ -422,6 +424,7 @@ model PatientProgram {
   createdByUser               User                        @relation("PatientProgramCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   goalPlans                    PatientGoalPlan[]           @relation("PatientProgramGoalPlans")
   followups                    PatientFollowup[]           @relation("PatientProgramFollowups")
+  finalAssessment              PatientFinalAssessment?
   serviceOneRoutine           PatientProgramServiceOneRoutine?
   serviceOneFloatingChart     PatientProgramServiceOneFloatingChart?
   serviceOneDreamCard         PatientProgramServiceOneDreamCard?
@@ -432,6 +435,29 @@ model PatientProgram {
   @@index([patientHospitalRelationshipId, startedAt])
   @@index([initialBaselineId])
   @@unique([id, patientHospitalRelationshipId])
+}
+
+model PatientFinalAssessment {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId              String   @unique @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  recordedByUserId              String   @db.Uuid
+  weight                        Float?
+  waistCircumference            Float?
+  systolicBloodPressure         Float?
+  diastolicBloodPressure        Float?
+  bloodSugar                    Float?
+  recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProgram              PatientProgram              @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
+  recordedBy                  User                        @relation("PatientFinalAssessmentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  // Prisma requires the exact composite relation fields to be unique; the
+  // single-column unique field above is the Program cardinality backstop.
+  @@unique([patientProgramId, patientHospitalRelationshipId])
+  @@index([recordedByUserId, recordedAt])
 }
 
 model PatientProgramServiceOneRoutine {

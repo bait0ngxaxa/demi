@@ -17,6 +17,8 @@ import {
 } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
+import { getPatientFinalAssessmentForProgram } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
+import { createPatientFinalAssessment } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
 import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import {
@@ -64,6 +66,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientProgramServiceOneRoutine.deleteMany();
   await prisma.patientFollowupActivityProgress.deleteMany();
   await prisma.patientFollowup.deleteMany();
+  await prisma.patientFinalAssessment.deleteMany();
   await prisma.patientAppointment.deleteMany();
   await prisma.patientGoalItem.deleteMany();
   await prisma.patientGoalPlan.deleteMany();
@@ -296,6 +299,23 @@ function followupProgramInput(
     confidencePlan: "แผนความมั่นใจของโปรแกรม",
     generalNote: "หมายเหตุของโปรแกรม",
     activityProgress: [],
+    ...overrides,
+  };
+}
+
+function finalAssessmentInput(
+  patientProgramId: string,
+  patientHospitalRelationshipId: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    patientProgramId,
+    patientHospitalRelationshipId,
+    weight: 72.5,
+    waistCircumference: 90,
+    systolicBloodPressure: 120,
+    diastolicBloodPressure: 80,
+    bloodSugar: 95,
     ...overrides,
   };
 }
@@ -1757,6 +1777,321 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     } else {
       expect(followupOutcomes[0]?.status).toBe("rejected");
       expect((followupOutcomes[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
+    }
+  });
+
+  it("persists an exact Program-owned Final Assessment with safe audit metadata", async () => {
+    const hospital = await createHospital("FINAL-PERSISTENCE");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const patient = await createPatient(owner.actor, hospital.id, "final-persistence");
+    const program = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const recordedAt = new Date("2026-08-22T05:00:00.000Z");
+
+    await expect(
+      getPatientFinalAssessmentForProgram(owner.actor, program.patientProgramId),
+    ).resolves.toMatchObject({
+      patientProgramId: program.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      programStatus: PatientProgramStatus.ACTIVE,
+      finalAssessment: null,
+    });
+
+    const created = await createPatientFinalAssessment(
+      owner.actor,
+      finalAssessmentInput(program.patientProgramId, patient.relationshipId),
+      { now: () => recordedAt },
+    );
+    const stored = await prisma.patientFinalAssessment.findUniqueOrThrow({
+      where: { patientProgramId: program.patientProgramId },
+    });
+    const projected = await getPatientFinalAssessmentForProgram(
+      owner.actor,
+      program.patientProgramId,
+    );
+    const audit = await prisma.auditEvent.findFirstOrThrow({
+      where: {
+        action: "patient_final_assessment.created",
+        resourceId: created.patientFinalAssessmentId,
+      },
+      select: { actorUserId: true, metadata: true },
+    });
+
+    expect(created).toMatchObject({
+      patientFinalAssessmentId: stored.id,
+      patientProgramId: program.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      hospitalId: hospital.id,
+      recordedByUserId: owner.userId,
+      recordedAt,
+      createdAt: recordedAt,
+    });
+    expect(stored).toMatchObject({
+      patientProgramId: program.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      recordedByUserId: owner.userId,
+      weight: 72.5,
+      waistCircumference: 90,
+      systolicBloodPressure: 120,
+      diastolicBloodPressure: 80,
+      bloodSugar: 95,
+      recordedAt,
+      createdAt: recordedAt,
+    });
+    expect(projected).toMatchObject({
+      patientProgramId: program.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      programStatus: PatientProgramStatus.ACTIVE,
+      finalAssessment: {
+        id: stored.id,
+        recordedBy: { id: owner.userId },
+        recordedAt,
+        createdAt: recordedAt,
+        measurements: {
+          weight: 72.5,
+          waistCircumference: 90,
+          systolicBloodPressure: 120,
+          diastolicBloodPressure: 80,
+          bloodSugar: 95,
+        },
+      },
+    });
+    expect(audit.actorUserId).toBe(owner.userId);
+    expect(audit.metadata).toEqual({
+      patientFinalAssessmentId: stored.id,
+      patientProgramId: program.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      hospitalId: hospital.id,
+    });
+    expect(JSON.stringify(audit.metadata)).not.toContain("weight");
+    expect(JSON.stringify(audit.metadata)).not.toContain("72.5");
+    await expect(
+      prisma.patientProgram.findUnique({
+        where: { id: program.patientProgramId },
+        select: { status: true, completedAt: true },
+      }),
+    ).resolves.toEqual({ status: PatientProgramStatus.ACTIVE, completedAt: null });
+  });
+
+  it("reuses Program scope, fails closed on auth drift, and isolates Program A from Program B", async () => {
+    const hospital = await createHospital("FINAL-BOUNDARY");
+    const otherHospital = await createHospital("FINAL-OTHER-HOSPITAL");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const otherOwner = await createHospitalActor({ hospitalId: otherHospital.id });
+    const admin = await createAdminActor();
+    const patient = await createPatient(owner.actor, hospital.id, "final-boundary");
+    const otherPatient = await createPatient(owner.actor, hospital.id, "final-other-patient");
+    const programA = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+
+    await expect(
+      createPatientFinalAssessment(
+        otherOwner.actor,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      createPatientFinalAssessment(
+        admin,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(programA.patientProgramId, otherPatient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    const osm = await createOsmActor(hospital.id);
+    const osmPatient = await createPatient(owner.actor, hospital.id, "final-osm");
+    await assignOsmToPatient(owner.actor, {
+      patientHospitalRelationshipId: osmPatient.relationshipId,
+      osmUserId: osm.userId,
+    });
+    const osmProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: osmPatient.relationshipId,
+    });
+    await expect(
+      createPatientFinalAssessment(
+        osm.actor,
+        finalAssessmentInput(osmProgram.patientProgramId, osmPatient.relationshipId),
+      ),
+    ).resolves.toMatchObject({ recordedByUserId: osm.userId });
+    await unassignOsmFromPatient(owner.actor, {
+      patientHospitalRelationshipId: osmPatient.relationshipId,
+    });
+    await expect(
+      createPatientFinalAssessment(
+        osm.actor,
+        finalAssessmentInput(osmProgram.patientProgramId, osmPatient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    await expect(
+      prisma.patientFinalAssessment.create({
+        data: {
+          patientProgramId: programA.patientProgramId,
+          patientHospitalRelationshipId: otherPatient.relationshipId,
+          recordedByUserId: owner.userId,
+          weight: 70,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: null,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await prisma.user.update({ where: { id: owner.userId }, data: { status: UserStatus.SUSPENDED } });
+    await expect(
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await prisma.user.update({ where: { id: owner.userId }, data: { status: UserStatus.ACTIVE } });
+
+    const membership = await prisma.hospitalMembership.findUniqueOrThrow({
+      where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
+      select: { id: true },
+    });
+    await prisma.hospitalMembership.update({
+      where: { id: membership.id },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await prisma.hospitalMembership.update({
+      where: { id: membership.id },
+      data: { status: MembershipStatus.ACTIVE },
+    });
+
+    await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
+
+    await createPatientFinalAssessment(
+      owner.actor,
+      finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+    );
+    await completePatientProgram(owner.actor, { patientProgramId: programA.patientProgramId });
+
+    const programB = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    await expect(
+      getPatientFinalAssessmentForProgram(owner.actor, programA.patientProgramId),
+    ).resolves.toMatchObject({
+      patientProgramId: programA.patientProgramId,
+      programStatus: PatientProgramStatus.COMPLETED,
+      finalAssessment: { measurements: { weight: 72.5 } },
+    });
+    await expect(
+      getPatientFinalAssessmentForProgram(owner.actor, programB.patientProgramId),
+    ).resolves.toMatchObject({
+      patientProgramId: programB.patientProgramId,
+      patientHospitalRelationshipId: patient.relationshipId,
+      programStatus: PatientProgramStatus.ACTIVE,
+      finalAssessment: null,
+    });
+    await expect(
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(programA.patientProgramId, patient.relationshipId),
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    const completedWithoutFinal = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: otherPatient.relationshipId,
+    });
+    await completePatientProgram(owner.actor, {
+      patientProgramId: completedWithoutFinal.patientProgramId,
+    });
+    await expect(
+      getPatientFinalAssessmentForProgram(owner.actor, completedWithoutFinal.patientProgramId),
+    ).resolves.toMatchObject({
+      patientProgramId: completedWithoutFinal.patientProgramId,
+      programStatus: PatientProgramStatus.COMPLETED,
+      finalAssessment: null,
+    });
+  });
+
+  it("serializes duplicate Final creation and the Final-versus-completion lifecycle race", async () => {
+    const hospital = await createHospital("FINAL-CONCURRENCY");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const duplicatePatient = await createPatient(owner.actor, hospital.id, "final-duplicate");
+    const duplicateProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: duplicatePatient.relationshipId,
+    });
+    const duplicateOutcomes = await Promise.allSettled([
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(duplicateProgram.patientProgramId, duplicatePatient.relationshipId),
+      ),
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(duplicateProgram.patientProgramId, duplicatePatient.relationshipId),
+      ),
+    ]);
+
+    expect(duplicateOutcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(duplicateOutcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    expect(
+      (duplicateOutcomes.find((outcome) => outcome.status === "rejected") as PromiseRejectedResult).reason,
+    ).toBeInstanceOf(ConflictError);
+    expect(await prisma.patientFinalAssessment.count({ where: { patientProgramId: duplicateProgram.patientProgramId } })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: { action: "patient_final_assessment.created", resourceId: { not: null } },
+    })).toBe(1);
+
+    const racePatient = await createPatient(owner.actor, hospital.id, "final-completion-race");
+    const raceProgram = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: racePatient.relationshipId,
+    });
+    const raceOutcomes = await Promise.allSettled([
+      createPatientFinalAssessment(
+        owner.actor,
+        finalAssessmentInput(raceProgram.patientProgramId, racePatient.relationshipId),
+      ),
+      completePatientProgram(owner.actor, { patientProgramId: raceProgram.patientProgramId }),
+    ]);
+    const raceStoredFinal = await prisma.patientFinalAssessment.findUnique({
+      where: { patientProgramId: raceProgram.patientProgramId },
+      select: { recordedAt: true },
+    });
+    const raceStoredProgram = await prisma.patientProgram.findUniqueOrThrow({
+      where: { id: raceProgram.patientProgramId },
+      select: { status: true, completedAt: true },
+    });
+
+    expect(raceStoredProgram.status).toBe(PatientProgramStatus.COMPLETED);
+    expect(raceStoredProgram.completedAt).not.toBeNull();
+    if (raceStoredFinal) {
+      expect(raceStoredFinal.recordedAt.getTime()).toBeLessThanOrEqual(
+        raceStoredProgram.completedAt?.getTime() ?? 0,
+      );
+      expect(raceOutcomes[0]?.status).toBe("fulfilled");
+    } else {
+      expect(raceOutcomes[0]?.status).toBe("rejected");
+      expect((raceOutcomes[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
     }
   });
 
