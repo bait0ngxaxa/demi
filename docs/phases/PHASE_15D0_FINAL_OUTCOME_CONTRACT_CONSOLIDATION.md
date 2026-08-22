@@ -6,9 +6,13 @@
 
 **Baseline branch:** `main`
 
-**Baseline HEAD:** `75ced5cee7eee1cc7085f594a4330ab0cda4c01e`
+**Baseline HEAD for this correction:** `bef5eb6af52b89b2bd6f775aaa34b63bbc171aab`
 
-**Baseline working tree:** clean at audit start (`git status --short --branch` reported `## main`)
+**Original 15D.0 audit baseline HEAD:** `75ced5cee7eee1cc7085f594a4330ab0cda4c01e`
+
+**Original 15D.0 audit working tree:** clean at audit start (`git status --short --branch` reported `## main`)
+
+**Correction review working tree:** clean before this documentation change (`git status --short --branch` reported `## main`)
 
 **Scope:** contract, architecture, evidence classification, and data mapping only. This phase does not change Prisma, migrations, persistence, routes, Server Actions, forms, calculations, exports, dashboards, or authorization capabilities.
 
@@ -37,6 +41,20 @@ PatientProgram
     ↓
 Explicit Final / Outcome Assessment
 ```
+
+Because Final is Program-owned, its creation follows the existing Program-owned mutation lifecycle. The accepted persistence rule is:
+
+```text
+ACTIVE Program
+  → Final creation may occur subject to authorization, cardinality, and accepted input contract
+
+COMPLETED Program
+  → existing Final records remain historically readable
+  → new Final creation is rejected
+  → no new Program-owned Final write is allowed
+```
+
+This is a mutation-lifecycle rule, not a clinical observation-timing rule. It does not require a Final Assessment before completion and does not create one during completion.
 
 The latest Follow-up must not be promoted into an AFTER record. Program completion remains a lifecycle state only. It does not imply a Final Assessment, Service 1 success, Goal achievement, Follow-up completion, clinical improvement, or successful outcome.
 
@@ -197,6 +215,8 @@ Final / Outcome Assessment
 
 The record should be resolvable by exact Program ID and must carry relationship consistency that the server/database can verify. The relationship is a parent scope; the Program is the episode owner. A relationship-wide “latest final” lookup is not an adequate source of truth.
 
+Because this record is Program-owned, creation must follow the established Program-owned mutation lifecycle. A Final Assessment may be newly persisted only while its authoritative Program is `ACTIVE`. If the authoritative Program is already `COMPLETED`, creation must fail closed; the completed Program is historical/read-only for new Final writes. Existing Final records remain readable after completion.
+
 ### 7.2 Why the latest Follow-up is not an AFTER record
 
 The latest Follow-up is an operationally recorded, repeated during-program event. Its `recordedAt`, round number, optional Goal Plan, optional Appointment, activity progress, and factual measurements describe a Follow-up row. It does not prove:
@@ -224,6 +244,20 @@ The following are the minimum structural requirements for a future Final Assessm
 - historical read behavior that continues to identify the owning Program;
 - no automatic creation when a Program is completed;
 - no automatic completion of the Program when a Final Assessment is recorded.
+
+The Final persistence lifecycle is closed by this contract:
+
+```text
+ACTIVE Program
+  → Final Assessment creation may occur subject to authorization, cardinality, and accepted input contract
+
+COMPLETED Program
+  → an existing Final Assessment remains historically readable
+  → new Final Assessment creation is rejected
+  → completed Programs are read-only for new Final writes
+```
+
+This rule does not select the Final table/model name, cardinality, correction model, actor capability, or clinical field contract.
 
 ### 7.4 Final Assessment versus other domains
 
@@ -394,7 +428,7 @@ The current system contains distinct timestamps/dates:
 | `PatientBaseline.recordedOn` | User-supplied date-only Baseline recording/reference date | Exact observation time, Program start, or report BEFORE window |
 | `PatientFollowup.recordedAt` | Server-controlled Follow-up record time | Measurement observation time or proof of final status |
 | `PatientProgram.completedAt` | Server-controlled lifecycle completion time | Final Assessment time, last measurement time, or clinical outcome time |
-| Future Final `recordedAt`/date | To be specified | Measurement observation time unless explicitly designed that way |
+| Future Final `recordedAt`/date | Application persistence/recording time, expected to be server-derived if approved | Measurement observation time unless explicitly designed that way |
 | Future measurement `observedAt` | Not currently persisted for these fields | System recording time |
 
 `ENGINEERING RECOMMENDATION`: where a measurement may be observed before it is entered, preserve separate recording and observation concepts. The exact requiredness, timezone, date precision, backdating, and allowed windows remain `OPEN REQUIREMENT`.
@@ -403,17 +437,21 @@ The current system contains distinct timestamps/dates:
 
 The workbook distinguishes BEFORE/DURING/AFTER but does not define exact windows. This audit does not invent a rule such as “within seven days of completion”, “on completion day”, or “latest Follow-up before completion”.
 
+The Final record-creation lifecycle is not open: the authoritative Program must be `ACTIVE` when a Final Assessment is persisted. A `COMPLETED` Program remains readable, but a new Program-owned Final write must be rejected. This does not decide when the represented clinical/source measurements were observed.
+
 The future contract must define, for each stage:
 
 - the authoritative event association;
 - allowed observation/recording order;
 - whether dates may be backdated;
+- how far before Final record creation an observation may have occurred;
 - whether an observation can occur after Program completion;
-- whether a Final Assessment can be recorded after completion;
+- what event or time window qualifies as AFTER;
+- whether individual measurements require separate observation timestamps;
 - how missing or late observations are represented;
 - which timestamp the report uses.
 
-Classification: `REQUIREMENT-GATED`, `BLOCKS_SPECIFIC_FIELD` for final measurement timing, and `BLOCKS_FINAL_REPORTING` for official BEFORE/AFTER comparison. It does not invalidate existing historical Baseline/Follow-up records.
+Whether measurements may be backdated, observed before or after other workflow events, or assigned to an AFTER window remains `REQUIREMENT-GATED`. These observation-time questions may `BLOCKS_SPECIFIC_FIELD` and `BLOCKS_FINAL_REPORTING`, but they do not block a narrow structural Final record that uses server-derived recording time and does not claim an official clinical window. Existing historical Baseline/Follow-up records are not invalidated.
 
 ### 13.3 Provenance boundary
 
@@ -423,53 +461,74 @@ Classification: `REQUIREMENT-GATED`, `BLOCKS_SPECIFIC_FIELD` for final measureme
 
 ## 14. Program completion versus Final Assessment state model
 
-Program lifecycle and Final Assessment presence are independent dimensions.
+Program lifecycle and Final Assessment presence are independent dimensions, but Final persistence is subject to the accepted Program mutation lifecycle.
 
-| Program state | Final Assessment state | Safe interpretation | Future write position |
+| Program state | Final Assessment state | Safe interpretation | Mutation position |
 | --- | --- | --- | --- |
-| `ACTIVE` | None | Valid current Program with no Final Assessment. No missing-data error may be invented by 15D.0. | Existing Program behavior remains valid. Whether Final can be recorded while ACTIVE is `REQUIREMENT-GATED`. |
-| `ACTIVE` | Exists | Final record exists for the Program, but this does not complete the Program or prove success. | Whether a Final record may coexist with ACTIVE, and whether further Final records/corrections are allowed, is `REQUIREMENT-GATED`. |
-| `COMPLETED` | None | Valid historically completed Program without a Final Assessment. This state is explicitly preserved by Phase 15C semantics. | Do not auto-create AFTER on completion. Whether recording a late Final is permitted is `REQUIREMENT-GATED`. |
-| `COMPLETED` | Exists | Valid completed Program with an independently recorded Final Assessment. The two states must remain separately readable. | Historical read must preserve ownership. Late correction/amendment/recording rules are `REQUIREMENT-GATED`. |
+| `ACTIVE` | None | Valid active Program without Final Assessment. No missing-data error may be invented by 15D.0. | Final creation may be available subject to authorization, cardinality, and accepted input contract. |
+| `ACTIVE` | Exists | Valid active Program with a Final already recorded. This does not complete the Program or prove success. | Additional Final mutation depends on unresolved cardinality/correction semantics and accepted authorization. |
+| `COMPLETED` | None | Valid historical Program completed without a Final Assessment. | Read-only for new Final writes; new Final creation is rejected. |
+| `COMPLETED` | Exists | Valid historical Program whose Final was recorded while the Program was `ACTIVE` and which was completed afterward. | Historical read remains allowed subject to authorization; new Program-owned Final mutation is rejected. |
 
-The default contract is therefore:
+The Final persistence lifecycle is therefore:
+
+```text
+ACTIVE Program
+  → Final Assessment creation may occur subject to authorization, cardinality, and accepted input contract
+
+COMPLETED Program
+  → existing Final Assessment remains historically readable
+  → new Final Assessment creation is rejected
+  → no late Program-owned Final write is allowed
+```
+
+The following distinctions remain explicit:
 
 ```text
 Program completion ≠ Final Assessment recorded
 Final Assessment recorded ≠ Program completion
 Final Assessment recorded ≠ clinical success
+Final Assessment recorded ≠ Service completion
+Final Assessment recorded ≠ Goal achievement
+Final Assessment recorded ≠ Follow-up completion
 ```
 
-No accepted evidence requires “Final Assessment before completion”. No accepted evidence permits completion to automatically create an AFTER row. Phase 15D.1 must preserve both completed-without-final and completed-with-final as valid historical shapes unless a later requirement explicitly changes them.
+No accepted evidence requires a Final Assessment before completion, and no accepted evidence permits completion to automatically create an AFTER row. The valid historical states `COMPLETED + no Final Assessment` and `COMPLETED + existing Final Assessment` must both remain readable. The latter means the Final was recorded while the Program was `ACTIVE`; it does not imply that Final presence caused completion.
 
 ## 15. Authorization boundary for a future Final Assessment
 
 No new capability is introduced by 15D.0. A future operation must reuse the accepted capability vocabulary and be granted only after the actor/authority decision is confirmed.
 
-The expected server-side chain is:
+The expected server-side chain for a future Final mutation is:
 
 ```text
-request size / abuse controls where required
-  → authenticated ActorContext resolution
-  → strict input parsing and validation
-  → exact Program lookup
-  → exact relationship consistency check
-  → active Hospital and membership/OSM assignment scope check
-  → Final Assessment capability decision
-  → Program lifecycle and timing/business-rule checks
-  → transactional persistence and bounded audit
-  → sanitized response / revalidation
+request / size and abuse checks where required
+  → resolve authenticated ActorContext
+  → validate input
+  → resolve exact PatientProgram
+  → derive exact PatientHospitalRelationship from the Program
+  → re-read User / Hospital / membership / OSM assignment state
+  → evaluate Final capability and scope
+  → lock or otherwise authoritatively re-read Program lifecycle inside the mutation transaction
+  → require Program.status = ACTIVE
+  → persist Final
+  → bounded audit
+  → response / revalidation
 ```
 
 The operation must:
 
 - derive actor identity on the server;
+- never trust browser state or hidden fields for authority;
 - resolve the relationship from the exact Program, not from a trusted browser field;
 - verify that the route relationship and Program relationship match;
 - re-read current User, membership, Hospital, and OSM assignment state;
-- fail closed for wrong Hospital, wrong relationship, cross-Program, inactive, unassigned, or stale scope;
+- resolve the exact Program and reject cross-Program access;
+- fail closed for wrong Hospital, wrong relationship, inactive, unassigned, stale scope, or a Program that is no longer `ACTIVE`;
+- enforce the `ACTIVE` lifecycle requirement inside the authoritative mutation/transaction boundary so stale pages cannot commit after completion;
 - avoid treating `ADMIN`, Hospital Owner, Doctor, Nurse, or OSM as automatically authorized merely from role/profession;
 - preserve historical read policy separately from record capability;
+- preserve historical Final reads after Program completion;
 - not grant permanent access merely because a user originally recorded the record.
 
 `OPEN REQUIREMENT`: the exact actor/capability vocabulary for recording, reading, reviewing, correcting, or exporting Final data. This is `BLOCKS_15D1` only for the authorization part of the Final mutation; it does not authorize a new role or bypass existing policy.
@@ -482,8 +541,10 @@ The future Final contract must preserve these invariants:
 - Its relationship must be the exact relationship of that Program.
 - Program A's Final record can never attach to Program B.
 - A Final record cannot be discovered or reassigned through a relationship-wide “latest” lookup.
+- No Final Assessment may be newly persisted against a `COMPLETED` Program.
 - Actor identity is server-derived and provenance is immutable enough to explain the recorded operation.
-- Lifecycle/timing/concurrency checks must use the authoritative Program row and established transaction boundary.
+- Lifecycle validation must occur inside the authoritative mutation/transaction boundary, using the current Program row and requiring `status = ACTIVE` at Final persistence time.
+- A page rendered while the Program was `ACTIVE` must not be able to commit a Final Assessment after another request has completed the Program.
 - Concurrent writes must not create duplicate current records, overwrite an accepted historical value, or produce ambiguous ownership. The exact one-record versus versioned policy remains open.
 - Sensitive clinical values are not copied into generic audit metadata.
 - Audit records describe action, actor, resource, Program, relationship, and safe non-sensitive context; they do not duplicate the full clinical payload.
@@ -561,9 +622,9 @@ The impact labels are precise:
 
 | ID | Question | Evidence | Decision / current position | Classification | Blocks | Safe until confirmed |
 | --- | --- | --- | --- | --- | --- | --- |
-| 15D-D01 | Is AFTER an explicit Program-owned record? | Phase 15A identifies Final/AFTER as a new required domain concept; latest Follow-up is only an informal legacy equivalent. | Yes as the architectural direction: explicit Program-owned Final / Outcome Assessment; exact names/cardinality remain open. | `ACCEPTED` architectural direction; `REQUIREMENT-GATED` for final persistence details | `BLOCKS_15D1` | Do not use latest Follow-up as AFTER. |
-| 15D-D02 | What is the relationship between Program completion and Final Assessment? | Phase 15B–15C.4 explicitly make completion lifecycle-only and add no clinical gate. | Independent states. No Final-before-completion rule and no auto-created AFTER. | `ACCEPTED` | `CAN_DEFER` for existing lifecycle; `BLOCKS_SPECIFIC_FIELD` for any new gate | Preserve ACTIVE/COMPLETED history with or without Final. |
-| 15D-D03 | When may a Final Assessment be recorded? | Workbook has BEFORE/AFTER labels but no timing window; current Program and Follow-up timestamps are distinct. | Exact ACTIVE/COMPLETED timing, backdating, and late-record rules are unresolved. | `OPEN REQUIREMENT` | `BLOCKS_15D1` for mutation timing | Record no timing window; do not auto-create on completion. |
+| 15D-D01 | Is AFTER an explicit Program-owned record? | Phase 15A identifies Final/AFTER as a new required domain concept; latest Follow-up is only an informal legacy equivalent. | Yes as the architectural direction: explicit Program-owned Final / Outcome Assessment. All new Program-owned Final creation follows the accepted `ACTIVE`-only lifecycle; exact names/cardinality remain open. | `ACCEPTED` architectural direction; `REQUIREMENT-GATED` for final persistence details | `BLOCKS_15D1` for domain/persistence shape | Do not use latest Follow-up as AFTER. |
+| 15D-D02 | What is the relationship between Program completion and Final Assessment? | Phase 15B–15C.4 explicitly make completion lifecycle-only and completed Programs read-only for new Program-owned writes. | Independent states. Final creation is allowed only while the Program is `ACTIVE`; completion does not create Final, and Final does not cause completion. | `ACCEPTED` | `CAN_DEFER` | Preserve `ACTIVE`/`COMPLETED` history with or without Final; reject new Final writes after completion. |
+| 15D-D03 | When may a Final Assessment record be created? | Phase 15C.4 establishes completed Programs as read-only for new Program-owned writes. Phase 15D establishes Final Assessment as Program-owned. Workbook timing labels do not define clinical observation windows. | Final Assessment creation is allowed only while the authoritative Program is `ACTIVE`. A `COMPLETED` Program is historical/read-only and rejects new Final creation. Clinical observation timing, backdating, and measurement windows remain unresolved. | `ACCEPTED` lifecycle boundary + `OPEN REQUIREMENT` for observation timing | `CAN_DEFER` for narrow structural persistence; `BLOCKS_SPECIFIC_FIELD` and/or `BLOCKS_FINAL_REPORTING` for observation semantics | Require `Program.status = ACTIVE` at authoritative mutation time; do not invent measurement windows or late Final writes. |
 | 15D-D04 | Who may record/read/review Final data? | ADR-0002 requires Role + Capability + Scope; current modules fail closed and do not infer profession authority. | Reuse server-side exact relationship/Program policy; actor capability is unresolved. | `ACCEPTED` boundary + `OPEN REQUIREMENT` vocabulary | `BLOCKS_15D1` for authorization | No new role/capability; existing policy remains authoritative. |
 | 15D-D05 | What are DTX official semantics? | Current Baseline/Follow-up fields and workbook/legacy labels exist; unit/context/source are not approved. | Continue only as provisional factual values; no official meaning. | `CURRENT IMPLEMENTATION`; `SAFE PROTOTYPE DEFAULT`; `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Reuse existing fields without reinterpretation. |
 | 15D-D06 | What is the HbA1c contract? | Workbook BEFORE/AFTER; no current field or approved measurement contract. | Do not implement until unit/date/source/entry/validation/history/owner are confirmed. | `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Leave absent; do not invent ranges. |
@@ -574,19 +635,22 @@ The impact labels are precise:
 | 15D-D11 | What are waist unit and context semantics? | Current field and UI `cm`; workbook/legacy labels only. | Keep raw factual field provisionally; unit/protocol/timing/source remain open. | `CURRENT IMPLEMENTATION`; `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | No threshold or derived interpretation. |
 | 15D-D12 | What are weight unit and context semantics? | Current field and UI `kg`; workbook/legacy labels only. | Keep raw factual field provisionally; unit/conversion/timing/source remain open. | `CURRENT IMPLEMENTATION`; `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | No trend/success claim from raw values. |
 | 15D-D13 | What correction/amendment semantics apply? | Current Baseline/Goal/Follow-up prototypes are immutable or append-oriented; no Final amendment framework is accepted. | One-row overwrite, immutable amendment, review, and versioning remain unresolved. | `OPEN REQUIREMENT` | `BLOCKS_15D1` for cardinality/correction design | Do not add edit/delete or generic amendment behavior. |
-| 15D-D14 | Which timestamps represent Final measurement observation? | Program, Baseline, Follow-up, and completion timestamps have different current meanings. | Separate recording and observation concepts where needed; exact timing/window remains open. | `ENGINEERING RECOMMENDATION`; `REQUIREMENT-GATED` | `BLOCKS_15D1` for timing contract; `BLOCKS_FINAL_REPORTING` | Do not equate `startedAt`, `recordedOn`, `recordedAt`, and `completedAt`. |
-| 15D-D15 | How is Program A → B isolation preserved? | Phase 15C.1/15C.4 integration evidence demonstrates exact ownership and independent namespaces. | Final records must be exact Program-owned; no cross-episode reuse or inferred BEFORE. | `ACCEPTED` | `CAN_DEFER` for existing behavior; `BLOCKS_15D1` if violated | Keep Program ID explicit and preserve nullable pre-Program history. |
+| 15D-D14 | Which timestamps represent Final measurement observation? | Program, Baseline, Follow-up, and completion timestamps have different current meanings. | Final persistence/`recordedAt` must occur while the Program is `ACTIVE`; `observedAt` remains a separate, requirement-gated clinical/source concept. `completedAt` and latest Follow-up time are not Final observation time. | `ACCEPTED` lifecycle separation + `REQUIREMENT-GATED` observation semantics | `CAN_DEFER` for narrow structural persistence; `BLOCKS_SPECIFIC_FIELD` and `BLOCKS_FINAL_REPORTING` for observation-dependent fields/reports | Do not equate `startedAt`, `recordedOn`, `recordedAt`, `completedAt`, and `observedAt`. |
+| 15D-D15 | How is Program A → B isolation preserved? | Phase 15C.1/15C.4 integration evidence demonstrates exact ownership and independent namespaces. | Final records must be exact Program-owned; no cross-episode reuse or inferred BEFORE. | `ACCEPTED` | `CAN_DEFER` | Keep Program ID explicit and preserve nullable pre-Program history. |
 | 15D-D16 | Is normalized source history ready for report projection? | Phase 15A/15C separates normalized history from wide workbook projection; current Program/Goal/Follow-up queries are scoped. | Source foundations are sufficient to prepare 15E, but final measurement semantics, report access, and overflow remain open. | `ACCEPTED` boundary; `ENGINEERING RECOMMENDATION` | `BLOCKS_FINAL_REPORTING` for official report | Keep normalized `0..N`; no wide schema or export. |
 | 15D-D17 | Is current `initialBaselineId` sufficient for every Program BEFORE state? | Baseline is relationship-owned and can be linked to an eligible first Program; later episodes are not silently given the same Baseline. | Sufficient only where explicitly linked; not sufficient to promise Program-specific BEFORE for all episodes. | `CURRENT IMPLEMENTATION`; `OPEN REQUIREMENT` | `BLOCKS_SPECIFIC_FIELD` for Program-specific BEFORE | Preserve existing link; no backfill or Program B reuse. |
+| 15D-D18 | What is the minimum structural Final payload for MVP? | No accepted source lists the required Final fields. Workbook labels are customer evidence only; clinical field contracts remain gated. | The minimum payload is unresolved. 15D.1 must persist only explicitly approved structural fields and must omit unapproved clinical fields rather than guessing. | `OPEN REQUIREMENT` | `BLOCKS_15D1` | Use server-derived provenance/recording metadata and only owner-approved values; do not promote workbook columns automatically. |
 
 ## 20. Explicit open requirements
 
 The following must remain visible to the customer/requirements owner:
 
+The Final record-creation lifecycle is closed by this phase: a new Final Assessment may be persisted only while the authoritative Program is `ACTIVE`; a `COMPLETED` Program remains historical/read-only and rejects new Final writes. The open requirements below must not be interpreted as reopening that lifecycle rule.
+
 1. Final Assessment cardinality: one current record, immutable amendments, or multiple final records.
-2. Final recording timing relative to Program ACTIVE/COMPLETED state, including late recording and backdating.
+2. Clinical/source observation timing relative to Program events: whether measurements may be backdated, occur before or after other workflow events or Program completion, what event/window qualifies as AFTER, and how late observations are represented. This does not permit late Final record creation after completion.
 3. Final actor/capability vocabulary, reviewer/approval need, read scope, and correction authority.
-4. Whether absence of a Final Assessment is a valid lifecycle/reporting state or an operational completeness warning only.
+4. How the valid absence of a Final Assessment should appear in operational/reporting completeness; its lifecycle validity is already accepted.
 5. Whether a relationship Baseline may serve multiple Program episodes or whether each episode needs a Program-specific initial observation.
 6. DTX unit, context, observation timestamp, source/device/import semantics, validation authority, and report interpretation.
 7. Weight, waist, and BP units, context/protocol, observation time, source authority, and validation responsibility.
@@ -602,15 +666,18 @@ No item above is resolved by a workbook label, common clinical convention, or le
 
 ## 21. Safe implementation subset for Phase 15D.1
 
-15D.1 may proceed only after accepting the structural decisions marked `BLOCKS_15D1`. The narrowest safe subset is:
+15D.1 may proceed after accepting the genuine structural decisions marked `BLOCKS_15D1`. The `ACTIVE`-only Final creation boundary is already accepted and is not an unresolved blocker. Clinical observation timing may remain gated when the narrow structural record uses server-derived recording time and does not claim an official observation window.
 
 ### Allowed after the required contract decisions are accepted
 
 - An explicit Final / Outcome Assessment domain owned by exact `PatientProgram`.
 - Relationship consistency enforced from the Program ownership chain.
 - Server-derived actor provenance and explicit recording timestamp/date.
+- Final creation allowed only for an authoritative `ACTIVE` Program.
+- Historical Final reads allowed for authorized `ACTIVE` and `COMPLETED` Programs.
 - Exact Program-scoped reads and historical read behavior for ACTIVE and COMPLETED Programs.
 - Atomic persistence/audit boundary when multiple records must commit together.
+- Concurrency protection that re-checks the authoritative Program lifecycle before persistence.
 - Reuse of existing raw DTX, weight, waist, and paired BP fields only if the slice explicitly labels them as provisional factual values and does not claim final clinical semantics.
 - A safe absence state: no Final record is a valid state until an accepted requirement says otherwise.
 
@@ -630,7 +697,7 @@ No item above is resolved by a workbook label, common clinical convention, or le
 
 ### 15D.1 readiness statement
 
-`15D.1 is structurally ready only after the customer accepts Final cardinality/correction, timing, and actor authority.` The domain can be designed narrowly around Program ownership and provenance, but no clinically official Final field is unconditionally approved by this audit. Existing raw measurement reuse is a provisional option, not a claim that DTX/weight/waist/BP semantics are complete.
+`15D.1 is structurally ready only after the customer accepts Final cardinality/correction, actor authority, and the minimum structural Final payload.` The lifecycle boundary is already fixed: Final creation is `ACTIVE`-only, while historical reads remain allowed after completion. Clinical observation timing/backdating/window semantics may remain open and must not be guessed. No clinically official Final field is unconditionally approved by this audit. Existing raw measurement reuse is a provisional option, not a claim that DTX/weight/waist/BP semantics are complete.
 
 ## 22. Recommended Phase 15D.1–15D.4 handoff
 
@@ -641,11 +708,13 @@ Implement only the explicitly accepted Final domain contract:
 - exact Program ownership and relationship integrity;
 - accepted cardinality and correction/amendment semantics;
 - recording timestamp/date and actor/provenance boundary;
-- ACTIVE/COMPLETED read/write behavior chosen by the owner;
+- `ACTIVE`-only Final creation;
+- historical Final reads for authorized `ACTIVE` and `COMPLETED` Programs;
+- no new Final write against a `COMPLETED` Program;
 - existing raw measurement fields only where their provisional reuse is explicitly accepted;
 - no speculative clinical calculations or new authorization capabilities.
 
-If Final cardinality, timing, or actor authority is not confirmed, keep 15D.1 at documentation/design readiness and do not create a speculative model.
+If Final cardinality, correction semantics, actor authority, or the minimum structural payload is not confirmed, keep 15D.1 at documentation/design readiness and do not create a speculative model. Do not leave `ACTIVE`/`COMPLETED` Final write behavior owner-selectable; the lifecycle boundary is already fixed. Clinical observation timing may remain gated separately.
 
 ### 15D.2 — Approved Measurement Semantics
 
@@ -682,9 +751,41 @@ Re-audit:
 - completed Program reads and absence states;
 - report handoff without implementing Phase 15E reporting.
 
+15D.4 must also prove the lifecycle/concurrency race when implementation exists:
+
+```text
+Request A: create Final Assessment
+Request B: complete Program
+```
+
+Only these serialized outcomes are valid:
+
+```text
+A commits first
+  → Final Assessment exists
+  → B completes the Program successfully
+  → completed Program contains the historical Final record
+
+B commits first
+  → Program becomes COMPLETED
+  → A re-reads/locks authoritative Program state
+  → Final creation is rejected
+```
+
+This outcome is invalid:
+
+```text
+B completes Program
+  → stale A request still commits a new Final afterward
+```
+
+The proof belongs to future implementation/integration coverage; no test is added by this documentation-only correction.
+
 ## 23. Contradictions and gaps discovered
 
-No contradiction was found in the accepted Phase 15B–15C lifecycle/ownership boundary. The following evidence gaps must remain explicit:
+The review found one internal documentation inconsistency: earlier wording left Final creation after Program completion open even though Phase 15C.4 makes completed Programs read-only for new Program-owned writes. This correction closes that inconsistency. No contradiction remains in the accepted Phase 15B–15C lifecycle/ownership boundary.
+
+The following evidence gaps must remain explicit:
 
 - The workbook's AFTER layout and legacy “latest Follow-up” behavior are not enough to define a Final Assessment. Treating the latter as authoritative would conflict with the current normalized Program contract.
 - The relationship-owned Baseline is sound for the current prototype but does not guarantee a distinct BEFORE record for every later Program episode. Program B must not reuse Program A's outcome as its initial state.
@@ -721,8 +822,8 @@ The final review validation for this documentation-only phase is:
 
 ## 25. Final handoff position
 
-The next implementation agent may safely carry forward exact Program ownership, relationship consistency, server-side actor resolution, fail-closed scope, lifecycle independence, normalized history, and explicit absence states.
+The next implementation agent may safely carry forward exact Program ownership, relationship consistency, server-side actor resolution, fail-closed scope, `ACTIVE`-only Final creation, historical reads after completion, lifecycle independence, normalized history, and explicit absence states.
 
-The next implementation agent may not guess Final cardinality, final timing, measurement authority, clinical units, HbA1c semantics, Height ownership, BMI formula, CVD algorithm, correction rules, report access, or success thresholds.
+The next implementation agent may not guess Final cardinality, correction semantics, actor authority, minimum payload, clinical observation timing/backdating/windows, measurement authority, clinical units, HbA1c semantics, Height ownership, BMI formula, CVD algorithm, report access, or success thresholds.
 
-The safest next step is to review and accept the `BLOCKS_15D1` decisions in the matrix, then implement only the narrow structural Final contract whose ownership, cardinality, timing, actor authority, and historical behavior are confirmed.
+The safest next step is to review and accept the genuine `BLOCKS_15D1` decisions in the matrix—cardinality/correction, actor authority, and minimum structural payload—then implement only the narrow structural Final contract with `ACTIVE`-only creation and historical reads after completion. Clinical observation timing remains gated and must not be guessed.
