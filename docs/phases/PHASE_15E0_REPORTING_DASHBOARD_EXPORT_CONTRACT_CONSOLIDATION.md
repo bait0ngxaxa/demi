@@ -199,7 +199,7 @@ The sheet occupies A1:AQ29. Meaningful labels and groups are:
 | A2, C2 | จำนวนเคส; เบาหวาน...................ราย | DM case count | No accepted classification source | CUSTOMER EVIDENCE; BLOCKED_FROM_15E_IMPLEMENTATION |
 | C3 | กลุ่มเสี่ยง(Pre-DM)…...................ราย | Pre-DM case count | No accepted classification source | CUSTOMER EVIDENCE; BLOCKED_FROM_15E_IMPLEMENTATION |
 | A4:C5 | ลำดับ; รายชื่อ; ชื่อ; สกุล | Row number and patient name | Person/PatientProfile | CUSTOMER EVIDENCE; READY_WITH_PROVISIONAL_LABEL subject to PII authorization |
-| D4 | ID | Customer-facing patient identifier | Candidates include relationship HN or a future customer ID; internal UUID is not an approved display ID | CUSTOMER EVIDENCE; REQUIRES_SOURCE_DECISION |
+| D4 | ID | Customer-facing patient identifier | Relationship HN is a candidate source only; a future customer ID remains possible; internal UUID is not an approved display ID and no identifier is exposed before RPT-03 acceptance | CUSTOMER EVIDENCE; REQUIRES_SOURCE_DECISION |
 | E4 | ระยะเวลาการเจ็บป่วย | Illness duration | No current PatientProfile or relationship source | CUSTOMER EVIDENCE; NO_CURRENT_SOURCE |
 | F4 | อสม.ที่ดูแล | OSM/caregiver | Active PatientOsmAssignment and OSM Person name | CUSTOMER EVIDENCE; REQUIRES_AUTHORIZATION_DECISION |
 | G4:P4 | ข้อมูลเริ่มต้น(Before) | Before group | Exact Program.initialBaselineId → PatientBaseline | CUSTOMER EVIDENCE; READY_WITH_PROVISIONAL_LABEL |
@@ -239,7 +239,7 @@ The sheet occupies A1:BM37. Its meaningful groups are independent from Dashboard
 | A2 | รพ.สต.......................... | Hospital/site filter/title | Hospital identity | CUSTOMER EVIDENCE; REQUIRES_AUTHORIZATION_DECISION |
 | A3, C3, C4 | จำนวนเคส; เบาหวาน...................ราย; กลุ่มเสี่ยง(Pre-DM)…...................ราย | DM/Pre-DM case counts | No accepted classification source | CUSTOMER EVIDENCE; BLOCKED |
 | A5:C6 | ลำดับ; รายชื่อ; ชื่อ; สกุล | Row number and name | Person/PatientProfile | CUSTOMER EVIDENCE; READY_WITH_PROVISIONAL_LABEL subject to PII authorization |
-| D5 | ID | Customer-facing identifier | HN/future customer ID decision required | CUSTOMER EVIDENCE; REQUIRES_SOURCE_DECISION |
+| D5 | ID | Customer-facing identifier | Relationship HN is a candidate source only; the customer-facing ID contract is required before any HN/ID exposure | CUSTOMER EVIDENCE; REQUIRES_SOURCE_DECISION |
 | E5 | ระยะเวลาการเจ็บป่วย | Illness duration | No current source | CUSTOMER EVIDENCE; NO_CURRENT_SOURCE |
 | F5 | อสม.ที่ดูแล | Caregiver context | PatientOsmAssignment plus OSM identity | CUSTOMER EVIDENCE; REQUIRES_AUTHORIZATION_DECISION |
 | G5:H5 | วันที่เริ่มเข้าโปรแกรม; วันที่สิ้นสุด | Program lifecycle dates | PatientProgram.startedAt/completedAt | CUSTOMER EVIDENCE; SAFE_FACTUAL_PROJECTION with lifecycle wording |
@@ -266,8 +266,8 @@ The following is the proposed source map for a future factual projection. It nam
 | --- | --- | --- | --- | --- |
 | Hospital/site | Hospital reached through the authorized PatientHospitalRelationship | Raw identity | Hospital is current source | READY_FOR_FACTUAL_PROJECTION |
 | Patient display name | Person/PatientProfile for the relationship | Raw PII | Current source exists; exposure is authorization-gated | READY_WITH_PROVISIONAL_LABEL |
-| Customer-facing Patient ID | Relationship.hospitalNumber is the only current customer-like candidate; internal IDs are not approved display IDs | Raw candidate, not final contract | No accepted display semantics | REQUIRES_SOURCE_DECISION |
-| Hospital Number / HN | PatientHospitalRelationship.hospitalNumber, nullable | Raw | Safe to report only if customer confirms label/scope | REQUIRES_SOURCE_DECISION |
+| Customer-facing Patient ID | Relationship.hospitalNumber is the strongest current candidate; internal IDs are not approved display IDs | Raw candidate, not final contract | Current data exists, but no approved customer-facing field exists; do not expose any identifier before RPT-03 acceptance | REQUIRES_SOURCE_DECISION |
+| Hospital Number / HN | PatientHospitalRelationship.hospitalNumber, nullable | Raw relationship data; internal use only until RPT-03 acceptance | Candidate source only; do not expose as the customer-facing Patient ID or HN report field until RPT-03 is explicitly accepted | REQUIRES_SOURCE_DECISION |
 | Illness duration | No authoritative current field | None | No source | NO_CURRENT_SOURCE |
 | OSM/caregiver | Active PatientOsmAssignment joined to assigned OSM Person; assignment history is separately available | Raw relationship context | Exact current assignment can be factual; visibility and historical display are open | REQUIRES_AUTHORIZATION_DECISION |
 | Program start | PatientProgram.startedAt for exact Program | Raw lifecycle timestamp | Current source | READY_FOR_FACTUAL_PROJECTION |
@@ -531,11 +531,13 @@ Stored activity status is a fact. A derived percentage, success vocabulary, outc
 
 There is an implementation-ready narrow subset, but not an implementation-ready reproduction of the workbook.
 
+The gated Patient ID/HN row below is recorded for contract completeness only; it is not part of the unconditional Phase 15E.1 output.
+
 | Candidate | Safe status | Required boundary |
 | --- | --- | --- |
 | Hospital/site identity | SAFE NOW | Exact authorized relationship/Program scope. |
 | Patient display name | SAFE WITH PROVISIONAL LABEL | PII permission must be explicit; no unrestricted cohort exposure. |
-| Relationship HN | SAFE WITH PROVISIONAL LABEL | Use only after customer confirms it is the display ID and report-visible. |
+| Customer-facing Patient ID / HN | GATED — REQUIRES_SOURCE_DECISION; SAFE ONLY AFTER RPT-03 ACCEPTANCE | Omit from the Phase 15E.1 projection until RPT-03 is explicitly accepted. If accepted, expose only the approved identifier contract; internal IDs may remain technical DTO fields and are not customer-facing fields. |
 | Program lifecycle start/completion | SAFE NOW | Label as lifecycle timestamps; nullable completion is not failure. |
 | Linked Baseline presence | SAFE NOW | Use exact initialBaselineId only. |
 | Linked Baseline raw weight/waist/BP/DTX | SAFE WITH PROVISIONAL LABEL | Preserve raw nullable values and recording/provenance metadata; do not call official clinical Before. |
@@ -691,7 +693,7 @@ The following register separates decisions that affect the safe factual foundati
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | RPT-01 | Report actor and access scope | Existing exact Program reads for HOSPITAL and assigned OSM; no report capability | Reuse only as a bounded candidate for exact Program facts | Define one Program, assigned patients, Hospital cohort, multi-Hospital, ADMIN, and PATIENT scopes | OPEN REQUIREMENT | BLOCKS_15E1 for a new report endpoint until adopted; CAN_USE_SAFE_FACTUAL_PROJECTION under explicit existing-scope reuse | Product owner + security/clinical governance |
 | RPT-02 | Export authorization | No export capability exists | No export | Define separate Excel/PDF/CSV permissions, scopes, PII, and download controls | OPEN REQUIREMENT | BLOCKS_EXPORT | Product owner + security |
-| RPT-03 | Customer-facing Patient ID | Nullable relationship HN is the only customer-like candidate; internal UUIDs are technical | Keep internal IDs out of customer-facing output; expose HN only provisionally | Confirm label, uniqueness scope, masking, and fallback behavior | REQUIREMENT-GATED | CAN_USE_SAFE_FACTUAL_PROJECTION with no final ID claim; BLOCKS_EXPORT if required in files | Product owner + Hospital operations |
+| RPT-03 | Customer-facing Patient ID / HN | Nullable relationship HN is the strongest current candidate; internal UUID, Program UUID, User ID, Person ID, and PatientProfile ID are technical identifiers | Do not expose a customer-facing Patient ID or HN report field until RPT-03 is accepted. Internal IDs may be used for authorization, ownership, routing, DTO identity, and Program/relationship correlation only; they are not display fields | Decide which identifier is customer-facing; whether HN is the intended workbook ID; label; uniqueness scope; visibility; masking if applicable; fallback when HN is null; and whether any internal ID is ever displayable | REQUIREMENT-GATED | CAN_USE_SAFE_FACTUAL_PROJECTION with customer-facing ID/HN omitted; DOES_NOT_BLOCK_15E1; BLOCKS_EXPORT if an identifier is required in files | Product owner + Hospital operations |
 | RPT-04 | Illness duration | No field in current PatientProfile or relationship source | Omit or explicit no-current-source state | Define owner, unit, start-date semantics, correction, and visibility | NO_CURRENT_SOURCE | CAN_DEFER; BLOCKS_ILLNESS_REPORTING | Clinical owner + product owner |
 | RPT-05 | OSM/caregiver projection | Exact active assignment and OSM identity exist | Project only within exact authorized relationship if allowed | Decide current versus historical assignment, name visibility, and aggregate exposure | REQUIREMENT-GATED | CAN_USE_SAFE_FACTUAL_PROJECTION for exact scope; BLOCKS_COHORT_REPORTING if unresolved | Product owner + security |
 | RPT-06 | DM / Pre-DM classification | Screening prototype result is not an accepted classification authority | Do not count or classify | Accept authority, rule/version, effective date, correction, and cohort scope | BLOCKED | BLOCKS_CLINICAL_REPORTING; BLOCKS_OFFICIAL_COHORT_COUNTS | Clinical owner |
@@ -739,7 +741,7 @@ Subject to explicit adoption of the server-side scope policy:
 - exact Program authorization using the existing HOSPITAL direct-membership or OSM assignment boundary, or a new explicitly named report capability with the same fail-closed scope;
 - Hospital/site identity;
 - patient display name only within the authorized scope;
-- HN only as a provisional field until RPT-03 is accepted;
+- no customer-facing Patient ID or HN field by default; omit it unless RPT-03 has been explicitly accepted before or during Phase 15E.1, in which case only the approved identifier contract may be added;
 - Program lifecycle start and completion timestamps with lifecycle labels;
 - linked Baseline presence through initialBaselineId;
 - linked Baseline raw weight, waist, BP, and DTX values with explicit source and provisional stage labels;
@@ -766,6 +768,7 @@ Subject to explicit adoption of the server-side scope policy:
 - unrestricted ADMIN, PATIENT, multi-Hospital, or export access;
 - Excel, PDF, or CSV transport;
 - private artifact URL exposure;
+- HN or any other customer-facing Patient ID before explicit RPT-03 acceptance;
 - new Prisma fields, report tables, migrations, caches, or materialized views.
 
 ### REQUIRED AUTHORIZATION
@@ -786,7 +789,7 @@ The first slice should not silently grant ADMIN or PATIENT access. If product ch
 
 - Hospital: Hospital.
 - Patient identity: Person and PatientProfile.
-- HN: PatientHospitalRelationship.hospitalNumber, only if RPT-03 is accepted for display.
+- Customer-facing Patient ID: no approved report source yet. Candidate: PatientHospitalRelationship.hospitalNumber. It may enter the projection only after RPT-03 is explicitly accepted. Internal relationship/Program IDs may remain in the DTO for technical ownership and correlation, but they are not customer-facing fields.
 - Program lifecycle: exact PatientProgram.
 - Before candidate: exact PatientProgram.initialBaselineId → PatientBaseline.
 - During candidate: exact Program-linked PatientFollowup and PatientFollowupActivityProgress.
