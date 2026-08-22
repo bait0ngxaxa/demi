@@ -38,14 +38,14 @@ export async function resolvePatientFinalAssessmentAccessContext(
   actor: ActorContext | null | undefined,
   patientProgramId: unknown,
   capability: PatientProgramCapability,
-  expectedRelationshipId?: unknown,
+  expectedRelationshipId: unknown,
   database?: PatientFinalAssessmentAccessDatabase,
 ): Promise<PatientFinalAssessmentAccessContext> {
   const normalizedProgramId = getNormalizedUuid(patientProgramId, patientProgramIdSchema);
-  const normalizedExpectedRelationshipId =
-    expectedRelationshipId === undefined
-      ? undefined
-      : getNormalizedUuid(expectedRelationshipId, patientProgramRelationshipIdSchema);
+  const normalizedExpectedRelationshipId = getNormalizedUuid(
+    expectedRelationshipId,
+    patientProgramRelationshipIdSchema,
+  );
   const access = await resolvePatientProgramByIdAccessContext(
     actor,
     normalizedProgramId,
@@ -53,10 +53,7 @@ export async function resolvePatientFinalAssessmentAccessContext(
     database,
   );
 
-  if (
-    normalizedExpectedRelationshipId !== undefined &&
-    access.patient.patientHospitalRelationshipId !== normalizedExpectedRelationshipId
-  ) {
+  if (access.patient.patientHospitalRelationshipId !== normalizedExpectedRelationshipId) {
     throw new NotFoundError();
   }
 

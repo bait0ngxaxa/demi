@@ -130,6 +130,7 @@ function toProjection(
 export async function getPatientFinalAssessmentForProgram(
   actor: ActorContext | null | undefined,
   patientProgramId: unknown,
+  expectedRelationshipId: unknown,
   dependencies: PatientFinalAssessmentQueryDependencies = {},
 ): Promise<PatientFinalAssessmentProjection> {
   try {
@@ -138,7 +139,7 @@ export async function getPatientFinalAssessmentForProgram(
       actor,
       patientProgramId,
       PATIENT_PROGRAM_READ_CAPABILITY,
-      undefined,
+      expectedRelationshipId,
       database,
     );
     const program = await database.patientProgram.findFirst({

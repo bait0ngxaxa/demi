@@ -9,6 +9,7 @@ import type {
   GoalPlanProgramOverview,
 } from "@/modules/goals/services/goal-query-service";
 import type { FollowupProgramHistory } from "@/modules/followups/services/followup-query-service";
+import type { PatientFinalAssessmentProjection } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import type { PatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 
 import { PatientProgramCompleteControl } from "../program-mutation-controls";
@@ -16,6 +17,7 @@ import { PatientProgramCompleteControl } from "../program-mutation-controls";
 import { PatientProgramServiceOneWorkspace } from "./service-one-workspace";
 import { PatientProgramFollowupWorkspace } from "./followup-workspace";
 import { PatientProgramServiceTwoWorkspace } from "./service-two-workspace";
+import { PatientProgramFinalAssessmentWorkspace } from "./final-assessment-workspace";
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -42,11 +44,13 @@ function statusVariant(status: PatientProgramDetail["status"]): StatusVariant {
 
 export function PatientProgramDetailView({
   detail,
+  finalAssessment,
   followupHistory,
   goalPlanOverview,
   latestGoalPlan,
 }: {
   detail: PatientProgramDetail;
+  finalAssessment: PatientFinalAssessmentProjection;
   followupHistory: FollowupProgramHistory;
   goalPlanOverview: GoalPlanProgramOverview;
   latestGoalPlan: GoalPlanProgramDetail | null;
@@ -132,6 +136,11 @@ export function PatientProgramDetailView({
         />
 
         <PatientProgramFollowupWorkspace detail={detail} history={followupHistory} />
+
+        <PatientProgramFinalAssessmentWorkspace
+          detail={detail}
+          finalAssessment={finalAssessment}
+        />
 
         {detail.status === "ACTIVE" && detail.canManage ? (
           <Panel>

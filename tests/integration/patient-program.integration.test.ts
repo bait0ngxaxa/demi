@@ -1793,7 +1793,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     const recordedAt = new Date("2026-08-22T05:00:00.000Z");
 
     await expect(
-      getPatientFinalAssessmentForProgram(owner.actor, program.patientProgramId),
+      getPatientFinalAssessmentForProgram(owner.actor, program.patientProgramId, patient.relationshipId),
     ).resolves.toMatchObject({
       patientProgramId: program.patientProgramId,
       patientHospitalRelationshipId: patient.relationshipId,
@@ -1812,6 +1812,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     const projected = await getPatientFinalAssessmentForProgram(
       owner.actor,
       program.patientProgramId,
+      patient.relationshipId,
     );
     const audit = await prisma.auditEvent.findFirstOrThrow({
       where: {
@@ -1910,6 +1911,13 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         finalAssessmentInput(programA.patientProgramId, otherPatient.relationshipId),
       ),
     ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      getPatientFinalAssessmentForProgram(
+        owner.actor,
+        programA.patientProgramId,
+        otherPatient.relationshipId,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
 
     const osm = await createOsmActor(hospital.id);
     const osmPatient = await createPatient(owner.actor, hospital.id, "final-osm");
@@ -1998,14 +2006,14 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patientHospitalRelationshipId: patient.relationshipId,
     });
     await expect(
-      getPatientFinalAssessmentForProgram(owner.actor, programA.patientProgramId),
+      getPatientFinalAssessmentForProgram(owner.actor, programA.patientProgramId, patient.relationshipId),
     ).resolves.toMatchObject({
       patientProgramId: programA.patientProgramId,
       programStatus: PatientProgramStatus.COMPLETED,
       finalAssessment: { measurements: { weight: 72.5 } },
     });
     await expect(
-      getPatientFinalAssessmentForProgram(owner.actor, programB.patientProgramId),
+      getPatientFinalAssessmentForProgram(owner.actor, programB.patientProgramId, patient.relationshipId),
     ).resolves.toMatchObject({
       patientProgramId: programB.patientProgramId,
       patientHospitalRelationshipId: patient.relationshipId,
@@ -2026,7 +2034,11 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patientProgramId: completedWithoutFinal.patientProgramId,
     });
     await expect(
-      getPatientFinalAssessmentForProgram(owner.actor, completedWithoutFinal.patientProgramId),
+      getPatientFinalAssessmentForProgram(
+        owner.actor,
+        completedWithoutFinal.patientProgramId,
+        otherPatient.relationshipId,
+      ),
     ).resolves.toMatchObject({
       patientProgramId: completedWithoutFinal.patientProgramId,
       programStatus: PatientProgramStatus.COMPLETED,

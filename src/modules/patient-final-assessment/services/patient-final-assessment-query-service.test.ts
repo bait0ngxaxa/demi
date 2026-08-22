@@ -97,7 +97,7 @@ describe("Patient Final Assessment Program query", () => {
     const database = createDatabase(finalRecord());
 
     await expect(
-      getPatientFinalAssessmentForProgram(actor, programId, {
+      getPatientFinalAssessmentForProgram(actor, programId, relationshipId, {
         database: database as unknown as PatientFinalAssessmentQueryDatabase,
       }),
     ).resolves.toEqual({
@@ -118,6 +118,13 @@ describe("Patient Final Assessment Program query", () => {
         },
       },
     });
+    expect(mockedAccess).toHaveBeenCalledWith(
+      actor,
+      programId,
+      "program:read",
+      relationshipId,
+      database,
+    );
     expect(database.patientProgram.findFirst).toHaveBeenCalledWith({
       where: { id: programId, patientHospitalRelationshipId: relationshipId },
       select: expect.anything(),
@@ -128,7 +135,7 @@ describe("Patient Final Assessment Program query", () => {
     const database = createDatabase(null);
 
     await expect(
-      getPatientFinalAssessmentForProgram(actor, programId, {
+      getPatientFinalAssessmentForProgram(actor, programId, relationshipId, {
         database: database as unknown as PatientFinalAssessmentQueryDatabase,
       }),
     ).resolves.toMatchObject({
@@ -142,9 +149,12 @@ describe("Patient Final Assessment Program query", () => {
     mockedAccess.mockRejectedValue(new NotFoundError());
 
     await expect(
-      getPatientFinalAssessmentForProgram(actor, programId, {
-        database: createDatabase(null) as unknown as PatientFinalAssessmentQueryDatabase,
-      }),
+      getPatientFinalAssessmentForProgram(
+        actor,
+        programId,
+        relationshipId,
+        { database: createDatabase(null) as unknown as PatientFinalAssessmentQueryDatabase },
+      ),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

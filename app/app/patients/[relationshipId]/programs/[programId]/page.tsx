@@ -8,6 +8,7 @@ import {
   getGoalPlanOverviewForProgram,
 } from "@/modules/goals/services/goal-query-service";
 import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
+import { getPatientFinalAssessmentForProgram } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -62,12 +63,14 @@ export default async function PatientProgramDetailPage({
 
   let goalPlanOverview;
   let followupHistory;
+  let finalAssessment;
   let latestGoalPlan = null;
 
   try {
-    [goalPlanOverview, followupHistory] = await Promise.all([
+    [goalPlanOverview, followupHistory, finalAssessment] = await Promise.all([
       getGoalPlanOverviewForProgram(actor, detail.programId),
       getFollowupHistoryForProgram(actor, detail.programId),
+      getPatientFinalAssessmentForProgram(actor, detail.programId, relationshipId),
     ]);
 
     if (goalPlanOverview.latest) {
@@ -92,6 +95,7 @@ export default async function PatientProgramDetailPage({
   return (
     <PatientProgramDetailView
       detail={detail}
+      finalAssessment={finalAssessment}
       followupHistory={followupHistory}
       goalPlanOverview={goalPlanOverview}
       latestGoalPlan={latestGoalPlan}
