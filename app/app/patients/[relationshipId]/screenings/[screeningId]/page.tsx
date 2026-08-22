@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
+import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -14,6 +15,8 @@ import {
 } from "@/modules/screening/services/screening-query-service";
 import {
   SCREENING_LEVEL_LABELS,
+  SCREENING_PROTOTYPE_NOTICE_BODY,
+  SCREENING_PROTOTYPE_NOTICE_TITLE,
   SCREENING_ZONE_LABELS,
 } from "@/modules/screening/presentation/screening-labels";
 import {
@@ -139,6 +142,11 @@ function ScreeningDetailView({
       />
 
       <div className="space-y-6 pt-8">
+        <Alert variant="info">
+          <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
+          <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
+        </Alert>
+
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -167,7 +175,7 @@ function ScreeningDetailView({
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ผลลัพธ์การประเมิน</h2>
-        <p className="mt-1 text-sm leading-6 text-text-muted">คำนวณจากคำตอบที่บันทึกไว้</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">คำนวณจากคำตอบที่บันทึกไว้</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[detail.result.level]}</StatusBadge>

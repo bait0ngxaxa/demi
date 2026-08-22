@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -9,6 +10,8 @@ import type {
 } from "@/modules/screening/services/screening-query-service";
 import {
   SCREENING_LEVEL_LABELS,
+  SCREENING_PROTOTYPE_NOTICE_BODY,
+  SCREENING_PROTOTYPE_NOTICE_TITLE,
   SCREENING_ZONE_LABELS,
 } from "@/modules/screening/presentation/screening-labels";
 
@@ -104,6 +107,11 @@ export function ScreeningHistoryView({ history }: ScreeningHistoryViewProps): Re
       />
 
       <div className="space-y-6 pt-8">
+        <Alert variant="info">
+          <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
+          <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
+        </Alert>
+
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>

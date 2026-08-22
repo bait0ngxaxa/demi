@@ -17,6 +17,10 @@ import {
 } from "@/modules/screening/transport/action-state";
 import { submitScreeningAction } from "@/modules/screening/transport/server-actions";
 import type { ScreeningPatientSummary } from "@/modules/screening/services/screening-access-service";
+import {
+  SCREENING_PROTOTYPE_NOTICE_BODY,
+  SCREENING_PROTOTYPE_NOTICE_TITLE,
+} from "@/modules/screening/presentation/screening-labels";
 
 type ScreeningFormProps = {
   relationshipId: string;
@@ -153,6 +157,11 @@ export function ScreeningForm({
       <form action={action} className="space-y-6 pt-8">
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
+
+        <Alert variant="info">
+          <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
+          <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
+        </Alert>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
