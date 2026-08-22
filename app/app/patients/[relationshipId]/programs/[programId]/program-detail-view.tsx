@@ -60,7 +60,17 @@ export function PatientProgramDetailView({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant={statusVariant(detail.status)}>{statusLabel(detail.status)}</StatusBadge>}
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.programId)}/report`}
+            >
+              ดูรายงานข้อมูลโปรแกรม
+            </Link>
+            <StatusBadge variant={statusVariant(detail.status)}>{statusLabel(detail.status)}</StatusBadge>
+          </div>
+        }
         breadcrumbs={[
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
           { label: "รายละเอียดโปรแกรม" },
