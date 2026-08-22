@@ -93,8 +93,13 @@ include:
 - `Dashboard ภาพรวม!G4:AQ7`: `ข้อมูลเริ่มต้น(Before)`, `ระหว่างอยู่ในโปรแกรม`,
   `After`, `CVD risk score`, `HbA1C`, `DTX`, `BW.`, `BMI`, `ส่วนสูง`, `รอบเอว`,
   and BP `ตัวบน`/`ตัวล่าง`.
-- `รายงานการจัดบริการ!I5:BM8`: Before and After DTX, BW, waist, BP, HbA1c,
-  BMI, and related service/report columns.
+- `รายงานการจัดบริการ!I5:R6`: Before and After DTX and BW, plus PAM score,
+  PROMs score, `คะแนนไม้บรรทัดวัดใจ`, exercise time, and an achievement-count
+  field. Its `S5:BM8` area contains service/follow-up-oriented fields such as
+  service activities, exercise/food goals, dates, days completed, achievement
+  rates, results, plan changes, and obstacles.
+- The inspected non-empty labels in `รายงานการจัดบริการ` do not independently
+  show `HbA1C`, `BMI`, `รอบเอว`, or BP `ตัวบน`/`ตัวล่าง` Before/After fields.
 
 The workbook is **CUSTOMER EVIDENCE** of report/layout intent. It does not by
 itself establish field ownership, requiredness, approved units, measurement
@@ -199,10 +204,10 @@ or official stage classification field.
 | Waist circumference | Yes | Baseline `waistCircumference`; Follow-up `waistCircumference`; Final `waistCircumference` | `รอบเอว (cm)` / `รอบเอว` | Same domain boundaries as Weight. |
 | Blood pressure | Yes | Baseline `bloodPressureSystolic`, `bloodPressureDiastolic`; Follow-up `systolicBloodPressure`, `diastolicBloodPressure`; Final `systolicBloodPressure`, `diastolicBloodPressure` | Baseline `ความดันตัวบน (mmHg)`, `ความดันตัวล่าง (mmHg)`; Follow-up/Final same concepts | Same domain boundaries as Weight; systolic/diastolic are separate structural fields. |
 | DTX / blood sugar | Yes, with differing names | Baseline `bloodSugarDtx`; Follow-up `bloodSugar`; Final `bloodSugar` | Baseline `ระดับน้ำตาลในเลือด (DTX / mg%)`; Follow-up `น้ำตาลในเลือด / DTX (DTX / mg%)`; detail views use `น้ำตาลในเลือด / DTX` | Same domain boundaries as Weight. |
-| HbA1c | No current rewrite field | None in current Prisma/modules/UI | Workbook `HbA1C` only | Unresolved; no accepted owner. |
-| Height | No current rewrite source | None in current Prisma/modules/UI | Workbook `ส่วนสูง`; legacy form terminology only | Unresolved; no accepted owner. |
-| BMI | No current field or calculation | None | Workbook `BMI` only | Derived ownership unresolved; must not be persisted in this phase. |
-| CVD risk | No current rewrite field or approved calculation | None | Workbook `CVD risk score` only | Algorithm and output ownership unresolved; completely blocked. |
+| HbA1c | No current rewrite field | None in current Prisma/modules/UI | `Dashboard ภาพรวม!I5/AK5` `HbA1C`; no current service-report field | Unresolved; no accepted owner. |
+| Height | No current rewrite source | None in current Prisma/modules/UI | `Dashboard ภาพรวม!M5` `ส่วนสูง`; legacy form terminology only | Unresolved; no accepted owner. |
+| BMI | No current field or calculation | None | `Dashboard ภาพรวม!L5/AN5` `BMI` only | Derived ownership unresolved; must not be persisted in this phase. |
+| CVD risk | No current rewrite field or approved calculation | None | `Dashboard ภาพรวม!H5/AJ5` `CVD risk score` only | Algorithm and output ownership unresolved; completely blocked. |
 
 Current structural validation is intentionally not a clinical validator. Baseline
 measurement values use finite positive bounded numbers; Follow-up and Final use
@@ -228,8 +233,9 @@ raw measurements. The difference between these structural guards is
 - Current Baseline and Follow-up UI labels display `น้ำหนัก (kg)` or `น้ำหนัก`
   with `kg`.
 - The Final model has no unit column and no Final UI yet.
-- The workbook uses `BW.` in Before, during-Program, and After report
-  positions, but does not supply a unit contract.
+- `Dashboard ภาพรวม` uses `BW.` in Before, during-Program, and After report
+  positions; `รายงานการจัดบริการ` uses BW in Before and After. Neither sheet
+  supplies a unit contract.
 - `kg` is therefore `CURRENT IMPLEMENTATION` and a `SAFE PROTOTYPE DEFAULT`
   for the existing factual display only. It is not an `ACCEPTED` owner-approved
   clinical unit based on the inspected evidence.
@@ -272,8 +278,9 @@ official interpretation remains `REQUIREMENT-GATED`.
 **Labels and unit evidence**
 
 - Current UI displays `รอบเอว (cm)` / `รอบเอว` and `cm`.
-- The workbook shows `รอบเอว` in Before and After positions; it does not
-  provide a visible unit or protocol.
+- `Dashboard ภาพรวม` shows `รอบเอว` in Before and After positions; the
+  `รายงานการจัดบริการ` sheet does not independently show a waist Before/After
+  field. Neither sheet provides a visible unit or protocol for this concept.
 - `cm` is `CURRENT IMPLEMENTATION` only, not an approved owner contract.
 
 **Stage, context, source, and timing**
@@ -310,7 +317,8 @@ The naming difference is documented, not silently normalized in this phase.
   `ความดันตัวล่าง (mmHg)`.
 - Follow-up UI uses the same `mmHg` label family; its definitions expose
   `ความดันตัวบน`, `ความดันตัวล่าง`, and unit `mmHg`.
-- The workbook maps BP to Before/After `ตัวบน` and `ตัวล่าง`.
+- `Dashboard ภาพรวม` maps BP to Before/After `ตัวบน` and `ตัวล่าง`; the
+  `รายงานการจัดบริการ` sheet does not independently show those BP fields.
 - `mmHg` is current UI/report terminology, not an owner-approved unit
   contract in the inspected evidence.
 
@@ -370,7 +378,8 @@ result, a lab result, or a display alias.
 - Final: `PatientFinalAssessment.bloodSugar`, nullable, exact Program-owned.
 - Current labels: `ระดับน้ำตาลในเลือด (DTX / mg%)` and
   `น้ำตาลในเลือด / DTX (DTX / mg%)`.
-- Workbook: `DTX` in Before, during-Program, and After report positions.
+- `Dashboard ภาพรวม` has `DTX` in Before, during-Program, and After positions;
+  `รายงานการจัดบริการ` has DTX in Before and After.
 
 ### 7.3 Known and unknown semantics
 
@@ -401,9 +410,10 @@ interpretation may be derived from the numeric value.
 
 ## 8. HbA1c requirement contract
 
-The workbook provides `HbA1C` in Before and After report positions. No current
-rewrite Prisma model, validation schema, service, or UI field carries HbA1c.
-This is `CUSTOMER EVIDENCE`, not an accepted persistence contract.
+`Dashboard ภาพรวม` provides `HbA1C` in Before and After report positions. The
+`รายงานการจัดบริการ` sheet does not independently provide an HbA1c field. No
+current rewrite Prisma model, validation schema, service, or UI field carries
+HbA1c. This is `CUSTOMER EVIDENCE`, not an accepted persistence contract.
 
 The following checklist must be answered before HbA1c can be added:
 
@@ -432,9 +442,11 @@ Phase 15D.2.
 
 ## 9. Height ownership analysis
 
-Height appears in the workbook as `ส่วนสูง` in the initial/report context and in
-legacy terminology, but there is no accepted current rewrite source, field,
-validation contract, or UI input. Height is therefore `OPEN REQUIREMENT`.
+Height appears as `ส่วนสูง` in the initial/report context of
+`Dashboard ภาพรวม` and in legacy terminology. The `รายงานการจัดบริการ` sheet
+does not independently provide a Height field. There is no accepted current
+rewrite source, field, validation contract, or UI input. Height is therefore
+`OPEN REQUIREMENT`.
 
 The owner decision has materially different architectural consequences:
 
@@ -453,8 +465,8 @@ no BMI input is treated as available.
 
 ## 10. BMI dependency and formula-readiness contract
 
-BMI is present only as a workbook label. It has no current rewrite field or
-calculation and must remain **DERIVED — DO NOT STORE BLINDLY**.
+BMI is present only as a `Dashboard ภาพรวม` workbook label. It has no current
+rewrite field or calculation and must remain **DERIVED — DO NOT STORE BLINDLY**.
 
 Before any implementation, the following dependency contract must be accepted:
 
@@ -488,9 +500,10 @@ BMI is therefore `REQUIREMENT-GATED`, blocks `BLOCKS_CALCULATION` and
 
 ## 11. CVD-risk algorithm-readiness contract
 
-CVD risk is completely blocked from official implementation. The workbook's
-`CVD risk score` heading is customer evidence of a desired report column only.
-No current rewrite algorithm or accepted clinical authority was found.
+CVD risk is completely blocked from official implementation. The
+`Dashboard ภาพรวม` `CVD risk score` heading is customer evidence of a desired
+report column only; `รายงานการจัดบริการ` does not independently provide that
+field. No current rewrite algorithm or accepted clinical authority was found.
 
 The customer/clinical owner must provide all of the following:
 
@@ -528,16 +541,30 @@ Classification: `REQUIREMENT-GATED` + `OPEN REQUIREMENT`. Blocks
 | Baseline business date | `PatientBaseline.recordedOn` | User input, validated as date-only | Date the initial state was recorded or applies to, per the prototype contract | Historical dates are currently selectable; this is current UI behavior, not an accepted clinical backdating policy | Requirement-gated if exact clinical time or a separate observation date is required | Raw Baseline capture remains possible; official Before timing/reporting is blocked. |
 | Baseline system timestamp | `PatientBaseline.createdAt` | Server/database | Persistence timestamp | No user backdating of this system timestamp | Does not replace observation time | Provenance only; not a clinical observation. |
 | Follow-up recording | `PatientFollowup.recordedAt` | Server | Application recording time | No accepted client-supplied observation time or import-late-entry policy | Requirement-gated | Raw Follow-up history remains possible; stage comparison is blocked. |
-| Final recording | `PatientFinalAssessment.recordedAt` | Server/application service | Final raw record persistence/recording time | Final creation is restricted to an ACTIVE Program; no late write after completion | Requirement-gated | Safe to display as recording time; not an After observation time. |
+| Final recording | `PatientFinalAssessment.recordedAt` | Server/application service | Final raw record persistence/recording time | Final creation is restricted to an ACTIVE Program; an existing Final remains historically readable after completion; no late Final write after completion | Requirement-gated | Safe to display as recording time; not an After observation time. |
 | Program completion | `PatientProgram.completedAt` | Server | Lifecycle completion timestamp | Controlled lifecycle transition | Not a measurement time | Completion is not Final completion, last measurement, or clinical success. |
 
 ### 12.2 Domain consequence
 
 For Weight, waist, BP, DTX, and any future HbA1c/Height value, the current
-recording timestamp does not prove when the patient was observed. The repository
-does not define a Before window, during-Program window, After window, allowable
-backdating, late data entry, or whether a measurement recorded after Program
-completion may still belong to the Program.
+recording timestamp does not prove when the patient was clinically observed. The
+repository does not yet define:
+
+- Before, During, and After clinical observation windows;
+- allowable observation backdating;
+- late, manual, or imported source-observation semantics;
+- whether an observation occurring after a lifecycle event may qualify for an
+  official reporting stage;
+- how observation timing maps to source ownership and the Phase 15E projection.
+
+These unresolved observation semantics do not reopen the accepted mutation
+lifecycle. A Program-owned Final Assessment must still be persisted only while
+the authoritative Program is `ACTIVE`. Once the Program is `COMPLETED`, new
+Program-owned Final writes remain rejected and any existing Final remains
+historically readable. If a clinical observation occurs after completion, its
+reporting relevance or ownership in another future domain/workflow is a separate
+decision; it is not permission to create a new Final against the completed
+Program.
 
 A separate `observedAt` field may eventually be required for a specific domain,
 but Phase 15D.2 does not add a generic field or provenance framework merely for
@@ -560,10 +587,10 @@ present; it does not mean that the source is complete or clinically authoritativ
 | Waist circumference | Explicitly linked Baseline waist | Program-scoped Follow-up waist when supplied; workbook does not show a visible round column | Program Final waist when supplied | Provisional raw capture; protocol and stage timing open. |
 | Blood pressure | Explicitly linked Baseline `bloodPressureSystolic`/`bloodPressureDiastolic` | Program-scoped Follow-up components | Program Final components | Provisional raw components; pairing and protocol open. |
 | DTX / blood sugar | Explicitly linked Baseline `bloodSugarDtx` | Program-scoped Follow-up `bloodSugar` | Program Final `bloodSugar` | Provisional raw terminology; DTX/unit/context open. |
-| HbA1c | None in current rewrite | None in current rewrite | None in current rewrite | Blocked; workbook evidence only. |
-| Height | None in current rewrite; workbook shows initial/report intent | None in current rewrite | None in current rewrite | Ownership and source unresolved. |
+| HbA1c | None in current rewrite | None in current rewrite | None in current rewrite | Blocked; `Dashboard ภาพรวม` evidence only. |
+| Height | None in current rewrite; `Dashboard ภาพรวม` shows initial/report intent | None in current rewrite | None in current rewrite | Ownership and source unresolved. |
 | BMI | Derived from approved Height + Weight sources only after timing contract | Derived only if a customer-approved during-Program definition exists | Derived from approved current Program After sources only | Blocked; do not store or infer. |
-| CVD risk | None until algorithm and input snapshot are accepted | Not assumed | None until algorithm and input snapshot are accepted | Completely blocked. |
+| CVD risk | None until algorithm and input snapshot are accepted | Not assumed | None until algorithm and input snapshot are accepted | Completely blocked; `Dashboard ภาพรวม` evidence only. |
 
 The nullable `PatientProgram.initialBaselineId` is important: it is an explicit
 link, not a guarantee that every Program has a Baseline or an authoritative
@@ -707,7 +734,7 @@ details.
 | P0-06 HbA1c | What owner, Program/relationship scope, Before/After use, unit, precision, validation authority, observation/lab/sample date, source/import path, recorder roles, correction policy, missing-value rule, and report projection apply? | Closes the minimum HbA1c contract. Blocks HbA1c persistence and reporting. |
 | P0-07 Height | Is Height a stable Person/Profile value, relationship/hospital value, Baseline value, Program-specific Before value, or separately versioned observation? Is it needed After or during the Program? | Ownership changes Program B isolation and BMI inputs. Blocks Height persistence and BMI. |
 | P0-08 Program-specific Before | Must every Program capture its own initial context, or may an explicitly linked relationship Baseline be reused? If reusable, under what time/episode rule? | Current `initialBaselineId` is nullable and cannot represent every possible Program-specific Before. Blocks authoritative Before reporting. |
-| P0-09 Observation timing | What defines Before, During, and After windows? Are historical/backdated or late/imported observations allowed, and which date selects the report stage? | Current timestamps are recording/lifecycle times only. Blocks official stage comparison and report selection. |
+| P0-09 Observation timing | What defines Before, During, and After clinical observation windows? Are historical/backdated or late/imported source observations allowed, and which observation date/time selects the report stage? If a clinical observation occurs after Program completion, should it contribute to an official report or be handled by another future domain/workflow, without reopening completed-Program writes? | Current timestamps are recording/lifecycle times only. Blocks official stage comparison and report selection; it does not reopen ACTIVE-only Final persistence. |
 
 ### P1 — needed before official Before/After reporting
 
@@ -732,15 +759,15 @@ details.
 
 | ID | Concept | Current evidence | Current implementation | Safe prototype position | Missing decision | Classification | Blocks | Recommended action |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| M-01 | Weight | Current Baseline/Follow-up/Final fields; workbook BW Before/during/After; `kg` UI label | Nullable raw bounded values; separate domain owners; recording dates/times | Retain and display as captured with non-clinical wording | Approved unit, context, source, observation timing, requiredness, correction, comparison rule | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER` for raw capture; `BLOCKS_SPECIFIC_FIELD` and `BLOCKS_FINAL_REPORTING` for official semantics | Keep current field; do not calculate trend or success. |
-| M-02 | Waist | Current Baseline/Follow-up/Final fields; workbook Before/After; `cm` UI label | Nullable raw bounded values | Retain factual value only | Unit, protocol/context, source, timing, requiredness, correction, threshold/report rule | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER`; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Keep current field; do not infer risk threshold. |
-| M-03 | BP | Separate Baseline names versus Follow-up/Final names; workbook Before/After upper/lower; `mmHg` UI label | Two nullable structural values; no pair rule | Retain components; missing half remains factual absence | Approved unit, pair/observation rule, missing-half rule, protocol, source, timing, correction | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER`; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Preserve current structure; do not add pairing/classification. |
-| M-04 | DTX / blood sugar | Workbook DTX Before/during/After; Baseline `bloodSugarDtx`; Follow-up/Final `bloodSugar`; UI `DTX / mg%` | Nullable raw bounded values; no interpretation | Retain exact current names and factual value | DTX versus glucose meaning, unit, context, source/device/import, observation time, requiredness, correction | `CURRENT IMPLEMENTATION` + `CUSTOMER EVIDENCE` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER` for raw capture; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Do not rename or normalize; obtain P0 DTX decisions. |
-| M-05 | HbA1c | Workbook Before/After labels only; no rewrite field | Not implemented | No capture yet | Full field, owner, stage, unit/precision, dates, source/import, actor, correction, missing, report contract | `CUSTOMER EVIDENCE` + `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not add Prisma field in 15D.2; close P0-06 first. |
-| M-06 | Height | Workbook initial/report label; legacy terminology; no rewrite source | Not implemented | No capture yet | Owner model, Program B behavior, stage use, unit/precision, source/timing, correction | `CUSTOMER EVIDENCE` + `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING` | Decide ownership before adding Height or BMI dependencies. |
-| M-07 | BMI | Workbook Before/After label; no current field/formula | Not implemented; must remain derived | No value or classification | Authoritative Height/Weight, stage timing, formula/version, units, precision, missing/recalc/report rules | `ENGINEERING RECOMMENDATION` + `REQUIREMENT-GATED` | `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not persist or calculate. |
-| M-08 | CVD risk | Workbook score label only; no accepted algorithm | Not implemented | No score/category | Exact algorithm/version/source, inputs, units, timing, missing, scale, thresholds, interpretation, reproducibility | `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not select a common score or use legacy behavior. |
-| M-09 | Recording versus observation | Baseline `recordedOn`; Follow-up/Final `recordedAt`; Program lifecycle timestamps | Server recorder/time plus user Baseline date; no generic `observedAt` | Show recording time as recording time | Stage windows, observation timestamp/date, late entry/import/backdating rules | `ACCEPTED` lifecycle boundary + `CURRENT IMPLEMENTATION` + `OPEN REQUIREMENT` | Raw capture `CAN_DEFER`; official stage/report `BLOCKS_FINAL_REPORTING` | Keep timestamp meanings explicit; do not add generic provenance now. |
+| M-01 | Weight | Current Baseline/Follow-up/Final fields; `Dashboard ภาพรวม` BW Before/during/After; `รายงานการจัดบริการ` BW Before/After; `kg` UI label | Nullable raw bounded values; separate domain owners; recording dates/times | Retain and display as captured with non-clinical wording | Approved unit, context, source, observation timing, requiredness, correction, comparison rule | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER` for raw capture; `BLOCKS_SPECIFIC_FIELD` and `BLOCKS_FINAL_REPORTING` for official semantics | Keep current field; do not calculate trend or success. |
+| M-02 | Waist | Current Baseline/Follow-up/Final fields; `Dashboard ภาพรวม` Before/After labels; no independent service-report waist field; `cm` UI label | Nullable raw bounded values | Retain factual value only | Unit, protocol/context, source, timing, requiredness, correction, threshold/report rule | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER`; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Keep current field; do not infer risk threshold. |
+| M-03 | BP | Separate Baseline names versus Follow-up/Final names; `Dashboard ภาพรวม` Before/After upper/lower labels; no independent service-report BP fields; `mmHg` UI label | Two nullable structural values; no pair rule | Retain components; missing half remains factual absence | Approved unit, pair/observation rule, missing-half rule, protocol, source, timing, correction | `CURRENT IMPLEMENTATION` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER`; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Preserve current structure; do not add pairing/classification. |
+| M-04 | DTX / blood sugar | `Dashboard ภาพรวม` DTX Before/during/After; `รายงานการจัดบริการ` DTX Before/After; Baseline `bloodSugarDtx`; Follow-up/Final `bloodSugar`; UI `DTX / mg%` | Nullable raw bounded values; no interpretation | Retain exact current names and factual value | DTX versus glucose meaning, unit, context, source/device/import, observation time, requiredness, correction | `CURRENT IMPLEMENTATION` + `CUSTOMER EVIDENCE` + `SAFE PROTOTYPE DEFAULT` + `REQUIREMENT-GATED` | `CAN_DEFER` for raw capture; `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING` | Do not rename or normalize; obtain P0 DTX decisions. |
+| M-05 | HbA1c | `Dashboard ภาพรวม` Before/After labels only; no independent service-report field; no rewrite field | Not implemented | No capture yet | Full field, owner, stage, unit/precision, dates, source/import, actor, correction, missing, report contract | `CUSTOMER EVIDENCE` + `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not add Prisma field in 15D.2; close P0-06 first. |
+| M-06 | Height | `Dashboard ภาพรวม` initial/report label; no independent service-report field; legacy terminology; no rewrite source | Not implemented | No capture yet | Owner model, Program B behavior, stage use, unit/precision, source/timing, correction | `CUSTOMER EVIDENCE` + `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING` | Decide ownership before adding Height or BMI dependencies. |
+| M-07 | BMI | `Dashboard ภาพรวม` Before/After label; no independent service-report field; no current field/formula | Not implemented; must remain derived | No value or classification | Authoritative Height/Weight, stage timing, formula/version, units, precision, missing/recalc/report rules | `ENGINEERING RECOMMENDATION` + `REQUIREMENT-GATED` | `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not persist or calculate. |
+| M-08 | CVD risk | `Dashboard ภาพรวม` score label only; no independent service-report field; no accepted algorithm | Not implemented | No score/category | Exact algorithm/version/source, inputs, units, timing, missing, scale, thresholds, interpretation, reproducibility | `OPEN REQUIREMENT` + `REQUIREMENT-GATED` | `BLOCKS_CALCULATION`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Do not select a common score or use legacy behavior. |
+| M-09 | Recording versus observation | Baseline `recordedOn`; Follow-up/Final `recordedAt`; Program lifecycle timestamps | Server recorder/time plus user Baseline date; Final create is `ACTIVE`-only; completed Final is historical/read-only; no generic `observedAt` | Show recording time as recording time | Clinical stage windows, observation timestamp/date, late entry/import/backdating rules, and source/report mapping | `ACCEPTED` lifecycle boundary + `CURRENT IMPLEMENTATION` + `OPEN REQUIREMENT` | Raw capture `CAN_DEFER`; official stage/report `BLOCKS_FINAL_REPORTING` | Keep timestamp meanings explicit; do not add generic provenance now or reopen completed-Program writes. |
 | M-10 | Program-specific Before | `initialBaselineId` is nullable; Baseline is relationship-owned/unique; Phase 15B/15D0 isolation rules | Explicit link only; no implicit copy | Display no Before when no explicit source exists | Whether each Program needs a distinct initial observation and how it is owned | `ACCEPTED` isolation + `OPEN REQUIREMENT` | `BLOCKS_SPECIFIC_FIELD`; `BLOCKS_FINAL_REPORTING`; `BLOCKS_15E` | Ask P0-08; never copy A to B implicitly. |
 | M-11 | Correction/history | Baseline/Follow-up/Final currently immutable in these slices; correction deferred | No edit/delete/amend API | Preserve original factual record | Amendment/supersession/void/review and report version rule | `CURRENT IMPLEMENTATION` + `OPEN REQUIREMENT` | `CAN_DEFER` for demo raw display; `BLOCKS_FINAL_REPORTING` for regulated/reproducible use | Keep immutable prototype; do not invent a generic correction framework. |
 | M-12 | Final Assessment compatibility | Phase 15D.1 accepted Program ownership/lifecycle; exact five raw fields | 0..1 immutable Final; strict structural input; no clinical semantics | Safe factual capture and absence/presence display | Only future official semantics, not current persistence | `ACCEPTED` + `SAFE PROTOTYPE DEFAULT` | `CAN_DEFER`; no current `BLOCKS_15D3` for factual display | No schema change or rename. |
@@ -852,6 +879,12 @@ on mismatch, then query/mutate only within that verified Program context.
 Phase 15E must not assume:
 
 - workbook columns are automatically authoritative source fields;
+- `Dashboard ภาพรวม` and `รายงานการจัดบริการ` are one merged field contract:
+  `Dashboard ภาพรวม` provides the broad Before/during/After clinical/reporting
+  labels, while `รายงานการจัดบริการ` provides Before/After DTX/BW and
+  service-oriented fields such as PAM/PROMs, exercise, and achievement outputs;
+- `รายงานการจัดบริการ` independently provides HbA1c, BMI, waist, or BP
+  Before/After source fields;
 - a blank or missing Final Assessment is clinical failure;
 - Program completion is Final completion or clinical success;
 - raw measurements imply clinical success or interpretation;
@@ -888,6 +921,12 @@ Completed for this phase:
   access/query paths, and targeted tests;
 - inspected current UI labels and recording-time wording;
 - inspected the customer workbook read-only; no workbook content was changed;
+- re-attributed the workbook evidence by sheet: `Dashboard ภาพรวม` carries the
+  broad clinical/reporting labels, while `รายงานการจัดบริการ` carries DTX/BW
+  Before/After and service-oriented fields only;
+- re-audited the timing wording against the Phase 15D.0/15D.1 lifecycle
+  contracts and preserved ACTIVE-only Program-owned Final creation plus
+  historical read-only access after completion;
 - kept every unresolved clinical/data-contract item visibly gated;
 - made no changes to `prisma/schema.prisma`, `prisma/migrations/**`, `src/**`,
   `app/**`, or `tests/**`.
