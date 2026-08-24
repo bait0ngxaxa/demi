@@ -87,9 +87,9 @@ The prototype accepts only these exact declared and detected formats:
 - `image/png` — PNG signature;
 - `image/webp` — RIFF/WEBP signature.
 
-The maximum is 5 MiB (`5 * 1024 * 1024` bytes). Empty files, oversized files, unsupported media, malformed signatures, and declared/signature mismatches are rejected. PDF, SVG, arbitrary `image/*`, video, audio, archives, office files, and generic binary data are rejected.
+The current client may select a source image up to 25 MiB. Before upload, the browser decodes supported sources, preserves aspect ratio, limits the longest edge to 2,560 pixels without upscaling, and sends only the normalized result. A suitable source already no larger than 8 MiB and within the dimension limit may retain its original bytes; a source that needs processing is encoded as JPEG using a small bounded set of quality/dimension attempts.
 
-The accepted formats and 5 MiB limit are provisional requirement-validation policy, not customer-approved media, malware, retention, or compliance policy. No transcoding, resizing, compression, OCR, EXIF processing, or image transformation is performed.
+The authoritative server-side normalized-file maximum is 8 MiB (`8 * 1024 * 1024` bytes). Empty files, oversized normalized files, unsupported media, malformed signatures, and declared/signature mismatches are rejected independently of client processing. PDF, SVG, arbitrary `image/*`, HEIC/HEIF, video, audio, archives, office files, and generic binary data are rejected. The accepted formats and limits remain provisional requirement-validation policy, not customer-approved media, malware, retention, or compliance policy. No server-side transcoding, OCR, thumbnail generation, or derivative storage is performed.
 
 ## 10. Server-side content validation
 
@@ -131,7 +131,7 @@ The upload boundary is:
 
 It is a narrow authenticated multipart Route Handler. Route Handler transport was selected after checking the installed Next.js behavior because Server Actions have a default request body limit and changing a global limit would be an unnecessarily broad transport change. No global Next.js request limit was changed for this phase. The endpoint uses the pinned `@fastify/busboy` `3.2.1` streaming parser only at this upload boundary; it supports Node stream limits without introducing a generic upload subsystem.
 
-`Content-Length` is only a cheap early rejection for an obviously oversized declaration. The route authenticates, resolves the route relationship ID, and pre-authorizes exact `patient-artifact:create` access before consuming `request.body`. It then converts the Web request stream to a bounded Node stream. The total multipart request is limited to `5 MiB + 128 KiB`; the 128 KiB allowance is bounded overhead for two small multipart parts, their headers/boundaries, and the caption field. Busboy independently limits the actual file stream to 5 MiB, one file, one caption, two parts, bounded field/header sizes, and rejects unknown or duplicate fields. Therefore a streamed or understated/no-Content-Length request is still rejected when the actual body or file crosses its limit, without waiting for an unbounded `formData()`/`arrayBuffer()` buffer. The service/schema validation remains a second authoritative layer, and both the create service and the PostgreSQL transaction re-authorize the exact relationship after this transport pre-authorization.
+`Content-Length` is only a cheap early rejection for an obviously oversized declaration. The route authenticates, resolves the route relationship ID, and pre-authorizes exact `patient-artifact:create` access before consuming `request.body`. It then converts the Web request stream to a bounded Node stream. The total multipart request is limited to `8 MiB + 128 KiB`; the 128 KiB allowance is bounded overhead for two small multipart parts, their headers/boundaries, and the caption field. Busboy independently limits the actual normalized file stream to 8 MiB, one file, one caption, two parts, bounded field/header sizes, and rejects unknown or duplicate fields. Therefore a streamed or understated/no-Content-Length request is still rejected when the actual body or file crosses its limit, without waiting for an unbounded `formData()`/`arrayBuffer()` buffer. The service/schema validation remains a second authoritative layer, and both the create service and the PostgreSQL transaction re-authorize the exact relationship after this transport pre-authorization.
 
 The application service performs the following bounded workflow:
 
@@ -203,7 +203,7 @@ Patient Detail includes a small Thai entry point:
 > หลักฐาน / รูปภาพสถานะ  
 > ดูหลักฐานและรูปภาพที่เกี่ยวข้องกับการดูแลผู้ป่วยรายนี้
 
-The relationship-scoped Evidence page shows Patient name, HN, Hospital, a create form when `patient-artifact:create` is allowed, and newest-first evidence cards. The form accepts one file and an optional 500-character caption and displays `JPEG, PNG หรือ WEBP · ไม่เกิน 5 MB`.
+The relationship-scoped Evidence page shows Patient name, HN, Hospital, a create form when `patient-artifact:create` is allowed, and newest-first evidence cards. The form accepts one JPEG, PNG, or WEBP source up to 25 MiB and an optional 500-character caption, explains that the image is reduced automatically, and distinguishes client preparation from upload progress.
 
 Cards use the protected content route for previews and the same route for a `ดูรูป` action. Captions use normal React escaping. There is no delete, replace, supersede, restore, bulk upload, wide table, or complex media manager. The form disables controls during upload, displays progress/failure feedback, and stacks safely on mobile screens.
 
@@ -219,14 +219,15 @@ Cards use the protected content route for previews and the same route for a `ด
 
 ## 21. Explicit non-goals
 
-This phase does not implement Baseline, Follow-up, Screening, Goal, Appointment, or Patient Profile attachments; generic polymorphic attachments; document management; PDF/Word/Excel; arbitrary files; folders/tags/categories; bulk upload; Patient self-service; delete; replace; supersede; lifecycle/retention automation; malware scanning; image processing; OCR; EXIF controls; notifications; dashboards; statistics; reports; or clinical status classification.
+This phase does not implement Baseline, Follow-up, Screening, Goal, Appointment, or Patient Profile attachments; generic polymorphic attachments; document management; PDF/Word/Excel; arbitrary files; folders/tags/categories; bulk upload; Patient self-service; delete; replace; supersede; lifecycle/retention automation; malware scanning; server-side image processing; HEIC conversion; OCR; explicit EXIF controls; thumbnails/derivatives; notifications; dashboards; statistics; reports; or clinical status classification.
 
 ## 22. Tests and validation coverage
 
 Focused tests cover:
 
 - JPEG, PNG, WEBP signatures;
-- unsupported image/media, PDF, SVG, zero-byte, and >5 MiB rejection;
+- source input policy through 25 MiB, empty/unsupported source rejection, resize calculations without upscaling, and bounded browser output attempts;
+- unsupported image/media, PDF, SVG, zero-byte, and >8 MiB normalized-file rejection;
 - declared/signature mismatch;
 - caption trimming, empty-to-null, and 500-character bound;
 - deterministic SHA-256;
@@ -252,7 +253,7 @@ SUPABASE_SERVICE_ROLE_KEY=<server-only service-role key>
 SUPABASE_PATIENT_EVIDENCE_BUCKET=patient-evidence
 ```
 
-Development/demo/production operators must create a bucket named by `SUPABASE_PATIENT_EVIDENCE_BUCKET` using the current Supabase Dashboard or the current official Supabase provisioning mechanism, then verify that the bucket is private and does not allow public reads. Configure the bucket/object policy for the provisional image types and 5 MiB application limit. Do not put real secrets in `.env.example`, source, tests, or browser bundles.
+Development/demo/production operators must create a bucket named by `SUPABASE_PATIENT_EVIDENCE_BUCKET` using the current Supabase Dashboard or the current official Supabase provisioning mechanism, then verify that the bucket is private and does not allow public reads. Configure the bucket/object policy for the provisional image types and 8 MiB normalized application limit. Do not put real secrets in `.env.example`, source, tests, or browser bundles.
 
 The service-role key is required only on the trusted server boundary. It must never be exposed through a `NEXT_PUBLIC_*` variable or shipped to the browser. A configured bucket is an operational prerequisite for manual upload smoke testing; normal unit and PostgreSQL integration tests use a fake adapter.
 

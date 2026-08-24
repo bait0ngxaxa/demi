@@ -57,7 +57,7 @@ function inputErrorMessage(error: PatientEvidenceInputError): string {
     case "EMPTY_FILE":
       return "กรุณาเลือกรูปหลักฐานที่ไม่ว่างเปล่า";
     case "FILE_TOO_LARGE":
-      return "รูปต้องมีขนาดไม่เกิน 5 MB";
+      return "รูปหลังประมวลผลต้องมีขนาดไม่เกิน 8 MB";
     case "UNSUPPORTED_MEDIA_TYPE":
       return "รูปต้องเป็น JPEG, PNG หรือ WEBP เท่านั้น";
     case "MEDIA_TYPE_MISMATCH":
@@ -71,7 +71,7 @@ function inputErrorMessage(error: PatientEvidenceInputError): string {
 function mapUploadError(error: unknown): Response {
   if (error instanceof PatientEvidenceMultipartError) {
     if (error.reason === "REQUEST_TOO_LARGE" || error.reason === "FILE_TOO_LARGE") {
-      return jsonError("รูปต้องมีขนาดไม่เกิน 5 MB", 413, "FILE_TOO_LARGE");
+      return jsonError("รูปหลังประมวลผลต้องมีขนาดไม่เกิน 8 MB", 413, "FILE_TOO_LARGE");
     }
 
     return jsonError("ข้อมูลการอัปโหลดไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง", 400, "INVALID_INPUT");
@@ -116,7 +116,7 @@ export async function POST(request: Request, { params }: UploadRouteParams): Pro
   const contentLength = request.headers.get("content-length");
 
   if (hasOversizedDeclaredContentLength(contentLength)) {
-    return jsonError("รูปต้องมีขนาดไม่เกิน 5 MB", 413, "FILE_TOO_LARGE");
+    return jsonError("รูปหลังประมวลผลต้องมีขนาดไม่เกิน 8 MB", 413, "FILE_TOO_LARGE");
   }
 
   try {

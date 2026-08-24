@@ -7,6 +7,11 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
+import {
+  getEvidenceImageOptimizationErrorMessage,
+  optimizeEvidenceImage,
+} from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { PATIENT_EVIDENCE_FILE_ACCEPT } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
 
 type PatientEvidenceFormProps = {
   relationshipId: string;
@@ -14,6 +19,8 @@ type PatientEvidenceFormProps = {
 
 type UploadFeedback =
   | { status: "idle" }
+  | { status: "processing" }
+  | { status: "uploading" }
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
@@ -51,8 +58,8 @@ function getUploadErrorMessage(payload: unknown): string {
 export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps): React.JSX.Element {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<UploadFeedback>({ status: "idle" });
+  const pending = feedback.status === "processing" || feedback.status === "uploading";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -74,14 +81,29 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
       return;
     }
 
-    setPending(true);
-    setFeedback({ status: "idle" });
+    setFeedback({ status: "processing" });
+
+    let optimizedFile: File;
+
+    try {
+      optimizedFile = await optimizeEvidenceImage(fileInput.files[0]);
+    } catch (error: unknown) {
+      setFeedback({
+        status: "error",
+        message: getEvidenceImageOptimizationErrorMessage(error),
+      });
+      return;
+    }
+
+    const formData = new FormData(form);
+    formData.set("file", optimizedFile);
+    setFeedback({ status: "uploading" });
 
     try {
       const response = await fetch(
         `/app/patients/${encodeURIComponent(relationshipId)}/evidence/upload`,
         {
-          body: new FormData(form),
+          body: formData,
           method: "POST",
         },
       );
@@ -100,8 +122,6 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
         status: "error",
         message: "ไม่สามารถเชื่อมต่อเพื่อบันทึกหลักฐานได้ กรุณาลองใหม่",
       });
-    } finally {
-      setPending(false);
     }
   }
 
@@ -118,7 +138,7 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
         <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="patient-evidence-file">
           <span>รูปหลักฐาน</span>
           <input
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            accept={PATIENT_EVIDENCE_FILE_ACCEPT}
             capture="environment"
             className={inputClassName}
             disabled={pending}
@@ -128,7 +148,9 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
             type="file"
           />
           <span className="text-xs font-normal leading-5 text-text-muted">
-            JPEG, PNG หรือ WEBP · ไม่เกิน 5 MB
+            JPEG, PNG หรือ WEBP · เลือกรูปได้สูงสุด 25 MB
+            <br />
+            ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด
           </span>
         </label>
 
@@ -152,10 +174,15 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
         {feedback.status === "success" ? (
           <Alert variant="success">{feedback.message}</Alert>
         ) : null}
-        {pending ? <Alert variant="info">กำลังอัปโหลดและบันทึกหลักฐาน…</Alert> : null}
+        {feedback.status === "processing" ? <Alert variant="info">กำลังเตรียมรูป…</Alert> : null}
+        {feedback.status === "uploading" ? <Alert variant="info">กำลังอัปโหลด…</Alert> : null}
 
         <Button disabled={pending} loading={pending} type="submit">
-          {pending ? "กำลังบันทึก…" : "บันทึกหลักฐาน"}
+          {feedback.status === "processing"
+            ? "กำลังเตรียมรูป…"
+            : feedback.status === "uploading"
+              ? "กำลังอัปโหลด…"
+              : "บันทึกหลักฐาน"}
         </Button>
       </form>
     </Panel>

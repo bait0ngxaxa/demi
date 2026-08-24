@@ -4,18 +4,15 @@ import { z } from "zod";
 
 import { ValidationError } from "@/shared/errors/application-error";
 
-export const PATIENT_EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
+import {
+  NORMALIZED_UPLOAD_MAX_BYTES,
+  PATIENT_EVIDENCE_MEDIA_TYPES,
+  type PatientEvidenceMediaType,
+} from "../policies/patient-evidence-image-policy";
+
 export const PATIENT_EVIDENCE_CAPTION_MAX_LENGTH = 500;
 export const PATIENT_EVIDENCE_LIST_LIMIT = 50;
 export const PATIENT_EVIDENCE_SIGNED_URL_EXPIRY_SECONDS = 300;
-
-export const PATIENT_EVIDENCE_MEDIA_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
-
-export type PatientEvidenceMediaType = (typeof PATIENT_EVIDENCE_MEDIA_TYPES)[number];
 
 export type PatientEvidenceValidationReason =
   | "INVALID_REQUEST"
@@ -120,7 +117,7 @@ export function validatePatientEvidenceFile(input: {
     throw new PatientEvidenceInputError("EMPTY_FILE");
   }
 
-  if (bytes.byteLength > PATIENT_EVIDENCE_MAX_BYTES) {
+  if (bytes.byteLength > NORMALIZED_UPLOAD_MAX_BYTES) {
     throw new PatientEvidenceInputError("FILE_TOO_LARGE");
   }
 

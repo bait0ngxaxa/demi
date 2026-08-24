@@ -145,6 +145,27 @@ describe("Service 1 workspace presentation", () => {
     expect(markup).not.toContain("แนบหลักฐานรูป");
   });
 
+  it("offers the same optimized mobile image guidance after an activity is recorded", () => {
+    mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
+    const active = detail({
+      serviceOne: {
+        routine: { ...activity(true), evidence: null },
+        floatingChart: { ...activity(), summary: null, evidence: null },
+        dreamCard: { ...activity(), description: null, evidence: null },
+        confidence: { ...activity(), score: null, improvementPlan: null },
+      },
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(PatientProgramServiceOneWorkspace, { detail: active }),
+    );
+
+    expect(markup).toContain('capture="environment"');
+    expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");
+    expect(markup).toContain("ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด");
+    expect(markup).not.toContain("ไม่เกิน 5 MB");
+  });
+
   it("passes the uploaded artifact to the narrow activity association and refreshes after success", async () => {
     const uploadFormData = new FormData();
     uploadFormData.set(

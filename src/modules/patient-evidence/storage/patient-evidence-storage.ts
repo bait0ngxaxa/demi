@@ -1,4 +1,4 @@
-import type { PatientEvidenceMediaType } from "../schemas/patient-evidence-schemas";
+import type { PatientEvidenceMediaType } from "../policies/patient-evidence-image-policy";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
 export type PatientEvidenceStorageOperation = "upload" | "signed-url" | "remove";

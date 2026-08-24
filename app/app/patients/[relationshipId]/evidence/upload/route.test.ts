@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PatientEvidenceStorageError } from "@/modules/patient-evidence/storage/patient-evidence-storage";
-import { PATIENT_EVIDENCE_MAX_BYTES } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
+import { NORMALIZED_UPLOAD_MAX_BYTES } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const {
@@ -195,6 +195,23 @@ describe("Patient Evidence upload Route Handler", () => {
     expect(mockedRevalidatePath).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts a normalized file at the 8 MiB boundary", async () => {
+    const fileBytes = new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES);
+    fileBytes.set([0xff, 0xd8, 0xff]);
+    const multipart = createMultipartBody({ fileBytes, mediaType: "image/jpeg" });
+    const { request } = requestWithStream(multipart.body, multipart.contentType);
+
+    const response = await POST(request, params());
+
+    expect(response.status).toBe(201);
+    expect(mockedCreateArtifact).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        bytes: expect.objectContaining({ byteLength: NORMALIZED_UPLOAD_MAX_BYTES }),
+      }),
+    );
+  });
+
   it("rejects caller-controlled fields before reaching the application service", async () => {
     const formData = new FormData();
     formData.append("file", new File([new Uint8Array([0xff, 0xd8, 0xff])], "photo.jpg", {
@@ -263,7 +280,7 @@ describe("Patient Evidence upload Route Handler", () => {
     const multipart = createMultipartBody({
       fileBytes: new Uint8Array([0xff, 0xd8, 0xff]),
       mediaType: "image/jpeg",
-      duplicateFileBytes: new Uint8Array(PATIENT_EVIDENCE_MAX_BYTES),
+      duplicateFileBytes: new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES),
     });
     const { request } = requestWithStream(multipart.body, multipart.contentType);
 
@@ -305,15 +322,18 @@ describe("Patient Evidence upload Route Handler", () => {
       request,
       params(),
     );
+    const body = (await response.json()) as { error: { message: string } };
 
     expect(response.status).toBe(413);
+    expect(body.error.message).toContain("8 MB");
+    expect(body.error.message).not.toContain("25 MB");
     expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
     expect(state.bodyAccessed).toBe(false);
     expect(mockedCreateArtifact).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized actual body without Content-Length while streaming", async () => {
-    const fileBytes = new Uint8Array(PATIENT_EVIDENCE_MAX_BYTES + 64 * 1024);
+    const fileBytes = new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES + 64 * 1024);
     fileBytes.set([0xff, 0xd8, 0xff]);
     const multipart = createMultipartBody({ fileBytes, mediaType: "image/jpeg" });
     const { request, state } = requestWithStream(multipart.body, multipart.contentType);
@@ -342,7 +362,7 @@ describe("Patient Evidence upload Route Handler", () => {
   });
 
   it("rejects an oversized actual body when Content-Length understates it", async () => {
-    const fileBytes = new Uint8Array(PATIENT_EVIDENCE_MAX_BYTES + 64 * 1024);
+    const fileBytes = new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES + 64 * 1024);
     fileBytes.set([0xff, 0xd8, 0xff]);
     const multipart = createMultipartBody({ fileBytes, mediaType: "image/jpeg" });
     const { request } = requestWithStream(multipart.body, multipart.contentType, {

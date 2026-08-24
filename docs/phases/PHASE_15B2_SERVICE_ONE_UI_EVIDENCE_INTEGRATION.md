@@ -108,21 +108,23 @@ Input association รับเพียง Program ID, artifact ID และ act
 
 ## Upload และ storage boundary
 
-UI ใช้ Evidence upload route เดิม:
+UI ใช้ client optimizer และ Evidence upload route เดิม:
 
-`Browser FormData → server upload route → exact Evidence authorization → server validation → server storage adapter → PatientEvidenceArtifact`
+`source image → browser resize/compression → normalized FormData → server upload route → exact Evidence authorization → server validation → server storage adapter → PatientEvidenceArtifact`
 
 จากนั้น UI ส่ง artifact ID ที่ server คืนมาเข้า Service 1 association action ซึ่งทำ Program authorization และ lifecycle check ใหม่ ไม่เพิ่ม direct browser-to-Supabase upload และไม่สร้าง upload architecture ชุดที่สอง
 
 กฎ Evidence เดิมยังใช้เหมือนเดิม:
 
 - JPEG, PNG และ WEBP เท่านั้น
-- ไฟล์ต้องไม่ว่าง
-- ขนาดไม่เกิน 5 MiB ตาม Evidence limits
+- เลือก source file ที่ไม่ว่างได้สูงสุด 25 MiB
+- browser ลดด้านยาวสุดไม่เกิน 2,560 pixels โดยไม่ upscale และส่งเฉพาะ normalized file
+- normalized file ต้องไม่เกิน 8 MiB และ server บังคับขอบเขตนี้ซ้ำโดยไม่เชื่อ client
 - ตรวจเนื้อหา/ชนิดไฟล์ฝั่ง server ไม่พึ่ง `accept`, client MIME หรือ client byte size
 - object key สร้างโดย server จาก artifact ID
 - privileged storage client และ service-role credential ไม่ออกไป browser
 - safe filename/object ownership ไม่รับจาก browser
+- HEIC/HEIF และ server-side conversion ยังไม่อยู่ใน scope
 
 อ่านภาพผ่าน relationship-authorized content route ที่สร้าง short-lived access URL ฝั่ง server ไม่ส่ง raw `storageObjectKey` หรือ permanent private bucket URL ให้ UI
 

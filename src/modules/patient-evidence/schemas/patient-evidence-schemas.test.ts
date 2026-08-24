@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizePatientEvidenceCreateInput,
-  PATIENT_EVIDENCE_MAX_BYTES,
   validatePatientEvidenceFile,
   PatientEvidenceInputError,
 } from "./patient-evidence-schemas";
+import { NORMALIZED_UPLOAD_MAX_BYTES } from "../policies/patient-evidence-image-policy";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 
@@ -65,10 +65,19 @@ describe("Patient Evidence file validation", () => {
     ).toThrowError(expect.objectContaining({ reason: "EMPTY_FILE" }));
   });
 
-  it("rejects a file larger than 5 MiB", () => {
+  it("accepts a normalized file at the 8 MiB boundary", () => {
+    const bytes = new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES);
+    bytes.set(pngBytes());
+
+    expect(validatePatientEvidenceFile({ bytes, declaredMediaType: "image/png" }).byteSize).toBe(
+      NORMALIZED_UPLOAD_MAX_BYTES,
+    );
+  });
+
+  it("rejects a normalized file larger than 8 MiB", () => {
     expect(() =>
       validatePatientEvidenceFile({
-        bytes: new Uint8Array(PATIENT_EVIDENCE_MAX_BYTES + 1),
+        bytes: new Uint8Array(NORMALIZED_UPLOAD_MAX_BYTES + 1),
         declaredMediaType: "image/png",
       }),
     ).toThrowError(expect.objectContaining({ reason: "FILE_TOO_LARGE" }));

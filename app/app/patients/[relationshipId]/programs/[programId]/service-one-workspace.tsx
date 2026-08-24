@@ -8,6 +8,11 @@ import { Button, buttonClassName } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
+  getEvidenceImageOptimizationErrorMessage,
+  optimizeEvidenceImage,
+} from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { PATIENT_EVIDENCE_FILE_ACCEPT } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
+import {
   associatePatientProgramServiceOneArtifactAction,
   recordPatientProgramServiceOneConfidenceAction,
   recordPatientProgramServiceOneDreamCardAction,
@@ -45,6 +50,8 @@ type UploadPayload = {
 
 type EvidenceFeedback =
   | { status: "idle" }
+  | { status: "processing" }
+  | { status: "uploading" }
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
@@ -274,8 +281,8 @@ function EvidenceAttachmentControl({
 }): React.JSX.Element | null {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<EvidenceFeedback>({ status: "idle" });
+  const pending = feedback.status === "processing" || feedback.status === "uploading";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -297,13 +304,28 @@ function EvidenceAttachmentControl({
       return;
     }
 
-    setPending(true);
-    setFeedback({ status: "idle" });
+    setFeedback({ status: "processing" });
+
+    let optimizedFile: File;
+
+    try {
+      optimizedFile = await optimizeEvidenceImage(fileInput.files[0]);
+    } catch (error: unknown) {
+      setFeedback({
+        status: "error",
+        message: getEvidenceImageOptimizationErrorMessage(error),
+      });
+      return;
+    }
+
+    const uploadFormData = new FormData(form);
+    uploadFormData.set("file", optimizedFile);
+    setFeedback({ status: "uploading" });
 
     try {
       const result = await uploadAndAssociateEvidence({
         activityKey,
-        formData: new FormData(form),
+        formData: uploadFormData,
         programId,
         refresh: router.refresh,
         relationshipId,
@@ -321,8 +343,6 @@ function EvidenceAttachmentControl({
         status: "error",
         message: "ไม่สามารถเชื่อมต่อเพื่อแนบหลักฐานได้ กรุณาลองใหม่",
       });
-    } finally {
-      setPending(false);
     }
   }
 
@@ -346,7 +366,7 @@ function EvidenceAttachmentControl({
             <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`service-one-${activityKey.toLowerCase()}-file`}>
               <span>รูปภาพ</span>
               <input
-                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                accept={PATIENT_EVIDENCE_FILE_ACCEPT}
                 capture="environment"
                 className={inputClassName}
                 disabled={pending}
@@ -354,13 +374,22 @@ function EvidenceAttachmentControl({
                 name="file"
                 type="file"
               />
-              <span className="text-xs font-normal leading-5 text-text-muted">JPEG, PNG หรือ WEBP · ไม่เกิน 5 MB</span>
+              <span className="text-xs font-normal leading-5 text-text-muted">
+                JPEG, PNG หรือ WEBP · เลือกรูปได้สูงสุด 25 MB
+                <br />
+                ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด
+              </span>
             </label>
             {feedback.status === "error" ? <Alert variant="danger">{feedback.message}</Alert> : null}
             {feedback.status === "success" ? <Alert variant="success">{feedback.message}</Alert> : null}
-            {pending ? <Alert variant="info">กำลังอัปโหลดและแนบหลักฐาน…</Alert> : null}
+            {feedback.status === "processing" ? <Alert variant="info">กำลังเตรียมรูป…</Alert> : null}
+            {feedback.status === "uploading" ? <Alert variant="info">กำลังอัปโหลดและแนบหลักฐาน…</Alert> : null}
             <Button disabled={pending} loading={pending} size="compact" type="submit">
-              {pending ? "กำลังแนบรูป…" : "แนบหลักฐานรูป"}
+              {feedback.status === "processing"
+                ? "กำลังเตรียมรูป…"
+                : feedback.status === "uploading"
+                  ? "กำลังแนบรูป…"
+                  : "แนบหลักฐานรูป"}
             </Button>
           </form>
         </div>

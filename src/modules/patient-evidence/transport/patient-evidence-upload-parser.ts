@@ -4,12 +4,12 @@ import { pipeline } from "node:stream/promises";
 
 import {
   PATIENT_EVIDENCE_CAPTION_MAX_LENGTH,
-  PATIENT_EVIDENCE_MAX_BYTES,
 } from "../schemas/patient-evidence-schemas";
+import { NORMALIZED_UPLOAD_MAX_BYTES } from "../policies/patient-evidence-image-policy";
 
 export const PATIENT_EVIDENCE_MULTIPART_OVERHEAD_BYTES = 128 * 1024;
 export const PATIENT_EVIDENCE_MAX_MULTIPART_BYTES =
-  PATIENT_EVIDENCE_MAX_BYTES + PATIENT_EVIDENCE_MULTIPART_OVERHEAD_BYTES;
+  NORMALIZED_UPLOAD_MAX_BYTES + PATIENT_EVIDENCE_MULTIPART_OVERHEAD_BYTES;
 
 const PATIENT_EVIDENCE_MULTIPART_FIELD_BYTES = 2 * 1024;
 const PATIENT_EVIDENCE_MULTIPART_HEADER_BYTES = 16 * 1024;
@@ -71,7 +71,7 @@ function createParser(contentType: string): ReturnType<typeof Busboy> {
       limits: {
         fieldSize: PATIENT_EVIDENCE_MULTIPART_FIELD_BYTES,
         fields: 1,
-        fileSize: PATIENT_EVIDENCE_MAX_BYTES,
+        fileSize: NORMALIZED_UPLOAD_MAX_BYTES,
         files: 1,
         parts: 2,
         headerPairs: PATIENT_EVIDENCE_MULTIPART_HEADER_PAIRS,
@@ -172,7 +172,7 @@ export async function parsePatientEvidenceMultipart(
         return;
       }
 
-      const remainingBytes = PATIENT_EVIDENCE_MAX_BYTES - fileByteSize;
+      const remainingBytes = NORMALIZED_UPLOAD_MAX_BYTES - fileByteSize;
 
       if (chunk.byteLength > remainingBytes) {
         if (remainingBytes > 0) {
