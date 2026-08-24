@@ -7,10 +7,8 @@ import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
-import {
-  getEvidenceImageOptimizationErrorMessage,
-  optimizeEvidenceImage,
-} from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { getEvidenceImageOptimizationErrorMessage } from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { replacePatientEvidenceFile } from "@/modules/patient-evidence/client/patient-evidence-upload-payload";
 import { PATIENT_EVIDENCE_FILE_ACCEPT } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
 import {
   associatePatientProgramServiceOneArtifactAction,
@@ -304,12 +302,11 @@ function EvidenceAttachmentControl({
       return;
     }
 
+    const uploadFormData = new FormData(form);
     setFeedback({ status: "processing" });
 
-    let optimizedFile: File;
-
     try {
-      optimizedFile = await optimizeEvidenceImage(fileInput.files[0]);
+      await replacePatientEvidenceFile(uploadFormData, fileInput.files[0]);
     } catch (error: unknown) {
       setFeedback({
         status: "error",
@@ -318,8 +315,6 @@ function EvidenceAttachmentControl({
       return;
     }
 
-    const uploadFormData = new FormData(form);
-    uploadFormData.set("file", optimizedFile);
     setFeedback({ status: "uploading" });
 
     try {

@@ -7,10 +7,8 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
-import {
-  getEvidenceImageOptimizationErrorMessage,
-  optimizeEvidenceImage,
-} from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { getEvidenceImageOptimizationErrorMessage } from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
+import { replacePatientEvidenceFile } from "@/modules/patient-evidence/client/patient-evidence-upload-payload";
 import { PATIENT_EVIDENCE_FILE_ACCEPT } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
 
 type PatientEvidenceFormProps = {
@@ -81,12 +79,11 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
       return;
     }
 
+    const formData = new FormData(form);
     setFeedback({ status: "processing" });
 
-    let optimizedFile: File;
-
     try {
-      optimizedFile = await optimizeEvidenceImage(fileInput.files[0]);
+      await replacePatientEvidenceFile(formData, fileInput.files[0]);
     } catch (error: unknown) {
       setFeedback({
         status: "error",
@@ -95,8 +92,6 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
       return;
     }
 
-    const formData = new FormData(form);
-    formData.set("file", optimizedFile);
     setFeedback({ status: "uploading" });
 
     try {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PatientProgramStatus } from "@prisma/client";
 import type { PatientProgramDetail } from "../services/patient-program-query-service";
+import { replacePatientEvidenceFile } from "../../patient-evidence/client/patient-evidence-upload-payload";
 
 const mockedUseActionState = vi.hoisted(() => vi.fn());
 
@@ -164,6 +165,28 @@ describe("Service 1 workspace presentation", () => {
     expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");
     expect(markup).toContain("ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด");
     expect(markup).not.toContain("ไม่เกิน 5 MB");
+  });
+
+  it("keeps the Service 1 evidence caption in the upload payload while optimization resolves", async () => {
+    const originalFile = new File(["original"], "original.jpg", { type: "image/jpeg" });
+    const optimizedFile = new File(["optimized"], "evidence.jpg", { type: "image/jpeg" });
+    const uploadFormData = new FormData();
+    const caption = "รูปหลักฐานก่อนทำกิจกรรม";
+
+    uploadFormData.set("file", originalFile);
+    uploadFormData.set("caption", caption);
+
+    await replacePatientEvidenceFile(
+      uploadFormData,
+      originalFile,
+      async () => {
+        await Promise.resolve();
+        return optimizedFile;
+      },
+    );
+
+    expect(uploadFormData.get("caption")).toBe(caption);
+    expect(uploadFormData.get("file")).toBe(optimizedFile);
   });
 
   it("passes the uploaded artifact to the narrow activity association and refreshes after success", async () => {

@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { PatientEvidenceForm } from "../../../../app/app/patients/[relationshipId]/evidence/evidence-form";
+import { replacePatientEvidenceFile } from "../client/patient-evidence-upload-payload";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 
@@ -51,5 +52,27 @@ describe("Patient Evidence form constraints", () => {
     const markup = renderToStaticMarkup(createElement(PatientEvidenceForm, { relationshipId }));
 
     expect(markup).toContain(expectedMessage);
+  });
+
+  it("keeps the standalone evidence caption in the payload while optimization resolves", async () => {
+    const originalFile = new File(["original"], "original.jpg", { type: "image/jpeg" });
+    const optimizedFile = new File(["optimized"], "evidence.jpg", { type: "image/jpeg" });
+    const formData = new FormData();
+    const caption = "รูปหลักฐานก่อนทำกิจกรรม";
+
+    formData.set("file", originalFile);
+    formData.set("caption", caption);
+
+    await replacePatientEvidenceFile(
+      formData,
+      originalFile,
+      async () => {
+        await Promise.resolve();
+        return optimizedFile;
+      },
+    );
+
+    expect(formData.get("caption")).toBe(caption);
+    expect(formData.get("file")).toBe(optimizedFile);
   });
 });
