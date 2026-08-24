@@ -7,11 +7,11 @@ export type ButtonSize = "default" | "compact";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-action-primary text-white hover:bg-action-primary-hover disabled:bg-action-primary-muted",
+    "type-action bg-action-primary text-white hover:bg-action-primary-hover disabled:bg-action-primary-muted",
   secondary:
-    "border border-border-strong bg-surface text-text hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong disabled:text-text-subtle",
-  ghost: "text-brand-strong hover:bg-brand-soft disabled:text-text-subtle",
-  danger: "bg-danger text-white hover:bg-danger/90 disabled:opacity-55",
+    "font-medium border border-border-strong bg-surface text-text hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong disabled:text-text-subtle",
+  ghost: "font-medium text-brand-strong hover:bg-brand-soft disabled:text-text-subtle",
+  danger: "type-action bg-danger text-white hover:bg-danger/90 disabled:opacity-55",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -29,7 +29,7 @@ export function buttonClassName({
   className?: string;
 } = {}): string {
   return classNames(
-    "inline-flex items-center justify-center rounded-control font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed",
+    "inline-flex items-center justify-center rounded-control transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed",
     variantClasses[variant],
     sizeClasses[size],
     className,

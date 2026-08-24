@@ -18,7 +18,7 @@ export function AppShell({
   return (
     <div className="min-h-svh bg-canvas text-text lg:flex">
       <a
-        className="fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 font-semibold text-white shadow-floating transition-transform focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"
+        className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"
         href="#application-main-content"
       >
         ข้ามไปยังเนื้อหาหลัก

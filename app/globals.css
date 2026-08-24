@@ -34,6 +34,12 @@
   --demi-radius-dialog: 1rem;
   --demi-shadow-surface: 0 1px 2px rgb(16 38 32 / 0.06);
   --demi-shadow-floating: 0 18px 48px rgb(8 35 31 / 0.22);
+  --font-weight-body: 400;
+  --font-weight-label: 500;
+  --font-weight-section: 600;
+  --font-weight-display: 700;
+  --font-weight-action: 600;
+  --font-weight-status: 600;
   --app-sidebar-width: 17rem;
   --app-sidebar-collapsed-width: 4.5rem;
   --app-header-height: 4.5rem;
@@ -84,6 +90,8 @@
   --spacing-app-header: var(--app-header-height);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-weight-medium: var(--font-weight-label);
+  --font-weight-semibold: var(--font-weight-label);
 }
 
 * {
@@ -97,8 +105,88 @@ html {
 body {
   background: var(--canvas);
   color: var(--ink);
+  font-size: 1rem;
   font-family:
     var(--font-geist-sans), "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif;
+  font-weight: var(--font-weight-body);
+  line-height: 1.65;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+h1,
+h1[class*="font-"] {
+  font-weight: var(--font-weight-display);
+  letter-spacing: -0.03em;
+  line-height: 1.22;
+}
+
+h2,
+h2[class*="font-"] {
+  font-weight: var(--font-weight-section);
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+h3,
+h3[class*="font-"] {
+  font-weight: var(--font-weight-section);
+  letter-spacing: -0.015em;
+  line-height: 1.4;
+}
+
+h4,
+h4[class*="font-"] {
+  font-weight: var(--font-weight-section);
+  line-height: 1.45;
+}
+
+:where(a, button, input, select, textarea, p, li, dd, dt) {
+  overflow-wrap: anywhere;
+}
+
+dd[class*="font-"],
+legend[class*="font-"],
+strong,
+b {
+  font-weight: var(--font-weight-section);
+}
+
+.type-action {
+  font-weight: var(--font-weight-action);
+}
+
+:where(
+    a[class~="bg-brand"],
+    a[class~="bg-action-primary"],
+    a[class~="bg-danger"],
+    button[class~="bg-brand"],
+    button[class~="bg-action-primary"],
+    button[class~="bg-danger"]
+  ) {
+  font-weight: var(--font-weight-action);
+}
+
+.type-nav-active {
+  font-weight: var(--font-weight-section);
+}
+
+.type-status {
+  font-weight: var(--font-weight-status);
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+}
+
+.type-readable {
+  max-width: 68ch;
+}
+
+.type-alert > :first-child {
+  font-weight: var(--font-weight-section);
 }
 
 @keyframes demi-skeleton-shimmer {

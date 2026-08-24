@@ -24,7 +24,7 @@ export function StatusBadge({
   return (
     <span
       className={classNames(
-        "inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-semibold",
+        "type-status inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs",
         variantClasses[variant],
         className,
       )}

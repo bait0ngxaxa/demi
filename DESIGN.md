@@ -34,16 +34,28 @@ typography:
   heading:
     fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "1.875rem"
-    fontWeight: 600
-    lineHeight: 1.25
+    fontWeight: 700
+    lineHeight: 1.22
     letterSpacing: "-0.03em"
+  section:
+    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
+    lineHeight: 1.35
+    letterSpacing: "-0.02em"
   body:
     fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
-    lineHeight: 1.75
+    lineHeight: 1.65
     letterSpacing: "normal"
   label:
+    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 500
+    lineHeight: 1.5
+    letterSpacing: "normal"
+  action:
     fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
@@ -63,7 +75,7 @@ components:
   button-primary:
     backgroundColor: "{colors.brand}"
     textColor: "{colors.surface}"
-    typography: "{typography.label}"
+    typography: "{typography.action}"
     rounded: "{rounded.control}"
     padding: "10px 20px"
     height: "48px"
@@ -77,7 +89,7 @@ components:
   button-compact:
     backgroundColor: "{colors.brand}"
     textColor: "{colors.surface}"
-    typography: "{typography.label}"
+    typography: "{typography.action}"
     rounded: "{rounded.control}"
     padding: "8px 14px"
     height: "44px"
@@ -148,11 +160,13 @@ Palette เป็น restrained clinical green: brand ทำหน้าที�
 
 ### Hierarchy
 
-- **Heading** (600, 1.875rem และ 2.25rem ตั้งแต่ `sm`, line-height ราว 1.25, tracking -0.03em): page title และ section title ที่ต้อง command attention
-- **Title** (600, 1.25rem, line-height 1.5): ชื่อ panel, table และ bounded section
-- **Body** (400, 1rem, line-height 1.75): คำอธิบายและข้อความการทำงาน
-- **Label** (600, 0.875rem, line-height 1.5): form label, navigation label และ status text
-- **Utility** (400–600, 0.75rem–0.875rem): metadata, helper text และ role/context badge
+- **Page title** (700, 1.875rem และ 2.25rem ตั้งแต่ `sm`, line-height ราว 1.22, tracking -0.03em): ชื่อหน้าและจุดเริ่มต้นของการ scan
+- **Section title** (600, 1.25rem–1.5rem, line-height ราว 1.35): ชื่อส่วน, panel และ bounded section ที่แบ่งงานเป็นกลุ่ม
+- **Body** (400, 1rem, line-height ราว 1.65–1.75): คำอธิบายและข้อความการทำงาน โดยจำกัด prose ให้อ่านง่ายราว 68ch
+- **Label / action** (500 สำหรับ label และ 600 สำหรับ primary action, 0.875rem, line-height ราว 1.5): form label, navigation label และข้อความบน control
+- **Utility / status** (400–600, 0.75rem–0.875rem): metadata, helper text และ role/context badge โดยใช้สีและ tracking ช่วยลด/เพิ่มลำดับ
+
+น้ำหนักของ `font-semibold` ใน utility layer ใช้เป็น label weight (500) เพื่อไม่ให้ทุกข้อความดูเท่ากัน ส่วน heading และสถานะสำคัญใช้ semantic type class หรือ heading selector ที่หนักขึ้นตามบทบาท
 
 **The Thai-First Rule.** ใช้ภาษาไทยเป็นภาษาหลักของ UI; English ที่คงไว้ควรเป็นคำเทคนิคที่จำเป็นใน source หรือ provider boundary เท่านั้น
 

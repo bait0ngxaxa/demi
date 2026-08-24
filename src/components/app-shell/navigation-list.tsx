@@ -31,7 +31,7 @@ export function NavigationList({
             {group.label ? (
               <p
                 className={classNames(
-                  "mb-2 px-3 text-xs font-semibold",
+                  "mb-2 px-3 text-xs font-medium tracking-[0.01em]",
                   tone === "desktop"
                     ? groupActive
                       ? "text-brand-bright"
@@ -53,13 +53,13 @@ export function NavigationList({
                     <Link
                       aria-current={active ? "page" : undefined}
                       className={classNames(
-                        "flex min-h-11 items-center rounded-control px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        "flex min-h-11 items-center rounded-control px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
                         tone === "desktop"
                           ? active
-                            ? "bg-navigation-active text-brand-deep focus-visible:ring-brand-bright"
+                            ? "type-nav-active bg-navigation-active text-brand-deep focus-visible:ring-brand-bright"
                             : "text-white/82 hover:bg-navigation-hover hover:text-white focus-visible:ring-brand-bright"
                           : active
-                            ? "bg-brand-soft text-brand-deep focus-visible:ring-focus-ring"
+                            ? "type-nav-active bg-brand-soft text-brand-deep focus-visible:ring-focus-ring"
                             : "text-text hover:bg-surface-muted focus-visible:ring-focus-ring",
                       )}
                       href={item.href}

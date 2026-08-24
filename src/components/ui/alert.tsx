@@ -25,7 +25,7 @@ export function Alert({
   return (
     <div
       className={classNames(
-        "rounded-panel border px-4 py-4 text-sm leading-6",
+        "type-alert min-w-0 rounded-panel border px-4 py-4 text-sm leading-6",
         variantClasses[variant],
         className,
       )}

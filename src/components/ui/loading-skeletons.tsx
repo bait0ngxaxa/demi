@@ -27,7 +27,7 @@ export function LoadingRegion({
 
 export function PageHeaderSkeleton({ actions = false }: { actions?: boolean }): React.JSX.Element {
   return (
-    <header aria-hidden="true" className="border-b border-border pb-7">
+    <header aria-hidden="true" className="border-b border-border pb-8">
       <Skeleton className="mb-4 h-4 w-36" />
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 flex-1">
@@ -35,7 +35,7 @@ export function PageHeaderSkeleton({ actions = false }: { actions?: boolean }): 
           <Skeleton className="mt-4 h-4 w-full max-w-2xl" />
           <Skeleton className="mt-2 h-4 w-3/5 max-w-lg" />
         </div>
-        {actions ? <Skeleton className="h-9 w-28 shrink-0 rounded-full" /> : null}
+        {actions ? <Skeleton className="h-11 w-32 shrink-0" /> : null}
       </div>
     </header>
   );

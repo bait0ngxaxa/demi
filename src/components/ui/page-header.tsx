@@ -20,10 +20,10 @@ export function PageHeader({
   actions,
 }: PageHeaderProps): React.JSX.Element {
   return (
-    <header className="border-b border-border pb-7">
+    <header className="border-b border-border pb-8">
       {breadcrumbs && breadcrumbs.length > 0 ? (
         <nav aria-label="ลำดับหน้า" className="mb-4">
-          <ol className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+          <ol className="flex flex-wrap items-center gap-2 text-sm leading-6 text-text-muted">
             {breadcrumbs.map((breadcrumb, index) => (
               <li className="flex items-center gap-2" key={`${breadcrumb.label}-${index}`}>
                 {index > 0 ? <span aria-hidden="true">/</span> : null}
@@ -42,14 +42,14 @@ export function PageHeader({
           </ol>
         </nav>
       ) : null}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-balance text-3xl font-semibold tracking-[-0.03em] text-text sm:text-4xl">
+      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-balance text-3xl font-bold tracking-[-0.03em] text-text sm:text-4xl">
             {title}
           </h1>
-          <p className="mt-3 max-w-3xl text-base leading-7 text-text-muted">{description}</p>
+          <p className="type-readable mt-4 text-base leading-7 text-text-muted">{description}</p>
         </div>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
+        {actions ? <div className="max-w-full shrink-0">{actions}</div> : null}
       </div>
     </header>
   );
