@@ -31,6 +31,10 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 16B.0 Patient Import Adapter V2 Compatibility Foundation** implement แล้วเป็น compatibility parsing/normalization/preview foundation สำหรับ operational `.xlsx` roster family, โดยยังส่งต่อและ persist เฉพาะ Patient core เดิมผ่าน server-side provisioning service. Full-field persistence ยังคง requirement-gated ตาม [Phase 16B.0 handoff](./phases/PHASE_16B0_PATIENT_IMPORT_ADAPTER_V2_COMPATIBILITY_FOUNDATION.md) และห้า customer decisions เดิม.
 
+**Phase 16B.1 Patient Import Requirement Decision Closeout** ยืนยันว่า clinical values ใน roster เป็น initial pre-program patient data ที่ต้องอยู่ใน logical import workflow เดียวกับ Patient provisioning, field ประเภทเบาหวาน/กลุ่มเสี่ยงเป็น patient status/classification label ไม่ใช่ `DiabetesType` หรือ diagnosis, และ caregiver name เป็น display evidence สำหรับการ resolve ไปยัง Patient–OSM assignment เท่านั้น. Hospital / รพ.สต. parent-child hierarchy ยังเป็น `OPEN` และ shared effective date ต่อ batch ยังเป็น `PROVISIONAL` ตาม [Phase 16B.1 decision closeout](./phases/PHASE_16B1_PATIENT_IMPORT_REQUIREMENT_DECISION_CLOSEOUT.md).
+
+**Phase 16C Patient Import Domain & Persistence Design** บันทึก design handoff แบบ documentation-only ใน [Phase 16C design](./phases/PHASE_16C_PATIENT_IMPORT_DOMAIN_PERSISTENCE_DESIGN.md): exact current Hospital scope ยังคงเป็น authorization boundary, source organization text ไม่ใช่ authority, OSM name ห้ามเป็น identity key และการ persist clinical/classification data ต้องผ่าน Phase 16D gates ที่ระบุไว้โดยไม่ตีความ requirement ใหม่.
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization
