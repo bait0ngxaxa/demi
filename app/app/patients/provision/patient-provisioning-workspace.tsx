@@ -14,11 +14,13 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type {
   PatientImportClassification,
+  PatientImportPreview,
   PatientImportPreviewRow,
   PatientImportRowResult,
   PatientImportResultSummary,
   PatientProvisioningScope,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
   confirmPatientImportAction,
   provisionPatientAction,
@@ -48,6 +50,9 @@ const classificationLabels: Record<PatientImportClassification, string> = {
   DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
   INVALID: "ข้อมูลไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้ง",
+  NEEDS_REVIEW: "ต้องตรวจสอบ",
+  HOSPITAL_MISMATCH: "โรงพยาบาลไม่ตรงกัน",
+  UNSUPPORTED_REQUIREMENT: "รอยืนยันข้อกำหนด",
 };
 
 const classificationVariants: Record<PatientImportClassification, StatusVariant> = {
@@ -56,6 +61,9 @@ const classificationVariants: Record<PatientImportClassification, StatusVariant>
   DUPLICATE_IN_FILE: "warning",
   INVALID: "danger",
   CONFLICT: "danger",
+  NEEDS_REVIEW: "warning",
+  HOSPITAL_MISMATCH: "danger",
+  UNSUPPORTED_REQUIREMENT: "warning",
 };
 
 const importResultLabels: Record<PatientImportRowResult["result"], string> = {
@@ -64,6 +72,9 @@ const importResultLabels: Record<PatientImportRowResult["result"], string> = {
   DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
   INVALID: "ข้อมูลไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้ง",
+  NEEDS_REVIEW: "ต้องตรวจสอบ",
+  HOSPITAL_MISMATCH: "โรงพยาบาลไม่ตรงกัน",
+  UNSUPPORTED_REQUIREMENT: "รอยืนยันข้อกำหนด",
   FAILED: "บันทึกไม่สำเร็จ",
 };
 
@@ -73,8 +84,59 @@ const importResultVariants: Record<PatientImportRowResult["result"], StatusVaria
   DUPLICATE_IN_FILE: "warning",
   INVALID: "danger",
   CONFLICT: "danger",
+  NEEDS_REVIEW: "warning",
+  HOSPITAL_MISMATCH: "danger",
+  UNSUPPORTED_REQUIREMENT: "warning",
   FAILED: "danger",
 };
+
+const importFieldLabels: Record<PatientImportFieldKey, string> = {
+  nationalId: "เลขบัตรประชาชน",
+  dateOfBirth: "วันเกิด",
+  givenName: "ชื่อ",
+  familyName: "นามสกุล",
+  combinedNameText: "ชื่อรวม",
+  hospitalNumber: "HN",
+  gender: "เพศ",
+  phoneNumber: "เบอร์โทรศัพท์",
+  weight: "น้ำหนัก",
+  height: "ส่วนสูง",
+  waistCircumference: "รอบเอว",
+  diabetesClassification: "ประเภทเบาหวาน/กลุ่มเสี่ยง",
+  bloodSugar: "ค่าน้ำตาลในเลือด",
+  hba1c: "HbA1c",
+  hospitalName: "โรงพยาบาลจากไฟล์",
+  subHospitalName: "รพ.สต. จากไฟล์",
+  organizationCombinedText: "โรงพยาบาล/รพ.สต. จากไฟล์",
+  houseNumber: "บ้านเลขที่",
+  villageNumber: "หมู่ที่/ชุมชน",
+  villageName: "หมู่บ้าน",
+  soi: "ซอย",
+  road: "ถนน",
+  province: "จังหวัด",
+  district: "อำเภอ",
+  subdistrict: "ตำบล",
+  postalCode: "รหัสไปรษณีย์",
+  emergencyContactName: "ชื่อผู้ติดต่อฉุกเฉิน",
+  emergencyContactPhone: "เบอร์ผู้ติดต่อฉุกเฉิน",
+  emergencyContactRelationship: "ความสัมพันธ์กับผู้ติดต่อ",
+  osmCaregiverName: "ชื่อผู้ดูแล/โค้ช",
+  sourceSequenceNumber: "ลำดับจากไฟล์",
+  externalPatientId: "PID",
+  ageAtRoster: "อายุ ณ วันที่จัดทำไฟล์",
+  addressText: "ที่อยู่",
+  bloodPressureText: "ความดันโลหิต",
+  pulseRate: "ชีพจร",
+  bmi: "BMI",
+  dtxReading: "ค่า DTX",
+  riskFactorText: "ปัจจัยเสี่ยง",
+  serviceVisitDate: "วันที่รับบริการ",
+  extendedMeasurementSeries: "ชุดข้อมูลการติดตามเพิ่มเติม",
+};
+
+function fieldLabels(fields: readonly PatientImportFieldKey[]): string {
+  return fields.map((field) => importFieldLabels[field]).join(", ");
+}
 
 function fieldError(
   state: PatientProvisionActionState,
@@ -203,7 +265,7 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
               <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">{row.identityDisplay}</td>
               <td className="whitespace-nowrap px-3 py-3 font-semibold text-ink">
-                {[row.givenName, row.familyName].filter(Boolean).join(" ") || "ไม่ระบุชื่อ"}
+                {[row.givenName, row.familyName].filter(Boolean).join(" ") || row.combinedNameText || "ไม่ระบุชื่อ"}
               </td>
               <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
               <td className="min-w-44 px-3 py-3">
@@ -211,11 +273,59 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
                   {classificationLabels[row.classification]}
                 </StatusBadge>
                 {row.reason ? <p className="mt-1 text-xs leading-5 text-muted">{row.reason}</p> : null}
+                {row.requirementGatedFields.length > 0 ? (
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    ตรวจพบเพิ่มเติม: {fieldLabels(row.requirementGatedFields)} (ยังไม่บันทึก)
+                  </p>
+                ) : null}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): React.JSX.Element {
+  const file = preview.file;
+  const rows = preview.rows;
+  const ready = rows.filter((row) => row.classification === "READY").length;
+  const existing = rows.filter((row) => row.classification === "ALREADY_EXISTS").length;
+  const invalid = rows.filter((row) => row.classification === "INVALID").length;
+  const conflicts = rows.filter((row) => row.classification === "CONFLICT").length;
+  const needsReview = rows.filter((row) => row.classification === "NEEDS_REVIEW").length;
+  const hospitalMismatch = rows.filter((row) => row.classification === "HOSPITAL_MISMATCH").length;
+
+  return (
+    <div className="rounded-panel border border-border bg-surface-muted p-4 text-sm leading-6">
+      <h3 className="font-semibold text-ink">สรุปผลการตรวจไฟล์</h3>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+        <div><dt className="text-muted">แถวผู้ป่วยที่พบ</dt><dd className="font-semibold">{rows.length}</dd></div>
+        <div><dt className="text-muted">พร้อมนำเข้า</dt><dd className="font-semibold">{ready}</dd></div>
+        <div><dt className="text-muted">มีอยู่แล้ว</dt><dd className="font-semibold">{existing}</dd></div>
+        <div><dt className="text-muted">ไม่ถูกต้อง</dt><dd className="font-semibold">{invalid}</dd></div>
+        <div><dt className="text-muted">ขัดแย้ง</dt><dd className="font-semibold">{conflicts}</dd></div>
+        <div><dt className="text-muted">ต้องตรวจสอบ</dt><dd className="font-semibold">{needsReview + hospitalMismatch}</dd></div>
+      </dl>
+      <div className="mt-4 border-t border-border pt-4">
+        <p className="font-semibold text-ink">ข้อมูลที่จะนำเข้าในขั้นตอนนี้</p>
+        <p className="mt-1 text-muted">เลขบัตรประชาชน ชื่อ นามสกุล และ HN (ถ้ามี) ผ่านการตรวจสอบและส่งต่อให้กระบวนการผู้ป่วยเดิม</p>
+      </div>
+      {file?.requirementGatedFields.length ? (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="font-semibold text-ink">ข้อมูลที่ตรวจพบ แต่ยังไม่ถูกบันทึกเนื่องจากรอยืนยัน Requirement</p>
+          <p className="mt-1 text-muted">{fieldLabels(file.requirementGatedFields)}</p>
+        </div>
+      ) : null}
+      {file && (file.unknownHeaders.length > 0 || file.ambiguousHeaders.length > 0) ? (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="font-semibold text-ink">ข้อมูลที่ระบบไม่สามารถตีความได้ / ต้องตรวจสอบ</p>
+          {file.ambiguousHeaders.length > 0 ? <p className="mt-1 text-muted">หัวตารางกำกวม: {file.ambiguousHeaders.join(", ")}</p> : null}
+          {file.unknownHeaders.length > 0 ? <p className="mt-1 text-muted">หัวตารางที่ยังไม่รู้จัก: {file.unknownHeaders.join(", ")}</p> : null}
+        </div>
+      ) : null}
+      {file ? <p className="mt-4 text-xs text-muted">แผ่นงานที่เลือก: {file.worksheetName} · แถวหัวตาราง: {file.headerRowNumber}</p> : null}
     </div>
   );
 }
@@ -233,6 +343,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <div><dt className="text-muted">ซ้ำในไฟล์</dt><dd className="font-semibold">{summary.duplicateInFile}</dd></div>
         <div><dt className="text-muted">ไม่ถูกต้อง</dt><dd className="font-semibold">{summary.invalid}</dd></div>
         <div><dt className="text-muted">ขัดแย้ง</dt><dd className="font-semibold">{summary.conflict}</dd></div>
+        <div><dt className="text-muted">ต้องตรวจสอบ</dt><dd className="font-semibold">{summary.needsReview + summary.hospitalMismatch + summary.unsupportedRequirement}</dd></div>
         <div><dt className="text-muted">ล้มเหลว</dt><dd className="font-semibold">{summary.failed}</dd></div>
       </dl>
       {hasAttentionRows ? (
@@ -255,7 +366,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
                     <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
                     <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">{row.identityDisplay}</td>
                     <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
-                      {[row.givenName, row.familyName].filter(Boolean).join(" ") || "ไม่ระบุชื่อ"}
+                      {[row.givenName, row.familyName].filter(Boolean).join(" ") || row.combinedNameText || "ไม่ระบุชื่อ"}
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
                     <td className="min-w-52 px-3 py-3">
@@ -273,6 +384,14 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
       ) : (
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
+      <p className="mt-4 border-t border-border pt-4 text-muted">
+        ระยะนี้ระบบบันทึกเฉพาะเลขบัตรประชาชน ชื่อ นามสกุล และ HN ที่รองรับอยู่เดิม
+      </p>
+      {summary.file?.requirementGatedFields.length ? (
+        <p className="mt-1 text-muted">
+          ตรวจพบคอลัมน์เพิ่มเติมแต่ยังไม่ถูกบันทึก: {fieldLabels(summary.file.requirementGatedFields)}
+        </p>
+      ) : null}
       <Link
         className="mt-5 inline-flex min-h-10 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
         href={`/app/patients?hospitalId=${encodeURIComponent(summary.targetHospitalId)}`}
@@ -522,7 +641,7 @@ export function PatientProvisioningWorkspace({
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  ใช้คอลัมน์ Thai National ID, First name, Last name และ HN (ถ้ามี) รองรับไม่เกิน 500 แถว
+                  รองรับไฟล์ Excel รูปแบบ roster ที่มีคอลัมน์หลายรูปแบบ โดยระบบจะบันทึกเฉพาะข้อมูลผู้ป่วยหลักที่ยืนยันแล้ว ไม่เกิน 500 แถวและ 64 คอลัมน์
                 </p>
               </div>
               <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>
@@ -556,6 +675,7 @@ export function PatientProvisioningWorkspace({
                         <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์และโรงพยาบาลที่เลือก หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
                         <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลและบันทึกแต่ละแถวแยกกัน</p>
                       </div>
+                      <PreviewFileSummary preview={previewState.preview} />
                       <PreviewTable rows={previewState.preview.rows} />
                     </div>
                     {importState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{importState.message}</Alert> : null}

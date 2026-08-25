@@ -93,6 +93,24 @@ function mapPatientError(error: unknown): {
   };
 }
 
+function mapPatientImportError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError && error.code === "VALIDATION") {
+    return {
+      code: "INVALID_INPUT",
+      message: error.message,
+    };
+  }
+
+  const mapped = mapPatientError(error);
+  return {
+    code: mapped.code === "FORBIDDEN" ? "FORBIDDEN" : "UNAVAILABLE",
+    message: mapped.message,
+  };
+}
+
 function mapFieldErrors(
   issues: readonly { path: readonly unknown[] }[],
 ): Partial<Record<"nationalId" | "givenName" | "familyName" | "hospitalNumber", string>> {
@@ -280,10 +298,10 @@ export async function previewPatientImportAction(
       },
     };
   } catch (error: unknown) {
-    const mapped = mapPatientError(error);
+    const mapped = mapPatientImportError(error);
     return {
       status: "ERROR",
-      code: mapped.code === "CONFLICT" ? "UNAVAILABLE" : mapped.code,
+      code: mapped.code,
       message: mapped.message,
     };
   }
@@ -337,10 +355,10 @@ export async function confirmPatientImportAction(
       };
     }
 
-    const mapped = mapPatientError(error);
+    const mapped = mapPatientImportError(error);
     return {
       status: "ERROR",
-      code: mapped.code === "CONFLICT" ? "UNAVAILABLE" : mapped.code,
+      code: mapped.code,
       message: mapped.message,
     };
   }

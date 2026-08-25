@@ -29,6 +29,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 16A Canonical Patient Import Contract** เพิ่มหลักฐานเชิงปฏิบัติการจาก roster หลายแหล่งว่า DEMI มี common patient-import spreadsheet family ที่กว้างกว่า current minimal four-column importer. Full-field persistence ยังเป็น requirement-gated ตามห้า customer decisions ใน [Phase 16A contract](./phases/PHASE_16A_CANONICAL_PATIENT_IMPORT_CONTRACT.md); หลักฐานใหม่นี้ไม่เปลี่ยน accepted ADR หรือ current authorization boundary.
 
+**Phase 16B.0 Patient Import Adapter V2 Compatibility Foundation** implement แล้วเป็น compatibility parsing/normalization/preview foundation สำหรับ operational `.xlsx` roster family, โดยยังส่งต่อและ persist เฉพาะ Patient core เดิมผ่าน server-side provisioning service. Full-field persistence ยังคง requirement-gated ตาม [Phase 16B.0 handoff](./phases/PHASE_16B0_PATIENT_IMPORT_ADAPTER_V2_COMPATIBILITY_FOUNDATION.md) และห้า customer decisions เดิม.
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization

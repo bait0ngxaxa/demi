@@ -38,8 +38,19 @@ import {
   patientProvisionScopeSchema,
   type ProvisionPatientInput,
 } from "../schemas/patient-provisioning-schemas";
+import {
+  normalizePatientImportOrganizationText,
+} from "../import/patient-import-layouts";
+import type {
+  PatientImportDiagnosticCode,
+  PatientImportFieldKey,
+  PatientImportFileMetadata,
+  PatientProvisioningImportCandidate,
+} from "../import/patient-import-contract";
+import { PATIENT_IMPORT_FIELD_KEYS } from "../import/patient-import-contract";
 
 export type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
+export type { PatientProvisioningImportCandidate } from "../import/patient-import-contract";
 
 export type PatientDatabase = PrismaClient;
 export type PatientTransactionDatabase = Prisma.TransactionClient | PrismaClient;
@@ -76,31 +87,28 @@ export type PatientImportClassification =
   | "ALREADY_EXISTS"
   | "DUPLICATE_IN_FILE"
   | "INVALID"
-  | "CONFLICT";
-
-export type PatientProvisioningImportCandidate = {
-  rowNumber: number;
-  identityDisplay: string;
-  input: ProvisionPatientInput | null;
-  givenName: string;
-  familyName: string;
-  hospitalNumber: string | null;
-  validationMessage: string | null;
-};
+  | "CONFLICT"
+  | "NEEDS_REVIEW"
+  | "HOSPITAL_MISMATCH"
+  | "UNSUPPORTED_REQUIREMENT";
 
 export type PatientImportPreviewRow = {
   rowNumber: number;
   identityDisplay: string;
   givenName: string;
   familyName: string;
+  combinedNameText: string | null;
   hospitalNumber: string | null;
   classification: PatientImportClassification;
   reason: string | null;
+  requirementGatedFields: readonly PatientImportFieldKey[];
+  diagnosticCodes: readonly PatientImportDiagnosticCode[];
 };
 
 export type PatientImportPreview = {
   targetHospitalId: string;
   rows: PatientImportPreviewRow[];
+  file: PatientImportFileMetadata | null;
 };
 
 export type PatientImportRowResult = PatientImportPreviewRow & {
@@ -110,6 +118,9 @@ export type PatientImportRowResult = PatientImportPreviewRow & {
     | "DUPLICATE_IN_FILE"
     | "INVALID"
     | "CONFLICT"
+    | "NEEDS_REVIEW"
+    | "HOSPITAL_MISMATCH"
+    | "UNSUPPORTED_REQUIREMENT"
     | "FAILED";
 };
 
@@ -120,8 +131,12 @@ export type PatientImportResultSummary = {
   duplicateInFile: number;
   invalid: number;
   conflict: number;
+  needsReview: number;
+  hospitalMismatch: number;
+  unsupportedRequirement: number;
   failed: number;
   rows: PatientImportRowResult[];
+  file: PatientImportFileMetadata | null;
 };
 
 export type PatientProvisioningConflictKind =
@@ -727,15 +742,49 @@ function toPreviewRow(
   classification: PatientImportClassification,
   reason: string | null,
 ): PatientImportPreviewRow {
+  const requirementGatedFields = PATIENT_IMPORT_FIELD_KEYS.filter((field) => {
+    if (field === "nationalId" || field === "givenName" || field === "familyName" || field === "hospitalNumber") {
+      return false;
+    }
+
+    const assessment = candidate.canonicalRow.fieldAssessments[field];
+    return assessment.present && assessment.status !== "NOT_PRESENT";
+  });
+
+  const diagnosticCodes = [
+    ...new Set(candidate.canonicalRow.diagnostics.map(({ code }) => code)),
+  ];
+
   return {
     rowNumber: candidate.rowNumber,
     identityDisplay: candidate.identityDisplay,
     givenName: candidate.givenName,
     familyName: candidate.familyName,
+    combinedNameText: candidate.combinedNameText,
     hospitalNumber: candidate.hospitalNumber,
     classification,
-    reason,
+    reason:
+      reason ??
+      (requirementGatedFields.length > 0
+        ? "ข้อมูลหลักพร้อมนำเข้า แต่ข้อมูลเพิ่มเติมบางรายการยังไม่บันทึกในระยะนี้"
+        : null),
+    requirementGatedFields,
+    diagnosticCodes,
   };
+}
+
+function hasHospitalTextMismatch(
+  candidate: PatientProvisioningImportCandidate,
+  targetHospitalName: string,
+): boolean {
+  const sourceHospitalName = candidate.canonicalRow.organizationCandidates.hospitalName;
+
+  if (!sourceHospitalName) {
+    return false;
+  }
+
+  return normalizePatientImportOrganizationText(sourceHospitalName) !==
+    normalizePatientImportOrganizationText(targetHospitalName);
 }
 
 function normalizeImportCandidates(
@@ -810,6 +859,14 @@ export async function previewPatientProvisioning(
       parsedScope.data.targetHospitalId,
       "BULK",
     );
+    const targetHospital = await database.hospital.findUnique({
+      where: { id: parsedScope.data.targetHospitalId },
+      select: { name: true },
+    });
+
+    if (!targetHospital) {
+      throw new ForbiddenError();
+    }
 
     const hashByRow = new Map<number, string>();
     const counts = new Map<string, number>();
@@ -859,9 +916,18 @@ export async function previewPatientProvisioning(
 
     return {
       targetHospitalId: parsedScope.data.targetHospitalId,
+      file: normalizedCandidates.find((candidate) => candidate.fileMetadata)?.fileMetadata ?? null,
       rows: normalizedCandidates.map((candidate) => {
         if (!candidate.input) {
           return toPreviewRow(candidate, "INVALID", candidate.validationMessage);
+        }
+
+        if (hasHospitalTextMismatch(candidate, targetHospital.name)) {
+          return toPreviewRow(
+            candidate,
+            "HOSPITAL_MISMATCH",
+            "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก ต้องตรวจสอบก่อนนำเข้า",
+          );
         }
 
         const hash = hashByRow.get(candidate.rowNumber);
@@ -913,6 +979,18 @@ function getResultStatusForPreview(
     return "CONFLICT";
   }
 
+  if (row.classification === "NEEDS_REVIEW") {
+    return "NEEDS_REVIEW";
+  }
+
+  if (row.classification === "HOSPITAL_MISMATCH") {
+    return "HOSPITAL_MISMATCH";
+  }
+
+  if (row.classification === "UNSUPPORTED_REQUIREMENT") {
+    return "UNSUPPORTED_REQUIREMENT";
+  }
+
   return null;
 }
 
@@ -935,6 +1013,9 @@ export async function importPatientProvisioning(
   let duplicateInFile = 0;
   let invalid = 0;
   let conflict = 0;
+  let needsReview = 0;
+  let hospitalMismatch = 0;
+  let unsupportedRequirement = 0;
   let failed = 0;
 
   for (const [index, candidate] of normalizedCandidates.entries()) {
@@ -946,6 +1027,9 @@ export async function importPatientProvisioning(
       if (previewResult === "DUPLICATE_IN_FILE") duplicateInFile += 1;
       if (previewResult === "INVALID") invalid += 1;
       if (previewResult === "CONFLICT") conflict += 1;
+      if (previewResult === "NEEDS_REVIEW") needsReview += 1;
+      if (previewResult === "HOSPITAL_MISMATCH") hospitalMismatch += 1;
+      if (previewResult === "UNSUPPORTED_REQUIREMENT") unsupportedRequirement += 1;
       continue;
     }
 
@@ -999,8 +1083,12 @@ export async function importPatientProvisioning(
     duplicateInFile,
     invalid,
     conflict,
+    needsReview,
+    hospitalMismatch,
+    unsupportedRequirement,
     failed,
     rows,
+    file: preview.file,
   };
 }
 
