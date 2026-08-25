@@ -1,8 +1,6 @@
 import "server-only";
 
 import {
-  HospitalStatus,
-  MembershipStatus,
   Prisma,
   Role,
   UserStatus,
@@ -10,12 +8,13 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
-  createIdentityStore,
+  DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+  runSerializableTransaction,
+} from "@/lib/db/serializable-transaction";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
   hashIdentityReference,
-  resolvePerson,
 } from "@/modules/identity/services/identity-service";
 import {
   ApplicationError,
@@ -48,31 +47,30 @@ import type {
   PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
 import { PATIENT_IMPORT_FIELD_KEYS } from "../import/patient-import-contract";
+import {
+  assertPatientProvisioningActorInDatabase,
+  PatientProvisioningConflictError,
+  patientProvisioningTransactionInternals,
+  provisionPatientInTransaction,
+  type PatientProvisioningAuthorizationMode,
+  type PatientProvisioningResult,
+} from "./patient-provisioning-transaction";
 
 export type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 export type { PatientProvisioningImportCandidate } from "../import/patient-import-contract";
+export { PatientProvisioningConflictError };
+export type {
+  PatientProvisioningConflictKind,
+  PatientProvisioningOutcome,
+  PatientProvisioningResult,
+  PatientTransactionDatabase,
+} from "./patient-provisioning-transaction";
 
 export type PatientDatabase = PrismaClient;
-export type PatientTransactionDatabase = Prisma.TransactionClient | PrismaClient;
-
-type PatientProvisioningAuthorizationMode = "SINGLE" | "BULK";
 
 export type PatientProvisioningServiceDependencies = {
   database?: PatientDatabase;
   transactionRetries?: number;
-};
-
-export type PatientProvisioningOutcome = "CREATED" | "ALREADY_PROVISIONED";
-
-export type PatientProvisioningResult = {
-  outcome: PatientProvisioningOutcome;
-  personId: string;
-  userId: string;
-  patientProfileId: string;
-  relationshipId: string;
-  hospitalId: string;
-  accountStatus: UserStatus;
-  reusedExistingUser: boolean;
 };
 
 export type PatientProvisioningScope = {
@@ -139,33 +137,12 @@ export type PatientImportResultSummary = {
   file: PatientImportFileMetadata | null;
 };
 
-export type PatientProvisioningConflictKind =
-  | "IDENTITY_CONFLICT"
-  | "RELATIONSHIP_CONFLICT"
-  | "RECONCILIATION_REQUIRED";
-
-export class PatientProvisioningConflictError extends ConflictError {
-  readonly kind: PatientProvisioningConflictKind;
-
-  constructor(kind: PatientProvisioningConflictKind, message: string) {
-    super(message);
-    this.name = "PatientProvisioningConflictError";
-    this.kind = kind;
-  }
-}
-
-const DEFAULT_TRANSACTION_RETRIES = 2;
-
 function getDatabase(dependencies: PatientProvisioningServiceDependencies): PatientDatabase {
   return dependencies.database ?? getPrisma();
 }
 
 function isKnownRequestError(error: unknown, code: string): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
-}
-
-function isRetryableTransactionError(error: unknown): boolean {
-  return isKnownRequestError(error, "P2034") || isKnownRequestError(error, "P2002");
 }
 
 function normalizeDatabaseError(error: unknown): ApplicationError {
@@ -188,329 +165,6 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
   }
 
   return new InfrastructureError("Patient provisioning could not be completed");
-}
-
-async function runSerializable<T>(
-  database: PatientDatabase,
-  operation: (transaction: Prisma.TransactionClient) => Promise<T>,
-  retryLimit: number,
-): Promise<T> {
-  let retryCount = 0;
-
-  while (true) {
-    try {
-      return await database.$transaction(operation, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      });
-    } catch (error: unknown) {
-      if (!isRetryableTransactionError(error) || retryCount >= retryLimit) {
-        throw error;
-      }
-
-      retryCount += 1;
-    }
-  }
-}
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-    value,
-  );
-}
-
-function assertReusableUser(user: {
-  status: UserStatus;
-  authSubject: string | null;
-}): void {
-  if (user.status === UserStatus.ACTIVE && user.authSubject && isUuid(user.authSubject)) {
-    return;
-  }
-
-  if (user.status === UserStatus.PROVISIONED && !user.authSubject) {
-    return;
-  }
-
-  throw new PatientProvisioningConflictError(
-    "RECONCILIATION_REQUIRED",
-    "The existing account requires reconciliation before patient provisioning",
-  );
-}
-
-async function assertActorCanProvisionInDatabase(
-  database: PatientTransactionDatabase,
-  actorUserId: string,
-  targetHospitalId: string,
-  authorizationMode: PatientProvisioningAuthorizationMode,
-): Promise<void> {
-  const actor = await database.user.findUnique({
-    where: { id: actorUserId },
-    select: {
-      status: true,
-      roles: { select: { role: true } },
-    },
-  });
-
-  if (!actor || actor.status !== UserStatus.ACTIVE) {
-    throw new ForbiddenError();
-  }
-
-  const hospital = await database.hospital.findUnique({
-    where: { id: targetHospitalId },
-    select: { status: true },
-  });
-
-  if (!hospital || hospital.status !== HospitalStatus.ACTIVE) {
-    throw new ForbiddenError();
-  }
-
-  const hasHospitalRole = actor.roles.some(({ role }) => role === Role.HOSPITAL);
-  const hasOsmRole =
-    authorizationMode === "SINGLE" && actor.roles.some(({ role }) => role === Role.OSM);
-
-  const directMembership = hasHospitalRole
-    ? await database.hospitalMembership.findFirst({
-        where: {
-          userId: actorUserId,
-          hospitalId: targetHospitalId,
-          status: MembershipStatus.ACTIVE,
-        },
-        select: { membershipType: true, status: true },
-      })
-    : null;
-
-  const osmRelationship = hasOsmRole
-    ? await database.osmHospitalRelationship.findUnique({
-        where: {
-          userId_hospitalId: {
-            userId: actorUserId,
-            hospitalId: targetHospitalId,
-          },
-        },
-        select: { status: true },
-      })
-    : null;
-
-  const hasDirectScope = Boolean(
-    directMembership &&
-      patientProvisioningPolicyInternals.isActiveDirectHospitalScope({
-        membershipType: directMembership.membershipType,
-        status: directMembership.status,
-        hospitalStatus: hospital.status,
-      }),
-  );
-  const hasOsmScope = Boolean(
-    osmRelationship &&
-      patientProvisioningPolicyInternals.isActiveOsmHospitalScope({
-        status: osmRelationship.status,
-        hospitalStatus: hospital.status,
-      }),
-  );
-
-  const authorized =
-    authorizationMode === "BULK" ? hasDirectScope : hasDirectScope || hasOsmScope;
-
-  if (!authorized) {
-    throw new ForbiddenError();
-  }
-}
-
-async function resolvePatientPerson(
-  transaction: Prisma.TransactionClient,
-  input: ProvisionPatientInput,
-): Promise<{
-  person: {
-    id: string;
-    givenName: string | null;
-    familyName: string | null;
-  };
-  changed: boolean;
-}> {
-  const resolved = await resolvePerson(
-    {
-      identity: input.identity,
-      givenName: input.givenName,
-      familyName: input.familyName,
-    },
-    createIdentityStore(transaction),
-  );
-
-  if (
-    (resolved.givenName && resolved.givenName !== input.givenName) ||
-    (resolved.familyName && resolved.familyName !== input.familyName)
-  ) {
-    throw new PatientProvisioningConflictError(
-      "IDENTITY_CONFLICT",
-      "The existing Person has conflicting authoritative name data",
-    );
-  }
-
-  const data: Prisma.PersonUpdateInput = {};
-
-  if (!resolved.givenName) {
-    data.givenName = input.givenName;
-  }
-
-  if (!resolved.familyName) {
-    data.familyName = input.familyName;
-  }
-
-  if (Object.keys(data).length === 0) {
-    return {
-      person: {
-        id: resolved.id,
-        givenName: resolved.givenName,
-        familyName: resolved.familyName,
-      },
-      changed: false,
-    };
-  }
-
-  const updated = await transaction.person.update({
-    where: { id: resolved.id },
-    data,
-    select: { id: true, givenName: true, familyName: true },
-  });
-
-  return { person: updated, changed: true };
-}
-
-async function createOrReusePatientState(
-  transaction: Prisma.TransactionClient,
-  actorUserId: string,
-  input: ProvisionPatientInput,
-  authorizationMode: PatientProvisioningAuthorizationMode,
-): Promise<PatientProvisioningResult> {
-  await assertActorCanProvisionInDatabase(
-    transaction,
-    actorUserId,
-    input.targetHospitalId,
-    authorizationMode,
-  );
-
-  const personState = await resolvePatientPerson(transaction, input);
-  let user = await transaction.user.findUnique({
-    where: { personId: personState.person.id },
-    select: { id: true, personId: true, status: true, authSubject: true },
-  });
-  const reusedExistingUser = user !== null;
-  let changed = personState.changed;
-
-  if (!user) {
-    user = await transaction.user.create({
-      data: {
-        personId: personState.person.id,
-        status: UserStatus.PROVISIONED,
-      },
-      select: { id: true, personId: true, status: true, authSubject: true },
-    });
-    changed = true;
-  }
-
-  assertReusableUser(user);
-
-  const existingPatientRole = await transaction.userRole.findUnique({
-    where: {
-      userId_role: {
-        userId: user.id,
-        role: Role.PATIENT,
-      },
-    },
-    select: { userId: true },
-  });
-
-  if (!existingPatientRole) {
-    await transaction.userRole.create({
-      data: { userId: user.id, role: Role.PATIENT },
-    });
-    changed = true;
-  }
-
-  let patientProfile = await transaction.patientProfile.findUnique({
-    where: { personId: personState.person.id },
-    select: { id: true },
-  });
-
-  if (!patientProfile) {
-    patientProfile = await transaction.patientProfile.create({
-      data: { personId: personState.person.id },
-      select: { id: true },
-    });
-    changed = true;
-  }
-
-  let relationship = await transaction.patientHospitalRelationship.findUnique({
-    where: {
-      patientProfileId_hospitalId: {
-        patientProfileId: patientProfile.id,
-        hospitalId: input.targetHospitalId,
-      },
-    },
-    select: { id: true, hospitalNumber: true },
-  });
-
-  if (relationship) {
-    if (
-      input.hospitalNumber &&
-      relationship.hospitalNumber &&
-      relationship.hospitalNumber !== input.hospitalNumber
-    ) {
-      throw new PatientProvisioningConflictError(
-        "RELATIONSHIP_CONFLICT",
-        "The existing Hospital relationship has a different HN",
-      );
-    }
-
-    if (!relationship.hospitalNumber && input.hospitalNumber) {
-      relationship = await transaction.patientHospitalRelationship.update({
-        where: { id: relationship.id },
-        data: { hospitalNumber: input.hospitalNumber },
-        select: { id: true, hospitalNumber: true },
-      });
-      changed = true;
-    }
-  } else {
-    relationship = await transaction.patientHospitalRelationship.create({
-      data: {
-        patientProfileId: patientProfile.id,
-        hospitalId: input.targetHospitalId,
-        hospitalNumber: input.hospitalNumber,
-      },
-      select: { id: true, hospitalNumber: true },
-    });
-    changed = true;
-  }
-
-  const outcome: PatientProvisioningOutcome = changed ? "CREATED" : "ALREADY_PROVISIONED";
-
-  if (changed) {
-    await recordAuditEvent(
-      {
-        actorUserId,
-        action: "patient.provisioned",
-        resourceType: "PatientProfile",
-        resourceId: patientProfile.id,
-        metadata: {
-          outcome,
-          hospitalId: input.targetHospitalId,
-          relationshipId: relationship.id,
-          accountStatus: user.status,
-          role: Role.PATIENT,
-        },
-      },
-      transaction,
-    );
-  }
-
-  return {
-    outcome,
-    personId: personState.person.id,
-    userId: user.id,
-    patientProfileId: patientProfile.id,
-    relationshipId: relationship.id,
-    hospitalId: input.targetHospitalId,
-    accountStatus: user.status,
-    reusedExistingUser,
-  };
 }
 
 async function provisionPatientWithAuthorizationMode(
@@ -544,16 +198,16 @@ async function provisionPatientWithAuthorizationMode(
   }
 
   try {
-    const result = await runSerializable(
+    const result = await runSerializableTransaction(
       getDatabase(dependencies),
       (transaction) =>
-        createOrReusePatientState(
+        provisionPatientInTransaction(
           transaction,
-          actor.userId,
+          actor,
           parsed.data,
           authorizationMode,
         ),
-      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+      dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
     );
 
     return result;
@@ -706,7 +360,7 @@ function classifyExistingPatient(
 
   if (existing.user) {
     try {
-      assertReusableUser(existing.user);
+      patientProvisioningTransactionInternals.assertReusableUser(existing.user);
     } catch {
       return {
         classification: "CONFLICT",
@@ -853,7 +507,7 @@ export async function previewPatientProvisioning(
       parsedScope.data.targetHospitalId,
     );
 
-    await assertActorCanProvisionInDatabase(
+    await assertPatientProvisioningActorInDatabase(
       database,
       actor.userId,
       parsedScope.data.targetHospitalId,
@@ -1093,7 +747,7 @@ export async function importPatientProvisioning(
 }
 
 export const patientProvisioningInternals = {
-  assertReusableUser,
+  assertReusableUser: patientProvisioningTransactionInternals.assertReusableUser,
   classifyExistingPatient,
   hasDirectHospitalProvisioningScope,
   hasOsmHospitalProvisioningScope,

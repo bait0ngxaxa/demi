@@ -9,6 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { patientOsmAssignmentRequestSchema } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 import {
@@ -16,6 +17,7 @@ import {
   unassignOsmFromPatient,
   type PatientOsmAssignmentDatabase,
 } from "./patient-osm-assignment-service";
+import { assignOsmToPatientInTransaction } from "./patient-osm-assignment-transaction";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
 
@@ -56,6 +58,7 @@ function createDatabase(input: {
   ownerMembership?: boolean;
 } = {}): {
   database: PatientOsmAssignmentDatabase;
+  transactionClient: Prisma.TransactionClient;
   transaction: {
     patientOsmAssignment: {
       findFirst: ReturnType<typeof vi.fn>;
@@ -98,6 +101,7 @@ function createDatabase(input: {
 
   return {
     database,
+    transactionClient: transaction as unknown as Prisma.TransactionClient,
     transaction: {
       patientOsmAssignment: {
         findFirst: assignmentFindFirst,
@@ -144,6 +148,27 @@ describe("PatientOsmAssignmentService", () => {
     );
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("nationalId");
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("HN");
+  });
+
+  it("runs the composable assignment operation on the supplied transaction without nesting", async () => {
+    const { database, transaction, transactionClient } = createDatabase();
+
+    expect(transactionClient).not.toHaveProperty("$transaction");
+    await expect(
+      assignOsmToPatientInTransaction(
+        transactionClient,
+        ownerActor(),
+        patientOsmAssignmentRequestSchema.parse({
+          patientHospitalRelationshipId: relationshipId,
+          osmUserId,
+        }),
+        now,
+      ),
+    ).resolves.toMatchObject({ operation: "ASSIGNED", osmUserId });
+
+    expect(database.$transaction).not.toHaveBeenCalled();
+    expect(transaction.patientOsmAssignment.create).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledWith(expect.anything(), transactionClient);
   });
 
   it("makes repeating the same active assignment an audited no-op", async () => {

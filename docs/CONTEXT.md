@@ -35,6 +35,8 @@ Legacy DEMI repository ใช้ศึกษา behavior, terminology และ 
 
 **Phase 16C Patient Import Domain & Persistence Design** บันทึก design handoff แบบ documentation-only ใน [Phase 16C design](./phases/PHASE_16C_PATIENT_IMPORT_DOMAIN_PERSISTENCE_DESIGN.md): exact current Hospital scope ยังคงเป็น authorization boundary, source organization text ไม่ใช่ authority, OSM name ห้ามเป็น identity key และการ persist clinical/classification data ต้องผ่าน Phase 16D gates ที่ระบุไว้โดยไม่ตีความ requirement ใหม่.
 
+**Phase 16D.1 Transaction-Composable Import Domain Foundation** implement แล้วตาม [Phase 16D.1 handoff](./phases/PHASE_16D1_TRANSACTION_COMPOSABLE_IMPORT_DOMAIN_FOUNDATION.md) โดยแยก server-only transaction primitives สำหรับ Patient core provisioning, Baseline และ Patient–OSM assignment; public services ยัง own validation, Serializable retry, error normalization และ standalone behavior เดิม ส่วน primitive recheck domain authorization/database invariants และเขียน audit ผ่าน caller-owned transaction เดียว. ไม่มี schema/migration หรือ expanded workbook persistence และ gates จาก Phase 16C ทั้งหมดยังไม่เปลี่ยน.
+
 คำถามเรื่อง owner สุดท้าย, field ownership, visibility, correction, lifecycle, retention และ actor-specific editability ที่ระบุใน Phase 10A ยังเป็น provisional/open requirements
 
 Protected application UI ใช้ shared responsive shell, centralized capability-aware navigation, semantic Tailwind tokens และ small UI primitive layer ตาม [DEMI UI Foundation](./ui/DEMI_UI_FOUNDATION.md) โดย navigation visibility เป็น UX เท่านั้นและไม่แทน server authorization

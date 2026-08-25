@@ -9,6 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { patientBaselineCreateRequestSchema } from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
 import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
@@ -21,6 +22,7 @@ import {
   createPatientBaseline,
   type PatientBaselineDatabase,
 } from "./patient-baseline-service";
+import { createPatientBaselineInTransaction } from "./patient-baseline-transaction";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -227,6 +229,25 @@ describe("Patient Baseline service", () => {
     expect(transaction).not.toHaveProperty("patientGoalPlan");
     expect(transaction).not.toHaveProperty("patientAppointment");
     expect(transaction).not.toHaveProperty("patientFollowup");
+  });
+
+  it("runs the composable Baseline operation on the supplied transaction without nesting", async () => {
+    const { database, transaction } = createDatabase();
+    const suppliedTransaction = transaction as unknown as Prisma.TransactionClient;
+
+    expect(suppliedTransaction).not.toHaveProperty("$transaction");
+    await expect(
+      createPatientBaselineInTransaction(
+        suppliedTransaction,
+        hospitalActor,
+        patientBaselineCreateRequestSchema.parse(validInput()),
+        now,
+      ),
+    ).resolves.toMatchObject({ patientBaselineId, recordedByUserId: hospitalUserId });
+
+    expect(database.$transaction).not.toHaveBeenCalled();
+    expect(transaction.patientBaseline.create).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledWith(expect.anything(), suppliedTransaction);
   });
 
   it("does not accept a browser recorder and derives the actor from the server context", async () => {
