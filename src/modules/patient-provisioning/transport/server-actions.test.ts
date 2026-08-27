@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { PatientImportUpload } from "../adapters/excel-patient-import-adapter";
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import type { PatientProvisionActionState } from "./action-state";
 import {
   createPatientImportPreviewBinding,
@@ -79,6 +80,8 @@ function createFormData(
     previewTargetHospitalId?: string;
     fileFingerprint?: string;
     previewBinding?: string;
+    effectiveDate?: string;
+    importContractVersion?: string;
   },
 ): FormData {
   const formData = new FormData();
@@ -96,6 +99,12 @@ function createFormData(
   if (values.previewBinding) {
     formData.set("previewBinding", values.previewBinding);
   }
+
+  formData.set("effectiveDate", values.effectiveDate ?? "");
+  formData.set(
+    "importContractVersion",
+    values.importContractVersion ?? PATIENT_IMPORT_CONTRACT_VERSION,
+  );
 
   return formData;
 }
@@ -123,7 +132,14 @@ describe("patient import Server Actions", () => {
     vi.clearAllMocks();
     mockedActor.mockResolvedValue(actor);
     mockedReadCandidates.mockResolvedValue([createCandidate()]);
-    mockedPreviewProvisioning.mockResolvedValue({ targetHospitalId: hospitalId, rows: [] });
+    mockedPreviewProvisioning.mockResolvedValue({
+      targetHospitalId: hospitalId,
+      effectiveDate: null,
+      importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      baselineDateRequired: false,
+      rows: [],
+      file: null,
+    });
     mockedImportProvisioning.mockResolvedValue({
       targetHospitalId: hospitalId,
       imported: 1,
@@ -132,6 +148,11 @@ describe("patient import Server Actions", () => {
       invalid: 0,
       conflict: 0,
       failed: 0,
+      baselineCreated: 0,
+      baselineAlreadyExists: 0,
+      baselineConflict: 0,
+      baselineInvalid: 0,
+      baselineDateRequired: 0,
       rows: [],
     });
     mockedProvisionPatient.mockResolvedValue({
@@ -247,6 +268,53 @@ describe("patient import Server Actions", () => {
     );
   });
 
+  it("accepts a valid shared effective date and binds it to the preview", async () => {
+    const file = createUpload("file-effective-date");
+    const effectiveDate = "2026-08-01";
+    const result = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId, effectiveDate }),
+    );
+
+    expect(result.status).toBe("SUCCESS");
+    expect(mockedPreviewProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [createCandidate()],
+      undefined,
+      { effectiveDate, importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION },
+    );
+
+    if (result.status !== "SUCCESS") {
+      return;
+    }
+
+    const fingerprint = await hashPatientImportFile(file);
+    expect(result.preview.previewBinding).toBe(
+      createPatientImportPreviewBinding(
+        fingerprint,
+        hospitalId,
+        actor.userId,
+        effectiveDate,
+        PATIENT_IMPORT_CONTRACT_VERSION,
+      ),
+    );
+  });
+
+  it("rejects invalid effective dates without reading or previewing the workbook", async () => {
+    const file = createUpload("file-invalid-date");
+    const result = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId, effectiveDate: "2026-02-30" }),
+    );
+
+    expect(result).toEqual({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาเลือกไฟล์ Excel และโรงพยาบาลที่ถูกต้อง",
+    });
+    expect(mockedReadCandidates).not.toHaveBeenCalled();
+    expect(mockedPreviewProvisioning).not.toHaveBeenCalled();
+  });
+
   it("accepts the same file and Hospital, then reparses before importing", async () => {
     const file = createUpload("file-a");
     const fingerprint = await hashPatientImportFile(file);
@@ -260,7 +328,16 @@ describe("patient import Server Actions", () => {
 
     expect(result).toMatchObject({ status: "SUCCESS" });
     expect(mockedReadCandidates).toHaveBeenCalledTimes(1);
-    expect(mockedImportProvisioning).toHaveBeenCalledWith(actor, hospitalId, [createCandidate()]);
+    expect(mockedImportProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [createCandidate()],
+      {},
+      {
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      },
+    );
   });
 
   it("rejects a changed file and does not invoke the import service", async () => {
@@ -278,7 +355,7 @@ describe("patient import Server Actions", () => {
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ไฟล์หรือโรงพยาบาลเปลี่ยนแปลงแล้ว กรุณาตรวจสอบไฟล์ใหม่ก่อนยืนยันนำเข้า",
+      message: "ไฟล์ โรงพยาบาล วันที่ข้อมูลตั้งต้น หรือรูปแบบนำเข้าเปลี่ยนแปลงแล้ว กรุณาตรวจสอบใหม่ก่อนยืนยันนำเข้า",
     });
     expect(mockedImportProvisioning).not.toHaveBeenCalled();
   });
@@ -306,6 +383,55 @@ describe("patient import Server Actions", () => {
 
     expect(changedHospitalResult).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(staleBindingResult).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
+  });
+
+  it("rejects a changed effective date after preview", async () => {
+    const file = createUpload("file-date-binding");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewDate = "2026-08-01";
+    const binding = createPatientImportPreviewBinding(
+      fingerprint,
+      hospitalId,
+      actor.userId,
+      previewDate,
+      PATIENT_IMPORT_CONTRACT_VERSION,
+    );
+    const result = await confirmPatientImportAction(
+      createFormData(file, {
+        targetHospitalId: hospitalId,
+        previewTargetHospitalId: hospitalId,
+        fileFingerprint: fingerprint,
+        previewBinding: binding,
+        effectiveDate: "2026-08-15",
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported import contract version at confirmation", async () => {
+    const file = createUpload("file-contract-version");
+    const fingerprint = await hashPatientImportFile(file);
+    const binding = createPatientImportPreviewBinding(
+      fingerprint,
+      hospitalId,
+      actor.userId,
+      null,
+      PATIENT_IMPORT_CONTRACT_VERSION,
+    );
+    const result = await confirmPatientImportAction(
+      createFormData(file, {
+        targetHospitalId: hospitalId,
+        previewTargetHospitalId: hospitalId,
+        fileFingerprint: fingerprint,
+        previewBinding: binding,
+        importContractVersion: "unsupported-contract",
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(mockedImportProvisioning).not.toHaveBeenCalled();
   });
 });

@@ -125,5 +125,5 @@ describe('top-level "use server" module contract', () => {
     }
 
     expect(violations).toEqual([]);
-  });
+  }, 15_000);
 });

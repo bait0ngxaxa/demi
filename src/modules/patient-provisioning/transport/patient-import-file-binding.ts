@@ -5,6 +5,8 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getServerEnv } from "@/lib/env/server";
 import { ValidationError } from "@/shared/errors/application-error";
 
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
+
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 const PREVIEW_BINDING_CONTEXT = "demi:patient-import-preview:v1";
 
@@ -25,10 +27,12 @@ export function createPatientImportPreviewBinding(
   fileFingerprint: string,
   targetHospitalId: string,
   actorUserId: string,
+  effectiveDate: string | null = null,
+  importContractVersion: string = PATIENT_IMPORT_CONTRACT_VERSION,
 ): string {
   return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
     .update(
-      `${PREVIEW_BINDING_CONTEXT}\u0000${actorUserId}\u0000${targetHospitalId}\u0000${fileFingerprint}`,
+      `${PREVIEW_BINDING_CONTEXT}\u0000${importContractVersion}\u0000${actorUserId}\u0000${targetHospitalId}\u0000${effectiveDate ?? ""}\u0000${fileFingerprint}`,
       "utf8",
     )
     .digest("hex");
@@ -51,6 +55,8 @@ export function matchesPatientImportPreviewBinding(
   fileFingerprint: string,
   targetHospitalId: string,
   actorUserId: string,
+  effectiveDate: string | null = null,
+  importContractVersion: string = PATIENT_IMPORT_CONTRACT_VERSION,
 ): boolean {
   if (!isPatientImportFileFingerprint(fileFingerprint) || !isPatientImportFileFingerprint(previewBinding)) {
     return false;
@@ -60,6 +66,8 @@ export function matchesPatientImportPreviewBinding(
     fileFingerprint,
     targetHospitalId,
     actorUserId,
+    effectiveDate,
+    importContractVersion,
   );
 
   return timingSafeEqual(Buffer.from(previewBinding, "hex"), Buffer.from(expectedBinding, "hex"));

@@ -38,10 +38,12 @@ export type PatientBaselineProjection = {
   };
   measurements: {
     weight: number | null;
+    heightCm: number | null;
     waistCircumference: number | null;
     bloodPressureSystolic: number | null;
     bloodPressureDiastolic: number | null;
     bloodSugarDtx: number | null;
+    hba1c: number | null;
   };
   adaptation: {
     summary: string | null;
@@ -84,10 +86,12 @@ export const patientBaselineSelect = {
     },
   },
   weight: true,
+  heightCm: true,
   waistCircumference: true,
   bloodPressureSystolic: true,
   bloodPressureDiastolic: true,
   bloodSugarDtx: true,
+  hba1c: true,
   adaptationSummary: true,
   adaptationObstacles: true,
   adaptationOpportunities: true,
@@ -136,10 +140,12 @@ function toProjection(record: PatientBaselineRecord): PatientBaselineProjection 
     },
     measurements: {
       weight: record.weight,
+      heightCm: record.heightCm,
       waistCircumference: record.waistCircumference,
       bloodPressureSystolic: record.bloodPressureSystolic,
       bloodPressureDiastolic: record.bloodPressureDiastolic,
       bloodSugarDtx: record.bloodSugarDtx,
+      hba1c: record.hba1c,
     },
     adaptation: {
       summary: record.adaptationSummary,

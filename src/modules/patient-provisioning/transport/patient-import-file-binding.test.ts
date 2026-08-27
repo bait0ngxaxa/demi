@@ -6,6 +6,7 @@ import {
   matchesPatientImportFileFingerprint,
   matchesPatientImportPreviewBinding,
 } from "./patient-import-file-binding";
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 
 const targetHospitalId = "11111111-1111-4111-8111-111111111111";
 const actorUserId = "22222222-2222-4222-8222-222222222222";
@@ -57,5 +58,47 @@ describe("patient import file binding", () => {
       targetHospitalId,
       "44444444-4444-4444-8444-444444444444",
     )).toBe(false);
+  });
+
+  it("binds the shared effective date and import contract version", async () => {
+    const fingerprint = await hashPatientImportFile(createFileSource("file-date"));
+    const binding = createPatientImportPreviewBinding(
+      fingerprint,
+      targetHospitalId,
+      actorUserId,
+      "2026-08-01",
+      PATIENT_IMPORT_CONTRACT_VERSION,
+    );
+
+    expect(
+      matchesPatientImportPreviewBinding(
+        binding,
+        fingerprint,
+        targetHospitalId,
+        actorUserId,
+        "2026-08-01",
+        PATIENT_IMPORT_CONTRACT_VERSION,
+      ),
+    ).toBe(true);
+    expect(
+      matchesPatientImportPreviewBinding(
+        binding,
+        fingerprint,
+        targetHospitalId,
+        actorUserId,
+        "2026-08-15",
+        PATIENT_IMPORT_CONTRACT_VERSION,
+      ),
+    ).toBe(false);
+    expect(
+      matchesPatientImportPreviewBinding(
+        binding,
+        fingerprint,
+        targetHospitalId,
+        actorUserId,
+        "2026-08-01",
+        "different-contract",
+      ),
+    ).toBe(false);
   });
 });

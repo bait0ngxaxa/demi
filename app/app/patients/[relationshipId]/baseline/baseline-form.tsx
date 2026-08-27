@@ -64,10 +64,12 @@ export function PatientBaselineForm({
   );
   const [recordedOn, setRecordedOn] = useState<string>(getTodayDateOnly);
   const [weight, setWeight] = useState("");
+  const [heightCm, setHeightCm] = useState("");
   const [waistCircumference, setWaistCircumference] = useState("");
   const [bloodPressureSystolic, setBloodPressureSystolic] = useState("");
   const [bloodPressureDiastolic, setBloodPressureDiastolic] = useState("");
   const [bloodSugarDtx, setBloodSugarDtx] = useState("");
+  const [hba1c, setHba1c] = useState("");
   const [adaptationSummary, setAdaptationSummary] = useState("");
   const [adaptationObstacles, setAdaptationObstacles] = useState("");
   const [adaptationOpportunities, setAdaptationOpportunities] = useState("");
@@ -181,6 +183,22 @@ export function PatientBaselineForm({
                 value={weight}
               />
             </label>
+            <label className={labelClassName} htmlFor="baseline-height-cm">
+              <span>ส่วนสูง (cm)</span>
+              <Input
+                id="baseline-height-cm"
+                inputMode="decimal"
+                max={1_000_000}
+                min={0.01}
+                name="heightCm"
+                onChange={(event) => setHeightCm(event.target.value)}
+                placeholder="ไม่บังคับ"
+                readOnly={pending}
+                step="any"
+                type="number"
+                value={heightCm}
+              />
+            </label>
             <label className={labelClassName} htmlFor="baseline-waist">
               <span>รอบเอว (cm)</span>
               <Input
@@ -229,8 +247,8 @@ export function PatientBaselineForm({
                 value={bloodPressureDiastolic}
               />
             </label>
-            <label className={`${labelClassName} sm:col-span-2`} htmlFor="baseline-blood-sugar-dtx">
-              <span>ระดับน้ำตาลในเลือด (DTX / mg%)</span>
+            <label className={labelClassName} htmlFor="baseline-blood-sugar-dtx">
+              <span>ระดับน้ำตาลในเลือด (DTX / mg/dL)</span>
               <Input
                 id="baseline-blood-sugar-dtx"
                 inputMode="decimal"
@@ -243,6 +261,22 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={bloodSugarDtx}
+              />
+            </label>
+            <label className={labelClassName} htmlFor="baseline-hba1c">
+              <span>HbA1c (%)</span>
+              <Input
+                id="baseline-hba1c"
+                inputMode="decimal"
+                max={1_000_000}
+                min={0.01}
+                name="hba1c"
+                onChange={(event) => setHba1c(event.target.value)}
+                placeholder="ไม่บังคับ"
+                readOnly={pending}
+                step="any"
+                type="number"
+                value={hba1c}
               />
             </label>
           </div>

@@ -13,6 +13,18 @@ import {
   runSerializableTransaction,
 } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { PATIENT_BASELINE_CREATE_CAPABILITY } from "@/modules/patient-baseline/policies/patient-baseline-policy";
+import {
+  dateOnlyToUtcDate,
+  patientBaselineCreateRequestSchema,
+  patientBaselineDateOnlySchema,
+  patientBaselineMeasurementSchema,
+  type PatientBaselineCreateRequest,
+} from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
+import {
+  createPatientBaselineInTransaction,
+} from "@/modules/patient-baseline/services/patient-baseline-transaction";
+import { resolvePatientBaselineAccessContext } from "@/modules/patient-baseline/services/patient-baseline-access-service";
 import {
   hashIdentityReference,
 } from "@/modules/identity/services/identity-service";
@@ -46,7 +58,13 @@ import type {
   PatientImportFileMetadata,
   PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
-import { PATIENT_IMPORT_FIELD_KEYS } from "../import/patient-import-contract";
+import {
+  PATIENT_IMPORT_BASELINE_FIELD_KEYS,
+  PATIENT_IMPORT_CONTRACT_VERSION,
+  PATIENT_IMPORT_FIELD_KEYS,
+  isPatientImportBaselineField,
+  type PatientImportBaselineFieldKey,
+} from "../import/patient-import-contract";
 import {
   assertPatientProvisioningActorInDatabase,
   PatientProvisioningConflictError,
@@ -70,7 +88,13 @@ export type PatientDatabase = PrismaClient;
 
 export type PatientProvisioningServiceDependencies = {
   database?: PatientDatabase;
+  now?: () => Date;
   transactionRetries?: number;
+};
+
+export type PatientImportOptions = {
+  effectiveDate?: string | null;
+  importContractVersion?: string;
 };
 
 export type PatientProvisioningScope = {
@@ -90,6 +114,15 @@ export type PatientImportClassification =
   | "HOSPITAL_MISMATCH"
   | "UNSUPPORTED_REQUIREMENT";
 
+export type PatientImportBaselineStatus =
+  | "NOT_APPLICABLE"
+  | "BASELINE_READY"
+  | "BASELINE_CREATED"
+  | "BASELINE_ALREADY_EXISTS"
+  | "BASELINE_CONFLICT"
+  | "BASELINE_DATE_REQUIRED"
+  | "BASELINE_DATA_INVALID";
+
 export type PatientImportPreviewRow = {
   rowNumber: number;
   identityDisplay: string;
@@ -99,12 +132,16 @@ export type PatientImportPreviewRow = {
   hospitalNumber: string | null;
   classification: PatientImportClassification;
   reason: string | null;
+  baselineStatus: PatientImportBaselineStatus;
   requirementGatedFields: readonly PatientImportFieldKey[];
   diagnosticCodes: readonly PatientImportDiagnosticCode[];
 };
 
 export type PatientImportPreview = {
   targetHospitalId: string;
+  effectiveDate: string | null;
+  importContractVersion: typeof PATIENT_IMPORT_CONTRACT_VERSION;
+  baselineDateRequired: boolean;
   rows: PatientImportPreviewRow[];
   file: PatientImportFileMetadata | null;
 };
@@ -133,12 +170,47 @@ export type PatientImportResultSummary = {
   hospitalMismatch: number;
   unsupportedRequirement: number;
   failed: number;
+  baselineCreated: number;
+  baselineAlreadyExists: number;
+  baselineConflict: number;
+  baselineInvalid: number;
+  baselineDateRequired: number;
   rows: PatientImportRowResult[];
   file: PatientImportFileMetadata | null;
 };
 
 function getDatabase(dependencies: PatientProvisioningServiceDependencies): PatientDatabase {
   return dependencies.database ?? getPrisma();
+}
+
+function getImportNow(dependencies: PatientProvisioningServiceDependencies): Date {
+  const now = dependencies.now ? dependencies.now() : new Date();
+  const copy = new Date(now.getTime());
+
+  if (Number.isNaN(copy.getTime())) {
+    throw new InfrastructureError("Patient import time could not be resolved");
+  }
+
+  return copy;
+}
+
+function normalizeImportOptions(options: PatientImportOptions): {
+  effectiveDate: string | null;
+  importContractVersion: typeof PATIENT_IMPORT_CONTRACT_VERSION;
+} {
+  const effectiveDate = options.effectiveDate ?? null;
+
+  if (effectiveDate !== null && !patientBaselineDateOnlySchema.safeParse(effectiveDate).success) {
+    throw new ValidationError("วันที่ข้อมูลตั้งต้นไม่ถูกต้อง");
+  }
+
+  const importContractVersion = options.importContractVersion ?? PATIENT_IMPORT_CONTRACT_VERSION;
+
+  if (importContractVersion !== PATIENT_IMPORT_CONTRACT_VERSION) {
+    throw new ValidationError("เวอร์ชันการนำเข้าไม่ถูกต้อง");
+  }
+
+  return { effectiveDate, importContractVersion };
 }
 
 function isKnownRequestError(error: unknown, code: string): boolean {
@@ -333,9 +405,189 @@ type PreviewPerson = {
   } | null;
   patientProfile: {
     id: string;
-    hospitalRelationships: { id: string; hospitalNumber: string | null }[];
+    hospitalRelationships: {
+      id: string;
+      hospitalNumber: string | null;
+      baseline: PreviewBaseline | null;
+    }[];
   } | null;
 };
+
+type PreviewBaseline = {
+  recordedOn: Date;
+  weight: number | null;
+  heightCm: number | null;
+  waistCircumference: number | null;
+  bloodSugarDtx: number | null;
+  hba1c: number | null;
+};
+
+type BaselineImportTargetField =
+  | "weight"
+  | "heightCm"
+  | "waistCircumference"
+  | "bloodSugarDtx"
+  | "hba1c";
+
+type BaselineImportValues = Record<BaselineImportTargetField, number | null>;
+
+type BaselineImportState = {
+  status: PatientImportBaselineStatus;
+  effectiveDate: string | null;
+  presentFields: readonly BaselineImportTargetField[];
+  values: BaselineImportValues;
+};
+
+const baselineImportFieldMap: Readonly<Record<PatientImportBaselineFieldKey, BaselineImportTargetField>> = {
+  weight: "weight",
+  height: "heightCm",
+  waistCircumference: "waistCircumference",
+  bloodSugarDtx: "bloodSugarDtx",
+  hba1c: "hba1c",
+};
+
+const emptyBaselineImportValues: BaselineImportValues = {
+  weight: null,
+  heightCm: null,
+  waistCircumference: null,
+  bloodSugarDtx: null,
+  hba1c: null,
+};
+
+export class PatientBaselineImportConflictError extends ConflictError {
+  constructor() {
+    super("ข้อมูลตั้งต้นจากไฟล์ขัดแย้งกับข้อมูลที่บันทึกไว้แล้ว");
+    this.name = "PatientBaselineImportConflictError";
+  }
+}
+
+function hasBaselineSourceAssertion(
+  candidate: PatientProvisioningImportCandidate,
+  field: PatientImportBaselineFieldKey,
+  value: number | null,
+): boolean {
+  const assessment = candidate.canonicalRow.fieldAssessments[field];
+  return value !== null || assessment.diagnostics.length > 0;
+}
+
+function readBaselineImportState(
+  candidate: PatientProvisioningImportCandidate,
+  effectiveDate: string | null,
+): BaselineImportState {
+  const clinical = candidate.canonicalRow.clinicalCandidates;
+  const values = { ...emptyBaselineImportValues };
+  const presentFields: BaselineImportTargetField[] = [];
+  let invalid = false;
+
+  for (const sourceField of PATIENT_IMPORT_BASELINE_FIELD_KEYS) {
+    const targetField = baselineImportFieldMap[sourceField];
+    const value = clinical[sourceField];
+
+    if (!hasBaselineSourceAssertion(candidate, sourceField, value)) {
+      continue;
+    }
+
+    if (
+      (sourceField === "height" && clinical.heightUnit !== "cm") ||
+      candidate.canonicalRow.fieldAssessments[sourceField].diagnostics.length > 0 ||
+      value === null ||
+      !patientBaselineMeasurementSchema.safeParse(value).success
+    ) {
+      invalid = true;
+      continue;
+    }
+
+    values[targetField] = value;
+    presentFields.push(targetField);
+  }
+
+  if (invalid) {
+    return {
+      status: "BASELINE_DATA_INVALID",
+      effectiveDate,
+      presentFields,
+      values,
+    };
+  }
+
+  if (presentFields.length === 0) {
+    return {
+      status: "NOT_APPLICABLE",
+      effectiveDate,
+      presentFields,
+      values,
+    };
+  }
+
+  if (effectiveDate === null) {
+    return {
+      status: "BASELINE_DATE_REQUIRED",
+      effectiveDate,
+      presentFields,
+      values,
+    };
+  }
+
+  return {
+    status: "BASELINE_READY",
+    effectiveDate,
+    presentFields,
+    values,
+  };
+}
+
+function baselineImportMatchesExisting(
+  state: BaselineImportState,
+  existing: PreviewBaseline,
+): boolean {
+  if (state.status !== "BASELINE_READY" || state.effectiveDate === null) {
+    return false;
+  }
+
+  if (existing.recordedOn.getTime() !== dateOnlyToUtcDate(state.effectiveDate).getTime()) {
+    return false;
+  }
+
+  return state.presentFields.every((field) => existing[field] === state.values[field]);
+}
+
+function baselineImportReason(status: PatientImportBaselineStatus): string | null {
+  switch (status) {
+    case "BASELINE_READY":
+      return "ข้อมูลตั้งต้นพร้อมบันทึกตามวันที่ที่เลือก";
+    case "BASELINE_ALREADY_EXISTS":
+      return "ข้อมูลตั้งต้นชุดเดียวกันมีอยู่แล้ว ระบบจะไม่สร้างซ้ำ";
+    case "BASELINE_CONFLICT":
+      return "ข้อมูลตั้งต้นจากไฟล์ขัดแย้งกับข้อมูลเดิม ต้องตรวจสอบก่อนนำเข้า";
+    case "BASELINE_DATE_REQUIRED":
+      return "ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า";
+    case "BASELINE_DATA_INVALID":
+      return "ข้อมูลตั้งต้นบางรายการไม่ถูกต้องหรือไม่รองรับหน่วยที่ระบุ";
+    default:
+      return null;
+  }
+}
+
+function buildBaselineCreateInput(
+  relationshipId: string,
+  state: BaselineImportState,
+): PatientBaselineCreateRequest {
+  if (state.status !== "BASELINE_READY" || state.effectiveDate === null) {
+    throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่พร้อมบันทึก");
+  }
+
+  const parsed = patientBaselineCreateRequestSchema.safeParse({
+    patientHospitalRelationshipId: relationshipId,
+    recordedOn: state.effectiveDate,
+    ...state.values,
+  });
+
+  if (!parsed.success) {
+    throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่ถูกต้อง");
+  }
+
+  return parsed.data;
+}
 
 function hasNameConflict(
   person: Pick<PreviewPerson, "givenName" | "familyName">,
@@ -395,9 +647,14 @@ function toPreviewRow(
   candidate: PatientProvisioningImportCandidate,
   classification: PatientImportClassification,
   reason: string | null,
+  baselineStatus: PatientImportBaselineStatus = "NOT_APPLICABLE",
 ): PatientImportPreviewRow {
   const requirementGatedFields = PATIENT_IMPORT_FIELD_KEYS.filter((field) => {
     if (field === "nationalId" || field === "givenName" || field === "familyName" || field === "hospitalNumber") {
+      return false;
+    }
+
+    if (isPatientImportBaselineField(field)) {
       return false;
     }
 
@@ -417,11 +674,11 @@ function toPreviewRow(
     combinedNameText: candidate.combinedNameText,
     hospitalNumber: candidate.hospitalNumber,
     classification,
-    reason:
-      reason ??
+    reason: reason ??
       (requirementGatedFields.length > 0
         ? "ข้อมูลหลักพร้อมนำเข้า แต่ข้อมูลเพิ่มเติมบางรายการยังไม่บันทึกในระยะนี้"
-        : null),
+        : baselineImportReason(baselineStatus)),
+    baselineStatus,
     requirementGatedFields,
     diagnosticCodes,
   };
@@ -439,6 +696,58 @@ function hasHospitalTextMismatch(
 
   return normalizePatientImportOrganizationText(sourceHospitalName) !==
     normalizePatientImportOrganizationText(targetHospitalName);
+}
+
+function applyBaselinePreviewState(
+  coreClassification: PatientImportClassification,
+  coreReason: string | null,
+  baselineState: BaselineImportState,
+  existingBaseline: PreviewBaseline | null,
+): {
+  classification: PatientImportClassification;
+  reason: string | null;
+  baselineStatus: PatientImportBaselineStatus;
+} {
+  if (baselineState.status === "NOT_APPLICABLE") {
+    return {
+      classification: coreClassification,
+      reason: coreReason,
+      baselineStatus: baselineState.status,
+    };
+  }
+
+  if (baselineState.status === "BASELINE_DATA_INVALID" || baselineState.status === "BASELINE_DATE_REQUIRED") {
+    return {
+      classification: coreClassification === "CONFLICT" ? coreClassification : "INVALID",
+      reason: coreClassification === "CONFLICT" ? coreReason : baselineImportReason(baselineState.status),
+      baselineStatus: baselineState.status,
+    };
+  }
+
+  if (!existingBaseline) {
+    return {
+      classification: coreClassification === "ALREADY_EXISTS" ? "READY" : coreClassification,
+      reason:
+        coreClassification === "ALREADY_EXISTS"
+          ? "ผู้ป่วยมีข้อมูลอยู่แล้ว แต่พร้อมบันทึกข้อมูลตั้งต้น"
+          : coreReason,
+      baselineStatus: baselineState.status,
+    };
+  }
+
+  if (baselineImportMatchesExisting(baselineState, existingBaseline)) {
+    return {
+      classification: coreClassification === "CONFLICT" ? coreClassification : "ALREADY_EXISTS",
+      reason: coreClassification === "CONFLICT" ? coreReason : baselineImportReason("BASELINE_ALREADY_EXISTS"),
+      baselineStatus: "BASELINE_ALREADY_EXISTS",
+    };
+  }
+
+  return {
+    classification: coreClassification === "CONFLICT" ? coreClassification : "CONFLICT",
+    reason: coreClassification === "CONFLICT" ? coreReason : baselineImportReason("BASELINE_CONFLICT"),
+    baselineStatus: "BASELINE_CONFLICT",
+  };
 }
 
 function normalizeImportCandidates(
@@ -484,6 +793,7 @@ export async function previewPatientProvisioning(
   targetHospitalId: string,
   candidates: readonly PatientProvisioningImportCandidate[],
   database: PatientDatabase = getPrisma(),
+  options: PatientImportOptions = {},
 ): Promise<PatientImportPreview> {
   const parsedScope = patientProvisionScopeSchema.safeParse({ targetHospitalId });
 
@@ -502,6 +812,7 @@ export async function previewPatientProvisioning(
   }
 
   try {
+    const normalizedOptions = normalizeImportOptions(options);
     const normalizedCandidates = normalizeImportCandidates(
       candidates,
       parsedScope.data.targetHospitalId,
@@ -557,7 +868,20 @@ export async function previewPatientProvisioning(
                 id: true,
                 hospitalRelationships: {
                   where: { hospitalId: targetHospitalId },
-                  select: { id: true, hospitalNumber: true },
+                  select: {
+                    id: true,
+                    hospitalNumber: true,
+                    baseline: {
+                      select: {
+                        recordedOn: true,
+                        weight: true,
+                        heightCm: true,
+                        waistCircumference: true,
+                        bloodSugarDtx: true,
+                        hba1c: true,
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -568,38 +892,56 @@ export async function previewPatientProvisioning(
       people.map((person) => [person.identityKeyHash, person]),
     );
 
+    const rows = normalizedCandidates.map((candidate) => {
+      if (!candidate.input) {
+        return toPreviewRow(candidate, "INVALID", candidate.validationMessage);
+      }
+
+      if (hasHospitalTextMismatch(candidate, targetHospital.name)) {
+        return toPreviewRow(
+          candidate,
+          "HOSPITAL_MISMATCH",
+          "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก ต้องตรวจสอบก่อนนำเข้า",
+        );
+      }
+
+      const hash = hashByRow.get(candidate.rowNumber);
+      const isDuplicate = hash ? (counts.get(hash) ?? 0) > 1 : false;
+
+      if (isDuplicate) {
+        return toPreviewRow(candidate, "DUPLICATE_IN_FILE", "พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
+      }
+
+      const existing = hash ? existingByHash.get(hash) : undefined;
+      const coreClassification = existing
+        ? classifyExistingPatient(existing, candidate.input)
+        : { classification: "READY" as const, reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
+      const existingRelationship = existing?.patientProfile?.hospitalRelationships[0];
+      const baselineState = readBaselineImportState(candidate, normalizedOptions.effectiveDate);
+      const baselinePreview = applyBaselinePreviewState(
+        coreClassification.classification,
+        coreClassification.reason,
+        baselineState,
+        existingRelationship?.baseline ?? null,
+      );
+
+      return toPreviewRow(
+        candidate,
+        baselinePreview.classification,
+        baselinePreview.reason,
+        baselinePreview.baselineStatus,
+      );
+    });
+
     return {
       targetHospitalId: parsedScope.data.targetHospitalId,
+      effectiveDate: normalizedOptions.effectiveDate,
+      importContractVersion: normalizedOptions.importContractVersion,
+      baselineDateRequired: rows.some(
+        ({ baselineStatus }) => baselineStatus === "BASELINE_DATE_REQUIRED",
+      ),
       file: normalizedCandidates.find((candidate) => candidate.fileMetadata)?.fileMetadata ?? null,
-      rows: normalizedCandidates.map((candidate) => {
-        if (!candidate.input) {
-          return toPreviewRow(candidate, "INVALID", candidate.validationMessage);
-        }
-
-        if (hasHospitalTextMismatch(candidate, targetHospital.name)) {
-          return toPreviewRow(
-            candidate,
-            "HOSPITAL_MISMATCH",
-            "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก ต้องตรวจสอบก่อนนำเข้า",
-          );
-        }
-
-        const hash = hashByRow.get(candidate.rowNumber);
-        const isDuplicate = hash ? (counts.get(hash) ?? 0) > 1 : false;
-
-        if (isDuplicate) {
-          return toPreviewRow(candidate, "DUPLICATE_IN_FILE", "พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
-        }
-
-        const existing = hash ? existingByHash.get(hash) : undefined;
-
-        if (!existing) {
-          return toPreviewRow(candidate, "READY", "พร้อมบันทึกข้อมูลผู้ป่วย");
-        }
-
-        const classification = classifyExistingPatient(existing, candidate.input);
-        return toPreviewRow(candidate, classification.classification, classification.reason);
-      }),
+      rows,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -614,8 +956,9 @@ function toImportResultRow(
   row: PatientImportPreviewRow,
   result: PatientImportRowResult["result"],
   reason = row.reason,
+  baselineStatus = row.baselineStatus,
 ): PatientImportRowResult {
-  return { ...row, result, reason };
+  return { ...row, result, reason, baselineStatus };
 }
 
 function getResultStatusForPreview(
@@ -648,19 +991,143 @@ function getResultStatusForPreview(
   return null;
 }
 
+const patientRosterBaselineSelect = {
+  recordedOn: true,
+  weight: true,
+  heightCm: true,
+  waistCircumference: true,
+  bloodSugarDtx: true,
+  hba1c: true,
+} satisfies Prisma.PatientBaselineSelect;
+
+type PatientRosterImportRowResult = {
+  patient: PatientProvisioningResult;
+  baselineStatus: PatientImportBaselineStatus;
+};
+
+async function importPatientRosterRow(
+  actor: ActorContext,
+  candidate: PatientProvisioningImportCandidate,
+  effectiveDate: string | null,
+  dependencies: PatientProvisioningServiceDependencies,
+): Promise<PatientRosterImportRowResult> {
+  if (!candidate.input) {
+    throw new ValidationError("ข้อมูลแถวนี้ไม่ถูกต้อง");
+  }
+
+  const patientInput = candidate.input;
+
+  const baselineState = readBaselineImportState(candidate, effectiveDate);
+
+  if (baselineState.status === "BASELINE_DATA_INVALID") {
+    throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่ถูกต้อง");
+  }
+
+  if (baselineState.status === "BASELINE_DATE_REQUIRED") {
+    throw new ValidationError("ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า");
+  }
+
+  const now = baselineState.status === "BASELINE_READY" ? getImportNow(dependencies) : null;
+
+  try {
+    return await runSerializableTransaction(
+      getDatabase(dependencies),
+      async (transaction): Promise<PatientRosterImportRowResult> => {
+        const patient = await provisionPatientInTransaction(
+          transaction,
+          actor,
+          patientInput,
+          "BULK",
+        );
+
+        if (baselineState.status === "NOT_APPLICABLE") {
+          return { patient, baselineStatus: "NOT_APPLICABLE" };
+        }
+
+        if (now === null) {
+          throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่พร้อมบันทึก");
+        }
+
+        const access = await resolvePatientBaselineAccessContext(
+          actor,
+          patient.relationshipId,
+          PATIENT_BASELINE_CREATE_CAPABILITY,
+          transaction,
+        );
+        const existing = await transaction.patientBaseline.findUnique({
+          where: {
+            patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+          },
+          select: patientRosterBaselineSelect,
+        });
+
+        if (!existing) {
+          await createPatientBaselineInTransaction(
+            transaction,
+            actor,
+            buildBaselineCreateInput(patient.relationshipId, baselineState),
+            now,
+            "ROSTER_IMPORT",
+          );
+
+          return { patient, baselineStatus: "BASELINE_CREATED" };
+        }
+
+        if (baselineImportMatchesExisting(baselineState, existing)) {
+          return { patient, baselineStatus: "BASELINE_ALREADY_EXISTS" };
+        }
+
+        throw new PatientBaselineImportConflictError();
+      },
+      dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+function importResultReason(
+  patientOutcome: PatientProvisioningResult["outcome"],
+  baselineStatus: PatientImportBaselineStatus,
+): string {
+  if (baselineStatus === "BASELINE_CREATED") {
+    return patientOutcome === "CREATED"
+      ? "บันทึกข้อมูลผู้ป่วยและข้อมูลตั้งต้นแล้ว"
+      : "มีข้อมูลผู้ป่วยแล้ว และบันทึกข้อมูลตั้งต้นแล้ว";
+  }
+
+  if (baselineStatus === "BASELINE_ALREADY_EXISTS") {
+    return "มีข้อมูลผู้ป่วยและข้อมูลตั้งต้นนี้แล้ว ระบบไม่สร้างซ้ำ";
+  }
+
+  return patientOutcome === "CREATED" ? "บันทึกข้อมูลผู้ป่วยแล้ว" : "มีข้อมูลผู้ป่วยนี้แล้ว";
+}
+
 export async function importPatientProvisioning(
   actor: ActorContext | null | undefined,
   targetHospitalId: string,
   candidates: readonly PatientProvisioningImportCandidate[],
   dependencies: PatientProvisioningServiceDependencies = {},
+  options: PatientImportOptions = {},
 ): Promise<PatientImportResultSummary> {
+  const normalizedOptions = normalizeImportOptions(options);
   const normalizedCandidates = normalizeImportCandidates(candidates, targetHospitalId);
   const preview = await previewPatientProvisioning(
     actor,
     targetHospitalId,
     normalizedCandidates,
     getDatabase(dependencies),
+    normalizedOptions,
   );
+
+  if (preview.baselineDateRequired) {
+    throw new ValidationError("ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
   const rows: PatientImportRowResult[] = [];
   let imported = 0;
   let alreadyExists = 0;
@@ -671,6 +1138,11 @@ export async function importPatientProvisioning(
   let hospitalMismatch = 0;
   let unsupportedRequirement = 0;
   let failed = 0;
+  let baselineCreated = 0;
+  let baselineAlreadyExists = 0;
+  let baselineConflict = 0;
+  let baselineInvalid = 0;
+  let baselineDateRequired = 0;
 
   for (const [index, candidate] of normalizedCandidates.entries()) {
     const previewRow = preview.rows[index];
@@ -684,6 +1156,9 @@ export async function importPatientProvisioning(
       if (previewResult === "NEEDS_REVIEW") needsReview += 1;
       if (previewResult === "HOSPITAL_MISMATCH") hospitalMismatch += 1;
       if (previewResult === "UNSUPPORTED_REQUIREMENT") unsupportedRequirement += 1;
+      if (previewRow.baselineStatus === "BASELINE_CONFLICT") baselineConflict += 1;
+      if (previewRow.baselineStatus === "BASELINE_DATA_INVALID") baselineInvalid += 1;
+      if (previewRow.baselineStatus === "BASELINE_DATE_REQUIRED") baselineDateRequired += 1;
       continue;
     }
 
@@ -694,19 +1169,36 @@ export async function importPatientProvisioning(
     }
 
     try {
-      const result = await provisionPatientWithAuthorizationMode(
+      const result = await importPatientRosterRow(
         actor,
-        candidate.input,
+        candidate,
+        normalizedOptions.effectiveDate,
         dependencies,
-        "BULK",
       );
 
-      if (result.outcome === "CREATED") {
+      if (result.baselineStatus === "BASELINE_CREATED") baselineCreated += 1;
+      if (result.baselineStatus === "BASELINE_ALREADY_EXISTS") baselineAlreadyExists += 1;
+
+      if (result.patient.outcome === "CREATED") {
         imported += 1;
-        rows.push(toImportResultRow(previewRow, "IMPORTED", "บันทึกข้อมูลผู้ป่วยแล้ว"));
+        rows.push(
+          toImportResultRow(
+            previewRow,
+            "IMPORTED",
+            importResultReason(result.patient.outcome, result.baselineStatus),
+            result.baselineStatus,
+          ),
+        );
       } else {
         alreadyExists += 1;
-        rows.push(toImportResultRow(previewRow, "ALREADY_EXISTS", "มีข้อมูลผู้ป่วยนี้แล้ว"));
+        rows.push(
+          toImportResultRow(
+            previewRow,
+            "ALREADY_EXISTS",
+            importResultReason(result.patient.outcome, result.baselineStatus),
+            result.baselineStatus,
+          ),
+        );
       }
     } catch (error: unknown) {
       if (error instanceof ForbiddenError) {
@@ -715,7 +1207,33 @@ export async function importPatientProvisioning(
 
       if (error instanceof ValidationError) {
         invalid += 1;
-        rows.push(toImportResultRow(previewRow, "INVALID", "ข้อมูลแถวนี้ไม่ถูกต้อง"));
+        if (previewRow.baselineStatus === "BASELINE_DATA_INVALID") baselineInvalid += 1;
+        if (previewRow.baselineStatus === "BASELINE_DATE_REQUIRED") baselineDateRequired += 1;
+        rows.push(
+          toImportResultRow(
+            previewRow,
+            "INVALID",
+            previewRow.baselineStatus === "BASELINE_DATA_INVALID" ||
+              previewRow.baselineStatus === "BASELINE_DATE_REQUIRED"
+              ? baselineImportReason(previewRow.baselineStatus) ?? "ข้อมูลแถวนี้ไม่ถูกต้อง"
+              : "ข้อมูลแถวนี้ไม่ถูกต้อง",
+            previewRow.baselineStatus,
+          ),
+        );
+        continue;
+      }
+
+      if (error instanceof PatientBaselineImportConflictError) {
+        conflict += 1;
+        baselineConflict += 1;
+        rows.push(
+          toImportResultRow(
+            previewRow,
+            "CONFLICT",
+            baselineImportReason("BASELINE_CONFLICT"),
+            "BASELINE_CONFLICT",
+          ),
+        );
         continue;
       }
 
@@ -741,6 +1259,11 @@ export async function importPatientProvisioning(
     hospitalMismatch,
     unsupportedRequirement,
     failed,
+    baselineCreated,
+    baselineAlreadyExists,
+    baselineConflict,
+    baselineInvalid,
+    baselineDateRequired,
     rows,
     file: preview.file,
   };

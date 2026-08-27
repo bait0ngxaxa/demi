@@ -1,9 +1,12 @@
 import { z } from "zod";
 
+import { patientBaselineDateOnlySchema } from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
 import {
   identityReferenceSchema,
   thaiNationalIdSchema,
 } from "@/modules/identity/schemas/identity-schemas";
+
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 
 const personNameSchema = z.string().trim().min(1).max(120);
 
@@ -47,6 +50,8 @@ export const patientImportFileSchema = z
   .object({ targetHospitalId: z.uuid() })
   .strict();
 
+export const patientImportEffectiveDateSchema = patientBaselineDateOnlySchema;
+
 const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 
 export const patientImportConfirmSchema = z
@@ -55,6 +60,8 @@ export const patientImportConfirmSchema = z
     previewTargetHospitalId: z.uuid(),
     fileFingerprint: sha256HexSchema,
     previewBinding: sha256HexSchema,
+    effectiveDate: patientBaselineDateOnlySchema.optional(),
+    importContractVersion: z.literal(PATIENT_IMPORT_CONTRACT_VERSION),
   })
   .strict();
 

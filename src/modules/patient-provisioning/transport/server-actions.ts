@@ -9,8 +9,10 @@ import { readPatientImportCandidates, type PatientImportUpload } from "../adapte
 import {
   patientImportFileSchema,
   patientImportConfirmSchema,
+  patientImportEffectiveDateSchema,
   patientProvisionFormSchema,
 } from "../schemas/patient-provisioning-schemas";
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import {
   importPatientProvisioning,
   PatientProvisioningConflictError,
@@ -33,6 +35,25 @@ import type {
 function getString(formData: FormData, field: string): string {
   const value = formData.get(field);
   return typeof value === "string" ? value : "";
+}
+
+type OptionalFormString = {
+  valid: boolean;
+  value: string | undefined;
+};
+
+function getOptionalString(formData: FormData, field: string): OptionalFormString {
+  const values = formData.getAll(field);
+
+  if (values.length === 0) {
+    return { valid: true, value: undefined };
+  }
+
+  if (values.length !== 1 || typeof values[0] !== "string") {
+    return { valid: false, value: undefined };
+  }
+
+  return { valid: true, value: values[0].trim() || undefined };
 }
 
 function isPatientImportUpload(value: unknown): value is PatientImportUpload {
@@ -201,10 +222,12 @@ export async function provisionPatientAction(
 function getImportRequest(formData: FormData): {
   targetHospitalId: string;
   file: unknown;
+  effectiveDate: OptionalFormString;
 } {
   return {
     targetHospitalId: getString(formData, "targetHospitalId"),
     file: formData.get("file"),
+    effectiveDate: getOptionalString(formData, "effectiveDate"),
   };
 }
 
@@ -214,6 +237,8 @@ function getImportPreviewBindingRequest(formData: FormData): {
   fileFingerprint: string;
   previewBinding: string;
   file: unknown;
+  effectiveDate: OptionalFormString;
+  importContractVersion: OptionalFormString;
 } {
   const request = getImportRequest(formData);
 
@@ -222,6 +247,7 @@ function getImportPreviewBindingRequest(formData: FormData): {
     previewTargetHospitalId: getString(formData, "previewTargetHospitalId"),
     fileFingerprint: getString(formData, "fileFingerprint"),
     previewBinding: getString(formData, "previewBinding"),
+    importContractVersion: getOptionalString(formData, "importContractVersion"),
   };
 }
 
@@ -238,6 +264,8 @@ async function assertPatientImportPreviewBinding(input: {
   previewTargetHospitalId: string;
   fileFingerprint: string;
   previewBinding: string;
+  effectiveDate: string | null;
+  importContractVersion: string;
   file: PatientImportUpload;
 }): Promise<void> {
   if (
@@ -247,6 +275,8 @@ async function assertPatientImportPreviewBinding(input: {
       input.fileFingerprint,
       input.previewTargetHospitalId,
       input.actorUserId,
+      input.effectiveDate,
+      input.importContractVersion,
     )
   ) {
     throw new PatientImportPreviewBindingError();
@@ -265,11 +295,14 @@ export async function previewPatientImportAction(
   try {
     const actor = await getProtectedApplicationActor();
     const request = getImportRequest(formData);
+    const parsedEffectiveDate = request.effectiveDate.value === undefined
+      ? { success: true as const, data: undefined }
+      : patientImportEffectiveDateSchema.safeParse(request.effectiveDate.value);
     const parsed = patientImportFileSchema.safeParse({
       targetHospitalId: request.targetHospitalId,
     });
 
-    if (!parsed.success || !isPatientImportUpload(request.file)) {
+    if (!request.effectiveDate.valid || !parsed.success || !parsedEffectiveDate.success || !isPatientImportUpload(request.file)) {
       return {
         status: "ERROR",
         code: "INVALID_INPUT",
@@ -282,6 +315,11 @@ export async function previewPatientImportAction(
       actor,
       parsed.data.targetHospitalId,
       candidates,
+      undefined,
+      {
+        effectiveDate: parsedEffectiveDate.data ?? null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      },
     );
     const fileFingerprint = await hashPatientImportFile(request.file);
 
@@ -289,11 +327,15 @@ export async function previewPatientImportAction(
       status: "SUCCESS",
       preview: {
         ...preview,
+        effectiveDate: parsedEffectiveDate.data ?? null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
         fileFingerprint,
         previewBinding: createPatientImportPreviewBinding(
           fileFingerprint,
           parsed.data.targetHospitalId,
           actor.userId,
+          parsedEffectiveDate.data ?? null,
+          PATIENT_IMPORT_CONTRACT_VERSION,
         ),
       },
     };
@@ -318,9 +360,16 @@ export async function confirmPatientImportAction(
       previewTargetHospitalId: request.previewTargetHospitalId,
       fileFingerprint: request.fileFingerprint,
       previewBinding: request.previewBinding,
+      effectiveDate: request.effectiveDate.value,
+      importContractVersion: request.importContractVersion.value,
     });
 
-    if (!parsed.success || !isPatientImportUpload(request.file)) {
+    if (
+      !request.effectiveDate.valid ||
+      !request.importContractVersion.valid ||
+      !parsed.success ||
+      !isPatientImportUpload(request.file)
+    ) {
       return {
         status: "ERROR",
         code: "INVALID_INPUT",
@@ -334,6 +383,8 @@ export async function confirmPatientImportAction(
       previewTargetHospitalId: parsed.data.previewTargetHospitalId,
       fileFingerprint: parsed.data.fileFingerprint,
       previewBinding: parsed.data.previewBinding,
+      effectiveDate: parsed.data.effectiveDate ?? null,
+      importContractVersion: parsed.data.importContractVersion,
       file: request.file,
     });
 
@@ -342,6 +393,11 @@ export async function confirmPatientImportAction(
       actor,
       parsed.data.targetHospitalId,
       candidates,
+      {},
+      {
+        effectiveDate: parsed.data.effectiveDate ?? null,
+        importContractVersion: parsed.data.importContractVersion,
+      },
     );
 
     revalidatePath("/app/patients/provision");
@@ -351,7 +407,7 @@ export async function confirmPatientImportAction(
       return {
         status: "ERROR",
         code: "INVALID_INPUT",
-        message: "ไฟล์หรือโรงพยาบาลเปลี่ยนแปลงแล้ว กรุณาตรวจสอบไฟล์ใหม่ก่อนยืนยันนำเข้า",
+        message: "ไฟล์ โรงพยาบาล วันที่ข้อมูลตั้งต้น หรือรูปแบบนำเข้าเปลี่ยนแปลงแล้ว กรุณาตรวจสอบใหม่ก่อนยืนยันนำเข้า",
       };
     }
 

@@ -42,6 +42,7 @@ const nationalIds = {
 let actorSequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientBaseline.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
@@ -519,7 +520,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(preview.rows[0].identityDisplay).not.toContain(nationalIds.bulkFirst);
   });
 
-  it("keeps gated roster fields transient while provisioning only the current Patient core", async () => {
+  it("persists approved roster Baseline fields while keeping deferred fields transient", async () => {
     const hospitalCode = "INTEGRATION-PATIENT-WIDE";
     const hospital = await createHospital(hospitalCode);
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
@@ -553,18 +554,31 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     );
 
     const candidates = await readPatientImportCandidates(upload, hospital.id);
-    const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
+    const preview = await previewPatientProvisioning(actor, hospital.id, candidates, undefined, {
+      effectiveDate: "2026-08-01",
+    });
 
-    expect(preview.rows[0]).toMatchObject({ classification: "READY" });
+    expect(preview.rows[0]).toMatchObject({
+      classification: "READY",
+      baselineStatus: "BASELINE_READY",
+    });
     expect(preview.rows[0].requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "weight", "diabetesClassification", "osmCaregiverName"]),
+      expect.arrayContaining(["dateOfBirth", "diabetesClassification", "osmCaregiverName"]),
     );
+    expect(preview.rows[0].requirementGatedFields).not.toContain("weight");
 
-    const summary = await importPatientProvisioning(actor, hospital.id, candidates);
+    const summary = await importPatientProvisioning(
+      actor,
+      hospital.id,
+      candidates,
+      {},
+      { effectiveDate: "2026-08-01" },
+    );
     expect(summary).toMatchObject({ imported: 1, needsReview: 0, hospitalMismatch: 0 });
     expect(summary.file?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "weight", "diabetesClassification"]),
+      expect.arrayContaining(["dateOfBirth", "diabetesClassification"]),
     );
+    expect(summary.file?.requirementGatedFields).not.toContain("weight");
     const relationshipRecord = await prisma.patientHospitalRelationship.findFirstOrThrow({
       where: { hospitalId: hospital.id },
       select: {
@@ -580,10 +594,11 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       },
     });
     expect(
-      await prisma.patientBaseline.count({
+      await prisma.patientBaseline.findUnique({
         where: { patientHospitalRelationshipId: relationshipRecord.id },
+        select: { recordedOn: true, weight: true },
       }),
-    ).toBe(0);
+    ).toEqual({ recordedOn: new Date("2026-08-01T00:00:00.000Z"), weight: 72.5 });
     expect(
       await prisma.patientOsmAssignment.count({
         where: { patientHospitalRelationshipId: relationshipRecord.id },

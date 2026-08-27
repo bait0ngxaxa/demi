@@ -14,6 +14,7 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "waistCircumference",
   "diabetesClassification",
   "bloodSugar",
+  "bloodSugarDtx",
   "hba1c",
   "hospitalName",
   "subHospitalName",
@@ -46,9 +47,28 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
+export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d2-baseline-v1" as const;
+
+export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
+  "weight",
+  "height",
+  "waistCircumference",
+  "bloodSugarDtx",
+  "hba1c",
+] as const satisfies readonly PatientImportFieldKey[];
+
+export type PatientImportBaselineFieldKey = (typeof PATIENT_IMPORT_BASELINE_FIELD_KEYS)[number];
+
+export function isPatientImportBaselineField(
+  field: PatientImportFieldKey,
+): field is PatientImportBaselineFieldKey {
+  return PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baselineField) => baselineField === field);
+}
+
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
+  | "PARSED_FOR_INITIAL_BASELINE"
   | "PARSED_REQUIREMENT_GATED"
   | "UNKNOWN_SOURCE_HEADER"
   | "INVALID"
@@ -162,6 +182,7 @@ export type CanonicalPatientImportRow = {
     waistCircumference: number | null;
     diabetesClassification: string | null;
     bloodSugar: number | null;
+    bloodSugarDtx: number | null;
     hba1c: number | null;
     bloodPressureText: string | null;
     pulseRate: number | null;

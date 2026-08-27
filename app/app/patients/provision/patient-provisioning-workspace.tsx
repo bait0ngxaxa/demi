@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type {
   PatientImportClassification,
+  PatientImportBaselineStatus,
   PatientImportPreview,
   PatientImportPreviewRow,
   PatientImportRowResult,
@@ -66,6 +67,26 @@ const classificationVariants: Record<PatientImportClassification, StatusVariant>
   UNSUPPORTED_REQUIREMENT: "warning",
 };
 
+const baselineStatusLabels: Record<PatientImportBaselineStatus, string> = {
+  NOT_APPLICABLE: "",
+  BASELINE_READY: "ข้อมูลตั้งต้นพร้อมบันทึก",
+  BASELINE_CREATED: "บันทึกข้อมูลตั้งต้นแล้ว",
+  BASELINE_ALREADY_EXISTS: "ข้อมูลตั้งต้นมีอยู่แล้ว",
+  BASELINE_CONFLICT: "ข้อมูลตั้งต้นขัดแย้ง",
+  BASELINE_DATE_REQUIRED: "ต้องระบุวันที่ข้อมูลตั้งต้น",
+  BASELINE_DATA_INVALID: "ข้อมูลตั้งต้นไม่ถูกต้อง",
+};
+
+const baselineStatusVariants: Record<PatientImportBaselineStatus, StatusVariant> = {
+  NOT_APPLICABLE: "neutral",
+  BASELINE_READY: "success",
+  BASELINE_CREATED: "success",
+  BASELINE_ALREADY_EXISTS: "neutral",
+  BASELINE_CONFLICT: "danger",
+  BASELINE_DATE_REQUIRED: "danger",
+  BASELINE_DATA_INVALID: "danger",
+};
+
 const importResultLabels: Record<PatientImportRowResult["result"], string> = {
   IMPORTED: "นำเข้าสำเร็จ",
   ALREADY_EXISTS: "มีอยู่แล้ว",
@@ -104,6 +125,7 @@ const importFieldLabels: Record<PatientImportFieldKey, string> = {
   waistCircumference: "รอบเอว",
   diabetesClassification: "ประเภทเบาหวาน/กลุ่มเสี่ยง",
   bloodSugar: "ค่าน้ำตาลในเลือด",
+  bloodSugarDtx: "ค่าน้ำตาลในเลือด (DTX)",
   hba1c: "HbA1c",
   hospitalName: "โรงพยาบาลจากไฟล์",
   subHospitalName: "รพ.สต. จากไฟล์",
@@ -145,10 +167,15 @@ function fieldError(
   return state.status === "ERROR" ? state.fieldErrors?.[field] ?? null : null;
 }
 
-function createPatientImportFormData(file: File, targetHospitalId: string): FormData {
+function createPatientImportFormData(
+  file: File,
+  targetHospitalId: string,
+  effectiveDate: string,
+): FormData {
   const formData = new FormData();
   formData.set("targetHospitalId", targetHospitalId);
   formData.set("file", file, file.name);
+  formData.set("effectiveDate", effectiveDate);
   return formData;
 }
 
@@ -158,11 +185,14 @@ function createPatientImportConfirmFormData(
   previewTargetHospitalId: string,
   fileFingerprint: string,
   previewBinding: string,
+  effectiveDate: string | null,
+  importContractVersion: string,
 ): FormData {
-  const formData = createPatientImportFormData(file, targetHospitalId);
+  const formData = createPatientImportFormData(file, targetHospitalId, effectiveDate ?? "");
   formData.set("previewTargetHospitalId", previewTargetHospitalId);
   formData.set("fileFingerprint", fileFingerprint);
   formData.set("previewBinding", previewBinding);
+  formData.set("importContractVersion", importContractVersion);
   return formData;
 }
 
@@ -272,6 +302,13 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
                 <StatusBadge variant={classificationVariants[row.classification]}>
                   {classificationLabels[row.classification]}
                 </StatusBadge>
+                {row.baselineStatus !== "NOT_APPLICABLE" ? (
+                  <div className="mt-2">
+                    <StatusBadge variant={baselineStatusVariants[row.baselineStatus]}>
+                      {baselineStatusLabels[row.baselineStatus]}
+                    </StatusBadge>
+                  </div>
+                ) : null}
                 {row.reason ? <p className="mt-1 text-xs leading-5 text-muted">{row.reason}</p> : null}
                 {row.requirementGatedFields.length > 0 ? (
                   <p className="mt-1 text-xs leading-5 text-muted">
@@ -296,6 +333,16 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
   const conflicts = rows.filter((row) => row.classification === "CONFLICT").length;
   const needsReview = rows.filter((row) => row.classification === "NEEDS_REVIEW").length;
   const hospitalMismatch = rows.filter((row) => row.classification === "HOSPITAL_MISMATCH").length;
+  const baselineReady = rows.filter((row) => row.baselineStatus === "BASELINE_READY").length;
+  const baselineExisting = rows.filter(
+    (row) => row.baselineStatus === "BASELINE_ALREADY_EXISTS",
+  ).length;
+  const baselineConflicts = rows.filter((row) => row.baselineStatus === "BASELINE_CONFLICT").length;
+  const baselineInvalid = rows.filter(
+    (row) =>
+      row.baselineStatus === "BASELINE_DATA_INVALID" ||
+      row.baselineStatus === "BASELINE_DATE_REQUIRED",
+  ).length;
 
   return (
     <div className="rounded-panel border border-border bg-surface-muted p-4 text-sm leading-6">
@@ -309,8 +356,28 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
         <div><dt className="text-muted">ต้องตรวจสอบ</dt><dd className="font-semibold">{needsReview + hospitalMismatch}</dd></div>
       </dl>
       <div className="mt-4 border-t border-border pt-4">
+        <p className="font-semibold text-ink">ข้อมูลตั้งต้นของทั้งไฟล์</p>
+        <p className="mt-1 text-muted">
+          วันที่มีผลร่วมกันทุกแถว: {preview.effectiveDate ?? "ยังไม่ได้ระบุ"}
+        </p>
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+          <div><dt className="text-muted">พร้อมบันทึก</dt><dd className="font-semibold">{baselineReady}</dd></div>
+          <div><dt className="text-muted">มีอยู่แล้ว</dt><dd className="font-semibold">{baselineExisting}</dd></div>
+          <div><dt className="text-muted">ขัดแย้ง</dt><dd className="font-semibold">{baselineConflicts}</dd></div>
+          <div><dt className="text-muted">ไม่ถูกต้อง/ขาดวันที่</dt><dd className="font-semibold">{baselineInvalid}</dd></div>
+        </dl>
+        {preview.baselineDateRequired ? (
+          <p className="mt-3 font-semibold text-danger">
+            ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า วันที่นี้จะใช้กับข้อมูลตั้งต้นทุกแถวในไฟล์
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-4 border-t border-border pt-4">
         <p className="font-semibold text-ink">ข้อมูลที่จะนำเข้าในขั้นตอนนี้</p>
-        <p className="mt-1 text-muted">เลขบัตรประชาชน ชื่อ นามสกุล และ HN (ถ้ามี) ผ่านการตรวจสอบและส่งต่อให้กระบวนการผู้ป่วยเดิม</p>
+        <p className="mt-1 text-muted">
+          เลขบัตรประชาชน ชื่อ นามสกุล HN (ถ้ามี) และข้อมูลตั้งต้นที่รองรับ ได้แก่ น้ำหนัก (kg)
+          ส่วนสูง (cm) รอบเอว (cm) DTX (mg/dL) และ HbA1c (%)
+        </p>
       </div>
       {file?.requirementGatedFields.length ? (
         <div className="mt-4 border-t border-border pt-4">
@@ -345,6 +412,9 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <div><dt className="text-muted">ขัดแย้ง</dt><dd className="font-semibold">{summary.conflict}</dd></div>
         <div><dt className="text-muted">ต้องตรวจสอบ</dt><dd className="font-semibold">{summary.needsReview + summary.hospitalMismatch + summary.unsupportedRequirement}</dd></div>
         <div><dt className="text-muted">ล้มเหลว</dt><dd className="font-semibold">{summary.failed}</dd></div>
+        <div><dt className="text-muted">สร้างข้อมูลตั้งต้น</dt><dd className="font-semibold">{summary.baselineCreated}</dd></div>
+        <div><dt className="text-muted">ข้อมูลตั้งต้นมีอยู่แล้ว</dt><dd className="font-semibold">{summary.baselineAlreadyExists}</dd></div>
+        <div><dt className="text-muted">ข้อมูลตั้งต้นขัดแย้ง</dt><dd className="font-semibold">{summary.baselineConflict}</dd></div>
       </dl>
       {hasAttentionRows ? (
         <div className="mt-5 border-t border-amber-200 pt-4">
@@ -385,7 +455,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
       <p className="mt-4 border-t border-border pt-4 text-muted">
-        ระยะนี้ระบบบันทึกเฉพาะเลขบัตรประชาชน ชื่อ นามสกุล และ HN ที่รองรับอยู่เดิม
+        ระบบบันทึกข้อมูลผู้ป่วยหลักและข้อมูลตั้งต้นที่มีค่าจาก roster ตามวันที่มีผลร่วมกันของไฟล์
       </p>
       {summary.file?.requirementGatedFields.length ? (
         <p className="mt-1 text-muted">
@@ -420,6 +490,7 @@ export function PatientProvisioningWorkspace({
   );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [effectiveDate, setEffectiveDate] = useState("");
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
@@ -436,6 +507,7 @@ export function PatientProvisioningWorkspace({
     importContextVersion.current += 1;
     setSelectedFile(null);
     setPreviewFile(null);
+    setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setFileInputKey((current) => current + 1);
@@ -451,7 +523,8 @@ export function PatientProvisioningWorkspace({
     selectedFile !== null &&
     previewFile === selectedFile &&
     previewState.status === "SUCCESS" &&
-    previewState.preview.targetHospitalId === selectedHospitalId;
+    previewState.preview.targetHospitalId === selectedHospitalId &&
+    previewState.preview.effectiveDate === (effectiveDate.trim() || null);
   const activeMode: ProvisioningMode = selectedScope.canBulkImport ? mode : "SINGLE";
 
   function invalidateImportPreview(): void {
@@ -486,7 +559,7 @@ export function PatientProvisioningWorkspace({
 
     startPreviewTransition(async () => {
       const result = await previewPatientImportAction(
-        createPatientImportFormData(file, targetHospitalId),
+        createPatientImportFormData(file, targetHospitalId, effectiveDate),
       );
 
       if (requestVersion !== importContextVersion.current) {
@@ -517,6 +590,8 @@ export function PatientProvisioningWorkspace({
           preview.targetHospitalId,
           preview.fileFingerprint,
           preview.previewBinding,
+          preview.effectiveDate,
+          preview.importContractVersion,
         ),
       );
 
@@ -532,6 +607,7 @@ export function PatientProvisioningWorkspace({
     importContextVersion.current += 1;
     setSelectedFile(null);
     setPreviewFile(null);
+    setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setFileInputKey((current) => current + 1);
@@ -641,11 +717,32 @@ export function PatientProvisioningWorkspace({
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  รองรับไฟล์ Excel รูปแบบ roster ที่มีคอลัมน์หลายรูปแบบ โดยระบบจะบันทึกเฉพาะข้อมูลผู้ป่วยหลักที่ยืนยันแล้ว ไม่เกิน 500 แถวและ 64 คอลัมน์
+                  รองรับไฟล์ Excel รูปแบบ roster ที่มีคอลัมน์หลายรูปแบบ โดยระบบจะบันทึกข้อมูลผู้ป่วยหลักและข้อมูลตั้งต้นที่ยืนยันแล้ว ไม่เกิน 500 แถวและ 64 คอลัมน์
                 </p>
               </div>
               <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>
                 <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
+                <label className="block space-y-2 text-sm font-semibold" htmlFor="patient-import-effective-date">
+                  <span>
+                    ข้อมูลตั้งต้น ณ วันที่{" "}
+                    <span className="font-normal text-muted">(ใช้กับข้อมูลตั้งต้นทุกแถวในไฟล์)</span>
+                  </span>
+                  <Input
+                    aria-describedby="patient-import-effective-date-help"
+                    id="patient-import-effective-date"
+                    name="effectiveDate"
+                    onChange={(event) => {
+                      invalidateImportPreview();
+                      setEffectiveDate(event.target.value);
+                    }}
+                    readOnly={previewPending || importPending}
+                    type="date"
+                    value={effectiveDate}
+                  />
+                  <span className="text-xs font-normal leading-5 text-muted" id="patient-import-effective-date-help">
+                    ไม่ใช่เวลาที่อัปโหลดไฟล์ หากไฟล์มีข้อมูลตั้งต้นที่รองรับ ต้องระบุวันที่นี้ก่อนยืนยันนำเข้า
+                  </span>
+                </label>
                 <label className="block space-y-2 text-sm font-semibold" htmlFor="patient-import-file">
                   <span>ไฟล์ Excel (.xlsx)</span>
                   <input
@@ -672,7 +769,7 @@ export function PatientProvisioningWorkspace({
                     <div className="space-y-3">
                       <div>
                         <h3 className="text-base font-semibold">ตัวอย่างผลตรวจสอบ</h3>
-                        <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์และโรงพยาบาลที่เลือก หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
+                        <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์ โรงพยาบาล วันที่ข้อมูลตั้งต้น และรูปแบบนำเข้า หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
                         <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลและบันทึกแต่ละแถวแยกกัน</p>
                       </div>
                       <PreviewFileSummary preview={previewState.preview} />
@@ -680,7 +777,7 @@ export function PatientProvisioningWorkspace({
                     </div>
                     {importState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{importState.message}</Alert> : null}
                     {importState.status === "SUCCESS" ? <ImportSummary summary={importState.summary} /> : null}
-                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || importPending || previewPending} loading={importPending} onClick={handleImport} type="button">
+                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || previewState.preview.baselineDateRequired || importPending || previewPending} loading={importPending} onClick={handleImport} type="button">
                       {importPending ? "กำลังนำเข้า..." : "ยืนยันนำเข้ารายการที่พร้อม"}
                     </Button>
                   </>

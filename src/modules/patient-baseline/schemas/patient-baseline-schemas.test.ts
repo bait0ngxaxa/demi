@@ -9,10 +9,12 @@ function validInput(): Record<string, unknown> {
     patientHospitalRelationshipId: relationshipId,
     recordedOn: "2026-08-17",
     weight: 72.5,
+    heightCm: 170,
     waistCircumference: null,
     bloodPressureSystolic: 120,
     bloodPressureDiastolic: 80,
     bloodSugarDtx: 95,
+    hba1c: 6.5,
     adaptationSummary: "  สรุปการปรับตัว  ",
     adaptationObstacles: "อุปสรรค",
     adaptationOpportunities: "โอกาส",
@@ -63,10 +65,12 @@ describe("Patient Baseline schemas", () => {
   it("requires finite positive measurements and bounded text", () => {
     for (const field of [
       "weight",
+      "heightCm",
       "waistCircumference",
       "bloodPressureSystolic",
       "bloodPressureDiastolic",
       "bloodSugarDtx",
+      "hba1c",
     ]) {
       expect(
         patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: 0 }).success,
@@ -90,10 +94,12 @@ describe("Patient Baseline schemas", () => {
   it("accepts every optional measurement as null when it is absent", () => {
     for (const field of [
       "weight",
+      "heightCm",
       "waistCircumference",
       "bloodPressureSystolic",
       "bloodPressureDiastolic",
       "bloodSugarDtx",
+      "hba1c",
     ]) {
       const result = patientBaselineCreateRequestSchema.safeParse({ ...validInput(), [field]: null });
 

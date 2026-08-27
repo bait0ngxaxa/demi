@@ -17,11 +17,13 @@ export const patientBaselineDateOnlySchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/u)
   .refine(isValidDateOnly, "The Baseline recorded date is invalid");
 
-const optionalMeasurementSchema = z
+export const patientBaselineMeasurementSchema = z
   .number()
   .finite()
   .positive()
-  .max(PATIENT_BASELINE_STRUCTURAL_NUMBER_MAX)
+  .max(PATIENT_BASELINE_STRUCTURAL_NUMBER_MAX);
+
+const optionalMeasurementSchema = patientBaselineMeasurementSchema
   .nullable()
   .optional();
 
@@ -38,10 +40,12 @@ export const patientBaselineCreateRequestSchema = z
     patientHospitalRelationshipId: patientBaselineRelationshipIdSchema,
     recordedOn: patientBaselineDateOnlySchema,
     weight: optionalMeasurementSchema,
+    heightCm: optionalMeasurementSchema,
     waistCircumference: optionalMeasurementSchema,
     bloodPressureSystolic: optionalMeasurementSchema,
     bloodPressureDiastolic: optionalMeasurementSchema,
     bloodSugarDtx: optionalMeasurementSchema,
+    hba1c: optionalMeasurementSchema,
     adaptationSummary: optionalTextSchema,
     adaptationObstacles: optionalTextSchema,
     adaptationOpportunities: optionalTextSchema,

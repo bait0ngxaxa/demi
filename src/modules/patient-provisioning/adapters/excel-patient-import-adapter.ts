@@ -10,6 +10,10 @@ import {
   patientProvisionFormSchema,
   patientProvisionScopeSchema,
 } from "../schemas/patient-provisioning-schemas";
+import {
+  isPatientImportBaselineField,
+  PATIENT_IMPORT_FIELD_KEYS,
+} from "../import/patient-import-contract";
 import type {
   CanonicalPatientImportRow,
   PatientImportDiagnostic,
@@ -264,49 +268,7 @@ function emptyFieldAssessment(): PatientImportFieldAssessment {
 function createEmptyFieldAssessmentMap(): PatientImportFieldAssessmentMap {
   const assessments = {} as PatientImportFieldAssessmentMap;
 
-  for (const field of [
-    "nationalId",
-    "dateOfBirth",
-    "givenName",
-    "familyName",
-    "combinedNameText",
-    "hospitalNumber",
-    "gender",
-    "phoneNumber",
-    "weight",
-    "height",
-    "waistCircumference",
-    "diabetesClassification",
-    "bloodSugar",
-    "hba1c",
-    "hospitalName",
-    "subHospitalName",
-    "organizationCombinedText",
-    "houseNumber",
-    "villageNumber",
-    "villageName",
-    "soi",
-    "road",
-    "province",
-    "district",
-    "subdistrict",
-    "postalCode",
-    "emergencyContactName",
-    "emergencyContactPhone",
-    "emergencyContactRelationship",
-    "osmCaregiverName",
-    "sourceSequenceNumber",
-    "externalPatientId",
-    "ageAtRoster",
-    "addressText",
-    "bloodPressureText",
-    "pulseRate",
-    "bmi",
-    "dtxReading",
-    "riskFactorText",
-    "serviceVisitDate",
-    "extendedMeasurementSeries",
-  ] as const) {
+  for (const field of PATIENT_IMPORT_FIELD_KEYS) {
     assessments[field] = emptyFieldAssessment();
   }
 
@@ -327,6 +289,8 @@ function assessmentStatus(
 
   return CORE_FIELDS.has(field)
     ? "SUPPORTED_FOR_CURRENT_PROVISIONING"
+    : isPatientImportBaselineField(field)
+      ? "PARSED_FOR_INITIAL_BASELINE"
     : "PARSED_REQUIREMENT_GATED";
 }
 
@@ -341,10 +305,11 @@ function updateFieldAssessment(
   const statusPriority: Record<PatientImportFieldStatus, number> = {
     NOT_PRESENT: 0,
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
+    PARSED_FOR_INITIAL_BASELINE: 2,
     PARSED_REQUIREMENT_GATED: 1,
-    UNKNOWN_SOURCE_HEADER: 2,
-    INVALID: 3,
-    AMBIGUOUS: 4,
+    UNKNOWN_SOURCE_HEADER: 3,
+    INVALID: 4,
+    AMBIGUOUS: 5,
   };
   const mergedStatus =
     statusPriority[status] >= statusPriority[current.status] ? status : current.status;
@@ -376,7 +341,7 @@ function setRequirementDiagnostic(
   sourceHeader: string,
   value: string | number | null,
 ): void {
-  if (!CORE_FIELDS.has(field) && value !== null) {
+  if (!CORE_FIELDS.has(field) && !isPatientImportBaselineField(field) && value !== null) {
     diagnostics.push(createDiagnostic("REQUIREMENT_GATED", field, sourceHeader));
   }
 }
@@ -447,6 +412,7 @@ function readCanonicalRow(
   let waistCircumference: number | null = null;
   let diabetesClassification: string | null = null;
   let bloodSugar: number | null = null;
+  let bloodSugarDtx: number | null = null;
   let hba1c: number | null = null;
   let hospitalName: string | null = null;
   let subHospitalName: string | null = null;
@@ -583,6 +549,7 @@ function readCanonicalRow(
     ["height", (value) => { height = value; }],
     ["waistCircumference", (value) => { waistCircumference = value; }],
     ["bloodSugar", (value) => { bloodSugar = value; }],
+    ["bloodSugarDtx", (value) => { bloodSugarDtx = value; }],
     ["hba1c", (value) => { hba1c = value; }],
     ["ageAtRoster", (value) => { ageAtRoster = value; }],
     ["pulseRate", (value) => { pulseRate = value; }],
@@ -596,9 +563,11 @@ function readCanonicalRow(
 
   const heightBinding = bindingsByField.get("height");
   heightUnit = heightBinding?.heightUnit ?? null;
-  if (height !== null && heightBinding && !heightUnit) {
-    updateFieldAssessment(assessments, "height", heightBinding.sourceHeader, "AMBIGUOUS", ["UNIT_NOT_CONFIRMED"]);
-    diagnostics.push(createDiagnostic("UNIT_NOT_CONFIRMED", "height", heightBinding.sourceHeader));
+  if (height !== null && heightBinding && heightUnit !== "cm") {
+    const code = heightUnit === "m" ? "UNSUPPORTED_REQUIREMENT" : "UNIT_NOT_CONFIRMED";
+    const status: PatientImportFieldStatus = heightUnit === "m" ? "INVALID" : "AMBIGUOUS";
+    updateFieldAssessment(assessments, "height", heightBinding.sourceHeader, status, [code]);
+    diagnostics.push(createDiagnostic(code, "height", heightBinding.sourceHeader));
   }
 
   for (const binding of resolution.bindings.filter(({ field }) => field === "extendedMeasurementSeries")) {
@@ -661,6 +630,7 @@ function readCanonicalRow(
       waistCircumference,
       diabetesClassification,
       bloodSugar,
+      bloodSugarDtx,
       hba1c,
       bloodPressureText,
       pulseRate,

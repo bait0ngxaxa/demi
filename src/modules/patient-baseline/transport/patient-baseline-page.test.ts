@@ -43,10 +43,12 @@ const baseline = {
   recorder: { id: "44444444-4444-4444-8444-444444444444", displayName: "ผู้บันทึก" },
   measurements: {
     weight: null,
+    heightCm: null,
     waistCircumference: null,
     bloodPressureSystolic: null,
     bloodPressureDiastolic: null,
     bloodSugarDtx: null,
+    hba1c: null,
   },
   adaptation: { summary: null, obstacles: null, opportunities: null },
   confidence: { score: null, improvementPlan: null },

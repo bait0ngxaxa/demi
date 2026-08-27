@@ -388,10 +388,12 @@ model PatientBaseline {
   recordedOn                    DateTime @db.Date
   recordedByUserId              String   @db.Uuid
   weight                        Float?
+  heightCm                      Float?
   waistCircumference            Float?
   bloodPressureSystolic         Float?
   bloodPressureDiastolic        Float?
   bloodSugarDtx                 Float?
+  hba1c                         Float?
   adaptationSummary             String?  @db.VarChar(2000)
   adaptationObstacles           String?  @db.VarChar(2000)
   adaptationOpportunities       String?  @db.VarChar(2000)

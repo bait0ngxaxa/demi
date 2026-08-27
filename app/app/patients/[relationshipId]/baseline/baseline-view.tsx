@@ -140,6 +140,10 @@ export function PatientBaselineView({
             fields={[
               { label: "น้ำหนัก (kg)", value: displayMeasurement(baseline.measurements.weight, "kg") },
               {
+                label: "ส่วนสูง (cm)",
+                value: displayMeasurement(baseline.measurements.heightCm, "cm"),
+              },
+              {
                 label: "รอบเอว (cm)",
                 value: displayMeasurement(baseline.measurements.waistCircumference, "cm"),
               },
@@ -151,8 +155,12 @@ export function PatientBaselineView({
                 ),
               },
               {
-                label: "ระดับน้ำตาลในเลือด (DTX / mg%)",
-                value: displayMeasurement(baseline.measurements.bloodSugarDtx, "DTX / mg%"),
+                label: "ระดับน้ำตาลในเลือด (DTX / mg/dL)",
+                value: displayMeasurement(baseline.measurements.bloodSugarDtx, "DTX / mg/dL"),
+              },
+              {
+                label: "HbA1c (%)",
+                value: displayMeasurement(baseline.measurements.hba1c, "%"),
               },
             ]}
             title="ข้อมูลสุขภาพตั้งต้น"

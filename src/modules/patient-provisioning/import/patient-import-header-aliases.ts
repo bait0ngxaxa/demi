@@ -62,7 +62,7 @@ const explicitHeaderAliases: ReadonlyArray<readonly [string, PatientImportFieldK
   ["กลุ่มเสี่ยง หรือ เบาหวาน", "diabetesClassification"],
   ["diabetes type", "diabetesClassification"],
   ["risk group", "diabetesClassification"],
-  ["ค่าน้ำตาลในเลือด", "bloodSugar"],
+  ["ค่าน้ำตาลในเลือด", "bloodSugarDtx"],
   ["ค่าน้ำตาล", "bloodSugar"],
   ["blood sugar", "bloodSugar"],
   ["blood glucose", "bloodSugar"],
@@ -192,7 +192,9 @@ export function resolvePatientImportHeaderField(
   let heightUnit: "cm" | "m" | null = null;
 
   if (field === "height") {
-    if (normalizedHeader.includes("เมตร") || normalizedHeader.endsWith("(m)")) {
+    if (normalizedHeader === normalizePatientImportHeader("ส่วนสูง")) {
+      heightUnit = "cm";
+    } else if (normalizedHeader.includes("เมตร") || normalizedHeader.endsWith("(m)")) {
       heightUnit = "m";
     } else if (normalizedHeader.includes("cm") || normalizedHeader.includes("ซม")) {
       heightUnit = "cm";

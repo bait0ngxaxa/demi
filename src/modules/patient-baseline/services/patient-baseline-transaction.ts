@@ -22,6 +22,8 @@ export type PatientBaselineCreateResult = {
   createdAt: Date;
 };
 
+export type PatientBaselineCreateSource = "ROSTER_IMPORT";
+
 const patientBaselineMutationSelect = {
   id: true,
   patientHospitalRelationshipId: true,
@@ -38,10 +40,12 @@ type NormalizedPatientBaselineRequest = {
   patientHospitalRelationshipId: string;
   recordedOn: Date;
   weight: number | null;
+  heightCm: number | null;
   waistCircumference: number | null;
   bloodPressureSystolic: number | null;
   bloodPressureDiastolic: number | null;
   bloodSugarDtx: number | null;
+  hba1c: number | null;
   adaptationSummary: string | null;
   adaptationObstacles: string | null;
   adaptationOpportunities: string | null;
@@ -61,10 +65,12 @@ function normalizeInput(input: PatientBaselineCreateRequest): NormalizedPatientB
     patientHospitalRelationshipId: input.patientHospitalRelationshipId.toLowerCase(),
     recordedOn: dateOnlyToUtcDate(input.recordedOn),
     weight: input.weight ?? null,
+    heightCm: input.heightCm ?? null,
     waistCircumference: input.waistCircumference ?? null,
     bloodPressureSystolic: input.bloodPressureSystolic ?? null,
     bloodPressureDiastolic: input.bloodPressureDiastolic ?? null,
     bloodSugarDtx: input.bloodSugarDtx ?? null,
+    hba1c: input.hba1c ?? null,
     adaptationSummary: nullableText(input.adaptationSummary),
     adaptationObstacles: nullableText(input.adaptationObstacles),
     adaptationOpportunities: nullableText(input.adaptationOpportunities),
@@ -94,6 +100,7 @@ export async function createPatientBaselineInTransaction(
   actor: ActorContext,
   input: PatientBaselineCreateRequest,
   now: Date,
+  source?: PatientBaselineCreateSource,
 ): Promise<PatientBaselineCreateResult> {
   const normalized = normalizeInput(input);
   const access = await resolvePatientBaselineAccessContext(
@@ -120,10 +127,12 @@ export async function createPatientBaselineInTransaction(
       recordedOn: normalized.recordedOn,
       recordedByUserId: access.actor.userId,
       weight: normalized.weight,
+      heightCm: normalized.heightCm,
       waistCircumference: normalized.waistCircumference,
       bloodPressureSystolic: normalized.bloodPressureSystolic,
       bloodPressureDiastolic: normalized.bloodPressureDiastolic,
       bloodSugarDtx: normalized.bloodSugarDtx,
+      hba1c: normalized.hba1c,
       adaptationSummary: normalized.adaptationSummary,
       adaptationObstacles: normalized.adaptationObstacles,
       adaptationOpportunities: normalized.adaptationOpportunities,
@@ -167,6 +176,7 @@ export async function createPatientBaselineInTransaction(
       metadata: {
         patientBaselineId: baseline.id,
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        ...(source ? { source } : {}),
       },
     },
     transaction,

@@ -145,17 +145,129 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       heightUnit: "cm",
       waistCircumference: 88,
       bloodSugar: 126,
+      bloodSugarDtx: null,
       hba1c: 6.5,
       bmi: 24.5,
     });
     expect(candidate.canonicalRow.caregiverCandidates.osmCaregiverName).toBe("โค้ชตัวอย่าง");
     expect(candidate.fileMetadata?.layout).toBe("EXTENDED_ROSTER");
-    expect(candidate.fileMetadata?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "weight", "hba1c", "osmCaregiverName"]),
+      expect(candidate.fileMetadata?.requirementGatedFields).toEqual(
+      expect.arrayContaining(["dateOfBirth", "diabetesClassification", "osmCaregiverName"]),
     );
-    expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("PARSED_REQUIREMENT_GATED");
+    expect(candidate.fileMetadata?.requirementGatedFields).not.toEqual(
+      expect.arrayContaining(["weight", "height", "waistCircumference", "hba1c"]),
+    );
+    expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("PARSED_FOR_INITIAL_BASELINE");
     expect(candidate.input).not.toHaveProperty("dateOfBirth");
     expect(candidate.input).not.toHaveProperty("clinicalCandidates");
+  });
+
+  it("maps the confirmed operational baseline fields with explicit units", async () => {
+    const upload = await createUpload([
+      {
+        name: "Confirmed baseline",
+        rows: [
+          coreHeaders("น้ำหนัก", "ส่วนสูง", "รอบเอว", "ค่าน้ำตาลในเลือด", "ค่า HbA1c ล่าสุด (ถ้ามี)"),
+          [...coreRow(), "72.5", "170", 85, "126", "6.5"],
+        ],
+      },
+    ]);
+
+    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+
+    expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
+      weight: 72.5,
+      height: 170,
+      heightUnit: "cm",
+      waistCircumference: 85,
+      bloodSugar: null,
+      bloodSugarDtx: 126,
+      hba1c: 6.5,
+    });
+    expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe(
+      "PARSED_FOR_INITIAL_BASELINE",
+    );
+    expect(candidate.canonicalRow.fieldAssessments.height.status).toBe(
+      "PARSED_FOR_INITIAL_BASELINE",
+    );
+    expect(candidate.canonicalRow.fieldAssessments.bloodSugarDtx.status).toBe(
+      "PARSED_FOR_INITIAL_BASELINE",
+    );
+    expect(candidate.fileMetadata?.requirementGatedFields).not.toEqual(
+      expect.arrayContaining(["weight", "height", "waistCircumference", "hba1c", "bloodSugarDtx"]),
+    );
+  });
+
+  it("keeps blank and dash baseline cells as no assertion instead of zero", async () => {
+    const upload = await createUpload([
+      {
+        name: "Blank baseline",
+        rows: [
+          coreHeaders("น้ำหนัก", "ส่วนสูง", "รอบเอว", "ค่าน้ำตาลในเลือด", "HbA1c"),
+          [...coreRow(), "-", "", null, " ", "-"],
+        ],
+      },
+    ]);
+
+    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+
+    expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
+      weight: null,
+      height: null,
+      waistCircumference: null,
+      bloodSugarDtx: null,
+      hba1c: null,
+    });
+    expect(candidate.canonicalRow.diagnostics).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "INVALID_VALUE" })]),
+    );
+  });
+
+  it("rejects malformed or unsupported baseline units without guessing", async () => {
+    const upload = await createUpload([
+      {
+        name: "Invalid baseline",
+        rows: [
+          coreHeaders("น้ำหนัก", "ส่วนสูง (เมตร)", "ค่าน้ำตาลในเลือด"),
+          [...coreRow(), "not-a-number", 1.7, "not-a-number"],
+        ],
+      },
+    ]);
+
+    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+
+    expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
+      weight: null,
+      height: 1.7,
+      heightUnit: "m",
+      bloodSugarDtx: null,
+    });
+    expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("INVALID");
+    expect(candidate.canonicalRow.fieldAssessments.height.status).toBe("INVALID");
+    expect(candidate.canonicalRow.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "INVALID_VALUE", field: "weight" }),
+        expect.objectContaining({ code: "UNSUPPORTED_REQUIREMENT", field: "height" }),
+        expect.objectContaining({ code: "INVALID_VALUE", field: "bloodSugarDtx" }),
+      ]),
+    );
+
+    const unknownUnitUpload = await createUpload([
+      {
+        name: "Unknown unit",
+        rows: [
+          coreHeaders("Height (m)"),
+          [...coreRow(), 1.7],
+        ],
+      },
+    ]);
+    const [unknownUnitCandidate] = await readPatientImportCandidates(
+      unknownUnitUpload,
+      targetHospitalId,
+    );
+
+    expect(unknownUnitCandidate.canonicalRow.clinicalCandidates.height).toBeNull();
+    expect(unknownUnitCandidate.fileMetadata?.unknownHeaders).toEqual(["Height (m)"]);
   });
 
   it("normalizes BOM, whitespace, punctuation, aliases, and a header row within the bounded scan", async () => {
