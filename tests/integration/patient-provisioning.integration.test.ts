@@ -551,7 +551,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
         72.5,
         "กลุ่มเสี่ยง",
         `โรงพยาบาลทดสอบ ${hospitalCode}`,
-        "โค้ชตัวอย่าง",
+        "",
       ]],
     );
 
@@ -565,8 +565,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       baselineStatus: "BASELINE_READY",
     });
     expect(preview.rows[0].requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "osmCaregiverName"]),
+      expect.arrayContaining(["dateOfBirth"]),
     );
+    expect(preview.rows[0].requirementGatedFields).not.toContain("osmCaregiverName");
     expect(preview.rows[0].requirementGatedFields).not.toContain("diabetesClassification");
     expect(preview.rows[0].requirementGatedFields).not.toContain("weight");
 

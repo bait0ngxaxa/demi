@@ -60,7 +60,6 @@ const explicitHeaderAliases: ReadonlyArray<readonly [string, PatientImportFieldK
   ["ประเภทเบาหวาน", "diabetesClassification"],
   ["ประเภทเบาหวาน กลุ่มเสี่ยง หรือเบาหวาน (ไม่ต้องมี type)", "diabetesClassification"],
   ["กลุ่มเสี่ยง หรือ เบาหวาน", "diabetesClassification"],
-  ["diabetes type", "diabetesClassification"],
   ["risk group", "diabetesClassification"],
   ["ค่าน้ำตาลในเลือด", "bloodSugarDtx"],
   ["ค่าน้ำตาล", "bloodSugar"],

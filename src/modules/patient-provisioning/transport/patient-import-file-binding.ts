@@ -12,6 +12,24 @@ const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 const PREVIEW_BINDING_CONTEXT = "demi:patient-import-preview:v1";
 const CLASSIFICATION_RECONCILIATION_CONTEXT =
   "demi:patient-import-classification-reconciliation:v1";
+const OSM_CANDIDATE_CONTEXT = "demi:patient-import-osm-candidate:v1";
+const OSM_CANDIDATE_REFERENCE_CONTEXT = "demi:patient-import-osm-candidate-reference:v1";
+const OSM_REASSIGNMENT_CONTEXT = "demi:patient-import-osm-reassignment:v1";
+
+type PatientImportOsmResolutionStatus = "OSM_MATCHED" | "OSM_AMBIGUOUS";
+
+type PatientImportOsmBindingInput = {
+  fileFingerprint: string;
+  targetHospitalId: string;
+  actorUserId: string;
+  effectiveDate: string | null;
+  importContractVersion: string;
+  rowNumber: number;
+  normalizedSourceCaregiverName: string;
+  resolutionStatus: PatientImportOsmResolutionStatus;
+  candidateOsmUserId: string;
+  currentOsmUserId: string | null;
+};
 
 export type PatientImportFileSource = {
   arrayBuffer(): Promise<ArrayBuffer>;
@@ -121,4 +139,88 @@ export function matchesPatientImportClassificationReconciliationBinding(input: {
   });
 
   return timingSafeEqual(Buffer.from(input.binding, "hex"), Buffer.from(expectedBinding, "hex"));
+}
+
+function createPatientImportOsmBinding(
+  context: string,
+  input: PatientImportOsmBindingInput,
+  includeCurrent: boolean,
+): string {
+  const current = includeCurrent ? input.currentOsmUserId ?? "" : "";
+
+  return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
+    .update(
+      `${context}\u0000${input.importContractVersion}\u0000${input.actorUserId}\u0000${input.targetHospitalId}\u0000${input.effectiveDate ?? ""}\u0000${input.fileFingerprint}\u0000${input.rowNumber}\u0000${input.resolutionStatus}\u0000${input.normalizedSourceCaregiverName}\u0000${input.candidateOsmUserId}\u0000${current}`,
+      "utf8",
+    )
+    .digest("hex");
+}
+
+function matchesPatientImportOsmBinding(
+  context: string,
+  binding: string,
+  input: PatientImportOsmBindingInput,
+  includeCurrent: boolean,
+): boolean {
+  if (!isPatientImportFileFingerprint(binding) || !isPatientImportFileFingerprint(input.fileFingerprint)) {
+    return false;
+  }
+
+  const expectedBinding = createPatientImportOsmBinding(context, input, includeCurrent);
+
+  return timingSafeEqual(Buffer.from(binding, "hex"), Buffer.from(expectedBinding, "hex"));
+}
+
+export function createPatientImportOsmCandidateBinding(
+  input: PatientImportOsmBindingInput,
+): string {
+  return createPatientImportOsmBinding(OSM_CANDIDATE_CONTEXT, input, true);
+}
+
+export function matchesPatientImportOsmCandidateBinding(input: {
+  binding: string;
+  input: PatientImportOsmBindingInput;
+}): boolean {
+  return matchesPatientImportOsmBinding(
+    OSM_CANDIDATE_CONTEXT,
+    input.binding,
+    input.input,
+    true,
+  );
+}
+
+export function createPatientImportOsmCandidateReferenceBinding(
+  input: PatientImportOsmBindingInput,
+): string {
+  return createPatientImportOsmBinding(OSM_CANDIDATE_REFERENCE_CONTEXT, input, false);
+}
+
+export function matchesPatientImportOsmCandidateReferenceBinding(input: {
+  binding: string;
+  input: PatientImportOsmBindingInput;
+}): boolean {
+  return matchesPatientImportOsmBinding(
+    OSM_CANDIDATE_REFERENCE_CONTEXT,
+    input.binding,
+    input.input,
+    false,
+  );
+}
+
+export function createPatientImportOsmReassignmentBinding(
+  input: PatientImportOsmBindingInput,
+): string {
+  return createPatientImportOsmBinding(OSM_REASSIGNMENT_CONTEXT, input, true);
+}
+
+export function matchesPatientImportOsmReassignmentBinding(input: {
+  binding: string;
+  input: PatientImportOsmBindingInput;
+}): boolean {
+  return matchesPatientImportOsmBinding(
+    OSM_REASSIGNMENT_CONTEXT,
+    input.binding,
+    input.input,
+    true,
+  );
 }

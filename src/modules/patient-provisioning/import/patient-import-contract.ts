@@ -49,7 +49,8 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d3-classification-v1" as const;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d4-osm-assignment-v1" as const;
+export const PATIENT_OSM_CAREGIVER_NAME_MAX_LENGTH = 255;
 
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
   "weight",
@@ -73,11 +74,18 @@ export function isPatientImportClassificationField(
   return field === "diabetesClassification";
 }
 
+export function isPatientImportOsmAssignmentField(
+  field: PatientImportFieldKey,
+): field is "osmCaregiverName" {
+  return field === "osmCaregiverName";
+}
+
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
   | "PARSED_FOR_INITIAL_BASELINE"
   | "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
+  | "SUPPORTED_FOR_OSM_ASSIGNMENT"
   | "PARSED_REQUIREMENT_GATED"
   | "UNKNOWN_SOURCE_HEADER"
   | "INVALID"

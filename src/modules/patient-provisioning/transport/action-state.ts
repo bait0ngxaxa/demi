@@ -2,6 +2,7 @@ import type {
   PatientImportPreview,
   PatientImportClassificationReconciliation,
   PatientImportResultSummary,
+  PatientImportOsmAssignmentPreview,
   PatientProvisioningOutcome,
 } from "../services/patient-provisioning-service";
 import type { PatientProvisionContinuation } from "./patient-provisioning-continuation";
@@ -10,10 +11,37 @@ export type PatientImportPreviewReconciliationBinding = PatientImportClassificat
   confirmationToken: string;
 };
 
+export type PatientImportOsmCandidateBinding = {
+  displayName: string;
+  candidateToken: string;
+  candidateReferenceToken: string;
+  sameAsCurrent: boolean;
+  reassignmentToken?: string;
+};
+
+export type PatientImportOsmAssignmentChoiceBinding = {
+  rowNumber: number;
+  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  candidateToken: string;
+  candidateReferenceToken: string;
+  explicitReassignment: boolean;
+  reassignmentToken?: string;
+};
+
+export type PatientImportOsmAssignmentReconciliationBinding = {
+  rowNumber: number;
+  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  sourceCaregiverName: string;
+  currentCaregiver: PatientImportOsmAssignmentPreview["currentCaregiver"];
+  assignmentStatus: PatientImportOsmAssignmentPreview["assignmentStatus"];
+  candidates: PatientImportOsmCandidateBinding[];
+};
+
 export type PatientImportPreviewBinding = Omit<PatientImportPreview, "classificationReconciliations"> & {
   fileFingerprint: string;
   previewBinding: string;
   classificationReconciliations: PatientImportPreviewReconciliationBinding[];
+  osmAssignmentReconciliations: PatientImportOsmAssignmentReconciliationBinding[];
 };
 
 export type PatientProvisionResultState = PatientProvisionContinuation & {

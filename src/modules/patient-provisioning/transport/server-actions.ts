@@ -10,6 +10,7 @@ import {
   patientImportFileSchema,
   patientImportConfirmSchema,
   patientImportClassificationReconciliationChoicesSchema,
+  patientImportOsmAssignmentBindingChoicesSchema,
   patientImportEffectiveDateSchema,
   patientProvisionFormSchema,
 } from "../schemas/patient-provisioning-schemas";
@@ -17,15 +18,24 @@ import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contra
 import {
   importPatientProvisioning,
   PatientProvisioningConflictError,
-  previewPatientProvisioning,
+  previewPatientProvisioningInternal,
+  projectPatientImportPreview,
   provisionPatient,
+  type PatientImportOsmAssignmentChoice,
+  type PatientImportPreviewInternal,
 } from "../services/patient-provisioning-service";
 import {
   createPatientImportPreviewBinding,
   createPatientImportClassificationReconciliationBinding,
+  createPatientImportOsmCandidateBinding,
+  createPatientImportOsmCandidateReferenceBinding,
+  createPatientImportOsmReassignmentBinding,
   hashPatientImportFile,
   matchesPatientImportClassificationReconciliationBinding,
   matchesPatientImportFileFingerprint,
+  matchesPatientImportOsmCandidateBinding,
+  matchesPatientImportOsmCandidateReferenceBinding,
+  matchesPatientImportOsmReassignmentBinding,
   matchesPatientImportPreviewBinding,
 } from "./patient-import-file-binding";
 import { projectPatientProvisionContinuation } from "./patient-provisioning-continuation";
@@ -38,6 +48,10 @@ import type {
   PatientImportClassificationReconciliation,
   PatientImportPreview,
 } from "../services/patient-provisioning-service";
+import type {
+  PatientImportOsmAssignmentReconciliationBinding,
+  PatientImportOsmCandidateBinding,
+} from "./action-state";
 
 function getString(formData: FormData, field: string): string {
   const value = formData.get(field);
@@ -247,6 +261,7 @@ function getImportPreviewBindingRequest(formData: FormData): {
   effectiveDate: OptionalFormString;
   importContractVersion: OptionalFormString;
   classificationReconciliationChoices: OptionalFormString;
+  osmAssignmentChoices: OptionalFormString;
 } {
   const request = getImportRequest(formData);
 
@@ -260,6 +275,7 @@ function getImportPreviewBindingRequest(formData: FormData): {
       formData,
       "classificationReconciliationChoices",
     ),
+    osmAssignmentChoices: getOptionalString(formData, "osmAssignmentChoices"),
   };
 }
 
@@ -309,6 +325,10 @@ type BoundPatientImportClassificationReconciliation = PatientImportClassificatio
   confirmationToken: string;
 };
 
+type PatientImportOsmAssignmentBindingChoice = ReturnType<
+  typeof patientImportOsmAssignmentBindingChoicesSchema.parse
+>[number];
+
 function parseClassificationReconciliationChoices(
   value: string | undefined,
 ):
@@ -327,6 +347,28 @@ function parseClassificationReconciliationChoices(
   }
 
   const parsed = patientImportClassificationReconciliationChoicesSchema.safeParse(decoded);
+
+  return parsed.success ? { success: true, data: parsed.data } : { success: false };
+}
+
+function parseOsmAssignmentChoices(
+  value: string | undefined,
+):
+  | { success: true; data: PatientImportOsmAssignmentBindingChoice[] }
+  | { success: false } {
+  if (value === undefined) {
+    return { success: true, data: [] };
+  }
+
+  let decoded: unknown;
+
+  try {
+    decoded = JSON.parse(value) as unknown;
+  } catch {
+    return { success: false };
+  }
+
+  const parsed = patientImportOsmAssignmentBindingChoicesSchema.safeParse(decoded);
 
   return parsed.success ? { success: true, data: parsed.data } : { success: false };
 }
@@ -391,6 +433,193 @@ function assertClassificationReconciliationChoices(
   }
 }
 
+function toBoundOsmAssignmentReconciliations(
+  preview: PatientImportPreviewInternal,
+  fileFingerprint: string,
+  targetHospitalId: string,
+  actorUserId: string,
+  includeAlreadyExists = false,
+): PatientImportOsmAssignmentReconciliationBinding[] {
+  if (!preview.canManageOsmAssignment) {
+    return [];
+  }
+
+  return preview.rows.flatMap((row) => {
+    const osm = row.patientOsmAssignment;
+    const resolutionStatus = osm.resolutionStatus;
+
+    if (
+      !osm.sourceCaregiverName ||
+      (resolutionStatus !== "OSM_MATCHED" && resolutionStatus !== "OSM_AMBIGUOUS") ||
+      (!includeAlreadyExists && osm.assignmentStatus === "OSM_ASSIGNMENT_ALREADY_EXISTS") ||
+      (!includeAlreadyExists &&
+        resolutionStatus === "OSM_MATCHED" &&
+        osm.assignmentStatus !== "OSM_ASSIGNMENT_READY" &&
+        osm.assignmentStatus !== "OSM_ASSIGNMENT_CONFLICT")
+    ) {
+      return [];
+    }
+
+    const normalizedSourceCaregiverName =
+      osm.normalizedSourceCaregiverName ?? osm.sourceCaregiverName;
+
+    const candidates: PatientImportOsmCandidateBinding[] = osm.candidates.map((candidate) => {
+      const bindingInput = {
+        fileFingerprint,
+        targetHospitalId,
+        actorUserId,
+        effectiveDate: preview.effectiveDate,
+        importContractVersion: preview.importContractVersion,
+        rowNumber: row.rowNumber,
+        normalizedSourceCaregiverName,
+        resolutionStatus,
+        candidateOsmUserId: candidate.osmUserId,
+        currentOsmUserId: osm.currentOsmUserId,
+      } as const;
+      const sameAsCurrent = candidate.osmUserId === osm.currentOsmUserId;
+
+      return {
+        displayName: candidate.displayName,
+        candidateToken: createPatientImportOsmCandidateBinding(bindingInput),
+        candidateReferenceToken: createPatientImportOsmCandidateReferenceBinding(bindingInput),
+        sameAsCurrent,
+        ...(osm.currentOsmUserId && !sameAsCurrent
+          ? { reassignmentToken: createPatientImportOsmReassignmentBinding(bindingInput) }
+          : {}),
+      };
+    });
+
+    return [{
+      rowNumber: row.rowNumber,
+      resolutionStatus,
+      sourceCaregiverName: osm.sourceCaregiverName,
+      currentCaregiver: osm.currentCaregiverDisplayName
+        ? { displayName: osm.currentCaregiverDisplayName }
+        : null,
+      assignmentStatus: osm.assignmentStatus,
+      candidates,
+    }];
+  });
+}
+
+function assertOsmAssignmentChoices(
+  preview: PatientImportPreviewInternal,
+  choices: readonly PatientImportOsmAssignmentBindingChoice[],
+  input: {
+    fileFingerprint: string;
+    targetHospitalId: string;
+    actorUserId: string;
+  },
+): PatientImportOsmAssignmentChoice[] {
+  const bindings = toBoundOsmAssignmentReconciliations(
+    preview,
+    input.fileFingerprint,
+    input.targetHospitalId,
+    input.actorUserId,
+    true,
+  );
+
+  return choices.map((choice) => {
+    const row = preview.rows.find(({ rowNumber }) => rowNumber === choice.rowNumber);
+    const binding = bindings.find(({ rowNumber }) => rowNumber === choice.rowNumber);
+
+    if (
+      !row ||
+      !binding ||
+      choice.resolutionStatus !== binding.resolutionStatus ||
+      row.patientOsmAssignment.resolutionStatus !== choice.resolutionStatus ||
+      !row.patientOsmAssignment.normalizedSourceCaregiverName
+    ) {
+      throw new PatientImportPreviewBindingError();
+    }
+
+    const normalizedSourceCaregiverName = row.patientOsmAssignment.normalizedSourceCaregiverName;
+    const resolutionStatus = row.patientOsmAssignment.resolutionStatus;
+
+    const selectedCandidate = row.patientOsmAssignment.candidates.find((candidate) => {
+      const bindingInput = {
+        fileFingerprint: input.fileFingerprint,
+        targetHospitalId: input.targetHospitalId,
+        actorUserId: input.actorUserId,
+        effectiveDate: preview.effectiveDate,
+        importContractVersion: preview.importContractVersion,
+        rowNumber: row.rowNumber,
+        normalizedSourceCaregiverName,
+        resolutionStatus,
+        candidateOsmUserId: candidate.osmUserId,
+        currentOsmUserId: row.patientOsmAssignment.currentOsmUserId,
+      } as const;
+      return matchesPatientImportOsmCandidateReferenceBinding({
+        binding: choice.candidateReferenceToken,
+        input: bindingInput,
+      });
+    });
+
+    if (!selectedCandidate) {
+      throw new PatientImportPreviewBindingError();
+    }
+
+    const selectedBindingInput = {
+      fileFingerprint: input.fileFingerprint,
+      targetHospitalId: input.targetHospitalId,
+      actorUserId: input.actorUserId,
+      effectiveDate: preview.effectiveDate,
+      importContractVersion: preview.importContractVersion,
+      rowNumber: row.rowNumber,
+      normalizedSourceCaregiverName,
+      resolutionStatus,
+      candidateOsmUserId: selectedCandidate.osmUserId,
+      currentOsmUserId: row.patientOsmAssignment.currentOsmUserId,
+    } as const;
+    const currentOsmUserId = row.patientOsmAssignment.currentOsmUserId;
+    const selectedIsCurrent = currentOsmUserId === selectedCandidate.osmUserId;
+
+    if (selectedIsCurrent) {
+      return {
+        rowNumber: row.rowNumber,
+        resolutionStatus,
+        sourceCaregiverName: normalizedSourceCaregiverName,
+        normalizedSourceCaregiverName,
+        candidateOsmUserId: selectedCandidate.osmUserId,
+        currentOsmUserId,
+        explicitReassignment: false,
+      };
+    }
+
+    if (
+      !matchesPatientImportOsmCandidateBinding({
+        binding: choice.candidateToken,
+        input: selectedBindingInput,
+      }) ||
+      choice.explicitReassignment !== (currentOsmUserId !== null)
+    ) {
+      throw new PatientImportPreviewBindingError();
+    }
+
+    if (currentOsmUserId !== null) {
+      if (
+        !choice.reassignmentToken ||
+        !matchesPatientImportOsmReassignmentBinding({
+          binding: choice.reassignmentToken,
+          input: selectedBindingInput,
+        })
+      ) {
+        throw new PatientImportPreviewBindingError();
+      }
+    }
+
+    return {
+      rowNumber: row.rowNumber,
+      resolutionStatus,
+      sourceCaregiverName: normalizedSourceCaregiverName,
+      normalizedSourceCaregiverName,
+      candidateOsmUserId: selectedCandidate.osmUserId,
+      currentOsmUserId,
+      explicitReassignment: choice.explicitReassignment,
+    };
+  });
+}
+
 export async function previewPatientImportAction(
   formData: FormData,
 ): Promise<PatientImportPreviewActionState> {
@@ -413,7 +642,7 @@ export async function previewPatientImportAction(
     }
 
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
-    const preview = await previewPatientProvisioning(
+    const previewInternal = await previewPatientProvisioningInternal(
       actor,
       parsed.data.targetHospitalId,
       candidates,
@@ -424,6 +653,7 @@ export async function previewPatientImportAction(
       },
     );
     const fileFingerprint = await hashPatientImportFile(request.file);
+    const preview = projectPatientImportPreview(previewInternal);
 
     return {
       status: "SUCCESS",
@@ -441,6 +671,12 @@ export async function previewPatientImportAction(
         ),
         classificationReconciliations: toBoundClassificationReconciliations(
           preview,
+          fileFingerprint,
+          parsed.data.targetHospitalId,
+          actor.userId,
+        ),
+        osmAssignmentReconciliations: toBoundOsmAssignmentReconciliations(
+          previewInternal,
           fileFingerprint,
           parsed.data.targetHospitalId,
           actor.userId,
@@ -471,6 +707,7 @@ export async function confirmPatientImportAction(
       effectiveDate: request.effectiveDate.value,
       importContractVersion: request.importContractVersion.value,
       classificationReconciliationChoices: request.classificationReconciliationChoices.value,
+      osmAssignmentChoices: request.osmAssignmentChoices.value,
     });
 
     if (
@@ -489,12 +726,13 @@ export async function confirmPatientImportAction(
     const parsedChoices = parseClassificationReconciliationChoices(
       parsed.data.classificationReconciliationChoices,
     );
+    const parsedOsmChoices = parseOsmAssignmentChoices(parsed.data.osmAssignmentChoices);
 
-    if (!parsedChoices.success) {
+    if (!parsedChoices.success || !parsedOsmChoices.success) {
       return {
         status: "ERROR",
         code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบรายการยืนยันเปลี่ยนสถานะผู้ป่วยแล้วลองใหม่อีกครั้ง",
+        message: "กรุณาตรวจสอบรายการยืนยันการเปลี่ยนแปลงแล้วลองใหม่อีกครั้ง",
       };
     }
 
@@ -510,7 +748,7 @@ export async function confirmPatientImportAction(
     });
 
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
-    const preview = await previewPatientProvisioning(
+    const previewInternal = await previewPatientProvisioningInternal(
       actor,
       parsed.data.targetHospitalId,
       candidates,
@@ -520,7 +758,13 @@ export async function confirmPatientImportAction(
         importContractVersion: parsed.data.importContractVersion,
       },
     );
+    const preview = projectPatientImportPreview(previewInternal);
     assertClassificationReconciliationChoices(preview, parsedChoices.data, {
+      fileFingerprint: parsed.data.fileFingerprint,
+      targetHospitalId: parsed.data.previewTargetHospitalId,
+      actorUserId: actor.userId,
+    });
+    const osmAssignmentChoices = assertOsmAssignmentChoices(previewInternal, parsedOsmChoices.data, {
       fileFingerprint: parsed.data.fileFingerprint,
       targetHospitalId: parsed.data.previewTargetHospitalId,
       actorUserId: actor.userId,
@@ -538,6 +782,7 @@ export async function confirmPatientImportAction(
           currentClassification: choice.currentClassification,
           sourceClassification: choice.sourceClassification,
         })),
+        osmAssignmentChoices,
       },
     );
 

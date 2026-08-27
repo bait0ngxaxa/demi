@@ -22,6 +22,59 @@ const mockedPreviewProvisioning = vi.hoisted(() => vi.fn());
 const mockedImportProvisioning = vi.hoisted(() => vi.fn());
 const mockedProvisionPatient = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
+const mockedProjectPatientImportPreview = vi.hoisted(() => (preview: unknown): unknown => {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+  if (!isRecord(preview) || !Array.isArray(preview.rows)) {
+    return preview;
+  }
+
+  return {
+    ...preview,
+    rows: preview.rows.map((row: unknown) => {
+      if (!isRecord(row)) {
+        return row;
+      }
+
+      const rowRecord = row;
+      const osmValue = rowRecord["patientOsmAssignment"];
+
+      if (!isRecord(osmValue)) {
+        return row;
+      }
+
+      const osm = osmValue;
+      const currentDisplayName = "currentCaregiverDisplayName" in osm &&
+        typeof osm.currentCaregiverDisplayName === "string"
+        ? osm.currentCaregiverDisplayName
+        : null;
+      const resolvedDisplayName = "resolvedCandidateDisplayName" in osm &&
+        typeof osm.resolvedCandidateDisplayName === "string"
+        ? osm.resolvedCandidateDisplayName
+        : null;
+      const candidates = "candidates" in osm && Array.isArray(osm.candidates)
+        ? osm.candidates.map((candidate: unknown) =>
+            typeof candidate === "object" && candidate !== null && "displayName" in candidate
+              ? { displayName: candidate.displayName }
+              : { displayName: "" },
+          )
+        : [];
+
+      return {
+        ...rowRecord,
+        patientOsmAssignment: {
+          resolutionStatus: osm.resolutionStatus,
+          assignmentStatus: osm.assignmentStatus,
+          sourceCaregiverName: osm.sourceCaregiverName,
+          currentCaregiver: currentDisplayName ? { displayName: currentDisplayName } : null,
+          resolvedCandidate: resolvedDisplayName ? { displayName: resolvedDisplayName } : null,
+          candidates,
+        },
+      };
+    }),
+  };
+});
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mockedActor,
@@ -33,6 +86,8 @@ vi.mock("../adapters/excel-patient-import-adapter", () => ({
 vi.mock("../services/patient-provisioning-service", () => ({
   importPatientProvisioning: mockedImportProvisioning,
   previewPatientProvisioning: mockedPreviewProvisioning,
+  previewPatientProvisioningInternal: mockedPreviewProvisioning,
+  projectPatientImportPreview: mockedProjectPatientImportPreview,
   provisionPatient: mockedProvisionPatient,
   PatientProvisioningConflictError: class PatientProvisioningConflictError extends Error {},
 }));
@@ -84,6 +139,7 @@ function createFormData(
     effectiveDate?: string;
     importContractVersion?: string;
     classificationReconciliationChoices?: string;
+    osmAssignmentChoices?: string;
   },
 ): FormData {
   const formData = new FormData();
@@ -115,6 +171,10 @@ function createFormData(
     );
   }
 
+  if (values.osmAssignmentChoices !== undefined) {
+    formData.set("osmAssignmentChoices", values.osmAssignmentChoices);
+  }
+
   return formData;
 }
 
@@ -136,6 +196,61 @@ function createCandidate(): Record<string, unknown> {
   };
 }
 
+function createOsmPreview(input: {
+  resolutionStatus?: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  assignmentStatus?: "OSM_ASSIGNMENT_READY" | "OSM_ASSIGNMENT_CONFLICT" | null;
+  currentOsmUserId?: string | null;
+  candidates?: Array<{ osmUserId: string; displayName: string }>;
+}): Record<string, unknown> {
+  const resolutionStatus = input.resolutionStatus ?? "OSM_MATCHED";
+  const currentOsmUserId = input.currentOsmUserId ?? null;
+  const candidates = input.candidates ?? [{
+    osmUserId: "99999999-9999-4999-8999-999999999999",
+    displayName: "สมชาย ผู้ดูแล",
+  }];
+
+  return {
+    targetHospitalId: hospitalId,
+    effectiveDate: null,
+    importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+    baselineDateRequired: false,
+    canManageOsmAssignment: true,
+    rows: [{
+      rowNumber: 2,
+      identityDisplay: "••••••0009",
+      givenName: "สมชาย",
+      familyName: "ผู้ป่วย",
+      combinedNameText: null,
+      hospitalNumber: null,
+      classification: input.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT" ||
+        resolutionStatus === "OSM_AMBIGUOUS" ? "NEEDS_REVIEW" : "READY",
+      reason: null,
+      baselineStatus: "NOT_APPLICABLE",
+      requirementGatedFields: [],
+      diagnosticCodes: [],
+      patientClassification: {
+        status: "NOT_APPLICABLE",
+        currentClassification: null,
+        sourceClassification: null,
+      },
+      patientOsmAssignment: {
+        resolutionStatus,
+        assignmentStatus: input.assignmentStatus ??
+          (resolutionStatus === "OSM_AMBIGUOUS" ? null : "OSM_ASSIGNMENT_READY"),
+        sourceCaregiverName: "สมชาย ผู้ดูแล",
+        normalizedSourceCaregiverName: "สมชาย ผู้ดูแล",
+        currentOsmUserId,
+        currentCaregiverDisplayName: currentOsmUserId ? "สมหญิง ผู้ดูแล" : null,
+        resolvedOsmUserId: resolutionStatus === "OSM_MATCHED" ? candidates[0]?.osmUserId ?? null : null,
+        resolvedCandidateDisplayName: resolutionStatus === "OSM_MATCHED" ? candidates[0]?.displayName ?? null : null,
+        candidates,
+      },
+    }],
+    classificationReconciliations: [],
+    file: null,
+  };
+}
+
 describe("patient import Server Actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -146,6 +261,7 @@ describe("patient import Server Actions", () => {
       effectiveDate: null,
       importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
       baselineDateRequired: false,
+      canManageOsmAssignment: false,
       rows: [],
       classificationReconciliations: [],
       file: null,
@@ -168,6 +284,14 @@ describe("patient import Server Actions", () => {
       classificationChanged: 0,
       classificationNeedsReview: 0,
       classificationInvalid: 0,
+      osmAssigned: 0,
+      osmAlreadyAssigned: 0,
+      osmReassigned: 0,
+      osmNotFound: 0,
+      osmAmbiguous: 0,
+      osmAssignmentConflict: 0,
+      osmOwnerRequired: 0,
+      needsReview: 0,
       rows: [],
     });
     mockedProvisionPatient.mockResolvedValue({
@@ -283,6 +407,136 @@ describe("patient import Server Actions", () => {
     );
   });
 
+  it("returns only opaque OSM candidate bindings to the browser", async () => {
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
+      candidates: [{
+        osmUserId: "99999999-9999-4999-8999-999999999999",
+        displayName: "สมชาย ผู้ดูแล",
+      }],
+    }));
+    const file = createUpload("file-osm-preview");
+    const result = await previewPatientImportAction(createFormData(file, { targetHospitalId: hospitalId }));
+
+    expect(result.status).toBe("SUCCESS");
+
+    if (result.status !== "SUCCESS") {
+      return;
+    }
+
+    const reconciliation = result.preview.osmAssignmentReconciliations[0];
+    expect(reconciliation).toBeDefined();
+    expect(reconciliation?.candidates[0]).toMatchObject({
+      displayName: "สมชาย ผู้ดูแล",
+      sameAsCurrent: false,
+    });
+    expect(JSON.stringify(result.preview)).not.toContain("99999999-9999-4999-8999-999999999999");
+    expect(reconciliation?.candidates[0]?.candidateToken).not.toBe(
+      "99999999-9999-4999-8999-999999999999",
+    );
+  });
+
+  it("revalidates an opaque OSM choice and forwards only server-derived identity", async () => {
+    const file = createUpload("file-osm-confirm");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewBinding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
+      candidates: [{
+        osmUserId: "99999999-9999-4999-8999-999999999999",
+        displayName: "สมชาย ผู้ดูแล",
+      }],
+    }));
+
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+    expect(previewResult.status).toBe("SUCCESS");
+
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    const candidate = previewResult.preview.osmAssignmentReconciliations[0]?.candidates[0];
+    expect(candidate).toBeDefined();
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding,
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber: 2,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: candidate?.candidateToken,
+        candidateReferenceToken: candidate?.candidateReferenceToken,
+        explicitReassignment: false,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "SUCCESS" });
+    expect(mockedImportProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [createCandidate()],
+      {},
+      {
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        classificationReconciliationChoices: [],
+        osmAssignmentChoices: [{
+          rowNumber: 2,
+          resolutionStatus: "OSM_MATCHED",
+          sourceCaregiverName: "สมชาย ผู้ดูแล",
+          normalizedSourceCaregiverName: "สมชาย ผู้ดูแล",
+          candidateOsmUserId: "99999999-9999-4999-8999-999999999999",
+          currentOsmUserId: null,
+          explicitReassignment: false,
+        }],
+      },
+    );
+  });
+
+  it("rejects a forged OSM candidate token before import", async () => {
+    const file = createUpload("file-forged-osm");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewBinding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
+      candidates: [{
+        osmUserId: "99999999-9999-4999-8999-999999999999",
+        displayName: "สมชาย ผู้ดูแล",
+      }],
+    }));
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(previewResult.status).toBe("SUCCESS");
+
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    const candidate = previewResult.preview.osmAssignmentReconciliations[0]?.candidates[0];
+    expect(candidate).toBeDefined();
+    const forgedToken = `${candidate?.candidateToken.slice(0, -1)}${candidate?.candidateToken.endsWith("0") ? "1" : "0"}`;
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding,
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber: 2,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: forgedToken,
+        candidateReferenceToken: candidate?.candidateReferenceToken,
+        explicitReassignment: false,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
+  });
+
   it("accepts a valid shared effective date and binds it to the preview", async () => {
     const file = createUpload("file-effective-date");
     const effectiveDate = "2026-08-01";
@@ -352,6 +606,7 @@ describe("patient import Server Actions", () => {
         effectiveDate: null,
         importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
         classificationReconciliationChoices: [],
+        osmAssignmentChoices: [],
       },
     );
   });
@@ -477,6 +732,17 @@ describe("patient import Server Actions", () => {
           currentClassification: "RISK",
           sourceClassification: "DIABETES",
         },
+        patientOsmAssignment: {
+          resolutionStatus: "OSM_NOT_APPLICABLE",
+          assignmentStatus: null,
+          sourceCaregiverName: null,
+          normalizedSourceCaregiverName: null,
+          currentOsmUserId: null,
+          currentCaregiverDisplayName: null,
+          resolvedOsmUserId: null,
+          resolvedCandidateDisplayName: null,
+          candidates: [],
+        },
       }],
       classificationReconciliations: [{
         rowNumber: 2,
@@ -484,6 +750,7 @@ describe("patient import Server Actions", () => {
         sourceClassification: "DIABETES",
       }],
       file: null,
+      canManageOsmAssignment: false,
     };
     mockedPreviewProvisioning.mockResolvedValue(conflictPreview);
 
@@ -522,6 +789,7 @@ describe("patient import Server Actions", () => {
           currentClassification: "RISK",
           sourceClassification: "DIABETES",
         }],
+        osmAssignmentChoices: [],
       },
     );
   });
@@ -535,6 +803,7 @@ describe("patient import Server Actions", () => {
       effectiveDate: null,
       importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
       baselineDateRequired: false,
+      canManageOsmAssignment: false,
       rows: [],
       classificationReconciliations: [],
       file: null,

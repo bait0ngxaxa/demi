@@ -738,7 +738,7 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       await prisma.person.count({
         where: {
           identityKeyHash: hashIdentityReference({
-            namespace: "phase-16d3-patient",
+            namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
             value: nationalIds.rosterRollback,
           }),
         },

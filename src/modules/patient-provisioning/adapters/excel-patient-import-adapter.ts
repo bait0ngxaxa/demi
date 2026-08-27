@@ -13,6 +13,7 @@ import {
 import {
   isPatientImportClassificationField,
   isPatientImportBaselineField,
+  isPatientImportOsmAssignmentField,
   PATIENT_IMPORT_FIELD_KEYS,
 } from "../import/patient-import-contract";
 import type {
@@ -296,7 +297,9 @@ function assessmentStatus(
       ? "PARSED_FOR_INITIAL_BASELINE"
       : isPatientImportClassificationField(field)
         ? "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-        : "PARSED_REQUIREMENT_GATED";
+        : isPatientImportOsmAssignmentField(field)
+          ? "SUPPORTED_FOR_OSM_ASSIGNMENT"
+          : "PARSED_REQUIREMENT_GATED";
 }
 
 function updateFieldAssessment(
@@ -312,6 +315,7 @@ function updateFieldAssessment(
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
     PARSED_FOR_INITIAL_BASELINE: 2,
     SUPPORTED_FOR_PATIENT_CLASSIFICATION: 2,
+    SUPPORTED_FOR_OSM_ASSIGNMENT: 2,
     PARSED_REQUIREMENT_GATED: 1,
     UNKNOWN_SOURCE_HEADER: 3,
     INVALID: 4,
@@ -351,6 +355,7 @@ function setRequirementDiagnostic(
     !CORE_FIELDS.has(field) &&
     !isPatientImportBaselineField(field) &&
     !isPatientImportClassificationField(field) &&
+    !isPatientImportOsmAssignmentField(field) &&
     value !== null
   ) {
     diagnostics.push(createDiagnostic("REQUIREMENT_GATED", field, sourceHeader));

@@ -375,10 +375,40 @@ do not count history rows.
 
 Migration: `20260827120000_patient_classification_persistence`.
 
-The remaining gates are `IMP-REQ-03` Hospital/รพ.สต. hierarchy,
-`P16C-OSM-01` OSM roster resolution/assignment, and `P16C-PROFILE-01`
-profile/contact/address ownership. Phase 16D.4 should address OSM/Coach roster
-resolution and explicit assignment reconciliation; it is not implemented here.
+## Phase 16D.4 OSM / Coach Roster Assignment
+
+Phase 16D.4 implemented the confirmed caregiver intent in `osmCaregiverName` as a
+Hospital-scoped Patient–OSM assignment request. The resolver performs deterministic
+exact normalized display-name matching against only active OSM users with an active
+OSM–Hospital relationship in the server-selected active Hospital. It returns
+`OSM_NOT_APPLICABLE`, `OSM_MATCHED`, `OSM_NOT_FOUND`, `OSM_AMBIGUOUS`, or
+`OSM_DATA_INVALID`; it never fuzzy-matches, creates accounts, or searches another
+Hospital.
+
+The existing `PatientOsmAssignment` domain remains the only assignment source of
+truth. Assignment mutation still requires an active Hospital `OWNER` and
+`patient:assign-osm`; `MEMBER`, OSM, and ADMIN receive no assignment expansion.
+Same-current assignments are idempotent NOOPs. A new assignment or a different
+current assignment is not silently applied: the OWNER must explicitly select an
+ambiguous candidate when needed and explicitly confirm each reassignment. Browser
+choices are opaque HMAC-bound to actor, Hospital, file fingerprint, effective date,
+contract version, row, normalized source, candidate, and relevant current state;
+confirmation reparses and re-resolves the workbook before reloading current state
+inside the row transaction.
+
+Each confirmed logical roster row now composes Patient core, Baseline,
+classification, and OSM assignment in one Serializable transaction. Blank caregiver
+means no assertion and never unassigns. Not-found, ambiguous, malformed, stale, or
+OWNER-required assertions remain review states, and independent rows do not share a
+transaction. Public preview data exposes display names and bounded candidates only;
+internal user IDs remain server-side. The focused resolver/reconciliation module
+keeps assignment rules separate from Patient provisioning; a broader roster
+orchestrator extraction remains a recommended Phase 16D.5 hardening task.
+
+`P16C-OSM-01` is closed as OWNER-only assignment authority. The remaining gates are
+`IMP-REQ-03` Hospital/รพ.สต. hierarchy and `P16C-PROFILE-01` profile/contact/address
+ownership. Neither gate was implemented or closed in Phase 16D.4. See the full
+[Phase 16D.4 handoff](./phases/PHASE_16D4_OSM_ROSTER_RESOLUTION_RECONCILIATION_ASSIGNMENT.md).
 
 ## Open Requirements
 

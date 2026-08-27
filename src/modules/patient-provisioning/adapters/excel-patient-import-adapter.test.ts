@@ -153,8 +153,9 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     expect(candidate.canonicalRow.caregiverCandidates.osmCaregiverName).toBe("โค้ชตัวอย่าง");
     expect(candidate.fileMetadata?.layout).toBe("EXTENDED_ROSTER");
     expect(candidate.fileMetadata?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "osmCaregiverName"]),
+      expect.arrayContaining(["dateOfBirth"]),
     );
+    expect(candidate.fileMetadata?.requirementGatedFields).not.toContain("osmCaregiverName");
     expect(candidate.fileMetadata?.requirementGatedFields).not.toContain(
       "diabetesClassification",
     );
@@ -164,6 +165,9 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("PARSED_FOR_INITIAL_BASELINE");
     expect(candidate.canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
       "SUPPORTED_FOR_PATIENT_CLASSIFICATION",
+    );
+    expect(candidate.canonicalRow.fieldAssessments.osmCaregiverName.status).toBe(
+      "SUPPORTED_FOR_OSM_ASSIGNMENT",
     );
     expect(candidate.input).not.toHaveProperty("dateOfBirth");
     expect(candidate.input).not.toHaveProperty("clinicalCandidates");
@@ -203,6 +207,26 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
         expect.objectContaining({ code: "CLASSIFICATION_DATA_INVALID" }),
       ]),
     );
+  });
+
+  it("does not treat the misleading diabetes type alias as a classification header", async () => {
+    const upload = await createUpload([
+      {
+        name: "Legacy classification wording",
+        rows: [
+          coreHeaders("diabetes type"),
+          [...coreRow(), "เบาหวาน"],
+        ],
+      },
+    ]);
+
+    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+
+    expect(candidate.canonicalRow.clinicalCandidates.diabetesClassification).toBeNull();
+    expect(candidate.canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
+      "NOT_PRESENT",
+    );
+    expect(candidate.fileMetadata?.unknownHeaders).toContain("diabetes type");
   });
 
   it("maps the confirmed operational baseline fields with explicit units", async () => {

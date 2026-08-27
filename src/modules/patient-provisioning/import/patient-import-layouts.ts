@@ -2,6 +2,7 @@ import {
   PATIENT_IMPORT_FIELD_KEYS,
   isPatientImportBaselineField,
   isPatientImportClassificationField,
+  isPatientImportOsmAssignmentField,
   type PatientImportDiagnostic,
   type PatientImportFieldKey,
   type PatientImportFileMetadata,
@@ -266,6 +267,7 @@ export function createPatientImportFileMetadata(
       recognizedFields.has(field) &&
       !isPatientImportBaselineField(field) &&
       !isPatientImportClassificationField(field) &&
+      !isPatientImportOsmAssignmentField(field) &&
       field !== "nationalId" &&
       field !== "givenName" &&
       field !== "familyName" &&

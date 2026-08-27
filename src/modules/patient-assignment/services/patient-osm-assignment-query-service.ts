@@ -154,7 +154,7 @@ function buildNameWhere(value: string): Prisma.PersonWhereInput {
   };
 }
 
-function toDisplayName(person: {
+export function formatPatientOsmDisplayName(person: {
   givenName: string | null;
   familyName: string | null;
 }): string {
@@ -164,6 +164,8 @@ function toDisplayName(person: {
 
   return nameParts.join(" ") || "ไม่ระบุชื่อ";
 }
+
+const toDisplayName = formatPatientOsmDisplayName;
 
 function toAssignmentManagementView(
   record: AssignmentManagementRecord,

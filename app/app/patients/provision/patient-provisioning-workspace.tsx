@@ -34,6 +34,9 @@ import {
   initialPatientProvisionActionState,
   type PatientImportActionState,
   type PatientImportPreviewBinding,
+  type PatientImportOsmAssignmentChoiceBinding,
+  type PatientImportOsmAssignmentReconciliationBinding,
+  type PatientImportOsmCandidateBinding,
   type PatientImportPreviewReconciliationBinding,
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
@@ -191,6 +194,7 @@ function createPatientImportConfirmFormData(
   effectiveDate: string | null,
   importContractVersion: string,
   classificationReconciliationChoices: readonly PatientImportPreviewReconciliationBinding[],
+  osmAssignmentChoices: readonly PatientImportOsmAssignmentChoiceBinding[],
 ): FormData {
   const formData = createPatientImportFormData(file, targetHospitalId, effectiveDate ?? "");
   formData.set("previewTargetHospitalId", previewTargetHospitalId);
@@ -203,6 +207,10 @@ function createPatientImportConfirmFormData(
       "classificationReconciliationChoices",
       JSON.stringify(classificationReconciliationChoices),
     );
+  }
+
+  if (osmAssignmentChoices.length > 0) {
+    formData.set("osmAssignmentChoices", JSON.stringify(osmAssignmentChoices));
   }
 
   return formData;
@@ -283,13 +291,25 @@ function ProvisionResult({
 function PreviewTable({
   rows,
   reconciliations,
+  osmAssignmentReconciliations,
   selectedReconciliationRows,
+  selectedOsmCandidates,
+  selectedOsmReassignmentRows,
   onToggleReconciliation,
+  onSelectOsmCandidate,
+  onToggleOsmReassignment,
+  canManageOsmAssignment,
 }: {
   rows: PatientImportPreviewRow[];
   reconciliations: PatientImportPreviewBinding["classificationReconciliations"];
+  osmAssignmentReconciliations: PatientImportPreviewBinding["osmAssignmentReconciliations"];
   selectedReconciliationRows: ReadonlySet<number>;
+  selectedOsmCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>;
+  selectedOsmReassignmentRows: ReadonlySet<number>;
   onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
+  onSelectOsmCandidate: (rowNumber: number, candidate: PatientImportOsmCandidateBinding) => void;
+  onToggleOsmReassignment: (rowNumber: number, checked: boolean) => void;
+  canManageOsmAssignment: boolean;
 }): React.JSX.Element {
   if (rows.length === 0) {
     return (
@@ -301,6 +321,9 @@ function PreviewTable({
 
   const reconciliationByRow = new Map(
     reconciliations.map((reconciliation) => [reconciliation.rowNumber, reconciliation]),
+  );
+  const osmReconciliationByRow = new Map(
+    osmAssignmentReconciliations.map((reconciliation) => [reconciliation.rowNumber, reconciliation]),
   );
 
   return (
@@ -316,7 +339,18 @@ function PreviewTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-line bg-white">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const osm = row.patientOsmAssignment;
+            const osmReconciliation = osmReconciliationByRow.get(row.rowNumber);
+            const selectedOsmCandidate = selectedOsmCandidates.get(row.rowNumber);
+            const selectedOsmRequiresReassignment = Boolean(
+              canManageOsmAssignment &&
+                selectedOsmCandidate &&
+                !selectedOsmCandidate.sameAsCurrent &&
+                osm.currentCaregiver,
+            );
+
+            return (
             <tr key={row.rowNumber}>
               <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">{row.identityDisplay}</td>
@@ -376,9 +410,100 @@ function PreviewTable({
                     ) : null}
                   </div>
                 ) : null}
+                {osm.sourceCaregiverName ? (
+                  <div className="mt-3 rounded-control border border-border bg-surface-muted p-3 text-xs leading-5">
+                    <p className="font-semibold text-ink">ผู้ดูแลจากไฟล์: {osm.sourceCaregiverName}</p>
+                    {osm.resolutionStatus === "OSM_MATCHED" ? (
+                      <p className="mt-1 text-muted">
+                        พบผู้ดูแลในโรงพยาบาลนี้: {osm.resolvedCandidate?.displayName ?? "ไม่ระบุชื่อ"}
+                      </p>
+                    ) : null}
+                    {osm.resolutionStatus === "OSM_NOT_FOUND" ? (
+                      <p className="mt-1 text-danger">ไม่พบ อสม./โค้ชที่ตรงกับชื่อในโรงพยาบาลนี้</p>
+                    ) : null}
+                    {osm.resolutionStatus === "OSM_AMBIGUOUS" ? (
+                      <p className="mt-1 text-amber-900">พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน กรุณาเลือก</p>
+                    ) : null}
+                    {osm.resolutionStatus === "OSM_DATA_INVALID" ? (
+                      <p className="mt-1 text-danger">ชื่อผู้ดูแลจากไฟล์ไม่ถูกต้อง</p>
+                    ) : null}
+                    {osm.currentCaregiver ? (
+                      <p className="mt-1 text-muted">
+                        ผู้ดูแลปัจจุบัน: {osm.currentCaregiver.displayName}
+                      </p>
+                    ) : null}
+                    {osmReconciliation && canManageOsmAssignment ? (
+                      <>
+                        {osmReconciliation.resolutionStatus === "OSM_AMBIGUOUS" ? (
+                          <label className="mt-2 block font-normal text-ink">
+                            <span className="sr-only">เลือกผู้ดูแลสำหรับแถว {row.rowNumber}</span>
+                            <Select
+                              aria-label={`เลือกผู้ดูแลสำหรับแถว ${row.rowNumber}`}
+                              className="mt-1 w-full bg-surface text-sm"
+                              onChange={(event) => {
+                                const candidate = osmReconciliation.candidates.find(
+                                  (item) => item.candidateReferenceToken === event.target.value,
+                                );
+
+                                if (candidate) {
+                                  onSelectOsmCandidate(row.rowNumber, candidate);
+                                }
+                              }}
+                              value={selectedOsmCandidate?.candidateReferenceToken ?? ""}
+                            >
+                              <option value="">เลือกผู้ดูแล</option>
+                              {osmReconciliation.candidates.map((candidate) => (
+                                <option
+                                  key={candidate.candidateReferenceToken}
+                                  value={candidate.candidateReferenceToken}
+                                >
+                                  {candidate.displayName}
+                                  {candidate.sameAsCurrent ? " · ผู้ดูแลปัจจุบัน" : ""}
+                                </option>
+                              ))}
+                            </Select>
+                          </label>
+                        ) : null}
+                        {selectedOsmRequiresReassignment ? (
+                          <div className="mt-3 rounded-control border border-amber-300 bg-amber-50 p-3 text-amber-950">
+                            <p className="font-semibold">ผู้ดูแลปัจจุบันแตกต่างจากไฟล์</p>
+                            <p className="mt-1">
+                              ผู้ดูแลจากไฟล์: {selectedOsmCandidate?.displayName}
+                            </p>
+                            <p className="mt-1 text-xs">
+                              การเปลี่ยนผู้ดูแลจะสิ้นสุดการมอบหมายปัจจุบันของผู้ป่วยในโรงพยาบาลนี้
+                            </p>
+                            <label className="mt-2 flex items-start gap-2 font-normal">
+                              <input
+                                checked={selectedOsmReassignmentRows.has(row.rowNumber)}
+                                className="mt-1 size-4 accent-brand-strong"
+                                onChange={(event) =>
+                                  onToggleOsmReassignment(
+                                    row.rowNumber,
+                                    event.currentTarget.checked,
+                                  )}
+                                type="checkbox"
+                              />
+                              <span>
+                                ยืนยันเปลี่ยนผู้ดูแลเป็น {selectedOsmCandidate?.displayName}
+                              </span>
+                            </label>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {!canManageOsmAssignment &&
+                    (osm.assignmentStatus === "OSM_OWNER_REQUIRED" || osm.resolutionStatus === "OSM_AMBIGUOUS") ? (
+                      <p className="mt-2 text-amber-900">
+                        การกำหนดหรือเปลี่ยนผู้ดูแลจากไฟล์ต้องดำเนินการโดยเจ้าของโรงพยาบาล
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -416,6 +541,24 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
   ).length;
   const classificationInvalid = rows.filter(
     (row) => row.patientClassification.status === "CLASSIFICATION_DATA_INVALID",
+  ).length;
+  const osmReady = rows.filter(
+    (row) => row.patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_READY",
+  ).length;
+  const osmAlreadyAssigned = rows.filter(
+    (row) => row.patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_ALREADY_EXISTS",
+  ).length;
+  const osmConflicts = rows.filter(
+    (row) => row.patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT",
+  ).length;
+  const osmOwnerRequired = rows.filter(
+    (row) => row.patientOsmAssignment.assignmentStatus === "OSM_OWNER_REQUIRED",
+  ).length;
+  const osmNotFound = rows.filter(
+    (row) => row.patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND",
+  ).length;
+  const osmAmbiguous = rows.filter(
+    (row) => row.patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS",
   ).length;
 
   return (
@@ -464,10 +607,25 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
         ) : null}
       </div>
       <div className="mt-4 border-t border-border pt-4">
+        <p className="font-semibold text-ink">ผู้ดูแล อสม./โค้ช</p>
+        <p className="mt-1 text-muted">
+          ระบบจับคู่ชื่อผู้ดูแลแบบตรงกับผู้ใช้ OSM ที่ยังใช้งานอยู่ในโรงพยาบาลที่เลือกเท่านั้น
+        </p>
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+          <div><dt className="text-muted">พร้อมกำหนด</dt><dd className="font-semibold">{osmReady}</dd></div>
+          <div><dt className="text-muted">ตรงกับปัจจุบัน</dt><dd className="font-semibold">{osmAlreadyAssigned}</dd></div>
+          <div><dt className="text-muted">ไม่พบชื่อ</dt><dd className="font-semibold">{osmNotFound}</dd></div>
+          <div><dt className="text-muted">ชื่อซ้ำ ต้องเลือก</dt><dd className="font-semibold">{osmAmbiguous}</dd></div>
+          <div><dt className="text-muted">ขัดแย้ง ต้องยืนยัน</dt><dd className="font-semibold">{osmConflicts}</dd></div>
+          <div><dt className="text-muted">ต้องใช้เจ้าของโรงพยาบาล</dt><dd className="font-semibold">{osmOwnerRequired}</dd></div>
+        </dl>
+      </div>
+      <div className="mt-4 border-t border-border pt-4">
         <p className="font-semibold text-ink">ข้อมูลที่จะนำเข้าในขั้นตอนนี้</p>
         <p className="mt-1 text-muted">
           เลขบัตรประชาชน ชื่อ นามสกุล HN (ถ้ามี) และข้อมูลตั้งต้นที่รองรับ ได้แก่ น้ำหนัก (kg)
-          ส่วนสูง (cm) รอบเอว (cm) DTX (mg/dL) HbA1c (%) และสถานะผู้ป่วยที่รองรับ
+          ส่วนสูง (cm) รอบเอว (cm) DTX (mg/dL) HbA1c (%) สถานะผู้ป่วยที่รองรับ
+          และผู้ดูแล อสม./โค้ชที่ยืนยันแล้ว
         </p>
       </div>
       {file?.requirementGatedFields.length ? (
@@ -489,7 +647,9 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
 }
 
 function ImportSummary({ summary }: { summary: PatientImportResultSummary }): React.JSX.Element {
-  const attentionRows = summary.rows.filter((row) => row.result !== "IMPORTED");
+  const attentionRows = summary.rows.filter(
+    (row) => row.result !== "IMPORTED" && row.result !== "ALREADY_EXISTS",
+  );
   const hasAttentionRows = attentionRows.length > 0;
 
   return (
@@ -511,6 +671,13 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <div><dt className="text-muted">เปลี่ยนสถานะผู้ป่วย</dt><dd className="font-semibold">{summary.classificationChanged}</dd></div>
         <div><dt className="text-muted">สถานะต้องตรวจสอบ</dt><dd className="font-semibold">{summary.classificationNeedsReview}</dd></div>
         <div><dt className="text-muted">สถานะไม่ถูกต้อง</dt><dd className="font-semibold">{summary.classificationInvalid}</dd></div>
+        <div><dt className="text-muted">กำหนดผู้ดูแล</dt><dd className="font-semibold">{summary.osmAssigned}</dd></div>
+        <div><dt className="text-muted">ผู้ดูแลตรงกับปัจจุบัน</dt><dd className="font-semibold">{summary.osmAlreadyAssigned}</dd></div>
+        <div><dt className="text-muted">เปลี่ยนผู้ดูแล</dt><dd className="font-semibold">{summary.osmReassigned}</dd></div>
+        <div><dt className="text-muted">ไม่พบผู้ดูแล</dt><dd className="font-semibold">{summary.osmNotFound}</dd></div>
+        <div><dt className="text-muted">ผู้ดูแลชื่อซ้ำ</dt><dd className="font-semibold">{summary.osmAmbiguous}</dd></div>
+        <div><dt className="text-muted">ผู้ดูแลขัดแย้ง</dt><dd className="font-semibold">{summary.osmAssignmentConflict}</dd></div>
+        <div><dt className="text-muted">ต้องใช้เจ้าของโรงพยาบาล</dt><dd className="font-semibold">{summary.osmOwnerRequired}</dd></div>
       </dl>
       {hasAttentionRows ? (
         <div className="mt-5 border-t border-amber-200 pt-4">
@@ -551,7 +718,8 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
       <p className="mt-4 border-t border-border pt-4 text-muted">
-        ระบบบันทึกข้อมูลผู้ป่วยหลัก สถานะผู้ป่วย และข้อมูลตั้งต้นที่มีค่าจาก roster ตามวันที่มีผลร่วมกันของไฟล์
+        ระบบบันทึกข้อมูลผู้ป่วยหลัก สถานะผู้ป่วย ข้อมูลตั้งต้น และผู้ดูแลที่ยืนยันแล้วจาก roster
+        ตามวันที่มีผลร่วมกันของไฟล์
       </p>
       {summary.file?.requirementGatedFields.length ? (
         <p className="mt-1 text-muted">
@@ -566,6 +734,118 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
       </Link>
     </Alert>
   );
+}
+
+function selectedOsmCandidate(
+  reconciliation: PatientImportOsmAssignmentReconciliationBinding,
+  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
+): PatientImportOsmCandidateBinding | null {
+  return selectedCandidates.get(reconciliation.rowNumber) ??
+    (reconciliation.resolutionStatus === "OSM_MATCHED"
+      ? reconciliation.candidates[0] ?? null
+      : null);
+}
+
+function isRowImportable(
+  row: PatientImportPreviewRow,
+  preview: PatientImportPreviewBinding,
+  selectedClassificationRows: ReadonlySet<number>,
+  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
+  selectedReassignmentRows: ReadonlySet<number>,
+): boolean {
+  if (
+    row.classification === "INVALID" ||
+    row.classification === "DUPLICATE_IN_FILE" ||
+    row.classification === "CONFLICT" ||
+    row.classification === "HOSPITAL_MISMATCH" ||
+    row.classification === "UNSUPPORTED_REQUIREMENT"
+  ) {
+    return false;
+  }
+
+  if (row.patientClassification.status === "CLASSIFICATION_DATA_INVALID") {
+    return false;
+  }
+
+  if (
+    row.patientClassification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION" &&
+    !selectedClassificationRows.has(row.rowNumber)
+  ) {
+    return false;
+  }
+
+  if (row.baselineStatus === "BASELINE_CONFLICT" ||
+    row.baselineStatus === "BASELINE_DATA_INVALID" ||
+    row.baselineStatus === "BASELINE_DATE_REQUIRED") {
+    return false;
+  }
+
+  const osm = row.patientOsmAssignment;
+
+  if (
+    osm.resolutionStatus === "OSM_NOT_APPLICABLE" ||
+    osm.assignmentStatus === "OSM_ASSIGNMENT_ALREADY_EXISTS"
+  ) {
+    return true;
+  }
+
+  if (
+    !preview.canManageOsmAssignment ||
+    osm.resolutionStatus === "OSM_NOT_FOUND" ||
+    osm.resolutionStatus === "OSM_DATA_INVALID" ||
+    osm.assignmentStatus === "OSM_OWNER_REQUIRED"
+  ) {
+    return false;
+  }
+
+  const reconciliation = preview.osmAssignmentReconciliations.find(
+    ({ rowNumber }) => rowNumber === row.rowNumber,
+  );
+
+  if (!reconciliation) {
+    return false;
+  }
+
+  const candidate = selectedOsmCandidate(reconciliation, selectedCandidates);
+
+  if (!candidate) {
+    return false;
+  }
+
+  return !osm.currentCaregiver ||
+    candidate.sameAsCurrent ||
+    selectedReassignmentRows.has(row.rowNumber);
+}
+
+function createOsmAssignmentChoices(
+  preview: PatientImportPreviewBinding,
+  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
+  selectedReassignmentRows: ReadonlySet<number>,
+): PatientImportOsmAssignmentChoiceBinding[] {
+  return preview.osmAssignmentReconciliations.flatMap((reconciliation) => {
+    const candidate = selectedOsmCandidate(reconciliation, selectedCandidates);
+
+    if (!candidate) {
+      return [];
+    }
+
+    const explicitReassignment = Boolean(
+      reconciliation.currentCaregiver &&
+        !candidate.sameAsCurrent &&
+        selectedReassignmentRows.has(reconciliation.rowNumber),
+    );
+
+    return [{
+      rowNumber: reconciliation.rowNumber,
+      resolutionStatus: reconciliation.resolutionStatus,
+      candidateToken: candidate.candidateToken,
+      candidateReferenceToken: candidate.candidateReferenceToken,
+      explicitReassignment,
+      ...(explicitReassignment && candidate.reassignmentToken
+        ? { reassignmentToken: candidate.reassignmentToken }
+        : {}),
+    }];
+  });
 }
 
 export function PatientProvisioningWorkspace({
@@ -589,6 +869,12 @@ export function PatientProvisioningWorkspace({
   const [effectiveDate, setEffectiveDate] = useState("");
   const [selectedClassificationReconciliationRows, setSelectedClassificationReconciliationRows] =
     useState<Set<number>>(new Set());
+  const [selectedOsmCandidates, setSelectedOsmCandidates] = useState<
+    Map<number, PatientImportOsmCandidateBinding>
+  >(new Map());
+  const [selectedOsmReassignmentRows, setSelectedOsmReassignmentRows] = useState<Set<number>>(
+    new Set(),
+  );
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
@@ -609,17 +895,20 @@ export function PatientProvisioningWorkspace({
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setSelectedClassificationReconciliationRows(new Set());
+    setSelectedOsmCandidates(new Map());
+    setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
   }, [selectedHospitalId]);
 
-  const hasImportableRows =
-    previewState.status === "SUCCESS" &&
-    previewState.preview.rows.some(
-      (row) =>
-        row.classification === "READY" ||
-        row.classification === "ALREADY_EXISTS" ||
-        (row.classification === "NEEDS_REVIEW" &&
-          selectedClassificationReconciliationRows.has(row.rowNumber)),
+  const hasImportableRows = previewState.status === "SUCCESS" &&
+    previewState.preview.rows.some((row) =>
+      isRowImportable(
+        row,
+        previewState.preview,
+        selectedClassificationReconciliationRows,
+        selectedOsmCandidates,
+        selectedOsmReassignmentRows,
+      ),
     );
 
   const previewIsCurrent =
@@ -636,6 +925,8 @@ export function PatientProvisioningWorkspace({
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setSelectedClassificationReconciliationRows(new Set());
+    setSelectedOsmCandidates(new Map());
+    setSelectedOsmReassignmentRows(new Set());
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -688,6 +979,11 @@ export function PatientProvisioningWorkspace({
     const classificationReconciliationChoices = preview.classificationReconciliations.filter(
       ({ rowNumber }) => selectedClassificationReconciliationRows.has(rowNumber),
     );
+    const osmAssignmentChoices = createOsmAssignmentChoices(
+      preview,
+      selectedOsmCandidates,
+      selectedOsmReassignmentRows,
+    );
 
     startImportTransition(async () => {
       const result = await confirmPatientImportAction(
@@ -700,6 +996,7 @@ export function PatientProvisioningWorkspace({
           preview.effectiveDate,
           preview.importContractVersion,
           classificationReconciliationChoices,
+          osmAssignmentChoices,
         ),
       );
 
@@ -725,6 +1022,39 @@ export function PatientProvisioningWorkspace({
     });
   }
 
+  function selectOsmCandidate(
+    rowNumber: number,
+    candidate: PatientImportOsmCandidateBinding,
+  ): void {
+    setSelectedOsmCandidates((current) => {
+      const next = new Map(current);
+      next.set(rowNumber, candidate);
+      return next;
+    });
+
+    if (candidate.sameAsCurrent) {
+      setSelectedOsmReassignmentRows((current) => {
+        const next = new Set(current);
+        next.delete(rowNumber);
+        return next;
+      });
+    }
+  }
+
+  function toggleOsmReassignment(rowNumber: number, checked: boolean): void {
+    setSelectedOsmReassignmentRows((current) => {
+      const next = new Set(current);
+
+      if (checked) {
+        next.add(rowNumber);
+      } else {
+        next.delete(rowNumber);
+      }
+
+      return next;
+    });
+  }
+
   function changeHospital(hospitalId: string): void {
     importContextVersion.current += 1;
     setSelectedFile(null);
@@ -732,6 +1062,9 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setSelectedClassificationReconciliationRows(new Set());
+    setSelectedOsmCandidates(new Map());
+    setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
   }
@@ -896,9 +1229,15 @@ export function PatientProvisioningWorkspace({
                       </div>
                       <PreviewFileSummary preview={previewState.preview} />
                       <PreviewTable
+                        canManageOsmAssignment={previewState.preview.canManageOsmAssignment}
                         onToggleReconciliation={toggleClassificationReconciliation}
+                        onSelectOsmCandidate={selectOsmCandidate}
+                        onToggleOsmReassignment={toggleOsmReassignment}
+                        osmAssignmentReconciliations={previewState.preview.osmAssignmentReconciliations}
                         reconciliations={previewState.preview.classificationReconciliations}
                         rows={previewState.preview.rows}
+                        selectedOsmCandidates={selectedOsmCandidates}
+                        selectedOsmReassignmentRows={selectedOsmReassignmentRows}
                         selectedReconciliationRows={selectedClassificationReconciliationRows}
                       />
                     </div>
