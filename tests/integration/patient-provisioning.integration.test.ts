@@ -42,6 +42,8 @@ const nationalIds = {
 let actorSequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientClassificationHistory.deleteMany();
+  await prisma.patientClassification.deleteMany();
   await prisma.patientBaseline.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
@@ -563,8 +565,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       baselineStatus: "BASELINE_READY",
     });
     expect(preview.rows[0].requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "diabetesClassification", "osmCaregiverName"]),
+      expect.arrayContaining(["dateOfBirth", "osmCaregiverName"]),
     );
+    expect(preview.rows[0].requirementGatedFields).not.toContain("diabetesClassification");
     expect(preview.rows[0].requirementGatedFields).not.toContain("weight");
 
     const summary = await importPatientProvisioning(
@@ -574,10 +577,16 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       {},
       { effectiveDate: "2026-08-01" },
     );
-    expect(summary).toMatchObject({ imported: 1, needsReview: 0, hospitalMismatch: 0 });
+    expect(summary).toMatchObject({
+      imported: 1,
+      needsReview: 0,
+      hospitalMismatch: 0,
+      classificationCreated: 1,
+    });
     expect(summary.file?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "diabetesClassification"]),
+      expect.arrayContaining(["dateOfBirth"]),
     );
+    expect(summary.file?.requirementGatedFields).not.toContain("diabetesClassification");
     expect(summary.file?.requirementGatedFields).not.toContain("weight");
     const relationshipRecord = await prisma.patientHospitalRelationship.findFirstOrThrow({
       where: { hospitalId: hospital.id },

@@ -293,6 +293,7 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
     const item = firstPage.items[0];
     expect(item).toBeDefined();
     expect(Object.keys(item ?? {}).sort()).toEqual([
+      "classification",
       "displayName",
       "hospital",
       "hospitalNumber",

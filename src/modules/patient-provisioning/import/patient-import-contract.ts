@@ -1,3 +1,5 @@
+import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
+
 import type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 
 export const PATIENT_IMPORT_FIELD_KEYS = [
@@ -47,7 +49,7 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d2-baseline-v1" as const;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d3-classification-v1" as const;
 
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
   "weight",
@@ -65,10 +67,17 @@ export function isPatientImportBaselineField(
   return PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baselineField) => baselineField === field);
 }
 
+export function isPatientImportClassificationField(
+  field: PatientImportFieldKey,
+): field is "diabetesClassification" {
+  return field === "diabetesClassification";
+}
+
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
   | "PARSED_FOR_INITIAL_BASELINE"
+  | "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
   | "PARSED_REQUIREMENT_GATED"
   | "UNKNOWN_SOURCE_HEADER"
   | "INVALID"
@@ -86,7 +95,8 @@ export type PatientImportDiagnosticCode =
   | "FORMULA_VALUE"
   | "EXCEL_ERROR"
   | "UNIT_NOT_CONFIRMED"
-  | "DUPLICATE_SOURCE_ROW";
+  | "DUPLICATE_SOURCE_ROW"
+  | "CLASSIFICATION_DATA_INVALID";
 
 export type PatientImportDiagnostic = {
   code: PatientImportDiagnosticCode;
@@ -180,7 +190,7 @@ export type CanonicalPatientImportRow = {
     height: number | null;
     heightUnit: "cm" | "m" | null;
     waistCircumference: number | null;
-    diabetesClassification: string | null;
+    diabetesClassification: PatientClassificationType | null;
     bloodSugar: number | null;
     bloodSugarDtx: number | null;
     hba1c: number | null;

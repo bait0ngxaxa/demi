@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createPatientImportClassificationReconciliationBinding,
   createPatientImportPreviewBinding,
   hashPatientImportFile,
+  matchesPatientImportClassificationReconciliationBinding,
   matchesPatientImportFileFingerprint,
   matchesPatientImportPreviewBinding,
 } from "./patient-import-file-binding";
@@ -99,6 +101,44 @@ describe("patient import file binding", () => {
         "2026-08-01",
         "different-contract",
       ),
+    ).toBe(false);
+  });
+
+  it("binds each explicit classification reconciliation to its preview context", async () => {
+    const fingerprint = await hashPatientImportFile(createFileSource("file-classification"));
+    const input = {
+      fileFingerprint: fingerprint,
+      targetHospitalId,
+      actorUserId,
+      effectiveDate: "2026-08-01",
+      importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      rowNumber: 7,
+      currentClassification: "RISK" as const,
+      sourceClassification: "DIABETES" as const,
+    };
+    const binding = createPatientImportClassificationReconciliationBinding(input);
+
+    expect(matchesPatientImportClassificationReconciliationBinding({ binding, ...input })).toBe(true);
+    expect(
+      matchesPatientImportClassificationReconciliationBinding({
+        binding,
+        ...input,
+        rowNumber: 8,
+      }),
+    ).toBe(false);
+    expect(
+      matchesPatientImportClassificationReconciliationBinding({
+        binding,
+        ...input,
+        currentClassification: "DIABETES",
+      }),
+    ).toBe(false);
+    expect(
+      matchesPatientImportClassificationReconciliationBinding({
+        binding,
+        ...input,
+        sourceClassification: "RISK",
+      }),
     ).toBe(false);
   });
 });

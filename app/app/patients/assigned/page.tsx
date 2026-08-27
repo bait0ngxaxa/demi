@@ -10,6 +10,7 @@ import {
 import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
+  type PatientDirectoryClassificationFilter,
   type PatientDirectoryLookupType,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
@@ -65,6 +66,11 @@ export default async function AssignedPatientDirectoryPage({
       ? PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
   const displayValue = requestedValue.length <= maxLength ? requestedValue : "";
+  const requestedClassification = firstSearchParam(params.classification);
+  const classificationFilter: PatientDirectoryClassificationFilter =
+    requestedClassification === "RISK" || requestedClassification === "DIABETES"
+      ? requestedClassification
+      : "ALL";
 
   let result: PatientAssignedDirectoryPage | null = null;
   let errorMessage: string | null = null;
@@ -74,6 +80,7 @@ export default async function AssignedPatientDirectoryPage({
       lookupType,
       value: requestedValue,
       page: firstSearchParam(params.page) ?? "1",
+      classification: classificationFilter,
     });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
@@ -92,6 +99,7 @@ export default async function AssignedPatientDirectoryPage({
       errorMessage={errorMessage}
       lookupType={result?.lookupType ?? lookupType}
       result={result}
+      classificationFilter={result?.classificationFilter ?? classificationFilter}
       value={result?.value ?? displayValue}
     />
   );

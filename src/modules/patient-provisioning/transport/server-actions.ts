@@ -9,6 +9,7 @@ import { readPatientImportCandidates, type PatientImportUpload } from "../adapte
 import {
   patientImportFileSchema,
   patientImportConfirmSchema,
+  patientImportClassificationReconciliationChoicesSchema,
   patientImportEffectiveDateSchema,
   patientProvisionFormSchema,
 } from "../schemas/patient-provisioning-schemas";
@@ -21,7 +22,9 @@ import {
 } from "../services/patient-provisioning-service";
 import {
   createPatientImportPreviewBinding,
+  createPatientImportClassificationReconciliationBinding,
   hashPatientImportFile,
+  matchesPatientImportClassificationReconciliationBinding,
   matchesPatientImportFileFingerprint,
   matchesPatientImportPreviewBinding,
 } from "./patient-import-file-binding";
@@ -31,6 +34,10 @@ import type {
   PatientImportPreviewActionState,
   PatientProvisionActionState,
 } from "./action-state";
+import type {
+  PatientImportClassificationReconciliation,
+  PatientImportPreview,
+} from "../services/patient-provisioning-service";
 
 function getString(formData: FormData, field: string): string {
   const value = formData.get(field);
@@ -239,6 +246,7 @@ function getImportPreviewBindingRequest(formData: FormData): {
   file: unknown;
   effectiveDate: OptionalFormString;
   importContractVersion: OptionalFormString;
+  classificationReconciliationChoices: OptionalFormString;
 } {
   const request = getImportRequest(formData);
 
@@ -248,6 +256,10 @@ function getImportPreviewBindingRequest(formData: FormData): {
     fileFingerprint: getString(formData, "fileFingerprint"),
     previewBinding: getString(formData, "previewBinding"),
     importContractVersion: getOptionalString(formData, "importContractVersion"),
+    classificationReconciliationChoices: getOptionalString(
+      formData,
+      "classificationReconciliationChoices",
+    ),
   };
 }
 
@@ -286,6 +298,96 @@ async function assertPatientImportPreviewBinding(input: {
 
   if (!matchesPatientImportFileFingerprint(actualFingerprint, input.fileFingerprint)) {
     throw new PatientImportPreviewBindingError();
+  }
+}
+
+type PatientImportClassificationReconciliationChoice = ReturnType<
+  typeof patientImportClassificationReconciliationChoicesSchema.parse
+>[number];
+
+type BoundPatientImportClassificationReconciliation = PatientImportClassificationReconciliation & {
+  confirmationToken: string;
+};
+
+function parseClassificationReconciliationChoices(
+  value: string | undefined,
+):
+  | { success: true; data: PatientImportClassificationReconciliationChoice[] }
+  | { success: false } {
+  if (value === undefined) {
+    return { success: true, data: [] };
+  }
+
+  let decoded: unknown;
+
+  try {
+    decoded = JSON.parse(value) as unknown;
+  } catch {
+    return { success: false };
+  }
+
+  const parsed = patientImportClassificationReconciliationChoicesSchema.safeParse(decoded);
+
+  return parsed.success ? { success: true, data: parsed.data } : { success: false };
+}
+
+function toBoundClassificationReconciliations(
+  preview: PatientImportPreview,
+  fileFingerprint: string,
+  targetHospitalId: string,
+  actorUserId: string,
+): BoundPatientImportClassificationReconciliation[] {
+  return preview.classificationReconciliations.map((reconciliation) => ({
+    ...reconciliation,
+    confirmationToken: createPatientImportClassificationReconciliationBinding({
+      fileFingerprint,
+      targetHospitalId,
+      actorUserId,
+      effectiveDate: preview.effectiveDate,
+      importContractVersion: preview.importContractVersion,
+      rowNumber: reconciliation.rowNumber,
+      currentClassification: reconciliation.currentClassification,
+      sourceClassification: reconciliation.sourceClassification,
+    }),
+  }));
+}
+
+function assertClassificationReconciliationChoices(
+  preview: PatientImportPreview,
+  choices: readonly PatientImportClassificationReconciliationChoice[],
+  input: {
+    fileFingerprint: string;
+    targetHospitalId: string;
+    actorUserId: string;
+  },
+): void {
+  for (const choice of choices) {
+    const row = preview.rows.find(({ rowNumber }) => rowNumber === choice.rowNumber);
+
+    if (!row || row.patientClassification.sourceClassification !== choice.sourceClassification) {
+      throw new PatientImportPreviewBindingError();
+    }
+
+    const currentClassification = row.patientClassification.currentClassification;
+    const currentIsExpected = currentClassification === choice.currentClassification;
+    const currentAlreadyMatchesSource = currentClassification === choice.sourceClassification;
+
+    if (
+      (!currentIsExpected && !currentAlreadyMatchesSource) ||
+      !matchesPatientImportClassificationReconciliationBinding({
+        binding: choice.confirmationToken,
+        fileFingerprint: input.fileFingerprint,
+        targetHospitalId: input.targetHospitalId,
+        actorUserId: input.actorUserId,
+        effectiveDate: preview.effectiveDate,
+        importContractVersion: preview.importContractVersion,
+        rowNumber: choice.rowNumber,
+        currentClassification: choice.currentClassification,
+        sourceClassification: choice.sourceClassification,
+      })
+    ) {
+      throw new PatientImportPreviewBindingError();
+    }
   }
 }
 
@@ -337,6 +439,12 @@ export async function previewPatientImportAction(
           parsedEffectiveDate.data ?? null,
           PATIENT_IMPORT_CONTRACT_VERSION,
         ),
+        classificationReconciliations: toBoundClassificationReconciliations(
+          preview,
+          fileFingerprint,
+          parsed.data.targetHospitalId,
+          actor.userId,
+        ),
       },
     };
   } catch (error: unknown) {
@@ -362,6 +470,7 @@ export async function confirmPatientImportAction(
       previewBinding: request.previewBinding,
       effectiveDate: request.effectiveDate.value,
       importContractVersion: request.importContractVersion.value,
+      classificationReconciliationChoices: request.classificationReconciliationChoices.value,
     });
 
     if (
@@ -377,6 +486,18 @@ export async function confirmPatientImportAction(
       };
     }
 
+    const parsedChoices = parseClassificationReconciliationChoices(
+      parsed.data.classificationReconciliationChoices,
+    );
+
+    if (!parsedChoices.success) {
+      return {
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบรายการยืนยันเปลี่ยนสถานะผู้ป่วยแล้วลองใหม่อีกครั้ง",
+      };
+    }
+
     await assertPatientImportPreviewBinding({
       actorUserId: actor.userId,
       targetHospitalId: parsed.data.targetHospitalId,
@@ -389,6 +510,21 @@ export async function confirmPatientImportAction(
     });
 
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
+    const preview = await previewPatientProvisioning(
+      actor,
+      parsed.data.targetHospitalId,
+      candidates,
+      undefined,
+      {
+        effectiveDate: parsed.data.effectiveDate ?? null,
+        importContractVersion: parsed.data.importContractVersion,
+      },
+    );
+    assertClassificationReconciliationChoices(preview, parsedChoices.data, {
+      fileFingerprint: parsed.data.fileFingerprint,
+      targetHospitalId: parsed.data.previewTargetHospitalId,
+      actorUserId: actor.userId,
+    });
     const summary = await importPatientProvisioning(
       actor,
       parsed.data.targetHospitalId,
@@ -397,6 +533,11 @@ export async function confirmPatientImportAction(
       {
         effectiveDate: parsed.data.effectiveDate ?? null,
         importContractVersion: parsed.data.importContractVersion,
+        classificationReconciliationChoices: parsedChoices.data.map((choice) => ({
+          rowNumber: choice.rowNumber,
+          currentClassification: choice.currentClassification,
+          sourceClassification: choice.sourceClassification,
+        })),
       },
     );
 

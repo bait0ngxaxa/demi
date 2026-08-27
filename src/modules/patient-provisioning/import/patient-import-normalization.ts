@@ -5,6 +5,7 @@ import type {
   PatientImportDateFormat,
   PatientImportDiagnosticCode,
 } from "./patient-import-contract";
+import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 
 export type CellNormalizationResult<T> = {
   value: T | null;
@@ -128,6 +129,55 @@ export function normalizeTextCell(cell: Cell): CellNormalizationResult<string> {
   return isMissingText(value)
     ? { value: null, diagnostics: [] }
     : { value, diagnostics: [] };
+}
+
+function normalizePatientClassificationText(value: string): string {
+  return value
+    .normalize("NFC")
+    .replace(/[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+/gu, " ")
+    .trim()
+    .replace(/^[\s"“”‘’.,;:!?]+/gu, "")
+    .replace(/[\s"“”‘’.,;:!?]+$/gu, "")
+    .trim()
+    .toLocaleLowerCase("th-TH");
+}
+
+export function normalizePatientClassificationCell(
+  cell: Cell,
+): CellNormalizationResult<PatientClassificationType> {
+  const state = readCellState(cell);
+
+  if (state.kind === "missing") {
+    return { value: null, diagnostics: [] };
+  }
+
+  if (state.kind === "unsupported") {
+    const diagnostics: PatientImportDiagnosticCode[] = [
+      ...diagnosticsForUnsupportedCell(cell),
+      "CLASSIFICATION_DATA_INVALID",
+    ];
+
+    return {
+      value: null,
+      diagnostics: [...new Set(diagnostics)],
+    };
+  }
+
+  if (state.kind === "date" || state.kind === "number") {
+    return { value: null, diagnostics: ["CLASSIFICATION_DATA_INVALID"] };
+  }
+
+  const normalized = normalizePatientClassificationText(state.text);
+
+  if (normalized === "กลุ่มเสี่ยง") {
+    return { value: "RISK", diagnostics: [] };
+  }
+
+  if (normalized === "เบาหวาน") {
+    return { value: "DIABETES", diagnostics: [] };
+  }
+
+  return { value: null, diagnostics: ["CLASSIFICATION_DATA_INVALID"] };
 }
 
 export function normalizeNationalIdCell(cell: Cell): CellNormalizationResult<string> {

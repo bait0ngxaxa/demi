@@ -10,13 +10,16 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
+  type PatientDirectoryClassificationFilter,
   type PatientDirectoryLookupType,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
+import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
   PatientDirectoryItem,
   PatientDirectoryPage,
   PatientDirectoryScope,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
+import type { PatientClassificationCounts } from "@/modules/patient-classification/services/patient-classification-query-service";
 
 type PatientDirectoryViewProps = {
   scopes: readonly PatientDirectoryScope[];
@@ -25,6 +28,8 @@ type PatientDirectoryViewProps = {
   value: string;
   result: PatientDirectoryPage | null;
   errorMessage: string | null;
+  classificationFilter: PatientDirectoryClassificationFilter;
+  classificationCounts: PatientClassificationCounts;
 };
 
 function directoryUrl(input: {
@@ -32,6 +37,7 @@ function directoryUrl(input: {
   lookupType: PatientDirectoryLookupType;
   value: string;
   page: number;
+  classification: PatientDirectoryClassificationFilter;
 }): string {
   const params = new URLSearchParams({
     hospitalId: input.hospitalId,
@@ -44,6 +50,10 @@ function directoryUrl(input: {
 
   if (input.page > 1) {
     params.set("page", String(input.page));
+  }
+
+  if (input.classification !== "ALL") {
+    params.set("classification", input.classification);
   }
 
   return `/app/patients?${params.toString()}`;
@@ -78,6 +88,12 @@ function PatientDirectoryList({
                   <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
                   <dd className="font-semibold text-text">{displayHospitalNumber(item.hospitalNumber)}</dd>
                 </dl>
+                <div className="shrink-0 sm:text-right">
+                  <p className="text-xs text-text-muted">สถานะผู้ป่วย</p>
+                  <StatusBadge variant={item.classification ? "info" : "neutral"}>
+                    {getPatientClassificationLabel(item.classification)}
+                  </StatusBadge>
+                </div>
               </div>
             </Link>
           </li>
@@ -113,6 +129,7 @@ function PatientDirectoryPagination({
               lookupType: result.lookupType,
               value: result.value,
               page: result.page - 1,
+              classification: result.classificationFilter,
             })}
           >
             ก่อนหน้า
@@ -130,6 +147,7 @@ function PatientDirectoryPagination({
               lookupType: result.lookupType,
               value: result.value,
               page: result.page + 1,
+              classification: result.classificationFilter,
             })}
           >
             ถัดไป
@@ -151,6 +169,8 @@ export function PatientDirectoryView({
   value,
   result,
   errorMessage,
+  classificationFilter,
+  classificationCounts,
 }: PatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
   const maxLength =
@@ -205,7 +225,7 @@ export function PatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวภายในโรงพยาบาลที่เลือก
           </p>
-          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end" method="get">
+          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] lg:items-end" method="get">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
@@ -223,6 +243,14 @@ export function PatientDirectoryView({
                 placeholder={lookupType === "HOSPITAL_NUMBER" ? "เช่น HN-001" : "เช่น สมชาย"}
                 type="search"
               />
+            </label>
+            <label className="block space-y-2 text-sm font-semibold">
+              <span>สถานะผู้ป่วย</span>
+              <Select defaultValue={classificationFilter} name="classification">
+                <option value="ALL">ทั้งหมด</option>
+                <option value="RISK">กลุ่มเสี่ยง</option>
+                <option value="DIABETES">เบาหวาน</option>
+              </Select>
             </label>
             <Button type="submit">ค้นหา</Button>
           </form>
@@ -251,6 +279,25 @@ export function PatientDirectoryView({
               <p className="text-sm text-text-muted">พบ {result.total} รายการ</p>
             </div>
 
+            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="border-l-2 border-brand-soft pl-3">
+                <dt className="text-xs text-text-muted">ทั้งหมด</dt>
+                <dd className="mt-1 text-lg font-semibold text-text">{classificationCounts.total}</dd>
+              </div>
+              <div className="border-l-2 border-brand-soft pl-3">
+                <dt className="text-xs text-text-muted">กลุ่มเสี่ยง</dt>
+                <dd className="mt-1 text-lg font-semibold text-text">{classificationCounts.risk}</dd>
+              </div>
+              <div className="border-l-2 border-brand-soft pl-3">
+                <dt className="text-xs text-text-muted">เบาหวาน</dt>
+                <dd className="mt-1 text-lg font-semibold text-text">{classificationCounts.diabetes}</dd>
+              </div>
+              <div className="border-l-2 border-brand-soft pl-3">
+                <dt className="text-xs text-text-muted">ยังไม่มีสถานะ</dt>
+                <dd className="mt-1 text-lg font-semibold text-text">{classificationCounts.unclassified}</dd>
+              </div>
+            </dl>
+
             {result.items.length > 0 ? (
               <div className="mt-4 space-y-5">
                 <PatientDirectoryList items={result.items} />
@@ -269,7 +316,7 @@ export function PatientDirectoryView({
           </section>
         ) : null}
 
-        {result && result.value ? (
+        {result && (result.value || result.classificationFilter !== "ALL") ? (
           <Link
             className="inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
             href={`/app/patients?hospitalId=${encodeURIComponent(result.hospital.hospitalId)}`}

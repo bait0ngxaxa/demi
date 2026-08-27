@@ -11,6 +11,7 @@ import {
   patientProvisionScopeSchema,
 } from "../schemas/patient-provisioning-schemas";
 import {
+  isPatientImportClassificationField,
   isPatientImportBaselineField,
   PATIENT_IMPORT_FIELD_KEYS,
 } from "../import/patient-import-contract";
@@ -39,6 +40,7 @@ import {
   normalizeNationalIdCell,
   normalizeNumericCell,
   normalizePhoneCell,
+  normalizePatientClassificationCell,
   normalizeTextCell,
 } from "../import/patient-import-normalization";
 
@@ -79,6 +81,7 @@ const diagnosticMessages: Readonly<Record<PatientImportDiagnosticCode, string>> 
   AMBIGUOUS_VALUE: "ค่าบางรายการตีความได้มากกว่าหนึ่งแบบ",
   REQUIREMENT_GATED: "ตรวจพบข้อมูลเพิ่มเติมที่ยังไม่บันทึกในระยะนี้",
   UNSUPPORTED_REQUIREMENT: "ข้อมูลนี้ยังไม่มีขอบเขตการบันทึกที่ยืนยันแล้ว",
+  CLASSIFICATION_DATA_INVALID: "ค่ากลุ่มสถานะผู้ป่วยไม่ใช่ค่าที่รองรับ",
   FORMULA_VALUE: "ไม่รับค่าจากสูตร Excel เป็นข้อมูลอ้างอิงโดยอัตโนมัติ",
   EXCEL_ERROR: "เซลล์ Excel มีค่าผิดพลาด",
   UNIT_NOT_CONFIRMED: "ยังไม่ยืนยันหน่วยของข้อมูล",
@@ -291,7 +294,9 @@ function assessmentStatus(
     ? "SUPPORTED_FOR_CURRENT_PROVISIONING"
     : isPatientImportBaselineField(field)
       ? "PARSED_FOR_INITIAL_BASELINE"
-    : "PARSED_REQUIREMENT_GATED";
+      : isPatientImportClassificationField(field)
+        ? "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
+        : "PARSED_REQUIREMENT_GATED";
 }
 
 function updateFieldAssessment(
@@ -306,6 +311,7 @@ function updateFieldAssessment(
     NOT_PRESENT: 0,
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
     PARSED_FOR_INITIAL_BASELINE: 2,
+    SUPPORTED_FOR_PATIENT_CLASSIFICATION: 2,
     PARSED_REQUIREMENT_GATED: 1,
     UNKNOWN_SOURCE_HEADER: 3,
     INVALID: 4,
@@ -341,7 +347,12 @@ function setRequirementDiagnostic(
   sourceHeader: string,
   value: string | number | null,
 ): void {
-  if (!CORE_FIELDS.has(field) && !isPatientImportBaselineField(field) && value !== null) {
+  if (
+    !CORE_FIELDS.has(field) &&
+    !isPatientImportBaselineField(field) &&
+    !isPatientImportClassificationField(field) &&
+    value !== null
+  ) {
     diagnostics.push(createDiagnostic("REQUIREMENT_GATED", field, sourceHeader));
   }
 }
@@ -410,7 +421,7 @@ function readCanonicalRow(
   let height: number | null = null;
   let heightUnit: "cm" | "m" | null = null;
   let waistCircumference: number | null = null;
-  let diabetesClassification: string | null = null;
+  let diabetesClassification: CanonicalPatientImportRow["clinicalCandidates"]["diabetesClassification"] = null;
   let bloodSugar: number | null = null;
   let bloodSugarDtx: number | null = null;
   let hba1c: number | null = null;
@@ -462,6 +473,21 @@ function readCanonicalRow(
     setRequirementDiagnostic(diagnostics, field, binding.sourceHeader, result.value);
   };
 
+  const parseClassificationField = (): void => {
+    const field = "diabetesClassification" as const;
+    const binding = bindingsByField.get(field);
+
+    if (!binding) {
+      return;
+    }
+
+    const result = normalizePatientClassificationCell(row.getCell(binding.columnNumber));
+    diabetesClassification = result.value;
+    const status = assessmentStatus(field, result.diagnostics);
+    updateFieldAssessment(assessments, field, binding.sourceHeader, status, result.diagnostics);
+    addDiagnostics(diagnostics, field, binding.sourceHeader, result.diagnostics);
+  };
+
   const parseNumericField = (
     field: PatientImportFieldKey,
     target: (value: number | null) => void,
@@ -503,7 +529,7 @@ function readCanonicalRow(
   parseTextField("hospitalNumber", (value) => { hospitalNumber = value; });
   parseTextField("gender", (value) => { gender = value; });
   parseTextField("phoneNumber", (value) => { phoneNumber = value; });
-  parseTextField("diabetesClassification", (value) => { diabetesClassification = value; });
+  parseClassificationField();
   parseTextField("hospitalName", (value) => { hospitalName = value; });
   parseTextField("subHospitalName", (value) => { subHospitalName = value; });
   parseTextField("organizationCombinedText", (value) => { organizationCombinedText = value; });

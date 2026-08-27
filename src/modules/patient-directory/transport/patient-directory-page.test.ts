@@ -6,12 +6,14 @@ import { ValidationError } from "@/shared/errors/application-error";
 const {
   mockedConnection,
   mockedFindPatientDirectory,
+  mockedGetPatientClassificationCounts,
   mockedGetProtectedApplicationActor,
   mockedListPatientDirectoryScopes,
   mockedRedirect,
 } = vi.hoisted(() => ({
   mockedConnection: vi.fn(),
   mockedFindPatientDirectory: vi.fn(),
+  mockedGetPatientClassificationCounts: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
   mockedListPatientDirectoryScopes: vi.fn(),
   mockedRedirect: vi.fn(),
@@ -32,6 +34,9 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("@/modules/patient-directory/services/patient-directory-query-service", () => ({
   findPatientDirectory: mockedFindPatientDirectory,
   listPatientDirectoryScopes: mockedListPatientDirectoryScopes,
+}));
+vi.mock("@/modules/patient-classification/services/patient-classification-query-service", () => ({
+  getPatientClassificationCounts: mockedGetPatientClassificationCounts,
 }));
 
 const scopes = [
@@ -65,6 +70,12 @@ describe("Patient Directory page Hospital context", () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "actor" });
     mockedListPatientDirectoryScopes.mockResolvedValue(scopes);
     mockedFindPatientDirectory.mockResolvedValue(result);
+    mockedGetPatientClassificationCounts.mockResolvedValue({
+      total: 0,
+      risk: 0,
+      diabetes: 0,
+      unclassified: 0,
+    });
     mockedRedirect.mockImplementation((location: string): never => {
       throw new Error(`REDIRECT:${location}`);
     });

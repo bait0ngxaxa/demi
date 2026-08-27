@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
   PatientImportClassification,
   PatientImportBaselineStatus,
@@ -32,6 +33,8 @@ import {
   initialPatientImportPreviewActionState,
   initialPatientProvisionActionState,
   type PatientImportActionState,
+  type PatientImportPreviewBinding,
+  type PatientImportPreviewReconciliationBinding,
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
   type PatientProvisionResultState,
@@ -187,12 +190,21 @@ function createPatientImportConfirmFormData(
   previewBinding: string,
   effectiveDate: string | null,
   importContractVersion: string,
+  classificationReconciliationChoices: readonly PatientImportPreviewReconciliationBinding[],
 ): FormData {
   const formData = createPatientImportFormData(file, targetHospitalId, effectiveDate ?? "");
   formData.set("previewTargetHospitalId", previewTargetHospitalId);
   formData.set("fileFingerprint", fileFingerprint);
   formData.set("previewBinding", previewBinding);
   formData.set("importContractVersion", importContractVersion);
+
+  if (classificationReconciliationChoices.length > 0) {
+    formData.set(
+      "classificationReconciliationChoices",
+      JSON.stringify(classificationReconciliationChoices),
+    );
+  }
+
   return formData;
 }
 
@@ -268,7 +280,17 @@ function ProvisionResult({
   );
 }
 
-function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.Element {
+function PreviewTable({
+  rows,
+  reconciliations,
+  selectedReconciliationRows,
+  onToggleReconciliation,
+}: {
+  rows: PatientImportPreviewRow[];
+  reconciliations: PatientImportPreviewBinding["classificationReconciliations"];
+  selectedReconciliationRows: ReadonlySet<number>;
+  onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
+}): React.JSX.Element {
   if (rows.length === 0) {
     return (
       <p className="rounded-panel border border-dashed border-border bg-surface-muted px-4 py-8 text-center text-sm leading-6 text-text-muted">
@@ -276,6 +298,10 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
       </p>
     );
   }
+
+  const reconciliationByRow = new Map(
+    reconciliations.map((reconciliation) => [reconciliation.rowNumber, reconciliation]),
+  );
 
   return (
     <div className="overflow-x-auto rounded-panel border border-border">
@@ -315,6 +341,41 @@ function PreviewTable({ rows }: { rows: PatientImportPreviewRow[] }): React.JSX.
                     ตรวจพบเพิ่มเติม: {fieldLabels(row.requirementGatedFields)} (ยังไม่บันทึก)
                   </p>
                 ) : null}
+                {row.patientClassification.sourceClassification &&
+                row.patientClassification.status !==
+                  "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION" ? (
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    สถานะผู้ป่วยจากไฟล์: {getPatientClassificationLabel(row.patientClassification.sourceClassification)}
+                  </p>
+                ) : null}
+                {row.patientClassification.status ===
+                  "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION" ? (
+                  <div className="mt-3 rounded-control border border-amber-300 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+                    <p className="font-semibold">สถานะปัจจุบันของผู้ป่วยแตกต่างจากไฟล์</p>
+                    <p className="mt-1">
+                      สถานะเดิม: {getPatientClassificationLabel(row.patientClassification.currentClassification)}
+                    </p>
+                    <p>
+                      สถานะจากไฟล์: {getPatientClassificationLabel(row.patientClassification.sourceClassification)}
+                    </p>
+                    {reconciliationByRow.has(row.rowNumber) ? (
+                      <label className="mt-2 flex items-start gap-2 font-normal">
+                        <input
+                          checked={selectedReconciliationRows.has(row.rowNumber)}
+                          className="mt-1 size-4 accent-brand-strong"
+                          onChange={(event) =>
+                            onToggleReconciliation(row.rowNumber, event.currentTarget.checked)
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          ยืนยันเปลี่ยนสถานะผู้ป่วยรายนี้เป็น “
+                          {getPatientClassificationLabel(row.patientClassification.sourceClassification)}”
+                        </span>
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
               </td>
             </tr>
           ))}
@@ -342,6 +403,19 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
     (row) =>
       row.baselineStatus === "BASELINE_DATA_INVALID" ||
       row.baselineStatus === "BASELINE_DATE_REQUIRED",
+  ).length;
+  const classificationReady = rows.filter(
+    (row) => row.patientClassification.status === "CLASSIFICATION_READY",
+  ).length;
+  const classificationExisting = rows.filter(
+    (row) => row.patientClassification.status === "CLASSIFICATION_ALREADY_EXISTS",
+  ).length;
+  const classificationConflicts = rows.filter(
+    (row) =>
+      row.patientClassification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+  ).length;
+  const classificationInvalid = rows.filter(
+    (row) => row.patientClassification.status === "CLASSIFICATION_DATA_INVALID",
   ).length;
 
   return (
@@ -373,10 +447,27 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
         ) : null}
       </div>
       <div className="mt-4 border-t border-border pt-4">
+        <p className="font-semibold text-ink">สถานะปัจจุบันของผู้ป่วย</p>
+        <p className="mt-1 text-muted">
+          สถานะนี้เป็นสถานะปัจจุบันของผู้ป่วยและใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
+        </p>
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+          <div><dt className="text-muted">พร้อมบันทึก</dt><dd className="font-semibold">{classificationReady}</dd></div>
+          <div><dt className="text-muted">ตรงกับปัจจุบัน</dt><dd className="font-semibold">{classificationExisting}</dd></div>
+          <div><dt className="text-muted">ต้องยืนยันการเปลี่ยน</dt><dd className="font-semibold">{classificationConflicts}</dd></div>
+          <div><dt className="text-muted">ค่าไม่ถูกต้อง</dt><dd className="font-semibold">{classificationInvalid}</dd></div>
+        </dl>
+        {classificationConflicts > 0 ? (
+          <p className="mt-3 font-semibold text-amber-900" role="alert">
+            กรุณาติ๊กยืนยันเป็นรายแถวสำหรับสถานะที่แตกต่างก่อนนำเข้า ระบบจะไม่เปลี่ยนสถานะโดยอัตโนมัติ
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-4 border-t border-border pt-4">
         <p className="font-semibold text-ink">ข้อมูลที่จะนำเข้าในขั้นตอนนี้</p>
         <p className="mt-1 text-muted">
           เลขบัตรประชาชน ชื่อ นามสกุล HN (ถ้ามี) และข้อมูลตั้งต้นที่รองรับ ได้แก่ น้ำหนัก (kg)
-          ส่วนสูง (cm) รอบเอว (cm) DTX (mg/dL) และ HbA1c (%)
+          ส่วนสูง (cm) รอบเอว (cm) DTX (mg/dL) HbA1c (%) และสถานะผู้ป่วยที่รองรับ
         </p>
       </div>
       {file?.requirementGatedFields.length ? (
@@ -415,6 +506,11 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <div><dt className="text-muted">สร้างข้อมูลตั้งต้น</dt><dd className="font-semibold">{summary.baselineCreated}</dd></div>
         <div><dt className="text-muted">ข้อมูลตั้งต้นมีอยู่แล้ว</dt><dd className="font-semibold">{summary.baselineAlreadyExists}</dd></div>
         <div><dt className="text-muted">ข้อมูลตั้งต้นขัดแย้ง</dt><dd className="font-semibold">{summary.baselineConflict}</dd></div>
+        <div><dt className="text-muted">สร้างสถานะผู้ป่วย</dt><dd className="font-semibold">{summary.classificationCreated}</dd></div>
+        <div><dt className="text-muted">สถานะตรงกับปัจจุบัน</dt><dd className="font-semibold">{summary.classificationAlreadyExists}</dd></div>
+        <div><dt className="text-muted">เปลี่ยนสถานะผู้ป่วย</dt><dd className="font-semibold">{summary.classificationChanged}</dd></div>
+        <div><dt className="text-muted">สถานะต้องตรวจสอบ</dt><dd className="font-semibold">{summary.classificationNeedsReview}</dd></div>
+        <div><dt className="text-muted">สถานะไม่ถูกต้อง</dt><dd className="font-semibold">{summary.classificationInvalid}</dd></div>
       </dl>
       {hasAttentionRows ? (
         <div className="mt-5 border-t border-amber-200 pt-4">
@@ -455,7 +551,7 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
         <p className="mt-4 border-t border-success/20 pt-4 text-muted">ทุกแถวที่ส่งเข้าระบบบันทึกสำเร็จ</p>
       )}
       <p className="mt-4 border-t border-border pt-4 text-muted">
-        ระบบบันทึกข้อมูลผู้ป่วยหลักและข้อมูลตั้งต้นที่มีค่าจาก roster ตามวันที่มีผลร่วมกันของไฟล์
+        ระบบบันทึกข้อมูลผู้ป่วยหลัก สถานะผู้ป่วย และข้อมูลตั้งต้นที่มีค่าจาก roster ตามวันที่มีผลร่วมกันของไฟล์
       </p>
       {summary.file?.requirementGatedFields.length ? (
         <p className="mt-1 text-muted">
@@ -491,6 +587,8 @@ export function PatientProvisioningWorkspace({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [effectiveDate, setEffectiveDate] = useState("");
+  const [selectedClassificationReconciliationRows, setSelectedClassificationReconciliationRows] =
+    useState<Set<number>>(new Set());
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
@@ -510,13 +608,18 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setSelectedClassificationReconciliationRows(new Set());
     setFileInputKey((current) => current + 1);
   }, [selectedHospitalId]);
 
-  const hasReadyRows =
+  const hasImportableRows =
     previewState.status === "SUCCESS" &&
     previewState.preview.rows.some(
-      (row) => row.classification === "READY" || row.classification === "ALREADY_EXISTS",
+      (row) =>
+        row.classification === "READY" ||
+        row.classification === "ALREADY_EXISTS" ||
+        (row.classification === "NEEDS_REVIEW" &&
+          selectedClassificationReconciliationRows.has(row.rowNumber)),
     );
 
   const previewIsCurrent =
@@ -532,6 +635,7 @@ export function PatientProvisioningWorkspace({
     setPreviewFile(null);
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setSelectedClassificationReconciliationRows(new Set());
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -581,6 +685,9 @@ export function PatientProvisioningWorkspace({
     const requestVersion = importContextVersion.current;
     const file = selectedFile;
     const preview = previewState.preview;
+    const classificationReconciliationChoices = preview.classificationReconciliations.filter(
+      ({ rowNumber }) => selectedClassificationReconciliationRows.has(rowNumber),
+    );
 
     startImportTransition(async () => {
       const result = await confirmPatientImportAction(
@@ -592,6 +699,7 @@ export function PatientProvisioningWorkspace({
           preview.previewBinding,
           preview.effectiveDate,
           preview.importContractVersion,
+          classificationReconciliationChoices,
         ),
       );
 
@@ -600,6 +708,20 @@ export function PatientProvisioningWorkspace({
       }
 
       setImportState(result);
+    });
+  }
+
+  function toggleClassificationReconciliation(rowNumber: number, checked: boolean): void {
+    setSelectedClassificationReconciliationRows((current) => {
+      const next = new Set(current);
+
+      if (checked) {
+        next.add(rowNumber);
+      } else {
+        next.delete(rowNumber);
+      }
+
+      return next;
     });
   }
 
@@ -770,14 +892,19 @@ export function PatientProvisioningWorkspace({
                       <div>
                         <h3 className="text-base font-semibold">ตัวอย่างผลตรวจสอบ</h3>
                         <p className="mt-1 text-sm leading-6 text-muted">ตัวอย่างนี้ผูกกับไฟล์ โรงพยาบาล วันที่ข้อมูลตั้งต้น และรูปแบบนำเข้า หากเปลี่ยนอย่างใดอย่างหนึ่งต้องตรวจสอบใหม่</p>
-                        <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลและบันทึกแต่ละแถวแยกกัน</p>
+                        <p className="mt-1 text-sm leading-6 text-muted">ยืนยันแล้วระบบจะประมวลผลและบันทึกแต่ละแถวแยกกัน สถานะที่แตกต่างต้องติ๊กยืนยันเป็นรายแถว</p>
                       </div>
                       <PreviewFileSummary preview={previewState.preview} />
-                      <PreviewTable rows={previewState.preview.rows} />
+                      <PreviewTable
+                        onToggleReconciliation={toggleClassificationReconciliation}
+                        reconciliations={previewState.preview.classificationReconciliations}
+                        rows={previewState.preview.rows}
+                        selectedReconciliationRows={selectedClassificationReconciliationRows}
+                      />
                     </div>
                     {importState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{importState.message}</Alert> : null}
                     {importState.status === "SUCCESS" ? <ImportSummary summary={importState.summary} /> : null}
-                    <Button className="w-full" disabled={!previewIsCurrent || !hasReadyRows || previewState.preview.baselineDateRequired || importPending || previewPending} loading={importPending} onClick={handleImport} type="button">
+                    <Button className="w-full" disabled={!previewIsCurrent || !hasImportableRows || previewState.preview.baselineDateRequired || importPending || previewPending} loading={importPending} onClick={handleImport} type="button">
                       {importPending ? "กำลังนำเข้า..." : "ยืนยันนำเข้ารายการที่พร้อม"}
                     </Button>
                   </>

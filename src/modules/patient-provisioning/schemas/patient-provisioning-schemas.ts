@@ -5,6 +5,7 @@ import {
   identityReferenceSchema,
   thaiNationalIdSchema,
 } from "@/modules/identity/schemas/identity-schemas";
+import { patientClassificationTypeSchema } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 
@@ -54,6 +55,46 @@ export const patientImportEffectiveDateSchema = patientBaselineDateOnlySchema;
 
 const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 
+export const patientImportClassificationReconciliationSchema = z
+  .object({
+    rowNumber: z.number().int().min(1).max(500),
+    currentClassification: patientClassificationTypeSchema,
+    sourceClassification: patientClassificationTypeSchema,
+  })
+  .strict();
+
+export const patientImportClassificationReconciliationChoiceSchema =
+  patientImportClassificationReconciliationSchema.extend({
+    confirmationToken: sha256HexSchema,
+  });
+
+export const patientImportClassificationReconciliationChoicesSchema = z
+  .array(patientImportClassificationReconciliationChoiceSchema)
+  .max(500)
+  .superRefine((choices, context) => {
+    const rowNumbers = new Set<number>();
+
+    for (const [index, choice] of choices.entries()) {
+      if (rowNumbers.has(choice.rowNumber)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "rowNumber"],
+          message: "ไม่สามารถยืนยันแถวซ้ำได้",
+        });
+      }
+
+      if (choice.currentClassification === choice.sourceClassification) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: "สถานะเดิมและสถานะใหม่ต้องแตกต่างกัน",
+        });
+      }
+
+      rowNumbers.add(choice.rowNumber);
+    }
+  });
+
 export const patientImportConfirmSchema = z
   .object({
     targetHospitalId: z.uuid(),
@@ -62,6 +103,7 @@ export const patientImportConfirmSchema = z
     previewBinding: sha256HexSchema,
     effectiveDate: patientBaselineDateOnlySchema.optional(),
     importContractVersion: z.literal(PATIENT_IMPORT_CONTRACT_VERSION),
+    classificationReconciliationChoices: z.string().max(100_000).optional(),
   })
   .strict();
 

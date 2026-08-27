@@ -348,6 +348,38 @@ UI, page component, Server Action และ Route Handler ต้องไม่�
 
 > หาก agent เห็นว่า operation ต้องมี HTTP API ต้องระบุ current client/use case ที่ต้องใช้ endpoint นั้นก่อน เหตุผลว่า “native app อาจต้องใช้สักวัน” เพียงอย่างเดียวยังไม่เพียงพอ
 
+## Phase 16D.3 Patient Classification Persistence
+
+Phase 16D.3 implemented the confirmed operational classification field:
+`กลุ่มเสี่ยง → RISK` and `เบาหวาน → DIABETES`. Classification is a patient-global
+current row on `PatientProfile`, with append-only `PatientClassificationHistory` and
+bounded `AuditEvent` writes in the same Serializable transaction. A patient without
+a current row is unclassified; no `UNKNOWN` value or clear workflow was added.
+
+Only active Hospital `OWNER`/`MEMBER` users with an active direct membership and an
+exact active Patient-Hospital relationship may mutate it. OSM remains read-only for
+this capability and ADMIN-only actors are denied routine mutation. Global state does
+not broaden normal patient visibility.
+
+Roster preview now persists valid classification values, treats an equal value as a
+NOOP, and marks a differing value for explicit per-row confirmation. Confirmation
+choices are schema-validated and HMAC-bound to actor, Hospital, file, contract,
+effective date, source row, current value, and source value; current state is
+rechecked before row persistence. Core, immutable Baseline, classification,
+history, and audit remain atomic per row. Baseline effective-date semantics are
+unchanged.
+
+Patient detail shows current classification and bounded history. Patient lists can
+filter by `ALL`, `RISK`, and `DIABETES`; current-state counts are Hospital-scoped and
+do not count history rows.
+
+Migration: `20260827120000_patient_classification_persistence`.
+
+The remaining gates are `IMP-REQ-03` Hospital/รพ.สต. hierarchy,
+`P16C-OSM-01` OSM roster resolution/assignment, and `P16C-PROFILE-01`
+profile/contact/address ownership. Phase 16D.4 should address OSM/Coach roster
+resolution and explicit assignment reconciliation; it is not implemented here.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:

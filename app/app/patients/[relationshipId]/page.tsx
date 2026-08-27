@@ -11,12 +11,15 @@ import { getPatientBaselineNavigationState } from "@/modules/patient-baseline/se
 import type { PatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
+import { getPatientClassificationPageContext } from "@/modules/patient-classification/services/patient-classification-query-service";
+import type { PatientClassificationPageContext } from "@/modules/patient-classification/services/patient-classification-query-service";
 import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
 import type { PatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PatientProfileView } from "./patient-profile-view";
+import { PatientClassificationView } from "./patient-classification-view";
 import { PatientProgramView } from "./programs/patient-program-view";
 
 export const metadata: Metadata = {
@@ -53,6 +56,22 @@ export default async function PatientDetailPage({
 
   try {
     patient = await getPatientDirectoryDetail(actor, relationshipId);
+  } catch (error: unknown) {
+    if (error instanceof NotFoundError) {
+      notFound();
+    }
+
+    if (error instanceof ForbiddenError) {
+      redirect("/app");
+    }
+
+    throw error;
+  }
+
+  let classificationContext: PatientClassificationPageContext;
+
+  try {
+    classificationContext = await getPatientClassificationPageContext(actor, relationshipId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -141,6 +160,8 @@ export default async function PatientDetailPage({
         </Panel>
 
         <PatientProfileView profile={patient.profile} />
+
+        <PatientClassificationView context={classificationContext} />
 
         <Panel>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

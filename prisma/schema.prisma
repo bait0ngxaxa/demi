@@ -53,6 +53,16 @@ enum MembershipStatus {
   SUSPENDED
 }
 
+enum PatientClassificationType {
+  RISK
+  DIABETES
+}
+
+enum PatientClassificationSource {
+  ROSTER_IMPORT
+  MANUAL
+}
+
 enum WorkforceActivationMode {
   REMOTE
   ASSISTED
@@ -129,6 +139,8 @@ model User {
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
+  patientClassificationsUpdated PatientClassification[] @relation("PatientClassificationUpdatedBy")
+  patientClassificationHistoryChanged PatientClassificationHistory[] @relation("PatientClassificationHistoryChangedBy")
   patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
@@ -204,6 +216,39 @@ model PatientProfile {
 
   person                Person                       @relation(fields: [personId], references: [id], onDelete: Restrict)
   hospitalRelationships PatientHospitalRelationship[]
+  patientClassification PatientClassification?
+  classificationHistory PatientClassificationHistory[]
+}
+
+model PatientClassification {
+  id               String                    @id @default(uuid()) @db.Uuid
+  patientProfileId String                    @unique @db.Uuid
+  classification   PatientClassificationType
+  updatedByUserId  String                    @db.Uuid
+  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                  @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  updatedByUser  User           @relation("PatientClassificationUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([classification])
+  @@index([updatedByUserId, updatedAt])
+}
+
+model PatientClassificationHistory {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  patientProfileId   String                    @db.Uuid
+  fromClassification PatientClassificationType?
+  toClassification   PatientClassificationType
+  changedAt          DateTime                  @default(now()) @db.Timestamptz(3)
+  changedByUserId    String                    @db.Uuid
+  source             PatientClassificationSource
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  changedByUser  User           @relation("PatientClassificationHistoryChangedBy", fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientProfileId, changedAt])
+  @@index([changedByUserId, changedAt])
 }
 
 model PatientHospitalRelationship {

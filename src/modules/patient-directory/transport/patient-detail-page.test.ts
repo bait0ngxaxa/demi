@@ -9,6 +9,7 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 const {
   mockedConnection,
   mockedGetPatientBaselineNavigationState,
+  mockedGetPatientClassificationPageContext,
   mockedGetPatientDirectoryDetail,
   mockedGetPatientProgramPageContext,
   mockedGetProtectedApplicationActor,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   mockedConnection: vi.fn(),
   mockedGetPatientBaselineNavigationState: vi.fn(),
+  mockedGetPatientClassificationPageContext: vi.fn(),
   mockedGetPatientDirectoryDetail: vi.fn(),
   mockedGetPatientProgramPageContext: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
@@ -47,6 +49,9 @@ vi.mock("@/modules/patient-baseline/services/patient-baseline-query-service", ()
 
 vi.mock("@/modules/patient-program/services/patient-program-query-service", () => ({
   getPatientProgramPageContext: mockedGetPatientProgramPageContext,
+}));
+vi.mock("@/modules/patient-classification/services/patient-classification-query-service", () => ({
+  getPatientClassificationPageContext: mockedGetPatientClassificationPageContext,
 }));
 
 const patient = {
@@ -115,6 +120,17 @@ describe("Patient detail page authorization boundary", () => {
     mockedGetProtectedApplicationActor.mockResolvedValue(actor);
     mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: true });
+    mockedGetPatientClassificationPageContext.mockResolvedValue({
+      patient: {
+        patientProfileId: patient.patientProfileId,
+        patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+        displayName: patient.displayName,
+        hospitalName: patient.hospital.name,
+      },
+      current: null,
+      history: [],
+      canManage: true,
+    });
     mockedGetPatientProgramPageContext.mockResolvedValue({
       patient: {
         patientHospitalRelationshipId: patient.patientHospitalRelationshipId,

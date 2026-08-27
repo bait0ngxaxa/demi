@@ -10,8 +10,10 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
+  type PatientDirectoryClassificationFilter,
   type PatientDirectoryLookupType,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
+import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
   PatientAssignedDirectoryPage,
   PatientDirectoryItem,
@@ -22,12 +24,14 @@ type AssignedPatientDirectoryViewProps = {
   value: string;
   result: PatientAssignedDirectoryPage | null;
   errorMessage: string | null;
+  classificationFilter: PatientDirectoryClassificationFilter;
 };
 
 function directoryUrl(input: {
   lookupType: PatientDirectoryLookupType;
   value: string;
   page: number;
+  classification: PatientDirectoryClassificationFilter;
 }): string {
   const params = new URLSearchParams({ lookupType: input.lookupType });
 
@@ -37,6 +41,10 @@ function directoryUrl(input: {
 
   if (input.page > 1) {
     params.set("page", String(input.page));
+  }
+
+  if (input.classification !== "ALL") {
+    params.set("classification", input.classification);
   }
 
   return `/app/patients/assigned?${params.toString()}`;
@@ -60,6 +68,12 @@ function PatientRow({ item }: { item: PatientDirectoryItem }): React.JSX.Element
             <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
             <dd className="font-semibold text-text">{item.hospitalNumber ?? "ไม่ระบุ"}</dd>
           </dl>
+          <div className="shrink-0 sm:text-right">
+            <p className="text-xs text-text-muted">สถานะผู้ป่วย</p>
+            <StatusBadge variant={item.classification ? "info" : "neutral"}>
+              {getPatientClassificationLabel(item.classification)}
+            </StatusBadge>
+          </div>
         </div>
       </Link>
     </li>
@@ -87,6 +101,7 @@ function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React
               lookupType: result.lookupType,
               value: result.value,
               page: result.page - 1,
+              classification: result.classificationFilter,
             })}
           >
             ก่อนหน้า
@@ -103,6 +118,7 @@ function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React
               lookupType: result.lookupType,
               value: result.value,
               page: result.page + 1,
+              classification: result.classificationFilter,
             })}
           >
             ถัดไป
@@ -122,6 +138,7 @@ export function AssignedPatientDirectoryView({
   value,
   result,
   errorMessage,
+  classificationFilter,
 }: AssignedPatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
   const maxLength =
@@ -144,7 +161,7 @@ export function AssignedPatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
           </p>
-          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end" method="get">
+          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] lg:items-end" method="get">
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} name="lookupType">
@@ -161,6 +178,14 @@ export function AssignedPatientDirectoryView({
                 placeholder={lookupType === "HOSPITAL_NUMBER" ? "เช่น HN-001" : "เช่น สมชาย"}
                 type="search"
               />
+            </label>
+            <label className="block space-y-2 text-sm font-semibold">
+              <span>สถานะผู้ป่วย</span>
+              <Select defaultValue={classificationFilter} name="classification">
+                <option value="ALL">ทั้งหมด</option>
+                <option value="RISK">กลุ่มเสี่ยง</option>
+                <option value="DIABETES">เบาหวาน</option>
+              </Select>
             </label>
             <Button type="submit">ค้นหา</Button>
           </form>

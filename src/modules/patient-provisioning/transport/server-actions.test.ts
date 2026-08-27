@@ -6,6 +6,7 @@ import type { PatientImportUpload } from "../adapters/excel-patient-import-adapt
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import type { PatientProvisionActionState } from "./action-state";
 import {
+  createPatientImportClassificationReconciliationBinding,
   createPatientImportPreviewBinding,
   hashPatientImportFile,
 } from "./patient-import-file-binding";
@@ -82,6 +83,7 @@ function createFormData(
     previewBinding?: string;
     effectiveDate?: string;
     importContractVersion?: string;
+    classificationReconciliationChoices?: string;
   },
 ): FormData {
   const formData = new FormData();
@@ -105,6 +107,13 @@ function createFormData(
     "importContractVersion",
     values.importContractVersion ?? PATIENT_IMPORT_CONTRACT_VERSION,
   );
+
+  if (values.classificationReconciliationChoices !== undefined) {
+    formData.set(
+      "classificationReconciliationChoices",
+      values.classificationReconciliationChoices,
+    );
+  }
 
   return formData;
 }
@@ -138,6 +147,7 @@ describe("patient import Server Actions", () => {
       importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
       baselineDateRequired: false,
       rows: [],
+      classificationReconciliations: [],
       file: null,
     });
     mockedImportProvisioning.mockResolvedValue({
@@ -153,6 +163,11 @@ describe("patient import Server Actions", () => {
       baselineConflict: 0,
       baselineInvalid: 0,
       baselineDateRequired: 0,
+      classificationCreated: 0,
+      classificationAlreadyExists: 0,
+      classificationChanged: 0,
+      classificationNeedsReview: 0,
+      classificationInvalid: 0,
       rows: [],
     });
     mockedProvisionPatient.mockResolvedValue({
@@ -336,6 +351,7 @@ describe("patient import Server Actions", () => {
       {
         effectiveDate: null,
         importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        classificationReconciliationChoices: [],
       },
     );
   });
@@ -428,6 +444,127 @@ describe("patient import Server Actions", () => {
         fileFingerprint: fingerprint,
         previewBinding: binding,
         importContractVersion: "unsupported-contract",
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
+  });
+
+  it("requires a server-bound explicit choice for a conflicting classification", async () => {
+    const file = createUpload("file-classification-conflict");
+    const fingerprint = await hashPatientImportFile(file);
+    const binding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    const conflictPreview = {
+      targetHospitalId: hospitalId,
+      effectiveDate: null,
+      importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      baselineDateRequired: false,
+      rows: [{
+        rowNumber: 2,
+        identityDisplay: "••••••0009",
+        givenName: "สมชาย",
+        familyName: "ผู้ป่วย",
+        combinedNameText: null,
+        hospitalNumber: null,
+        classification: "NEEDS_REVIEW",
+        reason: "สถานะผู้ป่วยจากไฟล์แตกต่างจากสถานะปัจจุบัน",
+        baselineStatus: "NOT_APPLICABLE",
+        requirementGatedFields: [],
+        diagnosticCodes: [],
+        patientClassification: {
+          status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+          currentClassification: "RISK",
+          sourceClassification: "DIABETES",
+        },
+      }],
+      classificationReconciliations: [{
+        rowNumber: 2,
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      }],
+      file: null,
+    };
+    mockedPreviewProvisioning.mockResolvedValue(conflictPreview);
+
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+    expect(previewResult.status).toBe("SUCCESS");
+
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    const descriptor = previewResult.preview.classificationReconciliations[0];
+    expect(descriptor).toBeDefined();
+    const result = await confirmPatientImportAction(
+      createFormData(file, {
+        targetHospitalId: hospitalId,
+        previewTargetHospitalId: hospitalId,
+        fileFingerprint: fingerprint,
+        previewBinding: binding,
+        classificationReconciliationChoices: JSON.stringify([descriptor]),
+      }),
+    );
+
+    expect(result).toMatchObject({ status: "SUCCESS" });
+    expect(mockedImportProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [createCandidate()],
+      {},
+      {
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        classificationReconciliationChoices: [{
+          rowNumber: 2,
+          currentClassification: "RISK",
+          sourceClassification: "DIABETES",
+        }],
+      },
+    );
+  });
+
+  it("rejects a forged classification reconciliation token before import", async () => {
+    const file = createUpload("file-forged-classification");
+    const fingerprint = await hashPatientImportFile(file);
+    const binding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    mockedPreviewProvisioning.mockResolvedValue({
+      targetHospitalId: hospitalId,
+      effectiveDate: null,
+      importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      baselineDateRequired: false,
+      rows: [],
+      classificationReconciliations: [],
+      file: null,
+    });
+
+    const result = await confirmPatientImportAction(
+      createFormData(file, {
+        targetHospitalId: hospitalId,
+        previewTargetHospitalId: hospitalId,
+        fileFingerprint: fingerprint,
+        previewBinding: binding,
+        classificationReconciliationChoices: JSON.stringify([{
+          rowNumber: 2,
+          currentClassification: "RISK",
+          sourceClassification: "DIABETES",
+          confirmationToken: (() => {
+            const token = createPatientImportClassificationReconciliationBinding({
+              fileFingerprint: fingerprint,
+              targetHospitalId: hospitalId,
+              actorUserId: actor.userId,
+              effectiveDate: null,
+              importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+              rowNumber: 2,
+              currentClassification: "RISK",
+              sourceClassification: "DIABETES",
+            });
+
+            return `${token.slice(0, -1)}${token.endsWith("0") ? "1" : "0"}`;
+          })(),
+        }]),
       }),
     );
 

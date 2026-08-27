@@ -56,6 +56,7 @@ describe("assigned Patient directory page", () => {
       lookupType: "HOSPITAL_NUMBER",
       value: " HN-001 ",
       page: "2",
+      classification: "ALL",
     });
     expect(page.props).toMatchObject({ lookupType: "HOSPITAL_NUMBER", value: "HN-001", result });
   });

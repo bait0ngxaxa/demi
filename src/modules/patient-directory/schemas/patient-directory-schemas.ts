@@ -5,6 +5,7 @@ export const PATIENT_DIRECTORY_NAME_MAX_LENGTH = 120;
 export const PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH = 64;
 
 export const patientDirectoryLookupTypeSchema = z.enum(["NAME", "HOSPITAL_NUMBER"]);
+export const patientDirectoryClassificationFilterSchema = z.enum(["ALL", "RISK", "DIABETES"]);
 
 const optionalLookupValueSchema = z.preprocess(
   (value: unknown) => {
@@ -22,6 +23,7 @@ export const patientDirectoryQuerySchema = z
   .object({
     targetHospitalId: z.uuid(),
     lookupType: patientDirectoryLookupTypeSchema,
+    classification: patientDirectoryClassificationFilterSchema.optional(),
     value: optionalLookupValueSchema,
     page: z.coerce
       .number()
@@ -50,6 +52,7 @@ export const patientDirectoryQuerySchema = z
 export const patientAssignedDirectoryQuerySchema = z
   .object({
     lookupType: patientDirectoryLookupTypeSchema,
+    classification: patientDirectoryClassificationFilterSchema.optional(),
     value: optionalLookupValueSchema,
     page: z.coerce
       .number()
@@ -78,5 +81,8 @@ export const patientAssignedDirectoryQuerySchema = z
 export const patientDirectoryRelationshipIdSchema = z.uuid();
 
 export type PatientDirectoryLookupType = z.infer<typeof patientDirectoryLookupTypeSchema>;
+export type PatientDirectoryClassificationFilter = z.infer<
+  typeof patientDirectoryClassificationFilterSchema
+>;
 export type PatientDirectoryQueryInput = z.infer<typeof patientDirectoryQuerySchema>;
 export type PatientAssignedDirectoryQueryInput = z.infer<typeof patientAssignedDirectoryQuerySchema>;

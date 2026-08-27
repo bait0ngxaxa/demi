@@ -9,6 +9,7 @@ import {
   UserStatus,
   type PrismaClient,
 } from "@prisma/client";
+import type { PatientClassificationType } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -24,6 +25,7 @@ import {
   patientAssignedDirectoryQuerySchema,
   PATIENT_DIRECTORY_PAGE_SIZE,
   type PatientDirectoryLookupType,
+  type PatientDirectoryClassificationFilter,
   type PatientAssignedDirectoryQueryInput,
   type PatientDirectoryQueryInput,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
@@ -50,6 +52,7 @@ export type PatientDirectoryItem = {
     name: string;
   };
   hospitalNumber: string | null;
+  classification: PatientClassificationType | null;
 };
 
 export type PatientProfileDetail = {
@@ -78,6 +81,7 @@ export type PatientDirectoryPage = {
   totalPages: number;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
+  classificationFilter: PatientDirectoryClassificationFilter;
 };
 
 export type PatientAssignedDirectoryPage = {
@@ -90,6 +94,7 @@ export type PatientAssignedDirectoryPage = {
   totalPages: number;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
+  classificationFilter: PatientDirectoryClassificationFilter;
 };
 
 export type PatientDirectoryQueryDependencies = {
@@ -108,6 +113,9 @@ export const patientDirectorySelect = {
   patientProfile: {
     select: {
       id: true,
+      patientClassification: {
+        select: { classification: true },
+      },
       person: {
         select: {
           givenName: true,
@@ -130,6 +138,9 @@ export const patientDetailSelect = {
   patientProfile: {
     select: {
       id: true,
+      patientClassification: {
+        select: { classification: true },
+      },
       dateOfBirth: true,
       gender: true,
       phoneNumber: true,
@@ -155,6 +166,17 @@ export type PatientDirectoryRecord = Prisma.PatientHospitalRelationshipGetPayloa
 export type PatientDirectoryDetailRecord = Prisma.PatientHospitalRelationshipGetPayload<{
   select: typeof patientDetailSelect;
 }>;
+
+type PatientDirectoryRecordLike = {
+  id: string;
+  hospitalNumber: string | null;
+  hospital: { id: string; name: string };
+  patientProfile: {
+    id: string;
+    person: { givenName: string | null; familyName: string | null };
+    patientClassification?: { classification: PatientClassificationType } | null;
+  };
+};
 
 const patientDirectoryOrderBy = [
   { patientProfile: { person: { givenName: "asc" } } },
@@ -224,7 +246,12 @@ function buildPatientRelationshipWhere(
   return {
     hospitalId: input.targetHospitalId,
     hospital: buildAuthorizedHospitalWhere(actorUserId),
-    patientProfile: { person: personWhere },
+    patientProfile: {
+      person: personWhere,
+      ...(input.classification && input.classification !== "ALL"
+        ? { patientClassification: { is: { classification: input.classification } } }
+        : {}),
+    },
     ...(input.lookupType === "HOSPITAL_NUMBER" && input.value
       ? { hospitalNumber: input.value }
       : {}),
@@ -241,7 +268,12 @@ export function buildOsmAssignedPatientRelationshipWhere(
   };
 
   return {
-    patientProfile: { person: personWhere },
+    patientProfile: {
+      person: personWhere,
+      ...(input?.classification && input.classification !== "ALL"
+        ? { patientClassification: { is: { classification: input.classification } } }
+        : {}),
+    },
     hospital: {
       status: HospitalStatus.ACTIVE,
       osmHospitalRelationships: {
@@ -279,13 +311,14 @@ export function toDisplayName(person: PatientDirectoryRecord["patientProfile"]["
   return nameParts.join(" ") || "ผู้ป่วย";
 }
 
-export function toPatientDirectoryItem(record: PatientDirectoryRecord): PatientDirectoryItem {
+export function toPatientDirectoryItem(record: PatientDirectoryRecordLike): PatientDirectoryItem {
   return {
     patientProfileId: record.patientProfile.id,
     patientHospitalRelationshipId: record.id,
     displayName: toDisplayName(record.patientProfile.person),
     hospital: record.hospital,
     hospitalNumber: record.hospitalNumber,
+    classification: record.patientProfile.patientClassification?.classification ?? null,
   };
 }
 
@@ -400,6 +433,7 @@ export async function findPatientDirectory(
       pageSize: PATIENT_DIRECTORY_PAGE_SIZE,
       total,
       totalPages,
+      classificationFilter: parsed.classification ?? "ALL",
       hasPreviousPage: page > 1,
       hasNextPage: page < totalPages,
     };
@@ -518,6 +552,7 @@ export async function findAssignedPatientDirectory(
       pageSize: PATIENT_DIRECTORY_PAGE_SIZE,
       total,
       totalPages,
+      classificationFilter: parsed.classification ?? "ALL",
       hasPreviousPage: page > 1,
       hasNextPage: page < totalPages,
     };

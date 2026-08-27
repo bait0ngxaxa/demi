@@ -6,6 +6,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
+  type PatientDirectoryClassificationFilter,
   type PatientDirectoryLookupType,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import {
@@ -13,6 +14,10 @@ import {
   listPatientDirectoryScopes,
   type PatientDirectoryPage,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
+import {
+  getPatientClassificationCounts,
+  type PatientClassificationCounts,
+} from "@/modules/patient-classification/services/patient-classification-query-service";
 import {
   ForbiddenError,
   UnauthenticatedError,
@@ -95,18 +100,31 @@ export default async function PatientDirectoryPage({
   const requestedValue = firstSearchParam(params.value) ?? "";
   const displayValue =
     requestedValue.length <= PATIENT_DIRECTORY_NAME_MAX_LENGTH ? requestedValue : "";
+  const requestedClassification = firstSearchParam(params.classification);
+  const classificationFilter: PatientDirectoryClassificationFilter =
+    requestedClassification === "RISK" || requestedClassification === "DIABETES"
+      ? requestedClassification
+      : "ALL";
   const queryInput = {
     targetHospitalId: selectedScope.hospitalId,
     lookupType: requestedLookupType ?? "NAME",
     value: requestedValue,
     page: firstSearchParam(params.page) ?? "1",
+    classification: classificationFilter,
   };
 
   let result: PatientDirectoryPage | null = null;
+  let classificationCounts: PatientClassificationCounts = {
+    total: 0,
+    risk: 0,
+    diabetes: 0,
+    unclassified: 0,
+  };
   let errorMessage: string | null = null;
 
   try {
     result = await findPatientDirectory(actor, queryInput);
+    classificationCounts = await getPatientClassificationCounts(actor, selectedScope.hospitalId);
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
       redirect("/app");
@@ -123,8 +141,10 @@ export default async function PatientDirectoryPage({
     <PatientDirectoryView
       key={selectedScope.hospitalId}
       errorMessage={errorMessage}
+      classificationFilter={result?.classificationFilter ?? classificationFilter}
       lookupType={result?.lookupType ?? lookupType}
       result={result}
+      classificationCounts={classificationCounts}
       scopes={scopes}
       selectedScope={selectedScope}
       value={result?.value ?? displayValue}

@@ -248,6 +248,7 @@ describe("Patient directory query boundary", () => {
       displayName: "สมชาย ผู้ป่วย",
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       hospitalNumber: "HN-001",
+      classification: null,
     });
     expect(Object.keys(patientDirectoryInternals.patientDirectorySelect).sort()).toEqual([
       "hospital",
@@ -292,6 +293,7 @@ describe("Patient directory query boundary", () => {
       displayName: "สมชาย ผู้ป่วย",
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       hospitalNumber: "HN-001",
+      classification: null,
       profile: {
         dateOfBirth,
         gender: "ชาย",

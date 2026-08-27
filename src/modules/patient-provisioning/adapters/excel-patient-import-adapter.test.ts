@@ -144,6 +144,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       height: 165,
       heightUnit: "cm",
       waistCircumference: 88,
+      diabetesClassification: "RISK",
       bloodSugar: 126,
       bloodSugarDtx: null,
       hba1c: 6.5,
@@ -151,15 +152,57 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     });
     expect(candidate.canonicalRow.caregiverCandidates.osmCaregiverName).toBe("โค้ชตัวอย่าง");
     expect(candidate.fileMetadata?.layout).toBe("EXTENDED_ROSTER");
-      expect(candidate.fileMetadata?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth", "diabetesClassification", "osmCaregiverName"]),
+    expect(candidate.fileMetadata?.requirementGatedFields).toEqual(
+      expect.arrayContaining(["dateOfBirth", "osmCaregiverName"]),
+    );
+    expect(candidate.fileMetadata?.requirementGatedFields).not.toContain(
+      "diabetesClassification",
     );
     expect(candidate.fileMetadata?.requirementGatedFields).not.toEqual(
       expect.arrayContaining(["weight", "height", "waistCircumference", "hba1c"]),
     );
     expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("PARSED_FOR_INITIAL_BASELINE");
+    expect(candidate.canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
+      "SUPPORTED_FOR_PATIENT_CLASSIFICATION",
+    );
     expect(candidate.input).not.toHaveProperty("dateOfBirth");
     expect(candidate.input).not.toHaveProperty("clinicalCandidates");
+  });
+
+  it("maps only the confirmed Thai classification values after safe normalization", async () => {
+    const upload = await createUpload([
+      {
+        name: "Classification",
+        rows: [
+          coreHeaders("กลุ่มเสี่ยง หรือ เบาหวาน"),
+          [...coreRow("1000000000009"), "  กลุ่มเสี่ยง  "],
+          [...coreRow("1000000000017"), "เบาหวาน"],
+          [...coreRow("1000000000025"), "เบาหวาน type 2"],
+        ],
+      },
+    ]);
+
+    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+
+    expect(candidates.map((candidate) => candidate.canonicalRow.clinicalCandidates.diabetesClassification)).toEqual([
+      "RISK",
+      "DIABETES",
+      null,
+    ]);
+    expect(candidates[0].canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
+      "SUPPORTED_FOR_PATIENT_CLASSIFICATION",
+    );
+    expect(candidates[1].canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
+      "SUPPORTED_FOR_PATIENT_CLASSIFICATION",
+    );
+    expect(candidates[2].canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
+      "INVALID",
+    );
+    expect(candidates[2].canonicalRow.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "CLASSIFICATION_DATA_INVALID" }),
+      ]),
+    );
   });
 
   it("maps the confirmed operational baseline fields with explicit units", async () => {

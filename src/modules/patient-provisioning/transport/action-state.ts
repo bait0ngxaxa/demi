@@ -1,13 +1,19 @@
 import type {
   PatientImportPreview,
+  PatientImportClassificationReconciliation,
   PatientImportResultSummary,
   PatientProvisioningOutcome,
 } from "../services/patient-provisioning-service";
 import type { PatientProvisionContinuation } from "./patient-provisioning-continuation";
 
-export type PatientImportPreviewBinding = PatientImportPreview & {
+export type PatientImportPreviewReconciliationBinding = PatientImportClassificationReconciliation & {
+  confirmationToken: string;
+};
+
+export type PatientImportPreviewBinding = Omit<PatientImportPreview, "classificationReconciliations"> & {
   fileFingerprint: string;
   previewBinding: string;
+  classificationReconciliations: PatientImportPreviewReconciliationBinding[];
 };
 
 export type PatientProvisionResultState = PatientProvisionContinuation & {
