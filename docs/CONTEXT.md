@@ -381,27 +381,34 @@ Phase 16D.4 implemented the confirmed caregiver intent in `osmCaregiverName` as 
 Hospital-scoped Patient–OSM assignment request. The resolver performs deterministic
 exact normalized display-name matching against only active OSM users with an active
 OSM–Hospital relationship in the server-selected active Hospital. It returns
-`OSM_NOT_APPLICABLE`, `OSM_MATCHED`, `OSM_NOT_FOUND`, `OSM_AMBIGUOUS`, or
-`OSM_DATA_INVALID`; it never fuzzy-matches, creates accounts, or searches another
-Hospital.
+`OSM_NOT_APPLICABLE`, `OSM_MATCHED`, `OSM_NOT_FOUND`, `OSM_AMBIGUOUS`,
+`OSM_SELF_ASSIGNMENT_FORBIDDEN`, or `OSM_DATA_INVALID`; it never fuzzy-matches,
+creates accounts, or searches another Hospital. The resolver removes actor-self
+from selectable matches. A self-only exact match is review-required rather than
+not-found; if another eligible OSM matches, that OSM is re-evaluated as the sole
+selectable match.
 
 The existing `PatientOsmAssignment` domain remains the only assignment source of
 truth. Assignment mutation still requires an active Hospital `OWNER` and
 `patient:assign-osm`; `MEMBER`, OSM, and ADMIN receive no assignment expansion.
 Same-current assignments are idempotent NOOPs. A new assignment or a different
-current assignment is not silently applied: the OWNER must explicitly select an
-ambiguous candidate when needed and explicitly confirm each reassignment. Browser
-choices are opaque HMAC-bound to actor, Hospital, file fingerprint, effective date,
-contract version, row, normalized source, candidate, and relevant current state;
-confirmation reparses and re-resolves the workbook before reloading current state
-inside the row transaction.
+current assignment is not silently applied: the OWNER must explicitly confirm each
+reassignment. This repository has no safe pre-existing workforce disambiguator for
+OSM display, so visually indistinguishable `OSM_AMBIGUOUS` candidates remain
+`NEEDS_REVIEW` with no public candidate list, dropdown, auto-pick, or selection
+binding. Browser choices that are supported remain opaque HMAC-bound to actor,
+Hospital, file fingerprint, effective date, contract version, row, normalized source,
+candidate, and relevant current state; confirmation reparses and re-resolves the
+workbook before reloading current state inside the row transaction. The remediation
+contract is `phase-16d4-osm-assignment-v2`.
 
 Each confirmed logical roster row now composes Patient core, Baseline,
 classification, and OSM assignment in one Serializable transaction. Blank caregiver
 means no assertion and never unassigns. Not-found, ambiguous, malformed, stale, or
 OWNER-required assertions remain review states, and independent rows do not share a
-transaction. Public preview data exposes display names and bounded candidates only;
-internal user IDs remain server-side. The focused resolver/reconciliation module
+transaction. Public preview data exposes display names only; ambiguous same-name
+rows expose no candidate list or selection binding, and internal user IDs remain
+server-side. The focused resolver/reconciliation module
 keeps assignment rules separate from Patient provisioning; a broader roster
 orchestrator extraction remains a recommended Phase 16D.5 hardening task.
 

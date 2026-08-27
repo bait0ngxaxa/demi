@@ -171,6 +171,36 @@ describe("PatientOsmAssignmentService", () => {
     expect(mockedAudit).toHaveBeenCalledWith(expect.anything(), transactionClient);
   });
 
+  it("keeps the authoritative transaction self-assignment prohibition", async () => {
+    const { transaction, transactionClient } = createDatabase({
+      targetOsmUserId: ownerUserId,
+    });
+    const dualRoleOwner = ownerActor({
+      roles: [Role.HOSPITAL, Role.OSM],
+      osmHospitalRelationships: [{
+        hospitalId,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    });
+
+    await expect(
+      assignOsmToPatientInTransaction(
+        transactionClient,
+        dualRoleOwner,
+        patientOsmAssignmentRequestSchema.parse({
+          patientHospitalRelationshipId: relationshipId,
+          osmUserId: ownerUserId,
+        }),
+        now,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    expect(transaction.patientOsmAssignment.create).not.toHaveBeenCalled();
+    expect(transaction.patientOsmAssignment.update).not.toHaveBeenCalled();
+    expect(mockedAudit).not.toHaveBeenCalled();
+  });
+
   it("makes repeating the same active assignment an audited no-op", async () => {
     const { database, transaction } = createDatabase({
       activeAssignment: { id: assignmentId, osmUserId },

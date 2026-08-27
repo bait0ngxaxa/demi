@@ -98,12 +98,10 @@ export const patientImportClassificationReconciliationChoicesSchema = z
     }
   });
 
-const patientImportOsmResolutionStatusSchema = z.enum(["OSM_MATCHED", "OSM_AMBIGUOUS"]);
-
 export const patientImportOsmAssignmentChoiceSchema = z
   .object({
     rowNumber: z.number().int().min(1).max(500),
-    resolutionStatus: patientImportOsmResolutionStatusSchema,
+    resolutionStatus: z.literal("OSM_MATCHED"),
     sourceCaregiverName: z.string().trim().min(1).max(PATIENT_OSM_CAREGIVER_NAME_MAX_LENGTH),
     normalizedSourceCaregiverName: z
       .string()
@@ -138,7 +136,7 @@ export const patientImportOsmAssignmentChoicesSchema = z
 export const patientImportOsmAssignmentBindingChoiceSchema = z
   .object({
     rowNumber: z.number().int().min(1).max(500),
-    resolutionStatus: patientImportOsmResolutionStatusSchema,
+    resolutionStatus: z.literal("OSM_MATCHED"),
     candidateToken: sha256HexSchema,
     candidateReferenceToken: sha256HexSchema,
     explicitReassignment: z.boolean(),

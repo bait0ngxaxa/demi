@@ -84,6 +84,9 @@ async function createHospitalActor(input: {
   membershipType?: MembershipType;
   membershipStatus?: MembershipStatus;
   userStatus?: UserStatus;
+  givenName?: string;
+  familyName?: string;
+  osmRole?: boolean;
 }): Promise<{ actor: ActorContext; userId: string }> {
   sequence += 1;
   const hospital = await prisma.hospital.findUniqueOrThrow({
@@ -91,7 +94,11 @@ async function createHospitalActor(input: {
     select: { status: true },
   });
   const person = await prisma.person.create({
-    data: { identityKeyHash: `phase-16d4-actor-${sequence}` },
+    data: {
+      identityKeyHash: `phase-16d4-actor-${sequence}`,
+      ...(input.givenName !== undefined ? { givenName: input.givenName } : {}),
+      ...(input.familyName !== undefined ? { familyName: input.familyName } : {}),
+    },
     select: { id: true },
   });
   const user = await prisma.user.create({
@@ -102,6 +109,16 @@ async function createHospitalActor(input: {
   const membershipStatus = input.membershipStatus ?? MembershipStatus.ACTIVE;
 
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
+  if (input.osmRole) {
+    await prisma.userRole.create({ data: { userId: user.id, role: Role.OSM } });
+    await prisma.osmHospitalRelationship.create({
+      data: {
+        userId: user.id,
+        hospitalId: input.hospitalId,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+  }
   await prisma.hospitalMembership.create({
     data: {
       userId: user.id,
@@ -116,7 +133,7 @@ async function createHospitalActor(input: {
     actor: {
       userId: user.id,
       personId: person.id,
-      roles: [Role.HOSPITAL],
+      roles: input.osmRole ? [Role.HOSPITAL, Role.OSM] : [Role.HOSPITAL],
       hospitalMemberships: [{
         hospitalId: input.hospitalId,
         membershipType,
@@ -124,7 +141,11 @@ async function createHospitalActor(input: {
         status: membershipStatus,
         hospitalStatus: hospital.status,
       }],
-      osmHospitalRelationships: [],
+      osmHospitalRelationships: input.osmRole ? [{
+        hospitalId: input.hospitalId,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: hospital.status,
+      }] : [],
     },
   };
 }
@@ -256,7 +277,6 @@ function createOsmChoice(
   candidateOsmUserId: string,
   currentOsmUserId: string | null,
   explicitReassignment = false,
-  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS" = "OSM_MATCHED",
 ): PatientImportOsmAssignmentChoice {
   const sourceCaregiverName = candidate.canonicalRow.caregiverCandidates.osmCaregiverName;
   const normalizedSourceCaregiverName = normalizeRosterOsmCaregiverName(sourceCaregiverName);
@@ -267,7 +287,7 @@ function createOsmChoice(
 
   return {
     rowNumber: candidate.rowNumber,
-    resolutionStatus,
+    resolutionStatus: "OSM_MATCHED",
     sourceCaregiverName,
     normalizedSourceCaregiverName,
     candidateOsmUserId,
@@ -398,13 +418,123 @@ describe("Phase 16D.4 roster OSM resolution and assignment", () => {
       patientOsmAssignment: {
         resolutionStatus: "OSM_AMBIGUOUS",
         assignmentStatus: null,
-        candidates: [
-          { displayName: "อสม.สังเคราะห์ ชื่อซ้ำ" },
-          { displayName: "อสม.สังเคราะห์ ชื่อซ้ำ" },
-        ],
+        candidates: [],
       },
     });
     await expect(listEligibleRosterOsmCandidates(prisma, suspendedHospital.id)).resolves.toEqual([]);
+  });
+
+  it("reports self-only matches as forbidden and keeps unrelated valid rows importable", async () => {
+    const hospital = await createHospital();
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "เจ้าของ",
+      osmRole: true,
+    });
+    const safeOsm = await createOsmUser({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "ผู้ดูแลปลอดภัย",
+    });
+    const [selfCandidate, validCandidate] = await readRosterCandidates(hospital.id, [
+      {
+        nationalId: "1000000001018",
+        caregiver: "อสม.สังเคราะห์ เจ้าของ",
+      },
+      {
+        nationalId: "1000000001026",
+        caregiver: "อสม.สังเคราะห์ ผู้ดูแลปลอดภัย",
+      },
+    ]);
+
+    if (!selfCandidate || !validCandidate) {
+      throw new Error("Synthetic self-assignment roster candidates were not created");
+    }
+
+    const preview = await previewPatientProvisioning(owner.actor, hospital.id, [selfCandidate], prisma);
+    expect(preview.rows[0]).toMatchObject({
+      classification: "NEEDS_REVIEW",
+      reason: "ไม่สามารถกำหนดตนเองเป็นผู้ดูแลผู้ป่วยได้",
+      patientOsmAssignment: {
+        resolutionStatus: "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+        assignmentStatus: null,
+        resolvedCandidate: null,
+        candidates: [],
+      },
+    });
+
+    const manipulatedSelfChoice = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      [selfCandidate],
+      importDependencies(),
+      { osmAssignmentChoices: [createOsmChoice(selfCandidate, owner.userId, null)] },
+    );
+    expect(manipulatedSelfChoice).toMatchObject({ imported: 0, needsReview: 1 });
+    expect(await prisma.patientProfile.count()).toBe(0);
+    expect(await prisma.patientOsmAssignment.count()).toBe(0);
+    expect(await prisma.auditEvent.count()).toBe(0);
+
+    const combined = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      [selfCandidate, validCandidate],
+      importDependencies(),
+      { osmAssignmentChoices: [createOsmChoice(validCandidate, safeOsm.userId, null)] },
+    );
+    expect(combined).toMatchObject({ imported: 1, needsReview: 1, osmAssigned: 1 });
+    expect(await prisma.patientOsmAssignment.count()).toBe(1);
+    expect(await prisma.patientOsmAssignment.findFirstOrThrow({
+      select: { osmUserId: true },
+    })).toMatchObject({ osmUserId: safeOsm.userId });
+    expect(await prisma.patientOsmAssignment.findFirst({
+      where: { osmUserId: owner.userId },
+      select: { id: true },
+    })).toBeNull();
+    expect(await prisma.auditEvent.count({ where: { action: "patient.osm_assigned" } })).toBe(1);
+  });
+
+  it("removes the actor-self candidate before resolving a same-name eligible OSM", async () => {
+    const hospital = await createHospital();
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "ชื่อร่วม",
+      osmRole: true,
+    });
+    const otherOsm = await createOsmUser({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "ชื่อร่วม",
+    });
+    const candidate = await readRosterCandidate(hospital.id, {
+      nationalId: "1000000001034",
+      caregiver: "อสม.สังเคราะห์ ชื่อร่วม",
+    });
+
+    const preview = await previewPatientProvisioning(owner.actor, hospital.id, [candidate], prisma);
+    expect(preview.rows[0]).toMatchObject({
+      classification: "READY",
+      patientOsmAssignment: {
+        resolutionStatus: "OSM_MATCHED",
+        assignmentStatus: "OSM_ASSIGNMENT_READY",
+        resolvedCandidate: { displayName: "อสม.สังเคราะห์ ชื่อร่วม" },
+        candidates: [{ displayName: "อสม.สังเคราะห์ ชื่อร่วม" }],
+      },
+    });
+
+    const result = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      [candidate],
+      importDependencies(),
+      { osmAssignmentChoices: [createOsmChoice(candidate, otherOsm.userId, null)] },
+    );
+    expect(result).toMatchObject({ imported: 1, osmAssigned: 1 });
+    expect(await prisma.patientOsmAssignment.findFirstOrThrow({
+      select: { osmUserId: true },
+    })).toMatchObject({ osmUserId: otherOsm.userId });
   });
 
   it("does not fuzzy-match a typo and reports a missing caregiver without mutation", async () => {
@@ -585,7 +715,7 @@ describe("Phase 16D.4 roster OSM resolution and assignment", () => {
     expect(history[1]).toMatchObject({ osmUserId: osmB.userId, endedAt: null });
   });
 
-  it("lets an OWNER select one exact candidate from an ambiguous set", async () => {
+  it("keeps indistinguishable ambiguous candidates in review and imports independent exact rows", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const osmA = await createOsmUser({
@@ -598,15 +728,31 @@ describe("Phase 16D.4 roster OSM resolution and assignment", () => {
       givenName: "อสม.สังเคราะห์",
       familyName: "ชื่อกำกวม",
     });
-    const candidate = await readRosterCandidate(hospital.id, {
-      nationalId: "1000000001042",
-      caregiver: "อสม.สังเคราะห์ ชื่อกำกวม",
+    const safeOsm = await createOsmUser({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "ระบุได้",
     });
+    const [candidate, independentCandidate] = await readRosterCandidates(hospital.id, [
+      {
+        nationalId: "1000000001042",
+        caregiver: "อสม.สังเคราะห์ ชื่อกำกวม",
+      },
+      {
+        nationalId: "1000000001050",
+        caregiver: "อสม.สังเคราะห์ ระบุได้",
+      },
+    ]);
+
+    if (!candidate || !independentCandidate) {
+      throw new Error("Synthetic ambiguous roster candidates were not created");
+    }
 
     const preview = await previewPatientProvisioning(owner.actor, hospital.id, [candidate], prisma);
     expect(preview.rows[0]?.patientOsmAssignment).toMatchObject({
       resolutionStatus: "OSM_AMBIGUOUS",
       assignmentStatus: null,
+      candidates: [],
     });
     const unresolved = await importPatientProvisioning(
       owner.actor,
@@ -615,34 +761,31 @@ describe("Phase 16D.4 roster OSM resolution and assignment", () => {
       importDependencies(),
     );
     expect(unresolved).toMatchObject({ imported: 0, needsReview: 1, osmAmbiguous: 1 });
+    expect(await prisma.patientProfile.count()).toBe(0);
+    expect(await prisma.patientOsmAssignment.count()).toBe(0);
 
     const selected = await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [candidate],
+      [candidate, independentCandidate],
       importDependencies(),
       {
-        osmAssignmentChoices: [createOsmChoice(
-          candidate,
-          osmB.userId,
-          null,
-          false,
-          "OSM_AMBIGUOUS",
-        )],
+        osmAssignmentChoices: [createOsmChoice(independentCandidate, safeOsm.userId, null)],
       },
     );
-    expect(selected).toMatchObject({ imported: 1, osmAssigned: 1 });
+    expect(selected).toMatchObject({ imported: 1, needsReview: 1, osmAssigned: 1, osmAmbiguous: 1 });
     const relationship = await prisma.patientHospitalRelationship.findFirstOrThrow({
       where: { hospitalId: hospital.id, patientProfile: { person: {
         identityKeyHash: hashIdentityReference({
           namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
-          value: "1000000001042",
+          value: "1000000001050",
         }),
       } } },
       select: { id: true },
     });
-    await expect(readActiveAssignment(relationship.id)).resolves.toMatchObject({ osmUserId: osmB.userId });
+    await expect(readActiveAssignment(relationship.id)).resolves.toMatchObject({ osmUserId: safeOsm.userId });
     expect(osmA.userId).not.toBe(osmB.userId);
+    expect(await prisma.patientOsmAssignment.count()).toBe(1);
   });
 
   it("keeps MEMBER imports safe: new assignments and reassignments require an OWNER", async () => {

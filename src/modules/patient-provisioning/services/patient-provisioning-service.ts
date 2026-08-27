@@ -967,7 +967,9 @@ function toPublicPatientOsmAssignmentPreview(
     resolvedCandidate: preview.resolvedCandidateDisplayName
       ? { displayName: preview.resolvedCandidateDisplayName }
       : null,
-    candidates: preview.candidates.map(({ displayName }) => ({ displayName })),
+    candidates: preview.resolutionStatus === "OSM_MATCHED"
+      ? preview.candidates.map(({ displayName }) => ({ displayName }))
+      : [],
   };
 }
 
@@ -1005,7 +1007,9 @@ function applyPatientOsmPreviewState(
   const resolutionReason = patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND"
     ? "ไม่พบ อสม./โค้ชที่ตรงกับชื่อในโรงพยาบาลนี้ ต้องตรวจสอบก่อนนำเข้า"
     : patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS"
-      ? "พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน กรุณาเลือกผู้ดูแลก่อนนำเข้า"
+      ? "พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน และยังไม่มีข้อมูลเพียงพอที่จะระบุผู้ดูแลที่ถูกต้อง"
+      : patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN"
+        ? "ไม่สามารถกำหนดตนเองเป็นผู้ดูแลผู้ป่วยได้"
       : patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID"
         ? "ชื่อผู้ดูแลจากไฟล์ไม่ถูกต้อง ต้องตรวจสอบก่อนนำเข้า"
         : patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT"
@@ -1016,6 +1020,7 @@ function applyPatientOsmPreviewState(
 
   const isBlocking = patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND" ||
     patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS" ||
+    patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
     patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID" ||
     patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT" ||
     patientOsmAssignment.assignmentStatus === "OSM_OWNER_REQUIRED";
@@ -1526,6 +1531,8 @@ function getResultStatusForPreview(
 
     if (
       osm.resolutionStatus === "OSM_NOT_FOUND" ||
+      osm.resolutionStatus === "OSM_AMBIGUOUS" ||
+      osm.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
       osm.resolutionStatus === "OSM_DATA_INVALID" ||
       osm.assignmentStatus === "OSM_OWNER_REQUIRED"
     ) {

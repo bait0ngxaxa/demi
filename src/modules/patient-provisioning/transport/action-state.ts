@@ -21,7 +21,7 @@ export type PatientImportOsmCandidateBinding = {
 
 export type PatientImportOsmAssignmentChoiceBinding = {
   rowNumber: number;
-  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  resolutionStatus: "OSM_MATCHED";
   candidateToken: string;
   candidateReferenceToken: string;
   explicitReassignment: boolean;
@@ -30,7 +30,7 @@ export type PatientImportOsmAssignmentChoiceBinding = {
 
 export type PatientImportOsmAssignmentReconciliationBinding = {
   rowNumber: number;
-  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  resolutionStatus: "OSM_MATCHED";
   sourceCaregiverName: string;
   currentCaregiver: PatientImportOsmAssignmentPreview["currentCaregiver"];
   assignmentStatus: PatientImportOsmAssignmentPreview["assignmentStatus"];

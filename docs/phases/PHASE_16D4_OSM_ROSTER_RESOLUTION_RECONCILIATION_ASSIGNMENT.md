@@ -1,10 +1,12 @@
 # DEMI Phase 16D.4 — OSM / Coach Roster Resolution, Reconciliation & Assignment
 
-**สถานะ:** Implemented
+**สถานะ:** Remediated — พร้อมส่ง re-audit (ยังไม่เริ่ม Phase 16D.5)
 
 **วันที่ดำเนินการ:** 2026-08-27
 
-**Starting HEAD:** `28c739fff2bb6ae35a7e7d4bad24ba38eaedd9d1`
+**Starting HEAD (original implementation):** `28c739fff2bb6ae35a7e7d4bad24ba38eaedd9d1`
+
+**Remediation starting HEAD:** `337a740ac3765093243e3c883573a8d0ecf2c369`
 
 Phase นี้เริ่มจาก HEAD ที่ตรวจพบจริงหลัง `git fetch origin --prune` และตรวจ branch,
 working tree, `origin/main` และ commit ล่าสุดแล้ว ไม่มีการ reset, rewrite หรือ
@@ -87,7 +89,7 @@ Canonical field คือ `osmCaregiverName` และ aliases ที่รอ�
 ไม่เทียบเพียงชื่อหน้า และไม่ทำ typo/phonetic/Levenshtein/fuzzy matching
 ดังนั้นชื่อที่ต่างจริงจะไม่ถูกเดาให้ตรงกัน
 
-Import contract version เปลี่ยนเป็น `phase-16d4-osm-assignment-v1` ทำให้ binding
+Import contract version เปลี่ยนเป็น `phase-16d4-osm-assignment-v2` ทำให้ binding
 ของ preview รุ่นเก่าใช้ยืนยันไม่ได้อัตโนมัติ
 
 Alias `diabetes type` ที่ทำให้ความหมายของ `diabetesClassification` สับสนถูกนำออก
@@ -120,10 +122,13 @@ caregiver text
 | `OSM_MATCHED` | มี eligible candidate ตรง exact เพียงหนึ่งราย |
 | `OSM_NOT_FOUND` | ไม่มี candidate; ไม่ assign และต้อง review |
 | `OSM_AMBIGUOUS` | มี candidate exact มากกว่าหนึ่งราย; ไม่เลือกอัตโนมัติ |
+| `OSM_SELF_ASSIGNMENT_FORBIDDEN` | exact match มีแต่ actor เอง; ไม่สามารถกำหนดตนเองและต้อง review |
 | `OSM_DATA_INVALID` | source malformed, ambiguous header หรือค่าไม่ผ่าน parser |
 
-Candidate list ที่ส่งให้ OWNER มีเฉพาะ display name และถูกจำกัดจำนวน ไม่ส่ง National
-ID, phone, private email, auth subject, internal UUID หรือ membership ของ Hospital อื่น
+สำหรับ `OSM_AMBIGUOUS` ระบบไม่ส่ง candidate list ที่เลือกได้ไปยัง public preview
+เพราะ display name ที่มีอยู่ไม่สามารถแยกบุคคลได้อย่างปลอดภัย. Candidate list ของ
+`OSM_MATCHED` มีเฉพาะ display name และถูกจำกัดจำนวน ไม่ส่ง National ID, phone,
+private email, auth subject, internal UUID หรือ membership ของ Hospital อื่น
 
 ## 6. Current assignment reconciliation
 
@@ -137,9 +142,11 @@ ID, phone, private email, auth subject, internal UUID หรือ membership �
 | `OSM_ASSIGNMENT_CONFLICT` | current ต่างจาก source; ต้อง explicit OWNER reassignment confirmation |
 | `OSM_OWNER_REQUIRED` | source ต้องสร้าง/เปลี่ยน assignment แต่ actor ไม่ใช่ OWNER; row เป็น `NEEDS_REVIEW` |
 
-`OSM_NOT_FOUND`, `OSM_AMBIGUOUS` ที่ยังไม่ได้เลือก และ `OSM_DATA_INVALID` เป็น
-review/invalid ตาม diagnostic ของ row. Not-found ไม่เคลียร์ current assignment และ
-blank ไม่เคย end current assignment
+`OSM_NOT_FOUND`, `OSM_AMBIGUOUS`, `OSM_SELF_ASSIGNMENT_FORBIDDEN` และ
+`OSM_DATA_INVALID` เป็น review/invalid ตาม diagnostic ของ row. Self-only จะไม่สร้าง
+choice หรือ mutation; หากมี current assignment ที่ชี้ไป actor อยู่แล้ว preview เพียง
+รายงาน current state และไม่ normalize/cleanup. Not-found ไม่เคลียร์ current assignment
+และ blank ไม่เคย end current assignment
 
 ## 7. Preview, candidate selection และ confirm binding
 
@@ -148,9 +155,12 @@ resolution status, assignment status, source display name, current caregiver,
 resolved display name และ bounded candidate display names. Public projection ตัด
 internal IDs ออก
 
-กรณี ambiguous OWNER เลือก candidate ผ่าน opaque reference token เท่านั้น. Browser
-ไม่ส่ง arbitrary `osmUserId` เป็น authority. กรณี current ต่างกันมี checkbox แยกต่อ
-row สำหรับข้อความยืนยันว่า:
+เฉพาะ exact match ที่เหลือ candidate เดียวหลังตัด actor-self เท่านั้นที่สร้าง
+reconciliation binding และให้ OWNER เลือกผ่าน opaque reference token. กรณี ambiguous
+ที่ไม่มี safe disambiguator จะไม่สร้าง candidate token/reconciliation binding และไม่มี
+dropdown; row แสดงข้อความ `พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน และยังไม่มีข้อมูลเพียงพอที่จะระบุผู้ดูแลที่ถูกต้อง`
+แล้วคงเป็น `NEEDS_REVIEW`. Browser ไม่ส่ง arbitrary `osmUserId` เป็น authority. กรณี
+current ต่างกันมี checkbox แยกต่อ row สำหรับข้อความยืนยันว่า:
 
 ```text
 ผู้ดูแลปัจจุบัน: A
@@ -242,7 +252,7 @@ Summary เพิ่ม counters แบบ bounded: assigned, already assigned, 
 ambiguous, assignment conflict และ owner required. `ALREADY_EXISTS` ไม่ถูกนับเป็น
 attention warning เพียงลำพัง
 
-## 11. Tests และ verification
+## 11. Original implementation tests และ verification (superseded by remediation)
 
 เพิ่ม/ปรับ focused coverage สำหรับ:
 
@@ -282,3 +292,55 @@ cross-Hospital inference ใน Phase นี้
 Hardening**: consolidate roster orchestration boundaries, audit full-row composition,
 harden preview/confirm and summary/idempotency behavior, and run a full synthetic
 compatibility re-audit โดยไม่เพิ่ม speculative persistence
+
+## 13. Remediation re-audit — Phase 16D.4
+
+การ re-audit ของ implementation เดิมพบ defect ที่ต้องแก้ก่อนปิด Phase:
+
+1. **P1-A self-assignment preview mismatch:** resolver เดิมนับ Hospital OWNER ที่มี
+   Role.OSM เป็น candidate ของตัวเอง จึงแสดง `OSM_MATCHED`/พร้อม assign ทั้งที่
+   authoritative transaction ปฏิเสธ `actorUserId === osmUserId`. แก้โดยให้
+   server-side resolver รับ `actorUserId`, เก็บ raw exact matches แยกจาก selectable
+   matches และตัด actor-self ก่อน re-evaluate. Self-only ได้สถานะ
+   `OSM_SELF_ASSIGNMENT_FORBIDDEN`, แสดง `ไม่สามารถกำหนดตนเองเป็นผู้ดูแลผู้ป่วยได้`,
+   เป็น `NEEDS_REVIEW` และไม่มี choice/token/mutation. หากมี OSM อื่นตรงชื่อ ตัว self
+   ถูกตัดออกและ OSM อื่นกลายเป็น single match.
+
+2. **P1-B visually indistinguishable ambiguity:** schema ปัจจุบันไม่มี workforce
+   code/staff code หรือ disambiguator ที่อนุมัติและปลอดภัยสำหรับแสดงต่อ Hospital OWNER.
+   `Person` มีเพียงชื่อ, OSM relationship ไม่มี profession/code และ workforce UI เดิม
+   แสดงชื่อกับป้าย “อสม.” เท่านั้น. จึงไม่เพิ่ม field หรือ migration และปิด ambiguous
+   selection: `OSM_AMBIGUOUS` เป็น `NEEDS_REVIEW`, public candidates เป็นว่าง,
+   ไม่มี dropdown หรือ candidate binding, ไม่ auto-pick และ confirm ที่พยายามส่ง choice
+   จะ fail closed. ไม่เปิดเผย UUID, National ID, phone, email หรือ auth subject.
+
+การยืนยันยังใช้ `assignOsmToPatientInTransaction(...)` ซึ่งคง self-assignment
+`ForbiddenError` เป็น defense-in-depth และ transaction ยังคง re-resolve active
+Hospital-scoped candidates/current assignment. `ForbiddenError` ทั่วไปยังไม่ถูกแปลง
+เป็น row error; stale roster resolution ใช้ conflict เฉพาะของ roster เพื่อคง row-level
+review โดยไม่ซ่อน authorization failure อื่น. HMAC binding ที่ใช้งานได้ยังผูก contract
+version, actor, Hospital, file, effective date, row, normalized source, candidate,
+current assignment และ resolution status; contract เปลี่ยนเป็น
+`phase-16d4-osm-assignment-v2` เพื่อ invalidate preview รุ่น defect.
+
+เพิ่ม coverage สำหรับ resolver self filtering/self-only, preview `NEEDS_REVIEW`,
+authoritative transaction self check, manipulated self/ambiguous choices, no self audit,
+independent-row import, ambiguous public projection/binding omission, exact target-Hospital
+scope, OWNER/MEMBER semantics, stale state, row atomicity และ existing Baseline/
+Classification regressions. ผล verification ของ remediation:
+
+```text
+npx prisma validate                  PASS
+npx prisma generate                  PASS
+npm run lint                         PASS
+npm run typecheck                    PASS
+npm test                             PASS (132 files, 883 tests)
+npm test -- focused files            PASS (5 files, 44 tests)
+npm run test:integration             PASS (23 files, 202 tests)
+```
+
+ตรวจแล้วไม่มี migration หรือ schema expansion ใน diff และไม่ได้เริ่ม orchestration
+extraction ของ Phase 16D.5.
+
+**สถานะสุดท้ายของ Phase 16D.4 remediation:** แก้ไขครบตาม re-audit scope พร้อมส่ง
+re-audit; Phase 16D.5 ยังไม่เริ่ม.

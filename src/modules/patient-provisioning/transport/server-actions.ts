@@ -450,7 +450,7 @@ function toBoundOsmAssignmentReconciliations(
 
     if (
       !osm.sourceCaregiverName ||
-      (resolutionStatus !== "OSM_MATCHED" && resolutionStatus !== "OSM_AMBIGUOUS") ||
+      resolutionStatus !== "OSM_MATCHED" ||
       (!includeAlreadyExists && osm.assignmentStatus === "OSM_ASSIGNMENT_ALREADY_EXISTS") ||
       (!includeAlreadyExists &&
         resolutionStatus === "OSM_MATCHED" &&

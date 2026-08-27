@@ -53,7 +53,9 @@ const mockedProjectPatientImportPreview = vi.hoisted(() => (preview: unknown): u
         typeof osm.resolvedCandidateDisplayName === "string"
         ? osm.resolvedCandidateDisplayName
         : null;
-      const candidates = "candidates" in osm && Array.isArray(osm.candidates)
+      const candidates = osm.resolutionStatus === "OSM_AMBIGUOUS"
+        ? []
+        : "candidates" in osm && Array.isArray(osm.candidates)
         ? osm.candidates.map((candidate: unknown) =>
             typeof candidate === "object" && candidate !== null && "displayName" in candidate
               ? { displayName: candidate.displayName }
@@ -433,6 +435,52 @@ describe("patient import Server Actions", () => {
     expect(reconciliation?.candidates[0]?.candidateToken).not.toBe(
       "99999999-9999-4999-8999-999999999999",
     );
+  });
+
+  it("does not expose or bind visually indistinguishable ambiguous OSM candidates", async () => {
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
+      resolutionStatus: "OSM_AMBIGUOUS",
+      candidates: [
+        {
+          osmUserId: "99999999-9999-4999-8999-999999999999",
+          displayName: "สมชาย ผู้ดูแล",
+        },
+        {
+          osmUserId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          displayName: "สมชาย ผู้ดูแล",
+        },
+      ],
+    }));
+    const file = createUpload("file-osm-ambiguous");
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(previewResult.status).toBe("SUCCESS");
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    expect(previewResult.preview.rows[0]?.patientOsmAssignment.candidates).toEqual([]);
+    expect(previewResult.preview.osmAssignmentReconciliations).toEqual([]);
+
+    const fingerprint = await hashPatientImportFile(file);
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding: createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId),
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber: 2,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: "0".repeat(64),
+        candidateReferenceToken: "0".repeat(64),
+        explicitReassignment: false,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
   });
 
   it("revalidates an opaque OSM choice and forwards only server-derived identity", async () => {

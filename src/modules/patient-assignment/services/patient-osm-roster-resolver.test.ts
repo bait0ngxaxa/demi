@@ -52,6 +52,16 @@ const member: ActorContext = {
   }],
 };
 
+const dualRoleOwner: ActorContext = {
+  ...owner,
+  roles: [Role.HOSPITAL, Role.OSM],
+  osmHospitalRelationships: [{
+    hospitalId,
+    status: MembershipStatus.ACTIVE,
+    hospitalStatus: HospitalStatus.ACTIVE,
+  }],
+};
+
 describe("OSM roster resolver", () => {
   it("normalizes only NFC and surrounding Unicode whitespace", () => {
     expect(normalizeRosterOsmCaregiverName("\uFEFF  สมชาย\u00A0  ใจดี  ")).toBe("สมชาย ใจดี");
@@ -60,27 +70,85 @@ describe("OSM roster resolver", () => {
   });
 
   it("returns bounded deterministic resolution states without fuzzy matching", () => {
-    expect(resolveRosterOsmCandidate({ sourceCaregiverName: null, candidates }).status).toBe(
-      "OSM_NOT_APPLICABLE",
-    );
+    expect(resolveRosterOsmCandidate({
+      sourceCaregiverName: null,
+      candidates,
+      actorUserId: ownerUserId,
+    }).status).toBe("OSM_NOT_APPLICABLE");
     expect(resolveRosterOsmCandidate({
       sourceCaregiverName: "\uFEFF สมชาย\u00A0 ใจดี ",
       candidates,
+      actorUserId: ownerUserId,
     })).toMatchObject({
       status: "OSM_MATCHED",
       normalizedSourceCaregiverName: "สมชาย ใจดี",
       candidates: [candidates[0]],
     });
-    expect(resolveRosterOsmCandidate({ sourceCaregiverName: "สมชัย ใจดี", candidates }).status).toBe(
-      "OSM_NOT_FOUND",
-    );
+    expect(resolveRosterOsmCandidate({
+      sourceCaregiverName: "สมชัย ใจดี",
+      candidates,
+      actorUserId: ownerUserId,
+    }).status).toBe("OSM_NOT_FOUND");
     expect(resolveRosterOsmCandidate({
       sourceCaregiverName: "สมชาย ใจดี",
       candidates: [
         ...candidates,
         { osmUserId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย ใจดี" },
       ],
+      actorUserId: ownerUserId,
     }).status).toBe("OSM_AMBIGUOUS");
+  });
+
+  it("excludes actor-self from selectable exact matches and identifies self-only matches", () => {
+    const selfCandidate = {
+      osmUserId: ownerUserId,
+      displayName: "สมชาย ใจดี",
+    };
+    const otherCandidate = {
+      osmUserId: "77777777-7777-4777-8777-777777777777",
+      displayName: "สมชาย ใจดี",
+    };
+
+    expect(resolveRosterOsmCandidate({
+      sourceCaregiverName: "สมชาย ใจดี",
+      candidates: [selfCandidate],
+      actorUserId: ownerUserId,
+    })).toMatchObject({
+      status: "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+      rawCandidates: [selfCandidate],
+      candidates: [],
+    });
+
+    expect(resolveRosterOsmCandidate({
+      sourceCaregiverName: "สมชาย ใจดี",
+      candidates: [selfCandidate, otherCandidate],
+      actorUserId: ownerUserId,
+    })).toMatchObject({
+      status: "OSM_MATCHED",
+      rawCandidates: [selfCandidate, otherCandidate],
+      candidates: [otherCandidate],
+    });
+  });
+
+  it("blocks self-assignment during preview without changing the current assignment", () => {
+    const preview = buildRosterOsmAssignmentPreview({
+      sourceCaregiverName: "สมชาย ใจดี",
+      currentAssignment: {
+        osmUserId: dualRoleOwner.userId,
+        displayName: "สมชาย ใจดี",
+      },
+      candidates: [{ osmUserId: dualRoleOwner.userId, displayName: "สมชาย ใจดี" }],
+      actor: dualRoleOwner,
+      targetHospitalId: hospitalId,
+    });
+
+    expect(preview).toMatchObject({
+      resolutionStatus: "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+      assignmentStatus: null,
+      currentOsmUserId: dualRoleOwner.userId,
+      resolvedOsmUserId: null,
+      candidates: [],
+    });
   });
 
   it("reports assignment readiness, same-assignment NOOP, and OWNER-only conflicts", () => {

@@ -49,7 +49,7 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d4-osm-assignment-v1" as const;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d4-osm-assignment-v2" as const;
 export const PATIENT_OSM_CAREGIVER_NAME_MAX_LENGTH = 255;
 
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [

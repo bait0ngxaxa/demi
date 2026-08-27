@@ -36,7 +36,6 @@ import {
   type PatientImportPreviewBinding,
   type PatientImportOsmAssignmentChoiceBinding,
   type PatientImportOsmAssignmentReconciliationBinding,
-  type PatientImportOsmCandidateBinding,
   type PatientImportPreviewReconciliationBinding,
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
@@ -293,10 +292,8 @@ function PreviewTable({
   reconciliations,
   osmAssignmentReconciliations,
   selectedReconciliationRows,
-  selectedOsmCandidates,
   selectedOsmReassignmentRows,
   onToggleReconciliation,
-  onSelectOsmCandidate,
   onToggleOsmReassignment,
   canManageOsmAssignment,
 }: {
@@ -304,10 +301,8 @@ function PreviewTable({
   reconciliations: PatientImportPreviewBinding["classificationReconciliations"];
   osmAssignmentReconciliations: PatientImportPreviewBinding["osmAssignmentReconciliations"];
   selectedReconciliationRows: ReadonlySet<number>;
-  selectedOsmCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>;
   selectedOsmReassignmentRows: ReadonlySet<number>;
   onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
-  onSelectOsmCandidate: (rowNumber: number, candidate: PatientImportOsmCandidateBinding) => void;
   onToggleOsmReassignment: (rowNumber: number, checked: boolean) => void;
   canManageOsmAssignment: boolean;
 }): React.JSX.Element {
@@ -342,7 +337,7 @@ function PreviewTable({
           {rows.map((row) => {
             const osm = row.patientOsmAssignment;
             const osmReconciliation = osmReconciliationByRow.get(row.rowNumber);
-            const selectedOsmCandidate = selectedOsmCandidates.get(row.rowNumber);
+            const selectedOsmCandidate = osmReconciliation?.candidates[0] ?? null;
             const selectedOsmRequiresReassignment = Boolean(
               canManageOsmAssignment &&
                 selectedOsmCandidate &&
@@ -422,7 +417,12 @@ function PreviewTable({
                       <p className="mt-1 text-danger">ไม่พบ อสม./โค้ชที่ตรงกับชื่อในโรงพยาบาลนี้</p>
                     ) : null}
                     {osm.resolutionStatus === "OSM_AMBIGUOUS" ? (
-                      <p className="mt-1 text-amber-900">พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน กรุณาเลือก</p>
+                      <p className="mt-1 text-amber-900" role="alert">
+                        พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน และยังไม่มีข้อมูลเพียงพอที่จะระบุผู้ดูแลที่ถูกต้อง
+                      </p>
+                    ) : null}
+                    {osm.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ? (
+                      <p className="mt-1 text-danger" role="alert">ไม่สามารถกำหนดตนเองเป็นผู้ดูแลผู้ป่วยได้</p>
                     ) : null}
                     {osm.resolutionStatus === "OSM_DATA_INVALID" ? (
                       <p className="mt-1 text-danger">ชื่อผู้ดูแลจากไฟล์ไม่ถูกต้อง</p>
@@ -434,36 +434,6 @@ function PreviewTable({
                     ) : null}
                     {osmReconciliation && canManageOsmAssignment ? (
                       <>
-                        {osmReconciliation.resolutionStatus === "OSM_AMBIGUOUS" ? (
-                          <label className="mt-2 block font-normal text-ink">
-                            <span className="sr-only">เลือกผู้ดูแลสำหรับแถว {row.rowNumber}</span>
-                            <Select
-                              aria-label={`เลือกผู้ดูแลสำหรับแถว ${row.rowNumber}`}
-                              className="mt-1 w-full bg-surface text-sm"
-                              onChange={(event) => {
-                                const candidate = osmReconciliation.candidates.find(
-                                  (item) => item.candidateReferenceToken === event.target.value,
-                                );
-
-                                if (candidate) {
-                                  onSelectOsmCandidate(row.rowNumber, candidate);
-                                }
-                              }}
-                              value={selectedOsmCandidate?.candidateReferenceToken ?? ""}
-                            >
-                              <option value="">เลือกผู้ดูแล</option>
-                              {osmReconciliation.candidates.map((candidate) => (
-                                <option
-                                  key={candidate.candidateReferenceToken}
-                                  value={candidate.candidateReferenceToken}
-                                >
-                                  {candidate.displayName}
-                                  {candidate.sameAsCurrent ? " · ผู้ดูแลปัจจุบัน" : ""}
-                                </option>
-                              ))}
-                            </Select>
-                          </label>
-                        ) : null}
                         {selectedOsmRequiresReassignment ? (
                           <div className="mt-3 rounded-control border border-amber-300 bg-amber-50 p-3 text-amber-950">
                             <p className="font-semibold">ผู้ดูแลปัจจุบันแตกต่างจากไฟล์</p>
@@ -493,7 +463,7 @@ function PreviewTable({
                       </>
                     ) : null}
                     {!canManageOsmAssignment &&
-                    (osm.assignmentStatus === "OSM_OWNER_REQUIRED" || osm.resolutionStatus === "OSM_AMBIGUOUS") ? (
+                    osm.assignmentStatus === "OSM_OWNER_REQUIRED" ? (
                       <p className="mt-2 text-amber-900">
                         การกำหนดหรือเปลี่ยนผู้ดูแลจากไฟล์ต้องดำเนินการโดยเจ้าของโรงพยาบาล
                       </p>
@@ -560,6 +530,9 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
   const osmAmbiguous = rows.filter(
     (row) => row.patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS",
   ).length;
+  const osmSelfAssignmentForbidden = rows.filter(
+    (row) => row.patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+  ).length;
 
   return (
     <div className="rounded-panel border border-border bg-surface-muted p-4 text-sm leading-6">
@@ -615,7 +588,8 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
           <div><dt className="text-muted">พร้อมกำหนด</dt><dd className="font-semibold">{osmReady}</dd></div>
           <div><dt className="text-muted">ตรงกับปัจจุบัน</dt><dd className="font-semibold">{osmAlreadyAssigned}</dd></div>
           <div><dt className="text-muted">ไม่พบชื่อ</dt><dd className="font-semibold">{osmNotFound}</dd></div>
-          <div><dt className="text-muted">ชื่อซ้ำ ต้องเลือก</dt><dd className="font-semibold">{osmAmbiguous}</dd></div>
+          <div><dt className="text-muted">ชื่อซ้ำ ต้องตรวจสอบ</dt><dd className="font-semibold">{osmAmbiguous}</dd></div>
+          <div><dt className="text-muted">กำหนดตนเองไม่ได้</dt><dd className="font-semibold">{osmSelfAssignmentForbidden}</dd></div>
           <div><dt className="text-muted">ขัดแย้ง ต้องยืนยัน</dt><dd className="font-semibold">{osmConflicts}</dd></div>
           <div><dt className="text-muted">ต้องใช้เจ้าของโรงพยาบาล</dt><dd className="font-semibold">{osmOwnerRequired}</dd></div>
         </dl>
@@ -738,19 +712,16 @@ function ImportSummary({ summary }: { summary: PatientImportResultSummary }): Re
 
 function selectedOsmCandidate(
   reconciliation: PatientImportOsmAssignmentReconciliationBinding,
-  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
-): PatientImportOsmCandidateBinding | null {
-  return selectedCandidates.get(reconciliation.rowNumber) ??
-    (reconciliation.resolutionStatus === "OSM_MATCHED"
-      ? reconciliation.candidates[0] ?? null
-      : null);
+): PatientImportPreviewBinding["osmAssignmentReconciliations"][number]["candidates"][number] | null {
+  return reconciliation.resolutionStatus === "OSM_MATCHED"
+    ? reconciliation.candidates[0] ?? null
+    : null;
 }
 
 function isRowImportable(
   row: PatientImportPreviewRow,
   preview: PatientImportPreviewBinding,
   selectedClassificationRows: ReadonlySet<number>,
-  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
   selectedReassignmentRows: ReadonlySet<number>,
 ): boolean {
   if (
@@ -792,6 +763,8 @@ function isRowImportable(
   if (
     !preview.canManageOsmAssignment ||
     osm.resolutionStatus === "OSM_NOT_FOUND" ||
+    osm.resolutionStatus === "OSM_AMBIGUOUS" ||
+    osm.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
     osm.resolutionStatus === "OSM_DATA_INVALID" ||
     osm.assignmentStatus === "OSM_OWNER_REQUIRED"
   ) {
@@ -806,7 +779,7 @@ function isRowImportable(
     return false;
   }
 
-  const candidate = selectedOsmCandidate(reconciliation, selectedCandidates);
+  const candidate = selectedOsmCandidate(reconciliation);
 
   if (!candidate) {
     return false;
@@ -819,11 +792,10 @@ function isRowImportable(
 
 function createOsmAssignmentChoices(
   preview: PatientImportPreviewBinding,
-  selectedCandidates: ReadonlyMap<number, PatientImportOsmCandidateBinding>,
   selectedReassignmentRows: ReadonlySet<number>,
 ): PatientImportOsmAssignmentChoiceBinding[] {
   return preview.osmAssignmentReconciliations.flatMap((reconciliation) => {
-    const candidate = selectedOsmCandidate(reconciliation, selectedCandidates);
+    const candidate = selectedOsmCandidate(reconciliation);
 
     if (!candidate) {
       return [];
@@ -869,9 +841,6 @@ export function PatientProvisioningWorkspace({
   const [effectiveDate, setEffectiveDate] = useState("");
   const [selectedClassificationReconciliationRows, setSelectedClassificationReconciliationRows] =
     useState<Set<number>>(new Set());
-  const [selectedOsmCandidates, setSelectedOsmCandidates] = useState<
-    Map<number, PatientImportOsmCandidateBinding>
-  >(new Map());
   const [selectedOsmReassignmentRows, setSelectedOsmReassignmentRows] = useState<Set<number>>(
     new Set(),
   );
@@ -895,7 +864,6 @@ export function PatientProvisioningWorkspace({
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmCandidates(new Map());
     setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
   }, [selectedHospitalId]);
@@ -906,7 +874,6 @@ export function PatientProvisioningWorkspace({
         row,
         previewState.preview,
         selectedClassificationReconciliationRows,
-        selectedOsmCandidates,
         selectedOsmReassignmentRows,
       ),
     );
@@ -925,7 +892,6 @@ export function PatientProvisioningWorkspace({
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmCandidates(new Map());
     setSelectedOsmReassignmentRows(new Set());
   }
 
@@ -981,7 +947,6 @@ export function PatientProvisioningWorkspace({
     );
     const osmAssignmentChoices = createOsmAssignmentChoices(
       preview,
-      selectedOsmCandidates,
       selectedOsmReassignmentRows,
     );
 
@@ -1022,25 +987,6 @@ export function PatientProvisioningWorkspace({
     });
   }
 
-  function selectOsmCandidate(
-    rowNumber: number,
-    candidate: PatientImportOsmCandidateBinding,
-  ): void {
-    setSelectedOsmCandidates((current) => {
-      const next = new Map(current);
-      next.set(rowNumber, candidate);
-      return next;
-    });
-
-    if (candidate.sameAsCurrent) {
-      setSelectedOsmReassignmentRows((current) => {
-        const next = new Set(current);
-        next.delete(rowNumber);
-        return next;
-      });
-    }
-  }
-
   function toggleOsmReassignment(rowNumber: number, checked: boolean): void {
     setSelectedOsmReassignmentRows((current) => {
       const next = new Set(current);
@@ -1063,7 +1009,6 @@ export function PatientProvisioningWorkspace({
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
     setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmCandidates(new Map());
     setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
@@ -1231,12 +1176,10 @@ export function PatientProvisioningWorkspace({
                       <PreviewTable
                         canManageOsmAssignment={previewState.preview.canManageOsmAssignment}
                         onToggleReconciliation={toggleClassificationReconciliation}
-                        onSelectOsmCandidate={selectOsmCandidate}
                         onToggleOsmReassignment={toggleOsmReassignment}
                         osmAssignmentReconciliations={previewState.preview.osmAssignmentReconciliations}
                         reconciliations={previewState.preview.classificationReconciliations}
                         rows={previewState.preview.rows}
-                        selectedOsmCandidates={selectedOsmCandidates}
                         selectedOsmReassignmentRows={selectedOsmReassignmentRows}
                         selectedReconciliationRows={selectedClassificationReconciliationRows}
                       />

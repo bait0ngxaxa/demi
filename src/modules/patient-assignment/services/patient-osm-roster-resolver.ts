@@ -33,6 +33,7 @@ export type PatientOsmRosterResolutionStatus =
   | "OSM_MATCHED"
   | "OSM_NOT_FOUND"
   | "OSM_AMBIGUOUS"
+  | "OSM_SELF_ASSIGNMENT_FORBIDDEN"
   | "OSM_DATA_INVALID";
 
 export type PatientOsmRosterAssignmentStatus =
@@ -65,7 +66,7 @@ export type PatientOsmRosterAssignmentPreviewInternal = {
 
 export type PatientOsmRosterAssignmentChoice = {
   rowNumber: number;
-  resolutionStatus: "OSM_MATCHED" | "OSM_AMBIGUOUS";
+  resolutionStatus: "OSM_MATCHED";
   sourceCaregiverName: string;
   normalizedSourceCaregiverName: string;
   candidateOsmUserId: string;
@@ -80,6 +81,7 @@ type RosterOsmResolverDatabase =
 type RosterOsmResolution = {
   status: PatientOsmRosterResolutionStatus;
   normalizedSourceCaregiverName: string | null;
+  rawCandidates: readonly PatientOsmRosterCandidate[];
   candidates: readonly PatientOsmRosterCandidate[];
 };
 
@@ -125,6 +127,7 @@ export function resolveRosterOsmCandidate(input: {
   sourceCaregiverName: string | null;
   sourceInvalid?: boolean;
   candidates: readonly PatientOsmRosterCandidate[];
+  actorUserId: string;
 }): RosterOsmResolution {
   const normalizedSourceCaregiverName = normalizeRosterOsmCaregiverName(
     input.sourceCaregiverName,
@@ -134,6 +137,7 @@ export function resolveRosterOsmCandidate(input: {
     return {
       status: "OSM_DATA_INVALID",
       normalizedSourceCaregiverName,
+      rawCandidates: [],
       candidates: [],
     };
   }
@@ -142,6 +146,7 @@ export function resolveRosterOsmCandidate(input: {
     return {
       status: "OSM_NOT_APPLICABLE",
       normalizedSourceCaregiverName: null,
+      rawCandidates: [],
       candidates: [],
     };
   }
@@ -150,35 +155,53 @@ export function resolveRosterOsmCandidate(input: {
     return {
       status: "OSM_DATA_INVALID",
       normalizedSourceCaregiverName,
+      rawCandidates: [],
       candidates: [],
     };
   }
 
-  const matches = input.candidates.filter(
+  const rawMatches = input.candidates.filter(
     (candidate) =>
       normalizeRosterOsmCaregiverName(candidate.displayName) === normalizedSourceCaregiverName,
   );
+  const rawCandidates = rawMatches.slice(0, MAX_ROSTER_OSM_CANDIDATES);
 
-  if (matches.length === 0) {
+  if (rawMatches.length === 0) {
     return {
       status: "OSM_NOT_FOUND",
       normalizedSourceCaregiverName,
+      rawCandidates,
       candidates: [],
     };
   }
 
-  if (matches.length > 1) {
+  const selectableMatches = rawMatches.filter(
+    (candidate) => candidate.osmUserId !== input.actorUserId,
+  );
+
+  if (selectableMatches.length === 0) {
+    return {
+      status: "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+      normalizedSourceCaregiverName,
+      rawCandidates,
+      candidates: [],
+    };
+  }
+
+  if (selectableMatches.length > 1) {
     return {
       status: "OSM_AMBIGUOUS",
       normalizedSourceCaregiverName,
-      candidates: matches.slice(0, MAX_ROSTER_OSM_CANDIDATES),
+      rawCandidates,
+      candidates: selectableMatches.slice(0, MAX_ROSTER_OSM_CANDIDATES),
     };
   }
 
   return {
     status: "OSM_MATCHED",
     normalizedSourceCaregiverName,
-    candidates: matches,
+    rawCandidates,
+    candidates: selectableMatches,
   };
 }
 
@@ -224,6 +247,7 @@ export function buildRosterOsmAssignmentPreview(input: {
     sourceCaregiverName: input.sourceCaregiverName,
     sourceInvalid: (input.sourceDiagnostics?.length ?? 0) > 0,
     candidates: input.candidates,
+    actorUserId: input.actor.userId,
   });
   const currentOsmUserId = input.currentAssignment?.osmUserId ?? null;
   const currentCaregiverDisplayName = input.currentAssignment?.displayName ?? null;
@@ -298,16 +322,14 @@ export async function reconcileRosterOsmAssignmentInTransaction(
     sourceCaregiverName: input.sourceCaregiverName,
     sourceInvalid: (input.sourceDiagnostics?.length ?? 0) > 0,
     candidates,
+    actorUserId: actor.userId,
   });
 
   if (resolution.status === "OSM_NOT_APPLICABLE") {
     return null;
   }
 
-  if (
-    resolution.status !== "OSM_MATCHED" &&
-    resolution.status !== "OSM_AMBIGUOUS"
-  ) {
+  if (resolution.status !== "OSM_MATCHED") {
     throw new PatientOsmRosterResolutionConflictError();
   }
 
