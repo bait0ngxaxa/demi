@@ -20,7 +20,9 @@ import {
   countPatientImportExecutableRows,
   countPatientImportRowsRequiringAttention,
   getPatientImportAttentionReason,
+  getPatientImportRecoveryGuidance,
   getPatientImportResultPresentation,
+  getPatientImportRowPresentationStatus,
   isPatientImportRowImportable,
   summarizePatientImportPreview,
 } from "./patient-import-presentation";
@@ -134,10 +136,14 @@ function createMatchedOsmRow(
 }
 
 function createResultRow(
-  result: "ALREADY_EXISTS" | "NEEDS_REVIEW" | "INVALID",
+  result: PatientImportRowResult["result"],
+  overrides: Partial<PatientImportPreviewRow> = {},
 ): PatientImportRowResult {
   return {
-    ...createRow({ classification: result }),
+    ...createRow({
+      classification: result === "IMPORTED" || result === "FAILED" ? "READY" : result,
+      ...overrides,
+    }),
     result,
   };
 }
@@ -336,6 +342,251 @@ describe("patient import presentation helpers", () => {
     expect(countPatientImportRowsRequiringAttention(preview, new Set([2]), new Set([2]))).toBe(0);
   });
 
+  it("projects confirmation-satisfied rows as READY without changing server classification", () => {
+    const readyRow = createRow({ classification: "READY" });
+    expect(
+      getPatientImportRowPresentationStatus(readyRow, createPreview(), new Set(), new Set()),
+    ).toBe("READY");
+
+    const alreadyExistsRow = createRow({ classification: "ALREADY_EXISTS" });
+    expect(
+      getPatientImportRowPresentationStatus(
+        alreadyExistsRow,
+        createPreview(),
+        new Set(),
+        new Set(),
+      ),
+    ).toBe("ALREADY_EXISTS");
+
+    const invalidRow = createRow({ classification: "INVALID" });
+    expect(
+      getPatientImportRowPresentationStatus(invalidRow, createPreview(), new Set(), new Set()),
+    ).toBe("INVALID");
+
+    const classificationRow = createRow({
+      classification: "NEEDS_REVIEW",
+      patientClassification: {
+        ...defaultClassification,
+        status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      },
+    });
+    const classificationPreview = createPreview({
+      rows: [classificationRow],
+      classificationReconciliations: [{
+        rowNumber: classificationRow.rowNumber,
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+        confirmationToken: "classification-token",
+      }],
+    });
+    expect(
+      getPatientImportRowPresentationStatus(
+        classificationRow,
+        classificationPreview,
+        new Set(),
+        new Set(),
+      ),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      getPatientImportRowPresentationStatus(
+        classificationRow,
+        classificationPreview,
+        new Set([classificationRow.rowNumber]),
+        new Set(),
+      ),
+    ).toBe("READY");
+
+    const candidate = createOsmCandidate();
+    const osmRow = createRow({
+      classification: "NEEDS_REVIEW",
+      patientOsmAssignment: {
+        ...defaultOsmAssignment,
+        resolutionStatus: "OSM_MATCHED",
+        assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+        sourceCaregiverName: candidate.displayName,
+        currentCaregiver: { displayName: "สมชาย ผู้ดูแลเดิม" },
+        resolvedCandidate: { displayName: candidate.displayName },
+        candidates: [{ displayName: candidate.displayName }],
+      },
+    });
+    const osmPreview = createPreview({
+      rows: [osmRow],
+      osmAssignmentReconciliations: [createOsmReconciliation(candidate, {
+        currentCaregiver: { displayName: "สมชาย ผู้ดูแลเดิม" },
+        assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+      })],
+    });
+    expect(
+      getPatientImportRowPresentationStatus(osmRow, osmPreview, new Set(), new Set()),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      getPatientImportRowPresentationStatus(
+        osmRow,
+        osmPreview,
+        new Set(),
+        new Set([osmRow.rowNumber]),
+      ),
+    ).toBe("READY");
+
+    const combinedRow = createRow({
+      classification: "NEEDS_REVIEW",
+      patientClassification: {
+        ...defaultClassification,
+        status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      },
+      patientOsmAssignment: osmRow.patientOsmAssignment,
+    });
+    const combinedPreview = createPreview({
+      rows: [combinedRow],
+      classificationReconciliations: [{
+        rowNumber: combinedRow.rowNumber,
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+        confirmationToken: "classification-token",
+      }],
+      osmAssignmentReconciliations: [createOsmReconciliation(candidate, {
+        rowNumber: combinedRow.rowNumber,
+        currentCaregiver: { displayName: "สมชาย ผู้ดูแลเดิม" },
+        assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+      })],
+    });
+    expect(
+      getPatientImportRowPresentationStatus(
+        combinedRow,
+        combinedPreview,
+        new Set(),
+        new Set(),
+      ),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      getPatientImportRowPresentationStatus(
+        combinedRow,
+        combinedPreview,
+        new Set([combinedRow.rowNumber]),
+        new Set(),
+      ),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      getPatientImportRowPresentationStatus(
+        combinedRow,
+        combinedPreview,
+        new Set(),
+        new Set([combinedRow.rowNumber]),
+      ),
+    ).toBe("NEEDS_REVIEW");
+    expect(
+      getPatientImportRowPresentationStatus(
+        combinedRow,
+        combinedPreview,
+        new Set([combinedRow.rowNumber]),
+        new Set([combinedRow.rowNumber]),
+      ),
+    ).toBe("READY");
+  });
+
+  it("keeps non-confirmable OSM states blocked in the presentation", () => {
+    const ownerRequiredRow = createRow({
+      classification: "NEEDS_REVIEW",
+      patientOsmAssignment: {
+        ...defaultOsmAssignment,
+        resolutionStatus: "OSM_MATCHED",
+        assignmentStatus: "OSM_OWNER_REQUIRED",
+        sourceCaregiverName: "ผู้ดูแลใหม่",
+        currentCaregiver: { displayName: "ผู้ดูแลเดิม" },
+        resolvedCandidate: { displayName: "ผู้ดูแลใหม่" },
+        candidates: [{ displayName: "ผู้ดูแลใหม่" }],
+      },
+    });
+    const ownerPreview = createPreview({ canManageOsmAssignment: false, rows: [ownerRequiredRow] });
+    expect(
+      getPatientImportRowPresentationStatus(ownerRequiredRow, ownerPreview, new Set(), new Set()),
+    ).toBe("NEEDS_REVIEW");
+
+    for (const resolutionStatus of [
+      "OSM_AMBIGUOUS",
+      "OSM_NOT_FOUND",
+      "OSM_SELF_ASSIGNMENT_FORBIDDEN",
+    ] as const) {
+      const row = createRow({
+        classification: "NEEDS_REVIEW",
+        patientOsmAssignment: {
+          ...defaultOsmAssignment,
+          resolutionStatus,
+          sourceCaregiverName: "ผู้ดูแลจากไฟล์",
+        },
+      });
+      const preview = createPreview({ rows: [row] });
+      expect(
+        getPatientImportRowPresentationStatus(row, preview, new Set(), new Set()),
+      ).toBe("NEEDS_REVIEW");
+    }
+  });
+
+  it("maps final attention rows to only the recovery actions they need", () => {
+    const classificationRow = createResultRow("NEEDS_REVIEW", {
+      patientClassification: {
+        ...defaultClassification,
+        status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      },
+    });
+    expect(getPatientImportRecoveryGuidance({ rows: [classificationRow] }).map(({ kind }) => kind))
+      .toEqual(["CONFIRMATION_REQUIRED"]);
+
+    const osmRow = createResultRow("NEEDS_REVIEW", {
+      patientOsmAssignment: {
+        ...defaultOsmAssignment,
+        resolutionStatus: "OSM_MATCHED",
+        assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+        sourceCaregiverName: "ผู้ดูแลใหม่",
+        currentCaregiver: { displayName: "ผู้ดูแลเดิม" },
+        resolvedCandidate: { displayName: "ผู้ดูแลใหม่" },
+        candidates: [{ displayName: "ผู้ดูแลใหม่" }],
+      },
+    });
+    expect(getPatientImportRecoveryGuidance({ rows: [osmRow] }).map(({ kind }) => kind))
+      .toEqual(["CONFIRMATION_REQUIRED"]);
+
+    const ownerRequiredRow = createResultRow("NEEDS_REVIEW", {
+      patientOsmAssignment: {
+        ...defaultOsmAssignment,
+        resolutionStatus: "OSM_MATCHED",
+        assignmentStatus: "OSM_OWNER_REQUIRED",
+        sourceCaregiverName: "ผู้ดูแลใหม่",
+        currentCaregiver: { displayName: "ผู้ดูแลเดิม" },
+        resolvedCandidate: { displayName: "ผู้ดูแลใหม่" },
+        candidates: [{ displayName: "ผู้ดูแลใหม่" }],
+      },
+    });
+    expect(getPatientImportRecoveryGuidance({ rows: [ownerRequiredRow] }).map(({ kind }) => kind))
+      .toEqual(["OWNER_REQUIRED"]);
+
+    const failedRow = createResultRow("FAILED");
+    expect(getPatientImportRecoveryGuidance({ rows: [failedRow] }).map(({ kind }) => kind))
+      .toEqual(["RETRY_FAILED"]);
+
+    const invalidRow = createResultRow("INVALID");
+    const mismatchRow = createResultRow("HOSPITAL_MISMATCH");
+    expect(
+      getPatientImportRecoveryGuidance({ rows: [invalidRow, mismatchRow] }).map(({ kind }) => kind),
+    ).toEqual(["DATA_REVIEW"]);
+
+    const mixed = getPatientImportRecoveryGuidance({
+      rows: [invalidRow, ownerRequiredRow, failedRow],
+    });
+    expect(mixed.map(({ kind }) => kind)).toEqual([
+      "DATA_REVIEW",
+      "OWNER_REQUIRED",
+      "RETRY_FAILED",
+    ]);
+    expect(mixed.map(({ message }) => message).join(" ")).not.toContain("แก้ไขข้อมูลในไฟล์แล้วอัปโหลดใหม่");
+  });
+
   it("keeps blocked-row explanations in operator language", () => {
     const cases: Array<[PatientImportPreviewRow, string]> = [
       [createRow({ classification: "HOSPITAL_MISMATCH" }), "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก"],
@@ -415,6 +666,7 @@ describe("patient import presentation helpers", () => {
     expect(allBlocked).toMatchObject({
       variant: "danger",
       heading: "ยังไม่มีรายการที่บันทึกได้",
+      detail: "รายการที่ต้องตรวจสอบยังไม่ถูกบันทึก",
       hasSuccessfulRows: false,
       hasAttentionRows: true,
     });

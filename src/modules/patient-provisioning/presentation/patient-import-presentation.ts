@@ -2,6 +2,7 @@ import type {
   PatientImportPreviewRow,
   PatientImportClassification,
   PatientImportResultSummary,
+  PatientImportRowResult,
 } from "../services/patient-roster-import-types";
 import {
   isPatientImportAttentionClassification,
@@ -29,6 +30,18 @@ export type PatientImportResultPresentation = {
   hasAttentionRows: boolean;
   hasSuccessfulRows: boolean;
   allIdempotent: boolean;
+};
+
+export type PatientImportRecoveryAction =
+  | "DATA_REVIEW"
+  | "CONFIRMATION_REQUIRED"
+  | "OWNER_REQUIRED"
+  | "RETRY_FAILED";
+
+export type PatientImportRecoveryGuidance = {
+  kind: PatientImportRecoveryAction;
+  message: string;
+  detail?: string;
 };
 
 export function summarizePatientImportPreview(
@@ -131,6 +144,29 @@ export function isPatientImportRowImportable(
     selectedReassignmentRows.has(row.rowNumber);
 }
 
+export function getPatientImportRowPresentationStatus(
+  row: PatientImportPreviewRow,
+  preview: Pick<
+    PatientImportPreviewBinding,
+    "canManageOsmAssignment" | "osmAssignmentReconciliations"
+  >,
+  selectedClassificationRows: ReadonlySet<number>,
+  selectedReassignmentRows: ReadonlySet<number>,
+): PatientImportClassification {
+  if (row.classification !== "NEEDS_REVIEW") {
+    return row.classification;
+  }
+
+  return isPatientImportRowImportable(
+    row,
+    preview,
+    selectedClassificationRows,
+    selectedReassignmentRows,
+  )
+    ? "READY"
+    : "NEEDS_REVIEW";
+}
+
 export function countPatientImportExecutableRows(
   preview: PatientImportPreviewBinding,
   selectedClassificationRows: ReadonlySet<number>,
@@ -203,7 +239,7 @@ export function getPatientImportResultPresentation(
     : hasAttentionRows && hasSuccessfulRows
       ? "ระบบบันทึกเฉพาะรายการที่พร้อมแล้ว รายการที่ต้องตรวจสอบยังไม่ถูกบันทึก"
       : hasAttentionRows
-        ? "รายการที่ต้องตรวจสอบยังไม่ถูกบันทึก กรุณาแก้ไขแล้วอัปโหลดไฟล์ใหม่"
+        ? "รายการที่ต้องตรวจสอบยังไม่ถูกบันทึก"
         : null;
 
   return {
@@ -215,6 +251,109 @@ export function getPatientImportResultPresentation(
     hasSuccessfulRows,
     allIdempotent,
   };
+}
+
+const patientImportRecoveryGuidanceOrder: readonly PatientImportRecoveryAction[] = [
+  "DATA_REVIEW",
+  "CONFIRMATION_REQUIRED",
+  "OWNER_REQUIRED",
+  "RETRY_FAILED",
+];
+
+const patientImportRecoveryGuidanceByAction: Record<
+  PatientImportRecoveryAction,
+  PatientImportRecoveryGuidance
+> = {
+  DATA_REVIEW: {
+    kind: "DATA_REVIEW",
+    message:
+      "ตรวจสอบรายการที่ข้อมูลไม่ถูกต้องหรือขัดแย้งกับข้อมูลในระบบ แล้วแก้ไขหรือยืนยันข้อมูลให้ถูกต้องก่อนนำเข้าใหม่",
+  },
+  CONFIRMATION_REQUIRED: {
+    kind: "CONFIRMATION_REQUIRED",
+    message: "นำเข้าไฟล์เดิมอีกครั้ง แล้วตรวจสอบและยืนยันรายการเปลี่ยนแปลงที่ต้องการ",
+    detail: "หากข้อมูลจากไฟล์ถูกต้อง ไม่จำเป็นต้องแก้ไขไฟล์",
+  },
+  OWNER_REQUIRED: {
+    kind: "OWNER_REQUIRED",
+    message:
+      "รายการผู้ดูแลบางรายการต้องให้เจ้าของโรงพยาบาลดำเนินการ กรุณาให้เจ้าของโรงพยาบาลนำเข้าไฟล์นี้อีกครั้ง",
+  },
+  RETRY_FAILED: {
+    kind: "RETRY_FAILED",
+    message: "มีบางรายการที่ระบบไม่สามารถบันทึกได้ กรุณาลองนำเข้าอีกครั้ง",
+    detail: "หากยังเกิดปัญหาเดิม กรุณาแจ้งผู้ดูแลระบบ",
+  },
+};
+
+function hasPatientImportDataReviewIssue(row: PatientImportRowResult): boolean {
+  if (
+    row.result === "INVALID" ||
+    row.result === "DUPLICATE_IN_FILE" ||
+    row.result === "CONFLICT" ||
+    row.result === "HOSPITAL_MISMATCH" ||
+    row.result === "UNSUPPORTED_REQUIREMENT"
+  ) {
+    return true;
+  }
+
+  if (
+    row.patientClassification.status === "CLASSIFICATION_DATA_INVALID" ||
+    row.baselineStatus === "BASELINE_CONFLICT" ||
+    row.baselineStatus === "BASELINE_DATE_REQUIRED" ||
+    row.baselineStatus === "BASELINE_DATA_INVALID"
+  ) {
+    return true;
+  }
+
+  return (
+    row.patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND" ||
+    row.patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS" ||
+    row.patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
+    row.patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID"
+  );
+}
+
+export function getPatientImportRecoveryGuidance(
+  summary: Pick<PatientImportResultSummary, "rows">,
+): readonly PatientImportRecoveryGuidance[] {
+  const actions = new Set<PatientImportRecoveryAction>();
+
+  for (const row of summary.rows) {
+    const classificationConfirmationRequired =
+      row.result === "NEEDS_REVIEW" &&
+      row.patientClassification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION";
+    const osmReassignmentConfirmationRequired =
+      row.result === "NEEDS_REVIEW" &&
+      row.patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT";
+    const ownerRequired = row.patientOsmAssignment.assignmentStatus === "OSM_OWNER_REQUIRED";
+
+    if (classificationConfirmationRequired || osmReassignmentConfirmationRequired) {
+      actions.add("CONFIRMATION_REQUIRED");
+    }
+
+    if (ownerRequired) {
+      actions.add("OWNER_REQUIRED");
+    }
+
+    if (row.result === "FAILED") {
+      actions.add("RETRY_FAILED");
+    }
+
+    if (
+      hasPatientImportDataReviewIssue(row) ||
+      (row.result === "NEEDS_REVIEW" &&
+        !classificationConfirmationRequired &&
+        !osmReassignmentConfirmationRequired &&
+        !ownerRequired)
+    ) {
+      actions.add("DATA_REVIEW");
+    }
+  }
+
+  return patientImportRecoveryGuidanceOrder
+    .filter((action) => actions.has(action))
+    .map((action) => patientImportRecoveryGuidanceByAction[action]);
 }
 
 export function getPatientImportAttentionReason(row: PatientImportPreviewRow): string {

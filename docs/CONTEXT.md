@@ -492,10 +492,14 @@ limitations are visible without moving authority into the client.
 Import remains independently executable per row. The UI explains partial imports,
 disables confirmation when no row can execute, keeps `ALREADY_EXISTS` out of
 attention counts, reports mixed/all-idempotent/all-blocked outcomes truthfully,
-and offers attention-only recovery guidance plus `นำเข้าไฟล์ใหม่`. Canonical
-binding, confirm-time server re-evaluation, transaction boundaries, classification
-vocabulary, OSM authority, Template v1 structure, persistence fields, and schema
-remain unchanged. `IMP-REQ-03` Hospital / รพ.สต. hierarchy and
+and offers category-specific recovery guidance plus `นำเข้าไฟล์ใหม่`. Recovery
+distinguishes data review, explicit Classification/OSM confirmation, Owner-only
+caregiver action, and failed-row retry. Preview badges project a confirmed
+`NEEDS_REVIEW` row as `พร้อมนำเข้า` without mutating server classification;
+executable count, attention count, and badge use the same readiness helper.
+Canonical binding, confirm-time server re-evaluation, transaction boundaries,
+classification vocabulary, OSM authority, Template v1 structure, persistence
+fields, and schema remain unchanged. `IMP-REQ-03` Hospital / รพ.สต. hierarchy and
 `P16C-PROFILE-01` profile/contact/address persistence ownership remain OPEN.
 See the [Phase 16D.6 handoff](./phases/PHASE_16D6_IMPORT_PREVIEW_CONFIRMATION_UX_POLISH.md).
 

@@ -74,11 +74,53 @@ successes, and danger when every attempted row remains blocked or failed.
 - After import, only attention rows are listed with Excel row, masked identity,
   name, HN, result, and safe reason. Failed rows use a safe fallback rather than
   infrastructure details.
-- Recovery tells operators to fix the file and upload it again. OWNER-required
-  rows direct the operator to have the Hospital Owner run the import again.
+- Recovery guidance is derived from final row results and domain detail rather
+  than from one aggregate attention count. It distinguishes data review,
+  explicit confirmation, Hospital Owner action, and retrying failed rows.
   `นำเข้าไฟล์ใหม่` resets file, date, preview, selections, and result without a
   page reload. The Hospital patient-list link remains available after useful
   success.
+
+## Phase 16D.6 remediation
+
+The first 16D.6 review found two presentation defects. Attention is not
+synonymous with workbook correction: a valid row can remain unresolved because
+the operator did not explicitly confirm a Classification change or an OSM
+reassignment, while a failed row needs a retry rather than an Excel edit.
+
+The remediation adds a small presentation-only recovery model based on final
+result rows and their domain detail:
+
+- `DATA_REVIEW` covers invalid, duplicate, Hospital mismatch, unsupported, and
+  conflict/unresolved data cases. Its wording asks the operator to review the
+  file and the authoritative record and then correct or confirm the data as
+  appropriate.
+- `CONFIRMATION_REQUIRED` asks the operator to upload the same workbook again,
+  preview it, and explicitly confirm the requested status or caregiver change.
+  It makes clear that the file need not be edited when its values are correct.
+- `OWNER_REQUIRED` directs the operator to have the Hospital Owner run the file
+  again for caregiver actions that require Owner authority.
+- `RETRY_FAILED` asks the operator to retry the import and contact the system
+  administrator if the failure repeats. Infrastructure details remain hidden.
+
+Multiple guidance items can appear together when the final result contains
+different recovery needs. The result heading/detail remains a separate,
+truthful summary of what was saved; recovery guidance answers what to do next.
+
+The preview table now uses a presentation-only row status. A `NEEDS_REVIEW` row
+is shown as `พร้อมนำเข้า` only when the existing server-preview readiness helper
+returns executable with all selected Classification and OSM confirmations. The
+authoritative `row.classification` is never mutated or submitted as client
+authority. Unchecking any required confirmation returns the badge to
+`ต้องตรวจสอบ`; `ALREADY_EXISTS` remains `มีอยู่แล้ว`, and OWNER-required,
+ambiguous, not-found, self-assignment, invalid, conflict, and other blocked
+states remain blocked. Executable count, attention count, and the preview badge
+therefore use the same readiness decision.
+
+Focused presentation tests cover each recovery category, mixed recovery, all
+confirmation combinations, idempotence, and non-confirmable OSM states. The
+workspace continues to render the simple presentation helper; no backend,
+binding, contract, persistence, or authority semantics changed.
 
 Canonical mismatch keeps the exact actionable validation message and presents a
 nearby `ดาวน์โหลด Template` action. Safe file-size and 500-row limit messages

@@ -32,7 +32,9 @@ import {
   getPatientImportAttentionReason,
   getPatientImportClassificationReason,
   getPatientImportOsmReason,
+  getPatientImportRecoveryGuidance,
   getPatientImportResultPresentation,
+  getPatientImportRowPresentationStatus,
   selectedPatientImportOsmCandidate,
   summarizePatientImportPreview,
 } from "@/modules/patient-provisioning/presentation/patient-import-presentation";
@@ -522,26 +524,27 @@ function PreviewRowDetails({
 }
 
 function PreviewTable({
-  rows,
-  reconciliations,
-  osmAssignmentReconciliations,
+  preview,
   selectedReconciliationRows,
   selectedOsmReassignmentRows,
   onToggleReconciliation,
   onToggleOsmReassignment,
-  canManageOsmAssignment,
   disabled,
 }: {
-  rows: PatientImportPreviewRow[];
-  reconciliations: PatientImportPreviewBinding["classificationReconciliations"];
-  osmAssignmentReconciliations: PatientImportPreviewBinding["osmAssignmentReconciliations"];
+  preview: PatientImportPreviewBinding;
   selectedReconciliationRows: ReadonlySet<number>;
   selectedOsmReassignmentRows: ReadonlySet<number>;
   onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
   onToggleOsmReassignment: (rowNumber: number, checked: boolean) => void;
-  canManageOsmAssignment: boolean;
   disabled: boolean;
 }): React.JSX.Element {
+  const {
+    canManageOsmAssignment,
+    classificationReconciliations: reconciliations,
+    osmAssignmentReconciliations,
+    rows,
+  } = preview;
+
   if (rows.length === 0) {
     return (
       <p className="rounded-panel border border-dashed border-border bg-surface-muted px-4 py-8 text-center text-sm leading-6 text-text-muted">
@@ -572,38 +575,47 @@ function PreviewTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {rows.map((row) => (
-            <tr key={row.rowNumber}>
-              <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
-              <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">
-                {row.identityDisplay}
-              </td>
-              <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
-                {patientImportRowName(row)}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 text-muted">
-                {row.hospitalNumber ?? "-"}
-              </td>
-              <td className="whitespace-nowrap px-3 py-3 align-top">
-                <StatusBadge variant={classificationVariants[row.classification]}>
-                  {classificationLabels[row.classification]}
-                </StatusBadge>
-              </td>
-              <td className="px-3 py-3 align-top">
-                <PreviewRowDetails
-                  canManageOsmAssignment={canManageOsmAssignment}
-                  disabled={disabled}
-                  onToggleOsmReassignment={onToggleOsmReassignment}
-                  onToggleReconciliation={onToggleReconciliation}
-                  osmReconciliation={osmReconciliationByRow.get(row.rowNumber)}
-                  reconciliation={reconciliationByRow.get(row.rowNumber)}
-                  row={row}
-                  selectedOsmReassignment={selectedOsmReassignmentRows.has(row.rowNumber)}
-                  selectedReconciliation={selectedReconciliationRows.has(row.rowNumber)}
-                />
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const presentationStatus = getPatientImportRowPresentationStatus(
+              row,
+              preview,
+              selectedReconciliationRows,
+              selectedOsmReassignmentRows,
+            );
+
+            return (
+              <tr key={row.rowNumber}>
+                <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
+                <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">
+                  {row.identityDisplay}
+                </td>
+                <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
+                  {patientImportRowName(row)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 text-muted">
+                  {row.hospitalNumber ?? "-"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-3 align-top">
+                  <StatusBadge variant={classificationVariants[presentationStatus]}>
+                    {classificationLabels[presentationStatus]}
+                  </StatusBadge>
+                </td>
+                <td className="px-3 py-3 align-top">
+                  <PreviewRowDetails
+                    canManageOsmAssignment={canManageOsmAssignment}
+                    disabled={disabled}
+                    onToggleOsmReassignment={onToggleOsmReassignment}
+                    onToggleReconciliation={onToggleReconciliation}
+                    osmReconciliation={osmReconciliationByRow.get(row.rowNumber)}
+                    reconciliation={reconciliationByRow.get(row.rowNumber)}
+                    row={row}
+                    selectedOsmReassignment={selectedOsmReassignmentRows.has(row.rowNumber)}
+                    selectedReconciliation={selectedReconciliationRows.has(row.rowNumber)}
+                  />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -721,6 +733,7 @@ function ImportSummary({
     reviewCount,
     variant,
   } = getPatientImportResultPresentation(summary);
+  const recoveryGuidance = getPatientImportRecoveryGuidance(summary);
 
   return (
     <Alert variant={variant}>
@@ -808,19 +821,17 @@ function ImportSummary({
         </p>
       ) : null}
 
-      {hasAttentionRows ? (
+      {recoveryGuidance.length > 0 ? (
         <div className="mt-4 border-t border-border pt-4 text-muted">
-          <p>แก้ไขข้อมูลในไฟล์แล้วอัปโหลดใหม่</p>
-          {summary.osmOwnerRequired > 0 ? (
-            <p className="mt-1">
-              รายการที่ต้องยืนยันผู้ดูแล: ให้เจ้าของโรงพยาบาลดำเนินการนำเข้าไฟล์อีกครั้ง
-            </p>
-          ) : null}
-          {summary.classificationNeedsReview > 0 || summary.osmAssignmentConflict > 0 ? (
-            <p className="mt-1">
-              หากเป็นรายการที่ยังไม่ได้ยืนยัน ให้ตรวจสอบตัวอย่างใหม่และยืนยันทุกข้อที่ต้องการก่อนนำเข้าอีกครั้ง
-            </p>
-          ) : null}
+          <p className="font-semibold text-ink">ขั้นตอนถัดไป</p>
+          <ul className="mt-2 list-disc space-y-2 pl-5">
+            {recoveryGuidance.map((guidance) => (
+              <li key={guidance.kind}>
+                <p>{guidance.message}</p>
+                {guidance.detail ? <p className="mt-1">{guidance.detail}</p> : null}
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
@@ -1357,13 +1368,10 @@ export function PatientProvisioningWorkspace({
 
                     {importState.status !== "SUCCESS" ? (
                       <PreviewTable
-                        canManageOsmAssignment={previewState.preview.canManageOsmAssignment}
                         disabled={previewPending || importPending}
                         onToggleReconciliation={toggleClassificationReconciliation}
                         onToggleOsmReassignment={toggleOsmReassignment}
-                        osmAssignmentReconciliations={previewState.preview.osmAssignmentReconciliations}
-                        reconciliations={previewState.preview.classificationReconciliations}
-                        rows={previewState.preview.rows}
+                        preview={previewState.preview}
                         selectedOsmReassignmentRows={selectedOsmReassignmentRows}
                         selectedReconciliationRows={selectedClassificationReconciliationRows}
                       />
