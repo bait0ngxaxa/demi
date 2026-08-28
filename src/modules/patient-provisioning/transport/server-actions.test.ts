@@ -2,8 +2,11 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { ValidationError } from "@/shared/errors/application-error";
 import type { PatientImportUpload } from "../adapters/excel-patient-import-adapter";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
+import { PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE } from "../import/patient-import-template-contract";
+import type { PatientImportResultSummary } from "../services/patient-roster-import-types";
 import type { PatientProvisionActionState } from "./action-state";
 import {
   createPatientImportClassificationReconciliationBinding,
@@ -413,6 +416,24 @@ describe("patient import Server Actions", () => {
     );
   });
 
+  it("returns the actionable canonical-template mismatch message", async () => {
+    const file = createUpload("file-wrong-template");
+    mockedReadCandidates.mockRejectedValueOnce(
+      new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE),
+    );
+
+    const result = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(result).toEqual({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
+    });
+    expect(mockedPreviewProvisioning).not.toHaveBeenCalled();
+  });
+
   it("returns only opaque OSM candidate bindings to the browser", async () => {
     mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
       candidates: [{
@@ -813,6 +834,57 @@ describe("patient import Server Actions", () => {
         osmAssignmentChoices: [],
       },
     );
+  });
+
+  it("returns a mixed result summary unchanged", async () => {
+    const mixedSummary = {
+      targetHospitalId: hospitalId,
+      imported: 1,
+      alreadyExists: 1,
+      duplicateInFile: 0,
+      invalid: 0,
+      conflict: 0,
+      needsReview: 1,
+      hospitalMismatch: 0,
+      unsupportedRequirement: 0,
+      failed: 0,
+      baselineCreated: 1,
+      baselineAlreadyExists: 1,
+      baselineConflict: 0,
+      baselineInvalid: 0,
+      baselineDateRequired: 0,
+      classificationCreated: 0,
+      classificationAlreadyExists: 1,
+      classificationChanged: 0,
+      classificationNeedsReview: 1,
+      classificationInvalid: 0,
+      osmAssigned: 0,
+      osmAlreadyAssigned: 1,
+      osmReassigned: 0,
+      osmNotFound: 0,
+      osmAmbiguous: 0,
+      osmAssignmentConflict: 0,
+      osmOwnerRequired: 0,
+      rows: [],
+      file: null,
+    } satisfies PatientImportResultSummary;
+    const file = createUpload("file-mixed-result");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewBinding = createPatientImportPreviewBinding(
+      fingerprint,
+      hospitalId,
+      actor.userId,
+    );
+    mockedImportProvisioning.mockResolvedValueOnce(mixedSummary);
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding,
+    }));
+
+    expect(result).toEqual({ status: "SUCCESS", summary: mixedSummary });
   });
 
   it("rejects a changed file and does not invoke the import service", async () => {

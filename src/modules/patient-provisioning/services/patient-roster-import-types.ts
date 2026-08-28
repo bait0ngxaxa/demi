@@ -167,10 +167,24 @@ export type PatientImportResultSummary = {
   file: PatientImportFileMetadata | null;
 };
 
+type PatientImportAttentionState =
+  | PatientImportClassification
+  | PatientImportRowResult["result"];
+
+function isPatientImportAttentionState(state: PatientImportAttentionState): boolean {
+  return state !== "READY" && state !== "IMPORTED" && state !== "ALREADY_EXISTS";
+}
+
+export function isPatientImportAttentionClassification(
+  classification: PatientImportClassification,
+): boolean {
+  return isPatientImportAttentionState(classification);
+}
+
 export function isPatientImportAttentionResult(
   result: PatientImportRowResult["result"],
 ): boolean {
-  return result !== "IMPORTED" && result !== "ALREADY_EXISTS";
+  return isPatientImportAttentionState(result);
 }
 
 export type { PatientProvisioningImportCandidate };

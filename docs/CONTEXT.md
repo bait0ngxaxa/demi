@@ -478,6 +478,27 @@ migration, import-batch persistence, Hospital hierarchy, or gated profile/contac
 persistence was added. `IMP-REQ-03` and `P16C-PROFILE-01` remain OPEN. See the
 [Phase 16D.5 handoff](./phases/PHASE_16D5_FULL_ROSTER_IMPORT_ORCHESTRATION_HARDENING.md).
 
+## Phase 16D.6 Import Preview / Confirmation UX Polish
+
+Phase 16D.6 makes the already-confirmed canonical Patient roster workflow
+operationally legible: the Template download and limits are visible, effective
+date meaning is explained, selected-file state includes size and reset behavior,
+preview summaries distinguish executable rows from idempotent and attention rows,
+and the table shows actual Excel coordinates with masked identity and grouped
+domain details. Classification changes and OWNER-controlled OSM reassignment are
+explicit confirmations; initial OSM assignment and MEMBER `OWNER_REQUIRED`
+limitations are visible without moving authority into the client.
+
+Import remains independently executable per row. The UI explains partial imports,
+disables confirmation when no row can execute, keeps `ALREADY_EXISTS` out of
+attention counts, reports mixed/all-idempotent/all-blocked outcomes truthfully,
+and offers attention-only recovery guidance plus `นำเข้าไฟล์ใหม่`. Canonical
+binding, confirm-time server re-evaluation, transaction boundaries, classification
+vocabulary, OSM authority, Template v1 structure, persistence fields, and schema
+remain unchanged. `IMP-REQ-03` Hospital / รพ.สต. hierarchy and
+`P16C-PROFILE-01` profile/contact/address persistence ownership remain OPEN.
+See the [Phase 16D.6 handoff](./phases/PHASE_16D6_IMPORT_PREVIEW_CONFIRMATION_UX_POLISH.md).
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:

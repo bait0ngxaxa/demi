@@ -243,5 +243,8 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).toContain("ดาวน์โหลด Template");
     expect(markup).toContain("กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
     expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
+    expect(markup).toContain("หากรูปแบบคอลัมน์ถูกแก้ไข ระบบอาจไม่รับไฟล์");
+    expect(markup).not.toContain("PATIENT_IMPORT_TEMPLATE_VERSION");
+    expect(markup).not.toContain("contractVersion");
   });
 });
