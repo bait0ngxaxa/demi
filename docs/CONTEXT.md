@@ -465,6 +465,12 @@ opaque browser choices, server-derived authority, OWNER-only OSM mutation, exact
 target-Hospital resolution, self/ambiguous safeguards, blank-source no-assertion,
 and per-row atomicity remain intact.
 
+Canonical Template v1 supports all 500 Patient records at Excel source rows 3–502;
+reconciliation `rowNumber` remains the authoritative worksheet coordinate rather
+than a 1–500 Patient ordinal. The source-row bound is technical XLSX range only,
+while reconciliation choice arrays remain capped at 500 items and confirm still
+requires a matching authoritative preview and binding.
+
 Summary primary buckets are computed once from final row results and must sum to
 the number of represented rows. Domain counters may overlap by design.
 `ALREADY_EXISTS` is successful idempotence and is not an attention state. No schema,

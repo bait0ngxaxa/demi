@@ -237,6 +237,28 @@ describe("Patient roster import application service", () => {
         }],
       }),
     ).toThrow("การยืนยันเปลี่ยนสถานะผู้ป่วยไม่ถูกต้อง");
+
+    expect(
+      patientRosterImportInternals.normalizeImportOptions({
+        classificationReconciliationChoices: [{
+          rowNumber: 501,
+          currentClassification: "RISK",
+          sourceClassification: "DIABETES",
+        }],
+        osmAssignmentChoices: [{
+          rowNumber: 502,
+          resolutionStatus: "OSM_MATCHED",
+          sourceCaregiverName: "ผู้ดูแลสังเคราะห์",
+          normalizedSourceCaregiverName: "ผู้ดูแลสังเคราะห์",
+          candidateOsmUserId: "55555555-5555-4555-8555-555555555555",
+          currentOsmUserId: null,
+          explicitReassignment: false,
+        }],
+      }),
+    ).toMatchObject({
+      classificationReconciliationChoices: [{ rowNumber: 501 }],
+      osmAssignmentChoices: [{ rowNumber: 502 }],
+    });
   });
 
   it("normalizes candidates against the server-selected Hospital", () => {

@@ -209,12 +209,7 @@ export function normalizeImportOptions(options: PatientImportOptions): {
 
   for (const choice of choices) {
     if (
-      !Number.isSafeInteger(choice.rowNumber) ||
-      choice.rowNumber < 1 ||
-      choice.rowNumber > 500 ||
       rowNumbers.has(choice.rowNumber) ||
-      !patientClassificationTypeSchema.safeParse(choice.currentClassification).success ||
-      !patientClassificationTypeSchema.safeParse(choice.sourceClassification).success ||
       choice.currentClassification === choice.sourceClassification
     ) {
       throw new ValidationError("การยืนยันเปลี่ยนสถานะผู้ป่วยไม่ถูกต้อง");

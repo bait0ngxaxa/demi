@@ -24,6 +24,7 @@ import {
   readPatientImportCandidates,
   type PatientImportUpload,
 } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
+import { createPatientImportTemplateWorkbook } from "@/modules/patient-provisioning/import/patient-import-template";
 import {
   importPatientProvisioning,
   previewPatientProvisioning,
@@ -228,6 +229,39 @@ async function createRosterUpload(
     size: bytes.byteLength,
     arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
   };
+}
+
+async function readCanonicalClassificationCandidates(
+  hospitalId: string,
+  rows: readonly {
+    rowNumber: number;
+    nationalId: string;
+    classification: string;
+  }[],
+): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
+  const workbook = await createPatientImportTemplateWorkbook();
+  const worksheet = workbook.worksheets[0];
+
+  if (!worksheet) {
+    throw new Error("The synthetic canonical classification workbook has no worksheet");
+  }
+
+  for (const row of rows) {
+    worksheet.getCell(`B${row.rowNumber}`).value = row.nationalId;
+    worksheet.getCell(`D${row.rowNumber}`).value = "ผู้ป่วยสังเคราะห์";
+    worksheet.getCell(`E${row.rowNumber}`).value = "แถวพิกัด";
+    worksheet.getCell(`F${row.rowNumber}`).value = `HN-${row.nationalId.slice(-4)}`;
+    worksheet.getCell(`L${row.rowNumber}`).value = row.classification;
+  }
+
+  const written = await workbook.xlsx.writeBuffer();
+  const bytes = Uint8Array.from(new Uint8Array(written));
+
+  return readPatientImportCandidates({
+    name: "synthetic-canonical-classification-source-rows.xlsx",
+    size: bytes.byteLength,
+    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
+  }, hospitalId, { mode: "CANONICAL" });
 }
 
 async function readClassificationCandidate(
@@ -661,6 +695,72 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     expect(await prisma.patientClassificationHistory.count()).toBe(4);
     await expect(readCandidateClassification(conflictingCandidate)).resolves.toEqual({
       classification: "DIABETES",
+    });
+  });
+
+  it("accepts classification reconciliation at canonical source rows 501 and 502", async () => {
+    const hospital = await createHospital();
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const rows = [
+      { rowNumber: 501, nationalId: nationalIds.rosterConfirmed, classification: "กลุ่มเสี่ยง" },
+      { rowNumber: 502, nationalId: nationalIds.rosterStale, classification: "กลุ่มเสี่ยง" },
+    ] as const;
+    const initialCandidates = await readCanonicalClassificationCandidates(hospital.id, rows);
+
+    expect(initialCandidates.map(({ rowNumber }) => rowNumber)).toEqual([501, 502]);
+    await expect(
+      importPatientProvisioning(
+        owner.actor,
+        hospital.id,
+        initialCandidates,
+        importDependencies(),
+      ),
+    ).resolves.toMatchObject({ imported: 2, classificationCreated: 2 });
+
+    const changedCandidates = await readCanonicalClassificationCandidates(
+      hospital.id,
+      rows.map((row) => ({ ...row, classification: "เบาหวาน" })),
+    );
+    const preview = await previewPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      prisma,
+    );
+
+    expect(preview.classificationReconciliations).toEqual([
+      {
+        rowNumber: 501,
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      },
+      {
+        rowNumber: 502,
+        currentClassification: "RISK",
+        sourceClassification: "DIABETES",
+      },
+    ]);
+
+    const unconfirmed = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      importDependencies(),
+    );
+    expect(unconfirmed).toMatchObject({ needsReview: 2, classificationNeedsReview: 2 });
+
+    const confirmed = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      importDependencies(),
+      { classificationReconciliationChoices: preview.classificationReconciliations },
+    );
+
+    expect(confirmed).toMatchObject({
+      alreadyExists: 2,
+      classificationChanged: 2,
+      classificationNeedsReview: 0,
     });
   });
 

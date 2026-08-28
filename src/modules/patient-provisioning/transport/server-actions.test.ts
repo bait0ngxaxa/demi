@@ -181,9 +181,9 @@ function createFormData(
   return formData;
 }
 
-function createCandidate(): Record<string, unknown> {
+function createCandidate(rowNumber = 2): Record<string, unknown> {
   return {
-    rowNumber: 2,
+    rowNumber,
     identityDisplay: "••••••0009",
     input: {
       identity: { namespace: "thai-national-id", value: "1000000000009" },
@@ -200,11 +200,13 @@ function createCandidate(): Record<string, unknown> {
 }
 
 function createOsmPreview(input: {
+  rowNumber?: number;
   resolutionStatus?: "OSM_MATCHED" | "OSM_AMBIGUOUS";
   assignmentStatus?: "OSM_ASSIGNMENT_READY" | "OSM_ASSIGNMENT_CONFLICT" | null;
   currentOsmUserId?: string | null;
   candidates?: Array<{ osmUserId: string; displayName: string }>;
 }): Record<string, unknown> {
+  const rowNumber = input.rowNumber ?? 2;
   const resolutionStatus = input.resolutionStatus ?? "OSM_MATCHED";
   const currentOsmUserId = input.currentOsmUserId ?? null;
   const candidates = input.candidates ?? [{
@@ -219,7 +221,7 @@ function createOsmPreview(input: {
     baselineDateRequired: false,
     canManageOsmAssignment: true,
     rows: [{
-      rowNumber: 2,
+      rowNumber,
       identityDisplay: "••••••0009",
       givenName: "สมชาย",
       familyName: "ผู้ป่วย",
@@ -545,6 +547,157 @@ describe("patient import Server Actions", () => {
     );
   });
 
+  it("accepts a server-bound OSM assignment binding at source row 501", async () => {
+    const rowNumber = 501;
+    const file = createUpload("file-osm-source-row-501");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewBinding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    const candidate = createCandidate(rowNumber);
+    mockedReadCandidates.mockResolvedValue([candidate]);
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({ rowNumber }));
+
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(previewResult.status).toBe("SUCCESS");
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    const reconciliation = previewResult.preview.osmAssignmentReconciliations[0];
+    const selectedCandidate = reconciliation?.candidates[0];
+    expect(reconciliation?.rowNumber).toBe(rowNumber);
+    expect(selectedCandidate).toBeDefined();
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding,
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: selectedCandidate?.candidateToken,
+        candidateReferenceToken: selectedCandidate?.candidateReferenceToken,
+        explicitReassignment: false,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "SUCCESS" });
+    expect(mockedImportProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [candidate],
+      {},
+      {
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        classificationReconciliationChoices: [],
+        osmAssignmentChoices: [{
+          rowNumber,
+          resolutionStatus: "OSM_MATCHED",
+          sourceCaregiverName: "สมชาย ผู้ดูแล",
+          normalizedSourceCaregiverName: "สมชาย ผู้ดูแล",
+          candidateOsmUserId: "99999999-9999-4999-8999-999999999999",
+          currentOsmUserId: null,
+          explicitReassignment: false,
+        }],
+      },
+    );
+  });
+
+  it("accepts a server-bound OSM reassignment binding at source row 502", async () => {
+    const rowNumber = 502;
+    const currentOsmUserId = "88888888-8888-4888-8888-888888888888";
+    const file = createUpload("file-osm-reassignment-source-row-502");
+    const fingerprint = await hashPatientImportFile(file);
+    const previewBinding = createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId);
+    const candidate = createCandidate(rowNumber);
+    mockedReadCandidates.mockResolvedValue([candidate]);
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({
+      rowNumber,
+      assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+      currentOsmUserId,
+    }));
+
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(previewResult.status).toBe("SUCCESS");
+    if (previewResult.status !== "SUCCESS") {
+      return;
+    }
+
+    const reconciliation = previewResult.preview.osmAssignmentReconciliations[0];
+    const selectedCandidate = reconciliation?.candidates[0];
+    expect(reconciliation?.rowNumber).toBe(rowNumber);
+    expect(selectedCandidate?.reassignmentToken).toBeDefined();
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding,
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: selectedCandidate?.candidateToken,
+        candidateReferenceToken: selectedCandidate?.candidateReferenceToken,
+        explicitReassignment: true,
+        reassignmentToken: selectedCandidate?.reassignmentToken,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "SUCCESS" });
+    expect(mockedImportProvisioning).toHaveBeenCalledWith(
+      actor,
+      hospitalId,
+      [candidate],
+      {},
+      {
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        classificationReconciliationChoices: [],
+        osmAssignmentChoices: [{
+          rowNumber,
+          resolutionStatus: "OSM_MATCHED",
+          sourceCaregiverName: "สมชาย ผู้ดูแล",
+          normalizedSourceCaregiverName: "สมชาย ผู้ดูแล",
+          candidateOsmUserId: "99999999-9999-4999-8999-999999999999",
+          currentOsmUserId,
+          explicitReassignment: true,
+        }],
+      },
+    );
+  });
+
+  it("rejects a structurally valid but nonexistent source row before import", async () => {
+    const file = createUpload("file-nonexistent-source-row");
+    const fingerprint = await hashPatientImportFile(file);
+    const rowNumber = 503;
+    mockedReadCandidates.mockResolvedValue([createCandidate(502)]);
+    mockedPreviewProvisioning.mockResolvedValue(createOsmPreview({ rowNumber: 502 }));
+
+    const result = await confirmPatientImportAction(createFormData(file, {
+      targetHospitalId: hospitalId,
+      previewTargetHospitalId: hospitalId,
+      fileFingerprint: fingerprint,
+      previewBinding: createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId),
+      osmAssignmentChoices: JSON.stringify([{
+        rowNumber,
+        resolutionStatus: "OSM_MATCHED",
+        candidateToken: "0".repeat(64),
+        candidateReferenceToken: "0".repeat(64),
+        explicitReassignment: false,
+      }]),
+    }));
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
+  });
+
   it("rejects a forged OSM candidate token before import", async () => {
     const file = createUpload("file-forged-osm");
     const fingerprint = await hashPatientImportFile(file);
@@ -844,6 +997,99 @@ describe("patient import Server Actions", () => {
       },
     );
   });
+
+  it.each([501, 502])(
+    "accepts a server-bound classification reconciliation at source row %s",
+    async (rowNumber) => {
+      const file = createUpload(`file-classification-source-row-${rowNumber}`);
+      const fingerprint = await hashPatientImportFile(file);
+      const conflictPreview = {
+        targetHospitalId: hospitalId,
+        effectiveDate: null,
+        importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+        baselineDateRequired: false,
+        rows: [{
+          rowNumber,
+          identityDisplay: "••••••0009",
+          givenName: "สมชาย",
+          familyName: "ผู้ป่วย",
+          combinedNameText: null,
+          hospitalNumber: null,
+          classification: "NEEDS_REVIEW",
+          reason: "สถานะผู้ป่วยจากไฟล์แตกต่างจากสถานะปัจจุบัน",
+          baselineStatus: "NOT_APPLICABLE",
+          requirementGatedFields: [],
+          diagnosticCodes: [],
+          patientClassification: {
+            status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
+            currentClassification: "RISK",
+            sourceClassification: "DIABETES",
+          },
+          patientOsmAssignment: {
+            resolutionStatus: "OSM_NOT_APPLICABLE",
+            assignmentStatus: null,
+            sourceCaregiverName: null,
+            normalizedSourceCaregiverName: null,
+            currentOsmUserId: null,
+            currentCaregiverDisplayName: null,
+            resolvedOsmUserId: null,
+            resolvedCandidateDisplayName: null,
+            candidates: [],
+          },
+        }],
+        classificationReconciliations: [{
+          rowNumber,
+          currentClassification: "RISK",
+          sourceClassification: "DIABETES",
+        }],
+        file: null,
+        canManageOsmAssignment: false,
+      };
+      const candidate = createCandidate(rowNumber);
+      mockedReadCandidates.mockResolvedValue([candidate]);
+      mockedPreviewProvisioning.mockResolvedValue(conflictPreview);
+
+      const previewResult = await previewPatientImportAction(
+        createFormData(file, { targetHospitalId: hospitalId }),
+      );
+
+      expect(previewResult.status).toBe("SUCCESS");
+      if (previewResult.status !== "SUCCESS") {
+        return;
+      }
+
+      const descriptor = previewResult.preview.classificationReconciliations[0];
+      expect(descriptor).toMatchObject({ rowNumber });
+
+      const result = await confirmPatientImportAction(
+        createFormData(file, {
+          targetHospitalId: hospitalId,
+          previewTargetHospitalId: hospitalId,
+          fileFingerprint: fingerprint,
+          previewBinding: createPatientImportPreviewBinding(fingerprint, hospitalId, actor.userId),
+          classificationReconciliationChoices: JSON.stringify([descriptor]),
+        }),
+      );
+
+      expect(result).toMatchObject({ status: "SUCCESS" });
+      expect(mockedImportProvisioning).toHaveBeenCalledWith(
+        actor,
+        hospitalId,
+        [candidate],
+        {},
+        {
+          effectiveDate: null,
+          importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+          classificationReconciliationChoices: [{
+            rowNumber,
+            currentClassification: "RISK",
+            sourceClassification: "DIABETES",
+          }],
+          osmAssignmentChoices: [],
+        },
+      );
+    },
+  );
 
   it("rejects a forged classification reconciliation token before import", async () => {
     const file = createUpload("file-forged-classification");

@@ -58,9 +58,17 @@ export const patientImportEffectiveDateSchema = patientBaselineDateOnlySchema;
 
 const sha256HexSchema = z.string().regex(/^[a-f0-9]{64}$/u);
 
+export const EXCEL_MAX_ROW_NUMBER = 1_048_576 as const;
+
+export const patientImportSourceRowNumberSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(EXCEL_MAX_ROW_NUMBER);
+
 export const patientImportClassificationReconciliationSchema = z
   .object({
-    rowNumber: z.number().int().min(1).max(500),
+    rowNumber: patientImportSourceRowNumberSchema,
     currentClassification: patientClassificationTypeSchema,
     sourceClassification: patientClassificationTypeSchema,
   })
@@ -100,7 +108,7 @@ export const patientImportClassificationReconciliationChoicesSchema = z
 
 export const patientImportOsmAssignmentChoiceSchema = z
   .object({
-    rowNumber: z.number().int().min(1).max(500),
+    rowNumber: patientImportSourceRowNumberSchema,
     resolutionStatus: z.literal("OSM_MATCHED"),
     sourceCaregiverName: z.string().trim().min(1).max(PATIENT_OSM_CAREGIVER_NAME_MAX_LENGTH),
     normalizedSourceCaregiverName: z
@@ -135,7 +143,7 @@ export const patientImportOsmAssignmentChoicesSchema = z
 
 export const patientImportOsmAssignmentBindingChoiceSchema = z
   .object({
-    rowNumber: z.number().int().min(1).max(500),
+    rowNumber: patientImportSourceRowNumberSchema,
     resolutionStatus: z.literal("OSM_MATCHED"),
     candidateToken: sha256HexSchema,
     candidateReferenceToken: sha256HexSchema,

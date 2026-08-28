@@ -97,6 +97,7 @@ describe("Canonical Patient import template v1", () => {
     const worksheet = workbook.worksheets[0];
 
     expect(PATIENT_IMPORT_TEMPLATE_VERSION).toBe("patient-import-template-v1");
+    expect(PATIENT_IMPORT_TEMPLATE_DATA_END_ROW).toBe(502);
     expect(PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH).toBe(
       "/templates/demi-patient-import-template-v1.xlsx",
     );

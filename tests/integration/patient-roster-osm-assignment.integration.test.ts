@@ -32,6 +32,7 @@ import {
   readPatientImportCandidates,
   type PatientImportUpload,
 } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
+import { createPatientImportTemplateWorkbook } from "@/modules/patient-provisioning/import/patient-import-template";
 
 const prisma = getPrisma();
 const transactionNow = new Date("2026-08-27T05:00:00.000Z");
@@ -250,6 +251,36 @@ async function createRosterUpload(rows: readonly RosterRow[]): Promise<PatientIm
     size: bytes.byteLength,
     arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
   };
+}
+
+async function readCanonicalRosterCandidates(
+  hospitalId: string,
+  rows: readonly (RosterRow & { rowNumber: number })[],
+): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
+  const workbook = await createPatientImportTemplateWorkbook();
+  const worksheet = workbook.worksheets[0];
+
+  if (!worksheet) {
+    throw new Error("The synthetic canonical OSM workbook has no worksheet");
+  }
+
+  for (const row of rows) {
+    worksheet.getCell(`B${row.rowNumber}`).value = row.nationalId;
+    worksheet.getCell(`D${row.rowNumber}`).value = "ผู้ป่วยสังเคราะห์";
+    worksheet.getCell(`E${row.rowNumber}`).value = "แถวพิกัด";
+    worksheet.getCell(`F${row.rowNumber}`).value = `HN-${row.nationalId.slice(-4)}`;
+    worksheet.getCell(`L${row.rowNumber}`).value = row.classification ?? null;
+    worksheet.getCell(`AB${row.rowNumber}`).value = row.caregiver ?? null;
+  }
+
+  const written = await workbook.xlsx.writeBuffer();
+  const bytes = Uint8Array.from(new Uint8Array(written));
+
+  return readPatientImportCandidates({
+    name: "synthetic-canonical-osm-source-rows.xlsx",
+    size: bytes.byteLength,
+    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
+  }, hospitalId, { mode: "CANONICAL" });
 }
 
 async function readRosterCandidates(
@@ -713,6 +744,149 @@ describe("Phase 16D.4 roster OSM resolution and assignment", () => {
     expect(history).toHaveLength(2);
     expect(history[0]).toMatchObject({ osmUserId: osmA.userId, endedByUserId: owner.userId });
     expect(history[1]).toMatchObject({ osmUserId: osmB.userId, endedAt: null });
+  });
+
+  it("supports canonical row 501 assignment and row 502 reassignment", async () => {
+    const hospital = await createHospital();
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const osmA = await createOsmUser({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "พิกัดเอ",
+    });
+    const osmB = await createOsmUser({
+      hospitalId: hospital.id,
+      givenName: "อสม.สังเคราะห์",
+      familyName: "พิกัดบี",
+    });
+    const initialRows = [
+      {
+        rowNumber: 501,
+        nationalId: "1000000001034",
+        caregiver: "อสม.สังเคราะห์ พิกัดเอ",
+      },
+      {
+        rowNumber: 502,
+        nationalId: "1000000001042",
+        caregiver: "อสม.สังเคราะห์ พิกัดเอ",
+      },
+    ] as const;
+    const initialCandidates = await readCanonicalRosterCandidates(hospital.id, initialRows);
+    const initialRow501 = initialCandidates[0];
+    const initialRow502 = initialCandidates[1];
+
+    if (!initialRow501 || !initialRow502) {
+      throw new Error("Canonical OSM source-row candidates were not created");
+    }
+
+    expect(initialCandidates.map(({ rowNumber }) => rowNumber)).toEqual([501, 502]);
+    const initialPreview = await previewPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      initialCandidates,
+      prisma,
+    );
+    expect(initialPreview.rows).toEqual([
+      expect.objectContaining({
+        rowNumber: 501,
+        patientOsmAssignment: expect.objectContaining({
+          resolutionStatus: "OSM_MATCHED",
+          assignmentStatus: "OSM_ASSIGNMENT_READY",
+        }),
+      }),
+      expect.objectContaining({
+        rowNumber: 502,
+        patientOsmAssignment: expect.objectContaining({
+          resolutionStatus: "OSM_MATCHED",
+          assignmentStatus: "OSM_ASSIGNMENT_READY",
+        }),
+      }),
+    ]);
+
+    const initialSummary = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      initialCandidates,
+      importDependencies(),
+      {
+        osmAssignmentChoices: [
+          createOsmChoice(initialRow501, osmA.userId, null),
+          createOsmChoice(initialRow502, osmA.userId, null),
+        ],
+      },
+    );
+    expect(initialSummary).toMatchObject({ imported: 2, osmAssigned: 2 });
+
+    const changedRows = initialRows.map((row, index) => ({
+      ...row,
+      caregiver: index === 0 ? row.caregiver : "อสม.สังเคราะห์ พิกัดบี",
+    }));
+    const changedCandidates = await readCanonicalRosterCandidates(hospital.id, changedRows);
+    const changedRow502 = changedCandidates[1];
+
+    if (!changedRow502) {
+      throw new Error("Canonical OSM reassignment candidate was not created");
+    }
+
+    const changedPreview = await previewPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      prisma,
+    );
+
+    expect(changedPreview.rows).toEqual([
+      expect.objectContaining({
+        rowNumber: 501,
+        patientOsmAssignment: expect.objectContaining({
+          resolutionStatus: "OSM_MATCHED",
+          assignmentStatus: "OSM_ASSIGNMENT_ALREADY_EXISTS",
+        }),
+      }),
+      expect.objectContaining({
+        rowNumber: 502,
+        patientOsmAssignment: expect.objectContaining({
+          resolutionStatus: "OSM_MATCHED",
+          assignmentStatus: "OSM_ASSIGNMENT_CONFLICT",
+        }),
+      }),
+    ]);
+
+    const unconfirmed = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      importDependencies(),
+    );
+    expect(unconfirmed).toMatchObject({ needsReview: 1, osmAssignmentConflict: 1 });
+
+    const confirmed = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      changedCandidates,
+      importDependencies(),
+      {
+        osmAssignmentChoices: [
+          createOsmChoice(changedRow502, osmB.userId, osmA.userId, true),
+        ],
+      },
+    );
+    expect(confirmed).toMatchObject({ alreadyExists: 2, osmAlreadyAssigned: 1, osmReassigned: 1 });
+
+    for (const nationalId of ["1000000001034", "1000000001042"]) {
+      const relationship = await prisma.patientHospitalRelationship.findFirstOrThrow({
+        where: { hospitalId: hospital.id, patientProfile: { person: {
+          identityKeyHash: hashIdentityReference({
+            namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
+            value: nationalId,
+          }),
+        } } },
+        select: { id: true },
+      });
+      await expect(readActiveAssignment(relationship.id)).resolves.toMatchObject({
+        osmUserId: nationalId === "1000000001034" ? osmA.userId : osmB.userId,
+      });
+    }
   });
 
   it("keeps indistinguishable ambiguous candidates in review and imports independent exact rows", async () => {

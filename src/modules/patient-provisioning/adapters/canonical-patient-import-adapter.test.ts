@@ -181,6 +181,33 @@ describe("Canonical Patient import adapter", () => {
     });
   }, 10000);
 
+  it("reads all 500 canonical Patient rows and preserves the final worksheet coordinate", async () => {
+    const workbook = await createPatientImportTemplateWorkbook();
+    const worksheet = workbook.worksheets[0];
+
+    if (!worksheet) {
+      throw new Error("The synthetic canonical workbook has no worksheet");
+    }
+
+    for (let index = 0; index < 500; index += 1) {
+      setPatientRow(worksheet, index + 3, {
+        ...syntheticPatientValues(),
+        sourceSequenceNumber: index + 1,
+      });
+    }
+
+    const candidates = await readPatientImportCandidates(
+      await createUpload(workbook, "synthetic-canonical-500-patients.xlsx"),
+      targetHospitalId,
+    );
+    const lastCandidate = candidates[candidates.length - 1];
+
+    expect(candidates).toHaveLength(500);
+    expect(candidates[0]?.rowNumber).toBe(3);
+    expect(lastCandidate?.rowNumber).toBe(502);
+    expect(lastCandidate?.canonicalRow.provenance.sourceRowNumber).toBe(502);
+  }, 10000);
+
   it("accepts the operational merged two-row header without a duplicate-header error", async () => {
     const upload = await createCanonicalUpload();
     const candidates = await readPatientImportCandidates(upload, targetHospitalId);

@@ -200,6 +200,29 @@ Existing synthetic integration coverage remains the behavioral safety net for:
 
 No real roster, Patient identity, phone, address, OSM name, or National ID is used.
 
+## Remediation re-audit — source-row coordinate bound
+
+The Phase 16D.5 re-audit found that reconciliation `rowNumber` had been bounded as
+if it were a 1-based Patient ordinal. The canonical adapter has always returned the
+actual Excel worksheet row, so that bound rejected valid final-template rows 501
+and 502 even though the canonical contract supports 500 Patient records from rows
+3 through 502.
+
+`PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS` remains 500, and all reconciliation choice
+arrays remain capped at 500 items. `rowNumber` now uses the shared source-row
+coordinate schema with the XLSX technical maximum of 1,048,576. This separates the
+maximum number of Patient records from the source coordinate without changing the
+canonical template, adapter provenance, import result semantics, or persistence.
+
+Regression coverage exercises Classification confirmation at rows 501 and 502,
+OWNER OSM assignment at row 501, OSM reassignment at row 502, server-action binding
+creation and parsing, the full 500-row adapter result ending at row 502, and
+rejection of a forged nonexistent row even when its coordinate is structurally
+valid. Coordinates 0, negative, fractional, and beyond the XLSX maximum remain
+invalid. HMAC bindings continue to include the authoritative source row and the
+same file, actor, Hospital, effective-date, runtime-contract, and current-state
+context; no final-row special case was added.
+
 ## Schema and requirement gates
 
 Prisma schema and migrations are unchanged. No import batch, row, preview, history,
