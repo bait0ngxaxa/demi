@@ -503,6 +503,28 @@ fields, and schema remain unchanged. `IMP-REQ-03` Hospital / รพ.สต. hier
 `P16C-PROFILE-01` profile/contact/address persistence ownership remain OPEN.
 See the [Phase 16D.6 handoff](./phases/PHASE_16D6_IMPORT_PREVIEW_CONFIRMATION_UX_POLISH.md).
 
+## Phase 16E Patient Import End-to-End Release Gate
+
+Phase 16E audited the complete current Patient roster import journey at
+`41260bb47f1fc7b26396d7f66bba7556e179536a`. Canonical Template v1 remains the
+production-only input boundary, the 500-record/source-row-502 contract remains
+correct, and the confirmed Core/Baseline/Classification/OSM, authority, binding,
+privacy projection, row atomicity, rollback, concurrency, result and recovery
+semantics remain coherent. Required lint, typecheck, Prisma, unit and integration
+checks passed.
+
+The release gate is **FIX REQUIRED**, not closed. A source-backed parser resource
+boundary finding remains: `readPatientImportCandidates()` fully loads attacker-
+controlled XLSX content through ExcelJS before decompressed ZIP/XML resource limits
+are enforced. Separately, Phase 16B.0 documentation still records GitHub-side
+cached/unreachable sensitive-workbook cleanup as unconfirmed; this is an
+**EXTERNAL PRIVACY RELEASE BLOCKER**. Do not claim the Patient import baseline is
+stable until both are resolved and re-audited.
+
+`IMP-REQ-03` Hospital / รพ.สต. hierarchy and `P16C-PROFILE-01` profile/contact/address
+persistence ownership remain OPEN and were not guessed or resolved by Phase 16E.
+See the [Phase 16E release-gate audit](./phases/PHASE_16E_PATIENT_IMPORT_END_TO_END_RELEASE_GATE.md).
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
