@@ -6,6 +6,7 @@ import type { Cell, Worksheet } from "exceljs";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { ValidationError } from "@/shared/errors/application-error";
 
+import { assertSafePatientImportXlsxResourceEnvelope } from "../import/patient-import-xlsx-resource-preflight";
 import {
   patientProvisionFormSchema,
   patientProvisionScopeSchema,
@@ -859,6 +860,19 @@ function buildCandidate(
   };
 }
 
+async function loadPatientImportWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+
+  try {
+    type ExcelJsInputBuffer = Parameters<typeof workbook.xlsx.load>[0];
+    await workbook.xlsx.load(buffer as unknown as ExcelJsInputBuffer);
+  } catch {
+    throw new ValidationError("ไฟล์ Excel ไม่ถูกต้องหรือไม่สามารถอ่านได้");
+  }
+
+  return workbook;
+}
+
 export async function readPatientImportCandidates(
   file: PatientImportUpload,
   targetHospitalId: string,
@@ -890,14 +904,8 @@ export async function readPatientImportCandidates(
     throw new ValidationError("ไฟล์ Excel ต้องมีขนาดไม่เกิน 5 MB");
   }
 
-  const workbook = new ExcelJS.Workbook();
-
-  try {
-    type ExcelJsInputBuffer = Parameters<typeof workbook.xlsx.load>[0];
-    await workbook.xlsx.load(buffer as unknown as ExcelJsInputBuffer);
-  } catch {
-    throw new ValidationError("ไฟล์ Excel ไม่ถูกต้องหรือไม่สามารถอ่านได้");
-  }
+  await assertSafePatientImportXlsxResourceEnvelope(buffer);
+  const workbook = await patientImportAdapterInternals.loadPatientImportWorkbook(buffer);
 
   if (workbook.worksheets.length === 0) {
     throw new ValidationError("ไม่พบแผ่นงานในไฟล์ Excel");
@@ -932,6 +940,7 @@ export async function readPatientImportCandidates(
 
 export const patientImportAdapterInternals = {
   createEmptyFieldAssessmentMap,
+  loadPatientImportWorkbook,
   maskIdentity,
   normalizeCellText,
   readCanonicalRow,

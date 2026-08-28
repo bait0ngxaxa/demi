@@ -322,3 +322,44 @@ bounded XLSX parser resource boundary. After both are independently re-audited,
 repeat this gate. Do not reopen confirmed Patient domain semantics or introduce
 generic import architecture, hierarchy behavior, profile ownership, schema changes,
 or new business features as part of the remediation by assumption.
+
+## Phase 16E.1 remediation status (2026-08-28)
+
+This append-only section records the focused Phase 16E.1 remediation and does not
+rewrite the historical Phase 16E audit result above.
+
+The Phase 16E Patient XLSX parser resource blocker is addressed and ready for
+re-audit. `readPatientImportCandidates()` now runs a server-only `yauzl@3.4.0`
+lazy ZIP preflight before constructing an ExcelJS workbook. The preflight enforces:
+
+- 256 ZIP entries, 32 MiB cumulative declared uncompressed bytes and 16 MiB per
+  entry;
+- safe integer/offset metadata, local-header bounds, duplicate normalized-name
+  rejection, suspicious-name rejection, encrypted-entry rejection and stored/deflate
+  method allowlisting;
+- 12 worksheet package parts, 65,536 worksheet cell elements, 2,048 row elements,
+  row/column coordinate ceilings of 10,000/256, and bounded dimension/merge areas;
+- the prior scan-first-12 behavior is hardened to reject packages with more than 12
+  worksheet parts before ExcelJS; Canonical production input has one worksheet;
+- actual streamed decompressed-byte counting for worksheet XML;
+- bounded `saxes@6.0.0` streaming XML inspection with DTD rejection, no DOM and no
+  external entity/network resolution.
+
+The boundary is shared by CANONICAL and COMPATIBILITY adapter modes and therefore
+protects both Preview and Confirm. Focused synthetic tests cover malformed and
+resource-amplifying ZIP/XML inputs, official Template v1, exactly 500 canonical
+rows/source row 502, compatibility shape, merged headers, and proof that an unsafe
+resource envelope rejects before `workbook.xlsx.load()` is invoked. Existing semantic
+501-record rejection and Patient domain regression suites remain unchanged.
+
+Phase 16E.1 verification evidence: `npm run generate:patient-import-template`,
+`npx prisma validate`, `npx prisma generate`, `npm run lint`, and
+`npm run typecheck` passed; `npm test` passed with 138 files/951 tests;
+`npm run test:integration` passed with 23 files/204 tests; the focused 11-file
+Patient import/domain/presentation suite passed with 124 tests. `git diff --check`
+passed, and no Prisma schema, migration or generated Template artifact diff remains.
+
+The parser blocker status is **REMEDIATED / READY FOR RE-AUDIT**. This does not make
+the overall Phase 16E release gate pass: the separate **EXTERNAL PRIVACY RELEASE
+BLOCKER** for GitHub historical sensitive-workbook cached/unreachable cleanup remains
+unconfirmed and is intentionally not addressed by Phase 16E.1.

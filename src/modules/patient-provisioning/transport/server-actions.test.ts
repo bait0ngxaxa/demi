@@ -5,6 +5,10 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ValidationError } from "@/shared/errors/application-error";
 import type { PatientImportUpload } from "../adapters/excel-patient-import-adapter";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
+import {
+  PATIENT_IMPORT_XLSX_RESOURCE_LIMIT_MESSAGE,
+  PatientImportXlsxResourceLimitError,
+} from "../import/patient-import-xlsx-resource-preflight";
 import { PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE } from "../import/patient-import-template-contract";
 import type { PatientImportResultSummary } from "../services/patient-roster-import-types";
 import type { PatientProvisionActionState } from "./action-state";
@@ -432,6 +436,43 @@ describe("patient import Server Actions", () => {
       message: PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
     });
     expect(mockedPreviewProvisioning).not.toHaveBeenCalled();
+  });
+
+  it("maps XLSX resource-envelope rejection to safe INVALID_INPUT for preview and confirm", async () => {
+    const file = createUpload("file-resource-limit");
+    mockedReadCandidates.mockRejectedValue(new PatientImportXlsxResourceLimitError());
+
+    const previewResult = await previewPatientImportAction(
+      createFormData(file, { targetHospitalId: hospitalId }),
+    );
+
+    expect(previewResult).toEqual({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: PATIENT_IMPORT_XLSX_RESOURCE_LIMIT_MESSAGE,
+    });
+
+    const fingerprint = await hashPatientImportFile(file);
+    const confirmResult = await confirmPatientImportAction(
+      createFormData(file, {
+        targetHospitalId: hospitalId,
+        previewTargetHospitalId: hospitalId,
+        fileFingerprint: fingerprint,
+        previewBinding: createPatientImportPreviewBinding(
+          fingerprint,
+          hospitalId,
+          actor.userId,
+        ),
+      }),
+    );
+
+    expect(confirmResult).toEqual({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: PATIENT_IMPORT_XLSX_RESOURCE_LIMIT_MESSAGE,
+    });
+    expect(mockedPreviewProvisioning).not.toHaveBeenCalled();
+    expect(mockedImportProvisioning).not.toHaveBeenCalled();
   });
 
   it("returns only opaque OSM candidate bindings to the browser", async () => {

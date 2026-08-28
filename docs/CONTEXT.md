@@ -525,6 +525,17 @@ stable until both are resolved and re-audited.
 persistence ownership remain OPEN and were not guessed or resolved by Phase 16E.
 See the [Phase 16E release-gate audit](./phases/PHASE_16E_PATIENT_IMPORT_END_TO_END_RELEASE_GATE.md).
 
+### Phase 16E.1 XLSX parser resource-boundary handoff
+
+Phase 16E.1 implemented server-side XLSX ZIP/XML resource hardening before ExcelJS
+load, with bounded entries, decompressed bytes, worksheet parts/cells/rows,
+coordinates, merges, duplicate/unsupported/encrypted/malformed handling and bounded
+streaming XML inspection. The parser-resource blocker is remediated and awaits
+independent re-audit. The overall Patient Import release gate remains **FIX REQUIRED**;
+the separate Phase 16E.2 **EXTERNAL PRIVACY RELEASE BLOCKER** for GitHub historical
+sensitive-workbook cached/unreachable cleanup remains open and was not accessed or
+changed here.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
