@@ -417,6 +417,34 @@ orchestrator extraction remains a recommended Phase 16D.5 hardening task.
 ownership. Neither gate was implemented or closed in Phase 16D.4. See the full
 [Phase 16D.4 handoff](./phases/PHASE_16D4_OSM_ROSTER_RESOLUTION_RECONCILIATION_ASSIGNMENT.md).
 
+## Phase 16D.4A Canonical Patient Import Template v1
+
+Phase 16D.4A establishes `patient-import-template-v1` as DEMI's one official
+production-facing Patient roster workbook. The blank, single-sheet artifact is
+generated from the shared source-of-truth contract at
+`src/modules/patient-provisioning/import/patient-import-template-contract.ts`, built
+by `src/modules/patient-provisioning/import/patient-import-template.ts`, and served at
+`/templates/demi-patient-import-template-v1.xlsx`. It has the approved 28-column A:AB
+order, two-row header semantics, `L2` classification guidance, and the operational
+vertical merges. Merge presentation is not parser authority: the adapter reads merge
+masters once and treats continuations as empty, while independent duplicate header
+rows still fail.
+
+The production preview/confirm path uses strict canonical validation; legacy aliases
+remain available only through explicit compatibility parsing and cannot redefine the
+canonical contract. National ID, HN, phone, emergency-phone and postal-code input
+columns are formatted as text, and classification guidance accepts only
+`กลุ่มเสี่ยง` / `เบาหวาน`, with server validation remaining authoritative. The generated
+artifact has no Patient rows or PII and is covered by semantic generator/parser drift
+tests.
+
+The workbook defines input structure, not persistence ownership. Current Patient core,
+Baseline, classification and Phase 16D.4 OSM behavior remain unchanged; DOB, gender,
+phone, address and emergency-contact fields remain non-persisted where currently
+gated. `IMP-REQ-03` Hospital / รพ.สต. hierarchy and `P16C-PROFILE-01`
+profile/contact/address persistence ownership remain OPEN. Phase 16D.5 has not
+started; this handoff must be re-audited before that phase is considered.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:

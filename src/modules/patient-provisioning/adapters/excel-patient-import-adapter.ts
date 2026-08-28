@@ -30,11 +30,19 @@ import type {
 } from "../import/patient-import-contract";
 import {
   createPatientImportFileMetadata,
+  extractPatientImportHeaders,
+  findCanonicalPatientImportHeaderRows,
   hasPatientIdentityHeaderSignature,
   MAX_PATIENT_IMPORT_COLUMNS,
   resolvePatientImportHeaders,
+  validateCanonicalPatientImportTemplate,
   type PatientImportHeaderResolution,
 } from "../import/patient-import-layouts";
+import {
+  PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT,
+  PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS,
+  PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
+} from "../import/patient-import-template-contract";
 import type { PatientImportHeaderBinding } from "../import/patient-import-header-aliases";
 import {
   normalizeDateCell,
@@ -46,11 +54,18 @@ import {
 } from "../import/patient-import-normalization";
 
 export { MAX_PATIENT_IMPORT_COLUMNS } from "../import/patient-import-layouts";
+export { validateCanonicalPatientImportTemplate } from "../import/patient-import-layouts";
 
 export const MAX_PATIENT_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_PATIENT_IMPORT_ROWS = 500;
 export const MAX_PATIENT_IMPORT_WORKSHEETS_SCANNED = 12;
-export const MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS = 8;
+export const MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS = PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS;
+
+export type PatientImportAdapterMode = "CANONICAL" | "COMPATIBILITY";
+
+export type PatientImportReadOptions = {
+  mode?: PatientImportAdapterMode;
+};
 
 export type PatientImportUpload = {
   name: string;
@@ -138,14 +153,14 @@ function rowHasPatientCoreSignal(
 
 function inspectDataRows(
   worksheet: Worksheet,
-  headerRowNumber: number,
+  dataStartRowNumber: number,
   resolution: PatientImportHeaderResolution,
 ): { dataRowNumbers: number[]; tooManyRows: boolean } {
   const dataRowNumbers: number[] = [];
   let tooManyRows = false;
 
   worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= headerRowNumber || !rowHasPatientCoreSignal(row, resolution)) {
+    if (rowNumber < dataStartRowNumber || !rowHasPatientCoreSignal(row, resolution)) {
       return;
     }
 
@@ -160,22 +175,28 @@ function inspectDataRows(
   return { dataRowNumbers, tooManyRows };
 }
 
-function getWorksheetHeaders(
-  worksheet: Worksheet,
-  headerRowNumber: number,
-): readonly string[] | null {
-  if (worksheet.actualColumnCount === 0 || worksheet.actualColumnCount > MAX_PATIENT_IMPORT_COLUMNS) {
-    return null;
-  }
-
-  const headerRow = worksheet.getRow(headerRowNumber);
-  const headers: string[] = [];
+function compatibilityDataStartRowNumber(worksheet: Worksheet, headerRowNumber: number): number {
+  const continuationRowNumber = headerRowNumber + 1;
 
   for (let columnNumber = 1; columnNumber <= worksheet.actualColumnCount; columnNumber += 1) {
-    headers.push(headerRow.getCell(columnNumber).text);
+    const cell = worksheet.getRow(continuationRowNumber).getCell(columnNumber);
+
+    if (!cell.isMerged) {
+      continue;
+    }
+
+    const cellAddress = cell.fullAddress;
+    const masterAddress = cell.master.fullAddress;
+
+    if (
+      cellAddress.row !== masterAddress.row &&
+      masterAddress.row === headerRowNumber
+    ) {
+      return continuationRowNumber + 1;
+    }
   }
 
-  return headers;
+  return continuationRowNumber;
 }
 
 function inspectWorksheet(worksheet: Worksheet): SheetInspection | null {
@@ -186,7 +207,7 @@ function inspectWorksheet(worksheet: Worksheet): SheetInspection | null {
   );
 
   for (let rowNumber = 1; rowNumber <= maximumHeaderRow; rowNumber += 1) {
-    const headers = getWorksheetHeaders(worksheet, rowNumber);
+    const headers = extractPatientImportHeaders(worksheet, rowNumber);
 
     if (!headers) {
       continue;
@@ -208,12 +229,44 @@ function inspectWorksheet(worksheet: Worksheet): SheetInspection | null {
   }
 
   const candidate = candidateHeaders[0];
-  const rowInspection = inspectDataRows(worksheet, candidate.rowNumber, candidate.resolution);
+  const rowInspection = inspectDataRows(
+    worksheet,
+    compatibilityDataStartRowNumber(worksheet, candidate.rowNumber),
+    candidate.resolution,
+  );
 
   return {
     worksheet,
     headerRowNumber: candidate.rowNumber,
     resolution: candidate.resolution,
+    dataRowNumbers: rowInspection.dataRowNumbers,
+    tooManyRows: rowInspection.tooManyRows,
+  };
+}
+
+function inspectCanonicalWorksheet(worksheet: Worksheet): SheetInspection | null {
+  if (worksheet.actualColumnCount !== PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT) {
+    return null;
+  }
+
+  if (findCanonicalPatientImportHeaderRows(worksheet, MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS).length === 0) {
+    return null;
+  }
+
+  const validation = validateCanonicalPatientImportTemplate(
+    worksheet,
+    MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS,
+  );
+  const rowInspection = inspectDataRows(
+    worksheet,
+    validation.dataStartRowNumber,
+    validation.resolution,
+  );
+
+  return {
+    worksheet,
+    headerRowNumber: validation.headerRowNumber,
+    resolution: validation.resolution,
     dataRowNumbers: rowInspection.dataRowNumbers,
     tooManyRows: rowInspection.tooManyRows,
   };
@@ -233,6 +286,45 @@ function selectWorksheet(workbook: ExcelJS.Workbook): SheetInspection {
 
   if (inspections.length === 0) {
     throw new ValidationError("ไม่พบแผ่นงานที่มีหัวตารางผู้ป่วยที่รองรับ");
+  }
+
+  const populated = inspections.filter(({ dataRowNumbers }) => dataRowNumbers.length > 0);
+
+  if (populated.length > 1) {
+    throw new ValidationError("พบแผ่นงานผู้ป่วยที่มีข้อมูลมากกว่าหนึ่งแผ่น กรุณาแยกไฟล์ก่อนนำเข้า");
+  }
+
+  if (populated.length === 1) {
+    return populated[0];
+  }
+
+  if (inspections.length === 1) {
+    return inspections[0];
+  }
+
+  throw new ValidationError("พบแผ่นงานผู้ป่วยหลายแผ่นแต่ไม่พบแผ่นที่มีข้อมูลชัดเจน");
+}
+
+function selectCanonicalWorksheet(workbook: ExcelJS.Workbook): SheetInspection {
+  const inspections: SheetInspection[] = [];
+  const worksheets = workbook.worksheets.slice(0, MAX_PATIENT_IMPORT_WORKSHEETS_SCANNED);
+
+  for (const worksheet of worksheets) {
+    if (worksheet.actualColumnCount > MAX_PATIENT_IMPORT_COLUMNS) {
+      throw new ValidationError(
+        `ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_COLUMNS} คอลัมน์`,
+      );
+    }
+
+    const inspection = inspectCanonicalWorksheet(worksheet);
+
+    if (inspection) {
+      inspections.push(inspection);
+    }
+  }
+
+  if (inspections.length === 0) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
   }
 
   const populated = inspections.filter(({ dataRowNumbers }) => dataRowNumbers.length > 0);
@@ -468,7 +560,7 @@ function readCanonicalRow(
       return;
     }
 
-    const result = field === "phoneNumber"
+    const result = field === "phoneNumber" || field === "emergencyContactPhone"
       ? normalizePhoneCell(row.getCell(binding.columnNumber))
       : normalizeTextCell(row.getCell(binding.columnNumber));
     target(result.value);
@@ -770,6 +862,7 @@ function buildCandidate(
 export async function readPatientImportCandidates(
   file: PatientImportUpload,
   targetHospitalId: string,
+  options: PatientImportReadOptions = {},
 ): Promise<PatientProvisioningImportCandidate[]> {
   const parsedScope = patientProvisionScopeSchema.safeParse({ targetHospitalId });
 
@@ -810,7 +903,9 @@ export async function readPatientImportCandidates(
     throw new ValidationError("ไม่พบแผ่นงานในไฟล์ Excel");
   }
 
-  const selected = selectWorksheet(workbook);
+  const selected = options.mode === "COMPATIBILITY"
+    ? selectWorksheet(workbook)
+    : selectCanonicalWorksheet(workbook);
 
   if (selected.tooManyRows) {
     throw new ValidationError(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);

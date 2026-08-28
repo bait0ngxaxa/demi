@@ -641,7 +641,9 @@ export async function previewPatientImportAction(
       };
     }
 
-    const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
+    const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId, {
+      mode: "CANONICAL",
+    });
     const previewInternal = await previewPatientProvisioningInternal(
       actor,
       parsed.data.targetHospitalId,
@@ -747,7 +749,9 @@ export async function confirmPatientImportAction(
       file: request.file,
     });
 
-    const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId);
+    const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId, {
+      mode: "CANONICAL",
+    });
     const previewInternal = await previewPatientProvisioningInternal(
       actor,
       parsed.data.targetHospitalId,

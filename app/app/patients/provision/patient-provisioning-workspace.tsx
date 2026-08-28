@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LocalNavigation } from "@/components/ui/local-navigation";
 import { PageHeader } from "@/components/ui/page-header";
@@ -23,6 +23,10 @@ import type {
   PatientProvisioningScope,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
+import {
+  PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME,
+  PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH,
+} from "@/modules/patient-provisioning/import/patient-import-template-contract";
 import {
   confirmPatientImportAction,
   provisionPatientAction,
@@ -1057,7 +1061,7 @@ export function PatientProvisioningWorkspace({
         </Panel>
 
         {selectedScope.canBulkImport ? (
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <LocalNavigation
               ariaLabel="รูปแบบการเพิ่มผู้ป่วย"
               items={[
@@ -1067,6 +1071,23 @@ export function PatientProvisioningWorkspace({
               onChange={setMode}
               value={activeMode}
             />
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <div className="space-y-1 text-xs leading-5 text-muted">
+                <p>กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย</p>
+                <p>รองรับสูงสุด 500 รายการต่อไฟล์</p>
+              </div>
+              <a
+                className={buttonClassName({
+                  className: "self-start sm:self-auto",
+                  size: "compact",
+                  variant: "secondary",
+                })}
+                download={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME}
+                href={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH}
+              >
+                ดาวน์โหลด Template
+              </a>
+            </div>
           </div>
         ) : null}
 
@@ -1117,7 +1138,7 @@ export function PatientProvisioningWorkspace({
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  รองรับไฟล์ Excel รูปแบบ roster ที่มีคอลัมน์หลายรูปแบบ โดยระบบจะบันทึกข้อมูลผู้ป่วยหลักและข้อมูลตั้งต้นที่ยืนยันแล้ว ไม่เกิน 500 แถวและ 64 คอลัมน์
+                  ระบบจะบันทึกข้อมูลผู้ป่วยหลักและข้อมูลตั้งต้นที่ยืนยันแล้วจากไฟล์
                 </p>
               </div>
               <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>

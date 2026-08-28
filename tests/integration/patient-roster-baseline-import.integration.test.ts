@@ -163,7 +163,7 @@ async function readRosterCandidate(
   row: readonly unknown[],
 ) {
   const upload = await createRosterUpload(headers, [row]);
-  const [candidate] = await readPatientImportCandidates(upload, hospitalId);
+  const [candidate] = await readPatientImportCandidates(upload, hospitalId, { mode: "COMPATIBILITY" });
   return candidate;
 }
 
@@ -401,6 +401,7 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
     const [validCandidate, conflictingCandidate] = await readPatientImportCandidates(
       upload,
       hospital.id,
+      { mode: "COMPATIBILITY" },
     );
 
     const summary = await importPatientProvisioning(

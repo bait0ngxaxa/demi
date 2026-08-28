@@ -402,6 +402,7 @@ describe("patient import Server Actions", () => {
       return;
     }
 
+    expect(mockedReadCandidates).toHaveBeenCalledWith(file, hospitalId, { mode: "CANONICAL" });
     const fingerprint = await hashPatientImportFile(file);
     expect(result.preview.fileFingerprint).toBe(fingerprint);
     expect(result.preview.previewBinding).toBe(
@@ -645,6 +646,7 @@ describe("patient import Server Actions", () => {
 
     expect(result).toMatchObject({ status: "SUCCESS" });
     expect(mockedReadCandidates).toHaveBeenCalledTimes(1);
+    expect(mockedReadCandidates).toHaveBeenCalledWith(file, hospitalId, { mode: "CANONICAL" });
     expect(mockedImportProvisioning).toHaveBeenCalledWith(
       actor,
       hospitalId,

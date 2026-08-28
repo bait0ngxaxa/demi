@@ -256,7 +256,7 @@ async function readRosterCandidates(
   hospitalId: string,
   rows: readonly RosterRow[],
 ): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
-  return readPatientImportCandidates(await createRosterUpload(rows), hospitalId);
+  return readPatientImportCandidates(await createRosterUpload(rows), hospitalId, { mode: "COMPATIBILITY" });
 }
 
 async function readRosterCandidate(

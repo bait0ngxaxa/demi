@@ -46,6 +46,13 @@ function coreRow(nationalId = "1000000000009"): string[] {
   return [nationalId, "ตัวอย่าง", "ผู้ป่วย", "HN-SYN-001"];
 }
 
+async function readCompatibilityPatientImportCandidates(
+  upload: PatientImportUpload,
+  targetHospitalId: string,
+): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
+  return readPatientImportCandidates(upload, targetHospitalId, { mode: "COMPATIBILITY" });
+}
+
 describe("Excel patient import adapter V2 compatibility foundation", () => {
   it("parses the wide operational roster shape without expanding provisioning input", async () => {
     const upload = await createUpload([
@@ -128,7 +135,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.input).toMatchObject({
       givenName: "ตัวอย่าง",
@@ -186,7 +193,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+    const candidates = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidates.map((candidate) => candidate.canonicalRow.clinicalCandidates.diabetesClassification)).toEqual([
       "RISK",
@@ -220,7 +227,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.clinicalCandidates.diabetesClassification).toBeNull();
     expect(candidate.canonicalRow.fieldAssessments.diabetesClassification.status).toBe(
@@ -240,7 +247,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
       weight: 72.5,
@@ -276,7 +283,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
       weight: null,
@@ -301,7 +308,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
       weight: null,
@@ -328,7 +335,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
         ],
       },
     ]);
-    const [unknownUnitCandidate] = await readPatientImportCandidates(
+    const [unknownUnitCandidate] = await readCompatibilityPatientImportCandidates(
       unknownUnitUpload,
       targetHospitalId,
     );
@@ -350,7 +357,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.rowNumber).toBe(4);
     expect(candidate.canonicalRow.provenance.sourceSheetName).toBe("Data");
@@ -364,7 +371,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       { name: "Patients", rows: [coreHeaders(), coreRow()] },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.provenance.sourceSheetName).toBe("Patients");
   });
@@ -419,7 +426,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       { name: "Patients", rows: [operationalHeaders, patientRow] },
     ]);
 
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+    const candidates = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0].canonicalRow.provenance.sourceSheetName).toBe("Patients");
@@ -432,7 +439,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       { name: "Patients B", rows: [coreHeaders(), coreRow("1000000000017")] },
     ]);
 
-    await expect(readPatientImportCandidates(upload, targetHospitalId)).rejects.toEqual(
+    await expect(readCompatibilityPatientImportCandidates(upload, targetHospitalId)).rejects.toEqual(
       expect.objectContaining({
         code: "VALIDATION",
         message: "พบแผ่นงานผู้ป่วยที่มีข้อมูลมากกว่าหนึ่งแผ่น กรุณาแยกไฟล์ก่อนนำเข้า",
@@ -467,7 +474,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.contact.phoneNumber).toBe("0811111111");
     expect(candidate.canonicalRow.contact.emergencyContactPhone).toBe("0822222222");
@@ -491,7 +498,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.contact.phoneNumber).toBe("0811111111");
     expect(candidate.canonicalRow.contact.emergencyContactPhone).toBe("0822222222");
@@ -509,7 +516,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.input).not.toBeNull();
     expect(candidate.canonicalRow.contact.phoneNumber).toBeNull();
@@ -528,7 +535,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.contact.phoneNumber).toBe("0811111111");
     expect(candidate.canonicalRow.contact.emergencyContactPhone).toBe("0822222222");
@@ -549,7 +556,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+    const candidates = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidates[0].input).toBeNull();
     expect(candidates[0].canonicalRow.diagnostics).toEqual(
@@ -575,7 +582,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.input).toBeNull();
     expect(candidate.combinedNameText).toBe("ตัวอย่าง ผู้ป่วย");
@@ -593,7 +600,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidate.canonicalRow.demographics.dateOfBirth).toBeNull();
     expect(candidate.canonicalRow.fieldAssessments.dateOfBirth.status).toBe("AMBIGUOUS");
@@ -611,7 +618,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     const buffer = await workbook.xlsx.writeBuffer();
     const upload = new File([buffer], "dates.xlsx");
 
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+    const candidates = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(candidates.map((candidate) => candidate.canonicalRow.demographics.dateOfBirth)).toEqual([
       "2025-05-04",
@@ -625,7 +632,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
       { name: "Wide", rows: [headers, [...coreRow(), "ค่าไม่ถูกบันทึก"]] },
     ]);
 
-    const [candidate] = await readPatientImportCandidates(upload, targetHospitalId);
+    const [candidate] = await readCompatibilityPatientImportCandidates(upload, targetHospitalId);
 
     expect(MAX_PATIENT_IMPORT_COLUMNS).toBe(64);
     expect(candidate.fileMetadata?.unknownHeaders).toEqual(["คอลัมน์สังเคราะห์ที่ยังไม่รองรับ"]);
@@ -638,7 +645,7 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     }
 
     const tooManyRowsUpload = await createUpload([{ name: "Too many rows", rows }]);
-    await expect(readPatientImportCandidates(tooManyRowsUpload, targetHospitalId)).rejects.toThrow(
+    await expect(readCompatibilityPatientImportCandidates(tooManyRowsUpload, targetHospitalId)).rejects.toThrow(
       `ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`,
     );
 
@@ -646,6 +653,6 @@ describe("Excel patient import adapter V2 compatibility foundation", () => {
     const tooManyColumnsUpload = await createUpload([
       { name: "Too many columns", rows: [tooManyColumns, tooManyColumns] },
     ]);
-    await expect(readPatientImportCandidates(tooManyColumnsUpload, targetHospitalId)).rejects.toBeInstanceOf(ValidationError);
+    await expect(readCompatibilityPatientImportCandidates(tooManyColumnsUpload, targetHospitalId)).rejects.toBeInstanceOf(ValidationError);
   });
 });

@@ -510,7 +510,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       [nationalIds.bulkSecond, "สมหญิง", "พร้อมใหม่", "HN-002"],
       ["123", "ข้อมูล", "ไม่ถูกต้อง", ""],
     ]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
 
     expect(preview.rows.map(({ classification }) => classification)).toEqual([
@@ -555,7 +555,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       ]],
     );
 
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates, undefined, {
       effectiveDate: "2026-08-01",
     });
@@ -632,7 +632,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       [[nationalIds.bulkFirst, "ตัวอย่าง", "ผู้ป่วย", "โรงพยาบาลอื่นจากไฟล์"]],
     );
 
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
     const summary = await importPatientProvisioning(actor, hospital.id, candidates);
 
@@ -654,7 +654,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       [nationalIds.bulkConflict, "สมชาย", "แถวขัดแย้ง", "HN-NEW"],
       ["123", "ข้อมูล", "ไม่ถูกต้อง", ""],
     ]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const summary = await importPatientProvisioning(actor, hospital.id, candidates);
 
     expect(summary).toMatchObject({
@@ -680,7 +680,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const hospital = await createHospital("PATIENT-IMPORT-REVALIDATE");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
     const upload = await createXlsxUpload([[nationalIds.bulkRevalidation, "สมชาย", "ตรวจซ้ำ", "HN-NEW"]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
 
     expect(preview.rows[0]?.classification).toBe("READY");
@@ -702,7 +702,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-OSM-BULK");
     const { actor } = await createActor({ kind: "OSM", hospitalId: hospital.id });
     const upload = await createXlsxUpload([[nationalIds.osm, "อสม.", "ทดสอบ", ""]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
 
     await expect(previewPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(importPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
@@ -712,7 +712,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const hospital = await createHospital("PATIENT-MULTI-ROLE-BULK");
     const { actor, userId } = await createMultiRoleHospitalOsmActor(hospital.id);
     const upload = await createXlsxUpload([[nationalIds.multiRoleBulk, "หลายบทบาท", "ทดสอบ", ""]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id);
+    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const database = createDatabaseThatRevokesHospitalBulkScope(userId, hospital.id);
 
     await expect(

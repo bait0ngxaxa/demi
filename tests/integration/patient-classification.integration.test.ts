@@ -259,7 +259,7 @@ async function readClassificationCandidates(
     ]),
   );
 
-  return readPatientImportCandidates(upload, hospitalId);
+  return readPatientImportCandidates(upload, hospitalId, { mode: "COMPATIBILITY" });
 }
 
 async function readCandidateClassification(
@@ -696,7 +696,7 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     const candidate = await createRosterUpload(
       ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ประเภทเบาหวาน"],
       [[nationalIds.rosterAtomic, "ผู้ป่วยสังเคราะห์", "อะตอมมิก", "HN-0050", 72.5, "เบาหวาน"]],
-    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id))[0]);
+    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" }))[0]);
 
     const summary = await importPatientProvisioning(
       owner.actor,
@@ -723,7 +723,7 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     const candidate = await createRosterUpload(
       ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ประเภทเบาหวาน"],
       [[nationalIds.rosterRollback, "ผู้ป่วยสังเคราะห์", "ย้อนกลับ", "HN-0068", 70, "กลุ่มเสี่ยง"]],
-    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id))[0]);
+    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" }))[0]);
 
     const summary = await importPatientProvisioning(
       owner.actor,

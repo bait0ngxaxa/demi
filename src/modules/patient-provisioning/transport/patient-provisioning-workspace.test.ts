@@ -222,4 +222,26 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).not.toContain('href="/app/patients/activation');
     expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
   });
+
+  it("publishes the canonical Patient import template beside the upload control", () => {
+    const scope = {
+      hospitalId,
+      hospitalCode: "TEST-HOSPITAL",
+      hospitalName: "โรงพยาบาลทดสอบ",
+      canBulkImport: true,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes: [scope],
+        selectedHospitalId: scope.hospitalId,
+        selectedScope: scope,
+      }),
+    );
+
+    expect(markup).toContain('href="/templates/demi-patient-import-template-v1.xlsx"');
+    expect(markup).toContain("download=\"DEMI_แบบฟอร์มนำเข้ารายชื่อผู้ป่วย_v1.xlsx\"");
+    expect(markup).toContain("ดาวน์โหลด Template");
+    expect(markup).toContain("กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
+    expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
+  });
 });

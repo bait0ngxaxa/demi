@@ -1,3 +1,7 @@
+import type { Cell, Worksheet } from "exceljs";
+
+import { ValidationError } from "@/shared/errors/application-error";
+
 import {
   PATIENT_IMPORT_FIELD_KEYS,
   isPatientImportBaselineField,
@@ -14,6 +18,15 @@ import {
   normalizePatientImportHeader,
   type PatientImportHeaderBinding,
 } from "./patient-import-header-aliases";
+import {
+  PATIENT_IMPORT_TEMPLATE_COLUMNS,
+  PATIENT_IMPORT_TEMPLATE_DATA_START_ROW,
+  PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT,
+  PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS,
+  PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
+  PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS,
+  PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADER_ROW,
+} from "./patient-import-template-contract";
 
 export const MAX_PATIENT_IMPORT_COLUMNS = 64;
 
@@ -28,6 +41,182 @@ export type PatientImportHeaderResolution = {
   dateFormat: PatientImportDateFormat;
   diagnostics: readonly PatientImportDiagnostic[];
 };
+
+export type CanonicalPatientImportTemplateValidation = {
+  headerRowNumber: number;
+  dataStartRowNumber: number;
+  resolution: PatientImportHeaderResolution;
+};
+
+function normalizeCanonicalPatientImportHeader(value: string): string {
+  return value
+    .replace(/^\uFEFF/u, "")
+    .normalize("NFC")
+    .replace(/[\s\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]+/gu, " ")
+    .trim();
+}
+
+export function readPatientImportHeaderCellText(cell: Cell): string {
+  if (cell.isMerged) {
+    const cellAddress = cell.fullAddress;
+    const masterAddress = cell.master.fullAddress;
+
+    if (cellAddress.row !== masterAddress.row || cellAddress.col !== masterAddress.col) {
+      return "";
+    }
+
+    return cell.master.text;
+  }
+
+  return cell.text;
+}
+
+export function extractPatientImportHeaders(
+  worksheet: Worksheet,
+  headerRowNumber: number,
+  maximumColumns = MAX_PATIENT_IMPORT_COLUMNS,
+): readonly string[] | null {
+  if (worksheet.actualColumnCount === 0 || worksheet.actualColumnCount > maximumColumns) {
+    return null;
+  }
+
+  const headerRow = worksheet.getRow(headerRowNumber);
+  const headers: string[] = [];
+
+  for (let columnNumber = 1; columnNumber <= worksheet.actualColumnCount; columnNumber += 1) {
+    headers.push(readPatientImportHeaderCellText(headerRow.getCell(columnNumber)));
+  }
+
+  return headers;
+}
+
+function isCanonicalPrimaryHeaderRow(headers: readonly string[]): boolean {
+  return (
+    headers.length === PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT &&
+    PATIENT_IMPORT_TEMPLATE_COLUMNS.every(
+      (column, index) =>
+        normalizeCanonicalPatientImportHeader(headers[index] ?? "") ===
+        normalizeCanonicalPatientImportHeader(column.header),
+    )
+  );
+}
+
+function createCanonicalPatientImportHeaderResolution(
+  sourceHeaders: readonly string[],
+): PatientImportHeaderResolution {
+  const bindings: PatientImportHeaderBinding[] = [];
+  const byField = new Map<PatientImportFieldKey, PatientImportHeaderBinding>();
+
+  for (const [index, column] of PATIENT_IMPORT_TEMPLATE_COLUMNS.entries()) {
+    const sourceHeader = sourceHeaders[index] ?? column.header;
+    const binding: PatientImportHeaderBinding = {
+      field: column.field,
+      columnNumber: index + 1,
+      sourceHeader: sourceHeader.replace(/^\uFEFF/u, "").trim(),
+      normalizedHeader: normalizePatientImportHeader(sourceHeader),
+      heightUnit: column.field === "height" ? "cm" : null,
+    };
+
+    if (byField.has(binding.field)) {
+      throw new Error("PATIENT_IMPORT_TEMPLATE_DUPLICATE_FIELD");
+    }
+
+    bindings.push(binding);
+    byField.set(binding.field, binding);
+  }
+
+  return {
+    bindings,
+    byField,
+    ambiguousFields: new Set<PatientImportFieldKey>(),
+    recognizedHeaders: bindings.map(({ sourceHeader }) => sourceHeader),
+    unknownHeaders: [],
+    ambiguousHeaders: [],
+    layout: "OPERATIONAL_ROSTER",
+    dateFormat: "DMY",
+    diagnostics: [],
+  };
+}
+
+export function findCanonicalPatientImportHeaderRows(
+  worksheet: Worksheet,
+  maximumHeaderScanRows = PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS,
+): readonly number[] {
+  if (worksheet.actualColumnCount !== PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT) {
+    return [];
+  }
+
+  const maximumHeaderRow = Math.min(
+    maximumHeaderScanRows,
+    Math.max(worksheet.actualRowCount, worksheet.rowCount),
+  );
+  const candidateRows: number[] = [];
+
+  for (let rowNumber = 1; rowNumber <= maximumHeaderRow; rowNumber += 1) {
+    const headers = extractPatientImportHeaders(worksheet, rowNumber);
+
+    if (headers && isCanonicalPrimaryHeaderRow(headers)) {
+      candidateRows.push(rowNumber);
+    }
+  }
+
+  return candidateRows;
+}
+
+export function validateCanonicalPatientImportTemplate(
+  worksheet: Worksheet,
+  maximumHeaderScanRows = PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS,
+): CanonicalPatientImportTemplateValidation {
+  if (worksheet.actualColumnCount !== PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+  }
+
+  const candidateRows = findCanonicalPatientImportHeaderRows(worksheet, maximumHeaderScanRows);
+
+  if (candidateRows.length === 0) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+  }
+
+  if (candidateRows.length > 1) {
+    throw new ValidationError("พบหัวตารางผู้ป่วยมากกว่าหนึ่งแถวในแผ่นงานเดียวกัน");
+  }
+
+  const headerRowNumber = candidateRows[0];
+
+  if (headerRowNumber === undefined) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+  }
+
+  const secondaryHeaders = extractPatientImportHeaders(
+    worksheet,
+    PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADER_ROW + headerRowNumber - 1,
+  );
+
+  if (!secondaryHeaders || secondaryHeaders.length !== PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+  }
+
+  for (const [index, column] of PATIENT_IMPORT_TEMPLATE_COLUMNS.entries()) {
+    const expectedSecondaryHeader = PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column.column] ?? "";
+    const actualSecondaryHeader = normalizeCanonicalPatientImportHeader(secondaryHeaders[index] ?? "");
+
+    if (actualSecondaryHeader !== normalizeCanonicalPatientImportHeader(expectedSecondaryHeader)) {
+      throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+    }
+  }
+
+  const primaryHeaders = extractPatientImportHeaders(worksheet, headerRowNumber);
+
+  if (!primaryHeaders || !isCanonicalPrimaryHeaderRow(primaryHeaders)) {
+    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+  }
+
+  return {
+    headerRowNumber,
+    dataStartRowNumber: headerRowNumber + PATIENT_IMPORT_TEMPLATE_DATA_START_ROW - 1,
+    resolution: createCanonicalPatientImportHeaderResolution(primaryHeaders),
+  };
+}
 
 function diagnostic(
   code: PatientImportDiagnostic["code"],
