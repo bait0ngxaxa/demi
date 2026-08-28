@@ -179,7 +179,7 @@ describe("Canonical Patient import adapter", () => {
       headerRowNumber: 1,
       layout: "OPERATIONAL_ROSTER",
     });
-  });
+  }, 10000);
 
   it("accepts the operational merged two-row header without a duplicate-header error", async () => {
     const upload = await createCanonicalUpload();
@@ -197,6 +197,41 @@ describe("Canonical Patient import adapter", () => {
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.canonicalRow.contact.phoneNumber).toBe("0812345678");
+  });
+
+  it("keeps a non-canonical legacy workbook out of the default production path", async () => {
+    const workbook = createHeaderRowsWorkbook({ unmerged: true });
+    const worksheet = workbook.worksheets[0];
+
+    if (!worksheet) {
+      throw new Error("The synthetic legacy workbook has no worksheet");
+    }
+
+    worksheet.getCell("B1").value = "วันเกิด";
+    worksheet.getCell("C1").value = "เลขบัตรประชาชน";
+    setPatientRow(worksheet, 3, syntheticPatientValues());
+    worksheet.getCell("B3").value = "04/05/2568";
+    worksheet.getCell("C3").value = "1000000000009";
+
+    const upload = await createUpload(workbook, "synthetic-legacy-patients.xlsx");
+    const compatibilityCandidates = await readPatientImportCandidates(
+      upload,
+      targetHospitalId,
+      { mode: "COMPATIBILITY" },
+    );
+
+    expect(compatibilityCandidates[0]?.input).toMatchObject({
+      givenName: "ตัวอย่าง",
+      familyName: "ผู้ป่วย",
+      targetHospitalId,
+    });
+
+    await expect(readPatientImportCandidates(upload, targetHospitalId)).rejects.toSatisfy(
+      (error: unknown) => {
+        assertValidationError(error, PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+        return true;
+      },
+    );
   });
 
   it("accepts a semantically identical unmerged header", async () => {

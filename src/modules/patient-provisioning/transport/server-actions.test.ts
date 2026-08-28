@@ -86,12 +86,13 @@ vi.mock("../adapters/excel-patient-import-adapter", () => ({
   readPatientImportCandidates: mockedReadCandidates,
 }));
 vi.mock("../services/patient-provisioning-service", () => ({
-  importPatientProvisioning: mockedImportProvisioning,
-  previewPatientProvisioning: mockedPreviewProvisioning,
-  previewPatientProvisioningInternal: mockedPreviewProvisioning,
-  projectPatientImportPreview: mockedProjectPatientImportPreview,
   provisionPatient: mockedProvisionPatient,
   PatientProvisioningConflictError: class PatientProvisioningConflictError extends Error {},
+}));
+vi.mock("../services/patient-roster-import-service", () => ({
+  importPatientRoster: mockedImportProvisioning,
+  previewPatientRosterImportInternal: mockedPreviewProvisioning,
+  projectPatientRosterImportPreview: mockedProjectPatientImportPreview,
 }));
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";

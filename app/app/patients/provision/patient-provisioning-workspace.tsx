@@ -20,8 +20,9 @@ import type {
   PatientImportPreviewRow,
   PatientImportRowResult,
   PatientImportResultSummary,
-  PatientProvisioningScope,
-} from "@/modules/patient-provisioning/services/patient-provisioning-service";
+} from "@/modules/patient-provisioning/services/patient-roster-import-types";
+import { isPatientImportAttentionResult } from "@/modules/patient-provisioning/services/patient-roster-import-types";
+import type { PatientProvisioningScope } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
   PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME,
@@ -626,7 +627,7 @@ function PreviewFileSummary({ preview }: { preview: PatientImportPreview }): Rea
 
 function ImportSummary({ summary }: { summary: PatientImportResultSummary }): React.JSX.Element {
   const attentionRows = summary.rows.filter(
-    (row) => row.result !== "IMPORTED" && row.result !== "ALREADY_EXISTS",
+    (row) => isPatientImportAttentionResult(row.result),
   );
   const hasAttentionRows = attentionRows.length > 0;
 

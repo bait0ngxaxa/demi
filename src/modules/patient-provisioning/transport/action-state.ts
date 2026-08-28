@@ -3,8 +3,8 @@ import type {
   PatientImportClassificationReconciliation,
   PatientImportResultSummary,
   PatientImportOsmAssignmentPreview,
-  PatientProvisioningOutcome,
-} from "../services/patient-provisioning-service";
+} from "../services/patient-roster-import-types";
+import type { PatientProvisioningOutcome } from "../services/patient-provisioning-transaction";
 import type { PatientProvisionContinuation } from "./patient-provisioning-continuation";
 
 export type PatientImportPreviewReconciliationBinding = PatientImportClassificationReconciliation & {

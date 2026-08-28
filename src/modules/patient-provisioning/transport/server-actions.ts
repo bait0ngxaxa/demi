@@ -16,14 +16,14 @@ import {
 } from "../schemas/patient-provisioning-schemas";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import {
-  importPatientProvisioning,
   PatientProvisioningConflictError,
-  previewPatientProvisioningInternal,
-  projectPatientImportPreview,
   provisionPatient,
-  type PatientImportOsmAssignmentChoice,
-  type PatientImportPreviewInternal,
 } from "../services/patient-provisioning-service";
+import {
+  importPatientRoster,
+  previewPatientRosterImportInternal,
+  projectPatientRosterImportPreview,
+} from "../services/patient-roster-import-service";
 import {
   createPatientImportPreviewBinding,
   createPatientImportClassificationReconciliationBinding,
@@ -46,8 +46,10 @@ import type {
 } from "./action-state";
 import type {
   PatientImportClassificationReconciliation,
+  PatientImportOsmAssignmentChoice,
   PatientImportPreview,
-} from "../services/patient-provisioning-service";
+  PatientImportPreviewInternal,
+} from "../services/patient-roster-import-types";
 import type {
   PatientImportOsmAssignmentReconciliationBinding,
   PatientImportOsmCandidateBinding,
@@ -644,7 +646,7 @@ export async function previewPatientImportAction(
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId, {
       mode: "CANONICAL",
     });
-    const previewInternal = await previewPatientProvisioningInternal(
+    const previewInternal = await previewPatientRosterImportInternal(
       actor,
       parsed.data.targetHospitalId,
       candidates,
@@ -655,7 +657,7 @@ export async function previewPatientImportAction(
       },
     );
     const fileFingerprint = await hashPatientImportFile(request.file);
-    const preview = projectPatientImportPreview(previewInternal);
+    const preview = projectPatientRosterImportPreview(previewInternal);
 
     return {
       status: "SUCCESS",
@@ -752,7 +754,7 @@ export async function confirmPatientImportAction(
     const candidates = await readPatientImportCandidates(request.file, parsed.data.targetHospitalId, {
       mode: "CANONICAL",
     });
-    const previewInternal = await previewPatientProvisioningInternal(
+    const previewInternal = await previewPatientRosterImportInternal(
       actor,
       parsed.data.targetHospitalId,
       candidates,
@@ -762,7 +764,7 @@ export async function confirmPatientImportAction(
         importContractVersion: parsed.data.importContractVersion,
       },
     );
-    const preview = projectPatientImportPreview(previewInternal);
+    const preview = projectPatientRosterImportPreview(previewInternal);
     assertClassificationReconciliationChoices(preview, parsedChoices.data, {
       fileFingerprint: parsed.data.fileFingerprint,
       targetHospitalId: parsed.data.previewTargetHospitalId,
@@ -773,7 +775,7 @@ export async function confirmPatientImportAction(
       targetHospitalId: parsed.data.previewTargetHospitalId,
       actorUserId: actor.userId,
     });
-    const summary = await importPatientProvisioning(
+    const summary = await importPatientRoster(
       actor,
       parsed.data.targetHospitalId,
       candidates,

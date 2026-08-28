@@ -445,6 +445,33 @@ gated. `IMP-REQ-03` Hospital / รพ.สต. hierarchy and `P16C-PROFILE-01`
 profile/contact/address persistence ownership remain OPEN. Phase 16D.5 has not
 started; this handoff must be re-audited before that phase is considered.
 
+## Phase 16D.5 Full Roster Import Orchestration & Compatibility Hardening
+
+Phase 16D.5 extracts Patient roster preview/confirm orchestration from
+`patient-provisioning-service.ts` into the server-only
+`patient-roster-import-service.ts`, with a cohesive preview/state helper and
+bounded roster contract types. The provisioning service now remains focused on
+single-Patient provisioning, scopes, and one-way compatibility exports. The roster
+service owns canonical preview, authoritative confirm-time re-evaluation, row
+readiness, summary computation, and one Serializable transaction per executable
+row; it composes the existing Patient core, Baseline, Classification, and OSM
+transaction seams without copying their domain rules.
+
+Production preview and confirm still use adapter `mode: "CANONICAL"` and the
+`patient-import-template-v1` structural contract. `COMPATIBILITY` remains explicit
+for legacy/support tests only; no production canonical-to-compatibility fallback
+exists. HMAC binding, file/actor/Hospital/effective-date/runtime-contract checks,
+opaque browser choices, server-derived authority, OWNER-only OSM mutation, exact
+target-Hospital resolution, self/ambiguous safeguards, blank-source no-assertion,
+and per-row atomicity remain intact.
+
+Summary primary buckets are computed once from final row results and must sum to
+the number of represented rows. Domain counters may overlap by design.
+`ALREADY_EXISTS` is successful idempotence and is not an attention state. No schema,
+migration, import-batch persistence, Hospital hierarchy, or gated profile/contact
+persistence was added. `IMP-REQ-03` and `P16C-PROFILE-01` remain OPEN. See the
+[Phase 16D.5 handoff](./phases/PHASE_16D5_FULL_ROSTER_IMPORT_ORCHESTRATION_HARDENING.md).
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
