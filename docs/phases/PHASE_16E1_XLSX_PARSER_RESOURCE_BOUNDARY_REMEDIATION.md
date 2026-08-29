@@ -2,9 +2,9 @@
 
 วันที่ดำเนินการ: 2026-08-28
 
-สถานะ: parser-resource blocker remediated / ready for re-audit
+สถานะ ณ handoff: parser-resource blocker remediated / ready for re-audit
 
-สถานะ release gate รวม: **FIX REQUIRED** — เอกสารนี้ไม่ปิดและไม่เปลี่ยน
+สถานะ release gate รวม ณ handoff: **FIX REQUIRED** — เอกสารนี้ไม่ปิดและไม่เปลี่ยน
 `EXTERNAL PRIVACY RELEASE BLOCKER` จาก Phase 16E
 
 ## Starting point and scope
@@ -303,3 +303,24 @@ queue หรือ domain behavior.
 สถานะ parser-resource blocker ของ Phase 16E.1 ยังคงเป็น **REMEDIATED / READY FOR
 RE-AUDIT**. เอกสารนี้ไม่ประกาศ overall Phase 16E release gate เป็น PASS; external
 privacy evidence ของ Phase 16E.2 ยังคงเป็น blocker แยกต่างหาก.
+
+## Phase 16E.1 re-audit result (2026-08-29)
+
+Phase 16E.1: **PASS / CLOSED**
+
+XLSX parser resource boundary: **REMEDIATED**
+
+Parser resource blocker: **CLOSED**
+
+The re-audit reviewed the completed boundary, including:
+
+- actual-byte streaming for every non-directory XLSX ZIP entry before ExcelJS;
+- declared and actual package-wide and per-entry limits;
+- one shared package-wide decompression budget;
+- worksheet SAX structural bounds;
+- proof that ExcelJS is not invoked after preflight rejection; and
+- retained official Template and 500-row/source-row-502 canonical regressions.
+
+This closes the Phase 16E.1 parser-resource work. The separate Phase 16E.2
+historical GitHub cleanup follow-up is governed by the later Phase 16E closure
+decision and is not claimed resolved by this document.

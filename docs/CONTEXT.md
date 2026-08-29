@@ -505,7 +505,8 @@ See the [Phase 16D.6 handoff](./phases/PHASE_16D6_IMPORT_PREVIEW_CONFIRMATION_UX
 
 ## Phase 16E Patient Import End-to-End Release Gate
 
-Phase 16E audited the complete current Patient roster import journey at
+The original 2026-08-28 Phase 16E audit examined the complete current Patient
+roster import journey at
 `41260bb47f1fc7b26396d7f66bba7556e179536a`. Canonical Template v1 remains the
 production-only input boundary, the 500-record/source-row-502 contract remains
 correct, and the confirmed Core/Baseline/Classification/OSM, authority, binding,
@@ -513,13 +514,14 @@ privacy projection, row atomicity, rollback, concurrency, result and recovery
 semantics remain coherent. Required lint, typecheck, Prisma, unit and integration
 checks passed.
 
-The release gate is **FIX REQUIRED**, not closed. A source-backed parser resource
-boundary finding remains: `readPatientImportCandidates()` fully loads attacker-
-controlled XLSX content through ExcelJS before decompressed ZIP/XML resource limits
-are enforced. Separately, Phase 16B.0 documentation still records GitHub-side
-cached/unreachable sensitive-workbook cleanup as unconfirmed; this is an
-**EXTERNAL PRIVACY RELEASE BLOCKER**. Do not claim the Patient import baseline is
-stable until both are resolved and re-audited.
+The original audit recorded the release gate as **FIX REQUIRED**, not closed. A
+source-backed parser resource boundary finding remained:
+`readPatientImportCandidates()` fully loaded attacker-controlled XLSX content
+through ExcelJS before decompressed ZIP/XML resource limits were enforced.
+Separately, Phase 16B.0 documentation still recorded GitHub-side
+cached/unreachable sensitive-workbook cleanup as unconfirmed; this was an
+**EXTERNAL PRIVACY RELEASE BLOCKER** in that audit. This paragraph preserves the
+audit-time conclusion; the current owner decision is recorded below.
 
 `IMP-REQ-03` Hospital / รพ.สต. hierarchy and `P16C-PROFILE-01` profile/contact/address
 persistence ownership remain OPEN and were not guessed or resolved by Phase 16E.
@@ -527,23 +529,48 @@ See the [Phase 16E release-gate audit](./phases/PHASE_16E_PATIENT_IMPORT_END_TO_
 
 ### Phase 16E.1 XLSX parser resource-boundary handoff
 
-Phase 16E.1 implemented server-side XLSX ZIP/XML resource hardening before ExcelJS
+At the Phase 16E.1 handoff, Phase 16E.1 had implemented server-side XLSX ZIP/XML
+resource hardening before ExcelJS
 load, with bounded entries, decompressed bytes, worksheet parts/cells/rows,
 coordinates, merges, duplicate/unsupported/encrypted/malformed handling and bounded
-streaming XML inspection. The parser-resource blocker is remediated and awaits
-independent re-audit. The overall Patient Import release gate remains **FIX REQUIRED**;
-the separate Phase 16E.2 **EXTERNAL PRIVACY RELEASE BLOCKER** for GitHub historical
-sensitive-workbook cached/unreachable cleanup remains open and was not accessed or
-changed here.
+streaming XML inspection. The parser-resource blocker was remediated and awaited
+independent re-audit. The overall Patient Import release gate at that handoff
+remained **FIX REQUIRED**; the separate Phase 16E.2 **EXTERNAL PRIVACY RELEASE
+BLOCKER** for GitHub historical sensitive-workbook cached/unreachable cleanup
+remained open and was not accessed or changed here.
 
-Phase 16E.1 follow-up additionally verifies actual decompressed bytes for every
+The Phase 16E.1 follow-up additionally verified actual decompressed bytes for every
 non-directory XLSX file entry, including non-worksheet and binary/media parts. A
 single `actualTotalUncompressedBytes` package counter enforces the 32 MiB actual
 budget, while the existing declared central-directory budget and `yauzl` size
 validation remain in place. Worksheet SAX inspection uses the same stream as the
-counter; non-worksheet entries are drained without buffering. The parser blocker is
-ready for re-audit, but the overall Patient Import release gate remains **FIX
-REQUIRED** until the separate Phase 16E.2 external privacy evidence is confirmed.
+counter; non-worksheet entries are drained without buffering. At that handoff, the
+parser blocker was ready for re-audit and the overall Patient Import release gate
+remained **FIX REQUIRED** pending the separate Phase 16E.2 external privacy
+evidence.
+
+### Current handoff (2026-08-29)
+
+The Phase 16E Patient Import End-to-End Release Gate is **PASS / CLOSED**. Phase
+16E.1 parser hardening passed re-audit and is **PASS / CLOSED**; the parser resource
+blocker is **CLOSED**.
+
+The current Patient Import capability is **STABLE / RELEASE-GATED FOR CURRENT
+CONFIRMED DEMO/MVP SCOPE**. This is the confirmed bounded demo/MVP baseline, not a
+claim that every future customer requirement is complete.
+
+The historical GitHub cached/unreachable sensitive-object cleanup remains
+**EXTERNAL OWNER-MANAGED FOLLOW-UP**, **NOT RELEASE-BLOCKING**, and **NOT RESOLVED**.
+The project/repository owner will coordinate external confirmation separately. No
+GitHub purge/cleanup completion is claimed. The current reachable repository tree
+remains safe for the reviewed scope based on existing audit evidence, while the
+historical external-object follow-up remains pending. These are distinct privacy
+positions.
+
+Open requirements remain `IMP-REQ-03` Hospital / รพ.สต. hierarchy and authority
+semantics and `P16C-PROFILE-01` profile/contact/address persistence ownership.
+See the [Phase 16E release-gate audit](./phases/PHASE_16E_PATIENT_IMPORT_END_TO_END_RELEASE_GATE.md)
+for the full chronology and final release-governance decision.
 
 ## Open Requirements
 

@@ -4,7 +4,7 @@
 ขอบเขต: current demo/MVP Patient roster import
 ผลการตรวจนี้เป็น audit ของ implementation ปัจจุบัน ไม่ใช่ feature phase และไม่มีการแก้ business behavior
 
-## Gate result
+## Gate result — original audit (2026-08-28)
 
 # FIX REQUIRED
 
@@ -15,6 +15,10 @@ blocker ด้าน availability/security ของ XLSX parser และยั
 ข้อสรุปนี้ไม่ใช่ผลจาก test failure: implementation semantics ของ Patient import
 ที่ตรวจพบว่าสอดคล้องกับ Phase 16 decisions ส่วนใหญ่ผ่านการตรวจ แต่ blocker สอง
 รายการข้างต้นเพียงพอให้ gate ไม่ผ่าน
+
+สถานะ `FIX REQUIRED` ข้างต้นเป็นผลของ original Phase 16E audit และคงไว้เพื่อ
+รักษา audit chronology; disposition และ release-governance decision ที่เกิดขึ้น
+ภายหลังบันทึกไว้ใน append-only sections ด้านล่าง
 
 ## Audited baseline
 
@@ -212,7 +216,7 @@ potentially sensitive spreadsheets. Tests use synthetic data.
 
 `.gitignore` protection for Patient-roster-like `docs/**/รายชื่อคนไข้*.xlsx` remains.
 
-### Historical remediation status
+### Historical remediation status (at original audit)
 
 `docs/phases/PHASE_16B0_PATIENT_IMPORT_ADAPTER_V2_COMPATIBILITY_FOUNDATION.md`
 states that the real workbook was removed from the corrected tree/history, but also
@@ -226,7 +230,7 @@ no claim that the privacy incident is fully resolved.
 
 ## Findings
 
-### BLOCKERS
+### BLOCKERS (original audit result)
 
 1. **Patient XLSX parser resource boundary — Medium / CWE-409**
 
@@ -312,7 +316,7 @@ completing.
 - Final hygiene check must leave only this audit document, the concise CONTEXT handoff
   and the focused release-gate commit in the diff.
 
-## Release recommendation
+## Release recommendation — original audit (2026-08-28)
 
 Keep Patient Import **open / FIX REQUIRED** for the current demo/MVP release gate.
 
@@ -379,3 +383,91 @@ The Phase 16E.1 parser blocker remains **REMEDIATED / READY FOR RE-AUDIT**. Over
 Phase 16E remains **FIX REQUIRED** because the separate Phase 16E.2 external privacy
 evidence blocker is still open. This follow-up does not access historical Patient
 workbooks/blobs or change any domain, schema, authorization or contract semantics.
+
+## Historical blockers and disposition (2026-08-29)
+
+ส่วนนี้สรุป disposition ของ blocker จาก original audit โดยไม่เปลี่ยน chronology
+ของผล `FIX REQUIRED` ที่บันทึกไว้ข้างต้น
+
+### XLSX parser resource boundary
+
+Phase 16E.1 status: **PASS / CLOSED**
+
+XLSX parser resource boundary: **REMEDIATED**
+
+Status: **RESOLVED BY PHASE 16E.1 / RE-AUDITED PASS**
+
+Phase 16E.1 remediated the application parser resource boundary, and the follow-up
+re-audit passed against the current reviewed implementation baseline. The parser
+resource blocker is closed; the technical evidence and regressions remain recorded
+ในเอกสาร Phase 16E.1
+
+### Phase 16E.2 — Historical GitHub object/cache cleanup evidence
+
+Status:
+**EXTERNAL OWNER-MANAGED FOLLOW-UP**
+**NOT RELEASE-BLOCKING**
+**NOT RESOLVED**
+
+The project/repository owner will coordinate GitHub Support and any other external
+cleanup confirmation separately. This is an external privacy follow-up, not an
+application implementation blocker for the current DEMI Patient Import release
+decision. No historical sensitive workbook/blob was fetched or inspected here, and
+no GitHub purge or cleanup completion is asserted.
+
+## Final closure decision (2026-08-29)
+
+Current reviewed implementation baseline: `95a19086cccfd451d22d64977e480704206c2ae9`
+
+Phase 16E final status: **PASS / CLOSED**
+
+The original Phase 16E audit identified two blockers: the XLSX parser
+resource-boundary blocker and the external historical sensitive-object cleanup
+evidence blocker. Phase 16E.1 remediated the application parser blocker, and the
+follow-up re-audit passed Phase 16E.1. The owner then made an explicit
+release-governance decision that the remaining historical GitHub cached/unreachable
+sensitive-object cleanup evidence will be handled separately and is not an
+application release blocker for this case.
+
+The external privacy follow-up remains **NOT RESOLVED** until external GitHub
+confirmation exists. This decision is not evidence that GitHub purge/cleanup has
+completed and is not a general policy for future incidents.
+
+The Patient Import application release gate evaluates the correctness,
+authorization, data integrity, privacy boundaries of current reachable application
+artifacts, transactionality, parser safety and operational workflow. The unresolved
+historical GitHub cached/unreachable object cleanup is a separate
+incident-remediation governance item managed outside the application runtime. The
+project owner explicitly accepts that separation for this current demo/MVP release
+decision.
+
+The current reachable repository tree remains safe for the reviewed Patient Import
+scope based on the existing audit evidence. Historical GitHub cached/unreachable
+sensitive-object cleanup remains pending external confirmation. These are separate
+positions and must not be conflated.
+
+Patient Import status: **STABLE / RELEASE-GATED FOR CURRENT CONFIRMED DEMO/MVP SCOPE**
+
+This freezes the currently confirmed architecture and semantics as the bounded
+demo/MVP baseline; it does not mean every future customer requirement is complete.
+`IMP-REQ-03` Hospital / รพ.สต. hierarchy and authority semantics and
+`P16C-PROFILE-01` profile/contact/address persistence ownership remain **OPEN
+REQUIREMENTS** and were not guessed or resolved.
+
+The existing technical debt remains explicitly **NON-BLOCKING**: serializable
+transaction retry has bounded retry but no backoff/jitter; some
+preview/orchestration/UI files remain large; a full 500-row database stress import
+is not part of the current release evidence; and the separate public Hospital
+onboarding throttling/security finding remains outside this Patient Import release
+gate.
+
+## Final release recommendation
+
+Patient Import: **APPROVED AS CURRENT DEMO/MVP BASELINE**
+
+Phase 16E: **CLOSED**
+
+Future changes to confirmed Patient Import semantics should occur only when customer
+requirements change, an actual defect is found, or a separately scoped hardening
+requirement is approved. Do not casually reopen the completed Phase 16
+implementation.
