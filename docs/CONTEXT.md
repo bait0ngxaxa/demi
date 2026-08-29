@@ -536,6 +536,15 @@ the separate Phase 16E.2 **EXTERNAL PRIVACY RELEASE BLOCKER** for GitHub histori
 sensitive-workbook cached/unreachable cleanup remains open and was not accessed or
 changed here.
 
+Phase 16E.1 follow-up additionally verifies actual decompressed bytes for every
+non-directory XLSX file entry, including non-worksheet and binary/media parts. A
+single `actualTotalUncompressedBytes` package counter enforces the 32 MiB actual
+budget, while the existing declared central-directory budget and `yauzl` size
+validation remain in place. Worksheet SAX inspection uses the same stream as the
+counter; non-worksheet entries are drained without buffering. The parser blocker is
+ready for re-audit, but the overall Patient Import release gate remains **FIX
+REQUIRED** until the separate Phase 16E.2 external privacy evidence is confirmed.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:

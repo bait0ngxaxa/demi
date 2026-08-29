@@ -354,12 +354,28 @@ resource envelope rejects before `workbook.xlsx.load()` is invoked. Existing sem
 
 Phase 16E.1 verification evidence: `npm run generate:patient-import-template`,
 `npx prisma validate`, `npx prisma generate`, `npm run lint`, and
-`npm run typecheck` passed; `npm test` passed with 138 files/951 tests;
-`npm run test:integration` passed with 23 files/204 tests; the focused 11-file
-Patient import/domain/presentation suite passed with 124 tests. `git diff --check`
+`npm run typecheck` passed; `npm test` passed with 138 files/958 tests;
+`npm run test:integration` passed with 23 files/204 tests; the focused 7-file
+Patient import parser/adapter suite passed with 104 tests. `git diff --check`
 passed, and no Prisma schema, migration or generated Template artifact diff remains.
 
 The parser blocker status is **REMEDIATED / READY FOR RE-AUDIT**. This does not make
 the overall Phase 16E release gate pass: the separate **EXTERNAL PRIVACY RELEASE
 BLOCKER** for GitHub historical sensitive-workbook cached/unreachable cleanup remains
 unconfirmed and is intentionally not addressed by Phase 16E.1.
+
+## Phase 16E.1 follow-up — actual bytes for every XLSX file entry (2026-08-29)
+
+The follow-up remediation closes the remaining package-accounting gap: preflight now
+opens and consumes every non-directory ZIP file entry before ExcelJS. It enforces
+actual per-entry and package-wide decompressed bytes, keeps the declared central-
+directory limits and `yauzl` size validation, drains non-worksheet/binary entries
+without buffering them, and feeds each worksheet stream directly into the existing
+SAX checks. The `actualTotalUncompressedBytes` summary metric is separate from the
+worksheet-only `worksheetXmlBytes` metric. The same stream is used for counting and
+worksheet inspection; no worksheet double-read occurs inside preflight.
+
+The Phase 16E.1 parser blocker remains **REMEDIATED / READY FOR RE-AUDIT**. Overall
+Phase 16E remains **FIX REQUIRED** because the separate Phase 16E.2 external privacy
+evidence blocker is still open. This follow-up does not access historical Patient
+workbooks/blobs or change any domain, schema, authorization or contract semantics.

@@ -99,6 +99,10 @@ Patient contract. The selected limits leave material headroom over it while keep
 all controls finite. The official Template's 27 vertically merged two-row headers
 therefore remain well below both merge limits.
 
+The table above records the initial Phase 16E.1 handoff measurements. The follow-up
+re-audit added an actual-stream summary metric; its current fixture measurements are
+recorded in the follow-up section below.
+
 The worksheet-part limit intentionally hardens the previous scan-first-12 behavior:
 a package with more than 12 worksheet parts is rejected before ExcelJS rather than
 materializing an additional unbounded tail. Canonical production input contains one
@@ -130,8 +134,12 @@ passed these finite package checks.
 
 ## Worksheet structural amplification controls
 
-Only bounded worksheet XML parts are decompressed for structural inspection; media
-and unrelated binary entries are not read as text. The SAX pass counts and validates:
+Every non-directory ZIP file entry is opened once through a bounded decompressed
+stream before ExcelJS. Worksheet XML parts additionally feed the incremental SAX
+inspector; non-worksheet XML, relationship, metadata, theme and binary/media entries
+are drained only for byte accounting and are never parsed or retained in memory.
+Known zero-length directory entries are checked as metadata and are not opened.
+The SAX pass counts and validates:
 
 - `<dimension ref>` ranges and safe area multiplication;
 - row coordinates, row count and `spans` column ranges;
@@ -143,11 +151,15 @@ Coordinates above the resource policy reject before ExcelJS. Area arithmetic rej
 unsafe values before multiplication and uses the resource ceilings independently of
 the 500-row/64-column semantic contract. XML nesting is bounded at depth 64.
 
-The actual decompressed stream is counted in addition to central-directory metadata.
-Each worksheet stream is rejected if actual bytes exceed its declared size, its
-individual limit or the cumulative XML limit. `yauzl`'s size validation and the
-application counter are complementary. SAX/parser failures, DTDs and incomplete
-XML are malformed-input failures; no XML is buffered into a DOM.
+The actual decompressed stream for every file entry is counted in addition to
+central-directory metadata. Each stream is rejected if actual bytes exceed its
+individual limit or the package-wide actual limit, and the final actual byte count
+must equal the declared entry size. `yauzl`'s `validateEntrySizes` check and the
+application counter are complementary; a forged declared size may therefore fail
+closed as a malformed ZIP before the application counter sees the extra bytes.
+`worksheetXmlBytes` remains only the worksheet-subset metric and is not reused as
+the package budget. SAX/parser failures, DTDs and incomplete XML are malformed-input
+failures; no XML is buffered into a DOM.
 
 ## Integration and error behavior
 
@@ -196,7 +208,10 @@ The synthetic preflight suite constructs compact ZIPs at runtime and covers:
 - actual streamed-byte mismatch validation;
 - extreme dimension, cell/row coordinate and merge range rejection;
 - excessive merge declarations/cells, worksheet parts and DTD/entity rejection;
-- proof that adapter preflight rejection does not invoke the ExcelJS loader.
+- proof that adapter preflight rejection does not invoke the ExcelJS loader;
+- package-wide actual-byte accounting for non-worksheet entries, directory handling,
+  non-worksheet amplification/mismatch, non-worksheet cumulative limits and mixed
+  worksheet/non-worksheet totals.
 
 Existing Canonical adapter/template tests continue to cover merged headers, exact
 500-row source row 502, and semantic 501-record rejection. Existing compatibility,
@@ -204,8 +219,8 @@ roster service, Classification, OSM and Phase 16D.6 presentation tests are retai
 All attack fixtures are synthetic and no test allocates a large ZIP bomb or uses real
 Patient data.
 
-Verification results for this implementation: the focused 11-file suite passed with
-124 tests; `npm test` passed with 138 files/951 tests; and
+Verification results for this implementation: the focused 7-file parser/adapter
+suite passed with 104 tests; `npm test` passed with 138 files/958 tests; and
 `npm run test:integration` passed with 23 files/204 tests. `npm run lint`,
 `npm run typecheck`, `npx prisma validate`, `npx prisma generate` and
 `npm run generate:patient-import-template` all passed. The generated Template was
@@ -214,12 +229,13 @@ change was produced.
 
 ## Performance, compatibility and non-regression
 
-The preflight adds one lazy central-directory pass and decompresses only bounded
-worksheet XML parts before ExcelJS; it does not decompress images/media during the
-preflight. This intentionally adds CPU/I/O before parsing in exchange for a finite
-resource envelope. The same uploaded buffer is then passed to ExcelJS, so the
-semantic parser and preview/confirm binding behavior remain authoritative and
-unchanged.
+The preflight adds one lazy central-directory pass and decompresses every bounded
+non-directory file entry once before ExcelJS. Worksheet XML is inspected
+incrementally; binary/media entries are drained without buffering or parsing. The
+same uploaded buffer is then passed to ExcelJS, so ExcelJS decompresses the package a
+second time. This intentional double-decompression tradeoff keeps the security
+boundary independent of ExcelJS internals while the 5 MiB compressed, 32 MiB actual,
+16 MiB per-entry and 256-entry limits keep the work finite.
 
 No Patient business rule, Canonical Template version, contract version, row atomicity,
 Baseline, Classification, OSM, Hospital authority, summary, preview or confirm
@@ -236,3 +252,54 @@ sensitive-workbook cached/unreachable cleanup remains open and is not addressed 
 Recommended next action: re-audit this focused parser boundary and its evidence,
 then handle the separately authorized Phase 16E.2 external privacy evidence. Do not
 infer overall release-gate closure from this remediation.
+
+## Follow-up re-audit remediation — package-wide actual decompression budget
+
+วันที่ดำเนินการ: 2026-08-29
+
+การ re-audit พบ gap ใน remediation เดิม: actual-byte guard ครอบคลุมเฉพาะ worksheet
+XML ขณะที่ `xl/sharedStrings.xml`, `xl/styles.xml`, workbook/rels, docProps,
+theme และ binary/media parts ยังถูกตรวจหลัก ๆ จาก central-directory metadata ก่อน
+ExcelJS จะประมวลผล package ทั้งหมด
+
+Follow-up นี้แก้ที่ preflight boundary เดิมเท่านั้น:
+
+- ทุก non-directory file entry เปิด decoded/decompressed stream ผ่าน `yauzl` หนึ่งครั้ง
+  ก่อน ExcelJS; non-worksheet entries ถูก drain แบบ incremental โดยไม่รวม contents
+  ทั้งก้อนใน memory และ binary/media ไม่ถูก parse
+- `actualEntryBytes` ถูกตรวจต่อ chunk กับ limit 16 MiB และ
+  `actualTotalUncompressedBytes` ถูกตรวจต่อ chunk กับ package limit 32 MiB
+  ครอบคลุม worksheet และ non-worksheet bytes ใน counter เดียวกัน
+- การตรวจ central-directory แบบ declared ต่อ entry/ต่อ package ยังคงอยู่เป็น early
+  rejection; `validateEntrySizes: true` ยังคงบังคับ actual-vs-declared ของ `yauzl`
+  และ preflight ตรวจซ้ำเมื่อ stream จบ หากไม่เท่ากันให้ fail closed เป็น malformed
+- worksheet ใช้ stream เดียวกับ actual-byte counter, `StringDecoder` และ
+  `SaxesParser`; ไม่มีการเปิด worksheet ซ้ำใน preflight. Structural controls เดิม
+  ทั้งหมดคงอยู่. Directory ที่ลงท้าย `/` และประกาศ uncompressed size เป็นศูนย์จะไม่
+  เปิด content stream; directory ที่ประกาศ content ไม่เป็นศูนย์ถูก reject
+- summary เพิ่ม `actualTotalUncompressedBytes` เพื่อยืนยัน fixture measurements และ
+  แยกจาก `worksheetXmlBytes` ซึ่งยังเป็น worksheet-subset metric เท่านั้น
+
+ค่าที่วัดจาก valid fixtures หลัง follow-up (declared และ actual เท่ากัน) คือ:
+
+| Fixture | `actualTotalUncompressedBytes` |
+|---|---:|
+| Official blank Canonical Template v1 | 314,273 B |
+| Synthetic Canonical Template, exactly 500 populated rows | 1,029,351 B |
+| Synthetic compatibility workbook, 34 columns × 2 rows | 18,860 B |
+
+เพิ่ม regressions สำหรับ non-worksheet per-entry amplification, cumulative
+non-worksheet package budget, mixed worksheet/non-worksheet cumulative budget,
+declared/actual mismatch, zero-length directories และ proof ว่า ExcelJS ไม่ถูกเรียก
+หลัง non-worksheet rejection. เมื่อ `yauzl` ตรวจพบ forged size mismatch ก่อน
+application counter จะจัดเป็น fail-closed malformed rejection ตาม contract; valid
+metadata-consistent fixtures ยืนยัน package-wide actual total โดยตรง.
+
+การเปลี่ยนแปลงนี้ intentionally ยอมรับ double decompression: preflight drain/inspect
+package หนึ่งรอบเพื่อสร้าง security boundary แล้ว ExcelJS อ่าน buffer เดิมอีกครั้ง
+เพื่อ semantic parsing. ไม่เพิ่ม ZIP/XML dependency, cache ภายใน ExcelJS, worker,
+queue หรือ domain behavior.
+
+สถานะ parser-resource blocker ของ Phase 16E.1 ยังคงเป็น **REMEDIATED / READY FOR
+RE-AUDIT**. เอกสารนี้ไม่ประกาศ overall Phase 16E release gate เป็น PASS; external
+privacy evidence ของ Phase 16E.2 ยังคงเป็น blocker แยกต่างหาก.

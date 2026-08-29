@@ -151,6 +151,22 @@ async function expectMalformed(buffer: Buffer): Promise<void> {
   );
 }
 
+async function expectResourceOrMalformed(
+  buffer: Buffer,
+  overrides: Partial<PatientImportXlsxResourcePolicy>,
+): Promise<void> {
+  await expect(
+    patientImportXlsxResourcePreflightInternals.preflightWithPolicy(
+      buffer,
+      policyWith(overrides),
+    ),
+  ).rejects.toSatisfy(
+    (error: unknown) =>
+      error instanceof PatientImportXlsxResourceLimitError ||
+      error instanceof PatientImportXlsxMalformedError,
+  );
+}
+
 async function workbookBuffer(workbook: ExcelJS.Workbook): Promise<Buffer> {
   const written = await workbook.xlsx.writeBuffer();
   return Buffer.from(new Uint8Array(written));
@@ -176,6 +192,8 @@ describe("Patient XLSX resource preflight", () => {
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
       zipEntries: 16,
+      declaredTotalUncompressedBytes: 314_273,
+      actualTotalUncompressedBytes: 314_273,
       worksheetPartCount: 1,
       worksheetCellElements: 14056,
       worksheetRowElements: 502,
@@ -208,6 +226,8 @@ describe("Patient XLSX resource preflight", () => {
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
       zipEntries: 16,
+      declaredTotalUncompressedBytes: 1_029_351,
+      actualTotalUncompressedBytes: 1_029_351,
       worksheetPartCount: 1,
       worksheetCellElements: 14056,
       worksheetRowElements: 502,
@@ -228,6 +248,8 @@ describe("Patient XLSX resource preflight", () => {
     const summary = await preflightPatientImportXlsx(await workbookBuffer(workbook));
 
     expect(summary).toMatchObject({
+      declaredTotalUncompressedBytes: 18_860,
+      actualTotalUncompressedBytes: 18_860,
       worksheetPartCount: 1,
       worksheetCellElements: 68,
       worksheetRowElements: 2,
@@ -238,6 +260,48 @@ describe("Patient XLSX resource preflight", () => {
 
   it("fails closed for a malformed ZIP", async () => {
     await expectMalformed(Buffer.from("not an XLSX package", "utf8"));
+  });
+
+  it("accounts for actual decompressed bytes across non-worksheet entries", async () => {
+    const sharedStrings = Buffer.from("shared-string\n".repeat(32), "utf8");
+    const styles = Buffer.from([0, 1, 2, 3, 4, 5]);
+    const buffer = createZip([
+      {
+        name: "xl/sharedStrings.xml",
+        contents: sharedStrings,
+        compressionMethod: 8,
+      },
+      { name: "xl/styles.xml", contents: styles },
+    ]);
+
+    const summary = await patientImportXlsxResourcePreflightInternals.preflightWithPolicy(
+      buffer,
+      policyWith({
+        maxTotalUncompressedBytes: 2_048,
+        maxEntryUncompressedBytes: 1_024,
+      }),
+    );
+
+    expect(summary).toMatchObject({
+      zipEntries: 2,
+      worksheetPartCount: 0,
+      worksheetXmlBytes: 0,
+      declaredTotalUncompressedBytes: sharedStrings.byteLength + styles.byteLength,
+      actualTotalUncompressedBytes: sharedStrings.byteLength + styles.byteLength,
+    });
+  });
+
+  it("skips zero-length directory entries and rejects directories with content", async () => {
+    const emptyDirectorySummary = await preflightPatientImportXlsx(
+      createZip([{ name: "xl/", contents: "" }]),
+    );
+
+    expect(emptyDirectorySummary).toMatchObject({
+      zipEntries: 1,
+      actualTotalUncompressedBytes: 0,
+    });
+
+    await expectMalformed(createZip([{ name: "xl/", contents: "x" }]));
   });
 
   it("rejects a package with too many ZIP entries before entry iteration", async () => {
@@ -254,15 +318,15 @@ describe("Patient XLSX resource preflight", () => {
     const buffer = createZip([
       {
         name: "entry-1.xml",
-        contents: "x",
+        contents: "xx",
         compressionMethod: 8,
-        declaredUncompressedSize: 3,
+        declaredUncompressedSize: 2,
       },
       {
         name: "entry-2.xml",
-        contents: "x",
+        contents: "xxx",
         compressionMethod: 8,
-        declaredUncompressedSize: 2,
+        declaredUncompressedSize: 3,
       },
     ]);
 
@@ -362,6 +426,88 @@ describe("Patient XLSX resource preflight", () => {
     await expectMalformed(buffer);
   });
 
+  it("fails closed when a non-worksheet stream expands beyond the entry budget", async () => {
+    const contents = Buffer.from("x".repeat(4_096), "utf8");
+    const buffer = createZip([
+      {
+        name: "xl/sharedStrings.xml",
+        contents,
+        compressionMethod: 8,
+        declaredUncompressedSize: 1_024,
+      },
+    ]);
+
+    await expectResourceOrMalformed(buffer, {
+      maxTotalUncompressedBytes: 4_096,
+      maxEntryUncompressedBytes: 2_048,
+    });
+  });
+
+  it("fails closed when non-worksheet actual bytes exceed the package budget", async () => {
+    const first = Buffer.from("a".repeat(512), "utf8");
+    const second = Buffer.from("b".repeat(512), "utf8");
+    const buffer = createZip([
+      {
+        name: "xl/sharedStrings.xml",
+        contents: first,
+        compressionMethod: 8,
+        declaredUncompressedSize: 400,
+      },
+      {
+        name: "xl/styles.xml",
+        contents: second,
+        compressionMethod: 8,
+        declaredUncompressedSize: 400,
+      },
+    ]);
+
+    await expectResourceOrMalformed(buffer, {
+      maxTotalUncompressedBytes: 900,
+      maxEntryUncompressedBytes: 600,
+    });
+  });
+
+  it("fails closed when worksheet and non-worksheet actual bytes exceed the package budget", async () => {
+    const worksheet = Buffer.from(
+      minimalWorksheetXml("<sheetData><row r=\"1\"/></sheetData>"),
+      "utf8",
+    );
+    const sharedStrings = Buffer.from("x".repeat(512), "utf8");
+    const buffer = createZip([
+      {
+        name: "xl/worksheets/sheet1.xml",
+        contents: worksheet,
+        compressionMethod: 8,
+      },
+      {
+        name: "xl/sharedStrings.xml",
+        contents: sharedStrings,
+        compressionMethod: 8,
+        declaredUncompressedSize: 400,
+      },
+    ]);
+
+    await expectResourceOrMalformed(buffer, {
+      maxTotalUncompressedBytes: 600,
+      maxEntryUncompressedBytes: 550,
+    });
+  });
+
+  it("rejects a non-worksheet declared and actual size mismatch", async () => {
+    const contents = Buffer.from("shared strings", "utf8");
+
+    await expectMalformed(
+      createZip([
+        {
+          name: "xl/sharedStrings.xml",
+          contents,
+          compressionMethod: 8,
+          declaredUncompressedSize: contents.byteLength + 1,
+        },
+      ]),
+    );
+  });
+
   it("rejects an extreme worksheet dimension before ExcelJS", async () => {
     await expectResourceLimit(
       worksheetZip(minimalWorksheetXml("<dimension ref=\"A1:XFD1048576\"/>")),
@@ -443,6 +589,29 @@ describe("Patient XLSX resource preflight", () => {
       await expect(
         readPatientImportCandidates(upload, targetHospitalId, { mode: "COMPATIBILITY" }),
       ).rejects.toBeInstanceOf(PatientImportXlsxResourceLimitError);
+      expect(loadSpy).not.toHaveBeenCalled();
+    } finally {
+      loadSpy.mockRestore();
+    }
+  });
+
+  it("rejects non-worksheet decompression amplification before the adapter invokes ExcelJS", async () => {
+    const contents = Buffer.from("x".repeat(4_096), "utf8");
+    const unsafeBuffer = createZip([
+      {
+        name: "xl/sharedStrings.xml",
+        contents,
+        compressionMethod: 8,
+        declaredUncompressedSize: 1,
+      },
+    ]);
+    const upload = createUpload(unsafeBuffer);
+    const loadSpy = vi.spyOn(patientImportAdapterInternals, "loadPatientImportWorkbook");
+
+    try {
+      await expect(
+        readPatientImportCandidates(upload, targetHospitalId, { mode: "COMPATIBILITY" }),
+      ).rejects.toBeInstanceOf(PatientImportXlsxMalformedError);
       expect(loadSpy).not.toHaveBeenCalled();
     } finally {
       loadSpy.mockRestore();

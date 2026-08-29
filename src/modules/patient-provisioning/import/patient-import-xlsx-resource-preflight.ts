@@ -78,6 +78,7 @@ export type PatientImportXlsxResourceSummary = Readonly<{
   zipEntries: number;
   declaredTotalUncompressedBytes: number;
   declaredLargestEntryUncompressedBytes: number;
+  actualTotalUncompressedBytes: number;
   worksheetPartCount: number;
   worksheetXmlBytes: number;
   worksheetCellElements: number;
@@ -94,6 +95,7 @@ type MutableResourceSummary = {
   zipEntries: number;
   declaredTotalUncompressedBytes: number;
   declaredLargestEntryUncompressedBytes: number;
+  actualTotalUncompressedBytes: number;
   worksheetPartCount: number;
   worksheetXmlBytes: number;
   worksheetCellElements: number;
@@ -389,163 +391,21 @@ function toBufferChunk(value: unknown): Buffer {
   throwMalformed();
 }
 
-async function inspectWorksheetXml(
+type EntryChunkHandler = (chunk: Buffer) => void;
+
+async function consumeEntryStream(
   zipFile: yauzl.ZipFile,
   entry: yauzl.Entry,
   policy: PatientImportXlsxResourcePolicy,
   summary: MutableResourceSummary,
+  onChunk?: EntryChunkHandler,
 ): Promise<void> {
   let readStream: Readable | undefined;
+  let actualEntryBytes = 0;
 
   try {
     // Omitting options uses yauzl's documented decoded/decompressed stream default.
     readStream = await zipFile.openReadStreamPromise(entry);
-    const decoder = new StringDecoder("utf8");
-    const parser = new SaxesParser({ xmlns: false });
-    let parserError: Error | null = null;
-    let depth = 0;
-    let sawRoot = false;
-    let actualEntryBytes = 0;
-
-    parser.on("error", (error) => {
-      parserError = error;
-    });
-    parser.on("doctype", () => {
-      throwMalformed();
-    });
-    parser.on("opentag", (tag) => {
-      depth += 1;
-
-      if (depth > policy.maxXmlDepth) {
-        throwResourceLimit();
-      }
-
-      if (depth === 1) {
-        sawRoot = true;
-      }
-
-      const tagName = getLocalTagName(tag.name);
-      const attributes = tag.attributes;
-
-      if (tagName === "dimension") {
-        const reference = getAttribute(attributes, "ref");
-
-        if (reference) {
-          const range = parseCellRange(reference, policy);
-          const area = rangeArea(range);
-
-          if (area > policy.maxDimensionArea) {
-            throwResourceLimit();
-          }
-
-          updateRangeMaximum(summary, range);
-        }
-      }
-
-      if (tagName === "row") {
-        summary.worksheetRowElements += 1;
-
-        if (summary.worksheetRowElements > policy.maxWorksheetRows) {
-          throwResourceLimit();
-        }
-
-        const rowReference = getAttribute(attributes, "r");
-
-        if (rowReference) {
-          const row = parsePositiveInteger(rowReference, policy.maxRowCoordinate);
-          summary.maxRowCoordinate = Math.max(summary.maxRowCoordinate, row);
-        }
-
-        const spans = getAttribute(attributes, "spans");
-
-        if (spans) {
-          const span = parseColumnSpan(spans, policy);
-          summary.maxColumnCoordinate = Math.max(summary.maxColumnCoordinate, span.maximum);
-        }
-      }
-
-      if (tagName === "c") {
-        summary.worksheetCellElements += 1;
-
-        if (summary.worksheetCellElements > policy.maxWorksheetCells) {
-          throwResourceLimit();
-        }
-
-        const cellReference = getAttribute(attributes, "r");
-
-        if (cellReference) {
-          updateCoordinateMaximum(summary, parseCellReference(cellReference, policy));
-        }
-      }
-
-      if (tagName === "col") {
-        const minimum = getAttribute(attributes, "min");
-        const maximum = getAttribute(attributes, "max");
-
-        if ((minimum === undefined) !== (maximum === undefined)) {
-          throwMalformed();
-        }
-
-        if (minimum && maximum) {
-          const parsedMinimum = parsePositiveInteger(minimum, policy.maxColumnCoordinate);
-          const parsedMaximum = parsePositiveInteger(maximum, policy.maxColumnCoordinate);
-
-          if (parsedMinimum > parsedMaximum) {
-            throwMalformed();
-          }
-
-          summary.maxColumnCoordinate = Math.max(summary.maxColumnCoordinate, parsedMaximum);
-        }
-      }
-
-      if (tagName === "mergeCell") {
-        const reference = getAttribute(attributes, "ref");
-
-        if (!reference) {
-          throwMalformed();
-        }
-
-        summary.mergeDeclarations += 1;
-
-        if (summary.mergeDeclarations > policy.maxMergeDeclarations) {
-          throwResourceLimit();
-        }
-
-        const range = parseCellRange(reference, policy);
-        const area = rangeArea(range);
-
-        if (area > policy.maxSingleMergeArea) {
-          throwResourceLimit();
-        }
-
-        if (summary.totalMergeArea > policy.maxTotalMergeArea - area) {
-          throwResourceLimit();
-        }
-
-        summary.totalMergeArea += area;
-        summary.maxMergeArea = Math.max(summary.maxMergeArea, area);
-        updateRangeMaximum(summary, range);
-      }
-    });
-    parser.on("closetag", () => {
-      depth -= 1;
-
-      if (depth < 0) {
-        throwMalformed();
-      }
-    });
-
-    const writeXml = (chunk: string): void => {
-      if (chunk.length === 0) {
-        return;
-      }
-
-      parser.write(chunk);
-
-      if (parserError) {
-        throw parserError;
-      }
-    };
 
     for await (const value of readStream) {
       const chunk = toBufferChunk(value);
@@ -556,31 +416,18 @@ async function inspectWorksheetXml(
 
       actualEntryBytes += chunk.length;
 
-      if (actualEntryBytes > entry.uncompressedSize) {
-        throwMalformed();
-      }
-
-      if (chunk.length > policy.maxTotalUncompressedBytes - summary.worksheetXmlBytes) {
+      if (
+        chunk.length >
+        policy.maxTotalUncompressedBytes - summary.actualTotalUncompressedBytes
+      ) {
         throwResourceLimit();
       }
 
-      summary.worksheetXmlBytes += chunk.length;
-      writeXml(decoder.write(chunk));
+      summary.actualTotalUncompressedBytes += chunk.length;
+      onChunk?.(chunk);
     }
-
-    writeXml(decoder.end());
 
     if (actualEntryBytes !== entry.uncompressedSize) {
-      throwMalformed();
-    }
-
-    parser.close();
-
-    if (parserError) {
-      throw parserError;
-    }
-
-    if (!sawRoot || depth !== 0) {
       throwMalformed();
     }
   } finally {
@@ -590,12 +437,198 @@ async function inspectWorksheetXml(
   }
 }
 
+async function inspectWorksheetXml(
+  zipFile: yauzl.ZipFile,
+  entry: yauzl.Entry,
+  policy: PatientImportXlsxResourcePolicy,
+  summary: MutableResourceSummary,
+): Promise<void> {
+  const decoder = new StringDecoder("utf8");
+  const parser = new SaxesParser({ xmlns: false });
+  let parserError: Error | null = null;
+  let depth = 0;
+  let sawRoot = false;
+
+  parser.on("error", (error) => {
+    parserError = error;
+  });
+  parser.on("doctype", () => {
+    throwMalformed();
+  });
+  parser.on("opentag", (tag) => {
+    depth += 1;
+
+    if (depth > policy.maxXmlDepth) {
+      throwResourceLimit();
+    }
+
+    if (depth === 1) {
+      sawRoot = true;
+    }
+
+    const tagName = getLocalTagName(tag.name);
+    const attributes = tag.attributes;
+
+    if (tagName === "dimension") {
+      const reference = getAttribute(attributes, "ref");
+
+      if (reference) {
+        const range = parseCellRange(reference, policy);
+        const area = rangeArea(range);
+
+        if (area > policy.maxDimensionArea) {
+          throwResourceLimit();
+        }
+
+        updateRangeMaximum(summary, range);
+      }
+    }
+
+    if (tagName === "row") {
+      summary.worksheetRowElements += 1;
+
+      if (summary.worksheetRowElements > policy.maxWorksheetRows) {
+        throwResourceLimit();
+      }
+
+      const rowReference = getAttribute(attributes, "r");
+
+      if (rowReference) {
+        const row = parsePositiveInteger(rowReference, policy.maxRowCoordinate);
+        summary.maxRowCoordinate = Math.max(summary.maxRowCoordinate, row);
+      }
+
+      const spans = getAttribute(attributes, "spans");
+
+      if (spans) {
+        const span = parseColumnSpan(spans, policy);
+        summary.maxColumnCoordinate = Math.max(summary.maxColumnCoordinate, span.maximum);
+      }
+    }
+
+    if (tagName === "c") {
+      summary.worksheetCellElements += 1;
+
+      if (summary.worksheetCellElements > policy.maxWorksheetCells) {
+        throwResourceLimit();
+      }
+
+      const cellReference = getAttribute(attributes, "r");
+
+      if (cellReference) {
+        updateCoordinateMaximum(summary, parseCellReference(cellReference, policy));
+      }
+    }
+
+    if (tagName === "col") {
+      const minimum = getAttribute(attributes, "min");
+      const maximum = getAttribute(attributes, "max");
+
+      if ((minimum === undefined) !== (maximum === undefined)) {
+        throwMalformed();
+      }
+
+      if (minimum && maximum) {
+        const parsedMinimum = parsePositiveInteger(minimum, policy.maxColumnCoordinate);
+        const parsedMaximum = parsePositiveInteger(maximum, policy.maxColumnCoordinate);
+
+        if (parsedMinimum > parsedMaximum) {
+          throwMalformed();
+        }
+
+        summary.maxColumnCoordinate = Math.max(summary.maxColumnCoordinate, parsedMaximum);
+      }
+    }
+
+    if (tagName === "mergeCell") {
+      const reference = getAttribute(attributes, "ref");
+
+      if (!reference) {
+        throwMalformed();
+      }
+
+      summary.mergeDeclarations += 1;
+
+      if (summary.mergeDeclarations > policy.maxMergeDeclarations) {
+        throwResourceLimit();
+      }
+
+      const range = parseCellRange(reference, policy);
+      const area = rangeArea(range);
+
+      if (area > policy.maxSingleMergeArea) {
+        throwResourceLimit();
+      }
+
+      if (summary.totalMergeArea > policy.maxTotalMergeArea - area) {
+        throwResourceLimit();
+      }
+
+      summary.totalMergeArea += area;
+      summary.maxMergeArea = Math.max(summary.maxMergeArea, area);
+      updateRangeMaximum(summary, range);
+    }
+  });
+  parser.on("closetag", () => {
+    depth -= 1;
+
+    if (depth < 0) {
+      throwMalformed();
+    }
+  });
+
+  const writeXml = (chunk: string): void => {
+    if (chunk.length === 0) {
+      return;
+    }
+
+    parser.write(chunk);
+
+    if (parserError) {
+      throw parserError;
+    }
+  };
+
+  await consumeEntryStream(zipFile, entry, policy, summary, (chunk) => {
+    summary.worksheetXmlBytes += chunk.length;
+    writeXml(decoder.write(chunk));
+  });
+
+  writeXml(decoder.end());
+
+  parser.close();
+
+  if (parserError) {
+    throw parserError;
+  }
+
+  if (!sawRoot || depth !== 0) {
+    throwMalformed();
+  }
+}
+
+async function inspectEntryStream(
+  zipFile: yauzl.ZipFile,
+  entry: yauzl.Entry,
+  normalizedName: string,
+  policy: PatientImportXlsxResourcePolicy,
+  summary: MutableResourceSummary,
+): Promise<void> {
+  if (isWorksheetPartName(normalizedName)) {
+    await inspectWorksheetXml(zipFile, entry, policy, summary);
+    return;
+  }
+
+  await consumeEntryStream(zipFile, entry, policy, summary);
+}
+
 function createMutableSummary(compressedBytes: number): MutableResourceSummary {
   return {
     compressedBytes,
     zipEntries: 0,
     declaredTotalUncompressedBytes: 0,
     declaredLargestEntryUncompressedBytes: 0,
+    actualTotalUncompressedBytes: 0,
     worksheetPartCount: 0,
     worksheetXmlBytes: 0,
     worksheetCellElements: 0,
@@ -642,7 +675,6 @@ export async function preflightPatientImportXlsx(
 
     const summary = createMutableSummary(buffer.byteLength);
     const names = new Set<string>();
-    const worksheetEntries: yauzl.Entry[] = [];
 
     for await (const entry of zipFile.eachEntry()) {
       summary.zipEntries += 1;
@@ -671,23 +703,29 @@ export async function preflightPatientImportXlsx(
 
       await zipFile.readLocalFileHeaderPromise(entry, { minimal: true });
 
+      const isDirectory = entry.fileName.endsWith("/");
+
+      if (isDirectory) {
+        if (entry.uncompressedSize !== 0) {
+          throwMalformed();
+        }
+
+        continue;
+      }
+
       if (isWorksheetPartName(normalizedName)) {
         summary.worksheetPartCount += 1;
 
         if (summary.worksheetPartCount > policy.maxWorksheetParts) {
           throwResourceLimit();
         }
-
-        worksheetEntries.push(entry);
       }
+
+      await inspectEntryStream(zipFile, entry, normalizedName, policy, summary);
     }
 
     if (summary.zipEntries !== zipFile.entryCount) {
       throwMalformed();
-    }
-
-    for (const entry of worksheetEntries) {
-      await inspectWorksheetXml(zipFile, entry, policy, summary);
     }
 
     return toReadonlySummary(summary);
