@@ -581,18 +581,22 @@ against the current runtime, preserves accepted identity/authorization/security
 invariants, and classifies each capability with an ordered UAT backlog.
 When the Phase 17A contract was issued, Patient self-service and patient appointment access were missing from runtime; existing
 care workflows, operator appointments and Program factual reporting remained available within their current scopes. Phase 17A
-itself changed no product code or schema. Phase 17B now gives an authenticated Patient a Personal workspace and read access to
-their own basic profile; care and appointment access remain for later slices. Login-page registration, Patient service
-requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A parallel UAT Delivery / Environment
-Track covers environment, safe data, representative accounts, deployment, smoke checks, reset/recovery, and customer handoff
-readiness.
+itself changed no product code or schema. Phase 17B gives an authenticated Patient a Personal workspace and read access to
+their own basic profile. **Phase 17C Patient Care Journey & Appointment Read is implemented**: Personal now links to exact own
+Hospital relationship care history and read-only appointment list/detail, using allowlisted projections over existing canonical
+records. The Patient path rechecks SELF ownership for every relationship/resource; no Patient writes or schema migration were
+added, and PAM/PROM meaning, Health Plan, appointment actions and other requirement-gated semantics remain closed. Login-page
+registration, Patient service requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A
+parallel UAT Delivery / Environment Track covers environment, safe data, representative accounts, deployment, smoke checks,
+reset/recovery, and customer handoff readiness.
 
 The authoritative contract is
 [Phase 17A Customer Flow Canonicalization and UAT Contract](./phases/PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md);
 the implementation sequence is
 [Phase 17 UAT Backlog](./phases/PHASE_17_UAT_BACKLOG.md). The Phase 17B scope and implementation handoff are recorded in the
-[Patient Workspace & Own-Scope Foundation handoff](./phases/PHASE_17B_PATIENT_WORKSPACE_OWN_SCOPE_FOUNDATION.md). Use the
-Phase 17A contract for customer-flow scope and priorities; the Architecture Baseline and accepted ADRs continue to govern
+[Patient Workspace & Own-Scope Foundation handoff](./phases/PHASE_17B_PATIENT_WORKSPACE_OWN_SCOPE_FOUNDATION.md), and the
+Phase 17C implementation in [Patient Care Journey & Appointment Read](./phases/PHASE_17C_PATIENT_CARE_JOURNEY_APPOINTMENT_READ.md).
+Use the Phase 17A contract for customer-flow scope and priorities; the Architecture Baseline and accepted ADRs continue to govern
 security, identity, authorization and unresolved architecture invariants.
 
 ## Open Requirements

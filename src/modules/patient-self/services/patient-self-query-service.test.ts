@@ -2,10 +2,17 @@ import { HospitalStatus, Role, UserStatus } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import {
+  ForbiddenError,
+  InfrastructureError,
+  NotFoundError,
+} from "@/shared/errors/application-error";
 
 import {
   patientSelfContextSelect,
+  patientSelfQueryInternals,
+  listOwnPatientRelationshipNavigation,
+  resolveOwnPatientRelationshipContext,
   resolveOwnPatientContext,
   type PatientSelfQueryDatabase,
 } from "./patient-self-query-service";
@@ -89,6 +96,21 @@ function createDatabase(record: unknown = ownPersonRecord()) {
   const database = { person: { findFirst } } as unknown as PatientSelfQueryDatabase;
 
   return { database, findFirst };
+}
+
+function relationshipRecord(relationshipId: string): Record<string, unknown> {
+  const person = ownPersonRecord();
+  const profile = person.patientProfile as {
+    hospitalRelationships: Array<Record<string, unknown> & { id: string }>;
+  };
+
+  return {
+    patientProfile: {
+      hospitalRelationships: profile.hospitalRelationships.filter(
+        (relationship) => relationship.id === relationshipId,
+      ),
+    },
+  };
 }
 
 describe("Patient self query boundary", () => {
@@ -189,6 +211,121 @@ describe("Patient self query boundary", () => {
         hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
       },
     ]);
+  });
+
+  it("provides separate opaque navigation locators for every own Hospital relationship", async () => {
+    const { database, findFirst } = createDatabase();
+
+    const relationships = await listOwnPatientRelationshipNavigation(actor(), { database });
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: personId,
+        user: {
+          is: {
+            id: userId,
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.PATIENT } },
+          },
+        },
+      },
+      select: patientSelfQueryInternals.patientSelfRelationshipListSelect,
+    });
+    expect(relationships.map(({ relationshipId }) => relationshipId)).toEqual([
+      hospitalOneId,
+      hospitalTwoId,
+      hospitalThreeId,
+    ]);
+    expect(relationships.map(({ hospitalName }) => hospitalName)).toEqual([
+      "โรงพยาบาล ก",
+      "โรงพยาบาล ข",
+      "โรงพยาบาล ค",
+    ]);
+    expect(JSON.stringify(relationships)).not.toContain("hospitalId");
+    expect(JSON.stringify(relationships)).not.toContain("patientProfileId");
+  });
+
+  it.each([
+    ["Patient", [Role.PATIENT]],
+    ["OSM and Patient", [Role.OSM, Role.PATIENT]],
+    ["Hospital and Patient", [Role.HOSPITAL, Role.PATIENT]],
+  ] as const)("resolves one exact self relationship for %s", async (_label, roles) => {
+    const { database, findFirst } = createDatabase(relationshipRecord(hospitalTwoId));
+
+    const relationship = await resolveOwnPatientRelationshipContext(
+      actor(roles),
+      hospitalTwoId,
+      { database },
+    );
+
+    expect(relationship).toEqual({
+      relationshipId: hospitalTwoId,
+      hospitalCode: "H-002",
+      hospitalName: "โรงพยาบาล ข",
+      hospitalNumber: null,
+      hospitalStatus: HospitalStatus.SUSPENDED,
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: personId,
+        user: {
+          is: {
+            id: userId,
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.PATIENT } },
+          },
+        },
+      },
+      select: {
+        patientProfile: {
+          select: {
+            hospitalRelationships: {
+              where: { id: hospitalTwoId },
+              select: patientSelfQueryInternals.patientSelfRelationshipNavigationSelect,
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("fails closed when a Patient locates a relationship owned by another Patient", async () => {
+    const { database, findFirst } = createDatabase(null);
+
+    await expect(
+      resolveOwnPatientRelationshipContext(actor(), hospitalTwoId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: personId,
+          user: {
+            is: {
+              id: userId,
+              status: UserStatus.ACTIVE,
+              roles: { some: { role: Role.PATIENT } },
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it("checks the exact returned relationship ID after the scoped database lookup", async () => {
+    const { database } = createDatabase(relationshipRecord(hospitalOneId));
+
+    await expect(
+      resolveOwnPatientRelationshipContext(actor(), hospitalTwoId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("does not resolve a relationship for a Work-only actor", async () => {
+    const { database, findFirst } = createDatabase();
+
+    await expect(
+      resolveOwnPatientRelationshipContext(actor([Role.OSM]), hospitalOneId, { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(findFirst).not.toHaveBeenCalled();
   });
 
   it("returns an explicit incomplete result when the identity or PatientProfile is missing", async () => {

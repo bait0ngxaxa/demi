@@ -55,10 +55,12 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("โรงพยาบาลถูกระงับการใช้งาน");
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
     expect(markup).toContain("HN-001");
+    expect(markup).toContain('href="/app/personal/care"');
+    expect(markup).toContain('href="/app/personal/appointments"');
     expect(markup).toContain('href="/app/personal/profile"');
     expect(markup).not.toContain('href="/app/patients/assigned"');
     expect(markup).not.toContain("เพิ่มบริการ");
-    expect(markup).not.toContain("นัดหมาย");
+    expect(markup).toContain("นัดหมาย");
     expect(getPatientSelfPageContext).toHaveBeenCalledOnce();
   });
 

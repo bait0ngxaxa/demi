@@ -105,6 +105,8 @@ export function projectApplicationNavigation(
         ...(!hasWorkWorkspace
           ? [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" as const }]
           : []),
+        { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
+        { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
       ],
     });

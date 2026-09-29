@@ -135,6 +135,8 @@ describe("application navigation projection", () => {
     expect(navigation[0].workspace).toBe("personal");
     expect(navigation[0].items.map(({ href }) => href)).toEqual([
       "/app/personal",
+      "/app/personal/care",
+      "/app/personal/appointments",
       "/app/personal/profile",
     ]);
   });
@@ -164,6 +166,12 @@ describe("application navigation projection", () => {
     expect(workspaceItems.map(({ href }) => href)).toEqual(["/app/personal", "/app"]);
     expect(navigation.some(({ workspace }) => workspace === "personal")).toBe(true);
     expect(navigation.some(({ workspace }) => workspace === "work")).toBe(true);
+    const personalItems = navigation
+      .filter(({ workspace }) => workspace === "personal")
+      .flatMap(({ items }) => items);
+    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/care");
+    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/appointments");
+    expect(personalItems.map(({ href }) => href)).not.toContain("/app/patients/assigned");
   });
 
   it("does not project Personal navigation from an OSM or Hospital role alone", () => {

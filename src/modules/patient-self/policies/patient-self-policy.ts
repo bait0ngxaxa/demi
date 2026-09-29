@@ -3,11 +3,27 @@ import "server-only";
 import { Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { APPOINTMENT_READ_CAPABILITY } from "@/modules/appointments/policies/appointment-policy";
+import { FOLLOWUP_READ_CAPABILITY } from "@/modules/followups/policies/followup-policy";
+import { GOAL_READ_CAPABILITY } from "@/modules/goals/policies/goal-policy";
 import {
   PATIENT_READ_CAPABILITY,
   type PatientReadCapability,
 } from "@/modules/patient-directory/policies/patient-directory-policy";
+import { PATIENT_PROGRAM_READ_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
+import { SCREENING_READ_CAPABILITY } from "@/modules/screening/policies/screening-policy";
 import { ForbiddenError } from "@/shared/errors/application-error";
+
+export const PATIENT_SELF_READ_CAPABILITIES = [
+  PATIENT_READ_CAPABILITY,
+  SCREENING_READ_CAPABILITY,
+  PATIENT_PROGRAM_READ_CAPABILITY,
+  GOAL_READ_CAPABILITY,
+  FOLLOWUP_READ_CAPABILITY,
+  APPOINTMENT_READ_CAPABILITY,
+] as const;
+
+export type PatientSelfReadCapability = (typeof PATIENT_SELF_READ_CAPABILITIES)[number];
 
 export type PatientSelfReadPolicyDecision = {
   allowed: boolean;
@@ -28,7 +44,10 @@ export function decidePatientSelfReadPolicy(input: {
     return { allowed: false, reason: "missing_actor" };
   }
 
-  if (input.capability !== PATIENT_READ_CAPABILITY) {
+  if (
+    typeof input.capability !== "string" ||
+    !PATIENT_SELF_READ_CAPABILITIES.some((capability) => capability === input.capability)
+  ) {
     return { allowed: false, reason: "invalid_capability" };
   }
 
@@ -45,8 +64,8 @@ export function decidePatientSelfReadPolicy(input: {
 
 export function assertPatientSelfReadPolicy(input: {
   actor: ActorContext | null | undefined;
-  capability: PatientReadCapability;
-}): asserts input is { actor: ActorContext; capability: PatientReadCapability } {
+  capability: PatientSelfReadCapability | PatientReadCapability;
+}): asserts input is { actor: ActorContext; capability: PatientSelfReadCapability } {
   const decision = decidePatientSelfReadPolicy(input);
 
   if (!decision.allowed) {

@@ -27,12 +27,26 @@ export function PatientPersonalHome({
       <PageHeader
         actions={
           patient ? (
-            <Link
-              className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href="/app/personal/profile"
-            >
-              ข้อมูลของฉัน
-            </Link>
+            <nav aria-label="ทางลัดพื้นที่ส่วนตัว" className="flex flex-wrap gap-2">
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/app/personal/care"
+              >
+                ข้อมูลการดูแล
+              </Link>
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/app/personal/appointments"
+              >
+                นัดหมาย
+              </Link>
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/app/personal/profile"
+              >
+                ข้อมูลของฉัน
+              </Link>
+            </nav>
           ) : undefined
         }
         description="ดูข้อมูลผู้ป่วยที่เชื่อมกับบัญชีของคุณ"
