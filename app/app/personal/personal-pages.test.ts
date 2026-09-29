@@ -1,3 +1,4 @@
+import { HospitalStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -17,8 +18,24 @@ const completeContext = {
     addressText: "99 ถนนตัวอย่าง",
   },
   hospitalRelationships: [
-    { hospitalCode: "H-001", hospitalName: "โรงพยาบาล ก", hospitalNumber: "HN-001" },
-    { hospitalCode: "H-002", hospitalName: "โรงพยาบาล ข", hospitalNumber: null },
+    {
+      hospitalCode: "H-001",
+      hospitalName: "โรงพยาบาล ก",
+      hospitalNumber: "HN-001",
+      hospitalStatus: HospitalStatus.ACTIVE,
+    },
+    {
+      hospitalCode: "H-002",
+      hospitalName: "โรงพยาบาล ข",
+      hospitalNumber: null,
+      hospitalStatus: HospitalStatus.SUSPENDED,
+    },
+    {
+      hospitalCode: "H-003",
+      hospitalName: "โรงพยาบาล ค",
+      hospitalNumber: "HN-003",
+      hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+    },
   ],
 };
 
@@ -35,6 +52,8 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("สมชาย ใจดี");
     expect(markup).toContain("ข้อมูลของฉัน");
     expect(markup).toContain("โรงพยาบาล ก");
+    expect(markup).toContain("โรงพยาบาลถูกระงับการใช้งาน");
+    expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
     expect(markup).toContain("HN-001");
     expect(markup).toContain('href="/app/personal/profile"');
     expect(markup).not.toContain('href="/app/patients/assigned"');
@@ -94,6 +113,6 @@ describe("Patient Personal pages", () => {
 
     expect(markup).toContain("ยังไม่ได้บันทึก");
     expect(markup).toContain("โรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
-    expect(markup).toContain("ยังไม่มีความสัมพันธ์กับโรงพยาบาลที่พร้อมใช้งาน");
+    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
   });
 });

@@ -1,13 +1,11 @@
 import "server-only";
 
-import { HospitalStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
+import { Prisma, Role, UserStatus, type HospitalStatus, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  assertPatientSelfReadPolicy,
-  PATIENT_SELF_READ_CAPABILITY,
-} from "@/modules/patient-self/policies/patient-self-policy";
+import { PATIENT_READ_CAPABILITY } from "@/modules/patient-directory/policies/patient-directory-policy";
+import { assertPatientSelfReadPolicy } from "@/modules/patient-self/policies/patient-self-policy";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 export type PatientSelfQueryDatabase = PrismaClient | Prisma.TransactionClient;
@@ -25,6 +23,7 @@ export type PatientSelfContext = {
     hospitalCode: string;
     hospitalName: string;
     hospitalNumber: string | null;
+    hospitalStatus: HospitalStatus;
   }>;
 };
 
@@ -40,7 +39,6 @@ export const patientSelfContextSelect = {
       phoneNumber: true,
       addressText: true,
       hospitalRelationships: {
-        where: { hospital: { status: HospitalStatus.ACTIVE } },
         orderBy: [{ hospital: { name: "asc" } }, { id: "asc" }],
         select: {
           hospitalNumber: true,
@@ -48,6 +46,7 @@ export const patientSelfContextSelect = {
             select: {
               hospitalCode: true,
               name: true,
+              status: true,
             },
           },
         },
@@ -84,6 +83,7 @@ function toPatientSelfContext(record: PatientSelfContextRecord): PatientSelfCont
       hospitalCode: relationship.hospital.hospitalCode,
       hospitalName: relationship.hospital.name,
       hospitalNumber: relationship.hospitalNumber,
+      hospitalStatus: relationship.hospital.status,
     })),
   };
 }
@@ -92,7 +92,7 @@ export async function resolveOwnPatientContext(
   actor: ActorContext | null | undefined,
   dependencies: PatientSelfQueryDependencies = {},
 ): Promise<PatientSelfContext | null> {
-  assertPatientSelfReadPolicy({ actor, capability: PATIENT_SELF_READ_CAPABILITY });
+  assertPatientSelfReadPolicy({ actor, capability: PATIENT_READ_CAPABILITY });
 
   if (!actor) {
     throw new ForbiddenError();

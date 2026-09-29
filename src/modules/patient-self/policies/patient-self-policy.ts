@@ -1,9 +1,13 @@
+import "server-only";
+
 import { Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  PATIENT_READ_CAPABILITY,
+  type PatientReadCapability,
+} from "@/modules/patient-directory/policies/patient-directory-policy";
 import { ForbiddenError } from "@/shared/errors/application-error";
-
-export const PATIENT_SELF_READ_CAPABILITY = "patient:self:read" as const;
 
 export type PatientSelfReadPolicyDecision = {
   allowed: boolean;
@@ -24,7 +28,7 @@ export function decidePatientSelfReadPolicy(input: {
     return { allowed: false, reason: "missing_actor" };
   }
 
-  if (input.capability !== PATIENT_SELF_READ_CAPABILITY) {
+  if (input.capability !== PATIENT_READ_CAPABILITY) {
     return { allowed: false, reason: "invalid_capability" };
   }
 
@@ -41,8 +45,8 @@ export function decidePatientSelfReadPolicy(input: {
 
 export function assertPatientSelfReadPolicy(input: {
   actor: ActorContext | null | undefined;
-  capability: typeof PATIENT_SELF_READ_CAPABILITY;
-}): asserts input is { actor: ActorContext; capability: typeof PATIENT_SELF_READ_CAPABILITY } {
+  capability: PatientReadCapability;
+}): asserts input is { actor: ActorContext; capability: PatientReadCapability } {
   const decision = decidePatientSelfReadPolicy(input);
 
   if (!decision.allowed) {

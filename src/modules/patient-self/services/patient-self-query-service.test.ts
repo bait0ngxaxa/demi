@@ -14,6 +14,7 @@ const userId = "22222222-2222-4222-8222-222222222222";
 const personId = "33333333-3333-4333-8333-333333333333";
 const hospitalOneId = "44444444-4444-4444-8444-444444444444";
 const hospitalTwoId = "55555555-5555-4555-8555-555555555555";
+const hospitalThreeId = "77777777-7777-4777-8777-777777777777";
 
 function actor(roles: readonly Role[] = [Role.PATIENT]): ActorContext {
   return {
@@ -63,7 +64,19 @@ function ownPersonRecord(): Record<string, unknown> {
             id: "hospital-id-two",
             hospitalCode: "H-002",
             name: "โรงพยาบาล ข",
-            status: HospitalStatus.ACTIVE,
+            status: HospitalStatus.SUSPENDED,
+          },
+        },
+        {
+          id: hospitalThreeId,
+          patientProfileId: "another-internal-id",
+          hospitalId: "hospital-id-three",
+          hospitalNumber: "HN-003",
+          hospital: {
+            id: "hospital-id-three",
+            hospitalCode: "H-003",
+            name: "โรงพยาบาล ค",
+            status: HospitalStatus.PENDING_VERIFICATION,
           },
         },
       ],
@@ -104,8 +117,24 @@ describe("Patient self query boundary", () => {
         addressText: "99 ถนนตัวอย่าง",
       },
       hospitalRelationships: [
-        { hospitalCode: "H-001", hospitalName: "โรงพยาบาล ก", hospitalNumber: "HN-001" },
-        { hospitalCode: "H-002", hospitalName: "โรงพยาบาล ข", hospitalNumber: null },
+        {
+          hospitalCode: "H-001",
+          hospitalName: "โรงพยาบาล ก",
+          hospitalNumber: "HN-001",
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+        {
+          hospitalCode: "H-002",
+          hospitalName: "โรงพยาบาล ข",
+          hospitalNumber: null,
+          hospitalStatus: HospitalStatus.SUSPENDED,
+        },
+        {
+          hospitalCode: "H-003",
+          hospitalName: "โรงพยาบาล ค",
+          hospitalNumber: "HN-003",
+          hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+        },
       ],
     });
   });
@@ -128,11 +157,38 @@ describe("Patient self query boundary", () => {
     expect(JSON.stringify(result)).not.toContain("patientHospitalRelationshipId");
   });
 
-  it("filters out relationships under non-active Hospitals and orders all remaining links", () => {
-    expect(patientSelfContextSelect.patientProfile?.select?.hospitalRelationships).toMatchObject({
-      where: { hospital: { status: HospitalStatus.ACTIVE } },
-      orderBy: [{ hospital: { name: "asc" } }, { id: "asc" }],
-    });
+  it("resolves all own Hospital relationships independently of Hospital operational status", async () => {
+    const { database } = createDatabase();
+
+    const result = await resolveOwnPatientContext(actor(), { database });
+    const relationshipSelect = patientSelfContextSelect.patientProfile.select.hospitalRelationships;
+
+    expect(relationshipSelect).not.toHaveProperty("where");
+    expect(relationshipSelect.orderBy).toEqual([
+      { hospital: { name: "asc" } },
+      { id: "asc" },
+    ]);
+    expect(relationshipSelect.select.hospital.select).toHaveProperty("status", true);
+    expect(result?.hospitalRelationships).toEqual([
+      {
+        hospitalCode: "H-001",
+        hospitalName: "โรงพยาบาล ก",
+        hospitalNumber: "HN-001",
+        hospitalStatus: HospitalStatus.ACTIVE,
+      },
+      {
+        hospitalCode: "H-002",
+        hospitalName: "โรงพยาบาล ข",
+        hospitalNumber: null,
+        hospitalStatus: HospitalStatus.SUSPENDED,
+      },
+      {
+        hospitalCode: "H-003",
+        hospitalName: "โรงพยาบาล ค",
+        hospitalNumber: "HN-003",
+        hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+      },
+    ]);
   });
 
   it("returns an explicit incomplete result when the identity or PatientProfile is missing", async () => {

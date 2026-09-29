@@ -2,12 +2,12 @@ import { Role } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { PATIENT_READ_CAPABILITY } from "@/modules/patient-directory/policies/patient-directory-policy";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 import {
   assertPatientSelfReadPolicy,
   decidePatientSelfReadPolicy,
-  PATIENT_SELF_READ_CAPABILITY,
 } from "./patient-self-policy";
 
 function actor(roles: readonly Role[] = [Role.PATIENT]): ActorContext {
@@ -29,14 +29,14 @@ describe("Patient self-read policy", () => {
     expect(
       decidePatientSelfReadPolicy({
         actor: actor(roles),
-        capability: PATIENT_SELF_READ_CAPABILITY,
+        capability: PATIENT_READ_CAPABILITY,
       }),
     ).toMatchObject({ allowed: true, scope: "SELF" });
 
     expect(() =>
       assertPatientSelfReadPolicy({
         actor: actor(roles),
-        capability: PATIENT_SELF_READ_CAPABILITY,
+        capability: PATIENT_READ_CAPABILITY,
       }),
     ).not.toThrow();
   });
@@ -49,30 +49,36 @@ describe("Patient self-read policy", () => {
   ] as const)("denies actors without PATIENT role (%s)", (_label, roles) => {
       const decision = decidePatientSelfReadPolicy({
         actor: actor(roles),
-        capability: PATIENT_SELF_READ_CAPABILITY,
+        capability: PATIENT_READ_CAPABILITY,
       });
 
       expect(decision).toMatchObject({ allowed: false });
       expect(() =>
         assertPatientSelfReadPolicy({
           actor: actor(roles),
-          capability: PATIENT_SELF_READ_CAPABILITY,
+          capability: PATIENT_READ_CAPABILITY,
         }),
       ).toThrow(ForbiddenError);
     });
 
   it("fails closed for a different capability or incomplete authenticated identity", () => {
     expect(
-      decidePatientSelfReadPolicy({ actor: actor(), capability: "patient:read" }).allowed,
+      decidePatientSelfReadPolicy({ actor: actor(), capability: "appointment:read" }).allowed,
     ).toBe(false);
     expect(
       decidePatientSelfReadPolicy({
         actor: { ...actor(), personId: " " },
-        capability: PATIENT_SELF_READ_CAPABILITY,
+        capability: PATIENT_READ_CAPABILITY,
       }).allowed,
     ).toBe(false);
     expect(
-      decidePatientSelfReadPolicy({ actor: null, capability: PATIENT_SELF_READ_CAPABILITY })
+      decidePatientSelfReadPolicy({
+        actor: { ...actor(), userId: " " },
+        capability: PATIENT_READ_CAPABILITY,
+      }).allowed,
+    ).toBe(false);
+    expect(
+      decidePatientSelfReadPolicy({ actor: null, capability: PATIENT_READ_CAPABILITY })
         .allowed,
     ).toBe(false);
   });
