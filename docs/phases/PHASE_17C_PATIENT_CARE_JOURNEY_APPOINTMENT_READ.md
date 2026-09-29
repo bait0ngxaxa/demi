@@ -7,6 +7,8 @@
 - Previous foundation: [Phase 17B Patient Workspace & Own-Scope Foundation](./PHASE_17B_PATIENT_WORKSPACE_OWN_SCOPE_FOUNDATION.md)
 - Backlog: [Phase 17 UAT Backlog](./PHASE_17_UAT_BACKLOG.md)
 
+**Formal closeout status: CLOSED.** The normal npm test suite passed with 146 test files and 1,037 tests after verifying the permanent TSX include globs in vitest.config.mts.
+
 ## Goal
 
 ขยายพื้นที่ Personal เป็นทางอ่านประวัติการดูแลและนัดหมายของ Patient แบบ read-only โดยอ่านจาก canonical records ชุดเดียวกับ Hospital/OSM Work และตรวจ SELF ownership ฝั่ง server ทุก request. ไม่มี Patient write authority, copied records, timeline persistence หรือ schema/migration ใหม่.
@@ -113,10 +115,10 @@ Reuse existing `PatientHospitalRelationship`, `ScreeningAssessment`, `PatientBas
 - Patient view tests cover multiple separated Hospital relationships, 0..N history including round 7, allowlisted factual rendering, gated-field/action absence, empty states and responsive structure.
 - Application navigation and Personal Home regressions assert Personal paths remain separate from Work navigation.
 - Corrective Patient SELF regression command: `npm run test -- src/modules/patient-self/services/patient-self-care-query-service.test.ts src/modules/patient-self/services/patient-self-query-service.test.ts src/modules/patient-self/policies/patient-self-policy.test.ts app/app/personal/personal-pages.test.ts src/components/app-shell/application-navigation.test.ts` — **PASS, 5 files / 65 tests**.
-- The view test is `.test.tsx`, while the repository Vitest include only discovers `.test.ts`; it was run separately with a temporary TSX-inclusive config, then that config was removed — **PASS, 1 file / 6 tests**.
+- Verified permanent Vitest discovery: vitest.config.mts includes src/**/*.test.ts, src/**/*.test.tsx, app/**/*.test.ts, and app/**/*.test.tsx. The normal npm test run passed — **146 test files / 1,037 tests**; the Patient view TSX test is included.
 - `npm run typecheck -- --incremental false` — **PASS**.
 - Targeted ESLint over changed TypeScript/TSX files — **PASS, no warnings**.
-- The previous full-suite run at the initial 17C implementation passed **145 files / 1,027 tests**. It was not repeated after this isolated Patient SELF projection/pagination correction.
+- The final normal repository suite was run once after the permanent TSX include globs were verified. No temporary Vitest config was used.
 - The initial 390×844 mobile emulation passed before this correction; a second viewport run was not made. Pagination links and location text use the existing wrapping/min-width patterns.
 - Architecture check — not run; `package.json` does not define an `architecture:check` script.
 

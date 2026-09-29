@@ -582,7 +582,7 @@ invariants, and classifies each capability with an ordered UAT backlog.
 When the Phase 17A contract was issued, Patient self-service and patient appointment access were missing from runtime; existing
 care workflows, operator appointments and Program factual reporting remained available within their current scopes. Phase 17A
 itself changed no product code or schema. Phase 17B gives an authenticated Patient a Personal workspace and read access to
-their own basic profile. **Phase 17C Patient Care Journey & Appointment Read is implemented**: Personal now links to exact own
+their own basic profile. **Phase 17C Patient Care Journey & Appointment Read is formally closed** after permanent TSX discovery was verified by the normal npm test run (**146 test files / 1,037 tests passed**): Personal now links to exact own
 Hospital relationship care history and read-only appointment list/detail, using allowlisted projections over existing canonical
 records. Care, Program and Appointment histories use bounded 50-record pages with older-page navigation. Baseline displays its
 confirmed DTX mg/dL field; Follow-up/Final generic bloodSugar values remain withheld until unit/context is accepted. The Patient
@@ -600,6 +600,12 @@ the implementation sequence is
 Phase 17C implementation in [Patient Care Journey & Appointment Read](./phases/PHASE_17C_PATIENT_CARE_JOURNEY_APPOINTMENT_READ.md).
 Use the Phase 17A contract for customer-flow scope and priorities; the Architecture Baseline and accepted ADRs continue to govern
 security, identity, authorization and unresolved architecture invariants.
+
+## Phase 17C closure and Phase 17D.0 appointment contract
+
+Phase 17C is formally closed after the permanent Vitest TSX discovery globs were verified and the normal repository suite passed with 146 test files and 1,037 tests. The exact handoff evidence is recorded in [Phase 17C](./phases/PHASE_17C_PATIENT_CARE_JOURNEY_APPOINTMENT_READ.md).
+
+[Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) consolidates Appointment interaction requirements only. No new Patient or OSM Appointment mutation authority, capability, policy, status, schema, or migration has been implemented. APT-03, APT-04, APT-05, APT-06, and OSM-03 remain REQUIREMENT-GATED pending explicit owner decisions. Phase 17D.1 is blocked until the 18 blocking APT decision-register items are resolved; no customer approval is implied.
 
 ## Open Requirements
 
