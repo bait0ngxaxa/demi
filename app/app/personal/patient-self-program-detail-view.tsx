@@ -14,6 +14,8 @@ import {
   patientProgramStatusLabels,
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
+  PatientSelfHistoryMoreLink,
+  patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 
 const linkClassName =
@@ -27,6 +29,15 @@ export function PatientSelfProgramDetailView({
   detail: PatientSelfProgramDetail;
 }): React.JSX.Element {
   const relationship = detail.relationship;
+  const programHref =
+    "/app/personal/care/" +
+    encodeURIComponent(relationshipId) +
+    "/programs/" +
+    encodeURIComponent(detail.programId);
+  const historyPageParams = {
+    goalPlanPage: detail.historyPages.goalPlans.page,
+    followupPage: detail.historyPages.followups.page,
+  };
 
   return (
     <div className="max-w-5xl">
@@ -101,7 +112,9 @@ export function PatientSelfProgramDetailView({
               แผนเป้าหมายใน Program นี้
             </h2>
             {detail.goalPlans.length > 0 ? (
-              <p className="text-sm text-text-muted">แสดง {detail.goalPlans.length} รายการ</p>
+              <p className="text-sm text-text-muted">
+                แสดง {detail.goalPlans.length} รายการในหน้านี้
+              </p>
             ) : null}
           </div>
           {detail.goalPlans.length > 0 ? (
@@ -126,6 +139,15 @@ export function PatientSelfProgramDetailView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีแผนเป้าหมายใน Program นี้" />
           )}
+          {detail.historyPages.goalPlans.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(
+                programHref,
+                historyPageParams,
+                "goalPlanPage",
+              )}
+            />
+          ) : null}
         </section>
 
         <section aria-labelledby="patient-self-program-followups-heading">
@@ -134,7 +156,9 @@ export function PatientSelfProgramDetailView({
               การติดตามใน Program นี้
             </h2>
             {detail.followups.length > 0 ? (
-              <p className="text-sm text-text-muted">แสดง {detail.followups.length} รายการ</p>
+              <p className="text-sm text-text-muted">
+                แสดง {detail.followups.length} รายการในหน้านี้
+              </p>
             ) : null}
           </div>
           {detail.followups.length > 0 ? (
@@ -156,6 +180,15 @@ export function PatientSelfProgramDetailView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีข้อมูลติดตามใน Program นี้" />
           )}
+          {detail.historyPages.followups.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(
+                programHref,
+                historyPageParams,
+                "followupPage",
+              )}
+            />
+          ) : null}
         </section>
 
         <section aria-labelledby="patient-self-final-heading">
@@ -187,12 +220,6 @@ export function PatientSelfProgramDetailView({
                       detail.finalAssessment.measurements.systolicBloodPressure,
                       detail.finalAssessment.measurements.diastolicBloodPressure,
                     )}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-sm font-semibold text-text-muted">ระดับน้ำตาลในเลือด</dt>
-                  <dd className="mt-1 break-words font-semibold text-text">
-                    {displayPatientMeasurement(detail.finalAssessment.measurements.bloodSugar, "DTX / mg%")}
                   </dd>
                 </div>
               </dl>

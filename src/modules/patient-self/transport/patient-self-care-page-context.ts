@@ -17,6 +17,8 @@ import {
   getOwnPatientFollowupDetail,
   getOwnPatientGoalPlanDetail,
   getOwnPatientProgramDetail,
+  type PatientSelfCareJourneyPageRequests,
+  type PatientSelfProgramDetailPageRequests,
 } from "../services/patient-self-care-query-service";
 import {
   listOwnPatientRelationshipNavigation,
@@ -70,16 +72,20 @@ export async function getPatientSelfRelationshipNavigationPageContext(): Promise
 
 export async function getPatientSelfCareJourneyPageContext(
   relationshipId: string,
+  pageRequests: PatientSelfCareJourneyPageRequests = {},
 ): Promise<Awaited<ReturnType<typeof getOwnPatientCareJourney>>> {
-  return withPatientSelfPageContext((actor) => getOwnPatientCareJourney(actor, relationshipId));
+  return withPatientSelfPageContext((actor) =>
+    getOwnPatientCareJourney(actor, relationshipId, {}, pageRequests),
+  );
 }
 
 export async function getPatientSelfProgramDetailPageContext(
   relationshipId: string,
   programId: string,
+  pageRequests: PatientSelfProgramDetailPageRequests = {},
 ): Promise<Awaited<ReturnType<typeof getOwnPatientProgramDetail>>> {
   return withPatientSelfPageContext((actor) =>
-    getOwnPatientProgramDetail(actor, relationshipId, programId),
+    getOwnPatientProgramDetail(actor, relationshipId, programId, {}, pageRequests),
   );
 }
 
@@ -103,9 +109,10 @@ export async function getPatientSelfFollowupDetailPageContext(
 
 export async function getPatientSelfAppointmentHistoryPageContext(
   relationshipId: string,
+  requestedPage?: unknown,
 ): Promise<Awaited<ReturnType<typeof getOwnPatientAppointmentHistory>>> {
   return withPatientSelfPageContext((actor) =>
-    getOwnPatientAppointmentHistory(actor, relationshipId),
+    getOwnPatientAppointmentHistory(actor, relationshipId, {}, requestedPage),
   );
 }
 

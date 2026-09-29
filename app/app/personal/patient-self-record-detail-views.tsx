@@ -30,6 +30,8 @@ import {
   patientProgramStatusLabels,
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
+  PatientSelfHistoryMoreLink,
+  patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 
 const linkClassName =
@@ -230,12 +232,6 @@ export function PatientSelfFollowupDetailView({
                 )}
               </dd>
             </div>
-            <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">ระดับน้ำตาลในเลือด</dt>
-              <dd className="mt-1 break-words font-semibold text-text">
-                {displayPatientMeasurement(detail.measurements.bloodSugar, "DTX / mg%")}
-              </dd>
-            </div>
           </dl>
         </Panel>
 
@@ -269,6 +265,8 @@ export function PatientSelfAppointmentHistoryView({
   history: PatientSelfAppointmentHistory;
 }): React.JSX.Element {
   const relationshipId = history.relationship.relationshipId;
+  const historyHref =
+    "/app/personal/appointments/" + encodeURIComponent(relationshipId);
 
   return (
     <div className="max-w-5xl">
@@ -299,6 +297,11 @@ export function PatientSelfAppointmentHistoryView({
                       <p className="mt-1 break-words text-sm leading-6 text-text-muted">
                         {APPOINTMENT_TYPE_LABELS[appointment.type as AppointmentTypeValue]} · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
                       </p>
+                      {appointment.locationDetail ? (
+                        <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                          {appointment.locationDetail}
+                        </p>
+                      ) : null}
                     </div>
                     <StatusBadge variant={statusVariant(appointment.status as AppointmentStatusValue)}>
                       {APPOINTMENT_STATUS_LABELS[appointment.status as AppointmentStatusValue]}
@@ -316,6 +319,15 @@ export function PatientSelfAppointmentHistoryView({
         ) : (
           <PatientSelfEmptyState title="ยังไม่มีรายการนัดหมาย" />
         )}
+        {history.historyPage.hasMore ? (
+          <PatientSelfHistoryMoreLink
+            href={patientSelfHistoryPageHref(
+              historyHref,
+              { page: history.historyPage.page },
+              "page",
+            )}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -584,9 +584,11 @@ care workflows, operator appointments and Program factual reporting remained ava
 itself changed no product code or schema. Phase 17B gives an authenticated Patient a Personal workspace and read access to
 their own basic profile. **Phase 17C Patient Care Journey & Appointment Read is implemented**: Personal now links to exact own
 Hospital relationship care history and read-only appointment list/detail, using allowlisted projections over existing canonical
-records. The Patient path rechecks SELF ownership for every relationship/resource; no Patient writes or schema migration were
-added, and PAM/PROM meaning, Health Plan, appointment actions and other requirement-gated semantics remain closed. Login-page
-registration, Patient service requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A
+records. Care, Program and Appointment histories use bounded 50-record pages with older-page navigation. Baseline displays its
+confirmed DTX mg/dL field; Follow-up/Final generic bloodSugar values remain withheld until unit/context is accepted. The Patient
+path rechecks SELF ownership for every relationship/resource; no Patient writes or schema migration were added, and PAM/PROM
+meaning, Health Plan, appointment actions and other requirement-gated semantics remain closed. Login-page registration,
+Patient service requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A
 parallel UAT Delivery / Environment Track covers environment, safe data, representative accounts, deployment, smoke checks,
 reset/recovery, and customer handoff readiness.
 

@@ -10,7 +10,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { NotFoundError } from "@/shared/errors/application-error";
+import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   getOwnPatientAppointmentDetail,
@@ -241,6 +241,8 @@ describe("Patient SELF care read projections", () => {
     expect(database.screeningAssessment.findMany).toHaveBeenCalledWith({
       where: { patientHospitalRelationshipId: relationshipId },
       orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 51,
       select: patientSelfCareQueryInternals.screeningPatientSelect,
     });
     expect(database.patientBaseline.findUnique).toHaveBeenCalledWith({
@@ -248,6 +250,12 @@ describe("Patient SELF care read projections", () => {
       select: patientSelfCareQueryInternals.baselinePatientSelect,
     });
     expect(result.screenings).toEqual([{ submittedAt: recordedAt, status: "RECORDED" }]);
+    expect(result.historyPages).toEqual({
+      screenings: { page: 1, hasMore: false },
+      programs: { page: 1, hasMore: false },
+      goalPlans: { page: 1, hasMore: false },
+      followups: { page: 1, hasMore: false },
+    });
     expect(result.baseline).toEqual({
       recordedOn: new Date("2026-01-02T00:00:00.000Z"),
       measurements: {
@@ -282,6 +290,61 @@ describe("Patient SELF care read projections", () => {
     expect(database.patientFollowup.findMany).not.toHaveBeenCalled();
   });
 
+  it("bounds care history queries and can continue Follow-up history after round six", async () => {
+    const database = createDatabase();
+    database.patientFollowup.findMany = vi.fn().mockResolvedValue(
+      Array.from({ length: 51 }, (_, index) =>
+        followupHistoryRecord({ roundNumber: index + 1 }),
+      ),
+    );
+
+    const firstPage = await getOwnPatientCareJourney(
+      actor(),
+      relationshipId,
+      { database },
+      { followupPage: "1" },
+    );
+
+    expect(database.patientProgram.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 51 }),
+    );
+    expect(database.patientGoalPlan.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 51 }),
+    );
+    expect(database.patientFollowup.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 51 }),
+    );
+    expect(firstPage.followups).toHaveLength(50);
+    expect(firstPage.followups.at(-1)?.roundNumber).toBe(50);
+    expect(firstPage.historyPages.followups).toEqual({ page: 1, hasMore: true });
+
+    database.patientFollowup.findMany = vi
+      .fn()
+      .mockResolvedValue([followupHistoryRecord({ roundNumber: 51 })]);
+    const secondPage = await getOwnPatientCareJourney(
+      actor(),
+      relationshipId,
+      { database },
+      { followupPage: "2" },
+    );
+
+    expect(database.patientFollowup.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 50, take: 51 }),
+    );
+    expect(secondPage.followups).toMatchObject([{ roundNumber: 51 }]);
+    expect(secondPage.historyPages.followups).toEqual({ page: 2, hasMore: false });
+  });
+
+  it("rejects malformed history page requests before querying care records", async () => {
+    const database = createDatabase();
+
+    await expect(
+      getOwnPatientCareJourney(actor(), relationshipId, { database }, { followupPage: "0" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(database.screeningAssessment.findMany).not.toHaveBeenCalled();
+    expect(database.patientFollowup.findMany).not.toHaveBeenCalled();
+  });
+
   it("returns Program lifecycle, factual Service 1 dates, Goal/Follow-up history, and raw Final facts", async () => {
     const database = createDatabase();
 
@@ -294,11 +357,15 @@ describe("Patient SELF care read projections", () => {
     expect(database.patientGoalPlan.findMany).toHaveBeenCalledWith({
       where: { patientProgramId: programId, patientHospitalRelationshipId: relationshipId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 51,
       select: patientSelfCareQueryInternals.goalPlanHistorySelect,
     });
     expect(database.patientFollowup.findMany).toHaveBeenCalledWith({
       where: { patientProgramId: programId, patientHospitalRelationshipId: relationshipId },
       orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 51,
       select: patientSelfCareQueryInternals.followupHistorySelect,
     });
     expect(result.status).toBe(PatientProgramStatus.COMPLETED);
@@ -321,9 +388,15 @@ describe("Patient SELF care read projections", () => {
         waistCircumference: 84,
         systolicBloodPressure: 118,
         diastolicBloodPressure: 78,
-        bloodSugar: 101,
       },
     });
+    expect(result.historyPages).toEqual({
+      goalPlans: { page: 1, hasMore: false },
+      followups: { page: 1, hasMore: false },
+    });
+    expect(JSON.stringify(patientSelfCareQueryInternals.programDetailSelect)).not.toContain(
+      "bloodSugar",
+    );
 
     const projection = JSON.stringify(result);
     for (const withheld of ["canManage", "canOpen", "score", "confidenceScore", "improvementPlan", "evidence", "pamTotal", "zone", "responses"]) {
@@ -378,7 +451,6 @@ describe("Patient SELF care read projections", () => {
         waistCircumference: 87,
         systolicBloodPressure: 121,
         diastolicBloodPressure: 81,
-        bloodSugar: 109,
       },
       activityProgress: [
         { activityLabel: "เดินออกกำลังกาย", status: FollowupActivityProgressStatus.DONE },
@@ -388,6 +460,52 @@ describe("Patient SELF care read projections", () => {
     for (const withheld of ["confidenceScore", "reflectionNote", "confidencePlan", "generalNote", "note"]) {
       expect(projection).not.toContain(withheld);
     }
+    expect(JSON.stringify(patientSelfCareQueryInternals.followupDetailSelect)).not.toContain(
+      "bloodSugar",
+    );
+  });
+
+  it("fails safely when Follow-up activity labels cannot be resolved", async () => {
+    const database = createDatabase();
+
+    database.patientFollowup.findFirst = vi.fn().mockResolvedValue(
+      followupHistoryRecord({
+        sourceGoalPlan: null,
+        activityProgress: [],
+      }),
+    );
+    const unlinked = await getOwnPatientFollowupDetail(actor(), relationshipId, followupId, {
+      database,
+    });
+    expect(unlinked.activityProgress).toEqual([]);
+
+    database.patientFollowup.findFirst = vi.fn().mockResolvedValue(
+      followupHistoryRecord({
+        sourceGoalPlan: { templateKey: "demi-goals", templateVersion: "missing-version" },
+        activityProgress: [],
+      }),
+    );
+    await expect(
+      getOwnPatientFollowupDetail(actor(), relationshipId, followupId, { database }),
+    ).rejects.toBeInstanceOf(InfrastructureError);
+
+    database.patientFollowup.findFirst = vi.fn().mockResolvedValue(
+      followupHistoryRecord({
+        sourceGoalPlan: {
+          templateKey: "demi-goals",
+          templateVersion: "legacy-prototype-v1",
+        },
+        activityProgress: [
+          {
+            goalActivityCode: "missing_activity",
+            status: FollowupActivityProgressStatus.DONE,
+          },
+        ],
+      }),
+    );
+    await expect(
+      getOwnPatientFollowupDetail(actor(), relationshipId, followupId, { database }),
+    ).rejects.toBeInstanceOf(InfrastructureError);
   });
 
   it("reads only approved appointment fields and scopes detail by both IDs", async () => {
@@ -398,6 +516,8 @@ describe("Patient SELF care read projections", () => {
     expect(database.patientAppointment.findMany).toHaveBeenCalledWith({
       where: { patientHospitalRelationshipId: relationshipId },
       orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 51,
       select: patientSelfCareQueryInternals.appointmentPatientSelect,
     });
     expect(history.appointments).toEqual([
@@ -411,6 +531,7 @@ describe("Patient SELF care read projections", () => {
         status: AppointmentStatus.SCHEDULED,
       },
     ]);
+    expect(history.historyPage).toEqual({ page: 1, hasMore: false });
     expect(JSON.stringify(history)).not.toMatch(/responsibleUser|createdBy|internal note|canManage/);
 
     const detail = await getOwnPatientAppointmentDetail(actor(), relationshipId, appointmentId, {
@@ -422,6 +543,49 @@ describe("Patient SELF care read projections", () => {
       select: patientSelfCareQueryInternals.appointmentPatientSelect,
     });
     expect(JSON.stringify(detail)).not.toMatch(/responsibleUser|createdBy|internal note/);
+  });
+
+  it("bounds appointment history and reads older pages on request", async () => {
+    const database = createDatabase();
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue(
+      Array.from({ length: 51 }, (_, index) => ({
+        id: appointmentId,
+        type: AppointmentType.CONSULTATION,
+        scheduledAt: new Date(recordedAt.getTime() - index),
+        durationMinutes: 30,
+        locationType: AppointmentLocationType.CLINIC,
+        locationDetail: null,
+        status: AppointmentStatus.SCHEDULED,
+      })),
+    );
+
+    const firstPage = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
+    expect(firstPage.appointments).toHaveLength(50);
+    expect(firstPage.historyPage).toEqual({ page: 1, hasMore: true });
+
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue([
+      {
+        id: appointmentId,
+        type: AppointmentType.CONSULTATION,
+        scheduledAt: recordedAt,
+        durationMinutes: 30,
+        locationType: AppointmentLocationType.CLINIC,
+        locationDetail: null,
+        status: AppointmentStatus.SCHEDULED,
+      },
+    ]);
+    const secondPage = await getOwnPatientAppointmentHistory(
+      actor(),
+      relationshipId,
+      { database },
+      "2",
+    );
+
+    expect(database.patientAppointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 50, take: 51 }),
+    );
+    expect(secondPage.appointments).toHaveLength(1);
+    expect(secondPage.historyPage).toEqual({ page: 2, hasMore: false });
   });
 
   it("returns the same not-found result for foreign Program, Goal Plan, Follow-up, and Appointment IDs", async () => {

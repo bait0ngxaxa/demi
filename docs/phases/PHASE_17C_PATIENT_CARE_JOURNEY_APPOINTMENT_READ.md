@@ -17,12 +17,12 @@ Phase 17A ยังคงเป็นสัญญา product/UAT; Phase 17B ย�
 
 | ID | สถานะใน 17C | Implementation evidence |
 | --- | --- | --- |
-| PAT-02 | Implemented | Patient อ่าน raw Baseline, Follow-up และ Final measurements พร้อมวันที่/relationship context; ไม่มี BMI หรือ outcome derivation |
-| CARE-01 | Implemented | Screening event metadata และ Baseline ผ่าน SELF-scoped bounded projection |
+| PAT-02 | Implemented | Patient อ่าน Baseline DTX ที่ยืนยันหน่วยแล้ว และ raw weight/waist/BP ใน Follow-up/Final; generic bloodSugar ที่ยังไม่มี accepted unit/context ถูกเว้นไว้; ไม่มี BMI หรือ outcome derivation |
+| CARE-01 | Implemented | Screening event metadata และ Baseline ผ่าน SELF-scoped projection แบบแบ่งหน้า |
 | CARE-03 | Implemented | นำทาง Program, Service 1 factual progress, Goal Plan และ Follow-up จาก canonical rows |
-| CARE-04 | Implemented | Follow-up history query ไม่มี `take`/เพดาน 6 รายการ; round > 6 มี regression coverage |
+| CARE-04 | Implemented | Follow-up ใช้หน้า 50 รายการพร้อม `hasMore`/ลิงก์ไปหน้าก่อนหน้า; ไม่มีเพดาน 6 รอบและ round > 6 มี regression coverage |
 | CARE-05 | Implemented | Final assessment factual measurements และ Service 1 factual history อยู่ใน Program detail |
-| APT-02 | Implemented | Patient appointment history/detail ผ่าน `appointment:read + SELF` และ allowlisted fields |
+| APT-02 | Implemented | Patient appointment history แบบแบ่งหน้า/detail ผ่าน `appointment:read + SELF` และ allowlisted fields |
 
 No requirement-gated item was promoted to implemented. `CARE-02`, `CARE-06/07`, `PAT-03/04/05`, `APT-03/04/05/06`, `OSM-03` และ domain อื่นที่ Phase 17A ระบุยังคง gated.
 
@@ -83,11 +83,11 @@ Patient SELF ownership ไม่กรองด้วย Hospital operational st
 | Program | status, `startedAt`, `completedAt`, history | open/close/manage actions and success/recovery/health outcome interpretation |
 | Service 1 | neutral canonical activity label (Routine, Floating Chart, Dream Card, Confidence), whether/when its record exists | score, free text, clinical/empowerment interpretation, recommendation, evidence/artifact metadata |
 | Goal Plan | round, created date, canonical primary-goal label, persisted factual notes and activity labels/targets (days/value/unit), Program lifecycle context | Health Plan framing, prescription/adherence/success interpretation, linked Screening score/level/zone/responses, mutation controls |
-| Follow-up | round, recorded date, raw weight/waist/BP/blood sugar, safe canonical activity label and factual progress status | confidence, reflection/behavioral notes/plans, general note, adherence/outcome calculation, evidence |
-| Final Assessment | recorded date, weight/waist/BP/blood sugar | before/after comparison, improvement percentage, success/failure, recovery/control/risk or clinical conclusion |
+| Follow-up | round, recorded date, raw weight/waist/BP, safe canonical activity label and factual progress status | bloodSugar (unit/context not accepted), confidence, reflection/behavioral notes/plans, general note, adherence/outcome calculation, evidence |
+| Final Assessment | recorded date, weight/waist/BP | bloodSugar (unit/context not accepted), before/after comparison, improvement percentage, success/failure, recovery/control/risk or clinical conclusion |
 | Appointment | type, scheduled time, status, duration, location type/detail, relationship Hospital context | responsible/creator User and display names, internal notes, scheduler authority, contact fields, response or manage actions |
 
-Goal Plan is still named “แผนเป้าหมาย”; it is not “Health Plan”. Historical goal/activity labels come from the exact persisted template key/version. If an old template version cannot be resolved, the request fails safely rather than inventing a label. Follow-up reads include all persisted rows without a 6-row UI/query limit; relationship and Program history are ordered deterministically by factual timestamps and ID. DTX labels follow the existing per-domain display (`DTX / mg/dL` for Baseline and `DTX / mg%` for Follow-up/Final); this preserves current terminology and is not a claim that these values are interchangeable or have an approved normalized unit/context.
+Goal Plan is still named “แผนเป้าหมาย”; it is not “Health Plan”. Historical goal/activity labels come from the exact persisted template key/version. If an old template version or activity cannot be resolved, the request fails safely rather than inventing a label. Baseline shows only the separately confirmed `bloodSugarDtx` as `DTX / mg/dL`. Follow-up and Final `bloodSugar` are omitted from Patient selects and DTOs because their accepted contracts do not establish a unit/context; no DTX label or conversion is applied to them. Screening, Program, Goal Plan, Follow-up, and Appointment histories use bounded 50-item pages (`take: 51` to detect more records) with older-page navigation. This bounds each request without limiting persisted rounds; round 7+ remains discoverable across pages. Ordering remains deterministic by factual timestamps and ID.
 
 Appointment status is the current persisted factual row state; this schema does not provide an approved Patient response/status-event history. No confirm, decline, reschedule, cancel, edit, complete or no-show action is rendered.
 
@@ -98,7 +98,7 @@ Appointment status is the current persisted factual row state; this schema does 
 - Existing route loading skeleton conventions are reused. Personal route not-found copy does not reveal whether a foreign record exists; route-level error boundary has retry/back navigation and does not render technical errors.
 - Histories use responsive lists/cards and wrap Thai text, long names, identifiers and measurements; no wide desktop table is used.
 - Date-time uses the existing `th-TH` / `Asia/Bangkok` presentation convention; date-only values preserve UTC calendar-date semantics.
-- A Chrome mobile emulation at 390×844 was run against the actual rendered Personal components and project Tailwind/global CSS using synthetic records. `documentElement.scrollWidth` and `body.scrollWidth` both equaled 390px; no element extended outside the viewport. The fixture included long Thai Hospital/location strings and two relationships. It did not use a production or authenticated UAT dataset.
+- The initial Phase 17C implementation passed a Chrome mobile emulation at 390×844 against rendered Personal components and project Tailwind/global CSS using synthetic records. Both document/body scroll widths equaled 390px. The later correction adds only wrapping location text and older-page links; a second browser viewport run was not made.
 
 ## Models and schema
 
@@ -109,20 +109,22 @@ Reuse existing `PatientHospitalRelationship`, `ScreeningAssessment`, `PatientBas
 ## Tests and verification
 
 - Focused Patient SELF policy/query tests cover own/foreign exact relationship resolution, PATIENT and multi-role actors, Hospital status independence, capability allowlist, bounded fields, route-ID scoping, and round 7+ history.
-- Patient care query tests cover Screening/Baseline, Program/Service 1/Final, Goal Plan without Screening-context selection, Follow-up factual fields, Appointment allowlist, and foreign resource not-found behavior.
+- Patient care query tests cover Screening/Baseline, Program/Service 1/Final, Goal Plan without Screening-context selection, Follow-up factual fields and fail-safe historical labels, bounded 50-item pagination including round 7+, Appointment pagination/allowlist, and foreign resource not-found behavior.
 - Patient view tests cover multiple separated Hospital relationships, 0..N history including round 7, allowlisted factual rendering, gated-field/action absence, empty states and responsive structure.
 - Application navigation and Personal Home regressions assert Personal paths remain separate from Work navigation.
-- Focused command: `npm run test -- src/modules/patient-self/policies/patient-self-policy.test.ts src/modules/patient-self/services/patient-self-query-service.test.ts src/modules/patient-self/services/patient-self-care-query-service.test.ts app/app/personal/personal-pages.test.ts app/app/personal/patient-self-care-views.test.tsx src/components/app-shell/application-navigation.test.ts` — **PASS, 5 files / 61 tests**.
-- `npm run typecheck` — **PASS**.
-- `npm run lint` — **PASS, exit 0**. It initially reported three unused type aliases in the new care query service; those aliases were removed and targeted ESLint over all changed code then passed with no warnings.
-- `npm run test` — **PASS, 145 files / 1,027 tests** (single full-suite run).
-- Chrome mobile emulation at 390×844 — **PASS**, no horizontal overflow in the rendered Patient relationship/care/appointment components.
+- Corrective Patient SELF regression command: `npm run test -- src/modules/patient-self/services/patient-self-care-query-service.test.ts src/modules/patient-self/services/patient-self-query-service.test.ts src/modules/patient-self/policies/patient-self-policy.test.ts app/app/personal/personal-pages.test.ts src/components/app-shell/application-navigation.test.ts` — **PASS, 5 files / 65 tests**.
+- The view test is `.test.tsx`, while the repository Vitest include only discovers `.test.ts`; it was run separately with a temporary TSX-inclusive config, then that config was removed — **PASS, 1 file / 6 tests**.
+- `npm run typecheck -- --incremental false` — **PASS**.
+- Targeted ESLint over changed TypeScript/TSX files — **PASS, no warnings**.
+- The previous full-suite run at the initial 17C implementation passed **145 files / 1,027 tests**. It was not repeated after this isolated Patient SELF projection/pagination correction.
+- The initial 390×844 mobile emulation passed before this correction; a second viewport run was not made. Pagination links and location text use the existing wrapping/min-width patterns.
 - Architecture check — not run; `package.json` does not define an `architecture:check` script.
 
 ## Known limitations and preserved gates
 
 - Existing Screening result semantics remain provisional; this slice only reports that an assessment event was submitted and when.
 - Goal/Service 1 legacy template text may encode historical prototype terminology; exact template-version lookup is used and unavailable versions fail safely. Future product semantics still need approved definitions.
+- History pagination uses deterministic offset pages; if a new record is inserted between page requests, an item may shift across page boundaries. Each request remains bounded, and a later cursor-based approach can address live-history boundary shifts if UAT demonstrates a need.
 - Appointment has no Patient response/action history; only the current canonical row and its current status are shown.
 - Historical routes are only testable with an active authenticated Patient actor and canonical records; deployment/UAT environment, representative accounts and dataset remain the separate UAT Delivery / Environment track.
 - No Patient-authored clinical/care data, Goal/Follow-up/Program mutation, appointment response/reschedule/cancel, staff/contact semantics, caregiver/family, medication, journaling, reminders, consent, enrollment, Hospital hierarchy, diagnosis, outcome calculation or recommendations were introduced.

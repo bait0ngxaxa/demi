@@ -89,6 +89,12 @@ const journey: PatientSelfCareJourney = {
       program,
     },
   ],
+  historyPages: {
+    screenings: { page: 1, hasMore: true },
+    programs: { page: 1, hasMore: false },
+    goalPlans: { page: 1, hasMore: false },
+    followups: { page: 1, hasMore: true },
+  },
 };
 
 const programDetail: PatientSelfProgramDetail = {
@@ -103,6 +109,10 @@ const programDetail: PatientSelfProgramDetail = {
   ],
   goalPlans: journey.goalPlans,
   followups: journey.followups,
+  historyPages: {
+    goalPlans: { page: 1, hasMore: true },
+    followups: { page: 1, hasMore: false },
+  },
   finalAssessment: {
     recordedAt,
     measurements: {
@@ -110,7 +120,6 @@ const programDetail: PatientSelfProgramDetail = {
       waistCircumference: 84,
       systolicBloodPressure: 118,
       diastolicBloodPressure: 78,
-      bloodSugar: 101,
     },
   },
 };
@@ -138,7 +147,6 @@ const followupDetail: PatientSelfFollowupDetail = {
     waistCircumference: 87,
     systolicBloodPressure: 121,
     diastolicBloodPressure: 81,
-    bloodSugar: 109,
   },
   activityProgress: [
     { activityLabel: "เดินออกกำลังกาย", status: FollowupActivityProgressStatus.DONE },
@@ -192,6 +200,9 @@ describe("Patient Personal care read views", () => {
       expect(markup).toContain(content);
     }
 
+    expect(markup).toContain("106 DTX / mg/dL");
+    expect(markup).toContain("screeningPage=2");
+    expect(markup).toContain("followupPage=2");
     for (const withheld of ["PAM", "PROM", "คะแนน", "ระดับความเสี่ยง", "BMI", "การวินิจฉัย", "คำแนะนำทางการแพทย์"]) {
       expect(markup).not.toContain(withheld);
     }
@@ -218,6 +229,9 @@ describe("Patient Personal care read views", () => {
     ]) {
       expect(markup).toContain(content);
     }
+    expect(markup).toContain("goalPlanPage=2");
+    expect(markup).not.toContain("DTX / mg%");
+    expect(markup).not.toContain("101");
 
     for (const withheld of ["สำเร็จ", "หายดี", "ผลลัพธ์ทางคลินิก", "confidenceScore", "improvementPlan"]) {
       expect(markup).not.toContain(withheld);
@@ -242,6 +256,8 @@ describe("Patient Personal care read views", () => {
     expect(followupMarkup).toContain("70 kg");
     expect(followupMarkup).toContain("121 / 81 mmHg");
     expect(followupMarkup).toContain("เดินออกกำลังกาย");
+    expect(followupMarkup).not.toContain("mg%");
+    expect(followupMarkup).not.toContain("109");
     expect(followupMarkup).not.toContain("confidenceScore");
     expect(followupMarkup).not.toContain("สำเร็จ");
   });
@@ -250,6 +266,7 @@ describe("Patient Personal care read views", () => {
     const history: PatientSelfAppointmentHistory = {
       relationship: ownRelationship,
       appointments: [appointment],
+      historyPage: { page: 1, hasMore: true },
     };
     const historyMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentHistoryView history={history} />,
@@ -267,6 +284,7 @@ describe("Patient Personal care read views", () => {
       expect(detailMarkup).not.toContain(withheld);
     }
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111/66666666-6666-4666-8666-666666666666"');
+    expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111?page=2"');
   });
 
   it("renders honest empty states across care and appointment history", () => {
@@ -277,6 +295,12 @@ describe("Patient Personal care read views", () => {
       programs: [],
       goalPlans: [],
       followups: [],
+      historyPages: {
+        screenings: { page: 1, hasMore: false },
+        programs: { page: 1, hasMore: false },
+        goalPlans: { page: 1, hasMore: false },
+        followups: { page: 1, hasMore: false },
+      },
     };
     const emptyProgram: PatientSelfProgramDetail = {
       relationship: ownRelationship,
@@ -292,11 +316,16 @@ describe("Patient Personal care read views", () => {
       ],
       goalPlans: [],
       followups: [],
+      historyPages: {
+        goalPlans: { page: 1, hasMore: false },
+        followups: { page: 1, hasMore: false },
+      },
       finalAssessment: null,
     };
     const emptyAppointmentHistory: PatientSelfAppointmentHistory = {
       relationship: ownRelationship,
       appointments: [],
+      historyPage: { page: 1, hasMore: false },
     };
 
     const journeyMarkup = renderToStaticMarkup(

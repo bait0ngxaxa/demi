@@ -19,6 +19,8 @@ import {
   patientProgramStatusLabels,
   PatientSelfEmptyState,
   PatientSelfHospitalContext,
+  PatientSelfHistoryMoreLink,
+  patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 
 const linkClassName =
@@ -113,6 +115,13 @@ export function PatientSelfCareJourneyView({
   journey: PatientSelfCareJourney;
 }): React.JSX.Element {
   const relationshipId = journey.relationship.relationshipId;
+  const careHref = "/app/personal/care/" + encodeURIComponent(relationshipId);
+  const pageParams = {
+    screeningPage: journey.historyPages.screenings.page,
+    programPage: journey.historyPages.programs.page,
+    goalPlanPage: journey.historyPages.goalPlans.page,
+    followupPage: journey.historyPages.followups.page,
+  };
   const appointmentsHref = `/app/personal/appointments/${encodeURIComponent(relationshipId)}`;
 
   return (
@@ -156,6 +165,11 @@ export function PatientSelfCareJourneyView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีข้อมูลการคัดกรอง" />
           )}
+          {journey.historyPages.screenings.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(careHref, pageParams, "screeningPage")}
+            />
+          ) : null}
         </section>
 
         <section aria-labelledby="patient-self-baseline-heading">
@@ -227,6 +241,11 @@ export function PatientSelfCareJourneyView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีโปรแกรมการดูแล" />
           )}
+          {journey.historyPages.programs.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(careHref, pageParams, "programPage")}
+            />
+          ) : null}
         </section>
 
         <section aria-labelledby="patient-self-goals-heading">
@@ -242,6 +261,11 @@ export function PatientSelfCareJourneyView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีแผนเป้าหมาย" />
           )}
+          {journey.historyPages.goalPlans.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(careHref, pageParams, "goalPlanPage")}
+            />
+          ) : null}
         </section>
 
         <section aria-labelledby="patient-self-followups-heading">
@@ -250,7 +274,9 @@ export function PatientSelfCareJourneyView({
               การติดตาม
             </h2>
             {journey.followups.length > 0 ? (
-              <p className="text-sm text-text-muted">แสดง {journey.followups.length} รายการ</p>
+              <p className="text-sm text-text-muted">
+                แสดง {journey.followups.length} รายการในหน้านี้
+              </p>
             ) : null}
           </div>
           {journey.followups.length > 0 ? (
@@ -262,6 +288,11 @@ export function PatientSelfCareJourneyView({
           ) : (
             <PatientSelfEmptyState title="ยังไม่มีข้อมูลติดตาม" />
           )}
+          {journey.historyPages.followups.hasMore ? (
+            <PatientSelfHistoryMoreLink
+              href={patientSelfHistoryPageHref(careHref, pageParams, "followupPage")}
+            />
+          ) : null}
         </section>
 
         <Alert variant="info">

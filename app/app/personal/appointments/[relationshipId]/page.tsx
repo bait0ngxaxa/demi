@@ -11,14 +11,21 @@ export const metadata: Metadata = {
 
 type PatientSelfAppointmentHistoryPageProps = {
   params: Promise<{ relationshipId: string }>;
+  searchParams: Promise<{ page?: string | string[] }>;
 };
 
 export default async function PatientSelfAppointmentHistoryPage({
   params,
+  searchParams,
 }: PatientSelfAppointmentHistoryPageProps): Promise<React.JSX.Element> {
   await connection();
   const { relationshipId } = await params;
-  const history = await getPatientSelfAppointmentHistoryPageContext(relationshipId);
+  const query = await searchParams;
+  const requestedPage = Array.isArray(query.page) ? query.page[0] : query.page;
+  const history = await getPatientSelfAppointmentHistoryPageContext(
+    relationshipId,
+    requestedPage,
+  );
 
   return <PatientSelfAppointmentHistoryView history={history} />;
 }

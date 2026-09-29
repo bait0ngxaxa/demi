@@ -1,4 +1,5 @@
 import { HospitalStatus } from "@prisma/client";
+import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -25,6 +26,43 @@ export function formatPatientDateOnly(value: Date): string {
 
 export function displayPatientMeasurement(value: number | null, unit: string): string {
   return value === null || !Number.isFinite(value) ? "ไม่ระบุ" : `${value} ${unit}`;
+}
+
+export function patientSelfHistoryPageHref(
+  pathname: string,
+  pageParams: Record<string, number>,
+  targetPageParam: string,
+): string {
+  const searchParams = new URLSearchParams();
+
+  for (const [name, currentPage] of Object.entries(pageParams)) {
+    const page = name === targetPageParam ? currentPage + 1 : currentPage;
+
+    if (page > 1) {
+      searchParams.set(name, String(page));
+    }
+  }
+
+  const query = searchParams.toString();
+
+  return query ? pathname + "?" + query : pathname;
+}
+
+export function PatientSelfHistoryMoreLink({
+  href,
+}: {
+  href: string;
+}): React.JSX.Element {
+  return (
+    <p className="mt-3">
+      <Link
+        className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        href={href}
+      >
+        ดูรายการเก่ากว่า
+      </Link>
+    </p>
+  );
 }
 
 export function displayPatientBloodPressure(

@@ -42,6 +42,7 @@ import {
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
+import { z } from "zod";
 
 import { assertPatientSelfReadPolicy } from "../policies/patient-self-policy";
 import {
@@ -56,12 +57,30 @@ export type PatientSelfCareQueryDependencies = {
   database?: PatientSelfCareQueryDatabase;
 };
 
+const PATIENT_SELF_HISTORY_PAGE_SIZE = 50;
+
+export type PatientSelfHistoryPage = {
+  page: number;
+  hasMore: boolean;
+};
+
+export type PatientSelfCareJourneyPageRequests = {
+  screeningPage?: unknown;
+  programPage?: unknown;
+  goalPlanPage?: unknown;
+  followupPage?: unknown;
+};
+
+export type PatientSelfProgramDetailPageRequests = {
+  goalPlanPage?: unknown;
+  followupPage?: unknown;
+};
+
 export type PatientSelfMeasurementFacts = {
   weight: number | null;
   waistCircumference: number | null;
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
-  bloodSugar: number | null;
 };
 
 export type PatientSelfProgramContext = {
@@ -107,6 +126,12 @@ export type PatientSelfCareJourney = {
   programs: PatientSelfProgramHistoryItem[];
   goalPlans: PatientSelfGoalPlanHistoryItem[];
   followups: PatientSelfFollowupHistoryItem[];
+  historyPages: {
+    screenings: PatientSelfHistoryPage;
+    programs: PatientSelfHistoryPage;
+    goalPlans: PatientSelfHistoryPage;
+    followups: PatientSelfHistoryPage;
+  };
 };
 
 export type PatientSelfServiceOneActivity = {
@@ -119,6 +144,10 @@ export type PatientSelfProgramDetail = PatientSelfProgramHistoryItem & {
   serviceOne: PatientSelfServiceOneActivity[];
   goalPlans: PatientSelfGoalPlanHistoryItem[];
   followups: PatientSelfFollowupHistoryItem[];
+  historyPages: {
+    goalPlans: PatientSelfHistoryPage;
+    followups: PatientSelfHistoryPage;
+  };
   finalAssessment: {
     recordedAt: Date;
     measurements: PatientSelfMeasurementFacts;
@@ -159,6 +188,7 @@ export type PatientSelfAppointmentItem = {
 export type PatientSelfAppointmentHistory = {
   relationship: PatientSelfRelationshipContext;
   appointments: PatientSelfAppointmentItem[];
+  historyPage: PatientSelfHistoryPage;
 };
 
 export type PatientSelfAppointmentDetail = PatientSelfAppointmentItem & {
@@ -232,7 +262,6 @@ const programDetailSelect = {
       waistCircumference: true,
       systolicBloodPressure: true,
       diastolicBloodPressure: true,
-      bloodSugar: true,
     },
   },
 } satisfies Prisma.PatientProgramSelect;
@@ -272,7 +301,6 @@ const followupDetailSelect = {
   waistCircumference: true,
   systolicBloodPressure: true,
   diastolicBloodPressure: true,
-  bloodSugar: true,
   patientProgram: {
     select: {
       status: true,
@@ -316,6 +344,40 @@ type FollowupHistoryRecord = Prisma.PatientFollowupGetPayload<{
 type AppointmentRecord = Prisma.PatientAppointmentGetPayload<{
   select: typeof appointmentPatientSelect;
 }>;
+
+function parseHistoryPage(value: unknown): { page: number; skip: number } {
+  const parsed = z
+    .union([
+      z.number().int().positive(),
+      z.string().regex(/^[1-9]\d*$/).transform(Number),
+    ])
+    .safeParse(value === undefined ? 1 : value);
+
+  if (!parsed.success || !Number.isSafeInteger(parsed.data)) {
+    throw new NotFoundError();
+  }
+
+  const skip = (parsed.data - 1) * PATIENT_SELF_HISTORY_PAGE_SIZE;
+
+  if (!Number.isSafeInteger(skip)) {
+    throw new NotFoundError();
+  }
+
+  return { page: parsed.data, skip };
+}
+
+function getHistoryPage<T>(
+  records: T[],
+  page: number,
+): { items: T[]; page: PatientSelfHistoryPage } {
+  return {
+    items: records.slice(0, PATIENT_SELF_HISTORY_PAGE_SIZE),
+    page: {
+      page,
+      hasMore: records.length > PATIENT_SELF_HISTORY_PAGE_SIZE,
+    },
+  };
+}
 
 function getDatabase(dependencies: PatientSelfCareQueryDependencies): PatientSelfCareQueryDatabase {
   return dependencies.database ?? getPrisma();
@@ -384,14 +446,12 @@ function toMeasurements(record: {
   waistCircumference: number | null;
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
-  bloodSugar: number | null;
 }): PatientSelfMeasurementFacts {
   return {
     weight: record.weight,
     waistCircumference: record.waistCircumference,
     systolicBloodPressure: record.systolicBloodPressure,
     diastolicBloodPressure: record.diastolicBloodPressure,
-    bloodSugar: record.bloodSugar,
   };
 }
 
@@ -410,6 +470,7 @@ export async function getOwnPatientCareJourney(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: PatientSelfCareQueryDependencies = {},
+  pageRequests: PatientSelfCareJourneyPageRequests = {},
 ): Promise<PatientSelfCareJourney> {
   const database = getDatabase(dependencies);
 
@@ -425,11 +486,17 @@ export async function getOwnPatientCareJourney(
     assertPatientSelfReadPolicy({ actor, capability: GOAL_READ_CAPABILITY });
     assertPatientSelfReadPolicy({ actor, capability: FOLLOWUP_READ_CAPABILITY });
 
+    const screeningPage = parseHistoryPage(pageRequests.screeningPage);
+    const programPage = parseHistoryPage(pageRequests.programPage);
+    const goalPlanPage = parseHistoryPage(pageRequests.goalPlanPage);
+    const followupPage = parseHistoryPage(pageRequests.followupPage);
     const scope = { patientHospitalRelationshipId: relationship.relationshipId };
     const [screenings, baseline, programs, goalPlans, followups] = await Promise.all([
       database.screeningAssessment.findMany({
         where: scope,
         orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+        skip: screeningPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: screeningPatientSelect,
       }),
       database.patientBaseline.findUnique({
@@ -439,23 +506,36 @@ export async function getOwnPatientCareJourney(
       database.patientProgram.findMany({
         where: scope,
         orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        skip: programPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: programHistorySelect,
       }),
       database.patientGoalPlan.findMany({
         where: scope,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: goalPlanPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: goalPlanHistorySelect,
       }),
       database.patientFollowup.findMany({
         where: scope,
         orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        skip: followupPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: followupHistorySelect,
       }),
     ]);
+    const screeningResults = getHistoryPage(screenings, screeningPage.page);
+    const programResults = getHistoryPage(programs, programPage.page);
+    const goalPlanResults = getHistoryPage(goalPlans, goalPlanPage.page);
+    const followupResults = getHistoryPage(followups, followupPage.page);
 
     return {
       relationship,
-      screenings: screenings.map(({ submittedAt }) => ({ submittedAt, status: "RECORDED" })),
+      screenings: screeningResults.items.map(({ submittedAt }) => ({
+        submittedAt,
+        status: "RECORDED",
+      })),
       baseline: baseline
         ? {
             recordedOn: baseline.recordedOn,
@@ -470,14 +550,20 @@ export async function getOwnPatientCareJourney(
             },
           }
         : null,
-      programs: programs.map((program) => ({
+      programs: programResults.items.map((program) => ({
         programId: program.id,
         status: program.status,
         startedAt: program.startedAt,
         completedAt: program.completedAt,
       })),
-      goalPlans: goalPlans.map(toGoalPlanHistoryItem),
-      followups: followups.map(toFollowupHistoryItem),
+      goalPlans: goalPlanResults.items.map(toGoalPlanHistoryItem),
+      followups: followupResults.items.map(toFollowupHistoryItem),
+      historyPages: {
+        screenings: screeningResults.page,
+        programs: programResults.page,
+        goalPlans: goalPlanResults.page,
+        followups: followupResults.page,
+      },
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -493,6 +579,7 @@ export async function getOwnPatientProgramDetail(
   relationshipId: unknown,
   programId: unknown,
   dependencies: PatientSelfCareQueryDependencies = {},
+  pageRequests: PatientSelfProgramDetailPageRequests = {},
 ): Promise<PatientSelfProgramDetail> {
   const parsedRelationshipId = patientProgramRelationshipIdSchema.safeParse(relationshipId);
   const parsedProgramId = patientProgramIdSchema.safeParse(programId);
@@ -525,6 +612,8 @@ export async function getOwnPatientProgramDetail(
       throw new NotFoundError();
     }
 
+    const goalPlanPage = parseHistoryPage(pageRequests.goalPlanPage);
+    const followupPage = parseHistoryPage(pageRequests.followupPage);
     const scope = {
       patientProgramId: program.id,
       patientHospitalRelationshipId: relationship.relationshipId,
@@ -533,14 +622,20 @@ export async function getOwnPatientProgramDetail(
       database.patientGoalPlan.findMany({
         where: scope,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: goalPlanPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: goalPlanHistorySelect,
       }),
       database.patientFollowup.findMany({
         where: scope,
         orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+        skip: followupPage.skip,
+        take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
         select: followupHistorySelect,
       }),
     ]);
+    const goalPlanResults = getHistoryPage(goalPlanRecords, goalPlanPage.page);
+    const followupResults = getHistoryPage(followupRecords, followupPage.page);
 
     return {
       relationship,
@@ -554,8 +649,12 @@ export async function getOwnPatientProgramDetail(
         { label: "Dream Card", recordedAt: program.serviceOneDreamCard?.recordedAt ?? null },
         { label: "Confidence", recordedAt: program.serviceOneConfidence?.recordedAt ?? null },
       ],
-      goalPlans: goalPlanRecords.map(toGoalPlanHistoryItem),
-      followups: followupRecords.map(toFollowupHistoryItem),
+      goalPlans: goalPlanResults.items.map(toGoalPlanHistoryItem),
+      followups: followupResults.items.map(toFollowupHistoryItem),
+      historyPages: {
+        goalPlans: goalPlanResults.page,
+        followups: followupResults.page,
+      },
       finalAssessment: program.finalAssessment
         ? {
             recordedAt: program.finalAssessment.recordedAt,
@@ -681,8 +780,32 @@ export async function getOwnPatientFollowupDetail(
     }
 
     const template = record.sourceGoalPlan
-      ? getGoalTemplate(record.sourceGoalPlan.templateKey, record.sourceGoalPlan.templateVersion)
+      ? getHistoricalTemplate(
+          record.sourceGoalPlan.templateKey,
+          record.sourceGoalPlan.templateVersion,
+        )
       : null;
+
+    if (!template && record.activityProgress.length > 0) {
+      throw new InfrastructureError("Follow-up activities have no source Goal Plan");
+    }
+
+    const activityProgress = record.activityProgress.map((progress) => {
+      if (!template) {
+        throw new InfrastructureError("Follow-up activity template is unavailable");
+      }
+
+      const activity = getGoalActivity(template, progress.goalActivityCode);
+
+      if (!activity) {
+        throw new InfrastructureError("The historical Goal activity is unavailable");
+      }
+
+      return {
+        activityLabel: activity.label,
+        status: progress.status,
+      };
+    });
 
     return {
       followupId: record.id,
@@ -691,16 +814,7 @@ export async function getOwnPatientFollowupDetail(
       recordedAt: record.recordedAt,
       program: getProgramContext(record.patientProgram),
       measurements: toMeasurements(record),
-      activityProgress: record.activityProgress.map((progress) => {
-        const activity = template
-          ? getGoalActivity(template, progress.goalActivityCode)
-          : null;
-
-        return {
-          activityLabel: activity?.label ?? "กิจกรรม",
-          status: progress.status,
-        };
-      }),
+      activityProgress,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -715,6 +829,7 @@ export async function getOwnPatientAppointmentHistory(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: PatientSelfCareQueryDependencies = {},
+  requestedPage?: unknown,
 ): Promise<PatientSelfAppointmentHistory> {
   const parsedRelationshipId = appointmentRelationshipIdSchema.safeParse(relationshipId);
 
@@ -731,15 +846,20 @@ export async function getOwnPatientAppointmentHistory(
       APPOINTMENT_READ_CAPABILITY,
       database,
     );
+    const page = parseHistoryPage(requestedPage);
     const records = await database.patientAppointment.findMany({
       where: { patientHospitalRelationshipId: relationship.relationshipId },
       orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
+      skip: page.skip,
+      take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
       select: appointmentPatientSelect,
     });
+    const appointmentResults = getHistoryPage(records, page.page);
 
     return {
       relationship,
-      appointments: records.map(toAppointmentItem),
+      appointments: appointmentResults.items.map(toAppointmentItem),
+      historyPage: appointmentResults.page,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
