@@ -579,23 +579,21 @@ only the requirement-gathering demo boundary recorded in Phase 15E.3. It maps
 the customer-provided Patient, OSM, Hospital staff and Hospital Owner journeys
 against the current runtime, preserves accepted identity/authorization/security
 invariants, and classifies each capability with an ordered UAT backlog.
-Patient self-service and patient appointment access are explicitly missing in
-current runtime; existing care workflows, operator appointments and Program
-factual reporting remain available within their current scopes. No product code
-or schema was changed in Phase 17A. Patient self-service is the first product
-implementation gap; Login-page registration, Patient service requests/enrollment,
-caregiver access, and other unresolved customer semantics remain gated. A
-parallel UAT Delivery / Environment Track covers environment, safe data,
-representative accounts, deployment, smoke checks, reset/recovery, and customer
-handoff readiness.
+When the Phase 17A contract was issued, Patient self-service and patient appointment access were missing from runtime; existing
+care workflows, operator appointments and Program factual reporting remained available within their current scopes. Phase 17A
+itself changed no product code or schema. Phase 17B now gives an authenticated Patient a Personal workspace and read access to
+their own basic profile; care and appointment access remain for later slices. Login-page registration, Patient service
+requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A parallel UAT Delivery / Environment
+Track covers environment, safe data, representative accounts, deployment, smoke checks, reset/recovery, and customer handoff
+readiness.
 
 The authoritative contract is
 [Phase 17A Customer Flow Canonicalization and UAT Contract](./phases/PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md);
 the implementation sequence is
-[Phase 17 UAT Backlog](./phases/PHASE_17_UAT_BACKLOG.md). Use that contract for
-new customer-flow scope and priorities. The Architecture Baseline and accepted
-ADRs continue to govern security, identity, authorization and unresolved
-architecture invariants.
+[Phase 17 UAT Backlog](./phases/PHASE_17_UAT_BACKLOG.md). The Phase 17B scope and implementation handoff are recorded in the
+[Patient Workspace & Own-Scope Foundation handoff](./phases/PHASE_17B_PATIENT_WORKSPACE_OWN_SCOPE_FOUNDATION.md). Use the
+Phase 17A contract for customer-flow scope and priorities; the Architecture Baseline and accepted ADRs continue to govern
+security, identity, authorization and unresolved architecture invariants.
 
 ## Open Requirements
 

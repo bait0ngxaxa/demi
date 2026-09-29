@@ -1,4 +1,4 @@
-import { HospitalStatus, Role } from "@prisma/client";
+import { HospitalStatus } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
@@ -13,6 +13,8 @@ import {
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
 
+import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
+import type { ApplicationWorkspaceContext } from "./navigation-types";
 import { projectApplicationNavigation } from "./application-navigation";
 
 export type ApplicationWorkspaceAction = {
@@ -26,10 +28,10 @@ export type ApplicationHospitalWorkspace = ActorHospitalWorkspace & {
 };
 
 export type ApplicationWorkspaceProjection = {
+  availableWorkspaces: readonly ApplicationWorkspaceContext[];
   governanceActions: readonly ApplicationWorkspaceAction[];
   assignedPatientsAction: ApplicationWorkspaceAction | null;
   hospitals: readonly ApplicationHospitalWorkspace[];
-  patientOnly: boolean;
 };
 
 function withHospitalContext(path: string, hospitalId: string): string {
@@ -142,9 +144,9 @@ export function projectApplicationWorkspace(
     );
 
   return {
+    availableWorkspaces: getAvailableApplicationWorkspaces(actor),
     governanceActions: projectGovernanceActions(actor),
     assignedPatientsAction: projectAssignedPatientsAction(actor),
     hospitals,
-    patientOnly: actor.roles.length === 1 && actor.roles[0] === Role.PATIENT,
   };
 }

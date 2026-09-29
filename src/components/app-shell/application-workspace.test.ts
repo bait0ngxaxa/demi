@@ -111,10 +111,23 @@ describe("application workspace projection", () => {
   it("keeps PATIENT landing explicit without inventing Patient data links", () => {
     const projection = projectApplicationWorkspace(actor(), []);
 
-    expect(projection.patientOnly).toBe(true);
+    expect(projection.availableWorkspaces).toEqual(["personal"]);
     expect(projection.governanceActions).toHaveLength(0);
     expect(projection.assignedPatientsAction).toBeNull();
     expect(projection.hospitals).toHaveLength(0);
+  });
+
+  it.each([
+    ["OSM", [Role.OSM], ["work"]],
+    ["Hospital", [Role.HOSPITAL], ["work"]],
+    ["OSM and Patient", [Role.OSM, Role.PATIENT], ["personal", "work"]],
+    ["Hospital and Patient", [Role.HOSPITAL, Role.PATIENT], ["personal", "work"]],
+    ["Owner", [Role.HOSPITAL], ["work"]],
+    ["Platform Admin", [Role.ADMIN], ["work"]],
+  ] as const)("projects available workspaces for %s roles", (_label, roles, expected) => {
+    const projection = projectApplicationWorkspace(actor({ roles }), []);
+
+    expect(projection.availableWorkspaces).toEqual(expected);
   });
 
   it("does not project operational links for a suspended Hospital", () => {

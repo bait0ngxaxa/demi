@@ -5,8 +5,15 @@ import { usePathname } from "next/navigation";
 
 import { classNames } from "@/components/ui/class-names";
 
-import { isNavigationItemActive } from "./navigation-state";
-import type { ApplicationNavigationGroup } from "./navigation-types";
+import {
+  getWorkspaceContextForPathname,
+  isNavigationItemActive,
+  resolveSelectedWorkspaceContext,
+} from "./navigation-state";
+import type {
+  ApplicationNavigationGroup,
+  ApplicationWorkspaceContext,
+} from "./navigation-types";
 
 type NavigationListProps = {
   groups: readonly ApplicationNavigationGroup[];
@@ -20,11 +27,34 @@ export function NavigationList({
   tone = "desktop",
 }: NavigationListProps): React.JSX.Element {
   const pathname = usePathname();
+  const availableContexts = Array.from(
+    new Set(
+      groups
+        .map(({ workspace }) => workspace)
+        .filter(
+          (workspace): workspace is ApplicationWorkspaceContext =>
+            workspace === "personal" || workspace === "work",
+        ),
+    ),
+  );
+  const selectedContext = resolveSelectedWorkspaceContext(
+    availableContexts,
+    getWorkspaceContextForPathname(pathname),
+  );
+  const visibleGroups = groups.filter(({ workspace }) =>
+    workspace === undefined || workspace === "all" || workspace === selectedContext,
+  );
+
+  function isItemActive(item: (typeof groups)[number]["items"][number]): boolean {
+    return item.workspaceContext
+      ? item.workspaceContext === selectedContext
+      : isNavigationItemActive(pathname, item);
+  }
 
   return (
     <div className="space-y-6">
-      {groups.map((group, groupIndex) => {
-        const groupActive = group.items.some((item) => isNavigationItemActive(pathname, item));
+      {visibleGroups.map((group, groupIndex) => {
+        const groupActive = group.items.some(isItemActive);
 
         return (
           <div key={group.label ?? `root-${groupIndex}`}>
@@ -46,7 +76,7 @@ export function NavigationList({
             ) : null}
             <ul className="space-y-1">
               {group.items.map((item) => {
-                const active = isNavigationItemActive(pathname, item);
+                const active = isItemActive(item);
 
                 return (
                   <li key={item.href}>

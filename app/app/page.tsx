@@ -120,6 +120,13 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
     await listActorHospitalWorkspaces(actor),
   );
 
+  if (
+    projection.availableWorkspaces.length === 1 &&
+    projection.availableWorkspaces[0] === "personal"
+  ) {
+    redirect("/app/personal");
+  }
+
   return (
     <div className="max-w-4xl">
       <PageHeader
@@ -185,15 +192,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
             <HospitalWorkspaceSection key={workspace.hospitalId} workspace={workspace} />
           ))}
 
-          {projection.patientOnly ? (
-            <Alert variant="info">
-              <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานแล้ว</p>
-              <p className="mt-1">ขณะนี้ยังไม่มีรายการงานสำหรับผู้ป่วยในหน้านี้</p>
-            </Alert>
-          ) : null}
-
-          {!projection.patientOnly &&
-          projection.governanceActions.length === 0 &&
+          {projection.governanceActions.length === 0 &&
           !projection.assignedPatientsAction &&
           projection.hospitals.length === 0 ? (
             <Alert variant="neutral">

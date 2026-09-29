@@ -22,6 +22,7 @@ import {
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
 
+import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
 
 function canManageWorkforce(actor: ActorContext): boolean {
@@ -70,16 +71,62 @@ function canReadAssignedPatients(actor: ActorContext): boolean {
 export function projectApplicationNavigation(
   actor: ActorContext,
 ): readonly ApplicationNavigationGroup[] {
-  const groups: ApplicationNavigationGroup[] = [
-    {
+  const availableWorkspaces = getAvailableApplicationWorkspaces(actor);
+  const hasPersonalWorkspace = availableWorkspaces.includes("personal");
+  const hasWorkWorkspace = availableWorkspaces.includes("work");
+  const groups: ApplicationNavigationGroup[] = [];
+
+  if (availableWorkspaces.length > 1) {
+    groups.push({
+      label: "พื้นที่ใช้งาน",
+      workspace: "all",
+      items: [
+        {
+          href: "/app/personal",
+          label: "ส่วนตัว",
+          match: "prefix",
+          workspaceContext: "personal",
+        },
+        {
+          href: "/app",
+          label: "งาน",
+          match: "exact",
+          workspaceContext: "work",
+        },
+      ],
+    });
+  }
+
+  if (hasPersonalWorkspace) {
+    groups.push({
+      label: "ส่วนตัว",
+      workspace: "personal",
+      items: [
+        ...(!hasWorkWorkspace
+          ? [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" as const }]
+          : []),
+        { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
+      ],
+    });
+  }
+
+  if (hasWorkWorkspace) {
+    groups.push({
+      label: null,
+      workspace: "work",
+      items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }],
+    });
+  } else if (!hasPersonalWorkspace) {
+    groups.push({
       label: null,
       items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }],
-    },
-  ];
+    });
+  }
 
   if (canManageWorkforce(actor)) {
     groups.push({
       label: "บุคลากร",
+      workspace: "work",
       items: [{ href: "/app/workforce", label: "จัดการบุคลากร", match: "prefix" }],
     });
   }
@@ -119,7 +166,7 @@ export function projectApplicationNavigation(
   }
 
   if (patientItems.length > 0) {
-    groups.push({ label: "ผู้ป่วย", items: patientItems });
+    groups.push({ label: "ผู้ป่วย", items: patientItems, workspace: "work" });
   }
 
   const canReviewOnboarding = decideHospitalOnboardingPolicy({
@@ -153,6 +200,7 @@ export function projectApplicationNavigation(
     groups.push({
       label: "ผู้ดูแลระบบ",
       items: adminItems,
+      workspace: "work",
     });
   }
 

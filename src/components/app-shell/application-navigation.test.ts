@@ -132,7 +132,59 @@ describe("application navigation projection", () => {
 
     expect(navigation).toHaveLength(1);
     expect(navigation.every((group) => group.items.length > 0)).toBe(true);
-    expect(navigation[0].items[0].label).toBe("หน้าหลัก");
+    expect(navigation[0].workspace).toBe("personal");
+    expect(navigation[0].items.map(({ href }) => href)).toEqual([
+      "/app/personal",
+      "/app/personal/profile",
+    ]);
+  });
+
+  it.each([
+    ["OSM", [Role.OSM]],
+    ["Hospital", [Role.HOSPITAL]],
+  ] as const)("keeps %s in the Work context", (_label, roles) => {
+    const navigation = projectApplicationNavigation(actor({ roles }));
+
+    expect(navigation[0].workspace).toBe("work");
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).toContain("/app");
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
+      "/app/personal",
+    );
+  });
+
+  it.each([
+    ["OSM and Patient", [Role.OSM, Role.PATIENT]],
+    ["Hospital and Patient", [Role.HOSPITAL, Role.PATIENT]],
+  ] as const)("projects Personal and Work navigation for %s", (_label, roles) => {
+    const navigation = projectApplicationNavigation(actor({ roles }));
+    const workspaceItems = navigation
+      .filter(({ workspace }) => workspace === "all")
+      .flatMap(({ items }) => items);
+
+    expect(workspaceItems.map(({ href }) => href)).toEqual(["/app/personal", "/app"]);
+    expect(navigation.some(({ workspace }) => workspace === "personal")).toBe(true);
+    expect(navigation.some(({ workspace }) => workspace === "work")).toBe(true);
+  });
+
+  it("does not project Personal navigation from an OSM or Hospital role alone", () => {
+    const navigation = projectApplicationNavigation(
+      actor({
+        roles: [Role.HOSPITAL, Role.OSM],
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.MEMBER,
+            profession: Profession.NURSE,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }),
+    );
+
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
+      "/app/personal",
+    );
   });
 });
 

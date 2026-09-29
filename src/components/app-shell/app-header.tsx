@@ -14,10 +14,10 @@ export function AppHeader({ navigation, roleLabels }: AppHeaderProps): React.JSX
         <MobileNavigation navigation={navigation} />
         <div className="min-w-0 lg:hidden">
           <p className="text-lg font-bold tracking-[-0.03em] text-text">DEMI</p>
-          <p className="truncate text-xs text-text-muted">พื้นที่ทำงาน</p>
+          <p className="truncate text-xs text-text-muted">พื้นที่ใช้งาน</p>
         </div>
         <div className="hidden min-w-0 lg:block">
-          <p className="text-sm font-semibold text-text">พื้นที่ทำงาน DEMI</p>
+          <p className="text-sm font-semibold text-text">ระบบงาน DEMI</p>
           <p className="truncate text-xs text-text-muted">
             {roleLabels.length > 0 ? roleLabels.join(" · ") : "ผู้ใช้งาน DEMI"}
           </p>

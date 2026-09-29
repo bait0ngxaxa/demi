@@ -117,7 +117,7 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
             <div className="flex min-h-app-header items-center justify-between border-b border-border px-5">
               <div>
                 <p className="text-xl font-bold tracking-[-0.03em] text-text">DEMI</p>
-                <p className="text-xs text-text-muted">เมนูพื้นที่ทำงาน</p>
+                <p className="text-xs text-text-muted">เมนูหลัก</p>
               </div>
               <Button
                 aria-label="ปิดเมนูหลัก"
