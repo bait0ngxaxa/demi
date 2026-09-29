@@ -572,6 +572,26 @@ semantics and `P16C-PROFILE-01` profile/contact/address persistence ownership.
 See the [Phase 16E release-gate audit](./phases/PHASE_16E_PATIENT_IMPORT_END_TO_END_RELEASE_GATE.md)
 for the full chronology and final release-governance decision.
 
+## Phase 17A Customer Flow Canonicalization and UAT Contract
+
+Phase 17A defines the next product target as a customer-testable UAT demo, not
+only the requirement-gathering demo boundary recorded in Phase 15E.3. It maps
+the customer-provided Patient, OSM, Hospital staff and Hospital Owner journeys
+against the current runtime, preserves accepted identity/authorization/security
+invariants, and classifies each capability with an ordered UAT backlog.
+Patient self-service and patient appointment access are explicitly missing in
+current runtime; existing care workflows, operator appointments and Program
+factual reporting remain available within their current scopes. No product code
+or schema was changed in Phase 17A.
+
+The authoritative contract is
+[Phase 17A Customer Flow Canonicalization and UAT Contract](./phases/PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md);
+the implementation sequence is
+[Phase 17 UAT Backlog](./phases/PHASE_17_UAT_BACKLOG.md). Use that contract for
+new customer-flow scope and priorities. The Architecture Baseline and accepted
+ADRs continue to govern security, identity, authorization and unresolved
+architecture invariants.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
