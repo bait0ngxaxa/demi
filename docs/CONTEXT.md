@@ -582,7 +582,12 @@ invariants, and classifies each capability with an ordered UAT backlog.
 Patient self-service and patient appointment access are explicitly missing in
 current runtime; existing care workflows, operator appointments and Program
 factual reporting remain available within their current scopes. No product code
-or schema was changed in Phase 17A.
+or schema was changed in Phase 17A. Patient self-service is the first product
+implementation gap; Login-page registration, Patient service requests/enrollment,
+caregiver access, and other unresolved customer semantics remain gated. A
+parallel UAT Delivery / Environment Track covers environment, safe data,
+representative accounts, deployment, smoke checks, reset/recovery, and customer
+handoff readiness.
 
 The authoritative contract is
 [Phase 17A Customer Flow Canonicalization and UAT Contract](./phases/PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md);
