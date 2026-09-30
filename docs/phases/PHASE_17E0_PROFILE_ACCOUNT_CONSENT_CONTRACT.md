@@ -14,6 +14,8 @@ This is not product approval. A database field, imported spreadsheet value, cust
 
 No profile mutation, identity correction, credential operation, preference, consent record, consent UI, schema change, or migration is delivered in Phase 17E.0.
 
+**Chronology:** Sections 4–27 preserve technical discovery, customer-flow evidence, and engineering analysis recorded before the 2026-09-30 owner workshop and before Phase 17E.1 implementation. Unresolved profile/account decision labels and profile/account recommendations in those sections are historical, not current requirements. Consent/controller questions remain pending and are summarized in §28 and §32. The owner-approved contract in §28/§28.1 is the current profile/account decision record, and the Phase 17E.1 handoff records implemented behavior. Preserve the earlier evidence as historical; where it conflicts with the approved 17E.1 contract, the approved contract controls.
+
 ## 2. Source hierarchy
 
 Phase 17E.0 inherits the canonical source/decision hierarchy defined by [Phase 17A](./PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md) and does not establish a competing hierarchy. Apply that same order:
@@ -30,13 +32,13 @@ Phase 17E.0 inherits the canonical source/decision hierarchy defined by [Phase 1
 
 ### Closure rule for the next phases
 
-For choices currently marked pending, the owner-approved answers recorded against the nine IDs in §28–29 become the product contract for 17E.1 or 17E.2. For 17E.1, PROFILE-01, PROFILE-03, and PROFILE-04 answers are complete only when their listed sub-decisions are answered for every selected field; PROFILE-02 must separately resolve any approved identity correction. A blank, “ยังไม่ทราบ”, “ตามมาตรฐาน” without naming the approved policy, or “อื่น ๆ” without the chosen meaning is still pending. Do not reopen an answered sub-decision as a new workshop question during implementation. Engineering may derive mechanical validation from the approved answer and current schema; a material scope change or conflict with an accepted architecture decision reopens the relevant stable ID.
+The owner decisions recorded in §28 and §28.1 resolve P17E-PROFILE-01..04 and P17E-ACCOUNT-01..02 for the bounded 17E.1 contract. Only P17E-CONSENT-01..03 remain pending and gate 17E.2. For those pending consent choices, a blank, “ยังไม่ทราบ”, “ตามมาตรฐาน” without naming the approved policy, or “อื่น ๆ” without the chosen meaning remains unresolved. Do not reopen an answered sub-decision as a new workshop question during implementation. Engineering may derive mechanical validation from an approved answer and the current schema; a material scope change or conflict with an accepted architecture decision reopens the relevant stable ID.
 
 This does not make an owner choice override an accepted security, identity, or data-integrity boundary. A choice that conflicts with one must first receive the required architecture decision. 17E.2 remains separately gated by its consent/controller decisions and is not approved by closing 17E.1.
 
 Relevant accepted decisions include [ADR-0001 Person and User Identity](../adr/0001-person-and-user-identity.md), [ADR-0002 Role, Capability and Scope Authorization](../adr/0002-role-capability-scope-authorization.md), [ADR-0003 Hospital-led Onboarding](../adr/0003-hospital-led-onboarding.md), [ADR-0004 Patient Provisioning and First-time Activation](../adr/0004-patient-provisioning-and-activation.md), [ADR-0005 Server-side Application Boundary](../adr/0005-server-side-application-boundary.md), [ADR-0006 Transactional Business Operations](../adr/0006-transactional-business-operations.md), [ADR-0007 Client Transport](../adr/0007-client-transport-and-mobile-ready-architecture.md), and [ADR-0008 Workforce Provisioning and Activation](../adr/0008-workforce-provisioning-and-activation.md). The [Architecture Baseline](../architecture/DEMI_ARCHITECTURE_BASELINE.md) and [Project Context](../CONTEXT.md) remain authoritative for their accepted and unresolved statements.
 
-For recovery, use [Phase 12A](./PHASE_12A_HOSPITAL_GOVERNANCE_ACCOUNT_RECOVERY_REQUIREMENTS.md) and [Phase 12C](./PHASE_12C_OWNER_GOVERNANCE_ACCOUNT_RECOVERY_CONTRACT.md). They keep first-time activation separate from active-account recovery and leave recovery proof, delivery, provider, and session consequences unresolved.
+For broader governance recovery questions, use [Phase 12A](./PHASE_12A_HOSPITAL_GOVERNANCE_ACCOUNT_RECOVERY_REQUIREMENTS.md) and [Phase 12C](./PHASE_12C_OWNER_GOVERNANCE_ACCOUNT_RECOVERY_CONTRACT.md); questions outside this Patient UAT contract remain open. The 2026-09-30 P17E-ACCOUNT-01/02 decisions resolve the bounded active-Patient recovery proof, delivery, provider, and session contract recorded in §28.1 and implemented in 17E.1. First-time activation remains separate from active-account recovery.
 
 ## 3. Evidence labels
 
@@ -49,6 +51,8 @@ For recovery, use [Phase 12A](./PHASE_12A_HOSPITAL_GOVERNANCE_ACCOUNT_RECOVERY_R
 No legal basis or legal interpretation is decided by this document.
 
 ## 4. Current runtime and schema facts
+
+**Historical evidence note:** This section records the runtime/schema discovery made for Phase 17E.0 before the 2026-09-30 owner decisions and before Phase 17E.1 implementation. It is a point-in-time record, not a claim about the final 17E.1 runtime. The approved product decisions are in §28.1; the implementation is recorded in the [Phase 17E.1 handoff](./PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md). Accepted architecture and security constraints remain applicable.
 
 ### 4.1 Person, User, PatientProfile, and Hospital relationship
 
@@ -83,9 +87,11 @@ Phase 17A records ACCOUNT-01 as a broad profile/account/settings requirement and
 
 Phase 17A records ACCOUNT-02 as Terms/privacy/health/marketing consent. It asks for purpose, document/version, affirmative evidence, actor, time, scope, withdrawal, re-consent, and effect. It does not identify a legal controller, legal basis, approved policy text, or document version.
 
+These statements describe the Phase 17A requirement state before the 2026-09-30 owner decisions. P17E-PROFILE-01..04 and P17E-ACCOUNT-01..02 subsequently approved the bounded profile/password/recovery UAT scope in §28.1. Phase 17 backlog ACCOUNT-02 remains the consent capability and is still requirement-gated; it is distinct from decision ID P17E-ACCOUNT-02.
+
 Phase 17B delivered the Patient Home and a read-only “ข้อมูลของฉัน” page. The page contains name, family name, phone, address, and Hospital relationship facts. It did not approve those fields for editing. Phase 17C added factual own-care and appointment reads. Phase 17D.0/17D.1 resolved and implemented appointment interactions, while P17D-NOTIF-01 remains open and notifications remain absent.
 
-These customer phrases establish a need to clarify desired behavior. They do not approve any specific profile mutation, password operation, preference, or consent flow.
+Those customer phrases alone did not approve a specific profile mutation, password operation, preference, or consent flow. The later 2026-09-30 owner decisions approved the bounded profile, password-change, and assisted-recovery flows in §28.1; preferences remain out of scope and consent remains pending.
 
 ## 6. Person, account, profile, and relationship ownership map
 
@@ -114,7 +120,9 @@ The projection excludes dateOfBirth, gender, emergency contact, occupation, educ
 
 ## 8. PAT-04 field-by-field matrix
 
-“Canonical persistence owner” below describes the current database location. “Business owner” means who is accountable for correctness and still requires owner decision. Current PatientProfile values are visible in the authorized Patient Detail projection; none are included in the current Personal profile projection except phone and address.
+“Canonical persistence owner” below describes the database location at the pre-17E.1 discovery snapshot. “Business owner” means who was accountable for correctness and still required owner decision at that time. The then-current Patient Detail projection showed PatientProfile values; the Personal profile projection included phone and address. The approved 17E.1 read behavior is described in its implementation handoff.
+
+**Before-owner-decision snapshot:** Candidate editability, unresolved labels, global-scope descriptions, and engineering recommendations in this matrix reflect the pre-workshop discovery state. They are preserved as historical analysis and are superseded for the approved 17E.1 general fields by §28.1: those fields are Hospital-local, Patient SELF-editable, and identity-sensitive fields remain blocked.
 
 | Field | Canonical persistence owner and current readers/writers | Candidate Patient / Hospital authority | Sensitivity, verification, correction, and history recommendation | Downstream, scope, and privacy |
 | --- | --- | --- | --- | --- |
@@ -129,7 +137,7 @@ The projection excludes dateOfBirth, gender, emergency contact, occupation, educ
 | PatientProfile.occupation | PatientProfile-wide. Read in authorized Patient Detail; omitted from Patient Personal. No current application writer was found. | Patient edit is a possible low-risk candidate only after owner confirms purpose and audience. Hospital editing remains unsupported today. | Personal information; no identity proof is implied. If changed, a correction can use the same edit semantics unless a downstream consumer requires review. Recommend B metadata-only audit if an edit is implemented; no full old/new history is justified by current evidence. | Shared across Hospital relationships. No specific current downstream rule was found. Avoid using it for eligibility or clinical inference without a separate contract. |
 | PatientProfile.educationLevel | PatientProfile-wide. Read in authorized Patient Detail; omitted from Patient Personal. No current application writer was found. | Patient edit is a possible candidate only after owner confirms meaning, allowed values, and purpose. Hospital editing remains unsupported today. | Personal information; no identity proof is implied. Recommend B metadata-only audit if editable; no immutable value history absent an identified downstream or compliance need. | Shared across Hospital relationships. No current derived behavior was found. Keep disclosure purpose-bound and do not infer clinical status from it. |
 
-Across all rows, there is no present Hospital profile edit capability. A Patient edit candidate is not approved until the matching owner decision is recorded. The free-text storage format does not settle value vocabulary, validation, verification, or who may correct it.
+At the time of this pre-decision matrix, there was no Hospital profile edit capability and Patient edit candidates were not approved. The 2026-09-30 owner decisions now approve only the general fields and authority listed in §28.1. The free-text storage format still does not settle identity correction or consent requirements.
 
 ### Whether a field should ever be Hospital-specific
 
@@ -319,9 +327,9 @@ For each item, decide whether a new document version requires fresh affirmative 
 
 A Patient may have relationships with multiple Hospitals while keeping one Person and User.
 
-- Person identity and current PatientProfile fields are global across those relationships under the current schema.
+- At the time of Phase 17E.0 discovery, Person identity and PatientProfile fields were stored globally across those relationships. P17E-PROFILE-03 later approved Hospital-local values for the seven general fields through the relationship-scoped profile; legacy shared values remain fallback until that Hospital profile is materialized.
 - PatientHospitalRelationship and HN are Hospital-local.
-- A profile edit to the current PatientProfile affects the value read in every authorized Hospital relationship.
+- Before 17E.1, a write to a shared PatientProfile field would affect its value across Hospital relationships. Patient SELF now writes only the exact relationship-scoped profile for the seven approved general fields and never mutates the shared PatientProfile row.
 - DEMI platform terms/privacy and each Hospital’s controller notices or purposes may have different owners and versions; no current source resolves controller roles.
 - Health-data disclosure/processing permissions may need separate records per Hospital/controller and purpose. A global boolean must not silently authorize every Hospital.
 - Marketing consent belongs to a named controller and purpose; one Hospital’s withdrawal must not silently alter another controller’s record.
@@ -333,33 +341,35 @@ One Person and one User remain shared when that human is PATIENT + OSM, PATIENT 
 
 A setting belongs to its actual owner: User/account, Person identity, PatientProfile, HospitalMembership, OsmHospitalRelationship, or PatientHospitalRelationship. Selecting Personal or Work changes presentation only and never changes ownership or authority. Any Patient self-edit must use the PATIENT self path even when the same User has a Work role; any Work mutation must independently pass its existing scope policy.
 
-Changing a Person-wide name affects every role view. Changing a PatientProfile field affects the same Patient profile in every Hospital relationship. Account, identity, Patient profile, and Hospital membership changes must not cascade into one another unless a separate approved rule requires it.
+Changing a Person-wide name affects every role view. Legacy shared PatientProfile fields remain Patient-wide; the seven general fields approved in P17E-PROFILE-03 use relationship-scoped values in 17E.1, with the shared values serving as fallback until a local row exists. Account, identity, Patient profile, and Hospital membership changes must not cascade into one another unless a separate approved rule requires it.
 
 ## 26. Authorization, privacy, and audit requirements
 
-Future profile mutation requires server-side authentication, validated input, same User-to-Person ownership, persisted PATIENT role, own PatientProfile, and an explicit field-level allowlist/action policy. Do not trust relationshipId, personId, profileId, client-supplied role, or Personal/Work state. No generic patient:update capability may authorize every PatientProfile field.
+P17E-PROFILE-01..04 now resolve the bounded profile mutation contract: an authenticated active User with persisted PATIENT role may update only the approved general fields for their own exact PatientHospitalRelationship, after the server re-resolves same-Person and Patient ownership. The application service enforces an explicit field allowlist. Do not trust relationshipId, personId, profileId, client-supplied role, or Personal/Work state. No generic patient:update capability may authorize arbitrary PatientProfile fields.
 
-Before approval, define actor and target for every field: Patient, direct Hospital staff, assigned OSM, identity reviewer, or no editor. A relationship-scoped read does not grant a Person-wide write. If Hospital staff can change a global PatientProfile field, the owner must approve cross-Hospital consequences and stale-write arbitration.
+For the approved general fields, Patient SELF is the only editor; Hospital staff and OSM retain authorized reads only, and Platform ADMIN receives no routine mutation authority. Identity-sensitive correction remains outside 17E.1. A relationship-scoped read does not grant a Person-wide write.
 
-For any later audit event, prefer field key, actor, bounded target profile/resource ID, operation, timestamp, and verification-state transition. Do not copy full address, phone number, emergency-contact data, National ID, identity hash, or health details into generic audit metadata. If old/new PII must be retained, use an explicitly approved domain history record with access and retention controls.
+For security/account-security audit events required by a separately approved contract, prefer field key, actor, bounded target profile/resource ID, operation, timestamp, and verification-state transition. Do not copy full address, phone number, emergency-contact data, National ID, identity hash, or health details into generic audit metadata. P17E-PROFILE-04 does not require a profile-change event or old/new profile values; any future profile history would need its own explicit approval and access/retention controls.
 
-## 27. Engineering recommendation — not yet product-approved
+## 27. Engineering recommendation — BEFORE OWNER DECISION (historical)
 
-- Limit a first Patient self-edit slice to fields owners confirm are genuinely Patient-maintained. Phone, current contact address, occupation, or education may be evaluated; none is approved by this recommendation.
-- Treat names, date of birth, and National-ID binding as identity/correction concerns. Do not add unrestricted edit controls; National-ID mutation remains outside this phase.
-- Resolve whether PatientProfile is intentionally global across Hospitals before changing it. Do not make a global field Hospital-local implicitly.
-- Keep Patient profile phone separate from authentication, account recovery, notification destination, verification, and emergency-contact phone.
-- Keep emergency contact separate from caregiver authority and define third-party disclosure.
-- If both Patient and Hospital may edit a field, require a source-of-truth, stale-write, correction, and verification-invalidation contract before implementation.
-- If history is required, start with bounded audit metadata; use pending verified correction for identity-sensitive fields. Do not introduce generic event sourcing or broad immutable histories without evidence.
-- Keep account recovery outside 17E.1 unless it receives its own approved security contract. Current evidence does not require either password change or recovery for UAT.
-- Wait for NOTIF-01 before notification preferences or delivery. Keep browser-local UI state separate from account persistence.
-- Keep purpose/version-based consent work separate from profile editing. Do not begin 17E.2 until the controller/legal/product inputs are approved.
-- Keep 17E.1 small: implement only the specifically approved Patient profile fields and their required correction/audit behavior.
+The following recommendations reflect the state before the 2026-09-30 owner workshop. They are retained as chronology, not as current requirements. The current approved interpretation is recorded in §28.1 and implemented in the Phase 17E.1 handoff.
+
+- Before the decision, limit Patient self-edit to fields owners confirm are Patient-maintained; phone, current contact address, occupation, education, and other fields were only candidates. The owner has since approved the seven bounded general fields listed in §28.1.
+- Before the decision, names, date of birth, and National-ID binding were identified as identity/correction concerns. This remains current: those values are not Patient-editable, no correction flow is in 17E.1, and National-ID mutation is forbidden.
+- Before the decision, global versus Hospital-local ownership was unresolved. P17E-PROFILE-03 has since approved Hospital-local values for the seven general fields, exact relationship authority, and legacy shared-profile fallback.
+- The recommendation to keep profile phone separate from authentication, account recovery, notification destination, verification, and emergency-contact phone remains current. Profile phone is not a verified recovery destination.
+- The recommendation to keep emergency contact separate from caregiver authority remains current; it is contact information only and grants no caregiver, proxy, consent, or Patient access authority.
+- A Patient/Hospital dual-editor contract was considered before the decision. P17E-PROFILE-04 now selects Patient SELF as the only editor for these fields; Hospital staff and OSM have reads only, and stale writes conflict.
+- Before the decision, the recommendation was to avoid broad immutable profile history. The owner has since approved current-value-only storage with no old/new history, correction workflow, or generic profile-change audit. Identity correction remains separate.
+- Before the decision, password change and recovery were requirement-gated and were candidates to keep outside 17E.1. P17E-ACCOUNT-01/02 subsequently approved authenticated password change and assisted active-Patient recovery for the bounded UAT scope, and Phase 17E.1 implements both.
+- The recommendation to wait for NOTIF-01 before notification preferences/delivery remains current. Browser-local UI state remains separate from account persistence.
+- Purpose/version-based consent remains separate from profile editing. P17E-CONSENT-01..03 are still pending; do not begin 17E.2 until the controller/legal/product inputs are approved.
+- The recommendation to keep 17E.1 bounded remains current: implement only the approved general fields and account-security flows. Identity correction, preferences, and consent remain out of scope.
 
 ## 28. Owner decision register
 
-Every item below is **DECISION PENDING**. Record the decision maker, selected option, date, rationale, and supporting customer or legal evidence before changing status. The engineering recommendation above is not approval.
+The decision register below records the current status. P17E-PROFILE-01..04 and P17E-ACCOUNT-01..02 are **OWNER-APPROVED / RESOLVED — 2026-09-30**. P17E-CONSENT-01..03 remain **DECISION PENDING** and require the relevant owner/controller/legal evidence before approval.
 
 | ID | Business decision | Decision needed | Phase gate |
 | --- | --- | --- | --- |

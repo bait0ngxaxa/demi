@@ -1,6 +1,6 @@
 # Phase 17E.1 — Hospital-Scoped Patient Profile & Account Security
 
-สถานะ: **IMPLEMENTED / VERIFIED — 2026-09-30** for the owner-approved Phase 17E.1 contract. Phase 17E.2 consent is not implemented.
+สถานะ: **CLOSED / VERIFIED — 2026-09-30** for the owner-approved Phase 17E.1 contract. Phase 17E.2 consent is not implemented.
 
 Baseline: `4b86d9bba61b7d749684c6c67e8f4b386b0bf3ad` (`docs(phase-17e): align source and retention gates`). Phases 17B, 17C, 17D.0, and 17D.1 remain closed.
 
@@ -66,6 +66,8 @@ Provider work occurs outside PostgreSQL transactions. Completion is recorded onl
 
 `AccountRecoveryDeliveryAdapter` separates capability issuance from transport. The only registered/current channel is `ASSISTED`: the exact authorized Hospital Owner receives a one-time handoff URL to present/send to the identity-verified Patient outside DEMI delivery. No EMAIL, SMS, or LINE adapter, preference, notification infrastructure, or usable UI option is implemented. Future channels must add an independent verified-destination contract. Profile/legacy phone and provider internal email alias are not trusted destinations.
 
+The current ASSISTED UAT handoff intentionally trusts the verified Hospital Owner/operator to deliver the bearer recovery capability to the intended Patient. After issuance, DEMI cannot cryptographically distinguish whether the operator or the Patient opens that bearer link. ASSISTED is accepted only for this bounded UAT contract. Future EMAIL/SMS/LINE delivery must establish a verified destination/control contract; automated direct-to-user delivery may reduce operator trust in a future phase. This trust boundary does not permit using an unverified PatientProfile phone or email as a recovery destination.
+
 The link carries the token in the URL fragment so it is not sent in the initial HTTP request. The public claimant removes the fragment from browser history after reading it, checks availability, and lets the Patient enter/confirm a new password. Operator UI never displays password, provider alias, `authSubject`, token digest, or raw National ID after the request; the ID field is masked.
 
 ## Supabase provider behavior and session limit
@@ -84,15 +86,17 @@ Verified official provider references (checked against the current docs and inst
 
 - Thai-first Personal Hospital-local profile detail/edit, authenticated password change, Hospital Owner assisted recovery, and public Patient recovery forms were added using existing panels, tokens, and responsive patterns. Long names/text wrap; controls are full-width on narrow screens and have visible pending/success/error states. The Personal relationship overview links each Hospital separately and labels the local scope.
 - Impeccable static UI detector: no findings on the new/changed profile, password, recovery, relationship-list, and Patient Detail components.
+- Login recovery guidance is a Thai text-only instruction below the login form, uses the existing responsive typography/color tokens, and has no self-service control or `/recover` link. Its focused presentation test and Impeccable detector passed; a separate mobile browser capture was not taken for this copy-only change.
 - Browser at 390 × 844: public `/recover` invalid/unavailable-link state displayed Thai copy without clipping; document and body widths were both 390 px (no horizontal overflow). The browser had no authenticated UAT Patient/Owner actor, so dynamic 390 px Personal editor, password action, and Owner issuance were not submitted in-browser. Their component presentation tests and real-PostgreSQL service integration tests were used instead; no real credential or Patient identity was entered into the browser.
-- Focused profile/account unit and presentation tests: 15 files, 115 tests passed before the final authenticated-password provider hardening; afterward its focused provider/service tests passed again (2 files, 10 tests).
-- PostgreSQL integration suite: 24 files, 208 tests passed, including exact Hospital A/B fallback/materialization/clear/isolation, Work and assigned OSM reads, concurrent optimistic update, assisted reissue/token hash/15-minute expiry/claim/completion/domain isolation. The local guarded `demi_test` database applied the additive migration.
-- Typecheck: `npm run typecheck` passed.
-- Lint: `npm run lint` passed.
-- Normal Vitest suite: `npm run test` passed once (158 files, 1,145 tests) before the final localized authenticated-password provider hardening. The full suite was not repeated; the affected provider/service tests, typecheck, and lint passed afterward.
+- Focused profile/account unit and presentation tests: 15 files, 115 tests passed during implementation. After the final authenticated-password provider hardening, targeted provider/service tests passed (2 files, 10 tests). The closeout Login presentation test passed (1 file, 1 test).
+- Normal Vitest suite: `npm run test` passed on the final production code state, including the authenticated-password provider hardening and Login guidance, with **159 files and 1,147 tests passed**. It was run once for closeout.
+- Typecheck: `npm run typecheck` passed on the closeout code state.
+- Lint: `npm run lint` passed on the closeout code state.
+- Diff whitespace: `git diff --check` passed after the closeout documentation update.
+- PostgreSQL integration result was reused: 24 files, 208 tests passed during Phase 17E.1 implementation, including exact Hospital A/B fallback/materialization/clear/isolation, Work and assigned OSM reads, concurrent optimistic update, assisted reissue/token hash/15-minute expiry/claim/completion/domain isolation. This patch changes only Login presentation/test and documentation; it does not change the integration implementation path or schema/migration.
 - Prisma validation/client generation: passed.
 - Final source-level privacy/security review confirmed no Patient SELF writes to shared `PatientProfile`, no sensitive values in generic profile audit, no raw National ID/password/recovery token/token hash/provider alias/authSubject in browser output or application logs/audit metadata, no Hospital MEMBER/OSM/ADMIN recovery bypass, no unverified contact-channel use, and no consent model or feature. The review's initial concern that `current_password` enforcement depends on provider settings was removed from the final implementation by independent server-side password sign-in plus provider-subject matching; the final provider boundary tests pass.
-- Production build and deployment were not run; no Vercel deployment status was available in the local repository/session.
+- Vercel check: no Vercel CLI or linked `.vercel/project.json` is available in this workspace, so deployment status could not be queried. Production build and deployment were not run.
 
 ## Remaining gates
 

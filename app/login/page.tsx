@@ -60,6 +60,10 @@ export default async function LoginPage() {
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} />
 
+          <p className="mt-4 text-sm leading-6 text-muted">
+            ลืมรหัสผ่าน? โปรดติดต่อโรงพยาบาลที่ดูแล โรงพยาบาลจะตรวจสอบตัวตนก่อนออกลิงก์กู้คืนบัญชีให้คุณ
+          </p>
+
           <p className="mt-7 text-center text-sm leading-6 text-muted">
             ต้องการลงทะเบียนโรงพยาบาล?{" "}
             <Link
