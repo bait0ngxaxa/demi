@@ -9,6 +9,10 @@ import {
   APPOINTMENT_TYPE_LABELS,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
+import {
+  APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_INTERACTION_SOURCE_LABELS,
+} from "@/modules/appointments/domain/appointment-interaction-definitions";
 import type {
   AppointmentHistory,
   AppointmentHistoryItem,
@@ -70,6 +74,19 @@ function AppointmentHistoryRow({
             <p className="mt-1 text-sm leading-6 text-text-muted">
               ผู้รับผิดชอบ: {item.responsibleDisplayName ?? "ยังไม่ระบุ"}
             </p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+            </p>
+            {item.currentAcknowledgement ? (
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                รับทราบนัดหมายแล้วโดย {item.currentAcknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[item.currentAcknowledgement.source]}
+              </p>
+            ) : null}
+            {item.cancellationRequests[0] ? (
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[item.cancellationRequests[0].status]}
+              </p>
+            ) : null}
           </div>
           <StatusBadge variant={statusVariant(item.status)}>
             {APPOINTMENT_STATUS_LABELS[item.status]}
@@ -99,7 +116,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
     <div>
       <PageHeader
         actions={
-          history.canManage ? (
+          history.canCreate ? (
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}
@@ -159,7 +176,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 สร้างรายการแรกเพื่อบันทึกกำหนดการดูแลผู้ป่วย
               </p>
-              {history.canManage ? (
+              {history.canCreate ? (
                 <Link
                   className="mt-5 inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                   href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}

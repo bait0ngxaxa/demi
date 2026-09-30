@@ -1,6 +1,8 @@
 import "server-only";
 
 import {
+  AppointmentCancellationRequestStatus,
+  AppointmentInteractionSource,
   Prisma,
   type AppointmentLocationType,
   type AppointmentStatus,
@@ -183,6 +185,18 @@ export type PatientSelfAppointmentItem = {
   locationType: AppointmentLocationType | null;
   locationDetail: string | null;
   status: AppointmentStatus;
+  updatedAt: Date;
+  responsibleDisplayName: string | null;
+  osmAtCreationDisplayName: string | null;
+  acknowledgement: {
+    source: AppointmentInteractionSource;
+    acknowledgedAt: Date;
+  } | null;
+  cancellationRequests: Array<{
+    source: AppointmentInteractionSource;
+    status: AppointmentCancellationRequestStatus;
+    submittedAt: Date;
+  }>;
 };
 
 export type PatientSelfAppointmentHistory = {
@@ -331,6 +345,33 @@ const appointmentPatientSelect = {
   locationType: true,
   locationDetail: true,
   status: true,
+  updatedAt: true,
+  responsibleUser: {
+    select: { person: { select: { givenName: true, familyName: true } } },
+  },
+  osmAssignmentAtCreation: {
+    select: {
+      osmUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  acknowledgements: {
+    orderBy: [{ sourceAppointmentUpdatedAt: "desc" }, { id: "desc" }],
+    take: 1,
+    select: {
+      sourceAppointmentUpdatedAt: true,
+      source: true,
+      acknowledgedAt: true,
+    },
+  },
+  cancellationRequests: {
+    orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      source: true,
+      status: true,
+      submittedAt: true,
+    },
+  },
 } satisfies Prisma.PatientAppointmentSelect;
 
 type GoalPlanHistoryRecord = Prisma.PatientGoalPlanGetPayload<{
@@ -430,6 +471,10 @@ function toFollowupHistoryItem(record: FollowupHistoryRecord): PatientSelfFollow
 }
 
 function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentItem {
+  const acknowledgement = record.acknowledgements.find(
+    (item) => item.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+  );
+
   return {
     appointmentId: record.id,
     type: record.type,
@@ -438,7 +483,33 @@ function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentIte
     locationType: record.locationType,
     locationDetail: record.locationDetail,
     status: record.status,
+    updatedAt: record.updatedAt,
+    responsibleDisplayName: record.responsibleUser
+      ? patientAppointmentDisplayName(record.responsibleUser.person)
+      : null,
+    osmAtCreationDisplayName: record.osmAssignmentAtCreation
+      ? patientAppointmentDisplayName(record.osmAssignmentAtCreation.osmUser.person)
+      : null,
+    acknowledgement: acknowledgement
+      ? { source: acknowledgement.source, acknowledgedAt: acknowledgement.acknowledgedAt }
+      : null,
+    cancellationRequests: record.cancellationRequests.map((request) => ({
+      source: request.source,
+      status: request.status,
+      submittedAt: request.submittedAt,
+    })),
   };
+}
+
+function patientAppointmentDisplayName(person: {
+  givenName: string | null;
+  familyName: string | null;
+}): string {
+  const nameParts = [person.givenName, person.familyName]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return nameParts.join(" ") || "ไม่ระบุชื่อ";
 }
 
 function toMeasurements(record: {

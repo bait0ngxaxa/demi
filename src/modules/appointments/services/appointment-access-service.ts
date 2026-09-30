@@ -17,7 +17,8 @@ import type {
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
-  assertAppointmentPolicy,
+  appointmentPolicyInternals,
+  decideAppointmentPolicy,
   type AppointmentCapability,
   type AppointmentPolicyTarget,
 } from "../policies/appointment-policy";
@@ -44,6 +45,7 @@ export const appointmentRelationshipAccessSelect = {
           familyName: true,
           user: {
             select: {
+              id: true,
               roles: { select: { role: true } },
             },
           },
@@ -55,7 +57,7 @@ export const appointmentRelationshipAccessSelect = {
     where: { endedAt: null },
     orderBy: { createdAt: "desc" },
     take: 1,
-    select: { osmUserId: true },
+    select: { id: true, osmUserId: true },
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
 
@@ -76,6 +78,11 @@ export type AppointmentPatientSummary = {
 export type AppointmentAccessContext = {
   patient: AppointmentPatientSummary;
   target: AppointmentPolicyTarget;
+  scopes: {
+    patientSelf: boolean;
+    exactOsmAssignment: boolean;
+    directHospital: boolean;
+  };
 };
 
 function getDatabase(database?: AppointmentAccessDatabase): AppointmentAccessDatabase {
@@ -194,13 +201,19 @@ export async function resolveAppointmentAccessContext(
     hospitalId: record.hospitalId,
     hospitalStatus: record.hospital.status,
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
+    assignedOsmAssignmentId: record.osmAssignments[0]?.id ?? null,
+    patientUserId: record.patientProfile.person.user?.id ?? null,
   };
 
-  assertAppointmentPolicy({
+  const decision = decideAppointmentPolicy({
     actor: authoritativeActor,
     capability,
     target,
   });
+
+  if (!decision.allowed) {
+    throw new ForbiddenError();
+  }
 
   return {
     patient: {
@@ -213,6 +226,14 @@ export async function resolveAppointmentAccessContext(
       },
     },
     target,
+    scopes: {
+      patientSelf: authoritativeActor.roles.includes(Role.PATIENT) &&
+        authoritativeActor.userId === target.patientUserId,
+      exactOsmAssignment: authoritativeActor.roles.includes(Role.OSM) &&
+        appointmentPolicyInternals.hasExactActiveOsmAssignment(authoritativeActor, target),
+      directHospital: authoritativeActor.roles.includes(Role.HOSPITAL) &&
+        appointmentPolicyInternals.hasActiveDirectHospitalScope(authoritativeActor, target.hospitalId),
+    },
   };
 }
 

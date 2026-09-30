@@ -145,6 +145,7 @@ function createDatabase(input: {
       create: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
+    patientAppointmentCancellationRequest: { updateMany: ReturnType<typeof vi.fn> };
     hospitalMembership: { findFirst: ReturnType<typeof vi.fn> };
   };
 } {
@@ -208,6 +209,9 @@ function createDatabase(input: {
       }),
       create: vi.fn().mockResolvedValue(input.createResult ?? appointmentRecord()),
       updateMany: vi.fn().mockResolvedValue({ count: input.updateCount ?? 1 }),
+    },
+    patientAppointmentCancellationRequest: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   };
 

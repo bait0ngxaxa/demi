@@ -1,10 +1,12 @@
 # Phase 17D.0 — Appointment Interaction Contract Consolidation & Action Authority Matrix
 
-- Status: **CONTRACT CONSOLIDATED — OWNER DECISIONS PENDING**
+- Status: **CLOSED — OWNER-APPROVED DECISIONS RECORDED**
 - Baseline: **afbb1fae3ece64430c7fb8ddc6315aae4fa51b89**
 - Scope: requirement and domain-contract analysis only
 - Runtime, schema, capability, and migration changes: **none**
-- Phase 17D.1: **blocked** on the decision register in this document
+- Phase 17D.1: **approved to proceed under the recorded owner contract**
+
+The analysis and candidate options below preserve the pre-decision workshop record. They are superseded wherever they conflict with the owner-approved contract recorded below; only P17D-NOTIF-01 remains open and outside Phase 17D.1.
 
 ## 1. Objective
 
@@ -335,30 +337,79 @@ This section is engineering advice, not accepted product behavior.
 7. Add only action capabilities required by the approved matrix; keep action capability separate from SELF, EXACT_ASSIGNED_PATIENT, DIRECT_HOSPITAL, or PLATFORM scope.
 8. Choose separate response/request persistence only where approved history and workflow require it; do not create schema speculatively.
 
+## Owner-approved contract (2026-09-30)
+
+### OWNER-APPROVED BUSINESS DECISIONS
+
+- Patient response means acknowledgement that the appointment was received. It does not express attendance intent and does not change AppointmentStatus, which remains SCHEDULED, COMPLETED, CANCELLED, or NO_SHOW.
+- A Patient may acknowledge their own scheduled appointment and submit a cancellation request. They may not directly cancel, reschedule, request a reschedule, create, complete, or mark no-show.
+- Patient and OSM rescheduling is contact-the-Hospital-directly guidance. DEMI has no in-system reschedule request.
+- A cancellation request leaves the appointment scheduled until an authorized Hospital actor approves it and performs the operational cancellation. Patients cannot withdraw a request.
+- An exact, actively assigned OSM may read, coordinate, acknowledge on behalf of the Patient, request cancellation on the Patient's behalf, and create an appointment for that Patient. OSMs cannot manage, reschedule, cancel, complete, or mark no-show through OSM authority.
+- Hospital care responsibility means a doctor or nurse in an active direct membership in the exact Hospital. It is separate from the OSM caregiver.
+- Appointment-time OSM identity is captured by referencing the assignment at creation. Legacy appointments remain without a historical OSM reference; current assignment is never substituted.
+- Appointment UI may show approved names, Hospital context, and location. It does not disclose phone numbers or create a Hospital contact model. Patient projections omit creator, internal identifiers, notes, and contact data.
+- A person with both HOSPITAL and PATIENT roles may use valid Hospital Work authority on their own appointment; Personal or Work context does not grant authority. ADMIN-only access remains denied.
+- P17D-NOTIF-01 remains open. No notification delivery is approved in this phase.
+
+### ENGINEERING IMPLEMENTATION DETAIL
+
+- Persist acknowledgement as an immutable fact bound to the appointment updatedAt version, with actor/source attribution and uniqueness per appointment version. A stale submission conflicts; a retry returns the original fact.
+- Persist cancellation requests with PENDING, APPROVED, REJECTED, or SUPERSEDED lifecycle, source appointment version, submitter/source, resolver/time, and an idempotency token. A PostgreSQL partial unique index enforces one pending request per appointment.
+- Approval checks current Hospital authority and the exact source version, then operationally cancels the appointment and resolves the request in one transaction. Rejection leaves the appointment unchanged. Appointment changes supersede pending requests in that same transaction.
+- Persist OSM coordination as a bounded immutable event with a nonce and actor attribution; do not capture free text or infer acknowledgement/attendance.
+- Add only appointment:create, appointment:acknowledge, appointment:request-cancel, and appointment:record-coordination beside existing appointment:read and appointment:manage. Keep Patient SELF and exact OSM assignment scope separate from capability. Do not add a reschedule-request capability.
+- New responsible-person selections require an active same-Hospital DOCTOR/NURSE membership. Preserve historical assignments when unchanged. Snapshot the exact OSM assignment for new appointments only; do not backfill.
+- Keep Patient/work projections allowlisted, histories bounded, mutations server-authorized, auditable, and concurrency-safe. Use an additive migration and preserve a notification-provider seam without implementing delivery.
 ## 20. Decision register
 
-All decisions are **PENDING**. The 18 APT decisions below block Phase 17D.1. P17D-NOTIF-01 blocks notification implementation; it does not block 17D.1 if notification remains out of scope.
+All 18 blocking APT decisions are **OWNER-APPROVED / RESOLVED** as recorded above. P17D-NOTIF-01 remains **PENDING** and blocks notification implementation only; it does not block Phase 17D.1.
+
+### Decision-to-contract mapping
+
+Each decision-register row below maps to the corresponding topic in the owner-approved contract above and the implementation record in [Phase 17D.1](./PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md).
+
+| Decision | Owner-approved resolution recorded in the contract |
+| --- | --- |
+| P17D-APT-01 | Patient response: acknowledgement that the appointment was received only; no attendance intent. |
+| P17D-APT-02 | Patient actions and OSM proxy actions: own scheduled appointment only; source and actor are recorded; acknowledgement is version-bound and immutable. |
+| P17D-APT-03 | Patient response: acknowledgement is separate from the operational Appointment status. |
+| P17D-APT-04 | Patient response and cancellation: acknowledgement is not attendance/decline; cancellation is a separate request and does not automatically change the schedule. |
+| P17D-APT-05 | Patient cancellation: Patient may request cancellation; only an authorized Hospital actor may approve and operationally cancel it. |
+| P17D-APT-06 | Rescheduling: Patient and OSM contact the Hospital directly; DEMI has no reschedule-request workflow and neither actor may directly reschedule. |
+| P17D-APT-07 | Cancellation review: current direct Hospital Work authority reviews the request; OSM and Patient do not perform the operational cancellation. |
+| P17D-APT-08 | Cancellation request lifecycle: one pending request per appointment, with retained pending/approved/rejected/superseded history; Patient cannot withdraw it. |
+| P17D-APT-09 | OSM authority: exact active assignment permits read, coordination, proxy acknowledgement, proxy cancellation request, and appointment creation only. |
+| P17D-APT-10 | Actor/capability matrix: Patient SELF, exact assigned OSM, and direct Hospital scopes remain separate; ADMIN-only and workspace selection grant no appointment authority. |
+| P17D-APT-11 | Responsible person: Hospital-side care responsibility is an eligible active same-Hospital doctor or nurse; it is distinct from OSM caregiving. |
+| P17D-APT-12 | Display/privacy: Patient view omits creator identity and internal data; Work views use only approved names and appointment context. |
+| P17D-APT-13 | Historical OSM responsibility: reference the OSM assignment captured when the appointment was created; do not substitute the current assignment or backfill old rows. |
+| P17D-APT-14 | Hospital context: display the owning Hospital context from the appointment’s Patient-Hospital relationship. |
+| P17D-APT-15 | Hospital contact: do not add a Hospital contact model or fabricate a contact channel in this phase. |
+| P17D-APT-16 | Patient contact: do not disclose Patient, emergency, staff, or OSM phone/contact details in appointment views. |
+| P17D-APT-17 | Interaction history: retain acknowledgement, cancellation-request, coordination, attribution, and audit history with bounded read projections. |
+| P17D-APT-18 | Multi-role behavior: a HOSPITAL + PATIENT actor may use valid direct Hospital Work authority on their own appointment; Personal/Work context itself grants none. |
 
 | ID | Decision required | Why it matters / current evidence | Options to decide | Engineering recommendation | Decision owner | Blocks | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| P17D-APT-01 | What does Patient response mean? | Customer wording is ambiguous; runtime has no response state. | Acknowledge; attendance intent; confirm/decline; no formal response. | Choose one meaning and write user-facing semantics before schema/action design. | Product + Customer; Clinical/Operations if attendance meaning. | 17D.1 | PENDING |
-| P17D-APT-02 | Who may submit or revise a response, against which source states and cutoff? | Phase 17C grants exact SELF read only; no source-state or mutability rule exists. | Patient SELF only; approved representative/proxy; other. Choose SCHEDULED/other states, cutoff, and whether response is mutable. | Start with exact Patient SELF on SCHEDULED only if approved. | Product + Customer + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-03 | Is response separate from Appointment.status? | Current enum is operational and has no response state. | Separate response lifecycle; approved mapping into operational status; no state. | Keep concepts separate. | Product + Clinical/Operations + domain owner. | 17D.1 | PENDING |
-| P17D-APT-04 | What does decline mean and what does it do? | No decline state exists; decline is not a current cancel operation. | Attendance response only; triggers staff review; another explicitly defined result. | Keep decline separate from cancellation and do not change schedule automatically. | Product + Customer + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-05 | Can Patient ask to cancel or directly cancel? | Current cancel is Hospital manage only. | No Patient action; request; direct operational cancellation. Define cutoff and resulting state. | Prefer request if Patients need an in-app path and Hospital retains scheduling authority. | Product + Customer + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-06 | Can Patient reschedule directly, request, propose alternatives, or contact Hospital? | Current direct update is Hospital-only; no request model. | Direct edit; one request; multiple proposals; contact-only. | Prefer request/proposal if scheduling capacity remains Hospital-owned. | Product + Customer + Scheduler/Operations. | 17D.1 | PENDING |
-| P17D-APT-07 | Who approves/rejects each reschedule or cancellation request? | No scheduler or approver role is defined; responsibleUser semantics are open. | Direct Hospital OWNER/MEMBER; designated scheduler; another approved role. Define who may act. | Use named server-side Hospital scope and explicit appointment action authority. | Hospital Operations + Product. | 17D.1 | PENDING |
-| P17D-APT-08 | What is the request lifecycle and cardinality? | No request entity or staff queue exists. | One open request per Appointment; multiple proposals/requests; replace/withdraw; expiry/rejection rules. | Keep one open request only if owners confirm it meets workflow. | Hospital Operations + Product + Customer. | 17D.1 | PENDING |
-| P17D-APT-09 | What may an assigned OSM do beyond read? | Current exact assignment allows read only and OSM manage is denied. | Read only; record coordination; proxy request; create; direct reschedule/cancel; response; attendance/no-show. | Preserve exact-assigned read until a specific action is approved. | Hospital Operations + OSM representative + Product. | 17D.1 | PENDING |
-| P17D-APT-10 | What is the final action/capability/scope matrix for all actors? | Current two capabilities are sufficient for current behavior; new action names are candidates only. | Decide PATIENT SELF, assigned OSM exact, Hospital member/owner direct, and ADMIN-only/platform scope for every action; decide multi-role same-person behavior. | Keep action capabilities separate from scope and grant no ADMIN-only clinical authority. | Product + Security/Architecture + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-11 | What does responsibleUserId mean? | Code validates a same-Hospital active member but does not define the duty. | Scheduler; care coordinator; service-responsible person; provider; other; unused. | Define one concept or introduce a separate named field only if needed. | Product + Hospital Operations + Customer. | 17D.1 | PENDING |
-| P17D-APT-12 | Should creator identity be shown, and to whom? | Creator is stored and shown in Work detail, omitted from Patient SELF DTO. | Hospital only; Patient also; OSM; no actor; another policy. | Preserve Patient omission until disclosure is approved. | Product + Privacy + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-13 | Which OSM is associated with an old Appointment? | Assignment history is separate; current read authorization uses current active assignment. | Current OSM; OSM at creation; OSM at scheduled time; both; neither absent explicit appointment assignment. | Choose an explicit reference time and source before display. | Product + Hospital Operations + OSM representative. | 17D.1 | PENDING |
-| P17D-APT-14 | What canonical Hospital/sub-Hospital names/context may be displayed? | Relationship Hospital name/number exist; parentHospitalId is not used for authorization. | Direct Hospital only; separately labeled parent; another canonical master source. | Display only sourced context and keep it separate from scope. | Hospital Master owner + Product + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-15 | What is the Hospital contact source and disclosure? | No accepted Hospital contact model exists. | Canonical Hospital contact; explicitly designated role contact; approved external directory; no in-app contact. | Establish an owned, verified source; do not use a random member’s contact. | Hospital Operations + Product + Privacy. | 17D.1 | PENDING |
-| P17D-APT-16 | Which Patient contact fields, if any, may be disclosed? | Patient profile contact data is distinct from Appointment and audience permission. | None; Patient phone; a specific verified contact; emergency contact only with separate authority. | Minimize fields and require a defined purpose and audience. | Patient/Product owner + Privacy + Hospital Operations. | 17D.1 | PENDING |
-| P17D-APT-17 | What response/request history and retention are required? | Current schema has no response/request history; history affects schema, audit, privacy, and reporting. | Latest value only; immutable event history; bounded retention; applicable legal schedule. | Preserve accepted state changes when reversals/disputes need explanation; set retention explicitly. | Product + Privacy/Data Governance + Clinical/Operations. | 17D.1 | PENDING |
-| P17D-APT-18 | How do multi-role self and Work actions interact on the same Appointment? | SELF and direct Hospital are distinct scopes; current direct Hospital policy may independently authorize a multi-role actor. | Allow normal Hospital Work authority; prohibit own-record Work action; require another actor; other explicit rule. | Decide explicitly; do not infer from workspace. | Product + Security/Architecture + Hospital Operations. | 17D.1 | PENDING |
+| P17D-APT-01 | What does Patient response mean? | Customer wording is ambiguous; runtime has no response state. | Acknowledge; attendance intent; confirm/decline; no formal response. | Choose one meaning and write user-facing semantics before schema/action design. | Product + Customer; Clinical/Operations if attendance meaning. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-02 | Who may submit or revise a response, against which source states and cutoff? | Phase 17C grants exact SELF read only; no source-state or mutability rule exists. | Patient SELF only; approved representative/proxy; other. Choose SCHEDULED/other states, cutoff, and whether response is mutable. | Start with exact Patient SELF on SCHEDULED only if approved. | Product + Customer + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-03 | Is response separate from Appointment.status? | Current enum is operational and has no response state. | Separate response lifecycle; approved mapping into operational status; no state. | Keep concepts separate. | Product + Clinical/Operations + domain owner. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-04 | What does decline mean and what does it do? | No decline state exists; decline is not a current cancel operation. | Attendance response only; triggers staff review; another explicitly defined result. | Keep decline separate from cancellation and do not change schedule automatically. | Product + Customer + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-05 | Can Patient ask to cancel or directly cancel? | Current cancel is Hospital manage only. | No Patient action; request; direct operational cancellation. Define cutoff and resulting state. | Prefer request if Patients need an in-app path and Hospital retains scheduling authority. | Product + Customer + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-06 | Can Patient reschedule directly, request, propose alternatives, or contact Hospital? | Current direct update is Hospital-only; no request model. | Direct edit; one request; multiple proposals; contact-only. | Prefer request/proposal if scheduling capacity remains Hospital-owned. | Product + Customer + Scheduler/Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-07 | Who approves/rejects each reschedule or cancellation request? | No scheduler or approver role is defined; responsibleUser semantics are open. | Direct Hospital OWNER/MEMBER; designated scheduler; another approved role. Define who may act. | Use named server-side Hospital scope and explicit appointment action authority. | Hospital Operations + Product. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-08 | What is the request lifecycle and cardinality? | No request entity or staff queue exists. | One open request per Appointment; multiple proposals/requests; replace/withdraw; expiry/rejection rules. | Keep one open request only if owners confirm it meets workflow. | Hospital Operations + Product + Customer. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-09 | What may an assigned OSM do beyond read? | Current exact assignment allows read only and OSM manage is denied. | Read only; record coordination; proxy request; create; direct reschedule/cancel; response; attendance/no-show. | Preserve exact-assigned read until a specific action is approved. | Hospital Operations + OSM representative + Product. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-10 | What is the final action/capability/scope matrix for all actors? | Current two capabilities are sufficient for current behavior; new action names are candidates only. | Decide PATIENT SELF, assigned OSM exact, Hospital member/owner direct, and ADMIN-only/platform scope for every action; decide multi-role same-person behavior. | Keep action capabilities separate from scope and grant no ADMIN-only clinical authority. | Product + Security/Architecture + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-11 | What does responsibleUserId mean? | Code validates a same-Hospital active member but does not define the duty. | Scheduler; care coordinator; service-responsible person; provider; other; unused. | Define one concept or introduce a separate named field only if needed. | Product + Hospital Operations + Customer. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-12 | Should creator identity be shown, and to whom? | Creator is stored and shown in Work detail, omitted from Patient SELF DTO. | Hospital only; Patient also; OSM; no actor; another policy. | Preserve Patient omission until disclosure is approved. | Product + Privacy + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-13 | Which OSM is associated with an old Appointment? | Assignment history is separate; current read authorization uses current active assignment. | Current OSM; OSM at creation; OSM at scheduled time; both; neither absent explicit appointment assignment. | Choose an explicit reference time and source before display. | Product + Hospital Operations + OSM representative. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-14 | What canonical Hospital/sub-Hospital names/context may be displayed? | Relationship Hospital name/number exist; parentHospitalId is not used for authorization. | Direct Hospital only; separately labeled parent; another canonical master source. | Display only sourced context and keep it separate from scope. | Hospital Master owner + Product + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-15 | What is the Hospital contact source and disclosure? | No accepted Hospital contact model exists. | Canonical Hospital contact; explicitly designated role contact; approved external directory; no in-app contact. | Establish an owned, verified source; do not use a random member’s contact. | Hospital Operations + Product + Privacy. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-16 | Which Patient contact fields, if any, may be disclosed? | Patient profile contact data is distinct from Appointment and audience permission. | None; Patient phone; a specific verified contact; emergency contact only with separate authority. | Minimize fields and require a defined purpose and audience. | Patient/Product owner + Privacy + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-17 | What response/request history and retention are required? | Current schema has no response/request history; history affects schema, audit, privacy, and reporting. | Latest value only; immutable event history; bounded retention; applicable legal schedule. | Preserve accepted state changes when reversals/disputes need explanation; set retention explicitly. | Product + Privacy/Data Governance + Clinical/Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
+| P17D-APT-18 | How do multi-role self and Work actions interact on the same Appointment? | SELF and direct Hospital are distinct scopes; current direct Hospital policy may independently authorize a multi-role actor. | Allow normal Hospital Work authority; prohibit own-record Work action; require another actor; other explicit rule. | Decide explicitly; do not infer from workspace. | Product + Security/Architecture + Hospital Operations. | 17D.1 | OWNER-APPROVED / RESOLVED |
 | P17D-NOTIF-01 | Which approved appointment events, recipients, timing, and channels trigger notifications? | NOTIF-01 is requirement-gated; this phase creates no delivery system. | Define event/recipient/channel/time/preferences/retry later; no notifications. | Decide after event semantics; keep delivery separate from state mutation. | Product + Hospital Operations + Privacy. | Notification implementation only | PENDING |
 
 ## 21. Owner/customer workshop questions
@@ -407,28 +458,19 @@ This contract rejects the following as unsupported:
 
 ## 23. Phase 17D.1 readiness checklist
 
-Do not begin implementation until the owner-approved contract resolves all 18 blocking APT decisions and records the accepted options, decision owners, and evidence.
+The owner-approved business contract and the engineering implementation contract are recorded above. All 18 blocking APT decisions are resolved, so Phase 17D.1 is authorized to proceed. The original workshop questions and analysis above remain historical evidence of the pre-decision state.
 
-- [ ] Patient response meaning, authorized actor, eligible source states, cutoff, mutability, and idempotency are defined.
-- [ ] Response state/history is explicitly separate from or mapped to operational Appointment.status.
-- [ ] Decline, cancellation request, direct cancellation, and Hospital cancellation have distinct meanings and outcomes.
-- [ ] Patient reschedule is explicitly direct, request, proposal, contact-only, or not supported.
-- [ ] Request approver, lifecycle, cardinality, withdrawal, rejection, expiry, and stale-request handling are defined.
-- [ ] OSM action authority, exact-assignment requirement, proxy/delegation semantics, and actor attribution are approved.
-- [ ] Final action capability and scope matrix covers Patient SELF, exact OSM assignment, direct Hospital Owner/Member, ADMIN-only, and multi-role interactions.
-- [ ] responsibleUserId meaning and creator disclosure are approved.
-- [ ] Hospital/sub-Hospital display source and Hospital/Patient contact sources and disclosure are approved.
-- [ ] Current-versus-snapshot OSM behavior and its reference time are approved.
-- [ ] Response/request history, audit contents, access, and retention are defined.
-- [ ] Each approved mutation has source-state, transaction, expected-version, idempotency, conflict, and audit behavior.
-- [ ] Schema and migration are designed only for the approved lifecycle/cardinality/history; no speculative model is added.
-- [ ] Server policy and service authority are specified independently of UI/context.
-- [ ] Notification dependency is documented; if notifications are in scope, P17D-NOTIF-01 is also resolved.
-- [ ] Product, Customer, Clinical, Hospital Operations, Privacy, and Architecture owners sign off where applicable.
-- [ ] Phase 17D.1 acceptance/UAT cases cover allowed/denied actors, stale state, duplicate submission, assignment changes, terminal races, privacy, and multi-role isolation.
-
-Phase 17D.1 may implement only the signed choices. It must not treat this engineering recommendation or any candidate matrix cell as approval.
-
+- [x] Patient acknowledgement is acknowledgement only, is separate from operational status, and is version-bound.
+- [x] Patient SELF and exact assigned OSM acknowledgement/cancellation-request authority is defined.
+- [x] Cancellation request approval/rejection, one-pending cardinality, immutable history, and no-withdraw rule are defined.
+- [x] Patient and OSM reschedule behavior is contact-the-Hospital-directly; no in-system reschedule request is approved.
+- [x] Hospital review authority is active direct Hospital OWNER/MEMBER with existing appointment:manage.
+- [x] Exact OSM actions, assignment checks, proxy attribution, coordination, and appointment creation are defined without appointment:manage.
+- [x] Appointment create, read, manage, SELF, exact-assignment, Hospital, ADMIN-only, and multi-role authority are distinguished.
+- [x] Responsible Hospital person, appointment-time OSM snapshot, legacy-row behavior, and contact/privacy display are defined.
+- [x] Version conflicts, idempotency, transaction boundaries, audit events, and bounded histories are defined.
+- [x] Additive schema/migration expectations and Patient/OSM/Hospital UI requirements are defined.
+- [ ] P17D-NOTIF-01 remains open and is not part of the Phase 17D.1 delivery.
 ## 24. Exact handoff
 
-The next action is a requirement workshop with Product/Customer, Hospital scheduling operations, OSM representation, Clinical, Privacy, and Architecture as needed. Record decisions P17D-APT-01 through P17D-APT-18 in this register; resolve P17D-NOTIF-01 before any notification work. Once all 18 blocking APT decisions are accepted and the readiness checklist is complete, update the backlog and issue a scoped Phase 17D.1 implementation contract. Until then, appointment interaction remains read-only for Patient SELF and exact-assigned OSM, while current Hospital Work appointment behavior stays unchanged.
+The original requirement-workshop handoff was superseded when the owner approved the 18 APT decisions on 2026-09-30. Phase 17D.1 may now implement the accepted contract recorded above. Keep P17D-NOTIF-01 open and outside notification delivery work. See [Phase 17D.1 implementation handoff](./PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md) for runtime scope and verification evidence.

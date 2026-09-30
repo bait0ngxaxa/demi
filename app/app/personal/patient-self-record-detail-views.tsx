@@ -12,6 +12,10 @@ import {
   type AppointmentLocationValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import {
+  APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_INTERACTION_SOURCE_LABELS,
+} from "@/modules/appointments/domain/appointment-interaction-definitions";
+import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
   type FollowupProgressStatus,
 } from "@/modules/followups/domain/followup-definitions";
@@ -33,6 +37,7 @@ import {
   PatientSelfHistoryMoreLink,
   patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
+import { PatientAppointmentInteractionControls } from "./appointments/patient-appointment-interaction-controls";
 
 const linkClassName =
   "inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2";
@@ -302,6 +307,16 @@ export function PatientSelfAppointmentHistoryView({
                           {appointment.locationDetail}
                         </p>
                       ) : null}
+                      {appointment.responsibleDisplayName ? (
+                        <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                          แพทย์หรือพยาบาลผู้รับผิดชอบ: {appointment.responsibleDisplayName}
+                        </p>
+                      ) : null}
+                      {appointment.osmAtCreationDisplayName ? (
+                        <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                          OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง: {appointment.osmAtCreationDisplayName}
+                        </p>
+                      ) : null}
                     </div>
                     <StatusBadge variant={statusVariant(appointment.status as AppointmentStatusValue)}>
                       {APPOINTMENT_STATUS_LABELS[appointment.status as AppointmentStatusValue]}
@@ -310,6 +325,16 @@ export function PatientSelfAppointmentHistoryView({
                   {appointment.durationMinutes !== null ? (
                     <p className="mt-3 break-words text-sm text-text-muted">
                       ระยะเวลา {appointment.durationMinutes} นาที
+                    </p>
+                  ) : null}
+                  {appointment.acknowledgement ? (
+                    <p className="mt-2 break-words text-sm text-text-muted">
+                      รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
+                    </p>
+                  ) : null}
+                  {appointment.cancellationRequests[0] ? (
+                    <p className="mt-2 break-words text-sm text-text-muted">
+                      คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[appointment.cancellationRequests[0].status]}
                     </p>
                   ) : null}
                 </Link>
@@ -335,8 +360,10 @@ export function PatientSelfAppointmentHistoryView({
 
 export function PatientSelfAppointmentDetailView({
   detail,
+  cancellationRequestNonce,
 }: {
   detail: PatientSelfAppointmentDetail;
+  cancellationRequestNonce: string;
 }): React.JSX.Element {
   const relationshipId = detail.relationship.relationshipId;
   const historyHref = `/app/personal/appointments/${encodeURIComponent(relationshipId)}`;
@@ -402,6 +429,27 @@ export function PatientSelfAppointmentDetailView({
             ) : null}
           </dl>
         </Panel>
+        <Panel>
+          <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-sm font-semibold text-text-muted">แพทย์หรือพยาบาลผู้รับผิดชอบ</dt>
+              <dd className="mt-1 break-words font-semibold text-text">
+                {detail.responsibleDisplayName ?? "ยังไม่ระบุ"}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-sm font-semibold text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>
+              <dd className="mt-1 break-words font-semibold text-text">
+                {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+              </dd>
+            </div>
+          </dl>
+        </Panel>
+        <PatientAppointmentInteractionControls
+          appointment={detail}
+          cancellationRequestNonce={cancellationRequestNonce}
+          relationshipId={relationshipId}
+        />
       </div>
     </div>
   );

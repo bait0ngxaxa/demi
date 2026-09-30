@@ -87,6 +87,18 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum AppointmentInteractionSource {
+  PATIENT_SELF
+  OSM_PROXY
+}
+
+enum AppointmentCancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
 enum FollowupActivityProgressStatus {
   DONE
   PARTIAL
@@ -136,6 +148,10 @@ model User {
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
+  appointmentAcknowledgementsRecorded PatientAppointmentAcknowledgement[] @relation("AppointmentAcknowledgementRecordedBy")
+  appointmentCancellationRequestsSubmitted PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestSubmittedBy")
+  appointmentCancellationRequestsResolved PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestResolvedBy")
+  appointmentCoordinationEventsRecorded PatientAppointmentCoordinationEvent[] @relation("AppointmentCoordinationEventRecordedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
@@ -289,6 +305,7 @@ model PatientOsmAssignment {
   osmUser                     User                       @relation("PatientOsmAssignments", fields: [osmUserId], references: [id], onDelete: Restrict)
   assignedByUser              User                       @relation("PatientOsmAssignmentsCreated", fields: [assignedByUserId], references: [id], onDelete: Restrict)
   endedByUser                 User?                      @relation("PatientOsmAssignmentsEnded", fields: [endedByUserId], references: [id], onDelete: Restrict)
+  appointmentsAtCreation      PatientAppointment[]       @relation("AppointmentOsmAssignmentAtCreation")
 
   @@index([patientHospitalRelationshipId, createdAt])
   @@index([osmUserId, endedAt])
@@ -365,6 +382,7 @@ model PatientGoalItem {
 model PatientAppointment {
   id                            String                  @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String                  @db.Uuid
+  osmAssignmentIdAtCreation     String?                 @db.Uuid
   responsibleUserId            String?                 @db.Uuid
   createdByUserId               String                  @db.Uuid
   type                          AppointmentType
@@ -382,11 +400,65 @@ model PatientAppointment {
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   responsibleUser             User?                      @relation("PatientAppointmentResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
   createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  osmAssignmentAtCreation     PatientOsmAssignment?      @relation("AppointmentOsmAssignmentAtCreation", fields: [osmAssignmentIdAtCreation], references: [id], onDelete: Restrict)
+  acknowledgements            PatientAppointmentAcknowledgement[]
+  cancellationRequests        PatientAppointmentCancellationRequest[]
+  coordinationEvents          PatientAppointmentCoordinationEvent[]
   followups                   PatientFollowup[]
 
   @@index([patientHospitalRelationshipId, scheduledAt])
   @@index([responsibleUserId])
   @@index([status])
+}
+
+model PatientAppointmentAcknowledgement {
+  id                         String                        @id @default(uuid()) @db.Uuid
+  appointmentId              String                        @db.Uuid
+  sourceAppointmentUpdatedAt  DateTime                      @db.Timestamptz(3)
+  recordedByUserId            String                        @db.Uuid
+  source                      AppointmentInteractionSource
+  acknowledgedAt              DateTime                      @default(now()) @db.Timestamptz(3)
+
+  appointment    PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  recordedByUser User               @relation("AppointmentAcknowledgementRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, sourceAppointmentUpdatedAt])
+  @@index([recordedByUserId, acknowledgedAt])
+}
+
+model PatientAppointmentCancellationRequest {
+  id                         String                                @id @default(uuid()) @db.Uuid
+  appointmentId              String                                @db.Uuid
+  sourceAppointmentUpdatedAt  DateTime                              @db.Timestamptz(3)
+  submittedByUserId           String                                @db.Uuid
+  source                      AppointmentInteractionSource
+  submissionNonce             String                                @unique @db.Uuid
+  status                      AppointmentCancellationRequestStatus @default(PENDING)
+  submittedAt                 DateTime                              @default(now()) @db.Timestamptz(3)
+  resolvedByUserId            String?                               @db.Uuid
+  resolvedAt                  DateTime?                             @db.Timestamptz(3)
+
+  appointment     PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  submittedByUser User               @relation("AppointmentCancellationRequestSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  resolvedByUser  User?              @relation("AppointmentCancellationRequestResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([submittedByUserId, submittedAt])
+}
+
+model PatientAppointmentCoordinationEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  appointmentId    String   @db.Uuid
+  recordedByUserId String   @db.Uuid
+  submissionNonce  String   @unique @db.Uuid
+  recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  appointment    PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  recordedByUser User               @relation("AppointmentCoordinationEventRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, recordedAt, id])
+  @@index([recordedByUserId, recordedAt])
 }
 
 model PatientFollowup {

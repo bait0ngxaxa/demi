@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,6 +14,9 @@ import {
   APPOINTMENT_TYPE_LABELS,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
+import {
+  APPOINTMENT_INTERACTION_SOURCE_LABELS,
+} from "@/modules/appointments/domain/appointment-interaction-definitions";
 import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
 import {
   getAppointmentDetail,
@@ -27,6 +31,7 @@ import { getAppointmentFollowupContext } from "@/modules/appointments/presentati
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
+import { AppointmentInteractionControls } from "./appointment-interaction-controls";
 
 export const metadata: Metadata = {
   title: "รายละเอียดนัดหมาย",
@@ -166,8 +171,14 @@ function AppointmentDetailView({
               <dd className="mt-1 font-semibold text-text">{formatDate(detail.scheduledAt)}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">ผู้รับผิดชอบ</dt>
+              <dt className="text-sm text-text-muted">แพทย์หรือพยาบาลผู้รับผิดชอบ</dt>
               <dd className="mt-1 font-semibold text-text">{detail.responsibleDisplayName ?? "ยังไม่ระบุ"}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>
+              <dd className="mt-1 font-semibold text-text">
+                {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+              </dd>
             </div>
             <div>
               <dt className="text-sm text-text-muted">ระยะเวลา</dt>
@@ -202,7 +213,32 @@ function AppointmentDetailView({
               {detail.note ?? "ไม่ได้ระบุ"}
             </p>
           </div>
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold text-text">การรับทราบนัดหมาย</h3>
+            {detail.currentAcknowledgement ? (
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                รับทราบโดย {detail.currentAcknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[detail.currentAcknowledgement.source]}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีการรับทราบนัดหมายสำหรับกำหนดการนี้</p>
+            )}
+          </div>
         </Panel>
+
+        <AppointmentInteractionControls
+          acknowledgement={detail.currentAcknowledgement}
+          cancellationRequestNonce={randomUUID()}
+          cancellationRequests={detail.cancellationRequests}
+          canManage={detail.canManage}
+          canProxyPatientActions={detail.canProxyPatientActions}
+          canRecordCoordination={detail.canRecordCoordination}
+          coordinationEvents={detail.coordinationEvents}
+          coordinationSubmissionNonce={randomUUID()}
+          appointmentId={detail.appointmentId}
+          expectedUpdatedAt={detail.updatedAt.toISOString()}
+          relationshipId={relationshipId}
+          status={detail.status}
+        />
 
         {detail.canManage && detail.status === "SCHEDULED" ? (
           <Panel>

@@ -63,6 +63,44 @@ export const appointmentTransitionRequestSchema = z
   })
   .strict();
 
+export const appointmentAcknowledgementRequestSchema = z
+  .object({
+    patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+    appointmentId: appointmentIdSchema,
+    expectedUpdatedAt: appointmentScheduledAtSchema,
+  })
+  .strict();
+
+export const appointmentCancellationRequestSchema = z
+  .object({
+    patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+    appointmentId: appointmentIdSchema,
+    expectedUpdatedAt: appointmentScheduledAtSchema,
+    submissionNonce: appointmentSubmissionNonceSchema,
+  })
+  .strict();
+
+export const appointmentCoordinationRequestSchema = z
+  .object({
+    patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+    appointmentId: appointmentIdSchema,
+    submissionNonce: appointmentSubmissionNonceSchema,
+  })
+  .strict();
+
+export const appointmentCancellationReviewRequestSchema = z
+  .object({
+    patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+    appointmentId: appointmentIdSchema,
+    requestId: appointmentIdSchema,
+    decision: z.enum(["APPROVE", "REJECT"]),
+  })
+  .strict();
+
 export type AppointmentCreateRequest = z.output<typeof appointmentCreateRequestSchema>;
 export type AppointmentRescheduleRequest = z.output<typeof appointmentRescheduleRequestSchema>;
 export type AppointmentTransitionRequest = z.output<typeof appointmentTransitionRequestSchema>;
+export type AppointmentAcknowledgementRequest = z.output<typeof appointmentAcknowledgementRequestSchema>;
+export type AppointmentCancellationRequest = z.output<typeof appointmentCancellationRequestSchema>;
+export type AppointmentCoordinationRequest = z.output<typeof appointmentCoordinationRequestSchema>;
+export type AppointmentCancellationReviewRequest = z.output<typeof appointmentCancellationReviewRequestSchema>;

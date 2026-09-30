@@ -3,6 +3,7 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  Profession,
   Role,
   UserStatus,
 } from "@prisma/client";
@@ -55,6 +56,10 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     status: AppointmentStatus.SCHEDULED,
     createdAt: updatedAt,
     updatedAt,
+    osmAssignmentAtCreation: null,
+    acknowledgements: [],
+    cancellationRequests: [],
+    coordinationEvents: [],
     responsibleUser: { person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" } },
     createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "รายการ" } },
     ...overrides,
@@ -127,7 +132,7 @@ function createDatabase(options: {
         {
           userId: responsibleUserId,
           membershipType: MembershipType.MEMBER,
-          profession: null,
+          profession: Profession.DOCTOR,
           user: { person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" } },
         },
       ]),

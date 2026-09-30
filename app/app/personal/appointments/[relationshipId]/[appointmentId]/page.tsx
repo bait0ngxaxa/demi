@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { getPatientSelfAppointmentDetailPageContext } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
@@ -23,5 +24,10 @@ export default async function PatientSelfAppointmentDetailPage({
     appointmentId,
   );
 
-  return <PatientSelfAppointmentDetailView detail={detail} />;
+  return (
+    <PatientSelfAppointmentDetailView
+      cancellationRequestNonce={randomUUID()}
+      detail={detail}
+    />
+  );
 }

@@ -10,8 +10,12 @@ import { describe, expect, it } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import {
+  APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+  APPOINTMENT_CREATE_CAPABILITY,
   APPOINTMENT_MANAGE_CAPABILITY,
+  APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
   APPOINTMENT_READ_CAPABILITY,
+  APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
   decideAppointmentPolicy,
 } from "./appointment-policy";
 
@@ -24,6 +28,8 @@ function target(overrides: Partial<Parameters<typeof decideAppointmentPolicy>[0]
     hospitalId: hospitalA,
     hospitalStatus: HospitalStatus.ACTIVE,
     assignedOsmUserId: null,
+    assignedOsmAssignmentId: null,
+    patientUserId: "55555555-5555-4555-8555-555555555555",
     ...overrides,
   };
 }
@@ -128,6 +134,13 @@ describe("Appointment policy", () => {
     expect(
       decideAppointmentPolicy({
         actor: osm,
+        capability: APPOINTMENT_CREATE_CAPABILITY,
+        target: target({ assignedOsmUserId: actorUserId }),
+      }).allowed,
+    ).toBe(true);
+    expect(
+      decideAppointmentPolicy({
+        actor: osm,
         capability: APPOINTMENT_MANAGE_CAPABILITY,
         target: target({ assignedOsmUserId: actorUserId }),
       }),
@@ -156,6 +169,94 @@ describe("Appointment policy", () => {
         target: target(),
       }).allowed,
     ).toBe(false);
+  });
+
+  it("allows Patient SELF acknowledgement and cancellation requests only for the linked Patient user", () => {
+    const patientId = "55555555-5555-4555-8555-555555555555";
+    const patient = actor({ userId: patientId, roles: [Role.PATIENT], hospitalMemberships: [] });
+    const otherPatient = actor({ roles: [Role.PATIENT], hospitalMemberships: [] });
+
+    for (const capability of [APPOINTMENT_ACKNOWLEDGE_CAPABILITY, APPOINTMENT_REQUEST_CANCEL_CAPABILITY]) {
+      expect(decideAppointmentPolicy({ actor: patient, capability, target: target({ patientUserId: patientId }) }))
+        .toMatchObject({ allowed: true, reason: "patient_self_scope" });
+      expect(decideAppointmentPolicy({ actor: otherPatient, capability, target: target({ patientUserId: patientId }) }).allowed)
+        .toBe(false);
+    }
+  });
+
+  it.each([
+    "appointment:request-reschedule",
+    "appointment:reschedule",
+    "appointment:cancel",
+    "appointment:complete",
+    "appointment:no-show",
+  ])("does not add unsupported capability %s", (capability) => {
+    expect(decideAppointmentPolicy({ actor: actor(), capability, target: target() })).toMatchObject({
+      allowed: false,
+      reason: "invalid_capability",
+    });
+  });
+
+  it("allows a Hospital/Patient multi-role user to use normal direct Work authority on their own appointment", () => {
+    const patientId = "55555555-5555-4555-8555-555555555555";
+    const multiRoleActor = actor({ userId: patientId, roles: [Role.HOSPITAL, Role.PATIENT] });
+    const ownTarget = target({ patientUserId: patientId });
+
+    expect(decideAppointmentPolicy({
+      actor: multiRoleActor,
+      capability: APPOINTMENT_MANAGE_CAPABILITY,
+      target: ownTarget,
+    })).toMatchObject({ allowed: true, reason: "active_direct_hospital_scope" });
+    expect(decideAppointmentPolicy({
+      actor: multiRoleActor,
+      capability: APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+      target: ownTarget,
+    })).toMatchObject({ allowed: true, reason: "patient_self_scope" });
+  });
+
+  it("allows only exact assigned OSM to create, proxy, and record coordination", () => {
+    const osm = actor({
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [{
+        hospitalId: hospitalA,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    });
+
+    for (const capability of [
+      APPOINTMENT_CREATE_CAPABILITY,
+      APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+      APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
+      APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
+    ]) {
+      expect(decideAppointmentPolicy({
+        actor: osm,
+        capability,
+        target: target({ assignedOsmUserId: actorUserId, assignedOsmAssignmentId: "66666666-6666-4666-8666-666666666666" }),
+      })).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
+    }
+
+    expect(decideAppointmentPolicy({
+      actor: osm,
+      capability: APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
+      target: target(),
+    }).allowed).toBe(false);
+
+    for (const capability of [
+      APPOINTMENT_CREATE_CAPABILITY,
+      APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+      APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
+      APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
+    ]) {
+      expect(decideAppointmentPolicy({ actor: osm, capability, target: target() }).allowed).toBe(false);
+      expect(decideAppointmentPolicy({
+        actor: osm,
+        capability,
+        target: target({ hospitalId: hospitalB, assignedOsmUserId: actorUserId }),
+      }).allowed).toBe(false);
+    }
   });
 
   it("evaluates a multi-role ADMIN through valid direct Hospital scope", () => {

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { ZodType } from "zod";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -8,19 +9,32 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   appointmentCreateRequestSchema,
+  appointmentAcknowledgementRequestSchema,
+  appointmentCancellationRequestSchema,
+  appointmentCancellationReviewRequestSchema,
+  appointmentCoordinationRequestSchema,
   appointmentRescheduleRequestSchema,
   appointmentTransitionRequestSchema,
 } from "../schemas/appointment-schemas";
 import {
+  acknowledgeAppointmentOnBehalfOfPatient,
+  acknowledgeOwnPatientAppointment,
   cancelAppointment,
   completeAppointment,
   createAppointment,
   markAppointmentNoShow,
+  recordAppointmentCoordination,
   rescheduleAppointment,
+  requestAppointmentCancellationOnBehalfOfPatient,
+  requestOwnPatientAppointmentCancellation,
+  reviewAppointmentCancellationRequest,
   type AppointmentMutationResult,
 } from "../services/appointment-service";
 
-import type { AppointmentActionState } from "./action-state";
+import type {
+  AppointmentActionState,
+  AppointmentInteractionActionState,
+} from "./action-state";
 
 const CREATE_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
@@ -51,6 +65,31 @@ const TRANSITION_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "appointmentId",
   "expectedUpdatedAt",
+]);
+
+const ACKNOWLEDGEMENT_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "appointmentId",
+  "expectedUpdatedAt",
+]);
+
+const CANCELLATION_REQUEST_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "appointmentId",
+  "expectedUpdatedAt",
+  "submissionNonce",
+]);
+
+const COORDINATION_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "appointmentId",
+  "submissionNonce",
+]);
+
+const CANCELLATION_REVIEW_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "appointmentId",
+  "requestId",
 ]);
 
 function getSingleString(formData: FormData, field: string): string | undefined {
@@ -168,7 +207,60 @@ function buildTransitionInput(formData: FormData): unknown {
   } satisfies Record<string, unknown>;
 }
 
-function mapAppointmentError(error: unknown, operation: "create" | "reschedule" | "transition"): {
+function buildAcknowledgementInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, ACKNOWLEDGEMENT_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    appointmentId: getSingleString(formData, "appointmentId"),
+    expectedUpdatedAt: getSingleString(formData, "expectedUpdatedAt"),
+  } satisfies Record<string, unknown>;
+}
+
+function buildCancellationRequestInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, CANCELLATION_REQUEST_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    appointmentId: getSingleString(formData, "appointmentId"),
+    expectedUpdatedAt: getSingleString(formData, "expectedUpdatedAt"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+  } satisfies Record<string, unknown>;
+}
+
+function buildCoordinationInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, COORDINATION_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    appointmentId: getSingleString(formData, "appointmentId"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+  } satisfies Record<string, unknown>;
+}
+
+function buildCancellationReviewInput(
+  formData: FormData,
+  decision: "APPROVE" | "REJECT",
+): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, CANCELLATION_REVIEW_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    appointmentId: getSingleString(formData, "appointmentId"),
+    requestId: getSingleString(formData, "requestId"),
+    decision,
+  } satisfies Record<string, unknown>;
+}
+
+function mapAppointmentError(error: unknown, operation: "create" | "reschedule" | "transition" | "interaction"): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
@@ -233,6 +325,57 @@ function revalidateAppointmentPaths(relationshipId: string, appointmentId?: stri
   if (appointmentId) {
     revalidatePath(`/app/patients/${relationshipId}/appointments/${appointmentId}`);
     revalidatePath(`/app/patients/${relationshipId}/appointments/${appointmentId}/edit`);
+  }
+}
+
+function revalidatePatientAppointmentPaths(relationshipId: string, appointmentId: string): void {
+  revalidatePath("/app/personal");
+  revalidatePath("/app/personal/appointments");
+  revalidatePath(`/app/personal/appointments/${relationshipId}`);
+  revalidatePath(`/app/personal/appointments/${relationshipId}/${appointmentId}`);
+}
+
+type AppointmentInteractionSuccess = Omit<
+  Extract<AppointmentInteractionActionState, { status: "SUCCESS" }>,
+  "status"
+>;
+
+type AppointmentInteractionOperation = (
+  actor: ActorContext,
+  input: unknown,
+) => Promise<AppointmentInteractionSuccess>;
+
+async function runInteractionAction(
+  previousState: AppointmentInteractionActionState,
+  rawInput: unknown,
+  schema: ZodType<unknown>,
+  operation: AppointmentInteractionOperation,
+  audience: "self" | "work",
+): Promise<AppointmentInteractionActionState> {
+  void previousState;
+  const parsed = schema.safeParse(rawInput);
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบข้อมูลนัดหมาย แล้วลองอีกครั้ง",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await operation(actor, parsed.data);
+
+    if (audience === "self") {
+      revalidatePatientAppointmentPaths(result.patientHospitalRelationshipId, result.appointmentId);
+    } else {
+      revalidateAppointmentPaths(result.patientHospitalRelationshipId, result.appointmentId);
+    }
+
+    return { status: "SUCCESS", ...result };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapAppointmentError(error, "interaction") };
   }
 }
 
@@ -337,5 +480,148 @@ export async function markAppointmentNoShowAction(
   formData: FormData,
 ): Promise<AppointmentActionState> {
   return runTransitionAction(previousState, formData, markAppointmentNoShow);
+}
+
+export async function acknowledgeOwnPatientAppointmentAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildAcknowledgementInput(formData),
+    appointmentAcknowledgementRequestSchema,
+    async (actor, input) => {
+      const result = await acknowledgeOwnPatientAppointment(actor, input);
+      return {
+        operation: "ACKNOWLEDGED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "self",
+  );
+}
+
+export async function acknowledgeAppointmentOnBehalfOfPatientAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildAcknowledgementInput(formData),
+    appointmentAcknowledgementRequestSchema,
+    async (actor, input) => {
+      const result = await acknowledgeAppointmentOnBehalfOfPatient(actor, input);
+      return {
+        operation: "ACKNOWLEDGED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "work",
+  );
+}
+
+export async function requestOwnPatientAppointmentCancellationAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildCancellationRequestInput(formData),
+    appointmentCancellationRequestSchema,
+    async (actor, input) => {
+      const result = await requestOwnPatientAppointmentCancellation(actor, input);
+      return {
+        operation: "CANCELLATION_REQUESTED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "self",
+  );
+}
+
+export async function requestAppointmentCancellationOnBehalfOfPatientAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildCancellationRequestInput(formData),
+    appointmentCancellationRequestSchema,
+    async (actor, input) => {
+      const result = await requestAppointmentCancellationOnBehalfOfPatient(actor, input);
+      return {
+        operation: "CANCELLATION_REQUESTED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "work",
+  );
+}
+
+export async function recordAppointmentCoordinationAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildCoordinationInput(formData),
+    appointmentCoordinationRequestSchema,
+    async (actor, input) => {
+      const result = await recordAppointmentCoordination(actor, input);
+      return {
+        operation: "COORDINATION_RECORDED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "work",
+  );
+}
+
+async function reviewAppointmentCancellationRequestAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+  decision: "APPROVE" | "REJECT",
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildCancellationReviewInput(formData, decision),
+    appointmentCancellationReviewRequestSchema,
+    async (actor, input) => {
+      const result = await reviewAppointmentCancellationRequest(actor, input);
+      const operation = result.wasSuperseded || result.requestStatus === "SUPERSEDED"
+        ? "CANCELLATION_SUPERSEDED"
+        : result.requestStatus === "APPROVED"
+          ? "CANCELLATION_APPROVED"
+          : "CANCELLATION_REJECTED";
+
+      return {
+        operation,
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+        appointmentStatus: result.appointmentStatus,
+        updatedAt: result.updatedAt.toISOString(),
+      };
+    },
+    "work",
+  );
+}
+
+export async function approveAppointmentCancellationRequestAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return reviewAppointmentCancellationRequestAction(previousState, formData, "APPROVE");
+}
+
+export async function rejectAppointmentCancellationRequestAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return reviewAppointmentCancellationRequestAction(previousState, formData, "REJECT");
 }
 

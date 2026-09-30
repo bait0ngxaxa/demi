@@ -42,7 +42,7 @@ type ResponsibleMember = {
   userId: string;
   displayName: string;
   profession: string | null;
-  membershipType: string;
+  membershipType: string | null;
 };
 
 type AppointmentFormValue = {
@@ -280,7 +280,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             </label>
 
             <label className={labelClassName} htmlFor="appointment-responsible-user">
-              <span>ผู้รับผิดชอบ (ไม่บังคับ)</span>
+              <span>แพทย์หรือพยาบาลผู้รับผิดชอบ (ไม่บังคับ)</span>
               <Select
                 id="appointment-responsible-user"
                 onChange={(event) => setResponsibleUserId(event.target.value)}
@@ -289,12 +289,14 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
                 {props.responsibleMembers.map((member) => (
                   <option key={member.userId} value={member.userId}>
-                    {member.displayName} · {professionLabel(member.profession)} · {membershipLabels[member.membershipType] ?? member.membershipType}
+                    {member.displayName} · {professionLabel(member.profession)} · {member.membershipType
+                      ? membershipLabels[member.membershipType] ?? member.membershipType
+                      : "ผู้รับผิดชอบเดิม"}
                   </option>
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                รายการนี้มาจากสมาชิกที่พร้อมใช้งานของโรงพยาบาลนี้เท่านั้น
+                เลือกได้เฉพาะแพทย์หรือพยาบาลที่พร้อมใช้งานของโรงพยาบาลนี้
               </span>
             </label>
 
@@ -337,7 +339,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 id="appointment-location-detail"
                 maxLength={500}
                 onChange={(event) => setLocationDetail(event.target.value)}
-                placeholder="เช่น ห้องตรวจ หรือช่องทางติดต่อ"
+                placeholder="เช่น อาคารหรือห้องตรวจ"
                 type="text"
                 value={locationDetail}
               />

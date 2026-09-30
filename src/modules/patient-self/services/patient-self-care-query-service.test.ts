@@ -1,4 +1,6 @@
 import {
+  AppointmentCancellationRequestStatus,
+  AppointmentInteractionSource,
   AppointmentLocationType,
   AppointmentStatus,
   AppointmentType,
@@ -34,6 +36,40 @@ const appointmentId = "99999999-9999-4999-8999-999999999999";
 
 const recordedAt = new Date("2026-08-05T10:30:00.000Z");
 const startedAt = new Date("2026-01-03T00:00:00.000Z");
+
+function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: appointmentId,
+    type: AppointmentType.CONSULTATION,
+    scheduledAt: recordedAt,
+    durationMinutes: 30,
+    locationType: AppointmentLocationType.CLINIC,
+    locationDetail: "อาคารผู้ป่วยนอก",
+    status: AppointmentStatus.SCHEDULED,
+    updatedAt: recordedAt,
+    responsibleUser: {
+      person: { givenName: "Care", familyName: "Clinician" },
+    },
+    osmAssignmentAtCreation: {
+      osmUser: { person: { givenName: "Assigned", familyName: "OSM" } },
+    },
+    acknowledgements: [{
+      sourceAppointmentUpdatedAt: recordedAt,
+      source: AppointmentInteractionSource.OSM_PROXY,
+      acknowledgedAt: recordedAt,
+      recordedByUserId: "internal-user-id",
+    }],
+    cancellationRequests: [{
+      source: AppointmentInteractionSource.OSM_PROXY,
+      status: AppointmentCancellationRequestStatus.PENDING,
+      submittedAt: recordedAt,
+      submittedByUserId: "internal-user-id",
+    }],
+    note: "internal note",
+    createdByUserId: "internal-creator-id",
+    ...overrides,
+  };
+}
 
 function actor(roles: readonly Role[] = [Role.PATIENT]): ActorContext {
   return {
@@ -190,33 +226,8 @@ function createDatabase() {
       }),
     },
     patientAppointment: {
-      findMany: vi.fn().mockResolvedValue([
-        {
-          id: appointmentId,
-          type: AppointmentType.CONSULTATION,
-          scheduledAt: recordedAt,
-          durationMinutes: 30,
-          locationType: AppointmentLocationType.CLINIC,
-          locationDetail: "อาคารผู้ป่วยนอก",
-          status: AppointmentStatus.SCHEDULED,
-          responsibleUserId: "internal-staff-id",
-          note: "internal note",
-          createdByUserId: "internal-creator-id",
-        },
-      ]),
-      findFirst: vi.fn().mockResolvedValue({
-        id: appointmentId,
-        type: AppointmentType.CONSULTATION,
-        scheduledAt: recordedAt,
-        durationMinutes: 30,
-        locationType: AppointmentLocationType.CLINIC,
-        locationDetail: "อาคารผู้ป่วยนอก",
-        status: AppointmentStatus.SCHEDULED,
-        responsibleUserId: "internal-staff-id",
-        responsibleUser: { person: { givenName: "internal", familyName: "name" } },
-        note: "internal note",
-        createdByUserId: "internal-creator-id",
-      }),
+      findMany: vi.fn().mockResolvedValue([appointmentRecord()]),
+      findFirst: vi.fn().mockResolvedValue(appointmentRecord()),
     },
   } as unknown as PatientSelfCareQueryDatabase;
 
@@ -520,7 +531,7 @@ describe("Patient SELF care read projections", () => {
       take: 51,
       select: patientSelfCareQueryInternals.appointmentPatientSelect,
     });
-    expect(history.appointments).toEqual([
+    expect(history.appointments).toMatchObject([
       {
         appointmentId,
         type: AppointmentType.CONSULTATION,
@@ -529,6 +540,18 @@ describe("Patient SELF care read projections", () => {
         locationType: AppointmentLocationType.CLINIC,
         locationDetail: "อาคารผู้ป่วยนอก",
         status: AppointmentStatus.SCHEDULED,
+        updatedAt: recordedAt,
+        responsibleDisplayName: "Care Clinician",
+        osmAtCreationDisplayName: "Assigned OSM",
+        acknowledgement: {
+          source: AppointmentInteractionSource.OSM_PROXY,
+          acknowledgedAt: recordedAt,
+        },
+        cancellationRequests: [{
+          source: AppointmentInteractionSource.OSM_PROXY,
+          status: AppointmentCancellationRequestStatus.PENDING,
+          submittedAt: recordedAt,
+        }],
       },
     ]);
     expect(history.historyPage).toEqual({ page: 1, hasMore: false });
@@ -542,20 +565,29 @@ describe("Patient SELF care read projections", () => {
       where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
       select: patientSelfCareQueryInternals.appointmentPatientSelect,
     });
+    expect(detail).toMatchObject({
+      updatedAt: recordedAt,
+      responsibleDisplayName: "Care Clinician",
+      osmAtCreationDisplayName: "Assigned OSM",
+      acknowledgement: {
+        source: AppointmentInteractionSource.OSM_PROXY,
+        acknowledgedAt: recordedAt,
+      },
+      cancellationRequests: [{
+        source: AppointmentInteractionSource.OSM_PROXY,
+        status: AppointmentCancellationRequestStatus.PENDING,
+        submittedAt: recordedAt,
+      }],
+    });
     expect(JSON.stringify(detail)).not.toMatch(/responsibleUser|createdBy|internal note/);
   });
 
   it("bounds appointment history and reads older pages on request", async () => {
     const database = createDatabase();
     database.patientAppointment.findMany = vi.fn().mockResolvedValue(
-      Array.from({ length: 51 }, (_, index) => ({
-        id: appointmentId,
-        type: AppointmentType.CONSULTATION,
+      Array.from({ length: 51 }, (_, index) => appointmentRecord({
         scheduledAt: new Date(recordedAt.getTime() - index),
-        durationMinutes: 30,
-        locationType: AppointmentLocationType.CLINIC,
         locationDetail: null,
-        status: AppointmentStatus.SCHEDULED,
       })),
     );
 
@@ -564,15 +596,7 @@ describe("Patient SELF care read projections", () => {
     expect(firstPage.historyPage).toEqual({ page: 1, hasMore: true });
 
     database.patientAppointment.findMany = vi.fn().mockResolvedValue([
-      {
-        id: appointmentId,
-        type: AppointmentType.CONSULTATION,
-        scheduledAt: recordedAt,
-        durationMinutes: 30,
-        locationType: AppointmentLocationType.CLINIC,
-        locationDetail: null,
-        status: AppointmentStatus.SCHEDULED,
-      },
+      appointmentRecord({ locationDetail: null }),
     ]);
     const secondPage = await getOwnPatientAppointmentHistory(
       actor(),
@@ -635,7 +659,6 @@ describe("Patient SELF care read projections", () => {
       "confidencePlan",
       "reflectionNote",
       "generalNote",
-      "responsibleUser",
       "responsibleUserId",
       "createdByUser",
       "recordedByUser",
@@ -644,6 +667,25 @@ describe("Patient SELF care read projections", () => {
       "sourceScreeningAssessmentId",
     ]) {
       expect(selectors).not.toContain(withheld);
+    }
+
+    const appointmentSelector = JSON.stringify(patientSelfCareQueryInternals.appointmentPatientSelect);
+    for (const withheld of [
+      "responsibleUserId",
+      "createdByUser",
+      "recordedByUser",
+      "submittedByUser",
+      "resolvedByUser",
+      "submissionNonce",
+      "internal note",
+      "phone",
+      "email",
+      "assignmentId",
+      "recordedByUserId",
+      "submittedByUserId",
+      "resolvedByUserId",
+    ]) {
+      expect(appointmentSelector).not.toContain(withheld);
     }
   });
 });

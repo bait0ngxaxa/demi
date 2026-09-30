@@ -1,6 +1,8 @@
 import "server-only";
 
 import {
+  AppointmentCancellationRequestStatus,
+  AppointmentInteractionSource,
   MembershipType,
   Prisma,
   Profession,
@@ -23,6 +25,7 @@ import {
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
 import {
+  APPOINTMENT_CREATE_CAPABILITY,
   APPOINTMENT_MANAGE_CAPABILITY,
   APPOINTMENT_READ_CAPABILITY,
 } from "../policies/appointment-policy";
@@ -43,7 +46,28 @@ export type ResponsibleHospitalMember = {
   userId: string;
   displayName: string;
   profession: Profession | null;
-  membershipType: MembershipType;
+  membershipType: MembershipType | null;
+};
+
+export type AppointmentAcknowledgementSummary = {
+  source: AppointmentInteractionSource;
+  acknowledgedAt: Date;
+  recordedByDisplayName: string | null;
+};
+
+export type AppointmentCancellationRequestSummary = {
+  requestId: string;
+  source: AppointmentInteractionSource;
+  status: AppointmentCancellationRequestStatus;
+  submittedAt: Date;
+  resolvedAt: Date | null;
+  submittedByDisplayName: string | null;
+  resolvedByDisplayName: string | null;
+};
+
+export type AppointmentCoordinationSummary = {
+  recordedAt: Date;
+  recordedByDisplayName: string | null;
 };
 
 export type AppointmentHistoryItem = {
@@ -54,20 +78,31 @@ export type AppointmentHistoryItem = {
   durationMinutes: number | null;
   locationType: AppointmentLocationValue | null;
   responsibleDisplayName: string | null;
+  osmAtCreationDisplayName: string | null;
+  currentAcknowledgement: AppointmentAcknowledgementSummary | null;
+  cancellationRequests: AppointmentCancellationRequestSummary[];
+  coordinationEvents: AppointmentCoordinationSummary[];
 };
 
 export type AppointmentHistory = {
   patient: AppointmentPatientSummary;
   items: AppointmentHistoryItem[];
   canManage: boolean;
+  canCreate: boolean;
 };
 
 export type AppointmentDetail = {
   patient: AppointmentPatientSummary;
   canManage: boolean;
+  canProxyPatientActions: boolean;
+  canRecordCoordination: boolean;
   appointmentId: string;
   responsibleUserId: string | null;
   responsibleDisplayName: string | null;
+  osmAtCreationDisplayName: string | null;
+  currentAcknowledgement: AppointmentAcknowledgementSummary | null;
+  cancellationRequests: AppointmentCancellationRequestSummary[];
+  coordinationEvents: AppointmentCoordinationSummary[];
   createdByDisplayName: string;
   type: AppointmentTypeValue;
   scheduledAt: Date;
@@ -91,6 +126,7 @@ export type AppointmentRescheduleContext = AppointmentCreateContext & {
 
 const appointmentHistorySelect = {
   id: true,
+  updatedAt: true,
   scheduledAt: true,
   type: true,
   status: true,
@@ -104,6 +140,46 @@ const appointmentHistorySelect = {
           familyName: true,
         },
       },
+    },
+  },
+  osmAssignmentAtCreation: {
+    select: {
+      osmUser: {
+        select: {
+          person: { select: { givenName: true, familyName: true } },
+        },
+      },
+    },
+  },
+  acknowledgements: {
+    orderBy: [{ sourceAppointmentUpdatedAt: "desc" }, { id: "desc" }],
+    take: 1,
+    select: {
+      sourceAppointmentUpdatedAt: true,
+      source: true,
+      acknowledgedAt: true,
+      recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  cancellationRequests: {
+    orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      id: true,
+      source: true,
+      status: true,
+      submittedAt: true,
+      resolvedAt: true,
+      submittedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+      resolvedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  coordinationEvents: {
+    orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      recordedAt: true,
+      recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
     },
   },
 } satisfies Prisma.PatientAppointmentSelect;
@@ -140,6 +216,46 @@ const appointmentDetailSelect = {
       },
     },
   },
+  osmAssignmentAtCreation: {
+    select: {
+      osmUser: {
+        select: {
+          person: { select: { givenName: true, familyName: true } },
+        },
+      },
+    },
+  },
+  acknowledgements: {
+    orderBy: [{ sourceAppointmentUpdatedAt: "desc" }, { id: "desc" }],
+    take: 1,
+    select: {
+      sourceAppointmentUpdatedAt: true,
+      source: true,
+      acknowledgedAt: true,
+      recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  cancellationRequests: {
+    orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      id: true,
+      source: true,
+      status: true,
+      submittedAt: true,
+      resolvedAt: true,
+      submittedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+      resolvedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  coordinationEvents: {
+    orderBy: [{ recordedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      recordedAt: true,
+      recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
 } satisfies Prisma.PatientAppointmentSelect;
 
 type AppointmentHistoryRecord = Prisma.PatientAppointmentGetPayload<{
@@ -171,6 +287,62 @@ function nullableDisplayName(
   return person ? toDisplayName(person) : null;
 }
 
+function toCurrentAcknowledgement(record: {
+  updatedAt: Date;
+  acknowledgements: Array<{
+    sourceAppointmentUpdatedAt: Date;
+    source: AppointmentInteractionSource;
+    acknowledgedAt: Date;
+    recordedByUser: { person: { givenName: string | null; familyName: string | null } };
+  }>;
+}): AppointmentAcknowledgementSummary | null {
+  const acknowledgement = record.acknowledgements.find(
+    (item) => item.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+  );
+
+  return acknowledgement
+    ? {
+        source: acknowledgement.source,
+        acknowledgedAt: acknowledgement.acknowledgedAt,
+        recordedByDisplayName: nullableDisplayName(acknowledgement.recordedByUser.person),
+      }
+    : null;
+}
+
+function toCancellationRequests(
+  records: Array<{
+    id: string;
+    source: AppointmentInteractionSource;
+    status: AppointmentCancellationRequestStatus;
+    submittedAt: Date;
+    resolvedAt: Date | null;
+    submittedByUser: { person: { givenName: string | null; familyName: string | null } };
+    resolvedByUser: { person: { givenName: string | null; familyName: string | null } } | null;
+  }>,
+): AppointmentCancellationRequestSummary[] {
+  return records.map((request) => ({
+    requestId: request.id,
+    source: request.source,
+    status: request.status,
+    submittedAt: request.submittedAt,
+    resolvedAt: request.resolvedAt,
+    submittedByDisplayName: nullableDisplayName(request.submittedByUser.person),
+    resolvedByDisplayName: nullableDisplayName(request.resolvedByUser?.person ?? null),
+  }));
+}
+
+function toCoordinationEvents(
+  records: Array<{
+    recordedAt: Date;
+    recordedByUser: { person: { givenName: string | null; familyName: string | null } };
+  }>,
+): AppointmentCoordinationSummary[] {
+  return records.map((event) => ({
+    recordedAt: event.recordedAt,
+    recordedByDisplayName: nullableDisplayName(event.recordedByUser.person),
+  }));
+}
+
 function toHistoryItem(record: AppointmentHistoryRecord): AppointmentHistoryItem {
   return {
     appointmentId: record.id,
@@ -180,6 +352,12 @@ function toHistoryItem(record: AppointmentHistoryRecord): AppointmentHistoryItem
     durationMinutes: record.durationMinutes,
     locationType: record.locationType,
     responsibleDisplayName: nullableDisplayName(record.responsibleUser?.person ?? null),
+    osmAtCreationDisplayName: nullableDisplayName(
+      record.osmAssignmentAtCreation?.osmUser.person ?? null,
+    ),
+    currentAcknowledgement: toCurrentAcknowledgement(record),
+    cancellationRequests: toCancellationRequests(record.cancellationRequests),
+    coordinationEvents: toCoordinationEvents(record.coordinationEvents),
   };
 }
 
@@ -187,13 +365,22 @@ function toDetail(
   record: AppointmentDetailRecord,
   patient: AppointmentPatientSummary,
   canManage: boolean,
+  canProxyPatientActions: boolean,
 ): AppointmentDetail {
   return {
     patient,
     canManage,
+    canProxyPatientActions,
+    canRecordCoordination: canProxyPatientActions,
     appointmentId: record.id,
     responsibleUserId: record.responsibleUserId,
     responsibleDisplayName: nullableDisplayName(record.responsibleUser?.person ?? null),
+    osmAtCreationDisplayName: nullableDisplayName(
+      record.osmAssignmentAtCreation?.osmUser.person ?? null,
+    ),
+    currentAcknowledgement: toCurrentAcknowledgement(record),
+    cancellationRequests: toCancellationRequests(record.cancellationRequests),
+    coordinationEvents: toCoordinationEvents(record.coordinationEvents),
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     type: record.type,
     scheduledAt: record.scheduledAt,
@@ -238,6 +425,7 @@ async function getResponsibleMembers(
       hospitalId,
       status: "ACTIVE",
       user: { status: "ACTIVE" },
+      profession: { in: [Profession.DOCTOR, Profession.NURSE] },
     },
     orderBy: { createdAt: "asc" },
     select: {
@@ -265,6 +453,31 @@ async function getResponsibleMembers(
   }));
 }
 
+async function getRescheduleResponsibleMembers(
+  database: AppointmentAccessDatabase,
+  hospitalId: string,
+  currentResponsibleUserId: string | null,
+  currentResponsiblePerson: { givenName: string | null; familyName: string | null } | null,
+): Promise<ResponsibleHospitalMember[]> {
+  const members = await getResponsibleMembers(database, hospitalId);
+
+  if (
+    currentResponsibleUserId &&
+    !members.some((member) => member.userId === currentResponsibleUserId)
+  ) {
+    members.push({
+      userId: currentResponsibleUserId,
+      displayName: currentResponsiblePerson
+        ? toDisplayName(currentResponsiblePerson)
+        : "ผู้รับผิดชอบเดิม",
+      profession: null,
+      membershipType: null,
+    });
+  }
+
+  return members;
+}
+
 export async function getAppointmentHistory(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
@@ -284,16 +497,11 @@ export async function getAppointmentHistory(
       take: APPOINTMENT_HISTORY_LIMIT,
       select: appointmentHistorySelect,
     });
-    const canManage = await resolveManageProjection(
-      actor,
-      access.patient.patientHospitalRelationshipId,
-      database,
-    );
-
     return {
       patient: access.patient,
       items: records.map(toHistoryItem),
-      canManage,
+      canManage: access.scopes.directHospital,
+      canCreate: access.scopes.directHospital || access.scopes.exactOsmAssignment,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -337,13 +545,7 @@ export async function getAppointmentDetail(
       throw new NotFoundError();
     }
 
-    const canManage = await resolveManageProjection(
-      actor,
-      access.patient.patientHospitalRelationshipId,
-      database,
-    );
-
-    return toDetail(record, access.patient, canManage);
+    return toDetail(record, access.patient, access.scopes.directHospital, access.scopes.exactOsmAssignment);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -363,7 +565,7 @@ export async function getAppointmentCreateContext(
     const access = await resolveAppointmentAccessContext(
       actor,
       relationshipId,
-      APPOINTMENT_MANAGE_CAPABILITY,
+      APPOINTMENT_CREATE_CAPABILITY,
       database,
     );
 
@@ -415,8 +617,13 @@ export async function getAppointmentRescheduleContext(
 
     return {
       patient: access.patient,
-      appointment: toDetail(record, access.patient, true),
-      responsibleMembers: await getResponsibleMembers(database, access.target.hospitalId),
+      appointment: toDetail(record, access.patient, true, false),
+      responsibleMembers: await getRescheduleResponsibleMembers(
+        database,
+        access.target.hospitalId,
+        record.responsibleUserId,
+        record.responsibleUser?.person ?? null,
+      ),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -437,7 +644,7 @@ export async function listResponsibleHospitalMembers(
     const access = await resolveAppointmentAccessContext(
       actor,
       relationshipId,
-      APPOINTMENT_MANAGE_CAPABILITY,
+      APPOINTMENT_CREATE_CAPABILITY,
       database,
     );
 

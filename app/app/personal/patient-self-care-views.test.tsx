@@ -1,4 +1,6 @@
 import {
+  AppointmentCancellationRequestStatus,
+  AppointmentInteractionSource,
   AppointmentLocationType,
   AppointmentStatus,
   AppointmentType,
@@ -7,7 +9,7 @@ import {
   PatientProgramStatus,
 } from "@prisma/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   PatientSelfAppointmentHistory,
@@ -26,6 +28,10 @@ import {
 } from "./patient-self-record-detail-views";
 import { PatientSelfProgramDetailView } from "./patient-self-program-detail-view";
 import { PatientSelfRelationshipNavigation } from "./patient-self-relationship-navigation";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 const ownRelationship = {
   relationshipId: "11111111-1111-4111-8111-111111111111",
@@ -161,6 +167,17 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   locationType: AppointmentLocationType.CLINIC,
   locationDetail: "อาคารผู้ป่วยนอก",
   status: AppointmentStatus.SCHEDULED,
+  updatedAt: recordedAt,
+  responsibleDisplayName: "Doctor Example",
+  osmAtCreationDisplayName: "OSM Example",
+  acknowledgement: null,
+  cancellationRequests: [
+    {
+      source: AppointmentInteractionSource.OSM_PROXY,
+      status: AppointmentCancellationRequestStatus.REJECTED,
+      submittedAt: recordedAt,
+    },
+  ],
 };
 
 describe("Patient Personal care read views", () => {
@@ -262,7 +279,7 @@ describe("Patient Personal care read views", () => {
     expect(followupMarkup).not.toContain("สำเร็จ");
   });
 
-  it("shows appointment facts only and exposes no response or management actions", () => {
+  it("shows approved patient interactions without implying attendance or exposing staff-only data", () => {
     const history: PatientSelfAppointmentHistory = {
       relationship: ownRelationship,
       appointments: [appointment],
@@ -272,14 +289,21 @@ describe("Patient Personal care read views", () => {
       <PatientSelfAppointmentHistoryView history={history} />,
     );
     const detailMarkup = renderToStaticMarkup(
-      <PatientSelfAppointmentDetailView detail={{ ...appointment, relationship: ownRelationship }} />,
+      <PatientSelfAppointmentDetailView
+        cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
+        detail={{ ...appointment, relationship: ownRelationship }}
+      />,
     );
 
     for (const content of ["อาคารผู้ป่วยนอก", "30 นาที", "โรงพยาบาล ก"]) {
       expect(historyMarkup).toContain(content);
       expect(detailMarkup).toContain(content);
     }
-    for (const withheld of ["ผู้รับผิดชอบ", "เจ้าหน้าที่", "internal note", "responsibleUserId", "ยืนยันนัด", "เลื่อนนัด", "ยกเลิกนัด"]) {
+    expect(detailMarkup).toContain("รับทราบนัดหมาย");
+    expect(detailMarkup).toContain("ขอยกเลิกนัด");
+    expect(detailMarkup).toContain("กรุณาติดต่อโรงพยาบาลโดยตรง");
+    expect(detailMarkup).not.toContain("ยืนยันว่าจะมา");
+    for (const withheld of ["ผู้สร้างนัด", "internal note", "responsibleUserId", "createdByUserId", "เบอร์โทร"]) {
       expect(historyMarkup).not.toContain(withheld);
       expect(detailMarkup).not.toContain(withheld);
     }
