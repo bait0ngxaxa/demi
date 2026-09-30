@@ -117,7 +117,7 @@ The provisional ownership conclusions are:
 - Artifacts are provisionally owned by one concrete business record, with metadata separate from binary storage and visibility inherited from the owner. A generic enterprise attachment framework and Patient self-service uploads remain deferred.
 - Authorization continues to be server-side and fail-closed: direct active Hospital membership or exact active OSM assignment governs relationship access; hierarchy, profession, and ADMIN-only status do not silently widen routine patient authority. Patient self-service remains open.
 
-The existing Patient Detail page was the 10B.0 foundation. Phase 10B.0 now provides the selected provisional read-only profile subset; profile editing remains blocked until field ownership, visibility, correction, and actor-specific editability are confirmed. Phase 10C.0 adds the Baseline / Initial State prototype and Phase 10D.0 adds relationship-level Patient Status Evidence / Artifact. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, final artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
+The existing Patient Detail page was the 10B.0 foundation. Phase 10B.0 provided a provisional read-only profile subset; at that phase, profile editing remained blocked pending owner decisions. The later, bounded Patient general-profile decision is implemented in Phase 17E.1. Phase 10C.0 adds the Baseline / Initial State prototype and Phase 10D.0 adds relationship-level Patient Status Evidence / Artifact. Baseline fields/cardinality/correction, relationship lifecycle status, classification semantics, final artifact scope/lifecycle, and Patient permissions remain major unresolved business decisions.
 
 ## Phase 10B.0 Patient Profile Working Prototype
 
@@ -606,9 +606,9 @@ Phase 17C is formally closed after the permanent Vitest TSX discovery globs were
 
 [Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) records the owner-approved resolution of P17D-APT-01 through P17D-APT-18. [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md) is formally closed after implementing Patient acknowledgement-only and cancellation-request actions, exact-assigned OSM coordination/proxy/create actions, direct Hospital cancellation review, truthful doctor/nurse/historical responsibility labels, appointment-time OSM snapshots, and allowlisted Thai Patient/Work views. Acknowledgement remains separate from AppointmentStatus; Patient and OSM do not directly reschedule or cancel, and DEMI has no reschedule-request workflow. P17D-NOTIF-01 remains open and notifications are not implemented. Closeout verification, including the browser viewport limitation, is recorded in the Phase 17D.1 handoff.
 
-## Phase 17E.0 Patient profile, account, and consent contract
+## Phase 17E.0 / 17E.1 Patient profile and account security; consent remains gated
 
-[Phase 17E.0](./phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md) consolidates the Patient profile, account-settings, and Terms/privacy/health/marketing-consent requirements. **No Patient profile mutation has been added. No password change or account-recovery workflow has been added. No consent model or lifecycle has been added.** PAT-04, ACCOUNT-01, and ACCOUNT-02 remain requirement-gated until their owner decisions are recorded. Phase 17E.1 and Phase 17E.2 must not begin automatically; profile/account implementation and consent evidence have separate decision gates.
+[Phase 17E.0](./phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md) records the owner-approved 2026-09-30 decisions for Patient general profile fields and UAT account scope. [Phase 17E.1](./phases/PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md) implements Patient SELF Hospital-scoped profile editing, authenticated password change, and assisted recovery. The approved fields exclude name, DOB, National ID, HN, and clinical data; Patient SELF does not mutate shared `PatientProfile`. Broader account governance and non-Patient recovery questions remain open. P17E-CONSENT-01..03 remain pending; no consent model, lifecycle, or 17E.2 behavior is approved or implemented.
 
 ## Open Requirements
 
@@ -618,13 +618,13 @@ Phase 17C is formally closed after the permanent Vitest TSX discovery globs were
 - สิทธิ์ของ parent/main hospital ต่อ child hospitals ใน workflow ที่ไม่ใช่ Patient access ยังไม่ตัดสิน; Patient authorization ใช้ direct Hospital scope เท่านั้น
 - การแต่งตั้ง Hospital Owner เพิ่มเติม
 - ความแตกต่างด้าน permission ระหว่าง Doctor/Nurse และผู้อนุมัติ care plan
-- patient-editable fields และ health measurements ที่ผู้ป่วยส่งเองได้; PAT-04 profile ownership/editability is consolidated but still decision-pending in [Phase 17E.0](./phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md)
+- Patient-submitted health measurements and any future identity-correction/reconciliation workflow remain open; the separate bounded general profile field set is approved and implemented in [Phase 17E.1](./phases/PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md).
 - การแจ้งเตือนนัดหมาย: event, recipient, เวลา, channel, preference/consent และ retry semantics ยังคงเปิดเป็น P17D-NOTIF-01; ดู [Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) และ [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md). อำนาจสร้าง/เปลี่ยนเวลา/ยกเลิกและการโต้ตอบนัดหมายได้รับการตัดสินแล้ว.
 - การ transfer/reassign patient โดย OSM และการเปลี่ยน hospital affiliation โดย patient
 - หลักฐานและขั้นตอนสำหรับ hospital verification
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
-- Long-term Patient activation proofing, delivery/recovery channels และ identity-proofing นอกเหนือจาก reversible Phase 5B.2 handoff; implementation นี้ไม่ทำให้ workforce/patient semantics เป็น model เดียวกัน
+- Long-term Patient activation proofing and identity-proofing beyond Phase 5B.2 remain open; Phase 17E.1 assisted recovery does not change activation semantics or approve automated delivery channels.
 - additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor

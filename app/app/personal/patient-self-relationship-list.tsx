@@ -1,4 +1,5 @@
 import { HospitalStatus } from "@prisma/client";
+import Link from "next/link";
 
 import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
 
@@ -31,6 +32,9 @@ export function PatientSelfRelationshipList({
               key={`${relationship.hospitalCode}-${relationship.hospitalName}-${index}`}
             >
               <h3 className="break-words font-semibold text-text">{relationship.hospitalName}</h3>
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้
+              </p>
               <dl className="mt-2 grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                 <div className="min-w-0">
                   <dt className="text-text-muted">รหัสโรงพยาบาล</dt>
@@ -49,6 +53,12 @@ export function PatientSelfRelationshipList({
                   </dd>
                 </div>
               </dl>
+              <Link
+                className="mt-4 inline-flex min-h-11 max-w-full items-center justify-center rounded-control bg-action-primary px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}
+              >
+                ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
+              </Link>
             </li>
           ))}
         </ul>

@@ -20,16 +20,7 @@ export type PatientSelfContext = {
     givenName: string | null;
     familyName: string | null;
   };
-  profile: {
-    phoneNumber: string | null;
-    addressText: string | null;
-  };
-  hospitalRelationships: Array<{
-    hospitalCode: string;
-    hospitalName: string;
-    hospitalNumber: string | null;
-    hospitalStatus: HospitalStatus;
-  }>;
+  hospitalRelationships: PatientSelfRelationshipNavigation[];
 };
 
 export type PatientSelfQueryDependencies = {
@@ -47,30 +38,6 @@ export type PatientSelfRelationshipNavigation = {
 /** Internal server context. The relationship ID is only a locator; ownership is rechecked per request. */
 export type PatientSelfRelationshipContext = PatientSelfRelationshipNavigation;
 
-export const patientSelfContextSelect = {
-  givenName: true,
-  familyName: true,
-  patientProfile: {
-    select: {
-      phoneNumber: true,
-      addressText: true,
-      hospitalRelationships: {
-        orderBy: [{ hospital: { name: "asc" } }, { id: "asc" }],
-        select: {
-          hospitalNumber: true,
-          hospital: {
-            select: {
-              hospitalCode: true,
-              name: true,
-              status: true,
-            },
-          },
-        },
-      },
-    },
-  },
-} satisfies Prisma.PersonSelect;
-
 const patientSelfRelationshipNavigationSelect = {
   id: true,
   hospitalNumber: true,
@@ -82,6 +49,19 @@ const patientSelfRelationshipNavigationSelect = {
     },
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
+
+export const patientSelfContextSelect = {
+  givenName: true,
+  familyName: true,
+  patientProfile: {
+    select: {
+      hospitalRelationships: {
+        orderBy: [{ hospital: { name: "asc" } }, { id: "asc" }],
+        select: patientSelfRelationshipNavigationSelect,
+      },
+    },
+  },
+} satisfies Prisma.PersonSelect;
 
 const patientSelfRelationshipListSelect = {
   givenName: true,
@@ -109,9 +89,9 @@ function getDatabase(database?: PatientSelfQueryDatabase): PatientSelfQueryDatab
 }
 
 function toPatientSelfContext(record: PatientSelfContextRecord): PatientSelfContext | null {
-  const profile = record.patientProfile;
+  const patientProfile = record.patientProfile;
 
-  if (!profile) {
+  if (!patientProfile) {
     return null;
   }
 
@@ -120,16 +100,7 @@ function toPatientSelfContext(record: PatientSelfContextRecord): PatientSelfCont
       givenName: record.givenName,
       familyName: record.familyName,
     },
-    profile: {
-      phoneNumber: profile.phoneNumber,
-      addressText: profile.addressText,
-    },
-    hospitalRelationships: profile.hospitalRelationships.map((relationship) => ({
-      hospitalCode: relationship.hospital.hospitalCode,
-      hospitalName: relationship.hospital.name,
-      hospitalNumber: relationship.hospitalNumber,
-      hospitalStatus: relationship.hospital.status,
-    })),
+    hospitalRelationships: patientProfile.hospitalRelationships.map(toRelationshipNavigation),
   };
 }
 

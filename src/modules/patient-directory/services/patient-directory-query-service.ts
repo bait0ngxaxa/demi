@@ -14,6 +14,9 @@ import type { PatientClassificationType } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  resolveEffectivePatientHospitalProfile,
+} from "@/modules/patient-hospital-profile/domain/patient-hospital-profile-values";
+import {
   assertPatientReadPolicy,
   decideOsmAssignedPatientReadPolicy,
   assertOsmAssignedPatientReadPolicy,
@@ -68,6 +71,7 @@ export type PatientProfileDetail = {
 
 export type PatientDirectoryDetail = PatientDirectoryItem & {
   profile: PatientProfileDetail;
+  profileSource: "HOSPITAL_LOCAL" | "LEGACY_FALLBACK";
 };
 
 export type PatientDirectoryPage = {
@@ -133,6 +137,18 @@ export const patientDetailSelect = {
     select: {
       id: true,
       name: true,
+    },
+  },
+  hospitalProfile: {
+    select: {
+      gender: true,
+      phoneNumber: true,
+      addressText: true,
+      emergencyContactName: true,
+      emergencyContactPhone: true,
+      occupation: true,
+      educationLevel: true,
+      version: true,
     },
   },
   patientProfile: {
@@ -325,10 +341,8 @@ export function toPatientDirectoryItem(record: PatientDirectoryRecordLike): Pati
 export function toPatientDirectoryDetail(
   record: PatientDirectoryDetailRecord,
 ): PatientDirectoryDetail {
-  return {
-    ...toPatientDirectoryItem(record),
-    profile: {
-      dateOfBirth: record.patientProfile.dateOfBirth,
+  const effectiveProfile = resolveEffectivePatientHospitalProfile({
+    legacy: {
       gender: record.patientProfile.gender,
       phoneNumber: record.patientProfile.phoneNumber,
       addressText: record.patientProfile.addressText,
@@ -336,6 +350,27 @@ export function toPatientDirectoryDetail(
       emergencyContactPhone: record.patientProfile.emergencyContactPhone,
       occupation: record.patientProfile.occupation,
       educationLevel: record.patientProfile.educationLevel,
+    },
+    local: record.hospitalProfile
+      ? {
+          gender: record.hospitalProfile.gender,
+          phoneNumber: record.hospitalProfile.phoneNumber,
+          addressText: record.hospitalProfile.addressText,
+          emergencyContactName: record.hospitalProfile.emergencyContactName,
+          emergencyContactPhone: record.hospitalProfile.emergencyContactPhone,
+          occupation: record.hospitalProfile.occupation,
+          educationLevel: record.hospitalProfile.educationLevel,
+          version: record.hospitalProfile.version,
+        }
+      : null,
+  });
+
+  return {
+    ...toPatientDirectoryItem(record),
+    profileSource: effectiveProfile.source,
+    profile: {
+      dateOfBirth: record.patientProfile.dateOfBirth,
+      ...effectiveProfile.values,
     },
   };
 }

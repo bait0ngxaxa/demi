@@ -22,6 +22,10 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum AccountRecoveryDeliveryChannel {
+  ASSISTED
+}
+
 enum HospitalStatus {
   PENDING_VERIFICATION
   ACTIVE
@@ -141,6 +145,8 @@ model User {
   workforceActivationsCreated WorkforceActivation[] @relation("WorkforceActivationCreator")
   patientActivations PatientActivation[] @relation("PatientActivationTarget")
   patientActivationsCreated PatientActivation[] @relation("PatientActivationCreator")
+  accountRecoveries AccountRecovery[] @relation("AccountRecoveryTarget")
+  accountRecoveriesIssued AccountRecovery[] @relation("AccountRecoveryIssuer")
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
@@ -277,6 +283,8 @@ model PatientHospitalRelationship {
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospitalProfile PatientHospitalProfile?
+  accountRecoveries AccountRecovery[]
   osmAssignments PatientOsmAssignment[]
   screeningAssessments ScreeningAssessment[]
   goalPlans PatientGoalPlan[]
@@ -290,6 +298,47 @@ model PatientHospitalRelationship {
   @@unique([patientProfileId, hospitalId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
+}
+
+model PatientHospitalProfile {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @unique @db.Uuid
+  gender                        String?  @db.VarChar(64)
+  phoneNumber                   String?  @db.VarChar(32)
+  addressText                   String?  @db.VarChar(500)
+  emergencyContactName          String?  @db.VarChar(200)
+  emergencyContactPhone         String?  @db.VarChar(32)
+  occupation                    String?  @db.VarChar(200)
+  educationLevel                String?  @db.VarChar(200)
+  version                       Int      @default(1)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+}
+
+model AccountRecovery {
+  id                            String                         @id @default(uuid()) @db.Uuid
+  targetUserId                  String                         @db.Uuid
+  patientHospitalRelationshipId String                         @db.Uuid
+  issuedByUserId                String                         @db.Uuid
+  tokenHash                     String                         @unique @db.VarChar(64)
+  deliveryChannel               AccountRecoveryDeliveryChannel @default(ASSISTED)
+  expiresAt                     DateTime
+  claimedAt                     DateTime?
+  completedAt                   DateTime?
+  reconciliationRequiredAt      DateTime?
+  revokedAt                     DateTime?
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+
+  targetUser   User                        @relation("AccountRecoveryTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+  issuedByUser User                        @relation("AccountRecoveryIssuer", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([targetUserId, createdAt])
+  @@index([expiresAt])
+  @@index([patientHospitalRelationshipId, createdAt])
 }
 
 model PatientOsmAssignment {

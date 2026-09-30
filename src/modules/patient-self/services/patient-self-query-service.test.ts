@@ -134,24 +134,23 @@ describe("Patient self query boundary", () => {
     });
     expect(result).toEqual({
       person: { givenName: "สมชาย", familyName: "ใจดี" },
-      profile: {
-        phoneNumber: "0812345678",
-        addressText: "99 ถนนตัวอย่าง",
-      },
       hospitalRelationships: [
         {
+          relationshipId: hospitalOneId,
           hospitalCode: "H-001",
           hospitalName: "โรงพยาบาล ก",
           hospitalNumber: "HN-001",
           hospitalStatus: HospitalStatus.ACTIVE,
         },
         {
+          relationshipId: hospitalTwoId,
           hospitalCode: "H-002",
           hospitalName: "โรงพยาบาล ข",
           hospitalNumber: null,
           hospitalStatus: HospitalStatus.SUSPENDED,
         },
         {
+          relationshipId: hospitalThreeId,
           hospitalCode: "H-003",
           hospitalName: "โรงพยาบาล ค",
           hospitalNumber: "HN-003",
@@ -191,20 +190,24 @@ describe("Patient self query boundary", () => {
       { id: "asc" },
     ]);
     expect(relationshipSelect.select.hospital.select).toHaveProperty("status", true);
+    expect(relationshipSelect.select).not.toHaveProperty("hospitalProfile");
     expect(result?.hospitalRelationships).toEqual([
       {
+        relationshipId: hospitalOneId,
         hospitalCode: "H-001",
         hospitalName: "โรงพยาบาล ก",
         hospitalNumber: "HN-001",
         hospitalStatus: HospitalStatus.ACTIVE,
       },
       {
+        relationshipId: hospitalTwoId,
         hospitalCode: "H-002",
         hospitalName: "โรงพยาบาล ข",
         hospitalNumber: null,
         hospitalStatus: HospitalStatus.SUSPENDED,
       },
       {
+        relationshipId: hospitalThreeId,
         hospitalCode: "H-003",
         hospitalName: "โรงพยาบาล ค",
         hospitalNumber: "HN-003",
@@ -372,6 +375,8 @@ describe("Patient self query boundary", () => {
       "authSubject",
       "dateOfBirth",
       "gender",
+      "phoneNumber",
+      "addressText",
       "occupation",
       "educationLevel",
       "emergencyContactName",
@@ -382,12 +387,11 @@ describe("Patient self query boundary", () => {
       expect(serialized).not.toContain(forbiddenField);
     }
 
-    expect(serialized).not.toContain('"id":true');
     expect(patientSelfContextSelect).not.toHaveProperty("id");
     expect(patientSelfContextSelect.patientProfile.select).not.toHaveProperty("id");
     expect(
       patientSelfContextSelect.patientProfile.select.hospitalRelationships.select,
-    ).not.toHaveProperty("id");
+    ).toHaveProperty("id", true);
     expect(
       patientSelfContextSelect.patientProfile.select.hospitalRelationships.select.hospital.select,
     ).not.toHaveProperty("id");

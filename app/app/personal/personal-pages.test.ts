@@ -13,28 +13,60 @@ vi.mock("@/modules/patient-self/transport/patient-self-page-context", () => ({
 
 const completeContext = {
   person: { givenName: "สมชาย", familyName: "ใจดี" },
-  profile: {
-    phoneNumber: "0812345678",
-    addressText: "99 ถนนตัวอย่าง",
-  },
   hospitalRelationships: [
     {
+      relationshipId: "44444444-4444-4444-8444-444444444444",
       hospitalCode: "H-001",
       hospitalName: "โรงพยาบาล ก",
       hospitalNumber: "HN-001",
       hospitalStatus: HospitalStatus.ACTIVE,
+      profile: {
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+      },
+      profileSource: "LEGACY_FALLBACK" as const,
+      profileVersion: 0,
     },
     {
+      relationshipId: "55555555-5555-4555-8555-555555555555",
       hospitalCode: "H-002",
       hospitalName: "โรงพยาบาล ข",
       hospitalNumber: null,
       hospitalStatus: HospitalStatus.SUSPENDED,
+      profile: {
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+      },
+      profileSource: "LEGACY_FALLBACK" as const,
+      profileVersion: 0,
     },
     {
+      relationshipId: "77777777-7777-4777-8777-777777777777",
       hospitalCode: "H-003",
       hospitalName: "โรงพยาบาล ค",
       hospitalNumber: "HN-003",
       hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+      profile: {
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "99 ถนนตัวอย่าง",
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+      },
+      profileSource: "LEGACY_FALLBACK" as const,
+      profileVersion: 0,
     },
   ],
 };
@@ -74,17 +106,16 @@ describe("Patient Personal pages", () => {
     expect(markup).not.toContain('href="/app/personal/profile"');
   });
 
-  it("shows only allowlisted own profile facts and honest missing-value labels", async () => {
+  it("shows identity facts and Hospital-specific profile navigation", async () => {
     const markup = renderToStaticMarkup(await PersonalProfilePage());
 
     for (const value of [
       "ข้อมูลของฉัน",
       "สมชาย",
       "ใจดี",
-      "เบอร์โทรศัพท์",
-      "0812345678",
-      "ที่อยู่",
-      "99 ถนนตัวอย่าง",
+      "ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้",
+      'href="/app/personal/profile/44444444-4444-4444-8444-444444444444"',
+      'href="/app/personal/password"',
     ]) {
       expect(markup).toContain(value);
     }
@@ -104,10 +135,6 @@ describe("Patient Personal pages", () => {
   it("renders every optional field as not recorded when the persisted value is null", async () => {
     vi.mocked(getPatientSelfPageContext).mockResolvedValue({
       person: { givenName: null, familyName: null },
-      profile: {
-        phoneNumber: null,
-        addressText: null,
-      },
       hospitalRelationships: [],
     });
 

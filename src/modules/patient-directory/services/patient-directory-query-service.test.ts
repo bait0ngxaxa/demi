@@ -16,6 +16,7 @@ import {
   findPatientDirectory,
   getPatientDirectoryDetail,
   patientDirectoryInternals,
+  type PatientDirectoryDetailRecord,
   type PatientDirectoryDatabase,
 } from "./patient-directory-query-service";
 
@@ -268,6 +269,7 @@ describe("Patient directory query boundary", () => {
       id: relationshipId,
       hospitalNumber: "HN-001",
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      hospitalProfile: null,
       patientProfile: {
         id: patientProfileId,
         dateOfBirth,
@@ -294,6 +296,7 @@ describe("Patient directory query boundary", () => {
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       hospitalNumber: "HN-001",
       classification: null,
+      profileSource: "LEGACY_FALLBACK",
       profile: {
         dateOfBirth,
         gender: "ชาย",
@@ -324,5 +327,49 @@ describe("Patient directory query boundary", () => {
     expect(JSON.stringify(result)).not.toContain("identityKeyHash");
     expect(JSON.stringify(result)).not.toContain("authSubject");
     expect(JSON.stringify(result)).not.toContain("clinical");
+  });
+
+  it("uses the exact relationship-local profile as authoritative, including cleared nulls", () => {
+    const dateOfBirth = new Date("1977-01-01T00:00:00.000Z");
+    const detail = patientDirectoryInternals.toPatientDirectoryDetail({
+      id: relationshipId,
+      hospitalNumber: "HN-001",
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      hospitalProfile: {
+        gender: null,
+        phoneNumber: null,
+        addressText: "ที่อยู่เฉพาะโรงพยาบาลนี้",
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        occupation: null,
+        educationLevel: null,
+        version: 2,
+      },
+      patientProfile: {
+        id: patientProfileId,
+        patientClassification: null,
+        dateOfBirth,
+        gender: "ชาย",
+        phoneNumber: "0812345678",
+        addressText: "ที่อยู่เดิม",
+        emergencyContactName: "ผู้ติดต่อเดิม",
+        emergencyContactPhone: "0898765432",
+        occupation: "อาชีพเดิม",
+        educationLevel: "ระดับเดิม",
+        person: { givenName: "สมชาย", familyName: "ผู้ป่วย" },
+      },
+    } as PatientDirectoryDetailRecord);
+
+    expect(detail.profileSource).toBe("HOSPITAL_LOCAL");
+    expect(detail.profile).toEqual({
+      dateOfBirth,
+      gender: null,
+      phoneNumber: null,
+      addressText: "ที่อยู่เฉพาะโรงพยาบาลนี้",
+      emergencyContactName: null,
+      emergencyContactPhone: null,
+      occupation: null,
+      educationLevel: null,
+    });
   });
 });

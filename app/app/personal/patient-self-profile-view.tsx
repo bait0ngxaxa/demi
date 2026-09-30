@@ -73,24 +73,16 @@ export function PatientSelfProfileView({
             </Panel>
           </section>
 
-          <section aria-labelledby="patient-self-profile-contact" className="mt-6">
-            <Panel>
-              <h2
-                className="text-xl font-semibold tracking-[-0.02em] text-text"
-                id="patient-self-profile-contact"
-              >
-                ข้อมูลติดต่อ
-              </h2>
-              <ProfileFields
-                fields={[
-                  { label: "เบอร์โทรศัพท์", value: patient.profile.phoneNumber },
-                  { label: "ที่อยู่", value: patient.profile.addressText, wide: true },
-                ]}
-              />
-            </Panel>
-          </section>
-
           <PatientSelfRelationshipList relationships={patient.hospitalRelationships} />
+
+          <div className="mt-6">
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href="/app/personal/password"
+            >
+              เปลี่ยนรหัสผ่าน
+            </Link>
+          </div>
         </>
       ) : (
         <Alert className="mt-6" variant="warning">

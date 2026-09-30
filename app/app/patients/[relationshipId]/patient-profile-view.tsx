@@ -54,8 +54,10 @@ function ProfileSection({
 
 export function PatientProfileView({
   profile,
+  profileSource,
 }: {
   profile: PatientProfileDetail;
+  profileSource: "HOSPITAL_LOCAL" | "LEGACY_FALLBACK";
 }): React.JSX.Element {
   return (
     <section aria-labelledby="patient-profile-heading" className="mt-6">
@@ -69,6 +71,11 @@ export function PatientProfileView({
         <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
           ข้อมูลโปรไฟล์ส่วนนี้แสดงแบบอ่านอย่างเดียวสำหรับการตรวจสอบความต้องการ
         </p>
+        {profileSource === "LEGACY_FALLBACK" ? (
+          <p className="mt-3 break-words text-sm leading-6 text-text-muted">
+            ข้อมูลทั่วไปและข้อมูลติดต่อที่แสดงมาจากโปรไฟล์เดิม ยังไม่ได้บันทึกแยกสำหรับโรงพยาบาลนี้
+          </p>
+        ) : null}
 
         <div className="mt-7 grid gap-8 border-t border-border pt-7">
           <ProfileSection

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import Link from "next/link";
 import { decidePatientOsmAssignmentPolicy } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
+import { decideAccountRecoveryIssuePolicy } from "@/modules/account-security/policies/account-recovery-policy";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -19,6 +20,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PatientProfileView } from "./patient-profile-view";
+import { PatientAccountRecoveryPanel } from "./account-recovery-panel";
 import { PatientClassificationView } from "./patient-classification-view";
 import { PatientProgramView } from "./programs/patient-program-view";
 
@@ -127,6 +129,10 @@ export default async function PatientDetailPage({
     capability: "patient:assign-osm",
     targetHospitalId: patient.hospital.id,
   }).allowed;
+  const canIssueAccountRecovery = decideAccountRecoveryIssuePolicy(
+    actor,
+    patient.hospital.id,
+  ).allowed;
   const backHref = hasDirectHospitalPatientReadScope(actor, patient.hospital.id)
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
@@ -159,7 +165,11 @@ export default async function PatientDetailPage({
           </dl>
         </Panel>
 
-        <PatientProfileView profile={patient.profile} />
+        <PatientProfileView profile={patient.profile} profileSource={patient.profileSource} />
+
+        {canIssueAccountRecovery ? (
+          <PatientAccountRecoveryPanel relationshipId={patient.patientHospitalRelationshipId} />
+        ) : null}
 
         <PatientClassificationView context={classificationContext} />
 

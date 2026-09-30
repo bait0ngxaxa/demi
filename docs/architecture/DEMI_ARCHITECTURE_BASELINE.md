@@ -1338,6 +1338,9 @@ The following decisions are accepted for project initialization:
 45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 24 hours and assisted activation to 15 minutes.
 46. Workforce target users set their own passwords; Hospital staff must not know or set them, and email/SMS/LINE/LIFF/ThaID/external identity are not core activation dependencies.
 47. Workforce provider effects remain behind the existing server-only authentication boundary and use compensation/reconciliation outside the local PostgreSQL transaction boundary.
+48. Phase 17E.1 implements only the 2026-09-30 owner-approved Patient general profile fields as Hospital-relationship-scoped values, with Patient SELF authority, legacy shared-profile fallback, and optimistic concurrency. Identity-sensitive correction, staff/OSM edits, and profile history remain outside this contract.
+49. Phase 17E.1 account UAT scope includes authenticated password change and assisted active-Patient recovery issued by an exact active Hospital Owner for an exact Patient relationship. This does not settle broader Hospital/Owner governance, other account recovery, or activation semantics.
+50. P17E-CONSENT-01..03 remain pending; no Phase 17E.2 consent behavior is implemented or approved.
 
 ---
 
@@ -1352,7 +1355,7 @@ They require confirmed business requirements:
 - Can a Hospital Owner appoint other Owners?
 - Do doctors and nurses need different permissions?
 - Who may approve a care plan?
-- Which patient fields may patients edit themselves?
+- Which additional Patient-submitted health measurements and future identity-correction/reconciliation workflows are approved? The bounded general profile fields approved for Phase 17E.1 are recorded in [the owner contract](../phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md) and implementation handoff; they do not authorize identity-sensitive edits.
 - Which health measurements may patients submit themselves?
 - Which appointment notification events, recipients, timing, channels, preferences, and retry rules should be supported? P17D-NOTIF-01 remains open; Appointment authority and interaction semantics are resolved in [Phase 17D.0](../phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) and implemented in [Phase 17D.1](../phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md).
 - Can OSM transfer or reassign a patient?

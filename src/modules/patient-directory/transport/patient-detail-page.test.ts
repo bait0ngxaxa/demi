@@ -73,6 +73,7 @@ const patient = {
     occupation: "เกษตรกร",
     educationLevel: "มัธยมศึกษา",
   },
+  profileSource: "LEGACY_FALLBACK" as const,
 };
 
 const actor = {
@@ -167,10 +168,14 @@ describe("Patient detail page authorization boundary", () => {
     const page = await PatientDetailPage({
       params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
     });
-    const profileView = PatientProfileView({ profile: patient.profile });
+    const profileView = PatientProfileView({
+      profile: patient.profile,
+      profileSource: patient.profileSource,
+    });
 
     for (const value of [
       "ข้อมูลผู้ป่วย",
+      "มาจากโปรไฟล์เดิม",
       "ข้อมูลทั่วไป",
       "วันเกิด",
       "1 มกราคม 2520",
@@ -217,6 +222,7 @@ describe("Patient detail page authorization boundary", () => {
         occupation: null,
         educationLevel: null,
       },
+      profileSource: "HOSPITAL_LOCAL",
     });
 
     expect(containsString(profileView, "ข้อมูลทั่วไป")).toBe(true);
