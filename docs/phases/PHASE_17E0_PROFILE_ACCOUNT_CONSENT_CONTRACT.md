@@ -16,13 +16,17 @@ No profile mutation, identity correction, credential operation, preference, cons
 
 ## 2. Source hierarchy
 
-When evidence differs, apply this order:
+Phase 17E.0 inherits the canonical source/decision hierarchy defined by [Phase 17A](./PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md) and does not establish a competing hierarchy. Apply that same order:
 
-1. Repository engineering requirements in [AGENTS.md](../../AGENTS.md), accepted architecture decisions, and accepted ADRs define security, identity, scope, data integrity, and implementation boundaries.
-2. Current Prisma schema, migrations, server services, policies, transport, pages, and tests establish what the runtime currently stores, reads, and writes.
-3. [Phase 17A](./PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md) and the [Phase 17 backlog](./PHASE_17_UAT_BACKLOG.md) establish customer-flow intent and unresolved requirement gates.
-4. Closed Phase 17B–17D handoffs establish implemented read and appointment behavior, within their stated scope.
-5. Legacy UI, workbook columns, broad wireframe labels, and engineering recommendations may inform questions; they do not approve mutation, legal basis, or disclosure.
+1. **Confirmed current customer/product intent.** The latest clearly confirmed owner/customer product decision may supersede older prototype product behavior.
+2. **Accepted security, privacy, data-integrity, and architecture invariants.** These continue to constrain how product intent is implemented; customer intent does not implicitly change identity, authorization, trust, credential-ownership, or transaction boundaries.
+3. **Current runtime, Prisma schema, routes, services, policies, and tests as implementation evidence.** They show what currently works and what is enforced, not what the customer has approved as final product semantics.
+4. **Accepted ADRs and accepted phase contracts.** They remain binding within their scope until explicitly superseded by a confirmed decision.
+5. **Customer artifacts as supporting evidence only.** Use them only for the intent the artifact actually demonstrates.
+6. **Legacy DEMI as behavior and terminology discovery only.** Legacy code/artifacts do not grant authorization or mutation semantics by themselves.
+7. **Engineering proposals and assumptions last.** Mark them explicitly as non-approved; they do not become product decisions through implementation or documentation.
+
+[AGENTS.md](../../AGENTS.md) governs engineering execution discipline, not product/business authority. The [Phase 17 backlog](./PHASE_17_UAT_BACKLOG.md) tracks requirement status and gates. Current runtime/schema/tests serve only the implementation-evidence role above. The closed Phase 17B–17D contracts bind within their accepted scope. The ADRs below, [Architecture Baseline](../architecture/DEMI_ARCHITECTURE_BASELINE.md), and [Project Context](../CONTEXT.md) record accepted architecture/security boundaries and accepted or unresolved domain statements; they do not reorder the Phase 17A hierarchy.
 
 ### Closure rule for the next phases
 
@@ -144,7 +148,7 @@ Current storage is global for the fields below; the following is a design questi
 | PatientProfile.occupation | No Hospital-specific value is evidenced. A local record needs a specific Hospital purpose and access rule. |
 | PatientProfile.educationLevel | No Hospital-specific value is evidenced. A local record needs a specific Hospital purpose and access rule. |
 
-Any future Hospital-specific value requires a distinct owner, field meaning, reader/update/correction policy, and history/retention decision. Do not overload the current global PatientProfile field.
+Any future Hospital-specific value requires a distinct owner, field meaning, reader/update/correction policy, and a decision on whether history, audit, or correction records are persisted. Define retention only for records selected by that model. Do not overload the current global PatientProfile field.
 
 ## 9. Identity-sensitive correction boundary
 
@@ -152,7 +156,7 @@ Names and date of birth are profile/display facts that may also participate in i
 
 Person.identityKeyHash is the existing canonical National-ID-derived identity binding. Keep raw National ID and identity binding under the existing server-side identity-resolution boundary. Phase 17E must not add a National-ID field, edit action, browser/provider reset, or direct identityKeyHash update.
 
-If a name or date-of-birth discrepancy is reported, record a correction request only after owners define accepted evidence, reviewer, status/notification behavior, allowed impact, and audit/retention. If a National-ID binding is wrong, it is an identity reconciliation problem, not profile editing or account recovery.
+If a name or date-of-birth discrepancy is reported, record a correction request only after owners define accepted evidence, reviewer, status/notification behavior, allowed impact, and which request/audit/evidence records persist; define readers and retention for those records. If a National-ID binding is wrong, it is an identity reconciliation problem, not profile editing or account recovery.
 
 ## 10. Contact-channel separation
 
@@ -185,7 +189,7 @@ PatientProfile is one-to-one with Person, while one PatientProfile can have mult
 
 For a Patient linked to Hospitals A and B, an approved change to a PatientProfile field would change the value subsequently read under both relationships. Current direct Hospital and exact assigned OSM policies still constrain which actor may read each relationship. The schema has no per-Hospital phone/address/contact copy and no primary Hospital.
 
-This is an explicit owner decision. If Hospitals require independent values or edits, define a Hospital-local data owner, readers, retention, and conflict contract, then design a separate relationship-scoped model in a later approved phase. Do not duplicate fields into PatientHospitalRelationship in Phase 17E.0.
+This is an explicit owner decision. If Hospitals require independent values or edits, define a Hospital-local data owner, readers, conflict contract, and any history/audit/correction records; set retention only for records the approved model persists. Then design a separate relationship-scoped model in a later approved phase. Do not duplicate fields into PatientHospitalRelationship in Phase 17E.0.
 
 ## 14. Patient and Hospital mutation authority
 
@@ -362,7 +366,7 @@ Every item below is **DECISION PENDING**. Record the decision maker, selected op
 | P17E-PROFILE-01 | Patient-editable profile fields and field rules | For every field, approve edit/no-edit, direct edit versus correction request, meaning/purpose where ambiguous, requiredness/clearing, accepted values or format, verification, and any field-specific validation. Address meaning and emergency-contact purpose/relationship/notice must be explicit if selected. | Blocks any 17E.1 profile mutation until all selected-field rules are answered. |
 | P17E-PROFILE-02 | Identity-sensitive correction | Set correction and verification paths for name and DOB; keep National-ID binding under identity reconciliation and decide who reviews identity discrepancies. | Blocks name/DOB or identity correction work in 17E.1; does not authorize National-ID mutation. |
 | P17E-PROFILE-03 | Global versus Hospital-local profile data and readers | For every field approved in PROFILE-01, choose Person-wide/PatientProfile-wide shared value or a distinct Hospital-local value, and name the allowed readers for each scope. | Blocks implementation until the ownership and audience of every included field is resolved. A Hospital-local choice requires a separate relationship-scoped model; it must not write the shared PatientProfile field. |
-| P17E-PROFILE-04 | Hospital editor, conflict, history, audit, and retention contract | For every included field, decide Hospital edit authority and actors, stale/concurrent-write outcome, correction precedence, verification invalidation, value-history model, bounded audit contents/readers, and an exact retention period or named approved retention policy. | Blocks 17E.1 mutation until authority, conflict, history/audit, and retention are explicit. Current repository conventions do not supply a universal retention duration. |
+| P17E-PROFILE-04 | Hospital editor, conflict, history, audit, and retention contract | For every included field, decide Hospital edit authority and actors, stale/concurrent-write outcome, correction precedence, verification invalidation, and the selected history/audit/correction model. Define readers and retention only for history, audit, requests, decisions, or evidence that the approved model actually persists. If only the current value is kept with no audit/history/correction evidence, no additional retention period is required; the canonical PatientProfile value follows its ordinary domain-record lifecycle. | Blocks 17E.1 mutation until authority, conflict, selected records/readers, and any applicable retention are explicit. Current repository conventions do not supply a universal retention duration. |
 | P17E-ACCOUNT-01 | Current-UAT Account Settings scope | Choose which actual domains, if any, accompany a profile slice; explicitly leave unsupported settings out. | Blocks generic account/settings UI. Profile-only 17E.1 may proceed after profile decisions. |
 | P17E-ACCOUNT-02 | Password change and forgotten-password recovery | Decide separately whether authenticated password change is required and whether recovery is required for current UAT. | Blocks only approved credential/recovery work; neither is a prerequisite to profile-only 17E.1. Recovery still needs its separate Phase 12C security contract. |
 | P17E-CONSENT-01 | Consent purposes, controller, and approved source documents | Identify each required acceptance/consent/acknowledgement, its purpose, lawful basis decision, controller, approved document/purpose/version source, and access/login gates. | Blocks 17E.2. |
@@ -387,10 +391,11 @@ Every item below is **DECISION PENDING**. Record the decision maker, selected op
 4. **P17E-PROFILE-04 — โรงพยาบาลควรแก้ข้อมูลใดได้ และเมื่อแก้พร้อมกันต้องทำอย่างไร?**
    - ตอบแยกทุกฟิลด์: ผู้ป่วยแก้ได้ฝ่ายเดียว; เจ้าหน้าที่ Hospital ที่ระบุแก้ได้ฝ่ายเดียว; ทั้งสองฝ่ายแก้ได้โดยระบุผู้มีอำนาจตัดสินเมื่อเห็นต่าง; หรือการแก้ต้องส่งให้อีกฝ่ายตรวจ ระบุด้วยว่าการแก้ทำให้สถานะยืนยันเดิมหมดอายุหรือไม่
    - กำหนดผลเมื่อบันทึกจากหน้าข้อมูลเก่า หรือเมื่อ Hospital กับ Patient หรือคำขอจาก Patient สองรายการบันทึกพร้อมกัน เช่น ปฏิเสธรายการเก่าและให้โหลดข้อมูลใหม่ โดยไม่เขียนทับเงียบ ๆ
-   - แยกการเก็บค่าจาก audit: เลือกเก็บเฉพาะค่าปัจจุบัน; เก็บประวัติค่าเดิม/ใหม่เป็นรายการประวัติที่แยกและควบคุมสิทธิ์; หรือเก็บค่าที่ยืนยันแล้วพร้อมคำขอแก้ไขที่รอพิจารณา สำหรับฟิลด์ทั่วไป ค่าเริ่มต้นที่เสนอคือค่าปัจจุบันโดยไม่เก็บประวัติค่าเก่า/ใหม่
-   - แยกจากประวัติค่า ให้ยืนยันหรือแก้ค่าเริ่มต้นเรื่อง audit เมื่อมีการเปลี่ยนที่อนุมัติ: บันทึก metadata แบบจำกัด ได้แก่ รหัสฟิลด์, ผู้แก้, รหัสรายการ, ประเภทการดำเนินการ, วันเวลา และการเปลี่ยนสถานะยืนยัน โดยไม่บันทึกค่าข้อมูลส่วนตัวจริง เช่น ที่อยู่หรือเบอร์โทรใน audit ทั่วไป หรือระบุชัดว่าไม่ต้องมี audit/ต้องการรูปแบบอื่น
-   - หากมี audit หรือประวัติ ให้ระบุผู้ที่มีสิทธิ์ดูและระยะเวลาเก็บที่แน่นอน หรือชื่อและระยะเวลาของนโยบายที่อนุมัติแล้ว หากต้องเก็บข้อมูลเก่า/ใหม่หรือหลักฐาน identity ให้ระบุผู้เห็นและระยะเวลาเก็บของรายการประวัติ/คำขอแยกด้วย
-   - ปัจจุบันไม่พบระยะเวลา retention กลางที่ใช้แทนคำตอบนี้ได้ หากเลือก “ตามมาตรฐาน” ต้องระบุชื่อนโยบายและระยะเวลาจริง
+   - เลือกรูปแบบต่อฟิลด์: เก็บเฉพาะค่าปัจจุบันโดยไม่มี audit/history/correction evidence; ค่าปัจจุบันพร้อม audit metadata; ประวัติค่าเดิม/ใหม่แบบ immutable; หรือค่าที่ยืนยันแล้วพร้อมคำขอแก้ไขที่รอพิจารณา สำหรับฟิลด์ทั่วไป ค่าเริ่มต้นที่เสนอคือค่าปัจจุบันโดยไม่มี old/new value history
+   - หากเลือกรูปแบบที่บันทึก audit ให้กำหนดขอบเขต metadata และผู้ที่เห็น โดยค่าเริ่มต้นเสนอเฉพาะรหัสฟิลด์, ผู้แก้, รหัสรายการ, ประเภทการดำเนินการ, วันเวลา และการเปลี่ยนสถานะยืนยัน ไม่บันทึกค่าข้อมูลส่วนตัวจริง เช่น ที่อยู่หรือเบอร์โทรใน audit ทั่วไป
+   - หากมีการบันทึก audit, history, correction request, decision, supporting evidence หรือ verification history ให้ระบุผู้มีสิทธิ์เห็นและ retention period/นโยบายที่อนุมัติสำหรับแต่ละชนิดระเบียน รวมถึงเอกสารยืนยันตัวตนที่เก็บไว้
+   - หากอนุมัติให้เก็บเฉพาะค่าปัจจุบันและไม่มี audit/history/correction/evidence record ไม่ต้องกำหนด retention เพิ่มสำหรับประวัติหรือ audit; ค่า PatientProfile ปัจจุบันใช้ lifecycle ปกติของระเบียนโดเมนนั้น
+   - ปัจจุบันไม่พบระยะเวลา retention กลางสำหรับ audit/history ที่ใช้แทนคำตอบได้ หากเลือกเก็บระเบียนเหล่านี้แล้วตอบว่า “ตามมาตรฐาน” ต้องระบุชื่อนโยบายและระยะเวลาจริง
 5. **P17E-ACCOUNT-01 — สำหรับ UAT นี้ “ตั้งค่าบัญชี” ต้องมีเรื่องใดบ้าง?** เลือก: ดู/แก้โปรไฟล์ที่อนุมัติ; เปลี่ยนรหัสผ่านขณะเข้าใช้งาน; กู้บัญชีเมื่อลืมรหัสผ่าน; ตั้งค่าการแจ้งเตือน; ตั้งค่าการแสดงผลหรือการช่วยการเข้าถึง; ดู/จัดการเอกสารและความยินยอม; หรือไม่ต้องมีหน้าตั้งค่ารวมใน UAT นี้
 6. **P17E-ACCOUNT-02 — ต้องให้ผู้ใช้เปลี่ยนรหัสผ่านขณะเข้าใช้งานหรือกู้บัญชีเมื่อลืมรหัสผ่านใน UAT นี้หรือไม่?** ตอบแยกสองข้อ: เปลี่ยนรหัสผ่านขณะเข้าใช้งาน — ต้องมี / ยังไม่ต้องมี; กู้บัญชีที่เข้าไม่ได้ — ต้องมี / ยังไม่ต้องมี ไม่ถือว่าการเปิดใช้บัญชีครั้งแรกเป็นการกู้บัญชี และคำตอบว่าต้องมี recovery จะต้องกำหนดการพิสูจน์ตัวตนและช่องทางอย่างปลอดภัยก่อนพัฒนา
 7. **P17E-CONSENT-01 — ระบบต้องเก็บหลักฐานเรื่องใดบ้าง และใครเป็นเจ้าของเอกสารที่อนุมัติแล้ว?** เลือกแยกเป็นข้อ: การยอมรับข้อกำหนดการใช้บริการ; การรับทราบประกาศความเป็นส่วนตัว; ความยินยอม/การอนุญาตประมวลผลข้อมูลสุขภาพเมื่อผู้รับผิดชอบกฎหมายระบุว่าจำเป็น; การตลาด; การสื่อสารทางเลือก; หรือวัตถุประสงค์อื่น โปรดระบุผู้ควบคุมข้อมูล วัตถุประสงค์ ฐานการประมวลผล เอกสารและเวอร์ชัน วันที่มีผล และหน้าที่ต้องใช้หลักฐาน โดยฝ่ายกฎหมาย/ผู้ควบคุมข้อมูลเป็นผู้ตัดสินฐาน ไม่ใช่วิศวกร
@@ -423,7 +428,7 @@ Do not begin implementation until the owners have recorded applicable decisions 
 - [ ] P17E-PROFILE-01 names every included/excluded field and, per included field, direct edit/correction/no support, meaning/purpose, requiredness/clear behavior, accepted values/format, and verification. Address semantics and emergency-contact purpose/relationship/notice are complete if those fields are included.
 - [ ] P17E-PROFILE-02 defines name/DOB correction and verification; National-ID binding remains outside profile mutation.
 - [ ] P17E-PROFILE-03 resolves Person/PatientProfile-wide versus Hospital-local ownership and allowed readers for every included field; a Hospital-local value has a separate relationship-scoped contract and never writes the shared field.
-- [ ] P17E-PROFILE-04 defines Hospital authority per field, stale/concurrent-write result, correction precedence, verification invalidation, value-history model, audit readers/contents, and a named retention policy with exact period (or exact field-specific period). The ordinary-field default contains no old/new PII in generic audit.
+- [ ] P17E-PROFILE-04 defines Hospital authority per field, stale/concurrent-write result, correction precedence, verification invalidation, selected history/audit/correction model, and readers for any persisted records. Retention is defined for every persisted audit/history/request/decision/evidence record selected by the approved field contract. Current-value-only with no audit/history/correction/evidence is valid without an extra retention artifact; the canonical current PatientProfile value follows its ordinary domain-record lifecycle. The ordinary-field audit default contains no old/new PII in generic audit.
 - [ ] Phone remains separate from auth, recovery, notifications, verification, and emergency contact unless a separately approved contract connects them.
 - [ ] Server action policy is field-specific and checks authenticated same-Person PATIENT self scope. Browser workspace state and IDs do not supply authority.
 - [ ] Account scope is limited to owner-approved features. Password change/recovery are included only if separately approved; recovery also passes its security gate.
