@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Profession } from "@prisma/client";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -41,8 +42,7 @@ type PatientContext = {
 type ResponsibleMember = {
   userId: string;
   displayName: string;
-  profession: string | null;
-  membershipType: string | null;
+  profession: Profession | null;
 };
 
 type AppointmentFormValue = {
@@ -82,18 +82,6 @@ const inputClassName =
 
 const labelClassName = "block space-y-2 text-sm font-semibold text-text";
 
-const professionLabels: Record<string, string> = {
-  DOCTOR: "แพทย์",
-  NURSE: "พยาบาล",
-  COORDINATOR: "ผู้ประสานงาน",
-  OTHER: "บุคลากรอื่น",
-};
-
-const membershipLabels: Record<string, string> = {
-  OWNER: "เจ้าของโรงพยาบาล",
-  MEMBER: "สมาชิกโรงพยาบาล",
-};
-
 function formatBangkokDateTimeInput(value: string | null): string {
   if (!value) {
     return "";
@@ -123,8 +111,16 @@ function formatBangkokIso(value: string): string {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+07:00` : "";
 }
 
-function professionLabel(value: string | null): string {
-  return value ? professionLabels[value] ?? value : "ไม่ระบุวิชาชีพ";
+function responsibleOptionLabel(member: ResponsibleMember): string {
+  if (member.profession === "DOCTOR") {
+    return `${member.displayName} · แพทย์`;
+  }
+
+  if (member.profession === "NURSE") {
+    return `${member.displayName} · พยาบาล`;
+  }
+
+  return `${member.displayName} · ผู้รับผิดชอบเดิม`;
 }
 
 function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX.Element | null {
@@ -231,14 +227,16 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm text-text-muted">ผู้ป่วย</p>
-              <p className="mt-1 text-lg font-semibold text-text">{props.patient.displayName}</p>
+              <p className="mt-1 break-words text-lg font-semibold text-text">{props.patient.displayName}</p>
             </div>
             <div>
               <p className="text-sm text-text-muted">โรงพยาบาล</p>
-              <p className="mt-1 text-lg font-semibold text-text">{props.patient.hospital.name}</p>
+              <p className="mt-1 break-words text-lg font-semibold text-text">
+                {props.patient.hospital.name}
+              </p>
             </div>
           </div>
-          <p className="mt-4 text-sm leading-6 text-text-muted">
+          <p className="mt-4 break-words text-sm leading-6 text-text-muted">
             HN ของโรงพยาบาลนี้: {props.patient.hospitalNumber ?? "ไม่ระบุ"}
           </p>
         </Panel>
@@ -289,9 +287,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
                 {props.responsibleMembers.map((member) => (
                   <option key={member.userId} value={member.userId}>
-                    {member.displayName} · {professionLabel(member.profession)} · {member.membershipType
-                      ? membershipLabels[member.membershipType] ?? member.membershipType
-                      : "ผู้รับผิดชอบเดิม"}
+                    {responsibleOptionLabel(member)}
                   </option>
                 ))}
               </Select>

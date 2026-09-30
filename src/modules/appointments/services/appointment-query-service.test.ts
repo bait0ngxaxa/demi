@@ -16,6 +16,7 @@ import {
   getAppointmentDetail,
   getAppointmentHistory,
   getAppointmentCreateContext,
+  getAppointmentRescheduleContext,
   type AppointmentQueryDatabase,
 } from "./appointment-query-service";
 
@@ -60,7 +61,10 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     acknowledgements: [],
     cancellationRequests: [],
     coordinationEvents: [],
-    responsibleUser: { person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" } },
+    responsibleUser: {
+      person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" },
+      memberships: [{ profession: Profession.DOCTOR }],
+    },
     createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "รายการ" } },
     ...overrides,
   };
@@ -131,9 +135,13 @@ function createDatabase(options: {
       findMany: vi.fn().mockResolvedValue([
         {
           userId: responsibleUserId,
-          membershipType: MembershipType.MEMBER,
           profession: Profession.DOCTOR,
           user: { person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" } },
+        },
+        {
+          userId: "77777777-7777-4777-8777-777777777777",
+          profession: Profession.NURSE,
+          user: { person: { givenName: "สมใจ", familyName: "พยาบาล" } },
         },
       ]),
     },
@@ -153,6 +161,7 @@ describe("Appointment query service", () => {
       type: "CONSULTATION",
       status: AppointmentStatus.SCHEDULED,
       responsibleDisplayName: "สมหญิง ผู้รับผิดชอบ",
+      responsibleProfession: Profession.DOCTOR,
     });
     expect(JSON.stringify(history)).toContain("สมชาย ผู้ป่วย");
     expect(JSON.stringify(history)).not.toContain("ลิงก์ส่วนตัว");
@@ -186,7 +195,7 @@ describe("Appointment query service", () => {
     );
   });
 
-  it("loads only active direct Hospital members for the manage form", async () => {
+  it("returns only doctor/nurse selections without exposing membership type", async () => {
     const database = createDatabase();
     const context = await getAppointmentCreateContext(hospitalActor, relationshipId, { database });
     const membershipFindMany = (database as unknown as {
@@ -194,14 +203,94 @@ describe("Appointment query service", () => {
     }).hospitalMembership.findMany;
 
     expect(context.responsibleMembers).toMatchObject([
-      { userId: responsibleUserId, displayName: "สมหญิง ผู้รับผิดชอบ" },
+      { userId: responsibleUserId, displayName: "สมหญิง ผู้รับผิดชอบ", profession: Profession.DOCTOR },
+      {
+        userId: "77777777-7777-4777-8777-777777777777",
+        displayName: "สมใจ พยาบาล",
+        profession: Profession.NURSE,
+      },
     ]);
+    expect(JSON.stringify(context.responsibleMembers)).not.toContain("membershipType");
+    for (const member of context.responsibleMembers) {
+      expect(member).not.toHaveProperty("membershipType");
+    }
     expect(membershipFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ hospitalId, status: MembershipStatus.ACTIVE }),
-        select: expect.objectContaining({ userId: true, user: expect.anything() }),
+        where: expect.objectContaining({
+          hospitalId,
+          status: MembershipStatus.ACTIVE,
+          profession: { in: [Profession.DOCTOR, Profession.NURSE] },
+        }),
+        select: {
+          userId: true,
+          profession: true,
+          user: { select: { person: { select: { givenName: true, familyName: true } } } },
+        },
       }),
     );
+  });
+
+  it.each([
+    ["COORDINATOR", Profession.COORDINATOR],
+    ["OTHER", Profession.OTHER],
+    ["null profession", null],
+  ] as const)("keeps historical %s responsibility factual", async (_label, profession) => {
+    const historicalUserId = "88888888-8888-4888-8888-888888888888";
+    const historicalRecord = appointmentRecord({
+      responsibleUserId: historicalUserId,
+      responsibleUser: {
+        person: { givenName: "ประวัติ", familyName: "ผู้รับผิดชอบ" },
+        memberships: [{ profession }],
+      },
+    });
+    const database = createDatabase({ detailRecord: historicalRecord });
+    (database.patientAppointment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      historicalRecord,
+    ]);
+
+    const history = await getAppointmentHistory(hospitalActor, relationshipId, { database });
+    const detail = await getAppointmentDetail(hospitalActor, relationshipId, appointmentId, {
+      database,
+    });
+
+    expect(history.items[0]).toMatchObject({
+      responsibleDisplayName: "ประวัติ ผู้รับผิดชอบ",
+      responsibleProfession: profession,
+    });
+    expect(detail).toMatchObject({
+      responsibleDisplayName: "ประวัติ ผู้รับผิดชอบ",
+      responsibleProfession: profession,
+    });
+  });
+
+  it("preserves a historical responsible person in reschedule context without membership internals", async () => {
+    const historicalUserId = "88888888-8888-4888-8888-888888888888";
+    const historicalRecord = appointmentRecord({
+      responsibleUserId: historicalUserId,
+      responsibleUser: {
+        person: { givenName: "ประวัติ", familyName: "ผู้ประสานงาน" },
+        memberships: [{ profession: Profession.COORDINATOR }],
+      },
+    });
+    const database = createDatabase({ detailRecord: historicalRecord });
+
+    const context = await getAppointmentRescheduleContext(
+      hospitalActor,
+      relationshipId,
+      appointmentId,
+      { database },
+    );
+
+    expect(context.appointment.responsibleProfession).toBe(Profession.COORDINATOR);
+    expect(context.responsibleMembers).toContainEqual({
+      userId: historicalUserId,
+      displayName: "ประวัติ ผู้ประสานงาน",
+      profession: Profession.COORDINATOR,
+    });
+    expect(JSON.stringify(context.responsibleMembers)).not.toContain("membershipType");
+    for (const member of context.responsibleMembers) {
+      expect(member).not.toHaveProperty("membershipType");
+    }
   });
 
   it("fails closed when the actor loses direct membership before a read", async () => {

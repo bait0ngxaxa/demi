@@ -7,6 +7,7 @@ import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_TYPE_LABELS,
+  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import {
@@ -71,8 +72,14 @@ function AppointmentHistoryRow({
             <p className="mt-1 text-sm leading-6 text-text-muted">
               {APPOINTMENT_TYPE_LABELS[item.type]} · {locationSummary(item)}
             </p>
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              ผู้รับผิดชอบ: {item.responsibleDisplayName ?? "ยังไม่ระบุ"}
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              {appointmentResponsiblePresentation(
+                item.responsibleDisplayName,
+                item.responsibleProfession,
+              ).heading}: {appointmentResponsiblePresentation(
+                item.responsibleDisplayName,
+                item.responsibleProfession,
+              ).displayName}
             </p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
               OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
@@ -140,10 +147,12 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">
+              <h2 className="break-words text-2xl font-semibold tracking-[-0.03em] text-text">
                 {history.patient.displayName}
               </h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">{history.patient.hospital.name}</p>
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                {history.patient.hospital.name}
+              </p>
             </div>
             <p className="text-sm text-text-muted">
               HN ของโรงพยาบาลนี้: {history.patient.hospitalNumber ?? "ไม่ระบุ"}

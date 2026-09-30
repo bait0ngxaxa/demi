@@ -3,7 +3,6 @@ import "server-only";
 import {
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
-  MembershipType,
   Prisma,
   Profession,
   type PrismaClient,
@@ -46,7 +45,6 @@ export type ResponsibleHospitalMember = {
   userId: string;
   displayName: string;
   profession: Profession | null;
-  membershipType: MembershipType | null;
 };
 
 export type AppointmentAcknowledgementSummary = {
@@ -78,6 +76,7 @@ export type AppointmentHistoryItem = {
   durationMinutes: number | null;
   locationType: AppointmentLocationValue | null;
   responsibleDisplayName: string | null;
+  responsibleProfession: Profession | null;
   osmAtCreationDisplayName: string | null;
   currentAcknowledgement: AppointmentAcknowledgementSummary | null;
   cancellationRequests: AppointmentCancellationRequestSummary[];
@@ -99,6 +98,7 @@ export type AppointmentDetail = {
   appointmentId: string;
   responsibleUserId: string | null;
   responsibleDisplayName: string | null;
+  responsibleProfession: Profession | null;
   osmAtCreationDisplayName: string | null;
   currentAcknowledgement: AppointmentAcknowledgementSummary | null;
   cancellationRequests: AppointmentCancellationRequestSummary[];
@@ -124,7 +124,23 @@ export type AppointmentRescheduleContext = AppointmentCreateContext & {
   appointment: AppointmentDetail;
 };
 
-const appointmentHistorySelect = {
+function responsibleUserSelect(hospitalId: string) {
+  return {
+    person: {
+      select: {
+        givenName: true,
+        familyName: true,
+      },
+    },
+    memberships: {
+      where: { hospitalId },
+      select: { profession: true },
+    },
+  } satisfies Prisma.UserSelect;
+}
+
+function appointmentHistorySelect(hospitalId: string) {
+  return {
   id: true,
   updatedAt: true,
   scheduledAt: true,
@@ -132,16 +148,7 @@ const appointmentHistorySelect = {
   status: true,
   durationMinutes: true,
   locationType: true,
-  responsibleUser: {
-    select: {
-      person: {
-        select: {
-          givenName: true,
-          familyName: true,
-        },
-      },
-    },
-  },
+  responsibleUser: { select: responsibleUserSelect(hospitalId) },
   osmAssignmentAtCreation: {
     select: {
       osmUser: {
@@ -182,9 +189,11 @@ const appointmentHistorySelect = {
       recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
     },
   },
-} satisfies Prisma.PatientAppointmentSelect;
+  } satisfies Prisma.PatientAppointmentSelect;
+}
 
-const appointmentDetailSelect = {
+function appointmentDetailSelect(hospitalId: string) {
+  return {
   id: true,
   responsibleUserId: true,
   type: true,
@@ -196,16 +205,7 @@ const appointmentDetailSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
-  responsibleUser: {
-    select: {
-      person: {
-        select: {
-          givenName: true,
-          familyName: true,
-        },
-      },
-    },
-  },
+  responsibleUser: { select: responsibleUserSelect(hospitalId) },
   createdByUser: {
     select: {
       person: {
@@ -256,14 +256,15 @@ const appointmentDetailSelect = {
       recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
     },
   },
-} satisfies Prisma.PatientAppointmentSelect;
+  } satisfies Prisma.PatientAppointmentSelect;
+}
 
 type AppointmentHistoryRecord = Prisma.PatientAppointmentGetPayload<{
-  select: typeof appointmentHistorySelect;
+  select: ReturnType<typeof appointmentHistorySelect>;
 }>;
 
 type AppointmentDetailRecord = Prisma.PatientAppointmentGetPayload<{
-  select: typeof appointmentDetailSelect;
+  select: ReturnType<typeof appointmentDetailSelect>;
 }>;
 
 function getDatabase(dependencies: AppointmentQueryDependencies): AppointmentQueryDatabase {
@@ -352,6 +353,7 @@ function toHistoryItem(record: AppointmentHistoryRecord): AppointmentHistoryItem
     durationMinutes: record.durationMinutes,
     locationType: record.locationType,
     responsibleDisplayName: nullableDisplayName(record.responsibleUser?.person ?? null),
+    responsibleProfession: record.responsibleUser?.memberships[0]?.profession ?? null,
     osmAtCreationDisplayName: nullableDisplayName(
       record.osmAssignmentAtCreation?.osmUser.person ?? null,
     ),
@@ -375,6 +377,7 @@ function toDetail(
     appointmentId: record.id,
     responsibleUserId: record.responsibleUserId,
     responsibleDisplayName: nullableDisplayName(record.responsibleUser?.person ?? null),
+    responsibleProfession: record.responsibleUser?.memberships[0]?.profession ?? null,
     osmAtCreationDisplayName: nullableDisplayName(
       record.osmAssignmentAtCreation?.osmUser.person ?? null,
     ),
@@ -430,7 +433,6 @@ async function getResponsibleMembers(
     orderBy: { createdAt: "asc" },
     select: {
       userId: true,
-      membershipType: true,
       profession: true,
       user: {
         select: {
@@ -449,7 +451,6 @@ async function getResponsibleMembers(
     userId: membership.userId,
     displayName: toDisplayName(membership.user.person),
     profession: membership.profession,
-    membershipType: membership.membershipType,
   }));
 }
 
@@ -458,6 +459,7 @@ async function getRescheduleResponsibleMembers(
   hospitalId: string,
   currentResponsibleUserId: string | null,
   currentResponsiblePerson: { givenName: string | null; familyName: string | null } | null,
+  currentResponsibleProfession: Profession | null,
 ): Promise<ResponsibleHospitalMember[]> {
   const members = await getResponsibleMembers(database, hospitalId);
 
@@ -470,8 +472,7 @@ async function getRescheduleResponsibleMembers(
       displayName: currentResponsiblePerson
         ? toDisplayName(currentResponsiblePerson)
         : "ผู้รับผิดชอบเดิม",
-      profession: null,
-      membershipType: null,
+      profession: currentResponsibleProfession,
     });
   }
 
@@ -495,7 +496,7 @@ export async function getAppointmentHistory(
       where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
       orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
       take: APPOINTMENT_HISTORY_LIMIT,
-      select: appointmentHistorySelect,
+      select: appointmentHistorySelect(access.target.hospitalId),
     });
     return {
       patient: access.patient,
@@ -538,7 +539,7 @@ export async function getAppointmentDetail(
         id: parsedAppointmentId.data,
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
       },
-      select: appointmentDetailSelect,
+      select: appointmentDetailSelect(access.target.hospitalId),
     });
 
     if (!record) {
@@ -608,7 +609,7 @@ export async function getAppointmentRescheduleContext(
         id: parsedAppointmentId.data,
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
       },
-      select: appointmentDetailSelect,
+      select: appointmentDetailSelect(access.target.hospitalId),
     });
 
     if (!record) {
@@ -623,6 +624,7 @@ export async function getAppointmentRescheduleContext(
         access.target.hospitalId,
         record.responsibleUserId,
         record.responsibleUser?.person ?? null,
+        record.responsibleUser?.memberships[0]?.profession ?? null,
       ),
     };
   } catch (error: unknown) {
@@ -661,6 +663,7 @@ export async function listResponsibleHospitalMembers(
 export const appointmentQueryInternals = {
   appointmentDetailSelect,
   appointmentHistorySelect,
+  responsibleUserSelect,
   getResponsibleMembers,
   resolveManageProjection,
   nullableDisplayName,

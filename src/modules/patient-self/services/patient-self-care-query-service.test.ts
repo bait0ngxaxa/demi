@@ -7,6 +7,7 @@ import {
   FollowupActivityProgressStatus,
   HospitalStatus,
   PatientProgramStatus,
+  Profession,
   Role,
 } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
@@ -49,6 +50,7 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     updatedAt: recordedAt,
     responsibleUser: {
       person: { givenName: "Care", familyName: "Clinician" },
+      memberships: [{ profession: Profession.DOCTOR }],
     },
     osmAssignmentAtCreation: {
       osmUser: { person: { givenName: "Assigned", familyName: "OSM" } },
@@ -529,7 +531,7 @@ describe("Patient SELF care read projections", () => {
       orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
       skip: 0,
       take: 51,
-      select: patientSelfCareQueryInternals.appointmentPatientSelect,
+      select: patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId),
     });
     expect(history.appointments).toMatchObject([
       {
@@ -542,6 +544,7 @@ describe("Patient SELF care read projections", () => {
         status: AppointmentStatus.SCHEDULED,
         updatedAt: recordedAt,
         responsibleDisplayName: "Care Clinician",
+        responsibleProfession: Profession.DOCTOR,
         osmAtCreationDisplayName: "Assigned OSM",
         acknowledgement: {
           source: AppointmentInteractionSource.OSM_PROXY,
@@ -563,11 +566,12 @@ describe("Patient SELF care read projections", () => {
 
     expect(database.patientAppointment.findFirst).toHaveBeenCalledWith({
       where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
-      select: patientSelfCareQueryInternals.appointmentPatientSelect,
+      select: patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId),
     });
     expect(detail).toMatchObject({
       updatedAt: recordedAt,
       responsibleDisplayName: "Care Clinician",
+      responsibleProfession: Profession.DOCTOR,
       osmAtCreationDisplayName: "Assigned OSM",
       acknowledgement: {
         source: AppointmentInteractionSource.OSM_PROXY,
@@ -610,6 +614,46 @@ describe("Patient SELF care read projections", () => {
     );
     expect(secondPage.appointments).toHaveLength(1);
     expect(secondPage.historyPage).toEqual({ page: 2, hasMore: false });
+  });
+
+  it.each([
+    ["COORDINATOR", Profession.COORDINATOR],
+    ["OTHER", Profession.OTHER],
+    ["null profession", null],
+  ] as const)("keeps historical %s responsibility readable in the Patient projection", async (_label, profession) => {
+    const database = createDatabase();
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue([
+      appointmentRecord({
+        responsibleUser: {
+          person: { givenName: "History", familyName: "Coordinator" },
+          memberships: [{ profession }],
+        },
+      }),
+    ]);
+
+    const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
+
+    expect(history.appointments[0]).toMatchObject({
+      responsibleDisplayName: "History Coordinator",
+      responsibleProfession: profession,
+    });
+    expect(JSON.stringify(history)).not.toMatch(
+      /responsibleUserId|membershipType|createdByUser|note|phone|email|assignmentId|actorUserId|resolverUserId/,
+    );
+  });
+
+  it("shows an unassigned responsible person as not specified", async () => {
+    const database = createDatabase();
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue([
+      appointmentRecord({ responsibleUser: null }),
+    ]);
+
+    const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
+
+    expect(history.appointments[0]).toMatchObject({
+      responsibleDisplayName: null,
+      responsibleProfession: null,
+    });
   });
 
   it("returns the same not-found result for foreign Program, Goal Plan, Follow-up, and Appointment IDs", async () => {
@@ -669,7 +713,9 @@ describe("Patient SELF care read projections", () => {
       expect(selectors).not.toContain(withheld);
     }
 
-    const appointmentSelector = JSON.stringify(patientSelfCareQueryInternals.appointmentPatientSelect);
+    const appointmentSelector = JSON.stringify(
+      patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId),
+    );
     for (const withheld of [
       "responsibleUserId",
       "createdByUser",
@@ -684,6 +730,9 @@ describe("Patient SELF care read projections", () => {
       "recordedByUserId",
       "submittedByUserId",
       "resolvedByUserId",
+      "membershipType",
+      "hospitalId",
+      "userId",
     ]) {
       expect(appointmentSelector).not.toContain(withheld);
     }

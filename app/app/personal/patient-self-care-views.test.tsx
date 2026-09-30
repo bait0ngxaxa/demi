@@ -7,6 +7,7 @@ import {
   FollowupActivityProgressStatus,
   HospitalStatus,
   PatientProgramStatus,
+  Profession,
 } from "@prisma/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -169,6 +170,7 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   status: AppointmentStatus.SCHEDULED,
   updatedAt: recordedAt,
   responsibleDisplayName: "Doctor Example",
+  responsibleProfession: Profession.DOCTOR,
   osmAtCreationDisplayName: "OSM Example",
   acknowledgement: null,
   cancellationRequests: [
@@ -300,6 +302,7 @@ describe("Patient Personal care read views", () => {
       expect(detailMarkup).toContain(content);
     }
     expect(detailMarkup).toContain("รับทราบนัดหมาย");
+    expect(detailMarkup).toContain("แพทย์ผู้ดูแล");
     expect(detailMarkup).toContain("ขอยกเลิกนัด");
     expect(detailMarkup).toContain("กรุณาติดต่อโรงพยาบาลโดยตรง");
     expect(detailMarkup).not.toContain("ยืนยันว่าจะมา");
@@ -309,6 +312,54 @@ describe("Patient Personal care read views", () => {
     }
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111/66666666-6666-4666-8666-666666666666"');
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111?page=2"');
+  });
+
+  it.each([
+    ["doctor", Profession.DOCTOR, "แพทย์ผู้ดูแล"],
+    ["nurse", Profession.NURSE, "พยาบาลผู้ดูแล"],
+    ["historical coordinator", Profession.COORDINATOR, "ผู้รับผิดชอบเดิม"],
+    ["historical other", Profession.OTHER, "ผู้รับผิดชอบเดิม"],
+    ["historical null profession", null, "ผู้รับผิดชอบเดิม"],
+  ] as const)("labels %s appointment responsibility accurately", async (_label, profession, heading) => {
+    const detailMarkup = renderToStaticMarkup(
+      <PatientSelfAppointmentDetailView
+        cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
+        detail={{
+          ...appointment,
+          responsibleDisplayName: "Responsible Person",
+          responsibleProfession: profession,
+          relationship: ownRelationship,
+        }}
+      />,
+    );
+
+    expect(detailMarkup).toContain(heading);
+    expect(detailMarkup).toContain("Responsible Person");
+    if (profession !== Profession.DOCTOR) {
+      expect(detailMarkup).not.toContain("แพทย์ผู้ดูแล");
+    }
+    if (profession !== Profession.NURSE) {
+      expect(detailMarkup).not.toContain("พยาบาลผู้ดูแล");
+    }
+  });
+
+  it("renders an unassigned responsible person as not specified", () => {
+    const detailMarkup = renderToStaticMarkup(
+      <PatientSelfAppointmentDetailView
+        cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
+        detail={{
+          ...appointment,
+          responsibleDisplayName: null,
+          responsibleProfession: null,
+          relationship: ownRelationship,
+        }}
+      />,
+    );
+
+    expect(detailMarkup).toContain("ผู้รับผิดชอบ");
+    expect(detailMarkup).toContain("ยังไม่ระบุ");
+    expect(detailMarkup).not.toContain("แพทย์ผู้ดูแล");
+    expect(detailMarkup).not.toContain("พยาบาลผู้ดูแล");
   });
 
   it("renders honest empty states across care and appointment history", () => {

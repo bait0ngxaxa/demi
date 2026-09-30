@@ -1,6 +1,6 @@
 # Phase 17D.1 — Appointment interactions and responsibility snapshot
 
-- Status: **IMPLEMENTED**
+- Status: **CLOSED**
 - Owner contract: [Phase 17D.0 decision register](./PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md)
 - Date: 2026-09-30
 
@@ -67,7 +67,21 @@ All new interactive copy and action-state messages are in Thai. The Patient ackn
 - Impeccable UI detector — returned no findings (`[]`).
 - `git diff --check` is recorded in the final repository review.
 
-No production build, browser E2E run, or notification integration was performed; none is required for this database/service/UI change under the project verification rules.
+### Closeout hardening evidence (2026-09-30)
+
+- Architecture Baseline and CONTEXT now identify Phase 17D.0 / 17D.1 as the source for resolved Appointment interaction authority. The only remaining Appointment requirement gate is P17D-NOTIF-01.
+- Work and Patient history/detail projections include `responsibleProfession` resolved only from the exact Hospital membership, without returning membership internals. `DOCTOR` displays “แพทย์ผู้ดูแล”, `NURSE` displays “พยาบาลผู้ดูแล”, historical `COORDINATOR` / `OTHER` / null profession displays “ผู้รับผิดชอบเดิม”, and an absent responsible user displays “ยังไม่ระบุ”. Historical appointment rows are not rewritten or backfilled.
+- The responsible-selection DTO contains only the opaque User ID, display name, and profession. New selections remain limited server-side to an active User with an active direct membership in the exact Hospital and `DOCTOR` / `NURSE` profession. Reschedule context preserves an unchanged historical responsible person without exposing `membershipType`; changing to a non-clinical profession remains rejected.
+- Patient appointment projection remains structurally allowlisted. Focused query and PostgreSQL integration assertions cover absence of responsible/creator/assignment IDs, membership type, contact fields, note, and internal actor IDs.
+- Focused Appointment/Patient suite — 8 files, 96 tests passed.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm run test` — full normal suite passed, 148 files / 1,072 tests.
+- Appointment PostgreSQL integration file — 1 file / 5 tests passed against the local integration database.
+- `git diff --check` — passed after the closeout changes.
+- Responsive source review added wrapping and minimum-width protections for long names, Hospital labels, location text, and request submitter details; component tests cover Patient and Work responsibility display. A real 390px browser viewport run was unavailable: the current CUA browser surface exposes no viewport resize/emulation control, and the repository has no browser E2E tooling or visual viewport fixtures. Therefore horizontal overflow and clipped controls were not measured in a browser; the static responsive review and component tests are the available evidence.
+
+This closeout patch adds no schema or migration changes. No production build, browser E2E run, or notification integration was performed. P17D-NOTIF-01 remains open, and Patient/OSM reschedule requests remain out of the system.
 
 ## Deliberately out of scope
 

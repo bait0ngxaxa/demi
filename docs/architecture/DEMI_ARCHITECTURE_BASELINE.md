@@ -1354,7 +1354,7 @@ They require confirmed business requirements:
 - Who may approve a care plan?
 - Which patient fields may patients edit themselves?
 - Which health measurements may patients submit themselves?
-- Who creates/reschedules/cancels appointments?
+- Which appointment notification events, recipients, timing, channels, preferences, and retry rules should be supported? P17D-NOTIF-01 remains open; Appointment authority and interaction semantics are resolved in [Phase 17D.0](../phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) and implemented in [Phase 17D.1](../phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md).
 - Can OSM transfer or reassign a patient?
 - Can patients change their hospital affiliation?
 - What evidence is required to verify a hospital signup?

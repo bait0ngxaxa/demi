@@ -7,6 +7,7 @@ import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_TYPE_LABELS,
+  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
   type AppointmentTypeValue,
   type AppointmentLocationValue,
@@ -307,11 +308,15 @@ export function PatientSelfAppointmentHistoryView({
                           {appointment.locationDetail}
                         </p>
                       ) : null}
-                      {appointment.responsibleDisplayName ? (
-                        <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                          แพทย์หรือพยาบาลผู้รับผิดชอบ: {appointment.responsibleDisplayName}
-                        </p>
-                      ) : null}
+                      <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                        {appointmentResponsiblePresentation(
+                          appointment.responsibleDisplayName,
+                          appointment.responsibleProfession,
+                        ).heading}: {appointmentResponsiblePresentation(
+                          appointment.responsibleDisplayName,
+                          appointment.responsibleProfession,
+                        ).displayName}
+                      </p>
                       {appointment.osmAtCreationDisplayName ? (
                         <p className="mt-1 break-words text-sm leading-6 text-text-muted">
                           OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง: {appointment.osmAtCreationDisplayName}
@@ -432,9 +437,17 @@ export function PatientSelfAppointmentDetailView({
         <Panel>
           <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">แพทย์หรือพยาบาลผู้รับผิดชอบ</dt>
+              <dt className="text-sm font-semibold text-text-muted">
+                {appointmentResponsiblePresentation(
+                  detail.responsibleDisplayName,
+                  detail.responsibleProfession,
+                ).heading}
+              </dt>
               <dd className="mt-1 break-words font-semibold text-text">
-                {detail.responsibleDisplayName ?? "ยังไม่ระบุ"}
+                {appointmentResponsiblePresentation(
+                  detail.responsibleDisplayName,
+                  detail.responsibleProfession,
+                ).displayName}
               </dd>
             </div>
             <div className="min-w-0">

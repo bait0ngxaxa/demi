@@ -10,6 +10,7 @@ import {
   type FollowupActivityProgressStatus,
   type PatientProgramStatus,
   type PrismaClient,
+  type Profession,
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -187,6 +188,7 @@ export type PatientSelfAppointmentItem = {
   status: AppointmentStatus;
   updatedAt: Date;
   responsibleDisplayName: string | null;
+  responsibleProfession: Profession | null;
   osmAtCreationDisplayName: string | null;
   acknowledgement: {
     source: AppointmentInteractionSource;
@@ -337,7 +339,8 @@ const followupDetailSelect = {
   },
 } satisfies Prisma.PatientFollowupSelect;
 
-const appointmentPatientSelect = {
+function appointmentPatientSelect(relationshipId: string) {
+  return {
   id: true,
   type: true,
   scheduledAt: true,
@@ -347,7 +350,19 @@ const appointmentPatientSelect = {
   status: true,
   updatedAt: true,
   responsibleUser: {
-    select: { person: { select: { givenName: true, familyName: true } } },
+    select: {
+      person: { select: { givenName: true, familyName: true } },
+      memberships: {
+        where: {
+          hospital: {
+            is: {
+              patientRelationships: { some: { id: relationshipId } },
+            },
+          },
+        },
+        select: { profession: true },
+      },
+    },
   },
   osmAssignmentAtCreation: {
     select: {
@@ -372,7 +387,8 @@ const appointmentPatientSelect = {
       submittedAt: true,
     },
   },
-} satisfies Prisma.PatientAppointmentSelect;
+  } satisfies Prisma.PatientAppointmentSelect;
+}
 
 type GoalPlanHistoryRecord = Prisma.PatientGoalPlanGetPayload<{
   select: typeof goalPlanHistorySelect;
@@ -383,7 +399,7 @@ type FollowupHistoryRecord = Prisma.PatientFollowupGetPayload<{
 }>;
 
 type AppointmentRecord = Prisma.PatientAppointmentGetPayload<{
-  select: typeof appointmentPatientSelect;
+  select: ReturnType<typeof appointmentPatientSelect>;
 }>;
 
 function parseHistoryPage(value: unknown): { page: number; skip: number } {
@@ -487,6 +503,7 @@ function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentIte
     responsibleDisplayName: record.responsibleUser
       ? patientAppointmentDisplayName(record.responsibleUser.person)
       : null,
+    responsibleProfession: record.responsibleUser?.memberships[0]?.profession ?? null,
     osmAtCreationDisplayName: record.osmAssignmentAtCreation
       ? patientAppointmentDisplayName(record.osmAssignmentAtCreation.osmUser.person)
       : null,
@@ -923,7 +940,7 @@ export async function getOwnPatientAppointmentHistory(
       orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
       skip: page.skip,
       take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
-      select: appointmentPatientSelect,
+      select: appointmentPatientSelect(relationship.relationshipId),
     });
     const appointmentResults = getHistoryPage(records, page.page);
 
@@ -968,7 +985,7 @@ export async function getOwnPatientAppointmentDetail(
         id: parsedAppointmentId.data,
         patientHospitalRelationshipId: relationship.relationshipId,
       },
-      select: appointmentPatientSelect,
+      select: appointmentPatientSelect(relationship.relationshipId),
     });
 
     if (!record) {

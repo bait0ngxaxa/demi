@@ -300,6 +300,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       type: "CONSULTATION",
       status: AppointmentStatus.SCHEDULED,
       responsibleUserId: member.userId,
+      responsibleProfession: Profession.NURSE,
       note: "หมายเหตุสำหรับการตรวจ workflow",
     });
     expect(detail.patient.patientHospitalRelationshipId).toBe(patient.relationshipId);
@@ -566,11 +567,25 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     );
     expect(patientProjection).toMatchObject({
       responsibleDisplayName: clinician.displayName,
+      responsibleProfession: Profession.NURSE,
       osmAtCreationDisplayName: firstOsm.displayName,
     });
-    expect(JSON.stringify(patientProjection)).not.toContain("Work-only appointment note");
-    expect(JSON.stringify(patientProjection)).not.toContain("createdByUserId");
-    expect(JSON.stringify(patientProjection)).not.toContain("recordedByUserId");
+    const serializedPatientProjection = JSON.stringify(patientProjection);
+    for (const withheld of [
+      "Work-only appointment note",
+      "responsibleUserId",
+      "createdByUserId",
+      "createdBy",
+      "membershipType",
+      "assignmentId",
+      "phone",
+      "email",
+      "recordedByUserId",
+      "submittedByUserId",
+      "resolvedByUserId",
+    ]) {
+      expect(serializedPatientProjection).not.toContain(withheld);
+    }
 
     const coordinationInput = {
       patientHospitalRelationshipId: patient.relationshipId,
@@ -688,7 +703,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const hospital = await createHospital("REQUEST-LIFECYCLE");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const coordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR });
+    const otherCoordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR });
     const doctor = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.DOCTOR });
+    const nurse = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.NURSE });
     const patient = await provisionPatient(owner.actor, {
       identity: { namespace: "appointment-integration", value: "request-lifecycle-patient" },
       targetHospitalId: hospital.id,
@@ -812,7 +829,22 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       patient.relationshipId,
       appointment.appointmentId,
       rescheduled.updatedAt,
+      { responsibleUserId: otherCoordinator.userId },
+    ))).rejects.toBeInstanceOf(ValidationError);
+
+    const doctorRescheduled = await rescheduleAppointment(patientActor, rescheduleInput(
+      patient.relationshipId,
+      appointment.appointmentId,
+      rescheduled.updatedAt,
       { responsibleUserId: doctor.userId },
+    ));
+    expect(doctorRescheduled.status).toBe(AppointmentStatus.SCHEDULED);
+
+    await expect(rescheduleAppointment(patientActor, rescheduleInput(
+      patient.relationshipId,
+      appointment.appointmentId,
+      doctorRescheduled.updatedAt,
+      { responsibleUserId: nurse.userId },
     ))).resolves.toMatchObject({ status: AppointmentStatus.SCHEDULED });
 
     const terminalTransitions = [

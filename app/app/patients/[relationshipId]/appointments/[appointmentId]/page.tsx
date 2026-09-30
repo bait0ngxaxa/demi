@@ -12,6 +12,7 @@ import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_TYPE_LABELS,
+  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import {
@@ -94,6 +95,10 @@ function AppointmentDetailView({
   const locationLabel = detail.locationType
     ? APPOINTMENT_LOCATION_LABELS[detail.locationType]
     : "ไม่ระบุสถานที่";
+  const responsiblePresentation = appointmentResponsiblePresentation(
+    detail.responsibleDisplayName,
+    detail.responsibleProfession,
+  );
   const followupContext = getAppointmentFollowupContext({
     activeProgram,
     appointmentId: detail.appointmentId,
@@ -140,13 +145,15 @@ function AppointmentDetailView({
 
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">
+            <div className="min-w-0">
+              <h2 className="break-words text-2xl font-semibold tracking-[-0.03em] text-text">
                 {detail.patient.displayName}
               </h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">{detail.patient.hospital.name}</p>
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                {detail.patient.hospital.name}
+              </p>
             </div>
-            <p className="text-sm text-text-muted">
+            <p className="break-words text-sm text-text-muted">
               HN ของโรงพยาบาลนี้: {detail.patient.hospitalNumber ?? "ไม่ระบุ"}
             </p>
           </div>
@@ -171,12 +178,14 @@ function AppointmentDetailView({
               <dd className="mt-1 font-semibold text-text">{formatDate(detail.scheduledAt)}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">แพทย์หรือพยาบาลผู้รับผิดชอบ</dt>
-              <dd className="mt-1 font-semibold text-text">{detail.responsibleDisplayName ?? "ยังไม่ระบุ"}</dd>
+              <dt className="text-sm text-text-muted">{responsiblePresentation.heading}</dt>
+              <dd className="mt-1 break-words font-semibold text-text">
+                {responsiblePresentation.displayName}
+              </dd>
             </div>
             <div>
               <dt className="text-sm text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>
-              <dd className="mt-1 font-semibold text-text">
+              <dd className="mt-1 break-words font-semibold text-text">
                 {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
               </dd>
             </div>
@@ -188,7 +197,7 @@ function AppointmentDetailView({
             </div>
             <div>
               <dt className="text-sm text-text-muted">สถานที่</dt>
-              <dd className="mt-1 font-semibold text-text">{locationLabel}</dd>
+              <dd className="mt-1 break-words font-semibold text-text">{locationLabel}</dd>
             </div>
             <div>
               <dt className="text-sm text-text-muted">สร้างเมื่อ</dt>
@@ -196,20 +205,24 @@ function AppointmentDetailView({
             </div>
             <div>
               <dt className="text-sm text-text-muted">ผู้สร้าง</dt>
-              <dd className="mt-1 font-semibold text-text">{detail.createdByDisplayName}</dd>
+              <dd className="mt-1 break-words font-semibold text-text">
+                {detail.createdByDisplayName}
+              </dd>
             </div>
           </dl>
 
           {detail.locationDetail ? (
             <div className="border-b border-border py-5">
               <h3 className="text-sm font-semibold text-text">รายละเอียดสถานที่</h3>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text">{detail.locationDetail}</p>
+              <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-text">
+                {detail.locationDetail}
+              </p>
             </div>
           ) : null}
 
           <div className="pt-5">
             <h3 className="text-sm font-semibold text-text">หมายเหตุ</h3>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text">
+            <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-text">
               {detail.note ?? "ไม่ได้ระบุ"}
             </p>
           </div>

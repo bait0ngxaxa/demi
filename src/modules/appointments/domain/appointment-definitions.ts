@@ -1,3 +1,5 @@
+import type { Profession } from "@prisma/client";
+
 export const APPOINTMENT_TYPE_VALUES = ["FOLLOW_UP", "CONSULTATION"] as const;
 export type AppointmentTypeValue = (typeof APPOINTMENT_TYPE_VALUES)[number];
 
@@ -38,4 +40,28 @@ export const APPOINTMENT_LOCATION_LABELS: Record<AppointmentLocationValue, strin
 
 export const APPOINTMENT_DEFAULT_DURATION_MINUTES = 30;
 export const APPOINTMENT_HISTORY_LIMIT = 50;
+
+export type AppointmentResponsiblePresentation = {
+  heading: string;
+  displayName: string;
+};
+
+export function appointmentResponsiblePresentation(
+  displayName: string | null,
+  profession: Profession | null,
+): AppointmentResponsiblePresentation {
+  if (!displayName) {
+    return { heading: "ผู้รับผิดชอบ", displayName: "ยังไม่ระบุ" };
+  }
+
+  if (profession === "DOCTOR") {
+    return { heading: "แพทย์ผู้ดูแล", displayName };
+  }
+
+  if (profession === "NURSE") {
+    return { heading: "พยาบาลผู้ดูแล", displayName };
+  }
+
+  return { heading: "ผู้รับผิดชอบเดิม", displayName };
+}
 

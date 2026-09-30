@@ -85,11 +85,11 @@ Phase 9A is complete as analysis/documentation: [Appointment & Follow-up Require
 Phase 9B.0 is implemented as the relationship-scoped Appointment
 requirement-validation workflow in [the Phase 9B.0 handoff](./phases/PHASE_9B0_APPOINTMENT_WORKING_PROTOTYPE.md):
 
-- `/app/patients/[relationshipId]/appointments`, `/new`, detail, and edit/reschedule routes provide bounded newest-first Appointment history and explicit create/reschedule/cancel/complete/no-show operations.
+- The Phase 9B.0 Hospital Work prototype introduced `/app/patients/[relationshipId]/appointments`, `/new`, detail, and edit/reschedule routes with bounded newest-first history and create/reschedule/cancel/complete/no-show operations. Current authority is action-specific: direct operational changes require valid Hospital Work authority; Patient and exact-assigned OSM interactions follow Phase 17D.0/17D.1.
 - `PatientAppointment` is owned by the exact `PatientHospitalRelationship`; it stores a real PostgreSQL `TIMESTAMPTZ`, uses strict provisional type/status/location values, and retains creator/responsible-user distinctions.
-- Provisional `appointment:read` and `appointment:manage` policy allows active direct Hospital OWNER/MEMBER, allows read-only exact-assigned OSM, and denies unassigned OSM, PATIENT, and ADMIN-only actors. An ADMIN role does not revoke valid direct Hospital or exact-assigned OSM authority on a multi-role actor; OSM remains read-only for Appointment management. Profession and Hospital hierarchy do not widen authority.
+- The Phase 9B.0 `appointment:read` / `appointment:manage` matrix was provisional historical behavior. The owner-approved Phase 17D.0 contract, implemented in Phase 17D.1, now defines the current action and scope matrix: Hospital Work authority owns direct operational mutations and request review; Patient SELF and exact-assigned OSM receive only their approved acknowledgement, cancellation-request, coordination, read, and create actions. Workspace selection and profession do not grant authority.
 - Create, reschedule, and terminal mutations use server-side validation, serializable transactions, conditional stale-update checks, unique nonce retry semantics, and atomic bounded Appointment audit events. History/detail projections remain minimal and relationship-scoped.
-- This is not customer-approved Appointment behavior. Phase 9C.0 now adds a separate Follow-up / Progress requirement-validation prototype; Appointment completion remains independent and does not create a Follow-up automatically.
+- This Appointment prototype was not customer-approved when Phase 9B.0 was delivered; its interaction authority was later resolved by Phase 17D.0 and implemented in Phase 17D.1. Phase 9C.0 adds a separate Follow-up / Progress requirement-validation prototype; Appointment completion remains independent and does not create a Follow-up automatically.
 
 ## Phase 9C.0 Follow-up / Progress Working Prototype
 
@@ -586,8 +586,7 @@ their own basic profile. **Phase 17C Patient Care Journey & Appointment Read is 
 Hospital relationship care history and read-only appointment list/detail, using allowlisted projections over existing canonical
 records. Care, Program and Appointment histories use bounded 50-record pages with older-page navigation. Baseline displays its
 confirmed DTX mg/dL field; Follow-up/Final generic bloodSugar values remain withheld until unit/context is accepted. The Patient
-path rechecks SELF ownership for every relationship/resource; no Patient writes or schema migration were added, and PAM/PROM
-meaning, Health Plan, appointment actions and other requirement-gated semantics remain closed. Login-page registration,
+path rechecks SELF ownership for every relationship/resource; no Patient writes or schema migration were added. At Phase 17C close, PAM/PROM meaning, Health Plan, appointment actions and other requirement-gated semantics remained closed; appointment interactions were subsequently resolved and implemented in Phase 17D.0/17D.1. Login-page registration,
 Patient service requests/enrollment, caregiver access, and other unresolved customer semantics remain gated. A
 parallel UAT Delivery / Environment Track covers environment, safe data, representative accounts, deployment, smoke checks,
 reset/recovery, and customer handoff readiness.
@@ -605,7 +604,7 @@ security, identity, authorization and unresolved architecture invariants.
 
 Phase 17C is formally closed after the permanent Vitest TSX discovery globs were verified and the normal repository suite passed with 146 test files and 1,037 tests. The exact handoff evidence is recorded in [Phase 17C](./phases/PHASE_17C_PATIENT_CARE_JOURNEY_APPOINTMENT_READ.md).
 
-[Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) records the owner-approved resolution of P17D-APT-01 through P17D-APT-18. [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md) implements Patient acknowledgement-only and cancellation-request actions, exact-assigned OSM coordination/proxy/create actions, direct Hospital cancellation review, doctor/nurse responsibility, appointment-time OSM snapshots, and allowlisted Thai Patient/Work views. Acknowledgement remains separate from AppointmentStatus; Patient and OSM do not directly reschedule or cancel, and DEMI has no reschedule-request workflow. P17D-NOTIF-01 remains open and notifications are not implemented.
+[Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) records the owner-approved resolution of P17D-APT-01 through P17D-APT-18. [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md) is formally closed after implementing Patient acknowledgement-only and cancellation-request actions, exact-assigned OSM coordination/proxy/create actions, direct Hospital cancellation review, truthful doctor/nurse/historical responsibility labels, appointment-time OSM snapshots, and allowlisted Thai Patient/Work views. Acknowledgement remains separate from AppointmentStatus; Patient and OSM do not directly reschedule or cancel, and DEMI has no reschedule-request workflow. P17D-NOTIF-01 remains open and notifications are not implemented. Closeout verification, including the browser viewport limitation, is recorded in the Phase 17D.1 handoff.
 
 ## Open Requirements
 
@@ -616,7 +615,7 @@ Phase 17C is formally closed after the permanent Vitest TSX discovery globs were
 - การแต่งตั้ง Hospital Owner เพิ่มเติม
 - ความแตกต่างด้าน permission ระหว่าง Doctor/Nurse และผู้อนุมัติ care plan
 - patient-editable fields และ health measurements ที่ผู้ป่วยส่งเองได้
-- ผู้สร้าง เปลี่ยนเวลา หรือยกเลิก appointment
+- การแจ้งเตือนนัดหมาย: event, recipient, เวลา, channel, preference/consent และ retry semantics ยังคงเปิดเป็น P17D-NOTIF-01; ดู [Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) และ [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md). อำนาจสร้าง/เปลี่ยนเวลา/ยกเลิกและการโต้ตอบนัดหมายได้รับการตัดสินแล้ว.
 - การ transfer/reassign patient โดย OSM และการเปลี่ยน hospital affiliation โดย patient
 - หลักฐานและขั้นตอนสำหรับ hospital verification
 - authoritative external Hospital Master provider และ production master-data ownership/update process

@@ -247,7 +247,7 @@ export function AppointmentInteractionControls({
               <p className="text-sm leading-6 text-text-muted">
                 การอนุมัติจะยกเลิกนัดหมายทันที ส่วนการปฏิเสธจะคงนัดหมายไว้ตามเดิม
               </p>
-              <p className="text-sm text-text-muted">
+              <p className="break-words text-sm text-text-muted">
                 ส่งคำขอโดย {pendingRequest.submittedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[pendingRequest.source]} · {formatInteractionTime(pendingRequest.submittedAt)}
               </p>
             </div>
