@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { LoadingSpinner } from "@/components/ui/button";
 import {
@@ -8,20 +8,78 @@ import {
   type LoginActionState,
 } from "@/modules/auth/transport/action-state";
 import { loginAction } from "@/modules/auth/transport/server-actions";
+import { loginFamilyInvitationReturnToSchema } from "@/modules/auth/schemas/login-schema";
 
 type LoginFormProps = {
   applicationAccessDenied: boolean;
 };
 
+function createFamilyInvitationReturnToStore(): {
+  subscribe: (listener: () => void) => () => void;
+  getSnapshot: () => string;
+  getServerSnapshot: () => string;
+  hydrate: () => void;
+} {
+  let destination = "";
+  let hydrated = false;
+  const listeners = new Set<() => void>();
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot() {
+      return destination;
+    },
+    getServerSnapshot() {
+      return "";
+    },
+    hydrate() {
+      if (hydrated) {
+        return;
+      }
+      hydrated = true;
+
+      let fragment = "";
+      try {
+        fragment = decodeURIComponent(window.location.hash.slice(1));
+      } catch {
+        fragment = "";
+      }
+
+      const parsedDestination = loginFamilyInvitationReturnToSchema.safeParse(
+        `/app/family/invitations#${fragment}`,
+      );
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      destination = parsedDestination.success ? parsedDestination.data : "";
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
 export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
+  const invitationReturnToStore = useMemo(() => createFamilyInvitationReturnToStore(), []);
+  const familyInvitationReturnTo = useSyncExternalStore(
+    invitationReturnToStore.subscribe,
+    invitationReturnToStore.getSnapshot,
+    invitationReturnToStore.getServerSnapshot,
+  );
   const [state, formAction, pending] = useActionState<LoginActionState, FormData>(
     loginAction,
     initialLoginActionState,
   );
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
 
+  useEffect(() => {
+    invitationReturnToStore.hydrate();
+  }, [invitationReturnToStore]);
+
   return (
     <form action={formAction} className="mt-8 space-y-5">
+      {familyInvitationReturnTo ? (
+        <input name="returnTo" type="hidden" value={familyInvitationReturnTo} />
+      ) : null}
       {applicationAccessDenied ? (
         <div
           className="rounded-[14px] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"

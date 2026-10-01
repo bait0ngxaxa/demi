@@ -90,6 +90,7 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain('href="/app/personal/care"');
     expect(markup).toContain('href="/app/personal/appointments"');
     expect(markup).toContain('href="/app/personal/profile"');
+    expect(markup).toContain('href="/app/family"');
     expect(markup).not.toContain('href="/app/patients/assigned"');
     expect(markup).not.toContain("เพิ่มบริการ");
     expect(markup).toContain("นัดหมาย");

@@ -143,6 +143,20 @@ enum PatientAccessRequestResolution {
   ALREADY_ACTIVE
 }
 
+enum CaregiverInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
+enum CaregiverRelationshipStatus {
+  ACTIVE
+  REVOKED
+  WITHDRAWN
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -176,6 +190,11 @@ model User {
   patientActivationsCreated PatientActivation[] @relation("PatientActivationCreator")
   accountRecoveries AccountRecovery[] @relation("AccountRecoveryTarget")
   accountRecoveriesIssued AccountRecovery[] @relation("AccountRecoveryIssuer")
+  caregiverInvitationsReceived CaregiverInvitation[] @relation("CaregiverInvitationCaregiver")
+  caregiverInvitationsIssued CaregiverInvitation[] @relation("CaregiverInvitationIssuer")
+  caregiverInvitationsRevoked CaregiverInvitation[] @relation("CaregiverInvitationRevoker")
+  caregiverRelationships CaregiverRelationship[] @relation("CaregiverRelationshipCaregiver")
+  caregiverRelationshipsRevoked CaregiverRelationship[] @relation("CaregiverRelationshipRevoker")
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
@@ -210,6 +229,9 @@ model User {
   auditEvents AuditEvent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
+
+  // Supports a composite FK that keeps an invitation bound to this exact User + Person pair.
+  @@unique([id, personId])
 }
 
 model UserRole {
@@ -278,6 +300,8 @@ model PatientProfile {
 
   person                Person                       @relation(fields: [personId], references: [id], onDelete: Restrict)
   hospitalRelationships PatientHospitalRelationship[]
+  caregiverInvitations CaregiverInvitation[]
+  caregiverRelationships CaregiverRelationship[]
   patientClassification PatientClassification?
   classificationHistory PatientClassificationHistory[]
 }
@@ -358,6 +382,58 @@ model PatientHospitalProfile {
   updatedAt                     DateTime @updatedAt
 
   relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+}
+
+model CaregiverInvitation {
+  id                         String                    @id @default(uuid()) @db.Uuid
+  patientProfileId           String                    @db.Uuid
+  caregiverUserId            String                    @db.Uuid
+  caregiverPersonId          String                    @db.Uuid
+  issuedByUserId              String                    @db.Uuid
+  tokenHash                   String                    @unique @db.VarChar(64)
+  status                      CaregiverInvitationStatus @default(PENDING)
+  acceptanceContractVersion   String?                   @db.VarChar(64)
+  issuedAt                    DateTime                  @default(now()) @db.Timestamptz(3)
+  expiresAt                   DateTime                  @db.Timestamptz(3)
+  acceptedAt                  DateTime?                 @db.Timestamptz(3)
+  rejectedAt                  DateTime?                 @db.Timestamptz(3)
+  revokedAt                   DateTime?                 @db.Timestamptz(3)
+  expiredAt                   DateTime?                 @db.Timestamptz(3)
+  createdAt                   DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime                  @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  caregiverUser User @relation("CaregiverInvitationCaregiver", fields: [caregiverUserId, caregiverPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  issuedByUser User @relation("CaregiverInvitationIssuer", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+  revokedByUser User? @relation("CaregiverInvitationRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+  revokedByUserId String? @db.Uuid
+  relationship CaregiverRelationship?
+
+  @@index([patientProfileId, createdAt])
+  @@index([caregiverUserId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model CaregiverRelationship {
+  id                String                       @id @default(uuid()) @db.Uuid
+  patientProfileId  String                       @db.Uuid
+  caregiverUserId   String                       @db.Uuid
+  sourceInvitationId String                      @unique @db.Uuid
+  status            CaregiverRelationshipStatus @default(ACTIVE)
+  activatedAt       DateTime                     @db.Timestamptz(3)
+  revokedAt         DateTime?                    @db.Timestamptz(3)
+  revokedByUserId   String?                      @db.Uuid
+  withdrawnAt       DateTime?                    @db.Timestamptz(3)
+  createdAt         DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                     @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
+  caregiverUser User @relation("CaregiverRelationshipCaregiver", fields: [caregiverUserId], references: [id], onDelete: Restrict)
+  sourceInvitation CaregiverInvitation @relation(fields: [sourceInvitationId], references: [id], onDelete: Restrict)
+  revokedByUser User? @relation("CaregiverRelationshipRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientProfileId, createdAt])
+  @@index([caregiverUserId, createdAt])
 }
 
 model AccountRecovery {

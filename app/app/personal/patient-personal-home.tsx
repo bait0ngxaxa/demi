@@ -52,6 +52,12 @@ export function PatientPersonalHome({
               >
                 ข้อมูลของฉัน
               </Link>
+              <Link
+                className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/app/family"
+              >
+                ความสัมพันธ์ผู้ดูแล
+              </Link>
             </nav>
           ) : undefined
         }

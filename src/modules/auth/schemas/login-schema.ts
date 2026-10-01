@@ -11,6 +11,10 @@ export const passwordLoginIdentifierSchema = z
   .transform((value) => value.trim())
   .pipe(z.string().min(1).max(32));
 
+export const loginFamilyInvitationReturnToSchema = z
+  .string()
+  .regex(/^\/app\/family\/invitations#[A-Za-z0-9_-]{43}$/u);
+
 export const loginInputSchema = z
   .object({
     nationalId: passwordLoginIdentifierSchema,

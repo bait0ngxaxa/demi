@@ -70,6 +70,44 @@ describe("authentication Server Actions", () => {
     expect(mockedRedirect).toHaveBeenCalledWith("/app");
   });
 
+  it("returns an invitation-fragment link to the authenticated recipient after login", async () => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      },
+    });
+    const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
+    formData.set("returnTo", `/app/family/invitations#${"a".repeat(43)}`);
+
+    await loginAction(initialLoginActionState, formData);
+
+    expect(mockedRedirect).toHaveBeenCalledWith(`/app/family/invitations#${"a".repeat(43)}`);
+  });
+
+  it("does not allow a caller to redirect login to an arbitrary destination", async () => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      },
+    });
+    const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
+    formData.set("returnTo", "https://attacker.example/");
+
+    await loginAction(initialLoginActionState, formData);
+
+    expect(mockedRedirect).toHaveBeenCalledWith("/app");
+  });
+
   it("maps invalid credentials to a generic Thai response", async () => {
     mockedAuthenticateWithPassword.mockResolvedValue({ status: "INVALID_CREDENTIALS" });
 

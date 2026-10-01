@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { loginInputSchema } from "../schemas/login-schema";
+import {
+  loginFamilyInvitationReturnToSchema,
+  loginInputSchema,
+} from "../schemas/login-schema";
 import {
   authenticateWithPassword,
   signOutCurrentSession,
@@ -58,7 +61,10 @@ export async function loginAction(
   }
 
   revalidatePath("/", "layout");
-  redirect("/app");
+  const requestedReturnTo = loginFamilyInvitationReturnToSchema.safeParse(
+    formData.get("returnTo"),
+  );
+  redirect(requestedReturnTo.success ? requestedReturnTo.data : "/app");
 }
 
 export async function logoutAction(

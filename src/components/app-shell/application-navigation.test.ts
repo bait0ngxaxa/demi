@@ -43,6 +43,16 @@ describe("application navigation projection", () => {
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
   });
 
+  it("offers the shared Family management route to active actor types without granting authority", () => {
+    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN]] as const) {
+      const familyItem = projectApplicationNavigation(actor({ roles }))
+        .flatMap((group) => group.items)
+        .find(({ href }) => href === "/app/family");
+
+      expect(familyItem?.label).toBe("ความสัมพันธ์ผู้ดูแล");
+    }
+  });
+
   it("shows Patient provisioning and activation for a valid direct Hospital scope", () => {
     const labels = navigationLabels(
       actor({
@@ -169,7 +179,7 @@ describe("application navigation projection", () => {
   it("omits unavailable groups instead of rendering them empty", () => {
     const navigation = projectApplicationNavigation(actor());
 
-    expect(navigation).toHaveLength(1);
+    expect(navigation).toHaveLength(2);
     expect(navigation.every((group) => group.items.length > 0)).toBe(true);
     expect(navigation[0].workspace).toBe("personal");
     expect(navigation[0].items.map(({ href }) => href)).toEqual([
@@ -179,6 +189,7 @@ describe("application navigation projection", () => {
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
+    expect(navigation[1].items.map(({ href }) => href)).toEqual(["/app/family"]);
   });
 
   it.each([

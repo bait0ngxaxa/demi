@@ -269,5 +269,10 @@ export function projectApplicationNavigation(
     });
   }
 
+  groups.push({
+    label: "ผู้ดูแล",
+    items: [{ href: "/app/family", label: "ความสัมพันธ์ผู้ดูแล", match: "prefix" }],
+  });
+
   return groups;
 }
