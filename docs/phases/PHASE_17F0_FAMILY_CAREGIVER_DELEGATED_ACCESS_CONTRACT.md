@@ -6,6 +6,12 @@
 
 Original contract inspected HEAD: `f0fd8e2373386acf108b80d28332093d2031400a` — `fix(phase-17e3): close patient onboarding lookup gap`; working tree was clean before this documentation change.
 
+## Current-status addendum — Phase 17F.2B (2026-10-01)
+
+Original G01..G08 foundation closeout below remains historical and unchanged. Phase 17F.1 is now IMPLEMENTED / CLOSED. [17F.2B implementation contract](./PHASE_17F2B_DELEGATED_APPOINTMENT_READ_CONTRACT.md) records Q1–Q17 owner approvals: **L01/L02/L06 CLOSED / OWNER APPROVED** only for bounded adult voluntary designated trusted-caregiver appointment reads. Relatives/non-relatives permitted; no kinship type/verification. **17F.2 CLEARED FOR IMPLEMENTATION (synthetic/demo only), NOT IMPLEMENTED; runtime Patient-resource delegated allowlist EMPTY.** Real-data delegated deployment/UAT remains externally governance-blocked pending Q5 controller/privacy evidence, not a synthetic implementation blocker.
+
+Separate immutable family-appointment-read-v1 data grant to exact ACTIVE relationship/Patient/caregiver/one Patient-selected PHR; explicit proposal + caregiver acceptance. Exactly hospitalName/type/scheduledAt/durationMinutes/locationType/status; rolling upcoming 90-day SCHEDULED/CANCELLED ongoing same-PHR feed; NO independent automatic expiry. Existing family-delegation-v1 acceptance remains ZERO-data. Terminal exact-grant revoke or parent revoke/withdraw immediately denies after commit; temporary Hospital/account ineligibility may resume unchanged authority. No future-PHR/replacement-parent inheritance, mutations/export/other Patient resources. Expansion requires new immutable grant/version + acceptance. Lifecycle audit only, no ordinary durable per-read AuditEvent. L03 QR OPEN / 17F.3; L04 re-audit/UAT OPEN; L05 expiry/renewal OPEN / FUTURE; minors/legal representation deferred, medication 17G, 17E.2 parked. Earlier candidate/OPEN discussion below is historical and superseded only to this exact extent.
+
 ## 1. Disposition
 
 Documentation / requirement / domain / authorization contract only. No product implementation, permissions, Prisma schema, migration, route, Server Action, UI page, invitation token, or QR generation is added. Family/Caregiver is **not implemented**.
@@ -354,16 +360,16 @@ G07 baseline: authenticated Patient-only issuance, existing ACTIVE intended reci
 
 Engineering still chooses/reviews purpose-specific schema/indexes, secure high-entropy token storage/transport, conditional transitions, concurrency/idempotency, transactional audit and focused verification. These implementation choices cannot add Patient-resource capabilities or invent legal semantics. No Prisma design is finalized by this closeout.
 
-### D. Decisions required only BEFORE later 17F.x slices
+### D. Later-slice gates — current 17F.2B disposition
 
 | ID | Gate | Required answer |
 | --- | --- | --- |
-| P17F-L01 | Before 17F.2 reads | Approve each capability, exact field allowlist/source, Hospital context, history depth and future records; confirm necessary controller/privacy basis. Unapproved reads stay DENY. |
-| P17F-L02 | Before 17F.2 scope changes | Decide Patient scope selection/change, caregiver re-acceptance evidence, shrink/revoke effect, expiry changes; no automatic upgrade of foundation relationships. Revoke-and-new-delegation may be preferred if sufficient. |
-| P17F-L03 | Before 17F.3 QR | Confirm final secure-link wrapping, QR presentation/leakage/preview controls and mobile handoff; no new authority. Underlying token/proof mechanism already required in 17F.1. |
-| P17F-L04 | Before 17F.4 closure | Confirm UAT actors/data, supported mobile flows, concurrency/stale-cache/revocation scenarios and audit evidence for delivered capabilities. |
-| P17F-L05 | Before any later auto-expiry/renewal expansion | Review duration/renewal/notifications and changed acceptance semantics separately; G05 must already settle first-slice behavior. |
-| P17F-L06 | OPEN — Caregiver relationship eligibility / kinship rule | Before production/generalized Family rollout, or before 17F.2 data disclosure if eligibility affects who may receive Patient data: Must a caregiver be a relative/family member? May the Patient designate a non-relative trusted caregiver? Is relationship type informational only or eligibility-bearing? Is verification required, and by whom? No answer is selected. This does not reopen G02 or block the cleared 17F.1 bounded-UAT foundation with EMPTY Patient-resource allowlist; unresolved eligibility must not become production authorization policy. |
+| P17F-L01 | CLOSED / OWNER APPROVED (bounded 17F.2 only) | Appointment-only exact six-field B1, rolling 90-day SCHEDULED/CANCELLED, no past/export/mutation. Synthetic/demo cleared; real-data Q5 controller/privacy gate remains. See [17F.2B](./PHASE_17F2B_DELEGATED_APPOINTMENT_READ_CONTRACT.md). |
+| P17F-L02 | CLOSED / OWNER APPROVED (bounded 17F.2 only) | One exact PHR per separate immutable accepted family-appointment-read-v1 grant; no inherited future PHR/parent, new acceptance for expansion, terminal revoke, temporary eligibility deny/resume, no independent expiry; Q3A ongoing rolling feed explicitly approved. |
+| P17F-L03 | OPEN — Before 17F.3 QR | Confirm final secure-link wrapping, QR presentation/leakage/preview controls and mobile handoff; no new authority. Underlying token/proof mechanism already required in 17F.1. |
+| P17F-L04 | OPEN — Before 17F.4 closure | Confirm UAT actors/data, supported mobile flows, concurrency/stale-cache/revocation scenarios and audit evidence for delivered capabilities. |
+| P17F-L05 | OPEN / FUTURE — later auto-expiry/renewal expansion | First data grant has explicitly approved NO independent expiry (Q17), not inherited from G05. Any later expiry/renewal/periodic reacceptance/notification needs duration, expiry boundary and acceptance/notification semantics approved before implementation. |
+| P17F-L06 | CLOSED / OWNER APPROVED (adult voluntary slice) | Patient-designated trusted caregiver, relatives and non-relatives permitted; no relationship-type field or kinship verification. No verified-relative/legal-representative/minor authority. |
 
 ## 19. Recommended Execution Plan and Handoff
 
