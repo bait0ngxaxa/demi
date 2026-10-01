@@ -411,6 +411,8 @@ model CaregiverInvitation {
 
   @@index([patientProfileId, createdAt])
   @@index([caregiverUserId, createdAt])
+  // Additional source-pair FK is enforced by the corrective SQL migration.
+  @@unique([id, patientProfileId, caregiverUserId], map: "CaregiverInvitation_source_pair_key")
   @@index([status, expiresAt])
 }
 

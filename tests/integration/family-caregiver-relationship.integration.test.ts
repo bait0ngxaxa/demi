@@ -17,6 +17,7 @@ import {
   CAREGIVER_INVITATION_TTL_MS,
   acceptCaregiverInvitation,
   createCaregiverInvitation,
+  previewCaregiverInvitation,
   rejectCaregiverInvitation,
   revokeCaregiverRelationship,
   revokePendingCaregiverInvitation,
@@ -67,7 +68,7 @@ async function createActor(input: {
           })
         : `family-integration-person-${sequence}`,
       givenName: input.givenName ?? `Family${sequence}`,
-      familyName: "ทดสอบ",
+      familyName: input.familyName ?? "ทดสอบ",
     },
     select: { id: true },
   });
@@ -132,6 +133,93 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
 
   afterAll(async () => {
     await prisma.$disconnect();
+  });
+
+
+  it("rejects source invitation pair mismatches in PostgreSQL and accepts the correct pair through the service", async () => {
+    const patient = await createPatient();
+    const otherPatient = await createPatient();
+    const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+    const otherCaregiver = await createActor({ roles: [] });
+    const credential = createCredential();
+    const invite = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId }, { generateCredential: () => credential });
+    for (const pair of [
+      { patientProfileId: otherPatient.patientProfileId, caregiverUserId: caregiver.userId },
+      { patientProfileId: patient.patientProfileId, caregiverUserId: otherCaregiver.userId },
+    ]) {
+      await expect(prisma.caregiverRelationship.create({ data: {
+        ...pair, sourceInvitationId: invite.invitationId,
+        status: CaregiverRelationshipStatus.ACTIVE, activatedAt: new Date(),
+      } })).rejects.toMatchObject({ code: "P2003" });
+    }
+    expect(await prisma.caregiverRelationship.count()).toBe(0);
+    const accepted = await acceptCaregiverInvitation(caregiver.actor, credential.plaintextToken);
+    expect(await prisma.caregiverRelationship.findUniqueOrThrow({ where: { id: accepted.relationshipId } })).toMatchObject({
+      patientProfileId: patient.patientProfileId, caregiverUserId: caregiver.userId, sourceInvitationId: invite.invitationId,
+    });
+  });
+
+  it.each(["PENDING", "REJECTED", "REVOKED", "EXPIRED"] as const)(
+    "creates no authority from %s through preview/management or unsuccessful acceptance",
+    async (status) => {
+      const patient = await createPatient();
+      const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+      const credential = createCredential();
+      const invite = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId }, { generateCredential: () => credential });
+      if (status === "REJECTED") await rejectCaregiverInvitation(caregiver.actor, credential.plaintextToken);
+      if (status === "REVOKED") await revokePendingCaregiverInvitation(patient.actor, invite.invitationId);
+      if (status === "EXPIRED") {
+        const issuedAt = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        await prisma.caregiverInvitation.update({ where: { id: invite.invitationId }, data: {
+          issuedAt, expiresAt: new Date(issuedAt.getTime() + CAREGIVER_INVITATION_TTL_MS),
+        } });
+      }
+      const preview = await previewCaregiverInvitation(caregiver.actor, credential.plaintextToken);
+      expect(preview.status).toBe(status);
+      await getFamilyManagementOverview(patient.actor);
+      await getFamilyManagementOverview(caregiver.actor);
+      expect(await prisma.caregiverRelationship.count()).toBe(0);
+      if (status !== "PENDING") {
+        await expect(acceptCaregiverInvitation(caregiver.actor, credential.plaintextToken)).rejects.toMatchObject({ code: "CONFLICT" });
+        expect(await prisma.caregiverRelationship.count()).toBe(0);
+      }
+      expect(await prisma.auditEvent.count({ where: { action: "caregiver_relationship.activated" } })).toBe(0);
+    },
+  );
+
+  it("projects only opposite-party names and lifecycle for many-to-many management", async () => {
+    const patientA = await createPatient();
+    const patientB = await createPatient();
+    await prisma.person.update({ where: { id: patientB.personId }, data: { givenName: "สมชาย", familyName: "ใจดี" } });
+    const caregiverA = await createActor({ roles: [], nationalId: validNationalId, givenName: "สมหญิง", familyName: "ใจดี" });
+    const caregiverB = await createActor({ roles: [], nationalId: alternateNationalId, givenName: "สมศรี", familyName: "ใจดี" });
+    for (const pair of [
+      { patient: patientA, caregiver: caregiverA, nationalId: validNationalId },
+      { patient: patientA, caregiver: caregiverB, nationalId: alternateNationalId },
+      { patient: patientB, caregiver: caregiverA, nationalId: validNationalId },
+    ]) {
+      const credential = createCredential();
+      await createCaregiverInvitation(pair.patient.actor, { nationalId: pair.nationalId }, { generateCredential: () => credential });
+      const pending = await getFamilyManagementOverview(pair.patient.actor);
+      expect(pending.patient?.invitations.some((item) => item.participant.givenName === (pair.caregiver === caregiverA ? "สมหญิง" : "สมศรี"))).toBe(true);
+      await acceptCaregiverInvitation(pair.caregiver.actor, credential.plaintextToken);
+    }
+    const patientOverview = await getFamilyManagementOverview(patientA.actor);
+    const caregiverOverview = await getFamilyManagementOverview(caregiverA.actor);
+    expect(patientOverview.patient?.relationships.map((item) => item.participant.givenName).sort()).toEqual(["สมศรี", "สมหญิง"].sort());
+    expect(caregiverOverview.caregiver.relationships.map((item) => item.participant.givenName).sort()).toEqual(["สมชาย", "ผู้ป่วยทดสอบ"].sort());
+    for (const perspective of [patientOverview.patient, caregiverOverview.caregiver]) {
+      expect(perspective).not.toBeNull();
+      for (const item of perspective?.invitations ?? []) {
+        expect(Object.keys(item).sort()).toEqual(["invitationId", "participant", "status", "issuedAt", "expiresAt"].sort());
+        expect(Object.keys(item.participant).sort()).toEqual(["givenName", "familyName"].sort());
+      }
+      for (const item of perspective?.relationships ?? []) {
+        expect(Object.keys(item).sort()).toEqual(["relationshipId", "participant", "status", "activatedAt", "revokedAt", "withdrawnAt"].sort());
+        expect(Object.keys(item.participant).sort()).toEqual(["givenName", "familyName"].sort());
+      }
+      expect(JSON.stringify(perspective)).not.toMatch(/identityKeyHash|national.?id|hospitalNumber|phone|email|address|birth|emergencyContact|authSubject|roles|memberships|hospital|appointment|screening|goalPlan|followup|clinical/i);
+    }
   });
 
   it("resolves an existing active account, stores only a token digest, and atomically accepts for the intended non-Patient account", async () => {

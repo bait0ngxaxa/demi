@@ -19,6 +19,7 @@ import {
   caregiverRelationshipStatusLabel,
   caregiverRelationshipStatusVariant,
   formatFamilyManagementDate,
+  formatFamilyParticipantName,
 } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import {
   createCaregiverInvitationAction,
@@ -158,7 +159,7 @@ function RevokePendingInvitation({
       {invitation.status === "PENDING" ? (
         <form action={formAction}>
           <input name="invitationId" type="hidden" value={invitation.invitationId} />
-          <Button disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยกเลิกคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยกเลิก..." : "ยกเลิกคำเชิญ"}
           </Button>
         </form>
@@ -184,7 +185,7 @@ function RevokeRelationship({
       {relationship.status === "ACTIVE" ? (
         <form action={formAction}>
           <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-          <Button disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยุติ..." : "ยุติความสัมพันธ์ผู้ดูแล"}
           </Button>
         </form>
@@ -217,13 +218,13 @@ function WithdrawCaregiverRelationship({
   return (
     <div className="mt-3">
       {!confirming ? (
-        <Button onClick={() => setConfirming(true)} size="compact" type="button" variant="danger">
+        <Button aria-label={`หยุดการเป็นผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}`} onClick={() => setConfirming(true)} size="compact" type="button" variant="danger">
           หยุดการเป็นผู้ดูแล
         </Button>
       ) : (
         <div aria-label="ยืนยันการหยุดเป็นผู้ดูแล" className="space-y-3">
           <Alert variant="warning">
-            การยืนยันจะยุติความสัมพันธ์นี้ทันทีและไม่สามารถเปิดกลับได้ หากต้องการเชื่อมอีกครั้ง
+            การยืนยันจะยุติความสัมพันธ์กับ {formatFamilyParticipantName(relationship.participant, "ผู้ป่วยที่ไม่ระบุชื่อ")} ทันทีและไม่สามารถเปิดกลับได้ หากต้องการเชื่อมอีกครั้ง
             ผู้ป่วยต้องส่งคำเชิญใหม่
           </Alert>
           <div className="flex flex-wrap gap-2">
@@ -263,6 +264,7 @@ function PatientPerspective({
               {overview.invitations.map((invitation) => (
                 <li className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between" key={invitation.invitationId}>
                   <div>
+                    <p className="mb-2 break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}</p>
                     <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
                       {caregiverInvitationStatusLabel(invitation.status)}
                     </StatusBadge>
@@ -293,6 +295,7 @@ function PatientPerspective({
               {overview.relationships.map((relationship) => (
                 <li className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between" key={relationship.relationshipId}>
                   <div>
+                    <p className="mb-2 break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}</p>
                     <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
                       {caregiverRelationshipStatusLabel(relationship.status)}
                     </StatusBadge>
@@ -333,6 +336,7 @@ function CaregiverPerspective({
                 <li className="py-4 first:pt-0" key={invitation.invitationId}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
+                      <p className="break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ป่วย")}</p>
                       <p className="mt-1 text-sm text-text-muted">หมดอายุ {formatFamilyManagementDate(invitation.expiresAt)}</p>
                     </div>
                     <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
@@ -363,6 +367,7 @@ function CaregiverPerspective({
                 <li className="py-4 first:pt-0" key={relationship.relationshipId}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
+                      <p className="break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}</p>
                       <p className="mt-1 text-sm text-text-muted">เริ่มเมื่อ {formatFamilyManagementDate(relationship.activatedAt)}</p>
                       {relationship.revokedAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.revokedAt)}</p> : null}
                       {relationship.withdrawnAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.withdrawnAt)}</p> : null}

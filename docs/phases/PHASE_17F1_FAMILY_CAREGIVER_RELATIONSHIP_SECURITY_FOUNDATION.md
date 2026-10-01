@@ -66,6 +66,34 @@ relationship state. If the same account becomes ACTIVE again while the
 relationship remains ACTIVE, it may use that relationship. ACTIVE relationships
 have no expiry or renewal lifecycle in this slice.
 
+The corrective follow-up migration
+`20261001130000_family_caregiver_source_pair_binding` leaves the published
+initial migration unchanged. It adds the non-partial unique invitation key
+`(id, patientProfileId, caregiverUserId)` and
+`CaregiverRelationship_source_pair_fkey`:
+
+```
+CaregiverRelationship(sourceInvitationId, patientProfileId, caregiverUserId)
+  → CaregiverInvitation(id, patientProfileId, caregiverUserId)
+```
+
+The FK uses RESTRICT for deletion and update; existing single-column source
+FK and unique `sourceInvitationId` remain. Prisma models the target tuple key,
+while the additional SQL FK shares the existing scalar participants without
+duplicate domain state/relations. Existing source-ID uniqueness also indexes
+the leading referencing column. Migration deployment validates existing rows
+and fails rather than repairing mismatched evidence silently.
+
+Source invitation **ACCEPTED status remains an application-service transaction
+invariant**, consistent with ADR-0006: only explicit `acceptCaregiverInvitation`
+conditionally consumes an unexpired PENDING invitation, creates its relationship
+and writes audits atomically. The DB composite FK enforces participant equality,
+not source status or lifecycle transition legality. Trusted direct DB writes
+can still bypass the acceptance-status service boundary; no trigger was added
+and no claim of database ACCEPTED enforcement is made. Preview/management are
+read-only; rejection, revocation and expiry cannot activate through application
+services.
+
 ## Authorization, routes and projections
 
 `/app/family` supports both “ผู้ที่ดูแลคุณ” and “ผู้ที่คุณดูแล” through the
@@ -78,13 +106,22 @@ records.
 `/app/family/invitations` previews only an invitation matching the authenticated
 recipient. Its allowlisted preview fields are Patient `givenName` and
 `familyName`, invitation status and expiry, and the acceptance contract version.
-The caregiver management list does not include the other participant’s name.
-The Patient management list likewise does not include caregiver identity.
+Both management perspectives now include only the opposite participant’s
+`givenName` and `familyName`, including pending invitations, to identify the
+record before a destructive action.
 
 Management queries use explicit selects. The Patient invitation projection is
 `id`, `status`, `issuedAt`, and `expiresAt`; the Patient relationship projection
 is `id`, `status`, `activatedAt`, `revokedAt`, and `withdrawnAt`. The caregiver
-management projections use those same lifecycle fields. They do not serialize
+management projections use those same lifecycle fields. Each returned item also
+contains `participant: { givenName, familyName }` (nullable strings): caregiver
+names for Patient management, Patient names for caregiver management. These
+are management identity metadata only. Phase 17F.0 explicitly bounded Patient
+name preview but did not explicitly specify caregiver names in Patient lists;
+this corrective requirement authorizes only these two fields to safely
+distinguish multiple management records. It neither creates a Patient-resource
+capability nor resolves P17F-L01/L02. Missing names use Thai fallback wording,
+never another identity/contact identifier. They do not serialize
 whole Person, User, PatientProfile or PatientHospitalRelationship records and
 do not load HN, National ID/hash, auth subject, role/membership, Hospital
 history, emergency contact or Patient clinical domains.
@@ -126,6 +163,48 @@ Verification completed:
 - `npm run lint` — passed.
 - Impeccable detector on changed UI targets — no findings.
 - Final `git diff --check` — passed.
+
+## Corrective closeout — 2026-10-01
+
+Corrective starting HEAD: `bd01951693f8eb091aac1fda768093cd9b5ea71e`.
+The two reviewed P1 findings are corrected: source pair evidence is database
+bound, and names distinguish both management perspectives and invitations.
+Focused tests assert exact selects/output keys, missing-name fallback, multiple
+caregivers/Patients, per-row revoke/withdraw IDs and identity in confirmation.
+PostgreSQL tests reject direct inserts with either mismatched Patient or
+caregiver, allow the real acceptance service’s matching pair, prove no authority
+from PENDING preview/management or REJECTED/REVOKED/EXPIRED acceptance, and
+verify actual many-to-many management outputs contain only names/lifecycle.
+
+Corrective verification completed:
+
+- `npx prisma validate` and `npm run prisma:generate` — passed.
+- `npm run prisma:migrate:test` — follow-up migration deployed to local
+  PostgreSQL `demi_test`; initial migration was not amended.
+- Family PostgreSQL integration file via Vitest’s integration config —
+  1 file / 16 tests passed. An initial new privacy assertion compared sorted
+  keys with an unsorted expected array; corrected the assertion and reran
+  the same focused integration file successfully.
+- `npm run test -- src/modules/family app/app/family/family-pages.test.tsx` —
+  5 files / 15 tests passed.
+- `npm run typecheck` and `npm run lint` — passed.
+- Final reviewed diff followed by `npm run test` once —
+  172 files / 1,214 tests passed.
+- Final `git diff --check` — passed.
+
+Security re-audit: 256-bit token/SHA-256 digest-at-rest, exact 24-hour TTL and
+DB acceptance expiry boundary, pending/active pair uniqueness, exact User/Person
+recipient binding, self-delegation denial, explicit acceptance, reject/revoke/
+withdraw, terminal-state protection and new-invite re-establishment remain
+intact. Audit rollback, inactive-account denial without relationship termination,
+and reactivation behavior passed the existing PostgreSQL cases. Management
+outputs use exact allowlists and do not expose secrets or Patient-resource data.
+No Patient SELF impersonation, OSM/emergency-contact authority, CAREGIVER role,
+QR, onboarding or kinship decision was introduced. Patient-resource capability
+allowlist remains EMPTY and P17F-L06 remains OPEN.
+
+Phase 17F.1 corrective implementation is complete for both reviewed P1 findings;
+Family overall and future gated phases are not closed or started.
 
 ## Remaining gates
 

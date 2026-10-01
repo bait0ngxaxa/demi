@@ -18,7 +18,13 @@ import { familyManagementCursorSchema } from "../schemas/caregiver-relationship-
 
 export const FAMILY_MANAGEMENT_PAGE_SIZE = 30;
 
+export type FamilyParticipantDisplay = {
+  givenName: string | null;
+  familyName: string | null;
+};
+
 export type FamilyInvitationManagementItem = {
+  participant: FamilyParticipantDisplay;
   invitationId: string;
   status: CaregiverInvitationStatus;
   issuedAt: Date;
@@ -26,6 +32,7 @@ export type FamilyInvitationManagementItem = {
 };
 
 export type FamilyRelationshipManagementItem = {
+  participant: FamilyParticipantDisplay;
   relationshipId: string;
   status: CaregiverRelationshipStatus;
   activatedAt: Date;
@@ -53,14 +60,16 @@ export type FamilyManagementQueryDependencies = {
   now?: () => Date;
 };
 
-const invitationManagementSelect = {
+const participantNameSelect = { givenName: true, familyName: true } satisfies Prisma.PersonSelect;
+
+const invitationLifecycleSelect = {
   id: true,
   status: true,
   issuedAt: true,
   expiresAt: true,
 } satisfies Prisma.CaregiverInvitationSelect;
 
-const relationshipManagementSelect = {
+const relationshipLifecycleSelect = {
   id: true,
   status: true,
   activatedAt: true,
@@ -68,9 +77,22 @@ const relationshipManagementSelect = {
   withdrawnAt: true,
 } satisfies Prisma.CaregiverRelationshipSelect;
 
-const caregiverInvitationManagementSelect = invitationManagementSelect;
-
-const caregiverRelationshipManagementSelect = relationshipManagementSelect;
+const invitationManagementSelect = {
+  ...invitationLifecycleSelect,
+  caregiverUser: { select: { person: { select: participantNameSelect } } },
+} satisfies Prisma.CaregiverInvitationSelect;
+const relationshipManagementSelect = {
+  ...relationshipLifecycleSelect,
+  caregiverUser: { select: { person: { select: participantNameSelect } } },
+} satisfies Prisma.CaregiverRelationshipSelect;
+const caregiverInvitationManagementSelect = {
+  ...invitationLifecycleSelect,
+  patientProfile: { select: { person: { select: participantNameSelect } } },
+} satisfies Prisma.CaregiverInvitationSelect;
+const caregiverRelationshipManagementSelect = {
+  ...relationshipLifecycleSelect,
+  patientProfile: { select: { person: { select: participantNameSelect } } },
+} satisfies Prisma.CaregiverRelationshipSelect;
 
 type InvitationRecord = Prisma.CaregiverInvitationGetPayload<{
   select: typeof invitationManagementSelect;
@@ -88,10 +110,12 @@ function getNow(dependencies: FamilyManagementQueryDependencies): Date {
 }
 
 function asInvitationItem(
-  invitation: InvitationRecord,
+  invitation: Prisma.CaregiverInvitationGetPayload<{ select: typeof invitationLifecycleSelect }>,
   now: Date,
+  participant: FamilyParticipantDisplay,
 ): FamilyInvitationManagementItem {
   return {
+    participant: { givenName: participant.givenName, familyName: participant.familyName },
     invitationId: invitation.id,
     status:
       invitation.status === CaregiverInvitationStatus.PENDING &&
@@ -104,9 +128,11 @@ function asInvitationItem(
 }
 
 function asRelationshipItem(
-  relationship: RelationshipRecord,
+  relationship: Prisma.CaregiverRelationshipGetPayload<{ select: typeof relationshipLifecycleSelect }>,
+  participant: FamilyParticipantDisplay,
 ): FamilyRelationshipManagementItem {
   return {
+    participant: { givenName: participant.givenName, familyName: participant.familyName },
     relationshipId: relationship.id,
     status: relationship.status,
     activatedAt: relationship.activatedAt,
@@ -213,22 +239,22 @@ export async function getFamilyManagementOverview(
         ? {
             invitations: patientInvitations
               .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)
-              .map((invitation) => asInvitationItem(invitation, now)),
+              .map((invitation) => asInvitationItem(invitation, now, invitation.caregiverUser.person)),
             nextInvitationsCursor: patientInvitationCursor,
             relationships: patientRelationships
               .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)
-              .map(asRelationshipItem),
+              .map((relationship) => asRelationshipItem(relationship, relationship.caregiverUser.person)),
             nextRelationshipsCursor: patientRelationshipCursor,
           }
         : null,
       caregiver: {
         invitations: caregiverInvitations
           .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)
-          .map((invitation) => asInvitationItem(invitation, now)),
+          .map((invitation) => asInvitationItem(invitation, now, invitation.patientProfile.person)),
         nextInvitationsCursor: caregiverInvitationCursor,
         relationships: caregiverRelationships
           .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)
-          .map(asRelationshipItem),
+          .map((relationship) => asRelationshipItem(relationship, relationship.patientProfile.person)),
         nextRelationshipsCursor: caregiverRelationshipCursor,
       },
     };

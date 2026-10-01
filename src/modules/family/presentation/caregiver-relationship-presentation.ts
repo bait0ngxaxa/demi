@@ -58,3 +58,12 @@ export function formatFamilyManagementDate(value: Date | string): string {
     timeStyle: "short",
   }).format(new Date(value));
 }
+
+export function formatFamilyParticipantName(
+  participant: { givenName: string | null; familyName: string | null },
+  fallback: string,
+): string {
+  return [participant.givenName?.trim(), participant.familyName?.trim()]
+    .filter(Boolean)
+    .join(" ") || fallback;
+}
