@@ -69,6 +69,9 @@ describe("application workspace projection", () => {
       `/app/patients?hospitalId=${hospitalId}`,
       `/app/patients/provision?hospitalId=${hospitalId}`,
       `/app/patients/activation?hospitalId=${hospitalId}`,
+      "/app/patients/access-requests",
+      "/app/patients/service-requests",
+      "/app/patients/service-catalog",
     ]);
   });
 
@@ -86,6 +89,9 @@ describe("application workspace projection", () => {
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
+    expect(hrefs).toContain("/app/patients/access-requests");
+    expect(hrefs).toContain("/app/patients/service-requests");
+    expect(hrefs).not.toContain("/app/patients/service-catalog");
   });
 
   it("projects only assigned-patient and permitted provisioning work for OSM", () => {

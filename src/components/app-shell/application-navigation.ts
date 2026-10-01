@@ -18,6 +18,14 @@ import {
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
+  PATIENT_SERVICE_REQUEST_CAPABILITIES,
+  decidePatientServiceRequestPolicy,
+} from "@/modules/patient-service-requests/policies/patient-service-request-policy";
+import {
+  decidePatientAccessRequestPolicy,
+  PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
+} from "@/modules/patient-access-requests/policies/patient-access-request-policy";
+import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
@@ -55,6 +63,36 @@ function canActivatePatients(actor: ActorContext): boolean {
 function canReadPatients(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     hasDirectHospitalPatientReadScope(actor, hospitalId),
+  );
+}
+
+function canReviewPatientRequests(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decidePatientAccessRequestPolicy({
+      actor,
+      capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
+      hospitalId,
+    }).allowed,
+  );
+}
+
+function canManagePatientServiceCatalog(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decidePatientServiceRequestPolicy({
+      actor,
+      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
+      hospitalId,
+    }).allowed,
+  );
+}
+
+function canReviewPatientServiceRequests(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decidePatientServiceRequestPolicy({
+      actor,
+      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.review,
+      hospitalId,
+    }).allowed,
   );
 }
 
@@ -106,6 +144,7 @@ export function projectApplicationNavigation(
           ? [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" as const }]
           : []),
         { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
+        { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
       ],
@@ -163,6 +202,30 @@ export function projectApplicationNavigation(
     patientItems.push({
       href: "/app/patients/activation",
       label: "เปิดใช้งานบัญชีผู้ป่วย",
+      match: "prefix" as const,
+    });
+  }
+
+  if (canReviewPatientRequests(actor)) {
+    patientItems.push({
+      href: "/app/patients/access-requests",
+      label: "คำขอเปิดใช้งานผู้ป่วย",
+      match: "prefix" as const,
+    });
+  }
+
+  if (canReviewPatientServiceRequests(actor)) {
+    patientItems.push({
+      href: "/app/patients/service-requests",
+      label: "คำขอบริการผู้ป่วย",
+      match: "prefix" as const,
+    });
+  }
+
+  if (canManagePatientServiceCatalog(actor)) {
+    patientItems.push({
+      href: "/app/patients/service-catalog",
+      label: "บริการที่ผู้ป่วยขอได้",
       match: "prefix" as const,
     });
   }

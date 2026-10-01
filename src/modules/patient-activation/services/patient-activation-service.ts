@@ -4,6 +4,8 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  PatientAccessRequestResolution,
+  PatientAccessRequestStatus,
   Prisma,
   Role,
   UserStatus,
@@ -361,6 +363,7 @@ type CurrentPatientActivation = {
   id: string;
   userId: string;
   hospitalId: string;
+  patientAccessRequestId: string | null;
   expiresAt: Date;
   claimedAt: Date | null;
   claimExpiresAt: Date | null;
@@ -384,6 +387,7 @@ async function findCurrentPatientActivation(
       id: true,
       userId: true,
       hospitalId: true,
+      patientAccessRequestId: true,
       expiresAt: true,
       claimedAt: true,
       claimExpiresAt: true,
@@ -551,6 +555,7 @@ async function revokePatientActivationInTransaction(
     data: {
       revokedAt: now,
       claimExpiresAt: null,
+      patientAccessRequestId: null,
     },
   });
 
@@ -574,7 +579,7 @@ async function issuePatientActivationInTransaction(
   transaction: Prisma.TransactionClient,
   input: {
     actorUserId: string;
-    request: PatientActivationRequestInput;
+    request: PatientActivationRequestInput & { userId: string; targetHospitalId: string };
     target: PatientActivationTargetRecord;
     now: Date;
     dependencies: PatientActivationServiceDependencies;
@@ -665,6 +670,8 @@ async function issuePatientActivationInTransaction(
     data: {
       userId: input.target.id,
       hospitalId: input.request.targetHospitalId,
+      patientAccessRequestId:
+        input.request.patientAccessRequestId ?? current?.patientAccessRequestId ?? null,
       tokenHash: credential.tokenHash,
       expiresAt,
       createdByUserId: input.actorUserId,
@@ -697,6 +704,120 @@ async function issuePatientActivationInTransaction(
   };
 }
 
+async function linkAccessRequestToActivation(
+  transaction: Prisma.TransactionClient,
+  input: {
+    actorUserId: string;
+    request: { requestId: string; identityPersonId: string; relationshipId: string };
+    targetHospitalId: string;
+    targetUserId: string;
+    target: PatientActivationTargetRecord;
+    result: PatientActivationIssueResult;
+    now: Date;
+  },
+): Promise<void> {
+  if (input.result.outcome === "RECONCILIATION_REQUIRED") {
+    return;
+  }
+
+  if (input.result.outcome === "ALREADY_ACTIVE") {
+    const completed = await transaction.patientAccessRequest.updateMany({
+      where: {
+        id: input.request.requestId,
+        hospitalId: input.targetHospitalId,
+        status: PatientAccessRequestStatus.APPROVED,
+      },
+      data: {
+        status: PatientAccessRequestStatus.COMPLETED,
+        resolution: PatientAccessRequestResolution.ALREADY_ACTIVE,
+        resolvedPersonId: input.request.identityPersonId,
+        resolvedUserId: input.targetUserId,
+        resolvedRelationshipId: input.request.relationshipId,
+        completedAt: input.now,
+      },
+    });
+
+    if (completed.count !== 1) {
+      throw new ConflictError("The Patient access request changed during resolution");
+    }
+
+    await recordAuditEvent(
+      {
+        actorUserId: input.actorUserId,
+        action: "PATIENT_ACCESS_REQUEST_COMPLETED",
+        resourceType: "PatientAccessRequest",
+        resourceId: input.request.requestId,
+        metadata: {
+          hospitalId: input.targetHospitalId,
+          resolution: PatientAccessRequestResolution.ALREADY_ACTIVE,
+        },
+      },
+      transaction,
+    );
+    return;
+  }
+
+  const activation = await findCurrentPatientActivation(transaction, input.targetUserId);
+
+  if (
+    !activation ||
+    activation.hospitalId !== input.targetHospitalId ||
+    (activation.patientAccessRequestId !== null &&
+      activation.patientAccessRequestId !== input.request.requestId)
+  ) {
+    throw new ConflictError("The Patient activation could not be linked to this request");
+  }
+
+  if (activation.patientAccessRequestId === null) {
+    const linked = await transaction.patientActivation.updateMany({
+      where: {
+        id: activation.id,
+        patientAccessRequestId: null,
+        usedAt: null,
+        revokedAt: null,
+      },
+      data: { patientAccessRequestId: input.request.requestId },
+    });
+
+    if (linked.count !== 1) {
+      throw new ConflictError("The Patient activation changed before request linkage");
+    }
+  }
+
+  const issued = await transaction.patientAccessRequest.updateMany({
+    where: {
+      id: input.request.requestId,
+      hospitalId: input.targetHospitalId,
+      status: PatientAccessRequestStatus.APPROVED,
+    },
+    data: {
+      status: PatientAccessRequestStatus.ACTIVATION_ISSUED,
+      resolvedPersonId: input.request.identityPersonId,
+      resolvedUserId: input.targetUserId,
+      resolvedRelationshipId: input.request.relationshipId,
+    },
+  });
+
+  if (issued.count !== 1) {
+    throw new ConflictError("The Patient access request changed during activation issuance");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId: input.actorUserId,
+      action: "PATIENT_ACCESS_ACTIVATION_ISSUED",
+      resourceType: "PatientAccessRequest",
+      resourceId: input.request.requestId,
+      metadata: {
+        hospitalId: input.targetHospitalId,
+        patientActivationId: activation.id,
+        status: PatientAccessRequestStatus.ACTIVATION_ISSUED,
+      },
+    },
+    transaction,
+  );
+}
+
 export async function issuePatientActivation(
   actor: ActorContext | null | undefined,
   input: PatientActivationRequestInput,
@@ -708,34 +829,113 @@ export async function issuePatientActivation(
     throw new ValidationError("Patient activation request is invalid");
   }
 
-  assertIssuePolicy(actor, parsed.data.targetHospitalId);
-
   if (!actor) {
     throw new ForbiddenError();
+  }
+
+  const accessRequestId = parsed.data.patientAccessRequestId;
+
+  if (accessRequestId) {
+    if (!actor.roles.includes(Role.HOSPITAL) || actor.roles.includes(Role.ADMIN)) {
+      throw new ForbiddenError();
+    }
+  } else {
+    const targetHospitalId = parsed.data.targetHospitalId;
+
+    if (!targetHospitalId) {
+      throw new ValidationError("Patient activation Hospital is required");
+    }
+
+    assertIssuePolicy(actor, targetHospitalId);
   }
 
   try {
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
+        let targetHospitalId: string;
+        let targetUserId: string;
+        let linkedAccessRequest: {
+          requestId: string;
+          identityPersonId: string;
+          relationshipId: string;
+        } | null = null;
+
+        if (accessRequestId) {
+          const accessRequest = await transaction.patientAccessRequest.findUnique({
+            where: { id: accessRequestId },
+            select: {
+              id: true,
+              hospitalId: true,
+              identityKeyHash: true,
+              status: true,
+            },
+          });
+
+          if (!accessRequest) {
+            throw new NotFoundError();
+          }
+
+          assertIssuePolicy(actor, accessRequest.hospitalId);
+
+          if (accessRequest.status !== PatientAccessRequestStatus.APPROVED) {
+            throw new ConflictError("The Patient access request is not ready for activation");
+          }
+
+          const identity = await transaction.person.findUnique({
+            where: { identityKeyHash: accessRequest.identityKeyHash },
+            select: {
+              id: true,
+              user: { select: { id: true } },
+              patientProfile: {
+                select: {
+                  hospitalRelationships: {
+                    where: { hospitalId: accessRequest.hospitalId },
+                    select: { id: true },
+                  },
+                },
+              },
+            },
+          });
+          const exactRelationship = identity?.patientProfile?.hospitalRelationships[0];
+
+          if (!identity?.user || !exactRelationship) {
+            throw new ConflictError("The Patient requires controlled provisioning before activation");
+          }
+
+          targetHospitalId = accessRequest.hospitalId;
+          targetUserId = identity.user.id;
+          linkedAccessRequest = {
+            requestId: accessRequest.id,
+            identityPersonId: identity.id,
+            relationshipId: exactRelationship.id,
+          };
+        } else {
+          const requestedHospitalId = parsed.data.targetHospitalId;
+          const requestedUserId = parsed.data.userId;
+
+          if (!requestedHospitalId || !requestedUserId) {
+            throw new ValidationError("Patient activation target is required");
+          }
+
+          targetHospitalId = requestedHospitalId;
+          targetUserId = requestedUserId;
+        }
+
         await assertPatientActivationActorInDatabase(
           transaction,
           actor.userId,
-          parsed.data.targetHospitalId,
+          targetHospitalId,
         );
 
         const target = assertPatientActivationEligibility(
-          await findPatientActivationTarget(
-            transaction,
-            parsed.data.userId,
-            parsed.data.targetHospitalId,
-          ),
+          await findPatientActivationTarget(transaction, targetUserId, targetHospitalId),
         );
 
         const canIssue = canIssuePatientActivation(
           actor,
           toPatientActivationTarget(target),
-          parsed.data.targetHospitalId,
+          targetHospitalId,
         );
         const hasAmbiguousProvisionedMapping =
           target.status === UserStatus.PROVISIONED &&
@@ -748,13 +948,35 @@ export async function issuePatientActivation(
           throw new ConflictError("The Patient account is not eligible for activation issuance");
         }
 
-        return issuePatientActivationInTransaction(transaction, {
+        const issueRequest = {
+          userId: targetUserId,
+          targetHospitalId,
+          reissue: parsed.data.reissue,
+          ...(linkedAccessRequest
+            ? { patientAccessRequestId: linkedAccessRequest.requestId }
+            : {}),
+        };
+        const result = await issuePatientActivationInTransaction(transaction, {
           actorUserId: actor.userId,
-          request: parsed.data,
+          request: issueRequest,
           target,
           now: getNow(dependencies),
           dependencies,
         });
+
+        if (linkedAccessRequest) {
+          await linkAccessRequestToActivation(transaction, {
+            actorUserId: actor.userId,
+            request: linkedAccessRequest,
+            targetHospitalId,
+            targetUserId,
+            target,
+            result,
+            now: getNow(dependencies),
+          });
+        }
+
+        return result;
       },
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
@@ -920,6 +1142,7 @@ async function claimPatientActivation(
             id: true,
             userId: true,
             hospitalId: true,
+            patientAccessRequestId: true,
             expiresAt: true,
             claimedAt: true,
             claimExpiresAt: true,
@@ -957,6 +1180,7 @@ async function claimPatientActivation(
           id: activation.id,
           userId: activation.userId,
           hospitalId: activation.hospitalId,
+          patientAccessRequestId: activation.patientAccessRequestId,
           expiresAt: activation.expiresAt,
           claimedAt: activation.claimedAt,
           claimExpiresAt: activation.claimExpiresAt,
@@ -1155,6 +1379,7 @@ async function finalizePatientActivationLocally(
           id: true,
           userId: true,
           hospitalId: true,
+          patientAccessRequestId: true,
           expiresAt: true,
           claimedAt: true,
           claimExpiresAt: true,
@@ -1224,6 +1449,40 @@ async function finalizePatientActivationLocally(
 
       if (consumed.count !== 1) {
         throw new ConflictError("Patient activation credential changed during completion");
+      }
+
+      if (activation.patientAccessRequestId) {
+        const completedRequest = await transaction.patientAccessRequest.updateMany({
+          where: {
+            id: activation.patientAccessRequestId,
+            hospitalId: claim.hospitalId,
+            resolvedUserId: claim.userId,
+            status: PatientAccessRequestStatus.ACTIVATION_ISSUED,
+          },
+          data: {
+            status: PatientAccessRequestStatus.COMPLETED,
+            resolution: PatientAccessRequestResolution.ACTIVATION_COMPLETED,
+            completedAt: now,
+          },
+        });
+
+        if (completedRequest.count !== 1) {
+          throw new ConflictError("The linked Patient access request changed during activation");
+        }
+
+        await recordAuditEvent(
+          {
+            actorUserId: null,
+            action: "PATIENT_ACCESS_REQUEST_COMPLETED",
+            resourceType: "PatientAccessRequest",
+            resourceId: activation.patientAccessRequestId,
+            metadata: {
+              hospitalId: claim.hospitalId,
+              resolution: PatientAccessRequestResolution.ACTIVATION_COMPLETED,
+            },
+          },
+          transaction,
+        );
       }
 
       await recordAuditEvent(

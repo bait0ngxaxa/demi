@@ -9,11 +9,49 @@ export const PATIENT_ACTIVATION_HOSPITAL_NUMBER_MAX_LENGTH = 64;
 
 export const patientActivationRequestSchema = z
   .object({
-    userId: z.uuid(),
-    targetHospitalId: z.uuid(),
+    userId: z.uuid().optional(),
+    targetHospitalId: z.uuid().optional(),
+    patientAccessRequestId: z.uuid().optional(),
     reissue: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    if (input.patientAccessRequestId) {
+      if (input.userId !== undefined || input.targetHospitalId !== undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["patientAccessRequestId"],
+          message: "การออก activation จากคำขอต้องให้ระบบ resolve ผู้ป่วยเอง",
+        });
+      }
+
+      if (input.reissue) {
+        context.addIssue({
+          code: "custom",
+          path: ["reissue"],
+          message: "คำขอเปิดใช้งานไม่รองรับการออกซ้ำโดยตรง",
+        });
+      }
+
+      return;
+    }
+
+    if (input.userId === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["userId"],
+        message: "Patient account is required",
+      });
+    }
+
+    if (input.targetHospitalId === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["targetHospitalId"],
+        message: "Hospital is required",
+      });
+    }
+  });
 
 export const patientActivationLookupTypeSchema = z.enum([
   "NAME",

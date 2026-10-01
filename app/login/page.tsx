@@ -64,7 +64,22 @@ export default async function LoginPage() {
             ลืมรหัสผ่าน? โปรดติดต่อโรงพยาบาลที่ดูแล โรงพยาบาลจะตรวจสอบตัวตนก่อนออกลิงก์กู้คืนบัญชีให้คุณ
           </p>
 
-          <p className="mt-7 text-center text-sm leading-6 text-muted">
+          <section aria-labelledby="patient-access-request-heading" className="mt-7 border-t border-line pt-6">
+            <h3 className="text-base font-semibold text-ink" id="patient-access-request-heading">
+              สำหรับผู้ป่วยที่ยังไม่มีบัญชีเข้าใช้งาน
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              ส่งคำขอให้โรงพยาบาลตรวจสอบก่อนเปิดใช้งาน ไม่ใช่การสร้างบัญชีทันที
+            </p>
+            <Link
+              className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-[12px] border border-line-strong bg-white px-4 py-2 text-center text-sm font-semibold text-ink transition-colors hover:border-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
+              href="/patient/access-request"
+            >
+              ขอเปิดใช้งานสำหรับผู้ป่วย
+            </Link>
+          </section>
+
+          <p className="mt-6 border-t border-line pt-6 text-center text-sm leading-6 text-muted">
             ต้องการลงทะเบียนโรงพยาบาล?{" "}
             <Link
               className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"

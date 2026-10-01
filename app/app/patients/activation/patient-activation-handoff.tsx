@@ -18,7 +18,9 @@ import {
 import { issuePatientActivationAction } from "@/modules/patient-activation/transport/server-actions";
 
 type PatientActivationHandoffProps = {
-  candidate: PatientActivationCandidateState;
+  candidate?: PatientActivationCandidateState;
+  patientAccessRequestId?: string;
+  linkedOutcome?: "READY_FOR_ACTIVATION" | "ALREADY_ACTIVE";
 };
 
 function buildActivationUrl(origin: string, token: string): string {
@@ -74,6 +76,27 @@ function IssueForm({
         size="compact"
         type="submit"
       >
+        {pending ? `กำลัง${label}...` : label}
+      </Button>
+    </form>
+  );
+}
+
+function LinkedIssueForm({
+  action,
+  pending,
+  requestId,
+  label,
+}: {
+  action: (formData: FormData) => void;
+  pending: boolean;
+  requestId: string;
+  label: string;
+}): React.JSX.Element {
+  return (
+    <form action={action} className="mt-3">
+      <input name="patientAccessRequestId" type="hidden" value={requestId} />
+      <Button disabled={pending} loading={pending} size="compact" type="submit">
         {pending ? `กำลัง${label}...` : label}
       </Button>
     </form>
@@ -214,6 +237,8 @@ function ActivationPresentation({
 
 export function PatientActivationHandoff({
   candidate,
+  patientAccessRequestId,
+  linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
   const [state, action, pending] = useActionState(
     issuePatientActivationAction,
@@ -222,9 +247,84 @@ export function PatientActivationHandoff({
   const result = state.status === "SUCCESS" ? state.result : null;
   const errorMessage = state.status === "ERROR" ? state.message : null;
   const reconciliationRequired =
-    candidate.activationStatus === "RECONCILIATION_REQUIRED" ||
+    candidate?.activationStatus === "RECONCILIATION_REQUIRED" ||
     result?.outcome === "RECONCILIATION_REQUIRED" ||
     (state.status === "ERROR" && state.code === "RECONCILIATION_REQUIRED");
+
+  if (patientAccessRequestId) {
+    if (reconciliationRequired) {
+      return (
+        <Alert className="mt-4" variant="danger">
+          <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์</p>
+          <p className="mt-1">คำขอยังคงรอการตรวจสอบ ระบบยังไม่ถือว่าเปิดใช้งานสำเร็จ</p>
+        </Alert>
+      );
+    }
+
+    if (result?.outcome === "ALREADY_ACTIVE") {
+      return (
+        <Alert className="mt-4" variant="success">
+          <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
+          <p className="mt-1">ไม่มีการออก activation หรือเปลี่ยนรหัสผ่าน</p>
+          <p className="mt-1">
+            ให้ผู้ป่วยเข้าสู่ระบบตามปกติ หากลืมรหัสผ่านให้ใช้ช่องทางช่วยเหลือจากโรงพยาบาล
+          </p>
+        </Alert>
+      );
+    }
+
+    if (result?.outcome === "ISSUED" && result.activationToken) {
+      return <ActivationPresentation action={action} pending={pending} result={result} />;
+    }
+
+    if (result?.outcome === "ALREADY_ISSUED") {
+      return (
+        <Alert className="mt-4" variant="warning">
+          <p className="font-semibold">มีลิงก์เปิดใช้งานที่ยังใช้ได้แล้ว</p>
+          <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ให้ยกเลิกลิงก์เดิมก่อน</p>
+          <p className="mt-1 text-xs leading-5">ลิงก์เดิมหมดอายุ: {formatDate(result.activationExpiresAt)}</p>
+          <IssueForm
+            action={action}
+            hospitalId={result.hospitalId}
+            label="ยกเลิกลิงก์เดิมและออกใหม่"
+            pending={pending}
+            reissue
+            userId={result.userId}
+          />
+          {state.status === "ERROR" ? <p className="mt-3 text-sm text-danger" role="alert">{state.message}</p> : null}
+        </Alert>
+      );
+    }
+
+    if (state.status === "ERROR") {
+      return <Alert className="mt-4" variant="danger">{state.message}</Alert>;
+    }
+
+    return (
+      <div className="mt-4">
+        {linkedOutcome === "ALREADY_ACTIVE" ? (
+          <Alert variant="info">
+            <p className="font-semibold">พบว่าบัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
+            <p className="mt-1">ยืนยันผลนี้เพื่อปิดคำขอ ระบบจะไม่ออก activation และไม่เปลี่ยนรหัสผ่าน</p>
+          </Alert>
+        ) : (
+          <p className="text-sm leading-6 text-text-muted">
+            ใช้การเปิดใช้งานครั้งเดียวที่มีอยู่ ผู้ป่วยจะตั้งรหัสผ่านด้วยตนเอง
+          </p>
+        )}
+        <LinkedIssueForm
+          action={action}
+          label={linkedOutcome === "ALREADY_ACTIVE" ? "ยืนยันบัญชีที่เปิดใช้งานแล้ว" : "ออกลิงก์เปิดใช้งาน"}
+          pending={pending}
+          requestId={patientAccessRequestId}
+        />
+      </div>
+    );
+  }
+
+  if (!candidate) {
+    return <></>;
+  }
 
   if (reconciliationRequired) {
     return (

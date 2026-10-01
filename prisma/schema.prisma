@@ -115,6 +115,34 @@ enum PatientProgramStatus {
   COMPLETED
 }
 
+enum PatientServiceCode {
+  SCREENING
+  FOLLOW_UP
+  EMPOWERMENT
+}
+
+enum PatientServiceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  STARTED
+  WITHDRAWN
+}
+
+enum PatientAccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  ACTIVATION_ISSUED
+  COMPLETED
+}
+
+enum PatientAccessRequestResolution {
+  ACTIVATION_COMPLETED
+  ALREADY_ACTIVE
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -125,6 +153,7 @@ model Person {
 
   user User?
   patientProfile PatientProfile?
+  patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedPerson")
 
   @@index([familyName, givenName])
 }
@@ -163,6 +192,15 @@ model User {
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
   patientClassificationsUpdated PatientClassification[] @relation("PatientClassificationUpdatedBy")
   patientClassificationHistoryChanged PatientClassificationHistory[] @relation("PatientClassificationHistoryChangedBy")
+  patientServiceOfferingsCreated HospitalServiceOffering[] @relation("HospitalServiceOfferingCreatedBy")
+  patientServiceOfferingsUpdated HospitalServiceOffering[] @relation("HospitalServiceOfferingUpdatedBy")
+  patientServiceRequestsRequested PatientServiceRequest[] @relation("PatientServiceRequestRequester")
+  patientServiceRequestsPreferredOsm PatientServiceRequest[] @relation("PatientServiceRequestPreferredOsm")
+  patientServiceRequestsReviewed PatientServiceRequest[] @relation("PatientServiceRequestReviewer")
+  patientServiceRequestsStarted PatientServiceRequest[] @relation("PatientServiceRequestStarter")
+  patientServiceRequestsWithdrawn PatientServiceRequest[] @relation("PatientServiceRequestWithdrawer")
+  patientAccessRequestsReviewed PatientAccessRequest[] @relation("PatientAccessRequestReviewer")
+  patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedUser")
   patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
@@ -199,6 +237,8 @@ model Hospital {
   patientRelationships     PatientHospitalRelationship[]
   patientActivations      PatientActivation[]
   onboardingApplications   HospitalOnboardingApplication[]
+  serviceOfferings         HospitalServiceOffering[]
+  patientAccessRequests    PatientAccessRequest[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
@@ -294,8 +334,11 @@ model PatientHospitalRelationship {
   finalAssessments PatientFinalAssessment[]
   baseline             PatientBaseline?
   evidenceArtifacts    PatientEvidenceArtifact[]
+  serviceRequests      PatientServiceRequest[]
+  patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedRelationship")
 
   @@unique([patientProfileId, hospitalId])
+  @@unique([id, hospitalId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
 }
@@ -743,10 +786,88 @@ model PatientFollowupActivityProgress {
   @@index([followupId, createdAt])
 }
 
+model HospitalServiceOffering {
+  id              String            @id @default(uuid()) @db.Uuid
+  hospitalId      String            @db.Uuid
+  code            PatientServiceCode
+  enabled         Boolean           @default(false)
+  createdByUserId String            @db.Uuid
+  updatedByUserId String            @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  createdByUser User     @relation("HospitalServiceOfferingCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUser User     @relation("HospitalServiceOfferingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+  requests      PatientServiceRequest[]
+
+  @@unique([hospitalId, code])
+  @@unique([id, hospitalId])
+  @@index([hospitalId, enabled])
+}
+
+model PatientServiceRequest {
+  id                            String                     @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String                     @db.Uuid
+  hospitalId                    String                     @db.Uuid
+  offeringId                    String                     @db.Uuid
+  requestedByUserId              String                     @db.Uuid
+  preferredOsmUserId             String?                    @db.Uuid
+  status                         PatientServiceRequestStatus @default(PENDING)
+  reviewedByUserId               String?                    @db.Uuid
+  reviewedAt                     DateTime?
+  startedByUserId                String?                    @db.Uuid
+  startedAt                      DateTime?
+  withdrawnByUserId              String?                    @db.Uuid
+  withdrawnAt                    DateTime?
+  createdAt                      DateTime                   @default(now())
+  updatedAt                      DateTime                   @updatedAt
+
+  relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId, hospitalId], references: [id, hospitalId], onDelete: Cascade)
+  offering     HospitalServiceOffering      @relation(fields: [offeringId, hospitalId], references: [id, hospitalId], onDelete: Restrict)
+  requestedBy  User                         @relation("PatientServiceRequestRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  preferredOsm User?                        @relation("PatientServiceRequestPreferredOsm", fields: [preferredOsmUserId], references: [id], onDelete: SetNull)
+  reviewedBy   User?                        @relation("PatientServiceRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  startedBy    User?                        @relation("PatientServiceRequestStarter", fields: [startedByUserId], references: [id], onDelete: SetNull)
+  withdrawnBy  User?                        @relation("PatientServiceRequestWithdrawer", fields: [withdrawnByUserId], references: [id], onDelete: SetNull)
+
+  @@index([patientHospitalRelationshipId, createdAt])
+  @@index([hospitalId, status, createdAt])
+  @@index([offeringId])
+  @@index([requestedByUserId, createdAt])
+}
+
+model PatientAccessRequest {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  hospitalId          String                         @db.Uuid
+  identityKeyHash     String                         @db.VarChar(64)
+  status              PatientAccessRequestStatus     @default(PENDING)
+  resolution          PatientAccessRequestResolution?
+  reviewedByUserId    String?                        @db.Uuid
+  reviewedAt          DateTime?
+  resolvedPersonId    String?                        @db.Uuid
+  resolvedUserId      String?                        @db.Uuid
+  resolvedRelationshipId String?                     @db.Uuid
+  completedAt         DateTime?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  hospital            Hospital                     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  reviewedBy          User?                        @relation("PatientAccessRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  resolvedPerson      Person?                      @relation("PatientAccessRequestResolvedPerson", fields: [resolvedPersonId], references: [id], onDelete: SetNull)
+  resolvedUser        User?                        @relation("PatientAccessRequestResolvedUser", fields: [resolvedUserId], references: [id], onDelete: SetNull)
+  resolvedRelationship PatientHospitalRelationship? @relation("PatientAccessRequestResolvedRelationship", fields: [resolvedRelationshipId], references: [id], onDelete: SetNull)
+  patientActivation   PatientActivation?            @relation("PatientActivationAccessRequest")
+
+  @@index([hospitalId, status, createdAt])
+  @@index([identityKeyHash])
+}
+
 model PatientActivation {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @db.Uuid
   hospitalId      String   @db.Uuid
+  patientAccessRequestId String? @unique @db.Uuid
   tokenHash       String   @unique @db.VarChar(64)
   expiresAt       DateTime
   claimedAt       DateTime?
@@ -760,6 +881,7 @@ model PatientActivation {
 
   user          User     @relation("PatientActivationTarget", fields: [userId], references: [id], onDelete: Cascade)
   hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patientAccessRequest PatientAccessRequest? @relation("PatientActivationAccessRequest", fields: [patientAccessRequestId], references: [id], onDelete: SetNull)
   createdByUser User     @relation("PatientActivationCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])

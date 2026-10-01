@@ -29,6 +29,9 @@ describe("Login page assisted recovery guidance", () => {
     expect(markup).toContain("โรงพยาบาลที่ดูแล");
     expect(markup).toContain("ตรวจสอบตัวตน");
     expect(markup).toContain("ลิงก์กู้คืนบัญชี");
+    expect(markup).toContain("ขอเปิดใช้งานสำหรับผู้ป่วย");
+    expect(markup).toContain('href="/patient/access-request"');
+    expect(markup).toContain("ส่งคำขอลงทะเบียนโรงพยาบาล");
     expect(markup).not.toContain('href="/recover"');
     expect(markup).not.toContain("ส่งอีเมลกู้คืน");
     expect(markup).not.toContain("ส่ง SMS");

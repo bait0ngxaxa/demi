@@ -610,6 +610,12 @@ Phase 17C is formally closed after the permanent Vitest TSX discovery globs were
 
 [Phase 17E.0](./phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md) records the owner-approved 2026-09-30 decisions for Patient general profile fields and UAT account scope. [Phase 17E.1](./phases/PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md) implements Patient SELF Hospital-scoped profile editing, authenticated password change, and assisted recovery. The approved fields exclude name, DOB, National ID, HN, and clinical data; Patient SELF does not mutate shared `PatientProfile`. Broader account governance and non-Patient recovery questions remain open. P17E-CONSENT-01..03 remain pending; no consent model, lifecycle, or 17E.2 behavior is approved or implemented.
 
+## Phase 17E.3 Patient core business flow
+
+[Phase 17E.3](./phases/PHASE_17E3_PATIENT_CORE_FLOW_GAP_CLOSURE.md) resolves the current UAT contracts for AUTH-04 and CARE-07. Login entry is controlled Patient onboarding request only: the public National ID is a canonical-hash lookup reference, Hospital verifies identity directly, and existing Patient provisioning and `PatientActivation` remain authoritative. Public submission creates no Person/User, does not disclose account state, and is not recovery. A linked access request completes only after successful first-time activation, with an explicit already-active resolution.
+
+“บริการของฉัน” creates a separate `PatientServiceRequest` under the Patient’s exact existing active Hospital relationship. `HospitalServiceOffering` exposes only SCREENING, FOLLOW_UP, and EMPOWERMENT request categories. Patient request/approval/start does not create a clinical Program or OSM assignment; an OSM selection is a validated exact-Hospital preference, while `PatientOsmAssignment` remains authoritative. Catalog management is direct OWNER-only for this UAT slice; exact direct OWNER/MEMBER Hospital scope reviews requests. No hierarchy or Platform ADMIN operational bypass is added. CARE-02, CARE-06, PAT-03, PAT-05, ACCOUNT-02 consent, Family/Caregiver, Medication, Wellness, Hospital content/contact, and Notifications remain separate gates. Phase 17E.2 remains parked and Phase 17F has not started.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
@@ -621,7 +627,7 @@ Phase 17C is formally closed after the permanent Vitest TSX discovery globs were
 - Patient-submitted health measurements and any future identity-correction/reconciliation workflow remain open; the separate bounded general profile field set is approved and implemented in [Phase 17E.1](./phases/PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md).
 - การแจ้งเตือนนัดหมาย: event, recipient, เวลา, channel, preference/consent และ retry semantics ยังคงเปิดเป็น P17D-NOTIF-01; ดู [Phase 17D.0](./phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) และ [Phase 17D.1](./phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md). อำนาจสร้าง/เปลี่ยนเวลา/ยกเลิกและการโต้ตอบนัดหมายได้รับการตัดสินแล้ว.
 - การ transfer/reassign patient โดย OSM และการเปลี่ยน hospital affiliation โดย patient
-- หลักฐานและขั้นตอนสำหรับ hospital verification
+- หลักฐานและขั้นตอนสำหรับ hospital verification beyond the bounded Phase 17E.3 direct-check attestation
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
 - Long-term Patient activation proofing and identity-proofing beyond Phase 5B.2 remain open; Phase 17E.1 assisted recovery does not change activation semantics or approve automated delivery channels.

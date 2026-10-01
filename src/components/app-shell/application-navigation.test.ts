@@ -62,7 +62,46 @@ describe("application navigation projection", () => {
     expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
     expect(labels).toContain("เปิดใช้งานบัญชีผู้ป่วย");
     expect(labels).toContain("รายชื่อผู้ป่วย");
+    expect(labels).toContain("คำขอเปิดใช้งานผู้ป่วย");
+    expect(labels).toContain("คำขอบริการผู้ป่วย");
+    expect(labels).not.toContain("บริการที่ผู้ป่วยขอได้");
     expect(labels).not.toContain("จัดการบุคลากร");
+  });
+
+  it("shows the service catalog only to an exact active Hospital owner", () => {
+    const ownerLabels = navigationLabels(
+      actor({
+        roles: [Role.HOSPITAL],
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.OWNER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }),
+    );
+    const adminLabels = navigationLabels(
+      actor({
+        roles: [Role.ADMIN, Role.HOSPITAL],
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.OWNER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }),
+    );
+
+    expect(ownerLabels).toContain("บริการที่ผู้ป่วยขอได้");
+    expect(adminLabels).not.toContain("บริการที่ผู้ป่วยขอได้");
+    expect(adminLabels).not.toContain("คำขอเปิดใช้งานผู้ป่วย");
+    expect(adminLabels).not.toContain("คำขอบริการผู้ป่วย");
   });
 
   it("shows Workforce navigation for an active Hospital owner", () => {
@@ -136,6 +175,7 @@ describe("application navigation projection", () => {
     expect(navigation[0].items.map(({ href }) => href)).toEqual([
       "/app/personal",
       "/app/personal/care",
+      "/app/personal/services",
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
@@ -170,6 +210,7 @@ describe("application navigation projection", () => {
       .filter(({ workspace }) => workspace === "personal")
       .flatMap(({ items }) => items);
     expect(personalItems.map(({ href }) => href)).toContain("/app/personal/care");
+    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/services");
     expect(personalItems.map(({ href }) => href)).toContain("/app/personal/appointments");
     expect(personalItems.map(({ href }) => href)).not.toContain("/app/patients/assigned");
   });

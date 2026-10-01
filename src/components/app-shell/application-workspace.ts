@@ -9,6 +9,14 @@ import {
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
+  PATIENT_SERVICE_REQUEST_CAPABILITIES,
+  decidePatientServiceRequestPolicy,
+} from "@/modules/patient-service-requests/policies/patient-service-request-policy";
+import {
+  decidePatientAccessRequestPolicy,
+  PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
+} from "@/modules/patient-access-requests/policies/patient-access-request-policy";
+import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
@@ -123,6 +131,48 @@ function projectHospitalActions(
       href: withHospitalContext("/app/patients/activation", hospitalId),
       label: "เปิดใช้งานบัญชีผู้ป่วย",
       description: "จัดการการเปิดใช้งานบัญชีผู้ป่วยในโรงพยาบาลนี้",
+    });
+  }
+
+  if (
+    decidePatientAccessRequestPolicy({
+      actor,
+      capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
+      hospitalId,
+    }).allowed
+  ) {
+    actions.push({
+      href: "/app/patients/access-requests",
+      label: "คำขอเปิดใช้งานผู้ป่วย",
+      description: "ตรวจสอบตัวตนและดำเนินคำขอในโรงพยาบาลนี้",
+    });
+  }
+
+  if (
+    decidePatientServiceRequestPolicy({
+      actor,
+      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.review,
+      hospitalId,
+    }).allowed
+  ) {
+    actions.push({
+      href: "/app/patients/service-requests",
+      label: "คำขอบริการผู้ป่วย",
+      description: "ทบทวนคำขอบริการที่ส่งถึงโรงพยาบาลนี้",
+    });
+  }
+
+  if (
+    decidePatientServiceRequestPolicy({
+      actor,
+      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
+      hospitalId,
+    }).allowed
+  ) {
+    actions.push({
+      href: "/app/patients/service-catalog",
+      label: "บริการที่ผู้ป่วยขอได้",
+      description: "กำหนดบริการที่ผู้ป่วยขอได้จากโรงพยาบาลนี้",
     });
   }
 
