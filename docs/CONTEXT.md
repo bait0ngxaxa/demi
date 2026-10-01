@@ -641,6 +641,10 @@ Phase 17F.1 adds purpose-specific invitation and relationship persistence, a has
 
 The Patient-resource capability allowlist remains EMPTY. No caregiver Patient-profile, Hospital-profile, appointment, care, Screening, Baseline, Program, Goal Plan, Follow-up, Final, evidence, service-request, medication, clinical-record or emergency-contact access was added. Family remains separate from OSM assignment and emergency contacts. No CAREGIVER role, Patient impersonation, new-account onboarding, kinship verification or QR was added. See the [17F.1 implementation handoff](./phases/PHASE_17F1_FAMILY_CAREGIVER_RELATIONSHIP_SECURITY_FOUNDATION.md) for schema, routes, exact projection fields and verification evidence.
 
+## Phase 17F.2 delegated-read decision pending
+
+[Phase 17F.2A decision pack](./phases/PHASE_17F2_DELEGATED_READ_DECISION_PACK.md) records current SELF implementation evidence, exact proposed disclosure fields, scope/acceptance and eligibility alternatives for owner review. **17F.2 = DECISION PENDING / NOT IMPLEMENTED**; P17F-L01/L02/L06 remain OPEN. Recommendations are NOT OWNER APPROVED and cannot start implementation. Phase 17F.1 remains IMPLEMENTED / CLOSED for its security foundation; the delegated Patient-resource allowlist remains EMPTY.
+
 ## Open Requirements
 
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
