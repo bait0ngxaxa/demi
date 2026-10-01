@@ -273,6 +273,22 @@ Phase 2.1 ไม่ได้ implement provider-account transition สำหร�
 
 Implementation directories และ commands ดูได้จาก [README](../README.md) และ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md)
 
+## Family / Caregiver Vocabulary
+
+**Delegated caregiver**: An authenticated person/account receiving explicitly scoped access from a competent adult Patient through accepted voluntary delegation; no PATIENT role is required on the caregiver side. This is distinct from a legal representative and from an OSM caregiver.
+
+**Care recipient**: The explicit Patient participant whose approved resources are the target of a directional delegation. The two customer perspectives describe the same authoritative relationship.
+
+**Family member**: A social/kinship description, not an authorization grant. Whether non-relatives are eligible delegates remains a product decision.
+
+**Caregiver invitation**: An expiring, revocable proposal addressed to an intended person for explicit acceptance. A link or QR transports the proposal and grants no Patient-resource authority.
+
+**Emergency contact**: Contact information only; not an accepted Family relationship, account, delegation, consent giver or legal representative.
+
+**OSM caregiver**: The operational OSM participant in PatientOsmAssignment; not a Family delegate. Import caregiver/coach wording must retain this domain meaning.
+
+The bounded direction and open gates are recorded in [Phase 17F.0 Family / Caregiver Contract](./phases/PHASE_17F0_FAMILY_CAREGIVER_DELEGATED_ACCESS_CONTRACT.md). Patient revocation and caregiver self-removal with audit are approved directions; no Patient-data delegated reads are approved by 17F.0. Pre-17F.1 eligibility, recipient proof, scope, lifecycle, acceptance and privacy gates remain open. Minors/legal authority and broader Phase 17E.2 consent remain separate gates; Family is not implemented.
+
 ## Accepted Actors
 
 Top-level business roles ที่ยืนยันแล้วมี 4 รายการ:
@@ -617,7 +633,7 @@ Hospital Work can locate a current access request using transient National ID vi
 
 The public onboarding route is acceptable for bounded UAT only. General-public production exposure remains gated on shared/deployment-level abuse protection and rate limiting implemented with the eventual deployment architecture. The database duplicate invariant is not abuse control; no in-process limiter is claimed or introduced.
 
-“บริการของฉัน” creates a separate `PatientServiceRequest` under the Patient’s exact existing active Hospital relationship. `HospitalServiceOffering` exposes only SCREENING, FOLLOW_UP, and EMPOWERMENT request categories. Patient request/approval/start does not create a clinical Program or OSM assignment; an OSM selection is a validated exact-Hospital preference, while `PatientOsmAssignment` remains authoritative. Catalog management is direct OWNER-only for this UAT slice; exact direct OWNER/MEMBER Hospital scope reviews requests. No hierarchy or Platform ADMIN operational bypass is added. CARE-02, CARE-06, PAT-03, PAT-05, ACCOUNT-02 consent, Family/Caregiver, Medication, Wellness, Hospital content/contact, and Notifications remain separate gates. Phase 17E.2 remains parked and Phase 17F has not started.
+“บริการของฉัน” creates a separate `PatientServiceRequest` under the Patient’s exact existing active Hospital relationship. `HospitalServiceOffering` exposes only SCREENING, FOLLOW_UP, and EMPOWERMENT request categories. Patient request/approval/start does not create a clinical Program or OSM assignment; an OSM selection is a validated exact-Hospital preference, while `PatientOsmAssignment` remains authoritative. Catalog management is direct OWNER-only for this UAT slice; exact direct OWNER/MEMBER Hospital scope reviews requests. No hierarchy or Platform ADMIN operational bypass is added. CARE-02, CARE-06, PAT-03, PAT-05, ACCOUNT-02 consent, Family/Caregiver, Medication, Wellness, Hospital content/contact, and Notifications remain separate gates. Phase 17E.2 remains parked. Phase 17F.0 is documentation-only; Family product implementation has not started.
 
 ## Open Requirements
 
