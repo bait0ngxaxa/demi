@@ -7,6 +7,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   reviewPatientAccessRequest,
+  locateHospitalPatientAccessRequest,
   submitPublicPatientAccessRequest,
   withdrawPatientAccessRequestByHospital,
 } from "../services/patient-access-request-service";
@@ -17,6 +18,7 @@ import {
 } from "../schemas/patient-access-request-schemas";
 import type {
   PatientAccessRequestReviewActionState,
+  PatientAccessRequestLookupActionState,
   PatientAccessRequestWithdrawalActionState,
   PublicPatientAccessRequestActionState,
 } from "./action-state";
@@ -24,6 +26,32 @@ import type {
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+export async function locateHospitalPatientAccessRequestAction(
+  _previousState: PatientAccessRequestLookupActionState,
+  formData: FormData,
+): Promise<PatientAccessRequestLookupActionState> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await locateHospitalPatientAccessRequest(actor, {
+      hospitalId: formString(formData, "hospitalId"),
+      nationalId: formString(formData, "nationalId"),
+    });
+    return result
+      ? { status: "SUCCESS", requestId: result.requestId }
+      : { status: "ERROR", message: "ไม่พบคำขอที่กำลังดำเนินการสำหรับข้อมูลนี้ในโรงพยาบาลที่เลือก" };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+        return { status: "ERROR", message: "บัญชีนี้ไม่มีสิทธิ์ค้นหาคำขอในโรงพยาบาลนี้" };
+      }
+      if (error.code === "VALIDATION") {
+        return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและโรงพยาบาล" };
+      }
+    }
+    return { status: "ERROR", message: "ระบบไม่สามารถค้นหาคำขอได้ กรุณาลองใหม่อีกครั้ง" };
+  }
 }
 
 function mapPublicError(error: unknown): PublicPatientAccessRequestActionState {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/modules/patient-access-requests/transport/server-actions", () => ({
   submitPublicPatientAccessRequestAction: vi.fn(),
+  locateHospitalPatientAccessRequestAction: vi.fn(),
   reviewPatientAccessRequestAction: vi.fn(),
   withdrawPatientAccessRequestByHospitalAction: vi.fn(),
 }));
@@ -19,6 +20,7 @@ import { HospitalServiceCatalogWorkspace } from "../app/patients/service-catalog
 import { PatientServicesWorkspace } from "../app/personal/services/patient-services-workspace";
 import { PatientAccessRequestForm } from "./access-request/patient-access-request-form";
 import { PatientAccessRequestReviewControls } from "../app/patients/access-requests/patient-access-request-review-controls";
+import { PatientAccessRequestLookup } from "../app/patients/access-requests/patient-access-request-lookup";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -27,6 +29,17 @@ const osmRelationshipId = "44444444-4444-4444-8444-444444444444";
 const osmUserId = "55555555-5555-4555-8555-555555555555";
 
 describe("Patient core flow presentation", () => {
+  it("separates lookup from identity verification and requires explicit selection for multiple Hospitals", () => {
+    const markup = renderToStaticMarkup(createElement(PatientAccessRequestLookup, { hospitals: [
+      { id: hospitalId, hospitalCode: "A", name: "โรงพยาบาล ก" },
+      { id: relationshipId, hospitalCode: "B", name: "โรงพยาบาล ข" },
+    ] }));
+    expect(markup).toContain("ค้นหาคำขอด้วยเลขบัตรประชาชน");
+    expect(markup).toContain("การพบคำขอไม่ถือเป็นการยืนยันตัวตน");
+    expect(markup).toMatch(/<option value=""[^>]*selected=""/);
+    expect(markup).not.toMatch(/identityVerified|identityKeyHash|authSubject|\?nationalId|1000000000009/);
+    expect(markup).not.toContain('method="get"');
+  });
   it("keeps public onboarding separate from Login and recovery, with no prefilled identity", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientAccessRequestForm, {

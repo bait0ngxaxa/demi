@@ -50,6 +50,8 @@ export const patientAccessRequestIdSchema = z
   .object({ requestId: z.uuid() })
   .strict();
 
+export const hospitalPatientAccessRequestLookupSchema = publicPatientAccessRequestSchema;
+
 export type PublicPatientAccessRequestInput = z.infer<
   typeof publicPatientAccessRequestSchema
 >;

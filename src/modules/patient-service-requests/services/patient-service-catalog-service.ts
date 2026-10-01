@@ -218,7 +218,7 @@ export async function setHospitalServiceOffering(
           return;
         }
 
-        await transaction.hospitalServiceOffering.upsert({
+        const offering = await transaction.hospitalServiceOffering.upsert({
           where: {
             hospitalId_code: {
               hospitalId: parsed.data.hospitalId,
@@ -244,7 +244,7 @@ export async function setHospitalServiceOffering(
             actorUserId: actor.userId,
             action: "HOSPITAL_SERVICE_OFFERING_CHANGED",
             resourceType: "HospitalServiceOffering",
-            resourceId: current?.id ?? `${parsed.data.hospitalId}:${parsed.data.code}`,
+            resourceId: offering.id,
             metadata: {
               hospitalId: parsed.data.hospitalId,
               serviceCode: parsed.data.code,

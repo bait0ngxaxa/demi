@@ -4,7 +4,8 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { PatientAccessRequestListItem } from "@/modules/patient-access-requests/services/patient-access-request-service";
+import type { PatientAccessRequestListItem, PublicActiveHospital } from "@/modules/patient-access-requests/services/patient-access-request-service";
+import { PatientAccessRequestLookup } from "./patient-access-request-lookup";
 
 const statusLabels: Record<PatientAccessRequestListItem["status"], string> = {
   PENDING: "รอตรวจสอบตัวตน",
@@ -24,8 +25,10 @@ function formatDate(date: Date): string {
 
 export function HospitalPatientAccessRequestsWorkspace({
   requests,
+  hospitals,
 }: {
   requests: readonly PatientAccessRequestListItem[];
+  hospitals: readonly PublicActiveHospital[];
 }): React.JSX.Element {
   return (
     <div className="max-w-5xl">
@@ -34,6 +37,8 @@ export function HospitalPatientAccessRequestsWorkspace({
         description="ตรวจสอบคำขอในโรงพยาบาลที่คุณเป็นสมาชิกโดยตรง ก่อนใช้ workflow provision และ activation ที่มีอยู่"
         title="คำขอเปิดใช้งานผู้ป่วย"
       />
+
+      <PatientAccessRequestLookup hospitals={hospitals} />
 
       {requests.length === 0 ? (
         <Alert className="mt-6" variant="info">

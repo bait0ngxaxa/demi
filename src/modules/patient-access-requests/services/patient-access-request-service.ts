@@ -35,6 +35,7 @@ import {
   patientAccessRequestIdSchema,
   patientAccessRequestReviewSchema,
   publicPatientAccessRequestSchema,
+  hospitalPatientAccessRequestLookupSchema,
 } from "../schemas/patient-access-request-schemas";
 
 export type PatientAccessRequestDatabase = PrismaClient;
@@ -293,6 +294,63 @@ export async function listPublicActiveHospitals(
       where: { status: HospitalStatus.ACTIVE },
       select: { id: true, hospitalCode: true, name: true },
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }],
+    });
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export async function listHospitalPatientAccessRequestLookupHospitals(
+  actor: ActorContext | null | undefined,
+  dependencies: PatientAccessRequestDependencies = {},
+): Promise<readonly PublicActiveHospital[]> {
+  if (!actor) throw new ForbiddenError();
+  try {
+    return await getDatabase(dependencies).$transaction(async (transaction) => {
+      const memberships = await transaction.hospitalMembership.findMany({
+        where: {
+          userId: actor.userId,
+          status: MembershipStatus.ACTIVE,
+          membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+          hospital: { status: HospitalStatus.ACTIVE },
+        },
+        select: { hospital: { select: { id: true, hospitalCode: true, name: true } } },
+        orderBy: { hospital: { name: "asc" } },
+      });
+      if (memberships.length === 0) throw new ForbiddenError();
+      for (const { hospital } of memberships) {
+        assertReviewPolicy(actor, hospital.id);
+        await assertPersistedHospitalReviewer(transaction, actor.userId, hospital.id);
+      }
+      return memberships.map(({ hospital }) => hospital);
+    });
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+/** Read-only locator. Finding a request never constitutes identity verification. */
+export async function locateHospitalPatientAccessRequest(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientAccessRequestDependencies = {},
+): Promise<{ requestId: string; status: PatientAccessRequestStatus } | null> {
+  if (!actor) throw new ForbiddenError();
+  const parsed = hospitalPatientAccessRequestLookupSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Patient access request lookup input is invalid");
+  assertReviewPolicy(actor, parsed.data.hospitalId);
+  try {
+    return await getDatabase(dependencies).$transaction(async (transaction) => {
+      await assertPersistedHospitalReviewer(transaction, actor.userId, parsed.data.hospitalId);
+      const request = await transaction.patientAccessRequest.findFirst({
+        where: {
+          hospitalId: parsed.data.hospitalId,
+          identityKeyHash: getIdentityHash(parsed.data.nationalId),
+          status: { in: [PatientAccessRequestStatus.PENDING, PatientAccessRequestStatus.APPROVED, PatientAccessRequestStatus.ACTIVATION_ISSUED] },
+        },
+        select: { id: true, status: true },
+      });
+      return request ? { requestId: request.id, status: request.status } : null;
     });
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);

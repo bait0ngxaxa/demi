@@ -3,6 +3,13 @@ import type {
   PatientAccessRequestStatus,
 } from "@prisma/client";
 
+export type PatientAccessRequestLookupActionState =
+  | { status: "IDLE" }
+  | { status: "SUCCESS"; requestId: string }
+  | { status: "ERROR"; message: string };
+
+export const initialPatientAccessRequestLookupActionState: PatientAccessRequestLookupActionState = { status: "IDLE" };
+
 export type PublicPatientAccessRequestActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS" }

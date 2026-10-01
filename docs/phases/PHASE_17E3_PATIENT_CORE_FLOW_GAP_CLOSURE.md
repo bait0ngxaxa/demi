@@ -254,6 +254,68 @@ Verification completed:
   with no browser visual verdict. The design-system handoff found no durable
   visual-system change to record, so `DESIGN.md` and its sidecar remain intact.
 
+## Corrective closeout: Hospital request locator
+
+Baseline: `c03948b6fe89793da9c9bde2a7692898777e58a6`.
+
+The Hospital Work workspace `/app/patients/access-requests` now has a separate
+“ค้นหาคำขอด้วยเลขบัตรประชาชน” panel above the existing list/history. Hospital
+selection comes from current persisted direct active OWNER/MEMBER memberships,
+not the public Hospital list. A single eligible Hospital is preselected; multiple
+Hospitals require explicit selection.
+
+`locateHospitalPatientAccessRequest` uses the existing access-request review
+policy and rechecks persisted ACTIVE User, HOSPITAL role without ADMIN, exact
+direct ACTIVE OWNER/MEMBER membership and ACTIVE Hospital. Anonymous, OSM-only,
+PATIENT-only, ADMIN, unrelated and parent-Hospital actors have no lookup authority.
+The POST Server Action validates the canonical Thai National ID schema and hashes
+transient input with `THAI_NATIONAL_IDENTITY_NAMESPACE` / `hashIdentityReference`.
+It searches only the exact Hospital and PENDING, APPROVED or ACTIVATION_ISSUED
+requests. No-match exposes no Person/User/account state.
+
+Only request UUID reaches action state and the existing detail-page link. Raw ID,
+identity hash, authSubject and tokens are never returned; National ID never appears
+in URL/query/hash, persistence or audit metadata. The input control is cleared when
+the action dispatches. Lookup performs no status mutation, attestation, provisioning,
+credential change or activation issuance. **Lookup is not identity proof.** Approval
+still requires separate National ID re-entry, `identityVerified === true`, direct
+assisted verification and canonical hash comparison in the existing review service.
+Existing detail authorization remains authoritative after navigation.
+
+Catalog audit now uses the actual persisted `HospitalServiceOffering.id` returned
+by upsert for both creation and update; true no-ops still produce no audit event.
+No schema/migration, service-request semantics, activation semantics or consent
+changes are included. Historical Phase 17C gate statements in backlog/context
+are now explicitly dated and point to the subsequent Phase 17E.3 implementation.
+
+### Corrective verification evidence
+
+- Focused policy/schema/service/transport/presentation/catalog tests: **8 files /
+  48 tests passed**.
+- Targeted real PostgreSQL `tests/integration/patient-core-flow.integration.test.ts`:
+  **1 file / 36 tests passed**, including lookup isolation, persisted-scope
+  revocation, no mutation/provisioning/activation, separate approval attestation,
+  and persisted offering audit IDs. Existing local schema was reused; no migration
+  or regeneration was necessary.
+- Final normal `npm test`: **167 files / 1,196 tests passed**, run once after
+  production behavior stabilized. A subsequent isolated `aria-describedby`
+  accessibility association was checked with focused presentation tests and
+  typecheck/lint; it does not change application behavior or broad-suite evidence.
+- `npm run typecheck`, `npm run lint` and `git diff --check`: passed.
+- Security diff review confirms no raw National ID persistence/audit/URL, no
+  browser hash/provider projection, no anonymous/cross-Hospital/hierarchy/ADMIN
+  operational bypass, no lookup mutation or verification flag, and unchanged
+  approval/provisioning/activation/Patient service-request boundaries. Consent
+  remains untouched.
+- Impeccable mechanical detector: no findings. Source review verified existing
+  DEMI primitives/tokens and separate lookup/identity-verification wording;
+  no durable visual-system change. Authenticated browser/mobile rendering was
+  **not verified** because no authenticated browser test session was available.
+- Core Patient journey remains **closed for the current bounded UAT contract**;
+  this evidence does not certify production readiness. General-public onboarding
+  exposure still requires shared/deployment-level abuse protection and rate
+  limiting with the eventual deployment architecture, not an in-process limiter.
+
 ## Re-audit and current-UAT closure
 
 **PATIENT CORE BUSINESS JOURNEY — CLOSED FOR THE CURRENT UAT CONTRACT.**
