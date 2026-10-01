@@ -55,7 +55,7 @@ The current governing task explicitly closes P17F-G01..G08 for bounded UAT on 20
 
 ### OPEN REQUIREMENT
 
-P17F-L01..L05, legal representation, new caregiver onboarding and general consent remain separate future gates. Whiteboard labels and existing read projections do not approve disclosures.
+P17F-L01..L06, legal representation, new caregiver onboarding and general consent remain separate future gates. Whiteboard labels and existing read projections do not approve disclosures.
 
 ## 3. Terminology
 
@@ -72,7 +72,7 @@ P17F-L01..L05, legal representation, new caregiver onboarding and general consen
 | Accepted relationship | Authoritative directional relationship after server-verified acceptance; only currently ACTIVE state and approved capabilities can authorize data access. |
 | Legal representative | Person whose authority derives from a separately verified legal basis, not automatically from voluntary delegation or kinship. Deferred. |
 
-“Family” and “Caregiver” are not guaranteed identical. A non-relative could be a delegate if product requirements allow it; kinship is not an authorization requirement in the approved existing-account foundation; no family-tree or legal kinship verification is introduced. Existing “caregiver”, “ชื่อผู้ดูแล”, “ชื่อผู้ดูแล (อสม.)”, and “coach” in roster/work contexts mean OSM assignment where those sources map them to `osmCaregiverName`; they must not be reinterpreted as Family authority.
+“Family” and “Caregiver” are not guaranteed identical. Whether a caregiver must be a relative/family member or may be any Patient-designated trusted caregiver remains an OPEN product requirement under P17F-L06; G02 closes only account population, identity locator/binding and privacy decisions. 17F.1 implements no family-tree or legal kinship verification and may use known intended caregiver UAT test participants. Absence of verification does not establish non-relative eligibility. Kinship, surname, shared Hospital and emergency-contact information never independently grant authority. Existing “caregiver”, “ชื่อผู้ดูแล”, “ชื่อผู้ดูแล (อสม.)”, and “coach” in roster/work contexts mean OSM assignment where those sources map them to `osmCaregiverName`; they must not be reinterpreted as Family authority.
 
 ## 4. Domain Boundary
 
@@ -292,7 +292,7 @@ These are future acceptance requirements, not claims that controls were implemen
 - No medication implementation (Phase 17G remains separate).
 - No minor/legal guardian/legal representative implementation.
 - No QR implementation in 17F.0.
-- No family-tree/social graph or kinship-based authorization.
+- No family-tree/social graph or legal kinship verification in 17F.1; kinship alone grants no authority. Product relationship eligibility remains P17F-L06.
 - No emergency-contact permission, account creation, implied consent or representation.
 - No OSM reassignment or operational care-visibility behavior change.
 - No broad consent implementation or Phase 17E.2 closure.
@@ -363,6 +363,7 @@ Engineering still chooses/reviews purpose-specific schema/indexes, secure high-e
 | P17F-L03 | Before 17F.3 QR | Confirm final secure-link wrapping, QR presentation/leakage/preview controls and mobile handoff; no new authority. Underlying token/proof mechanism already required in 17F.1. |
 | P17F-L04 | Before 17F.4 closure | Confirm UAT actors/data, supported mobile flows, concurrency/stale-cache/revocation scenarios and audit evidence for delivered capabilities. |
 | P17F-L05 | Before any later auto-expiry/renewal expansion | Review duration/renewal/notifications and changed acceptance semantics separately; G05 must already settle first-slice behavior. |
+| P17F-L06 | OPEN — Caregiver relationship eligibility / kinship rule | Before production/generalized Family rollout, or before 17F.2 data disclosure if eligibility affects who may receive Patient data: Must a caregiver be a relative/family member? May the Patient designate a non-relative trusted caregiver? Is relationship type informational only or eligibility-bearing? Is verification required, and by whom? No answer is selected. This does not reopen G02 or block the cleared 17F.1 bounded-UAT foundation with EMPTY Patient-resource allowlist; unresolved eligibility must not become production authorization policy. |
 
 ## 19. Recommended Execution Plan and Handoff
 
