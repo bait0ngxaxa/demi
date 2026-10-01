@@ -287,7 +287,7 @@ Implementation directories และ commands ดูได้จาก [README](
 
 **OSM caregiver**: The operational OSM participant in PatientOsmAssignment; not a Family delegate. Import caregiver/coach wording must retain this domain meaning.
 
-The bounded direction and open gates are recorded in [Phase 17F.0 Family / Caregiver Contract](./phases/PHASE_17F0_FAMILY_CAREGIVER_DELEGATED_ACCESS_CONTRACT.md). Patient revocation and caregiver self-removal with audit are approved directions; no Patient-data delegated reads are approved by 17F.0. Pre-17F.1 eligibility, recipient proof, scope, lifecycle, acceptance and privacy gates remain open. Minors/legal authority and broader Phase 17E.2 consent remain separate gates; Family is not implemented.
+The bounded direction and open gates are recorded in [Phase 17F.0 Family / Caregiver Contract](./phases/PHASE_17F0_FAMILY_CAREGIVER_DELEGATED_ACCESS_CONTRACT.md). Patient revocation with audit remains approved; caregiver-initiated ACTIVE relationship withdrawal / self-removal is an OPEN pre-17F.1 decision under P17F-G08, distinct from pending-invitation rejection; no Patient-data delegated reads are approved by 17F.0. Pre-17F.1 eligibility, recipient proof, scope, lifecycle, acceptance and privacy gates remain open. Minors/legal authority and broader Phase 17E.2 consent remain separate gates; Family is not implemented.
 
 ## Accepted Actors
 

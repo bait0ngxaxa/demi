@@ -12,7 +12,7 @@ Documentation / requirement / domain / authorization contract only. No product i
 
 FAM-01 is converted into a bounded competent-adult delegated-access contract. Its authority and lifecycle invariants are settled below, but the explicit pre-17F.1 decisions in section 18C remain gates. This is not unconditional implementation readiness. FAM-02 depends on FAM-01 and only transports an invitation. Phase 17E.3 Patient Core remains closed for its current bounded UAT contract; Phase 17E.2 general consent remains parked.
 
-The owner-approved direction in this task governs future 17F slices. The subsequent owner reply on 2026-10-01 additionally approves caregiver self-removal with audit. Neither decision grants access in current runtime.
+The owner-approved direction in the governing task governs future 17F slices. Caregiver-initiated withdrawal from an ACTIVE relationship remains an OPEN DECISION under P17F-G08; the instruction to determine whether it should be supported is not approval. No contract decision grants access in current runtime.
 
 ## 2. Source Evidence
 
@@ -20,7 +20,7 @@ The owner-approved direction in this task governs future 17F slices. The subsequ
 
 The customer whiteboard intent supplied in this task contains “ครอบครัวของฉัน”, “ผู้ที่คุณดูแล”, “ผู้ที่ดูแลคุณ”, “เพิ่มผู้ดูแล”, member selection, people/family linking, possible QR linking, and navigation toward health/care information, health plan, appointments, and medication. [Phase 17A](./PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md) records the earlier supplied flow evidence and FAM-01/FAM-02. No independent whiteboard image was inspected for 17F.0.
 
-This establishes an intended workflow, not kinship proof, guardianship, medical consent, data-controller rules, clinical authority, final permissions, or legal eligibility. The owner-approved adult delegation direction and self-removal reply are confirmed requirements, distinct from what the whiteboard proves.
+This establishes an intended workflow, not kinship proof, guardianship, medical consent, data-controller rules, clinical authority, final permissions, or legal eligibility. The owner-approved adult delegation direction is a confirmed requirement, distinct from what the whiteboard proves. Caregiver-initiated ACTIVE relationship withdrawal is not an approved requirement; see P17F-G08.
 
 ### CURRENT IMPLEMENTATION EVIDENCE
 
@@ -133,7 +133,7 @@ Pending invitation can be rejected by the verified intended invitee, revoked by 
 
 Only a server-verified acceptance establishes ACTIVE relationship authority. ACTIVE is necessary, not sufficient: the capability allowlist may be empty in the foundation slice, and resource scope/eligibility must also pass policy.
 
-The Patient may revoke; the caregiver may remove themself **(owner-approved in this session)**. Both end that relationship's delegated authority, require audit attribution, and must deny subsequent server decisions immediately after commit. Caregiver self-removal affects only their own participation; it does not revoke another caregiver, change Patient data, or change OSM/Hospital relationships.
+Patient revocation is approved: it ends that relationship's delegated authority immediately after commit, requires audit attribution, and must deny subsequent server decisions despite stale browser/session state. Caregiver-initiated termination of an ACTIVE relationship remains **REQUIREMENT-GATED / DECISION PENDING** under P17F-G08. No default support, scope, timing, UI state, audit evidence or reinvitation behavior is chosen. Rejecting a pending invitation is a separate operation before acceptance; it does not terminate an ACTIVE relationship.
 
 No automatic reactivation from an old invite or retained browser state. Future re-delegation must obtain a new valid explicit authorization/acceptance; record reuse/history rules remain gated. Acceptance racing revocation/expiry, retries, and concurrent duplicate acceptance must not create multiple grants or resurrect authority; future persistence must enforce the chosen invariants atomically.
 
@@ -185,7 +185,8 @@ Delegated reads use a separate server-side authorization path and approved proje
 | Submit Patient service request | No delegated submission evidence | 17E.3 PatientServiceRequest SELF | DENIED | Yes | Later explicit requirement only |
 | Invite another caregiver | “เพิ่มผู้ดูแล” Patient-side intent | No Family service | APPROVED DIRECTION for eligible Patient initiating own delegation; caregiver subdelegation DENIED | Yes | Foundation recipient/eligibility/scope gates |
 | Revoke caregiver relationship / pending invitation | Owner-approved direction | No Family service | APPROVED DIRECTION for initiating/recipient Patient only | Yes | Foundation lifecycle and audit design |
-| Caregiver self-removal / reject own invite | Owner self-removal reply; explicit invite acceptance direction | No Family service | APPROVED DIRECTION for own participation only | Yes | Foundation identity binding and transitions |
+| Reject own pending invitation | Conceptual invitation lifecycle before acceptance | No Family service | Conceptual invitation operation; not ACTIVE relationship withdrawal | Yes | Foundation identity binding and transitions under G04/G06 |
+| Caregiver-initiated ACTIVE relationship withdrawal / self-removal | Unresolved governing-task question | No Family service | REQUIREMENT-GATED / DECISION PENDING | Yes, if approved | P17F-G08; no default behavior selected |
 
 These are contract descriptions, not new permission strings or role-to-capability assignments in product code. Relationship management authority does not imply permission to invite on behalf of the Patient or delegate onwards.
 
@@ -208,7 +209,7 @@ PatientProfile legacy fallback must not inadvertently reveal another Hospital's 
 
 ## 11. Consent / Acceptance
 
-The competent adult Patient initiates an explicit proposal for their own delegation; the intended authenticated caregiver explicitly accepts that exact proposal. Both must be shown the recipient, defined scope (including an empty Patient-resource allowlist for a foundation-only slice if approved), when authority starts, how Patient revocation/caregiver withdrawal works, and what evidence is recorded.
+The competent adult Patient initiates an explicit proposal for their own delegation; the intended authenticated caregiver explicitly accepts that exact proposal. Both must be shown the recipient, defined scope (including an empty Patient-resource allowlist for a foundation-only slice if approved), when authority starts, how approved Patient revocation works, how pending-invitation rejection differs from ACTIVE relationship withdrawal, and what evidence is recorded. Any ACTIVE caregiver withdrawal wording or behavior is conditional on the explicit P17F-G08 decision.
 
 Record attributable Patient initiation and caregiver acceptance, server timestamps and an identifiable scope/acceptance-text version sufficient to prove what was agreed. No scope may expand silently after acceptance. Any later data capability requires an approved change/re-acceptance contract; 17F.1 must not pre-grant unknown 17F.2 reads. Exact text, versions, evidence retention and change mechanics are explicit gates.
 
@@ -216,9 +217,9 @@ This is **delegated-access consent/acceptance**, not a determination of legal he
 
 ## 12. Revocation and Audit
 
-Required conceptual events: invitation created; accepted; rejected; expired; revoked (as applicable); relationship activated; Patient revocation; caregiver self-removal; delegated authority changed if a later slice supports it. Record actual transition, actor, opaque invitation/relationship resource reference, server timestamp and bounded approved scope/version/outcome metadata. For automatic expiry, establish how effective expiry and its recorded evidence align; a missing expiry job must never keep an expired invite usable.
+Required conceptual events: invitation created; accepted; rejected; expired; revoked (as applicable); relationship activated; Patient revocation; delegated authority changed if a later slice supports it. Caregiver-initiated ACTIVE relationship withdrawal events and their evidence remain conditional on P17F-G08; they are not required foundation behavior until that decision is made. Record actual transition, actor, opaque invitation/relationship resource reference, server timestamp and bounded approved scope/version/outcome metadata. For automatic expiry, establish how effective expiry and its recorded evidence align; a missing expiry job must never keep an expired invite usable.
 
-Patient revocation and caregiver withdrawal take effect on commit. Every subsequent server decision must observe absence of authority; cached browser/session state, previously accepted token and cached API/query results cannot override it. In-flight race semantics and cache invalidation must be tested, with no successful acceptance after a winning revoke/expiry or resurrection via retry.
+Approved Patient revocation takes effect immediately after commit. After Patient revocation, every subsequent server decision must observe absence of that delegated authority; cached browser/session state, previously accepted token and cached API/query results cannot override it. Caregiver-initiated ACTIVE relationship withdrawal remains unresolved under P17F-G08; its effects are not specified here. In-flight race semantics and cache invalidation must be tested, with no successful acceptance after a winning revoke/expiry or resurrection via retry.
 
 Use existing audit infrastructure and coordinate successful transition evidence with persistence per ADR-0006. Acceptance/consumption/activation must succeed together or fail; revocation and its required audit must not report partial success. Audit failure cannot leave a falsely successful operation. No-op retries must not duplicate grants or fabricate transitions.
 
@@ -270,7 +271,7 @@ Hospital membership, common Hospital, parent/child hierarchy and same surname ne
 | Patient revoke races accept / scope change | Current-state validation and atomic ordering; winning revocation/expiry defeats acceptance, no silent scope expansion. |
 | Token in logs/referrers/history/analytics | Secret transport/presentation reviewed; no raw secret in audit/errors/Patient links; eventual QR shares the same safeguards. |
 | Compromised/suspended account or invalid eligibility | Authentication alone insufficient; current account and scope eligibility checked; suspension/renewal behavior explicitly settled. |
-| Invitation spam / coercive delegation | Abuse controls, explicit voluntary acceptance and easy revoke/withdraw; deployment-specific limits and eligibility process must be defined. No consent presumed from silence. |
+| Invitation spam / coercive delegation | Abuse controls, explicit voluntary acceptance, pending-invitation rejection and Patient revocation; deployment-specific limits and eligibility process must be defined. ACTIVE caregiver withdrawal remains gated by P17F-G08. No consent presumed from silence. |
 
 These are future acceptance requirements, not claims that controls were implemented or tested by this documentation phase.
 
@@ -303,12 +304,13 @@ Each gate needs an explicit recorded owner/product decision; privacy/legal owner
 | P17F-C04 | Invitation/QR possession never grants access; verified explicit acceptance required | Owner direction; Phase 17A |
 | P17F-C05 | Current ACTIVE relationship plus explicit capability, recipient and resource scope; separate server path; default DENY | Owner direction; ADR-0002/0005 |
 | P17F-C06 | Patient can revoke; subsequent decisions deny immediately; transition audited | Owner direction |
-| P17F-C07 | Caregiver may remove themself, with audit and same authority-ending effect | Explicit owner reply in this session, 2026-10-01 |
 | P17F-C08 | Invitation expiry required; relationship expiry is a separate decision | Owner direction |
 | P17F-C09 | Narrow approved reads only later; no approved Patient-data reads in 17F.0; writes/subdelegation/impersonation denied | Owner direction; insufficient disclosure evidence |
 | P17F-C10 | OSM assignment and emergency contact are separate, non-Family authority sources | Current domain evidence; owner direction |
 | P17F-C11 | Delegation acceptance is separate from general/legal consent; minors/legal authority excluded | Owner direction; 17E.2 remains parked |
 | P17F-C12 | QR after FAM-01; no ADR replacement or generic delegation framework needed for this bounded contract | ADR assessment in section 4 |
+
+P17F-C07 is retired as **ERRONEOUS / NOT A DECISION**. It confers no accepted business requirement; caregiver-initiated ACTIVE relationship withdrawal is tracked only as OPEN P17F-G08. Other closed decision IDs remain unchanged.
 
 ### B. Decisions intentionally DEFERRED
 
@@ -332,8 +334,9 @@ Each gate needs an explicit recorded owner/product decision; privacy/legal owner
 | P17F-G03 | Relationship/scope granularity | Decide how Patient-level participant relationship associates with exact Hospital/resource scopes; no implicit all-Hospital/future-Hospital grant. Confirm foundation Patient-resource allowlist is empty and minimal management metadata fields. This does not finalize Prisma schema. |
 | P17F-G04 | Lifecycle/cardinality rules | Number of caregivers/recipients, self-delegation, duplicate pending/active proposals, reissue/reinvite after terminal state, and revoke scope over outstanding invitations. Must prevent unintended reactivation. |
 | P17F-G05 | Invitation deadline and lifecycle eligibility | Exact invite duration/reissue behavior; explicitly decide relationship auto-expiry or no auto-expiry for bounded UAT, plus account/Patient-role/Hospital eligibility loss and resumption. No duration is invented here. |
-| P17F-G06 | Acceptance and audit contract | Approve foundation acceptance wording/version, initiation/acceptance evidence, revoke/withdraw UX meaning, safe management/audit metadata and retention/access. No generic health-consent assertion. |
+| P17F-G06 | Acceptance and audit contract | Approve foundation acceptance wording/version, initiation/acceptance evidence, Patient-revocation and pending-rejection UX meaning, safe management/audit metadata and retention/access. No generic health-consent assertion. |
 | P17F-G07 | Abuse/privacy boundary for foundation | Approved discovery/preview/error disclosures and rate/abuse controls for target UAT deployment; no account/Patient enumeration. Confirm any required controller approval for relationship metadata itself. |
+| P17F-G08 | Caregiver-initiated ACTIVE relationship withdrawal | OPEN / DECISION PENDING before 17F.1: Can an accepted delegated caregiver terminate their own participation? If yes, does termination immediately end only that caregiver relationship? What UI wording/state and audit evidence are required? What happens to pending invitations versus ACTIVE relationships? Is later reinvitation permitted, and under which lifecycle rules? No answers or default behavior are selected; pending-invitation rejection remains separate. |
 
 After these gates, engineering must choose and review purpose-bound token storage/transport, conditional transitions, concurrency/idempotency constraints, audit transaction consistency and focused tests before delivery. Those implementation decisions do not authorize new reads. No unapproved TTL, recipient proof or legal process may be chosen merely to unblock coding.
 
@@ -352,7 +355,7 @@ After these gates, engineering must choose and review purpose-bound token storag
 | Slice | Exact future scope | Exit boundary |
 | --- | --- | --- |
 | 17F.0 — this task | Domain, requirement and authorization contract; glossary/backlog/navigation alignment | Documentation complete; implementation gates visible; no feature claimed |
-| 17F.1 — Relationship + Invitation + Accept + Revoke Foundation | After G01..G07 close: purpose-specific persistence, server policies, secure Patient invitation, intended-account verification, explicit accept/reject, activation, Patient revoke, caregiver self-removal, audit, minimal approved relationship-management UI | Atomic/concurrent lifecycle and cross-role identity tests; zero broad Patient-data access; no QR or unknown capability grants |
+| 17F.1 — Relationship + Invitation + Accept + Revoke Foundation | After G01..G08 close: purpose-specific persistence, server policies, secure Patient invitation, intended-account verification, explicit accept/reject, activation, Patient revocation, audit, minimal approved relationship-management UI. ACTIVE caregiver withdrawal is conditional on explicit approval under G08; it is not guaranteed scope | Atomic/concurrent lifecycle and cross-role identity tests; zero broad Patient-data access; no QR or unknown capability grants |
 | 17F.2 — Family UI + Approved Delegated Reads | “ผู้ที่คุณดูแล” / “ผู้ที่ดูแลคุณ”, relationship-aware navigation; only L01-approved projections and L02-approved scope acceptance | Exact recipient/Hospital/resource authorization and data-minimization tests; no act-as-Patient |
 | 17F.3 — QR Invitation Transport | Wrap the existing secure invitation mechanism after L03 | Same auth/proof/accept/revoke/expiry decisions as secure link; no permission payload |
 | 17F.4 — Re-audit / UAT Closure | Cross-role and cross-Hospital isolation, lifecycle races, stale/revoked access, mobile flow, audit, minimization, regressions for delivered scope | Evidence-backed closure only for implemented approved adult delegation |
