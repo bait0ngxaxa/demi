@@ -1,6 +1,6 @@
-# Phase 17G.0 — Medication Domain Decision Pack
+# Phase 17G.0 — Medication Domain Decision Pack (Corrected)
 
-สถานะเอกสาร: **17G.0 DECISION PACK COMPLETE**<br>
+สถานะเอกสาร: **17G.0 DECISION PACK COMPLETE / CORRECTED**<br>
 สถานะการตัดสินใจ: **Q30–Q53 OPEN / NOT OWNER APPROVED**<br>
 สถานะการพัฒนา: **17G.1 NOT CLEARED FOR IMPLEMENTATION**<br>
 MED-02: **REQUIREMENT-GATED**
@@ -13,10 +13,13 @@ MED-02: **REQUIREMENT-GATED**
 | --- | --- |
 | Repository | bait0ngxaxa/demi |
 | Expected baseline | 12c63c933e5a0d7de6e65a24621c123f35f17a49 — fix(phase-17f4a): preserve grant acceptance evidence |
-| Actual starting HEAD | 80839fa640beda1db955d098fc84a0bc34605ecd — docs(phase-17f4b): record blocked family device UAT |
+| Original pack actual starting HEAD | 80839fa640beda1db955d098fc84a0bc34605ecd — docs(phase-17f4b): record blocked family device UAT |
 | ความสัมพันธ์กับ baseline | HEAD จริงใหม่กว่า baseline ที่คาดหนึ่ง commit และมี baseline เป็น parent โดยตรง ใช้ source ที่ HEAD จริงเป็น authority; ไม่ reset, revert, amend หรือเขียนทับ commit นั้น |
 | สถานะก่อนเริ่ม | main อยู่ ahead 1 จาก origin/main; working tree สะอาด |
 | ประเภทงาน | เอกสารวิเคราะห์และ decision pack เท่านั้น |
+| Correction starting HEAD | 0a63e4c2441554508d16652ac46a1625a256e867 — docs(phase-17g0): add medication decision pack; working tree สะอาด |
+
+ค่า Original pack actual starting HEAD ด้านบนเป็นประวัติของการจัดทำ decision pack ครั้งแรกและคงไว้ตามเดิม.
 
 สถานะ Phase 17F ที่ใช้ในเอกสารนี้:
 
@@ -99,39 +102,38 @@ MED-02: **REQUIREMENT-GATED**
 
 | ID | Evidence และ options | RECOMMENDATION — NOT OWNER APPROVED | Consequence / สิ่งที่ต้องยืนยัน |
 | --- | --- | --- | --- |
-| Q30 — Medication semantic | MED-01 personal list, MED-02 clinical gate. A Patient-maintained item; B clinically authoritative medication/prescription; C ทั้งสองใน record เดียว; D อื่น | **RECOMMENDATION — NOT OWNER APPROVED:** A สำหรับ 17G.1 | Patient เป็นผู้ให้ข้อมูล ไม่ใช่ clinical truth; provenance เป็น user-entered; correction ตาม policy; Hospital ไม่เห็นโดยปริยาย; copy ห้ามสื่อว่า DEMI prescribed/verified |
-| Q31 — Creator authority | ยังไม่มี medication writer policy. A Patient SELF; B Patient + Hospital; C Patient + assigned OSM; D ทั้งสาม; E อื่น | **RECOMMENDATION — NOT OWNER APPROVED:** A — Patient SELF only | role HOSPITAL, OSM, ADMIN, assignment หรือ family relation ไม่ให้สิทธิ์สร้าง/แก้ |
-| Q32 — Read authority | Family grant ปัจจุบันเป็น appointment-only. A SELF; B + Hospital; C + OSM; D + caregiver; E mixed matrix | **RECOMMENDATION — NOT OWNER APPROVED:** A — Patient SELF only | family-delegation-v1 และ family-appointment-read-v1 ไม่ให้ medication access |
-| Q33 — Name/source | ไม่มี name field/catalog. A free text; B local catalog; C external catalog; D free text + future mapping | **RECOMMENDATION — NOT OWNER APPROVED:** D โดยเริ่ม bounded free text | ต้องอนุมัติ maximum/normalization; 200 Unicode code points เป็น technical-cap ตัวอย่างเท่านั้น ไม่ใช่ requirement/medical standard; รองรับ Thai/Unicode, trim ขอบ, ไม่บังคับ lowercase/transliteration; ชื่อไม่ใช่ identity |
-| Q34 — Dose representation | ไม่มี dose semantics. A free-text instruction; B amount + unit; C amount/unit + optional instruction; D full prescribing SIG | **RECOMMENDATION — NOT OWNER APPROVED:** C candidate เมื่อ owner นิยาม amount/unit; มิฉะนั้น A ใน first slice | ต้องแยก user-entered dose จาก drug strength, route, form, SIG; decimal, “ครึ่งเม็ด”, topical/inhaled และ PRN แสดงข้อจำกัด; หลีกเลี่ยง false clinical precision |
-| Q35 — Dose-unit strategy | ไม่มี approved terminology. A free text; B fixed enum; C controlled common set + OTHER; D external terminology | **RECOMMENDATION — NOT OWNER APPROVED:** C + OTHER หาก Q34 อนุมัติ | tablet, capsule, mL, mg, unit, puff, drop เป็นตัวอย่างเท่านั้น ไม่ใช่ approved values; unit อาจหมายถึง mass, volume, count หรือ form |
-| Q36 — Schedule model | customer flow เอ่ย schedule/reminder แต่ไม่ระบุ recurrence. A text only; B one/more daily local times; C weekdays; D calendar/interval engine; E prescription-grade | **RECOMMENDATION — NOT OWNER APPROVED:** B สำหรับ schedule slice จำกัด หากลูกค้ายืนยัน | Medication → 0..N local daily times; ไม่รวม alternate days, every N hours, cyclic/taper, date exception หรือ SIG; อยู่ใน 17G.2 ไม่จำเป็นต้องรวม 17G.1 |
-| Q37 — Timezone | UAT ใช้ Asia/Bangkok; recurring daily time ไม่ใช่ instant | **RECOMMENDATION — NOT OWNER APPROVED:** local time-of-day ใช้ Patient-facing configured application timezone ซึ่งปัจจุบันเป็น Asia/Bangkok | ไม่แปลงเป็น UTC instant; หาก multi-timezone ต้องตัดสิน current Patient timezone เทียบกับ timezone ที่ schedule ผูกไว้; occurrence generation เป็น 17G.3 |
-| Q38 — Meal/timing instruction | ไม่มี semantics ก่อน/หลัง/พร้อมอาหาร, bedtime หรือ PRN. A optional text; B small enum; C full ontology | **RECOMMENDATION — NOT OWNER APPROVED:** A | ลดการสร้าง medical meaning ที่ไม่มีหลักฐาน; instruction text เป็นข้อความผู้ใช้ ไม่ใช่คำแนะนำระบบ |
-| Q39 — Lifecycle | MED-01 ถาม active/discontinued แต่ยังไม่ตัดสิน. A ACTIVE/STOPPED; B + PAUSED; C start/end; D prescription lifecycle | **RECOMMENDATION — NOT OWNER APPROVED:** A; STOPPED เป็น terminal ใน candidate v1 | STOPPED คือไม่ติดตามเป็น current และไม่มี reminder ใหม่ ไม่ใช่ clinical discontinuation order; ต้องตัดสิน undo/re-open หรือสร้าง item ใหม่ |
-| Q40 — Delete/history | ยังไม่มี retention/legal classification. A hard delete; B soft archive; C terminal STOPPED; D immutable revisions | **RECOMMENDATION — NOT OWNER APPROVED:** C สำหรับ record ที่สร้างแล้ว; no routine hard delete | correction ใช้ Q41; accidental creation และ privacy deletion request ต้องตัดสินแยก; ไม่อ้างกฎหมาย clinical retention |
-| Q41 — Edit/correction | Phase 17A เปิด correction/history; Context เปิด broader clinical immutable/auditable history. A in-place; B versioned; C immutable replace; D mixed | **RECOMMENDATION — NOT OWNER APPROVED:** D — Patient แก้ได้, bounded lifecycle evidence, ไม่อ้าง immutable clinical history | updatedAt/lifecycle audit อาจพอ; การแสดงค่าเก่า/reason ต้องตัดสินเพิ่ม; immutable revisions เป็น requirement แยก |
-| Q42 — Provenance | first source ที่เสนอคือ Patient SELF. A implicit; B enum PATIENT_SELF; C free text; D clinician/import | **RECOMMENDATION — NOT OWNER APPROVED:** A ใน first slice | derive creator จาก authenticated actor; เพิ่ม source field เมื่อมีหลาย source และ contract; ห้ามเชื่อ client-supplied creator/source |
-| Q43 — Duplicates | ชื่อเดียวอาจมี dose/instruction ต่างกันหรือ active + stopped. A allow; B unique by name; C warning; D compound key | **RECOMMENDATION — NOT OWNER APPROVED:** A; ห้าม unique บนชื่อ | duplicates อาจชอบธรรม; ห้าม auto-merge/block; warning เป็น UX decision ภายหลัง |
-| Q44 — Adherence | ไม่มี adherence events; schedule/reminder คนละ concept. A none in 17G.1; B log now; C later 17G.3 | **RECOMMENDATION — NOT OWNER APPROVED:** C และไม่มี adherence ใน 17G.1/17G.2 | taken/missed/skipped/delayed/percentage ต้องมี event semantics; ห้ามอนุมาน non-adherence, treatment failure หรือ diagnosis |
-| Q45 — Reminder boundary | Phase 17A ให้ source หลัง 17G contract และ 17J เป็น Notifications. A 17G delivery; B 17G source / 17J delivery; C none | **RECOMMENDATION — NOT OWNER APPROVED:** B | 17J ตัดสิน recipient/timing/preference/consent/channel/retry; 17G ห้ามส่ง LINE/email/SMS/push |
-| Q46 — Family/caregiver | 17F grant ปัจจุบัน appointment-only; Q5 real-data ยัง governance-blocked. A automatic; B never; C future explicit grant; D other | **RECOMMENDATION — NOT OWNER APPROVED:** C; 17G.1 SELF only | family-delegation-v1 และ family-appointment-read-v1 ให้ medication access = ZERO; ต้องมี grant/version/acceptance ใหม่ |
-| Q47 — Hospital/OSM | ไม่มี medication ownership ใน care models. A none in MED-01; B read-only; C write; D separate clinical domain | **RECOMMENDATION — NOT OWNER APPROVED:** A | Hospital MEMBER/OWNER และ assigned OSM ไม่มีสิทธิ์ต่อ personal list; MED-02 ตัดสินแยก |
-| Q48 — MED-02 boundary | MED-02 REQUIREMENT NEEDED; ไม่มี prescription workflow. Include prescription/order/reconcile/dispense/prescriber/pharmacy/verification? | **RECOMMENDATION — NOT OWNER APPROVED:** ไม่รวมใน 17G.1 | ห้าม partial e-prescribing หรือเรียก personal item ว่า prescription; clinical owner/provenance/integration เป็น requirement แยก |
-| Q49 — Goal Plan relation | Current/legacy มี goal objective เกี่ยวกับยา; ไม่มี cross-domain sync. A automatic; B independent; C future projection | **RECOMMENDATION — NOT OWNER APPROVED:** B | STOPPED ไม่แปลว่า Medication De-escalation goal สำเร็จ; projection ต้องมี explicit semantics |
-| Q50 — Route/UX | Personal routes อยู่ใต้ /app/personal; flow ระบุ medication navigation. Candidate /app/personal/medications | **RECOMMENDATION — NOT OWNER APPROVED:** Patient Personal; label candidate “ยาของฉัน” | ใช้ responsive Personal pattern; nav เป็น presentation เท่านั้น; สื่อว่า user-entered และมี empty/loading/error/saved/stopped states |
-| Q51 — Model shape | หนึ่ง item อาจมีหลายเวลา; schedule lifecycle อาจแยก. A all-in-one; B PersonalMedication 1→N MedicationSchedule; C generic clinical framework | **RECOMMENDATION — NOT OWNER APPROVED:** B เป็น conceptual candidate ถ้า Q36 อนุมัติหลายเวลา | ห้ามล็อก Prisma names ก่อน Q30–Q50; หาก schedule deferred 17G.1 อาจมีเพียง personal item |
-| Q52 — Audit | 17F ใช้ transactional lifecycle audit ไม่ audit ทุก read; ไม่ใช่ mandate ให้ medication. A none; B lifecycle; C reads; D immutable clinical audit | **RECOMMENDATION — NOT OWNER APPROVED:** B สำหรับ create/update/stop หากตรง conventions | application audit ≠ clinical/legal immutable history; จำกัดข้อมูลส่วนตัวใน audit; ไม่อ้าง compliance |
-| Q53 — Export/sharing | ไม่มี export/share requirement ใน MED-01/17F medication scope. A include; B PDF/CSV/print; C link/QR; D defer | **RECOMMENDATION — NOT OWNER APPROVED:** D — defer ทั้งหมด | ต้องมี field/recipient/purpose/access/revocation/audit/privacy contract ก่อนเปิดเผยนอก SELF |
+| Q30 — Medication semantic | MED-01 คือ personal list; MED-02 เป็น clinical gate. A Patient-maintained item; B clinically authoritative medication/prescription; C รวม semantics ใน record เดียว; D อื่น | **RECOMMENDATION — NOT OWNER APPROVED:** A — Patient-maintained personal medication item สำหรับ MED-01/17G.1 | เป็นข้อมูลส่วนตัวที่ผู้ใช้ป้อน ไม่ใช่ prescription, clinically reconciled list, Hospital-verified, physician-approved หรือ clinical source of truth; MED-02 แยกต่างหาก |
+| Q31 — Creator authority | ยังไม่มี medication writer policy. A Patient SELF; B Patient + Hospital; C Patient + assigned OSM; D ทั้งสาม; E อื่น | **RECOMMENDATION — NOT OWNER APPROVED:** A — Patient SELF only | HOSPITAL, OSM, ADMIN, Family relationship และ appointment-sharing grant ไม่มี create/update/stop authority; multi-role Patient ใช้ exact SELF เท่านั้น |
+| Q32 — Read authority | Family grant ปัจจุบันเป็น appointment-only. A SELF; B + Hospital; C + OSM; D + caregiver; E mixed matrix | **RECOMMENDATION — NOT OWNER APPROVED:** A — Patient SELF only | Hospital, OSM, Family caregiver, Platform ADMIN routine workflow และ appointment-sharing caregiver อ่านไม่ได้; ไม่มี role fallback |
+| Q33 — Medication name/source | ไม่มี name field/catalog. A free text; B local catalog; C external catalog; D free text + future mapping | **RECOMMENDATION — NOT OWNER APPROVED:** bounded free-text medication name; future catalog mapping deferred | รองรับ Unicode/Thai; trim ขอบและยุบ whitespace ซ้ำที่ชัดเจน; คง case/script; ไม่ใช้ lowercase/transliteration เป็น identity; duplicates allowed; ชื่อเป็นข้อความแสดงผล ไม่ใช่ identity key. ความยาวสูงสุดเป็น implementation validation limit ที่เลือกใน 17G.1 design; ไม่มี TMT/RxNorm/ATC/formulary ID |
+| Q34 — Dose/instruction representation | ไม่มี dose semantics. A one free-text instruction; B amount + unit; C amount/unit + optional instruction; D full prescribing SIG | **RECOMMENDATION — NOT OWNER APPROVED:** A — optional bounded free-text instruction field ใน 17G.1 | ตัวอย่าง “ครั้งละ 1 เม็ด หลังอาหารเช้า” เป็นข้อความบรรยายที่ Patient ป้อนเท่านั้น; ไม่มี doseAmount, doseUnit, strength, dosage form, route, SIG structure หรือ PRN ontology. ลด false clinical precision เพราะหลักฐานแยก amount/count/form/strength/route ไม่ได้ |
+| Q35 — Dose-unit strategy | ไม่มี approved terminology. A free text; B fixed enum; C controlled common set + OTHER; D external terminology | **RECOMMENDATION — NOT OWNER APPROVED:** DEFERRED / NOT APPLICABLE TO 17G.1 — ไม่มี structured dose unit | ไม่สร้าง enum, controlled list, OTHER หรือ external terminology; หากอนาคตเพิ่ม structured dose ให้เปิด Q34/Q35 พร้อมกัน |
+| Q36 — Schedule model | customer flow เอ่ย schedule/reminder แต่ไม่ระบุ recurrence. A text only; B one/more daily local times; C weekdays; D calendar/interval engine; E prescription-grade | **RECOMMENDATION — NOT OWNER APPROVED:** B — 0..N daily local clock times สำหรับ 17G.2 เท่านั้น; ไม่มี schedule persistence ใน 17G.1 | ตัวอย่าง 08:00 และ 20:00; ไม่รวม every N hours, alternate days, weekdays, date exceptions, tapering, cycles, prescription recurrence หรือ cron/RRULE product semantics |
+| Q37 — Timezone | หลาย current UI/input/display flows ใช้ Asia/Bangkok เช่น [Patient SELF presentation](../../app/app/personal/patient-self-care-presentation.tsx) และ [appointment form](../../app/app/patients/%5BrelationshipId%5D/appointments/new/appointment-form.tsx); ไม่พบหลักฐาน global configurable timezone หรือ Patient timezone preference | **RECOMMENDATION — NOT OWNER APPROVED:** สำหรับ 17G.2 ให้ตีความ daily schedule เป็น local time-of-day ใน Asia/Bangkok ตาม bounded DEMI/UAT convention ปัจจุบัน | นี่ไม่ใช่ global configurable application timezone, Patient-specific preference หรือ future multi-timezone policy; ไม่เก็บ daily recurrence เป็น UTC instant เพียงเพื่อให้เข้ากับ timestamp patterns; timezone หลายพื้นที่เป็น requirement งานอนาคต |
+| Q38 — Meal/timing instruction | ไม่มี semantics ก่อน/หลัง/พร้อมอาหาร, bedtime หรือ PRN. A no structured ontology; B small enum; C full ontology | **RECOMMENDATION — NOT OWNER APPROVED:** A — ไม่มี structured meal/timing ontology; ใช้ Q34 free-text instruction เท่านั้น | ไม่สร้าง BEFORE_MEAL, AFTER_MEAL, WITH_MEAL, BEDTIME หรือ PRN enum ใน 17G.1; ข้อความเป็นคำบรรยายที่ผู้ใช้ป้อน ไม่ใช่ระบบแนะนำ |
+| Q39 — Lifecycle | MED-01 ถาม active/discontinued แต่ยังไม่ตัดสิน. A ACTIVE/STOPPED; B + PAUSED; C start/end; D prescription lifecycle | **RECOMMENDATION — NOT OWNER APPROVED:** A — ACTIVE / STOPPED; STOPPED เป็น terminal | ACTIVE คือ Patient ติดตามเป็นรายการปัจจุบัน; STOPPED คือ Patient ไม่ติดตามเป็นปัจจุบัน ไม่ใช่ clinician discontinuation. ไม่มี STOPPED→ACTIVE, PAUSED, restart หรือ reopen; การติดตามอีกครั้งสร้าง item/lifecycle ใหม่ |
+| Q40 — Delete/history | ยังไม่มี retention/legal classification. A hard delete; B soft archive; C terminal STOPPED; D immutable revisions | **RECOMMENDATION — NOT OWNER APPROVED:** C — ใช้ terminal STOPPED ใน normal user workflow; ไม่มี routine hard-delete UI | การนำออกจาก current list คือ ACTIVE→STOPPED. Privacy/legal deletion, administrative correction และ accidental-record purge เป็น governance/operations requirement แยก; ไม่อ้าง legal/clinical retention |
+| Q41 — Edit/correction | Phase 17A เปิด correction/history; Context เปิด broader clinical immutable/auditable history. A in-place; B versioned; C immutable replace; D mixed | **RECOMMENDATION — NOT OWNER APPROVED:** mutable current-value correction ขณะ ACTIVE พร้อม updatedAt และ Q52 mutation audit; ไม่มี user-visible immutable revision history ใน 17G.1 | Patient แก้ name/instruction ของ own ACTIVE item ได้; STOPPED แก้ไม่ได้ผ่าน workflow ปกติ; ไม่มี revision browser หรือ reason-for-correction requirement; ไม่อ้าง clinical immutable record |
+| Q42 — Provenance | first source ที่เสนอคือ Patient SELF. A implicit; B enum PATIENT_SELF; C free text; D clinician/import | **RECOMMENDATION — NOT OWNER APPROVED:** A — source implicit จาก authenticated Patient SELF | ไม่เพิ่ม enum ค่าเดียว; derive creator จาก server actor/audit convention; ไม่เชื่อ client createdBy/source/Patient owner ID; หลาย source ในอนาคตต้องมี decision ใหม่ |
+| Q43 — Duplicates | ชื่อเดียวอาจมี dose/instruction ต่างกันหรือ active + stopped. A allow; B unique by name; C warning; D compound key | **RECOMMENDATION — NOT OWNER APPROVED:** A — duplicates allowed | ไม่มี uniqueness จาก normalized name หรือ name+instruction; ไม่มี auto-merge/replacement; duplicate warning เป็น future UX เท่านั้น |
+| Q44 — Adherence | ไม่มี adherence events; schedule/reminder คนละ concept. A none in 17G.1; B log now; C later 17G.3 | **RECOMMENDATION — NOT OWNER APPROVED:** C — defer adherence semantics ไป decision อนาคตของ 17G.3; ไม่มี events ใน 17G.1/17G.2 | ไม่มี taken/missed/skipped/delayed/percentage/compliance score; ห้ามอนุมาน adherence จาก notification delivery/opening |
+| Q45 — Reminder boundary | Phase 17A ให้ source หลัง 17G contract และ 17J เป็น Notifications. A 17G delivery; B 17G source / 17J delivery; C none | **RECOMMENDATION — NOT OWNER APPROVED:** B — 17G เป็นเจ้าของ approved schedule/reminder source; 17J เป็นเจ้าของ delivery | 17G.1 ไม่มี source; 17G.2 กำหนด schedule; 17G.3 กำหนด reminder occurrence source ตาม semantics ที่อนุมัติแยก. 17G ไม่ส่ง LINE/push/email/SMS; 17J กำหนด recipient/channel/preferences/consent/quiet time/retry/delivery state |
+| Q46 — Family/caregiver | 17F grant ปัจจุบัน appointment-only; Q5 real-data ยัง governance-blocked. A automatic; B never; C future explicit grant; D other | **RECOMMENDATION — NOT OWNER APPROVED:** C — ต้องมี future medication-specific sharing grant; 17G.1 Family DENY | family-delegation-v1 และ family-appointment-read-v1 ให้ medication access = ZERO; ไม่ขยาย 17F |
+| Q47 — Hospital/OSM | ไม่มี medication ownership ใน care models. A none in MED-01; B read-only; C write; D separate clinical domain | **RECOMMENDATION — NOT OWNER APPROVED:** A — ไม่มี Hospital/OSM access ต่อ MED-01 | Hospital MEMBER/OWNER, assigned OSM และ Platform ADMIN routine use เป็น DENY; provider visibility ต้องมี MED-02 หรือ contract แยก |
+| Q48 — MED-02 boundary | MED-02 REQUIREMENT NEEDED; ไม่มี prescription workflow. Candidate semantics: prescription/order/reconciliation/prescriber/dispensing/pharmacy/verification/import | **RECOMMENDATION — NOT OWNER APPROVED:** exclude ALL MED-02 semantics from 17G.1 | ไม่รวม prescription/order, reconciliation, prescriber, clinician verification, pharmacy, dispensing, administration, external prescription import หรือ Hospital-owned list; MED-02 REQUIREMENT-GATED |
+| Q49 — Goal Plan relation | Current/legacy มี goal objective เกี่ยวกับยา; ไม่มี cross-domain sync. A automatic; B independent; C future projection | **RECOMMENDATION — NOT OWNER APPROVED:** B — Medication และ Goal Plan เป็นอิสระต่อกัน | ไม่มี automatic sync; STOPPED ไม่ได้แปลว่า Medication De-escalation goal สำเร็จ |
+| Q50 — Route/UX | Personal routes อยู่ใต้ /app/personal; flow ระบุ medication navigation. Proposed /app/personal/medications | **RECOMMENDATION — NOT OWNER APPROVED:** Patient Personal context; proposed route /app/personal/medications; proposed label “ยาของฉัน” | Navigation เป็นตำแหน่ง UX ไม่ใช่ authority; exact SELF server policy ยังคงเป็นขอบเขตสิทธิ์ |
+| Q51 — Model shape | หนึ่ง item อาจมีหลายเวลา; schedule lifecycle แยกได้. A all-in-one; B PersonalMedication 1→N MedicationSchedule; C generic clinical framework | **RECOMMENDATION — NOT OWNER APPROVED:** 17G.1 ใช้แนวคิด PersonalMedication เท่านั้น; future 17G.2 ใช้แนวคิด PersonalMedication 1→N MedicationSchedule | ไม่มี schedule persistence/columns ใน 17G.1; ชื่อเป็นแนวคิด ไม่ใช่ Prisma/schema decision |
+| Q52 — Audit | 17F ใช้ transactional lifecycle audit ไม่ audit ทุก read; ไม่ใช่ mandate ให้ medication. A none; B mutation/lifecycle; C reads; D immutable clinical audit | **RECOMMENDATION — NOT OWNER APPROVED:** B — AuditEvent เฉพาะ create/update/stop | ไม่มี per-read audit; metadata ขั้นต่ำและไม่ใส่ medication name, instruction/dose text หรือ Patient PII ใน 17G.1; เป็น operational/security evidence ไม่ใช่ immutable clinical history |
+| Q53 — Export/sharing | ไม่มี export/share requirement ใน MED-01/17F medication scope. A include; B PDF/CSV/print; C link/QR; D defer | **RECOMMENDATION — NOT OWNER APPROVED:** D — defer all export/sharing | ไม่มี PDF/CSV/print/public link/QR/external API sharing ใน 17G.1; การเปิดเผยภายหน้าต้องกำหนด recipient/purpose/fields/access/revocation แยก |
 
 ### 7.1 Dose, name, unit และ schedule notes
 
-- ชื่อยาควรรองรับ Unicode/Thai โดยไม่บังคับ English-only, transliteration หรือ lowercase; ชื่อซ้ำไม่ใช่ identity
-- ข้อเสนอ cap 200 Unicode code points เป็น technical-cap ตัวอย่างเท่านั้น ยังไม่มี source กำหนด และไม่ใช่ medical standard
-- Structured dose อาจสับสนระหว่าง strength กับจำนวนที่ผู้ใช้รับ; tablet/capsule อาจหมายถึง form หรือ count; mg เป็น mass; “ครึ่งเม็ด”, topical/inhaled และ PRN ต้องการบริบทเพิ่ม
-- หาก owner ยืนยัน Q34=C ต้องกำหนด amount/unit/instruction/optionality/validation ก่อน schema; หากยังนิยามไม่ได้ Q34=A มีความเสี่ยง false precision ต่ำกว่า
-- ตัวอย่าง unit ใน Q35 เป็นตัวอย่างประกอบการคุยเท่านั้น ไม่มี approved values
-- Q36=B หมายถึง local clock times เท่านั้น ไม่ใช่ interval/prescription schedule
+- ชื่อยารองรับ Unicode/Thai; trim whitespace รอบข้อความและยุบ whitespace ซ้ำที่ชัดเจน; คง case/script; ไม่ใช้ lowercase/transliteration เป็น identity. การกำหนดความยาวสูงสุดเป็น implementation validation limit ที่เลือกใน 17G.1 design ไม่ใช่ medical/product semantics
+- Q34 ใช้ optional free-text instruction เท่านั้นใน 17G.1. คำว่า “ครั้งละ 1 เม็ด หลังอาหารเช้า” เป็นคำบรรยายที่ผู้ใช้ป้อน ไม่ใช่ structured dose หรือคำแนะนำจากระบบ
+- ไม่แยก strength, administered amount, count, form, route หรือ SIG; “ครึ่งเม็ด”, topical/inhaled และ PRN ยิ่งแสดงว่าหลักฐานไม่พอสำหรับ structured semantics
+- Q35 ไม่มี structured unit ใน 17G.1; ไม่กำหนด enum หรือ terminology
+- Q36 เป็น 0..N local daily times ในอนาคตของ 17G.2 เท่านั้น; ไม่มี schedule persistence ใน 17G.1 และไม่ใช่ interval/prescription schedule
 
 ## 8. Record scope และ data minimization
 
@@ -147,10 +149,10 @@ MED-02: **REQUIREMENT-GATED**
 | --- | --- | --- |
 | Patient link | exact PatientProfile จาก authenticated User → Person → PatientProfile | client เลือก owner ID ไม่ได้ |
 | ชื่อยา | bounded free text หลัง Q33 | ไม่มี drug code/catalog |
-| Dose/instruction | เฉพาะ representation ที่อนุมัติ Q34–Q35 | ยังไม่ล็อก type/meaning |
-| Schedule | local times ใน 17G.2 หาก Q36–Q37 อนุมัติ | ไม่สร้าง complex recurrence |
-| Lifecycle | ACTIVE/STOPPED candidate | ไม่ใช่ prescription order |
-| Evidence | timestamps/lifecycle audit หาก Q41/Q52 อนุมัติ | ไม่อ้าง immutable clinical history |
+| Instruction | optional bounded free-text instruction ตาม recommendation Q34 | descriptive user-entered text เท่านั้น; length limit เป็น implementation validation ที่กำหนดใน 17G.1 design |
+| Schedule | ไม่มี schedule ใน 17G.1; 0..N local daily times เป็น recommendation สำหรับ 17G.2 | ไม่สร้าง complex recurrence |
+| Lifecycle | ACTIVE/STOPPED โดย STOPPED terminal | ไม่ใช่ prescription order/discontinuation |
+| Evidence | updatedAt และ create/update/stop AuditEvent ตาม Q41/Q52 recommendations | audit เป็น operational/security evidence ไม่ใช่ immutable clinical history |
 
 ### 8.3 RECOMMENDATION — NOT OWNER APPROVED: ข้อมูลที่ไม่ควรเพิ่มโดยปริยาย
 
@@ -175,7 +177,7 @@ MED-02: **REQUIREMENT-GATED**
 | Patient + HOSPITAL/OSM | ALLOW own SELF only | PATIENT + exact identity; work role ไม่ขยาย scope |
 | Multi-role caregiver + Patient | อนุญาต own PatientProfile เท่านั้น | caregiver relation ห้ามใช้เข้าถึง target profile |
 
-Patient SELF read policy ปัจจุบันไม่ให้ mutation authority; ห้ามใช้สร้าง/update/stop โดยไม่มี policy decision ใหม่. Hidden navigation, role switch, UUID และ direct URL ไม่ใช่ boundary. ทุก request ต้อง auth และตรวจ exact SELF ที่ server; denial ไม่ควรเปิดเผยว่ามี record ของผู้อื่นหรือไม่ ตาม response convention ที่อนุมัติ
+Patient SELF read policy ปัจจุบันไม่ให้ mutation authority; ห้ามใช้สร้าง/update/stop โดยไม่มี policy decision ใหม่. Server derive current Patient SELF; client เลือก Patient owner ไม่ได้. Resource ID เป็น locator ไม่ใช่ authority; hidden navigation, role switch และ direct URL ไม่ขยายสิทธิ์. ทุก request ต้อง auth และตรวจ exact SELF ที่ server; denial ไม่ควรเปิดเผยว่ามี record ของผู้อื่นหรือไม่ ตาม response convention ที่อนุมัติ
 
 ## 10. Security / privacy threat review
 
@@ -189,14 +191,14 @@ Patient SELF read policy ปัจจุบันไม่ให้ mutation aut
 | Caregiver มี ACTIVE Family relationship | relationship ไม่ให้ medication | Family allowlist และ policy แยก | future grant ต้อง version/accept ใหม่ |
 | Caregiver มี appointment grant | family-appointment-read-v1 อ่านยาไม่ได้ | capability projection ห้ามขยาย fields | Q5 แยกจาก future med-sharing gate |
 | Caregiver เป็น multi-role | work role ไม่เปลี่ยน owner | ActorContext + exact PatientProfile | own Patient access ได้เฉพาะ SELF |
-| STOPPED ถูกเปิดกลับ | STOPPED ไม่ active/reminder source; re-open ต้องนิยาม | lifecycle service/conditional update/audit | terminal vs undo/re-create Q39–Q41 |
-| Edited history หาย | correction ตาม personal policy; ไม่อ้าง immutable clinical history | service validation, updatedAt, optional audit | revisions/retention OPEN |
+| STOPPED ถูกเปิดกลับ | STOPPED terminal; normal workflow ไม่มี STOPPED→ACTIVE; track อีกครั้งสร้าง item/lifecycle ใหม่ | lifecycle service/conditional update/audit | owner approval of Q39–Q41 |
+| Edited history หาย | correction ปรับ current value เฉพาะ ACTIVE; ไม่อ้าง immutable clinical history | server validation, updatedAt, Q52 mutation audit | historical revision browser อยู่นอก 17G.1 |
 | Duplicate ถูก merge/block | ห้าม unique by normalized name และ auto-merge | schema constraint/UI | warning UX |
 | Stale schedule หลังแก้/stop | due source อิง current schedule state | transaction/version และ source revalidation | concurrency/dedupe |
 | Reminder หลัง STOPPED | stopped schedule งด occurrence; delivery ตรวจ current eligibility | 17G.3 source + 17J delivery | cutoff/cancel/in-flight semantics |
 | Direct URL/deep link | ทุก request ตรวจ SELF ใหม่ | route/service server policy | safe denial |
 | Browser cache หลัง logout/account switch | ห้าม reuse ข้าม actor | response/cache policy, client state clearing | no-store vs user-scoped cache |
-| Audit data exposure | audit metadata ขั้นต่ำ; no per-read audit | AuditEvent transaction/access | fields, retention, deletion policy |
+| Audit data exposure | AuditEvent metadata ขั้นต่ำและไม่มี per-read audit | AuditEvent transaction/access boundary | operational retention/deletion policy |
 
 ## 11. Safety wording, Goal Plan และ reminder boundary
 
@@ -215,7 +217,7 @@ Legacy “Medication De-escalation” เป็นเป้าหมายระ
 **RECOMMENDATION — NOT OWNER APPROVED:**
 
 ~~~text
-MedicationSchedule (ถ้า Q36–Q37 อนุมัติ)
+MedicationSchedule (แนวคิดสำหรับ 17G.2 ตาม Q36–Q37 recommendation)
         ↓
 17G.3 approved due/reminder event source
         ↓
@@ -236,7 +238,7 @@ recipient / timing / preference / channel / retry
 
 อิง route ใต้ app/app/personal และ design system ปัจจุบัน:
 
-- route candidate: /app/personal/medications; label candidate: “ยาของฉัน”
+- proposed route: /app/personal/medications; proposed label: “ยาของฉัน”
 - อยู่ใน Patient Personal context ไม่ใช่ Hospital Work
 - ใช้ responsive Personal shell; nav visibility เป็น presentation ไม่ใช่ authorization
 - สื่อ ownership/provenance ตรงไปตรงมา; ACTIVE/STOPPED มี label ไม่พึ่งสีอย่างเดียว
@@ -253,11 +255,11 @@ recipient / timing / preference / channel / retry
 | Phase | ขอบเขตเสนอ | Gate / สถานะ |
 | --- | --- | --- |
 | 17G.0 | decision pack นี้ | COMPLETE ในฐานะ analysis เท่านั้น |
-| 17G.1 | Personal Medication Foundation: persistence, exact SELF auth, create/read/update/stop, Personal UI, PostgreSQL/security verification | ไม่เริ่มจน decisions ที่จำเป็นอนุมัติ; NOT CLEARED |
-| 17G.2 | schedule model/lifecycle และ local-time semantics | หลัง Q36–Q38 |
-| 17G.3 | approved reminder occurrence source และ/หรือ adherence semantics; no delivery | หลัง requirements; 17J เป็น delivery owner |
+| 17G.1 | Personal Medication Foundation: name, optional user-entered instruction, ACTIVE/STOPPED terminal lifecycle, edit ACTIVE, exact SELF auth, Personal UI | เริ่มได้เมื่อ owner อนุมัติ Q30–Q53 และ implementation contract; ปัจจุบัน NOT CLEARED |
+| 17G.2 | Daily schedule 0..N local times ตาม Q36–Q37; ไม่มี complex recurrence | หลัง owner อนุมัติ package และ schedule implementation contract |
+| 17G.3 | กำหนด reminder occurrence source และตัดสิน adherence semantics แยก; ไม่มี channel delivery | หลัง owner อนุมัติ reminder/adherence requirements; 17J เป็น delivery owner |
 | 17G.4A | automated security/DB/privacy re-audit | หลัง runtime slice ที่อนุมัติ |
-| Manual/device UAT | UAT อุปกรณ์จริงตาม resource readiness | อาจ deferred ร่วมกับ Phase 17 manual UAT; defer ≠ PASS |
+| Manual/device UAT | UAT อุปกรณ์จริงตาม resource readiness | สามารถ deferred ร่วมกับ Phase 17 manual UAT เมื่อ resource ไม่พร้อม; defer ≠ PASS |
 
 ## 15. Implementation impact map (หลัง approval เท่านั้น)
 
@@ -267,9 +269,9 @@ recipient / timing / preference / channel / retry
 | --- | --- | --- |
 | Domain module | src/modules/medications/ | แยกจาก Goal Plan และ MED-02 |
 | Route | app/app/personal/medications/ | Personal route ตรวจ actor ทุก request |
-| Persistence | แนวคิด PersonalMedication; MedicationSchedule ถ้า Q36 อนุมัติ | ไม่มี schema/migration ใน 17G.0 |
+| Persistence | 17G.1 แนวคิด PersonalMedication; 17G.2 แนวคิด MedicationSchedule 1:N | ไม่มี schema/migration ใน 17G.0 |
 | Identity/policy | existing User/Person/PatientProfile และ Patient SELF conventions | self-read policy ไม่ใช่ write grant |
-| Audit | AuditEvent lifecycle write ถ้า Q52 อนุมัติ | ไม่ใช่ clinical immutable history |
+| Audit | AuditEvent create/update/stop ตาม Q52 | ไม่ใช่ clinical immutable history |
 | Notifications | 17J consumes approved source | 17G ไม่ส่ง channel/retry |
 | Independent domains | PatientAppointment, PatientGoalPlan, Family grants, PatientOsmAssignment, HospitalMembership | ไม่มี inheritance/sync/authorization coupling |
 
@@ -278,22 +280,22 @@ recipient / timing / preference / channel / retry
 ยังไม่เลือก schema/type:
 
 - UUID identifiers; FK ไป PatientProfile หรือ Person ภายใต้ identity invariant จริง
-- lifecycle enum ACTIVE/STOPPED, timestamp หรือทั้งคู่; STOPPED reactivation
-- decimal dose precision/range/CHECK หรือ text-only; unit/form/strength semantics
+- lifecycle representation ที่บังคับ ACTIVE/STOPPED และ STOPPED terminal
+- instruction text validation limit; ไม่มี decimal dose/unit schema ใน 17G.1; structured dose semantics เป็น future requirement
 - local-time representation และ timezone owner; ไม่เลือก instant โดยไม่จำเป็น
 - Medication กับ Schedule แยก table หรือไม่; ordering หลายเวลา/lifecycle
 - pagination/order stability
 - optimistic concurrency/version field
 - partial uniqueness — ข้อเสนอไม่มี uniqueness บนชื่อ; constraint อื่นต้องมาจาก invariant
 - FK/CHECK/index หลัง fields ชัด
-- audit fields, revision snapshot, retention และ privacy deletion
+- minimal audit metadata/retention และ privacy deletion; ไม่มี revision snapshot/user-visible history ใน 17G.1
 - transaction boundary ระหว่าง medication lifecycle กับ schedule/event invalidation
 
 ห้ามใช้รายการนี้เป็น authorization ให้สร้าง schema ก่อน Q30–Q53
 
 ## 17. ADR assessment
 
-**RECOMMENDATION — NOT OWNER APPROVED:** ไม่เสนอ ADR ใหม่ใน 17G.0. Personal medication ที่ยึด identity model, Patient SELF authorization, server boundary และ transaction conventions ปัจจุบันโดยตัวมันเองไม่น่าต้อง ADR
+**RECOMMENDATION — NOT OWNER APPROVED:** ไม่เปิด ADR ใหม่สำหรับ bounded MED-01/17G.1 ที่ยึด identity model, Patient SELF authorization, server boundary และ transaction conventions ปัจจุบัน
 
 หาก MED-02 เพิ่ม clinical source-of-truth, external medication master, pharmacy/prescription architecture หรือ interoperability ให้ประเมิน ADR แยกก่อนออกแบบ/implementation
 
@@ -310,9 +312,10 @@ recipient / timing / preference / channel / retry
 
 ## 19. Final status
 
-- **17G.0 DECISION PACK COMPLETE**
+- **17G.0 DECISION PACK COMPLETE / CORRECTED**
 - **Q30–Q53 OPEN / NOT OWNER APPROVED**
 - **17G.1 NOT CLEARED FOR IMPLEMENTATION**
+- **MED-01 REQUIREMENT-GATED**
 - **MED-02 REQUIREMENT-GATED**
 - **P17F-L04 OPEN / deferred; no device-UAT PASS inferred**
 - **Q5 unchanged: real Patient delegated-data use GOVERNANCE BLOCKED**
@@ -324,14 +327,48 @@ recipient / timing / preference / channel / retry
 
 ~~~text
 Patient SELF
-  → Personal
-  → Personal medication list
-  → add personal medication
-  → view medication
-  → edit/correct under approved policy
-  → stop/archive under approved lifecycle
+  → /app/personal/medications
+  → list own PersonalMedication records
+  → create: medicationName + optional instructionText
+  → view own item
+  → edit medicationName + instructionText on own ACTIVE item
+  → stop own ACTIVE item
+  → STOPPED is terminal; no restart/reactivation
 ~~~
 
-Candidate: Patient/Profile-level personal scope; Patient SELF only; other Patient/OSM/Hospital/ADMIN routine access/caregiver DENY; include name and only owner-approved dose/instruction representation; no schedule in 17G.1 unless owner explicitly moves simple schedule into scope; no reminders, notification delivery, adherence, export, sharing, Goal Plan sync, clinical/prescription semantics, or final Prisma names/types.
+Patient/Profile-level exact owner; not Hospital/PHR scope; Patient SELF only. No schedule, structured dose/unit, meal enum, adherence, reminders, notification delivery, Family/Hospital/OSM access, prescription/reconciliation/clinician verification/pharmacy, Goal Plan sync, export/sharing, or restart/reactivation. No final Prisma names/types.
 
-นี่เป็น proposal เท่านั้น; **17G.1 NOT CLEARED FOR IMPLEMENTATION** จนกว่าจะปิด decision ที่เกี่ยวข้อง
+นี่เป็น **RECOMMENDATION — NOT OWNER APPROVED**; **DO NOT IMPLEMENT YET**. สถานะ **17G.1 NOT CLEARED FOR IMPLEMENTATION** คงเดิม
+
+## 21. Recommended owner package for approval
+
+### RECOMMENDATION — NOT OWNER APPROVED
+
+ข้อเสนอหนึ่งชุดสำหรับ owner review โดยไม่มี sub-decision ซ่อนอยู่; Q30–Q53 ยังคง OPEN จนกว่า owner จะยืนยันโดยชัดแจ้ง:
+
+- Q30 A — Patient-maintained personal medication item; ไม่ใช่ prescription หรือ clinical source of truth
+- Q31 A — Patient SELF only เป็นผู้สร้าง/แก้/หยุด
+- Q32 A — Patient SELF only อ่านได้
+- Q33 bounded free-text name; normalize whitespace; preserve case/script; duplicates allowed; future catalog mapping deferred
+- Q34 A — optional bounded free-text instruction; ไม่มี structured dose ใน 17G.1
+- Q35 DEFERRED / NOT APPLICABLE TO 17G.1 — ไม่มี structured dose unit
+- Q36 B — 0..N daily local clock times ใน 17G.2; ไม่มี schedule ใน 17G.1
+- Q37 — 17G.2 ใช้ Asia/Bangkok local time-of-day ตาม bounded DEMI/UAT convention ปัจจุบัน; ไม่ใช่ global หรือ Patient-specific timezone policy
+- Q38 A — ไม่มี structured meal/timing ontology; ใช้ Q34 text เท่านั้น
+- Q39 A — ACTIVE/STOPPED; STOPPED terminal; track ใหม่ใช้ item/lifecycle ใหม่
+- Q40 C — normal removal คือ ACTIVE→STOPPED; ไม่มี routine hard-delete UI
+- Q41 — แก้ current values ได้เฉพาะ own ACTIVE item; updatedAt + Q52 audit; ไม่มี user-visible revisions; STOPPED immutable ใน workflow ปกติ
+- Q42 A — provenance implicit จาก authenticated Patient SELF; ไม่มี source enum
+- Q43 A — duplicates allowed; no uniqueness, auto-merge or replacement
+- Q44 C — defer adherence decision ไป 17G.3; ไม่มี events ใน 17G.1/17G.2
+- Q45 B — 17G owns approved schedule/reminder source; 17J owns all notification delivery
+- Q46 C — Family access ต้องมี future medication-specific sharing grant; ปัจจุบัน DENY
+- Q47 A — MED-01 ไม่มี Hospital/OSM access; Platform ADMIN routine access DENY
+- Q48 — exclude ALL MED-02 semantics; MED-02 remains REQUIREMENT-GATED
+- Q49 B — Medication independent from Goal Plan; no automatic sync
+- Q50 — Patient Personal; proposed route /app/personal/medications; proposed label “ยาของฉัน”
+- Q51 — 17G.1 PersonalMedication concept only; future 17G.2 concept PersonalMedication 1→N MedicationSchedule
+- Q52 B — AuditEvent for create/update/stop only; minimal metadata; no read audit
+- Q53 D — defer all export/sharing
+
+การเห็นชอบชุดนี้ต้องมาจาก owner อย่างชัดแจ้ง; จนกว่าจะมีการยืนยัน **Q30–Q53 OPEN / NOT OWNER APPROVED** และ **17G.1 NOT CLEARED FOR IMPLEMENTATION**.
