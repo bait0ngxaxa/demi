@@ -2,6 +2,8 @@
 
 วันที่: 2026-10-02 · Repository: `bait0ngxaxa/demi`
 
+**Current implementation status — Phase 17F.3 QR transport IMPLEMENTED** ตาม [implementation handoff](./PHASE_17F3_FAMILY_INVITATION_QR_IMPLEMENTATION.md). P17F-L03 CLOSED / OWNER APPROVED; Q18–Q29 unchanged. L04 OPEN; L05 OPEN / FUTURE; Q5 real-data delegated use GOVERNANCE BLOCKED. ไม่มี schema/migration/new authority/native integration. Contract/planning และ source-review evidence ด้านล่างเก็บเป็นประวัติ ณ baseline เดิม; current delivery evidence อยู่ใน handoff. QR UAT ยังไม่ผ่านการตรวจบนอุปกรณ์จริง.
+
 ## 1. Baseline / status / approval provenance
 
 Actual starting HEAD: `2c178e0446495af537e6deed1a3ee80c6c9be1c2` — `docs(phase-17f3a): add family invitation QR decision pack`; ตรง expected baseline, working tree สะอาด. อ่าน AGENTS.md ก่อนแก้; ไม่มี reset/revert/amend หรือเขียนทับงานใหม่. งานนี้ DOCUMENTATION + OWNER-DECISION CLOSEOUT + IMPLEMENTATION CONTRACT PREPARATION เท่านั้น.

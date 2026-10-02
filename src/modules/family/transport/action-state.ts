@@ -22,7 +22,6 @@ export type CaregiverInvitationPreviewActionState =
       };
     }
   | { status: "INVALID"; message: string }
-  | { status: "NOT_RECIPIENT"; message: string }
   | { status: "NEEDS_LOGIN"; message: string }
   | { status: "ERROR"; message: string };
 

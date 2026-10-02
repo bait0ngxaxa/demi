@@ -4,9 +4,11 @@
 
 **REQUIREMENT ANALYSIS + SECURITY / PRIVACY TRANSPORT REVIEW + OWNER DECISION PACK เท่านั้น**
 
-**Current status — 17F.3B: P17F-L03 CLOSED / OWNER APPROVED · Q18–Q29 = A, CLOSED / OWNER APPROVED · 17F.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**
+**Historical closeout status — 17F.3B: P17F-L03 CLOSED / OWNER APPROVED · Q18–Q29 = A, CLOSED / OWNER APPROVED · 17F.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**
 
 Owner อนุมัติอย่างชัดเจนในคำสั่ง Phase 17F.3B วันที่ 2026-10-02; ไม่ใช่การอนุมานจาก recommendations. ดู [implementation contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md). ส่วน baseline, D1–D12, threat table และ verification ของ 17F.3A ด้านล่างเป็น historical source analysis; ถ้อยคำ NOT OWNER APPROVED / NOT CLEARED ในส่วนประวัติถูก supersede เฉพาะขอบเขตที่ contract ระบุ. ไม่มี runtime เปลี่ยนและยังไม่มี QR UAT evidence.
+
+**Current implementation status — Phase 17F.3 QR transport IMPLEMENTED** ตาม [implementation handoff](./PHASE_17F3_FAMILY_INVITATION_QR_IMPLEMENTATION.md). P17F-L03 CLOSED / OWNER APPROVED; Q18–Q29 unchanged. L04 OPEN; L05 OPEN / FUTURE; Q5 real-data delegated use GOVERNANCE BLOCKED. ไม่มี schema/migration/new authority/native integration. Contract/planning และ source-review evidence ด้านล่างเก็บเป็นประวัติ ณ baseline เดิม; current delivery evidence อยู่ใน handoff. QR UAT ยังไม่ผ่านการตรวจบนอุปกรณ์จริง.
 
 ## 1. Historical 17F.3A baseline และขอบเขต
 

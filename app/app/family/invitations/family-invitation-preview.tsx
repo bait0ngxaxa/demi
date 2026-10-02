@@ -135,18 +135,18 @@ export function FamilyInvitationPreview(): React.JSX.Element {
         title="คำเชิญผู้ดูแล"
       />
 
-      {tokenSnapshot.status === "LOADING" || preview.status === "LOADING" ? (
+      {tokenSnapshot.status === "LOADING" || (tokenSnapshot.status === "READY" && preview.status === "LOADING") ? (
         <Panel className="mt-6" aria-busy="true">
           <p className="text-sm text-text-muted" role="status">กำลังตรวจสอบคำเชิญ...</p>
         </Panel>
       ) : null}
 
-      {tokenSnapshot.status === "INVALID" || preview.status === "INVALID" || preview.status === "NOT_RECIPIENT" || preview.status === "ERROR" ? (
+      {tokenSnapshot.status === "INVALID" || preview.status === "INVALID" || preview.status === "ERROR" ? (
         <Alert className="mt-6" variant={preview.status === "ERROR" ? "danger" : "warning"}>
           <p className="font-semibold">
             {tokenSnapshot.status === "INVALID" && preview.status === "LOADING"
               ? "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน"
-              : preview.status === "INVALID" || preview.status === "NOT_RECIPIENT" || preview.status === "ERROR"
+              : preview.status === "INVALID" || preview.status === "ERROR"
                 ? preview.message
                 : "คำเชิญไม่พร้อมใช้งาน"}
           </p>

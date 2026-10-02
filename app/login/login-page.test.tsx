@@ -37,4 +37,12 @@ describe("Login page assisted recovery guidance", () => {
     expect(markup).not.toContain("ส่ง SMS");
     expect(markup).not.toContain("ส่ง LINE");
   });
+  it("redirects an already-authorized request before rendering the login client", async () => {
+    mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
+    mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
+    await expect(LoginPage()).rejects.toThrow("redirect boundary");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    // This proves the server destination, not browser fragment inheritance.
+  });
+
 });

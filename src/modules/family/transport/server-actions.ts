@@ -117,7 +117,7 @@ export async function previewCaregiverInvitationAction(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
-      return { status: "NOT_RECIPIENT", message: "บัญชีนี้ไม่ใช่ผู้รับคำเชิญนี้" };
+      return { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
     }
     if (error instanceof ApplicationError && error.code === "UNAUTHENTICATED") {
       return { status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ" };

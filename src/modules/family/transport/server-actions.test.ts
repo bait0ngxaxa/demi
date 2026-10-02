@@ -26,7 +26,7 @@ vi.mock("../services/caregiver-relationship-service", () => ({
   withdrawOwnCaregiverRelationship: mocks.withdrawRelationship,
 }));
 
-import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
+import { ForbiddenError, ConflictError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import {
   acceptCaregiverInvitationAction,
@@ -126,5 +126,34 @@ describe("Family Server Actions", () => {
 
     expect(result).toEqual({ status: "ERROR", message: "บัญชีนี้ไม่ใช่ผู้รับคำเชิญนี้" });
     expect(JSON.stringify(result)).not.toContain(token);
+  });
+});
+
+
+describe("invitation preview privacy boundary", () => {
+  beforeEach(() => { vi.resetAllMocks(); mocks.getActor.mockResolvedValue(actor); });
+  it("returns identical unavailable output for malformed, unknown and wrong-recipient tokens", async () => {
+    const unavailable = { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
+    expect(await previewCaregiverInvitationAction("malformed")).toEqual(unavailable);
+    for (const error of [new NotFoundError("private detail"), new ForbiddenError("private detail")]) {
+      mocks.previewInvitation.mockRejectedValueOnce(error);
+      const result = await previewCaregiverInvitationAction("a".repeat(43));
+      expect(result).toEqual(unavailable);
+      expect(result).not.toHaveProperty("invitation");
+    }
+  });
+  it("keeps reachable unauthenticated handoff generic and usable", async () => {
+    mocks.getActor.mockRejectedValueOnce(new UnauthenticatedError());
+    expect(await previewCaregiverInvitationAction("a".repeat(43))).toEqual({
+      status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ",
+    });
+    expect(mocks.previewInvitation).not.toHaveBeenCalled();
+  });
+  it.each(["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"])("preserves bounded exact-recipient %s preview without mutation", async (status) => {
+    mocks.previewInvitation.mockResolvedValueOnce({ status, expiresAt: new Date("2026-10-02T00:00:00Z"), patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1" });
+    expect(await previewCaregiverInvitationAction("a".repeat(43))).toEqual({ status: "READY", invitation: { invitationStatus: status, expiresAt: "2026-10-02T00:00:00.000Z", patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1" } });
+    expect(mocks.acceptInvitation).not.toHaveBeenCalled();
+    expect(mocks.rejectInvitation).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 });

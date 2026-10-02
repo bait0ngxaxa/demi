@@ -32,6 +32,8 @@ import {
   initialFamilyMutationActionState,
 } from "@/modules/family/transport/action-state";
 
+import { FamilyInvitationQr } from "./family-invitation-qr";
+
 const noSubscription = (): (() => void) => () => undefined;
 const getBrowserOrigin = (): string => window.location.origin;
 const getServerOrigin = (): string => "";
@@ -113,27 +115,35 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
         <Alert className="mt-5" variant="success">
           <p className="font-semibold">สร้างคำเชิญแล้ว</p>
           <p className="mt-1">
-            ลิงก์นี้แสดงครั้งเดียวและหมดอายุ {formatFamilyManagementDate(state.expiresAt)}
+            QR และลิงก์นี้แสดงครั้งเดียวและหมดอายุ {formatFamilyManagementDate(state.expiresAt)}
             กรุณาส่งให้ผู้รับที่ตั้งใจเชื่อมเท่านั้น
           </p>
           {invitationLink ? (
-            <div className="mt-4 space-y-3">
-              <label className="block text-sm font-semibold" htmlFor="caregiver-invitation-link">
-                ลิงก์คำเชิญ
-              </label>
-              <input
-                autoComplete="off"
-                className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                id="caregiver-invitation-link"
-                readOnly
-                spellCheck={false}
-                type="text"
-                value={invitationLink}
-              />
-              <Button onClick={copyInvitationLink} size="compact" type="button" variant="secondary">
-                คัดลอกลิงก์
-              </Button>
-              {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
+            <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+              <FamilyInvitationQr invitationLink={invitationLink} />
+              <div className="min-w-0 flex-1 space-y-3">
+                <label className="block text-sm font-semibold" htmlFor="caregiver-invitation-link">
+                  ลิงก์คำเชิญ
+                </label>
+                <input
+                  autoComplete="off"
+                  className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                  id="caregiver-invitation-link"
+                  readOnly
+                  spellCheck={false}
+                  type="text"
+                  value={invitationLink}
+                />
+                <Button onClick={copyInvitationLink} type="button" variant="secondary">
+                  คัดลอกลิงก์
+                </Button>
+                {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
+                <p className="text-sm leading-6">
+                  QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
+                  ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
+                  แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
+                </p>
+              </div>
             </div>
           ) : (
             <p className="mt-2" role="status">กำลังเตรียมลิงก์คำเชิญ...</p>
