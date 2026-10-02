@@ -53,7 +53,7 @@ FK uses ON DELETE RESTRICT / ON UPDATE RESTRICT, consistent with protected Patie
 
 CHECK enforces ACTIVE iff stoppedAt is null and STOPPED iff stoppedAt is non-null. Trigger rejects **all** ordinary UPDATEs of STOPPED rows, including no-op; rejects ACTIVE id/owner/createdAt changes; stop must preserve name/instruction using IS DISTINCT FROM comparisons. Service normal creation is ACTIVE/null.
 
-Two composite indexes follow actual owner + status equality then ordering: createdAt DESC/id DESC for ACTIVE, stoppedAt DESC/id DESC for STOPPED. PostgreSQL EXPLAIN tests verify each matching ordered index can serve LIMIT 51 without Sort. Those plan tests disable sequential scans locally because tiny fixtures can otherwise prefer a sequential scan; this is index usability evidence, not a production performance benchmark.
+Two composite indexes follow actual owner + status equality then ordering: createdAt DESC/id DESC for ACTIVE, stoppedAt DESC/id DESC for STOPPED. The closeout-tightened PostgreSQL EXPLAIN tests join the QUERY PLAN rows into readable plan text, assert the expected ordered index appears, and reject an explicit PostgreSQL Sort plan node with `/^\s*(?:->\s*)?Sort\b/m`. Those plan tests retain SET LOCAL enable_seqscan = off because tiny fixtures can otherwise prefer a sequential scan; this is ordered-index usability evidence, not a production performance benchmark or a guarantee of production planner index choice.
 
 ## Authorization, transactions and privacy
 
@@ -111,11 +111,27 @@ Impeccable source/static review found no material UI issue. Existing DESIGN.md a
 | `npm run typecheck` | PASS on stable runtime and focused tests; production build TypeScript also PASS after navigation expectation correction |
 | Complete diff/source review + `git diff --check` | PASS; authorization/owner scope/trigger/audit privacy/cache/Thai/no scope creep reviewed before broad runs; final documentation/encoding review repeated without broad rebuild |
 | **One** `npm run test` | 186 files: 185 PASS / 1 FAIL; 1,345 tests PASS / 1 FAIL. Sole failure was existing exact Personal navigation expectation omitting approved new medication entry. Isolated failure reproduced, expectation updated to requested behavior, and OSM/Hospital medication-navigation exclusion asserted. No production code changed after this run. |
-| `npm run test -- src/components/app-shell/application-navigation.test.ts app/app/personal/personal-pages.test.ts` | PASS, 2 files / 20 tests, including corrected sole broad-run failure. Full unit suite not rerun after this isolated test-only correction, per staged-verification policy; no known unresolved unit failure. |
+| `npm run test -- src/components/app-shell/application-navigation.test.ts app/app/personal/personal-pages.test.ts` | PASS, 2 files / 20 tests, including corrected sole broad-run failure. At the initial implementation closeout, full unit suite was not rerun after this isolated test-only correction, per staged-verification policy; no known unresolved unit failure. Final broad confirmation is recorded in the review-closeout addendum below. |
 | **One** `npm run test:integration` | PASS, 28 files / 328 tests, including PersonalMedication |
 | **One** `npm run build` | PASS, Next.js 16.3.0 production compile, TypeScript and page generation; medications route dynamic |
 
 Iteration failures were resolved: schema-union TypeScript narrowing; incomplete assigned-OSM fixture; UI escaping assertion initially matching React's own legitimate form-replay script; navigation expectation described above. No pre-existing/resource failure encountered. No checks were weakened; no full-suite loop or repeated production build.
+
+## Review-closeout cleanup — 2026-10-02
+
+Starting and final HEAD for this cleanup: `68f4e346e9401f5b52f84571c41c7d940bc95494`; starting working tree clean. Only `docs/CONTEXT.md`, this handoff and `tests/integration/personal-medication.integration.test.ts` changed; no commit/push in this cleanup.
+
+The current Open Requirements medication statement now matches the current-status addendum: MED-01 / 17G.1 IMPLEMENTED / CLOSED, bounded Patient SELF Personal Medication only, linked implementation evidence, no inferred browser/device-UAT PASS. Removed obsolete CLEARED / NOT IMPLEMENTED and documentation-only/no-runtime wording; owner decisions, historical phase sections and future gates remain unchanged. Remaining NOT IMPLEMENTED references were inspected: medication references concern only future 17G.2/17G.3; older phase-specific history and deferred notification wording do not declare 17G.1 unimplemented.
+
+The PostgreSQL test now checks joined plan text for both the expected ordered index and absence of an explicit Sort node, replacing the unreliable JSON-prefix assertion. Query SQL, SET LOCAL enable_seqscan = off, indexes, schema, migration and runtime behavior are unchanged.
+
+| Final cleanup command/evidence | Actual result |
+| --- | --- |
+| `npx vitest run --config vitest.integration.config.mts tests/integration/personal-medication.integration.test.ts` | PASS: 1 file / 15 tests; 0 failed, including ACTIVE/STOPPED ordered-index and explicit no-Sort-node assertions. Existing disposable local integration environment loaded; DATABASE_URL = DIRECT_URL = DEMI_TEST_DATABASE_URL; credentials suppressed. |
+| **One final complete** `npm run test` | PASS: 186 files / 1,346 tests; 0 failed. Previously missing final broad unit confirmation is now satisfied. Initial broad-run navigation failure and its focused correction remain recorded above. |
+| `git diff --check` and final diff/UTF-8/status review | PASS; changes restricted to the two documentation files and integration assertion; Thai preserved, no unrelated formatting or scope expansion. |
+
+Migration deployment confirmed externally by the owner; this cleanup ran no migration/deployment verification command. No full integration suite, production build, lint or typecheck was repeated: only documentation and a test assertion changed, so existing runtime/static/build evidence remains valid. No new regression or unresolved cleanup finding discovered. Browser/device UAT remains unexecuted; no PASS inferred. **Phase 17G.1 remains IMPLEMENTED / CLOSED.**
 
 ## Acceptance coverage and remaining gates
 
@@ -135,6 +151,6 @@ Iteration failures were resolved: schema-union TypeScript narrowing; incomplete 
 | 41 | Non-idempotent explicit create, pending/unknown-outcome block, shared bounded rollback retries with one committed audit |
 | 42 | Scoped diff/UTF-8 review, clean starting tree preserved, no published migration edit/unused layer/debug artifact |
 
-**Exact status:** 17G.0 CLOSED; Q30–Q53 CLOSED / OWNER APPROVED; **17G.1 IMPLEMENTED / CLOSED** for this bounded implementation and automated closeout. Deployment must apply the new migration before enabling the deployed route; no deployment was performed. Real-browser/device review remains separate and unexecuted.
+**Exact status:** 17G.0 CLOSED; Q30–Q53 CLOSED / OWNER APPROVED; **17G.1 IMPLEMENTED / CLOSED** for this bounded implementation and automated closeout. No deployment was performed by this agent during implementation. Migration deployment confirmed externally by the owner during review closeout; no deployment command output is attributed to this agent. Real-browser/device review remains separate and unexecuted.
 
 Unchanged: **MED-02 REQUIREMENT-GATED; 17G.2 NOT IMPLEMENTED; 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 OPEN / deferred; Q5 real delegated-data use GOVERNANCE BLOCKED.** No medical/provider authority or Family medication access is inferred from this closeout.

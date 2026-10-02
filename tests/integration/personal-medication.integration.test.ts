@@ -223,7 +223,8 @@ describe("PersonalMedication real PostgreSQL", () => {
         ? tx.$queryRaw<{ "QUERY PLAN": string }[]>`EXPLAIN SELECT "id", "createdAt" FROM "PersonalMedication" WHERE "patientProfileId" = ${profileId}::uuid AND "status" = 'ACTIVE' ORDER BY "createdAt" DESC, "id" DESC LIMIT 51`
         : tx.$queryRaw<{ "QUERY PLAN": string }[]>`EXPLAIN SELECT "id", "stoppedAt" FROM "PersonalMedication" WHERE "patientProfileId" = ${profileId}::uuid AND "status" = 'STOPPED' ORDER BY "stoppedAt" DESC, "id" DESC LIMIT 51`;
     });
-    expect(JSON.stringify(plan)).toContain(status === "ACTIVE" ? "PersonalMedication_active_order_idx" : "PersonalMedication_stopped_order_idx");
-    expect(JSON.stringify(plan)).not.toContain('"Sort');
+    const planText = plan.map((row) => row["QUERY PLAN"]).join("\n");
+    expect(planText).toContain(status === "ACTIVE" ? "PersonalMedication_active_order_idx" : "PersonalMedication_stopped_order_idx");
+    expect(planText).not.toMatch(/^\s*(?:->\s*)?Sort\b/m);
   });
 });
