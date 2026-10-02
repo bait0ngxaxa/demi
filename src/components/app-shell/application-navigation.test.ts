@@ -186,6 +186,7 @@ describe("application navigation projection", () => {
       "/app/personal",
       "/app/personal/care",
       "/app/personal/services",
+      "/app/personal/medications",
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
@@ -202,6 +203,9 @@ describe("application navigation projection", () => {
     expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).toContain("/app");
     expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
       "/app/personal",
+    );
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
+      "/app/personal/medications",
     );
   });
 

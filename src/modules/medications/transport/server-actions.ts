@@ -1,0 +1,53 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { ApplicationError } from "@/shared/errors/application-error";
+import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication } from "../services/personal-medication-service";
+import { personalMedicationCreateSchema, personalMedicationUpdateSchema, personalMedicationStopSchema } from "../schemas/personal-medication-schemas";
+import type { PersonalMedicationActionState } from "./action-state";
+
+async function performAction(formData: FormData, operation: "create" | "update" | "stop"): Promise<PersonalMedicationActionState> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    // Retain unknown fields for strict rejection, rather than silently dropping authority fields.
+    const entries = Array.from(formData.entries()).filter(([key]) => !key.startsWith("$ACTION_"));
+    if (new Set(entries.map(([key]) => key)).size !== entries.length) {
+      return { status: "ERROR", message: "ข้อมูลซ้ำ กรุณาตรวจสอบแบบฟอร์ม" };
+    }
+    const schema = operation === "create" ? personalMedicationCreateSchema : operation === "update" ? personalMedicationUpdateSchema : personalMedicationStopSchema;
+    const parsed = schema.safeParse(Object.fromEntries(entries));
+    if (!parsed.success) {
+      const fieldErrors: PersonalMedicationActionState["fieldErrors"] = {};
+      for (const issue of parsed.error.issues) {
+        if (issue.path[0] === "medicationName") fieldErrors.medicationName = "กรุณาระบุชื่อยาไม่เกิน 200 ตัวอักษร";
+        if (issue.path[0] === "instructionText") fieldErrors.instructionText = "กรุณาระบุข้อความไม่เกิน 2,000 ตัวอักษร";
+      }
+      return { status: "ERROR", message: "กรุณาตรวจสอบข้อมูลที่กรอก", fieldErrors };
+    }
+    // Service validates the raw values again inside its transaction.
+    const input = Object.fromEntries(entries);
+    const item = operation === "create" ? await createPersonalMedication(actor, input)
+      : operation === "update" ? await updatePersonalMedication(actor, input) : await stopPersonalMedication(actor, input);
+    revalidatePath("/app/personal/medications");
+    return { status: "SUCCESS", message: operation === "stop" ? "หยุดติดตามรายการนี้ใน DEMI แล้ว" : "บันทึกรายการแล้ว", item };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      if (error.code === "CONFLICT") return { status: "CONFLICT", message: "รายการเปลี่ยนไปแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการต่อ" };
+      if (error.code === "NOT_FOUND") return { status: "ERROR", message: "ไม่พบรายการที่ต้องการ" };
+      if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") return { status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" };
+      if (error.code === "VALIDATION") return { status: "ERROR", message: "กรุณาตรวจสอบข้อมูลที่กรอก" };
+    }
+    return { status: "ERROR", message: "ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดรายการล่าสุดเพื่อตรวจสอบก่อนส่งอีกครั้ง", refreshRequired: true };
+  }
+}
+
+export async function createPersonalMedicationAction(_previous: PersonalMedicationActionState, formData: FormData): Promise<PersonalMedicationActionState> {
+  return performAction(formData, "create");
+}
+export async function updatePersonalMedicationAction(_previous: PersonalMedicationActionState, formData: FormData): Promise<PersonalMedicationActionState> {
+  return performAction(formData, "update");
+}
+export async function stopPersonalMedicationAction(_previous: PersonalMedicationActionState, formData: FormData): Promise<PersonalMedicationActionState> {
+  return performAction(formData, "stop");
+}

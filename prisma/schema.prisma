@@ -315,8 +315,30 @@ model PatientProfile {
   appointmentGrants CaregiverAppointmentGrant[]
   patientClassification PatientClassification?
   classificationHistory PatientClassificationHistory[]
+  personalMedications PersonalMedication[]
 
   @@unique([id, personId])
+}
+
+enum PersonalMedicationStatus {
+  ACTIVE
+  STOPPED
+}
+
+model PersonalMedication {
+  id String @id @default(uuid()) @db.Uuid
+  patientProfileId String @db.Uuid
+  medicationName String @db.VarChar(200)
+  instructionText String? @db.VarChar(2000)
+  status PersonalMedicationStatus @default(ACTIVE)
+  stoppedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([patientProfileId, status, createdAt(sort: Desc), id(sort: Desc)], map: "PersonalMedication_active_order_idx")
+  @@index([patientProfileId, status, stoppedAt(sort: Desc), id(sort: Desc)], map: "PersonalMedication_stopped_order_idx")
 }
 
 model PatientClassification {

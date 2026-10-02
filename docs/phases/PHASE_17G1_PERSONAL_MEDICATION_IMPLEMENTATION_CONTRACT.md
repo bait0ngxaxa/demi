@@ -1,6 +1,8 @@
 # Phase 17G.1 — Personal Medication Implementation Contract
 
-**CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**
+**Current implementation status: 17G.1 IMPLEMENTED / CLOSED** — see [implementation handoff and actual verification evidence](./PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_HANDOFF.md). Bounded MED-01 only; no browser/device-UAT PASS inferred. Historical contract preparation and owner decisions below remain preserved.
+
+Contract preparation status (historical): **CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**.
 
 ## 1. Baseline, governing decisions and handoff
 

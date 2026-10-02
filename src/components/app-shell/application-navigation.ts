@@ -145,6 +145,7 @@ export function projectApplicationNavigation(
           : []),
         { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
         { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
+        { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
       ],
