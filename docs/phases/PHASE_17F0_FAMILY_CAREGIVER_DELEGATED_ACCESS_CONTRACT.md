@@ -12,9 +12,9 @@ Original G01..G08 foundation closeout below remains historical and unchanged. Ph
 
 Separate immutable family-appointment-read-v1 data grant to exact ACTIVE relationship/Patient/caregiver/one Patient-selected PHR; explicit proposal + caregiver acceptance. Exactly hospitalName/type/scheduledAt/durationMinutes/locationType/status; rolling upcoming 90-day SCHEDULED/CANCELLED ongoing same-PHR feed; NO independent automatic expiry. Existing family-delegation-v1 acceptance remains ZERO-data. Terminal exact-grant revoke or parent revoke/withdraw immediately denies after commit; temporary Hospital/account ineligibility may resume unchanged authority. No future-PHR/replacement-parent inheritance, mutations/export/other Patient resources. Expansion requires new immutable grant/version + acceptance. Lifecycle audit only, no ordinary durable per-read AuditEvent. L03 QR OPEN / 17F.3; L04 re-audit/UAT OPEN; L05 expiry/renewal OPEN / FUTURE; minors/legal representation deferred, medication 17G, 17E.2 parked. Earlier candidate/OPEN discussion below is historical and superseded only to this exact extent.
 
-## Current-status addendum — Phase 17F.3A (2026-10-02)
+## Current-status addendum — Phase 17F.3B (2026-10-02)
 
-[17F.3A QR decision pack](./PHASE_17F3_FAMILY_INVITATION_QR_DECISION_PACK.md) บันทึก source evidence และ owner checklist Q18–Q29; recommendations NOT OWNER APPROVED. **P17F-L03 OPEN; 17F.3 NOT IMPLEMENTED / NOT CLEARED**. Current source now implements 17F.2 appointment-read v1 for synthetic/demo as recorded in the [implementation handoff](./PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md); historical 17F.2B clearance statements above are retained. Real-data Q5 gate remains GOVERNANCE BLOCKED; L04 OPEN; L05 OPEN / FUTURE. No runtime/schema/migration or authority change; historical evidence below is unchanged.
+Phase 17F.3B: [QR decision pack](./PHASE_17F3_FAMILY_INVITATION_QR_DECISION_PACK.md) retains 17F.3A source history and records approvals; [implementation contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md) defines bounded handoff. **P17F-L03 CLOSED / OWNER APPROVED; Q18–Q29 = A; 17F.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**. L04 OPEN; L05 OPEN / FUTURE; Q5 real-data GOVERNANCE BLOCKED unchanged. No runtime/schema/migration/new authority/native integration; narrow preview-response hardening is future implementation scope, login/fragment edges remain L04 evidence-gated.
 
 ## 1. Disposition
 
@@ -364,13 +364,13 @@ G07 baseline: authenticated Patient-only issuance, existing ACTIVE intended reci
 
 Engineering still chooses/reviews purpose-specific schema/indexes, secure high-entropy token storage/transport, conditional transitions, concurrency/idempotency, transactional audit and focused verification. These implementation choices cannot add Patient-resource capabilities or invent legal semantics. No Prisma design is finalized by this closeout.
 
-### D. Later-slice gates — current 17F.2B disposition
+### D. Later-slice gates — current 17F.3B disposition
 
 | ID | Gate | Required answer |
 | --- | --- | --- |
 | P17F-L01 | CLOSED / OWNER APPROVED (bounded 17F.2 only) | Appointment-only exact six-field B1, rolling 90-day SCHEDULED/CANCELLED, no past/export/mutation. Synthetic/demo cleared; real-data Q5 controller/privacy gate remains. See [17F.2B](./PHASE_17F2B_DELEGATED_APPOINTMENT_READ_CONTRACT.md). |
 | P17F-L02 | CLOSED / OWNER APPROVED (bounded 17F.2 only) | One exact PHR per separate immutable accepted family-appointment-read-v1 grant; no inherited future PHR/parent, new acceptance for expansion, terminal revoke, temporary eligibility deny/resume, no independent expiry; Q3A ongoing rolling feed explicitly approved. |
-| P17F-L03 | OPEN — Before 17F.3 QR | Confirm final secure-link wrapping, QR presentation/leakage/preview controls and mobile handoff; no new authority. Underlying token/proof mechanism already required in 17F.1. |
+| P17F-L03 | CLOSED / OWNER APPROVED — 17F.3B | Q18–Q29 A: existing URL transport only, exact recipient/explicit acceptance, same 24h lifecycle, client one-time QR, no persistence/data grant/scan audit/native integration. 17F.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; see [contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md). |
 | P17F-L04 | OPEN — Before 17F.4 closure | Confirm UAT actors/data, supported mobile flows, concurrency/stale-cache/revocation scenarios and audit evidence for delivered capabilities. |
 | P17F-L05 | OPEN / FUTURE — later auto-expiry/renewal expansion | First data grant has explicitly approved NO independent expiry (Q17), not inherited from G05. Any later expiry/renewal/periodic reacceptance/notification needs duration, expiry boundary and acceptance/notification semantics approved before implementation. |
 | P17F-L06 | CLOSED / OWNER APPROVED (adult voluntary slice) | Patient-designated trusted caregiver, relatives and non-relatives permitted; no relationship-type field or kinship verification. No verified-relative/legal-representative/minor authority. |

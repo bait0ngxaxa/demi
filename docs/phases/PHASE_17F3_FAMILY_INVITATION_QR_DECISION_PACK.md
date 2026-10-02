@@ -4,9 +4,11 @@
 
 **REQUIREMENT ANALYSIS + SECURITY / PRIVACY TRANSPORT REVIEW + OWNER DECISION PACK เท่านั้น**
 
-**P17F-L03 OPEN · 17F.3 NOT IMPLEMENTED · ไม่มีคำตอบ Q18–Q29 ที่ owner อนุมัติในเอกสารนี้**
+**Current status — 17F.3B: P17F-L03 CLOSED / OWNER APPROVED · Q18–Q29 = A, CLOSED / OWNER APPROVED · 17F.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**
 
-## 1. Baseline และขอบเขต
+Owner อนุมัติอย่างชัดเจนในคำสั่ง Phase 17F.3B วันที่ 2026-10-02; ไม่ใช่การอนุมานจาก recommendations. ดู [implementation contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md). ส่วน baseline, D1–D12, threat table และ verification ของ 17F.3A ด้านล่างเป็น historical source analysis; ถ้อยคำ NOT OWNER APPROVED / NOT CLEARED ในส่วนประวัติถูก supersede เฉพาะขอบเขตที่ contract ระบุ. ไม่มี runtime เปลี่ยนและยังไม่มี QR UAT evidence.
+
+## 1. Historical 17F.3A baseline และขอบเขต
 
 Actual starting HEAD: `f47e9d3def920f4160896f185a703a6529d90a06` — `feat(phase-17f2): implement delegated appointment read grants`; ตรง expected baseline และ working tree สะอาดก่อนเริ่ม ไม่มี reset/revert/amend หรือเขียนทับงานใหม่
 
@@ -56,7 +58,7 @@ External technical references ตรวจเมื่อ 2026-10-02: [RFC 9110 
 - UI บังคับ preview ก่อนแสดง accept button แต่ service ไม่เก็บ proof ว่าเคย preview: authenticated exact recipient สามารถ submit action โดยตรงได้ โดยยังต้องผ่าน lifecycle checks. Explicit action เป็น boundary; QR ไม่เพิ่ม mandatory preview receipt
 - Protected parent layout อาจ redirect ก่อน invitation client hydrate; `NEEDS_LOGIN` client branch จึงไม่ใช่หลักฐานว่าทุก anonymous initial load ใช้ branch นี้ ดู section 6
 
-## 4. D1–D12 owner decisions
+## 4. Historical D1–D12 analysis — approved disposition in section 10
 
 ### D1 — QR content / payload
 
@@ -218,28 +220,28 @@ No deliberate console/analytics token logging found in reviewed paths; existing 
 
 Current handoff/response caveats ไม่ถูก silently folded เข้า QR patch. หาก strict non-enumeration หรือ login race ต้อง corrective runtime changes ให้กำหนด narrow separate scope หลัง owner decision; ไม่ถือว่า approval ของ QR อนุมัติ authority changes
 
-## 10. Owner checklist Q18–Q29 — ยังไม่เลือกคำตอบ
+## 10. Owner-approved Q18–Q29 closeout — 17F.3B
 
-Owner ตอบเป็น `Q18=A ... Q29=A` หรือระบุ Other พร้อมรายละเอียดได้; ตารางนี้เป็นข้อเสนอ ไม่มี preselected/approved answer. ทุกแถวมี **RECOMMENDATION — NOT OWNER APPROVED**; alternative B/C ไม่ได้รับ clearance จากการแสดงตัวเลือก
+ทุกข้อ Q18–Q29 owner เลือก **A — CLOSED / OWNER APPROVED** ในคำสั่ง 17F.3B. Alternatives คงไว้เป็นประวัติการวิเคราะห์ ไม่ได้รับอนุมัติ. ขอบเขตบังคับตาม [17F.3B contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md); ไม่มี new authority.
 
-| Question | Owner choices | Evidence / security-privacy consequence | Recommendation |
+| Question | Owner choices | Evidence / security-privacy consequence | Owner decision |
 | --- | --- | --- | --- |
-| Q18 Payload | A exact existing URL + fragment token; B new QR payload/token; C Other | Token/schema/workspace; A preserves hash/binding, B adds lifecycle/disclosure contracts | **RECOMMENDATION — NOT OWNER APPROVED: A** (D1) |
-| Q19 Authority | A transport only, exact login + explicit acceptance; B Other | Service exact User/Person + conditional accept; scan-authority would weaken binding | **RECOMMENDATION — NOT OWNER APPROVED: A**; response distinction caveat D2 |
-| Q20 Lifetime | A same 24h/terminal lifecycle; B separate QR lifetime; C Other | DB clock/terminal writes; second TTL creates ambiguity | **RECOMMENDATION — NOT OWNER APPROVED: A** (D3); terminal preview unchanged |
-| Q21 Generation | A client one-time URL; B server image; C persisted artifact | qrcode installed/browser patterns; B/C expand secret/cache/retention surfaces | **RECOMMENDATION — NOT OWNER APPROVED: A** (D4) |
-| Q22 Availability | A creation-success only; B later redisplay somehow; C Other | Only issuance returns plaintext; B needs new storage/recovery contract | **RECOMMENDATION — NOT OWNER APPROVED: A** (D5) |
-| Q23 Sharing | A screen QR + copy link, no download/print/share API; B download; C Other | Existing copy fallback; durable copies cannot be recalled | **RECOMMENDATION — NOT OWNER APPROVED: A** (D6) |
-| Q24 URL | A fragment + immediate client strip; B query/path; C Other | Preview/login hydration; B expands request/log exposure; A still client-sensitive | **RECOMMENDATION — NOT OWNER APPROVED: A** (D7) |
-| Q25 Anonymous preview | A no identity before auth + exact match; B limited anonymous preview; C Other | Server checks before DTO; B new disclosure | **RECOMMENDATION — NOT OWNER APPROVED: A** (D8) |
-| Q26 Mobile | A HTTPS/browser + existing bounded login return; B LIFF/custom/native now; C Other | Login regex safe; layout/race/refresh/device continuity unverified | **RECOMMENDATION — NOT OWNER APPROVED: A** (D9), subject L04 caveats |
-| Q27 Relationship/data | A relationship-only, ZERO data grant; B include data grant; C Other | 17F.1 vs separate 17F.2 immutable grant; B changes authority/acceptance | **RECOMMENDATION — NOT OWNER APPROVED: A** (D10) |
-| Q28 Lost/exposed | A revoke old + new token; B redisplay/reuse same; C Other | Hash-only + terminal lifecycle; B needs retention or altered TTL | **RECOMMENDATION — NOT OWNER APPROVED: A** (D11) |
-| Q29 Scan/render audit | A no durable scan/render event; B durable scan/view audit; C Other | Existing lifecycle audit; B new tracking/retention requirement | **RECOMMENDATION — NOT OWNER APPROVED: A** (section 8) |
+| Q18 Payload | A exact existing URL + fragment token; B new QR payload/token; C Other | Token/schema/workspace; A preserves hash/binding, B adds lifecycle/disclosure contracts | **A — CLOSED / OWNER APPROVED** (D1) |
+| Q19 Authority | A transport only, exact login + explicit acceptance; B Other | Service exact User/Person + conditional accept; scan-authority would weaken binding | **A — CLOSED / OWNER APPROVED**; response distinction caveat D2 |
+| Q20 Lifetime | A same 24h/terminal lifecycle; B separate QR lifetime; C Other | DB clock/terminal writes; second TTL creates ambiguity | **A — CLOSED / OWNER APPROVED** (D3); terminal preview unchanged |
+| Q21 Generation | A client one-time URL; B server image; C persisted artifact | qrcode installed/browser patterns; B/C expand secret/cache/retention surfaces | **A — CLOSED / OWNER APPROVED** (D4) |
+| Q22 Availability | A creation-success only; B later redisplay somehow; C Other | Only issuance returns plaintext; B needs new storage/recovery contract | **A — CLOSED / OWNER APPROVED** (D5) |
+| Q23 Sharing | A screen QR + copy link, no download/print/share API; B download; C Other | Existing copy fallback; durable copies cannot be recalled | **A — CLOSED / OWNER APPROVED** (D6) |
+| Q24 URL | A fragment + immediate client strip; B query/path; C Other | Preview/login hydration; B expands request/log exposure; A still client-sensitive | **A — CLOSED / OWNER APPROVED** (D7) |
+| Q25 Anonymous preview | A no identity before auth + exact match; B limited anonymous preview; C Other | Server checks before DTO; B new disclosure | **A — CLOSED / OWNER APPROVED** (D8) |
+| Q26 Mobile | A HTTPS/browser + existing bounded login return; B LIFF/custom/native now; C Other | Login regex safe; layout/race/refresh/device continuity unverified | **A — CLOSED / OWNER APPROVED** (D9), subject L04 caveats |
+| Q27 Relationship/data | A relationship-only, ZERO data grant; B include data grant; C Other | 17F.1 vs separate 17F.2 immutable grant; B changes authority/acceptance | **A — CLOSED / OWNER APPROVED** (D10) |
+| Q28 Lost/exposed | A revoke old + new token; B redisplay/reuse same; C Other | Hash-only + terminal lifecycle; B needs retention or altered TTL | **A — CLOSED / OWNER APPROVED** (D11) |
+| Q29 Scan/render audit | A no durable scan/render event; B durable scan/view audit; C Other | Existing lifecycle audit; B new tracking/retention requirement | **A — CLOSED / OWNER APPROVED** (section 8) |
 
-D12 fixed visual settings เป็น supporting configuration proposal ให้ owner ระบุข้อคัดค้าน/adjustment พร้อม checklist ได้; ไม่ใช่คำตอบ authorization และไม่ถือ approved โดยปริยาย
+D12 implementation direction ยืนยันแล้ว: M, black/opaque white, margin 4 เว้นแต่ scan evidence รองรับค่าเทียบเท่า, target 240px/responsive 220–260px, no branding over modules; loading/generic failure/copy fallback/accessibility. เป็น engineering/UX configuration ไม่ใช่ authority และยังไม่ผ่าน L04 scan certification.
 
-## 11. Verification / remaining gates
+## 11. Historical 17F.3A verification / remaining gates
 
 Documentation-only source review: ตรวจ actual HEAD/clean start; token 43-char + randomBytes(32)/SHA-256; DB-clock 24h unchanged; exact recipient mandatory; bounded preview/terminal replay; one-time hash-only boundary; no Family QR; existing QR version/settings; strict login return; parent layout/login redirect caveats; separate grant/Q5; schema/audit/ADR exclusions
 
@@ -247,10 +249,14 @@ Documentation-only source review: ตรวจ actual HEAD/clean start; token 43
 
 **P17F-L03 remains OPEN until explicit final owner approval. 17F.3 NOT IMPLEMENTED / NOT CLEARED. L04 OPEN; L05 OPEN / FUTURE; Q5 real-data GOVERNANCE BLOCKED unchanged. No new authority approved.**
 
-## 12. ONE proposed smallest coherent package
+## 12. Historical proposed package — implementation cleared by 17F.3B
 
 **PROPOSED / RECOMMENDED · NOT OWNER APPROVED · DO NOT IMPLEMENT YET**
 
 Patient creates existing caregiver invitation → SUCCESS shows existing copyable HTTPS link → client renders exact same URL as on-screen QR → share to intended existing-account recipient → scan opens existing Family invitation route → fragment validated/stripped on first client hydration (anonymous parent redirect caveat remains) → login if needed → existing bounded return restores invitation in supported flow → exact recipient server check → existing bounded preview → explicit accept/reject → unchanged 17F.1 lifecycle
 
 No new DB model, token, authority, data grant, QR scan audit, route or native/mobile integration. Rendering success, QR possession และ owner อ่านเอกสารนี้ไม่ใช่ acceptance/approval. Owner decisions Q18–Q29 และ L04 evidence ยังต้องเกิดจริง
+
+## 13. 17F.3B implementation handoff / current gates
+
+P17F-L03 **CLOSED / OWNER APPROVED** สำหรับ QR transport เท่านั้น; 17F.3 **CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**. L04 OPEN, L05 OPEN / FUTURE, Q5 real-data GOVERNANCE BLOCKED. [17F.3B contract](./PHASE_17F3B_FAMILY_INVITATION_QR_CONTRACT.md) supersedes earlier need-to-decide wording: narrow unknown/unavailable/wrong-recipient preview response hardening เป็น implementation scope; internal errors/authorization/lifecycle ไม่เปลี่ยน. Login redirect fragment containment/continuity caveat ยังไม่ solved; focused source tests และ L04 device evidence ต้องตามมา. No schema/migration/new token/new authority/data grant/native integration/scan audit; no new ADR required.
