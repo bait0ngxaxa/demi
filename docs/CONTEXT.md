@@ -668,7 +668,7 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
 - Long-term Patient activation proofing and identity-proofing beyond Phase 5B.2 remain open; Phase 17E.1 assisted recovery does not change activation semantics or approve automated delivery channels.
-- P17F-L01/L02/L06 are CLOSED / OWNER APPROVED only for the bounded 17F.2B appointment-read contract. P17F-L03 QR CLOSED / OWNER APPROVED; 17F.3 QR transport IMPLEMENTED, L04 re-audit/UAT OPEN, L05 expiry/renewal OPEN / FUTURE; real-data delegated use requires external Q5 approval. Minors/legal representation remain deferred, Phase 17E.2 consent parked, and medication Phase 17G.
+- P17F-L01/L02/L06 are CLOSED / OWNER APPROVED only for the bounded 17F.2B appointment-read contract. P17F-L03 QR CLOSED / OWNER APPROVED; 17F.3 QR transport IMPLEMENTED, L04 re-audit/UAT OPEN, L05 expiry/renewal OPEN / FUTURE; real-data delegated use requires external Q5 approval. Minors/legal representation remain deferred, Phase 17E.2 consent parked, and medication Phase 17G; see [17G.0 decision pack](./phases/PHASE_17G0_MEDICATION_DECISION_PACK.md): Q30–Q53 OPEN / NOT OWNER APPROVED, 17G.1 NOT CLEARED, and MED-02 REQUIREMENT-GATED.
 - additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor

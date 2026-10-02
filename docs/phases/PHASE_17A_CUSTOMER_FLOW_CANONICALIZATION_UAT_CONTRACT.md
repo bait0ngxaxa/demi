@@ -213,7 +213,7 @@ Backlog เต็มแบบ machine-readable อยู่ที่ [PHASE_17_U
 3. **Phase 17D — Appointment response/reschedule contract และ capability slices.** ทำ customer decision ก่อนเพิ่ม mutation: response state, patient-request vs direct change, cancel authority, staff/OSM roles. จากนั้นแยก capability ตาม action ที่อนุมัติ. Patient appointment read จาก 17C ไม่รอ mutation decision.
 4. **Phase 17E — Profile/account and consent contract.** นำ field ownership/editability/recovery และ versioned legal/health/marketing consent decisions มาทำ slice ที่แยกกัน.
 5. **Phase 17F — Family/caregiver relationship.** ทำหลัง permission model, consent/acceptance, direction, revoke/expiry และ minor/legal representative semantics ชัด; QR invitation เป็น transport.
-6. **Phase 17G — Medication.** เริ่ม personal list/schedule/reminder เฉพาะส่วนที่ลูกค้ายืนยัน; prescription/hospital-managed behavior เป็นอีก decision.
+6. **Phase 17G — Medication.** เริ่ม personal list/schedule/reminder เฉพาะส่วนที่ลูกค้ายืนยัน; prescription/hospital-managed behavior เป็นอีก decision. See [17G.0 decision pack](./PHASE_17G0_MEDICATION_DECISION_PACK.md): Q30–Q53 remain open, and 17G.1 is not cleared.
 7. **Phase 17H — Food, fitness และ weight goal.** แยก wellness observations จาก clinical Goal Plan; เริ่มเมื่อ record fields, units และ edit/history contract พร้อม.
 8. **Phase 17I — Hospital knowledge/contact.** ทำ content publishing domain และ authoritative Hospital contact projection หลัง source/ownership/privacy decisions.
 9. **Phase 17J — Notifications.** สร้างจาก event source ที่มีสัญญาแล้ว เช่น upcoming Appointment; medication/follow-up source ต้องเกิดจาก 17G/contract. เลือก external delivery channel แยก.
