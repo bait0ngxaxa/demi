@@ -1,9 +1,17 @@
 # Phase 17G.0 — Medication Domain Decision Pack (Corrected)
 
-สถานะเอกสาร: **17G.0 DECISION PACK COMPLETE / CORRECTED**<br>
-สถานะการตัดสินใจ: **Q30–Q53 OPEN / NOT OWNER APPROVED**<br>
-สถานะการพัฒนา: **17G.1 NOT CLEARED FOR IMPLEMENTATION**<br>
+สถานะเอกสาร: **17G.0 CLOSED / CORRECTED PACK OWNER CLOSEOUT RECORDED**<br>
+สถานะการตัดสินใจ: **Q30–Q53 CLOSED / OWNER APPROVED**<br>
+สถานะการพัฒนา: **17G.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**<br>
 MED-02: **REQUIREMENT-GATED**
+
+## Current owner closeout — Phase 17G.0B
+
+17G.0 CLOSED; Q30–Q53 CLOSED / OWNER APPROVED; MED-01 contract approved for bounded 17G.1; 17G.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; MED-02 REQUIREMENT-GATED; 17G.2 schedule NOT IMPLEMENTED; 17G.3 reminder/adherence NOT IMPLEMENTED; 17J notification delivery future; P17F-L04 OPEN / deferred; Q5 unchanged GOVERNANCE BLOCKED. See [owner closeout](./PHASE_17G0B_MEDICATION_DECISION_CLOSEOUT.md) and [implementation contract](./PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_CONTRACT.md). Owner explicitly accepted the corrected package exactly. No runtime/schema/migration changes.
+
+**Historical reading rule:** All OPEN / NOT OWNER APPROVED, NOT CLEARED and MED-01 REQUIREMENT-GATED statements in preserved sections 1–21 below describe the pre-17G.0B recommendation state. This later approval supersedes that state, including its then-final status. Historical options/evidence remain; they do not reopen Q30–Q53 or approve MED-02. Current technical authority is the linked 17G.1 contract.
+
+## Historical recommendation pack (before 17G.0B approval)
 
 เอกสารนี้เป็น requirement analysis, domain-boundary analysis และ security/privacy review เพื่อให้เจ้าของผลิตภัณฑ์ตัดสินใจ ไม่ใช่ implementation contract และไม่ใช่หลักฐานว่าเจ้าของอนุมัติข้อเสนอใดแล้ว
 
