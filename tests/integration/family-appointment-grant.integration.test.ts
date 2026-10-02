@@ -328,6 +328,24 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     expect(await activeGrant(f)).not.toBe(pending.id);
   });
 
+  it("DB rejects accepted evidence forged by a direct pending-to-revoked update", async () => {
+    const f = await fixture();
+    const pending = await db.caregiverAppointmentGrant.create({ data: grantData(f) });
+
+    await expect(db.$executeRaw`
+      UPDATE "CaregiverAppointmentGrant"
+      SET "status" = 'REVOKED',
+          "acceptedAt" = ${now},
+          "acceptedByUserId" = ${f.caregiver.userId}::uuid,
+          "revokedAt" = ${now},
+          "revokedByUserId" = ${f.patient.userId}::uuid
+      WHERE "id" = ${pending.id}::uuid
+    `).rejects.toThrow("Invalid appointment grant transition");
+
+    expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: pending.id } }))
+      .toMatchObject({ status: "PENDING", acceptedAt: null, acceptedByUserId: null, revokedAt: null, revokedByUserId: null });
+  });
+
   it.each(["PENDING", "ACTIVE"] as const)("unknown %s contract fails closed", async (status) => {
     const f = await fixture(); const row = await db.caregiverAppointmentGrant.create({ data: { ...grantData(f), contractVersion: "unknown-v2", status,
       ...(status === "ACTIVE" ? { acceptedAt: now, acceptedByUserId: f.caregiver.userId } : {}) } });

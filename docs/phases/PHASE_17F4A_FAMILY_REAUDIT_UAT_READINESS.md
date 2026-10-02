@@ -8,7 +8,9 @@ Actual starting HEAD: `011079b9eab3b17b80a65c5e4351606d75bbd83a` — `feat(phase
 
 Final commit: commit ที่เพิ่มรายงานนี้ชื่อ `test(phase-17f4a): re-audit family delegation and prepare device UAT`. Resolve SHA ด้วย `git log --diff-filter=A -1 --format=%H -- docs/phases/PHASE_17F4A_FAMILY_REAUDIT_UAT_READINESS.md`; final delivery response ระบุ SHA จริง ไม่ฝัง self-referential hash ใน commit content.
 
-งานนี้ตรวจ complete implemented Family 17F.1 relationship, 17F.2 appointment grant/read และ 17F.3 QR พร้อม auth/login, SELF/operator boundaries, audit, schema/migrations, cache และ PostgreSQL concurrency. เพิ่มหลักฐาน tests กับเอกสารเท่านั้น ไม่เปลี่ยน runtime, schema/migration, ADR, dependency, role, capability, disclosed field หรือ semantics. ไม่มี real Patient PII และไม่มี credentials ในเอกสาร.
+P2 follow-up เริ่มจาก HEAD `7b5bece3c543176d39794c27ff1d07a7d056c19c` หลังพบช่อง DB lifecycle-evidence ที่ระบุใน F4A-04 ด้านล่าง; เป็น corrective addendum ต่อ audit เดิม ไม่เปลี่ยน starting HEAD ของ 17F.4A. Follow-up commit คือ `fix(phase-17f4a): preserve grant acceptance evidence`; final delivery response ระบุ SHA.
+
+งานนี้ตรวจ complete implemented Family 17F.1 relationship, 17F.2 appointment grant/read และ 17F.3 QR พร้อม auth/login, SELF/operator boundaries, audit, schema/migrations, cache และ PostgreSQL concurrency. เพิ่มหลักฐาน tests กับเอกสาร และเพิ่ม forward-only migration หนึ่งรายการเพื่อปิด P2 DB evidence gap; ไม่มี Prisma schema, application runtime, ADR, dependency, role, capability, disclosed field หรือ semantics ใหม่. ไม่มี real Patient PII และไม่มี credentials ในเอกสาร.
 
 **Phase 17F.4A automated/security/PostgreSQL re-audit = PASS**. P17F-L04 = **OPEN — AUTOMATED/INTEGRATION RE-AUDIT COMPLETE; REAL-DEVICE UAT PENDING** เมื่อ checks ด้านล่างผ่าน. Phase 17F overall = **NOT CLOSED**. ไม่รับรอง production readiness หรือ mobile compatibility.
 
@@ -30,7 +32,7 @@ Current source เป็น authority สำหรับ runtime; history ใน
 | A | `src/modules/auth/**` actor-context/application-access/authentication/authorization/login-schema/server-actions และ tests; `app/login/**`; `app/app/layout.tsx` |
 | SELF | `src/modules/patient-self/policies/patient-self-policy.ts`, `services/patient-self-query-service.ts`, appointment selectors/read functions ใน `patient-self-care-query-service.ts` |
 | OP | `src/modules/auth/services/actor-workspace-service.ts`, `src/modules/patient-directory/policies/patient-directory-policy.ts`, appointment/operator policy; Hospital membership/OSM assignment ไม่ถูกนำมาเป็น Family predicate |
-| DB | `prisma/schema.prisma`: Person/User/Role/PatientProfile/PHR/Family/AuditEvent; Family migrations `20261001120000`, `20261001130000`, `20261002120000` |
+| DB | `prisma/schema.prisma`: Person/User/Role/PatientProfile/PHR/Family/AuditEvent; Family migrations `20261001120000`, `20261001130000`, `20261002120000`, `20261002130000` |
 | INF | `src/lib/env/server.ts`, `src/lib/db/prisma.ts`, `src/lib/db/serializable-transaction.ts`, Supabase server/proxy boundaries, `next.config.ts`, audit service/schema |
 | IR | `tests/integration/family-caregiver-relationship.integration.test.ts` |
 | IG | `tests/integration/family-appointment-grant.integration.test.ts` |
@@ -124,7 +126,7 @@ Each cell mapped to the shared exact predicate plus named integration cases abov
 | accept vs reject / accept vs revoke | one winner, exact final row/audit | IR named race tests |
 | relationship ACTIVE→REVOKED/WITHDRAWN | own participant only, terminal service; children deny | IR terminal and revoke-vs-withdraw; IG parent cases |
 | grant PENDING→ACTIVE | explicit caregiver acceptance | G/GP; IG separate acceptance |
-| grant PENDING/ACTIVE→REVOKED | own Patient; terminal DB trigger + service | IG history/CHECK/immutability/revoke |
+| grant PENDING/ACTIVE→REVOKED | own Patient; terminal DB trigger + service; PENDING revoke cannot add acceptance evidence, ACTIVE acceptance evidence is preserved | IG direct-write regression + history/CHECK/immutability/revoke |
 | grant duplicate proposal/accept | one successful transition/audit | IG concurrent proposals/accept |
 | accept vs grant revoke | final REVOKED, no revival | IG accept/revoke race |
 | parent terminate vs grant accept | acceptance may win first; after parent commit no read/accept authority | IG parent racing acceptance |
@@ -166,7 +168,7 @@ Read transaction RepeatableRead couples grant/Hospital name/cursor/rows to one s
 
 Relationship durable events: caregiver_invitation.created/accepted/rejected/revoked/expired and caregiver_relationship.activated/revoked/withdrawn. Grant: caregiver_appointment_grant.proposed/accepted/revoked. Same transaction client used throughout; audit failure rolls back state. Metadata explicit bounded literals above, no names/Hospital name/HN/contact/token/hash/clinical/free text. No ordinary read/render/scan/page/preview business audit.
 
-DB inspection distinguishes constraints from service invariants: invitation exact User/Person FK + 24h/lifecycle CHECK + one pending pair; relationship sourceInvitation/Patient/caregiver composite FK + one ACTIVE pair + lifecycle evidence CHECK. **Relationship terminal transition and source ACCEPTED status are service transaction invariants, not DB transition triggers.** No speculative corrective migration added. Grant composite FKs, one actionable scope/version, acceptance/revoker CHECK and immutable scope/terminal update trigger tested against actual PostgreSQL.
+DB inspection distinguishes constraints from service invariants: invitation exact User/Person FK + 24h/lifecycle CHECK + one pending pair; relationship sourceInvitation/Patient/caregiver composite FK + one ACTIVE pair + lifecycle evidence CHECK. **Relationship terminal transition and source ACCEPTED status are service transaction invariants, not DB transition triggers.** Grant composite FKs, one actionable scope/version and acceptance/revoker CHECK are tested against PostgreSQL. The initial grant trigger preserved accepted evidence only when OLD.status was ACTIVE, while the REVOKED CHECK allowed paired acceptance evidence. This admitted a direct PENDING→REVOKED update that fabricated acceptance history, despite granting no Patient-resource authority. F4A-04 is a validated P2 correctness/forensic-hardening defect, not a P0/P1 authorization defect. Forward-only migration `20261002130000_family_grant_pending_revoke_evidence_guard` now rejects acceptance evidence added during PENDING→REVOKED, while allowing normal pending revoke and preserving evidence on ACTIVE→REVOKED. A real PostgreSQL regression test reproduced the prior pass before the migration and passes with the new trigger. No published migration was edited.
 
 Real concurrent calls cover duplicate issuance, invitation accept-vs-accept/reject/Patient revoke, parent revoke-vs-withdraw; duplicate proposal, grant accept-vs-accept/revoke, parent terminate-vs-grant accept. Tests permit legal winner order and verify final authority/audit, not guaranteed all scheduling interleavings. DB-clock expiry at-or-after threshold plus strict SQL `>` source check verifies deny; no claim of controlling an exact wall-clock racing microsecond. Service terminal replay/history and DB grant reactivation denial verified. Postcommit next reads honor state; precommit in-flight reads explicitly excluded from recall guarantee.
 
@@ -199,35 +201,39 @@ Automated evidence is service/policy/transport/component and real PostgreSQL, no
 | F4A-01 | P3, corrected evidence gap | IG; cross-role isolation required | prior grant integration did not explicitly persist OSM/Hospital/ADMIN/multi-role actors. Added independent role DENY, intended multi-role exact scope, Patient+role own-only cases; no runtime change |
 | F4A-02 | P3, corrected evidence gap | IR/IG; atomic terminal races | added invitation accept-vs-reject and parent revoke/withdraw-vs-grant accept with final row/audit/authority assertions |
 | F4A-03 | P3, OPEN under L04 | app layout/login/client fragment stores; browser containment/continuity | anonymous/authorized login pre-hydration redirect, refresh/back/BFCache/deployed scan behavior have no device evidence; 17F.4B sheet prepared, no transport rewrite |
+| F4A-04 | P2, FIXED | `20261002120000` grant lifecycle CHECK/update trigger; accepted evidence must reflect a real ACTIVE transition | direct `PENDING→REVOKED` with paired caregiver acceptance and Patient revocation evidence passed the old CHECK/trigger. It could falsify consent history but REVOKED had zero read authority. Forward-only migration `20261002130000` rejects this transition; PostgreSQL regression test failed before and passes after the correction |
 
-No validated P0/P1/P2 runtime defect found. Missing real-device evidence is not classified as proven privilege escalation. Existing distributed/shared abuse protection remains deployment hardening gate; in-process throttling, pair uniqueness and transactions do not establish production abuse protection. No L05 or real-data policy added.
+No P0/P1 finding was validated. F4A-04 is one validated P2 and is fixed; no unresolved P0/P1/P2 remains. Missing real-device evidence is not classified as proven privilege escalation and does not block 17F.4B. Existing distributed/shared abuse protection remains a deployment hardening gate; in-process throttling, pair uniqueness and transactions do not establish production abuse protection. No L05 or real-data policy added.
 
 ## Commands / actual results
 
 | Command | Result |
 | --- | --- |
-| git status --short / git rev-parse HEAD / read AGENTS.md | clean baseline, exact SHA above |
+| git status --short / git rev-parse HEAD / read AGENTS.md | original audit baseline clean at exact SHA above; P2 correction follow-up began at `7b5bece3c543176d39794c27ff1d07a7d056c19c` |
 | npm run test -- src/modules/family app/app/family | PASS 13 files / 74 tests |
 | npm run test -- src/modules/auth app/login | PASS 10 files / 92 tests |
 | npm run test:db:status | healthy disposable local PostgreSQL 17 at 127.0.0.1:55432 |
 | npm run prisma:generate | PASS Prisma Client 6.19.3; generated node_modules only |
-| npm run prisma:migrate:test | PASS 30 migrations; no pending migrations; local demi_test |
-| guarded direct installed Vitest run --config vitest.integration.config.mts <both Family files> | PASS initial 2 files / 65 tests; final strengthened set with --reporter=verbose PASS 2 files / 68 tests (IR 23, IG 45) |
+| npm run prisma:migrate:test | PASS 31 migrations; corrective migration applied; no pending migrations; local demi_test |
+| guarded direct installed Vitest run --config vitest.integration.config.mts <both Family files> | PASS original 17F.4A set 2 files / 68 tests (IR 23, IG 45); after P2 correction 2 files / 69 tests (IR 23, IG 46) |
+| guarded pre-migration test `DB rejects accepted evidence forged by a direct pending-to-revoked update` | EXPECTED FAIL: with the old trigger the raw UPDATE committed (Prisma returned 1 row); this reproduced F4A-04 |
+| guarded grant-file run after correction | PASS 1 file / 46 tests; includes the exact direct SQL transition that failed before migration |
 | npm run lint -- --max-warnings=0 | PASS zero warnings/errors |
 | npm run typecheck | PASS |
-| npm run test | PASS 180 files / 1,285 tests; one final full run |
-| npm run test:integration | PASS 27 files / 312 tests; one final full PostgreSQL integration run, generate+migrate complete, no pending migration |
+| npm run test | PASS 180 files / 1,285 tests on the original 17F.4A implementation; not rerun for this follow-up because no application/unit source changed |
+| npm run test:integration | PASS after correction; full PostgreSQL integration run, generate+migrate complete, 27 files / 313 tests, no pending migration |
 | git diff --check / git diff --cached --check | PASS at final delivery; no whitespace defect |
 | npm run build | NOT RUN: tests/docs only; 17F.3 runtime/build baseline unchanged, no framework/config/routing/build-time correction |
 
-Targeted integration used `.env.integration` parsed in a child environment without printing values; guard required nonproduction, identical DATABASE_URL/DIRECT_URL/DEMI_TEST_DATABASE_URL, local PostgreSQL and database name demi_test before installed Vitest file execution. Repository integration script does not forward file arguments; none invented. Full integration script performs generate+migrate+sequential file suite. No DB reset/down or production DB used. No architecture:check/lint:strict script exists; source boundary review substitutes, not a fabricated executed script. Final test output/counts updated after execution only. After the last three additional DB-evidence cases, lint and typecheck were rerun successfully; unit/runtime source stayed unchanged. No full-suite iteration loop.
+Targeted integration used `.env.integration` parsed in a child environment without printing values; guard required nonproduction, identical DATABASE_URL/DIRECT_URL/DEMI_TEST_DATABASE_URL, local PostgreSQL and database name demi_test before installed Vitest file execution. Repository integration script does not forward file arguments; none invented. Full integration script performs generate+migrate+sequential file suite. No DB reset/down or production DB used. No architecture:check/lint:strict script exists; source boundary review substitutes, not a fabricated executed script. Final test output/counts updated after execution only. The P2 regression was confirmed red before migration, then the Family grant suite passed with the new guard. Lint and typecheck are rerun after this correction; full unit suite is retained from the initial audit because only an integration test, DB migration and documentation changed. No full-suite iteration loop.
 
 ## Delivery manifest / verification boundary
 
 Changed files exactly:
 
 - `tests/integration/family-caregiver-relationship.integration.test.ts` — seven additional PostgreSQL cases (four cross-role negatives, accept/reject race, DB checks, expiry threshold).
-- `tests/integration/family-appointment-grant.integration.test.ts` — fifteen additional PostgreSQL cases (independent/multi-role/Patient-owner role isolation, same-Hospital multi-Patient isolation, parent termination races) and necessary fixture cleanup.
+- `tests/integration/family-appointment-grant.integration.test.ts` — sixteen additional PostgreSQL cases (independent/multi-role/Patient-owner role isolation, same-Hospital multi-Patient isolation, parent termination races, direct pending-revoke evidence guard) and necessary fixture cleanup.
+- `prisma/migrations/20261002130000_family_grant_pending_revoke_evidence_guard/migration.sql` — forward-only trigger correction for PENDING→REVOKED accepted-evidence fabrication; no Prisma schema change.
 - `docs/phases/PHASE_17F4A_FAMILY_REAUDIT_UAT_READINESS.md` — this source-backed report/matrices/results.
 - `docs/phases/PHASE_17F4B_FAMILY_DEVICE_UAT_CHECKLIST.md` — unexecuted manual evidence sheet.
 - `docs/CONTEXT.md`, `docs/phases/PHASE_17_UAT_BACKLOG.md`, `docs/phases/PHASE_17F0_FAMILY_CAREGIVER_DELEGATED_ACCESS_CONTRACT.md`, `docs/phases/PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md`, `docs/phases/PHASE_17F3_FAMILY_INVITATION_QR_IMPLEMENTATION.md` — current-status addendum only; historical text preserved.
@@ -238,7 +244,13 @@ Final targeted integration child command (after explicit `.env.integration` loca
 node node_modules/vitest/vitest.mjs run --config vitest.integration.config.mts tests/integration/family-caregiver-relationship.integration.test.ts tests/integration/family-appointment-grant.integration.test.ts --reporter=verbose
 ```
 
-Initial focused invocation used the identical file command without verbose reporter before the last three evidence cases were added. No integration script argument forwarding assumed. Current Family PostgreSQL totals: IR 23 + IG 45 = 68, up from baseline 16 + 30 = 46; 22 added cases, no existing assertion removed or relaxed.
+The direct-write regression selector used for the pre-migration reproduction was:
+
+```text
+node node_modules/vitest/vitest.mjs run --config vitest.integration.config.mts tests/integration/family-appointment-grant.integration.test.ts -t "DB rejects accepted evidence forged by a direct pending-to-revoked update"
+```
+
+Initial focused invocation used the identical file command without verbose reporter before the first re-audit evidence cases were added. No integration script argument forwarding assumed. Original 17F.4A Family PostgreSQL totals were IR 23 + IG 45 = 68, up from baseline 16 + 30 = 46; the correction adds one DB regression test, for final totals IR 23 + IG 46 = 69. No existing assertion was removed or relaxed.
 
 Codex Security Standard scoped source scan completed and indexed with no source-validated vulnerability; independent baseline plus grant/DB investigation and independent architecture review were reconciled. That supplemental scan is scoped to `src/modules/family` with supporting code; the broader task evidence/matrices live in this report. External scans/APM/production deployment controls are not certified. No new role/capability/resource/field/contract/QR token/TTL/impersonation/kinship/expiry/legal semantics; no secrets/credentials/Patient PII added.
 
@@ -252,9 +264,9 @@ Current statuses: 17F.0 CLOSED; 17F.1 IMPLEMENTED / CLOSED; 17F.2 IMPLEMENTED sy
 
 ## Final automated verdict / evidence limits
 
-**PASS** for all automated exit controls: exact recipient; cross-Patient/Hospital/role; terminal invitation/relationship/grant; child denial after revoke/withdraw; temporary eligibility deny/resume; unknown version and default-disabled feature gate; exact six-field projection; rolling window/status; foreign detail/cursor; QR zero authority; generic preview; atomic audit; DB constraints/concurrency; no stale shared server authority cache found. Focused 68 Family PostgreSQL cases, full 1,285 unit tests, full 312 integration tests, strict lint and typecheck passed. No unresolved P0/P1; no validated P2; P3 evidence gaps F4A-01/02 corrected by tests, F4A-03 browser/device evidence remains OPEN.
+**PASS** after the P2 correction for all automated exit controls: exact recipient; cross-Patient/Hospital/role; terminal invitation/relationship/grant; child denial after revoke/withdraw; temporary eligibility deny/resume; unknown version and default-disabled feature gate; exact six-field projection; rolling window/status; foreign detail/cursor; QR zero authority; generic preview; atomic audit; DB constraints/concurrency; no stale shared server authority cache found. Final evidence: 69 focused Family PostgreSQL cases, prior full unit suite 180 files / 1,285 tests (not rerun for this DB/integration-only correction), full PostgreSQL integration 27 files / 313 tests, strict lint and typecheck passed. No unresolved P0/P1/P2; fixed finding F4A-04 is P2; P3 evidence gaps F4A-01/02 corrected by tests, F4A-03 browser/device evidence remains OPEN.
 
-Final diff reviewed before broad suites; afterward only documentation/results changed. Strict UTF-8/no BOM/no replacement characters and local Markdown targets passed for all nine changed files; status addenda leave prior document bytes unchanged outside insertion. No test weakening, published migration edit, generated tracked file, secret/credential/PII or debug artifact. Build not rerun because runtime/build baseline unchanged.
+Final correction diff reviewed before broad integration. Strict UTF-8/no BOM/no replacement characters and local Markdown targets passed for all ten files changed since the original 17F.4A baseline; historical status addenda remain intact. No test weakening, published migration edit, generated tracked file, secret/credential/PII or debug artifact. Build not rerun because no application runtime/build configuration changed.
 
 Real device evidence actually available: **NONE performed or verified during this task**. J1–J14 have source/automated/PostgreSQL evidence as mapped; J15 has exact QR-input/transport/component evidence plus underlying invitation PostgreSQL semantics, but no camera decode or browser scan evidence. End-to-end browser execution and deployed HTTP/RSC/CDN/APM observations remain 17F.4B work.
 
