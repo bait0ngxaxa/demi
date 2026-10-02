@@ -20,6 +20,21 @@ async function actor(roles: Role[] = []): Promise<ActorContext> {
   return { userId: user.id, personId: person.id, roles, hospitalMemberships: [], osmHospitalRelationships: [] };
 }
 
+async function withIndependentRole(account: ActorContext, kind: "OSM" | "MEMBER" | "OWNER" | "ADMIN" | "PATIENT", hospitalId: string): Promise<ActorContext> {
+  const role = kind === "MEMBER" || kind === "OWNER" ? Role.HOSPITAL : Role[kind];
+  await db.userRole.create({ data: { userId: account.userId, role } });
+  if (kind === "MEMBER" || kind === "OWNER") {
+    await db.hospitalMembership.create({ data: { userId: account.userId, hospitalId, membershipType: kind, status: "ACTIVE" } });
+    return { ...account, roles: [...account.roles, role], hospitalMemberships: [{ hospitalId, membershipType: kind, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }] };
+  }
+  if (kind === "OSM") {
+    await db.osmHospitalRelationship.create({ data: { userId: account.userId, hospitalId, status: "ACTIVE" } });
+    return { ...account, roles: [...account.roles, role], osmHospitalRelationships: [{ hospitalId, status: "ACTIVE", hospitalStatus: "ACTIVE" }] };
+  }
+  if (kind === "PATIENT") await db.patientProfile.create({ data: { personId: account.personId } });
+  return { ...account, roles: [...account.roles, role] };
+}
+
 async function fixture(): Promise<{ patient: ActorContext; caregiver: ActorContext; profileId: string; parentId: string; phrId: string; hospitalId: string }> {
   const patient = await actor([Role.PATIENT]);
   const caregiver = await actor();
@@ -62,6 +77,8 @@ async function clear(): Promise<void> {
   await db.caregiverInvitation.deleteMany();
   await db.patientHospitalRelationship.deleteMany();
   await db.patientProfile.deleteMany();
+  await db.hospitalMembership.deleteMany();
+  await db.osmHospitalRelationship.deleteMany();
   await db.userRole.deleteMany();
   await db.user.deleteMany();
   await db.hospital.deleteMany();
@@ -161,6 +178,74 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
       await expect(listDelegatedAppointments(f.caregiver, { grantId, cursor: id }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     }
     await expect(listDelegatedAppointments(other.caregiver, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it.each(["OSM", "MEMBER", "OWNER", "ADMIN", "PATIENT"] as const)("independent %s authority never grants another caregiver's appointment scope", async (kind) => {
+    const f = await fixture();
+    const wrong = await withIndependentRole(await actor(), kind, f.hospitalId);
+    const { grantId } = await proposeAppointmentGrant(f.patient, proposal(f), deps);
+    await expect(acceptAppointmentGrant(wrong, grantId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await acceptAppointmentGrant(f.caregiver, grantId, deps);
+    const id = await appointment(f);
+    await expect(listDelegatedAppointments(wrong, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(getDelegatedAppointment(wrong, grantId, id, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(revokeAppointmentGrant(wrong, grantId, deps)).rejects.toMatchObject({ code: kind === "PATIENT" ? "NOT_FOUND" : "FORBIDDEN" });
+    await expect(proposeAppointmentGrant(wrong, proposal(f), deps)).rejects.toMatchObject({ code: kind === "PATIENT" ? "NOT_FOUND" : "FORBIDDEN" });
+    expect((await getAppointmentGrantManagement(wrong, {}, deps))?.caregiver.grants).toEqual([]);
+  });
+
+  it.each(["OSM", "MEMBER", "OWNER", "PATIENT"] as const)("intended caregiver plus %s retains only the exact accepted Patient/PHR scope", async (kind) => {
+    const f = await fixture(); const other = await fixture();
+    const caregiver = await withIndependentRole(f.caregiver, kind, f.hospitalId);
+    const grantId = await activeGrant({ ...f, caregiver }); const id = await appointment(f);
+    const hospital = await db.hospital.create({ data: { hospitalCode: randomUUID().slice(0, 30), name: "อื่น", status: "ACTIVE" } });
+    const phr = await db.patientHospitalRelationship.create({ data: { patientProfileId: f.profileId, hospitalId: hospital.id } });
+    const foreignIds = [await appointment(other), await appointment({ ...f, phrId: phr.id })];
+    expect((await listDelegatedAppointments(caregiver, { grantId }, deps)).appointments.map((row) => row.appointmentId)).toEqual([id]);
+    for (const foreignId of foreignIds) {
+      await expect(getDelegatedAppointment(caregiver, grantId, foreignId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(listDelegatedAppointments(caregiver, { grantId, cursor: foreignId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    }
+    const otherGrant = await activeGrant(other);
+    await expect(listDelegatedAppointments(caregiver, { grantId: otherGrant }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(revokeAppointmentGrant(caregiver, grantId, deps)).rejects.toMatchObject({ code: kind === "PATIENT" ? "NOT_FOUND" : "FORBIDDEN" });
+  });
+
+  it.each(["OSM", "MEMBER", "OWNER"] as const)("Patient owner plus %s may propose/revoke only their own exact Family scope", async (kind) => {
+    const f = await fixture(); const other = await fixture();
+    const patient = await withIndependentRole(f.patient, kind, f.hospitalId);
+    await expect(proposeAppointmentGrant(patient, { ...proposal(f), caregiverRelationshipId: other.parentId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(proposeAppointmentGrant(patient, { ...proposal(f), patientHospitalRelationshipId: other.phrId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const { grantId } = await proposeAppointmentGrant(patient, proposal(f), deps);
+    await acceptAppointmentGrant(f.caregiver, grantId, deps);
+    const otherGrant = await activeGrant(other);
+    await expect(revokeAppointmentGrant(patient, otherGrant, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await revokeAppointmentGrant(patient, grantId, deps);
+    expect((await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: grantId } })).status).toBe("REVOKED");
+    expect((await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: otherGrant } })).status).toBe("ACTIVE");
+  });
+
+  it("one caregiver serving two Patients in the same Hospital keeps each accepted grant isolated", async () => {
+    const f = await fixture(); const other = await fixture();
+    const grantA = await activeGrant(f); const appointmentA = await appointment(f);
+    const phr = await db.patientHospitalRelationship.create({ data: { patientProfileId: other.profileId, hospitalId: f.hospitalId } });
+    const invitation = await db.caregiverInvitation.create({ data: {
+      patientProfileId: other.profileId, caregiverUserId: f.caregiver.userId, caregiverPersonId: f.caregiver.personId,
+      issuedByUserId: other.patient.userId, tokenHash: randomUUID(), status: "ACCEPTED", acceptanceContractVersion: "family-delegation-v1",
+      issuedAt: now, expiresAt: new Date(now.getTime() + 86400000), acceptedAt: now,
+    } });
+    const parent = await db.caregiverRelationship.create({ data: { patientProfileId: other.profileId, caregiverUserId: f.caregiver.userId, sourceInvitationId: invitation.id, activatedAt: now } });
+    const patientB = { ...other, caregiver: f.caregiver, hospitalId: f.hospitalId, phrId: phr.id, parentId: parent.id };
+    const appointmentB = await appointment(patientB);
+    await expect(getDelegatedAppointment(f.caregiver, grantA, appointmentB, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const grantB = await activeGrant(patientB);
+    for (const [grantId, ownId, foreignId] of [[grantA, appointmentA, appointmentB], [grantB, appointmentB, appointmentA]]) {
+      expect((await listDelegatedAppointments(f.caregiver, { grantId }, deps)).appointments.map((row) => row.appointmentId)).toEqual([ownId]);
+      await expect(getDelegatedAppointment(f.caregiver, grantId, foreignId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(listDelegatedAppointments(f.caregiver, { grantId, cursor: foreignId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    }
+    await revokeAppointmentGrant(f.patient, grantA, deps);
+    expect((await getDelegatedAppointment(f.caregiver, grantB, appointmentB, deps)).appointmentId).toBe(appointmentB);
   });
 
   it.each(["caregiver", "patient", "role", "SUSPENDED", "PENDING_VERIFICATION"] as const)("temporary %s ineligibility denies acceptance/read then resumes unchanged authority", async (kind) => {
@@ -269,6 +354,21 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     expect(row.status).toBe("REVOKED");
     expect(await db.auditEvent.count({ where: { resourceId: grantId, action: "caregiver_appointment_grant.revoked" } })).toBe(1);
     await expect(listDelegatedAppointments(f.caregiver, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it.each(["revoke", "withdraw"] as const)("parent %s racing grant acceptance leaves no child read authority after commit", async (operation) => {
+    const f = await fixture(); const { grantId } = await proposeAppointmentGrant(f.patient, proposal(f), deps);
+    const id = await appointment(f);
+    const terminate = operation === "revoke"
+      ? revokeCaregiverRelationship(f.patient, f.parentId, deps)
+      : withdrawOwnCaregiverRelationship(f.caregiver, f.parentId, deps);
+    const results = await Promise.allSettled([acceptAppointmentGrant(f.caregiver, grantId, deps), terminate]);
+    expect(results[1]?.status).toBe("fulfilled");
+    expect((await db.caregiverRelationship.findUniqueOrThrow({ where: { id: f.parentId } })).status).toBe(operation === "revoke" ? "REVOKED" : "WITHDRAWN");
+    await expect(acceptAppointmentGrant(f.caregiver, grantId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(listDelegatedAppointments(f.caregiver, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(getDelegatedAppointment(f.caregiver, grantId, id, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await db.auditEvent.count({ where: { resourceId: grantId, action: "caregiver_appointment_grant.accepted" } })).toBe(results[0]?.status === "fulfilled" ? 1 : 0);
   });
 
   it.each(["proposed", "accepted", "revoked"] as const)("rolls back %s state and audit atomically on audit failure", async (transition) => {

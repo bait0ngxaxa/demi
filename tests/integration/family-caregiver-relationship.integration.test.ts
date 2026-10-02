@@ -135,6 +135,166 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
     await prisma.$disconnect();
   });
 
+  it.each([
+    { label: "OSM-only", role: Role.OSM, membershipType: null },
+    { label: "Hospital MEMBER", role: Role.HOSPITAL, membershipType: "MEMBER" },
+    { label: "Hospital OWNER", role: Role.HOSPITAL, membershipType: "OWNER" },
+    { label: "platform ADMIN", role: Role.ADMIN, membershipType: null },
+  ] as const)("does not give $label another person's Family authority", async ({ role, membershipType }) => {
+    const patient = await createPatient({ extraRoles: [Role.HOSPITAL] });
+    const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+    const wrongAccount = await createActor({ roles: [role] });
+    const hospital = await prisma.hospital.create({ data: {
+      hospitalCode: randomUUID().slice(0, 30), name: "Family synthetic hospital", status: "ACTIVE",
+    } });
+    const patientHospitalRelationship = await prisma.patientHospitalRelationship.create({ data: {
+      patientProfileId: patient.patientProfileId, hospitalId: hospital.id,
+    } });
+    await prisma.hospitalMembership.create({ data: {
+      userId: patient.userId, hospitalId: hospital.id, membershipType: "MEMBER", status: "ACTIVE",
+    } });
+    patient.actor = { ...patient.actor, hospitalMemberships: [{
+      hospitalId: hospital.id, membershipType: "MEMBER", profession: null,
+      status: "ACTIVE", hospitalStatus: "ACTIVE",
+    }] };
+    if (membershipType) {
+      await prisma.hospitalMembership.create({ data: {
+        userId: wrongAccount.userId, hospitalId: hospital.id, membershipType, status: "ACTIVE",
+      } });
+      wrongAccount.actor = { ...wrongAccount.actor, hospitalMemberships: [{
+        hospitalId: hospital.id, membershipType, profession: null,
+        status: "ACTIVE", hospitalStatus: "ACTIVE",
+      }] };
+    }
+    if (role === Role.OSM) {
+      await prisma.osmHospitalRelationship.create({ data: {
+        userId: wrongAccount.userId, hospitalId: hospital.id, status: "ACTIVE",
+      } });
+      wrongAccount.actor = { ...wrongAccount.actor, osmHospitalRelationships: [{
+        hospitalId: hospital.id, status: "ACTIVE", hospitalStatus: "ACTIVE",
+      }] };
+      await prisma.patientOsmAssignment.create({ data: {
+        patientHospitalRelationshipId: patientHospitalRelationship.id,
+        osmUserId: wrongAccount.userId, assignedByUserId: patient.userId,
+      } });
+    }
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    await expect(previewCaregiverInvitation(wrongAccount.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(acceptCaregiverInvitation(wrongAccount.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(rejectCaregiverInvitation(wrongAccount.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(revokePendingCaregiverInvitation(wrongAccount.actor, invitation.invitationId)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const overview = await getFamilyManagementOverview(wrongAccount.actor);
+    expect(overview).toEqual({ patient: null, caregiver: {
+      invitations: [], nextInvitationsCursor: null, relationships: [], nextRelationshipsCursor: null,
+    } });
+    const accepted = await acceptCaregiverInvitation(caregiver.actor, invitation.plaintextToken);
+    await expect(revokeCaregiverRelationship(wrongAccount.actor, accepted.relationshipId)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(withdrawOwnCaregiverRelationship(wrongAccount.actor, accepted.relationshipId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await prisma.caregiverRelationship.findUniqueOrThrow({
+      where: { id: accepted.relationshipId }, select: { status: true },
+    })).toEqual({ status: CaregiverRelationshipStatus.ACTIVE });
+    expect(await prisma.auditEvent.count({ where: { actorUserId: wrongAccount.userId } })).toBe(0);
+    await revokeCaregiverRelationship(patient.actor, accepted.relationshipId);
+  });
+
+  it("serializes acceptance against caregiver rejection with exactly the winning lifecycle audit", async () => {
+    const patient = await createPatient();
+    const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    const outcomes = await Promise.allSettled([
+      acceptCaregiverInvitation(caregiver.actor, invitation.plaintextToken),
+      rejectCaregiverInvitation(caregiver.actor, invitation.plaintextToken),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    const finalInvitation = await prisma.caregiverInvitation.findUniqueOrThrow({
+      where: { id: invitation.invitationId }, select: { status: true },
+    });
+    expect([CaregiverInvitationStatus.ACCEPTED, CaregiverInvitationStatus.REJECTED]).toContain(finalInvitation.status);
+    const accepted = finalInvitation.status === CaregiverInvitationStatus.ACCEPTED;
+    const relationships = await prisma.caregiverRelationship.findMany({
+      where: { sourceInvitationId: invitation.invitationId }, select: { id: true, status: true },
+    });
+    expect(relationships).toEqual(accepted ? [{ id: expect.any(String), status: CaregiverRelationshipStatus.ACTIVE }] : []);
+    const audits = await prisma.auditEvent.findMany({
+      where: { actorUserId: caregiver.userId }, select: { action: true, resourceId: true },
+    });
+    expect(audits.map(({ action }) => action).sort()).toEqual(accepted
+      ? ["caregiver_invitation.accepted", "caregiver_relationship.activated"]
+      : ["caregiver_invitation.rejected"]);
+    expect(audits.map(({ resourceId }) => resourceId).sort()).toEqual(
+      [invitation.invitationId, ...relationships.map(({ id }) => id)].sort(),
+    );
+    await expect(acceptCaregiverInvitation(caregiver.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(rejectCaregiverInvitation(caregiver.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+
+  it("enforces invitation TTL, exact caregiver identity and lifecycle evidence in PostgreSQL", async () => {
+    const patient = await createPatient();
+    const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+    const otherCaregiver = await createActor({ roles: [] });
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    await expect(prisma.$executeRaw`
+      UPDATE "CaregiverInvitation"
+      SET "expiresAt" = "issuedAt" + INTERVAL '23 hours'
+      WHERE "id" = ${invitation.invitationId}::uuid
+    `).rejects.toMatchObject({ code: "P2010", meta: { code: "23514" } });
+    await expect(prisma.caregiverInvitation.update({
+      where: { id: invitation.invitationId },
+      data: { caregiverPersonId: otherCaregiver.personId },
+    })).rejects.toMatchObject({ code: "P2003" });
+    await expect(prisma.$executeRaw`
+      UPDATE "CaregiverInvitation"
+      SET "status" = 'ACCEPTED'
+      WHERE "id" = ${invitation.invitationId}::uuid
+    `).rejects.toMatchObject({ code: "P2010", meta: { code: "23514" } });
+    expect(await prisma.caregiverInvitation.findUniqueOrThrow({
+      where: { id: invitation.invitationId },
+      select: { status: true, caregiverUserId: true, caregiverPersonId: true, issuedAt: true, expiresAt: true },
+    })).toEqual({
+      status: CaregiverInvitationStatus.PENDING, caregiverUserId: caregiver.userId,
+      caregiverPersonId: caregiver.personId, issuedAt: invitation.issuedAt, expiresAt: invitation.expiresAt,
+    });
+    expect(await prisma.caregiverRelationship.count()).toBe(0);
+  });
+
+  it("denies acceptance at or after a database-clock expiry threshold and audits expiry atomically", async () => {
+    const patient = await createPatient();
+    const caregiver = await createActor({ roles: [], nationalId: validNationalId });
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    // Anchor at millisecond-truncated DB time without sleeps. The following
+    // acceptance runs at or after this threshold; the service's strict SQL >
+    // predicate separately proves equality is excluded.
+    const [threshold] = await prisma.$queryRaw<{ issuedAt: Date; expiresAt: Date }[]>`
+      WITH boundary AS MATERIALIZED (
+        SELECT date_trunc('milliseconds', clock_timestamp()) AS expires_at
+      )
+      UPDATE "CaregiverInvitation" AS invitation
+      SET "issuedAt" = boundary.expires_at - INTERVAL '24 hours',
+          "expiresAt" = boundary.expires_at
+      FROM boundary
+      WHERE invitation."id" = ${invitation.invitationId}::uuid
+      RETURNING invitation."issuedAt", invitation."expiresAt"
+    `;
+    expect(threshold).toBeDefined();
+    if (!threshold) throw new Error("Invitation expiry threshold was not recorded");
+    expect(threshold.expiresAt.getTime() - threshold.issuedAt.getTime()).toBe(CAREGIVER_INVITATION_TTL_MS);
+    await expect(acceptCaregiverInvitation(caregiver.actor, invitation.plaintextToken)).rejects.toMatchObject({ code: "CONFLICT" });
+    const expired = await prisma.caregiverInvitation.findUniqueOrThrow({
+      where: { id: invitation.invitationId }, select: { status: true, expiredAt: true, acceptedAt: true },
+    });
+    expect(expired).toEqual({ status: CaregiverInvitationStatus.EXPIRED, expiredAt: expect.any(Date), acceptedAt: null });
+    expect(expired.expiredAt?.getTime()).toBeGreaterThanOrEqual(threshold.expiresAt.getTime());
+    expect(await prisma.caregiverRelationship.count()).toBe(0);
+    const audits = await prisma.auditEvent.findMany({
+      where: { actorUserId: caregiver.userId }, select: { action: true, resourceId: true, metadata: true },
+    });
+    expect(audits).toEqual([{
+      action: "caregiver_invitation.expired", resourceId: invitation.invitationId,
+      metadata: { status: CaregiverInvitationStatus.EXPIRED },
+    }]);
+  });
 
   it("rejects source invitation pair mismatches in PostgreSQL and accepts the correct pair through the service", async () => {
     const patient = await createPatient();

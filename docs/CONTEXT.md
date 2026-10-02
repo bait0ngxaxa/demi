@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## Current-status addendum — Phase 17F.4A (2026-10-02)
+
+[17F.4A re-audit](./phases/PHASE_17F4A_FAMILY_REAUDIT_UAT_READINESS.md) records the complete implemented Family source/security review and PostgreSQL regression evidence; [17F.4B manual device UAT sheet](./phases/PHASE_17F4B_FAMILY_DEVICE_UAT_CHECKLIST.md) contains unexecuted evidence fields. **17F.1 IMPLEMENTED / CLOSED; 17F.2 IMPLEMENTED (synthetic/demo only); 17F.3 IMPLEMENTED; 17F.4A automated/security/PostgreSQL re-audit = PASS. P17F-L04 OPEN — AUTOMATED/INTEGRATION RE-AUDIT COMPLETE; REAL-DEVICE UAT PENDING. P17F-L05 OPEN / FUTURE; Q5 real-data delegated use GOVERNANCE BLOCKED; Phase 17F overall NOT CLOSED.** L01/L02/L03/L06 remain CLOSED / OWNER APPROVED. No real-device/browser evidence or controller/privacy approval is supplied by automated tests. Historical phase sections below remain unchanged.
+
 เอกสารนี้เป็นจุดเริ่มต้นแบบกระชับสำหรับ developer และ AI coding agent ก่อนลงมือเปลี่ยนระบบ อ่านรายละเอียดที่ [Architecture Baseline](./architecture/DEMI_ARCHITECTURE_BASELINE.md) และเหตุผลของแต่ละ decision ที่ [ADR Index](./adr/README.md)
 
 ## Project Purpose
