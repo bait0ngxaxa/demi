@@ -12,6 +12,10 @@ Original G01..G08 foundation closeout below remains historical and unchanged. Ph
 
 Separate immutable family-appointment-read-v1 data grant to exact ACTIVE relationship/Patient/caregiver/one Patient-selected PHR; explicit proposal + caregiver acceptance. Exactly hospitalName/type/scheduledAt/durationMinutes/locationType/status; rolling upcoming 90-day SCHEDULED/CANCELLED ongoing same-PHR feed; NO independent automatic expiry. Existing family-delegation-v1 acceptance remains ZERO-data. Terminal exact-grant revoke or parent revoke/withdraw immediately denies after commit; temporary Hospital/account ineligibility may resume unchanged authority. No future-PHR/replacement-parent inheritance, mutations/export/other Patient resources. Expansion requires new immutable grant/version + acceptance. Lifecycle audit only, no ordinary durable per-read AuditEvent. L03 QR OPEN / 17F.3; L04 re-audit/UAT OPEN; L05 expiry/renewal OPEN / FUTURE; minors/legal representation deferred, medication 17G, 17E.2 parked. Earlier candidate/OPEN discussion below is historical and superseded only to this exact extent.
 
+## Current-status addendum — Phase 17F.3A (2026-10-02)
+
+[17F.3A QR decision pack](./PHASE_17F3_FAMILY_INVITATION_QR_DECISION_PACK.md) บันทึก source evidence และ owner checklist Q18–Q29; recommendations NOT OWNER APPROVED. **P17F-L03 OPEN; 17F.3 NOT IMPLEMENTED / NOT CLEARED**. Current source now implements 17F.2 appointment-read v1 for synthetic/demo as recorded in the [implementation handoff](./PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md); historical 17F.2B clearance statements above are retained. Real-data Q5 gate remains GOVERNANCE BLOCKED; L04 OPEN; L05 OPEN / FUTURE. No runtime/schema/migration or authority change; historical evidence below is unchanged.
+
 ## 1. Disposition
 
 Documentation / requirement / domain / authorization contract only. No product implementation, permissions, Prisma schema, migration, route, Server Action, UI page, invitation token, or QR generation is added. Family/Caregiver is **not implemented**.
