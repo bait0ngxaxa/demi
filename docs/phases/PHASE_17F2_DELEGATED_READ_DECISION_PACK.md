@@ -2,11 +2,11 @@
 
 วันที่: 2026-10-01
 
-สถานะปัจจุบันหลัง 17F.2B: **DECISIONS CLOSED / OWNER APPROVED; CLEARED FOR IMPLEMENTATION (synthetic/demo only); NOT IMPLEMENTED**
+สถานะปัจจุบันหลัง implementation: **DECISIONS CLOSED / OWNER APPROVED; 17F.2 appointment-read v1 IMPLEMENTED (synthetic/demo only)**
 
 **P17F-L01 / P17F-L02 / P17F-L06 = CLOSED / OWNER APPROVED เฉพาะ bounded appointment-read slice**
 
-Owner อนุมัติ Q1–Q17 ตาม Phase 17F.2B instruction แล้ว ดู section 19 และ [implementation contract](./PHASE_17F2B_DELEGATED_APPOINTMENT_READ_CONTRACT.md) เป็น current authority. **Runtime delegated Patient-resource allowlist = EMPTY; real-data delegated deployment/UAT = GOVERNANCE BLOCKED pending external Q5 approval.**
+Owner อนุมัติ Q1–Q17 ตาม Phase 17F.2B instruction แล้ว ดู section 19 และ [implementation contract](./PHASE_17F2B_DELEGATED_APPOINTMENT_READ_CONTRACT.md) เป็น current authority. **Delegated capability = `family-appointment-read-v1` only; server deployment gate DEFAULT DISABLED; real-data delegated deployment/UAT = GOVERNANCE BLOCKED pending external Q5 approval.** See [implementation handoff](./PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md).
 
 Sections 1–17 และ Appendix A เก็บหลักฐาน/การวิเคราะห์ ณ 17F.2A ไว้เป็นประวัติ: คำว่า OPEN, UNANSWERED, NOT OWNER APPROVED และ DO NOT IMPLEMENT YET ในส่วนประวัติไม่ใช่สถานะปัจจุบัน ตัวเลือกที่ owner ไม่เลือกไม่ได้รับอนุมัติ ไม่มีการขยาย approval ไปยัง care/profile/Goal Plan หรือ resource อื่น.
 
@@ -330,7 +330,7 @@ National ID/hash, credentials/security/recovery, HN, arbitrary DOB/derived age, 
 
 ## 18. Current closeout / remaining future gates
 
-Actual 17F.2B starting HEAD: `484c9082603781dc6ead41a54fa0dc0b0c743a42`; 17F.1 remains IMPLEMENTED / CLOSED. **L01/L02/L06 CLOSED / OWNER APPROVED** for the exact bounded package in section 19. **17F.2 CLEARED FOR IMPLEMENTATION (synthetic/demo data only), NOT IMPLEMENTED; runtime delegated Patient-resource allowlist EMPTY.** No runtime/schema/migration changed by closeout.
+Actual 17F.2B starting HEAD: `484c9082603781dc6ead41a54fa0dc0b0c743a42`; 17F.1 remains IMPLEMENTED / CLOSED. **L01/L02/L06 CLOSED / OWNER APPROVED** for the exact bounded package in section 19. At the historical 17F.2B closeout, 17F.2 was cleared but not implemented, with an EMPTY runtime allowlist; no runtime/schema/migration changed by that closeout. **The subsequent 17F.2 appointment-read v1 is now IMPLEMENTED (synthetic/demo only), with `family-appointment-read-v1` as the only delegated capability and a default-disabled server operational gate.**
 
 Q3A rolling records and Q17A no independent expiry are separately and explicitly approved, not inherited from parent relationship. Ongoing same-PHR rolling 90-day feed is approved; 90 days is NOT grant duration. L05 OPEN / FUTURE for later expiry/renewal/periodic reacceptance/notification only. L03 OPEN / QR 17F.3; L04 OPEN / re-audit/UAT closure. Minors/legal representation deferred, medication 17G, Phase 17E.2 consent parked. Real-data delegated use remains externally governance-blocked under Q5; synthetic/demo implementation/UAT does not wait for that approval.
 

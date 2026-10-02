@@ -212,6 +212,8 @@ export async function revokeCaregiverRelationshipAction(
     const actor = await getProtectedApplicationActor();
     await revokeCaregiverRelationship(actor, parsed.data.relationshipId);
     revalidatePath("/app/family");
+    revalidatePath("/app/family/grants/[grantId]/appointments", "page");
+    revalidatePath("/app/family/grants/[grantId]/appointments/[appointmentId]", "page");
     return { status: "SUCCESS", message: "ยุติความสัมพันธ์ผู้ดูแลแล้ว" };
   } catch (error: unknown) {
     return safeMutationError(error);
@@ -233,6 +235,8 @@ export async function withdrawOwnCaregiverRelationshipAction(
     const actor = await getProtectedApplicationActor();
     await withdrawOwnCaregiverRelationship(actor, parsed.data.relationshipId);
     revalidatePath("/app/family");
+    revalidatePath("/app/family/grants/[grantId]/appointments", "page");
+    revalidatePath("/app/family/grants/[grantId]/appointments/[appointmentId]", "page");
     return { status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" };
   } catch (error: unknown) {
     return safeMutationError(error);

@@ -151,6 +151,12 @@ enum CaregiverInvitationStatus {
   EXPIRED
 }
 
+enum CaregiverAppointmentGrantStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
 enum CaregiverRelationshipStatus {
   ACTIVE
   REVOKED
@@ -195,6 +201,10 @@ model User {
   caregiverInvitationsRevoked CaregiverInvitation[] @relation("CaregiverInvitationRevoker")
   caregiverRelationships CaregiverRelationship[] @relation("CaregiverRelationshipCaregiver")
   caregiverRelationshipsRevoked CaregiverRelationship[] @relation("CaregiverRelationshipRevoker")
+  appointmentGrants CaregiverAppointmentGrant[] @relation("AppointmentGrantCaregiver")
+  appointmentGrantsProposed CaregiverAppointmentGrant[] @relation("AppointmentGrantProposer")
+  appointmentGrantsAccepted CaregiverAppointmentGrant[] @relation("AppointmentGrantAccepter")
+  appointmentGrantsRevoked CaregiverAppointmentGrant[] @relation("AppointmentGrantRevoker")
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
@@ -302,8 +312,11 @@ model PatientProfile {
   hospitalRelationships PatientHospitalRelationship[]
   caregiverInvitations CaregiverInvitation[]
   caregiverRelationships CaregiverRelationship[]
+  appointmentGrants CaregiverAppointmentGrant[]
   patientClassification PatientClassification?
   classificationHistory PatientClassificationHistory[]
+
+  @@unique([id, personId])
 }
 
 model PatientClassification {
@@ -347,6 +360,7 @@ model PatientHospitalRelationship {
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  appointmentGrants CaregiverAppointmentGrant[]
   hospitalProfile PatientHospitalProfile?
   accountRecoveries AccountRecovery[]
   osmAssignments PatientOsmAssignment[]
@@ -363,6 +377,7 @@ model PatientHospitalRelationship {
 
   @@unique([patientProfileId, hospitalId])
   @@unique([id, hospitalId])
+  @@unique([id, patientProfileId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
 }
@@ -434,8 +449,47 @@ model CaregiverRelationship {
   sourceInvitation CaregiverInvitation @relation(fields: [sourceInvitationId], references: [id], onDelete: Restrict)
   revokedByUser User? @relation("CaregiverRelationshipRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
 
+  appointmentGrants CaregiverAppointmentGrant[]
+
+  @@unique([id, patientProfileId, caregiverUserId])
   @@index([patientProfileId, createdAt])
   @@index([caregiverUserId, createdAt])
+}
+
+model CaregiverAppointmentGrant {
+  id String @id @default(uuid()) @db.Uuid
+  caregiverRelationshipId String @db.Uuid
+  patientProfileId String @db.Uuid
+  patientPersonId String @db.Uuid
+  caregiverUserId String @db.Uuid
+  caregiverPersonId String @db.Uuid
+  patientHospitalRelationshipId String @db.Uuid
+  contractVersion String @db.VarChar(64)
+  status CaregiverAppointmentGrantStatus @default(PENDING)
+  proposedByUserId String @db.Uuid
+  proposedAt DateTime @default(now()) @db.Timestamptz(3)
+  acceptedByUserId String? @db.Uuid
+  acceptedAt DateTime? @db.Timestamptz(3)
+  revokedByUserId String? @db.Uuid
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  caregiverRelationship CaregiverRelationship @relation(fields: [caregiverRelationshipId, patientProfileId, caregiverUserId], references: [id, patientProfileId, caregiverUserId], onDelete: Restrict, onUpdate: Restrict)
+  patientProfile PatientProfile @relation(fields: [patientProfileId, patientPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  caregiverUser User @relation("AppointmentGrantCaregiver", fields: [caregiverUserId, caregiverPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId, patientProfileId], references: [id, patientProfileId], onDelete: Restrict, onUpdate: Restrict)
+  proposedByUser User @relation("AppointmentGrantProposer", fields: [proposedByUserId, patientPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  acceptedByUser User? @relation("AppointmentGrantAccepter", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  revokedByUser User? @relation("AppointmentGrantRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientProfileId, createdAt])
+  @@index([caregiverUserId, createdAt])
+  @@index([caregiverRelationshipId])
+  @@index([patientHospitalRelationshipId])
+  @@index([proposedByUserId])
+  @@index([acceptedByUserId])
+  @@index([revokedByUserId])
 }
 
 model AccountRecovery {

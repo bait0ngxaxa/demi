@@ -392,8 +392,10 @@ function CaregiverPerspective({
 
 export function FamilyManagementWorkspace({
   overview,
+  appointmentSharingEnabled = false,
 }: {
   overview: FamilyManagementOverview;
+  appointmentSharingEnabled?: boolean;
 }): React.JSX.Element {
   return (
     <div className="max-w-4xl">
@@ -405,7 +407,7 @@ export function FamilyManagementWorkspace({
         <p className="font-semibold">การเชื่อมนี้ยังไม่ให้สิทธิ์เข้าถึงข้อมูลผู้ป่วย</p>
         <p className="mt-1">
           ผู้ดูแลจะไม่สามารถอ่านโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลจากความสัมพันธ์นี้
-          ระบบยังไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพในเฟสนี้
+          {appointmentSharingEnabled ? "สิทธิ์ดูนัดหมายต้องเสนอและยอมรับแยกต่างหากในส่วนแชร์นัดหมาย" : "ระบบยังไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพในเฟสนี้"}
         </p>
       </Alert>
       {overview.patient ? <PatientPerspective overview={overview.patient} /> : null}

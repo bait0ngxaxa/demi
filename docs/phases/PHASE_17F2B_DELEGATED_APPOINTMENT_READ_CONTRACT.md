@@ -2,11 +2,11 @@
 
 วันที่: 2026-10-01
 
-## 1. Baseline / current status
+## 1. Historical owner-closeout baseline / current status
 
 Actual starting HEAD: `484c9082603781dc6ead41a54fa0dc0b0c743a42` (`docs(phase-17f2a): make grant lifetime an independent owner decision`); clean working tree. This is a DOCUMENTATION / OWNER-DECISION CLOSEOUT only. Owner approval is the explicit Phase 17F.2B instruction, not an inference from earlier recommendations.
 
-**P17F-L01 / P17F-L02 / P17F-L06 = CLOSED / OWNER APPROVED for this bounded slice only. Phase 17F.2 = CLEARED FOR IMPLEMENTATION for synthetic/demo data; NOT IMPLEMENTED. Runtime delegated Patient-resource allowlist remains EMPTY. Real-data delegated deployment/UAT = GOVERNANCE BLOCKED pending external Q5 approval.**
+**P17F-L01 / P17F-L02 / P17F-L06 = CLOSED / OWNER APPROVED for this bounded slice only. Phase 17F.2 appointment-read v1 = IMPLEMENTED for synthetic/demo data. Delegated Patient-resource capability = `family-appointment-read-v1` only; operational deployment gate DEFAULT DISABLED. See the [implementation handoff](./PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md). Future-work wording in the original impact map is historical 17F.2B planning evidence. Real-data delegated deployment/UAT = GOVERNANCE BLOCKED pending external Q5 approval.**
 
 17F.0 and G01..G08 remain CLOSED; 17F.1 remains IMPLEMENTED / CLOSED for relationship-security foundation. Existing ACTIVE User/Person only, no CAREGIVER role, exact pair/source-invitation binding, secure invitation/digest-at-rest, explicit acceptance, 24-hour relationship invitation TTL, no automatic ACTIVE relationship expiry, many-to-many, audited terminal Patient revoke/caregiver withdrawal and management-only opposite-party names remain unchanged. The 24-hour invitation TTL does not define a data-grant lifetime or silently impose a data-grant proposal TTL.
 
@@ -47,7 +47,7 @@ All decisions below are explicitly approved; none authorizes broader Family disc
 | P17F-L04 | OPEN | Implementation re-audit / delivered-scope UAT closure |
 | P17F-L05 | OPEN / FUTURE | Any later automatic expiry, renewal, periodic reacceptance or expiry notification requires its own approved semantics |
 
-Implementation clearance is only for **Family delegated appointment read v1 using synthetic/demo data**. Runtime remains unchanged until the next implementation task. Q5 is a real-data deployment/governance gate, not a synthetic implementation blocker.
+Implementation clearance is only for **Family delegated appointment read v1 using synthetic/demo data**. That documentation closeout left runtime unchanged; the subsequent [17F.2 implementation](./PHASE_17F2_DELEGATED_APPOINTMENT_READ_IMPLEMENTATION.md) now delivers this bounded slice behind a default-disabled server gate. Q5 is a real-data deployment/governance gate, not a synthetic implementation blocker.
 
 ## 4. Immutable contract / exact disclosed projection
 
@@ -220,6 +220,6 @@ Additionally verify boundary timestamps, exact null preservation, deterministic 
 
 ## 16. Remaining gates / handoff and validation
 
-17F.2 implementation next, bounded synthetic/demo only; **NOT IMPLEMENTED**, runtime allowlist **EMPTY**. L03 QR OPEN / 17F.3; L04 re-audit/UAT closure OPEN / 17F.4; L05 OPEN / FUTURE automatic expiry/renewal expansion. Medication 17G, minors/legal representation deferred, Phase 17E.2 parked; other care/Health Plan/notification/Wellness decisions untouched. Real-data delegated deployment/UAT remains externally governance-blocked.
+17F.2 appointment-read v1 **IMPLEMENTED**, bounded synthetic/demo only; delegated capability **`family-appointment-read-v1` only**, server deployment gate **DEFAULT DISABLED**. L03 QR OPEN / 17F.3; L04 re-audit/UAT closure OPEN / 17F.4; L05 OPEN / FUTURE automatic expiry/renewal expansion. Medication 17G, minors/legal representation deferred, Phase 17E.2 parked; other care/Health Plan/notification/Wellness decisions untouched. Real-data delegated deployment/UAT remains externally governance-blocked.
 
 Closeout validation passed: complete diff/path review confirms six intended documentation files only; Q1–Q17 match in both closeout tables, six approved fields and 40 criteria verified; 251 local Markdown links resolve; strict UTF-8/no replacement characters and no BOM, existing line-ending styles preserved; historical analysis, all 13 select snapshots and original 17A discovery unchanged; gate/status assertions and `git diff --check` passed. No runtime/schema/migration edits, no tests/integration/build/dev server/Prisma commands. Commit only intended documentation after review.

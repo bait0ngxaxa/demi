@@ -2,6 +2,14 @@ import "server-only";
 
 import { z } from "zod";
 
+/** Operational gate only. Invalid configuration also fails closed. */
+export function isFamilyDelegatedAppointmentReadEnabled(): boolean {
+  const parsed = z.enum(["true", "false"]).optional().safeParse(
+    process.env.FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED,
+  );
+  return parsed.success && parsed.data === "true";
+}
+
 const postgresUrlSchema = z
   .url()
   .refine((value) => value.startsWith("postgres://") || value.startsWith("postgresql://"), {
