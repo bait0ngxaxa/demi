@@ -1,6 +1,6 @@
 # Phase 17F.4B — Family / Caregiver Real-device UAT Checklist
 
-เอกสารนี้เป็นแบบบันทึกหลักฐานด้วยอุปกรณ์และเบราว์เซอร์จริงสำหรับ `bait0ngxaxa/demi` ไม่ใช่ผลการทดสอบที่ดำเนินการแล้ว ทุกช่องผลจริงและ PASS/FAIL เว้นว่างไว้ ผู้ทดสอบต้องกรอกหลังทำแต่ละกรณีจริงเท่านั้น ผล Node/unit/PostgreSQL integration ใช้แทนหลักฐาน camera, redirect, fragment, in-app browser หรือ scan reliability ไม่ได้
+เอกสารนี้เป็นแบบบันทึกหลักฐานด้วยอุปกรณ์และเบราว์เซอร์จริงสำหรับ `bait0ngxaxa/demi` ไม่ใช่ผลการทดสอบที่ดำเนินการแล้ว สถานะ scenario และ readiness ต้องบันทึกตามสิ่งที่ตรวจได้; PASS/FAIL ใช้เฉพาะ scenario ที่ execute จริง ส่วนกรณีที่ยังไม่ทำต้องระบุ NOT EXECUTED. ดูผล readiness ใน Section 8. ผล Node/unit/PostgreSQL integration ใช้แทนหลักฐาน camera, redirect, fragment, in-app browser หรือ scan reliability ไม่ได้
 
 สถานะตั้งต้น: **P17F-L04 OPEN — REAL-DEVICE UAT PENDING; Phase 17F overall NOT CLOSED**. P17F-L05 OPEN / FUTURE; Q5 real Patient delegated-data use GOVERNANCE BLOCKED. ใช้ synthetic/demo data เท่านั้น ไม่ใส่รหัสผ่าน credentials token จริง National ID HN หรือ Patient PII ในเอกสาร/ภาพหลักฐาน ไม่เปิดใช้ข้อมูลจริงเพียงเพราะ automated re-audit ผ่านหรือ feature flag เปิดอยู่
 
@@ -10,15 +10,15 @@
 
 | รายการ | ผู้ทดสอบกรอก |
 | --- | --- |
-| Tested immutable commit SHA | |
-| Environment HTTPS URL / hostname | |
-| วันที่/เวลาพร้อม timezone | |
-| ผู้ทดสอบ / evidence owner | |
-| ยืนยัน synthetic/demo data only (UAT-DATA-01) | |
-| ยืนยัน actors/roles ตาม UAT-ACTOR-01; ไม่มี credentials ในเอกสาร | |
-| Feature flag `FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED` ในรอบนี้ | |
-| ขอบเขต browser support ที่ตกลงใช้กับ UAT รอบนี้ | |
-| Evidence storage ที่จำกัดสิทธิ์และลบ token/PII จากภาพแล้ว | |
+| Tested immutable commit SHA | NONE — DEPLOYMENT SHA UNVERIFIED; local source HEAD ไม่ถือเป็น deployed/tested SHA |
+| Environment HTTPS URL / hostname | NOT PROVIDED / NOT VERIFIED |
+| วันที่/เวลาพร้อม timezone | ประเมินความพร้อม 2026-10-02 11:47 Asia/Bangkok; ไม่มี scenario execution |
+| ผู้ทดสอบ / evidence owner | Codex ทำ readiness assessment เท่านั้น; ไม่มี scenario tester/evidence owner |
+| ยืนยัน synthetic/demo data only (UAT-DATA-01) | ไม่มีการเข้าถึง environment/data; ไม่ใช้ Patient data จริง; synthetic actors ยังไม่ verified |
+| ยืนยัน actors/roles ตาม UAT-ACTOR-01; ไม่มี credentials ในเอกสาร | NOT EXECUTED — ไม่มี synthetic deployment/account ให้ตรวจ; ไม่บันทึก credentials |
+| Feature flag `FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED` ในรอบนี้ | UNKNOWN — ไม่ทราบค่าที่ deploy; .env.example ไม่ใช่หลักฐาน deployment |
+| ขอบเขต browser support ที่ตกลงใช้กับ UAT รอบนี้ | Desktop Chrome, physical iOS Safari, physical Android Chrome, LINE in-app browser; Facebook ไม่อยู่ใน minimum target รอบนี้ |
+| Evidence storage ที่จำกัดสิทธิ์และลบ token/PII จากภาพแล้ว | ไม่มี screenshot/video/network artifact; ไม่มี token หรือ PII ถูกเก็บ |
 
 ก่อนเริ่มให้ตรวจ commit ที่ deploy จริงและ hostname HTTPS ที่อุปกรณ์เข้าถึงได้ ใช้ข้อมูลที่สร้างขึ้นเพื่อทดสอบ ไม่คัดลอก production Patient records บันทึก account aliases ต่อไปนี้แทนตัวตนจริง ส่วน credentials เก็บนอก repository ตามช่องทาง UAT ที่ได้รับอนุญาต เมื่อหลักฐานอาจมี QR/URL fragment ให้ปิดบัง secret โดยไม่ปิดบังข้อสังเกตที่ต้องตรวจ ใช้ invitation ใหม่และ revoke secret ที่เผยในภาพ/clipboard หลังทดสอบ
 
@@ -42,11 +42,11 @@ H1/H2/H3 เป็น Hospital ทดสอบคนละ entity; PHR A-H1, A-H
 
 | Platform code | Required surface | Device/browser/version field | Coverage/result field |
 | --- | --- | --- | --- |
-| IOS | iPhone camera → iOS Safari | | |
-| AND | Android camera → Chrome | | |
-| LINE | LINE in-app browser บน iOS หรือ Android; ระบุ OS และ LINE version | | |
-| DESK | Desktop Chrome control; QR แสดงบนอีกอุปกรณ์เมื่อทดสอบ camera | | |
-| FB | Facebook in-app browser เฉพาะเมื่ออยู่ใน declared support target; ถ้าไม่รองรับให้บันทึก NOT IN TARGET พร้อมเหตุผล | | |
+| IOS | iPhone camera → iOS Safari | ไม่มีอุปกรณ์/OS/browser version ให้ตรวจ | NOT EXECUTED — DEPLOYMENT SHA UNVERIFIED |
+| AND | Android camera → Chrome | ไม่มีอุปกรณ์/OS/browser version ให้ตรวจ | NOT EXECUTED — DEPLOYMENT SHA UNVERIFIED |
+| LINE | LINE in-app browser บน iOS หรือ Android; ระบุ OS และ LINE version | ไม่มีอุปกรณ์/OS/LINE version ให้ตรวจ | NOT EXECUTED — DEPLOYMENT SHA UNVERIFIED |
+| DESK | Desktop Chrome control; QR แสดงบนอีกอุปกรณ์เมื่อทดสอบ camera | Chrome เห็นเฉพาะ ChatGPT tab; version ไม่ทราบ | NOT EXECUTED — ไม่มี UAT URL/SHA หรือ second device |
+| FB | Facebook in-app browser เฉพาะเมื่ออยู่ใน declared support target; ถ้าไม่รองรับให้บันทึก NOT IN TARGET พร้อมเหตุผล | ไม่ประกาศเป็น target ใน minimum scope นี้ | NOT IN TARGET for this UAT: declared minimum คือ Desktop Chrome, iOS Safari, Android Chrome และ LINE; ไม่อ้าง Facebook support |
 
 กรณี S01–S21 ด้านล่างต้องมี record แยกต่อ platform ที่เกี่ยวข้องบน IOS/AND/LINE/DESK; FB ต้องทำเช่นเดียวกันเมื่อเป็น support target. กรณี camera ให้ desktop เป็น display/control แล้วใช้ physical IOS/AND camera ไม่ถือว่า desktop simulation พิสูจน์ camera ได้ หาก scenario ใช้ไม่ได้กับ platform ให้บันทึก NOT APPLICABLE พร้อมเหตุผลจริง ห้ามเปลี่ยนเป็น PASS
 
@@ -107,21 +107,21 @@ Automated/service/DB coverage ดูรายงาน 17F.4A; ตาราง�
 
 | Journey | Setup / actor / steps | Expected manual result / sensitive observation | Actual result / evidence record |
 | --- | --- | --- | --- |
-| J1 Relationship happy path | A issue → C1 opens → exact preview → explicit accept | ACTIVE exact relationship; no auto appointment grant; S01/S02 | |
-| J2 Wrong recipient | A issue to C1 → W1 opens/attempts accept | generic unavailable/no identity/no acceptance; S03 | |
-| J3 Pending invite revoke | A issue → A revoke → C1 old link/QR | cannot activate; S08 | |
-| J4 Rejection | C1 reject → reopen/attempt accept | terminal; S07 | |
-| J5 Parent revoke | ACTIVE parent + grant → A revoke relationship → C1 fresh list/detail | all children denied after commit; previous rendering limitation recorded | |
-| J6 Caregiver withdrawal | ACTIVE parent + grant → C1 withdraw → fresh list/detail | exact parent terminal/all children denied; A account/data unchanged | |
-| J7 Appointment sharing | ACTIVE parent → A proposes A-H1 → C1 explicit grant accept → list/detail | exactly six disclosed fields; no notes/HN/staff/clinical payload | |
-| J8 Cross-Hospital | A-H1 accepted grant only → try A-H2 list/detail/cursor | foreign PHR denied; no Hospital inheritance | |
-| J9 Future appointment | add eligible synthetic same A-H1 appointment → C1 fresh list | enters feed without reacceptance; same six fields | |
-| J10 New Hospital | create A-H3 → try appointment without separate grant | denied until new exact proposal+acceptance | |
-| J11 Grant revoke | ACTIVE grant → A revoke → C1 refresh/list/detail/old continuation | immediate fresh-read deny; parent/other grants unaffected | |
-| J12 Temporary eligibility | suspend Hospital/User or remove Patient PATIENT role in isolated fixture → fresh read → restore same identity/entity | deny then unchanged unrevoked scope resumes; terminal grants never resume | |
-| J13 Parent replacement | revoke/withdraw old parent → new invitation+accept → use old grant URL | old grant not inherited; new sharing needs separate acceptance | |
-| J14 Feature gate | flag disabled deployment → relationship workflow → grant operations/read; enabled separate round | Family relationship still works; all delegated operations deny while disabled | |
-| J15 QR transport | compare copy URL/decoded QR in redacted observation → scan/open → inspect state before explicit accept | identical existing link; ZERO authority from scan/render; S02/S13/S14/S21 | |
+| J1 Relationship happy path | A issue → C1 opens → exact preview → explicit accept | ACTIVE exact relationship; no auto appointment grant; S01/S02 | NOT EXECUTED — ดู Section 8 |
+| J2 Wrong recipient | A issue to C1 → W1 opens/attempts accept | generic unavailable/no identity/no acceptance; S03 | NOT EXECUTED — ดู Section 8 |
+| J3 Pending invite revoke | A issue → A revoke → C1 old link/QR | cannot activate; S08 | NOT EXECUTED — ดู Section 8 |
+| J4 Rejection | C1 reject → reopen/attempt accept | terminal; S07 | NOT EXECUTED — ดู Section 8 |
+| J5 Parent revoke | ACTIVE parent + grant → A revoke relationship → C1 fresh list/detail | all children denied after commit; previous rendering limitation recorded | NOT EXECUTED — ดู Section 8 |
+| J6 Caregiver withdrawal | ACTIVE parent + grant → C1 withdraw → fresh list/detail | exact parent terminal/all children denied; A account/data unchanged | NOT EXECUTED — ดู Section 8 |
+| J7 Appointment sharing | ACTIVE parent → A proposes A-H1 → C1 explicit grant accept → list/detail | exactly six disclosed fields; no notes/HN/staff/clinical payload | NOT EXECUTED — ดู Section 8 |
+| J8 Cross-Hospital | A-H1 accepted grant only → try A-H2 list/detail/cursor | foreign PHR denied; no Hospital inheritance | NOT EXECUTED — ดู Section 8 |
+| J9 Future appointment | add eligible synthetic same A-H1 appointment → C1 fresh list | enters feed without reacceptance; same six fields | NOT EXECUTED — ดู Section 8 |
+| J10 New Hospital | create A-H3 → try appointment without separate grant | denied until new exact proposal+acceptance | NOT EXECUTED — ดู Section 8 |
+| J11 Grant revoke | ACTIVE grant → A revoke → C1 refresh/list/detail/old continuation | immediate fresh-read deny; parent/other grants unaffected | NOT EXECUTED — ดู Section 8 |
+| J12 Temporary eligibility | suspend Hospital/User or remove Patient PATIENT role in isolated fixture → fresh read → restore same identity/entity | deny then unchanged unrevoked scope resumes; terminal grants never resume | NOT EXECUTED — ดู Section 8 |
+| J13 Parent replacement | revoke/withdraw old parent → new invitation+accept → use old grant URL | old grant not inherited; new sharing needs separate acceptance | NOT EXECUTED — ดู Section 8 |
+| J14 Feature gate | flag disabled deployment → relationship workflow → grant operations/read; enabled separate round | Family relationship still works; all delegated operations deny while disabled | NOT EXECUTED — ดู Section 8 |
+| J15 QR transport | compare copy URL/decoded QR in redacted observation → scan/open → inspect state before explicit accept | identical existing link; ZERO authority from scan/render; S02/S13/S14/S21 | NOT EXECUTED — ดู Section 8 |
 
 ## 7. L04 closure evidence gate
 
@@ -129,17 +129,75 @@ Automated/service/DB coverage ดูรายงาน 17F.4A; ตาราง�
 
 | Minimum required actual evidence | Record/evidence reference | Reviewer conclusion |
 | --- | --- | --- |
-| Physical iOS หรือ Android camera → deployed HTTPS invitation flow | | |
-| Anonymous login handoff พร้อม actual destination/fragment behavior | | |
-| Exact recipient explicit acceptance | | |
-| Wrong recipient generic unavailable/no acceptance | | |
-| Terminal QR replay: accepted/rejected/revoked/expired | | |
-| Fragment containment/removal; authenticated `/login#token`; redirect-before-hydration cases | | |
-| อย่างน้อยหนึ่ง in-app browser ใน declared support target | | |
-| Deployed approved HTTPS hostname และ QR scan reliability observation | | |
-| Refresh/back/BFCache, login retry, copy/warning, QR failure fallback ตาม support matrix | | |
-| Automated re-audit report / commit และ unresolved defect review | | |
+| Physical iOS หรือ Android camera → deployed HTTPS invitation flow | | NOT EXECUTED — ไม่มีอุปกรณ์จริงและ deployment ที่ตรวจ SHA ได้ |
+| Anonymous login handoff พร้อม actual destination/fragment behavior | | NOT EXECUTED — ไม่พบ deployed URL/SHA |
+| Exact recipient explicit acceptance | | NOT EXECUTED — ไม่มี synthetic actor/environment |
+| Wrong recipient generic unavailable/no acceptance | | NOT EXECUTED — ไม่มี synthetic actor/environment |
+| Terminal QR replay: accepted/rejected/revoked/expired | | NOT EXECUTED — ไม่มี invitation test fixtures/environment |
+| Fragment containment/removal; authenticated `/login#token`; redirect-before-hydration cases | | NOT EXECUTED — actual browser navigation ไม่ได้ตรวจ |
+| อย่างน้อยหนึ่ง in-app browser ใน declared support target | | NOT EXECUTED — ไม่มี physical device/LINE session |
+| Deployed approved HTTPS hostname และ QR scan reliability observation | | NOT EXECUTED — hostname/QR/device ไม่พร้อมตรวจ |
+| Refresh/back/BFCache, login retry, copy/warning, QR failure fallback ตาม support matrix | | NOT EXECUTED — S20 controlled failure injection ก็ไม่ได้เตรียม |
+| Automated re-audit report / commit และ unresolved defect review | [17F.4A re-audit](./PHASE_17F4A_FAMILY_REAUDIT_UAT_READINESS.md), source HEAD 12c63c933e5a0d7de6e65a24621c123f35f17a49 | PASS เป็น prerequisite เท่านั้น; ไม่มี unresolved P0/P1/P2 ตามรายงาน |
 
-Closure decision / reviewer / timestamp: ____________________
+Closure decision / reviewer / timestamp: **P17F-L04 OPEN — BLOCKED BEFORE SCENARIO EXECUTION; DEPLOYMENT SHA UNVERIFIED.** Codex readiness assessment / 2026-10-02 11:47 Asia/Bangkok.
 
 หากยังไม่มีหลักฐานจริงครบ ให้รายงาน **P17F-L04 = OPEN — REAL-DEVICE UAT PENDING; Phase 17F overall = NOT CLOSED** ต่อไป แม้ 17F.4A automated re-audit = PASS. Device evidence นี้ไม่ปิด Q5 ไม่อนุมัติ real-data use และไม่ปิด L05. Distributed/shared abuse protection ยังคงเป็น deployment hardening gate; in-process throttling/uniqueness ไม่ใช่หลักฐาน production abuse protection
+
+## 8. ผล readiness assessment และสถานะการดำเนินการ
+
+บันทึกนี้เป็นผลการตรวจความพร้อม ไม่ใช่การอ้างว่าได้รัน S/J แล้ว หยุดก่อน scenario ตามเงื่อนไขที่กำหนด เพราะไม่พบ HTTPS UAT URL หรือหลักฐาน deployed SHA ในเอกสาร/config ที่ตรวจ และไม่มี target device/browser session สำหรับการทดสอบอุปกรณ์จริงในเครื่องมือนี้ สถานะต้องเป็น BLOCKED จนกว่าจะยืนยัน deployment และมีอุปกรณ์จริง
+
+| รายการ | ผลที่ตรวจได้ |
+| --- | --- |
+| Starting HEAD | 12c63c933e5a0d7de6e65a24621c123f35f17a49 — ตรง expected baseline; working tree สะอาดก่อนจัดทำเอกสาร |
+| Tested/deployed commit SHA | ไม่มี — **DEPLOYMENT SHA UNVERIFIED**; ห้ามอนุมานจาก local HEAD |
+| HTTPS URL / deployment ID / deployment timestamp | ไม่มีข้อมูลที่ระบุ deployment สำหรับ synthetic UAT |
+| Browser inventory | CUA พบ Chrome หนึ่ง tab ไป ChatGPT; ไม่พบ UAT site หรือ session ของ product; browser/app version ไม่ทราบ |
+| Physical devices | ไม่มี physical iPhone/Android/camera/LINE device session ให้ทดสอบผ่านเครื่องมือนี้ |
+| Synthetic/demo actors | ไม่มีการ login, สร้าง actor, เปิด invitation หรือแก้ lifecycle; actor/role setup ยังไม่ verified |
+| Patient data | ไม่มีการเข้าถึงข้อมูล; ไม่มี real Patient data ใช้ |
+| Feature flag | UNKNOWN; .env.example มีค่า default false แต่ไม่ยืนยันค่าของ deployment |
+| Evidence artifacts | ไม่มี screenshot/video/network trace หรือ scenario evidence; ไม่มี token/credentials/PII ถูกเก็บ |
+
+### สถานะ S01–S21
+
+ทุกกรณีด้านล่างเป็น **NOT EXECUTED** ด้วยเหตุผลร่วม: deployment HTTPS และ SHA ยังยืนยันไม่ได้ และไม่มี synthetic UAT environment/device พร้อมทดสอบ รายละเอียดขั้นตอนและ expected result ยังคงตาม scenario matrix ใน Section 4
+
+| Scenario | สถานะ | หมายเหตุ |
+| --- | --- | --- |
+| S01 Anonymous QR scan | NOT EXECUTED | ไม่เห็น redirect, login handoff หรือ post-login state จริง |
+| S02 Authenticated exact recipient scan | NOT EXECUTED | ไม่มี C1/session/invitation |
+| S03 Authenticated wrong-account scan | NOT EXECUTED | ไม่มี W1/session/invitation |
+| S04 Caregiver without PATIENT | NOT EXECUTED | ไม่มี C2 account ให้ตรวจ |
+| S05 Multi-role caregiver | NOT EXECUTED | ไม่มี C3/C4 หรือ grant |
+| S06 Accepted QR reopened | NOT EXECUTED | ไม่มี accepted QR |
+| S07 Rejected QR reopened | NOT EXECUTED | ไม่มี rejected QR |
+| S08 Revoked QR reopened | NOT EXECUTED | ไม่มี revoked QR |
+| S09 Expired QR | NOT EXECUTED | ไม่มี synthetic fixture/DB-clock lifecycle |
+| S10 Browser refresh | NOT EXECUTED | ไม่มี UAT page/session |
+| S11 Back navigation | NOT EXECUTED | ไม่มี UAT page หรือ revoke round |
+| S12 BFCache/back-forward restoration | NOT EXECUTED | ไม่มี device/browser authority-revoke round |
+| S13 Same-device copy link | NOT EXECUTED | ไม่มี issuance SUCCESS state |
+| S14 Second-device QR scan | NOT EXECUTED | ไม่มี QR หรือ physical second device |
+| S15 Login failure then retry | NOT EXECUTED | ไม่มี UAT login flow; ไม่มี credentials ถูกกรอก |
+| S16 Already-authenticated /login#token | NOT EXECUTED | redirect, fragment และ destination จริงไม่ทราบ |
+| S17 Fragment removal / invalid transport | NOT EXECUTED | fragment/query/path/returnTo behavior จริงไม่ทราบ |
+| S18 Redirect destination / bounded returnTo | NOT EXECUTED | ไม่มี deployed redirect chain |
+| S19 Screenshot/clipboard warning | NOT EXECUTED | ไม่มี issuance UI; ไม่มี screenshot/clipboard evidence |
+| S20 QR generation failure fallback | NOT EXECUTED — controlled failure injection unavailable | ไม่มี controlled synthetic UAT build/environment สำหรับฉีด failure; ไม่ได้อ้าง PASS |
+| S21 Physical QR scan reliability / HTTPS | NOT EXECUTED | ไม่มี deployed QR, hostname หรือ physical camera |
+
+### สถานะ J1–J15 และ closure gate
+
+J1–J15 ทุก journey เป็น **NOT EXECUTED**: J1 relationship happy path, J2 wrong recipient, J3 pending invite revoke, J4 rejection, J5 parent revoke, J6 caregiver withdrawal, J7 appointment sharing, J8 cross-Hospital, J9 future appointment, J10 new Hospital, J11 grant revoke, J12 temporary eligibility, J13 parent replacement, J14 feature gate, J15 QR transport — ไม่มีข้อใดเริ่มรัน
+
+| กลุ่มผล | PASS | FAIL | NOT EXECUTED |
+| --- | ---: | ---: | ---: |
+| S01–S21 scenarios | 0 | 0 | 21 |
+| J1–J15 journeys | 0 | 0 | 15 |
+| รวม planned manual cases | 0 | 0 | 36 |
+
+FAIL = 0 หมายถึงไม่มี scenario ที่ถูกรันแล้วล้มเหลว; ไม่ใช่ผลผ่านหรือการล้าง defect จาก UAT. Closure gate ที่ยังขาด: physical iOS/Android camera→HTTPS, anonymous login handoff, exact acceptance, wrong-account generic result, C2, accepted/rejected/revoked/expired replay, fragment removal/containment และ /login#token, bounded redirect, LINE, second-device QR, QR reliability, revoke/withdraw fresh-read denial, appointment grant/read, cross-Hospital isolation, field minimization และ feature gate state.
+
+P17F.4A automated/security/PostgreSQL re-audit ยังคงเป็น **PASS** ตามรายงานที่ HEAD ข้างต้น รวมถึงไม่มี unresolved P0/P1/P2 ในรายงานนั้น แต่ไม่ทดแทน closure evidence จริง. P17F-L04 = **OPEN**; Phase 17F.4B = **BLOCKED**; Phase 17F overall = **NOT CLOSED**. Q5 = **GOVERNANCE BLOCKED**; P17F-L05 = **OPEN / FUTURE**. ไม่มี runtime defect ที่สังเกตจาก UAT เพราะไม่มี UAT scenario ถูก execute; ไม่มี fix หรือ retest commit.
