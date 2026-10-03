@@ -1,5 +1,9 @@
 # Phase 17G.2A — Personal Medication Daily Schedule Implementation Contract
 
+## Current implementation-status addendum — Phase 17G.2B (2026-10-03)
+
+**Phase 17G.2 IMPLEMENTED / CLOSED** for the bounded Daily Medication Schedule domain and automated evidence. See [implementation handoff](./PHASE_17G2_DAILY_MEDICATION_SCHEDULE_IMPLEMENTATION_HANDOFF.md) for schema/guard, exact SELF, native TIME mapping, aggregate concurrency, UI and executed verification: 192 unit files / 1,447 tests and 28 real-PostgreSQL integration files / 352 tests PASS; clean/current-history existing-data upgrades, lint/typecheck/build PASS. Browser/device UAT and production deployment were not executed. No reminder/adherence/delivery behavior. 17G.1 IMPLEMENTED / CLOSED; MED-02 REQUIREMENT-GATED; 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 and Q5 unchanged. The original 17G.2A contract-closeout text below is historical and preserved.
+
 **CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** Contract/design closeout only. No runtime, schema, migration, UI, route, service or test implementation is delivered by this task.
 
 ## 1. Authority, baseline and inspected source

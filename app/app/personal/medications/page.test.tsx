@@ -30,4 +30,11 @@ describe("request-time protected medication page", () => {
     vi.mocked(listOwnPersonalMedications).mockRejectedValue(new NotFoundError());
     expect(renderToStaticMarkup(await Page({ searchParams: Promise.resolve({ activeCursor: "foreign" }) }))).toContain("โหลดรายการล่าสุด");
   });
+  it("actor presentation key remounts every selected-item draft on account change", async () => {
+    const first = await Page({ searchParams: Promise.resolve({}) });
+    vi.mocked(getProtectedApplicationActor).mockResolvedValue({ ...actor, userId: "different-account" });
+    const second = await Page({ searchParams: Promise.resolve({}) });
+    expect(first.key).toBeTruthy(); expect(second.key).toBeTruthy(); expect(first.key).not.toBe(second.key);
+    expect(first.key).not.toContain(actor.userId);
+  });
 });

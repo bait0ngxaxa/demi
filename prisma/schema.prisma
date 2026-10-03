@@ -336,9 +336,21 @@ model PersonalMedication {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  schedules MedicationSchedule[]
 
   @@index([patientProfileId, status, createdAt(sort: Desc), id(sort: Desc)], map: "PersonalMedication_active_order_idx")
   @@index([patientProfileId, status, stoppedAt(sort: Desc), id(sort: Desc)], map: "PersonalMedication_stopped_order_idx")
+}
+
+model MedicationSchedule {
+  id                   String   @id @default(uuid()) @db.Uuid
+  personalMedicationId String   @db.Uuid
+  localTime            DateTime @db.Time(6)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+
+  personalMedication PersonalMedication @relation(fields: [personalMedicationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([personalMedicationId, localTime], map: "MedicationSchedule_medication_time_key")
 }
 
 model PatientClassification {

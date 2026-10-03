@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { Role, type PersonalMedicationStatus } from "@prisma/client";
+import { Prisma, Role, type PrismaClient, type PersonalMedicationStatus } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { createPersonalMedication as create, updatePersonalMedication as update, stopPersonalMedication as stop } from "@/modules/medications/services/personal-medication-service";
+import { createPersonalMedication as create, updatePersonalMedication as update, stopPersonalMedication as stop, replacePersonalMedicationSchedules as replace } from "@/modules/medications/services/personal-medication-service";
 import { getOwnPersonalMedication as detail, listOwnPersonalMedications as list } from "@/modules/medications/services/personal-medication-query-service";
 import type { PersonalMedicationDto } from "@/modules/medications/domain/personal-medication-definitions";
+import { fromMedicationTimeCarrier, toMedicationTimeCarrier } from "@/modules/medications/domain/medication-local-time";
+import { MEDICATION_SCHEDULE_MAX_TIMES } from "@/modules/medications/domain/personal-medication-definitions";
 
 const db = getPrisma();
 const now = new Date("2026-10-02T12:00:00.000Z");
@@ -13,6 +15,7 @@ const deps = { database: db, now: () => now };
 const actorIds: string[] = [];
 const personIds: string[] = [];
 const hospitalIds: string[] = [];
+let verifiedDisposable = false;
 
 async function actor(roles: Role[] = [Role.PATIENT], profile = true): Promise<ActorContext> {
   const person = await db.person.create({ data: { identityKeyHash: randomUUID(), givenName: "ข้อมูลส่วนบุคคลทดสอบ" } });
@@ -33,6 +36,9 @@ async function raw(a: ActorContext, status: PersonalMedicationStatus = "ACTIVE",
   return { id: row.id, medicationName: row.medicationName, instructionText: row.instructionText, status: row.status, stoppedAt: row.stoppedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 async function cleanup(): Promise<void> {
+  if (!verifiedDisposable) throw new Error("Disposable verification required for child TRUNCATE");
+  // This suite runs alone/sequentially in its verified local disposable database.
+  await db.$executeRaw`TRUNCATE TABLE "MedicationSchedule"`;
   await db.caregiverAppointmentGrant.deleteMany({ where: { caregiverUserId: { in: actorIds } } });
   await db.caregiverRelationship.deleteMany({ where: { caregiverUserId: { in: actorIds } } });
   await db.caregiverInvitation.deleteMany({ where: { caregiverUserId: { in: actorIds } } });
@@ -50,14 +56,284 @@ async function cleanup(): Promise<void> {
   actorIds.length = 0; personIds.length = 0; hospitalIds.length = 0;
 }
 
+function latch(): { promise: Promise<void>; release: () => void } {
+  let release: () => void = () => undefined;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  return { promise, release };
+}
+
+async function waitForDatabaseLock(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const rows = await db.$queryRaw<{ waiting: boolean }[]>`SELECT "wait_event_type" = 'Lock' AS waiting FROM pg_stat_activity WHERE pid = ${pid}`;
+    if (rows[0]?.waiting) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("Expected database lock wait was not observed");
+}
+
 describe("PersonalMedication real PostgreSQL", () => {
   beforeAll(async () => {
     const url = process.env.DEMI_TEST_DATABASE_URL;
     if (!url || process.env.DATABASE_URL !== url || process.env.DIRECT_URL !== url || process.env.NODE_ENV === "production" || !["localhost", "127.0.0.1", "::1"].includes(new URL(url).hostname)) throw new Error("Verified disposable integration environment required");
     await db.$connect();
+    verifiedDisposable = true;
   });
   afterEach(cleanup);
   afterAll(async () => { await db.$disconnect(); });
+
+  it("replaces/removes/clears sorted schedules, retains unchanged rows and keeps lists minimal", async () => {
+    const a = await actor(); const original = await raw(a);
+    expect((await detail(a, original.id, db)).schedules).toEqual([]);
+    const first = await replace(a, { ...token(original), times: ["23:59", "08:00", "00:00"] }, deps);
+    expect(first.schedules).toEqual([{ localTime: "00:00" }, { localTime: "08:00" }, { localTime: "23:59" }]);
+    const rows = await db.medicationSchedule.findMany({ where: { personalMedicationId: original.id }, orderBy: { localTime: "asc" } });
+    const second = await replace(a, { ...token(first), times: ["08:00", "00:00", "13:30"] }, deps);
+    const nextRows = await db.medicationSchedule.findMany({ where: { personalMedicationId: original.id }, orderBy: { localTime: "asc" } });
+    expect(nextRows.slice(0, 2)).toEqual(rows.slice(0, 2));
+    expect(nextRows[2].id).not.toBe(rows[2].id);
+    const identical = await replace(a, { ...token(second), times: ["13:30", "00:00", "08:00"] }, deps);
+    expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: original.id }, orderBy: { localTime: "asc" } })).toEqual(nextRows);
+    expect(new Date(identical.updatedAt).getTime()).toBe(now.getTime() + 3);
+    const removed = await replace(a, { ...token(identical), times: ["08:00", "13:30"] }, deps);
+    expect(removed.schedules).toEqual([{ localTime: "08:00" }, { localTime: "13:30" }]);
+    const cleared = await replace(a, { ...token(removed), times: [] }, deps);
+    const emptyNoOp = await replace(a, { ...token(cleared), times: [] }, deps);
+    expect(emptyNoOp.schedules).toEqual([]);
+    for (const item of [first, second, identical, removed, cleared, emptyNoOp]) {
+      expect(item).toMatchObject({ medicationName: original.medicationName, instructionText: original.instructionText, status: "ACTIVE", createdAt: original.createdAt, stoppedAt: null });
+      expect(Object.keys(item).sort()).toEqual([...Object.keys(original), "schedules"].sort());
+      for (const schedule of item.schedules) expect(Object.keys(schedule)).toEqual(["localTime"]);
+    }
+    expect(Object.keys((await list(a, { status: "ACTIVE" }, db)).items[0]).sort()).toEqual(Object.keys(original).sort());
+    const audits = await db.auditEvent.findMany({ where: { resourceId: original.id } });
+    expect(audits).toHaveLength(6);
+    for (const audit of audits) expect(audit).toMatchObject({ actorUserId: a.userId, resourceType: "PersonalMedication", action: "personal_medication.schedule_updated", metadata: null });
+    await expect(replace(a, { ...token(first), times: [] }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    await detail(a, original.id, db); await list(a, { status: "ACTIVE" }, db);
+    expect(await db.auditEvent.count({ where: { resourceId: original.id } })).toBe(6);
+  });
+
+  it.each(["UTC", "Asia/Bangkok"])("native TIME round-trip has no offset in DB session %s", async (timezone) => {
+    const a = await actor(); const item = await raw(a);
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('TimeZone', ${timezone}, true)`;
+      const inserted = await tx.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") } });
+      expect(fromMedicationTimeCarrier(inserted.localTime)).toBe("08:00");
+      const read = await tx.medicationSchedule.findFirstOrThrow({ where: { personalMedicationId: item.id } });
+      expect(fromMedicationTimeCarrier(read.localTime)).toBe("08:00");
+      const native = await tx.$queryRaw<{ time: string; type: string }[]>`SELECT "localTime"::text AS time, pg_typeof("localTime")::text AS type FROM "MedicationSchedule" WHERE "personalMedicationId" = ${item.id}::uuid`;
+      expect(native).toEqual([{ time: "08:00:00", type: "time without time zone" }]);
+    });
+    expect((await detail(a, item.id, db)).schedules).toEqual([{ localTime: "08:00" }]);
+  });
+
+  it("enforces same-parent UNIQUE, native minute/range CHECK and FK RESTRICT", async () => {
+    const a = await actor(); const item = await raw(a); const other = await raw(a);
+    await db.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") } });
+    await db.medicationSchedule.create({ data: { personalMedicationId: other.id, localTime: toMedicationTimeCarrier("08:00") } });
+    await expect(db.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") } })).rejects.toMatchObject({ code: "P2002" });
+    for (const invalid of ["08:01:01", "08:01:00.000001", "24:00:00"]) {
+      await expect(db.$executeRaw`INSERT INTO "MedicationSchedule" ("id", "personalMedicationId", "localTime") VALUES (${randomUUID()}::uuid, ${item.id}::uuid, ${invalid}::time)`).rejects.toThrow();
+    }
+    await expect(db.medicationSchedule.create({ data: { personalMedicationId: randomUUID(), localTime: toMedicationTimeCarrier("00:00") } })).rejects.toThrow();
+    await expect(db.personalMedication.delete({ where: { id: item.id } })).rejects.toMatchObject({ code: "P2003" });
+    const constraints = await db.$queryRaw<{ name: string; definition: string }[]>`SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = '"MedicationSchedule"'::regclass`;
+    expect(constraints.find((x) => x.name === "MedicationSchedule_personalMedicationId_fkey")?.definition).toContain("ON UPDATE RESTRICT ON DELETE RESTRICT");
+  });
+
+  it("rejects every child UPDATE and preserves exact STOPPED rows, including retracking with zero", async () => {
+    const a = await actor(); const item = await raw(a); const other = await raw(a);
+    const scheduled = await replace(a, { ...token(item), times: ["08:00", "20:00"] }, deps);
+    const original = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } });
+    const child = original[0];
+    for (const data of [{ localTime: toMedicationTimeCarrier("09:00") }, { personalMedicationId: other.id }, { id: randomUUID() }, { createdAt: new Date(now.getTime() + 1) }]) await expect(db.medicationSchedule.update({ where: { id: child.id }, data })).rejects.toThrow();
+    await expect(db.$executeRaw`UPDATE "MedicationSchedule" SET "localTime" = "localTime" WHERE "id" = ${child.id}::uuid`).rejects.toThrow();
+    const stopped = await stop(a, token(scheduled), deps);
+    expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } })).toEqual(original);
+    expect((await detail(a, item.id, db)).schedules).toEqual(scheduled.schedules);
+    for (const times of [[], ["08:00", "20:00"], ["09:00"]]) await expect(replace(a, { ...token(stopped), times }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(db.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("09:00") } })).rejects.toThrow();
+    await expect(db.medicationSchedule.delete({ where: { id: child.id } })).rejects.toThrow();
+    await expect(db.medicationSchedule.update({ where: { id: child.id }, data: { personalMedicationId: other.id } })).rejects.toThrow();
+    await expect(db.$executeRaw`UPDATE "MedicationSchedule" SET "id" = "id" WHERE "id" = ${child.id}::uuid`).rejects.toThrow();
+    const fresh = await create(a, { medicationName: item.medicationName }, deps);
+    expect((await detail(a, fresh.id, db)).schedules).toEqual([]);
+    const audits = await db.auditEvent.findMany({ where: { resourceId: item.id }, select: { action: true } });
+    expect(audits.map((x) => x.action).sort()).toEqual(["personal_medication.schedule_updated", "personal_medication.stopped"].sort());
+  });
+
+  it.each(["replace", "edit", "stop"])("Serializable replacement vs %s same-token race has exactly one winner", async (other) => {
+    const a = await actor(); const original = await raw(a);
+    const item = await replace(a, { ...token(original), times: ["08:00"] }, deps);
+    const results = await Promise.allSettled([
+      replace(a, { ...token(item), times: ["13:30"] }, deps),
+      other === "replace" ? replace(a, { ...token(item), times: ["20:00"] }, deps) : other === "edit" ? update(a, { ...token(item), medicationName: "แก้ไข" }, deps) : stop(a, token(item), deps),
+    ]);
+    expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+    const loser = results.find((x) => x.status === "rejected");
+    expect(loser?.status === "rejected" ? loser.reason : null).toMatchObject({ code: "CONFLICT" });
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(2);
+    const current = await detail(a, item.id, db);
+    if (current.status === "STOPPED") expect(current.schedules).toEqual(item.schedules);
+    else expect(current.schedules).toEqual(other === "replace" && results[1].status === "fulfilled" ? [{ localTime: "20:00" }] : other === "edit" && results[1].status === "fulfilled" ? item.schedules : [{ localTime: "13:30" }]);
+  });
+
+  it.each(["stop-first", "replace-first"])("both aggregate winner orders: %s", async (order) => {
+    const a = await actor(); const original = await raw(a);
+    const item = await replace(a, { ...token(original), times: ["08:00"] }, deps);
+    const before = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id } });
+    if (order === "stop-first") {
+      await stop(a, token(item), deps);
+      await expect(replace(a, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id } })).toEqual(before);
+    } else {
+      const replaced = await replace(a, { ...token(item), times: ["13:30"] }, deps);
+      await expect(stop(a, token(item), deps)).rejects.toMatchObject({ code: "CONFLICT" });
+      const after = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id } });
+      await stop(a, token(replaced), deps);
+      expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id } })).toEqual(after);
+    }
+  });
+
+  it.each(["stop-first", "replace-first"])("overlapping service race deterministically commits %s", async (order) => {
+    const a = await actor(); const original = await raw(a);
+    const item = await replace(a, { ...token(original), times: ["08:00"] }, deps);
+    const held = latch(); const release = latch(); const waiterStarted = latch(); let waiterPid = 0;
+    function database(hold: boolean): PrismaClient {
+      return { $transaction: (operation: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel: "Serializable" }) => db.$transaction(async (tx) => {
+        if (!hold) { const rows = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`; waiterPid = rows[0].pid; waiterStarted.release(); }
+        const proxy = new Proxy(tx, { get(target, key) {
+          if (!hold || key !== "personalMedication") return Reflect.get(target, key);
+          return new Proxy(tx.personalMedication, { get(delegate, method) {
+            if (method !== "updateMany") return Reflect.get(delegate, method);
+            return async (args: Prisma.PersonalMedicationUpdateManyArgs) => { const result = await tx.personalMedication.updateMany(args); held.release(); await release.promise; return result; };
+          } });
+        } });
+        return operation(proxy);
+      }, { ...options, timeout: 10000 }) } as unknown as PrismaClient;
+    }
+    const holderDeps = { ...deps, database: database(true) }; const waiterDeps = { ...deps, database: database(false) };
+    const holder = order === "stop-first" ? stop(a, token(item), holderDeps) : replace(a, { ...token(item), times: ["20:00"] }, holderDeps);
+    await held.promise;
+    const waiter = order === "stop-first" ? replace(a, { ...token(item), times: [] }, waiterDeps) : stop(a, token(item), waiterDeps);
+    const resultsPromise = Promise.allSettled([holder, waiter]);
+    try { await waiterStarted.promise; await waitForDatabaseLock(waiterPid); } finally { release.release(); }
+    const results = await resultsPromise;
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1].status === "rejected" ? results[1].reason : null).toMatchObject({ code: "CONFLICT" });
+    const latest = await detail(a, item.id, db);
+    expect(latest.status).toBe(order === "stop-first" ? "STOPPED" : "ACTIVE");
+    expect(latest.schedules).toEqual([{ localTime: order === "stop-first" ? "08:00" : "20:00" }]);
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(2);
+    if (order === "replace-first") { await stop(a, token(latest), deps); expect((await detail(a, item.id, db)).schedules).toEqual(latest.schedules); }
+  });
+
+  it("persists and returns every representable minute without truncation", async () => {
+    const a = await actor(); const item = await raw(a);
+    const times = Array.from({ length: MEDICATION_SCHEDULE_MAX_TIMES }, (_, minute) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+    const result = await replace(a, { ...token(item), times: [...times].reverse() }, deps);
+    expect(result.schedules.map((x) => x.localTime)).toEqual(times);
+    expect((await detail(a, item.id, db)).schedules).toHaveLength(MEDICATION_SCHEDULE_MAX_TIMES);
+  });
+
+  it("a real child uniqueness failure rolls back version and deleted rows without audit", async () => {
+    const a = await actor(); const item = await raw(a);
+    const original = await replace(a, { ...token(item), times: ["08:00", "20:00"] }, deps);
+    const children = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } });
+    const database = { $transaction: (operation: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel: "Serializable" }) => db.$transaction(async (tx) => {
+      const proxy = new Proxy(tx, { get(target, key) {
+        if (key !== "medicationSchedule") return Reflect.get(target, key);
+        return new Proxy(tx.medicationSchedule, { get(delegate, method) {
+          if (method !== "createMany") return Reflect.get(delegate, method);
+          return async () => tx.medicationSchedule.createMany({ data: [
+            { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("13:30") },
+            { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") },
+          ] });
+        } });
+      } });
+      return operation(proxy);
+    }, options) } as unknown as PrismaClient;
+    await expect(replace(a, { ...token(original), times: ["08:00", "13:30"] }, { ...deps, database })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await detail(a, item.id, db)).toEqual(original);
+    expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } })).toEqual(children);
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(1);
+  });
+
+  it("audit failure rolls back parent claim and child deletes/inserts", async () => {
+    const a = await actor(); const item = await raw(a);
+    const original = await replace(a, { ...token(item), times: ["08:00", "20:00"] }, deps);
+    const children = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } });
+    await db.$executeRawUnsafe(`CREATE FUNCTION medication_schedule_test_fail_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."action" = 'personal_medication.schedule_updated' THEN RAISE EXCEPTION 'injected audit failure'; END IF; RETURN NEW; END; $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER medication_schedule_test_fail_audit_trigger BEFORE INSERT ON "AuditEvent" FOR EACH ROW EXECUTE FUNCTION medication_schedule_test_fail_audit()`);
+    try {
+      await expect(replace(a, { ...token(original), times: ["08:00", "13:30"] }, deps)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+      expect(await detail(a, item.id, db)).toEqual(original);
+      expect(await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" } })).toEqual(children);
+      expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(1);
+    } finally {
+      await db.$executeRawUnsafe('DROP TRIGGER medication_schedule_test_fail_audit_trigger ON "AuditEvent"');
+      await db.$executeRawUnsafe('DROP FUNCTION medication_schedule_test_fail_audit()');
+    }
+  });
+
+  it("detail stays in one consistent snapshot when replacement commits after SELF resolution", async () => {
+    const a = await actor(); const item = await raw(a);
+    const original = await replace(a, { ...token(item), times: ["08:00"] }, deps);
+    const database = { $transaction: (operation: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel: "Serializable" }) => db.$transaction(async (tx) => {
+      const proxy = new Proxy(tx, { get(target, key) {
+        if (key !== "person") return Reflect.get(target, key);
+        return { findFirst: async (args: Prisma.PersonFindFirstArgs) => {
+          const person = await tx.person.findFirst(args);
+          await replace(a, { ...token(original), times: ["20:00"] }, deps);
+          return person;
+        } };
+      } });
+      return operation(proxy);
+    }, options) } as unknown as PrismaClient;
+    expect(await detail(a, item.id, database)).toEqual(original);
+    expect((await detail(a, item.id, db)).schedules).toEqual([{ localTime: "20:00" }]);
+  });
+
+  for (const isolationLevel of [Prisma.TransactionIsolationLevel.ReadCommitted, Prisma.TransactionIsolationLevel.Serializable]) {
+    for (const operation of ["insert", "delete"] as const) {
+      for (const order of ["stop-first", "child-first"] as const) {
+        it(`raw ${operation} vs stop: ${isolationLevel}, ${order} locks parent before authorizing`, async () => {
+          const a = await actor(); const item = await raw(a);
+          if (operation === "delete") await db.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") } });
+          const held = latch(); const release = latch(); const waiterStarted = latch(); let waiterPid = 0;
+          const childWrite = async (tx: Prisma.TransactionClient): Promise<void> => {
+            if (operation === "insert") await tx.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("08:00") } });
+            else await tx.medicationSchedule.deleteMany({ where: { personalMedicationId: item.id } });
+          };
+          const stopWrite = async (tx: Prisma.TransactionClient): Promise<void> => {
+            await tx.$executeRaw`UPDATE "PersonalMedication" SET "status" = 'STOPPED', "stoppedAt" = NOW(), "updatedAt" = "updatedAt" + INTERVAL '1 millisecond' WHERE "id" = ${item.id}::uuid`;
+          };
+          const holder = db.$transaction(async (tx) => {
+            await (order === "stop-first" ? stopWrite(tx) : childWrite(tx));
+            held.release(); await release.promise;
+          }, { isolationLevel, timeout: 10000 });
+          await held.promise;
+          const waiter = db.$transaction(async (tx) => {
+            const pid = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`; waiterPid = pid[0].pid;
+            waiterStarted.release(); await (order === "stop-first" ? childWrite(tx) : stopWrite(tx));
+          }, { isolationLevel, timeout: 10000 });
+          // Attach rejection handler immediately while the operation is blocked.
+          const resultsPromise = Promise.allSettled([holder, waiter]);
+          try { await waiterStarted.promise; await waitForDatabaseLock(waiterPid); } finally { release.release(); }
+          const results = await resultsPromise;
+          expect(results[0].status).toBe("fulfilled");
+          if (order === "stop-first") expect(results[1].status).toBe("rejected");
+          // Serializable may abort a direct stop after an overlapping child commit.
+          if (order === "child-first" && results[1].status === "rejected") await db.$transaction(stopWrite);
+          expect((await detail(a, item.id, db)).status).toBe("STOPPED");
+          const count = await db.medicationSchedule.count({ where: { personalMedicationId: item.id } });
+          expect(count).toBe(order === "stop-first" ? operation === "insert" ? 0 : 1 : operation === "insert" ? 1 : 0);
+          await expect(db.medicationSchedule.create({ data: { personalMedicationId: item.id, localTime: toMedicationTimeCarrier("09:00") } })).rejects.toThrow();
+          if (count) await expect(db.medicationSchedule.deleteMany({ where: { personalMedicationId: item.id } })).rejects.toThrow();
+        });
+      }
+    }
+  }
 
   it("owns all queries/mutations and returns minimal DTO without foreign existence disclosure", async () => {
     const a = await actor(); const b = await actor();
@@ -70,9 +346,10 @@ describe("PersonalMedication real PostgreSQL", () => {
       await expect(detail(a, id, db)).rejects.toMatchObject({ code: "NOT_FOUND", message: "The requested resource was not found" });
       await expect(update(a, { ...token(foreign), medicationId: id, medicationName: "โจมตี" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(stop(a, { ...token(foreign), medicationId: id }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(replace(a, { ...token(foreign), medicationId: id, times: [] }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(list(a, { status: "ACTIVE", cursor: id }, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
     }
-    expect(await detail(b, foreign.id, db)).toEqual(foreign);
+    expect(await detail(b, foreign.id, db)).toEqual({ ...foreign, schedules: [] });
   });
 
   it("fails closed on persisted inactive/removed role/missing profile/exact identity mismatch", async () => {
@@ -82,13 +359,18 @@ describe("PersonalMedication real PostgreSQL", () => {
     for (const bad of denied) {
       await expect(list(bad, { status: "ACTIVE" }, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(create(bad, { medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(detail(bad, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(replace(bad, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     await db.user.update({ where: { id: a.userId }, data: { status: "SUSPENDED" } });
     await expect(detail(a, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(update(a, { ...token(item), medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(replace(a, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await db.user.update({ where: { id: a.userId }, data: { status: "ACTIVE" } });
     await db.userRole.deleteMany({ where: { userId: a.userId } });
     await expect(stop(a, token(item), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(detail(a, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(replace(a, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("denies actual OSM/assigned OSM, Hospital MEMBER/OWNER, ADMIN and active Family/appointment caregiver grants", async () => {
@@ -116,10 +398,12 @@ describe("PersonalMedication real PostgreSQL", () => {
       await expect(create(denied, { medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(update(denied, { ...token(item), medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(stop(denied, token(item), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(replace(denied, { ...token(item), times: ["08:00"] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     await db.caregiverAppointmentGrant.create({ data: { caregiverRelationshipId: family.id, patientProfileId: profileId, patientPersonId: patient.personId, caregiverUserId: caregiver.userId, caregiverPersonId: caregiver.personId, patientHospitalRelationshipId: phr.id, proposedByUserId: patient.userId, proposedAt: now, contractVersion: "family-appointment-read-v1", status: "ACTIVE", acceptedAt: now, acceptedByUserId: caregiver.userId } });
     await expect(detail(caregiver, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(stop(caregiver, token(item), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(replace(caregiver, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await db.userRole.create({ data: { userId: caregiver.userId, role: "PATIENT" } });
     await db.patientProfile.create({ data: { personId: caregiver.personId } });
     const patientCaregiver = { ...caregiver, roles: [Role.PATIENT] };
@@ -128,6 +412,8 @@ describe("PersonalMedication real PostgreSQL", () => {
     await expect(detail(patientCaregiver, item.id, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(update(patientCaregiver, { ...token(item), medicationName: "เปลี่ยน" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(stop(patientCaregiver, token(item), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(replace(patientCaregiver, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await replace(patientCaregiver, { ...token(selfItem), times: ["08:00"] }, deps)).schedules).toEqual([{ localTime: "08:00" }]);
   });
 
   it("multi-role Patient and Patient caregiver/ADMIN access their own SELF only", async () => {
@@ -137,6 +423,8 @@ describe("PersonalMedication real PostgreSQL", () => {
       expect((await list(a, { status: "ACTIVE" }, db)).items.map((x) => x.id)).toEqual([own.id]);
       await expect(detail(a, foreign.id, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(stop(a, token(foreign), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(replace(a, { ...token(foreign), times: [] }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      expect((await replace(a, { ...token(own), times: ["08:00"] }, deps)).schedules).toEqual([{ localTime: "08:00" }]);
     }
   });
 
@@ -158,7 +446,7 @@ describe("PersonalMedication real PostgreSQL", () => {
     }
     await expect(db.$executeRaw`UPDATE "PersonalMedication" SET "medicationName" = "medicationName" WHERE "id" = ${item.id}::uuid`).rejects.toThrow();
     await expect(db.patientProfile.delete({ where: { id: profileId } })).rejects.toThrow();
-    expect(await detail(a, item.id, db)).toEqual(terminal);
+    expect(await detail(a, item.id, db)).toEqual({ ...terminal, schedules: [] });
   });
 
   it("full replacement/no-op advance monotonic version, and terminal replay conflicts without extra audits", async () => {
@@ -173,7 +461,7 @@ describe("PersonalMedication real PostgreSQL", () => {
       await expect(stop(a, { medicationId: first.id, expectedUpdatedAt }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
       await expect(update(a, { medicationId: first.id, expectedUpdatedAt, medicationName: "ใหม่" }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
     }
-    expect(await detail(a, first.id, db)).toEqual(terminal);
+    expect(await detail(a, first.id, db)).toEqual({ ...terminal, schedules: [] });
     const audits = await db.auditEvent.findMany({ where: { resourceId: first.id }, select: { action: true, actorUserId: true, resourceType: true, metadata: true } });
     expect(audits.map((x) => x.action).sort()).toEqual(["personal_medication.created", "personal_medication.updated", "personal_medication.updated", "personal_medication.stopped"].sort());
     for (const audit of audits) expect(audit).toMatchObject({ actorUserId: a.userId, resourceType: "PersonalMedication", metadata: null });
@@ -197,7 +485,7 @@ describe("PersonalMedication real PostgreSQL", () => {
     try {
       const mutation = operation === "create" ? create(a, { medicationName: "ข้อความลับ" }, deps) : operation === "update" ? update(a, { ...token(original), medicationName: "ข้อความลับ" }, deps) : stop(a, token(original), deps);
       await expect(mutation).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
-      expect(await detail(a, original.id, db)).toEqual(original);
+      expect(await detail(a, original.id, db)).toEqual({ ...original, schedules: [] });
       expect(await db.personalMedication.count({ where: { patientProfileId: await owner(a) } })).toBe(1);
       expect(await db.auditEvent.count({ where: { actorUserId: a.userId } })).toBe(0);
     } finally {

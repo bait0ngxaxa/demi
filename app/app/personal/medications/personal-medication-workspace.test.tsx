@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
-import type { PersonalMedicationDto } from "@/modules/medications/domain/personal-medication-definitions";
+import type { PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
 import { PersonalMedicationWorkspace } from "./personal-medication-workspace";
 import { MedicationEditor, MedicationStopForm } from "./personal-medication-controls";
 import Loading from "./loading";
@@ -12,8 +12,8 @@ vi.mock("react", async (importOriginal) => {
   return { ...original, useActionState: () => [simulation.state, () => undefined, simulation.pending],
     useState: (initial: unknown) => [typeof initial === "boolean" ? simulation.confirming : initial, () => undefined] };
 });
-vi.mock("@/modules/medications/transport/server-actions", () => ({ createPersonalMedicationAction: vi.fn(), updatePersonalMedicationAction: vi.fn(), stopPersonalMedicationAction: vi.fn() }));
-const item: PersonalMedicationDto = { id: "11111111-1111-4111-8111-111111111111", medicationName: "ยาไทย <script>", instructionText: "ข้อความเอง\nอีกบรรทัด", status: "ACTIVE", stoppedAt: null, createdAt: "2026-10-02T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z" };
+vi.mock("@/modules/medications/transport/server-actions", () => ({ createPersonalMedicationAction: vi.fn(), updatePersonalMedicationAction: vi.fn(), stopPersonalMedicationAction: vi.fn(), replacePersonalMedicationSchedulesAction: vi.fn() }));
+const item: PersonalMedicationDetailDto = { id: "11111111-1111-4111-8111-111111111111", medicationName: "ยาไทย <script>", instructionText: "ข้อความเอง\nอีกบรรทัด", status: "ACTIVE", stoppedAt: null, createdAt: "2026-10-02T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z", schedules: [] };
 const empty = { items: [], nextCursor: null };
 describe("Personal medication UI states", () => {
   beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; });

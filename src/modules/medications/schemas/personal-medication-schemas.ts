@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   INSTRUCTION_TEXT_MAX_LENGTH, INSTRUCTION_TEXT_RAW_MAX_LENGTH,
   MEDICATION_NAME_MAX_LENGTH, MEDICATION_NAME_RAW_MAX_LENGTH,
+  MEDICATION_LOCAL_TIME_PATTERN, MEDICATION_SCHEDULE_MAX_TIMES, MEDICATION_VERSION_RAW_MAX_LENGTH,
 } from "../domain/personal-medication-definitions";
 
 // Lengths use JavaScript UTF-16 code units, including raw input before normalization.
@@ -13,12 +14,18 @@ const instructionText = z.string().max(INSTRUCTION_TEXT_RAW_MAX_LENGTH).nullable
   .pipe(z.string().max(INSTRUCTION_TEXT_MAX_LENGTH).nullable());
 const versionFields = {
   medicationId: z.string().uuid().transform((value) => value.toLowerCase()),
-  expectedUpdatedAt: z.string().max(40).datetime({ offset: true }),
+  expectedUpdatedAt: z.string().max(MEDICATION_VERSION_RAW_MAX_LENGTH).datetime({ offset: true }),
 };
 
 export const personalMedicationCreateSchema = z.object({ medicationName, instructionText }).strict();
 export const personalMedicationUpdateSchema = z.object({ ...versionFields, medicationName, instructionText }).strict();
 export const personalMedicationStopSchema = z.object(versionFields).strict();
+export const personalMedicationScheduleSchema = z.object({
+  ...versionFields,
+  times: z.array(z.string().length(5).regex(MEDICATION_LOCAL_TIME_PATTERN)).max(MEDICATION_SCHEDULE_MAX_TIMES)
+    .refine((times) => new Set(times).size === times.length, "Duplicate medication clock time")
+    .transform((times) => [...times].sort()),
+}).strict();
 export const personalMedicationListSchema = z.object({
   status: z.enum(["ACTIVE", "STOPPED"]),
   cursor: z.string().uuid().transform((value) => value.toLowerCase()).nullable().optional(),

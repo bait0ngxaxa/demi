@@ -7,7 +7,7 @@ import { createPersonalMedicationAction as create, updatePersonalMedicationActio
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: vi.fn() }));
-vi.mock("../services/personal-medication-service", () => ({ createPersonalMedication: vi.fn(), updatePersonalMedication: vi.fn(), stopPersonalMedication: vi.fn() }));
+vi.mock("../services/personal-medication-service", () => ({ createPersonalMedication: vi.fn(), updatePersonalMedication: vi.fn(), stopPersonalMedication: vi.fn(), replacePersonalMedicationSchedules: vi.fn() }));
 const item = { id: "11111111-1111-4111-8111-111111111111", medicationName: "ยา", instructionText: null, status: "ACTIVE" as const, stoppedAt: null, createdAt: "2026-10-02T00:00:00.000Z", updatedAt: "2026-10-02T00:00:00.000Z" };
 const actor = { userId: "user", personId: "person", roles: ["PATIENT" as const], hospitalMemberships: [], osmHospitalRelationships: [] };
 function form(values: Record<string, string>): FormData { const data = new FormData(); for (const [key, value] of Object.entries(values)) data.set(key, value); return data; }

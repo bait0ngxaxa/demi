@@ -1,9 +1,11 @@
 import "server-only";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
+import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
-import { PERSONAL_MEDICATION_PAGE_SIZE, type PersonalMedicationDto, type PersonalMedicationPage } from "../domain/personal-medication-definitions";
+import { PERSONAL_MEDICATION_PAGE_SIZE, type PersonalMedicationDto, type PersonalMedicationDetailDto, type PersonalMedicationPage } from "../domain/personal-medication-definitions";
+import { fromMedicationTimeCarrier } from "../domain/medication-local-time";
 import { personalMedicationIdSchema, personalMedicationListSchema } from "../schemas/personal-medication-schemas";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
 
@@ -14,8 +16,20 @@ export const personalMedicationSelect = {
 type MedicationRecord = Prisma.PersonalMedicationGetPayload<{ select: typeof personalMedicationSelect }>;
 
 export function toPersonalMedicationDto(record: MedicationRecord): PersonalMedicationDto {
-  return { ...record, stoppedAt: record.stoppedAt?.toISOString() ?? null,
+  return { id: record.id, medicationName: record.medicationName, instructionText: record.instructionText, status: record.status,
+    stoppedAt: record.stoppedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(), updatedAt: record.updatedAt.toISOString() };
+}
+
+export const personalMedicationDetailSelect = {
+  ...personalMedicationSelect,
+  schedules: { select: { localTime: true }, orderBy: { localTime: "asc" } },
+} satisfies Prisma.PersonalMedicationSelect;
+
+export function toPersonalMedicationDetailDto(
+  record: Prisma.PersonalMedicationGetPayload<{ select: typeof personalMedicationDetailSelect }>,
+): PersonalMedicationDetailDto {
+  return { ...toPersonalMedicationDto(record), schedules: record.schedules.map(({ localTime }) => ({ localTime: fromMedicationTimeCarrier(localTime) })) };
 }
 
 export async function listOwnPersonalMedications(
@@ -53,14 +67,16 @@ export async function listOwnPersonalMedications(
 export async function getOwnPersonalMedication(
   actor: ActorContext | null | undefined, medicationId: unknown,
   database: PrismaClient = getPrisma(),
-): Promise<PersonalMedicationDto> {
+): Promise<PersonalMedicationDetailDto> {
   try {
-    const patientProfileId = await resolvePersonalMedicationOwner(actor, database);
-    const parsed = personalMedicationIdSchema.safeParse(medicationId);
-    if (!parsed.success) throw new NotFoundError();
-    const row = await database.personalMedication.findFirst({ where: { id: parsed.data, patientProfileId }, select: personalMedicationSelect });
-    if (!row) throw new NotFoundError();
-    return toPersonalMedicationDto(row);
+    return await runSerializableTransaction(database, async (transaction) => {
+      const patientProfileId = await resolvePersonalMedicationOwner(actor, transaction);
+      const parsed = personalMedicationIdSchema.safeParse(medicationId);
+      if (!parsed.success) throw new NotFoundError();
+      const row = await transaction.personalMedication.findFirst({ where: { id: parsed.data, patientProfileId }, select: personalMedicationDetailSelect });
+      if (!row) throw new NotFoundError();
+      return toPersonalMedicationDetailDto(row);
+    });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     throw new InfrastructureError("Personal medication could not be loaded");

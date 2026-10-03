@@ -1,10 +1,14 @@
 # DEMI Project Context
 
-## Current-status addendum — Phase 17G.2A (2026-10-03)
+## Current-status addendum — Phase 17G.2B (2026-10-03)
+
+**Phase 17G.2 IMPLEMENTED / CLOSED** สำหรับ bounded Daily Medication Schedule: exact Patient SELF, 0..1,440 เวลารายวัน HH:mm ตาม Asia/Bangkok บน ACTIVE medication; replace-all แบบ atomic ใช้ parent.updatedAt ร่วมกับ text edit/stop; เก็บเวลาเดิมเป็นประวัติอ่านอย่างเดียวเมื่อ STOPPED. ดู [implementation handoff และหลักฐานอัตโนมัติ](./phases/PHASE_17G2_DAILY_MEDICATION_SCHEDULE_IMPLEMENTATION_HANDOFF.md): unit 192 files / 1,447 tests, PostgreSQL integration 28 files / 352 tests, migration upgrade/clean history, lint/typecheck/build ผ่าน. ยังไม่ได้ทำ browser/device UAT หรือ production deployment. ไม่มี reminder/adherence/delivery. 17G.1 IMPLEMENTED / CLOSED; MED-02 REQUIREMENT-GATED; 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 และ Q5 ไม่เปลี่ยน. สถานะสัญญาและ phase เดิมด้านล่างเป็นประวัติ.
+
+## Historical contract-status addendum — Phase 17G.2A (2026-10-03)
 
 [สัญญา Daily Medication Schedule 17G.2A](./phases/PHASE_17G2_DAILY_MEDICATION_SCHEDULE_CONTRACT.md) **CLEARED FOR IMPLEMENTATION**; owner อนุมัติระดับนาที HH:mm และห้ามเวลาซ้ำต่อรายการยาใน session นี้แล้ว. ขอบเขต: exact Patient SELF, 0..N เวลารายวัน Asia/Bangkok บน ACTIVE medication และเก็บเวลาเดิมเป็นประวัติอ่านอย่างเดียวเมื่อ STOPPED. **17G.2 runtime NOT IMPLEMENTED**; งานนี้เฉพาะเอกสาร ไม่มี schema/migration/UI/service/tests ใหม่. 17G.1 IMPLEMENTED / CLOSED; Q30–Q53 ไม่เปลี่ยน; 17G.3/17J/MED-02 และ UAT/governance gates คงเดิม. รายละเอียดทางเทคนิคและ acceptance อยู่ในสัญญา; สถานะย้อนหลังด้านล่างคงไว้.
 
-## Current-status addendum — Phase 17G.1 (2026-10-02)
+## Historical foundation-status addendum — Phase 17G.1 (2026-10-02)
 
 **17G.1 IMPLEMENTED / CLOSED** สำหรับ MED-01: รายการยาที่ Patient บันทึกเองใน Personal **ยาของฉัน**; exact SELF เท่านั้น, แก้ไขได้ขณะกำลังติดตาม และหยุดติดตามใน DEMI เป็นสถานะปลายทาง ไม่ใช่การสั่งหรือหยุดใช้ยาทางการแพทย์. ดู [implementation handoff และหลักฐานการตรวจจริง](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_HANDOFF.md). 17G.0 / Q30–Q53 CLOSED / OWNER APPROVED; MED-02 REQUIREMENT-GATED; 17G.2/17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 OPEN / deferred; Q5 GOVERNANCE BLOCKED. ไม่อ้างผล browser/device UAT; สถานะย้อนหลังด้านล่างคงไว้เป็นประวัติ.
 
@@ -676,7 +680,7 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 - authoritative external Hospital Master provider และ production master-data ownership/update process
 - hospital onboarding reapplication, competing claim และ existing account recovery semantics
 - Long-term Patient activation proofing and identity-proofing beyond Phase 5B.2 remain open; Phase 17E.1 assisted recovery does not change activation semantics or approve automated delivery channels.
-- P17F-L01/L02/L06 are CLOSED / OWNER APPROVED only for the bounded 17F.2B appointment-read contract. P17F-L03 QR CLOSED / OWNER APPROVED; 17F.3 QR transport IMPLEMENTED, L04 re-audit/UAT OPEN, L05 expiry/renewal OPEN / FUTURE; real-data delegated use requires external Q5 approval. Minors/legal representation remain deferred, Phase 17E.2 consent parked. Medication: 17G.0 CLOSED; Q30–Q53 CLOSED / OWNER APPROVED; MED-01 / Phase 17G.1 IMPLEMENTED / CLOSED for bounded Patient SELF Personal Medication only; see [implementation evidence](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_HANDOFF.md), [17G.0B closeout](./phases/PHASE_17G0B_MEDICATION_DECISION_CLOSEOUT.md) and [17G.1 contract](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_CONTRACT.md). No browser/device-UAT PASS is inferred. MED-02 REQUIREMENT-GATED; 17G.2 NOT IMPLEMENTED; 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 OPEN / deferred; Q5 unchanged GOVERNANCE BLOCKED.
+- P17F-L01/L02/L06 are CLOSED / OWNER APPROVED only for the bounded 17F.2B appointment-read contract. P17F-L03 QR CLOSED / OWNER APPROVED; 17F.3 QR transport IMPLEMENTED, L04 re-audit/UAT OPEN, L05 expiry/renewal OPEN / FUTURE; real-data delegated use requires external Q5 approval. Minors/legal representation remain deferred, Phase 17E.2 consent parked. Medication: 17G.0 CLOSED; Q30–Q53 CLOSED / OWNER APPROVED; MED-01 / Phase 17G.1 IMPLEMENTED / CLOSED for bounded Patient SELF Personal Medication only; see [implementation evidence](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_HANDOFF.md), [17G.0B closeout](./phases/PHASE_17G0B_MEDICATION_DECISION_CLOSEOUT.md) and [17G.1 contract](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_CONTRACT.md). No browser/device-UAT PASS is inferred. MED-02 REQUIREMENT-GATED; 17G.2 IMPLEMENTED / CLOSED for bounded Daily Medication Schedule with [automated implementation evidence](./phases/PHASE_17G2_DAILY_MEDICATION_SCHEDULE_IMPLEMENTATION_HANDOFF.md); 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 OPEN / deferred; Q5 unchanged GOVERNANCE BLOCKED.
 - additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor

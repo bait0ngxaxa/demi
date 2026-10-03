@@ -4,13 +4,13 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
 import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication } from "./personal-medication-service";
-import { getOwnPersonalMedication, listOwnPersonalMedications, personalMedicationSelect } from "./personal-medication-query-service";
+import { getOwnPersonalMedication, listOwnPersonalMedications, personalMedicationSelect, personalMedicationDetailSelect } from "./personal-medication-query-service";
 
 vi.mock("@/modules/audit/services/audit-service", () => ({ recordAuditEvent: vi.fn() }));
 const a: ActorContext = { userId: "11111111-1111-4111-8111-111111111111", personId: "22222222-2222-4222-8222-222222222222", roles: ["PATIENT"], hospitalMemberships: [], osmHospitalRelationships: [] };
 const profileId = "33333333-3333-4333-8333-333333333333";
 const now = new Date("2026-10-02T00:00:00.000Z");
-const row = { id: "44444444-4444-4444-8444-444444444444", medicationName: "ยาไทย", instructionText: null, status: "ACTIVE" as const, stoppedAt: null, createdAt: now, updatedAt: now };
+const row = { id: "44444444-4444-4444-8444-444444444444", medicationName: "ยาไทย", instructionText: null, status: "ACTIVE" as const, stoppedAt: null, createdAt: now, updatedAt: now, schedules: [] };
 const version = { medicationId: row.id, expectedUpdatedAt: now.toISOString() };
 
 function fixture(): { db: PrismaClient; tx: Prisma.TransactionClient; person: { findFirst: ReturnType<typeof vi.fn> }; medication: { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> }; transaction: ReturnType<typeof vi.fn> } {
@@ -63,7 +63,7 @@ describe("medication persisted access/services/queries", () => {
     expect(f.medication.findFirst).toHaveBeenCalledWith({ where: { patientProfileId: profileId, status: "ACTIVE", id: row.id }, select: personalMedicationSelect });
     expect(f.medication.findMany).toHaveBeenCalledWith({ where: { patientProfileId: profileId, status: "ACTIVE", OR: [{ createdAt: { lt: now } }, { createdAt: now, id: { lt: row.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 51, select: personalMedicationSelect });
     await getOwnPersonalMedication(a, row.id, f.db);
-    expect(f.medication.findFirst).toHaveBeenLastCalledWith({ where: { id: row.id, patientProfileId: profileId }, select: personalMedicationSelect });
+    expect(f.medication.findFirst).toHaveBeenLastCalledWith({ where: { id: row.id, patientProfileId: profileId }, select: personalMedicationDetailSelect });
     expect(recordAuditEvent).not.toHaveBeenCalled();
   });
   it("retries only known rolled-back failures with bounded shared infrastructure, never ambiguous create", async () => {
