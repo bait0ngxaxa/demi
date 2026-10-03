@@ -656,9 +656,10 @@ describe("PersonalMedication real PostgreSQL", () => {
     expect([...first.items, ...second.items].map((x) => x.id)).toEqual(ids.sort((x, y) => y.at - x.at || y.id.localeCompare(x.id)).map((x) => x.id));
     await expect(list(a, { status, cursor: foreign.id }, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
     const profileId = await owner(a);
-    // Small fixtures may prefer a sequential scan. Verify the matching ordered index path is usable.
+    // Small-fixture cost estimates vary; force the planner to prove the matching ordered index is usable.
     const plan = await db.$transaction(async (tx) => {
       await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
+      await tx.$executeRaw`SET LOCAL enable_sort = off`;
       return status === "ACTIVE"
         ? tx.$queryRaw<{ "QUERY PLAN": string }[]>`EXPLAIN SELECT "id", "createdAt" FROM "PersonalMedication" WHERE "patientProfileId" = ${profileId}::uuid AND "status" = 'ACTIVE' ORDER BY "createdAt" DESC, "id" DESC LIMIT 51`
         : tx.$queryRaw<{ "QUERY PLAN": string }[]>`EXPLAIN SELECT "id", "stoppedAt" FROM "PersonalMedication" WHERE "patientProfileId" = ${profileId}::uuid AND "status" = 'STOPPED' ORDER BY "stoppedAt" DESC, "id" DESC LIMIT 51`;
