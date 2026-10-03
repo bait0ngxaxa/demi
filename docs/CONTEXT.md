@@ -733,3 +733,10 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 - ไม่สร้าง HTTP API โดยไม่มี identified current consumer/use case
 - ไม่ออก full database schema จาก conceptual entities ใน baseline โดยไม่มี task อนุมัติ
 - เมื่อ architecture decision เปลี่ยนสาระสำคัญ ให้สร้าง ADR ใหม่เพื่อ supersede ฉบับเดิม แล้ว sync baseline/context
+
+
+## CURRENT-status addendum — Phase 17H.0 (2026-10-03)
+
+[Phase 17H.0 Wellness Decision Pack](./phases/PHASE_17H0_WELLNESS_DECISION_PACK.md) จัดทำแล้ว: **17H.0 COMPLETE AS ANALYSIS / DECISION PACK COMPLETE; Q54–Q83 OPEN / NOT OWNER APPROVED; WELL-01/02/03 REQUIREMENT-GATED; 17H.1 NOT CLEARED FOR IMPLEMENTATION.** ข้อเสนอ SELF-only personal meal/exercise journals และ personal weight target-only เป็น **RECOMMENDATION — NOT OWNER APPROVED**; personal weight observation ยังไม่อนุมัติและต้องตัดสิน Q73/Q74 แยก ข้อมูล wellness ไม่เท่ากับ Goal Plan target หรือ clinical/program measurement; ไม่ sync, overwrite หรือเพิ่ม reporting visibility จาก pack นี้
+
+**17G.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE** สำหรับ bounded automated scope; 17G.0 CLOSED, Q30–Q53 OWNER APPROVED, 17G.1/17G.2 IMPLEMENTED / CLOSED, 17G.3C IMPLEMENTED / CLOSED เฉพาะ reminder occurrence source; adherence DEFERRED. Manual/browser/device UAT ไม่อนุมานจาก automated audit. Phase 17H.0 เปลี่ยนเฉพาะเอกสาร ไม่มี runtime/schema/migration/test/env change. Existing 17F gates (P17F-L04 OPEN/device UAT pending, L05 OPEN/FUTURE), Q5 real-data delegated use GOVERNANCE BLOCKED, parked 17E.2 consent, 17J delivery/system authority และ MED-02 REQUIREMENT-GATED คงเดิม ไม่เปิด medication decisions ใหม่ ไม่แก้ historical Phase 17A evidence
