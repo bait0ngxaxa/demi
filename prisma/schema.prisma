@@ -316,6 +316,8 @@ model PatientProfile {
   patientClassification PatientClassification?
   classificationHistory PatientClassificationHistory[]
   personalMedications PersonalMedication[]
+  personalMealEntries PersonalMealEntry[]
+  personalMealCreateReceipts PersonalMealCreateReceipt[]
 
   @@unique([id, personId])
 }
@@ -323,6 +325,39 @@ model PatientProfile {
 enum PersonalMedicationStatus {
   ACTIVE
   STOPPED
+}
+
+enum PersonalMealCategory {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model PersonalMealEntry {
+  id String @id @default(uuid()) @db.Uuid
+  patientProfileId String @db.Uuid
+  category PersonalMealCategory
+  occurredOn DateTime @db.Date
+  description String? @db.VarChar(1000)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([patientProfileId, occurredOn(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "PersonalMealEntry_history_order_idx")
+}
+
+model PersonalMealCreateReceipt {
+  patientProfileId String @db.Uuid
+  submissionNonce String @db.Uuid
+  // Scalar locator deliberately survives Meal deletion; no Meal FK or payload.
+  mealEntryId String @unique @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([patientProfileId, submissionNonce])
 }
 
 model PersonalMedication {

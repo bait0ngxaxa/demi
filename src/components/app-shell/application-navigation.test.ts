@@ -187,6 +187,7 @@ describe("application navigation projection", () => {
       "/app/personal/care",
       "/app/personal/services",
       "/app/personal/medications",
+      "/app/personal/wellness",
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
@@ -207,6 +208,9 @@ describe("application navigation projection", () => {
     expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
       "/app/personal/medications",
     );
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
+      "/app/personal/wellness",
+    );
   });
 
   it.each([
@@ -226,6 +230,7 @@ describe("application navigation projection", () => {
       .flatMap(({ items }) => items);
     expect(personalItems.map(({ href }) => href)).toContain("/app/personal/care");
     expect(personalItems.map(({ href }) => href)).toContain("/app/personal/services");
+    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/wellness");
     expect(personalItems.map(({ href }) => href)).toContain("/app/personal/appointments");
     expect(personalItems.map(({ href }) => href)).not.toContain("/app/patients/assigned");
   });

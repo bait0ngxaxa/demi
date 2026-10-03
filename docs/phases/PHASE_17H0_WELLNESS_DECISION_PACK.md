@@ -1,8 +1,12 @@
 # Phase 17H.0 — Wellness Decision Pack
 
+## CURRENT runtime addendum — 17H.1 (2026-10-03)
+
+**Phase 17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED**. See [implementation handoff](./PHASE_17H1_MEAL_JOURNAL_IMPLEMENTATION.md) for actual runtime/migration/automated results. Q54–Q83 remain CLOSED / OWNER APPROVED — Option A; corrected Q71 and all deferred/excluded boundaries unchanged. WELL-02 planned 17H.2 / NOT IMPLEMENTED; WELL-03 target-only planned 17H.3 / NOT IMPLEMENTED; Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE. No manual browser/device UAT or production deployment claim. Clearance/no-runtime statements below record the historical 17H.0B contract task, not current delivery status.
+
 วันที่วิเคราะห์: **2026-10-03 (Asia/Bangkok)**
 
-## CURRENT owner closeout — 2026-10-03 (Asia/Bangkok)
+## Historical 17H.0B owner closeout — 2026-10-03 (Asia/Bangkok)
 
 **Phase 17H.0 CLOSED / DECISIONS CLOSED**<br>
 **Q54–Q83 CLOSED / OWNER APPROVED — Option A**<br>

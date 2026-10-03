@@ -1,6 +1,16 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17H.0B (2026-10-03)
+## CURRENT-status addendum — Phase 17H.1 (2026-10-03)
+
+[Meal implementation handoff](./phases/PHASE_17H1_MEAL_JOURNAL_IMPLEMENTATION.md): **Phase 17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED**. Exact persisted ACTIVE Patient SELF only; category/date required, description OPTIONAL, four categories, duplicate date/category allowed, Bangkok civil date past/today allowed and future denied. Dedicated Meal + payload-free surviving owner/nonce receipt, physical delete, expectedUpdatedAt concurrency, transactional minimized audit and private paginated current history. No clinical/Goal Plan/reporting/reminder authority.
+
+Automated evidence: focused unit/UI/action/navigation **7 files / 67 tests**, real PostgreSQL Meal **26 tests**, full unit **202 files / 1,621 tests**, full PostgreSQL integration **29 files / 392 tests** PASS; lint/typecheck PASS. Forward migration `20261003140000_personal_meal_journal` applied only to local disposable integration DB; clean separate empty DB passed all **34 migrations**. No production deployment/migration or manual browser/mobile/device/BFCache UAT claimed. Operational backup/account-erasure/receipt/audit-retention/privacy follow-ups remain.
+
+17H.0 CLOSED / DECISIONS CLOSED; Q54–Q83 CLOSED / OWNER APPROVED — Option A; 17H.0B CLOSED / DOCUMENTATION CONTRACT COMPLETE. **WELL-02 DECISIONS CLOSED / PLANNED 17H.2 / NOT IMPLEMENTED** (duration OPTIONAL); **WELL-03 DECISIONS CLOSED / TARGET-ONLY PLANNED 17H.3 / NOT IMPLEMENTED**; corrected Q71 unchanged naturally passed targetDate may remain on edit. **Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**. No Exercise/Weight runtime, nutrition/photos/BMI/scoring/advice/share/export/reporting/reminders or generic Wellness framework. Next approved sequence remains 17H.2 → 17H.3 → 17H.4A re-audit/UAT readiness.
+
+**17G.4A PASS / AUTOMATED RE-AUDIT COMPLETE** unchanged; Family P17F-L04 OPEN/device UAT pending, P17F-L05 OPEN/FUTURE, Q5 real-data delegated use GOVERNANCE BLOCKED, parked 17E.2 consent, MED-02 REQUIREMENT-GATED and 17J delivery/system authority REQUIREMENT-GATED unchanged. Prior addenda retain historical phase-time evidence.
+
+## Historical-status addendum — Phase 17H.0B (2026-10-03)
 
 [Wellness owner closeout](./phases/PHASE_17H0B_WELLNESS_DECISION_CLOSEOUT.md): **Phase 17H.0 CLOSED / DECISIONS CLOSED; Q54–Q83 CLOSED / OWNER APPROVED — Option A; Phase 17H.0B CLOSED / DOCUMENTATION CONTRACT COMPLETE.** Owner อนุมัติ recommendation A ทั้งหมดใน corrected pack โดยไม่มีการแก้ไข หลังแก้ Q71 targetDate semantics; ไม่อนุมัติตัวเลือกอื่นหรือการ implement สิ่งที่ deferred/excluded.
 

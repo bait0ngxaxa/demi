@@ -1,6 +1,10 @@
 # Phase 17H.1 — Meal Journal Implementation Contract
 
-## CURRENT status — 2026-10-03 (Asia/Bangkok)
+## CURRENT runtime addendum — 17H.1 (2026-10-03)
+
+**Phase 17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED**. See [implementation handoff](./PHASE_17H1_MEAL_JOURNAL_IMPLEMENTATION.md) for actual runtime/migration/automated results. Q54–Q83 remain CLOSED / OWNER APPROVED — Option A; corrected Q71 and all deferred/excluded boundaries unchanged. WELL-02 planned 17H.2 / NOT IMPLEMENTED; WELL-03 target-only planned 17H.3 / NOT IMPLEMENTED; Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE. No manual browser/device UAT or production deployment claim. Clearance/no-runtime statements below record the historical 17H.0B contract task, not current delivery status.
+
+## Historical 17H.0B status — 2026-10-03 (Asia/Bangkok)
 
 **WELL-01 CLEARED FOR IMPLEMENTATION. Phase 17H.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** Authority: [17H.0B owner closeout](./PHASE_17H0B_WELLNESS_DECISION_CLOSEOUT.md), Q54–Q83 **CLOSED / OWNER APPROVED — Option A** in the [corrected pack](./PHASE_17H0_WELLNESS_DECISION_PACK.md). This is documentation only, not delivered Meal runtime or UAT evidence.
 
