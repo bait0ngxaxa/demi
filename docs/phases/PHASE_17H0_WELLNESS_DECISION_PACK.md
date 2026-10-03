@@ -2,12 +2,21 @@
 
 วันที่วิเคราะห์: **2026-10-03 (Asia/Bangkok)**
 
-สถานะ: **17H.0 COMPLETE AS ANALYSIS / DECISION PACK COMPLETE**<br>
-Owner decisions: **Q54–Q83 OPEN / NOT OWNER APPROVED**<br>
-WELL-01/02/03: **REQUIREMENT-GATED**<br>
-Phase 17H.1: **NOT CLEARED FOR IMPLEMENTATION**
+## CURRENT owner closeout — 2026-10-03 (Asia/Bangkok)
 
-เอกสารนี้เป็น requirement/domain/security/privacy decision analysis เท่านั้น ไม่ใช่ implementation contract และไม่ใช่การอนุมัติของ owner ข้อเสนอทุกส่วนที่ติดป้าย **RECOMMENDATION — NOT OWNER APPROVED** ต้องได้รับคำตัดสินที่ชัดเจนก่อนใช้พัฒนา คำว่า REQUIRED FOR FIRST SLICE ในตารางหมายถึงจำเป็นภายใน *ข้อเสนอ* เท่านั้น
+**Phase 17H.0 CLOSED / DECISIONS CLOSED**<br>
+**Q54–Q83 CLOSED / OWNER APPROVED — Option A**<br>
+**Phase 17H.0B CLOSED / DOCUMENTATION CONTRACT COMPLETE**<br>
+**WELL-01 / Phase 17H.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**<br>
+**WELL-02 DECISIONS CLOSED / PLANNED 17H.2 / NOT IMPLEMENTED**<br>
+**WELL-03 DECISIONS CLOSED / TARGET-ONLY PLANNED 17H.3 / NOT IMPLEMENTED**<br>
+**Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**
+
+Owner review corrected pack แล้วและอนุมัติชัดเจนว่า **“Q54–Q83: APPROVE ALL RECOMMENDED OPTION A, WITHOUT CHANGES.”** การอนุมัติเกิด **หลังแก้ Q71 targetDate semantics** ไม่อนุมัติตัวเลือก B/C/etc., future grant หรือการ implement สิ่งที่ deferred/excluded. Meal description ยังคง OPTIONAL; Exercise duration ยังคง OPTIONAL; photos/observations/sharing/export/reporting/reminders ยังคง deferred หรือ excluded; BMI/scoring/advice excluded; 17J ยังคงเป็น delivery/system-authority boundary.
+
+ดู matrix ที่อนุมัติครบใน [final decision closeout](./PHASE_17H0B_WELLNESS_DECISION_CLOSEOUT.md) และขอบเขต implementation/retry/concurrency/privacy ใน [17H.1 Meal contract](./PHASE_17H1_MEAL_JOURNAL_IMPLEMENTATION_CONTRACT.md) งานนี้เป็นเอกสารเท่านั้น ยังไม่มี Wellness runtime.
+
+**Historical analysis notice:** Sections 1–15 and the response template retain the original analysis-time evidence/recommendations for traceability. Their OPEN / NOT OWNER APPROVED / REQUIREMENT-GATED wording describes the pre-approval baseline, not CURRENT status. Each Q54–Q83 now has a final disposition above its historical recommendation; the corrected Option A content is approved, while alternate options and conditional future branches are not. Future Exercise/Weight technical bounds require their own implementation contracts; approval does not invent those details. Section 16 below is the current final disposition. Original evidence analysis is not rewritten.
 
 ## 1. Phase/status baseline
 
@@ -94,11 +103,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 **RECOMMENDATION — NOT OWNER APPROVED:** A/B/C ใช้ domain records แยกตาม semantics ไม่รวม E/F และไม่ใช้ generic WellnessEntry/EAV/universal event infrastructure; wellness owner เป็น persisted PatientProfile แยก Hospital relationship/Program scope
 
-## 7. Owner decision checklist — Q54–Q83
+## 7. Owner decisions — Q54–Q83 (closed; historical checklist retained)
+
+**Final disposition: ทุกข้อ Q54–Q83 CLOSED / OWNER APPROVED — Option A.** The following original checklist sentence and recommendation labels are historical only.
 
 **ทุกข้อ OPEN / NOT OWNER APPROVED** ตัวเลือก A/B/C ฯลฯ ใน pack นี้เป็นรหัสช่วยตอบเฉพาะข้อ ไม่สืบทอด medication decisions ข้อเสนอในแต่ละข้อมีผลเฉพาะหาก owner อนุมัติ
 
 ### Q54 — Wellness semantic boundary
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A personal self-tracking only; B clinically authoritative wellness record; C mixed personal + clinical; D other (ระบุ)
 
@@ -106,11 +119,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q55 — Creator authority
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A Patient SELF only; B Hospital; C assigned OSM; D Family/caregiver; E combinations/other (ระบุ create/edit/delete แต่ละ actor)
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** create/update/delete ผ่าน exact persisted SELF เท่านั้น Hospital/OSM Program หรือ Goal Plan authority ไม่ถ่ายมาด้วย การเลือก B–E ต้องกำหนด proxy provenance, consent/grant, field authority และ conflict rules เพิ่ม
 
 ### Q56 — Read authority / visibility
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A SELF only; B SELF + Hospital MEMBER/OWNER; C เพิ่ม assigned OSM; D เพิ่ม Family/caregiver; E routine Platform ADMIN; F future explicit share/grant only; G ระบุ matrix อื่น
 
@@ -118,11 +135,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q57 — Goal Plan relationship
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A independent; B automatically synchronized; C projection-only relation; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** บันทึก meal/exercise ไม่เปลี่ยน completion/progress ของ Goal Plan; weight target ไม่สร้าง/เปลี่ยน plan B เพิ่ม shared mutation/conflict risk; C ต้องมี approved mapping/read policy/source label ก่อน ห้ามใช้ projection แอบสร้าง authority
 
 ### Q58 — Meal record semantic
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A one Patient-reported consumed meal/snack occasion; B daily aggregate intake; C planned meal/adherence record; D other
 
@@ -130,11 +151,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q59 — Meal category vocabulary
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A BREAKFAST/LUNCH/DINNER/SNACK; B เพิ่ม OTHER; C uncontrolled categories; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** ใช้ labels มื้อเช้า/มื้อกลางวัน/มื้อเย็น/ของว่าง ตาม customer evidence หมวดเป็นสิ่งที่ Patient เลือก ไม่ derive จากเวลา ไม่เพิ่ม clinical nutrition categories; หากหมวดไม่พอ owner ต้องระบุกรณีก่อนเพิ่ม
 
 ### Q60 — Meal occurrence time / timezone
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A date only; B date + local time; C timestamp/instant; D other; ทุกตัวเลือกต้องระบุ timezone interpretation
 
@@ -142,11 +167,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q61 — Meal content fields
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A category/date + optional bounded description; B portion/quantity; C structured food items; D nutrition/macros/calories; E photo/location/tags; F ระบุ combination
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** optional plain-text description ไม่เกิน 1,000 characters เป็น proposed technical cap ไม่ใช่ nutrition ontology; portion/quantity/items/tags deferred; macros/calories/location reject first slice; photo แยก Q62 ไม่มีการคำนวณ calories/macros
 
 ### Q62 — Meal images
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A deferred; B included now พร้อม storage/privacy/lifecycle contract
 
@@ -154,11 +183,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q63 — Meal correction/delete/history
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A edit current value + physical delete, no content revisions; B immutable revisions + deletion policy; C soft-delete/archive; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** SELF แก้ current entry หรือยืนยันลบ payload จาก active database; activity history = รายการเหตุการณ์ที่เหลือ ไม่ใช่ revision history ไม่มี restore/revision UI เก็บ minimized operation audit ตาม Q77 tradeoff: A ลด retained sensitive content แต่ไม่ reconstruct ก่อนแก้; B/C ช่วย trace แต่เก็บข้อความที่ผู้ใช้คิดว่าลบแล้ว ต้องปิด backup/audit retention และคำอธิบายการลบใน 17H.0B
 
 ### Q64 — Exercise record semantic
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A one actually performed Patient-reported activity session; B daily aggregate; C Goal Plan completion; D other
 
@@ -166,11 +199,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q65 — Exercise activity vocabulary
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A free-text activity; B controlled list; C common list + OTHER; D reuse Goal Plan codes; E other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** required plain-text activity name ไม่เกิน 120 characters; ยังไม่มี customer-approved controlled exercise list จึงไม่ copy exercise_walk/stretching/cardio/strengthening/hiit codes จาก care template B/C ต้องอนุมัติ list/version/OTHER semantics; D อาจผูก domain ที่มี authority ต่างกัน
 
 ### Q66 — Exercise measurement fields
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A activity/date + optional duration minutes/note; B distance; C repetitions/sets; D intensity; E calories/heart rate; F ระบุ combination
 
@@ -178,11 +215,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q67 — Exercise occurrence date/time/timezone
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A date only; B date + local start time; C start/end instants; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A + Asia/Bangkok.** Patient เลือก civil occurrence date แยก optional duration อนุญาตย้อนหลัง ไม่อนาคต ไม่มี inference start/end หรือ midnight timestamp Duration ไม่ใช้แทน occurrence time; system recording timestamps ไม่เรียกเวลาออกกำลัง
 
 ### Q68 — Exercise correction/delete/history
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A edit current + physical delete without revisions; B immutable correction revisions; C archive/soft-delete; D other
 
@@ -190,17 +231,23 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q69 — Weight goal semantic
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A Patient-selected personal target; B clinician-agreed care target; C Hospital/program target; D display-only preference; E mixed authority
 
 **RECOMMENDATION — NOT OWNER APPROVED: A หาก owner ยืนยัน customer intent.** บันทึกน้ำหนักเป้าหมายส่วนตัว ไม่อ้างว่าเป็นเป้าลดน้ำหนักที่แพทย์แนะนำ; ไม่มี required decrease เทียบน้ำหนักปัจจุบัน B/C/E ต้องใช้ care-authority contract แยก WELL-03 wording และ legacy “น้ำหนักลด” ยังไม่พออนุมัติ numeric target semantics
 
 ### Q70 — Weight unit
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A kg only; B canonical kg + conversion/display units; C other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** kg สอดคล้อง current care/roster labels แต่ยังต้องอนุมัติสำหรับ personal target ไม่มี lbs หรือ generic unit framework ค่าต้อง finite positive, precision/range เป็น structural bounds ที่ 17H.0B ระบุ ไม่เป็น healthy-weight range
 
 ### Q71 — Weight target fields
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A target weight + optional target date; B start weight; C desired change; D note/reason; E status; F ระบุ combination
 
@@ -215,11 +262,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q72 — Weight-goal lifecycle/cardinality
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A zero or one current target, explicit edit/replace/remove, no prior-goal content history; B multiple targets; C active + completed/cancelled/replaced lifecycle/history; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** หนึ่ง current target ต่อ PatientProfile, atomic edit/replace ป้องกัน competing submissions และ explicit remove ได้ ไม่มี inferred achieved/completed เมื่อพบ measurement เปลี่ยน; previous sensitive values ไม่เก็บ revision history B/C ต้องมีเหตุผลของแต่ละ state ไม่ copy medication STOPPED
 
 ### Q73 — Source of current weight
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A no automatic source; B personal weight observation; C latest Baseline; D latest Follow-up/Final; E selected hierarchy; F other
 
@@ -227,11 +278,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q74 — Personal weight observation
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A NO ใน first 17H scope (target only); B YES พร้อม separate domain contract; C future separate slice
 
 **RECOMMENDATION — NOT OWNER APPROVED: A; C ยัง future-gated.** หาก B: owner ต้องระบุ persisted SELF ownership/creator, measuredAt หรือ civil date/time + timezone (ไม่ใช้ createdAt แทน), kg/precision/range, correction/delete/revisions, read matrix, retention, provenance label และ no overwrite E/F; วาง record แยก Weight Goal พร้อม validation/audit/concurrency tests ไม่มีการอนุมัติ B จาก WELL-03 หรือ legacy optional weight helper
 
 ### Q75 — BMI
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A excluded; B derived display-only; C persisted; D clinically interpreted
 
@@ -239,11 +294,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q76 — Recommendations / scoring
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A exclude all automated nutrition/fitness/clinical scoring/advice; B specify separately approved features
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** ไม่รวม calorie targets, diet/exercise scoring, weight-loss advice, BMI classification, healthy/unhealthy judgments หรือ automated clinical advice ไม่ copy legacy percentage/adherence และไม่สร้าง coaching/diagnosis/treatment behavior
 
 ### Q77 — Audit policy
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A minimized mutation/lifecycle audits; B content/value snapshots; C no durable audits; D other
 
@@ -251,11 +310,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q78 — Export/sharing
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A deferred; B SELF export/print; C explicit grants to Family/Hospital/OSM; D external API; E other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** ไม่เพิ่ม export/print feature/share/caregiver read/external API; browser print/screenshot ที่ผู้ใช้ทำเองห้ามอ้างว่าระบบป้องกันได้ Future disclosure ต้องมี purpose, minimal fields, acceptance/revoke, retention และ privacy/controller review แยก Q5 เดิมไม่ได้อนุมัติ wellness sharing
 
 ### Q79 — Reporting / analytics
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A excluded from existing reporting; B Hospital dashboard; C Program report/outcome; D adherence score; E population analytics; F other
 
@@ -263,11 +326,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q80 — Reminder / notification boundary
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A no reminder source in first slice; B future source/state only after explicit source contract; C other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** หากต้องการภายหลัง 17H อาจเป็น owner ของ well-defined source/state เฉพาะที่อนุมัติ; 17J เป็น owner delivery policy/channel/system authority ไม่ส่ง LINE/email/SMS/push และไม่ reuse medication occurrence โดยปริยาย
 
 ### Q81 — Privacy/cache
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A exact SELF + private request-scoped reads and safe denial; B broader caching/access (ระบุ contract)
 
@@ -275,11 +342,15 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ### Q82 — Route / UX
 
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
+
 ตัวเลือก: A Personal-context `/app/personal/wellness` พร้อม bounded sections; B separate Personal destinations; C care/Goal Plan destination; D other
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** อาหาร / การออกกำลังกาย / เป้าหมายน้ำหนัก แยกจาก care plan และ Work; route ยังไม่สร้าง Navigation visibility ไม่ใช่ authority ใช้ mobile-first states ตาม section 12; copy ไม่อ้าง professional nutrition/exercise/medical advice
 
 ### Q83 — First implementation boundary
+
+**FINAL OWNER DISPOSITION: CLOSED / OWNER APPROVED — Option A.**
 
 ตัวเลือก: A sequential domain slices after owner closeout; B combined implementation; C other split
 
@@ -470,16 +541,22 @@ Documentation-focused validation เท่านั้น:
 
 ข้อจำกัด: ไม่มี original whiteboard image ใหม่, live legacy DB, runtime wellness, executed wellness security tests, browser/device UAT หรือ owner decision จึงไม่มี clinical/production/privacy-compliance PASS จาก phase นี้ Numeric caps/retention operational details ที่เปิดอยู่ต้องปิดใน 17H.0B ก่อน implementation
 
-## 16. Final disposition
+## 16. Final disposition — updated by 17H.0B
 
-**Phase 17H.0 — DECISION PACK COMPLETE / COMPLETE AS ANALYSIS**<br>
-**Q54–Q83 — OPEN / NOT OWNER APPROVED**<br>
-**WELL-01/02/03 — REQUIREMENT-GATED**<br>
-**Phase 17H.1 — NOT CLEARED FOR IMPLEMENTATION**
+**Phase 17H.0 — CLOSED / DECISIONS CLOSED**<br>
+**Q54–Q83 — CLOSED / OWNER APPROVED — Option A**<br>
+**Phase 17H.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE**<br>
+**WELL-01 — CLEARED FOR IMPLEMENTATION through the 17H.1 contract**<br>
+**Phase 17H.1 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**<br>
+**WELL-02 — DECISIONS CLOSED / PLANNED 17H.2 / NOT IMPLEMENTED**<br>
+**WELL-03 — DECISIONS CLOSED / TARGET-ONLY PLANNED 17H.3 / NOT IMPLEMENTED**<br>
+**Personal Weight Observation — DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**
 
-ไม่มี runtime, schema, migration, test หรือ env เปลี่ยน Phase 17G.4A PASS / COMPLETE คงเดิม; 17F/Q5/17J/MED-02 gates และ manual/device-UAT limitations ไม่เปลี่ยน Owner ต้องอนุมัติ/แก้คำตอบโดย explicit statement และปิด 17H.0B contract ก่อนเริ่ม implement
+Corrected Q71 Option A remains binding: create/newly changed targetDate >= current Asia/Bangkok civil date, today allowed; unchanged naturally passed targetDate may remain on edit without validation failure. Passing the date causes no automatic complete/expire/overdue/cancel, clinical interpretation, reminder, scoring or automatic progress. No blanket ban on unchanged past dates on edit.
 
-## 17. Compact owner-response template
+ไม่มี runtime/schema/migration/test/env เปลี่ยน Phase 17G.4A PASS / COMPLETE, Family/Q5/Consent/MED-02/17J gates และข้อจำกัด manual/device-UAT คงเดิม งานนี้ปิด owner decisions และ clear Meal contract เท่านั้น ยังไม่ใช่ Wellness implementation หรือ UAT PASS.
+
+## 17. Historical compact owner-response template (superseded by explicit approval)
 
 **RECOMMENDATIONS ONLY — NOT OWNER APPROVED**<br>
 **RECOMMENDATION — NOT OWNER APPROVED — ทุกบรรทัดใน template นี้.**
