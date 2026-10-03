@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## Current-status addendum — Phase 17G.2A (2026-10-03)
+
+[สัญญา Daily Medication Schedule 17G.2A](./phases/PHASE_17G2_DAILY_MEDICATION_SCHEDULE_CONTRACT.md) **CLEARED FOR IMPLEMENTATION**; owner อนุมัติระดับนาที HH:mm และห้ามเวลาซ้ำต่อรายการยาใน session นี้แล้ว. ขอบเขต: exact Patient SELF, 0..N เวลารายวัน Asia/Bangkok บน ACTIVE medication และเก็บเวลาเดิมเป็นประวัติอ่านอย่างเดียวเมื่อ STOPPED. **17G.2 runtime NOT IMPLEMENTED**; งานนี้เฉพาะเอกสาร ไม่มี schema/migration/UI/service/tests ใหม่. 17G.1 IMPLEMENTED / CLOSED; Q30–Q53 ไม่เปลี่ยน; 17G.3/17J/MED-02 และ UAT/governance gates คงเดิม. รายละเอียดทางเทคนิคและ acceptance อยู่ในสัญญา; สถานะย้อนหลังด้านล่างคงไว้.
+
 ## Current-status addendum — Phase 17G.1 (2026-10-02)
 
 **17G.1 IMPLEMENTED / CLOSED** สำหรับ MED-01: รายการยาที่ Patient บันทึกเองใน Personal **ยาของฉัน**; exact SELF เท่านั้น, แก้ไขได้ขณะกำลังติดตาม และหยุดติดตามใน DEMI เป็นสถานะปลายทาง ไม่ใช่การสั่งหรือหยุดใช้ยาทางการแพทย์. ดู [implementation handoff และหลักฐานการตรวจจริง](./phases/PHASE_17G1_PERSONAL_MEDICATION_IMPLEMENTATION_HANDOFF.md). 17G.0 / Q30–Q53 CLOSED / OWNER APPROVED; MED-02 REQUIREMENT-GATED; 17G.2/17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 OPEN / deferred; Q5 GOVERNANCE BLOCKED. ไม่อ้างผล browser/device UAT; สถานะย้อนหลังด้านล่างคงไว้เป็นประวัติ.
