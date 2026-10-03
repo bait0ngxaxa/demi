@@ -1,18 +1,22 @@
 # DEMI Project Context
 
-## Current-status addendum — Phase 17G.3B (2026-10-03)
+## Current-status addendum — Phase 17G.3C (2026-10-03)
+
+**Phase 17G.3C — IMPLEMENTED / CLOSED** สำหรับ bounded Reminder Occurrence Source only ตาม [implementation handoff](./phases/PHASE_17G3_REMINDER_OCCURRENCE_SOURCE_IMPLEMENTATION_HANDOFF.md): full unit 196 files / 1,569 tests และ PostgreSQL integration 28 files / 366 tests PASS; targeted/timezone/lint/typecheck ผ่าน. Server-only exact persisted Patient SELF read/pagination/revalidation; derived current ACTIVE schedules, strict future [from,to), deterministic child/date key และ actor-bound HMAC cursor. ไม่มี occurrence persistence/schema/migration/UI/route/audit read/cache. Adherence deferred; 17J DELIVERY และ system authority ยัง requirement-gated; MED-02 gated. ไม่มี browser/device UAT หรือ production/deployment PASS inference. 17G.3B contract ยังเป็น implementation semantics; สถานะเดิมด้านล่างเป็น historical evidence. Next: 17G.4A automated security/DB/privacy re-audit โดยยังไม่เริ่มในงานนี้.
+
+## Historical-status addendum — Phase 17G.3B (2026-10-03)
 
 [Reminder Occurrence Source implementation contract 17G.3B](./phases/PHASE_17G3_REMINDER_OCCURRENCE_SOURCE_IMPLEMENTATION_CONTRACT.md): **CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED**. 17G.3A DECISIONS CLOSED / OWNER APPROVED; bounded source-only contract พร้อมสำหรับ 17G.3C แต่ **17G.3 runtime NOT IMPLEMENTED**. Reminder Occurrence Source คือ scheduled personal tracking point จาก current ACTIVE schedule กับวันที่ Asia/Bangkok; ไม่ใช่ notification หรือ intake evidence. Exact persisted Patient SELF เท่านั้น; ไม่มี 17J system-processing authority. **Adherence remains deferred and is not part of the cleared runtime slice.** 17G.1/17G.2 IMPLEMENTED / CLOSED; MED-02 REQUIREMENT-GATED; 17G owns SOURCE, 17J owns DELIVERY และยัง future / requirement-gated; P17D-NOTIF-01 OPEN; NOTIF-01 REQUIREMENT-GATED. Next: 17G.3C — Reminder Occurrence Source Implementation; หลัง approved runtime slices จึง 17G.4A re-audit. Earlier addenda below retain their phase-time evidence.
 
 Application of `20261003120000_daily_medication_schedules` was confirmed externally by owner: **Migration application was confirmed externally by the owner; no deployment command output is attributed to this agent.** ไม่แต่ง environment/production PASS หรือ browser/device UAT evidence; P17F-L04/Q5 unchanged. งาน 17G.3B แก้เฉพาะเอกสาร ไม่มี runtime/schema/migration/tests/env changes.
 
-## Current-status addendum — Phase 17G.3A (2026-10-03)
+## Historical-status addendum — Phase 17G.3A (2026-10-03)
 
 [Reminder Occurrence / Adherence decision pack 17G.3A](./phases/PHASE_17G3_REMINDER_ADHERENCE_DECISION_PACK.md) จัดทำแล้วในฐานะ analysis/documentation: **CLEARED FOR IMPLEMENTATION — occurrence source only; 17G.3 runtime NOT IMPLEMENTED**. Approved source semantics คือ derived occurrence source จาก scheduleId + Asia/Bangkok local date, current ACTIVE/current committed schedules, no retroactive backfill และ defer adherence; Owner อนุมัติ OD01–OD08 (OD08 exclusion only) และ OD12–OD14 แล้วผ่าน interactive answers; OD09–OD11 defer/out of source slice. Strict future dueAt > evaluationAsOf + [from,to), no elapsed/catch-up lookup หรือ historical occurrence ledger. **Adherence remains deferred and is not part of the cleared runtime slice.** ขั้นตอนถัดไป 17G.3B source-only implementation contract; 17J system authority ยังไม่อนุมัติ. 17G owns SOURCE; 17J owns DELIVERY และยัง future / requirement-gated; P17D-NOTIF-01 OPEN, NOTIF-01 REQUIREMENT-GATED. ไม่เพิ่ม runtime/schema/migration/jobs/UI/adherence/delivery และไม่เปลี่ยน exact SELF authority; MED-02 ยัง REQUIREMENT-GATED.
 
 **17G.1 / 17G.2 IMPLEMENTED / CLOSED**. Owner ยืนยันจากภายนอกหลัง implementation review ว่า migration `20261003120000_daily_medication_schedules` apply สำเร็จแล้ว: **Migration application was confirmed externally by the owner; no deployment command output is attributed to this agent.** ไม่ระบุ environment หรือ production PASS และไม่อ้างว่า agent รัน deployed migration. Browser/device UAT ยังไม่มี PASS evidence; P17F-L04/Q5 ไม่เปลี่ยน. Addendum/hand-off เดิมด้านล่างบันทึกสถานะ ณ งานเดิมและคงไว้เป็นประวัติ.
 
-## Current-status addendum — Phase 17G.2B (2026-10-03)
+## Historical-status addendum — Phase 17G.2B (2026-10-03)
 
 **Phase 17G.2 IMPLEMENTED / CLOSED** สำหรับ bounded Daily Medication Schedule: exact Patient SELF, 0..1,440 เวลารายวัน HH:mm ตาม Asia/Bangkok บน ACTIVE medication; replace-all แบบ atomic ใช้ parent.updatedAt ร่วมกับ text edit/stop; เก็บเวลาเดิมเป็นประวัติอ่านอย่างเดียวเมื่อ STOPPED. ดู [implementation handoff และหลักฐานอัตโนมัติ](./phases/PHASE_17G2_DAILY_MEDICATION_SCHEDULE_IMPLEMENTATION_HANDOFF.md): unit 192 files / 1,447 tests, PostgreSQL integration 28 files / 352 tests, migration upgrade/clean history, lint/typecheck/build ผ่าน. ยังไม่ได้ทำ browser/device UAT หรือ production deployment. ไม่มี reminder/adherence/delivery. 17G.1 IMPLEMENTED / CLOSED; MED-02 REQUIREMENT-GATED; 17G.3 NOT IMPLEMENTED; 17J future; P17F-L04 และ Q5 ไม่เปลี่ยน. สถานะสัญญาและ phase เดิมด้านล่างเป็นประวัติ.
 

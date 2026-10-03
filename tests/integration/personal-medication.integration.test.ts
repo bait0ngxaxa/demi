@@ -8,10 +8,19 @@ import { getOwnPersonalMedication as detail, listOwnPersonalMedications as list 
 import type { PersonalMedicationDto } from "@/modules/medications/domain/personal-medication-definitions";
 import { fromMedicationTimeCarrier, toMedicationTimeCarrier } from "@/modules/medications/domain/medication-local-time";
 import { MEDICATION_SCHEDULE_MAX_TIMES } from "@/modules/medications/domain/personal-medication-definitions";
+import { createReminderSourceKey, type MedicationReminderOccurrenceSource } from "@/modules/medications/domain/medication-reminder-occurrence";
+import { listOwnPersonalMedicationReminderOccurrences as sources, revalidateOwnPersonalMedicationReminderOccurrence as revalidate } from "@/modules/medications/services/medication-reminder-occurrence-query-service";
 
 const db = getPrisma();
 const now = new Date("2026-10-02T12:00:00.000Z");
 const deps = { database: db, now: () => now };
+const sourceWindow = { from: "2026-10-03T17:00:00.000Z", to: "2026-10-04T17:00:00.000Z" };
+function sourceQuery(medicationId: string): { medicationId: string; from: string; to: string } {
+  return { medicationId, ...sourceWindow };
+}
+function unknownSource(medicationId: string): MedicationReminderOccurrenceSource {
+  return { sourceKey: createReminderSourceKey("55555555-5555-4555-8555-555555555555", "2026-10-04"), sourceVersion: 1, kind: "PERSONAL_MEDICATION_DAILY", personalMedicationId: medicationId, localDate: "2026-10-04", localTime: "08:00", dueAt: "2026-10-04T01:00:00.000Z", aggregateVersion: now.toISOString() };
+}
 const actorIds: string[] = [];
 const personIds: string[] = [];
 const hospitalIds: string[] = [];
@@ -80,6 +89,131 @@ describe("PersonalMedication real PostgreSQL", () => {
   });
   afterEach(cleanup);
   afterAll(async () => { await db.$disconnect(); });
+
+  it("source lifecycle preserves retained identity, revalidates known elapsed sources and never writes/audits", async () => {
+    const a = await actor(); const item = await create(a, { medicationName: "ยาไทย", instructionText: "ข้อความส่วนตัว" }, deps);
+    expect((await sources(a, sourceQuery(item.id), deps)).items).toEqual([]);
+    let current = await replace(a, { ...token(item), times: ["23:59", "08:00", "00:00"] }, deps);
+    async function read(): Promise<MedicationReminderOccurrenceSource[]> {
+      const before = await db.personalMedication.findUniqueOrThrow({ where: { id: item.id }, select: { updatedAt: true } });
+      const audits = await db.auditEvent.count({ where: { resourceId: item.id } });
+      const result = await sources(a, sourceQuery(item.id), deps);
+      for (const known of result.items) expect(await revalidate(a, known, { database: db, now: () => { throw new Error("Revalidation must not read clock"); } })).toEqual({ status: "CURRENT", aggregateVersion: current.updatedAt });
+      expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(audits);
+      expect(await db.personalMedication.findUniqueOrThrow({ where: { id: item.id }, select: { updatedAt: true } })).toEqual(before);
+      return result.items;
+    }
+    const first = await read();
+    expect(first.map((x) => x.dueAt)).toEqual(["2026-10-03T17:00:00.000Z", "2026-10-04T01:00:00.000Z", "2026-10-04T16:59:00.000Z"]);
+    expect(first.map((x) => x.localTime)).toEqual(["00:00", "08:00", "23:59"]);
+    const old = first[1];
+    const children = await db.medicationSchedule.findMany({ where: { personalMedicationId: item.id }, orderBy: { localTime: "asc" }, select: { id: true, localTime: true } });
+    expect(first.map((x) => x.sourceKey)).toEqual(children.map((child) => createReminderSourceKey(child.id, "2026-10-04")));
+    current = { ...current, ...await update(a, { ...token(current), medicationName: "แก้ข้อความ" }, deps) };
+    expect((await read()).map((x) => x.sourceKey)).toEqual(first.map((x) => x.sourceKey));
+    expect(await revalidate(a, old, deps)).toEqual({ status: "CURRENT", aggregateVersion: current.updatedAt });
+    current = await replace(a, { ...token(current), times: ["08:00", "00:00", "23:59"] }, deps);
+    expect((await read()).map((x) => x.sourceKey)).toEqual(first.map((x) => x.sourceKey));
+    expect(await revalidate(a, old, deps)).toEqual({ status: "CURRENT", aggregateVersion: current.updatedAt });
+    expect((await sources(a, sourceQuery(item.id), { database: db, now: () => new Date(sourceWindow.to) })).items).toEqual([]);
+    expect(await revalidate(a, old, { database: db, now: () => new Date(sourceWindow.to) })).toEqual({ status: "CURRENT", aggregateVersion: current.updatedAt });
+    current = await replace(a, { ...token(current), times: ["00:00", "23:59"] }, deps);
+    expect(await revalidate(a, old, deps)).toEqual({ status: "STALE" });
+    current = await replace(a, { ...token(current), times: ["00:00", "08:00", "23:59"] }, deps);
+    const readded = (await read())[1]; expect(readded.sourceKey).not.toBe(old.sourceKey);
+    expect(await revalidate(a, old, deps)).toEqual({ status: "STALE" });
+    const audits = await db.auditEvent.count({ where: { resourceId: item.id } });
+    current = { ...current, ...await stop(a, token(current), deps) };
+    expect((await sources(a, sourceQuery(item.id), deps)).items).toEqual([]);
+    expect(await revalidate(a, readded, deps)).toEqual({ status: "STALE" });
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(audits + 1);
+    const retracked = await create(a, { medicationName: item.medicationName }, deps);
+    expect(retracked.id).not.toBe(item.id); expect((await sources(a, sourceQuery(retracked.id), deps)).items).toEqual([]);
+  });
+
+  it.each(["text", "identical", "stop"])("source pagination conflicts after %s but retains keys only when structurally backed", async (change) => {
+    const a = await actor(); const item = await raw(a);
+    const times = Array.from({ length: 101 }, (_, minute) => `${String(8 + Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+    const scheduled = await replace(a, { ...token(item), times }, deps);
+    const page = await sources(a, sourceQuery(item.id), deps);
+    expect(page.items).toHaveLength(100); expect(page.nextCursor).not.toBeNull();
+    const next = await sources(a, { ...sourceQuery(item.id), cursor: page.nextCursor }, { database: db, now: () => { throw new Error("Continuation must not read clock"); } });
+    expect(next.items).toHaveLength(1); expect(next.evaluationAsOf).toBe(page.evaluationAsOf);
+    expect(new Set([...page.items, ...next.items].map((x) => x.sourceKey)).size).toBe(101);
+    const version = change === "text" ? await update(a, { ...token(scheduled), medicationName: "ข้อความใหม่" }, deps) : change === "identical" ? await replace(a, { ...token(scheduled), times: [...times].reverse() }, deps) : await stop(a, token(scheduled), deps);
+    const audits = await db.auditEvent.count({ where: { resourceId: item.id } });
+    await expect(sources(a, { ...sourceQuery(item.id), cursor: page.nextCursor }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await revalidate(a, page.items[0], deps)).toEqual(change === "stop" ? { status: "STALE" } : { status: "CURRENT", aggregateVersion: version.updatedAt });
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(audits);
+    expect((await db.personalMedication.findUniqueOrThrow({ where: { id: item.id } })).updatedAt.toISOString()).toBe(version.updatedAt);
+  });
+
+  it.each(["replace", "stop", "text"])("source reads coherent old snapshot while %s commits, then sees fresh committed truth", async (change) => {
+    const a = await actor(); const item = await raw(a);
+    const scheduled = await replace(a, { ...token(item), times: ["08:00"] }, deps);
+    const initial = await sources(a, sourceQuery(item.id), deps);
+    const held = latch(); const release = latch();
+    const database = { $transaction: (operation: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel: "Serializable" }) => db.$transaction(async (tx) => {
+      const proxy = new Proxy(tx, { get(target, property) {
+        if (property !== "person") return Reflect.get(target, property);
+        return { findFirst: async (args: Prisma.PersonFindFirstArgs) => { const result = await tx.person.findFirst(args); held.release(); await release.promise; return result; } };
+      } });
+      return operation(proxy);
+    }, { ...options, timeout: 10000 }) } as unknown as PrismaClient;
+    const pending = sources(a, sourceQuery(item.id), { ...deps, database });
+    const settled = Promise.allSettled([pending]);
+    await held.promise;
+    try {
+      if (change === "replace") await replace(a, { ...token(scheduled), times: ["11:00"] }, deps);
+      else if (change === "stop") await stop(a, token(scheduled), deps);
+      else await update(a, { ...token(scheduled), medicationName: "แก้ไข" }, deps);
+    } finally { release.release(); }
+    const result = (await settled)[0];
+    expect(result.status).toBe("fulfilled"); if (result.status === "fulfilled") expect(result.value).toEqual(initial);
+    const fresh = await sources(a, sourceQuery(item.id), deps);
+    expect(fresh.aggregateVersion).not.toBe(initial.aggregateVersion);
+    expect(fresh.items.map((x) => x.localTime)).toEqual(change === "stop" ? [] : [change === "replace" ? "11:00" : "08:00"]);
+    expect(await revalidate(a, initial.items[0], deps)).toEqual(change === "text" ? { status: "CURRENT", aggregateVersion: fresh.aggregateVersion } : { status: "STALE" });
+  });
+
+  it.each(["UTC", "Asia/Bangkok"])("source timezone evidence: process TZ and transaction session %s", async (timezone) => {
+    const a = await actor(); const item = await raw(a);
+    await replace(a, { ...token(item), times: ["00:00", "08:00", "23:59"] }, deps);
+    const database = { $transaction: (operation: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel: "Serializable" }) => db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('TimeZone', ${timezone}, true)`;
+      return operation(tx);
+    }, options) } as unknown as PrismaClient;
+    const result = await sources(a, sourceQuery(item.id), { ...deps, database });
+    expect(result.items.map((x) => x.dueAt)).toEqual(["2026-10-03T17:00:00.000Z", "2026-10-04T01:00:00.000Z", "2026-10-04T16:59:00.000Z"]);
+    expect(result).toEqual(await sources(a, sourceQuery(item.id), deps));
+  });
+
+  it("source continuation rechecks persisted eligibility after account/role changes without audit", async () => {
+    const a = await actor(); const item = await raw(a);
+    const times = Array.from({ length: 101 }, (_, minute) => `${String(8 + Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+    const current = await replace(a, { ...token(item), times }, deps);
+    const first = await sources(a, sourceQuery(item.id), deps);
+    const audits = await db.auditEvent.count({ where: { resourceId: item.id } });
+    await db.user.update({ where: { id: a.userId }, data: { status: "SUSPENDED" } });
+    await expect(sources(a, { ...sourceQuery(item.id), cursor: first.nextCursor }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(revalidate(a, first.items[0], deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await db.user.update({ where: { id: a.userId }, data: { status: "ACTIVE" } });
+    await db.userRole.deleteMany({ where: { userId: a.userId } });
+    await expect(sources(a, { ...sourceQuery(item.id), cursor: first.nextCursor }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(revalidate(a, first.items[0], deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await db.auditEvent.count({ where: { resourceId: item.id } })).toBe(audits);
+    expect((await db.personalMedication.findUniqueOrThrow({ where: { id: item.id } })).updatedAt.toISOString()).toBe(current.updatedAt);
+  });
+
+  it.each([["00:00", "09:00", 1], ["03:00", "11:00", 1], ["03:00", "09:00", 0], ["01:00", "08:00", 0]] as const)("source real edit at UTC %s to Bangkok %s discovers %s today", async (clock, time, count) => {
+    const a = await actor(); const item = await raw(a);
+    const original = await replace(a, { ...token(item), times: ["08:00"] }, deps);
+    const old = (await sources(a, sourceQuery(item.id), deps)).items[0];
+    await replace(a, { ...token(original), times: [time] }, deps);
+    const result = await sources(a, sourceQuery(item.id), { database: db, now: () => new Date(`2026-10-04T${clock}:00.000Z`) });
+    expect(result.items).toHaveLength(count); if (count) expect(result.items[0].localTime).toBe(time);
+    expect(await revalidate(a, old, deps)).toMatchObject({ status: time === "08:00" ? "CURRENT" : "STALE" });
+  });
 
   it("replaces/removes/clears sorted schedules, retains unchanged rows and keeps lists minimal", async () => {
     const a = await actor(); const original = await raw(a);
@@ -343,6 +477,8 @@ describe("PersonalMedication real PostgreSQL", () => {
     expect(Object.keys(own).sort()).toEqual(["id", "medicationName", "instructionText", "status", "stoppedAt", "createdAt", "updatedAt"].sort());
     expect((await list(a, { status: "ACTIVE" }, db)).items.map((x) => x.id)).toEqual([own.id]);
     for (const id of [foreign.id, randomUUID()]) {
+      await expect(sources(a, sourceQuery(id), deps)).rejects.toMatchObject({ code: "NOT_FOUND", message: "The requested resource was not found" });
+      await expect(revalidate(a, unknownSource(id), deps)).rejects.toMatchObject({ code: "NOT_FOUND", message: "The requested resource was not found" });
       await expect(detail(a, id, db)).rejects.toMatchObject({ code: "NOT_FOUND", message: "The requested resource was not found" });
       await expect(update(a, { ...token(foreign), medicationId: id, medicationName: "โจมตี" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(stop(a, { ...token(foreign), medicationId: id }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -357,17 +493,23 @@ describe("PersonalMedication real PostgreSQL", () => {
     const item = await raw(a);
     const denied = [null, { ...a, userId: b.userId }, { ...a, personId: b.personId }, noProfile];
     for (const bad of denied) {
+      await expect(sources(bad, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(revalidate(bad, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(list(bad, { status: "ACTIVE" }, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(create(bad, { medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(detail(bad, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(replace(bad, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     await db.user.update({ where: { id: a.userId }, data: { status: "SUSPENDED" } });
+    await expect(sources(a, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(revalidate(a, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(detail(a, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(update(a, { ...token(item), medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(replace(a, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await db.user.update({ where: { id: a.userId }, data: { status: "ACTIVE" } });
     await db.userRole.deleteMany({ where: { userId: a.userId } });
+    await expect(sources(a, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(revalidate(a, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(stop(a, token(item), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(detail(a, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(replace(a, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -393,6 +535,8 @@ describe("PersonalMedication real PostgreSQL", () => {
     const family = await db.caregiverRelationship.create({ data: { patientProfileId: profileId, caregiverUserId: caregiver.userId, sourceInvitationId: invitation.id, activatedAt: now } });
     const deniedActors = [osm, assignedOsm, ...members, admin, caregiver];
     for (const denied of deniedActors) {
+      await expect(sources(denied, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(revalidate(denied, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(list(denied, { status: "ACTIVE" }, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(detail(denied, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(create(denied, { medicationName: "ยา" }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -401,6 +545,8 @@ describe("PersonalMedication real PostgreSQL", () => {
       await expect(replace(denied, { ...token(item), times: ["08:00"] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     await db.caregiverAppointmentGrant.create({ data: { caregiverRelationshipId: family.id, patientProfileId: profileId, patientPersonId: patient.personId, caregiverUserId: caregiver.userId, caregiverPersonId: caregiver.personId, patientHospitalRelationshipId: phr.id, proposedByUserId: patient.userId, proposedAt: now, contractVersion: "family-appointment-read-v1", status: "ACTIVE", acceptedAt: now, acceptedByUserId: caregiver.userId } });
+    await expect(sources(caregiver, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(revalidate(caregiver, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(detail(caregiver, item.id, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(stop(caregiver, token(item), deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(replace(caregiver, { ...token(item), times: [] }, deps)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -408,6 +554,9 @@ describe("PersonalMedication real PostgreSQL", () => {
     await db.patientProfile.create({ data: { personId: caregiver.personId } });
     const patientCaregiver = { ...caregiver, roles: [Role.PATIENT] };
     const selfItem = await create(patientCaregiver, { medicationName: "รายการส่วนตัว" }, deps);
+    expect((await sources(patientCaregiver, sourceQuery(selfItem.id), deps)).items).toEqual([]);
+    await expect(sources(patientCaregiver, sourceQuery(item.id), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(revalidate(patientCaregiver, unknownSource(item.id), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect((await list(patientCaregiver, { status: "ACTIVE" }, db)).items.map((x) => x.id)).toEqual([selfItem.id]);
     await expect(detail(patientCaregiver, item.id, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(update(patientCaregiver, { ...token(item), medicationName: "เปลี่ยน" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -420,6 +569,9 @@ describe("PersonalMedication real PostgreSQL", () => {
     const other = await actor(); const foreign = await raw(other);
     for (const roles of [[Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN]] as Role[][]) {
       const a = await actor(roles); const own = await create(a, { medicationName: "ยา" }, deps);
+      expect((await sources(a, sourceQuery(own.id), deps)).items).toEqual([]);
+      await expect(sources(a, sourceQuery(foreign.id), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(revalidate(a, unknownSource(foreign.id), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
       expect((await list(a, { status: "ACTIVE" }, db)).items.map((x) => x.id)).toEqual([own.id]);
       await expect(detail(a, foreign.id, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(stop(a, token(foreign), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });

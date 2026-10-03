@@ -1,5 +1,11 @@
 # Phase 17G.3B — Medication Reminder Occurrence Source Implementation Contract
 
+## Current implementation-status addendum — Phase 17G.3C (2026-10-03)
+
+**Phase 17G.3C — IMPLEMENTED / CLOSED — bounded Reminder Occurrence Source only.** Actual evidence is recorded in the [17G.3C handoff](./PHASE_17G3_REMINDER_OCCURRENCE_SOURCE_IMPLEMENTATION_HANDOFF.md): final unit 196 files / 1,569 tests and PostgreSQL integration 28 files / 366 tests PASS, plus targeted/timezone/lint/typecheck evidence. This contract remains the source of implementation semantics; its original body below is historical 17G.3B evidence. No occurrence persistence/schema/migration, adherence or delivery infrastructure was added. Adherence remains deferred; 17J remains delivery owner with system authority/delivery/content requirement-gated. No browser/device UAT or deployment inference. MED-02 unchanged. Next: 17G.4A automated security/DB/privacy re-audit, not started here.
+
+## Historical 17G.3B contract and verification record
+
 **CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** Documentation and engineering contract only. Date: 2026-10-03. Repository: `bait0ngxaxa/demi`.
 
 **17G.3A DECISIONS CLOSED / OWNER APPROVED. Adherence remains deferred and is not part of the cleared runtime slice.** This contract hands off only the bounded Reminder Occurrence Source to **17G.3C**. No runtime, schema, migration, service, route, Server Action, UI, test, dependency or environment change is delivered here. Notification delivery and notification-system authority remain gated under 17J.
