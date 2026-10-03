@@ -204,7 +204,14 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ตัวเลือก: A target weight + optional target date; B start weight; C desired change; D note/reason; E status; F ระบุ combination
 
-**RECOMMENDATION — NOT OWNER APPROVED: A.** target kg required; target date optional civil date Asia/Bangkok, ไม่ย้อนหลังตอน create/edit; วันที่ผ่านไปไม่ auto-complete ไม่เก็บ start weight/desired change เพราะไม่มี approved current source; note/reason deferred; status ไม่จำเป็นใน current-only model (Q72) ห้าม derive rate/deadline advice
+**RECOMMENDATION — NOT OWNER APPROVED: A.** target kg required; targetDate เป็น optional civil date Asia/Bangkok ไม่เก็บ start weight/desired change เพราะไม่มี approved current source; note/reason deferred; status ไม่จำเป็นใน current-only model (Q72) ห้าม derive rate/deadline advice
+
+**RECOMMENDATION — NOT OWNER APPROVED — กฎ targetDate ทั้งหมดด้านล่าง:**
+
+- **Create:** หากระบุ targetDate ต้องไม่ก่อน current Asia/Bangkok civil date; วันนี้ใช้ได้
+- **Edit — retain existing:** หาก targetDate เดิมผ่านไปตามเวลา Patient คงวันที่เดิมที่ไม่เปลี่ยนไว้ขณะแก้ field อื่น เช่น targetWeight ได้ การคงวันที่เดิมย้อนหลังต้องไม่ทำให้ validation fail
+- **Edit — change date:** หาก Patient เปลี่ยน targetDate เป็นค่าใหม่ ค่านั้นต้องไม่ก่อน current Asia/Bangkok civil date; วันนี้ใช้ได้ การเปลี่ยนหรือลบวันที่ยังอยู่ภายใต้ SELF mutation policy ที่จะอนุมัติหาก Q71 ได้รับ owner approval ภายหลัง
+- **No implicit lifecycle transition:** targetDate ที่ผ่านไปไม่ทำให้ goal complete/cancel/expire หรือได้รับ clinical interpretation; target ยังคงเป็น current target จน Patient explicit edit/replace/remove ตาม Q72 ไม่เพิ่ม OVERDUE/EXPIRED/COMPLETED state, automatic replacement, reminders, scoring, progress calculation หรือ clinician review workflow
 
 ### Q72 — Weight-goal lifecycle/cardinality
 
@@ -315,7 +322,7 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 | Exercise: GPS/location | REJECT FOR FIRST SLICE | ไม่จำเป็นกับ journal intent |
 | Exercise: correction revisions / archive | DEFERRED | Q68=A ไม่เก็บ historical note revisions |
 | Weight Goal: target weight in kg | REQUIRED FOR FIRST SLICE | personal target Q69/70; positive finite decimal; precision/cap ยังรอ closeout |
-| Weight Goal: target date | OPTIONAL IF OWNER APPROVES | Q71; civil date Bangkok, ไม่ trigger completion/advice |
+| Weight Goal: target date | OPTIONAL IF OWNER APPROVES | Q71; civil date Asia/Bangkok; create/เปลี่ยนเป็นค่าใหม่ต้องไม่ก่อนวันนี้ (วันนี้ได้); วันที่เดิมที่ผ่านไปคงไว้ขณะแก้ field อื่นได้; ไม่ trigger lifecycle/advice |
 | Weight Goal: start weight | DEFERRED | Q73 ไม่มี current source; ไม่ซ่อน observation ใน target record |
 | Weight Goal: desired change | REJECT FOR FIRST SLICE | derived redundant field ที่ต้องมี start/current source |
 | Weight Goal: note | DEFERRED | ไม่มี evidence ว่าจำเป็น |
@@ -410,7 +417,7 @@ Baseline recordedOn เป็น date-only observation provenance; Follow-up/Fin
 | Empty | “ยังไม่มีบันทึก” + action ที่ approved; ไม่บอกไม่ได้กิน/ออกกำลัง |
 | Loading | neutral pending state ไม่แสดงค่าของ actor คนก่อน |
 | Create | labeled fields, date/unit explanation, server validation และ review ก่อน submit |
-| Edit | load exact own current value/version; ไม่เดา prior clinical facts |
+| Edit | load exact own current value/version; คง targetDate เดิมที่ผ่านไปได้ตาม Q71 โดยไม่บังคับเปลี่ยนวันที่เมื่อแก้ targetWeight; ไม่เดา prior clinical facts |
 | Delete / cancel | confirm irreversible record removal ตาม approved lifecycle; cancel form ไม่ใช่ cancelled clinical state; target remove ไม่ใช่ completed goal |
 | Validation error | Thai field-level message, retained in-memory draft, focus summary; no internal details |
 | Save success | แสดง persisted readback เมื่อ commit สำเร็จ; pending ป้องกัน accidental repeat ไม่อ้างสำเร็จก่อน response |
@@ -499,7 +506,7 @@ Q67: A — occurrence date only, Asia/Bangkok; duration separate
 Q68: A — edit current + physical delete; event history, no revisions
 Q69: A — Patient-selected personal target, subject to intent confirmation
 Q70: A — kg only; precision/range pending 17H.0B
-Q71: A — target weight + optional target date; no start/change/reason/status
+Q71: A — target weight + optional Asia/Bangkok target date; create/new date >= today; unchanged passed date may be retained on edit
 Q72: A — 0..1 current target; edit/replace/remove; no prior-target history
 Q73: A — no automatic current-weight source/progress
 Q74: A — NO personal weight observation in first 17H scope
