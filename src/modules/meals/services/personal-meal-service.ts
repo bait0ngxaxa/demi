@@ -6,6 +6,7 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ConflictError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { mealBangkokToday, toMealDateCarrier, type PersonalMealDto } from "../domain/personal-meal";
+import { MealCreateConsumedError } from "../domain/meal-create-consumed-error";
 import { assertPersonalMealSelf } from "../policies/personal-meal-policy";
 import { mealCreateSchema, mealUpdateSchema, mealDeleteSchema } from "../schemas/personal-meal-schemas";
 import { resolvePersonalMealOwner } from "./personal-meal-access-service";
@@ -30,7 +31,7 @@ async function mutate(actor: ActorContext | null | undefined, input: unknown, op
         const receipt = await tx.personalMealCreateReceipt.findUnique({ where: { patientProfileId_submissionNonce: { patientProfileId, submissionNonce: fields.submissionNonce } }, select: { mealEntryId: true } });
         if (receipt) {
           const row = await tx.personalMealEntry.findFirst({ where: { id: receipt.mealEntryId, patientProfileId }, select: personalMealSelect });
-          if (!row) throw new ConflictError();
+          if (!row) throw new MealCreateConsumedError();
           return { outcome: "REPLAY", item: toPersonalMealDto(row) };
         }
         const now = serverNow(deps);

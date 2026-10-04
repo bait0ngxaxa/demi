@@ -19,6 +19,19 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve };
 }
 describe("Meal client lifecycle callback evidence (no browser)", () => {
+  it("consumed result never rotates/resubmits automatically; explicit new intent uses fresh UUID", async () => {
+    harness.effects.forEach((effect) => effect());
+    const freshNonce = "22222222-2222-4222-8222-222222222222";
+    const uuid = vi.fn(() => freshNonce); vi.stubGlobal("crypto", { randomUUID: uuid });
+    harness.create.mockResolvedValue({ status: "CREATE_CONSUMED" });
+    await harness.actions[0]({ status: "IDLE" }, new FormData());
+    expect(uuid).not.toHaveBeenCalled(); expect(harness.create).toHaveBeenCalledTimes(1);
+    harness.buttons.find((button) => button.children === "เริ่มบันทึกใหม่")?.onClick?.();
+    expect(uuid).toHaveBeenCalledTimes(1); expect(harness.setters).toContain(freshNonce);
+    expect(harness.create).toHaveBeenCalledTimes(1);
+    const html = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={freshNonce} />);
+    expect(html).toContain(`name="submissionNonce" value="${freshNonce}"`);
+  });
   const events = new Map<string, () => void>();
   beforeEach(() => {
     vi.clearAllMocks(); harness.effects.length = 0; harness.actions.length = 0; harness.setters.length = 0; harness.buttons.length = 0; events.clear();

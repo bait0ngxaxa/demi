@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import { MealCreateConsumedError } from "../domain/meal-create-consumed-error";
 import { createPersonalMeal, updatePersonalMeal, deletePersonalMeal } from "../services/personal-meal-service";
 import { listOwnPersonalMeals } from "../services/personal-meal-query-service";
 import { mealCreateSchema, mealUpdateSchema, mealDeleteSchema, mealListSchema } from "../schemas/personal-meal-schemas";
@@ -31,6 +32,7 @@ async function perform(form: FormData, operation: MealOperation): Promise<MealAc
       NOOP: "ข้อมูลตรงกับรายการปัจจุบันแล้ว ไม่มีการเปลี่ยนแปลง", REPLAY: "รายการนี้ดำเนินการแล้ว แสดงข้อมูลปัจจุบัน หากต้องการเปลี่ยนข้อมูลให้เลือกแก้ไข หรือเริ่มบันทึกใหม่" };
     return { status: "SUCCESS", result, message: messages[result.outcome] };
   } catch (error: unknown) {
+    if (error instanceof MealCreateConsumedError) return { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
     if (error instanceof ApplicationError) {
       if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") return { status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" };
       if (error.code === "NOT_FOUND") return { status: "CONFLICT", message: "ไม่พบรายการที่ต้องการ กรุณาโหลดรายการล่าสุด" };

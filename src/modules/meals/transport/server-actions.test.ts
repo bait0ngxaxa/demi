@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { MealCreateConsumedError } from "../domain/meal-create-consumed-error";
 const mock = vi.hoisted(() => ({ actor: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), list: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: mock.revalidate }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mock.actor }));
@@ -11,6 +12,17 @@ function form(values: Record<string, string>): FormData { const result = new For
 const createInput = { submissionNonce: row.id, category: row.category, occurredOn: row.occurredOn, description: row.description };
 const version = { entryId: row.id, expectedUpdatedAt: row.updatedAt };
 describe("Meal Server Action boundary", () => {
+  it("distinguishes consumed create safely from same-request retryable conflicts", async () => {
+    mock.create.mockRejectedValue(new MealCreateConsumedError());
+    const consumed = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+    expect(consumed.status).toBe("CREATE_CONSUMED");
+    expect(consumed.message).toContain("เริ่มบันทึกใหม่");
+    for (const text of ["ลองคำขอเดิม", "ลบ", "receipt", row.id, "patientProfileId"]) expect(consumed.message).not.toContain(text);
+    expect(consumed.result).toBeUndefined(); expect(mock.revalidate).not.toHaveBeenCalled();
+    mock.create.mockRejectedValue(new ConflictError());
+    const retryable = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+    expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toContain("ลองคำขอเดิมอีกครั้ง");
+  });
   beforeEach(() => { vi.clearAllMocks(); mock.actor.mockResolvedValue({ userId: "actor" }); });
   it("bounds unknown/duplicate/File/oversize before actor/service, never drops owner fields", async () => {
     const bad = [form({ ...createInput, patientProfileId: row.id }), form({ ...createInput, description: "ก".repeat(17000) })];

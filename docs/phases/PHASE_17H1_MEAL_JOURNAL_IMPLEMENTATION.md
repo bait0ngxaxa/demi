@@ -14,6 +14,8 @@ Meal = one Patient-reported consumed meal/snack occasion. Personal wellness data
 
 ## Persistence and migration
 
+Correction (2026-10-04): consumed create requests whose Meal no longer exists return a distinct safe outcome directing explicit “เริ่มบันทึกใหม่”; same nonce cannot recreate, and only that user action generates a fresh nonce. Transient create conflicts/ambiguous outcomes retain same-request retry. The date input retains rendered today as its initial default but has no static maximum; current server-side Asia/Bangkok past/today validation remains authoritative across midnight. No schema, authorization, audit, cursor or phase-status change.
+
 Forward migration: `20261003140000_personal_meal_journal`.
 
 - `PersonalMealCategory`: four-value PostgreSQL enum.

@@ -7,6 +7,7 @@ import { createPersonalMeal as create, updatePersonalMeal as update, deletePerso
 import { getOwnPersonalMeal as detail, listOwnPersonalMeals as list } from "@/modules/meals/services/personal-meal-query-service";
 import { toMealDateCarrier, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
 import { encodeMealCursor } from "@/modules/meals/services/personal-meal-cursor";
+import { MealCreateConsumedError } from "@/modules/meals/domain/meal-create-consumed-error";
 
 const db = getPrisma();
 const now = new Date("2026-10-03T00:00:00.000Z");
@@ -87,7 +88,7 @@ describe("Personal Meal Journal real PostgreSQL", () => {
     expect(await update(a, { ...token(changed), ...fields, description: " แก้แล้ว " }, deps)).toEqual({ outcome: "NOOP", item: changed });
     expect(await remove(a, token(changed), deps)).toEqual({ outcome: "DELETED", entryId: row.id });
     await expect(detail(a, row.id, db)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(create(a, { submissionNonce: nonce, ...fields }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(create(a, { submissionNonce: nonce, ...fields }, deps)).rejects.toBeInstanceOf(MealCreateConsumedError);
     await expect(update(a, { ...token(changed), ...fields }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(remove(a, token(changed), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     const receipt = await db.personalMealCreateReceipt.findUniqueOrThrow({ where: { patientProfileId_submissionNonce: { patientProfileId: await owner(a), submissionNonce: nonce } } });
@@ -96,6 +97,25 @@ describe("Personal Meal Journal real PostgreSQL", () => {
     expect(audits.map((x) => x.action)).toEqual(["personal_meal.created", "personal_meal.updated", "personal_meal.deleted"]);
     expect(audits.every((x) => x.metadata === null && x.resourceType === "PersonalMealEntry")).toBe(true);
     expect((await list(a, {}, db)).items).toEqual([]);
+    const fresh = await make(a);
+    expect(fresh.id).not.toBe(row.id);
+    expect(await db.personalMealCreateReceipt.count({ where: { patientProfileId: await owner(a) } })).toBe(2);
+    expect(await db.auditEvent.count({ where: { resourceId: fresh.id, action: "personal_meal.created" } })).toBe(1);
+    expect(await db.personalMealEntry.count({ where: { id: row.id } })).toBe(0);
+  });
+  it("server Bangkok midnight accepts new civil today for create/edit and still rejects future", async () => {
+    const a = await actor();
+    const input = { submissionNonce: randomUUID(), ...fields, occurredOn: "2026-10-04" };
+    const beforeMidnight = { database: db, now: () => new Date("2026-10-03T16:59:59Z") };
+    const afterMidnight = { database: db, now: () => new Date("2026-10-03T17:00:00Z") };
+    await expect(create(a, input, beforeMidnight)).rejects.toMatchObject({ code: "VALIDATION" });
+    const created = item(await create(a, input, afterMidnight)); expect(created.occurredOn).toBe("2026-10-04");
+    const old = await make(a);
+    const editable = { ...token(old), ...fields, occurredOn: "2026-10-04" };
+    await expect(update(a, editable, beforeMidnight)).rejects.toMatchObject({ code: "VALIDATION" });
+    expect(item(await update(a, editable, afterMidnight)).occurredOn).toBe("2026-10-04");
+    await expect(create(a, { ...input, submissionNonce: randomUUID(), occurredOn: "2026-10-05" }, afterMidnight)).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(update(a, { ...token(created), ...fields, occurredOn: "2026-10-05" }, afterMidnight)).rejects.toMatchObject({ code: "VALIDATION" });
   });
   it("intentional identical content/new nonce gives distinct meals; another owner has independent nonce namespace", async () => {
     const a = await actor(); const b = await actor(); const nonce = randomUUID();

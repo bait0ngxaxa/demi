@@ -1,11 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
-const simulation = vi.hoisted(() => ({ state: { status: "IDLE" } as MealActionState, pending: false, confirming: false }));
+const simulation = vi.hoisted(() => ({ state: { status: "IDLE" } as MealActionState, pending: false, confirming: false, workspace: false }));
 vi.mock("react", async (importOriginal) => {
   const original = await importOriginal<typeof import("react")>();
   return { ...original, useActionState: () => [simulation.state, () => undefined, simulation.pending],
-    useState: (initial: unknown) => [typeof initial === "boolean" ? simulation.confirming : initial, () => undefined] };
+    useState: (initial: unknown) => [typeof initial === "boolean" && !simulation.workspace ? simulation.confirming : initial, () => undefined] };
 });
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: vi.fn(), updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: vi.fn() }));
 import { MealEditor, MealDeleteForm } from "./personal-meal-controls";
@@ -14,7 +14,30 @@ import Loading from "./loading";
 const row = { id: "11111111-1111-4111-8111-111111111111", category: "SNACK" as const, occurredOn: "2026-10-03", description: "อาหารไทย <script>alert(1)</script>\n**literal**", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" };
 const coordination = { blocked: false, onResult: vi.fn(), onPending: vi.fn() };
 describe("Meal UI contract states (server-rendered evidence)", () => {
-  beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; });
+  it("keeps rendered today as create default without blocking later valid edit dates", () => {
+    const today = "2026-10-03";
+    const create = renderToStaticMarkup(<MealEditor today={today} nonce={row.id} coordination={coordination} />);
+    const edit = renderToStaticMarkup(<MealEditor item={{ ...row, occurredOn: "2026-10-04" }} today={today} nonce={row.id} coordination={coordination} />);
+    expect(create).toContain(`value="${today}"`); expect(edit).toContain('value="2026-10-04"');
+    for (const html of [create, edit]) {
+      expect(html).toContain('type="date"'); expect(html).not.toMatch(/\smax=/u);
+      expect(html).toContain("วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)");
+    }
+  });
+  it("consumed create blocks same-nonce submission and offers explicit new intent", () => {
+    simulation.workspace = true;
+    simulation.state = { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
+    const html = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} />);
+    expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(html).toMatch(/<button(?=[^>]*type="submit")(?=[^>]*\sdisabled="")[^>]*>/u);
+    expect(html).toMatch(/<button(?![^>]*\sdisabled=")[^>]*>เริ่มบันทึกใหม่<\/button>/u);
+  });
+  it("transient create conflict retains enabled same-nonce retry", () => {
+    simulation.state = { status: "CONFLICT" };
+    const html = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
+    expect(html).toContain(row.id); expect(html).toContain("ลองคำขอเดิมอีกครั้ง"); expect(html).not.toContain(' disabled=""');
+  });
+  beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; simulation.workspace = false; });
   it("empty/real Meal only, source copy, loading, bounded paginated history", () => {
     // bool state stub must let privateReady be true for workspace presentation.
     simulation.confirming = true;

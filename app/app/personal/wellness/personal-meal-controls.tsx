@@ -28,8 +28,8 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
-  // Create conflicts/ambiguity keep the SAME nonce retryable. Edit must reload/review.
-  const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
+  // Retryable create conflicts/ambiguity keep the SAME nonce. Consumed creates require explicit new intent.
+  const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked} className="space-y-4">
@@ -38,7 +38,7 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
           <option value="">เลือกหมวดมื้ออาหาร</option>{MEAL_CATEGORIES.map((value) => <option key={value} value={value}>{MEAL_CATEGORY_LABELS[value]}</option>)}
         </Select><p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
-        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={today} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
+        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-description`} className="block text-sm font-medium">รายละเอียด (ไม่บังคับ)</label>
         <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />
