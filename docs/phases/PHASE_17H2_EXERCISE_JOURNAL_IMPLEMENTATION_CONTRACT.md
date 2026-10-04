@@ -1,6 +1,11 @@
 # Phase 17H.2 — Personal Exercise Journal Implementation Contract
 
-## CURRENT-status addendum — Phase 17H.3 implementation (2026-10-04)
+## CURRENT-status addendum — Phase 17H.4A automated re-audit (2026-10-04)
+
+[Wellness re-audit report](./PHASE_17H4A_WELLNESS_REAUDIT_UAT_READINESS.md): **PASS / AUTOMATED RE-AUDIT COMPLETE.** WELL-01 and WELL-02 remain IMPLEMENTED; WELL-03 remains IMPLEMENTED / TARGET-ONLY. The approved bounded automated scope is complete. Manual browser/mobile/device/BFCache UAT is NOT EXECUTED / tracked separately. Personal Weight Observation remains DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE. 17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02, and 17J remain unchanged.
+
+
+## Historical-status addendum — Phase 17H.3 implementation (2026-10-04)
 
 [Weight Goal implementation handoff](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md): **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** The target-only runtime, migration, SELF authorization, shared Wellness privacy integration, and automated evidence are complete; Observation remains deferred.
 

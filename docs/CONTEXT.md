@@ -1,6 +1,14 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17H.3 implementation (2026-10-04)
+## CURRENT-status addendum — Phase 17H.4A Wellness automated re-audit (2026-10-04)
+
+[Phase 17H.4A Wellness re-audit](./phases/PHASE_17H4A_WELLNESS_REAUDIT_UAT_READINESS.md): **PASS / AUTOMATED RE-AUDIT COMPLETE.** WELL-01 and WELL-02 remain IMPLEMENTED; WELL-03 remains IMPLEMENTED / TARGET-ONLY. The approved bounded automated scope is complete and ready for separate manual UAT tracking. Manual browser/mobile/device/BFCache UAT is **NOT EXECUTED**. Personal Weight Observation remains **DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**. No production certification, deployment, or customer acceptance is claimed.
+
+Automated evidence: focused Wellness unit/UI/domain/transport/page/privacy/cursor 20 files / 232 tests PASS; full unit 216 files / 1,801 tests PASS; targeted PostgreSQL Meal/Exercise/Weight 3 files / 81 tests PASS; full PostgreSQL integration 31 files / 447 tests PASS after all 36 migrations on an empty local disposable database; timezone suites pass under UTC, Asia/Bangkok, and America/Los_Angeles; Prisma generate/validate, typecheck, lint, and final diff checks PASS. Test-only regressions cover cross-domain cursor rejection and both Weight owner-lock race orderings. No runtime/schema/migration correction was required.
+
+17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02, and 17J delivery/system authority remain unchanged.
+
+## Historical-status addendum — Phase 17H.3 implementation (2026-10-04)
 
 [Weight Goal implementation handoff](./phases/PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md): **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** Target-only Patient SELF capability is implemented at /app/personal/wellness; Personal Weight Observation remains DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.
 

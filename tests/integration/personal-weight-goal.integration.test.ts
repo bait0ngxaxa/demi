@@ -68,6 +68,32 @@ function lockBarrierDatabase(expectedCalls: number): PrismaClient {
   return wrapper as unknown as PrismaClient;
 }
 
+function holdFirstOwnerLockDatabase(onLockHeld: () => void, resume: Promise<void>): PrismaClient {
+  let paused = false;
+  const wrapper = {
+    $transaction: <T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel }): Promise<T> =>
+      db.$transaction(async (tx) => {
+        const proxy = new Proxy(tx, {
+          get(target, property, receiver) {
+            if (property !== "$queryRaw") return Reflect.get(target, property, receiver);
+            const query = Reflect.get(target, property, target) as (...args: unknown[]) => Promise<unknown>;
+            return async (...args: unknown[]): Promise<unknown> => {
+              const result = await query.apply(target, args);
+              if (!paused) {
+                paused = true;
+                onLockHeld();
+                await resume;
+              }
+              return result;
+            };
+          },
+        });
+        return operation(proxy);
+      }, { ...options, timeout: 15_000 }),
+  };
+  return wrapper as unknown as PrismaClient;
+}
+
 function failingTransactionDatabase(failAt: "audit" | "receipt"): PrismaClient {
   const wrapper = {
     $transaction: <T>(operation: (tx: Prisma.TransactionClient) => Promise<T>, options?: { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel }): Promise<T> =>
@@ -372,6 +398,66 @@ describe("Personal Weight Goal real PostgreSQL", () => {
     expect(await db.personalWeightGoal.count({ where: { patientProfileId } })).toBe(1);
     expect(await db.personalWeightGoalCreateReceipt.count({ where: { patientProfileId } })).toBe(1);
     expect(await db.auditEvent.count({ where: { actorUserId: patient.userId } })).toBe(0);
+  });
+
+  it.each(["create-first", "remove-first"] as const)("serializes concurrent create/remove when %s acquires the owner lock first", async (order) => {
+    const patient = await actor();
+    const current = await make(patient, "70");
+    const createNonce = randomUUID();
+    let notifyLockHeld: () => void = () => undefined;
+    let releaseLock: () => void = () => undefined;
+    const ownerLockHeld = new Promise<void>((resolve) => { notifyLockHeld = resolve; });
+    const resumeFirst = new Promise<void>((resolve) => { releaseLock = resolve; });
+    const firstDependencies = {
+      database: holdFirstOwnerLockDatabase(notifyLockHeld, resumeFirst),
+      now: () => defaultNow,
+    };
+
+    const firstRequest = order === "create-first"
+      ? create(patient, { submissionNonce: createNonce, targetWeightKg: "72.5" }, firstDependencies)
+      : remove(patient, version(current), firstDependencies);
+    await ownerLockHeld;
+
+    const secondRequest = order === "create-first"
+      ? remove(patient, version(current), dependencies)
+      : create(patient, { submissionNonce: createNonce, targetWeightKg: "72.5" }, dependencies);
+
+    let lockWaitObserved = true;
+    try {
+      await waitForOwnerLockWait();
+    } catch {
+      lockWaitObserved = false;
+    } finally {
+      releaseLock();
+    }
+
+    const [firstResult, secondResult] = await Promise.allSettled([firstRequest, secondRequest]);
+    expect(lockWaitObserved).toBe(true);
+    expect(firstResult.status).toBe("fulfilled");
+    expect(secondResult.status).toBe("fulfilled");
+    if (firstResult.status !== "fulfilled" || secondResult.status !== "fulfilled") {
+      throw new Error("Expected both owner-serialized mutations to complete");
+    }
+
+    const patientProfileId = await owner(patient);
+    if (order === "create-first") {
+      expect(firstResult.value).toEqual({ outcome: "CREATE_CONSUMED" });
+      expect(secondResult.value).toEqual({ outcome: "DELETED", goalId: current.id });
+      expect(await create(patient, { submissionNonce: createNonce, targetWeightKg: "73" }, dependencies)).toEqual({ outcome: "CREATE_CONSUMED" });
+      expect(await getOwnPersonalWeightGoal(patient, db)).toBeNull();
+      expect(await db.personalWeightGoalCreateReceipt.count({ where: { patientProfileId, submissionNonce: createNonce } })).toBe(1);
+      expect(await db.auditEvent.count({ where: { actorUserId: patient.userId, action: "personal_weight_goal.created" } })).toBe(1);
+      expect(await db.auditEvent.count({ where: { actorUserId: patient.userId, action: "personal_weight_goal.deleted" } })).toBe(1);
+    } else {
+      expect(firstResult.value).toEqual({ outcome: "DELETED", goalId: current.id });
+      expect(secondResult.value).toMatchObject({ outcome: "CREATED" });
+      if (!("goal" in secondResult.value)) throw new Error("Expected the post-removal create to return its goal");
+      expect(secondResult.value.goal.id).not.toBe(current.id);
+      expect(await getOwnPersonalWeightGoal(patient, db)).toEqual(secondResult.value.goal);
+      expect(await db.personalWeightGoalCreateReceipt.count({ where: { patientProfileId, submissionNonce: createNonce } })).toBe(1);
+      expect(await db.auditEvent.count({ where: { actorUserId: patient.userId, action: "personal_weight_goal.created" } })).toBe(2);
+      expect(await db.auditEvent.count({ where: { actorUserId: patient.userId, action: "personal_weight_goal.deleted" } })).toBe(1);
+    }
   });
 
   it.each(["edit/edit", "edit/remove", "remove/remove"] as const)("owner lock serializes %s with one old-version winner", async (raceType) => {
