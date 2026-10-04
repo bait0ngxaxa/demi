@@ -320,6 +320,8 @@ model PatientProfile {
   personalMealCreateReceipts PersonalMealCreateReceipt[]
   personalExerciseEntries PersonalExerciseEntry[]
   personalExerciseCreateReceipts PersonalExerciseCreateReceipt[]
+  personalWeightGoal PersonalWeightGoal?
+  personalWeightGoalCreateReceipts PersonalWeightGoalCreateReceipt[]
 
   @@unique([id, personId])
 }
@@ -382,6 +384,31 @@ model PersonalExerciseCreateReceipt {
   submissionNonce String @db.Uuid
   // Scalar locator survives Exercise deletion; no Exercise FK or payload.
   exerciseEntryId String @unique @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([patientProfileId, submissionNonce])
+}
+
+model PersonalWeightGoal {
+  id String @id @default(uuid()) @db.Uuid
+  patientProfileId String @unique @db.Uuid
+  targetWeightKg Decimal @db.Decimal(10, 3)
+  targetDate DateTime? @db.Date
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("PersonalWeightGoal")
+}
+
+model PersonalWeightGoalCreateReceipt {
+  patientProfileId String @db.Uuid
+  submissionNonce String @db.Uuid
+  // Scalar locator deliberately survives Weight Goal deletion; no target FK or payload.
+  intendedWeightGoalId String @unique @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)

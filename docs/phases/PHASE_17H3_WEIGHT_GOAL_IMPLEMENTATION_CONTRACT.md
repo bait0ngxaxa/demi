@@ -1,14 +1,20 @@
 # Phase 17H.3 — Personal Weight Goal Technical Implementation Contract
 
-## CURRENT status — 2026-10-04 (Asia/Bangkok)
+## CURRENT status — implementation — 2026-10-04 (Asia/Bangkok)
+
+The contract below remains binding. Runtime, schema, migration, actions, Wellness integration, and automated evidence are recorded in the [17H.3 implementation handoff](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md). **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** Personal Weight Observation remains **DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**. Manual browser/mobile/device/BFCache UAT and production deployment were not performed.
+
+Full unit 214 files / 1,794 tests and full PostgreSQL integration 31 files / 445 tests PASS; the clean local disposable database applied all 36 migrations. Prisma generate/validate, typecheck, lint, and UI detector PASS. 17H.1 and 17H.2 remain IMPLEMENTED / CLOSED; 17H.4A Wellness automated re-audit/UAT readiness is next. 17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02, and 17J remain unchanged.
+
+## Historical status at contract clearance — 2026-10-04 (Asia/Bangkok)
 
 **Phase 17H.3 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. WELL-03 — CLEARED FOR IMPLEMENTATION / TARGET-ONLY.** This contract closes technical implementation choices; it creates no runtime, schema, migration, action, UI or test implementation. Q54–Q83 remain **CLOSED / OWNER APPROVED — Option A**; the technical choices below are engineering decisions under that scope, not fabricated additional owner approval.
 
 **17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED. 17H.2 IMPLEMENTED / CLOSED; WELL-02 IMPLEMENTED. Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.** 17H.4A automated Wellness re-audit/UAT readiness remains future. 17G.4A PASS / AUTOMATED RE-AUDIT COMPLETE, Family P17F-L04 OPEN/device UAT pending and P17F-L05 OPEN/FUTURE, Q5 GOVERNANCE BLOCKED, parked 17E.2 consent, MED-02 REQUIREMENT-GATED and 17J delivery/system authority REQUIREMENT-GATED remain unchanged.
 
-## Correction addendum — 2026-10-04 (Asia/Bangkok)
+## Historical correction addendum — 2026-10-04 (Asia/Bangkok)
 
-Correction starts at **`8ff8f3afd9e958bcd86d5e4f051119431ba33c14`**, the documentation commit already pushed at the user's request; clean tree, no later commits. Review identified a blocker in the original §6: occupied-goal rejection did not persist a receipt and relied on UI abandonment. That algorithm is superseded below. Every committed valid create decision now consumes its nonce, including rejection, using intendedWeightGoalId and owner-row serialization. A failed/ambiguous transaction is never labeled a definitive occupancy rejection. Numeric/date/product/SELF/shared privacy boundaries are unchanged. Clearance here applies to this corrected contract; runtime and real PostgreSQL proof remain unimplemented. This correction changes documentation only.
+The first contract closeout was committed as **8ff8f3afd9e958bcd86d5e4f051119431ba33c14**. Review then identified a blocker in the original §6: occupied-goal rejection did not persist a receipt and relied on UI abandonment. The terminal-create-intent and owner-lock correction was subsequently committed/pushed as **9ae94e87955592fd462ba597d63db38778dd6533**, the runtime implementation baseline. Every committed valid create decision consumes its nonce, including rejection, using intendedWeightGoalId and owner-row serialization. A failed/ambiguous transaction is never labeled a definitive occupancy rejection. Numeric/date/product/SELF/shared privacy boundaries are unchanged. At this contract-correction point runtime and real PostgreSQL proof remained unimplemented; see the later implementation handoff for current evidence.
 
 ## 1. Baseline, authority and evidence
 
@@ -234,6 +240,6 @@ Later implementation uses staged focused repository verification and final stabl
 
 Performed HEAD/tree/source review, Q69–Q74 and corrected Q71 cross-check, official v6 Decimal/PostgreSQL type review, numeric/date/receipt/race/privacy/source assessment, current-status search/reconciliation, local Markdown reference checks, strict UTF-8/BOM/line-ending preservation and Thai integrity review, narrow scope review and final diff/status inspection. Historical pending-precision/clearance statements remain dated historical evidence, superseded by the newest 17H.3 addendum; technical choices are fully closed here.
 
-**No runtime/schema/migration/test/env/config files changed. No unit/integration tests, Prisma generate/validate/migrations, lint/typecheck/build/dev server run.** Original contract was subsequently committed/pushed at user request; this correction has not been committed/pushed. Only documentation changed. No Weight runtime or manual mobile/device/BFCache UAT/production deployment is claimed. Operational retention/governance follow-ups do not invent new scope or lift Q5.
+At contract-correction time, no runtime/schema/migration/test/env/config files changed and no unit/integration tests, Prisma generation/validation/migration, lint/typecheck/build/dev server were run. That correction was subsequently committed and pushed at the user's request in 9ae94e87955592fd462ba597d63db38778dd6533; runtime and later verification are recorded in the implementation handoff. The original statement that no runtime existed describes that earlier contract-only point in time. Operational retention/governance follow-ups do not invent new scope or lift Q5.
 
-Final status: **17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED → 17H.2 IMPLEMENTED / CLOSED; WELL-02 IMPLEMENTED → 17H.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 CLEARED FOR IMPLEMENTATION / TARGET-ONLY → future 17H.4A re-audit/UAT readiness**. **Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.**
+Historical final status at contract clearance: **17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED → 17H.2 IMPLEMENTED / CLOSED; WELL-02 IMPLEMENTED → 17H.3 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 CLEARED FOR IMPLEMENTATION / TARGET-ONLY → future 17H.4A re-audit/UAT readiness**. **Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.**

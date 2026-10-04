@@ -1,6 +1,12 @@
 # Phase 17H.2 — Personal Exercise Journal Implementation Contract
 
-## CURRENT-status addendum - Phase 17H.3 (2026-10-04)
+## CURRENT-status addendum — Phase 17H.3 implementation (2026-10-04)
+
+[Weight Goal implementation handoff](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md): **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** The target-only runtime, migration, SELF authorization, shared Wellness privacy integration, and automated evidence are complete; Observation remains deferred.
+
+Full unit 214 files / 1,794 tests and PostgreSQL integration 31 files / 445 tests PASS, including fresh disposable migration through all 36 migrations. Prisma generate/validate, typecheck, lint and UI detector PASS. Manual browser/device UAT and production deployment remain unperformed; 17H.4A is next. Other status gates are unchanged.
+
+## Historical-status addendum — Phase 17H.3 contract clearance (2026-10-04)
 
 [Weight Goal technical contract](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION_CONTRACT.md): **Phase 17H.3 - CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 - CLEARED FOR IMPLEMENTATION / TARGET-ONLY.** Patient-selected kg target only; 0..1 unique PatientProfile owner; canonical decimal string, scale 3, 0.001..1,000,000 structural bounds, Decimal/NUMERIC(10,3). Corrected Q71 permits unchanged naturally passed targetDate during weight edits; create/changed date >= Bangkok today, explicit clear allowed, no date lifecycle. Dedicated payload-free terminal create receipt consumes both created and occupied-goal rejected intents; intendedWeightGoalId survives removal, and ReadCommitted owner-row FOR UPDATE serialization prevents loser-receipt rollback races. Definitive create rejection requires receipt commit; aborted/ambiguous transactions stay UNCONFIRMED. expectedUpdatedAt and minimized atomic mutation audit (none for rejected create); exact persisted ACTIVE Patient SELF. Future Weight joins the existing shared Wellness private-authority generation and three anchored sections at `/app/personal/wellness`. No Weight runtime delivered.
 

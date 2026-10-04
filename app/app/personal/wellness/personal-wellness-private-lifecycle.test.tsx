@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn() }));
 import { PersonalExerciseWorkspace } from "./personal-exercise-workspace";
 import { PersonalMealWorkspace } from "./personal-meal-workspace";
+import { PersonalWeightGoalWorkspace } from "./personal-weight-goal-workspace";
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
@@ -40,9 +42,11 @@ vi.mock("react", async (importOriginal) => {
 const props = {
   mealPage: { items: [{ id: "meal-id", category: "SNACK" as const, occurredOn: "2026-10-03", description: "private meal marker", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" }], nextCursor: "meal-cursor" },
   exercisePage: { items: [{ id: "exercise-id", activityName: "private exercise marker", occurredOn: "2026-10-03", durationMinutes: 20, note: "private note", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" }], nextCursor: "exercise-cursor" },
+  weightGoal: { id: "weight-id", targetWeightKg: "72.555", targetDate: "2026-10-01", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" },
   today: "2026-10-04",
   mealNonce: "11111111-1111-4111-8111-111111111111",
   exerciseNonce: "22222222-2222-4222-8222-222222222222",
+  weightGoalNonce: "33333333-3333-4333-8333-333333333333",
 };
 
 function elements(node: unknown): ReactElement<TestElementProps>[] {
@@ -59,7 +63,7 @@ function textContent(node: unknown): string {
   return textContent((node as ReactElement<TestElementProps>).props.children);
 }
 
-function childAuthority(tree: ReactElement, child: typeof PersonalMealWorkspace | typeof PersonalExerciseWorkspace): WellnessPrivateAuthority {
+function childAuthority(tree: ReactElement, child: typeof PersonalMealWorkspace | typeof PersonalExerciseWorkspace | typeof PersonalWeightGoalWorkspace): WellnessPrivateAuthority {
   const element = elements(tree).find((candidate) => candidate.type === child);
   if (!element) throw new Error("Expected Wellness child workspace");
   const childProps = element.props as unknown as { authority: WellnessPrivateAuthority };
@@ -90,11 +94,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Wellness shared private authority lifetime", () => {
-  it("passes one synchronous authority to Meal and Exercise and renders one safe state after invalidation", () => {
+  it("passes one synchronous authority to all three domains and removes every private payload after invalidation", () => {
     const authorizedTree = renderParent();
     const mealAuthority = childAuthority(authorizedTree, PersonalMealWorkspace);
     const exerciseAuthority = childAuthority(authorizedTree, PersonalExerciseWorkspace);
+    const weightAuthority = childAuthority(authorizedTree, PersonalWeightGoalWorkspace);
     expect(mealAuthority).toBe(exerciseAuthority);
+    expect(weightAuthority).toBe(exerciseAuthority);
     const pendingGeneration = mealAuthority.captureGeneration();
 
     mealAuthority.invalidate();
@@ -103,18 +109,19 @@ describe("Wellness shared private authority lifetime", () => {
 
     const deniedTree = renderParent();
     const deniedElements = elements(deniedTree);
-    expect(deniedElements.some((element) => element.type === PersonalMealWorkspace || element.type === PersonalExerciseWorkspace || element.type === "form")).toBe(false);
+    expect(deniedElements.some((element) => element.type === PersonalMealWorkspace || element.type === PersonalExerciseWorkspace || element.type === PersonalWeightGoalWorkspace || element.type === "form")).toBe(false);
     expect(textContent(deniedTree)).toContain("กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์");
     expect(deniedElements.some((element) => element.type === "a" && element.props.href === "/app/personal/wellness")).toBe(true);
     expect(textContent(deniedTree)).not.toContain("private meal marker");
     expect(textContent(deniedTree)).not.toContain("private exercise marker");
+    expect(textContent(deniedTree)).not.toContain("72.555");
     expect(textContent(deniedTree)).not.toContain(props.mealNonce);
     expect(textContent(deniedTree)).not.toContain(props.exerciseNonce);
   });
 
-  it("pagehide invalidates both domains; persisted pageshow requests a fresh reload", () => {
+  it("pagehide invalidates all domains; persisted pageshow requests a fresh reload", () => {
     const tree = renderParent();
-    const authority = childAuthority(tree, PersonalExerciseWorkspace);
+    const authority = childAuthority(tree, PersonalWeightGoalWorkspace);
     const generation = authority.captureGeneration();
     const cleanup = harness.effect?.();
     expect(harness.events.has("pagehide")).toBe(true);
@@ -125,7 +132,7 @@ describe("Wellness shared private authority lifetime", () => {
     expect(authority.isCurrent(generation)).toBe(false);
     expect(harness.session).toBeNull();
     const deniedTree = renderParent();
-    expect(elements(deniedTree).some((element) => element.type === PersonalMealWorkspace || element.type === PersonalExerciseWorkspace)).toBe(false);
+    expect(elements(deniedTree).some((element) => element.type === PersonalMealWorkspace || element.type === PersonalExerciseWorkspace || element.type === PersonalWeightGoalWorkspace)).toBe(false);
 
     const pageshow = harness.events.get("pageshow");
     if (typeof pageshow === "function") pageshow({ persisted: true } as unknown as PageTransitionEvent);
@@ -135,7 +142,7 @@ describe("Wellness shared private authority lifetime", () => {
 
   it("Strict Mode setup/cleanup/setup resumes only a fresh shared generation", () => {
     const tree = renderParent();
-    const authority = childAuthority(tree, PersonalMealWorkspace);
+    const authority = childAuthority(tree, PersonalWeightGoalWorkspace);
     const before = authority.captureGeneration();
     const cleanup = harness.effect?.();
     if (typeof cleanup === "function") cleanup();

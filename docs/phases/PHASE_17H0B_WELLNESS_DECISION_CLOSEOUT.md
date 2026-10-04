@@ -1,6 +1,12 @@
 # Phase 17H.0B — Wellness Owner Decision Closeout
 
-## CURRENT-status addendum - Phase 17H.3 (2026-10-04)
+## CURRENT-status addendum — Phase 17H.3 implementation (2026-10-04)
+
+[Weight Goal implementation handoff](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md): **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** The runtime delivers one Patient-selected personal kg target with optional date, exact Patient SELF, shared Wellness privacy authority, and no observation/progress/care linkage.
+
+Automated evidence: full unit 214 files / 1,794 tests and full PostgreSQL integration 31 files / 445 tests PASS; a fresh local disposable database applied all 36 migrations. Prisma generate/validate, typecheck, lint and UI detector PASS. Manual browser/device UAT and production deployment were not performed. 17H.1/17H.2 remain implemented; 17H.4A is next. Other governance gates are unchanged.
+
+## Historical-status addendum — Phase 17H.3 contract clearance (2026-10-04)
 
 [Weight Goal technical contract](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION_CONTRACT.md): **Phase 17H.3 - CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 - CLEARED FOR IMPLEMENTATION / TARGET-ONLY.** Patient-selected kg target only; 0..1 unique PatientProfile owner; canonical decimal string, scale 3, 0.001..1,000,000 structural bounds, Decimal/NUMERIC(10,3). Corrected Q71 permits unchanged naturally passed targetDate during weight edits; create/changed date >= Bangkok today, explicit clear allowed, no date lifecycle. Dedicated payload-free terminal create receipt consumes both created and occupied-goal rejected intents; intendedWeightGoalId survives removal, and ReadCommitted owner-row FOR UPDATE serialization prevents loser-receipt rollback races. Definitive create rejection requires receipt commit; aborted/ambiguous transactions stay UNCONFIRMED. expectedUpdatedAt and minimized atomic mutation audit (none for rejected create); exact persisted ACTIVE Patient SELF. Future Weight joins the existing shared Wellness private-authority generation and three anchored sections at `/app/personal/wellness`. No Weight runtime delivered.
 

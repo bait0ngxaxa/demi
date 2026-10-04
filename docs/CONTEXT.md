@@ -1,6 +1,14 @@
 # DEMI Project Context
 
-## CURRENT-status addendum - Phase 17H.3 (2026-10-04)
+## CURRENT-status addendum — Phase 17H.3 implementation (2026-10-04)
+
+[Weight Goal implementation handoff](./phases/PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION.md): **Phase 17H.3 — IMPLEMENTED / CLOSED; WELL-03 — IMPLEMENTED / TARGET-ONLY.** Target-only Patient SELF capability is implemented at /app/personal/wellness; Personal Weight Observation remains DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.
+
+**Verification:** Full unit 214 files / 1,794 tests PASS; full PostgreSQL integration 31 files / 445 tests PASS after recreating the local disposable database and applying all 36 migrations; Prisma generate/validate, typecheck, lint, and Impeccable detector PASS. Manual browser/mobile/device/BFCache UAT and production deployment were not performed.
+
+**17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED. 17H.2 IMPLEMENTED / CLOSED; WELL-02 IMPLEMENTED.** Q69–Q74 remain preserved: one personal kg target, optional civil date, no target history, no current-weight source/progress, and no Personal Weight Observation. 17H.4A automated re-audit/UAT readiness remains next. 17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02, and 17J remain unchanged.
+
+## Historical-status addendum — Phase 17H.3 contract clearance (2026-10-04)
 
 [Weight Goal technical contract](./phases/PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION_CONTRACT.md): **Phase 17H.3 - CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 - CLEARED FOR IMPLEMENTATION / TARGET-ONLY.** Patient-selected kg target only; 0..1 unique PatientProfile owner; canonical decimal string, scale 3, 0.001..1,000,000 structural bounds, Decimal/NUMERIC(10,3). Corrected Q71 permits unchanged naturally passed targetDate during weight edits; create/changed date >= Bangkok today, explicit clear allowed, no date lifecycle. Dedicated payload-free terminal create receipt consumes both created and occupied-goal rejected intents; intendedWeightGoalId survives removal, and ReadCommitted owner-row FOR UPDATE serialization prevents loser-receipt rollback races. Definitive create rejection requires receipt commit; aborted/ambiguous transactions stay UNCONFIRMED. expectedUpdatedAt and minimized atomic mutation audit (none for rejected create); exact persisted ACTIVE Patient SELF. Future Weight joins the existing shared Wellness private-authority generation and three anchored sections at `/app/personal/wellness`. No Weight runtime delivered.
 
