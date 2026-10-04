@@ -1,6 +1,14 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17H.1 (2026-10-03)
+## CURRENT-status addendum — Phase 17H.2 (2026-10-04)
+
+[Exercise implementation contract](./phases/PHASE_17H2_EXERCISE_JOURNAL_IMPLEMENTATION_CONTRACT.md): **Phase 17H.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-02 CLEARED FOR IMPLEMENTATION**. Q64–Q68 remain CLOSED / OWNER APPROVED — Option A: one actually performed Patient-reported session, required free-text activity/date, OPTIONAL duration/note, exact persisted ACTIVE Patient SELF only. Technical bound closed: nullable INTEGER duration 1..2,147,483,647 minutes, storage safety only, no clinical meaning; raw/normalized activity 240/120 and note 2,000/1,000 UTF-16 units. Dedicated Exercise + payload-free surviving owner/nonce receipt, retryLimit=0, expectedUpdatedAt, physical delete, minimized atomic audit, private 50-row signed-cursor history. Two independent live Meal/Exercise sections at existing `/app/personal/wellness` are the later UX contract; no Exercise runtime exists now.
+
+**17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED** unchanged, including corrected distinct consumed-create recovery requiring explicit new intent and server-authoritative Bangkok date validation without stale static browser max. **17H.3 PLANNED / NOT IMPLEMENTED; WELL-03 OWNER DECISIONS CLOSED / TARGET-ONLY / NOT IMPLEMENTED**; corrected Q71 unchanged naturally passed targetDate edit exception preserved. **Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**. No Goal/care write-back, richer measurements, scoring/advice, reporting/sharing/export, delegated visibility, reminders or generic Wellness framework. Earlier pending-cap/contract/planned references are historical and superseded for Exercise only; Weight technical contract remains required.
+
+**17G.4A PASS / AUTOMATED RE-AUDIT COMPLETE**; Family P17F-L04 OPEN/device UAT pending, P17F-L05 OPEN/FUTURE, Q5 real-data delegated use GOVERNANCE BLOCKED, parked 17E.2 consent, MED-02 REQUIREMENT-GATED and 17J delivery/system authority REQUIREMENT-GATED unchanged. Documentation-only source/status/link/UTF-8/diff validation; no runtime/schema/migration/test/env/config change or runtime checks, no manual browser/device UAT or production claim. Prior phase evidence below is historical.
+
+## Historical-status addendum — Phase 17H.1 (2026-10-03)
 
 [Meal implementation handoff](./phases/PHASE_17H1_MEAL_JOURNAL_IMPLEMENTATION.md): **Phase 17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED**. Exact persisted ACTIVE Patient SELF only; category/date required, description OPTIONAL, four categories, duplicate date/category allowed, Bangkok civil date past/today allowed and future denied. Dedicated Meal + payload-free surviving owner/nonce receipt, physical delete, expectedUpdatedAt concurrency, transactional minimized audit and private paginated current history. No clinical/Goal Plan/reporting/reminder authority.
 
