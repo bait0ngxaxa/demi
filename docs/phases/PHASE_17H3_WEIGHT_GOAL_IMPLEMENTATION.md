@@ -4,9 +4,17 @@
 
 **Phase 17H.3 — IMPLEMENTED / CLOSED. WELL-03 — IMPLEMENTED / TARGET-ONLY.** The runtime implements one current Patient-selected personal target in kg. Personal Weight Observation remains **DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**. Manual browser/mobile/device/BFCache UAT and production deployment were not performed.
 
+### Follow-up UI correction — 2026-10-04
+
+After `CREATE_CONSUMED`, a separate `requiresCurrentGoalReview` gate stays set until an authorized successful get-current returns an explicit Goal or null. Failed, unconfirmed, thrown, or incomplete reads keep the refresh/review UI and cannot expose an empty-state create action. An authoritative null permits an explicit new intent; only that action generates a fresh nonce. An authoritative Goal renders the current target instead.
+
+Cancelling remove now marks focus restoration as pending; a post-commit effect focuses the remove opener after it mounts again, subject to the shared private authority still being active.
+
+Regression tests reproduced both defects before the correction. Focused Weight/Wellness UI tests passed: **5 files / 25 tests**, including six new lifecycle cases. `npm run typecheck`, targeted ESLint, and `git diff --check` passed. The lifecycle harness models hook updates and ref attachment before effects; it does not claim browser/device focus UAT. Schema, migration, services, and PostgreSQL race architecture were unchanged, so PostgreSQL and broad suites were not rerun for this correction.
+
 ## Baseline and reconciliation
 
-The actual starting HEAD was `9ae94e87955592fd462ba597d63db38778dd6533`, matching the expected baseline and containing the terminal-create-intent/owner-lock contract correction. No newer commits were present. The working tree contained in-progress 17H.3 implementation changes from this task; they were preserved and completed. No unrelated changes were intentionally included. No commit or push was made.
+The actual starting HEAD was `9ae94e87955592fd462ba597d63db38778dd6533`, matching the expected baseline and containing the terminal-create-intent/owner-lock contract correction. No newer commits were present. The working tree contained in-progress 17H.3 implementation changes from this task; they were preserved and completed. No unrelated changes were intentionally included. The initial runtime was subsequently committed and pushed as `2bd58a4437415ae823a8cb37037df487b386c39a`. The follow-up UI correction started from that commit with a clean working tree.
 
 ## Scope and implementation
 
@@ -79,6 +87,6 @@ The tests include decimal grammar/full consumption/canonicalization, Decimal/NUM
 
 ## UAT, deployment, and deferred boundaries
 
-Manual browser, real mobile/device, and physical BFCache UAT were **NOT EXECUTED**. Automated UI/lifecycle tests are not device certification. No production database was accessed; no production migration or deployment is claimed. No commit or push was made. Operational backup/restore and retention policy are not changed here.
+Manual browser, real mobile/device, and physical BFCache UAT were **NOT EXECUTED**. Automated UI/lifecycle tests are not device certification. No production database was accessed; no production migration or deployment is claimed. Operational backup/restore and retention policy are not changed here.
 
 Q69–Q74 semantics remain intact: personal target only; kg only; required target plus optional date; 0..1 current target without target history; no automatic current-weight source/progress; no Personal Weight Observation. BMI, scoring/advice, clinical review, sharing/export, Family/Hospital/OSM visibility, notifications/reminders, reporting, and Goal Plan/Program/care synchronization remain excluded. 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02, and 17J statuses were not changed. Next: **Phase 17H.4A — Wellness automated re-audit / UAT readiness**.

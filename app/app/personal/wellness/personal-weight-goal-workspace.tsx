@@ -33,6 +33,7 @@ export function PersonalWeightGoalWorkspace({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [requiresCurrentGoalReview, setRequiresCurrentGoalReview] = useState(false);
   const [feedback, setFeedback] = useState<PersonalWeightGoalActionState>({ status: "IDLE" });
   const [saving, setSaving] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -40,6 +41,7 @@ export function PersonalWeightGoalWorkspace({
   const active = useRef(true);
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const removeOpener = useRef<HTMLButtonElement>(null);
+  const restoreRemoveFocus = useRef(false);
 
   useEffect(() => {
     active.current = true;
@@ -51,6 +53,12 @@ export function PersonalWeightGoalWorkspace({
   useEffect(() => {
     if (creating || editing) editorHeading.current?.focus();
   }, [creating, editing]);
+  useEffect(() => {
+    if (!confirmingRemove && restoreRemoveFocus.current && active.current && authority.isActive()) {
+      restoreRemoveFocus.current = false;
+      removeOpener.current?.focus();
+    }
+  }, [confirmingRemove, authority]);
 
   function clearPrivateState(): void {
     active.current = false;
@@ -60,6 +68,8 @@ export function PersonalWeightGoalWorkspace({
     setCreating(false);
     setEditing(false);
     setConfirmingRemove(false);
+    setRequiresCurrentGoalReview(false);
+    restoreRemoveFocus.current = false;
     setFeedback({ status: "IDLE" });
   }
 
@@ -74,6 +84,7 @@ export function PersonalWeightGoalWorkspace({
     const result = state.result;
     if (!result) {
       if (state.status === "CREATE_CONSUMED") {
+        setRequiresCurrentGoalReview(true);
         setCreating(false);
         setEditing(false);
         setConfirmingRemove(false);
@@ -111,8 +122,9 @@ export function PersonalWeightGoalWorkspace({
         clearPrivateState();
         return;
       }
-      if (state.status === "SUCCESS" && Object.hasOwn(state, "currentGoal")) {
-        setGoal(state.currentGoal ?? null);
+      if (state.status === "SUCCESS" && state.currentGoal !== undefined) {
+        setGoal(state.currentGoal);
+        setRequiresCurrentGoalReview(false);
         setCreating(false);
         setEditing(false);
         setConfirmingRemove(false);
@@ -124,7 +136,7 @@ export function PersonalWeightGoalWorkspace({
   }
 
   function startCreate(): void {
-    if (goal !== null || saving || pending) return;
+    if (goal !== null || requiresCurrentGoalReview || saving || pending) return;
     if (nonceClaimed) setNonce(crypto.randomUUID());
     setNonceClaimed(true);
     setFeedback({ status: "IDLE" });
@@ -150,7 +162,10 @@ export function PersonalWeightGoalWorkspace({
     <h2 className="text-2xl font-semibold">เป้าหมายน้ำหนัก</h2>
     {!editorOpen && feedback.message ? <div role="status" aria-live="polite"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
 
-    {goal ? <Panel>
+    {requiresCurrentGoalReview ? <div className="space-y-3">
+      <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>
+      <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
+    </div> : goal ? <Panel>
       <div className="space-y-4">
         <PersonalWeightGoalReadback goal={goal} />
         {editing ? <>
@@ -162,7 +177,7 @@ export function PersonalWeightGoalWorkspace({
           <PersonalWeightGoalRemoveConfirmation
             goal={goal}
             coordination={reviewCoordination}
-            onCancel={() => { setConfirmingRemove(false); removeOpener.current?.focus(); }}
+            onCancel={() => { restoreRemoveFocus.current = true; setConfirmingRemove(false); }}
           />
         </> : <div className="flex flex-wrap gap-2">
           <Button variant="secondary" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setEditing(true); }}>แก้ไข</Button>
@@ -176,10 +191,7 @@ export function PersonalWeightGoalWorkspace({
         <PersonalWeightGoalEditor key={nonce} nonce={nonce} coordination={coordination} />
         <Button type="button" variant="ghost" disabled={saving || pending || feedback.status === "UNCONFIRMED"} onClick={() => { setCreating(false); setFeedback({ status: "IDLE" }); }}>ยกเลิก</Button>
       </div>
-    </Panel> : feedback.status === "CREATE_CONSUMED" ? <div className="space-y-3">
-      <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>
-      <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
-    </div> : <div className="space-y-3">
+    </Panel> : <div className="space-y-3">
       <p className="text-text-muted">ยังไม่ได้ตั้งเป้าหมายน้ำหนักส่วนตัว</p>
       <Button disabled={saving || pending} onClick={startCreate}>ตั้งเป้าหมายน้ำหนัก</Button>
     </div>}
