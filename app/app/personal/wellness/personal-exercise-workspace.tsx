@@ -3,21 +3,22 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
-import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } from "@/modules/meals/domain/personal-meal";
-import type { MealActionState } from "@/modules/meals/transport/action-state";
-import { listPersonalMealsAction } from "@/modules/meals/transport/server-actions";
-import { MealEditor, MealDeleteForm } from "./personal-meal-controls";
+import type { PersonalExerciseDto, PersonalExercisePage } from "@/modules/exercises/domain/personal-exercise";
+import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
+import { listPersonalExercisesAction } from "@/modules/exercises/transport/server-actions";
+import { ExerciseEditor, ExerciseDeleteForm } from "./personal-exercise-controls";
 
-export function MealReadback({ item }: { item: PersonalMealDto }): React.JSX.Element {
+export function ExerciseReadback({ item }: { item: PersonalExerciseDto }): React.JSX.Element {
   // Display the civil truth directly; never format a carrier instant in browser TZ.
-  return <div className="min-w-0 space-y-2"><p className="font-semibold">{MEAL_CATEGORY_LABELS[item.category]} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
-    <p className="whitespace-pre-wrap break-words text-text-muted">{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p></div>;
+  return <div className="min-w-0 space-y-2"><p className="whitespace-pre-wrap break-words font-semibold">{item.activityName} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
+    <p className="text-text-muted">{item.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `${item.durationMinutes.toLocaleString("th-TH")} นาที`}</p>
+    <p className="whitespace-pre-wrap break-words text-text-muted">{item.note ?? "ไม่ได้บันทึกเพิ่มเติม"}</p></div>;
 }
-export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { initialPage: PersonalMealPage; today: string; initialNonce: string }): React.JSX.Element {
+export function PersonalExerciseWorkspace({ initialPage, today, initialNonce }: { initialPage: PersonalExercisePage; today: string; initialNonce: string }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
-  const [selected, setSelected] = useState<PersonalMealDto | undefined>();
+  const [selected, setSelected] = useState<PersonalExerciseDto | undefined>();
   const [nonce, setNonce] = useState(initialNonce);
-  const [feedback, setFeedback] = useState<MealActionState>({ status: "IDLE" });
+  const [feedback, setFeedback] = useState<ExerciseActionState>({ status: "IDLE" });
   const [blocked, setBlocked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [privateReady, setPrivateReady] = useState(true);
@@ -40,10 +41,10 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { in
     startTransition(async () => {
       const form = new FormData();
       if (append && page.nextCursor) form.set("cursor", page.nextCursor);
-      let result: MealActionState;
-      try { result = await listPersonalMealsAction(form); }
+      let result: ExerciseActionState;
+      try { result = await listPersonalExercisesAction(form); }
       catch { result = { status: "UNCONFIRMED", message: "ยังโหลดรายการไม่ได้ กรุณาลองใหม่" }; }
-      if (captured !== generation.current) return;
+      if (!active.current || captured !== generation.current) return;
       if (result.page) {
         const next = result.page;
         setPage((current) => ({ items: append ? [...new Map([...current.items, ...next.items].map((item) => [item.id, item])).values()] : next.items, nextCursor: next.nextCursor }));
@@ -54,7 +55,7 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { in
       }
     });
   }
-  function onResult(state: MealActionState): void {
+  function onResult(state: ExerciseActionState): void {
     if (!active.current) return;
     setFeedback(state);
     if (state.status === "DENIED") { active.current = false; generation.current += 1; setPrivateReady(false); setPage({ items: [], nextCursor: null }); setSelected(undefined); }
@@ -68,20 +69,19 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { in
   }
   const coordination = { blocked: blocked || saving || pending, onResult, onPending: setSaving };
   if (!privateReady) return <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>;
-  return <div className="max-w-4xl space-y-6">
-    <h2 className="text-2xl font-semibold">อาหาร</h2>
-    <p className="text-text-muted">ข้อมูลที่คุณบันทึก</p>
-    <p className="max-w-prose text-text-muted">บันทึกมื้ออาหารหรือของว่างที่คุณรับประทาน เพื่อดูรายการส่วนตัวของคุณ</p>
+  return <div className="space-y-6">
+    <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
+    <p className="max-w-prose text-text-muted">บันทึกกิจกรรมที่คุณทำจริง เพื่อดูรายการส่วนตัวของคุณ</p>
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
-    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><MealReadback item={feedback.result.item} /></section> : null}
-    <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">{selected ? "แก้ไขบันทึกมื้ออาหาร" : "บันทึกมื้ออาหาร"}</h3>
-      <MealEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} nonce={nonce} coordination={coordination} />
-      {selected ? <MealDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
+    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><ExerciseReadback item={feedback.result.item} /></section> : null}
+    <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">{selected ? "แก้ไขบันทึกการออกกำลังกาย" : "บันทึกการออกกำลังกาย"}</h3>
+      <ExerciseEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} nonce={nonce} coordination={coordination} />
+      {selected ? <ExerciseDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
         <Button variant="ghost" disabled={saving || pending} onClick={() => { setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
     </div></Panel>
-    <section aria-label="ประวัติมื้ออาหาร" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกมื้ออาหารของฉัน</h3>
-      {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกมื้ออาหาร</p> : <ul className="divide-y divide-border">{page.items.map((item) => <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><MealReadback item={item} />
+    <section aria-label="ประวัติการออกกำลังกาย" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกการออกกำลังกายของฉัน</h3>
+      {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกการออกกำลังกาย</p> : <ul className="divide-y divide-border">{page.items.map((item) => <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><ExerciseReadback item={item} />
         <Button variant="secondary" disabled={saving || pending} onClick={() => { setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}

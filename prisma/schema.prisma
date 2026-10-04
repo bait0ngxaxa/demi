@@ -318,6 +318,8 @@ model PatientProfile {
   personalMedications PersonalMedication[]
   personalMealEntries PersonalMealEntry[]
   personalMealCreateReceipts PersonalMealCreateReceipt[]
+  personalExerciseEntries PersonalExerciseEntry[]
+  personalExerciseCreateReceipts PersonalExerciseCreateReceipt[]
 
   @@unique([id, personId])
 }
@@ -353,6 +355,33 @@ model PersonalMealCreateReceipt {
   submissionNonce String @db.Uuid
   // Scalar locator deliberately survives Meal deletion; no Meal FK or payload.
   mealEntryId String @unique @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([patientProfileId, submissionNonce])
+}
+
+model PersonalExerciseEntry {
+  id String @id @default(uuid()) @db.Uuid
+  patientProfileId String @db.Uuid
+  activityName String @db.VarChar(120)
+  occurredOn DateTime @db.Date
+  durationMinutes Int? @db.Integer
+  note String? @db.VarChar(1000)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([patientProfileId, occurredOn(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "PersonalExerciseEntry_history_order_idx")
+}
+
+model PersonalExerciseCreateReceipt {
+  patientProfileId String @db.Uuid
+  submissionNonce String @db.Uuid
+  // Scalar locator survives Exercise deletion; no Exercise FK or payload.
+  exerciseEntryId String @unique @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)

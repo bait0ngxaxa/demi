@@ -46,7 +46,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     for (const text of ["การออกกำลังกาย", "เป้าหมายน้ำหนัก", "คะแนน", "แคลอรี", "แพทย์รับรอง", "ครบทุกมื้อ"]) expect(empty).not.toContain(text);
     const history = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [row], nextCursor: "opaque" }} today={row.occurredOn} initialNonce={row.id} />);
     expect(history).toContain("ดูรายการก่อนหน้า"); expect(history).not.toContain("?cursor="); expect(history).not.toContain("opaque");
-    expect(renderToStaticMarkup(<Loading />)).toContain("กำลังโหลดบันทึกมื้ออาหาร");
+    expect(renderToStaticMarkup(<Loading />)).toContain("กำลังโหลดบันทึกสุขภาพ");
   });
   it("create/editor optional description, explicit four categories/version and escaped literal readback", () => {
     const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
