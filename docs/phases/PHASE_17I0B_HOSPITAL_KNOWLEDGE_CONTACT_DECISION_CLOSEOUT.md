@@ -101,4 +101,4 @@ Phase 17H.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE; separate manual 17H UAT
 | Phase 17I.2 | PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED | Separate publishing contract required |
 | Phase 17I.3 | PLANNED / NOT IMPLEMENTED | Separate Patient content consumption contract required |
 
-Documentation validation covers final diff, whitespace, touched local links, strict UTF-8/Thai integrity, matrix completeness/options, scope and status consistency. Runtime tests, Prisma generation/validation, migrations, build, dev server and manual UAT were not run. No runtime/schema/migration/config changes; no commit or push.
+Documentation validation covers final diff, whitespace, touched local links, strict UTF-8/Thai integrity, matrix completeness/options, scope and status consistency. The contract authoring task was documentation-only: no runtime/application source, Prisma schema, migration or config changes. Runtime/unit/PostgreSQL suites were not required or run; Prisma generation/validation, migrations, build and dev server were not run. No manual browser/mobile/device UAT or production deployment was performed.

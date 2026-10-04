@@ -8,7 +8,7 @@
 
 **CONTENT-01 — OWNER DECISIONS CLOSED; 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** ลำดับที่อนุมัติคือ Contact → Content Publishing → Patient Content Consumption; clearance นี้ครอบคลุมเฉพาะ 17I.1 ไม่ได้ clear content runtime ทั้ง Phase 17I
 
-Documentation/contract only; ไม่มี runtime/schema/migration/config เปลี่ยน ไม่มี runtime tests หรือ manual UAT/production deployment claim และไม่ commit/push **Phase 17H.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE**; separate manual 17H UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02 และ 17J delivery/system authority ไม่เปลี่ยน
+Documentation/contract only; ไม่มี runtime/application source/Prisma schema/migration/config เปลี่ยน งาน contract นี้ไม่จำเป็นต้องรัน runtime/unit/PostgreSQL suites และไม่ได้รัน ไม่มี manual browser/mobile/device UAT หรือ production deployment. **Phase 17H.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE**; separate manual 17H UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02 และ 17J delivery/system authority ไม่เปลี่ยน
 
 ## Historical-status addendum — Phase 17I.0 decision-pack authoring (2026-10-04)
 
