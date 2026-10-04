@@ -12,7 +12,7 @@
 - **Phase 17I runtime — NOT CLEARED FOR IMPLEMENTATION** รวม 17I.1
 - **Phase 17H.4A — PASS / AUTOMATED RE-AUDIT COMPLETE** สำหรับ approved bounded automated scope; manual browser/mobile/device/BFCache UAT เป็น separate tracking stream และไม่ block งานนี้
 
-เอกสารนี้เป็น requirement analysis และ owner decision pack เท่านั้น ทุกข้อเสนอมีสถานะ **RECOMMENDATION — NOT OWNER APPROVED** การจัดทำเสร็จไม่ใช่การปิด owner decisions และไม่ใช่ implementation clearance ไม่มี runtime/schema/migration เปลี่ยน ไม่มี commit/push และไม่มี UAT acceptance claim
+เอกสารนี้เป็น requirement analysis และ owner decision pack เท่านั้น ทุกข้อเสนอมีสถานะ **RECOMMENDATION — NOT OWNER APPROVED** การจัดทำเสร็จไม่ใช่การปิด owner decisions และไม่ใช่ implementation clearance Phase 17I.0 change set เป็น documentation-only ไม่มี runtime/schema/migration เปลี่ยน และไม่มี UAT acceptance claim
 
 ## 2. Scope และวิธีอ่านหลักฐาน
 
@@ -28,13 +28,14 @@
 
 อ่าน current-status addenda ก่อน historical entries ใน CONTEXT/backlog/decision packs ไม่ยกสถานะเก่ามาหักล้าง closeout ใหม่ ไม่ยืม Wellness SELF-only ownership, delete หรือ business semantics มาใช้กับ Hospital content/contact
 
-## 3. Repository baseline / HEAD
+## 3. Authoring baseline / task starting baseline
 
-- Branch: `main`
-- Expected และ actual starting HEAD: `3f383afe0c15498093004435e7e475d26c89119e`
-- Commit: `test(phase-17h4a): complete wellness privacy response matrix`
+- Authoring starting branch: `main`
+- Phase 17I.0 authoring เริ่มจาก expected และ actual starting HEAD: `3f383afe0c15498093004435e7e475d26c89119e`
+- Starting baseline commit: `test(phase-17h4a): complete wellness privacy response matrix`
 - Starting worktree: clean; `git diff` ว่าง ไม่มี user changes ที่ต้อง reconcile
-- HEAD ของงานเอกสารนี้คงเดิม ไม่มี commit/push; intended diff มีเพียงเอกสาร pack นี้, CONTEXT และ Phase 17 backlog
+- Phase 17I.0 authoring change set มีเพียงเอกสาร pack นี้, CONTEXT และ Phase 17 backlog ไม่มี runtime/schema/migration เปลี่ยน
+- Starting HEAD บันทึก authoring baseline ไม่ใช่ permanent current HEAD ของ repository; commit/push state เป็น operational metadata ที่เปลี่ยนได้หลังจัดทำเอกสาร
 - Legacy checkout ที่อ่านอย่างเดียวอยู่นอก current repository; pinned HEAD: `7a5510ee1cb5c55b62ad62b0d49bbaa8295d228e` จาก `raviut-max/demi-plus-web-v2` ไม่มีการเชื่อม legacy database หรือคัดลอกโค้ดเข้าระบบ
 
 ## 4. Evidence reviewed
@@ -246,7 +247,7 @@ Evidence: E03 ต้องอ่านข่าว/ความรู้ แต�
 
 Options:
 
-- Core A — required title, plain-text body, single category ตาม Q88; ownership/author actor identifiers เป็น internal authority/audit metadata; actual latest publishedAt เป็น server event instant เมื่อ publish ไม่ใช่ user-entered effective date
+- Core A — required title, plain-text body, single category ตาม Q88; ownership/author actor identifiers เป็น internal authority/audit metadata; successful publication time เป็น server event instant ไม่ใช่ user-entered effective date; timestamp ที่แสดงตอบ Q96 และ chronology ที่ใช้จัด feed ตอบ Q98 แยกกัน; persistence representation ปิดใน technical contract ภายหลัง
 - Core B — owner ระบุ core fields อื่นและเหตุผล เช่น summary-only news; ต้องปิดว่า Patient อ่านอะไร
 - Summary A — ไม่มี summary field แยกใน first slice
 - Summary B — optional plain-text summary แยกจาก body
@@ -255,7 +256,7 @@ Options:
 
 RECOMMENDATION — NOT OWNER APPROVED: **core A / summary A / references A** (`Q89 A`)
 
-Reason: title/body/category ทำให้อ่านได้จริง; actual publish instant ไม่สร้าง scheduling; source attribution รองรับความรับผิดชอบโดยไม่สร้าง reference framework
+Reason: title/body/category ทำให้อ่านได้จริง; successful publication instant ไม่สร้าง scheduling หรือกำหนด feed ranking; source attribution รองรับความรับผิดชอบโดยไม่สร้าง reference framework
 
 Impact: optional source text ไม่อนุมัติ external-link feature (Q90) หรือแสดง staff identity (Q96) Numeric/text bounds/format/validation ปิดก่อน implementation ไม่เพิ่ม effectiveFrom/expiresAt เว้น Q93 อนุมัติ
 
@@ -329,7 +330,7 @@ RECOMMENDATION — NOT OWNER APPROVED: **schedule A / expiry A** (`Q93 A`)
 
 Reason: ไม่มี evidence ว่าต้อง schedule/expire; manual publish/withdraw เพียงพอสำหรับ bounded slice
 
-Impact: ทุก choice Patient เห็นเฉพาะ PUBLISHED ที่ผ่าน audience และ temporal predicate; DRAFT/ARCHIVED ไม่แสดง; publisher เห็น historical/withdrawn records เฉพาะยังมี authority ตาม Q110; B/C temporal options ต้องปิด edit/cancel/race/effective-vs-publish semantics ไม่เก็บ Bangkok civil date เป็น fake UTC midnight; actual publishedAt เป็น instant แสดง Asia/Bangkok ไม่มี job อนุมัติใน pack นี้
+Impact: ทุก choice Patient เห็นเฉพาะ PUBLISHED ที่ผ่าน audience และ temporal predicate; DRAFT/ARCHIVED ไม่แสดง; publisher เห็น current records รวม withdrawn/archived state เฉพาะยังมี authority ตาม Q110 ไม่ใช่ previous revisions หรือ audit timeline; B/C temporal options ต้องปิด edit/cancel/race/effective-vs-publish semantics ไม่เก็บ Bangkok civil date เป็น fake UTC midnight; publication event time เป็น instant; Q96 ตัดสิน timestamp ที่แสดงใน Asia/Bangkok และ Q98 ตัดสิน feed ranking แยกกัน ไม่มี job อนุมัติใน pack นี้
 
 ### Q94 — Editing published content / versioning
 
@@ -338,14 +339,14 @@ Evidence: E03 versioning gap; ไม่มี content versions (E05); audit ไ�
 Options:
 
 - A — แก้ current PUBLISHED record แล้ว Patient เห็นใหม่ทันที ไม่มี full versions
-- B — ถอน PUBLISHED เป็น DRAFT ก่อนแก้ current record แล้ว publish ใหม่; actual latest publishedAt เปลี่ยนเมื่อ republish; ไม่มี full versions
+- B — ถอน PUBLISHED เป็น DRAFT ก่อนแก้ current record แล้ว publish ใหม่; ไม่มี full versions; republish ไม่ได้ตัดสิน feed ranking (Q98) หรือ timestamp ที่แสดง (Q96)
 - C — new immutable revision ต่อ published edit โดย owner ระบุ previous-version visibility/retention
 
 RECOMMENDATION — NOT OWNER APPROVED: **B**
 
 Reason: ไม่แก้ข้อความ live ระหว่างจัดทำ correction และไม่ต้องสร้าง version archive ที่ยังไม่ยืนยัน
 
-Impact: B ทำให้ article ไม่อยู่ใน Patient reads ระหว่างแก้; audit เก็บ event ไม่เก็บ old bodies; republish ต้องทำตาม Q86 เดิมเสมอ ถ้า approval required ต้อง reapprove ไม่ bypass; C ต้องปิด version/approval/read reference contracts เพิ่ม
+Impact: B ทำให้ article ไม่อยู่ใน Patient reads ระหว่างแก้; audit เก็บ event ไม่เก็บ old bodies; republish ต้องทำตาม Q86 เดิมเสมอ ถ้า approval required ต้อง reapprove ไม่ bypass; C ต้องปิด version/approval/read reference contracts เพิ่ม ทุกตัวเลือก Q94 ตัดสินเฉพาะ editing/versioning; การ republish จะเลื่อนบทความใน feed หรือไม่ต้องตอบ Q98.ordering โดย explicit owner decision
 
 ### Q95 — Delete / archive / retention
 
@@ -375,8 +376,10 @@ Options — identity:
 
 Options — timestamp:
 
-- A — แสดง actual latest publication timestamp ใน Asia/Bangkok พร้อมบอกว่าเป็นการเผยแพร่ล่าสุด
+- A — แสดงเวลาของ successful publication/republication ล่าสุดใน Asia/Bangkok พร้อม label “เผยแพร่ล่าสุด”; ไม่กำหนด feed ranking
 - B — ไม่แสดง publication timestamp ใน Patient projection
+- C — แสดงเวลาที่ successful publication ครั้งแรกใน Asia/Bangkok พร้อม label “เผยแพร่ครั้งแรก”; ไม่เปลี่ยนเมื่อแก้/republish
+- D — owner ระบุ displayed timestamp semantics อื่นและ label ที่ไม่ทำให้เข้าใจผิด
 
 Options — source:
 
@@ -387,7 +390,7 @@ RECOMMENDATION — NOT OWNER APPROVED: **identity A / timestamp A / source A** (
 
 Reason: บอกผู้รับผิดชอบ ความใหม่ และที่มาโดยไม่เผย staff personal identity โดย default
 
-Impact: internal actor IDs สำหรับ audit ไม่ใช่ public attribution; B/C identity ต้องปิด lawful/consented display name handling และ changes after staff exit; source A ไม่มี clickable link feature เว้น Q90 อนุมัติ
+Impact: displayed timestamp เป็น independent owner decision ใน Q96.timestamp ไม่ได้เลือกหรือ override Q98.ordering และ Q94 ไม่ได้เลือก timestamp ให้; แสดง “เผยแพร่ล่าสุด” ได้แม้ feed ใช้ chronology ครั้งแรกถ้า owner เลือกสอง semantics นี้ ไม่กำหนด database columns ใน pack นี้ internal actor IDs สำหรับ audit ไม่ใช่ public attribution; B/C identity ต้องปิด lawful/consented display name handling และ changes after staff exit; source A ไม่มี clickable link feature เว้น Q90 อนุมัติ
 
 ### Q97 — Source / medical authority
 
@@ -416,8 +419,9 @@ Options — category:
 
 Options — ordering:
 
-- A — newest actual latest publishedAt ก่อน; stable identifier tie-break ใน technical contract
-- B — owner ระบุ ordering อื่นที่มี business meaning
+- A — เรียงตาม ORIGINAL / FIRST successful publication chronology โดยครั้งแรกที่ใหม่กว่ามาก่อน; แก้/republish บทความเดิมไม่ทำให้ถูก promote เป็น newly published อัตโนมัติ
+- B — เรียงตาม LATEST successful publication / republication chronology โดยล่าสุดที่ใหม่กว่ามาก่อน; republished content เลื่อนตามเวลาการเผยแพร่ล่าสุด
+- C — owner ระบุ ordering rule อื่นที่มี business meaning อย่างชัดเจน
 
 Options — search:
 
@@ -431,9 +435,9 @@ Options — pinning:
 
 RECOMMENDATION — NOT OWNER APPROVED: **category A / ordering A / search A / pinning A** (`Q98 A`)
 
-Reason: filter + newest-first ตอบ browsing intent ได้โดยไม่เพิ่ม generic search infrastructure
+Reason: category filter + first-publication chronology เป็น first slice ที่เล็กและคาดการณ์ได้; การแก้บทความเก่าไม่ทำให้บทความนั้นขึ้นบน feed แทนบทความใหม่โดยปริยาย
 
-Impact: future contract ต้องกำหนด bounded pagination/stable ordering และ empty/error states; search/pin answers แยกจาก category filter ไม่เพิ่ม engine หรือ relevance ranking เอง
+Impact: owner ต้องเลือก Q98.ordering A/B/C โดยตรง; Q94 editing/republish และ Q96 displayed timestamp ไม่อนุมัติ ranking แทนข้อนี้ หลัง owner เลือก semantics จึงปิด persistence representation, stable tie-break, bounded pagination และ empty/error states ใน technical contract ไม่กำหนด firstPublishedAt/latestPublishedAt columns, publication-event tables หรือ revision tables ล่วงหน้า search/pin answers แยกจาก category filter ไม่เพิ่ม engine หรือ relevance ranking เอง
 
 ### Q99 — Authoritative source of Hospital contact data
 
@@ -636,24 +640,25 @@ Evidence: E03 unresolved versioning; E05 AuditEvent ไม่ใช่ content r
 
 Options — publisher:
 
-- A — ผู้มี current publisher authority เห็น current records รวม drafts/archives และ minimized mutation chronology ใน own Hospital ไม่แสดง previous bodies/contact values
-- B — full previous versions/contact-value history โดย owner ระบุ purpose/retention และต้องสอดคล้อง Q94/Q95
+- A — publisher เห็นเฉพาะ CURRENT content/contact records ที่มีสิทธิ์ manage รวม current draft/published/archived state ถ้า owner อนุมัติ states เหล่านั้น; first slice ไม่มี publisher-facing audit/history chronology หรือ previous bodies/contact values
+- B — เพิ่ม publisher-facing minimized mutation chronology โดย owner ระบุ purpose, event projection, visibility และ retrieval/UI contract แยก; ไม่แสดง full revisions ผ่าน audit metadata
+- C — เพิ่ม content revision/contact-value history โดย owner ระบุ purpose/retention/visibility และต้องสอดคล้อง Q94/Q95; ไม่ใช้ audit metadata เก็บ article bodies หรือ previous contact values
 
 Options — Platform ADMIN:
 
 - A — เก็บ minimized governance audit evidence ไว้ตาม Q109; first slice ไม่เพิ่ม ADMIN history reader/UI หรือ full content/contact access; การเรียกดูเพื่อ investigation ต้องปิด authorized retrieval contract แยก
-- B — additional scoped investigation content/history access โดย owner ระบุ explicit purpose/permission
+- B — เพิ่ม scoped investigation/retrieval reader หรือ history UI โดย owner ระบุ explicit purpose/permission/projection ใน contract แยก; การอนุมัติ audit reader ไม่ grant full content/contact inspection โดยปริยาย
 
 Options — Patient:
 
-- A — current eligible PUBLISHED content/current contact เท่านั้น; ไม่มี previous versions หรือ publisher audit feed
+- A — current eligible PUBLISHED content/current allowed contact projection เท่านั้น; ไม่มี previous revisions หรือ audit history
 - B — correction history/notice visible โดย owner ระบุว่าจะเผยอะไรและยังผ่าน audience/disclosure
 
 RECOMMENDATION — NOT OWNER APPROVED: **publisher A / admin A / patient A** (`Q110 A`)
 
-Reason: มี trace of action และ current truth โดยไม่อ้าง event audit ว่าเป็น version archive
+Reason: current authorized records ตอบงานเผยแพร่/จัดการ contact ได้; Q109 ยังเก็บ minimized audit evidence สำหรับ successful mutations โดยไม่เพิ่ม user-facing history ที่ customer intent ยังไม่ต้องการ
 
-Impact: publisher chronology เป็น scoped minimized projection ที่ยังไม่ implement ไม่มี generic audit reader ที่พิสูจน์แล้วให้ reuse; ห้ามสร้าง role-only audit access; Patient A ไม่สัญญาว่ารู้เหตุผลหรือเห็น old text ที่ถอนแล้ว ไม่มี automatic global Admin content permission Retention policy และ user-facing history เป็นคนละ decision
+Impact: audit evidence != content revision history != user-facing history; recommendation A ทุกแกนไม่เพิ่ม publisher/ADMIN audit-history reader หรือ UI และไม่ grant full content/contact inspection Q109 atomic/minimized audit คงเดิม ห้ามเก็บ article bodies, previous contact values หรือ sensitive free text ใน audit metadata; ตัวเลือก history เพิ่มต้องมี explicit owner approval และ separate retrieval/visibility contract ไม่สร้าง role-only audit access Retention policy และ user-facing history เป็นคนละ decision
 
 ### Q111 — First implementation boundary / ordering
 
@@ -687,11 +692,11 @@ Impact: หลัง owner closeout และ separate technical contract เท
 | Q91 | A | exact own relationship + ACTIVE Hospital |
 | Q92 | A | Patient consumption + publisher preview only |
 | Q93 | A (schedule/expiry A) | immediate publish; no automatic expiry |
-| Q94 | B | withdraw → edit current → republish |
+| Q94 | B | withdraw → edit current → republish; no ranking/timestamp decision |
 | Q95 | A | archive; no physical-delete operation |
-| Q96 | A (identity/timestamp/source A) | Hospital attribution, latest publish instant, source if present |
+| Q96 | A (identity/timestamp/source A) | Hospital attribution, displayed latest successful publish/republish instant independent of feed ranking, source if present |
 | Q97 | A | Hospital informational content |
-| Q98 | A (category/ordering/search/pinning A) | category + newest-first; no search/pin |
+| Q98 | A (category/ordering/search/pinning A) | category + first-publication chronology; edits/republish do not auto-promote; no search/pin |
 | Q99 | B | Hospital-owned DEMI contact extension |
 | Q100 | A (field set/completeness A) | optional organizational address/phone |
 | Q101 | A | direct ACTIVE OWNER contact edit |
@@ -703,7 +708,7 @@ Impact: หลัง owner closeout และ separate technical contract เท
 | Q107 | A (knowledge/contact A) | Personal knowledge destination + relationship contact context |
 | Q108 | A | bounded Thai mobile UAT intent |
 | Q109 | A | atomic minimized successful mutation audit |
-| Q110 | A (publisher/admin/patient A) | scoped event chronology; no full versions |
+| Q110 | A (publisher/admin/patient A) | current authorized records only; Q109 evidence retained; no publisher/ADMIN history reader/UI or Patient revisions/audit history |
 | Q111 | A | contact → publishing → content consumption |
 
 ## 12. Explicit deferred / excluded scope
@@ -766,9 +771,9 @@ Q92: <A/B/C>
 Q93: <schedule A/B/C; expiry A/B/C>
 Q94: <A/B/C>
 Q95: <A/B/C>
-Q96: <identity A/B/C; timestamp A/B; source A/B>
+Q96: <identity A/B/C; timestamp A latest/B hidden/C first/D explicit other; source A/B>
 Q97: <A/B/C>
-Q98: <category A/B; ordering A/B; search A/B; pinning A/B>
+Q98: <category A/B; ordering A first-publication/B latest-publication-republication/C explicit other; search A/B; pinning A/B>
 Q99: <A/B/C/D>
 Q100: <field set A/B/C/D; completeness A/B>
 Q101: <A/B/C/D>
@@ -780,7 +785,7 @@ Q106: <A/B/C>
 Q107: <knowledge A/B; contact A/B>
 Q108: <A/B>
 Q109: <A/B>
-Q110: <publisher A/B; admin A/B; patient A/B>
+Q110: <publisher A current-only/B minimized chronology/C revision-contact history; admin A no reader/B explicit retrieval contract; patient A current-only/B explicit correction history>
 Q111: <A/B/C>
 Data/source/governance owner และ additional constraints: <ระบุ>
 Deferred/excluded changes ที่ต้องการ: <ระบุ scope ชัด>
