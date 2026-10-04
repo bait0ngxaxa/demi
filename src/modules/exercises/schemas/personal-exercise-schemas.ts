@@ -8,7 +8,7 @@ export const exerciseDateSchema = z.string().length(10).refine(isExerciseCivilDa
 const durationValueSchema = z.number().finite().int().min(1).max(EXERCISE_DURATION_MAX).nullable();
 export const exerciseDurationSchema = durationValueSchema.optional().transform((value) => value ?? null);
 export const exerciseDurationTextSchema = z.string().max(EXERCISE_DURATION_RAW_MAX).transform((value) => value.trim())
-  .refine((value) => value === "" || /^[0-9]{1,20}$/u.test(value))
+  .refine((value) => value === "" || /^[0-9]{1,10}$/u.test(value))
   .transform((value) => value === "" ? null : Number(value.replace(/^0+(?=\d)/u, ""))).pipe(durationValueSchema);
 const fields = {
   activityName: z.string().max(EXERCISE_ACTIVITY_RAW_MAX).refine((value) => !value.includes("\u0000"))

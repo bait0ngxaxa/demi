@@ -6,17 +6,21 @@ import { Input, inputClassName } from "@/components/ui/input";
 import { EXERCISE_DURATION_MAX, EXERCISE_ACTIVITY_RAW_MAX, EXERCISE_NOTE_RAW_MAX, type PersonalExerciseDto } from "@/modules/exercises/domain/personal-exercise";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
 import { createPersonalExerciseAction, updatePersonalExerciseAction, deletePersonalExerciseAction } from "@/modules/exercises/transport/server-actions";
+import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
-type Coordination = { onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
+type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
 function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination): [ExerciseActionState, (form: FormData) => void, boolean] {
   return useActionState(async (previous: ExerciseActionState, form: FormData) => {
+    const authorityGeneration = coordination.authority.captureGeneration();
+    if (!coordination.isActive()) return { status: "IDLE" } as const;
     coordination.onPending(true);
     let state: ExerciseActionState;
     try { state = await action(previous, form); }
     catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" }; }
+    if (!coordination.isActive() || !coordination.authority.isCurrent(authorityGeneration)) return { status: "IDLE" } as const;
     coordination.onPending(false);
     coordination.onResult(state);
-    return state;
+    return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
 }
 export function ExerciseEditor({ item, today, nonce, coordination }: { item?: PersonalExerciseDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {

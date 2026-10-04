@@ -1,17 +1,21 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
-const harness = vi.hoisted(() => ({ effects: [] as (() => void | (() => void))[], actions: [] as ((previous: MealActionState, form: FormData) => Promise<MealActionState>)[], setters: [] as unknown[], buttons: [] as { children?: unknown; onClick?: () => void }[], create: vi.fn(), list: vi.fn() }));
+import type { WellnessPrivateAuthority } from "./wellness-private-authority";
+import { createWellnessPrivateAuthority } from "./wellness-private-authority";
+const harness = vi.hoisted(() => ({ effects: [] as (() => void | (() => void))[], actions: [] as ((previous: MealActionState, form: FormData) => Promise<MealActionState>)[], setters: [] as unknown[], buttons: [] as { children?: unknown; onClick?: () => void }[], transitions: [] as Promise<void>[], create: vi.fn(), list: vi.fn() }));
 vi.mock("react", async (importOriginal) => {
   const original = await importOriginal<typeof import("react")>();
   return { ...original, useEffect: (effect: () => void | (() => void)) => { harness.effects.push(effect); },
     useState: (initial: unknown) => [initial, (value: unknown) => { harness.setters.push(value); }],
-    useTransition: () => [false, (work: () => Promise<void>) => { void work(); }],
+    useTransition: () => [false, (work: () => Promise<void>) => { harness.transitions.push(work()); }],
     useActionState: (action: (previous: MealActionState, form: FormData) => Promise<MealActionState>) => { harness.actions.push(action); return [{ status: "IDLE" }, () => undefined, false]; } };
 });
 vi.mock("@/components/ui/button", () => ({ Button: (props: { children?: React.ReactNode; onClick?: () => void }) => { harness.buttons.push(props); return <button>{props.children}</button>; } }));
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: harness.create, updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: harness.list }));
 import { PersonalMealWorkspace } from "./personal-meal-workspace";
+let authority: WellnessPrivateAuthority;
+let invalidated: boolean;
 const row = { id: "11111111-1111-4111-8111-111111111111", category: "SNACK" as const, occurredOn: "2026-10-03", description: "สังเคราะห์", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" };
 const success: MealActionState = { status: "SUCCESS", result: { outcome: "CREATED", item: row } };
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -29,14 +33,13 @@ describe("Meal client lifecycle callback evidence (no browser)", () => {
     harness.buttons.find((button) => button.children === "เริ่มบันทึกใหม่")?.onClick?.();
     expect(uuid).toHaveBeenCalledTimes(1); expect(harness.setters).toContain(freshNonce);
     expect(harness.create).toHaveBeenCalledTimes(1);
-    const html = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={freshNonce} />);
+    const html = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={freshNonce} authority={authority} />);
     expect(html).toContain(`name="submissionNonce" value="${freshNonce}"`);
   });
-  const events = new Map<string, () => void>();
   beforeEach(() => {
-    vi.clearAllMocks(); harness.effects.length = 0; harness.actions.length = 0; harness.setters.length = 0; harness.buttons.length = 0; events.clear();
-    vi.stubGlobal("window", { addEventListener: (event: string, handler: () => void) => events.set(event, handler), removeEventListener: (event: string) => events.delete(event), location: { reload: vi.fn() } });
-    renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} />);
+    vi.clearAllMocks(); harness.effects.length = 0; harness.actions.length = 0; harness.setters.length = 0; harness.buttons.length = 0; harness.transitions.length = 0;
+    invalidated = false; authority = createWellnessPrivateAuthority(() => { invalidated = true; });
+    renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
   });
   afterEach(() => vi.unstubAllGlobals());
   it("Strict Mode setup/cleanup/setup still processes authoritative mutation result", async () => {
@@ -47,21 +50,31 @@ describe("Meal client lifecycle callback evidence (no browser)", () => {
     await harness.actions[0]({ status: "IDLE" }, new FormData());
     expect(harness.setters).toContainEqual(success); expect(harness.setters.some((value) => typeof value === "function")).toBe(true);
   });
-  it("pagehide purges parent and drops delayed mutation payload", async () => {
+  it("shared authority invalidation drops a delayed Meal mutation result synchronously", async () => {
     harness.effects.forEach((effect) => effect());
     const response = deferred<MealActionState>(); harness.create.mockReturnValue(response.promise);
     const pending = harness.actions[0]({ status: "IDLE" }, new FormData());
-    events.get("pagehide")?.(); response.resolve(success); await pending;
-    expect(harness.setters).toContainEqual({ items: [], nextCursor: null }); expect(harness.setters).not.toContainEqual(success);
+    const generation = authority.captureGeneration(); authority.invalidate();
+    expect(authority.isCurrent(generation)).toBe(false); response.resolve(success);
+    await expect(pending).resolves.toEqual({ status: "IDLE" });
+    expect(harness.setters).not.toContainEqual(success); expect(invalidated).toBe(true);
   });
-  it("list denial invalidates pending mutation and clears surviving payload", async () => {
+  it("Meal DENIED invalidates the shared authority and clears Meal payload", async () => {
     harness.effects.forEach((effect) => effect());
-    const response = deferred<MealActionState>(); harness.create.mockReturnValue(response.promise);
-    const pending = harness.actions[0]({ status: "IDLE" }, new FormData());
     harness.list.mockResolvedValue({ status: "DENIED", message: "ปฏิเสธ" });
     harness.buttons.find((button) => button.children === "โหลดรายการล่าสุด")?.onClick?.();
-    await vi.waitFor(() => expect(harness.setters).toContainEqual({ status: "DENIED", message: "ปฏิเสธ" }));
-    response.resolve(success); await pending;
-    expect(harness.setters).not.toContainEqual(success); expect(harness.setters).toContainEqual({ items: [], nextCursor: null });
+    await harness.transitions[0];
+    expect(authority.isActive()).toBe(false); expect(invalidated).toBe(true);
+    expect(harness.setters).toContainEqual({ items: [], nextCursor: null });
+    expect(harness.setters.some((value) => typeof value === "object" && value !== null && "status" in value && value.status === "DENIED")).toBe(false);
+  });
+  it("a delayed Meal list response is ignored after sibling invalidation", async () => {
+    harness.effects.forEach((effect) => effect());
+    const response = deferred<MealActionState>(); harness.list.mockReturnValue(response.promise);
+    harness.buttons.find((button) => button.children === "โหลดรายการล่าสุด")?.onClick?.();
+    const generation = authority.captureGeneration(); authority.invalidate();
+    response.resolve({ status: "SUCCESS", page: { items: [row], nextCursor: null } }); await harness.transitions[0];
+    expect(authority.isCurrent(generation)).toBe(false);
+    expect(harness.setters).not.toContainEqual(expect.any(Function));
   });
 });

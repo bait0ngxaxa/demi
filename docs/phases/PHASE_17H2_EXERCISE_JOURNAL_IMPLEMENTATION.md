@@ -58,3 +58,11 @@ Manual browser/mobile/device/keyboard/BFCache UAT is **NOT EXECUTED**. No produc
 - 17H.4A automated re-audit/UAT readiness remains future.
 
 17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02 and 17J statuses remain unchanged. No commit or push was made.
+
+## Corrective patch — 2026-10-04
+
+The Wellness client now owns one local private-authority generation shared by Meal and Exercise. A DENIED result from either domain invalidates that generation before scheduling the parent state replacement and removes the stored session seed (including both create nonces). Both workspaces are replaced by one safe re-authentication state. List callbacks and mutation action-state callbacks compare their captured shared generation before applying a result, so delayed sibling responses are discarded. The parent pagehide handler invalidates both domains; persisted pageshow requests a fresh reload. Strict Mode cleanup/setup suspends and resumes the boundary with a fresh generation.
+
+Exercise duration text is trimmed and accepts only 1–10 ASCII digits. The raw transport limit remains 20 UTF-16 code units and the optional numeric value range remains 1..1,000,000. No Prisma schema or migration changed, and authorization, audit, cursor, or idempotency semantics were not changed.
+
+Correction checks: focused privacy/duration tests **8 files / 112 tests PASS**; broader Meal/Exercise/UI regression **14 files / 177 tests PASS**; `npm run typecheck` PASS; `npm run lint` PASS. PostgreSQL integration was not rerun because this patch changes no persistence or database behavior.

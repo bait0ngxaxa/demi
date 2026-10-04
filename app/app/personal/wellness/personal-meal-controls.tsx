@@ -7,17 +7,21 @@ import { Select } from "@/components/ui/select";
 import { MEAL_CATEGORIES, MEAL_CATEGORY_LABELS, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { createPersonalMealAction, updatePersonalMealAction, deletePersonalMealAction } from "@/modules/meals/transport/server-actions";
+import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
-type Coordination = { onResult: (state: MealActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
+type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: MealActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
 function useMealAction(action: (previous: MealActionState, form: FormData) => Promise<MealActionState>, coordination: Coordination): [MealActionState, (form: FormData) => void, boolean] {
   return useActionState(async (previous: MealActionState, form: FormData) => {
+    const authorityGeneration = coordination.authority.captureGeneration();
+    if (!coordination.isActive()) return { status: "IDLE" } as const;
     coordination.onPending(true);
     let state: MealActionState;
     try { state = await action(previous, form); }
     catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" }; }
+    if (!coordination.isActive() || !coordination.authority.isCurrent(authorityGeneration)) return { status: "IDLE" } as const;
     coordination.onPending(false);
     coordination.onResult(state);
-    return state;
+    return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
 }
 export function MealEditor({ item, today, nonce, coordination }: { item?: PersonalMealDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {

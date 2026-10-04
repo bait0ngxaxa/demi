@@ -7,20 +7,20 @@ import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } fro
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { listPersonalMealsAction } from "@/modules/meals/transport/server-actions";
 import { MealEditor, MealDeleteForm } from "./personal-meal-controls";
+import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 export function MealReadback({ item }: { item: PersonalMealDto }): React.JSX.Element {
   // Display the civil truth directly; never format a carrier instant in browser TZ.
   return <div className="min-w-0 space-y-2"><p className="font-semibold">{MEAL_CATEGORY_LABELS[item.category]} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
     <p className="whitespace-pre-wrap break-words text-text-muted">{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p></div>;
 }
-export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { initialPage: PersonalMealPage; today: string; initialNonce: string }): React.JSX.Element {
+export function PersonalMealWorkspace({ initialPage, today, initialNonce, authority }: { initialPage: PersonalMealPage; today: string; initialNonce: string; authority: WellnessPrivateAuthority }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
   const [selected, setSelected] = useState<PersonalMealDto | undefined>();
   const [nonce, setNonce] = useState(initialNonce);
   const [feedback, setFeedback] = useState<MealActionState>({ status: "IDLE" });
   const [blocked, setBlocked] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [privateReady, setPrivateReady] = useState(true);
   const [pending, startTransition] = useTransition();
   const generation = useRef(0);
   const active = useRef(true);
@@ -28,37 +28,42 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { in
   useEffect(() => { editorHeading.current?.focus(); }, [selected]);
   useEffect(() => {
     active.current = true;
-    // Purge local payload/drafts on leaving, including BFCache. Re-enter with a
-    // full authenticated request; never restore a previous actor's cached draft.
-    const clear = (): void => { active.current = false; generation.current += 1; setPage({ items: [], nextCursor: null }); setSelected(undefined); setFeedback({ status: "IDLE" }); setPrivateReady(false); };
-    const restore = (event: PageTransitionEvent): void => { if (event.persisted) window.location.reload(); };
-    window.addEventListener("pagehide", clear); window.addEventListener("pageshow", restore);
-    return () => { active.current = false; generation.current += 1; window.removeEventListener("pagehide", clear); window.removeEventListener("pageshow", restore); };
+    return () => { active.current = false; generation.current += 1; };
   }, []);
+  function clearPrivateState(): void {
+    active.current = false;
+    generation.current += 1;
+    setPage({ items: [], nextCursor: null });
+    setSelected(undefined);
+    setNonce("");
+    setFeedback({ status: "IDLE" });
+    setBlocked(true);
+  }
   function refresh(append = false): void {
     const captured = generation.current;
+    const authorityGeneration = authority.captureGeneration();
     startTransition(async () => {
       const form = new FormData();
       if (append && page.nextCursor) form.set("cursor", page.nextCursor);
       let result: MealActionState;
       try { result = await listPersonalMealsAction(form); }
       catch { result = { status: "UNCONFIRMED", message: "ยังโหลดรายการไม่ได้ กรุณาลองใหม่" }; }
-      if (captured !== generation.current) return;
+      if (!active.current || captured !== generation.current || !authority.isCurrent(authorityGeneration)) return;
+      if (result.status === "DENIED") { authority.invalidate(); clearPrivateState(); return; }
       if (result.page) {
         const next = result.page;
         setPage((current) => ({ items: append ? [...new Map([...current.items, ...next.items].map((item) => [item.id, item])).values()] : next.items, nextCursor: next.nextCursor }));
         if (!append) { setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); if (feedback.status === "SUCCESS") setNonce(crypto.randomUUID()); }
       } else {
         setFeedback(result);
-        if (result.status === "DENIED") { active.current = false; generation.current += 1; setPage({ items: [], nextCursor: null }); setSelected(undefined); setPrivateReady(false); }
       }
     });
   }
   function onResult(state: MealActionState): void {
-    if (!active.current) return;
+    if (!active.current || !authority.isActive()) return;
+    if (state.status === "DENIED") { authority.invalidate(); clearPrivateState(); return; }
     setFeedback(state);
-    if (state.status === "DENIED") { active.current = false; generation.current += 1; setPrivateReady(false); setPage({ items: [], nextCursor: null }); setSelected(undefined); }
-    else if (state.result) {
+    if (state.result) {
       setBlocked(true);
       const result = state.result;
       if (result.outcome === "DELETED") { setPage((current) => ({ ...current, items: current.items.filter((item) => item.id !== result.entryId) })); setSelected(undefined); }
@@ -66,8 +71,7 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce }: { in
         .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)) }));
     } else if (selected && (state.status === "CONFLICT" || state.status === "UNCONFIRMED")) setBlocked(true);
   }
-  const coordination = { blocked: blocked || saving || pending, onResult, onPending: setSaving };
-  if (!privateReady) return <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>;
+  const coordination = { authority, isActive: () => active.current && authority.isActive(), blocked: blocked || saving || pending, onResult, onPending: (value: boolean) => { if (active.current && authority.isActive()) setSaving(value); } };
   return <div className="max-w-4xl space-y-6">
     <h2 className="text-2xl font-semibold">อาหาร</h2>
     <p className="text-text-muted">ข้อมูลที่คุณบันทึก</p>

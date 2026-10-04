@@ -10,9 +10,11 @@ vi.mock("react", async (importOriginal) => {
 vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: vi.fn(), updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: vi.fn() }));
 import { ExerciseEditor, ExerciseDeleteForm } from "./personal-exercise-controls";
 import { ExerciseReadback, PersonalExerciseWorkspace } from "./personal-exercise-workspace";
+import { createWellnessPrivateAuthority } from "./wellness-private-authority";
 import Loading from "./loading";
 const row = { id: "11111111-1111-4111-8111-111111111111", activityName: "เดิน <script>literal</script>", durationMinutes: 30, occurredOn: "2026-10-03", note: "อาหารไทย <script>alert(1)</script>\n**literal**", createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z" };
-const coordination = { blocked: false, onResult: vi.fn(), onPending: vi.fn() };
+const authority = createWellnessPrivateAuthority(vi.fn());
+const coordination = { authority, isActive: () => authority.isActive(), blocked: false, onResult: vi.fn(), onPending: vi.fn() };
 describe("Exercise UI contract states (server-rendered evidence)", () => {
   it("keeps rendered today as create default without blocking later valid edit dates", () => {
     const today = "2026-10-03";
@@ -27,7 +29,7 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
   it("consumed create blocks same-nonce submission and offers explicit new intent", () => {
     simulation.workspace = true;
     simulation.state = { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
-    const html = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} />);
+    const html = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
     expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ลองคำขอเดิมอีกครั้ง");
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?=[^>]*\sdisabled="")[^>]*>/u);
     expect(html).toMatch(/<button(?![^>]*\sdisabled=")[^>]*>เริ่มบันทึกใหม่<\/button>/u);
@@ -39,12 +41,12 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
   });
   beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; simulation.workspace = false; });
   it("empty/real Exercise only, source copy, loading, bounded paginated history", () => {
-    // bool state stub must let privateReady be true for workspace presentation.
+    // bool state stub keeps editor confirmation/pending controls deterministic.
     simulation.confirming = true;
-    const empty = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} />);
+    const empty = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
     expect(empty).toContain("ยังไม่มีบันทึกการออกกำลังกาย"); expect(empty).toContain("บันทึกกิจกรรมที่คุณทำจริง");
     for (const text of ["เป้าหมายน้ำหนัก", "คะแนน", "แคลอรี", "แพทย์รับรอง", "ครบทุกมื้อ"]) expect(empty).not.toContain(text);
-    const history = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [row], nextCursor: "opaque" }} today={row.occurredOn} initialNonce={row.id} />);
+    const history = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [row], nextCursor: "opaque" }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
     expect(history).toContain("ดูรายการก่อนหน้า"); expect(history).not.toContain("?cursor="); expect(history).not.toContain("opaque");
     expect(renderToStaticMarkup(<Loading />)).toContain("กำลังโหลดบันทึกสุขภาพ");
   });
@@ -75,9 +77,5 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     simulation.state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" };
     const create = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).not.toContain("<fieldset disabled");
     expect(renderToStaticMarkup(<ExerciseEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />)).toContain("<fieldset disabled");
-  });
-  it("safe denied state suppresses all payload and controls", () => {
-    const html = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [row], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} />);
-    expect(html).toContain("ยืนยันสิทธิ์"); expect(html).not.toContain(row.note); expect(html).not.toContain("<form");
   });
 });

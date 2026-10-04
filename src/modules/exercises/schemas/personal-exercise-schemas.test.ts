@@ -18,11 +18,11 @@ describe("Exercise text, integer, civil date and transport", () => {
     for (const note of ["ก".repeat(1000), " ".repeat(1000) + "ก".repeat(1000), "🏃".repeat(500)]) expect(exerciseCreateSchema.parse({ ...fields, note }).note).toHaveLength(1000);
     for (const note of ["ก".repeat(1001), " ".repeat(2001), "🏃".repeat(501), "ไทย\u0000"]) expect(exerciseCreateSchema.safeParse({ ...fields, note }).success).toBe(false);
   });
-  it.each(["", "  ", "1", "1000000", "00000000000000000001"])("strict duration transport accepts %s", (text) => {
+  it.each(["", "  ", "1", "1000000", "0001", " 0001 ", "0001000000"])("strict duration transport accepts %s", (text) => {
     const result = parseExerciseForm(form({ ...fields, durationMinutes: text }), "create");
     expect(exerciseCreateSchema.parse(result).durationMinutes).toBe(text.trim() === "" ? null : Number(text));
   });
-  it.each(["0", "-1", "+1", "1.0", "1.1", "1e2", "0x10", "NaN", "Infinity", "text", "1000001", "1abc", "１", "111111111111111111111", " ".repeat(21)])("rejects duration syntax/range %s", (text) => {
+  it.each(["0", "-1", "+1", "1.0", "1.1", "1e2", "0x10", "NaN", "Infinity", "text", "1000001", "10000000000", "00000000000000000001", "1abc", "１", "111111111111111111111", " ".repeat(21)])("rejects duration syntax/range %s", (text) => {
     expect(exerciseDurationTextSchema.safeParse(text).success).toBe(false);
     expect(() => parseExerciseForm(form({ ...fields, durationMinutes: text }), "create")).toThrow();
   });
