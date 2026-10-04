@@ -35,18 +35,18 @@ Character counts use **UTF-16 code units**, the established Meal/JavaScript stri
 | --- | --- |
 | activityName | REQUIRED Patient-entered free text. Raw ≤240 UTF-16 units; trim leading/trailing whitespace; normalized length 1..120. Empty rejected. Preserve internal whitespace. No controlled vocabulary, taxonomy, clinical autocomplete, inferred exercise type/intensity or Goal activity-code mapping. |
 | occurredOn | REQUIRED valid Gregorian YYYY-MM-DD, exactly 10 units, year 0001..9999, Asia/Bangkok civil date; section 4. |
-| durationMinutes | OPTIONAL; omitted/null/blank input becomes null; supplied value is finite positive integer 1..2,147,483,647 minutes; section 3. No default/inference. |
+| durationMinutes | OPTIONAL; omitted/null/blank input becomes null; supplied value is finite positive integer 1..1,000,000 minutes; section 3. No default/inference. |
 | note | OPTIONAL single plain-text field. Raw ≤2,000 UTF-16 units; trim exterior whitespace; normalized ≤1,000; omitted/null/normalized-empty → null. Preserve meaningful interior whitespace/newlines/Thai/Unicode. No extra description/comment field. |
 
 Render activityName/note as escaped literal text; no HTML or Markdown execution. Full-field edit clears omitted optional fields to null, rather than patching hidden old values. Only these four product fields are authorized.
 
 ## 3. Duration technical bound — CLOSED
 
-Choose **maximum 2,147,483,647 minutes inclusive**, persisted as nullable **Prisma Int / PostgreSQL INTEGER (`@db.Integer`)**. This is the positive signed 32-bit storage ceiling, exactly representable by JavaScript number. PostgreSQL documents INTEGER as four bytes with that upper limit and the usual integer choice: [official numeric type documentation](https://www.postgresql.org/docs/current/datatype-numeric.html). No bigint, floating-point, arbitrary precision, unit-conversion framework or additional dependency is needed.
+Choose **maximum 1,000,000 minutes inclusive**, persisted as nullable **Prisma Int / PostgreSQL INTEGER (`@db.Integer`)**. This is a **defensive structural validation bound** following DEMI's existing `FOLLOWUP_STRUCTURAL_NUMBER_MAX = 1_000_000` convention in [Follow-up schemas](../../src/modules/followups/schemas/followup-schemas.ts). It is an application-level hardening limit, not merely the datatype ceiling. The value fits ordinary INTEGER and is exactly representable by JavaScript number; no bigint, floating-point, arbitrary precision, unit-conversion framework or additional dependency is needed.
 
-This deliberately broad finite cap is a **defensive validation/storage bound**, not a clinical recommendation, healthy maximum, fitness rule or claim that longer activity cannot occur. No reviewed customer/legacy evidence supports a smaller session maximum; choosing 120 or 1,440 would import care-target/day-length meaning into a date-only event. The normal INTEGER representation closes the technical decision without inventing product semantics. Do not constrain duration to the occurrence day's length or derive start/end times.
+This bound is not a clinical recommendation, healthy maximum, fitness rule or claim that a longer session is medically invalid or impossible. No reviewed customer/legacy evidence supports a clinical session maximum; choosing 120 or 1,440 would import care-target/day-length meaning into a date-only event. Reuse the structural-bound convention as evidence, not Follow-up domain rules or a runtime dependency on its schema. Exercise must own its duration constant and enforce the same 1..1,000,000 range in validation, UI hints and the later database CHECK. Do not constrain duration to the occurrence day's length or derive start/end times.
 
-Transport raw duration ≤20 UTF-16 units before trim. Omitted or trimmed-empty → null; otherwise accept only 1..10 ASCII decimal digits (leading zeros allowed within that length), convert exactly, then validate finite integer and range. Reject zero, negative, decimal notation (including `1.0`), NaN, infinity, non-numeric, exponent/hex/sign syntax and over-limit values; never parse a valid numeric prefix from invalid text or silently round. Direct typed service input accepts only null/omitted or actual finite integer numbers in range; reject strings/booleans/arrays except through the explicit transport parser. A numeric value 1 is an integer regardless of its caller's source notation. UI duration is visibly optional, integer step 1, minimum 1, maximum 2,147,483,647; native controls remain hints, server validation authoritative.
+Transport raw duration ≤20 UTF-16 units before trim. Omitted or trimmed-empty → null; otherwise accept only 1..10 ASCII decimal digits (leading zeros allowed within that length), convert exactly, then validate finite integer and range. Reject zero, negative, decimal notation (including `1.0`), NaN, infinity, non-numeric, exponent/hex/sign syntax and over-limit values; never parse a valid numeric prefix from invalid text or silently round. Direct typed service input accepts only null/omitted or actual finite integer numbers in range; reject strings/booleans/arrays except through the explicit transport parser. A numeric value 1 is an integer regardless of its caller's source notation. UI duration is visibly optional, integer step 1, minimum 1, maximum 1,000,000; native controls remain hints, server validation authoritative.
 
 ## 4. Occurrence civil date
 
@@ -74,7 +74,7 @@ Use dedicated **PersonalExerciseEntry**, owned by exact PatientProfile. Do not s
 | patientProfileId | UUID FK to PatientProfile, Restrict update/delete like Meal, server-derived and immutable in service; no transfer. |
 | activityName | Required VARCHAR(120), normalized nonempty plain text. |
 | occurredOn | Required DATE; structural Gregorian year 0001..9999. |
-| durationMinutes | Nullable INTEGER; CHECK null or 1..2,147,483,647. |
+| durationMinutes | Nullable INTEGER; CHECK null or 1..1,000,000. |
 | note | Nullable VARCHAR(1000), normalized empty absent. |
 | createdAt | Immutable system TIMESTAMPTZ(3). |
 | updatedAt | System TIMESTAMPTZ(3), monotonic optimistic version on actual edits. |
@@ -197,7 +197,7 @@ First scope excludes/deferments remain binding: Weight Goal runtime, Personal We
 
 | Technical decision | Closed choice |
 | --- | --- |
-| Duration max / persistence | 2,147,483,647, nullable INTEGER, no clinical interpretation (§3/6). |
+| Duration max / persistence | 1,000,000, nullable INTEGER, no clinical interpretation (§3/6). |
 | Activity bounds | Raw 240; trimmed required 1..120 UTF-16 (§2). |
 | Note bounds | Raw 2,000; trimmed optional ≤1,000 UTF-16, empty null (§2). |
 | Receipt shape / deletion | Owner + nonce + unique scalar Exercise ID + createdAt; no payload/entry FK/TTL; survives delete (§6/7). |
