@@ -1,6 +1,6 @@
 # Phase 17H.4A — Wellness Automated Security / DB / Privacy Re-audit
 
-**Disposition: PASS / AUTOMATED RE-AUDIT COMPLETE.** The approved bounded WELL-01 / WELL-02 / WELL-03 scope passed the required automated unit, PostgreSQL, migration, schema, type and lint verification. No unresolved BLOCKER or MAJOR correctness, authorization, persistence, concurrency, or privacy defect was found. The only source additions are regression tests for cross-domain cursor rejection and both Weight owner-lock race orderings; no runtime, schema, or migration correction was required.
+**Disposition: PASS / AUTOMATED RE-AUDIT COMPLETE.** The approved bounded WELL-01 / WELL-02 / WELL-03 scope passed the required automated unit, PostgreSQL, migration, schema, type and lint verification. No unresolved BLOCKER or MAJOR correctness, authorization, persistence, concurrency, or privacy defect was found. Test-only regressions cover cross-domain cursor rejection, both Weight owner-lock race orderings, and the full direct shared-denial read/mutation response matrix; no runtime, schema, or migration correction was required.
 
 This disposition establishes automated re-audit completion and readiness for separate manual UAT tracking. It is not production certification, device/browser UAT acceptance, a penetration test, legal/privacy governance approval, or deployment approval.
 
@@ -11,8 +11,10 @@ This disposition establishes automated re-audit completion and readiness for sep
 - Starting HEAD: eb15a9a284750129ac25062037b43bd14ead9623 — fix(phase-17h3): preserve consumed intent review and restore focus.
 - This equals the expected baseline supplied for the audit. No newer commit existed at audit start; there were no newer commits to reconcile.
 - Starting branch/worktree was clean. No user changes were overwritten.
-- Final HEAD remains the same. This audit did not commit or push.
+- At preparation of the initial audit report, final HEAD remained the same. The initial audit did not itself commit or push.
 - AGENTS.md was read first. Thai text and UTF-8 were preserved.
+
+Post-report follow-up (2026-10-04) started from HEAD `9c83d836a76726fed0907acd9f970b78828964af` (`audit(phase-17h4a): re-audit wellness security and privacy`). It closed W4A-02 by adding direct delayed-response coverage for every cross-domain denial direction and both reads and mutations. The initial baseline and broad-suite results below remain historical evidence; this follow-up changed only a client lifecycle test and its evidence/status documentation.
 
 ## 2. Audit scope
 
@@ -71,7 +73,7 @@ The route composes three domain workspaces. No generic WellnessEntry/EAV model, 
 | Cursor integrity / pagination | PASS | Domain cursor tests, 103-row integration traversals, added cross-domain misuse regression |
 | Bangkok civil dates | PASS | Three process timezone runs and boundary tests |
 | Decimal / duration boundaries | PASS | Domain/transport tests and direct PostgreSQL constraints |
-| Shared client privacy authority | PASS with MINOR test-hardening observation | One shared authority, denial clearing, generations, delayed responses; pair coverage is compositional, detailed in section 19 |
+| Shared client privacy authority | PASS | One shared authority, denial clearing, generations; direct 12-case sibling-denial matrix covers all six ordered domain pairs for both delayed reads and mutations |
 | Initial server read / cache behavior | PASS | Request-time page, persisted SELF reads, all-or-nothing render tests, Next docs/source |
 | Audit/log/error minimization | PASS | Scoped source search, exact audit input and fixed action mappings |
 | Secondary-use / excluded scope | PASS | Repository reference searches |
@@ -214,7 +216,7 @@ Exercise duration accepts blank as null; otherwise 1–10 ASCII digits, raw tran
 
 All three workspaces receive the same WellnessPrivateAuthority instance. A domain DENIED synchronously invalidates that authority, advances the generation, clears the parent session and therefore clears all three domains. Delayed responses are accepted only while their captured shared generation remains current. The parent lifecycle tests confirm one shared authority, payload clearing across all domains, pagehide invalidation, persisted pageshow reload, and Strict Mode cleanup/setup recovery. No localStorage or IndexedDB private journal/target persistence was found.
 
-Current test evidence is compositional across source and target domains: Meal DENIED invalidation, Exercise DENIED invalidation, Weight DENIED invalidation, Meal/Exercise delayed read and mutation suppression, and delayed Weight mutation suppression all use the same shared generation mechanism. The tests do not enumerate six source→target pairs as separate end-to-end cases, and a delayed Weight read-after-sibling-denial has no dedicated direct test. Source review shows no pair-specific branch in the shared authority. This is a MINOR test-hardening observation, not an observed leakage defect. Add explicit pairwise delayed-read/mutation cases if future client lifecycle changes introduce domain-specific invalidation logic.
+The added direct lifecycle matrix enumerates all six ordered sibling directions—Meal→Exercise, Meal→Weight, Exercise→Meal, Exercise→Weight, Weight→Meal, and Weight→Exercise—and tests a pending read and a pending mutation response in each direction (12 cases). Each source uses its actual workspace editor DENIED handler, which synchronously invalidates the shared authority before the deferred target response resolves. The tests confirm no target state update occurs after invalidation. Weight read cases exercise the CREATE_CONSUMED review/readback path. The parent lifecycle test separately confirms that all workspaces receive the same authority instance. This directly closes the delayed-response acceptance matrix without changing runtime code.
 
 Actor-specific remount keys are opaque hashes rather than raw IDs in the DOM. The route does not persist private payload in browser storage or URL/query parameters. New account render state is remounted by the opaque actor key; delayed mutation responses after unmount/authority change are dropped.
 
@@ -254,21 +256,22 @@ All PostgreSQL execution used the repo's safe integration runner and its loopbac
 
 | Check | Result |
 | --- | --- |
-| Focused Wellness unit/UI/domain/transport/page/privacy/cursor set | 20 files / 232 tests PASS; includes cross-domain cursor rejection regression |
-| Focused unit command | npm run test -- --run src/modules/meals src/modules/exercises src/modules/weight-goals app/app/personal/wellness — PASS; 20 files / 232 tests |
+| Focused Wellness unit/UI/domain/transport/page/privacy/cursor set | 21 files / 244 tests PASS after adding the full direct delayed-response matrix |
+| Focused unit command | npm run test -- --run src/modules/meals src/modules/exercises src/modules/weight-goals app/app/personal/wellness — PASS; 21 files / 244 tests |
+| Direct shared-denial read/mutation response matrix | npm run test -- --run app/app/personal/wellness/wellness-private-response-matrix.test.tsx — PASS; 1 file / 12 tests |
 | Timezone matrix | UTC, Asia/Bangkok, America/Los_Angeles: each 3 files / 136 tests PASS |
 | Focused PostgreSQL Meal + Exercise + Weight integration | 3 files / 81 tests PASS |
 | Prisma generate | npm run prisma:generate — PASS; Prisma Client 6.19.3 |
 | Prisma validate | .\node_modules\.bin\prisma.cmd validate — PASS |
 | Fresh database migration | PASS; all 36 migrations from empty database |
-| Typecheck | npm run typecheck — PASS |
-| Lint | npm run lint — PASS |
-| Full unit suite | npm run test — PASS; 216 files / 1,801 tests |
+| Typecheck | npm run typecheck — PASS after the final lifecycle test addition |
+| Lint | npm run lint — PASS in the initial audit; targeted ESLint on the final lifecycle test — PASS |
+| Full unit suite | npm run test — PASS; 216 files / 1,801 tests before the 12 follow-up test-only cases; not rerun because runtime code was unchanged |
 | Full PostgreSQL integration | node scripts/integration.mjs verify — PASS; 31 files / 447 tests, 85.65 seconds; runner shut down disposable DB |
 | Post-run DB status | npm run test:db:status — PASS; no running integration service |
-| Diff whitespace | git diff --check — PASS before documentation updates; rerun at final review |
+| Diff whitespace | git diff --check and git diff --cached --check — PASS after follow-up edits |
 
-The full unit and integration suites ran once after implementation and focused checks were stable. A narrow Weight delayed-response coverage question was assessed afterward; no runtime was changed. No full suite was repeated. The isolated late audit test additions were verified with their focused checks as described below.
+The full unit and PostgreSQL integration suites ran once after implementation and focused checks were stable. A follow-up review identified incomplete direct pairwise denial-to-response evidence. Twelve client lifecycle cases now cover each ordered sibling pair for both reads and mutation responses; the scoped Wellness set (21 files / 244 tests), typecheck, and targeted ESLint passed. The full unit and PostgreSQL suites were not repeated because the follow-up changed only client tests; no runtime, database, or integration code changed.
 
 Focused PostgreSQL command: npm run test -- --config vitest.integration.config.mts tests/integration/personal-meal.integration.test.ts tests/integration/personal-exercise.integration.test.ts tests/integration/personal-weight-goal.integration.test.ts. Environment came from the local integration env file without printing credentials; host was 127.0.0.1, database demi_test, URLs matched, NODE_ENV=test.
 
@@ -283,13 +286,13 @@ Package scripts do not define architecture:check. No Wellness-specific Impeccabl
 | ID | Severity | Finding | Disposition |
 | --- | --- | --- | --- |
 | W4A-01 | MINOR | Framework-reserved $ACTION_ fields are ignored by business parsers and excluded from the 16 KiB business aggregate, while Next caps raw Server Action request size at 6 MiB before action materialization. No authority or persistence bypass was identified. | Documented; no shared request framework or scope expansion warranted. |
-| W4A-02 | MINOR | Shared-denial privacy coverage is compositional rather than six separately named source→target delayed-response cases; Weight delayed read after sibling denial lacks a dedicated direct case. | Shared generation guards, each domain's DENIED invalidation, and delayed mutation/read cases for the other domains passed. No pair-specific implementation branch or leakage path found. Preserve as focused future test-hardening observation. |
+| W4A-02 | RESOLVED (originally MINOR) | The initial report relied on compositional shared-authority coverage for sibling-denial delayed responses. | Added 12 direct lifecycle tests covering each ordered sibling denial direction for both pending reads and mutation responses. All pass; no runtime change. |
 | W4A-03 | INFO | Global Prisma migration diff reports unrelated historical constraint/index-name drift in non-Wellness models. | No Wellness drift reported; all 36 migrations apply on a fresh disposable DB. |
 | W4A-04 | INFO | Payload-free receipts intentionally survive domain record deletion; no retention interval is approved. | Operational/privacy retention and account-erasure governance follow-up; no cleanup or retention semantics invented. |
 | W4A-05 | INFO | Hosting, proxy, provider, and infrastructure log behavior is outside repository visibility. | Unverified infrastructure follow-up; repository paths do not emit the reviewed sensitive values. |
 | W4A-06 | INFO | PostgreSQL NUMERIC(10,3) can round a privileged raw SQL value with excess fractional scale after type coercion. | This follows the approved 17H.3 division: server validation rejects over-scale input; database CHECKs enforce stored range/owner/date invariants. No alternate application write path was found. |
 
-No BLOCKER or MAJOR finding remains. No runtime correction was required. Two test-only evidence additions were made: cross-domain cursor decoder rejection and Weight create/remove owner-lock race-order coverage.
+No BLOCKER or MAJOR finding remains. No runtime correction was required. Test-only evidence additions cover cross-domain cursor decoder rejection, Weight create/remove owner-lock race orderings, and all 12 shared-denial delayed-response matrix cases.
 
 ## 27. Residual operational and privacy items
 
