@@ -1,6 +1,18 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17I.0 Hospital Knowledge / Contact (2026-10-04)
+## CURRENT-status addendum — Phase 17I.0B closeout / 17I.1 Contact contract (2026-10-04)
+
+[Owner decision closeout](./phases/PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md): **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Q84–Q111 — CLOSED / OWNER APPROVED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.** เจ้าของผลิตภัณฑ์อนุมัติชุดคำแนะนำเดิมทุกข้อและทุกแกน WITHOUT CHANGES; เอกสาร decision pack เดิมคงเป็นหลักฐานประวัติ ไม่ใช่สถานะปัจจุบัน
+
+[Hospital Contact technical contract](./phases/PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION_CONTRACT.md): **CONTENT-02 — OWNER DECISIONS CLOSED; 17I.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.1 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** Contact เป็น operational extension แยกจาก Hospital Master identity; 0..1 HospitalContact ต่อ Hospital; optional addressText/phoneNumber เท่านั้น; exact direct ACTIVE OWNER edit และ exact own Patient relationship read ต่อ ACTIVE Hospital; ไม่มี parent fallback/ADMIN routine edit; guarded desired-state update + atomic minimized audit
+
+**CONTENT-01 — OWNER DECISIONS CLOSED; 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** ลำดับที่อนุมัติคือ Contact → Content Publishing → Patient Content Consumption; clearance นี้ครอบคลุมเฉพาะ 17I.1 ไม่ได้ clear content runtime ทั้ง Phase 17I
+
+Documentation/contract only; ไม่มี runtime/schema/migration/config เปลี่ยน ไม่มี runtime tests หรือ manual UAT/production deployment claim และไม่ commit/push **Phase 17H.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE**; separate manual 17H UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02 และ 17J delivery/system authority ไม่เปลี่ยน
+
+## Historical-status addendum — Phase 17I.0 decision-pack authoring (2026-10-04)
+
+Historical pre-approval analysis only; superseded by the current 17I.0B closeout and 17I.1 contract above. OPEN/recommendation/requirement-gated statements in this block do not describe current status.
 
 [Phase 17I.0 decision pack](./phases/PHASE_17I0_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_PACK.md): **DECISION PACK COMPLETE / OWNER DECISIONS OPEN** สำหรับ requirement analysis/documentation เท่านั้น **Q84–Q111 — OPEN / NOT OWNER APPROVED; CONTENT-01 — REQUIREMENT-GATED; CONTENT-02 — REQUIREMENT-GATED; Phase 17I runtime — NOT CLEARED FOR IMPLEMENTATION** รวม 17I.1 ทุก recommendation ยังไม่ใช่ owner decision ไม่มี runtime/schema/migration เปลี่ยน
 

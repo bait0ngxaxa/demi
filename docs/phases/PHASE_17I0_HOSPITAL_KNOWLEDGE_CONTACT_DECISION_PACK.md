@@ -2,7 +2,15 @@
 
 วันที่: 2026-10-04 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`.
 
-## 1. Current status
+## CURRENT-status addendum — superseded by owner closeout (2026-10-04)
+
+[Phase 17I.0B closeout](./PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md) records binding approval WITHOUT CHANGES: **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Q84–Q111 — CLOSED / OWNER APPROVED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.**
+
+[Phase 17I.1 Hospital Contact contract](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION_CONTRACT.md): **CONTENT-02 — OWNER DECISIONS CLOSED; 17I.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.1 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** **CONTENT-01 — OWNER DECISIONS CLOSED; PLANNED 17I.2 / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED; Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** Only 17I.1 is implementation-cleared; content runtime is not cleared.
+
+All original numbered sections below, including OPEN/NOT OWNER APPROVED/recommendation tables, answer templates and no-clearance statements, are **historical pre-approval analysis superseded by the closeout**. They remain unchanged as decision evidence; they are not requests to reopen owner decisions or current statuses. Original authoring baseline is preserved. This addendum changes no runtime/schema/migration and claims no manual UAT. Phase 17H.4A PASS and separate manual UAT tracking and all unrelated gates remain unchanged.
+
+## 1. Historical status — at decision-pack authoring
 
 **Phase 17I.0 — DECISION PACK COMPLETE / OWNER DECISIONS OPEN.**
 
