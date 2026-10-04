@@ -1,5 +1,13 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
+## CURRENT-status addendum — Phase 17I.0 Hospital Knowledge / Contact (2026-10-04)
+
+[Phase 17I.0 decision pack](./PHASE_17I0_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_PACK.md): **DECISION PACK COMPLETE / OWNER DECISIONS OPEN** สำหรับ requirement analysis/documentation เท่านั้น **Q84–Q111 — OPEN / NOT OWNER APPROVED; CONTENT-01 — REQUIREMENT-GATED; CONTENT-02 — REQUIREMENT-GATED; Phase 17I runtime — NOT CLEARED FOR IMPLEMENTATION** รวม 17I.1 ทุก recommendation ยังไม่ใช่ owner decision ไม่มี runtime/schema/migration เปลี่ยน
+
+Current evidence: Hospital Master ใช้ model `Hospital` และ service projection `HospitalMasterRecord` ไม่ใช่ Prisma model แยก; Hospital scalar inventory มี id/hospitalCode/name/status/parentHospitalId/createdAt/updatedAt ส่วน approved Master workbook/seed ไม่มี contact fields Legacy address/phone เป็น requirement evidence เท่านั้น ไม่ใช่ verified canonical values รายละเอียด source/ownership/audience/fields/publishing/contact disclosure และคำตอบแยกแกนอยู่ใน pack
+
+**Phase 17H.4A remains PASS / AUTOMATED RE-AUDIT COMPLETE** สำหรับ approved bounded automated scope; manual browser/mobile/device/BFCache UAT คง separate tracking stream และไม่ block 17I.0 Historical statuses/approved decisions และ 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02, 17J ไม่เปลี่ยน ข้อเสนอ contact → publishing → Patient content consumption ยัง NOT OWNER APPROVED; ต้อง close owner decisions และ technical contract ก่อน implementation
+
 ## CURRENT-status addendum — Phase 17H.4A Wellness automated re-audit (2026-10-04)
 
 [Phase 17H.4A Wellness re-audit](./PHASE_17H4A_WELLNESS_REAUDIT_UAT_READINESS.md): **PASS / AUTOMATED RE-AUDIT COMPLETE.** WELL-01 — IMPLEMENTED / AUTOMATED RE-AUDIT PASS; WELL-02 — IMPLEMENTED / AUTOMATED RE-AUDIT PASS; WELL-03 — IMPLEMENTED / TARGET-ONLY / AUTOMATED RE-AUDIT PASS. The approved bounded automated scope is complete. Manual browser/mobile/device/BFCache UAT is **NOT EXECUTED / TRACK SEPARATELY**; none of these rows is customer/UAT accepted. Personal Weight Observation remains **DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE**.
