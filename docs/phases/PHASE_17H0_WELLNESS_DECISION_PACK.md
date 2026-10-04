@@ -1,6 +1,12 @@
 # Phase 17H.0 — Wellness Decision Pack
 
-## CURRENT-status addendum — Phase 17H.2 (2026-10-04)
+## CURRENT-status addendum - Phase 17H.3 (2026-10-04)
+
+[Weight Goal technical contract](./PHASE_17H3_WEIGHT_GOAL_IMPLEMENTATION_CONTRACT.md): **Phase 17H.3 - CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; WELL-03 - CLEARED FOR IMPLEMENTATION / TARGET-ONLY.** Patient-selected kg target only; 0..1 unique PatientProfile owner; canonical decimal string, scale 3, 0.001..1,000,000 structural bounds, Decimal/NUMERIC(10,3). Corrected Q71 permits unchanged naturally passed targetDate during weight edits; create/changed date >= Bangkok today, explicit clear allowed, no date lifecycle. Dedicated payload-free surviving create receipt prevents successful old-intent resurrection; expectedUpdatedAt and minimized atomic audit; exact persisted ACTIVE Patient SELF. Future Weight joins the existing shared Wellness private-authority generation and three anchored sections at `/app/personal/wellness`. No Weight runtime delivered.
+
+**17H.1 IMPLEMENTED / CLOSED; WELL-01 IMPLEMENTED. 17H.2 IMPLEMENTED / CLOSED; WELL-02 IMPLEMENTED. Personal Weight Observation DEFERRED / NOT APPROVED FOR FIRST 17H SCOPE.** Q69-Q74 and all approved exclusions preserved; no current-weight source/progress/BMI/advice/history. 17H.4A re-audit/UAT readiness remains future. 17G.4A, Family P17F-L04/L05, Q5 governance, parked 17E.2 consent, MED-02 and 17J remain unchanged. Earlier dated planned/precision-pending statements are historical and superseded by this contract; prior runtime/test evidence is not rerun or extended here.
+
+## Historical-status addendum — Phase 17H.2 (2026-10-04)
 
 **Phase 17H.2 — IMPLEMENTED / CLOSED; WELL-02 — IMPLEMENTED.** See [Exercise implementation handoff](./PHASE_17H2_EXERCISE_JOURNAL_IMPLEMENTATION.md) for runtime, migration, and automated evidence. Exercise is a dedicated Patient-reported actually performed session with required free-text activity/date; optional duration 1..1,000,000 minutes (DEMI structural bound only) and optional note; Asia/Bangkok civil date past/today; exact persisted ACTIVE Patient SELF. Owner-bound payload-free receipt prevents retry duplicates and survives physical deletion; stale writes use expectedUpdatedAt; success audit is minimized and atomic; private history uses Exercise-bound signed cursor. Meal + Exercise occupy the existing `/app/personal/wellness` route as independent sections. No Goal Plan/care linkage or future measurements were added.
 
