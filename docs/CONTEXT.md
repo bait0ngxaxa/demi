@@ -1,6 +1,16 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17I.2 Hospital Content implementation (2026-10-05)
+## CURRENT-status addendum — Phase 17I.3 Patient Content Consumption contract (2026-10-05)
+
+[Patient Content Consumption implementation contract](./phases/PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION_CONTRACT.md): **CONTENT-01 — IMPLEMENTED PUBLISHER / 17I.3 CLEARED FOR PATIENT CONSUMPTION IMPLEMENTATION; Phase 17I.2 — IMPLEMENTED / CLOSED; Phase 17I.3 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** The 17I.2 HospitalContent persistence, indexes, and Publisher runtime remain implemented. The 17I.3 contract closes the Patient read-only routes, current persisted SELF authorization, multi-Hospital union, projections, category filter, signed cursor, request/cache/BFCache behavior, and verification/UAT boundary. No Patient query service, cursor, route, navigation item, or runtime has been implemented.
+
+17I.2 automated evidence remains recorded in the [Publisher implementation handoff](./phases/PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION.md). This 17I.3 task is documentation-only: no tests, Prisma commands, build, or dev server were run. Markdown/UTF-8/diff validation is recorded in the contract. Browser interaction/manual mobile-device UAT is **NOT EXECUTED**; no production migration/deployment or customer acceptance is claimed.
+
+**Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED; Phase 17I.2 — IMPLEMENTED / CLOSED; Phase 17I.3 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED; Phase 17I.4A — PLANNED / NOT STARTED.** Whole Phase 17I is **NOT COMPLETE**. Owner decisions are unchanged.
+
+Phase 17H.4A automated PASS/separate manual UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02 and 17J notification delivery/system authority remain unchanged.
+
+## Historical-status addendum — Phase 17I.2 Hospital Content implementation (2026-10-05)
 
 [Hospital Content Publishing implementation](./phases/PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED. Phase 17I.2 — IMPLEMENTED / CLOSED. Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.** Dedicated HospitalContent persistence, additive migration, exact direct ACTIVE OWNER publisher, strict normalized plain text, nonce-based CREATE/REPLAY, versioned lifecycle and real publication event timestamps are implemented. No Patient consumption, Patient navigation, or whole Phase 17I completion is claimed.
 
