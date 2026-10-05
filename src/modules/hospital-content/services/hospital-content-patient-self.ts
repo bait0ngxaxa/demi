@@ -26,14 +26,29 @@ export async function resolveHospitalContentPatientSelf(
     // Top-level Profile guarantees the exact current Profile and Person binding.
     const profile = await database.patientProfile.findFirst({
       where: { person: { is: hospitalContentPatientPersonWhere(actor) } },
-      select: { id: true, hospitalRelationships: {
-        where: { hospital: { is: { status: HospitalStatus.ACTIVE } } },
-        take: 1,
-        select: { id: true },
-      } },
+      select: { id: true },
     });
     if (!profile) throw new ForbiddenError();
-    return { patientProfileId: profile.id, hasEligibleHospital: profile.hospitalRelationships.length > 0 };
+    // This statement re-proves SELF rather than trusting the earlier Profile read.
+    const relationship = await database.patientHospitalRelationship.findFirst({
+      where: {
+        patientProfileId: profile.id,
+        patientProfile: { is: {
+          id: profile.id,
+          person: { is: hospitalContentPatientPersonWhere(actor) },
+        } },
+        hospital: { is: { status: HospitalStatus.ACTIVE } },
+      },
+      select: { id: true },
+    });
+    if (relationship) return { patientProfileId: profile.id, hasEligibleHospital: true };
+    // No relationship can also mean SELF was revoked before the relationship SELECT.
+    const recheckedProfile = await database.patientProfile.findFirst({
+      where: { person: { is: hospitalContentPatientPersonWhere(actor) } },
+      select: { id: true },
+    });
+    if (!recheckedProfile) throw new ForbiddenError();
+    return { patientProfileId: recheckedProfile.id, hasEligibleHospital: false };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) throw error;
     throw new InfrastructureError("Patient Content authority could not be resolved");

@@ -43,7 +43,7 @@ Every operation freshly resolves persisted Patient SELF through top-level Patien
 - User ACTIVE with persisted PATIENT UserRole;
 - exact PatientProfile exists.
 
-The resolver returns only internal patientProfileId and a boolean for existence of a relationship to an ACTIVE Hospital (take 1). No Profile/relationship IDs reach Patient DTOs or URLs. Missing SELF is Forbidden; persistence failure is InfrastructureError.
+The resolver first selects only the current Profile ID, then uses a top-level PatientHospitalRelationship.findFirst selecting only id. That relationship statement binds the exact resolved Profile ID and re-proves the complete current Person/User/ACTIVE/PATIENT predicate together with Hospital ACTIVE. It does not depend on nested relation loading. If no relationship is returned, a final fresh top-level Profile SELF query distinguishes authority loss (Forbidden) from valid SELF with no eligible Hospital (false), returning the current rechecked Profile ID if replaced. The resolver returns only internal patientProfileId and the bounded eligible-Hospital boolean. No Profile/relationship IDs reach Patient DTOs or URLs. Missing SELF is Forbidden; persistence failure is InfrastructureError.
 
 Every feed/detail/existence Content SELECT is top-level HospitalContent with the complete predicate:
 
@@ -135,6 +135,20 @@ Patient tests cover exact SELF/non-Patient denial, Family grant and assigned-OSM
 Deterministic real PostgreSQL barriers pause BEFORE the actual Content-producing Prisma call. Another transaction revokes and COMMITs before release. Both feed and detail return zero Content payload for PATIENT role removal, own relationship deletion, Hospital suspension, User suspension, Profile deletion and Person binding change (12 race cases). Additional category-existence barriers prove relationship/role removal is freshly classified A/Forbidden instead of B/C. Pure policy mocks are not the security evidence.
 
 Integration invocation used the existing .env.integration target and vitest.integration.config.mts directly with the focused file. The npm integration wrapper always generates/migrates; this slice intentionally bypassed those unnecessary steps. No Prisma command/migration or dev server was run. npm run architecture:check was attempted but **UNAVAILABLE: no such script in package.json**; module imports were source-reviewed instead. No full unit/integration suite was run.
+
+## Final SELF classification review correction — 2026-10-05
+
+The supplemental SELF resolver no longer selects nested hospitalRelationships. Each eligibility-producing statement carries persisted SELF authority; no relationJoins, transaction, locks or persistence changes were added. Content-producing predicates, cursor codec/Profile binding, routes, UI/private lifecycle, Publisher and Contact remain unchanged. Existing Profile-replacement cursor rejection remains covered.
+
+A deterministic PostgreSQL barrier pauses before the top-level eligible relationship SELECT, after the initial Profile SELECT completes. Another transaction commits PATIENT role removal before release: the relationship SELECT returns null and the final Profile recheck throws Forbidden, never EMPTY_A/B. Two controls commit relationship deletion or Hospital suspension at the same boundary: SELF remains valid and the list legitimately returns EMPTY_A. Existing Content-query and category-existence revocation barriers continue to pass.
+
+Focused correction validation:
+
+- SELF/query unit files: **2 files / 12 tests PASS**, including exact scalar-only Profile selection, complete top-level relationship predicate, final recheck/Forbidden and current replacement Profile identity.
+- Real disposable PostgreSQL Patient Content file: **1 file / 50 tests PASS**, including all three new relationship-statement barriers and existing Profile-replacement/security/lifecycle/pagination tests.
+- npm run typecheck and targeted ESLint (--max-warnings 0) on the four touched/new TypeScript/test files: **PASS**.
+- Complete final diff review, git diff --check and strict UTF-8/Thai integrity: **PASS**.
+- No Publisher regression rerun: shared policy/Publisher code did not change. No build rerun: only service/tests/documentation changed. No full suite, dev server or Prisma command.
 
 ## Remaining evidence and phase boundary
 

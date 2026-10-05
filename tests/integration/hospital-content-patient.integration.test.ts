@@ -81,6 +81,21 @@ function beforeContentStatement(method: "findMany" | "findFirst"): { database: P
   } });
   return { database, entered: entered.promise, release: resumed.resolve, projections };
 }
+function beforeEligibleRelationshipStatement(): { database: PrismaClient; entered: Promise<void>; release: () => void; projections: unknown[] } {
+  const entered = deferred(); const resumed = deferred(); const projections: unknown[] = []; let paused = false;
+  const delegate = new Proxy(db.patientHospitalRelationship, { get(target, property, receiver) {
+    if (property === "findFirst") return async (args: Prisma.PatientHospitalRelationshipFindFirstArgs): Promise<unknown> => {
+      if (!paused) { paused = true; entered.resolve(); await resumed.promise; }
+      const result = await target.findFirst(args); projections.push(result); return result;
+    };
+    const value: unknown = Reflect.get(target, property, receiver); return typeof value === "function" ? value.bind(target) : value;
+  } });
+  const database = new Proxy(db, { get(target, property, receiver) {
+    if (property === "patientHospitalRelationship") return delegate;
+    const value: unknown = Reflect.get(target, property, receiver); return typeof value === "function" ? value.bind(target) : value;
+  } });
+  return { database, entered: entered.promise, release: resumed.resolve, projections };
+}
 async function seedPages(a: ActorContext, hospitalId: string): Promise<string[]> {
   const ids: string[] = [];
   for (let index = 0; index < 53; index++) ids.push(await content(hospitalId, {
@@ -266,6 +281,27 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     await db.$transaction(async (tx) => { await tx.userRole.delete({ where: { userId_role: { userId: a.userId, role: Role.PATIENT } } }); });
     barrier.release(); const outcome = await pending;
     expect(barrier.projections).toEqual([null]); expect("error" in outcome && outcome.error).toBeInstanceOf(ForbiddenError);
+  });
+  it.each(["role", "relationship", "hospital"])("SELF relationship statement rechecks committed %s loss after Profile resolution", async (change) => {
+    const a = await actor(); const h = await hospital(); const relation = await relate(a, h);
+    const barrier = beforeEligibleRelationshipStatement();
+    const pending = list(a, {}, barrier.database).then((value) => ({ value }), (error: unknown) => ({ error }));
+    await barrier.entered; // Initial top-level Profile authority SELECT has completed.
+    try {
+      await db.$transaction(async (tx) => {
+        if (change === "role") await tx.userRole.delete({ where: { userId_role: { userId: a.userId, role: Role.PATIENT } } });
+        if (change === "relationship") await tx.patientHospitalRelationship.delete({ where: { id: relation } });
+        if (change === "hospital") await tx.hospital.update({ where: { id: h }, data: { status: "SUSPENDED" } });
+      });
+    } finally { barrier.release(); }
+    const outcome = await pending;
+    expect(barrier.projections.every((row) => row === null)).toBe(true);
+    expect(barrier.projections.length).toBeGreaterThan(0);
+    if (change === "role") expect("error" in outcome && outcome.error).toBeInstanceOf(ForbiddenError);
+    else {
+      expect("value" in outcome && outcome.value.emptyState).toBe("EMPTY_A");
+      expect("value" in outcome && outcome.value.items).toEqual([]);
+    }
   });
   it("ordinary feed/detail/category/continuation reads neither audit nor update stored rows", async () => {
     const a = await actor(); const h = await hospital(); await relate(a, h); await seedPages(a, h);
