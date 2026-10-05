@@ -49,7 +49,7 @@ export function HospitalContentListWorkspace({
       />
 
       {hospitals.length > 1 ? (
-        <form action="/app/hospitals/knowledge" className="mt-6 max-w-xl">
+        <form action="/app/hospitals/knowledge" className="mt-6 max-w-xl" method="get">
           <label className="type-label mb-2 block text-text" htmlFor="hospital-content-hospital">
             เลือกโรงพยาบาล
           </label>
@@ -58,7 +58,6 @@ export function HospitalContentListWorkspace({
             id="hospital-content-hospital"
             name="hospitalId"
             defaultValue={selectedHospitalId}
-            onChange={(event) => event.currentTarget.form?.requestSubmit()}
           >
             {hospitals.map((hospital) => (
               <option key={hospital.id} value={hospital.id}>
@@ -66,6 +65,9 @@ export function HospitalContentListWorkspace({
               </option>
             ))}
           </select>
+          <button className={`${buttonClassName({ variant: "secondary" })} mt-3`} type="submit">
+            เปลี่ยนโรงพยาบาล
+          </button>
         </form>
       ) : null}
 

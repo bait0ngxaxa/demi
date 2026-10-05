@@ -73,6 +73,16 @@ describe("Hospital Content publisher UI output", () => {
     const multiHospitalMarkup = renderToStaticMarkup(
       <HospitalContentListWorkspace hospitals={[hospital, secondHospital]} page={page} selectedHospitalId={hospital.id} />,
     );
+    const selectorForm = multiHospitalMarkup.match(/<form\b[^>]*>[\s\S]*?<\/form>/u)?.[0] ?? "";
+    expect(selectorForm).toContain('action="/app/hospitals/knowledge"');
+    expect(selectorForm).toContain('method="get"');
+    expect(selectorForm).toContain('name="hospitalId"');
+    expect(selectorForm).toContain('type="submit"');
+    expect(selectorForm).toContain("เปลี่ยนโรงพยาบาล");
+    expect(selectorForm).toContain(`value="${hospital.id}" selected=""`);
+    expect(selectorForm).not.toContain('?cursor=');
+    expect(selectorForm).not.toMatch(/name="cursor"/u);
+    expect(selectorForm).not.toContain('type="hidden"');
     expect(multiHospitalMarkup).toContain('id="hospital-content-hospital"');
     expect(multiHospitalMarkup).toContain("โรงพยาบาลตัวอย่าง (H001)");
     expect(multiHospitalMarkup).toContain("โรงพยาบาลอีกแห่ง (H002)");

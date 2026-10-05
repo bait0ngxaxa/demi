@@ -33,7 +33,7 @@ import {
   withdrawHospitalContent,
 } from "@/modules/hospital-content/services/hospital-content-service";
 import { HospitalContentCategory as ContentCategory } from "@prisma/client";
-import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const database = getPrisma();
 const execFileAsync = promisify(execFile);
@@ -239,6 +239,72 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolvePromise: () => void = () => undefined;
   const promise = new Promise<void>((resolve) => { resolvePromise = resolve; });
   return { promise, resolve: resolvePromise };
+}
+
+function withContentReadRevocationBarrier(onContentQuery: () => Promise<void>): PrismaClient {
+  let revoked = false;
+  const revokeBeforeContentQuery = async (): Promise<void> => {
+    if (revoked) return;
+    revoked = true;
+    await onContentQuery();
+  };
+
+  const hospitalDelegate = new Proxy(database.hospital, {
+    get(delegateTarget, property, receiver) {
+      if (property === "findFirst") {
+        return async (args: Prisma.HospitalFindFirstArgs): Promise<unknown> => {
+          const select = args.select as unknown as Record<string, unknown> | undefined;
+          const relationSelect = select?.contents;
+          if (typeof relationSelect !== "object" || relationSelect === null) {
+            return delegateTarget.findFirst(args);
+          }
+
+          const parentSelectFields = { ...select };
+          delete parentSelectFields.contents;
+          const parentSelect = { id: true, ...parentSelectFields } as unknown as Prisma.HospitalSelect;
+          const parent = await delegateTarget.findFirst({ ...args, select: parentSelect });
+          if (!parent) return null;
+
+          await revokeBeforeContentQuery();
+          const relationArgs = relationSelect as unknown as Prisma.HospitalContentFindManyArgs;
+          const contents = await database.hospitalContent.findMany({
+            ...relationArgs,
+            where: { hospitalId: parent.id, ...(relationArgs.where ?? {}) },
+          });
+          return { ...parent, contents };
+        };
+      }
+      const value = Reflect.get(delegateTarget, property, receiver) as unknown;
+      return typeof value === "function" ? value.bind(delegateTarget) : value;
+    },
+  });
+
+  const hospitalContentDelegate = new Proxy(database.hospitalContent, {
+    get(delegateTarget, property, receiver) {
+      if (property === "findFirst") {
+        return async (args: Prisma.HospitalContentFindFirstArgs): Promise<unknown> => {
+          await revokeBeforeContentQuery();
+          return delegateTarget.findFirst(args);
+        };
+      }
+      if (property === "findMany") {
+        return async (args: Prisma.HospitalContentFindManyArgs): Promise<unknown> => {
+          await revokeBeforeContentQuery();
+          return delegateTarget.findMany(args);
+        };
+      }
+      const value = Reflect.get(delegateTarget, property, receiver) as unknown;
+      return typeof value === "function" ? value.bind(delegateTarget) : value;
+    },
+  });
+
+  return new Proxy(database, {
+    get(target, property, receiver) {
+      if (property === "hospital") return hospitalDelegate;
+      if (property === "hospitalContent") return hospitalContentDelegate;
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  }) as PrismaClient;
 }
 
 async function waitForLockWait(expectedWaiters: number): Promise<void> {
@@ -538,6 +604,43 @@ describe("Phase 17I.2 Hospital Content PostgreSQL behavior", () => {
       submissionNonce: (await database.hospitalContent.findUniqueOrThrow({ where: { id: firstContent.id }, select: { submissionNonce: true } })).submissionNonce,
     })).status).toBe("FOUND");
     await expect(listHospitalContentForOwner(firstOwner.actor, firstHospital.id, "malformed-cursor")).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("fails the publisher list closed when membership is revoked before its Content query", async () => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    const content = await createContent(owner, hospital.id);
+    const databaseWithRevocationBarrier = withContentReadRevocationBarrier(async () => {
+      await database.hospitalMembership.update({
+        where: { id: owner.membershipId },
+        data: { status: MembershipStatus.SUSPENDED },
+      });
+    });
+
+    await expect(listHospitalContentForOwner(owner.actor, hospital.id, undefined, databaseWithRevocationBarrier))
+      .rejects.toBeInstanceOf(NotFoundError);
+    expect(await database.hospitalContent.findUnique({ where: { id: content.id }, select: { id: true } })).toEqual({ id: content.id });
+  });
+
+  it("does not return reconciliation Content when membership is revoked before its Content query", async () => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    const content = await createContent(owner, hospital.id);
+    const record = await database.hospitalContent.findUniqueOrThrow({
+      where: { id: content.id },
+      select: { submissionNonce: true },
+    });
+    const databaseWithRevocationBarrier = withContentReadRevocationBarrier(async () => {
+      await database.hospitalMembership.update({
+        where: { id: owner.membershipId },
+        data: { status: MembershipStatus.SUSPENDED },
+      });
+    });
+
+    await expect(reconcileHospitalContentCreate(owner.actor, {
+      hospitalId: hospital.id,
+      submissionNonce: record.submissionNonce,
+    }, databaseWithRevocationBarrier)).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("creates one complete DRAFT per nonce, returns current REPLAY without write/audit and reconciles exact ABSENT/FOUND", async () => {

@@ -395,30 +395,40 @@ export async function listHospitalContentForOwner(
   try {
     const hospital = await database.hospital.findFirst({
       where: { id: parsedHospitalId.data, ...getActiveOwnerHospitalWhere(actor) },
-      select: {
-        ...hospitalProjectionSelect,
-        contents: {
-          ...(cursor ? {
-            where: {
-              OR: [
-                { updatedAt: { lt: new Date(cursor.updatedAt) } },
-                { updatedAt: new Date(cursor.updatedAt), id: { lt: cursor.id } },
-              ],
-            },
-          } : {}),
-          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-          take: HOSPITAL_CONTENT_CURSOR_LOOKAHEAD,
-          select: listItemSelect,
-        },
-      },
+      select: hospitalProjectionSelect,
     });
     if (!hospital) throw new NotFoundError();
-    const hasMore = hospital.contents.length > HOSPITAL_CONTENT_PAGE_SIZE;
-    const rows = hospital.contents.slice(0, HOSPITAL_CONTENT_PAGE_SIZE);
-    const last = rows.at(-1);
+
+    const rows = await database.hospitalContent.findMany({
+      where: {
+        hospitalId: parsedHospitalId.data,
+        hospital: { is: getActiveOwnerHospitalWhere(actor) },
+        ...(cursor ? {
+          OR: [
+            { updatedAt: { lt: new Date(cursor.updatedAt) } },
+            { updatedAt: new Date(cursor.updatedAt), id: { lt: cursor.id } },
+          ],
+        } : {}),
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: HOSPITAL_CONTENT_CURSOR_LOOKAHEAD,
+      select: listItemSelect,
+    });
+
+    if (rows.length === 0) {
+      const stillAuthorized = await database.hospital.findFirst({
+        where: { id: parsedHospitalId.data, ...getActiveOwnerHospitalWhere(actor) },
+        select: { id: true },
+      });
+      if (!stillAuthorized) throw new NotFoundError();
+    }
+
+    const hasMore = rows.length > HOSPITAL_CONTENT_PAGE_SIZE;
+    const pageRows = rows.slice(0, HOSPITAL_CONTENT_PAGE_SIZE);
+    const last = pageRows.at(-1);
     return {
       hospital: { id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name },
-      items: rows.map(toListItem),
+      items: pageRows.map(toListItem),
       nextCursor: hasMore && last ? encodeHospitalContentCursor(actor, {
         version: 1,
         hospitalId: hospital.id,
@@ -442,19 +452,22 @@ export async function reconcileHospitalContentCreate(
   assertHospitalContentPolicy({ actor, capability: HOSPITAL_CONTENT_CAPABILITIES.read, scope: "DIRECT_HOSPITAL_OWNER", hospitalId: parsed.data.hospitalId });
   if (!actor) throw new ForbiddenError();
   try {
-    const hospital = await database.hospital.findFirst({
-      where: { id: parsed.data.hospitalId, ...getActiveOwnerHospitalWhere(actor) },
-      select: {
-        contents: {
-          where: { submissionNonce: parsed.data.submissionNonce },
-          take: 1,
-          select: detailSelect,
-        },
+    const record = await database.hospitalContent.findFirst({
+      where: {
+        hospitalId: parsed.data.hospitalId,
+        submissionNonce: parsed.data.submissionNonce,
+        hospital: { is: getActiveOwnerHospitalWhere(actor) },
       },
+      select: detailSelect,
     });
-    if (!hospital) throw new NotFoundError();
-    const record = hospital.contents[0];
-    return record ? { status: "FOUND", content: toDetailProjection(record) } : { status: "ABSENT" };
+    if (record) return { status: "FOUND", content: toDetailProjection(record) };
+
+    const stillAuthorized = await database.hospital.findFirst({
+      where: { id: parsed.data.hospitalId, ...getActiveOwnerHospitalWhere(actor) },
+      select: { id: true },
+    });
+    if (!stillAuthorized) throw new NotFoundError();
+    return { status: "ABSENT" };
   } catch (error: unknown) {
     if (error instanceof NotFoundError) throw error;
     throw new InfrastructureError("Hospital Content reconciliation could not be completed");

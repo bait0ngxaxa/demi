@@ -102,6 +102,17 @@ Conflict retains local fields and presents a separately loaded authoritative rec
 
 The full unit suite ran before the isolated actor-scoped create-view key, final UI assertion, logout-marker cleanup and REPLAY row lock. The final focused 6-file/50-test run, 16-test PostgreSQL file, typecheck and targeted ESLint passed afterward; the full suite was not repeated for these bounded changes. UI tests verify rendered list/detail projections and escaped output, while transport tests exercise action boundaries. They are not browser interaction tests; no DOM/browser interaction test dependency is installed in this repository. No dev server or production build was started. Remaining pagination limitation is current-record movement across pages, documented in the UI; recovery on reload preserves attempt identity only, never article text.
 
+## Final runtime review correction — 2026-10-05
+
+This follow-up preserves the verification history above and records the bounded corrections requested after the initial implementation handoff:
+
+- The publisher Hospital selector remains a Server Component and now uses a native GET form with an explicit “เปลี่ยนโรงพยาบาล” submit button. Its focused render test verifies the route, `hospitalId` field, selected Hospital, submit control, and that no cursor/hidden authority state is carried.
+- Publisher list rows now come from a top-level `HospitalContent.findMany` whose own predicate checks ACTIVE User, exact person binding, HOSPITAL role, direct ACTIVE OWNER membership, and exact ACTIVE Hospital. If the result is empty, a fresh exact Hospital check prevents revoked authority from appearing as a valid empty list.
+- Create reconciliation now queries `HospitalContent` directly with the same persisted authority predicate. A missing row is reported as ABSENT only after a fresh exact Hospital authorization check; authority loss fails closed.
+- The PostgreSQL revocation-barrier regressions first reproduced both disclosures against the original nested-relation implementation, then passed after correction. Final focused PostgreSQL integration: **1 file / 18 tests PASS**. Hospital Content UI render test: **1 file / 4 tests PASS**. Typecheck and targeted ESLint PASS; `git diff --check` and strict UTF-8/Thai integrity checks PASS.
+- The earlier “no production build” statement describes the initial implementation pass. After this Server/Client boundary correction, the required single `npm run build` completed **PASS** on Next.js 16.3.0, including TypeScript and route generation. No development server was started.
+- Manual browser/mobile/device UAT remains **NOT EXECUTED**. Phase 17I.3 remains **PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED**.
+
 ## Final status
 
 | Item | Disposition |
