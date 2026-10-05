@@ -1,8 +1,14 @@
 # Phase 17I.0B — Hospital Knowledge / Contact Owner Decision Closeout
 
-## CURRENT-status addendum — Phase 17I.2 publishing technical contract (2026-10-05)
+## CURRENT-status addendum — Phase 17I.2 implementation (2026-10-05)
 
-[Hospital Content Publishing contract](./PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION_CONTRACT.md): **CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.2 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.** Documentation only: dedicated HospitalContent collection, exact direct ACTIVE OWNER publishing, complete plain-text drafts, withdraw-before-edit and terminal archive; firstPublishedAt chronology / latestPublishedAt display / updatedAt version are separate; Hospital-scoped create nonce, per-record guarded concurrency and atomic content-free audit. No runtime/schema/migration/config changes or Patient consumption clearance.
+[Hospital Content Publishing implementation](./PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED. Phase 17I.2 — IMPLEMENTED / CLOSED. Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.**
+
+**Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** Whole Phase 17I is **NOT COMPLETE**. Manual browser/mobile/device UAT and production migration/deployment are **NOT EXECUTED**. Historical closeout-time and contract-clearance statuses below are retained as historical evidence.
+
+## Historical contract-clearance addendum — Phase 17I.2 publishing technical contract (2026-10-05)
+
+[Hospital Content Publishing contract](./PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION_CONTRACT.md): **CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.2 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.** Documentation only: dedicated HospitalContent collection, exact direct ACTIVE OWNER publishing, complete plain-text drafts, withdraw-before-edit and terminal archive; firstPublishedAt chronology / latestPublishedAt display / updatedAt version are separate; Hospital-scoped create nonce, per-record guarded concurrency and atomic content-free audit. No runtime/schema/migration/config changes or Patient consumption clearance. This records the contract-clearance status and is superseded for current implementation status by the implementation addendum above.
 
 **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** Earlier 17I.1/closeout-time content-pending statements below and in linked handoffs remain historical evidence and are superseded only for current content contract status. Owner decisions are unchanged; whole Phase 17I is not complete. Manual 17I.1 browser/mobile/device UAT remains **NOT EXECUTED**; no production deployment or customer acceptance is claimed.
 
@@ -16,7 +22,7 @@ The approved owner decisions and exclusions recorded below remain unchanged. The
 
 **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED. Q84–Q111 — CLOSED / OWNER APPROVED. Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE. CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** Manual 17I.1 browser/mobile/device UAT is NOT EXECUTED; no production deployment or whole Phase 17I completion is claimed. Phase 17H.4A separate manual UAT tracking, 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02 and 17J remain unchanged.
 
-## 1. Current disposition
+## 1. Historical closeout-time disposition
 
 **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED. Q84–Q111 — CLOSED / OWNER APPROVED. Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.**
 
