@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,25 @@ export function HospitalContactWorkspace({
   const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const [accessRevoked, setAccessRevoked] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const addressRef = useRef<HTMLTextAreaElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isPending || mutationState.status !== "ERROR" || mutationState.code !== "VALIDATION") {
+      return;
+    }
+
+    const invalidControl = mutationState.fieldErrors?.addressText
+      ? addressRef.current
+      : mutationState.fieldErrors?.phoneNumber
+        ? phoneRef.current
+        : null;
+
+    if (invalidControl && !invalidControl.disabled) {
+      invalidControl.focus();
+    }
+  }, [isPending, mutationState]);
+
   const isDirty = !valuesMatchDraft(current, draft);
   const status = completeness(current);
 
@@ -153,6 +172,7 @@ export function HospitalContactWorkspace({
   }
 
   function loadCurrentContact(): void {
+    setReviewCurrent(null);
     setReadState(null);
     startTransition(async () => {
       try {
@@ -247,7 +267,7 @@ export function HospitalContactWorkspace({
         </Alert>
       ) : null}
 
-      {mutationState.status === "ERROR" ? (
+      {mutationState.status === "ERROR" && mutationState.code !== "UNAVAILABLE" ? (
         <Alert className="mt-6" variant={mutationState.code === "VALIDATION" ? "warning" : "danger"}>
           <p className="font-semibold">{mutationState.message}</p>
         </Alert>
@@ -373,6 +393,7 @@ export function HospitalContactWorkspace({
                 className="type-control min-h-32 w-full max-w-full resize-y rounded-control border border-border-strong bg-surface px-4 py-3 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
                 disabled={isPending || reconciliationRequired}
                 id="hospital-contact-address"
+                ref={addressRef}
                 onChange={(event) => setDraft((value) => ({ ...value, addressText: event.currentTarget.value }))}
                 value={draft.addressText}
               />
@@ -394,6 +415,7 @@ export function HospitalContactWorkspace({
                 className="type-control min-h-12 w-full max-w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
                 disabled={isPending || reconciliationRequired}
                 id="hospital-contact-phone"
+                ref={phoneRef}
                 onChange={(event) => setDraft((value) => ({ ...value, phoneNumber: event.currentTarget.value }))}
                 type="text"
                 value={draft.phoneNumber}

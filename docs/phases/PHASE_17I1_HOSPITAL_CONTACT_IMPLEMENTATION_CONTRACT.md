@@ -1,5 +1,13 @@
 # Phase 17I.1 — Hospital Contact Technical Implementation Contract
 
+## CURRENT implementation status — Phase 17I.1 (2026-10-05, Asia/Bangkok)
+
+**Phase 17I.1 — IMPLEMENTED / CLOSED. CONTENT-02 — IMPLEMENTED.** Runtime and automated verification evidence are recorded in the [17I.1 implementation handoff](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION.md). The technical contract below remains binding; the original clearance-only statements are historical contract-time evidence.
+
+Q84–Q111 remain **CLOSED / OWNER APPROVED**. CONTENT-01 remains **OWNER DECISIONS CLOSED / 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED**; Phase 17I.2 remains **PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED**; Phase 17I.3 remains **PLANNED / NOT IMPLEMENTED**. Manual browser/mobile/device UAT is **NOT EXECUTED**; production deployment and whole Phase 17I completion are not claimed.
+
+## Historical status at contract clearance — 2026-10-04 (Asia/Bangkok)
+
 Date: 2026-10-04 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`, branch `main`.
 
 **Phase 17I.1 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. CONTENT-02 — OWNER DECISIONS CLOSED / 17I.1 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.**

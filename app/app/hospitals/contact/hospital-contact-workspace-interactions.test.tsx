@@ -8,6 +8,8 @@ const harness = vi.hoisted(() => ({
   pending: false,
   transitions: [] as Array<() => void | Promise<void>>,
   push: vi.fn(),
+  effects: [] as Array<() => void>,
+  focus: vi.fn(),
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -30,6 +32,21 @@ vi.mock("react", async (importOriginal) => {
       };
 
       return [harness.slots[index], setState];
+    },
+    useRef: (initial: unknown) => {
+      const index = harness.cursor++;
+      if (!(index in harness.slots)) {
+        harness.slots[index] = { current: initial };
+      }
+      return harness.slots[index];
+    },
+    useEffect: (effect: () => void, dependencies: readonly unknown[]) => {
+      const index = harness.cursor++;
+      const previous = harness.slots[index] as readonly unknown[] | undefined;
+      if (!previous || dependencies.some((value, dependency) => !Object.is(value, previous[dependency]))) {
+        harness.effects.push(effect);
+        harness.slots[index] = dependencies;
+      }
     },
     useTransition: () => [harness.pending, (callback: () => void | Promise<void>) => {
       harness.pending = true;
@@ -63,6 +80,7 @@ type InteractionProps = {
   id?: string;
   value?: string;
   disabled?: boolean;
+  ref?: { current: { disabled: boolean; focus: () => void } | null };
   onChange?: (event: { currentTarget: { value: string } }) => void;
   onClick?: () => void;
   onSubmit?: (event: { preventDefault: () => void }) => void;
@@ -114,11 +132,24 @@ function renderWorkspace(
   initialContact: HospitalContactEditorProjection = contact(),
 ): React.JSX.Element {
   harness.cursor = 0;
-  return HospitalContactWorkspace({
+  const tree = HospitalContactWorkspace({
     hospitals: [hospitalA, hospitalB],
     selectedHospitalId: hospitalA.id,
     contact: initialContact,
   });
+  // Commit native control refs before flushing post-render effects.
+  for (const element of elements(tree)) {
+    if (element.props.ref && (element.type === "textarea" || element.type === "input")) {
+      element.props.ref.current = {
+        disabled: Boolean(element.props.disabled),
+        focus: () => harness.focus(element.props.id),
+      };
+    }
+  }
+  for (const effect of harness.effects.splice(0)) {
+    effect();
+  }
+  return tree;
 }
 
 function field(tree: ReactNode, id: string): ReactElement<InteractionProps> {
@@ -176,6 +207,8 @@ describe("Hospital Contact Owner form interactions", () => {
     harness.pending = false;
     harness.transitions = [];
     harness.push.mockReset();
+    harness.effects = [];
+    harness.focus.mockReset();
     mocks.confirm.mockReset().mockReturnValue(false);
     mocks.read.mockReset().mockResolvedValue({ status: "SUCCESS", contact: contact() });
     mocks.update.mockReset().mockResolvedValue(success("NOOP", contact()));
@@ -247,25 +280,68 @@ describe("Hospital Contact Owner form interactions", () => {
     expect(markup(loaded)).toContain('role="status"');
   });
 
-  it("keeps a validation draft, marks its field invalid, and associates the safe error", async () => {
-    const result: HospitalContactMutationActionState = {
+  it.each([
+    { fields: { addressText: "ตรวจสอบที่อยู่" }, focused: "hospital-contact-address" },
+    { fields: { phoneNumber: "ตรวจสอบหมายเลขโทรศัพท์" }, focused: "hospital-contact-phone" },
+    { fields: { addressText: "ตรวจสอบที่อยู่", phoneNumber: "ตรวจสอบหมายเลขโทรศัพท์" }, focused: "hospital-contact-address" },
+  ])("focuses $focused after validation and preserves both exact draft values", async ({ fields, focused }) => {
+    mocks.update.mockResolvedValue({
       status: "ERROR",
       code: "VALIDATION",
       message: "กรุณาตรวจสอบข้อมูลติดต่อที่กรอก",
-      fieldErrors: { addressText: "ตรวจสอบที่อยู่และข้อความที่กรอกอีกครั้ง" },
-    };
-    mocks.update.mockResolvedValue(result);
-    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({
-      currentTarget: { value: "ร่างที่ยังเก็บไว้" },
+      fieldErrors: fields,
     });
+    const addressDraft = "  ร่างที่ยังเก็บไว้\n  บรรทัดถัดไป  ";
+    const phoneDraft = " 02-123-4567 ต่อ 9 ";
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({ currentTarget: { value: addressDraft } });
+    field(renderWorkspace(), "hospital-contact-phone").props.onChange?.({ currentTarget: { value: phoneDraft } });
+    submit(renderWorkspace());
+    const callback = harness.transitions.shift();
+    if (!callback) {
+      throw new Error("Missing queued transition");
+    }
+    await callback();
+    const pendingTree = renderWorkspace();
+    expect(field(pendingTree, focused).props.disabled).toBe(true);
+    expect(harness.focus).not.toHaveBeenCalled();
+
+    harness.pending = false;
+    const tree = renderWorkspace();
+    expect(harness.focus).toHaveBeenCalledExactlyOnceWith(focused);
+    expect(field(tree, "hospital-contact-address").props.value).toBe(addressDraft);
+    expect(field(tree, "hospital-contact-phone").props.value).toBe(phoneDraft);
+    expect(markup()).toContain('aria-invalid="true"');
+    expect(markup()).toContain('aria-describedby="hospital-contact-address-description hospital-contact-address-error"');
+    expect(markup()).toContain('aria-describedby="hospital-contact-phone-description hospital-contact-phone-error"');
+    expect(markup()).toContain('role="status"');
+    expect(harness.focus).toHaveBeenCalledOnce();
+  });
+
+  it.each<HospitalContactMutationActionState>([
+    { status: "ERROR", code: "CONFLICT", message: "ข้อมูลเปลี่ยนแปลงแล้ว" },
+    { status: "ERROR", code: "FORBIDDEN", message: "ไม่มีสิทธิ์" },
+    { status: "ERROR", code: "UNAVAILABLE", message: "ไม่สามารถบันทึกได้" },
+    { status: "UNCONFIRMED" },
+    success("CREATED", contact()),
+    success("UPDATED", contact()),
+    success("NOOP", contact()),
+  ])("does not focus an invalid field for non-validation result $status", async (result) => {
+    mocks.update.mockResolvedValue(result);
     submit(renderWorkspace());
     await finishTransition();
+    renderWorkspace();
+    expect(harness.focus).not.toHaveBeenCalled();
+  });
 
-    const tree = renderWorkspace();
-    expect(field(tree, "hospital-contact-address").props.value).toBe("ร่างที่ยังเก็บไว้");
-    expect(markup()).toContain("ตรวจสอบที่อยู่และข้อความที่กรอกอีกครั้ง");
-    expect(markup()).toContain('aria-invalid="true"');
-    expect(markup()).toContain('role="status"');
+  it("announces an unavailable mutation once and retains its draft", async () => {
+    mocks.update.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "ไม่สามารถบันทึกได้" });
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({ currentTarget: { value: "แบบร่างที่เก็บไว้" } });
+    submit(renderWorkspace());
+    await finishTransition();
+    const html = markup();
+    expect(html.match(/role="alert"/g)).toHaveLength(1);
+    expect(html).toContain("บันทึกข้อมูลติดต่อไม่สำเร็จ");
+    expect(html).toContain("แบบร่างที่เก็บไว้");
   });
 
   it("holds local draft after conflict, loads current state explicitly, and never auto-merges or resubmits", async () => {
@@ -333,6 +409,36 @@ describe("Hospital Contact Owner form interactions", () => {
     expect(markup()).toContain("ร่างระหว่างโหลดล้มเหลว");
     expect(markup()).not.toContain("ยังไม่มีข้อมูลติดต่อ");
     expect(mocks.update).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates a successful review before another reload and preserves the original draft if it fails", async () => {
+    mocks.update.mockResolvedValue({ status: "UNCONFIRMED" });
+    mocks.read.mockResolvedValueOnce({ status: "SUCCESS", contact: contact({ addressText: "ข้อมูลจากรอบก่อน" }) })
+      .mockResolvedValueOnce({ status: "UNAVAILABLE" });
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({ currentTarget: { value: "แบบร่างต้นฉบับ" } });
+    field(renderWorkspace(), "hospital-contact-phone").props.onChange?.({ currentTarget: { value: "02-123-4567" } });
+    submit(renderWorkspace());
+    await finishTransition();
+    button(renderWorkspace(), "โหลดข้อมูลปัจจุบัน").props.onClick?.();
+    await finishTransition();
+    expect(markup()).toContain("ข้อมูลจากรอบก่อน");
+    expect(button(renderWorkspace(), "เริ่มแก้ไขจากข้อมูลปัจจุบัน")).toBeDefined();
+
+    button(renderWorkspace(), "โหลดข้อมูลปัจจุบัน").props.onClick?.();
+    const pending = markup();
+    expect(pending).not.toContain("ข้อมูลจากรอบก่อน");
+    expect(pending).not.toContain("ข้อมูลปัจจุบันจากโรงพยาบาล");
+    expect(pending).not.toContain("เริ่มแก้ไขจากข้อมูลปัจจุบัน");
+    await finishTransition();
+    const failed = markup();
+    expect(failed).toContain("โหลดข้อมูลปัจจุบันไม่สำเร็จ");
+    expect(failed).not.toContain("ข้อมูลจากรอบก่อน");
+    expect(failed).not.toContain("ข้อมูลปัจจุบันจากโรงพยาบาล");
+    expect(failed).not.toContain("เริ่มแก้ไขจากข้อมูลปัจจุบัน");
+    expect(failed).toContain("แบบร่างต้นฉบับ");
+    expect(failed).toContain("02-123-4567");
+    expect(mocks.update).toHaveBeenCalledOnce();
+    expect(mocks.read).toHaveBeenCalledTimes(2);
   });
 
   it("locks inputs while an owner mutation is pending", () => {
