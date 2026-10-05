@@ -1,0 +1,309 @@
+# Phase 17I.2 — Hospital Content Publishing Technical Implementation Contract
+
+Date: 2026-10-05 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`; branch: `main`.
+Expected and observed starting HEAD: `ca031d09494aa863ee823b837b67d2ff45d04098`, `fix(phase-17i1): address contact review corrections`; clean starting working tree.
+
+## 1. Disposition and binding authority
+
+**Phase 17I.2 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** This is a documentation-only implementation contract. Every model, constraint, service, policy, action, route, UI and test below is a future implementation requirement, not delivered runtime.
+
+The [17I.0B owner closeout](./PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md) is binding: **Q84–Q111 — CLOSED / OWNER APPROVED**, without reopening decisions or treating them as recommendations. [17I.0 decision pack](./PHASE_17I0_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_PACK.md) is historical behavioral/decision evidence, not an open requirement gate. **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** See [17I.1 handoff](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION.md) and [binding Contact contract](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION_CONTRACT.md).
+
+**Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.** Only publisher functionality is cleared by this document; Patient consumption is not cleared. Whole Phase 17I is not complete. Manual 17I.1 browser/mobile/device UAT remains **NOT EXECUTED**. No production migration/deployment or customer acceptance is claimed. Phase 17H.4A automated PASS/separate manual UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02 and 17J notification delivery/system authority remain unchanged.
+
+## 2. Inspected evidence and architecture
+
+| Evidence | Consequence for this contract |
+| --- | --- |
+| [AGENTS](../../AGENTS.md), [PRODUCT](../../PRODUCT.md), [CONTEXT](../CONTEXT.md), [architecture baseline](../architecture/DEMI_ARCHITECTURE_BASELINE.md), [Phase 17A](./PHASE_17A_CUSTOMER_FLOW_CANONICALIZATION_UAT_CONTRACT.md), [backlog](./PHASE_17_UAT_BACKLOG.md) | Surgical scope, Thai preservation, canonical Work/Personal separation; latest current addenda supersede historical phase-time status. |
+| Accepted [ADR-0001](../adr/0001-person-and-user-identity.md), [ADR-0002](../adr/0002-role-capability-scope-authorization.md), [ADR-0005](../adr/0005-server-side-application-boundary.md), [ADR-0006](../adr/0006-transactional-business-operations.md), [ADR-0007](../adr/0007-client-transport-and-mobile-ready-architecture.md) | Person/User separation; role + capability + exact scope; transport-independent services; database/audit atomicity; web Server Actions without speculative HTTP APIs. |
+| [Schema](../../prisma/schema.prisma), [Contact migration](../../prisma/migrations/20261005100000_hospital_contact/migration.sql), [provider schema hardening](../../prisma/migrations/20260820100000_supabase_public_schema_hardening/migration.sql) | Canonical Hospital UUID and direct unique membership; PatientHospitalRelationship has no status. Newer bounded domains use `Timestamptz(3)` although Hospital/Contact use older timestamp conventions. Content chooses timezone-safe instants without altering Contact. Data API grants/default privileges are revoked conditionally when provider roles exist; no browser table access. |
+| [Actor resolution](../../src/modules/auth/services/actor-context-service.ts), [Contact service](../../src/modules/hospital-contact/services/hospital-contact-service.ts), [Contact schemas](../../src/modules/hospital-contact/schemas/hospital-contact-schemas.ts), [page context](../../src/modules/hospital-contact/transport/hospital-contact-page-context.ts) | Session-resolved actor, fresh persisted eligibility, SHARE authority locks, sanitized locator failures, local Hospital selection. Contact's Hospital FOR UPDATE protects a singleton; Content needs per-record serialization instead. Contact bounds/control handling are evidence, not Content semantics. |
+| [Workforce service](../../src/modules/workforce/services/workforce-service.ts), [governance service](../../src/modules/hospital-governance/services/hospital-governance-service.ts) | Persisted role/membership/status mutations and guarded writes; their updates/deletes conflict with Content authority SHARE locks. Their Serializable isolation does not require copying Serializable here. |
+| [Medication service](../../src/modules/medications/services/personal-medication-service.ts), [Meal service](../../src/modules/meals/services/personal-meal-service.ts), [Exercise service](../../src/modules/exercises/services/personal-exercise-service.ts), [Weight Goal service](../../src/modules/weight-goals/services/personal-weight-goal-service.ts) | Bounded lifecycle, expected version, monotonic millisecond updates and minimized audit. Meal/Exercise receipts survive physical deletion; Content has no delete and can retain its nonce on the record. Do not import Patient SELF, medication status or singleton semantics. |
+| [Meal cursor](../../src/modules/meals/services/personal-meal-cursor.ts), [audit service](../../src/modules/audit/services/audit-service.ts), [audit schemas](../../src/modules/audit/schemas/audit-schemas.ts) | Signed canonical bounded continuation precedent; exact domain allowlist and same transaction client required for audit. Existing generic sensitive-key guards alone are insufficient. |
+| [Navigation](../../src/components/app-shell/application-navigation.ts), [Contact page](../../app/app/hospitals/contact/page.tsx), [Personal Home](../../app/app/personal/patient-personal-home.tsx), [UI foundation](../ui/DEMI_UI_FOUNDATION.md), [DESIGN](../../DESIGN.md) | Extend existing Work โรงพยาบาล group alongside Contact; Thai primitives/tokens/native selector; no Patient destination now. Impeccable planning guidance applied within the approved scope. |
+| [Contact PostgreSQL tests](../../tests/integration/hospital-contact.integration.test.ts), [integration config](../../vitest.integration.config.mts), [harness](../../scripts/integration.mjs), [scripts](../../package.json) | Real PostgreSQL authority/concurrency/audit rollback testing, disposable database only; focused test paths rather than repeated full integration runs. |
+
+Installed Next.js 16.3 guides `node_modules/next/dist/docs/01-app/02-guides/server-actions.md` and `01-app/03-api-reference/05-config/01-next-config-js/serverActions.md` were reviewed: actions remain untrusted entry points; retain existing framework request limit and origin protections. No Next.js code is written here. Official mechanism references: PostgreSQL 17 [row locking](https://www.postgresql.org/docs/17/explicit-locking.html#LOCKING-ROWS), [Read Committed](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-READ-COMMITTED), [INSERT conflict handling](https://www.postgresql.org/docs/17/sql-insert.html), and [Prisma transactions](https://www.prisma.io/docs/orm/fundamentals/transactions). These support lock/conflict mechanics, not product decisions. Legacy `raviut-max/demi-plus-web-v2` is not needed to close this contract; no legacy architecture, tables or article values are adopted.
+
+Future module is **`src/modules/hospital-content`**, owning domain definitions/normalization, schemas, policy, minimized types/projections, query/mutation services and thin web transport. UI → transport/application service → policy + Prisma remains the boundary; pages/components never query persistence directly. No generic CMS, repository/idempotency framework or new dependencies are required. One authoritative field normalizer/schema and lifecycle decision source must serve every entry point. Exported functions have explicit return types; no new `any`.
+
+Mutation boundary order: bounded transport size/shape preflight and existing abuse controls → session authentication → strict input normalization/schema → persisted resource authorization → version/lifecycle/business rules → transactional persistence + audit → post-commit publisher revalidation → sanitized result. Service validation/persisted authorization cannot be bypassed by calling a service directly. Preflight returns no content/authority evidence. Do not invent a new generic rate-limit subsystem for this slice.
+
+## 3. Domain and exclusions
+
+Hospital Content / Knowledge means Hospital-authored informational articles/news owned by exactly one canonical `hospitalId` (Q84, Q97). Hospital identity is joined from `Hospital`, never authoritative duplicated name/code/parent data on Content. Hospital hierarchy grants **zero authority** or ownership/inheritance/fallback; multi-Hospital OWNER scopes are independent.
+
+This domain is not clinical record, Screening, Patient Goal Plan, Follow-up, Appointment, Personal Wellness, Patient-specific recommendation, notification, Hospital Master, Hospital Contact, generic CMS, document management, media library or audit-history system. Publishing Hospital is responsible for correctness. DEMI makes no diagnosis, prescription, clinical-truth, medical-review, government-verification or AI-medical-advice claim.
+
+Excluded: global/public/network/parent content; staff/OSM feed; reviewer/approval queue/ADMIN approval; rich content/HTML interpretation/Markdown parsing/WYSIWYG; media/upload/storage/image/PDF/attachment/embed; external-link feature/auto-linking; summary, tags, slug, search vector/infrastructure, search, pinning/ranking; scheduling/effectiveFrom/expiry/job; revision tables/viewers/history readers; notifications; physical-delete/restore operation. Retention/erasure governance remains separate: archive promises neither a legal retention period nor permanent retention.
+
+## 4. Exact future persistence
+
+Select unmapped Prisma model/PostgreSQL table **`HospitalContent`**, enums **`HospitalContentStatus`** and **`HospitalContentCategory`**. Hospital relation: `contents HospitalContent[]`; inverse: `hospital Hospital`. Cardinality: Hospital 1 → Content 0..many; existing Hospital with zero records is legal.
+
+| Field | Future Prisma / PostgreSQL representation and invariant |
+| --- | --- |
+| `id` | `String @id @default(uuid()) @db.Uuid`; server-generated opaque UUID, immutable |
+| `hospitalId` | `String @db.Uuid`, NOT NULL FK Hospital.id; `onDelete: Restrict`, `onUpdate: Restrict`; immutable |
+| `submissionNonce` | `String @db.Uuid`, NOT NULL, immutable; Hospital-scoped creation identity |
+| `title` | `String @db.VarChar(200)`, NOT NULL, valid normalized nonblank text |
+| `body` | `String @db.Text`, NOT NULL; normalized nonblank, application maximum 20,000 UTF-16 code units |
+| `category` | `HospitalContentCategory`, NOT NULL, exactly one value, no default implicit choice |
+| `sourceText` | `String? @db.VarChar(1000)`, nullable; one optional text value |
+| `status` | `HospitalContentStatus @default(DRAFT)`, NOT NULL; CREATE explicitly sets DRAFT |
+| `firstPublishedAt` | `DateTime? @db.Timestamptz(3)`; null until first successful publication, immutable thereafter |
+| `latestPublishedAt` | `DateTime? @db.Timestamptz(3)`; latest successful publish/republish, independent from ordering/version |
+| `createdAt` | `DateTime @default(now()) @db.Timestamptz(3)`; server explicitly sets on create; immutable |
+| `updatedAt` | `DateTime @updatedAt @db.Timestamptz(3)`; service explicitly writes monotonic version on every state change |
+
+Status machine values: `DRAFT`, `PUBLISHED`, `ARCHIVED`. Category machine values/Thai labels: `NCD` → `NCD`; `FOOD` → `อาหาร`; `EXERCISE` → `การออกกำลังกาย`; `OTHER` → `อื่น ๆ`. Fixed domain-owned label mapping, no mutable localized taxonomy rows. No author/reviewer IDs or names on Content; audit owns actor evidence.
+
+Named unique constraint: **`HospitalContent_hospital_nonce_key`** on `(hospitalId, submissionNonce)`. No nonce expiry/removal/reuse while the record exists; archival retains nonce. No separate receipt table or stored original-payload copy/hash. UUIDs canonicalize to lowercase; nonce is not an authority token or public lookup key.
+
+Future migration adds **`HospitalContent_publication_pair_check`**: either both publication timestamps are null, or both are nonnull and `firstPublishedAt <= latestPublishedAt`; **`HospitalContent_published_time_check`**: PUBLISHED requires both nonnull. SQL must explicitly test nulls so CHECK's unknown result cannot bypass the invariant. No constraint requires DRAFT/ARCHIVED timestamps to be null. DB enums/FK/unique/checks enforce structural invariants; services enforce lifecycle and immutability. Text limits use UTF-16 units in the authoritative schema (PostgreSQL character length differs for astral characters); do not pretend a SQL character count is identical. No generated/runtime file changes occur in this task.
+
+## 5. Strict text/input contract
+
+Bounds are structural resource limits, not medical/content-quality approval. Medication name 200 and journal notes 1,000 provide local short-text precedent; articles require larger body space. Select normalized **title 200**, **body 20,000**, **sourceText 1,000 UTF-16 code units**. 20,000 supports a substantial Thai article while keeping editing, preview and one transaction bounded; source is attribution, not a bibliography manager.
+
+Before trim, reject unpaired UTF-16 surrogates and prohibited characters so edge trimming cannot hide them. Prohibited set: C0 U+0000–U+001F (except body CR/LF/TAB only for normalization), DEL/C1 U+007F–U+009F, all Unicode General Category `Cf` format controls (including soft hyphen, zero-width/bidi controls and BOM), U+034F, U+115F–U+1160, U+17B4–U+17B5, U+180B–U+180D, U+180F, U+3164, U+FE00–U+FE0F, U+FFA0, U+E0100–U+E01EF, and U+2028–U+2029. This explicitly excludes invisible formatting/filler/variation controls; it does **not** strip or reject ordinary Thai combining marks. Paired astral characters outside the prohibited set are legal and count as two units. No blanket combining-mark ban.
+
+| Field | Exact normalization/validation |
+| --- | --- |
+| `title` | Required string. Reject CR/LF/TAB and prohibited characters in raw value. ECMAScript `trim()` at whole-string edges; preserve internal spaces without collapsing. Reject blank; maximum 200 units after trim. Single line. |
+| `body` | Required string. Validate raw Unicode/control set with only CR/LF/TAB exceptions above; replace CRLF/CR with LF, then each TAB with one U+0020 space; ECMAScript trim whole-string edges. Preserve interior line breaks, empty lines, indentation and repeated spaces exactly; no per-line trailing-space cleanup. Reject blank; maximum 20,000 units. Retained C0 allowed only LF. |
+| `sourceText` | Required DTO key with string or null. Null stays null. Reject CR/LF/TAB/prohibited characters before trim; trim whole-string edges; blank → null; preserve internal spacing; maximum 1,000 units. One bounded single-line attribution value, not parsed/split into URLs/items. |
+
+No Unicode normalization (NFC/NFKC or otherwise), translation, Thai-mark stripping, truncation, HTML sanitation, Markdown parsing, medical validation or source verification. Literal HTML/Markdown-like text may be stored; rendering escapes it as text. Render body with preserved LF/whitespace and safe wrapping, never `dangerouslySetInnerHTML`, HTML injection or automatic `<a>` creation. URLs in any field, including source, remain nonclickable text.
+
+Canonical mutation DTOs are strict objects; reject unknown/missing/duplicate keys, undefined, coercions, arrays/objects/numbers in text fields and client-supplied state/timestamps/actor. Optional source means nullable value, not patch omission. Transport duplicate form entries are rejected before mapping. Use object DTO actions (consistent with Contact); do not silently discard extra client keys. Services reparse `unknown` using the same schema.
+
+| Command | Exact accepted keys |
+| --- | --- |
+| CREATE | `hospitalId`, `submissionNonce`, `title`, `body`, `category`, `sourceText` |
+| EDIT DRAFT | `contentId`, `expectedUpdatedAt`, `title`, `body`, `category`, `sourceText` |
+| PUBLISH / WITHDRAW / ARCHIVE | `contentId`, `expectedUpdatedAt` only; separate explicit command entry points |
+
+Locators/nonces: valid UUID strings, lowercase canonicalization, maximum raw 36 units. `expectedUpdatedAt` is required nonnull canonical UTC ISO millisecond string `YYYY-MM-DDTHH:mm:ss.sssZ` (24 units), valid date with exact round-trip; not a client-created version. Category accepts only exact enum machine values. Neither service nor UI infers a missing category/default from text.
+
+**Domain request budget: 128 KiB (131,072 UTF-8 bytes) of unnormalized application input**, before normalization/DB work. For a plain object, count UTF-8 bytes of JSON serialization including keys, quotes and escaped characters; reject nonplain/cyclic/unserializable inputs, unknown keys and oversized input before field transforms. Text UTF-8 byte count must also fit the same budget. For any future form adapter count submitted keys and unnormalized string values plus serialization overhead using the same DTO budget; files/blobs forbidden. Raw field caps: title 1,000, body 24,000, source 2,000 UTF-16 units, checked before transformation. These permit bounded edge whitespace/line-ending overhead without allowing giant blank payloads. Valid 20,000-unit Thai body occupies about 60 KiB; 128 KiB covers identifiers/JSON and ordinary escaping. Escaping-heavy raw payloads above budget are rejected even if normalization would fit. Retain framework overall wire-body limit (including Flight/multipart overhead), existing origin protection and deployment abuse controls; this is an application payload budget, not a claim to inspect the wire body inside an action. No global body-size/config changes. Lifecycle DTOs have the same ceiling but strict small key lengths. Sanitized field errors never echo rejected content.
+
+## 6. Lifecycle and timestamp matrix
+
+All existing commands first authenticate/authorize, lock the exact record, and check expected version **before** lifecycle or equality. Valid DTO + fresh version + wrong lifecycle → `ConflictError`; stale version → Conflict even for identical values. Structural invalid input → `ValidationError`; missing authority → `ForbiddenError`; safe invalid/foreign/missing read locators → `NotFoundError`. Mutations against inaccessible records return sanitized Forbidden/NotFound without revealing fields/state. A fresh authorized attempt to edit PUBLISHED is a lifecycle Conflict, not a permission grant or hidden edit.
+
+| Command/current state | Result | Content fields | Publication timestamps | Audit |
+| --- | --- | --- | --- | --- |
+| CREATE / absent nonce | DRAFT, CREATED | Valid complete input | first = latest = null | created |
+| EDIT / DRAFT, changed | DRAFT, UPDATED | Replace four editable fields | Preserve both | updated |
+| EDIT / DRAFT, identical normalized values | DRAFT, NOOP | Unchanged | Preserve both and version | None |
+| PUBLISH / DRAFT, never published | PUBLISHED, PUBLISHED | Unchanged; valid complete fields | first = latest = publication instant | published |
+| PUBLISH / withdrawn DRAFT | PUBLISHED, PUBLISHED | Unchanged; valid complete fields | Preserve first; advance latest | published |
+| WITHDRAW / PUBLISHED | DRAFT, WITHDRAWN | Unchanged | Preserve both exactly | withdrawn |
+| ARCHIVE / DRAFT or PUBLISHED | ARCHIVED, ARCHIVED | Preserve all | Preserve both exactly | archived |
+| CREATE / consumed nonce, any current state | REPLAY of current existing record | No write; submitted fields ignored | Preserve all, including version | None |
+
+Illegal with fresh version: PUBLISHED direct field edit; PUBLISHED → PUBLISHED publish; DRAFT → DRAFT withdraw; every ARCHIVED edit/publish/withdraw/archive-again/restore. All lifecycle commands in wrong state are Conflict, **never equality NOOP**. There is no restore or physical-delete command/transport/service/UI path. ARCHIVED is terminal and entirely read-only. A never-published DRAFT can archive with both times null; archive of previously published/withdrawn content retains both instants. No incomplete placeholder/untitled/autosave drafts: CREATE requires valid title/body/category. Client-local unsaved data is presentation state only.
+
+Publication time is sampled on the server **after locks/version/lifecycle validation**, stored as an absolute millisecond instant and only survives a successful commit. First publish uses serverNow for both fields. Republish uses `max(serverNowMs, previousLatestPublishedAtMs + 1)` to advance latest even under same-millisecond/clock regression; this is a server logical instant with a minimal monotonic adjustment, not client scheduling or feed promotion. Neither first nor latest is derived from `updatedAt`. Check finite/representable timestamps; fail safely if clock arithmetic is invalid. No Bangkok-formatted database strings.
+
+`updatedAt` starts at server creation time and every actual existing-record mutation sets `max(serverNowMs, previousUpdatedAtMs + 1)`. Sample one serverNow per successful command and compute publication/version independently; they may coincide but have distinct contracts. NOOP/REPLAY never advance version. Publication instant records the successful publication operation, not a claimed exact physical WAL commit timestamp; content becomes PUBLISHED only after transaction commit.
+
+Future 17I.3 ordering: **firstPublishedAt DESC, id DESC**, using PostgreSQL UUID ordering as deterministic opaque tie-break. Future display: **latestPublishedAt**, Asia/Bangkok, label equivalent to **“เผยแพร่ล่าสุด”**. Withdrawal/edit/archive never reset chronology; republish never modifies first. Ordinary updatedAt never ranks the Patient feed.
+
+## 7. Exact publisher authority and capabilities
+
+Dedicated minimal capabilities: **`hospital-content:read`** (eligible Hospital selector, current list/detail/preview, create reconciliation) and **`hospital-content:manage`** (create/edit/publish/withdraw/archive). Scope is **`DIRECT_HOSPITAL_OWNER`**. Same approved OWNER authority for all mutations makes separate ornamental lifecycle capabilities unnecessary; state eligibility is a domain rule. No Contact/workforce/governance/Patient capability reuse, generic ADMIN grant or new top-level role. Capability string alone authorizes nothing.
+
+Every publisher read/write requires session-resolved authenticated actor → persisted **User ACTIVE** with matching **User↔Person** binding → persisted **UserRole HOSPITAL** → exact direct **HospitalMembership OWNER + ACTIVE** → exact owning **Hospital ACTIVE**. Re-resolve fresh database predicates, not stale ActorContext alone. MEMBER, assigned OSM, PATIENT, ADMIN-only, profession and parent/child/network ownership grant nothing. ADMIN + exact legitimate OWNER acts only under OWNER authority. Reads use one ownership-scoped select with fresh user/role/membership/Hospital predicates; never read unrestricted fields and authorize afterward. Ordinary reads are current snapshot reads, not a promise that already-rendered text can be revoked remotely.
+
+`hospitalId` and `contentId` are locators only. Existing mutations accept contentId without trusting query Hospital; first minimally resolve immutable hospitalId server-side, then lock/recheck it and exact content ownership. No endpoint can change hospitalId/nonce/id. Multi-Hospital OWNER sees only independently eligible Hospitals and exact current records. No union with Family, care, staff or Patient scopes.
+
+## 8. Race-safe transaction and locking
+
+Use Prisma interactive **ReadCommitted** transaction, consistent with guarded Contact/Weight precedents. Transaction options: maxWait 5,000 ms, transaction timeout 10,000 ms. No external I/O, provider call, UI work or revalidation inside transaction. Queries use parameterized Prisma SQL, explicit selected columns, never `SELECT *` or interpolated SQL strings.
+
+Acquire in this exact order for CREATE and existing mutations:
+
+1. Actor `User` by id **FOR SHARE**; verify ACTIVE + exact actor personId.
+2. Exact `(userId, HOSPITAL)` `UserRole` **FOR SHARE**; require exactly one persisted row.
+3. Exact owning `Hospital` by id **FOR SHARE**; require ACTIVE.
+4. Exact `(userId, hospitalId)` `HospitalMembership` **FOR SHARE**; require OWNER + ACTIVE.
+5. Existing mutation: exact `HospitalContent` by id + hospitalId **FOR UPDATE**, selecting only command-required fields. CREATE: nonce uniqueness insertion/replay branch below; if replay, existing nonce row **FOR SHARE** after authority locks for a consistent current projection.
+6. Recheck the combined persisted authority in the same transaction after locks; verify content.hospitalId matches resolved target, then expectedUpdatedAt, then lifecycle, then normalized equality (EDIT only). Conditional update predicate includes id + hospitalId + current updatedAt + allowed status. Exactly one affected row required; otherwise Conflict. Write one audit with this transaction client, project result, commit.
+
+No User/Hospital/membership lock upgrades or writes in Content operations. One command targets one Hospital and at most one Content row; no batch mutations or cross-Hospital lock sets. Initial contentId→hospitalId lookup is minimal, inside transaction before locking, and grants no authority; hospitalId is immutable and rechecked under Content lock. Missing/inaccessible target fails closed before content fields are disclosed.
+
+SHARE authority locks permit concurrent Content work but block status/role/membership updates/deletes. Content UPDATE lock serializes mutations on that exact record. FOR KEY SHARE is insufficient for authority rows because it allows non-key status changes. PostgreSQL row-lock conflicts and transaction isolation behavior are documented in [row locking](https://www.postgresql.org/docs/17/explicit-locking.html#LOCKING-ROWS) and [Read Committed](https://www.postgresql.org/docs/17/transaction-iso.html#XACT-READ-COMMITTED).
+
+If revocation commits first, locking read sees the revoked status/missing row and denies. If Content holds authority locks first, revocation waits until Content commit/rollback, giving a valid serialized order. Missing authority rows immediately deny; concurrent creation of authority cannot retroactively grant the operation. Both orders must be tested for User suspension, HOSPITAL role removal, OWNER demotion, membership suspension/removal and Hospital suspension. Governance/workforce may lock in other orders; do not rewrite them here. Deadlock detection/rollback plus bounded full-operation retry/recheck preserves safety; this ordering minimizes Content's own deadlocks without claiming deadlocks impossible.
+
+Independent rows in the **same Hospital**, including same actor, may hold compatible SHARE authority locks and separate UPDATE content locks concurrently. CREATE different nonces may proceed concurrently. Do not copy Contact's Hospital FOR UPDATE singleton serialization, use Hospital advisory/global locks, or reuse Weight Goal's singleton owner-row serialization. Contention from actual authority revocation/Contact/governance remains legitimate.
+
+Retry only confirmed rollback conflicts (`40P01`, Prisma P2034), at most **3 total attempts**, full jitter with caps **25 ms then 50 ms**; retain original nonce/expected version/payload and revalidate fresh authority each attempt. Never retry audit failure, validation/forbidden/lifecycle/stale conflict, or unknown commit outcome automatically. Uniqueness replay uses the explicit CREATE branch below, not a generic retry. Deadlock retry exhaustion is sanitized Conflict; timeout/unavailability has no success claim. A callback finishing is not commit proof. Known committed result remains success if later revalidation/rendering fails; do not resubmit it. Unknown commit/response loss yields **UNCONFIRMED**, followed by explicit authorized reconciliation. No auto-refreshed token, force overwrite or automatic merge/resubmit.
+
+## 9. Exactly-once CREATE identity
+
+One intended CREATE gets a browser-generated cryptographic UUID nonce (ordinary UUID generation convention). Keep the same Hospital, nonce and intended payload while pending/retrying/reconciling. A new intended article requires a new nonce; changing Hospital means a new explicitly intended CREATE only after resolving/discarding the previous attempt. Disable repeated submit for UX, but uniqueness is the database guarantee.
+
+After authority locks, use parameterized **INSERT ... ON CONFLICT (hospitalId, submissionNonce) DO NOTHING RETURNING id** for `HospitalContent`, explicitly supplying all insert fields/status/timestamps and a server-generated id. Conflict target is only the named Hospital/nonce key; do not use an upsert that updates Content. If inserted, write one `hospital_content.created` audit in the same transaction and return **CREATED** with current detail. If not inserted, issue a **separate subsequent statement** selecting the committed existing row for the exact Hospital/nonce, FOR SHARE, and return **REPLAY** with current detail; no audit/write/version change. Separate statement matters for ReadCommitted snapshot visibility after a concurrent insert wins. Do not catch a failed unique insert and query in an already-aborted PostgreSQL transaction. Nonce collision behavior follows [PostgreSQL INSERT](https://www.postgresql.org/docs/17/sql-insert.html).
+
+Concurrent same-nonce requests wait on uniqueness: winner commits one row + one audit; loser sees it and REPLAYs. If winner rolls back (including audit failure), waiting insert can create one row + one audit. Unexpected missing replay row or unrelated uniqueness error is safe infrastructure failure, not another nonce/new article. Tests must establish these outcomes in real PostgreSQL.
+
+Consumed nonce is permanently tied to the record, **not to mutable field equality**. A structurally valid request reusing it with different payload is still explicitly **REPLAY**, meaning “this creation identity was already consumed; these submitted fields were not saved.” Never call it CREATED/UPDATED or a successful new write. Return the current existing record even if later edited/published/archived; do not compare current text to initial payload or require a retained payload/hash/revision to reconcile. UI shows **“รายการนี้ถูกสร้างแล้ว ข้อมูลที่ส่งซ้ำไม่ได้ถูกบันทึก”** and requires review; do not show a generic new-save confirmation for REPLAY. Reuse cannot mutate/reset/revive the row. Invalid payload still fails strict validation before replay. No nonce/text/hash in audit metadata.
+
+Create reconciliation is a publisher-authorized read for exactly `{ hospitalId, submissionNonce }`, returning current detail or ABSENT with fresh authority and no audit. It is not a public nonce reader or listing endpoint. ABSENT may race an in-flight create; resend **the same nonce** explicitly, so uniqueness still protects it. Failure to read is unavailable, not ABSENT. Never automatically allocate a replacement nonce after UNCONFIRMED; preserve local attempt in memory. Before intentional navigation/reload after an ambiguous attempt, retain a session-scoped client recovery marker containing only hospitalId + nonce (no article text), bound to the signed-in account and cleared after confirmed reconciliation/discard/logout. The marker is presentation/recovery state, never server authority; reject stale account markers. No localStorage content persistence or persisted autosave.
+
+## 10. Existing-record command semantics and recovery
+
+Every EDIT/PUBLISH/WITHDRAW/ARCHIVE carries the version obtained from current detail, without nullable expectation. Check it before equality/state; two same-version commands yield at most one successful state change. Version is explicitly monotonic as section 6 specifies, avoiding same-millisecond ABA. UI must use returned expectedUpdatedAt only after confirmed success; never guess it.
+
+Only DRAFT permits title/body/category/sourceText replacement. Fresh identical normalized edit → NOOP, same version, no audit. Stale identical edit → Conflict. PUBLISH validates stored complete normalized fields, state DRAFT and fresh OWNER; no editing payload inside publish. It publishes immediately at commit, sets first/latest as defined and audits once; preview is read-only and never publishes. WITHDRAW changes only PUBLISHED→DRAFT, preserves fields and both publication times, audits once, and removes PUBLISHED eligibility for future Patient reads. ARCHIVE accepts DRAFT/PUBLISHED, preserves content/times, audits once, then forbids further mutation permanently in this slice.
+
+Confirmed mutation outcomes: **UPDATED, NOOP, PUBLISHED, WITHDRAWN, ARCHIVED**, each with current detail. CREATE outcomes: **CREATED, REPLAY**. UNCONFIRMED is distinct from success/error; no duplicate success audit can arise from reusing the old existing-record token: if first commit succeeded the token is stale and returns Conflict. If first rolled back, same token may still succeed on an explicit retry. Reload current authorized detail to reconcile, review state/version and keep local input separately; current projection is not proof of which actor made a later change. No lifecycle operation is made idempotent by silently accepting wrong state, and there is no mutation receipt/history reader for existing commands.
+
+## 11. Atomic minimized audit
+
+| Successful operation | Exact action |
+| --- | --- |
+| Create DRAFT | `hospital_content.created` |
+| Changed DRAFT fields | `hospital_content.updated` |
+| First publish / republish | `hospital_content.published` |
+| Withdraw | `hospital_content.withdrawn` |
+| Archive DRAFT / PUBLISHED | `hospital_content.archived` |
+
+`resourceType` = **HospitalContent**; `resourceId` = immutable content id; `actorUserId` = server-resolved actor. Exact metadata allowlist and complete payload: **`{ hospitalId }`**, canonical UUID only. Action already communicates transition: no redundant state/title/body/source/category/version/nonce/name/previous-value/request DTO/hash/free text or source URL in metadata. Ordinary reads/reconciliation/preview write no durable audit. Never log article payload as an error/debug breadcrumb either.
+
+Exactly one real state change → one audit through existing `recordAuditEvent` using **the same transaction client**. Audit failure rolls back content/status/version/timestamps and nonce insertion; no mutation success. NOOP, REPLAY, stale/lifecycle Conflict, Forbidden/NotFound, validation failure and rolled-back retry have no surviving success audit. Audit is evidence, not revision storage or user-facing history. No publisher/ADMIN audit reader, history UI or author identity disclosure is added (Q109–Q110).
+
+## 12. Publisher projections and bounded list
+
+Return explicit DTOs, never raw Prisma records or authority relations. Timestamps serialize to canonical UTC millisecond ISO or null; UI category/status labels are domain mappings. Every read freshly scopes exact eligible Hospital/current content.
+
+| Projection | Exact returned fields |
+| --- | --- |
+| Eligible Hospital selector | Array of `{ id, hospitalCode, name }`, order name ASC, hospitalCode ASC, id ASC; eligible direct OWNER Hospitals only |
+| Publisher list | `{ hospital: { id, hospitalCode, name }, items, nextCursor }`; each item `{ id, title, category, status, firstPublishedAt, latestPublishedAt, expectedUpdatedAt }`; no body/source/actor/nonce/count query |
+| Detail/current preview/create or mutation result | `{ id, hospital: { id, hospitalCode, name }, title, body, category, sourceText, status, firstPublishedAt, latestPublishedAt, expectedUpdatedAt }` |
+
+No membership rows, Patient info, audit rows, deleted values, revisions or human author/reviewer identity. Selector is an authorized identity projection, not a Hospital-wide directory. Preview may display the current exact record in any of DRAFT/PUBLISHED/ARCHIVED under fresh OWNER authority; lifecycle badge remains visible. Local unsaved preview is explicitly **“ตัวอย่างข้อมูลที่ยังไม่บันทึก”**, separate from persisted current-record preview, and neither simulates Patient audience.
+
+Publisher list uses **fixed page size 25; maximum 25** (no variable client limit). Include all three current states, including ARCHIVED, with no search/category/status filters in first publisher slice. Order **updatedAt DESC, id DESC**: operational latest-change order, not publication chronology. Fetch at most 26 rows to derive nextCursor; return 25. Seek predicate within exact hospitalId: updatedAt < boundary OR (updatedAt = boundary AND id < boundaryId). Use scalar boundary, not offset or a cursor requiring the boundary row to remain unchanged. No unbounded list or total count requirement.
+
+Cursor prefix **`hcontentcur_v1_`**, base64url canonical UTF-8 JSON plus dot + base64url 32-byte HMAC-SHA256 tag. Strict JSON keys/order: `{ version: 1, hospitalId, updatedAt, id }`. Max decoded JSON **1,024 bytes**, encoded cursor **2,048 characters**. UUID/instant validation, canonical encoding round-trip, strict unknown-key rejection and constant-time tag verification follow existing Meal cursor mechanism. Domain-separated HMAC input binds **actor userId + personId**, Hospital scope, and fixed `updatedAt-id-desc:25:all-statuses:no-filter`; use existing server `IDENTITY_HASH_SECRET`, no new secret/dependency/config. Cursor is opaque to clients but not confidential; contains only bounded identifiers/time. Reauthorize every page independently; mismatched Hospital/actor/order/version/tampered cursor → sanitized Validation, never widened query/fallback. No payload text in cursor.
+
+This is deterministic current-record keyset pagination, **not an immutable snapshot**: concurrent edits can move rows ahead of a continuation, so a traversal may miss moved rows. UI explicit “โหลดรายการปัจจุบัน” restarts from first page; no promise of exhaustive export/snapshot, offset stability or retained list history. Continuation replaces the displayed page; do not accumulate an unlimited feed. Reset cursor on Hospital switch. Future Patient ordering/cursor is separate; do not reuse updatedAt-based cursor there.
+
+## 13. Publisher routes, navigation and workflow
+
+Exact future protected Work routes:
+
+| Route | Purpose |
+| --- | --- |
+| `/app/hospitals/knowledge` | Bounded publisher current-record list; optional page-local `hospitalId` and `cursor` query locators |
+| `/app/hospitals/knowledge/new` | Explicit complete CREATE DRAFT form; optional page-local `hospitalId` |
+| `/app/hospitals/knowledge/[contentId]` | One current record: detail, state-allowed edit/actions and clearly labeled preview in the same screen |
+
+No extra generic CMS/preview/edit/history routers or HTTP API. Detail resolves owning Hospital from contentId; any supplied hospitalId must match that owner and remain authorized, otherwise NotFound. It never trusts query scope or relocates Content. Back-to-list link uses server-resolved owning Hospital and resets cursor.
+
+Navigation label **“ข่าวสารและความรู้”** in existing Work **“โรงพยาบาล”** group alongside **“ข้อมูลติดต่อโรงพยาบาล”**; knowledge item matches route prefix. Visibility requires freshly server-projected existence of at least one exact ACTIVE User + HOSPITAL role + direct ACTIVE OWNER membership + ACTIVE Hospital. Evaluate Content-owned policy, not Contact capability as proxy. Direct routes/actions independently authorize. No Platform ADMIN destination, Patient menu or `/app/personal/knowledge` now.
+
+Hospital selection follows Contact local page-context conventions: unauthenticated → `/login`; inactive/ineligible shell actor → `/app`; zero eligible with no explicit hospitalId → `/app`; explicit invalid/unauthorized hospitalId → safe NotFound, **never first-Hospital fallback**. One eligible Hospital → read-only name/code context, no unnecessary selector. Multiple → native labeled selector **“โรงพยาบาล”**, only server-authorized entries; when no explicit locator select first by selector ordering. Changing selection resets cursor, late-response scope and new form attempt. Detail's Hospital is immutable context; navigate to another Hospital's list instead of editing ownership.
+
+| Screen/state | Required behavior |
+| --- | --- |
+| List | Title ข่าวสารและความรู้, Hospital context, create link, 25 current items and continuation; badges DRAFT = “ฉบับร่าง”, PUBLISHED = “เผยแพร่แล้ว”, ARCHIVED = “เก็บถาวร”. Empty = “ยังไม่มีข่าวสารและความรู้”; failed load never pretends empty. Distinct loading/error/retry. |
+| Create | Labeled title/body/category (explicit one-choice native select)/optional source, bounds/help, save **“บันทึกฉบับร่าง”**; creates DRAFT only then confirmed detail. No auto-publish/autosave/incomplete placeholder. Pending disables duplicate submission but preserves input/nonce. |
+| DRAFT detail | Editable four fields; explicit save, current preview, publish, archive. Unsaved field changes must be saved/reviewed before publishing (publish never carries edits). Preview clearly marked draft. |
+| PUBLISHED detail | Read-only current fields/preview; **“ถอนการเผยแพร่เพื่อแก้ไข”**, archive. No direct field inputs/edit action, including hidden service/transport path. Publication badge describes stored state; 17I.2 does not claim delivered Patient feed. |
+| ARCHIVED detail | Read-only fields and archive-state preview; navigation only. No restore/delete/archive-again actions. |
+| Conflict | Thai explanation “ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลปัจจุบันเพื่อตรวจสอบ”; preserve local draft in memory; explicit reload current in separate review, do not silently replace local text. Reapplying input to fresh DRAFT requires deliberate user save; no merge/force/auto-resubmit. |
+| UNCONFIRMED / lost response | Explain outcome is not confirmed; keep local payload/original version or nonce; reconcile authorized current detail/nonce. No new automatic CREATE identity, lifecycle retry or success toast. |
+| Authority loss | Block further editing/actions, clear unavailable persisted projection; sanitized message and safe navigation; no fallback to another Hospital or leaked values in errors. |
+
+Publish/withdraw/archive have explicit confirmation stating actual effect; archive copy says terminal in this slice, without legal-retention/permanent-retention promise. Use existing confirmation primitives/native accessible pattern; no new design system. Pending results are scoped to actor/Hospital/content/attempt: discard late responses after switch/logout/reconciliation, never repopulate another context. Known commit + revalidation failure keeps confirmed result and offers reload; it must not look like failed save requiring retry.
+
+Dirty form protection: confirm before Hospital switch and every in-app exit/navigation owned by this workflow; Cancel preserves local input and locator, Discard explicitly abandons unsaved fields. Register native beforeunload only while dirty/pending/UNCONFIRMED; browsers may not show it on all mobile exits, so do not promise recovery of unsaved text. Do not persist article content in browser storage. Confirmed success clears dirty state; REPLAY requires review of submitted-vs-current state, not silent replacement. Existing-record UNCONFIRMED keeps original version; create recovery marker follows section 9. No cross-tab collaboration/local collaborative editing.
+
+Reuse PageHeader, form controls, Panel, Alert, StatusBadge and existing tokens from UI foundation/DESIGN. Thai-first mobile Operate/Read presentation: 320px safe layout, wrap long Thai titles/body/source/URLs, preserve body LF, no horizontal overflow, readable prose, touch targets at least 44px. Semantic headings/labels, keyboard/focus-visible, field error `aria-describedby`/`aria-invalid`, focus first invalid field, live pending/success/conflict announcements, non-color-only state, accessible confirmations/focus restoration. Loading, error, success, empty, disabled and forbidden states are distinct.
+
+Plain-text preview escapes all fields, does not parse HTML/Markdown/links and clearly names lifecycle state. Hospital attribution comes from canonical identity. Truthful publisher guidance: **“ข่าวสารและความรู้เป็นข้อมูลที่โรงพยาบาลจัดทำ โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา”**; optional source label **“แหล่งข้อมูล/อ้างอิง”**. Source presence does not imply DEMI validation. Never add “ผ่านการรับรองโดย DEMI”, verified medical advice, คำวินิจฉัย, prescription, AI recommendation or government verified.
+
+Publisher data/authority are request-scoped; no shared/public cache, static materialization or cross-user memoization. After confirmed writes invalidate only actual publisher list/detail paths, outside transaction; no Patient/Contact revalidation added. On back/forward restoration/session changes recheck current actor/detail before enabling mutations, retain dirty local input separately and do not let BFCache/page snapshots grant authority. Logout cleanup follows existing shell behavior. Exact Patient privacy/cache/BFCache consumption rules remain 17I.3 work.
+
+## 14. Additive migration and indexes
+
+Future implementation creates enums/table, Hospital inverse relation, FK, nonce uniqueness, publication checks and exactly these B-tree indexes:
+
+| Name | Columns / actual query purpose |
+| --- | --- |
+| `HospitalContent_hospital_nonce_key` | UNIQUE `(hospitalId, submissionNonce)`; CREATE/reconciliation; also leading hospital FK lookup |
+| `HospitalContent_publisher_order_idx` | `(hospitalId, updatedAt DESC, id DESC)`; publisher all-state management list |
+| `HospitalContent_patient_order_idx` | `(hospitalId, status, firstPublishedAt DESC, id DESC)`; future exact-Hospital PUBLISHED first-publication ordering |
+| `HospitalContent_patient_category_order_idx` | `(hospitalId, status, category, firstPublishedAt DESC, id DESC)`; approved future category-filtered ordering |
+
+Primary id index serves exact detail. No redundant standalone hospitalId/status index; publisher has no status filter requiring another index. Future Patient queries must explicitly require status PUBLISHED **and nonnull first/latest publication times**; nullable descending order never substitutes for publication eligibility. Including DRAFT/ARCHIVED index entries gives them no read authority. Index preparation supports approved Q98 but does not deliver/clear Patient query runtime; do not add speculative search/global-feed/tag/pin indexes. No updatedAt Patient ranking.
+
+Forward-only additive migration on empty new table; existing Hospitals/Contact/User/membership/Patient records unchanged. No backfill/demo/legacy import, Master content writes or nested seed creation. Hospital Master seed stays identity-only and must not create/update/reset/archive content. FK Restrict protects content from cascaded identity deletion, without introducing a legal retention rule. New table preserves the existing provider hardening: migration-role default privilege revocations apply; additionally revoke any direct privileges on this new table from `anon`, `authenticated`, `service_role` only when those roles exist, using the established conditional-role convention. Plain PostgreSQL without provider roles remains valid. Privileged server Prisma path and application policy remain authoritative; no browser/provider Data API CRUD or new RLS policy framework. Existing tables/policies/config are untouched. Tests later validate actual table grants alongside server access.
+
+## 15. Required future implementation verification
+
+This section is a **test contract**, not executed test evidence. Use behavior-focused unit/schema/policy/service/transport tests plus real PostgreSQL and UI/manual UAT. Pure/mock tests cannot prove locks, uniqueness, isolation or atomic audit.
+
+| Area | Required focused coverage |
+| --- | --- |
+| Normalization/input | Title trim/nonblank/200 bound/raw 1,000 cap, newline/tab/control/invisible rejection before trim; body CRLF/CR→LF, tabs→space, edge trim/internal LF/indent/blank-line preservation; Thai combining characters unchanged; long Thai at 20,000 accepted/20,001 rejected; blank rejected; source blank→null, 1,000 bound/raw 2,000 cap/control/single-line; every unpaired-surrogate form rejected, paired allowed Unicode counted as two; no HTML interpretation/Markdown/autolink; strict unknown/missing/duplicate/null/type handling; raw body cap 24,000 and UTF-8 JSON byte 131,072 boundary/overflow, Thai multibytes and escape-heavy values. |
+| Authorization/read isolation | Exact ACTIVE direct OWNER succeeds; MEMBER, OWNER other Hospital, parent OWNER→child, child OWNER→parent, assigned OSM, PATIENT, ADMIN-only denied; inactive User/removed HOSPITAL role/inactive or removed membership/non-ACTIVE Hospital/mismatched User↔Person denied; ADMIN+legitimate OWNER succeeds only exact OWNER scope; multi-Hospital isolation, forged query hospitalId/contentId/nonce, no staff/global/public audience. Fresh list/detail/preview/navigation rechecks, no raw records/authority/Patient/audit leakage. |
+| CREATE | Valid complete input creates DRAFT only; optional source null; first/latest null; immutable server id/Hospital/nonce; same nonce sequential/concurrent retries produce one row + one audit; response loss after committed create REPLAY; different valid payload with consumed nonce REPLAY/no field mutation/no new-save claim, including after edit/publish/archive; different nonce creates distinct record; audit failure rollback allows waiting same-nonce request to create; ABSENT reconciliation race uses same nonce. |
+| EDIT/version | Matching DRAFT expected token updates four fields only; fresh normalized identical NOOP/no audit/no version advance; stale identical Conflict/no audit; monotonic version with same-ms/backward injected clock; direct PUBLISHED/ARCHIVED edits Conflict, no alternative transport bypass. |
+| PUBLISH | DRAFT→PUBLISHED; first = latest on first successful publish; immediate after commit; complete stored fields validation; fresh PUBLISHED publish Conflict; stale publish Conflict; audit failure restores DRAFT/null times/version; timestamp not client input. |
+| WITHDRAW/correction | PUBLISHED→DRAFT preserves fields/first/latest; DRAFT withdraw Conflict; withdraw→edit→republish preserves first, advances latest, does not promote original chronology; no editing payload in withdraw/publish; server same-ms latest advances independently from version. |
+| ARCHIVE | Never-published DRAFT→ARCHIVED with null times; withdrawn DRAFT/current PUBLISHED→ARCHIVED preserve fields/times; fresh ARCHIVED edit/publish/withdraw/archive-again Conflict, restore/delete paths absent; no timestamp reset or revision creation. |
+| Record races | Two edits same version one winner; edit vs publish, publish vs archive, withdraw vs archive, withdraw vs edit, stale browser retry; loser Conflict, one surviving action audit. Independent rows **same Hospital + same actor** do not serialize behind exclusive Hospital/User/membership lock; blocked one Content row does not block another. Different nonce creates concurrent; duplicate nonce exactly one row/audit. |
+| Authority races | Two transaction/barrier orderings for User suspension, role removal, OWNER demotion, membership suspension/removal, Hospital suspension: revocation-first denies; Content-first revocation waits until commit/rollback. Actual row update/delete, not only mocked policy. Rollback/deadlock bounded retry fresh recheck/original token; no authority widening, no successful write after committed earlier revocation. |
+| Audit/error outcomes | Exact five action names/resource/actor/hospitalId-only metadata; no title/body/source/previous text/hash/nonce/name/DTO; one per state change; trigger-injected PostgreSQL audit failure rolls back every command; no success audit for NOOP/REPLAY/conflict/forbidden/invalid/aborted retry/read; unknown commit → UNCONFIRMED, known commit + revalidation failure never resubmits. |
+| Reads/pagination | Only current authorized records all states; explicit minimized list/detail preview; fixed 25 plus lookahead; tied updatedAt UUID order; stable seek boundary after row mutation; invalid/tampered/oversized/other-actor/other-Hospital cursor rejected; no widening/fallback; current-record movement limitation and restart; no unlimited list/no audit/revisions. |
+| Migration | Apply all migrations to clean disposable PostgreSQL; populated pre-migration Hospitals/Contact/User/membership remain exact; zero content legal; enums/FK/onDelete/onUpdate/unique nonce/index/check names enforced, explicit null-check failures; DB allows withdrawn/archived prior-published times; conditional-role privilege revocations deny Data API table access and privileged server works; PostgreSQL without provider roles migrates safely; rerun actual identity seed with content and Contact values unchanged. No production test data/import. |
+| UI/transport | 0/1/multi Hospital OWNER; explicit unauthorized/malformed/mismatched hospitalId NotFound; fresh navigation visibility; create→DRAFT/detail, save, preview, publish/withdraw/archive/terminal view; unsaved publish block, dirty Hospital switch/in-app exit cancellation, late-response discard; conflict preserves memory/review/reapply only deliberate save; ambiguous create marker/same nonce/read failures, ambiguous existing token; loading/error/empty/success/disabled/forbidden; no Contact changes/Patient menu or scope widening. |
+| Accessibility/mobile/UAT | 320px, long Thai title/body/source/URL, retained line breaks, keyboard/tab order, focus-visible/confirmation focus restore, semantic labels/headings, associated field errors, live announcements, non-color-only state, no horizontal overflow; browser back/forward/session loss pending/dirty safeguards; actual manual browser/mobile/device UAT tracked separately, never inferred from automated tests. |
+
+Future focused commands use scripts that actually exist: `npm run test -- <explicit affected unit paths>`; `npm run lint`; `npm run typecheck`. Module boundaries must be reviewed; no `architecture:check`/`lint:strict` command exists at this baseline, so do not invent them. Real PostgreSQL: existing disposable harness/environment validation, generation/migration **only during future implementation**, then `npm run test -- --config vitest.integration.config.mts tests/integration/hospital-content.integration.test.ts` for the future test file. Environment follows existing harness (`DATABASE_URL = DIRECT_URL = DEMI_TEST_DATABASE_URL`, `NODE_ENV=test`); never print credentials. `test:integration` wrapper generates/migrates/runs the whole integration suite and does not forward focused paths. Review stable complete diff before justified broad suite; avoid repeated full runs. Build only when a specific framework/deployment risk requires it, not routine UI verification.
+
+## 16. Patient handoff — 17I.3 remains separate
+
+Persistence supports future consumption but **17I.2 adds no Patient route/action/policy/feed query/filter/pagination/navigation**, including `/app/personal/knowledge`. No Family delegation or staff/OSM feed. Own Patient consumption invariants already approved: authenticated ACTIVE User + persisted PATIENT role + exact User↔Person + PatientProfile + own persisted PatientHospitalRelationship + exact ACTIVE Hospital + content Hospital equals relationship Hospital + content PUBLISHED. Relationship has **no lifecycle status**; never invent ACTIVE on it. Multi-role Work authority cannot enlarge this SELF audience.
+
+Future Patient projection: Hospital identity, title/body/category, optional sourceText and latestPublishedAt for display; firstPublishedAt is ordering data only, not a second display timestamp or revision history. Hospital attribution has no human author/reviewer by default; source is escaped text, not validated/clickable proof. Category filter uses fixed machine values; firstPublishedAt DESC + id DESC remains Q98 chronology, unaffected by republish.
+
+17I.3 must still close its own implementation-ready technical contract for:
+
+- Exact dedicated Personal route/detail topology, navigation placement and mobile navigation.
+- Patient-owned feed query service/policy, exact own relationship-to-Hospital scope resolution and multi-Hospital relationship presentation (never accidental global union).
+- Category filter request/default/reset semantics; stable Patient keyset pagination/cursor, page sizes, scope binding and concurrency behavior using first publication order.
+- Empty/error/unavailable states, Hospital/relationship/Patient authority loss, withdraw/archive races during list/detail navigation and safe missing-item behavior.
+- Asia/Bangkok timestamp formatting and “เผยแพร่ล่าสุด” label; source display and truthful informational/trust copy.
+- Minimal privacy projection, cache/session/BFCache/browser back-forward controls and stale-page treatment relevant to Patient consumption.
+- Patient-focused unit/real PostgreSQL/transport/accessibility/mobile/manual UAT matrix and recorded acceptance evidence.
+
+These are pending technical work, not unapproved owner decisions reopened here. No Patient implementation clearance is implied by prepared fields/indexes or publisher preview. Approved order remains **17I.1 Contact → 17I.2 Publishing → 17I.3 Patient Consumption** (Q111).
+
+## 17. Documentation-only validation and final status
+
+Required authoring checks: complete final diff including new untracked Markdown; `git diff --check`; touched Markdown targets/anchors; strict UTF-8 decoding, no replacement/mojibake and unchanged existing Thai; owner matrix untouched; status consistency; only bounded docs paths changed. Review explicitly confirms first/latest/version separation, withdraw-before-edit, terminal ARCHIVED/no delete, nonce replay and stale-version-first semantics, exact direct OWNER/no hierarchy/global/staff/OSM authority, content-free minimized audit, current projections/no histories, no Patient or excluded feature clearance. No runtime/schema/migration/config source changes, commit or push.
+
+No Prisma generate/validate/migration, unit/PostgreSQL suite, build, dev server or manual UAT is run for this documentation-only task. Test requirements above do not count as passed tests; runtime behavior and locking remain unverified until implementation.
+
+Authoring validation completed: complete tracked diff and all new-document content reviewed; `git diff --check` passed; new-file whitespace checked separately; **215 local Markdown targets/anchors verified** across the four touched documents; strict UTF-8 decode and replacement/mojibake scan passed; existing Thai text/BOM/line-ending convention preserved. The closeout's complete Q84–Q111 decision matrix is unchanged (comparison normalizes Git/worktree line endings only). Current statuses and all scope/lifecycle/timestamp/idempotency/audit boundaries above were reviewed. Final file inventory contains only this contract, CONTEXT, Phase 17 backlog and the closeout's current-status addendum; no runtime/schema/migration/config changes, commit or push.
+
+| Item | Current disposition after this contract |
+| --- | --- |
+| Phase 17I.0 | CLOSED / OWNER DECISIONS CLOSED |
+| Phase 17I.0B | CLOSED / DOCUMENTATION CONTRACT COMPLETE |
+| Q84–Q111 | CLOSED / OWNER APPROVED |
+| CONTENT-02 | IMPLEMENTED |
+| Phase 17I.1 | IMPLEMENTED / CLOSED |
+| CONTENT-01 | OWNER DECISIONS CLOSED / 17I.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED |
+| Phase 17I.2 | CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED |
+| Phase 17I.3 | PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED |
