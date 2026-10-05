@@ -3,9 +3,10 @@ import { Role } from "@prisma/client";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
-import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import {
+  getPatientPersonalHomePageContext,
   getPatientSelfHospitalProfilePageContext,
   getPatientSelfPageContext,
 } from "./patient-self-page-context";
@@ -15,6 +16,10 @@ const { mockedRedirect, mockedNotFound } = vi.hoisted(() => ({
   mockedNotFound: vi.fn(),
 }));
 
+const { listOwnPatientHospitalContacts } = vi.hoisted(() => ({
+  listOwnPatientHospitalContacts: vi.fn(),
+}));
+
 vi.mock("next/navigation", () => ({ redirect: mockedRedirect, notFound: mockedNotFound }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: vi.fn(),
@@ -22,11 +27,15 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("@/modules/patient-self/services/patient-self-query-service", () => ({
   resolveOwnPatientContext: vi.fn(),
 }));
+vi.mock("@/modules/hospital-contact/services/hospital-contact-service", () => ({
+  listOwnPatientHospitalContacts,
+}));
 vi.mock("@/modules/patient-hospital-profile/services/patient-hospital-profile-service", () => ({
   getOwnPatientHospitalProfile: vi.fn(),
 }));
 
 import { getOwnPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
+import { HospitalStatus } from "@prisma/client";
 
 const actor = {
   userId: "22222222-2222-4222-8222-222222222222",
@@ -41,6 +50,7 @@ describe("Patient self page context", () => {
     vi.clearAllMocks();
     vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor);
     vi.mocked(resolveOwnPatientContext).mockResolvedValue(null);
+    listOwnPatientHospitalContacts.mockResolvedValue([]);
     mockedRedirect.mockImplementation((path: string) => {
       throw new Error(`NEXT_REDIRECT:${path}`);
     });
@@ -58,6 +68,85 @@ describe("Patient self page context", () => {
 
     await expect(getPatientSelfPageContext()).resolves.toEqual(context);
     expect(resolveOwnPatientContext).toHaveBeenCalledWith(actor);
+    expect(listOwnPatientHospitalContacts).not.toHaveBeenCalled();
+  });
+
+  it("retains the existing incomplete state without reading Contact when PatientProfile does not resolve", async () => {
+    await expect(getPatientPersonalHomePageContext()).resolves.toBeNull();
+    expect(listOwnPatientHospitalContacts).not.toHaveBeenCalled();
+  });
+
+  it("maps a vanished PatientProfile during Contact read to safe not-found", async () => {
+    vi.mocked(resolveOwnPatientContext).mockResolvedValue({
+      person: { givenName: "สมชาย", familyName: "ใจดี" },
+      hospitalRelationships: [],
+    });
+    listOwnPatientHospitalContacts.mockRejectedValue(new NotFoundError());
+
+    await expect(getPatientPersonalHomePageContext()).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mockedNotFound).toHaveBeenCalledOnce();
+  });
+
+  it("adds only the exact own active Hospital Contact projection and withholds inactive Hospitals", async () => {
+    const context = {
+      person: { givenName: "สมชาย", familyName: "ใจดี" },
+      hospitalRelationships: [
+        {
+          relationshipId: "44444444-4444-4444-8444-444444444444",
+          hospitalCode: "H-001",
+          hospitalName: "โรงพยาบาล ก",
+          hospitalNumber: null,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+        {
+          relationshipId: "55555555-5555-4555-8555-555555555555",
+          hospitalCode: "H-002",
+          hospitalName: "โรงพยาบาล ข",
+          hospitalNumber: null,
+          hospitalStatus: HospitalStatus.SUSPENDED,
+        },
+      ],
+    };
+    vi.mocked(resolveOwnPatientContext).mockResolvedValue(context);
+    listOwnPatientHospitalContacts.mockResolvedValue([
+      {
+        relationshipId: "44444444-4444-4444-8444-444444444444",
+        availability: "AVAILABLE",
+        contact: {
+          hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
+          addressText: "ถนนสุขภาพ",
+          phoneNumber: "02-123-4567",
+        },
+      },
+      { relationshipId: "55555555-5555-4555-8555-555555555555", availability: "UNAVAILABLE" },
+    ]);
+
+    await expect(getPatientPersonalHomePageContext()).resolves.toMatchObject({
+      hospitalRelationships: [
+        {
+          relationshipId: "44444444-4444-4444-8444-444444444444",
+          hospitalContact: {
+            status: "AVAILABLE",
+            contact: { addressText: "ถนนสุขภาพ", phoneNumber: "02-123-4567" },
+          },
+        },
+        {
+          relationshipId: "55555555-5555-4555-8555-555555555555",
+          hospitalContact: { status: "UNAVAILABLE" },
+        },
+      ],
+    });
+  });
+
+  it("keeps a contact load failure distinct from confirmed-empty contact", async () => {
+    vi.mocked(resolveOwnPatientContext).mockResolvedValue({
+      person: { givenName: "สมชาย", familyName: "ใจดี" },
+      hospitalRelationships: [],
+    });
+    listOwnPatientHospitalContacts.mockRejectedValue(new InfrastructureError());
+
+    await expect(getPatientPersonalHomePageContext()).rejects.toBeInstanceOf(InfrastructureError);
+    expect(listOwnPatientHospitalContacts).toHaveBeenCalledWith(actor);
   });
 
   it.each([new UnauthenticatedError(), new ForbiddenError()])(

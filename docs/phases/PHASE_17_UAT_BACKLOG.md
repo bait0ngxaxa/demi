@@ -1,5 +1,11 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
+## CURRENT-status addendum — Phase 17I.1 Hospital Contact implementation (2026-10-05)
+
+[Implementation handoff](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION.md): **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** See handoff for schema/migration, scope, runtime behavior and automated verification evidence. The prior 2026-10-04 clearance-only addendum below is retained as historical contract-time status.
+
+**CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** Manual browser/mobile/device UAT is **NOT EXECUTED**; production deployment and whole Phase 17I completion are not claimed. Phase 17H.4A automated PASS/separate manual-UAT tracking, 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02 and 17J remain unchanged.
+
 ## CURRENT-status addendum — Phase 17I.0B closeout / 17I.1 Contact contract (2026-10-04)
 
 [Owner decision closeout](./PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md): **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Q84–Q111 — CLOSED / OWNER APPROVED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.** เจ้าของผลิตภัณฑ์อนุมัติชุดคำแนะนำเดิมทุกข้อและทุกแกน WITHOUT CHANGES; เอกสาร decision pack เดิมคงเป็นหลักฐานประวัติ ไม่ใช่สถานะปัจจุบัน

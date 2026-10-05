@@ -4,11 +4,11 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
+import type { PatientPersonalHomePageContext } from "@/modules/patient-self/transport/patient-self-page-context";
 
 import { PatientSelfRelationshipList } from "./patient-self-relationship-list";
 
-function getPersistedDisplayName(patient: PatientSelfContext): string {
+function getPersistedDisplayName(patient: PatientPersonalHomePageContext): string {
   const name = [patient.person.givenName, patient.person.familyName]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
@@ -20,7 +20,7 @@ function getPersistedDisplayName(patient: PatientSelfContext): string {
 export function PatientPersonalHome({
   patient,
 }: {
-  patient: PatientSelfContext | null;
+  patient: PatientPersonalHomePageContext | null;
 }): React.JSX.Element {
   return (
     <div className="max-w-4xl">

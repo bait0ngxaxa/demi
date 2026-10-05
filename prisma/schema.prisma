@@ -271,10 +271,22 @@ model Hospital {
   onboardingApplications   HospitalOnboardingApplication[]
   serviceOfferings         HospitalServiceOffering[]
   patientAccessRequests    PatientAccessRequest[]
+  contact                  HospitalContact?
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
   @@index([status, name])
+}
+
+model HospitalContact {
+  id          String   @id @default(uuid()) @db.Uuid
+  hospitalId  String   @unique @db.Uuid
+  addressText String?  @db.VarChar(500)
+  phoneNumber String?  @db.VarChar(32)
+  createdAt   DateTime @default(now()) @db.Timestamp(3)
+  updatedAt   DateTime @updatedAt @db.Timestamp(3)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model HospitalMembership {

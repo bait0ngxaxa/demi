@@ -1,0 +1,365 @@
+import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const harness = vi.hoisted(() => ({
+  slots: [] as unknown[],
+  cursor: 0,
+  pending: false,
+  transitions: [] as Array<() => void | Promise<void>>,
+  push: vi.fn(),
+}));
+
+vi.mock("react", async (importOriginal) => {
+  const react = await importOriginal<typeof import("react")>();
+
+  return {
+    ...react,
+    useState: (initial: unknown) => {
+      const index = harness.cursor++;
+      if (!(index in harness.slots)) {
+        harness.slots[index] = typeof initial === "function"
+          ? (initial as () => unknown)()
+          : initial;
+      }
+
+      const setState = (next: unknown | ((previous: unknown) => unknown)) => {
+        harness.slots[index] = typeof next === "function"
+          ? (next as (previous: unknown) => unknown)(harness.slots[index])
+          : next;
+      };
+
+      return [harness.slots[index], setState];
+    },
+    useTransition: () => [harness.pending, (callback: () => void | Promise<void>) => {
+      harness.pending = true;
+      harness.transitions.push(callback);
+    }],
+  };
+});
+
+const mocks = vi.hoisted(() => ({
+  confirm: vi.fn(),
+  read: vi.fn(),
+  update: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: harness.push }) }));
+vi.mock("@/modules/hospital-contact/transport/server-actions", () => ({
+  readHospitalContactForOwnerAction: mocks.read,
+  updateHospitalContactAction: mocks.update,
+}));
+
+import { Button } from "@/components/ui/button";
+import type {
+  HospitalContactEditorProjection,
+  HospitalContactOwnerHospital,
+} from "@/modules/hospital-contact/types/hospital-contact-projections";
+import type { HospitalContactMutationActionState } from "@/modules/hospital-contact/transport/action-state";
+import { HospitalContactWorkspace } from "./hospital-contact-workspace";
+
+type InteractionProps = {
+  children?: ReactNode;
+  id?: string;
+  value?: string;
+  disabled?: boolean;
+  onChange?: (event: { currentTarget: { value: string } }) => void;
+  onClick?: () => void;
+  onSubmit?: (event: { preventDefault: () => void }) => void;
+};
+
+const hospitalA: HospitalContactOwnerHospital = {
+  id: "11111111-1111-4111-8111-111111111111",
+  hospitalCode: "H-001",
+  name: "โรงพยาบาล ก",
+};
+const hospitalB: HospitalContactOwnerHospital = {
+  id: "22222222-2222-4222-8222-222222222222",
+  hospitalCode: "H-002",
+  name: "โรงพยาบาล ข",
+};
+const currentVersion = "2026-10-05T02:03:04.005Z";
+const nextVersion = "2026-10-05T02:03:04.006Z";
+
+function contact(overrides: Partial<HospitalContactEditorProjection> = {}): HospitalContactEditorProjection {
+  return {
+    hospital: hospitalA,
+    addressText: null,
+    phoneNumber: null,
+    expectedUpdatedAt: null,
+    ...overrides,
+  };
+}
+
+function success(
+  outcome: "CREATED" | "UPDATED" | "NOOP",
+  value: HospitalContactEditorProjection,
+): HospitalContactMutationActionState {
+  return { status: "SUCCESS", result: { outcome, contact: value } };
+}
+
+function elements(node: ReactNode): ReactElement<InteractionProps>[] {
+  if (Array.isArray(node)) {
+    return node.flatMap(elements);
+  }
+
+  if (!isValidElement<InteractionProps>(node)) {
+    return [];
+  }
+
+  return [node, ...elements(node.props.children)];
+}
+
+function renderWorkspace(
+  initialContact: HospitalContactEditorProjection = contact(),
+): React.JSX.Element {
+  harness.cursor = 0;
+  return HospitalContactWorkspace({
+    hospitals: [hospitalA, hospitalB],
+    selectedHospitalId: hospitalA.id,
+    contact: initialContact,
+  });
+}
+
+function field(tree: ReactNode, id: string): ReactElement<InteractionProps> {
+  const found = elements(tree).find((element) => element.props.id === id);
+  if (!found) {
+    throw new Error(`Missing field ${id}`);
+  }
+
+  return found;
+}
+
+function button(tree: ReactNode, label: string): ReactElement<InteractionProps> {
+  const found = elements(tree).find(
+    (element) => element.type === Button && element.props.children === label,
+  );
+  if (!found) {
+    throw new Error(`Missing button ${label}`);
+  }
+
+  return found;
+}
+
+function submit(tree: ReactNode): ReturnType<typeof vi.fn> {
+  const form = elements(tree).find((element) => element.type === "form");
+  if (!form?.props.onSubmit) {
+    throw new Error("Missing contact form");
+  }
+
+  const preventDefault = vi.fn();
+  form.props.onSubmit({ preventDefault });
+  return preventDefault;
+}
+
+async function finishTransition(): Promise<void> {
+  const callback = harness.transitions.shift();
+  if (!callback) {
+    throw new Error("Missing queued transition");
+  }
+
+  try {
+    await callback();
+  } finally {
+    harness.pending = false;
+  }
+}
+
+function markup(initialContact?: HospitalContactEditorProjection): string {
+  return renderToStaticMarkup(renderWorkspace(initialContact));
+}
+
+describe("Hospital Contact Owner form interactions", () => {
+  beforeEach(() => {
+    harness.slots = [];
+    harness.cursor = 0;
+    harness.pending = false;
+    harness.transitions = [];
+    harness.push.mockReset();
+    mocks.confirm.mockReset().mockReturnValue(false);
+    mocks.read.mockReset().mockResolvedValue({ status: "SUCCESS", contact: contact() });
+    mocks.update.mockReset().mockResolvedValue(success("NOOP", contact()));
+    vi.stubGlobal("window", { confirm: mocks.confirm });
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("requires dirty-form confirmation before switching and never puts contact values in the URL", () => {
+    const address = field(renderWorkspace(), "hospital-contact-address");
+    address.props.onChange?.({ currentTarget: { value: "แบบร่างในเครื่อง" } });
+
+    const selector = field(renderWorkspace(), "hospital-contact-hospital");
+    const selection = { value: hospitalB.id };
+    selector.props.onChange?.({ currentTarget: selection });
+    expect(mocks.confirm).toHaveBeenCalledOnce();
+    expect(selection.value).toBe(hospitalA.id);
+    expect(harness.push).not.toHaveBeenCalled();
+
+    mocks.confirm.mockReturnValue(true);
+    selection.value = hospitalB.id;
+    selector.props.onChange?.({ currentTarget: selection });
+    expect(harness.push).toHaveBeenCalledExactlyOnceWith(
+      `/app/hospitals/contact?hospitalId=${hospitalB.id}`,
+    );
+    expect(harness.push.mock.calls.join(" ")).not.toContain("แบบร่างในเครื่อง");
+  });
+
+  it.each([
+    {
+      outcome: "CREATED" as const,
+      loaded: contact(),
+      addressDraft: "ที่อยู่ใหม่",
+      saved: contact({ addressText: "ที่อยู่ใหม่", expectedUpdatedAt: currentVersion }),
+      message: "บันทึกข้อมูลติดต่อแล้ว",
+    },
+    {
+      outcome: "UPDATED" as const,
+      loaded: contact({ addressText: "ที่อยู่เดิม", expectedUpdatedAt: currentVersion }),
+      addressDraft: "ที่อยู่เดิม",
+      saved: contact({ addressText: "ที่อยู่เดิม", phoneNumber: "02-123-4567", expectedUpdatedAt: nextVersion }),
+      message: "ปรับปรุงข้อมูลติดต่อแล้ว",
+    },
+    {
+      outcome: "NOOP" as const,
+      loaded: contact({ addressText: "ที่อยู่เดิม", expectedUpdatedAt: currentVersion }),
+      addressDraft: "ที่อยู่เดิม ",
+      saved: contact({ addressText: "ที่อยู่เดิม", expectedUpdatedAt: currentVersion }),
+      message: "ข้อมูลติดต่อเป็นปัจจุบันแล้ว ไม่มีการเปลี่ยนแปลง",
+    },
+  ])("submits complete desired state and announces $outcome", async ({ outcome, loaded, addressDraft, saved, message }) => {
+    mocks.update.mockResolvedValue(success(outcome, saved));
+    field(renderWorkspace(loaded), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: addressDraft },
+    });
+    const preventDefault = submit(renderWorkspace(loaded));
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    await finishTransition();
+
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({
+      hospitalId: hospitalA.id,
+      expectedUpdatedAt: loaded.expectedUpdatedAt,
+      addressText: addressDraft,
+      phoneNumber: null,
+    });
+    expect(markup(loaded)).toContain(message);
+    expect(markup(loaded)).toContain('role="status"');
+  });
+
+  it("keeps a validation draft, marks its field invalid, and associates the safe error", async () => {
+    const result: HospitalContactMutationActionState = {
+      status: "ERROR",
+      code: "VALIDATION",
+      message: "กรุณาตรวจสอบข้อมูลติดต่อที่กรอก",
+      fieldErrors: { addressText: "ตรวจสอบที่อยู่และข้อความที่กรอกอีกครั้ง" },
+    };
+    mocks.update.mockResolvedValue(result);
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: "ร่างที่ยังเก็บไว้" },
+    });
+    submit(renderWorkspace());
+    await finishTransition();
+
+    const tree = renderWorkspace();
+    expect(field(tree, "hospital-contact-address").props.value).toBe("ร่างที่ยังเก็บไว้");
+    expect(markup()).toContain("ตรวจสอบที่อยู่และข้อความที่กรอกอีกครั้ง");
+    expect(markup()).toContain('aria-invalid="true"');
+    expect(markup()).toContain('role="status"');
+  });
+
+  it("holds local draft after conflict, loads current state explicitly, and never auto-merges or resubmits", async () => {
+    const loaded = contact({ addressText: "ค่าเดิม", expectedUpdatedAt: currentVersion });
+    mocks.update.mockResolvedValue({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "ข้อมูลติดต่อเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลปัจจุบันเพื่อตรวจสอบ",
+    });
+    const current = contact({ addressText: "ข้อมูลล่าสุดของโรงพยาบาล", phoneNumber: "02-777-8888", expectedUpdatedAt: nextVersion });
+    mocks.read.mockResolvedValue({ status: "SUCCESS", contact: current });
+    field(renderWorkspace(loaded), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: "แบบร่างของฉัน" },
+    });
+    submit(renderWorkspace(loaded));
+    await finishTransition();
+    expect(markup(loaded)).toContain("แบบร่างของฉัน");
+
+    button(renderWorkspace(loaded), "โหลดข้อมูลปัจจุบัน").props.onClick?.();
+    await finishTransition();
+    const review = renderWorkspace(loaded);
+    expect(markup(loaded)).toContain("ข้อมูลล่าสุดของโรงพยาบาล");
+    expect(markup(loaded)).toContain("แบบร่างของฉัน");
+    button(review, "เริ่มแก้ไขจากข้อมูลปัจจุบัน").props.onClick?.();
+
+    const reconciled = renderWorkspace(loaded);
+    expect(field(reconciled, "hospital-contact-address").props.value).toBe("ข้อมูลล่าสุดของโรงพยาบาล");
+    expect(markup(loaded)).toContain("แบบร่างเดิมที่ยังไม่ได้ยืนยัน");
+    expect(mocks.update).toHaveBeenCalledOnce();
+    expect(mocks.read).toHaveBeenCalledExactlyOnceWith(hospitalA.id);
+  });
+
+  it("keeps an unconfirmed draft and requires an explicit read without replay", async () => {
+    mocks.update.mockResolvedValue({ status: "UNCONFIRMED" });
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: "ค่าที่ยังไม่ยืนยัน" },
+    });
+    submit(renderWorkspace());
+    await finishTransition();
+
+    expect(markup()).toContain("ยังยืนยันผลการบันทึกไม่ได้");
+    expect(markup()).toContain("ค่าที่ยังไม่ยืนยัน");
+    button(renderWorkspace(), "โหลดข้อมูลปัจจุบัน").props.onClick?.();
+    await finishTransition();
+    expect(mocks.update).toHaveBeenCalledOnce();
+    expect(mocks.read).toHaveBeenCalledExactlyOnceWith(hospitalA.id);
+  });
+
+  it("keeps load failure distinct from empty data and retains both drafts for review", async () => {
+    mocks.update.mockResolvedValue({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "ข้อมูลติดต่อเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลปัจจุบันเพื่อตรวจสอบ",
+    });
+    mocks.read.mockResolvedValue({ status: "UNAVAILABLE" });
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: "ร่างระหว่างโหลดล้มเหลว" },
+    });
+    submit(renderWorkspace());
+    await finishTransition();
+    button(renderWorkspace(), "โหลดข้อมูลปัจจุบัน").props.onClick?.();
+    await finishTransition();
+
+    expect(markup()).toContain("โหลดข้อมูลปัจจุบันไม่สำเร็จ");
+    expect(markup()).toContain("ร่างระหว่างโหลดล้มเหลว");
+    expect(markup()).not.toContain("ยังไม่มีข้อมูลติดต่อ");
+    expect(mocks.update).toHaveBeenCalledOnce();
+  });
+
+  it("locks inputs while an owner mutation is pending", () => {
+    field(renderWorkspace(), "hospital-contact-address").props.onChange?.({
+      currentTarget: { value: "ค่าที่กำลังส่ง" },
+    });
+    submit(renderWorkspace());
+
+    const tree = renderWorkspace();
+    expect(field(tree, "hospital-contact-address").props.disabled).toBe(true);
+    expect(field(tree, "hospital-contact-hospital").props.disabled).toBe(true);
+    expect(button(tree, "กำลังบันทึก...").props.disabled).toBe(true);
+  });
+
+  it("clears private contact from view when the mutation reports revoked authority", async () => {
+    const loaded = contact({ addressText: "ข้อมูลเดิมที่เป็นส่วนตัว", phoneNumber: "02-999-0000", expectedUpdatedAt: currentVersion });
+    mocks.update.mockResolvedValue({
+      status: "ERROR",
+      code: "FORBIDDEN",
+      message: "บัญชีนี้ไม่มีสิทธิ์จัดการข้อมูลติดต่อของโรงพยาบาลนี้",
+    });
+    submit(renderWorkspace(loaded));
+    await finishTransition();
+
+    const html = markup(loaded);
+    expect(html).toContain("สิทธิ์อาจเปลี่ยนแปลงแล้ว");
+    expect(html).not.toContain("ข้อมูลเดิมที่เป็นส่วนตัว");
+    expect(html).not.toContain("02-999-0000");
+  });
+});

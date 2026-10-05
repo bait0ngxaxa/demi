@@ -2,6 +2,12 @@
 
 Date: 2026-10-04 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`, branch `main`.
 
+## Current implementation-status addendum — 2026-10-05
+
+The approved owner decisions and exclusions recorded below remain unchanged. The [Phase 17I.1 implementation handoff](./PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION.md) records the resulting runtime disposition: **CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** The 2026-10-04 disposition below is preserved as the closeout-time status and is superseded only for current implementation status; this addendum does not clear future content runtime.
+
+**Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED. Q84–Q111 — CLOSED / OWNER APPROVED. Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE. CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** Manual 17I.1 browser/mobile/device UAT is NOT EXECUTED; no production deployment or whole Phase 17I completion is claimed. Phase 17H.4A separate manual UAT tracking, 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02 and 17J remain unchanged.
+
 ## 1. Current disposition
 
 **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED. Q84–Q111 — CLOSED / OWNER APPROVED. Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.**

@@ -29,6 +29,10 @@ import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
+import {
+  decideHospitalContactPolicy,
+  HOSPITAL_CONTACT_CAPABILITIES,
+} from "@/modules/hospital-contact/policies/hospital-contact-policy";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
@@ -39,6 +43,17 @@ function canManageWorkforce(actor: ActorContext): boolean {
       actor,
       capability: WORKFORCE_CAPABILITIES.read,
       targetHospitalId: hospitalId,
+    }).allowed,
+  );
+}
+
+function canManageHospitalContact(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decideHospitalContactPolicy({
+      actor,
+      capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+      scope: "DIRECT_HOSPITAL_OWNER",
+      hospitalId,
     }).allowed,
   );
 }
@@ -171,6 +186,14 @@ export function projectApplicationNavigation(
       label: "บุคลากร",
       workspace: "work",
       items: [{ href: "/app/workforce", label: "จัดการบุคลากร", match: "prefix" }],
+    });
+  }
+
+  if (canManageHospitalContact(actor)) {
+    groups.push({
+      label: "โรงพยาบาล",
+      workspace: "work",
+      items: [{ href: "/app/hospitals/contact", label: "ข้อมูลติดต่อโรงพยาบาล", match: "exact" }],
     });
   }
 

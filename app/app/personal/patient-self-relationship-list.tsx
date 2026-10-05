@@ -1,9 +1,12 @@
 import { HospitalStatus } from "@prisma/client";
 import Link from "next/link";
 
+import type { PatientSelfContactAvailability } from "@/modules/patient-self/transport/patient-self-page-context";
 import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
 
-type PatientSelfHospitalRelationship = PatientSelfContext["hospitalRelationships"][number];
+type PatientSelfHospitalRelationship = PatientSelfContext["hospitalRelationships"][number] & {
+  hospitalContact?: PatientSelfContactAvailability;
+};
 
 const hospitalStatusLabels: Record<HospitalStatus, string> = {
   [HospitalStatus.ACTIVE]: "พร้อมใช้งาน",
@@ -53,6 +56,47 @@ export function PatientSelfRelationshipList({
                   </dd>
                 </div>
               </dl>
+              {relationship.hospitalContact ? (
+                <section
+                  aria-label={`ข้อมูลติดต่อ ${relationship.hospitalName}`}
+                  className="mt-5 min-w-0 border-t border-border pt-4"
+                >
+                  <h4 className="break-words font-semibold text-text">ข้อมูลติดต่อโรงพยาบาล</h4>
+                  {relationship.hospitalStatus !== HospitalStatus.ACTIVE ? (
+                    <p className="mt-2 break-words text-sm leading-6 text-text-muted">
+                      ยังไม่แสดงข้อมูลติดต่อสำหรับโรงพยาบาลนี้
+                    </p>
+                  ) : relationship.hospitalContact.status === "UNAVAILABLE" ? (
+                    <p className="mt-2 break-words text-sm leading-6 text-text-muted">
+                      ข้อมูลติดต่อยังไม่พร้อมแสดง
+                    </p>
+                  ) : relationship.hospitalContact.contact.addressText === null &&
+                    relationship.hospitalContact.contact.phoneNumber === null ? (
+                    <p className="mt-2 break-words text-sm leading-6 text-text-muted">
+                      ยังไม่มีข้อมูลติดต่อ
+                    </p>
+                  ) : (
+                    <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                      {relationship.hospitalContact.contact.addressText !== null ? (
+                        <div className="min-w-0 sm:col-span-2">
+                          <dt className="text-text-muted">ที่อยู่</dt>
+                          <dd className="mt-1 whitespace-pre-wrap break-words text-text">
+                            {relationship.hospitalContact.contact.addressText}
+                          </dd>
+                        </div>
+                      ) : null}
+                      {relationship.hospitalContact.contact.phoneNumber !== null ? (
+                        <div className="min-w-0">
+                          <dt className="text-text-muted">หมายเลขโทรศัพท์</dt>
+                          <dd className="mt-1 break-words text-text">
+                            {relationship.hospitalContact.contact.phoneNumber}
+                          </dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  )}
+                </section>
+              ) : null}
               <Link
                 className="mt-4 inline-flex min-h-11 max-w-full items-center justify-center rounded-control bg-action-primary px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                 href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}

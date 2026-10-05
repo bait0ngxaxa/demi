@@ -43,6 +43,38 @@ describe("application navigation projection", () => {
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
   });
 
+  it("projects Hospital Contact Work navigation only for a direct active Owner", () => {
+    const owner = actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [
+        {
+          hospitalId,
+          membershipType: MembershipType.OWNER,
+          profession: Profession.DOCTOR,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+    const member = actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [
+        {
+          hospitalId,
+          membershipType: MembershipType.MEMBER,
+          profession: Profession.NURSE,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+
+    expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+  });
+
   it("offers the shared Family management route to active actor types without granting authority", () => {
     for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN]] as const) {
       const familyItem = projectApplicationNavigation(actor({ roles }))

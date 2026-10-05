@@ -4,10 +4,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import PersonalHomePage from "./page";
 import PersonalProfilePage from "./profile/page";
-import { getPatientSelfPageContext } from "@/modules/patient-self/transport/patient-self-page-context";
+import {
+  getPatientPersonalHomePageContext,
+  getPatientSelfPageContext,
+} from "@/modules/patient-self/transport/patient-self-page-context";
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/modules/patient-self/transport/patient-self-page-context", () => ({
+  getPatientPersonalHomePageContext: vi.fn(),
   getPatientSelfPageContext: vi.fn(),
 }));
 
@@ -20,6 +24,14 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ก",
       hospitalNumber: "HN-001",
       hospitalStatus: HospitalStatus.ACTIVE,
+      hospitalContact: {
+        status: "AVAILABLE" as const,
+        contact: {
+          hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
+          addressText: null,
+          phoneNumber: null,
+        },
+      },
       profile: {
         gender: "ชาย",
         phoneNumber: "0812345678",
@@ -38,6 +50,7 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ข",
       hospitalNumber: null,
       hospitalStatus: HospitalStatus.SUSPENDED,
+      hospitalContact: { status: "UNAVAILABLE" as const },
       profile: {
         gender: "ชาย",
         phoneNumber: "0812345678",
@@ -56,6 +69,7 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ค",
       hospitalNumber: "HN-003",
       hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+      hospitalContact: { status: "UNAVAILABLE" as const },
       profile: {
         gender: "ชาย",
         phoneNumber: "0812345678",
@@ -71,10 +85,19 @@ const completeContext = {
   ],
 };
 
+const profileOnlyContext = {
+  person: completeContext.person,
+  hospitalRelationships: completeContext.hospitalRelationships.map(({ hospitalContact, ...relationship }) => {
+    void hospitalContact;
+    return relationship;
+  }),
+};
+
 describe("Patient Personal pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getPatientSelfPageContext).mockResolvedValue(completeContext);
+    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(completeContext);
+    vi.mocked(getPatientSelfPageContext).mockResolvedValue(profileOnlyContext);
   });
 
   it("renders a useful Personal Home from the own authorized projection", async () => {
@@ -92,13 +115,15 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain('href="/app/personal/profile"');
     expect(markup).toContain('href="/app/family"');
     expect(markup).not.toContain('href="/app/patients/assigned"');
+    expect(markup).not.toContain('href="/app/hospitals/contact"');
     expect(markup).not.toContain("เพิ่มบริการ");
     expect(markup).toContain("นัดหมาย");
-    expect(getPatientSelfPageContext).toHaveBeenCalledOnce();
+    expect(markup).toContain("ยังไม่มีข้อมูลติดต่อ");
+    expect(getPatientPersonalHomePageContext).toHaveBeenCalledOnce();
   });
 
   it("shows an explicit incomplete state without fabricating profile values", async () => {
-    vi.mocked(getPatientSelfPageContext).mockResolvedValue(null);
+    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(null);
 
     const markup = renderToStaticMarkup(await PersonalHomePage());
 
@@ -123,6 +148,7 @@ describe("Patient Personal pages", () => {
     expect(markup).not.toContain("วันเกิด");
     expect(markup).not.toContain("อายุ");
     expect(markup).not.toContain("การวินิจฉัย");
+    expect(markup).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
   });
 
   it("shows an incomplete profile state when the identity chain cannot resolve", async () => {

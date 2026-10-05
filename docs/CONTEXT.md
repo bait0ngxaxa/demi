@@ -1,5 +1,13 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — Phase 17I.1 Hospital Contact implementation (2026-10-05)
+
+[Implementation handoff](./phases/PHASE_17I1_HOSPITAL_CONTACT_IMPLEMENTATION.md): **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED.** HospitalContact runtime, exact direct Owner editing, Patient SELF relationship contact projection, guarded ReadCommitted mutation/audit, Owner Work route and bounded Personal Home card are implemented under the binding contract.
+
+**CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.2 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED. Phase 17I.3 — PLANNED / NOT IMPLEMENTED.** Do not infer 17I.2, 17I.3, or whole Phase 17I completion from 17I.1. Automated verification is recorded in the handoff. Manual browser/mobile/device UAT is **NOT EXECUTED**; no production migration/deployment or customer acceptance is claimed. The 2026-10-04 17I.1 clearance-only addendum below remains phase-time evidence and is superseded for current implementation status.
+
+Phase 17H.4A automated PASS and separate manual UAT tracking, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02, and 17J delivery/system authority remain unchanged.
+
 ## CURRENT-status addendum — Phase 17I.0B closeout / 17I.1 Contact contract (2026-10-04)
 
 [Owner decision closeout](./phases/PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md): **Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Q84–Q111 — CLOSED / OWNER APPROVED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE.** เจ้าของผลิตภัณฑ์อนุมัติชุดคำแนะนำเดิมทุกข้อและทุกแกน WITHOUT CHANGES; เอกสาร decision pack เดิมคงเป็นหลักฐานประวัติ ไม่ใช่สถานะปัจจุบัน
