@@ -1,6 +1,16 @@
 # Phase 17I.0B — Hospital Knowledge / Contact Owner Decision Closeout
 
-## CURRENT-status addendum — Phase 17I.3 Patient Content Consumption contract (2026-10-05)
+## CURRENT-status addendum — Phase 17I.3 Patient Content Consumption implementation (2026-10-05)
+
+[Patient Content Consumption implementation handoff](./PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED; Phase 17I.3 — IMPLEMENTED / CLOSED.** Delivered request-time Personal feed/detail, exact persisted Patient SELF authorization inside every Content SELECT, own multi-Hospital union, category-only filter, signed live-view keyset cursor, minimal current-content projections and private history/BFCache safeguards. No schema/migration or Patient write/read audit; Publisher and Contact runtime unchanged.
+
+Automated evidence: focused unit/UI/navigation/Publisher regressions **11 files / 106 tests PASS**, final isolated UI **8 tests PASS**, real PostgreSQL Patient **47 tests PASS** and Publisher **18 tests PASS**, typecheck and targeted ESLint PASS, one stable Next.js build PASS. Full evidence and the unavailable architecture:check script are recorded in the handoff. Prior contract-clearance blocks below are historical evidence.
+
+**Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED; CONTENT-01 — IMPLEMENTED; Phase 17I.2 — IMPLEMENTED / CLOSED; Phase 17I.3 — IMPLEMENTED / CLOSED; Phase 17I.4A — PLANNED / NOT STARTED. Whole Phase 17I — NOT COMPLETE.**
+
+Manual browser/mobile/device/BFCache UAT — **NOT EXECUTED**. Production migration/deployment — **NOT EXECUTED**. 17I.4A is the next integrated re-audit/UAT-readiness phase and was not started. Phase 17H.4A automated PASS/separate manual UAT, 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02 and 17J gates remain unchanged.
+
+## Historical-status addendum — Phase 17I.3 Patient Content Consumption contract (2026-10-05)
 
 Reference: [Phase 17I.3 Patient Content Consumption implementation contract](./PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION_CONTRACT.md).
 

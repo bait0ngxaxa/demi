@@ -56,3 +56,27 @@ describe("Hospital Content direct Owner policy", () => {
     expect(decideHospitalContentPolicy({ actor: null, capability: HOSPITAL_CONTENT_CAPABILITIES.manage, scope: "DIRECT_HOSPITAL_OWNER" }).allowed).toBe(false);
   });
 });
+
+describe("Hospital Content Patient read scope", () => {
+  const decide = (context: ActorContext | null, capability: string = HOSPITAL_CONTENT_CAPABILITIES.read) => decideHospitalContentPolicy({ actor: context, capability, scope: "PATIENT_SELF_RELATIONSHIP" });
+  it("allows PATIENT read but never Patient manage", () => {
+    const patient = actor({ roles: [Role.PATIENT], hospitalMemberships: [] });
+    expect(decide(patient).allowed).toBe(true);
+    expect(decide(patient, HOSPITAL_CONTENT_CAPABILITIES.manage).allowed).toBe(false);
+  });
+  it("denies missing actor/identity and capability-only inputs", () => {
+    expect(decide(null).allowed).toBe(false);
+    expect(decide(actor({ roles: [Role.PATIENT], userId: "" })).allowed).toBe(false);
+    expect(decide(actor({ roles: [Role.PATIENT], personId: " " })).allowed).toBe(false);
+    expect(decideHospitalContentPolicy({ actor: actor({ roles: [Role.PATIENT] }), capability: HOSPITAL_CONTENT_CAPABILITIES.read, scope: undefined }).allowed).toBe(false);
+  });
+  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN])("denies %s regardless of Owner membership/profession/other relationships", (role) => {
+    expect(decide(actor({ roles: [role] })).allowed).toBe(false);
+  });
+  it("keeps multi-role Patient and Publisher scopes separate", () => {
+    const multi = actor({ roles: [Role.PATIENT, Role.HOSPITAL] });
+    expect(decide(multi).scope).toBe("PATIENT_SELF_RELATIONSHIP");
+    expect(decide(multi, HOSPITAL_CONTENT_CAPABILITIES.manage).allowed).toBe(false);
+    expect(decideHospitalContentPolicy({ actor: multi, capability: HOSPITAL_CONTENT_CAPABILITIES.manage, scope: "DIRECT_HOSPITAL_OWNER", hospitalId: hospitalA }).allowed).toBe(true);
+  });
+});

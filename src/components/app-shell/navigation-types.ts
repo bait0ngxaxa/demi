@@ -4,6 +4,7 @@ export type ApplicationNavigationItem = {
   href: string;
   label: string;
   match: "exact" | "prefix";
+  prefetch?: boolean;
   workspaceContext?: ApplicationWorkspaceContext;
 };
 

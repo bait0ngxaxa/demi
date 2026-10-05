@@ -177,6 +177,7 @@ export function projectApplicationNavigation(
         { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
         { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
         { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
+        { href: "/app/personal/knowledge", label: "ข่าวสารและความรู้", match: "prefix", prefetch: false },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
       ],

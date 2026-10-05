@@ -5,7 +5,13 @@ Repository: bait0ngxaxa/demi
 Branch: main
 Expected starting HEAD: 215e475b2fe0d0b6ad40f7f1dbd0b311ab930928
 
-## Disposition
+## Current implementation disposition (2026-10-05)
+
+**CONTENT-01 — IMPLEMENTED. Phase 17I.3 — IMPLEMENTED / CLOSED.** The [implementation handoff](./PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION.md) records delivered runtime, focused unit/UI and real PostgreSQL authorization/race evidence, typecheck/lint and the single passing Next.js build. No schema/migration or Patient write/read audit was added. The binding technical semantics below remain unchanged; clearance and documentation-only validation statements are retained as historical contract-authoring evidence.
+
+**Phase 17I.0 — CLOSED / OWNER DECISIONS CLOSED; Phase 17I.0B — CLOSED / DOCUMENTATION CONTRACT COMPLETE; Q84–Q111 — CLOSED / OWNER APPROVED; CONTENT-02 — IMPLEMENTED; Phase 17I.1 — IMPLEMENTED / CLOSED; Phase 17I.2 — IMPLEMENTED / CLOSED; Phase 17I.3 — IMPLEMENTED / CLOSED; Phase 17I.4A — PLANNED / NOT STARTED; Whole Phase 17I — NOT COMPLETE.** Manual browser/mobile/device/BFCache UAT and production migration/deployment remain NOT EXECUTED. 17I.4A was not started.
+
+## Historical contract-clearance disposition
 
 **Phase 17I.3 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.**
 
@@ -490,7 +496,7 @@ After the eventual 17I.3 runtime implementation, the next technical step is:
 
 Do not implement 17I.4A in the 17I.3 implementation task. Do not declare whole Phase 17I complete automatically after 17I.3. Production migration/deployment and manual UAT remain separate evidence gates.
 
-## 21. Final status
+## 21. Historical contract-clearance status
 
 | Item | Current disposition |
 | --- | --- |
@@ -507,7 +513,7 @@ Do not implement 17I.4A in the 17I.3 implementation task. Do not declare whole P
 
 Phase 17H.4A automated PASS / separate manual UAT, 17G.4A, Family P17F-L04/L05, Q5 governance gate, parked 17E.2 consent, MED-02, and 17J notification delivery/system authority are unchanged.
 
-## 22. Documentation-only validation boundary
+## 22. Historical documentation-only validation boundary
 
 This task changes documentation only. No unit/integration tests, Prisma generate/validate, migrations, build, or dev server were run.
 

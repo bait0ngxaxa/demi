@@ -224,6 +224,7 @@ describe("application navigation projection", () => {
       "/app/personal/services",
       "/app/personal/medications",
       "/app/personal/wellness",
+      "/app/personal/knowledge",
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
@@ -246,6 +247,9 @@ describe("application navigation projection", () => {
     );
     expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
       "/app/personal/wellness",
+    );
+    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
+      "/app/personal/knowledge",
     );
   });
 
@@ -316,5 +320,24 @@ describe("application navigation active state", () => {
         match: "prefix",
       }),
     ).toBe(true);
+  });
+});
+
+describe("Patient Content Personal navigation", () => {
+  it("places protected knowledge exactly between Wellness and Appointments", () => {
+    const personal = projectApplicationNavigation(actor()).find(({ workspace }) => workspace === "personal");
+    const items = personal?.items ?? [];
+    const index = items.findIndex(({ href }) => href === "/app/personal/knowledge");
+    expect(index).toBeGreaterThan(0);
+    expect(items[index - 1]?.label).toBe("สุขภาพ"); expect(items[index + 1]?.label).toBe("นัดหมาย");
+    expect(items[index]).toMatchObject({ label: "ข่าวสารและความรู้", match: "prefix", prefetch: false });
+  });
+  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN])("does not project Patient knowledge for %s-only", (role) => {
+    expect(projectApplicationNavigation(actor({ roles: [role] })).flatMap(({ items }) => items).some(({ href }) => href === "/app/personal/knowledge")).toBe(false);
+  });
+  it("keeps Patient+Owner Work Publisher and Personal knowledge separated", () => {
+    const groups = projectApplicationNavigation(actor({ roles: [Role.PATIENT, Role.HOSPITAL], hospitalMemberships: [{ hospitalId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] }));
+    expect(groups.find(({ workspace }) => workspace === "personal")?.items.some(({ href }) => href === "/app/personal/knowledge")).toBe(true);
+    expect(groups.filter(({ workspace }) => workspace === "work").flatMap(({ items }) => items).some(({ href }) => href === "/app/hospitals/knowledge")).toBe(true);
   });
 });

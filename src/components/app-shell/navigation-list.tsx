@@ -93,6 +93,7 @@ export function NavigationList({
                             : "text-text hover:bg-surface-muted focus-visible:ring-focus-ring",
                       )}
                       href={item.href}
+                      prefetch={item.prefetch}
                       onClick={onNavigate}
                     >
                       {item.label}
