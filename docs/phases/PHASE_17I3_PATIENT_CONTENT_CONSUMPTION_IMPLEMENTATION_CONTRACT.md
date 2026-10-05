@@ -254,17 +254,17 @@ Category is the only feed filter.
 
 | Query state | Meaning |
 | --- | --- |
-| no category parameter | All categories |
+| category parameter absent | Valid; all categories |
 | category=NCD | NCD only |
 | category=FOOD | FOOD only |
 | category=EXERCISE | EXERCISE only |
 | category=OTHER | OTHER only |
 
-Thai labels are NCD, อาหาร, การออกกำลังกาย, and อื่น ๆ. Do not expose an ALL machine value; all categories is represented by omitting category.
+Thai labels are NCD, อาหาร, การออกกำลังกาย, and อื่น ๆ. Do not expose an ALL machine value; all categories is represented by omitting category. An absent category parameter is valid and never produces ValidationError.
 
 Use a native GET form for category selection, pagination, reset, and “โหลดรายการล่าสุด”. The category form submits only category and deliberately drops cursor. Reset omits category and cursor, restarting page one. Do not preserve an old cursor after category change.
 
-Reject duplicate category values, malformed values, unknown category values, duplicate cursor parameters, malformed cursor input, and unapproved filter parameters using the current safe ValidationError/route conventions. Do not silently coerce invalid input to all categories. Do not echo the submitted cursor or invalid filter value in an error.
+When category is present, exactly one value is required and it must be exactly NCD, FOOD, EXERCISE, or OTHER. Reject empty or malformed values, unknown values, duplicate category query parameters, array/multi-value input, duplicate cursor parameters, malformed cursor input, and unapproved filter parameters using the current safe ValidationError/route conventions. Only an absent category means all categories; never silently coerce an invalid present value to all. Do not echo the submitted cursor or invalid filter value in an error.
 
 Do not add Hospital filter, search text, tags, pinning, sort choice, clinical priority, personalized ranking, or any additional query filter.
 
@@ -282,7 +282,7 @@ firstPublishedAt == cursor.firstPublishedAt AND id < cursor.id
 
 Fetch 26 authorized rows, return at most the first 25, and emit a next cursor only when the lookahead proves another row exists. The cursor position contains only firstPublishedAt and id. latestPublishedAt and updatedAt are not continuation anchors.
 
-An article withdrawn or archived between pages is filtered out by the next query. An article republished between pages keeps its position because firstPublishedAt is unchanged. Relationship changes are allowed between pages; the cursor does not freeze the Hospital set.
+An article withdrawn or archived between pages is filtered out by the next query. An article republished between pages keeps its position because firstPublishedAt is unchanged. Relationship changes are allowed between pages; the cursor does not freeze the Hospital set. Withdrawing or archiving the anchor, adding or removing a relationship, a Hospital becoming non-ACTIVE, new publications appearing before the cursor, and other changes to current feed rows do not invalidate a structurally valid, correctly signed cursor. The cursor is a position tuple, not a foreign key: do not load its anchor HospitalContent row to validate it, and do not reject it because the anchor is absent from the current visible result set. After cursor validation, apply its seek values directly in the next Content query together with the fresh current Patient SELF authorization predicate. New eligible rows are governed by the normal seek boundary; use the first-page restart to see current leading content. If the changed live scope yields zero rows, use the normal fresh authority and empty-result classification; do not report a cursor error.
 
 ## 11. Dedicated Patient cursor
 
@@ -308,7 +308,7 @@ HMAC context must bind all of:
 - firstPublishedAt-id-desc order.
 - All-current-own-ACTIVE-Hospitals union semantics.
 
-The same scope/filter must be checked against the request while decoding. A valid signed cursor is never authorization; every page request resolves fresh persisted Patient SELF and the content query carries its own predicate.
+The same scope/filter must be checked against the request while decoding. A valid signed cursor is never authorization; every page request resolves fresh persisted Patient SELF and the content query carries its own predicate. Cursor validation is limited to its bounded structure, signature, and request scope and must not load or require existence/visibility of the HospitalContent row identified by firstPublishedAt + id. The decoded position values go directly into the current authorized query's seek predicate. Changes to the anchor row's publication lifecycle, current Hospital visibility, own relationship set, or rows before the cursor do not invalidate the cursor and do not turn this live view into a snapshot.
 
 Strictly reject oversized input, wrong prefix/version, malformed segment count, noncanonical base64url, wrong signature length, invalid MAC, invalid timestamp/UUID/category, duplicate or unknown JSON keys, noncanonical/reordered JSON bytes, wrong actor, wrong person, wrong PatientProfile, category mismatch, page-size/order/scope mismatch, or any malformed cursor. Compare fixed-length MACs with timingSafeEqual. All cursor failures are bounded safe ValidationError outcomes.
 
@@ -394,7 +394,10 @@ Previously rendered bytes cannot be cryptographically recalled from browser memo
 
 | Condition | Application outcome |
 | --- | --- |
-| Missing/invalid category or malformed/tampered/stale cursor | Safe ValidationError; bounded error state and restart at first page |
+| Category parameter absent | Valid request for all categories; no ValidationError |
+| Present category is empty, malformed, unknown, duplicated, or multi-value/array input | Safe ValidationError; bounded error state and restart at first page |
+| Cursor is malformed, oversized, noncanonical, tampered, or bound to a different actor/profile/filter/page-size/order/domain scope | Safe ValidationError; bounded error state and restart at first page |
+| Structurally valid cursor after anchor withdrawal/archive, relationship/Hospital change, or live-feed row changes | Still valid; apply its position tuple to the fresh authorized live-view query |
 | Invalid content UUID | NotFound |
 | Missing, foreign, DRAFT, ARCHIVED, withdrawn, suspended-Hospital, or no-longer-related detail | Same safe NotFound/unavailable outcome |
 | Missing session | Existing Unauthenticated outcome and login redirect |
@@ -423,8 +426,8 @@ These are required implementation checks, not results of this documentation task
 ### Unit tests
 
 - Patient policy: the explicit PATIENT actor + Patient scope/capability input is the only policy allow; capability-only does not allow; HOSPITAL Owner without Patient SELF, OSM, ADMIN-only, Family/caregiver, and non-Patient Work actors deny; PATIENT+OWNER remains SELF-only. Persisted ACTIVE User/Profile/relationship/Hospital facts are proved by real PostgreSQL tests, not mocked into the pure policy test.
-- Category parsing: absent means all; NCD/FOOD/EXERCISE/OTHER each filter exactly; unknown/malformed/duplicate values fail; changing category drops cursor.
-- Cursor round trip for null and every category; actor, person, PatientProfile, domain, page-size/order, category, and all-current-own-Hospitals scope binding; tamper/MAC failure; wrong actor/profile/category; malformed timestamp/UUID; unknown key; reordered/noncanonical JSON; noncanonical base64url; oversize; no relationship/Hospital/article text payload.
+- Category parsing: absent is valid and means all; when present exactly one value must be NCD/FOOD/EXERCISE/OTHER; empty, unknown, malformed, duplicate, and array/multi-value inputs fail; changing category drops cursor.
+- Cursor round trip for null and every category; actor, person, PatientProfile, domain, page-size/order, category, and all-current-own-Hospitals scope binding; tamper/MAC failure and wrong scope return ValidationError; malformed timestamp/UUID; unknown key; reordered/noncanonical JSON; noncanonical base64url; oversize; no relationship/Hospital/article text payload. Decoding does not require anchor-row existence.
 - Projection: list excludes body/source/internal IDs/status/version; detail contains only approved current content; firstPublishedAt is not a display field; latestPublishedAt and Hospital attribution are present; no human author/reviewer.
 - Presentation: category labels, Bangkok timestamp, escaped plain text, LF preservation, source not linked, safe copy, distinct empty/error states.
 
@@ -437,7 +440,7 @@ Use the repository’s real disposable PostgreSQL integration harness, not polic
 - Lifecycle: PUBLISHED visible; DRAFT/ARCHIVED hidden; withdraw to DRAFT disappears; republish becomes visible again; archive removes the row.
 - Ordering: global cross-Hospital firstPublishedAt DESC, UUID id DESC tie-break; latestPublishedAt and updatedAt do not rank; republishing an old row does not promote it.
 - Category: exact fixed values, all-category behavior, and no category filter ever widens Hospital scope.
-- Pagination: fixed 25/fetch 26, multiple pages, equal timestamp tie behavior, new item ahead of cursor, withdrawal/archive between pages, relationship removal/addition between pages, tampered cursor, actor/Profile/filter mismatch, and no duplicate/scope widening.
+- Pagination: fixed 25/fetch 26, multiple pages, equal timestamp tie behavior, and new items ahead of the cursor. After page 1, withdrawing or archiving the cursor anchor leaves the cursor valid; page 2 applies the saved seek tuple and returns currently eligible rows after that boundary without loading the anchor. Removing a relationship between pages leaves the cursor valid and excludes that Hospital's rows; adding a relationship leaves it valid and newly eligible rows follow normal live-view seek semantics. Tampered or wrong actor/person/Profile/filter/page-size/order/domain scope cursors return bounded ValidationError. These cases prove the feed is a live view, not a snapshot.
 - Detail: own PUBLISHED succeeds; foreign, missing, DRAFT, ARCHIVED, withdrawn, suspended-Hospital, and relationship-removed cases have indistinguishable safe NotFound presentation.
 - Empty results: valid SELF with no eligible Hospital is distinct from eligible Hospital with no PUBLISHED content and selected category with no matches; role/Profile authority loss is never classified as empty.
 - Audit: feed/detail/filter/continuation produce no AuditEvent and do not update HospitalContent.updatedAt.
@@ -508,11 +511,16 @@ Phase 17H.4A automated PASS / separate manual UAT, 17G.4A, Family P17F-L04/L05, 
 
 This task changes documentation only. No unit/integration tests, Prisma generate/validate, migrations, build, or dev server were run.
 
-Validation completed:
+Initial contract authoring validation was completed at db1c086:
 
-- Complete final diff reviewed: only this contract, docs/CONTEXT.md, and docs/phases/PHASE_17_UAT_BACKLOG.md changed. No runtime, test, Prisma schema, migration, route, navigation source, or configuration file changed. The Q84–Q111 closeout was not modified.
-- git diff --check passed. The new Markdown file also passed a separate trailing-whitespace scan.
-- 188 local Markdown file targets and heading anchors across the three touched documents were verified.
-- All touched Markdown strictly decoded as UTF-8. The new file has no BOM. No U+FFFD or detected mojibake was found. Existing Thai decision text was not rewritten; the new Thai UI copy was visually reviewed.
-- Route topology, navigation placement, multi-Hospital own-relationship union, query-bound persisted authorization, lifecycle visibility, projection, category/order/cursor, cache/BFCache, no-read-audit, and Phase 17I.4A boundaries were checked against the requested contract.
-- Runtime tests and Prisma/build commands were not run, as required. Manual browser/mobile/device UAT and production migration/deployment remain NOT EXECUTED.
+- The original final diff covered the contract, docs/CONTEXT.md, and docs/phases/PHASE_17_UAT_BACKLOG.md; the Q84–Q111 closeout was not modified in that task. No runtime, test, Prisma schema, migration, route, navigation source, or configuration file changed.
+- git diff --check passed; 188 local Markdown file targets and heading anchors across those three touched documents were verified.
+- Those touched Markdown files strictly decoded as UTF-8. The new contract had no BOM. No U+FFFD or detected mojibake was found. Existing Thai decision text was not rewritten; the new Thai UI copy was visually reviewed.
+- Route topology, navigation placement, multi-Hospital own-relationship union, query-bound persisted authorization, lifecycle visibility, projection, category/order/cursor, cache/BFCache, no-read-audit, and Phase 17I.4A boundaries were checked against the original requested contract.
+
+Final documentation review correction validation (2026-10-05):
+
+- Complete correction diff reviewed: only this contract and docs/phases/PHASE_17I0B_HOSPITAL_KNOWLEDGE_CONTACT_DECISION_CLOSEOUT.md changed. No runtime, test, Prisma schema, migration, route, navigation source, or configuration file changed.
+- git diff --check passed; local Markdown links in the two corrected documents were verified; both files strictly decoded as UTF-8 with no U+FFFD or detected Thai mojibake.
+- Category absence is valid and means all categories; only an invalid/duplicate/multi-value present category is a ValidationError. Cursor validation does not require anchor-row existence; lifecycle/relationship changes retain live-view cursor validity. The 17I.0B document has one current 17I.3 status addendum and labels the prior 17I.2 status addendum historical.
+- Phase 17I.3 remains NOT IMPLEMENTED; Phase 17I.4A remains NOT STARTED. Runtime tests, Prisma commands, build, and dev server were not run, as required. Manual browser/mobile/device UAT and production migration/deployment remain NOT EXECUTED.
