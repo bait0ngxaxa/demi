@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
@@ -16,7 +16,9 @@ const supportedActions = new Set([
   "db:reset",
   "db:status",
   "migrate",
+  "migrate:populated",
   "test",
+  "test:focused",
   "verify",
 ]);
 
@@ -78,6 +80,13 @@ function getIntegrationEnvironment() {
   }
 
   return environment;
+}
+
+function requireCommittedIntegrationTarget(environment) {
+  const committedEnvironment = parseEnvFile(integrationEnvPath);
+  if (environment.DEMI_TEST_DATABASE_URL !== committedEnvironment.DEMI_TEST_DATABASE_URL) {
+    fail("migrate:populated is limited to the repository's committed disposable integration database");
+  }
 }
 
 function run(command, args, options = {}) {
@@ -282,6 +291,106 @@ function migrate(environment) {
   });
 }
 
+async function migratePopulated(environment, runtime) {
+  const migrationsRoot = resolve(repositoryRoot, "prisma", "migrations");
+  const currentMigration = "20261005120000_hospital_content_publishing";
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "demi-hospital-content-migration-"));
+  const safeTemporaryRoot = resolve(temporaryRoot);
+  const safeTempBase = resolve(tmpdir());
+  if (!safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+    fail("temporary migration workspace resolved outside the system temporary directory");
+  }
+
+  const temporaryMigrations = join(safeTemporaryRoot, "migrations");
+  const temporarySchema = join(safeTemporaryRoot, "schema.prisma");
+  mkdirSync(temporaryMigrations);
+
+  try {
+    databaseDown(runtime, environment);
+    databaseUp(runtime, environment);
+
+    for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === currentMigration) continue;
+      cpSync(join(migrationsRoot, entry.name), join(temporaryMigrations, entry.name), { recursive: true });
+    }
+    cpSync(join(migrationsRoot, "migration_lock.toml"), join(temporaryMigrations, "migration_lock.toml"));
+    writeFileSync(temporarySchema, [
+      "generator client {",
+      '  provider = "prisma-client-js"',
+      "}",
+      "",
+      "datasource db {",
+      '  provider = "postgresql"',
+      '  url      = env("DATABASE_URL")',
+      "}",
+      "",
+    ].join("\n"), "utf8");
+
+    run(process.execPath, [
+      resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"),
+      "migrate",
+      "deploy",
+      "--schema",
+      temporarySchema,
+    ], { env: environment });
+    run(process.execPath, [resolve(repositoryRoot, "scripts", "seed-hospital-master.mjs")], { env: environment });
+
+    const { PrismaClient, HospitalStatus } = await import("@prisma/client");
+    const prisma = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    let hospitalBefore;
+    let contactBefore;
+    try {
+      const hospital = await prisma.hospital.findUniqueOrThrow({
+        where: { hospitalCode: "KANG" },
+        select: { id: true },
+      });
+      await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
+      await prisma.hospitalContact.create({
+        data: { hospitalId: hospital.id, addressText: "ที่อยู่ก่อนการย้ายฐานข้อมูล", phoneNumber: "02-123-4567" },
+      });
+      hospitalBefore = await prisma.hospital.findUniqueOrThrow({
+        where: { id: hospital.id },
+        select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true, updatedAt: true },
+      });
+      contactBefore = await prisma.hospitalContact.findUniqueOrThrow({
+        where: { hospitalId: hospital.id },
+        select: { id: true, hospitalId: true, addressText: true, phoneNumber: true, createdAt: true, updatedAt: true },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+
+    migrate(environment);
+
+    const verificationClient = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    try {
+      const hospitalAfter = await verificationClient.hospital.findUniqueOrThrow({
+        where: { id: hospitalBefore.id },
+        select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true, updatedAt: true },
+      });
+      const contactAfter = await verificationClient.hospitalContact.findUniqueOrThrow({
+        where: { id: contactBefore.id },
+        select: { id: true, hospitalId: true, addressText: true, phoneNumber: true, createdAt: true, updatedAt: true },
+      });
+      const contentCount = await verificationClient.hospitalContent.count();
+      if (
+        JSON.stringify(hospitalBefore) !== JSON.stringify(hospitalAfter) ||
+        JSON.stringify(contactBefore) !== JSON.stringify(contactAfter) ||
+        contentCount !== 0
+      ) {
+        fail("populated Hospital migration changed existing identity/Contact or created Content rows");
+      }
+      console.log("Hospital Content migration preserved a populated Hospital master and HospitalContact; no Content backfill created");
+    } finally {
+      await verificationClient.$disconnect();
+    }
+  } finally {
+    if (safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+      rmSync(safeTemporaryRoot, { recursive: true, force: true });
+    }
+  }
+}
+
 function generate(environment) {
   run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "generate"], {
     env: environment,
@@ -296,6 +405,30 @@ function test(environment) {
       "run",
       "--config",
       "vitest.integration.config.mts",
+    ],
+    { env: environment },
+  );
+}
+
+function testFocused(environment, relativeTestPath) {
+  if (
+    !relativeTestPath ||
+    !/^tests\/integration\/[A-Za-z0-9._/-]+\.integration\.test\.ts$/u.test(relativeTestPath) ||
+    relativeTestPath.split("/").includes("..")
+  ) {
+    fail("test:focused requires one integration test path under tests/integration");
+  }
+
+  generate(environment);
+  migrate(environment);
+  run(
+    process.execPath,
+    [
+      resolve(repositoryRoot, "node_modules", "vitest", "vitest.mjs"),
+      "run",
+      "--config",
+      "vitest.integration.config.mts",
+      relativeTestPath,
     ],
     { env: environment },
   );
@@ -325,6 +458,11 @@ if (action === "test") {
   process.exit(0);
 }
 
+if (action === "test:focused") {
+  testFocused(environment, process.argv[3]);
+  process.exit(0);
+}
+
 const runtime = resolveDockerRuntime(environment);
 
 if (action === "db:up") {
@@ -344,4 +482,7 @@ if (action === "db:up") {
   } finally {
     databaseDown(runtime, environment);
   }
+} else if (action === "migrate:populated") {
+  requireCommittedIntegrationTarget(environment);
+  await migratePopulated(environment, runtime);
 }

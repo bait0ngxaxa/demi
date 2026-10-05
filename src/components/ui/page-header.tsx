@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 type PageHeaderBreadcrumb = {
   label: string;
@@ -11,6 +11,7 @@ type PageHeaderProps = {
   description: string;
   breadcrumbs?: readonly PageHeaderBreadcrumb[];
   actions?: ReactNode;
+  onBreadcrumbClick?: MouseEventHandler<HTMLAnchorElement>;
 };
 
 export function PageHeader({
@@ -18,6 +19,7 @@ export function PageHeader({
   description,
   breadcrumbs,
   actions,
+  onBreadcrumbClick,
 }: PageHeaderProps): React.JSX.Element {
   return (
     <header className="border-b border-border pb-8">
@@ -31,6 +33,7 @@ export function PageHeader({
                   <Link
                     className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                     href={breadcrumb.href}
+                    onClick={onBreadcrumbClick}
                   >
                     {breadcrumb.label}
                   </Link>

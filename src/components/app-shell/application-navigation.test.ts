@@ -70,9 +70,13 @@ describe("application navigation projection", () => {
     });
 
     expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(owner)).toContain("ข่าวสารและความรู้");
     expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(member)).not.toContain("ข่าวสารและความรู้");
     expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข่าวสารและความรู้");
     expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข่าวสารและความรู้");
   });
 
   it("offers the shared Family management route to active actor types without granting authority", () => {
@@ -302,6 +306,13 @@ describe("application navigation active state", () => {
       isNavigationItemActive("/app/admin/hospital-onboarding/request-id", {
         href: "/app/admin/hospital-onboarding",
         label: "คำขอขึ้นทะเบียนโรงพยาบาล",
+        match: "prefix",
+      }),
+    ).toBe(true);
+    expect(
+      isNavigationItemActive("/app/hospitals/knowledge/record-id", {
+        href: "/app/hospitals/knowledge",
+        label: "ข่าวสารและความรู้",
         match: "prefix",
       }),
     ).toBe(true);

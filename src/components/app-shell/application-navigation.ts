@@ -33,6 +33,10 @@ import {
   decideHospitalContactPolicy,
   HOSPITAL_CONTACT_CAPABILITIES,
 } from "@/modules/hospital-contact/policies/hospital-contact-policy";
+import {
+  decideHospitalContentPolicy,
+  HOSPITAL_CONTENT_CAPABILITIES,
+} from "@/modules/hospital-content/policies/hospital-content-policy";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
@@ -52,6 +56,17 @@ function canManageHospitalContact(actor: ActorContext): boolean {
     decideHospitalContactPolicy({
       actor,
       capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+      scope: "DIRECT_HOSPITAL_OWNER",
+      hospitalId,
+    }).allowed,
+  );
+}
+
+function canManageHospitalContent(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decideHospitalContentPolicy({
+      actor,
+      capability: HOSPITAL_CONTENT_CAPABILITIES.read,
       scope: "DIRECT_HOSPITAL_OWNER",
       hospitalId,
     }).allowed,
@@ -189,11 +204,18 @@ export function projectApplicationNavigation(
     });
   }
 
+  const hospitalWorkItems = [];
   if (canManageHospitalContact(actor)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/contact", label: "ข้อมูลติดต่อโรงพยาบาล", match: "exact" as const });
+  }
+  if (canManageHospitalContent(actor)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/knowledge", label: "ข่าวสารและความรู้", match: "prefix" as const });
+  }
+  if (hospitalWorkItems.length > 0) {
     groups.push({
       label: "โรงพยาบาล",
       workspace: "work",
-      items: [{ href: "/app/hospitals/contact", label: "ข้อมูลติดต่อโรงพยาบาล", match: "exact" }],
+      items: hospitalWorkItems,
     });
   }
 

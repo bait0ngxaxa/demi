@@ -20,7 +20,9 @@
     "test:db:reset": "node scripts/integration.mjs db:reset",
     "test:db:status": "node scripts/integration.mjs db:status",
     "prisma:migrate:test": "node scripts/integration.mjs migrate",
-    "test:integration": "node scripts/integration.mjs test"
+    "test:integration": "node scripts/integration.mjs test",
+    "test:integration:focused": "node scripts/integration.mjs test:focused",
+    "test:db:migrate:populated": "node scripts/integration.mjs migrate:populated"
   },
   "dependencies": {
     "@fastify/busboy": "3.2.1",

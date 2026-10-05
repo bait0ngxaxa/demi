@@ -3,6 +3,12 @@
 Date: 2026-10-05 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`; branch: `main`.
 Expected and observed starting HEAD: `ca031d09494aa863ee823b837b67d2ff45d04098`, `fix(phase-17i1): address contact review corrections`; clean starting working tree.
 
+## Current implementation-status addendum — Phase 17I.2 (2026-10-05)
+
+This contract's approved product and technical semantics remain binding. Current delivery and automated evidence are recorded in the [Phase 17I.2 implementation handoff](./PHASE_17I2_HOSPITAL_CONTENT_PUBLISHING_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED; Phase 17I.2 — IMPLEMENTED / CLOSED.** **Phase 17I.3 — PLANNED / TECHNICAL CONTRACT PENDING / NOT IMPLEMENTED.** Q84–Q111 remain CLOSED / OWNER APPROVED; whole Phase 17I is not complete.
+
+The handoff records the full unit baseline (234 files / 2,003 tests PASS), followed by the final focused domain/schema/cursor/UI/login/recovery run (6 files / 50 tests PASS), real PostgreSQL after the final REPLAY row lock (1 file / 16 tests PASS), clean all-38-migration and populated migration checks, Prisma generate/validate, typecheck, and lint/targeted ESLint PASS. Browser interaction/manual mobile-device UAT and production migration/deployment were **NOT EXECUTED**. The contract-time planned disposition and documentation-only validation below are historical authoring evidence superseded by this implementation addendum; none of the binding decisions are changed.
+
 ## 1. Disposition and binding authority
 
 **Phase 17I.2 — CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED. CONTENT-01 — OWNER DECISIONS CLOSED / 17I.2 CLEARED FOR IMPLEMENTATION / NOT IMPLEMENTED.** This is a documentation-only implementation contract. Every model, constraint, service, policy, action, route, UI and test below is a future implementation requirement, not delivered runtime.

@@ -5,6 +5,7 @@ import { connection } from "next/server";
 
 import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context-service";
 
+import { ClearHospitalContentRecoveryOnLogin } from "./clear-hospital-content-recovery";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default async function LoginPage() {
 
   return (
     <main className="min-h-svh bg-canvas lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(28rem,0.95fr)]">
+      <ClearHospitalContentRecoveryOnLogin />
       <section className="relative overflow-hidden bg-brand-deep px-6 py-8 text-white sm:px-10 lg:flex lg:min-h-svh lg:flex-col lg:justify-between lg:px-14 lg:py-12 xl:px-20">
         <div
           aria-hidden="true"

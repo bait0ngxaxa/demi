@@ -32,6 +32,19 @@ enum HospitalStatus {
   SUSPENDED
 }
 
+enum HospitalContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum HospitalContentCategory {
+  NCD
+  FOOD
+  EXERCISE
+  OTHER
+}
+
 enum HospitalOnboardingApplicationStatus {
   PENDING
   APPROVED
@@ -272,6 +285,7 @@ model Hospital {
   serviceOfferings         HospitalServiceOffering[]
   patientAccessRequests    PatientAccessRequest[]
   contact                  HospitalContact?
+  contents                 HospitalContent[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
@@ -287,6 +301,28 @@ model HospitalContact {
   updatedAt   DateTime @updatedAt @db.Timestamp(3)
 
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model HospitalContent {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  hospitalId         String                 @db.Uuid
+  submissionNonce    String                 @db.Uuid
+  title              String                 @db.VarChar(200)
+  body               String                 @db.Text
+  category           HospitalContentCategory
+  sourceText         String?                @db.VarChar(1000)
+  status             HospitalContentStatus  @default(DRAFT)
+  firstPublishedAt   DateTime?              @db.Timestamptz(3)
+  latestPublishedAt  DateTime?              @db.Timestamptz(3)
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([hospitalId, submissionNonce], map: "HospitalContent_hospital_nonce_key")
+  @@index([hospitalId, updatedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_publisher_order_idx")
+  @@index([hospitalId, status, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_order_idx")
+  @@index([hospitalId, status, category, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_category_order_idx")
 }
 
 model HospitalMembership {
