@@ -30,6 +30,10 @@ The multi-role presentation question left open at ADR acceptance is now **CLOSED
 
 The detailed decision is recorded in [Phase 17J.0B](../phases/PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md). The binding, LIFF, reachability, webhook and role-aware menu implementation contract is [Phase 17J.1](../phases/PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md), complete and cleared for implementation. ADR-0009 remains Accepted; no new ADR is required. Runtime remains NOT IMPLEMENTED.
 
+Current identity-lifecycle contract: v1 uniqueness applies only to ACTIVE LINE bindings; active replacement is never automatic and cross-user rebind is denied when retained lifecycle evidence conflicts. Unlink alone does not authorize transfer, same-User relink requires the explicit flow, inaccessible LINE does not permit takeover, and existing DEMI account recovery remains authoritative. No permanent LINE-subject ownership or non-transfer tombstone is owner-approved.
+
+Exact LINE identity-history fingerprint/owner retention and erasure duration, and future cross-account correction/reconciliation/merge/transfer semantics remain OPEN. This open item does not block v1 if runtime remains fail-closed while retained evidence conflicts; it does not reopen Option C.
+
 ## Rationale
 
 - Provider identity namespace is a platform-level decision that is costly to reverse after channel creation.

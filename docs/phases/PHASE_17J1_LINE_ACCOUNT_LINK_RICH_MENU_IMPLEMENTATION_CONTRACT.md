@@ -4,6 +4,8 @@
 - วันที่ทบทวนเอกสาร LINE: 2026-10-06
 - ขอบเขตงานนี้: สัญญา implementation เท่านั้น
 - Phase 17J.1 runtime: **NOT IMPLEMENTED**
+- Identity-history retention/erasure and future cross-account correction/reconciliation semantics: **OPEN**; this does not block v1 if active-binding constraints and cross-user fail-closed checks below are implemented.
+- v1 never treats a LINE subject as permanently owned. Raw subject is required only while a binding is ACTIVE; unlink clears the raw value and keeps only a privacy-minimized fingerprint as current conflict evidence. Exact fingerprint/owner-history retention remains OPEN.
 - สถานะ architecture: [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) ยัง Accepted; owner closeout ของ multi-role อยู่ใน [Phase 17J.0B](./PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md)
 
 เอกสารนี้เป็นข้อกำหนดผูกพันของ implementation Phase 17J.1 ถ้าพฤติกรรม runtime หรือ provider API ไม่ตรงกับสัญญานี้ ให้หยุดและแก้สัญญาด้วยหลักฐานก่อน implement ห้ามเดา policy หรือแก้ authority เพื่อให้เมนูทำงาน
@@ -65,22 +67,24 @@ HEAD ที่ตรวจคือ `cd60e1acadee1f725d7679654406fcf9e66e5c0e`; 
 
 | Durable state | Fields / invariant ที่ต้องมี | เหตุผล |
 | --- | --- | --- |
-| `LineAccountBinding` | exact verified LINE subject unique ถาวร; owner User FK; linkedAt/lastLinkedAt; nullable unlinkedAt; nullable presentationRole/presentationRoleSelectedAt; current reachability state/observedAt; expected/read-back Rich Menu IDs และ bounded sync status/time | identity binding, lifecycle, UX preference, reachability และการตรวจ projection |
+| LineAccountBinding | exact verified LINE subject while ACTIVE; owner User FK; linkedAt/lastLinkedAt; nullable unlinkedAt; nullable presentationRole/presentationRoleSelectedAt; reachability and menu-sync state; inactive lifecycle fingerprint without raw LINE subject | active binding, UX preference, reachability, projection and v1 conflict guard |
 | `LineAccountActionIntent` | opaque id; User FK; LINK/UNLINK action; createdAt; hash ของ challenge; hash ของ verified Supabase session_id; expiresAt; nullable consumedAt/outcome | single-use CSRF/replay defense ที่อยู่ข้าม request |
 | `LineWebhookEventReceipt` | unique webhookEventId, allowlisted event type, event occurredAt, acceptedAt และ bounded outcome enum เท่านั้น | durable dedupe และ atomic event effect |
 
 ข้อบังคับ DB:
 
-1. LINE subject เป็น unique ตลอดอายุ binding row; subject เดิมห้ามย้ายไป DEMI User อื่นแม้ unlink แล้ว. Binding.userId FK ใช้ ON DELETE RESTRICT ไม่ cascade-delete ownership history; หากอนาคตมี account-erasure flow ต้องรักษา non-transfer tombstone หรือผ่าน privacy/security decision แยกก่อนปล่อย subject
-2. หนึ่ง User มี active binding ได้ไม่เกินหนึ่งรายการ; ใช้ PostgreSQL partial unique index บน userId เมื่อ unlinkedAt เป็น null (เพิ่มด้วย SQL migration หาก Prisma schema ปัจจุบันแทนข้อจำกัดนี้ไม่ได้)
-3. Binding owner UserId คงเดิมตลอด lifecycle; unlink เป็น soft-unlink ไม่ delete row หรือปล่อย subject ให้คนอื่น
-4. Binding active หมายถึง unlinkedAt เป็น null; unique constraint เป็น concurrency arbiter ไม่พึ่ง pre-check ใน application
-5. presentationRole อนุญาตเฉพาะ PATIENT, OSM, HOSPITAL หรือ null; ไม่รับ ADMIN และไม่ถูกส่งเข้า domain policy
-6. Intent challenge สร้างด้วย CSPRNG อย่างน้อย 256 bits, เก็บเฉพาะ SHA-256 hash, ใช้ได้ 5 นาที, ผูกกับ User/session/action, consume ได้ครั้งเดียว
-7. Webhook receipt เก็บเฉพาะ ULID/event type/time/outcome โดยไม่มี raw body, source subject, message, profile หรือ token; คง receipt ไว้เป็น dedupe authority เพราะ LINE ไม่รับประกัน redelivery schedule
-8. lifecycle detail ใช้ existing AuditEvent แบบ minimized: event kind, actor/User id ตาม audit convention และ outcome; ห้ามบันทึก LINE subject หรือ request/provider body
+1. DB uniqueness covers ACTIVE bindings only: partial UNIQUE on lineSubjectFingerprint WHERE unlinkedAt IS NULL, and partial UNIQUE on userId WHERE unlinkedAt IS NULL. These are the only subject/User uniqueness invariants; do not add global uniqueness over inactive history.
+2. A new link transaction checks active bindings and retained identity-history fingerprints. An active conflict or a retained fingerprint associated with another User is denied generically because no cross-user recovery/transfer flow is approved. This is a v1 application rule while evidence is retained, not permanent legal/business ownership.
+3. While ACTIVE, the binding holds the exact verified LINE subject needed to identify the principal and call LINE APIs. On unlink, clear the raw subject and retain only a domain-separated HMAC fingerprint plus minimal User/lifecycle evidence needed for same-User relink and the current cross-user deny guard. Use the existing server-only IDENTITY_HASH_SECRET with a dedicated line-subject namespace; never store the fingerprint in Person.identityKeyHash.
+4. The fingerprint is privacy-sensitive identity-history evidence, not authority and not a permanent tombstone. Do not impose a global historical UNIQUE constraint or immutable-owner-forever rule. A separately approved correction, duplicate/reconciliation, merge, transfer or erasure flow must be able to supersede, anonymize or delete historical evidence.
+5. Exact retention and erasure duration for the fingerprint and associated User/lifecycle evidence remains OPEN. 17J.1 defines no permanent retention period and no automatic expiry/purge. The v1 unlink flow clears raw LINE subject; any future cleanup/erasure behavior requires its own approved lifecycle contract.
+6. Binding creation is concurrency-safe through the two ACTIVE-only database constraints, not application pre-checks alone. Unlink itself never authorizes transfer; active binding replacement is never automatic.
+7. Intent challenge uses CSPRNG >=256 bits, stores only SHA-256 hash, expires in 5 minutes, and is bound to User/session/action, consumed once.
+8. Webhook receipt stores only ULID/event type/time/outcome, without raw body, subject, message, profile or token; dedupe receipts follow the separately approved operational retention policy.
+9. Lifecycle audit uses existing AuditEvent minimized to event kind, actor/User id required by current audit convention, and outcome; never record LINE subject or request/provider body.
 
 ห้าม persist raw ID token, LINE Login access token/refresh token, Messaging API access token/secret, National ID, HN, clinical content, profile/display name, webhook request body หรือ client-supplied authority
+Raw LINE subject is allowed only on an ACTIVE binding row. Unlink clears it; inactive history uses only the privacy-minimized fingerprint described above, whose exact retention period remains OPEN.
 
 ไม่เพิ่ม event outbox, queue หรือแยก reconciliation table ใน v1; sync diagnostics อยู่กับ binding row และ log ที่ปลอด PII พอสำหรับ lazy/operator repair
 
@@ -100,14 +104,16 @@ Transaction ใน PostgreSQL:
 1. Lock User row ก่อน แล้ว lock intent row ตามลำดับเดียวกันทุก mutation
 2. ตรวจ intent action=LINK, challenge hash, UserId, session hash, expiry ปัจจุบัน และ consumedAt เป็น null
 3. ตรวจ User.authSubject ตรงกับ verified current DEMI session และ User.status = ACTIVE. ถ้า User ไม่ ACTIVE ให้ consume intent แบบ terminally และห้าม bind; ไม่บังคับ operational role เพราะการผูก identity ไม่ใช่การให้ role
-4. ตรวจ subject binding ถาวรและ active binding ของ User:
-   - active binding เดิมเป็น User เดียวกันและ subject เดียวกัน → consume intent และคืน idempotent “linked already”; ห้ามสร้าง row/audit lifecycle ซ้ำ
-   - active binding ของ User เดียวกันใช้ subject อื่น → consume intent แล้ว conflict แบบ privacy-safe; ห้ามแทนที่ของเดิมอัตโนมัติ
-   - subject นี้มีประวัติเป็นของ User อื่น แม้ปัจจุบัน unlinked → consume intent แล้ว conflict แบบ privacy-safe; ห้ามโอน
-   - subject เดิมเป็น record unlinked ของ User คนเดียวกัน → activate record เดิม, update lastLinkedAt และ reset reachability เป็น UNKNOWN จนตรวจใหม่
-   - ไม่มี record/active binding conflict → create binding ใหม่
+4. ตรวจ ACTIVE binding และ retained fingerprint history:
+   - ACTIVE binding ของ User เดียวกันและ LINE subject เดียวกัน → consume intent และคืน idempotent “linked already”; ห้ามสร้าง lifecycle/audit ซ้ำ
+   - User เดียวกันมี ACTIVE binding คนละ subject → consume intent แล้ว conflict แบบ privacy-safe; ห้ามแทนที่อัตโนมัติ
+   - subject มี ACTIVE binding ของ User อื่น → consume intent แล้ว generic conflict
+   - ไม่มี ACTIVE binding แต่ retained fingerprint เดิมชี้ไป User อื่น → consume intent แล้ว generic conflict; ห้าม cross-user rebind หากไม่มี approved recovery/reconciliation flow
+   - retained fingerprint เดิมเป็นของ User เดียวกัน → reactivate lifecycle record เดิมหลัง explicit confirmation; set raw verified subject, update linkedAt/lastLinkedAt และ reset reachability UNKNOWN
+   - ไม่มี active/history conflict → create ACTIVE binding ใหม่
+   ทุก conflict ข้างต้นเป็นกฎ fail-closed ของ v1 ขณะมี evidence; ไม่มี permanent historical uniqueness หรือ owner-forever invariant.
 5. Consume intent, update/create binding และ append minimized AuditEvent ใน transaction เดียว
-6. DB unique constraints เป็น final concurrency guard. ถ้า race เกิด unique violation ให้ transaction rollback; เปิด transaction ใหม่เพื่อตรวจ exact current binding และ consume intent terminally. Same User + same subject เป็น idempotent success; conflict อื่นคืน generic conflict. ห้าม overwrite เพื่อให้ race ผ่าน
+6. DB ACTIVE-only unique constraints are the final concurrency guard. On unique violation, rollback and re-read current ACTIVE binding plus retained fingerprint history in a new transaction, then consume intent terminally. Same User + same subject is idempotent; active or retained cross-user conflict returns generic conflict. Never overwrite an active binding.
 7. Commit local binding ก่อนเรียก LINE API. การ reconcile เมนูล้มเหลวไม่ rollback binding
 
 Responses ภายนอกแยกได้เพียง success, invalid/expired flow, DEMI account ineligible หรือ generic “เชื่อมบัญชีนี้ไม่ได้”; ห้ามบอกว่า LINE subject ผูกกับ User อื่นหรือเปิดเผย id ใด
@@ -115,13 +121,13 @@ Responses ภายนอกแยกได้เพียง success, invalid/e
 ## 7. J1-04 — Unlink / relink / recovery
 
 - ผู้ใช้ unlink ตัวเองได้จาก authenticated DEMI account/LIFF settings ด้วย confirmation และ UNLINK intent แบบ session-bound single-use. LINE ID token เก่าไม่จำเป็นเมื่อผู้ใช้ยืนยันตัวด้วย existing DEMI session แล้ว
-- Optional LIFF unlink ที่ตรวจ LINE token ได้ ต้องตรวจว่า subject ตรงกับ active binding ของ DEMI User คนเดิม และยังต้องใช้ DEMI session/explicit confirmation; LIFF identity เดี่ยว ๆ unlink ไม่ได้
-- Transaction lock User + intent + binding, ตรวจ exact owner/status/intent, set unlinkedAt, clear presentationRole, write AuditEvent แล้ว commit. ไม่มี provider call ใน transaction
-- หลัง unlink ให้ reconcile เป็น UNLINKED menu; ถ้า LINE ปัจจุบัน block/ไม่ reachable การ apply อาจรอ follow/reconcile ภายหลัง. Binding history ไม่ถูกลบ
-- ACTIVE เป็นเงื่อนไข link ใหม่และ self-service unlink. SUSPENDED/PROVISIONED/INVITED ไม่มี self-service mutation; binding คงอยู่แต่ menu projection เป็น neutral, server auth deny ทันที. ใช้ account restore/recovery และ operator repair ตาม existing DEMI governance; suspension ไม่แอบ unlink
-- ผู้ใช้ relink subject เดิมได้เฉพาะ User owner เดิมหลัง active, authenticated, explicit confirmation. User owner เดิมอาจ link subject ใหม่หลัง unlink เก่าได้ ถ้า subject ใหม่ไม่เคยผูกกับ User อื่น. Subject เก่ายังคง reserved ให้ original User
-- ถ้าเข้า LINE account เก่าไม่ได้ ให้กู้ DEMI account ด้วย existing DEMI account-recovery authority; การไม่มี LINE เก่าไม่อนุญาตให้คนอื่น takeover subject เก่า. ห้าม takeover ผ่านข้อความ/chat, ADMIN menu, หรือ Messaging API accountLink event
-
+- Optional LIFF unlink ที่ตรวจ LINE token ได้ ต้องตรวจว่า subject ตรงกับ ACTIVE binding ของ DEMI User คนเดิม และยังต้องใช้ DEMI session/explicit confirmation; LIFF identity เดี่ยว ๆ unlink ไม่ได้
+- Transaction lock User + intent + ACTIVE binding, ตรวจ exact owner/status/intent, set unlinkedAt, clear raw LINE subject และ presentationRole, retain เฉพาะ domain-separated HMAC fingerprint กับ minimal lifecycle evidence เพื่อรองรับ same-User relink และ v1 cross-user denial, write AuditEvent แล้ว commit
+- Fingerprint และ owner/lifecycle evidence เป็นข้อมูล identity-history ที่ privacy-sensitive; ไม่ใช่ authority และไม่ใช่ permanent reservation. Exact retention/erasure period remains OPEN. 17J.1 ไม่เพิ่ม purge/erasure endpoint หรือ background cleanup
+- ACTIVE เป็นเงื่อนไข link ใหม่และ self-service unlink. SUSPENDED/PROVISIONED/INVITED ไม่มี self-service mutation; binding คงสถานะที่มีอยู่แต่ menu projection เป็น neutral, server auth deny ทันที. ใช้ account restore/recovery และ operator repair ตาม existing DEMI governance; suspension ไม่แอบ unlink
+- ผู้ใช้เดิม relink subject เดิมได้ผ่าน current explicit flow เมื่อ authenticated และ ACTIVE; subject ใหม่ที่ยังไม่มี active/history conflict ก็ link ได้หลัง unlink. ถ้า retained history ผูก subject เดิมกับ User อื่น ให้ generic deny จนมี separately approved recovery/reconciliation flow. Unlink อย่างเดียวไม่อนุญาต transfer
+- การเข้า LINE account เก่าไม่ได้ไม่เปิดทาง takeover; existing DEMI account recovery ยังคงเป็น authority. ห้าม takeover ผ่านข้อความ/chat, ADMIN menu หรือ Messaging API accountLink event
+- ไม่มี immutable historical-owner rule หรือ DB constraint ที่ห้าม future approved account correction, duplicate/reconciliation, account merge, identity transfer หรือ privacy/erasure lifecycle
 ## 8. J1-05 — LIFF trust boundary และ CSRF/session
 
 Request flow:
@@ -156,24 +162,26 @@ Rules:
 
 ## 10. J1-07 — Webhook route, allowlist และ durable acceptance
 
-Entry: public POST `/api/line/webhook`, ยอมรับ request body ได้ไม่เกิน 1 MiB และ event count ไม่เกิน 100 เพื่อจำกัด resource use.
+Entry: public POST /api/line/webhook. DEMI ใช้ raw-body byte cap 1 MiB เป็น local DoS/resource-protection limit เท่านั้น ไม่ใช่ LINE platform maximum. ไม่มี event-count cap; ห้ามปฏิเสธ webhook เพราะมีเกิน 100 events
 
 ลำดับบังคับ:
 
-1. อ่าน exact raw UTF-8 bytes โดยมี byte cap ก่อน JSON parse; reverse proxy/body middleware ต้องไม่ rewrite bytes
-2. ตรวจ `x-line-signature` ด้วย HMAC-SHA256(channel secret, raw body) และ constant-time compare ก่อน parse; signature หาย/ผิด = ไม่ process
-3. Parse และ validate envelope/event ด้วย schema ที่ allowlist เฉพาะ field ที่จำเป็น; ตรวจ destination ตรง DEMI Messaging API bot user ID
-4. รองรับ event:
-   - follow: source.type=user, source.userId, timestamp, webhookEventId, deliveryContext; update reachability FRIEND
-   - unfollow: source.type=user, source.userId, timestamp, webhookEventId, deliveryContext; update NOT_FRIEND
-   - postback เฉพาะเมื่อ postback.data เท่ากับ marker คงที่ DEMI_LINE_WORKSPACE_SWITCH_V1; ต้อง source.type=user และ postback.params.status=SUCCESS พร้อม newRichMenuAliasId ที่อยู่ใน manifest ปัจจุบัน. Mapping alias ไป role เป็นการบันทึก presentation preference เท่านั้น
-5. accountLink event ไม่อยู่ใน allowlist. ไม่รับ message, command, business postback, group/room action, join/leave หรือ event type อื่นเป็น business action
-6. Signed unsupported type/source ให้บันทึกเฉพาะ sanitized unsupported outcome แล้วตอบ 2xx เพื่อไม่ชวน retry ซ้ำ; ไม่มี state mutation. malformed envelope หรือ destination ผิด reject ด้วย non-2xx ที่ปลอดภัย
-7. สำหรับ event ที่ยอมรับ บันทึก unique webhookEventId และ effect (reachability/preference) ใน transaction เดียว. Duplicate id = no-op + 2xx. DB/transaction failure = 5xx โดยไม่อ้างว่ารับ durable แล้ว; LINE redelivery ไม่รับประกัน จึงต้องมี alert/repair
-8. Event timestamp เป็นเวลาที่เกิด event ไม่ใช่เวลาส่งซ้ำ; เมื่อ LINE redelivery เปิด event อาจมาถึงผิดลำดับ ให้ใช้ timestamp guard กับ reachability และ presentationRoleSelectedAt ต่อ binding. receipt unique ป้องกัน event ID เดิม
-9. ตอบ 2xx หลัง durable acceptance/duplicate เท่านั้น. ไม่มี Reply/Push, provider call หรือ business side effect ใน request transaction
+1. อ่าน exact raw UTF-8 bytes โดยใช้ DEMI byte cap ก่อน JSON parse; reverse proxy/body middleware ต้องไม่ rewrite bytes
+2. ตรวจ x-line-signature ด้วย HMAC-SHA256(channel secret, raw body) และ constant-time compare ก่อน parse; signature หาย/ผิด = ไม่ process
+3. Parse envelope แบบ forward-compatible: validate destination ให้ตรง DEMI Messaging API bot user ID และ validate events เป็น array; strip/ignore unknown additive object fields. ห้าม strict-object schema ที่ reject unknown fields หรือ fixed enum schema ที่ reject event type ใหม่
+4. events: [] เป็น valid signed envelope. หลัง signature และ destination/envelope ผ่าน ให้ตอบ 2xx ทันทีโดยไม่ทำ business mutation และไม่ต้องสร้าง event receipt เพื่อรองรับ LINE webhook URL communication verification
+5. เมื่อมี events ให้ตรวจแต่ละ element เป็น event object ที่มี type เป็น string แล้ว dispatch ด้วย open-string discriminator; non-object หรือ type ที่ขาด/ไม่ใช่ string ให้ sanitized-ignore เฉพาะ element. Unknown/unsupported event type หลัง valid signature/envelope ให้ sanitized-ignore แล้วทำ event ถัดไปต่อ; ไม่ปฏิเสธทั้ง request. Unsupported event ไม่สร้าง business state หรือ receipt. Unsupported business messages ยังคงเป็น no-op ใน 17J.1
+6. สำหรับ event type ที่รองรับ ให้ validate อย่างเข้มเฉพาะค่าที่ DEMI เชื่อ/ใช้:
+   - follow/unfollow: type ที่ตรง, source.type ต้อง user, source.userId ต้องตรง LINE user ID format, webhookEventId ต้องเป็น ULID, timestamp ต้องเป็น integer millisecond ที่ valid; ไม่ require field ที่ DEMI ไม่ได้ใช้
+   - postback สำหรับ workspace switch เท่านั้น: source.type=user, source.userId, webhookEventId และ timestamp ตามกฎเดียวกัน; postback.data ต้องเป็น string. ถ้าไม่ตรง marker คงที่ DEMI_LINE_WORKSPACE_SWITCH_V1 ให้ sanitized-ignore postback นี้; postback.params.status ต้องเป็น string แต่ห้าม fixed-enum rejection. เฉพาะ exact SUCCESS จึงต้องมี newRichMenuAliasId ซึ่งต้องเป็น alias ใน current manifest; known failure หรือ unknown future status ไม่เปลี่ยน preference
+   Unknown fields ใน envelope/event/source/postback/params ถูก strip หรือ ignore. Unknown event type, additive fields หรือ enum values ไม่ทำให้ supported sibling event ถูก reject. หาก trusted field ของ supported event ขาด/ผิด ให้ skip เฉพาะ event นั้นโดยไม่มี mutation และบันทึก sanitized outcome; ทำ event อื่นต่อ
+7. ตรวจ destination กับ configured DEMI bot user ID ก่อนรับ mutation. ไม่ trust client/User/Person/role/resource identifiers; source LINE subject ใช้เพียง resolve active binding สำหรับ reachability/preference
+8. สำหรับ supported event ที่ valid ให้บันทึก unique webhookEventId และ effect (reachability/preference) ใน per-event transaction เดียว. Duplicate ID = no-op + 2xx. Transaction failure = 5xx; event ที่ commit ไปแล้วจะ dedupe เมื่อ redelivery. ห้าม provider/business HTTP call ใน DB transaction
+9. Timestamp ใช้เป็นเวลาเกิด event ไม่ใช่เวลาส่งซ้ำ; ใช้ guard กับ reachability และ presentationRoleSelectedAt. Receipt unique ป้องกัน event ID ซ้ำ. ตอบ 2xx หลังทุก valid supported event durable accepted/duplicate และ event ที่ไม่รองรับ/invalid ถูก sanitized-ignore แล้วเท่านั้น
 
-Rich Menu switch ต้องใช้ webhook อย่างแคบ: เอกสารทางการระบุว่าการกด richmenuswitch ส่ง postback event; สำเร็จจะมี newRichMenuAliasId และ status. Event นี้ใช้เพียง update UX preference และ reconcile menu ไม่ใช่สิทธิ์/คำสั่ง. ไม่เพิ่ม generic postback processing
+LINE ระบุว่า webhook body มี destination และ events array; array ว่างใช้ยืนยันการสื่อสารได้ และหนึ่ง request อาจมีหลาย event. LINE ไม่ระบุ maximum event count ในเอกสารปัจจุบัน จึงไม่มี local count cap. [Webhook request/event reference](https://developers.line.biz/en/reference/messaging-api/nojs/), [webhook guide](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
+
+Rich Menu switch ต้องใช้ webhook อย่างแคบ: richmenuswitch success postback ใช้ marker ที่กำหนดใน action data พร้อม status=SUCCESS และ newRichMenuAliasId. Event ใช้ update UX preference/reconcile menu เท่านั้น ไม่ใช่สิทธิ์/คำสั่ง. ไม่เพิ่ม generic postback processing
 
 ## 11. J1-08 — Rich Menu catalog และการ provision
 
@@ -305,6 +313,8 @@ Rich Menu alias/logical key อยู่ใน code manifest; resolved menu IDs 
 
 Operator ต้องสร้าง DEMI channel/token และตั้ง linked OA ผ่าน DEMI Provider ตาม official console flow ก่อน live UAT. Login Channel ID ที่ใช้ Verify ต้องตรง audience ของ LIFF token; Messaging token/secret ต้องเป็นของ DEMI Messaging API channel ที่ webhook รับ
 
+Existing server-only IDENTITY_HASH_SECRET may support the domain-separated LINE subject HMAC fingerprint using a dedicated line-subject namespace; never store it in client config or reuse Person.identityKeyHash as the LINE binding. Preserve hash comparability across key rotation; unresolved key lifecycle must fail closed.
+
 ## 20. J1-17 — LINE client boundary
 
 มี typed server-only adapters แยกความรับผิดชอบ:
@@ -378,15 +388,15 @@ If LINE is down after successful local commit, binding/unlink/authority remains 
 - same User concurrent different LINE subjects: one wins, no silent replacement
 - same LINE subject concurrent different Users: one binding only; other generic conflict
 - exact same binding via new valid intent is idempotent; old intent replay denied
-- subject unlinked by original owner can relink to same owner; cannot transfer to another User
+- subject unlinked by original owner can relink by explicit flow; cross-user attempt with retained fingerprint is denied; no permanent historical ownership constraint
 
 **Unlink/recovery**
 
-- exact owner self-unlink succeeds and history remains
+- exact owner self-unlink clears raw LINE subject, preserves only minimized lifecycle/fingerprint evidence for current v1 conflict guard, and does not choose a retention duration
 - unrelated authenticated actor cannot unlink; generic failure
 - suspended/ineligible owner cannot self-service mutate; binding retained and menu neutral
 - valid unlink then same owner relink
-- unlink one subject then link a different unowned subject; old subject remains reserved
+- unlink then link a different unowned subject; retained history for another User stays denied; no historical UNIQUE constraint prevents a future approved correction/transfer/erasure flow
 - inaccessible old LINE cannot authorize takeover; DEMI account recovery remains separate
 - menu provider failure after commit does not roll back link/unlink
 
@@ -408,9 +418,9 @@ If LINE is down after successful local commit, binding/unlink/authority remains 
 - friendFlag true/false; invalid token/scope/channel and LINE timeout produce UNKNOWN
 - follow/add/unblock, unfollow/block, out-of-order timestamps, delayed friendship-query response, webhook gap
 - identity binding survives unfollow; Push eligibility false for NOT_FRIEND and UNKNOWN
-- valid signature/raw bytes; invalid/missing signature; body over 1 MiB; more than 100 events
-- malformed JSON/envelope/destination, unsupported event, duplicate webhookEventId and redelivery
-- supported richmenuswitch postback parses alias/status; accountLink/business message/group/room ignored/rejected safely
+- valid signature/raw bytes; empty events array returns 2xx with no receipt/mutation; invalid/missing signature; local body cap; >100 events is not rejected by count alone
+- malformed envelope/destination; additive unknown fields; unknown event type ignored; unsupported event mixed with supported event; malformed trusted fields skipped per-event; duplicate webhookEventId and redelivery
+- richmenuswitch postback validates static marker/status/alias; wrong marker is ignored, SUCCESS with alias updates UX only, failure/unknown status does not; unsupported messages/group/room ignored safely
 - durable state + receipt atomic; DB failure returns non-2xx; duplicates safely acknowledge
 - safe logs contain no token, body, subject, profile, session, National ID/HN or clinical data
 
@@ -427,14 +437,16 @@ Run focused tests first, then affected architecture/lint/typecheck commands; bro
 
 ## 26. Official LINE behavior rechecked
 
-ตรวจ official LINE Developers docs วันที่ 2026-10-06; no contradiction with accepted Phase 17J.0/ADR-0009 architecture was found:
+ตรวจ official LINE Developers docs วันที่ 2026-10-06; no contradiction with accepted Phase 17J.0/ADR-0009 or Option C was found:
 
 - Messaging API และ LINE Login channels ที่ link identity ต้องอยู่ under same Provider; same person receives same provider-scoped user ID. [Get user IDs](https://developers.line.biz/en/docs/messaging-api/getting-user-ids/), [provider/channel management best practices](https://developers.line.biz/en/docs/line-developers-console/best-practices-for-provider-and-channel-management/), [link a bot to LINE Login](https://developers.line.biz/en/docs/line-login/link-a-bot/)
-- LIFF server identity uses raw ID token from `liff.getIDToken()`; server verifies through LINE Verify ID token API with expected client/channel ID; do not send decoded profile from client. [LIFF user data](https://developers.line.biz/en/docs/liff/using-user-profile/), [LINE Login API reference](https://developers.line.biz/en/reference/line-login/)
-- `richmenuswitch` uses aliases and changes menu natively; it also emits postback webhook with alias/status on success, so narrow postback processing is technically required for preference sync. [Switch between rich menus](https://developers.line.biz/en/docs/messaging-api/switch-rich-menus/), [Messaging API Rich Menu switch/postback reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
-- Per-user menu link is `POST /v2/bot/user/{userId}/richmenu/{richMenuId}`; readback is `GET /v2/bot/user/{userId}/richmenu`. A 200 link response is not sufficient evidence; only friends can be linked and some unlinked cases still return 200. [Per-user rich menus](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/), [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
+- LIFF server identity uses raw ID token from liff.getIDToken(); server verifies through LINE Verify ID token API with expected client/channel ID; do not send decoded profile from client. [LIFF user data](https://developers.line.biz/en/docs/liff/using-user-profile/), [LINE Login API reference](https://developers.line.biz/en/reference/line-login/)
+- richmenuswitch is a Rich Menu-only action with a richMenuAliasId target and static data marker; LINE switches the displayed menu and returns a postback webhook. The postback includes postback.data and params.status; on success status is SUCCESS and params.newRichMenuAliasId identifies the selected alias. newRichMenuAliasId may be absent when switching fails. This confirms the narrow Option C preference-sync handler. [Switch between rich menus](https://developers.line.biz/en/docs/messaging-api/switch-rich-menus/), [Messaging API action/postback reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
+- Webhook request envelope has destination and events array; LINE permits events: [] for communication verification and documents one request with multiple event objects. Current official docs specify no maximum event count, so the 100-event cap is removed. The 1 MiB raw-body cap is DEMI local resource protection only. [Messaging API request/event reference](https://developers.line.biz/en/reference/messaging-api/nojs/), [receive messages](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
+- LINE advises servers to tolerate added webhook properties; Messaging API development guidance also describes compatible additions including enum values. Parse event discriminator as an open string, validate trusted consumed fields, strip unknown additive properties, ignore unknown types/enum values safely, and continue processing supported events independently. [Corporate development guidelines](https://developers.line.biz/en/docs/partner-docs/development-guidelines/), [Messaging API development guidelines](https://developers.line.biz/en/docs/messaging-api/development-guidelines/)
+- Per-user menu link is POST /v2/bot/user/{userId}/richmenu/{richMenuId}; readback is GET /v2/bot/user/{userId}/richmenu. A 200 link response is not sufficient evidence; only friends can be linked and some unlinked cases still return 200. [Per-user rich menus](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/), [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
 - Alias is channel-scoped, max 32 characters with alphanumeric/underscore/hyphen, unique per channel, with a documented maximum of 1,000 per OA; alias updates may be cache-delayed. Use stable aliases and provider readback. [Messaging API Rich Menu alias reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
-- Follow means added or unblocked; unfollow means blocked. Redelivery is off by default, delivery order can differ, and retry number/interval are not guaranteed; use event timestamp + webhookEventId and never depend on redelivery for authorization. [Webhook events/redelivery](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [Messaging API webhook event reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
+- Follow means added or unblocked; unfollow means blocked. Redelivery may reorder events and has no guaranteed count/interval; use event timestamp + webhookEventId. [Webhook events/redelivery](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [Messaging API event reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
 - Webhook signature is HMAC-SHA256 over unchanged received raw body bytes with the Messaging API channel secret and x-line-signature. [Verify webhook signature](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/)
 - Friendship Status API returns friendFlag and requires a LINE Login access token with profile scope; true means friend/not blocked, false only establishes otherwise. [Friendship status API](https://developers.line.biz/en/reference/line-login/)
 
@@ -442,6 +454,8 @@ LINE channel access token is a channel-scoped credential: the DEMI Messaging API
 
 ## 27. Go/no-go evaluation
 
-**17J.1 runtime implementation: GO — contract complete.** The contract resolves module ownership; binding/intent/receipt ownership and uniqueness; LIFF identity and session/CSRF boundary; link transaction and race handling; unlink/relink/recovery; reachability; webhook allowlist/dedupe/signature; resource provisioning; all role projections; Option C switch/postback; presentation preference; lazy/operator reconcile; menu readback; secrets/config; safe error/logging; and focused verification.
+**17J.1 runtime implementation: GO — contract complete.** No security-critical item blocks the v1 scope when implementation enforces active-only DB uniqueness, denies cross-user rebinds against retained identity-history evidence, clears raw LINE subject on unlink, and never uses presentation state as authority.
 
-No security-critical contract question remains open. Runtime implementation must still re-read current source/Next guide and line docs before coding, complete Console/provider configuration outside the repo, and verify actual display on LINE devices later. None of that implementation, provisioning, device UAT or deployment occurred in this documentation task.
+**OPEN, non-blocking for v1:** exact LINE identity-history fingerprint/owner retention and erasure duration, and future cross-account correction/duplicate reconciliation/merge/transfer semantics. No permanent subject-owner invariant, historical UNIQUE constraint, permanent tombstone, or purge schedule is approved. v1 does not implement a history-erasure or transfer operation; any future flow requires explicit owner/privacy approval and must safely supersede or erase evidence.
+
+Phase 17J.0 remains CLOSED; Phase 17J.0B and Option C remain CLOSED / OWNER APPROVED; Phase 17J.1 runtime remains NOT IMPLEMENTED. Runtime implementation must still re-read current source/Next guide and LINE docs before coding, complete Console/provider configuration outside the repo, and verify actual display on LINE devices later. None of that implementation, provisioning, device UAT or deployment occurred.
