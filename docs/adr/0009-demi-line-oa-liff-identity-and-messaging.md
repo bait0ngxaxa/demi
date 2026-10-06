@@ -16,13 +16,19 @@ DEMI มี Supabase-backed authentication, Person/User, one-time Patient/workfo
 1. DEMI ใช้ Provider เฉพาะบริการ DEMI หนึ่งชุด มี DEMI Messaging API Channel/OA และ DEMI LINE Login Channel/LIFF อยู่ใต้ Provider เดียวกัน. ห้ามนำ NHFapp หรือแอปอื่นเข้า Provider/data/config/runtime ของ DEMI
 2. Verified LINE identity จับคู่กับ existing DEMI User แบบ conceptually 0..1 ต่อด้านใน v1; User เชื่อมไปยัง Person ด้วย relation เดิม. Binding ต้อง explicit, server-verified, unique, single-use/conflict-safe; ไม่กำหนด persistence schema ใน ADR นี้
 3. Account link ใช้ LIFF ID token ที่ DEMI server ตรวจด้วย expected DEMI LINE Login channel/audience ร่วมกับ existing DEMI authenticated session/login ที่พิสูจน์ exact User. Explicit confirmation และ single-use session-bound anti-CSRF intent ป้องกันการผูกข้าม session/replay; unique transactional binding fail closed. Messaging API account-link feature ไม่ถูกต่อเป็น second proof step. LINE identity ไม่สร้างหรือเปลี่ยน DEMI User และไม่ให้ role, membership, capability, scope หรือ data access
-4. ทุก operation resolve current DEMI role/membership/capability/scope แล้วผ่าน server policy. Rich Menu แปรตาม current eligible operational role; mapping สำหรับผู้ใช้ operational role เดียวและ ADMIN-only เป็นข้อกำหนด. UX สำหรับหลาย operational roles ยัง OPEN / OWNER DECISION REQUIRED; ยังไม่มีการเลือก combined menu, selector หรือ menu switching
+4. ทุก operation resolve current DEMI role/membership/capability/scope แล้วผ่าน server policy. Rich Menu แปรตาม current eligible operational role; mapping สำหรับผู้ใช้ operational role เดียวและ ADMIN-only เป็นข้อกำหนด. ณ เวลารับรอง ADR นี้ UX สำหรับหลาย operational roles ยัง OPEN; owner ปิดภายหลังด้วย Option C ตาม addendum ใน [Phase 17J.0B](../phases/PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md)
 5. การตอบ action ของ user ใช้ webhook → server authorize → business service → Reply API เมื่อ replyToken ยังใช้ได้. การสื่อสารเชิงรุกใช้ approved source event → LINE Push. Reply token ไม่ใช่ push token และห้ามอธิบาย provider delivery ว่า exactly-once
 6. ใช้ LINE chat สำหรับ bounded/simple interactions และ LIFF สำหรับ sensitive, multi-input, visually complex หรือ high-risk workflow. ไม่มี generic chatbot/NLU framework
 7. LINE Messaging API เป็น proactive notification channel เดียวของ architecture ปัจจุบัน. ไม่เพิ่ม Email, SMTP, SMS, browser/native push, NHFapp dependency หรือ generic multi-channel framework
 8. Appointment, Medication และ Follow-up เป็นเจ้าของ business source facts; LINE เป็น delivery only. Event/time/recipient/content/preferences ของแต่ละ reminder ยังคงเป็น domain requirement แยก
 
 Implementation contract and current source inventory are recorded in [Phase 17J.0](../phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md).
+
+## Owner decision addendum — 2026-10-06
+
+The multi-role presentation question left open at ADR acceptance is now **CLOSED / OWNER APPROVED — OPTION C**. Eligible single-role users see that role menu directly. Multi-role users enter a neutral chooser and switch between only their currently eligible operational workspaces through LINE-native Rich Menu aliases. This changes presentation context only; it does not grant/switch DEMI authority, select a resource scope, or supersede existing server authorization.
+
+The detailed decision is recorded in [Phase 17J.0B](../phases/PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md). The binding, LIFF, reachability, webhook and role-aware menu implementation contract is [Phase 17J.1](../phases/PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md), complete and cleared for implementation. ADR-0009 remains Accepted; no new ADR is required. Runtime remains NOT IMPLEMENTED.
 
 ## Rationale
 
@@ -40,7 +46,7 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 - Trust a client supplied LINE userId or decoded LIFF profile: rejected because the client is not a trusted identity verifier.
 - Use LINE identity itself as a DEMI role/account: rejected because a LINE userId does not prove DEMI identity, role, membership or scope.
 - Ask for National ID in chat for each query: rejected because sensitive data should not become the routine post-link identity factor.
-- Multi-role menu choices A. combined role-aware menu, B. workspace/role selector, and C. Rich Menu tabs/switching remain alternatives. No precedence or option is selected until the owner decides.
+- At ADR acceptance, multi-role menu choices A. combined role-aware menu, B. workspace/role selector, and C. Rich Menu tabs/switching remained alternatives with no precedence; the owner later closed this question with Option C in Phase 17J.0B.
 - Compose Messaging API account-link tokens/webhook confirmation with LIFF ID-token linking: rejected for v1 because LINE documents these as alternative flows and the LIFF entry already obtains a verifiable LINE subject. The Messaging API flow is suitable when linking starts in OA chat without LINE Login; it is not an additional security layer for the LIFF flow.
 - Implement LIFF linking by trusting a client profile or unbound token request: rejected. LINE warns custom linking needs safeguards; DEMI requires server verification of the raw ID token, existing DEMI authentication, explicit confirmation, session-bound single-use CSRF intent and transactional uniqueness.
 - Add email or generic multi-channel notification abstraction: rejected; the current approved proactive channel is LINE Messaging API.
@@ -62,9 +68,9 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 - LINE event delivery/order and Push receipt are not exactly-once guarantees; future runtime needs durable deduplication and bounded retries.
 - Rich Menu state can become stale after an authorization change; every action must recheck server policy.
 - Sending detailed patient information in chat is intentionally constrained and requires explicit content/privacy approval.
-- A single user-specific Rich Menu can represent only one effective menu at a time. Multi-role presentation remains an owner decision, so the bounded 17J.1 identity/single-role tranche cannot claim full multi-role menu delivery.
+- At ADR acceptance, a single user-specific Rich Menu could represent only one effective menu at a time and multi-role presentation remained an owner decision; Phase 17J.0B later selected Option C, with current eligible-set projection defined by Phase 17J.1.
 
-## Open Questions
+## Open Questions at initial ADR acceptance (historical)
 
 - Appointment reminder event/timing/recipient/cancellation/staleness/content/preferences/consent and retry policy remain P17D-NOTIF-01.
 - Medication reminder delivery timing/content/preferences require a separate approved requirement; adherence remains deferred and MED-02 remains gated.

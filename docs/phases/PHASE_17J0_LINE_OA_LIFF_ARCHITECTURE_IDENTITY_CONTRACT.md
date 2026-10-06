@@ -1,5 +1,13 @@
 # Phase 17J.0 — DEMI LINE OA / LIFF Architecture & Identity Contract
 
+## CURRENT-status addendum — 17J.0B owner closeout and 17J.1 contract (2026-10-06)
+
+Phase 17J.0 remains **CLOSED / ARCHITECTURE CONTRACT COMPLETE**. The OPEN multi-role UX recorded in this document is historical evidence of the decision state at its original closeout; it was closed afterward by [Phase 17J.0B](./PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md) as **OWNER APPROVED — OPTION C**.
+
+The Phase 17J.1 technical contract is **COMPLETE / CLEARED FOR IMPLEMENTATION** at [this contract](./PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md). Phase 17J.1 runtime is **NOT IMPLEMENTED**. No Provider/channel setup, credentials, runtime, schema, migrations, LINE Rich Menu provisioning, device UAT or deployment is claimed.
+
+## Historical 17J.0 disposition at initial closeout
+
 - สถานะ: **CLOSED / ARCHITECTURE CONTRACT COMPLETE**
 - วันที่: 2026-10-06
 - ขอบเขต: เอกสารและสัญญาสถาปัตยกรรมเท่านั้น

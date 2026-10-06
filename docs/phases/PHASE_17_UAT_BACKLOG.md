@@ -1,12 +1,20 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
-## CURRENT-status addendum — Phase 17J.0 LINE / LIFF contract (2026-10-06)
+## CURRENT-status addendum — Phase 17J.0B owner decision and 17J.1 contract (2026-10-06)
+
+Phase 17J.0: **CLOSED / ARCHITECTURE CONTRACT COMPLETE**. Phase 17J.0B: **CLOSED / OWNER DECISION CLOSED**. Multi-role Rich Menu: **CLOSED / OWNER APPROVED — OPTION C**. A single eligible operational role opens directly; multiple eligible roles first see a neutral chooser and use LINE-native Rich Menu switching. Menus only show currently eligible roles and never grant authority.
+
+Phase 17J.1 technical contract: **COMPLETE / CLEARED FOR IMPLEMENTATION**. Phase 17J.1 runtime: **NOT IMPLEMENTED**. The binding, unlink/relink, reachability, minimal signed webhook, finite menu provisioning, projection, preference, reconciliation, config, privacy and focused verification contract is in [17J.1](./PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md). Owner decision details are in [17J.0B](./PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md).
+
+No LINE runtime/schema/migration/route/env, provider/channel provisioning, device UAT or production deployment is claimed. P17D-NOTIF-01 and the other unrelated gates below remain unchanged.
+
+## Historical-status addendum — Phase 17J.0 LINE / LIFF contract at initial closeout (2026-10-06)
 
 [Phase 17J.0 contract](./PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md) and [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) are **CLOSED / ACCEPTED** for the architecture and identity boundary. Dedicated DEMI LINE OA/Provider, same-Provider Messaging API + LINE Login/LIFF, LIFF ID-token verification + existing DEMI session linking, current DEMI authorization, single-role menu mapping, chat/LIFF interaction boundary and LINE-only proactive transport are fixed. Multi-role Rich Menu UX is **OPEN / OWNER DECISION REQUIRED**. **17J.1 may begin only as a bounded identity + single-role menu tranche; full multi-role menu completion is blocked.** No LINE runtime, schema, migration, route or delivery implementation was created.
 
 P17D-NOTIF-01 remains OPEN for business event/timing/recipient/cancellation/stale/content/preferences/consent/retry semantics. Medication delivery timing and Follow-up reminder source are not approved by this phase. P17F-L04/L05, Q5, Phase 17E.2 consent, MED-02, adherence, manual browser/device UAT and production deployment remain unchanged.
 
-## CURRENT-status addendum — Phase 17I.4A security review correction (2026-10-06)
+## Historical-status addendum — Phase 17I.4A security review correction (2026-10-06)
 
 [Phase 17I.4A re-audit and correction evidence](./PHASE_17I4A_HOSPITAL_KNOWLEDGE_CONTACT_REAUDIT_UAT_READINESS.md): post-audit review found and corrected a MAJOR Contact read authorization TOCTOU. Corrected-runtime focused service/UI tests, deterministic Contact and cross-slice PostgreSQL regressions, typecheck, and targeted ESLint passed. Final `npm test` passed **243 files / 2,090 tests**; the safe full PostgreSQL harness applied all **38 migrations** and passed **35 files / 558 tests**, then removed its disposable container/network. No unresolved BLOCKER/MAJOR finding remains in the bounded automated re-audit.
 
