@@ -3,7 +3,7 @@
 - สถานะ: **CLOSED / ARCHITECTURE CONTRACT COMPLETE**
 - วันที่: 2026-10-06
 - ขอบเขต: เอกสารและสัญญาสถาปัตยกรรมเท่านั้น
-- Phase 17J.1: **GO — เริ่มได้ตามสัญญานี้; ยังไม่ได้เริ่มในงานนี้**
+- 17J.1 identity/account-link foundation: **GO**; single-role Rich Menu foundation: **GO**; multi-role Rich Menu UX: **OPEN / OWNER DECISION REQUIRED**. งาน Phase 17J.1 ยังไม่เริ่ม
 - ADR ที่บันทึก boundary: [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md)
 
 ## 1. Disposition
@@ -20,7 +20,7 @@ Phase 17J.0 ปิดทิศทาง LINE, identity binding, authorization bo
 - LINE เป็น proactive notification channel ของ architecture นี้เพียงช่องทางเดียว ไม่มี DEMI Email notification, SMTP, SMS, browser/native push หรือ NHFapp runtime dependency; channel อื่นในอนาคตต้องผ่าน requirement และ architecture decision แยกที่ owner อนุมัติ
 - งานสั้นและมีขอบเขตควรทำใน chat; งานซับซ้อน มีหลาย input อ่อนไหว หรือเสี่ยงต่อการยืนยันผิด ให้เปิด DEMI LIFF
 - LINE identity เป็น external identity binding เท่านั้น ไม่ให้ DEMI role, membership, capability, scope หรือสิทธิ์ข้อมูล
-- ผู้ใช้หลายบทบาทใช้ **เมนูรวมเฉพาะบทบาท/การทำงานที่ปัจจุบันมีสิทธิ์ใช้** ไม่มี role precedence ที่ซ่อนอยู่; มตินี้เจ้าของตอบยืนยันใน Phase 17J.0
+- Multi-role Rich Menu เป็น OPEN / OWNER DECISION REQUIRED. ยังไม่มีการเลือกเมนูรวม, selector หรือการสลับเมนู
 - ADMIN ไม่ได้ operational LINE menu โดยอัตโนมัติ
 - ไม่เก็บ National ID ผ่าน LINE chat และไม่ขอ National ID ซ้ำเป็นวิธีปกติหลังผูกบัญชีแล้ว
 
@@ -58,15 +58,15 @@ Phase 17J.0 ปิดทิศทาง LINE, identity binding, authorization bo
 | ประเด็น | ข้อเท็จจริงที่ใช้ในสัญญา | เอกสารทางการ |
 | --- | --- | --- |
 | Provider และ userId | LINE userId อยู่ในขอบเขต Provider; LINE Login และ Messaging API channel ภายใต้ Provider เดียวกันได้ userId เดียวกัน; ข้าม Provider ได้คนละ ID. channel ย้าย Provider ภายหลังไม่ได้. การได้ ID เดียวกันไม่ใช่สิทธิ์ใช้ข้อมูลข้ามบริการโดยอัตโนมัติ | [User IDs](https://developers.line.biz/en/docs/messaging-api/getting-user-ids/), [Provider/channel best practices](https://developers.line.biz/en/docs/line-developers-console/best-practices-for-provider-and-channel-management/), [Provider design basics](https://developers.line.biz/en/tips/2026/06/25/provider-design-basics/) |
-| OA กับ LINE Login | การ link OA กับ LINE Login channel และ add-friend option ต้องอยู่ใต้ Provider เดียวกัน | [Add OA as friend when logged in](https://developers.line.biz/en/docs/line-login/link-a-bot/) |
-| Secure account linking | Messaging API ออก one-time linkToken อายุ 10 นาที; LINE account-link endpoint ตรวจว่า user ที่เปิด token คือ owner ที่ token ผูกไว้; nonce ต้อง random/single-use ยาว 10–255 chars และ LINE แนะนำอย่างน้อย 128 bits; webhook มี accountLink result/nonce และ source เมื่อสำเร็จ; expired/used token ไม่ส่ง webhook. LINE กำหนดให้ unlink ได้ตลอดและแจ้งผู้ใช้ตอน link | [User account linking](https://developers.line.biz/en/docs/messaging-api/linking-accounts/), [Account link event reference](https://developers.line.biz/en/reference/messaging-api/nojs/) |
-| LIFF identity | server ต้องรับ raw ID token หรือ access token แล้วตรวจผ่าน LINE Platform; ห้ามส่ง profile ที่ client อ่าน/ถอดรหัสแล้วไปใช้เป็นหลักฐาน server. ID token verification คืนข้อมูล identity ที่ตรวจแล้ว; LIFF access token อาจถูก revoke เมื่อปิด LIFF | [Using user data in LIFF apps and servers](https://developers.line.biz/en/docs/liff/using-user-profile/), [LINE Login ID token verification](https://developers.line.biz/en/reference/line-login/) |
+| OA กับ LINE Login | การ link OA กับ LINE Login channel ต้องใช้ Provider เดียวกัน. Messaging API เองไม่มี per-user friendship status endpoint; LINE Login Friendship status API ตรวจ friendFlag ได้เมื่อ OA ผูกกับ Login channel และต้องใช้ access token ที่มี profile scope. Messaging API มี follow/unfollow events | [Add OA as friend when logged in](https://developers.line.biz/en/docs/line-login/link-a-bot/), [Friendship status API](https://developers.line.biz/en/reference/line-login/), [Messaging API FAQ](https://developers.line.biz/en/faq/tags/messaging-api/), [Receive messages](https://developers.line.biz/en/docs/messaging-api/receiving-messages/) |
+| วิธีเชื่อม LINE identity กับ service account | LINE Developers ระบุ LINE Login, Messaging API account linking และ LIFF เป็นวิธีแยกกันซึ่งเลือกตาม entry flow. LIFF flow รับ ID/access token แล้ว service เชื่อม verified LINE user ID กับ service user ID เอง; LINE Platform ไม่เก็บ/จัดการ mapping ระหว่าง LINE ID กับ service ID. DEMI เลือก LIFF เพราะทางเข้าที่อนุมัติคือ OA/Rich Menu → LIFF และผู้ใช้มี DEMI authentication เดิม; Messaging API account-link flow เป็นทางเลือกสำหรับการเชื่อมจาก OA chat โดยตรง ไม่ใช่ขั้นตอนเสริมของ LIFF | [How to link user IDs on the LINE Platform](https://developers.line.biz/en/tips/2026/04/09/user-id-linking/), [User account linking](https://developers.line.biz/en/docs/messaging-api/linking-accounts/) |
+| LIFF identity | server ต้องรับ raw ID token หรือ access token แล้วตรวจผ่าน LINE Platform; ห้ามส่ง profile ที่ client อ่าน/ถอดรหัสแล้วไปใช้เป็นหลักฐาน server. ตรวจ ID token กับ expected LINE Login channel ID/audience และใช้ subject จากผล verify เท่านั้น. LIFF access token อาจถูก revoke เมื่อปิด LIFF | [Using user data in LIFF apps and servers](https://developers.line.biz/en/docs/liff/using-user-profile/), [Verify ID token](https://developers.line.biz/en/reference/line-login/) |
 | LIFF lifecycle/deep state | LIFF อาจเปิดใน LIFF browser หรือ external browser; ต้อง init ตาม lifecycle ของ LIFF; path/query ที่ส่งผ่าน LIFF URL/state เป็น input ไม่ใช่ authority | [Developing LIFF apps](https://developers.line.biz/en/docs/liff/developing-liff-apps/), [Opening LIFF apps](https://developers.line.biz/en/docs/liff/opening-liff-app/), [LIFF development guidelines](https://developers.line.biz/en/docs/liff/development-guidelines/) |
 | Webhook signature | ตรวจ HMAC-SHA256 ของ request body bytes เดิมโดยใช้ Messaging channel secret เทียบกับ x-line-signature ก่อน parse; LINE ส่ง body เป็น UTF-8; ห้ามแปลง body/header ก่อน verify; IP allowlist ใช้แทน signature ไม่ได้ | [Verify webhook signature](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/) |
 | Webhook delivery | webhookEventId ใช้แยก event ซ้ำ; deliveryContext.isRedelivery แจ้ง redelivery; event อาจมาถึงสลับลำดับ; redelivery ปิดโดย default และการส่งซ้ำไม่รับประกัน จึงห้ามพึ่งพา redelivery เพื่อความถูกต้อง | [Receiving messages](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [Webhook error statistics](https://developers.line.biz/en/docs/messaging-api/check-webhook-error-statistics/) |
 | Reply semantics | replyToken ใช้ได้ครั้งเดียวและควรใช้ทันที; LINE ระบุไม่ควรเกินหนึ่งนาทีหลังรับ webhook และ token อาจไม่มีในบาง event/channel state | [Sending messages](https://developers.line.biz/en/docs/messaging-api/sending-messages/), [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/nojs/) |
 | Push retry | X-Line-Retry-Key รองรับ Push API; ใช้ key เดิมเมื่อ retry คำขอเดิมเพื่อกันการ execute ซ้ำและอาจได้ 409 เมื่อคำขอแรก accepted; provider เก็บ retry key 24 ชั่วโมงเท่านั้น; ไม่รับประกันการส่งถึงผู้ใช้ และ HTTP 200 ไม่ยืนยันว่าผู้ใช้ได้รับ | [Retry failed API requests](https://developers.line.biz/en/docs/messaging-api/retrying-api-request), [Messaging API retry reference](https://developers.line.biz/en/reference/messaging-api/nojs/) |
-| Rich Menu | per-user menu หนึ่งอันต่อ user ใช้แทน default menu และเปลี่ยนมีผลทันที; link ได้กับ user ที่เป็น OA friend; เมื่อ unlink per-user menu, default menu จะแสดงหากตั้งไว้ | [Per-user Rich Menus](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/), [Rich Menu overview](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/) |
+| OA reachability และ Rich Menu | follow event เกิดเมื่อ add/unblock; unfollow เกิดเมื่อ block. Per-user menu link API อาจตอบ HTTP 200 แม้ menu ไม่ถูกผูก; GET user rich menu readback ต้องตรงกับ richMenuId ที่คาดไว้ก่อนถือว่า applied. Rich menu aliases/switch action รองรับการสลับเมนู | [Receive messages / follow and unfollow events](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [Friendship status API](https://developers.line.biz/en/reference/line-login/), [Use per-user rich menus](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/), [Messaging API Rich Menu reference](https://developers.line.biz/en/reference/messaging-api/nojs/), [Switch between tabs on rich menus](https://developers.line.biz/en/docs/messaging-api/switch-rich-menus/) |
 | API acceptance vs user delivery | Push ไปยัง user ที่ block/unfriend/ลบบัญชีอาจได้ HTTP 200 แต่ไม่ได้รับข้อความ; Rich Menu link ก็อาจไม่ถูกผูกแม้ endpoint ตอบสำเร็จ. HTTP success อย่างเดียวไม่ยืนยัน delivery หรือ menu state | [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/nojs/), [Rich Menu overview](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/) |
 | Flex | Flex ให้ layout/card ที่ยืดหยุ่น แต่ผลแสดงอาจแตกต่างตาม LINE client/device; ไม่ควรใช้แทน UI ที่ต้องมี layout/confirmation รับประกัน | [Flex Messages](https://developers.line.biz/en/docs/messaging-api/using-flex-messages/) |
 | API limits | ณ วันที่ตรวจ API reference แสดง Reply และ Push สูงสุด 2,000 requests/second ต่อ endpoint/channel; Reply/Push request มี message objects ได้สูงสุด 5 รายการ; Push นับ monthly OA message quota ต่อ recipient แต่ Reply ไม่นับ; quota/ราคาแตกต่างตาม region/plan. Limits เปลี่ยนได้ จึงตรวจค่าจริงตอน provision/deploy และไม่ฝังค่าใน architecture | [Messaging API reference and rate limits](https://developers.line.biz/en/reference/messaging-api/nojs/), [Messaging API pricing](https://developers.line.biz/en/docs/messaging-api/pricing/) |
@@ -101,7 +101,7 @@ Provider, OA, Messaging API, LINE Login/LIFF และ credentials ทั้ง�
 - สร้าง DEMI Provider เพียงหนึ่งอันสำหรับบริการ DEMI นี้
 - สร้าง DEMI Messaging API Channel ที่เชื่อมกับ DEMI LINE OA
 - สร้าง DEMI LINE Login Channel และผูก LIFF application(s) ไว้กับ channel นี้
-- ทั้งสอง channel อยู่ใต้ DEMI Provider เดียวกัน จึงได้ LINE userId เดียวกันของ user เดียวกันตาม namespace ของ LINE และใช้ OA add-friend/linking behavior ที่เกี่ยวข้องได้
+- ทั้งสอง channel อยู่ใต้ DEMI Provider เดียวกัน; เชื่อม DEMI OA กับ DEMI LINE Login Channel ใน Console เพื่อให้ใช้ LINE userId namespace เดียวกันและตรวจ friendship status ผ่าน LINE Login API ได้
 - ห้ามนำ Provider เดียวกันนี้ไปเป็น shared identity/data namespace ให้แอปอื่น และห้ามนำ channel ของ NHFapp มาใช้ การมี userId เดียวกันไม่ลบข้อกำหนดตาม LINE User Data Policy
 - ไม่สร้าง Provider/channel หลายชุดใน 17J.1 เว้นแต่มีข้อจำกัดแพลตฟอร์มที่ยืนยันได้และมี decision ใหม่ก่อนเปลี่ยน topology
 - การเลือก Provider ย้อนกลับยากเพราะ channel ย้าย Provider ไม่ได้ จึงต้องตรวจชื่อ/ผู้ควบคุม/สิทธิ์ admin และ ownership ก่อน provision จริง
@@ -120,7 +120,7 @@ DEMI Provider namespace + verified LINE userId   0..1 ↔ 0..1   active DEMI Use
 - หนึ่ง LINE identity bind กับ DEMI User ที่ active ได้ไม่เกินหนึ่งราย และหนึ่ง DEMI User มี active LINE identity ได้ไม่เกินหนึ่งรายใน v1
 - ผู้มีหลาย Role ยังเป็น User เดียวและ Person เดียว; ไม่สร้าง LINE binding แยกตาม role, Hospital, Patient relationship หรือ workspace
 - เก็บ provider identity ที่ verified โดย LINE เท่านั้น. Browser supplied lineUserId, DEMI userId, PersonId, HN, National ID หรือ role ใช้สร้าง binding ไม่ได้
-- Account linking เป็น explicit opt-in. unique collision, existing binding, stale intent, mismatched line user/nonce หรือ DEMI user ineligible ต้อง fail closed; ห้าม reassign, merge, replace หรือ takeover เงียบ ๆ
+- Account linking เป็น explicit opt-in. unique collision, existing binding, stale intent, session/subject mismatch หรือ DEMI user ineligible ต้อง fail closed; ห้าม reassign, merge, replace หรือ takeover เงียบ ๆ
 - ไม่กำหนด Prisma table/field/constraint ใน 17J.0. Schema, unique constraints และ transaction design เป็นงาน 17J.1 ตาม invariant นี้
 
 ## 9. Secure account-linking flow
@@ -128,22 +128,34 @@ DEMI Provider namespace + verified LINE userId   0..1 ↔ 0..1   active DEMI Use
 ### ผู้ใช้ที่มี DEMI User อยู่แล้ว
 
 ~~~text
-เพิ่ม/เปิด DEMI LINE OA
-  → เมนู UNLINKED แสดงเฉพาะปุ่มเชื่อมบัญชี
+DEMI OA / Rich Menu: เชื่อมบัญชี DEMI
   → เปิด DEMI LIFF
-  → LIFF ส่ง LINE ID token ไป DEMI server ผ่าน HTTPS
-  → DEMI server ขอ LINE ตรวจ token และอ่าน subject จากผล verify
-  → ผู้ใช้พิสูจน์ DEMI account ผ่าน existing authenticated session/login
-  → server resolve exact ACTIVE DEMI User จาก DEMI session
-  → server สร้าง pending link intent + nonce อายุสั้น ผูกกับ User และ verified LINE subject
-  → server ขอ Messaging API linkToken ของ LINE subject ที่ตรวจแล้ว
-  → เปิด LINE account-linking endpoint ตาม documented flow
-  → signed accountLink webhook สำเร็จต้อง match result=ok, source LINE userId, nonce และ pending intent
-  → transaction สร้าง binding เฉพาะเมื่อทั้งสอง identity ยัง valid และ unique slots ว่าง
-  → resolve current DEMI authority, reconcile per-user Rich Menu
+  → ผู้ใช้ยืนยัน LINE ใน LIFF; LIFF ส่ง raw ID token ไป DEMI server ผ่าน HTTPS
+  → server ส่ง raw token ไป LINE ID-token verify endpoint พร้อม expected DEMI LINE Login channel ID
+  → server ใช้ subject/userId จากผล verify; ไม่ใช้ lineUserId หรือ decoded profile ที่ client ส่งมา
+  → existing DEMI authenticated session/login พิสูจน์ exact DEMI User; หากยังไม่ active ให้ทำ activation เดิมก่อน
+  → server แสดงผลยืนยันการผูกบัญชีและรับ explicit user confirmation
+  → server ออก/ตรวจ single-use link intent + anti-CSRF state ที่อายุสั้นและผูกกับ session, DEMI User และ verified LINE subject
+  → transaction ตรวจสถานะและ unique binding ทั้งสองด้าน แล้ว consume intent และสร้าง verified LINE identity ↔ DEMI User binding
+  → server resolve current Role/Membership/Capability/Scope และ project เฉพาะ menu mapping ที่ปิดแล้ว
+  → หากมีหลาย operational role ให้หยุดก่อนเลือก/assign operational menu จนกว่า owner จะตัดสินใจ
+  → ตรวจ OA friendship และยืนยัน per-user Rich Menu ด้วย read-back ก่อนถือว่าเมนูพร้อม
 ~~~
 
-LINE account-link token เป็น one-time และหมดอายุใน 10 นาทีตาม official docs. Pending DEMI intent/nonce ต้อง single-use, unpredictable, อายุไม่เกิน token และไม่สามารถเปลี่ยน User หรือ LINE subject หลังสร้างได้. Nonce ต้องอยู่ในข้อกำหนด LINE 10–255 characters; ใช้ random secure อย่างน้อย 128 bits ตามคำแนะนำ LINE. ค่า token/nonce ไม่ลง log.
+LINE Developers อธิบาย LINE Login, Messaging API account linking และ LIFF เป็นทางเลือกตาม entry flow. Messaging API account linking มี flow เฉพาะที่ใช้ linkToken + accountLink webhook เพื่อยืนยันผู้ใช้ที่เริ่มจาก OA chat. DEMI เลือก LIFF ตาม product entry flow; ไม่ต่อสองวิธีเข้าด้วยกัน. ความเสี่ยงการทำ custom link flow ที่ LINE เตือนลดด้วยการ verify raw LINE ID token ที่ server, existing DEMI authentication, explicit confirmation, session-bound single-use CSRF/link intent และ transactional unique constraints. LINE subject มาจาก ID token ที่ LINE ตรวจแล้วเท่านั้น.
+
+Link intent เป็น bounded security transaction state ไม่ใช่ conversation state. ใช้ค่าที่คาดเดายาก อายุสั้น ผูกกับ DEMI session และใช้ครั้งเดียว; ปฏิเสธ CSRF, replay, stale session, binding conflict และการเปลี่ยน subject/user หลัง intent ถูกยืนยัน. LINE OIDC nonce ตรวจเฉพาะเมื่อ authorization flow ส่ง nonce มา; ไม่มี Messaging API linkToken, accountLink nonce หรือ accountLink webhook ใน flow นี้.
+
+### OA friendship และ delivery reachability
+
+LINE identity binding และ OA friendship เป็นคนละสถานะ. Binding ที่สำเร็จไม่ยืนยันว่า user ยังเป็นเพื่อนหรือรับข้อความจาก DEMI OA ได้:
+
+- DEMI LINE Login Channel ต้อง link กับ DEMI OA และอยู่ใต้ DEMI Provider เดียวกัน. ระหว่าง LIFF link flow ให้ server ตรวจ friendship ปัจจุบันผ่าน LINE Login `GET /friendship/v1/status` ด้วย access token ชั่วคราวที่มี `profile` scope. ตรวจ access token ผ่าน `GET /oauth2/v2.1/verify` ว่าเป็นของ expected channel, ยังไม่หมดอายุ และมี scope ที่ต้องใช้; ยืนยัน userId จาก `/v2/profile` ตรงกับ subject จาก ID token ก่อนใช้ `friendFlag`. ใช้ token เพื่อตรวจเท่านั้นแล้วทิ้ง; ไม่เก็บ access token, display name, picture หรือ profile fields.
+- `friendFlag=true` หมายถึง user เพิ่ม OA เป็นเพื่อนและไม่ได้ block; `false`, scope ไม่พอ, token ไม่ valid หรือ API ตรวจไม่ได้ ให้ถือว่า OA reachability เป็น FALSE/UNKNOWN. การ link DEMI↔LINE อาจคงอยู่ แต่ไม่ assign operational Rich Menu และไม่ enqueue proactive Push จนกว่าจะมีหลักฐาน friend ที่ใช้ได้.
+- เก็บ follow/unfollow จาก signed webhook เป็นสถานะ reachability แยกจาก binding. `unfollow` หมายถึง user block OA: suppress Push และอย่าลบ DEMI↔LINE binding. `follow` (add หรือ unblock) เป็นสัญญาณให้ตรวจ friendship/current DEMI authority และ reconcile menu ใหม่; อย่าใช้ `follow.isUnblocked` เป็นหลักฐานแยก add กับ unblock.
+- Per-user Rich Menu `POST` อาจตอบ HTTP 200 แม้ user ลบบัญชี, block OA, ไม่เคย add OA หรือ ID มาจาก Provider อื่น. หลัง link/relink ให้ `GET /bot/user/{userId}/richmenu` และต้องได้ richMenuId ที่คาดไว้; 404, mismatch, timeout หรือ API error หมายถึง menu state NOT CONFIRMED และห้ามรายงานว่า applied.
+- Push ไปยัง user ที่ block OA หรือ LINE account ที่ไม่มีอยู่อาจตอบ HTTP 200 โดยไม่มีข้อความส่งถึง. ห้ามนับ provider HTTP success เป็น friend status หรือ delivery receipt. เมื่อ reachability เป็น FALSE/UNKNOWN หรือมี webhook processing gap ที่ทำให้ state ไม่น่าเชื่อถือ ให้ระงับ proactive Push; recheck ได้เมื่อ user กลับเข้า LIFF หรือมีเหตุการณ์ follow ที่ verify/reconcile ได้.
+- Webhook redelivery ไม่รับประกันครบถ้วน จึงระบุไม่ได้ว่าทุกการ block จะมี server-side signal เสมอ. 17J.1 ต้องเก็บ failure/reachability ให้ fail closed เมื่อทราบว่า unavailable และทำให้ webhook ingestion outage ทำให้สถานะที่ได้รับผลกระทบเป็น UNKNOWN; freshness window สำหรับ Push ต้องกำหนดก่อน 17J.4.
 
 ### ผู้ใช้ที่ยังไม่ผ่าน activation
 
@@ -163,13 +175,15 @@ LINE account-link token เป็น one-time และหมดอายุใ�
 | สถานะ/เหตุการณ์ | Binding | Business permission / menu / delivery |
 | --- | --- | --- |
 | ยังไม่เคย link (UNLINKED) | ไม่มี | pre-link menu เท่านั้น; ไม่มี DEMI lookup หรือ push |
-| กำลัง link (PENDING) | ยังไม่มี active binding | pending intent อายุสั้น ใช้ครั้งเดียว; ไม่มี authority |
+| กำลัง link (PENDING) | ยังไม่มี active binding; มีเพียง short-lived DEMI session-bound link intent | intent ใช้ครั้งเดียวและไม่มี authority; stale/replayed intent fail closed |
 | link สำเร็จ (LINKED) | verified LINE identity ↔ exact DEMI User | อ่าน role/membership/capability/scope ปัจจุบันทุกครั้งที่ทำ protected action |
 | User SUSPENDED / disabled / ineligible | เก็บ binding เพื่อรักษา identity history เว้นแต่ policy erasure ที่อนุมัติเป็นอย่างอื่น | deny business operation และ suppress push; ใช้ neutral linked/ineligible menu |
 | role, membership, Patient relationship หรือ capability เปลี่ยน | binding ไม่เปลี่ยน | menu projection reconcile; server policy ใช้สถานะล่าสุดและ deny ทันทีเมื่อ authority หาย |
-| conflict, replay, nonce/user mismatch | ไม่สร้าง/ไม่แก้ binding | fail closed; เก็บเฉพาะ security correlation ที่ไม่บรรจุ PII/token |
+| conflict, replay, CSRF/session/subject mismatch | ไม่สร้าง/ไม่แก้ binding | fail closed; เก็บเฉพาะ security correlation ที่ไม่บรรจุ PII/token |
 | ผู้ใช้ unlink | deactivate/revoke binding หลัง authenticated explicit action | หยุด proactive delivery; กลับสู่ UNLINKED menu หลัง state commit |
-| LINE block/unfollow หรือ OA access หาย | ไม่ถือว่า DEMI unlink อัตโนมัติ | หยุด/ลดการส่งและ reconcile menu ตามสถานะที่ LINE รายงาน; binding ไม่ให้ permission เพิ่ม |
+| OA friendship TRUE | binding ไม่เปลี่ยน; เก็บ reachability แยก | อาจประเมิน menu และ delivery eligibility หลัง resolve current DEMI authority |
+| OA unfollow/block, deleted LINE account, friendship UNKNOWN หรือ menu read-back ไม่ตรง | ไม่ถือว่า DEMI unlink อัตโนมัติ; คง binding | suppress Push และไม่ถือว่า Rich Menu applied; binding ไม่ให้ permission เพิ่ม |
+| OA follow/add/unblock | binding ไม่เปลี่ยน | recheck friendship/current DEMI state; reconcile menu แล้วอ่านกลับ expected menu ID |
 | relink | สร้าง intent ใหม่หลัง unlink/verified recovery | ตรวจ uniqueness ใหม่; ไม่ย้าย binding ที่ยัง active |
 | deleted/erased DEMI account ในอนาคต | schema ปัจจุบันไม่มี User DELETED status | การถอน binding/erasure ต้องตาม policy ที่อนุมัติ; ห้ามตีความการลบเป็นการสร้างสิทธิ์ใหม่ |
 
@@ -202,7 +216,7 @@ Rich Menu มีผลต่อ presentation ของ user ที่เป็�
 | Linked + eligible PATIENT only | แสดงเฉพาะ Patient actions ที่ผ่าน current authority; ไม่มี delegated/family action เว้นแต่ capability นั้นผ่าน gate ของตัวเอง |
 | Linked + eligible OSM only | แสดง OSM actions ที่ policy ปัจจุบันรองรับ; ห้ามเดา scope ที่ยังเปิด |
 | Linked + eligible HOSPITAL only | แสดง Hospital actions ที่ membership/capability ปัจจุบันรองรับ |
-| Linked + หลาย operational roles | ใช้ **combined role-aware menu** รวมเฉพาะ section/action ของบทบาทที่ปัจจุบันใช้ได้. ไม่มี HOSPITAL > OSM > PATIENT precedence. หากต้องเลือก Hospital/Patient workspace ให้เข้า selector/workflow ที่ตรวจ authority แยก |
+| Linked + หลาย operational roles | **OPEN / OWNER DECISION REQUIRED.** ยังไม่กำหนด operational menu, role precedence หรือวิธีเลือก context; ต้องไม่แสดง menu ของ role เดียวโดยการเดา |
 | ADMIN only | ไม่มี operational Rich Menu อัตโนมัติ; ADMIN ที่มี operational role อื่นเห็นได้เฉพาะ actions ของ operational role นั้น |
 | Linked แต่ User/role/membership/relationship ไม่พร้อม | ถอน operational actions และใช้ neutral linked/ineligible menu ซึ่งไม่ชวนให้ relink และไม่มี business operation |
 
@@ -210,15 +224,15 @@ Rich Menu มีผลต่อ presentation ของ user ที่เป็�
 
 | ทางเลือก | Trade-off |
 | --- | --- |
-| A. Combined role-aware menu — **เลือกแล้วโดยเจ้าของ** | ทำ action ของหลาย role ได้ตรงจาก chat โดยไม่เลือก role ก่อน; พื้นที่เมนูมีจำกัด จึงรวมเฉพาะ action ที่ผู้ใช้ eligible จริงและส่ง form/detail ไป LIFF |
-| B. Role/workspace selector เป็นจุดเริ่มทุกครั้ง | แยก context ชัดและไม่จัดลำดับ role; เพิ่ม tap และภาระการเลือกก่อนงานสั้น ๆ จึงไม่ใช้เป็น default menu strategy |
-| C. สลับ Rich Menu เป็น tabs แยกตาม role | ลดจำนวนปุ่มที่แสดงพร้อมกัน; เพิ่มขั้นตอนและเสี่ยงให้ user อยู่บน tab ที่ไม่ตรงกับ role/current eligibility. LINE รองรับการสลับ menu แต่ยังไม่จำเป็นสำหรับ initial experience |
+| A. Combined role-aware menu | เข้าถึง action ของหลาย role ได้โดยไม่เลือกก่อน; พื้นที่จำกัดและผู้ใช้อาจสับสนว่ากำลังทำงานใน context ใด |
+| B. Workspace/role selector | ระบุ context ชัดและไม่กำหนด precedence; เพิ่มขั้นตอนก่อนงานสั้นและต้องออกแบบ selection เมื่อมีหลาย membership/relationship |
+| C. Rich Menu tabs / switching | แยก action ตาม role และ LINE รองรับ rich menu switch action/alias; เพิ่มการสลับและเสี่ยง context/menu state เก่าหลัง authority เปลี่ยน |
 
-ใช้ B เป็น bounded LIFF workspace selector เฉพาะ workflow ที่ต้องเลือกหนึ่งในหลาย Hospital/relationship/resource scopes. คำแนะนำตาม owner decision คือ A สำหรับ default multi-role menu; ทุกทางเลือกยังต้อง authorize action บน server.
+ทั้งสามข้อเป็นทางเลือกที่ยังไม่ถูกเลือกโดยเจ้าของ. ไม่มี role precedence หรือ default multi-role UX ที่อนุมัติแล้ว. ทุกทางเลือกยังต้อง authorize action บน server.
 
-เมื่อ link สำเร็จหรือ unlink commit แล้ว, role/membership/relationship เปลี่ยน หรือ User ถูก suspend ให้ reconcile menu กับ current DEMI state. หาก LINE API/menu sync ล่าช้าหรือ fail, UI ที่ stale ต้องยังถูก deny โดย server. อย่าถือ HTTP success ว่าผูก menu สำเร็จ; เมื่อตรวจพบ OA follow ใหม่หรือ menu per-user หาย ให้คำนวณและ reconcile จาก binding + current eligibility ใหม่. ไม่ถือว่าการเห็น/กดเมนูเป็นหลักฐานสิทธิ์
+เมื่อ link สำเร็จหรือ unlink commit แล้ว, role/membership/relationship เปลี่ยน หรือ User ถูก suspend ให้ reconcile menu กับ current DEMI state. หาก LINE API/menu sync ล่าช้าหรือ fail, UI ที่ stale ต้องยังถูก deny โดย server. อย่าถือ HTTP success ว่าผูก menu สำเร็จ; หลัง per-user menu link ต้อง GET read-back และยืนยัน richMenuId ที่คาดไว้. เมื่อ friendship เปลี่ยนให้ recheck/reconcile จาก binding + current eligibility ใหม่. ไม่ถือว่าการเห็น/กดเมนูเป็นหลักฐานสิทธิ์
 
-ทุก linked menu variant ต้องมี bounded ทางเข้าจัดการบัญชี/unlink ไป LIFF; action นี้ไม่ใช่ business role. รายละเอียด layout, จำนวนพื้นที่, label/copy และวิธีแสดง multi-membership selector ยังเป็น UI implementation detail ของ 17J.1; การใช้ combined menu และไม่มี role precedence ปิดแล้ว
+ทุก linked menu variant ต้องมี bounded ทางเข้าจัดการบัญชี/unlink ไป LIFF; action นี้ไม่ใช่ business role. Multi-role presentation ยังเป็น product decision ไม่ใช่ UI implementation detail.
 
 ## 13. Reactive interaction — Reply
 
@@ -271,10 +285,10 @@ Approved DEMI source event
 
 - รับเฉพาะ HTTPS ที่ route จำกัดขนาด body ก่อน buffer/parse; ปฏิเสธ body ใหญ่เกิน, missing signature, malformed UTF-8/JSON หรือ signature ไม่ผ่าน
 - verify HMAC-SHA256 โดยใช้ Messaging API channel secret และ raw UTF-8 request body bytes เดิม เทียบ x-line-signature ก่อน JSON deserialization; proxy/middleware ต้องไม่ rewrite body/header ก่อน verify
-- parse แล้ว validate event schema/field types; ใช้ event allowlist แยกตาม phase. 17J.1 รับเฉพาะ follow/unfollow/accountLink; 17J.2 จึงเพิ่ม known business postback/message intents ตาม contract. Unlink ใช้ LIFF account workflow ไม่ใช้ free-form chat command
+- parse แล้ว validate event schema/field types; ใช้ event allowlist แยกตาม phase. 17J.1 รับเฉพาะ follow/unfollow เพื่อดูแล OA availability; ไม่มี accountLink event ใน flow ที่เลือก. 17J.2 จึงเพิ่ม known business postback/message intents ตาม contract. Unlink ใช้ LIFF/account workflow ไม่ใช้ free-form chat command
 - reject หรือ safely ignore group/room event ใน slice ที่มีข้อมูล Patient; ไม่ตอบข้อมูลผู้ป่วยใน group
 - ห้ามใช้ role, DEMI id, Patient/Hospital id, National ID หรือ operation permission ที่มากับ text/postback; ทุก identity resolve server-side จาก LINE source ID และ binding ที่ verify แล้ว
-- ใช้ webhookEventId เป็น deduplication identity เมื่อมี; accountLink ต้อง consume nonce แบบ single-use. ออกแบบให้ duplicate และ reordered events ไม่ทำธุรกรรมซ้ำ และให้ current business state เป็นตัวตัดสิน
+- ใช้ webhookEventId เป็น deduplication identity เมื่อมี. ออกแบบให้ duplicate และ reordered follow/unfollow events ไม่ทำธุรกรรมซ้ำ และให้ current observed friendship/business state เป็นตัวตัดสิน
 - LINE redelivery ปิด default; interval/จำนวนครั้งไม่รับประกัน. Persist verified/allowed event receipt ก่อน asynchronous processing และตอบ 2xx เฉพาะเมื่อ durable accept สำเร็จหรือยืนยัน duplicate ที่เคย accept แล้ว. หาก persistence fail ต้องไม่ตอบ success, ต้อง alert/reconcile ด้วย operational evidence; ห้ามถือ webhook retry เป็น queue/delivery guarantee
 - กำหนด request timeout/body caps/rate/abuse limits ให้ endpoint จบ signature verification + durable accept ภายใน bounded time; ห้ามรอ business/provider call หรือ LINE Reply/Push ใน request/long DB transaction. Implement operational recovery ให้เข้ากับ webhook redelivery setting และ LINE webhook error statistics
 - log ได้เฉพาะ correlation ID, webhookEventId, event type, outcome, duration และ safe error category; ห้าม log raw body/text, profile, ID/access/channel token, nonce, national ID, HN หรือ clinical payload
@@ -285,17 +299,19 @@ Approved DEMI source event
 ~~~text
 LIFF client
   → raw LINE ID token over HTTPS
-  → DEMI server verifies token with LINE using expected DEMI Login channel ID
+  → DEMI server verifies token with LINE using expected DEMI LINE Login channel ID
   → server takes subject from verified result
-  → existing DEMI authentication/session proves exact DEMI User
-  → resolve current authorization and invoke business service
+  → existing DEMI authenticated session proves exact DEMI User
+  → explicit confirmation + single-use session-bound anti-CSRF link intent
+  → transactional unique LINE identity ↔ DEMI User binding
+  → current DEMI authorization resolution for each operation
 ~~~
 
-- ใช้ server verification ของ ID token ผ่าน LINE verify endpoint; ตรวจ expected audience/channel ID, expiry และ nonce เมื่อ flow ส่ง nonce; LINE subject มาจาก verify result ไม่ใช่ decoded client profile
+- ใช้ LINE ID token verify endpoint ฝั่ง server; ตรวจ expected channel ID/audience และ expiry; ตรวจ OIDC nonce เมื่อ LINE authorization flow ส่ง nonce มา. LINE subject มาจากผล verify ไม่ใช่ decoded client profile
 - LIFF client supplied lineUserId, DEMI userId/PersonId, role, query parameter, liff.state, local storage, hidden UI หรือ client-selected Patient/Hospital/OSM identity ไม่ใช่ authority
 - LIFF API route ใช้ DEMI authentication ที่มีอยู่และ current policy; LINE token ไม่แปลงเป็น DEMI session โดยอัตโนมัติและไม่แทน DEMI password/activation
-- ใช้ LIFF scopes เท่าที่จำเป็น; link proof เริ่มจาก openid/ID token. ไม่ขอ profile/email scope หาก workflow ไม่ต้องใช้
-- หลีกเลี่ยง token/PII ใน URL, fragment, analytics, browser history, referrer และ logs. LIFF access token ไม่ใช่ durable DEMI session; token ที่ client ส่งต้องตรวจที่ server
+- ใช้ LIFF scope `openid` สำหรับ ID token. ขอ `profile` เฉพาะถ้าใช้ LINE Login friendship status API; scope นี้ใช้เฉพาะตรวจ friendFlag และไม่เก็บ profile fields. ไม่ขอ email scope
+- หลีกเลี่ยง token/PII ใน URL, fragment, analytics, browser history, referrer และ logs. ไม่ persist raw ID/access token; ใช้เฉพาะตรวจ server-side แล้วทิ้ง. Access token ที่ใช้เช็ค friendship ต้อง verify กับ LINE, ยืนยัน profile userId ตรงกับ ID token subject, ใช้ชั่วคราวและไม่เก็บ. LIFF access token ไม่ใช่ durable DEMI session
 - LIFF ไม่สร้าง User/Person, activation หรือ business relationship เอง; หน้า/route ทุกตัวตรวจ actor และ resource ซ้ำที่ server
 
 ## 18. Privacy และ sensitive data ใน LINE
@@ -305,7 +321,7 @@ LIFF client
 - ห้ามเก็บ National ID ใน LINE chat และห้ามใช้เป็น normal lookup factor หลัง link. Anonymous National-ID lookup เป็น privacy/identity-proofing requirement แยกที่ยังไม่อนุมัติ
 - ใช้ LIFF เพื่อเปิดข้อมูลละเอียดจาก DEMI server หลัง resolve actor และ policy. Flex คือ presentation ของ message ไม่ใช่ privacy boundary
 - Chat เป็น 1:1 กับ user ที่ verified เท่านั้นสำหรับข้อมูลเกี่ยวกับผู้ป่วย; ห้าม group/room delivery
-- ก่อน complete account link ต้องแจ้งผู้ใช้ว่า unlink ได้ตลอดตามข้อกำหนด LINE; 17J.1 อาจสร้าง technical foundation แต่ไม่เปิด flow ให้ real users จน notice/purpose/retention copy ผ่าน review. Exact notice, retention of link/security records และ allowed fields in reactive appointment replies ยังต้องยืนยัน; safe default คือไม่เปิดเผย detail
+- DEMI กำหนดให้ unlink ได้ตลอดและต้องแจ้งผู้ใช้ก่อน/ขณะ link แม้จะเลือก LIFF linking แทน Messaging API account-link feature. 17J.1 ต้องมีเส้นทาง unlink ที่ใช้ existing DEMI authentication ได้ แม้ OA จะ blocked/unfollowed. Exact notice, retention of link/security records และ allowed fields in reactive appointment replies ยังต้องยืนยัน; safe default คือไม่เปิดเผย detail
 
 ## 19. Route / deep-link authority
 
@@ -347,11 +363,12 @@ Deep link may carry only an allowlisted intent and minimum opaque resource locat
 
 Initial approved UX is stateless: Rich Menu → known postback → immediate authorized operation/result. No persistent conversation session, pending question table, generic chatbot engine, free-form NLU or state machine is required.
 
-Account-link pending intent/nonce is bounded security transaction state, not conversation state. If a future approved chat flow needs multiple messages, name its exact steps, expiration, replay behavior, sensitive fields and recovery before adding narrowly scoped state.
+The LIFF link intent / anti-CSRF state is bounded security transaction state, not conversation state. It is session-bound and single-use; no Messaging API account-link nonce, pending accountLink row, persistent conversation session, pending question table, generic chatbot engine, free-form NLU or state machine is needed. If a future approved chat flow needs multiple messages, name its exact steps, expiration, replay behavior, sensitive fields and recovery before adding narrowly scoped state.
 
 ## 23. Decisions still open
 
-These decisions do not block 17J.1 foundation, but block the matching user-facing delivery behavior:
+รายการต่อไปนี้ไม่ block การเริ่ม identity/single-role tranche ที่ระบุใน section 24; แต่ block การส่งมอบ behavior ที่เกี่ยวข้อง:
+- Multi-role Rich Menu UX: owner must choose among A. combined role-aware menu, B. workspace/role selector, or C. Rich Menu tabs/switching. No alternative or role precedence is approved. Until then, multi-role users do not receive a selected operational menu and 17J.1 cannot be declared complete for them.
 
 - P17D-NOTIF-01: exact appointment events and timing, recipient authority, time zone, cancellation/stale handling, content, preference/consent and quiet hours
 - Medication: explicit approval of reminder delivery, exact due time/content/preferences, and relation to MED-02; no adherence tracking is implied
@@ -361,7 +378,7 @@ These decisions do not block 17J.1 foundation, but block the matching user-facin
 - Push operations: bounded retry count/backoff, permanent error handling, quota alarms and quiet-hour behavior if required
 - Any future notification preference/consent requirement by purpose; no preferences or consent are invented in this contract
 
-No open security-critical decision remains for the 17J.1 contract gate. Unrelated gates listed in section 3 remain unchanged.
+No unresolved security-critical decision blocks the bounded identity/account-link and single-role menu foundation. Multi-role Rich Menu UX remains OPEN / OWNER DECISION REQUIRED and blocks complete 17J.1 menu delivery. Proactive Push friendship freshness policy remains a prerequisite for 17J.4. Unrelated gates listed in section 3 remain unchanged.
 
 ## 24. Phase 17J.1 implementation prerequisites and scope
 
@@ -371,25 +388,35 @@ No open security-critical decision remains for the 17J.1 contract gate. Unrelate
 
 ### Entry contract
 
-17J.1 prerequisites are closed:
+The following prerequisites are closed for the bounded identity/single-role tranche:
 
 - topology/provider/channel relation resolved;
-- binding authority uses verified LINE identity plus existing DEMI auth/activation;
-- uniqueness/conflict/replay fail-closed behavior resolved;
+- LIFF ID-token verification uses the expected DEMI LINE Login channel plus existing DEMI authentication/activation;
+- uniqueness/conflict/replay fail-closed behavior for a verified identity binding resolved;
 - current DEMI authorization remains authoritative;
-- unlinked, linked role menu, ineligible menu, ADMIN-only behavior and multi-role combined menu resolved;
-- LIFF ID-token verification boundary resolved;
+- UNLINKED and single operational-role menu mapping plus ADMIN-only behavior resolved;
+- OA friendship state is separate from binding; follow/unfollow processing and per-user Rich Menu read-back verification are specified;
 - DEMI-only credential ownership resolved;
-- webhook raw-body signature, allowlist, deduplication and redaction requirements resolved.
+- webhook raw-body signature, event allowlist, deduplication and redaction requirements resolved.
+
+Multi-role UX remains open and is not a prerequisite to begin this bounded tranche. It is a prerequisite to assigning operational Rich Menus to multi-role users and to closing the full 17J.1 deliverable.
 
 ### Exact 17J.1 scope
 
-Implement only the account-linking and role-aware Rich Menu foundation under this contract: provision DEMI-owned Provider/OA/Messaging API/LINE Login+LIFF channel configuration; choose DEMI-scoped secret/config ownership; implement minimal identity-binding and pending-link persistence with database uniqueness and transactional conflict handling; implement server-verified LIFF + existing DEMI proof + LINE account-link webhook completion and restricted LIFF self-unlink; implement signature/idempotency boundary for follow/unfollow/accountLink; implement UNLINKED, eligible role and neutral ineligible per-user menu projection including owner-approved combined multi-role menu and a common account-management entry; centralize approved LINE intent/deep-link construction; add focused tests and automation for identity conflict, replay, unlink, authority change and menu staleness.
+Bounded 17J.1 tranche: provision DEMI-owned Provider/OA/Messaging API/LINE Login+LIFF configuration; choose DEMI-scoped secret/config ownership; implement verified LINE identity ↔ existing DEMI User persistence with unique constraints and transactional fail-closed conflict handling; verify LIFF ID tokens server-side and bind only from the existing authenticated DEMI session after explicit confirmation using a short-lived single-use session-bound anti-CSRF intent; implement self-service unlink through existing DEMI authentication; handle follow/unfollow as OA reachability events only; check friendship with the supported LINE Login endpoint when the required transient token/scope is available; apply and read back the expected per-user Rich Menu; implement UNLINKED, ineligible, ADMIN-only and single-operational-role menu projection; centralize approved LINE intent/deep-link construction; add focused checks for identity conflict/replay, unlink, authority change, friendship loss and menu read-back mismatch.
+
+Do not create/use a Messaging API linkToken, accountLink webhook, or account-link-only pending nonce/state. Detect multi-role users but do not assign or claim a final role-specific operational menu for them before the owner decision. This tranche can prove identity binding and single-role menu behavior; the multi-role experience is excluded from its acceptance and release claim.
 
 17J.1 does not include conversational business commands, notification scheduling/delivery, Appointment/Medication/Follow-up reminders, sensitive clinical replies, new authorization policy, Email/SMS/native push, or generic conversation state. Provision real credentials only in DEMI-owned configuration after the environment/security setup is reviewed; never reuse NHFapp assets.
 
 ## 25. Phase 17J.1 GO / NO-GO
 
-**GO.** Owner selection of “เมนูรวมเฉพาะบทบาทที่ใช้ได้” resolved the multi-role Rich Menu decision. The security-critical architecture prerequisites above are now explicit and no remaining open business-event semantics are needed to build account linking/menu foundation.
+**IDENTITY / ACCOUNT-LINK FOUNDATION: GO.** LIFF ID-token verification plus the existing DEMI authenticated session, explicit confirmation, session-bound anti-CSRF intent and transactional uniqueness define the binding authority.
+
+**SINGLE-ROLE RICH MENU FOUNDATION: GO.** UNLINKED behavior, PATIENT-only, OSM-only, HOSPITAL-only, ADMIN-only and current server authorization are specified. OA reachability and Rich Menu API read-back are separate requirements.
+
+**MULTI-ROLE RICH MENU PRODUCT DECISION: OPEN / OWNER DECISION REQUIRED.** A, B and C remain alternatives; none is selected.
+
+**OVERALL 17J.1: CONDITIONAL GO for the bounded identity + single-role tranche only.** Implementation can begin without choosing multi-role presentation only if the scope and acceptance explicitly exclude assigning an operational role menu to multi-role users. **Full 17J.1 completion/release for multi-role users is NO-GO** until the owner chooses A, B or C and the corresponding role-change behavior is specified.
 
 This is a gate decision only. Phase 17J.1 has not been started by this change. Stop after Phase 17J.0.

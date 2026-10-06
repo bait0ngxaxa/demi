@@ -2,7 +2,7 @@
 
 ## CURRENT-status addendum — Phase 17J.0 LINE / LIFF contract (2026-10-06)
 
-[Phase 17J.0 contract](./phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md) and [ADR-0009](./adr/0009-demi-line-oa-liff-identity-and-messaging.md) are **CLOSED / ACCEPTED**. Owner-approved direction is a dedicated DEMI LINE OA/Provider, Messaging API + LIFF under the same Provider, verified LINE-to-existing-User binding, current DEMI authorization, eligible-role combined Rich Menu, chat for bounded actions, LIFF for complex/sensitive workflows, and LINE Messaging API as the sole proactive notification channel. No runtime implementation is included. **Phase 17J.1 is GO but has not started.**
+[Phase 17J.0 contract](./phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md) and [ADR-0009](./adr/0009-demi-line-oa-liff-identity-and-messaging.md) are **CLOSED / ACCEPTED** for the architecture and identity boundary. Owner-approved direction is a dedicated DEMI LINE OA/Provider, Messaging API + LIFF under the same Provider, server-verified LIFF identity bound to an existing authenticated DEMI User, current DEMI authorization, role-aware menus for single operational roles, chat for bounded actions, LIFF for complex/sensitive workflows, and LINE Messaging API as the sole proactive notification channel. Multi-role Rich Menu UX remains OPEN / OWNER DECISION REQUIRED. **17J.1 may begin only as a bounded identity + single-role menu tranche; full 17J.1 completion for multi-role users is blocked.** No runtime implementation is included.
 
 P17D-NOTIF-01 remains open for appointment event/timing/recipient/cancellation/stale/content/preferences/consent/retry semantics; Medication delivery timing and any Follow-up reminder source remain separately gated. P17F-L04/L05, Q5, Phase 17E.2 consent, MED-02, adherence, manual browser/device UAT and production deployment remain unchanged.
 
@@ -832,7 +832,7 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 - additional required staff/OSM profile fields นอกเหนือจาก minimum Phase 4A input
 - clinical data ที่ต้องมี immutable/auditable history
 - รายงานที่ต้องใช้และ scope ของแต่ละ actor
-- additional complex LIFF workflow after 17J.1 account-link foundation, exact unlink/relink recovery UX, `/api/v1` operations, native authentication, offline/sync, native push/device capabilities และ trigger สำหรับเริ่ม native development. LINE topology and account-link authority are closed by [Phase 17J.0](./phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md).
+- additional complex LIFF workflow after 17J.1 account-link foundation, exact unlink/relink recovery UX, multi-role Rich Menu product decision, `/api/v1` operations, native authentication, offline/sync, native push/device capabilities และ trigger สำหรับเริ่ม native development. LINE topology and LIFF account-link authority are closed by [Phase 17J.0](./phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md); final multi-role menu behavior remains open.
 
 > หาก business rule ที่จำเป็นต่อ implementation ยังไม่มีในเอกสาร ห้ามเดา ให้ mark เป็น open requirement หรือขอ clarification
 

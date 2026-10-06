@@ -7,14 +7,16 @@
 
 DEMI มี Patient และ health information จึงต้องปิด boundary ระหว่าง external chat identity, DEMI account, current authorization และการส่งข้อความก่อนสร้าง LINE runtime. LINE userId แปรตาม Provider; channel ที่เชื่อมกันข้าม Provider อาจไม่ resolve เป็น identity เดียวกัน และ LINE ระบุว่า channel ย้าย Provider ภายหลังไม่ได้
 
+LINE Developers documents LINE Login, Messaging API account linking, and LIFF as distinct ID-linking methods selected according to entry flow. DEMI enters linking from the LINE OA Rich Menu into LIFF and already has an authenticated DEMI account/session, so the chosen boundary should verify LINE identity from LIFF and bind it to the existing DEMI User on the server.
+
 DEMI มี Supabase-backed authentication, Person/User, one-time Patient/workforce activation, หลาย Role, Hospital membership และ resource-scoped policy อยู่แล้ว. LINE จึงต้องเป็น identity binding/access/delivery boundary โดยไม่สร้างระบบ credential หรือ authorization คู่ขนาน
 
 ## Decision
 
 1. DEMI ใช้ Provider เฉพาะบริการ DEMI หนึ่งชุด มี DEMI Messaging API Channel/OA และ DEMI LINE Login Channel/LIFF อยู่ใต้ Provider เดียวกัน. ห้ามนำ NHFapp หรือแอปอื่นเข้า Provider/data/config/runtime ของ DEMI
 2. Verified LINE identity จับคู่กับ existing DEMI User แบบ conceptually 0..1 ต่อด้านใน v1; User เชื่อมไปยัง Person ด้วย relation เดิม. Binding ต้อง explicit, server-verified, unique, single-use/conflict-safe; ไม่กำหนด persistence schema ใน ADR นี้
-3. Account link ใช้ existing DEMI login/activation proof ร่วมกับ LINE ID-token verification และ Messaging API account-link token/webhook confirmation. LINE identity ไม่สร้างหรือเปลี่ยน DEMI User และไม่ให้ role, membership, capability, scope หรือ data access
-4. ทุก operation resolve current DEMI role/membership/capability/scope แล้วผ่าน server policy. Rich Menu เป็น role-aware presentation เท่านั้น. User หลายบทบาทได้เมนูรวมเฉพาะ action ที่ปัจจุบันมี authority; ADMIN-only ไม่มี operational menu โดยอัตโนมัติ
+3. Account link ใช้ LIFF ID token ที่ DEMI server ตรวจด้วย expected DEMI LINE Login channel/audience ร่วมกับ existing DEMI authenticated session/login ที่พิสูจน์ exact User. Explicit confirmation และ single-use session-bound anti-CSRF intent ป้องกันการผูกข้าม session/replay; unique transactional binding fail closed. Messaging API account-link feature ไม่ถูกต่อเป็น second proof step. LINE identity ไม่สร้างหรือเปลี่ยน DEMI User และไม่ให้ role, membership, capability, scope หรือ data access
+4. ทุก operation resolve current DEMI role/membership/capability/scope แล้วผ่าน server policy. Rich Menu แปรตาม current eligible operational role; mapping สำหรับผู้ใช้ operational role เดียวและ ADMIN-only เป็นข้อกำหนด. UX สำหรับหลาย operational roles ยัง OPEN / OWNER DECISION REQUIRED; ยังไม่มีการเลือก combined menu, selector หรือ menu switching
 5. การตอบ action ของ user ใช้ webhook → server authorize → business service → Reply API เมื่อ replyToken ยังใช้ได้. การสื่อสารเชิงรุกใช้ approved source event → LINE Push. Reply token ไม่ใช่ push token และห้ามอธิบาย provider delivery ว่า exactly-once
 6. ใช้ LINE chat สำหรับ bounded/simple interactions และ LIFF สำหรับ sensitive, multi-input, visually complex หรือ high-risk workflow. ไม่มี generic chatbot/NLU framework
 7. LINE Messaging API เป็น proactive notification channel เดียวของ architecture ปัจจุบัน. ไม่เพิ่ม Email, SMTP, SMS, browser/native push, NHFapp dependency หรือ generic multi-channel framework
@@ -26,6 +28,7 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 
 - Provider identity namespace is a platform-level decision that is costly to reverse after channel creation.
 - Explicit account linking joins two separately verified identities, while current DEMI policy prevents a chat identity from turning into business authorization.
+- LIFF matches the approved OA Rich Menu → LIFF entry and returns to the existing DEMI account flow without a parallel credential system.
 - Existing DEMI authentication and activation avoid parallel credential and proofing systems.
 - Separate Reply and Push paths preserve LINE token semantics and separate user initiated work from proactive delivery.
 - LINE-first delivery closes the approved transport direction without prematurely deciding domain-specific notification semantics.
@@ -37,7 +40,9 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 - Trust a client supplied LINE userId or decoded LIFF profile: rejected because the client is not a trusted identity verifier.
 - Use LINE identity itself as a DEMI role/account: rejected because a LINE userId does not prove DEMI identity, role, membership or scope.
 - Ask for National ID in chat for each query: rejected because sensitive data should not become the routine post-link identity factor.
-- Default to a single highest role menu: rejected; owner approved a combined menu containing only currently eligible roles.
+- Multi-role menu choices A. combined role-aware menu, B. workspace/role selector, and C. Rich Menu tabs/switching remain alternatives. No precedence or option is selected until the owner decides.
+- Compose Messaging API account-link tokens/webhook confirmation with LIFF ID-token linking: rejected for v1 because LINE documents these as alternative flows and the LIFF entry already obtains a verifiable LINE subject. The Messaging API flow is suitable when linking starts in OA chat without LINE Login; it is not an additional security layer for the LIFF flow.
+- Implement LIFF linking by trusting a client profile or unbound token request: rejected. LINE warns custom linking needs safeguards; DEMI requires server verification of the raw ID token, existing DEMI authentication, explicit confirmation, session-bound single-use CSRF intent and transactional uniqueness.
 - Add email or generic multi-channel notification abstraction: rejected; the current approved proactive channel is LINE Messaging API.
 
 ## Consequences
@@ -47,6 +52,7 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 - LINE login/LIFF and Messaging API identity can be correlated within one DEMI-owned Provider namespace.
 - Existing DEMI authentication, activation, role and policy sources remain authoritative.
 - Linking conflicts and current ineligibility have explicit fail-closed behavior.
+- OA friendship and business identity stay separate; a valid binding does not imply a reachable OA recipient or applied Rich Menu.
 - Chat remains a fast path for bounded actions, while detailed or risky operations have a richer authenticated UI.
 - Domain source semantics remain independent from provider delivery failures.
 
@@ -56,10 +62,13 @@ Implementation contract and current source inventory are recorded in [Phase 17J.
 - LINE event delivery/order and Push receipt are not exactly-once guarantees; future runtime needs durable deduplication and bounded retries.
 - Rich Menu state can become stale after an authorization change; every action must recheck server policy.
 - Sending detailed patient information in chat is intentionally constrained and requires explicit content/privacy approval.
+- A single user-specific Rich Menu can represent only one effective menu at a time. Multi-role presentation remains an owner decision, so the bounded 17J.1 identity/single-role tranche cannot claim full multi-role menu delivery.
 
 ## Open Questions
 
 - Appointment reminder event/timing/recipient/cancellation/staleness/content/preferences/consent and retry policy remain P17D-NOTIF-01.
 - Medication reminder delivery timing/content/preferences require a separate approved requirement; adherence remains deferred and MED-02 remains gated.
 - Follow-up has no current prospective due/reminder source.
-- Exact privacy disclosure for reactive appointment messages, LINE account-link notice/retention copy, inaccessible-LINE recovery UX, and operational push retry limits remain open in Phase 17J.0.
+- Multi-role Rich Menu UX remains OPEN / OWNER DECISION REQUIRED among combined menu, workspace/role selector and Rich Menu tabs/switching; no option or precedence is approved.
+- OA friendship/reachability after the last signed follow/unfollow event can become unknown; Push must fail closed on known false/unknown status and 17J.4 must set the freshness/reconciliation policy.
+- Exact privacy disclosure for reactive appointment messages, unlink notice/retention copy, inaccessible-LINE recovery UX, and operational push retry limits remain open in Phase 17J.0.

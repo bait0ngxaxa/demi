@@ -2,7 +2,7 @@
 
 ## CURRENT-status addendum — Phase 17J.0 LINE / LIFF contract (2026-10-06)
 
-[Phase 17J.0 contract](./PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md) and [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) are **CLOSED / ACCEPTED**. Dedicated DEMI LINE OA/Provider, same-Provider Messaging API + LINE Login/LIFF, explicit verified account linking, current DEMI authorization, combined eligible-role Rich Menu, chat/LIFF interaction boundary and LINE-only proactive transport are fixed. **Phase 17J.1 — GO / NOT STARTED.** No LINE runtime, schema, migration, route or delivery implementation was created.
+[Phase 17J.0 contract](./PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md) and [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) are **CLOSED / ACCEPTED** for the architecture and identity boundary. Dedicated DEMI LINE OA/Provider, same-Provider Messaging API + LINE Login/LIFF, LIFF ID-token verification + existing DEMI session linking, current DEMI authorization, single-role menu mapping, chat/LIFF interaction boundary and LINE-only proactive transport are fixed. Multi-role Rich Menu UX is **OPEN / OWNER DECISION REQUIRED**. **17J.1 may begin only as a bounded identity + single-role menu tranche; full multi-role menu completion is blocked.** No LINE runtime, schema, migration, route or delivery implementation was created.
 
 P17D-NOTIF-01 remains OPEN for business event/timing/recipient/cancellation/stale/content/preferences/consent/retry semantics. Medication delivery timing and Follow-up reminder source are not approved by this phase. P17F-L04/L05, Q5, Phase 17E.2 consent, MED-02, adherence, manual browser/device UAT and production deployment remain unchanged.
 
