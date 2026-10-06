@@ -32,6 +32,8 @@ The detailed decision is recorded in [Phase 17J.0B](../phases/PHASE_17J0B_MULTI_
 
 Current identity-lifecycle contract: v1 uniqueness applies only to ACTIVE LINE bindings; active replacement is never automatic and cross-user rebind is denied when retained lifecycle evidence conflicts. Unlink alone does not authorize transfer, same-User relink requires the explicit flow, inaccessible LINE does not permit takeover, and existing DEMI account recovery remains authoritative. No permanent LINE-subject ownership or non-transfer tombstone is owner-approved.
 
+Authoritative unlink takes effect in DEMI at local transaction commit and is independent of LINE availability. Raw LINE subject may remain only as a temporary provider Rich Menu cleanup locator on an already-unlinked binding while cleanup is unresolved; it grants no authority and is cleared after cleanup is confirmed. A retained HMAC fingerprint remains governed by the v1 conflict guard. This temporary locator is not permanent identity ownership; exact identity-history retention/erasure remains OPEN.
+
 Exact LINE identity-history fingerprint/owner retention and erasure duration, and future cross-account correction/reconciliation/merge/transfer semantics remain OPEN. This open item does not block v1 if runtime remains fail-closed while retained evidence conflicts; it does not reopen Option C.
 
 ## Rationale

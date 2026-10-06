@@ -5,7 +5,7 @@
 - ขอบเขตงานนี้: สัญญา implementation เท่านั้น
 - Phase 17J.1 runtime: **NOT IMPLEMENTED**
 - Identity-history retention/erasure and future cross-account correction/reconciliation semantics: **OPEN**; this does not block v1 if active-binding constraints and cross-user fail-closed checks below are implemented.
-- v1 never treats a LINE subject as permanently owned. Raw subject is required only while a binding is ACTIVE; unlink clears the raw value and keeps only a privacy-minimized fingerprint as current conflict evidence. Exact fingerprint/owner-history retention remains OPEN.
+- v1 never treats a LINE subject as permanently owned. After authoritative unlink, raw LINE subject may remain only as a temporary locator while provider Rich Menu cleanup is unresolved; it is cleared as soon as cleanup is confirmed. It grants no identity or business authority. The minimized fingerprint/history retention decision remains OPEN.
 - สถานะ architecture: [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) ยัง Accepted; owner closeout ของ multi-role อยู่ใน [Phase 17J.0B](./PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md)
 
 เอกสารนี้เป็นข้อกำหนดผูกพันของ implementation Phase 17J.1 ถ้าพฤติกรรม runtime หรือ provider API ไม่ตรงกับสัญญานี้ ให้หยุดและแก้สัญญาด้วยหลักฐานก่อน implement ห้ามเดา policy หรือแก้ authority เพื่อให้เมนูทำงาน
@@ -67,7 +67,7 @@ HEAD ที่ตรวจคือ `cd60e1acadee1f725d7679654406fcf9e66e5c0e`; 
 
 | Durable state | Fields / invariant ที่ต้องมี | เหตุผล |
 | --- | --- | --- |
-| LineAccountBinding | exact verified LINE subject while ACTIVE; owner User FK; linkedAt/lastLinkedAt; nullable unlinkedAt; nullable presentationRole/presentationRoleSelectedAt; reachability and menu-sync state; inactive lifecycle fingerprint without raw LINE subject | active binding, UX preference, reachability, projection and v1 conflict guard |
+| LineAccountBinding | exact verified LINE subject while ACTIVE, or temporarily while UNLINKED provider Rich Menu cleanup is unresolved; owner User FK; linkedAt/lastLinkedAt; nullable unlinkedAt; lifecycleVersion; nullable presentationRole/presentationRoleSelectedAt; reachability, menu-sync and provider-cleanup state; nullable per-binding sync lease token/expiry; inactive lifecycle fingerprint | active binding, UX preference, reachability, projection, recoverable provider cleanup and v1 conflict guard |
 | `LineAccountActionIntent` | opaque id; User FK; LINK/UNLINK action; createdAt; hash ของ challenge; hash ของ verified Supabase session_id; expiresAt; nullable consumedAt/outcome | single-use CSRF/replay defense ที่อยู่ข้าม request |
 | `LineWebhookEventReceipt` | unique webhookEventId, allowlisted event type, event occurredAt, acceptedAt และ bounded outcome enum เท่านั้น | durable dedupe และ atomic event effect |
 
@@ -75,16 +75,16 @@ HEAD ที่ตรวจคือ `cd60e1acadee1f725d7679654406fcf9e66e5c0e`; 
 
 1. DB uniqueness covers ACTIVE bindings only: partial UNIQUE on lineSubjectFingerprint WHERE unlinkedAt IS NULL, and partial UNIQUE on userId WHERE unlinkedAt IS NULL. These are the only subject/User uniqueness invariants; do not add global uniqueness over inactive history.
 2. A new link transaction checks active bindings and retained identity-history fingerprints. An active conflict or a retained fingerprint associated with another User is denied generically because no cross-user recovery/transfer flow is approved. This is a v1 application rule while evidence is retained, not permanent legal/business ownership.
-3. While ACTIVE, the binding holds the exact verified LINE subject needed to identify the principal and call LINE APIs. On unlink, clear the raw subject and retain only a domain-separated HMAC fingerprint plus minimal User/lifecycle evidence needed for same-User relink and the current cross-user deny guard. Use the existing server-only IDENTITY_HASH_SECRET with a dedicated line-subject namespace; never store the fingerprint in Person.identityKeyHash.
+3. While ACTIVE, the binding holds the exact verified LINE subject needed to identify the principal and call LINE APIs. Authoritative unlink retains the raw value only as a provider cleanup locator until per-user Rich Menu unlink is confirmed. It is then cleared; it is never used for identity matching, business operations, or authorization while unlinked. Retain only a domain-separated HMAC fingerprint plus minimal User/lifecycle evidence needed for same-User relink and the current cross-user deny guard. Use the existing server-only IDENTITY_HASH_SECRET with a dedicated line-subject namespace; never store the fingerprint in Person.identityKeyHash.
 4. The fingerprint is privacy-sensitive identity-history evidence, not authority and not a permanent tombstone. Do not impose a global historical UNIQUE constraint or immutable-owner-forever rule. A separately approved correction, duplicate/reconciliation, merge, transfer or erasure flow must be able to supersede, anonymize or delete historical evidence.
-5. Exact retention and erasure duration for the fingerprint and associated User/lifecycle evidence remains OPEN. 17J.1 defines no permanent retention period and no automatic expiry/purge. The v1 unlink flow clears raw LINE subject; any future cleanup/erasure behavior requires its own approved lifecycle contract.
+5. Exact retention and erasure duration for the fingerprint and associated User/lifecycle evidence remains OPEN. 17J.1 defines no permanent retention period and no automatic expiry/purge. Raw LINE subject is cleared immediately after provider cleanup is confirmed; while unresolved, it is retained solely to retry that cleanup. If cleanup cannot be confirmed, do not discard its required locator as a substitute for an approved privacy lifecycle.
 6. Binding creation is concurrency-safe through the two ACTIVE-only database constraints, not application pre-checks alone. Unlink itself never authorizes transfer; active binding replacement is never automatic.
 7. Intent challenge uses CSPRNG >=256 bits, stores only SHA-256 hash, expires in 5 minutes, and is bound to User/session/action, consumed once.
 8. Webhook receipt stores only ULID/event type/time/outcome, without raw body, subject, message, profile or token; dedupe receipts follow the separately approved operational retention policy.
 9. Lifecycle audit uses existing AuditEvent minimized to event kind, actor/User id required by current audit convention, and outcome; never record LINE subject or request/provider body.
 
 ห้าม persist raw ID token, LINE Login access token/refresh token, Messaging API access token/secret, National ID, HN, clinical content, profile/display name, webhook request body หรือ client-supplied authority
-Raw LINE subject is allowed only on an ACTIVE binding row. Unlink clears it; inactive history uses only the privacy-minimized fingerprint described above, whose exact retention period remains OPEN.
+Raw LINE subject may exist only (A) on an ACTIVE binding, or (B) temporarily on an already-unlinked binding while provider presentation cleanup is unresolved. In case B it is only the locator for LINE Rich Menu cleanup, grants ZERO authority, and cannot identify an active binding. Clear it only after cleanup is CONFIRMED_CLEAN; do not keep it afterward as historical ownership evidence. Inactive lifecycle evidence then contains only the privacy-minimized fingerprint allowed by the v1 contract.
 
 ไม่เพิ่ม event outbox, queue หรือแยก reconciliation table ใน v1; sync diagnostics อยู่กับ binding row และ log ที่ปลอด PII พอสำหรับ lazy/operator repair
 
@@ -109,7 +109,7 @@ Transaction ใน PostgreSQL:
    - User เดียวกันมี ACTIVE binding คนละ subject → consume intent แล้ว conflict แบบ privacy-safe; ห้ามแทนที่อัตโนมัติ
    - subject มี ACTIVE binding ของ User อื่น → consume intent แล้ว generic conflict
    - ไม่มี ACTIVE binding แต่ retained fingerprint เดิมชี้ไป User อื่น → consume intent แล้ว generic conflict; ห้าม cross-user rebind หากไม่มี approved recovery/reconciliation flow
-   - retained fingerprint เดิมเป็นของ User เดียวกัน → reactivate lifecycle record เดิมหลัง explicit confirmation; set raw verified subject, update linkedAt/lastLinkedAt และ reset reachability UNKNOWN
+   - retained fingerprint เดิมเป็นของ User เดียวกัน → reactivate lifecycle record เดิมหลัง explicit confirmation; set raw verified subject, update linkedAt/lastLinkedAt, increment lifecycleVersion, supersede/cancel any pending provider-cleanup state, clear presentationRole and reset reachability UNKNOWN. Reconcile the current active projection after commit.
    - ไม่มี active/history conflict → create ACTIVE binding ใหม่
    ทุก conflict ข้างต้นเป็นกฎ fail-closed ของ v1 ขณะมี evidence; ไม่มี permanent historical uniqueness หรือ owner-forever invariant.
 5. Consume intent, update/create binding และ append minimized AuditEvent ใน transaction เดียว
@@ -122,10 +122,16 @@ Responses ภายนอกแยกได้เพียง success, invalid/e
 
 - ผู้ใช้ unlink ตัวเองได้จาก authenticated DEMI account/LIFF settings ด้วย confirmation และ UNLINK intent แบบ session-bound single-use. LINE ID token เก่าไม่จำเป็นเมื่อผู้ใช้ยืนยันตัวด้วย existing DEMI session แล้ว
 - Optional LIFF unlink ที่ตรวจ LINE token ได้ ต้องตรวจว่า subject ตรงกับ ACTIVE binding ของ DEMI User คนเดิม และยังต้องใช้ DEMI session/explicit confirmation; LIFF identity เดี่ยว ๆ unlink ไม่ได้
-- Transaction lock User + intent + ACTIVE binding, ตรวจ exact owner/status/intent, set unlinkedAt, clear raw LINE subject และ presentationRole, retain เฉพาะ domain-separated HMAC fingerprint กับ minimal lifecycle evidence เพื่อรองรับ same-User relink และ v1 cross-user denial, write AuditEvent แล้ว commit
+- Authoritative local unlink is one transaction: lock exact User + intent + ACTIVE binding; verify exact owner, ACTIVE account, UNLINK intent, session/challenge/expiry and single use; set `unlinkedAt`; clear `presentationRole`; increment `lifecycleVersion`; set provider cleanup state to PENDING; retain raw verified LINE subject temporarily only as the provider cleanup locator; retain the domain-separated HMAC fingerprint under current v1 rules; append minimized AuditEvent; consume the intent; commit. From this commit onward the binding is locally UNLINKED: business use and proactive delivery are suppressed immediately, regardless of LINE availability. The retained locator is not an active identity binding and grants zero authority.
+- Only after local commit, when reachability is currently trusted as FRIEND, call `DELETE /v2/bot/user/{userId}/richmenu` using the retained LINE userId, then use `GET /v2/bot/user/{userId}/richmenu` where possible. A successful DELETE response alone is not proof of cleanup. Persist the result in a short transaction only if binding id, `unlinkedAt`, lifecycleVersion, cleanup target fingerprint and unresolved cleanup state still match. Only that conditional `CONFIRMED_CLEAN` update sets the raw subject to null.
+- Cleanup outcomes are bounded: `PENDING` = committed but not attempted/queued for a later bounded trigger; `CONFIRMED_CLEAN` = readback confirms no per-user menu while the latest trusted reachability observation (successful `friendFlag=true` check or accepted signed follow) remains FRIEND under timestamp/gap rules; `MISMATCH` = readback returns a linked richMenuId; `UNAVAILABLE` = reachability is known NOT_FRIEND or provider is unavailable; `UNKNOWN` = timeout/ambiguous result, or readback cannot distinguish cleanup from non-friend/unknown-user. Only `CONFIRMED_CLEAN` clears the raw LINE subject. Other outcomes retain it solely as the cleanup locator.
+- Do not repeatedly call LINE while reachability is NOT_FRIEND or UNKNOWN. Leave cleanup UNAVAILABLE/UNKNOWN; a later signed follow/unblock with the matching source.userId, or explicit operator repair, may start one bounded retry and verification. If the user blocked/deleted LINE or never friended the OA, HTTP 200 may still leave the per-user Rich Menu linked; do not call that clean without qualifying readback.
+- A same-User + same verified LINE subject explicit relink may reactivate the same lifecycle while cleanup is pending. Increment lifecycleVersion, set the binding ACTIVE, and supersede the old cleanup state in the relink transaction; then project/read back the current eligible role menu. Every cleanup/reconcile worker captures binding id + lifecycleVersion and rechecks current state immediately before provider mutation; serialize per-binding Rich Menu mutations. A stale generation must not launch DELETE or persist a cleanup result. If a DELETE was already in flight when relink committed, its result is stale: do not clear the raw subject or mark CONFIRMED_CLEAN; after that call settles, reread current state and reconcile/read back the current ACTIVE menu before completing the serialized work. Any transient stale presentation remains non-authoritative and protected operations still use current DEMI authorization.
+- A process crash after local unlink commit leaves durable `unlinkedAt`, cleanup state, lifecycleVersion, HMAC fingerprint and raw provider locator on the binding row. Lazy reconciliation/operator repair can find and retry it without a generic outbox. Operator output/logs must never print the raw subject.
 - Fingerprint และ owner/lifecycle evidence เป็นข้อมูล identity-history ที่ privacy-sensitive; ไม่ใช่ authority และไม่ใช่ permanent reservation. Exact retention/erasure period remains OPEN. 17J.1 ไม่เพิ่ม purge/erasure endpoint หรือ background cleanup
 - ACTIVE เป็นเงื่อนไข link ใหม่และ self-service unlink. SUSPENDED/PROVISIONED/INVITED ไม่มี self-service mutation; binding คงสถานะที่มีอยู่แต่ menu projection เป็น neutral, server auth deny ทันที. ใช้ account restore/recovery และ operator repair ตาม existing DEMI governance; suspension ไม่แอบ unlink
 - ผู้ใช้เดิม relink subject เดิมได้ผ่าน current explicit flow เมื่อ authenticated และ ACTIVE; subject ใหม่ที่ยังไม่มี active/history conflict ก็ link ได้หลัง unlink. ถ้า retained history ผูก subject เดิมกับ User อื่น ให้ generic deny จนมี separately approved recovery/reconciliation flow. Unlink อย่างเดียวไม่อนุญาต transfer
+- If same-User relink races pending cleanup, current lifecycleVersion wins: supersede pending cleanup and reproject the active menu; an older cleanup attempt cannot clear the subject or remain the final menu projection. Cross-user deny rules remain unchanged.
 - การเข้า LINE account เก่าไม่ได้ไม่เปิดทาง takeover; existing DEMI account recovery ยังคงเป็น authority. ห้าม takeover ผ่านข้อความ/chat, ADMIN menu หรือ Messaging API accountLink event
 - ไม่มี immutable historical-owner rule หรือ DB constraint ที่ห้าม future approved account correction, duplicate/reconciliation, account merge, identity transfer หรือ privacy/erasure lifecycle
 ## 8. J1-05 — LIFF trust boundary และ CSRF/session
@@ -214,7 +220,8 @@ Alias ต้องไม่เกิน current LINE per-channel length/characte
 | Binding / authority | Menu ที่ต้องเลือก |
 | --- | --- |
 | ไม่มี binding | UNLINKED (global default; เมื่อ user เป็น friend สามารถ link UNLINKED ต่อ-user เพื่อ readback ได้) |
-| Binding unlinked | UNLINKED |
+| Binding unlinked + cleanup CONFIRMED_CLEAN | UNLINKED; no per-user menu remains, so the global UNLINKED default is effective |
+| Binding unlinked + cleanup unresolved | UNLINKED is the expected projection; cleanup remains PENDING/UNAVAILABLE/UNKNOWN/MISMATCH and the stale per-user menu may remain visible until repaired |
 | Active binding แต่ User ไม่ ACTIVE หรือ query fail | LINKED_INELIGIBLE / neutral |
 | Active binding + 0 eligible operational roles (รวม ADMIN-only) | LINKED_INELIGIBLE / neutral |
 | Exactly 1 eligible operational role | menu ของ role เดียวนั้น โดยตรง; preference ที่ไม่ตรงถูก clear |
@@ -222,6 +229,8 @@ Alias ต้องไม่เกิน current LINE per-channel length/characte
 | มากกว่า 1 eligible role + ไม่มี remembered role หรือ role เดิมไม่ eligible | ROLE_CHOOSER ที่มีเฉพาะ eligible roles |
 
 ไม่มี role precedence หรือ implicit sort-to-winner. ถ้าคำนวณ current role set ไม่ได้ ให้คง neutral/last safe menu และ mark reconcile UNKNOWN; ห้ามเดาจากเมนูที่เห็นอยู่
+
+Unlink cleanup is a separate projection condition: do not link an UNLINKED per-user menu as a substitute for deleting an old per-user menu. LINE gives a per-user menu higher display priority than the global default. If cleanup is unresolved, server authorization and Push eligibility are already disabled; reconcile the provider state using the retained locator.
 
 ## 13. J1-10 — presentation-role preference
 
@@ -251,12 +260,13 @@ Alias ต้องไม่เกิน current LINE per-channel length/characte
 
 ใช้ post-commit + lazy reconciliation + operator repair; ไม่เพิ่ม event bus/queue:
 
-1. หลัง link/unlink transaction commit ให้เรียก LINE menu reconcile แยกต่างหาก
+1. หลัง link transaction commit ให้ project/reconcile role menu แยกต่างหาก. หลัง authoritative unlink commit ให้ run the bounded provider cleanup lifecycle in Section 7; persist cleanup outcomes only for the matching lifecycleVersion.
 2. เมื่อ LIFF account page/workspace entry เปิดด้วย authenticated session ให้ resolve authority ใหม่และ reconcile
-3. follow event อัปเดต reachability; ถ้า FRIEND ให้ reconcile เมนู; unfollow อัปเดต NOT_FRIEND และ suppress provider operations ที่ต้อง friendship
+3. follow event อัปเดต reachability. If it matches an UNLINKED binding with unresolved cleanup, perform bounded cleanup and readback before any later operational menu can be applied; if it matches an ACTIVE binding, reconcile its current authorized projection. Unfollow updates NOT_FRIEND and suppresses cleanup calls that require friendship.
 4. successful richmenuswitch postback ทำ preference update จาก authority ล่าสุดแล้ว reconcile
-5. Role/UserStatus/HospitalMembership/OSM relationship/Patient SELF mutations ไม่เรียก LINE network ภายในหรือท้าย transaction โดยอัตโนมัติ. Server authorization เปลี่ยนทันที; menu จะ lazy-reconcile ครั้งต่อไปหรือผ่าน bounded operator repair command ที่ไล่ active binding ด้วย cursor
-6. operator repair รองรับตรวจ/reconcile binding เมื่อ role/membership เปลี่ยนหรือ provider outage ฟื้น; แสดง outcome/status โดยไม่ print LINE subject/token
+5. Role/UserStatus/HospitalMembership/OSM relationship/Patient SELF mutations ไม่เรียก LINE network ภายในหรือท้าย transaction โดยอัตโนมัติ. Server authorization เปลี่ยนทันที; active menu จะ lazy-reconcile ครั้งต่อไปหรือผ่าน bounded operator repair command ที่ไล่ active binding ด้วย cursor.
+6. Operator repair also scans UNLINKED bindings whose cleanup outcome is PENDING/UNAVAILABLE/UNKNOWN/MISMATCH and whose temporary provider locator remains. It checks current lifecycleVersion before any provider mutation, calls DELETE only when trusted reachability is FRIEND, uses bounded retry/backoff, and reports outcome/status without printing LINE subject/token. NOT_FRIEND/UNKNOWN remains deferred until a trusted follow/unblock or later supported friendship observation.
+7. Serialize per-binding Rich Menu mutations with a short-lived compare-and-set lease stored on the binding row (`leaseToken` + `leaseExpiresAt` or equivalent); claim/reclaim the lease in a short DB transaction, then make provider calls outside transactions. Carry lifecycleVersion through provider calls/readback. A worker may issue a mutation only for the currently claimed version. A stale worker cannot finalize cleanup; if a newer lifecycle committed while an older provider call was already in flight, reread current state and reconcile that state before releasing the per-binding lease. A crashed worker's expired lease is reclaimable by lazy/operator repair.
 
 LINE failure ไม่ทำให้ business/authority mutation fail. User ที่ suspended หรือหมดสิทธิ์ถูก deny แม้ยังเห็น stale Rich Menu อยู่
 
@@ -264,14 +274,17 @@ LINE failure ไม่ทำให้ business/authority mutation fail. User ท
 
 หลัง per-user link/switch reconciliation ที่ต้องยืนยันผล ให้เรียก LINE Get rich menu linked to user และเทียบ expected provider richMenuId จาก alias/catalog. HTTP success ของ link API ไม่ถือว่า applied; LINE อาจคืน 200 ทั้งที่ไม่ link เมื่อ user ไม่ friend/blocked หรือข้อมูลไม่ valid.
 
+Unlink has separate cleanup semantics. Call `DELETE /v2/bot/user/{userId}/richmenu` only after the authoritative local unlink commits, then read back with `GET /v2/bot/user/{userId}/richmenu`. LINE documents that DELETE can return 200 without unlinking a deleted, blocked, non-friend, or unknown-channel user; GET 404 can mean no per-user menu, nonexistent user, or non-friend. Therefore 200 alone is never `CONFIRMED_CLEAN`; 404 is `CONFIRMED_CLEAN` only when current trusted reachability is FRIEND with no later conflicting unfollow. A 200 GET with any per-user richMenuId is MISMATCH. If reachability is NOT_FRIEND/UNKNOWN or the provider response is ambiguous/unavailable, preserve the locator and record UNAVAILABLE/UNKNOWN for bounded follow/operator repair. Only `CONFIRMED_CLEAN` clears the raw LINE subject.
+
 เก็บ internal status:
 
 - **APPLIED** — successful readback ID เท่ากับ expected ID
 - **MISMATCH** — readback มี ID ต่างจาก expected
 - **UNAVAILABLE** — friendship known false หรือ provider ตอบ transient/permanent error ซึ่งยังยืนยัน projection ไม่ได้
 - **UNKNOWN** — missing config, no definitive response, identity/alias mapping ไม่ครบ หรือยังไม่เคย verify
+- **CONFIRMED_CLEAN** — unlink-specific outcome only: verified readback has no per-user menu under current trusted FRIEND reachability; the temporary raw locator is then cleared
 
-404 จาก Get linked menu แปลว่าไม่มี per-user linked menu/user ไม่ friend/user unknown ตาม LINE response; map เป็น UNAVAILABLE เมื่อ friendship false/unknown และเป็น MISMATCH เมื่อคาดว่า friend + menu ควรถูก link. No status is an authorization result.
+404 จาก Get linked menu แปลว่าไม่มี per-user linked menu/user ไม่ friend/user unknown ตาม LINE response; map เป็น UNAVAILABLE/UNKNOWN เมื่อ friendship is NOT_FRIEND/UNKNOWN, and to CONFIRMED_CLEAN only for an unlink readback with current trusted FRIEND reachability. For an expected linked menu, use the existing APPLIED/MISMATCH rules. No status is an authorization result.
 
 ## 17. J1-14 — Initial truthful menu actions
 
@@ -366,13 +379,13 @@ external LINE identity verify → PostgreSQL transaction (binding + consume inte
 
 Unlink:
 
-PostgreSQL transaction (soft unlink + consume intent + audit) → commit → LINE menu reconcile/readback
+PostgreSQL transaction (authoritative unlink: mark unlinked, clear presentationRole, suppress business/Push use, increment lifecycleVersion, set cleanup PENDING, retain raw provider locator + HMAC fingerprint, consume intent + minimized audit) → commit → if trusted FRIEND, LINE `DELETE /v2/bot/user/{userId}/richmenu` → `GET /v2/bot/user/{userId}/richmenu` readback → separate conditional state update; only CONFIRMED_CLEAN clears raw locator
 
 Webhook:
 
 verify raw signature/schema → PostgreSQL transaction (unique receipt + reachability/preference mutation) → commit → 2xx; schedule no external calls inside transaction. Any follow-triggered menu reconciliation starts only after event transaction commits.
 
-If LINE is down after successful local commit, binding/unlink/authority remains authoritative and correct; report pending/UNAVAILABLE, retry only on next lazy reconciliation or operator repair. Never hold DB transaction open across provider HTTP.
+If LINE is down after successful local commit, binding/unlink/authority remains authoritative and correct; report pending/UNAVAILABLE/UNKNOWN and retain the raw locator solely for retry. A crash before the first LINE call is recovered from the binding row's unlinked + cleanup-pending state. Retry only on a later bounded trigger (including a matching signed follow/unblock) or operator repair; do not loop aggressively. Never hold DB transaction open across provider HTTP. Provider cleanup failure never reactivates or restores DEMI authority.
 
 ## 25. J1-22 — Focused automated verification contract
 
@@ -392,13 +405,26 @@ If LINE is down after successful local commit, binding/unlink/authority remains 
 
 **Unlink/recovery**
 
-- exact owner self-unlink clears raw LINE subject, preserves only minimized lifecycle/fingerprint evidence for current v1 conflict guard, and does not choose a retention duration
+- local exact-owner unlink commits immediately with unlinkedAt, presentationRole cleared, business/Push use disabled, cleanup PENDING, retained cleanup locator, HMAC fingerprint, minimized audit and consumed intent
+- local unlink commits and provider DELETE/readback confirms clean; raw LINE subject clears and HMAC fingerprint remains under existing v1 rules
+- local unlink commits then provider times out; binding remains unlinked, raw subject remains cleanup-only and no authority is restored
+- local unlink commit followed by process crash before provider call; operator/lazy repair finds durable pending state and exact locator
+- later bounded retry succeeds; duplicate DELETE + readback safely confirms clean
+- provider returns ambiguous 200 / GET readback cannot confirm; never report clean or clear raw subject
+- user blocked/unfollows during unlink; no aggressive retries, binding remains unlinked and locator remains until a matching later follow/unblock or operator repair
+- follow/unblock later supplies matching signed source.userId; cleanup/readback runs before any operational menu is applied
+- raw subject exists only while ACTIVE or cleanup unresolved; it is cleared after CONFIRMED_CLEAN and never retained as historical ownership evidence
+- HMAC fingerprint remains according to current v1 rules; exact retention/erasure remains OPEN
+- same-User relink while cleanup pending increments lifecycleVersion, supersedes cleanup and projects the newly active role menu; a stale cleanup worker cannot launch after version change or clear the newer binding
+- delayed in-flight cleanup response after same-User relink cannot finalize cleanup; serialized reconciler re-reads current state and verifies/reprojects the active role menu
+- operator repair retries unresolved cleanup without printing/logging the subject
+- provider failure never restores DEMI authority
 - unrelated authenticated actor cannot unlink; generic failure
 - suspended/ineligible owner cannot self-service mutate; binding retained and menu neutral
 - valid unlink then same owner relink
 - unlink then link a different unowned subject; retained history for another User stays denied; no historical UNIQUE constraint prevents a future approved correction/transfer/erasure flow
 - inaccessible old LINE cannot authorize takeover; DEMI account recovery remains separate
-- menu provider failure after commit does not roll back link/unlink
+- menu provider failure after commit does not roll back link/unlink or restore authority
 
 **Menu projection/switch**
 
@@ -444,7 +470,7 @@ Run focused tests first, then affected architecture/lint/typecheck commands; bro
 - richmenuswitch is a Rich Menu-only action with a richMenuAliasId target and static data marker; LINE switches the displayed menu and returns a postback webhook. The postback includes postback.data and params.status; on success status is SUCCESS and params.newRichMenuAliasId identifies the selected alias. newRichMenuAliasId may be absent when switching fails. This confirms the narrow Option C preference-sync handler. [Switch between rich menus](https://developers.line.biz/en/docs/messaging-api/switch-rich-menus/), [Messaging API action/postback reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
 - Webhook request envelope has destination and events array; LINE permits events: [] for communication verification and documents one request with multiple event objects. Current official docs specify no maximum event count, so the 100-event cap is removed. The 1 MiB raw-body cap is DEMI local resource protection only. [Messaging API request/event reference](https://developers.line.biz/en/reference/messaging-api/nojs/), [receive messages](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 - LINE advises servers to tolerate added webhook properties; Messaging API development guidance also describes compatible additions including enum values. Parse event discriminator as an open string, validate trusted consumed fields, strip unknown additive properties, ignore unknown types/enum values safely, and continue processing supported events independently. [Corporate development guidelines](https://developers.line.biz/en/docs/partner-docs/development-guidelines/), [Messaging API development guidelines](https://developers.line.biz/en/docs/messaging-api/development-guidelines/)
-- Per-user menu link is POST /v2/bot/user/{userId}/richmenu/{richMenuId}; readback is GET /v2/bot/user/{userId}/richmenu. A 200 link response is not sufficient evidence; only friends can be linked and some unlinked cases still return 200. [Per-user rich menus](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/), [Messaging API reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
+- Per-user menus have higher display priority than Messaging API/default OA menus. Link is POST /v2/bot/user/{userId}/richmenu/{richMenuId}; readback is GET /v2/bot/user/{userId}/richmenu; unlink is DELETE /v2/bot/user/{userId}/richmenu. LINE documents that unlink can return 200 without unlinking deleted, blocked, non-friend, or unknown-channel users. GET 404 can mean no menu, nonexistent user, or non-friend; readback and trusted reachability must therefore be interpreted together. [Rich Menu priority](https://developers.line.biz/en/docs/messaging-api/rich-menus-overview/), [Per-user Rich Menu API](https://developers.line.biz/en/reference/messaging-api/nojs/), [per-user Rich Menu guide](https://developers.line.biz/en/docs/messaging-api/use-per-user-rich-menus/)
 - Alias is channel-scoped, max 32 characters with alphanumeric/underscore/hyphen, unique per channel, with a documented maximum of 1,000 per OA; alias updates may be cache-delayed. Use stable aliases and provider readback. [Messaging API Rich Menu alias reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
 - Follow means added or unblocked; unfollow means blocked. Redelivery may reorder events and has no guaranteed count/interval; use event timestamp + webhookEventId. [Webhook events/redelivery](https://developers.line.biz/en/docs/messaging-api/receiving-messages/), [Messaging API event reference](https://developers.line.biz/en/reference/messaging-api/nojs/)
 - Webhook signature is HMAC-SHA256 over unchanged received raw body bytes with the Messaging API channel secret and x-line-signature. [Verify webhook signature](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/)
@@ -454,7 +480,7 @@ LINE channel access token is a channel-scoped credential: the DEMI Messaging API
 
 ## 27. Go/no-go evaluation
 
-**17J.1 runtime implementation: GO — contract complete.** No security-critical item blocks the v1 scope when implementation enforces active-only DB uniqueness, denies cross-user rebinds against retained identity-history evidence, clears raw LINE subject on unlink, and never uses presentation state as authority.
+**17J.1 runtime implementation: GO — contract complete.** No security-critical item blocks v1 when implementation enforces active-only DB uniqueness, denies cross-user rebinds against retained identity-history evidence, commits DEMI unlink independently of LINE, retains the raw subject only until provider cleanup is confirmed, uses lifecycleVersion/serialized reconciliation to prevent stale cleanup from winning after relink, and never uses presentation state as authority.
 
 **OPEN, non-blocking for v1:** exact LINE identity-history fingerprint/owner retention and erasure duration, and future cross-account correction/duplicate reconciliation/merge/transfer semantics. No permanent subject-owner invariant, historical UNIQUE constraint, permanent tombstone, or purge schedule is approved. v1 does not implement a history-erasure or transfer operation; any future flow requires explicit owner/privacy approval and must safely supersede or erase evidence.
 
