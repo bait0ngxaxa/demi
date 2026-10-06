@@ -1,5 +1,13 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
+## CURRENT-status addendum — Phase 17I.4A Hospital Knowledge / Contact integrated re-audit (2026-10-06)
+
+[Phase 17I.4A integrated re-audit report](./PHASE_17I4A_HOSPITAL_KNOWLEDGE_CONTACT_REAUDIT_UAT_READINESS.md): **PASS / AUTOMATED RE-AUDIT COMPLETE.** CONTENT-02 — **IMPLEMENTED / AUTOMATED RE-AUDIT PASS**; Phase 17I.1 — **IMPLEMENTED / CLOSED**. CONTENT-01 — **IMPLEMENTED / AUTOMATED RE-AUDIT PASS**; Phase 17I.2 and Phase 17I.3 — **IMPLEMENTED / CLOSED**. Phase 17I.0 — **CLOSED / OWNER DECISIONS CLOSED**; Phase 17I.0B — **CLOSED / DOCUMENTATION CONTRACT COMPLETE**; Q84–Q111 — **CLOSED / OWNER APPROVED**. Phase 17I — **IMPLEMENTED / AUTOMATED RE-AUDIT COMPLETE**.
+
+Evidence: focused 17I unit/UI **29 files / 302 tests PASS**; focused real PostgreSQL **4 files / 100 tests PASS**; full unit **243 files / 2,087 tests PASS**; full PostgreSQL **35 files / 547 tests PASS** after all **38 migrations** on a clean local disposable database; populated migration safety **37→38 PASS**; Prisma generate/validate, typecheck, lint, and scoped Impeccable detector PASS. No unresolved BLOCKER/MAJOR findings; no runtime/schema/migration correction was required. Build was not rerun because this re-audit changed only tests and documentation; the latest 17I.3 runtime build evidence remains applicable.
+
+Manual browser/mobile/device/BFCache UAT — **NOT EXECUTED / TRACK SEPARATELY**. Production deployment — **NOT EXECUTED**. This is not customer acceptance, production certification, penetration-test certification, legal/privacy governance approval, or manual UAT PASS. Phase 17H.4A, 17G.4A, Family P17F-L04/L05, Q5, parked 17E.2 consent, MED-02, and 17J gates remain unchanged. Phase 17J was not started.
+
 ## CURRENT-status addendum — Phase 17I.3 Patient Content Consumption implementation (2026-10-05)
 
 [Patient Content Consumption implementation handoff](./PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED; Phase 17I.3 — IMPLEMENTED / CLOSED.** Delivered request-time Personal feed/detail, exact persisted Patient SELF authorization inside every Content SELECT, own multi-Hospital union, category-only filter, signed live-view keyset cursor, minimal current-content projections and private history/BFCache safeguards. No schema/migration or Patient write/read audit; Publisher and Contact runtime unchanged.
