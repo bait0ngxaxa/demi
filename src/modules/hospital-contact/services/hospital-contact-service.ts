@@ -57,38 +57,26 @@ export type HospitalContactServiceDependencies = {
 const MAX_TRANSACTION_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [25, 50] as const;
 
-const hospitalContactEditorSelect = {
-  id: true,
-  hospitalCode: true,
-  name: true,
-  contact: {
-    select: {
-      addressText: true,
-      phoneNumber: true,
-      updatedAt: true,
-    },
-  },
-} satisfies Prisma.HospitalSelect;
-
-const patientContactSelect = {
-  hospitalCode: true,
-  name: true,
-  status: true,
-  contact: {
-    select: {
-      addressText: true,
-      phoneNumber: true,
-    },
-  },
-} satisfies Prisma.HospitalSelect;
-
-type HospitalContactEditorRecord = Prisma.HospitalGetPayload<{
-  select: typeof hospitalContactEditorSelect;
-}>;
-
 type LockedUserRow = { id: string; status: UserStatus; personId: string };
 type LockedRoleRow = { userId: string; role: Role };
 type LockedHospitalRow = { id: string; status: HospitalStatus };
+type HospitalContactOwnerReadRow = {
+  hospitalId: string;
+  hospitalCode: string;
+  hospitalName: string;
+  addressText: string | null;
+  phoneNumber: string | null;
+  updatedAt: Date | null;
+};
+type PatientHospitalContactReadRow = {
+  relationshipId: string;
+  hospitalCode: string;
+  hospitalName: string;
+  hospitalStatus: HospitalStatus;
+  addressText: string | null;
+  phoneNumber: string | null;
+};
+type PersistedPatientSelfRow = { authorized: boolean };
 type LockedMembershipRow = {
   id: string;
   membershipType: MembershipType;
@@ -140,16 +128,16 @@ function isRetryableTransactionFailure(error: unknown): boolean {
   return isKnownPrismaError(error, "P2034") || getPostgresSqlState(error) === "40P01";
 }
 
-function toEditorProjection(record: HospitalContactEditorRecord): HospitalContactEditorProjection {
+function toEditorProjection(record: HospitalContactOwnerReadRow): HospitalContactEditorProjection {
   return {
     hospital: {
-      id: record.id,
+      id: record.hospitalId,
       hospitalCode: record.hospitalCode,
-      name: record.name,
+      name: record.hospitalName,
     },
-    addressText: record.contact?.addressText ?? null,
-    phoneNumber: record.contact?.phoneNumber ?? null,
-    expectedUpdatedAt: record.contact?.updatedAt.toISOString() ?? null,
+    addressText: record.addressText,
+    phoneNumber: record.phoneNumber,
+    expectedUpdatedAt: record.updatedAt?.toISOString() ?? null,
   };
 }
 
@@ -219,13 +207,36 @@ export async function readHospitalContactForOwner(
   }
 
   try {
-    const hospital = await database.hospital.findFirst({
-      where: {
-        id: parsedHospitalId.data,
-        ...getActiveOwnerHospitalWhere(actor),
-      },
-      select: hospitalContactEditorSelect,
-    });
+    const hospitals = await database.$queryRaw<HospitalContactOwnerReadRow[]>(Prisma.sql`
+      SELECT
+        hospital."id" AS "hospitalId",
+        hospital."hospitalCode" AS "hospitalCode",
+        hospital."name" AS "hospitalName",
+        contact."addressText" AS "addressText",
+        contact."phoneNumber" AS "phoneNumber",
+        contact."updatedAt" AS "updatedAt"
+      FROM "Hospital" AS hospital
+      INNER JOIN "User" AS actor_user
+        ON actor_user."id" = ${actor.userId}::uuid
+        AND actor_user."personId" = ${actor.personId}::uuid
+        AND actor_user."status" = 'ACTIVE'
+      INNER JOIN "Person" AS actor_person
+        ON actor_person."id" = actor_user."personId"
+        AND actor_person."id" = ${actor.personId}::uuid
+      INNER JOIN "UserRole" AS actor_role
+        ON actor_role."userId" = actor_user."id"
+        AND actor_role."role" = 'HOSPITAL'
+      INNER JOIN "HospitalMembership" AS owner_membership
+        ON owner_membership."userId" = actor_user."id"
+        AND owner_membership."hospitalId" = hospital."id"
+        AND owner_membership."membershipType" = 'OWNER'
+        AND owner_membership."status" = 'ACTIVE'
+      LEFT JOIN "HospitalContact" AS contact
+        ON contact."hospitalId" = hospital."id"
+      WHERE hospital."id" = ${parsedHospitalId.data}::uuid
+        AND hospital."status" = 'ACTIVE'
+    `);
+    const hospital = hospitals[0];
 
     if (!hospital) {
       throw new NotFoundError();
@@ -617,29 +628,15 @@ export async function updateHospitalContact(
   throw new ConflictError("Hospital Contact changed before this update");
 }
 
-function patientRelationshipWhere(actor: ActorContext): Prisma.PersonWhereInput {
-  return {
-    id: actor.personId,
-    user: {
-      is: {
-        id: actor.userId,
-        status: UserStatus.ACTIVE,
-        roles: { some: { role: Role.PATIENT } },
-      },
-    },
-  };
-}
-
 function toPatientContactRead(input: {
   relationshipId: string;
-  hospital: {
-    hospitalCode: string;
-    name: string;
-    status: HospitalStatus;
-    contact: { addressText: string | null; phoneNumber: string | null } | null;
-  };
+  hospitalCode: string;
+  hospitalName: string;
+  hospitalStatus: HospitalStatus;
+  addressText: string | null;
+  phoneNumber: string | null;
 }): PatientHospitalContactRead {
-  if (input.hospital.status !== HospitalStatus.ACTIVE) {
+  if (input.hospitalStatus !== HospitalStatus.ACTIVE) {
     return { relationshipId: input.relationshipId, availability: "UNAVAILABLE" };
   }
 
@@ -648,13 +645,78 @@ function toPatientContactRead(input: {
     availability: "AVAILABLE",
     contact: {
       hospital: {
-        hospitalCode: input.hospital.hospitalCode,
-        name: input.hospital.name,
+        hospitalCode: input.hospitalCode,
+        name: input.hospitalName,
       },
-      addressText: input.hospital.contact?.addressText ?? null,
-      phoneNumber: input.hospital.contact?.phoneNumber ?? null,
+      addressText: input.addressText,
+      phoneNumber: input.phoneNumber,
     },
   };
+}
+
+function patientHospitalContactReadQuery(
+  actor: ActorContext,
+  relationshipId?: string,
+): Prisma.Sql {
+  const relationshipFilter = relationshipId
+    ? Prisma.sql`AND patient_relationship."id" = ${relationshipId}::uuid`
+    : Prisma.sql``;
+
+  return Prisma.sql`
+    SELECT
+      patient_relationship."id" AS "relationshipId",
+      hospital."hospitalCode" AS "hospitalCode",
+      hospital."name" AS "hospitalName",
+      hospital."status" AS "hospitalStatus",
+      contact."addressText" AS "addressText",
+      contact."phoneNumber" AS "phoneNumber"
+    FROM "User" AS actor_user
+    INNER JOIN "Person" AS actor_person
+      ON actor_person."id" = actor_user."personId"
+      AND actor_person."id" = ${actor.personId}::uuid
+    INNER JOIN "UserRole" AS patient_role
+      ON patient_role."userId" = actor_user."id"
+      AND patient_role."role" = 'PATIENT'
+    INNER JOIN "PatientProfile" AS patient_profile
+      ON patient_profile."personId" = actor_person."id"
+    INNER JOIN "PatientHospitalRelationship" AS patient_relationship
+      ON patient_relationship."patientProfileId" = patient_profile."id"
+    INNER JOIN "Hospital" AS hospital
+      ON hospital."id" = patient_relationship."hospitalId"
+    LEFT JOIN "HospitalContact" AS contact
+      ON contact."hospitalId" = hospital."id"
+      AND hospital."status" = 'ACTIVE'
+    WHERE actor_user."id" = ${actor.userId}::uuid
+      AND actor_user."personId" = ${actor.personId}::uuid
+      AND actor_user."status" = 'ACTIVE'
+      ${relationshipFilter}
+    ORDER BY hospital."name" ASC, hospital."hospitalCode" ASC, patient_relationship."id" ASC
+  `;
+}
+
+async function hasPersistedPatientSelf(
+  actor: ActorContext,
+  database: HospitalContactDatabase,
+): Promise<boolean> {
+  const rows = await database.$queryRaw<PersistedPatientSelfRow[]>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM "User" AS actor_user
+      INNER JOIN "Person" AS actor_person
+        ON actor_person."id" = actor_user."personId"
+        AND actor_person."id" = ${actor.personId}::uuid
+      INNER JOIN "UserRole" AS patient_role
+        ON patient_role."userId" = actor_user."id"
+        AND patient_role."role" = 'PATIENT'
+      INNER JOIN "PatientProfile" AS patient_profile
+        ON patient_profile."personId" = actor_person."id"
+      WHERE actor_user."id" = ${actor.userId}::uuid
+        AND actor_user."personId" = ${actor.personId}::uuid
+        AND actor_user."status" = 'ACTIVE'
+    ) AS "authorized"
+  `);
+
+  return rows[0]?.authorized === true;
 }
 
 export async function readOwnPatientHospitalContact(
@@ -675,29 +737,20 @@ export async function readOwnPatientHospitalContact(
   }
 
   try {
-    const person = await database.person.findFirst({
-      where: patientRelationshipWhere(actor),
-      select: {
-        patientProfile: {
-          select: {
-            hospitalRelationships: {
-              where: { id: parsedRelationshipId.data },
-              select: {
-                id: true,
-                hospital: { select: patientContactSelect },
-              },
-            },
-          },
-        },
-      },
-    });
-    const relationship = person?.patientProfile?.hospitalRelationships[0];
+    const relationships = await database.$queryRaw<PatientHospitalContactReadRow[]>(
+      patientHospitalContactReadQuery(actor, parsedRelationshipId.data),
+    );
+    const relationship = relationships[0];
 
-    if (!relationship || relationship.id !== parsedRelationshipId.data) {
+    if (!relationship || relationship.relationshipId !== parsedRelationshipId.data) {
+      if (!(await hasPersistedPatientSelf(actor, database))) {
+        throw new ForbiddenError();
+      }
+
       throw new NotFoundError();
     }
 
-    return toPatientContactRead({ relationshipId: relationship.id, hospital: relationship.hospital });
+    return toPatientContactRead(relationship);
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;
@@ -722,30 +775,15 @@ export async function listOwnPatientHospitalContacts(
   }
 
   try {
-    const person = await database.person.findFirst({
-      where: patientRelationshipWhere(actor),
-      select: {
-        patientProfile: {
-          select: {
-            hospitalRelationships: {
-              orderBy: [{ hospital: { name: "asc" } }, { hospital: { hospitalCode: "asc" } }, { id: "asc" }],
-              select: {
-                id: true,
-                hospital: { select: patientContactSelect },
-              },
-            },
-          },
-        },
-      },
-    });
+    const relationships = await database.$queryRaw<PatientHospitalContactReadRow[]>(
+      patientHospitalContactReadQuery(actor),
+    );
 
-    if (!person?.patientProfile) {
-      throw new NotFoundError();
+    if (relationships.length === 0 && !(await hasPersistedPatientSelf(actor, database))) {
+      throw new ForbiddenError();
     }
 
-    return person.patientProfile.hospitalRelationships.map((relationship) =>
-      toPatientContactRead({ relationshipId: relationship.id, hospital: relationship.hospital }),
-    );
+    return relationships.map(toPatientContactRead);
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) {
       throw error;
@@ -758,8 +796,6 @@ export async function listOwnPatientHospitalContacts(
 export const hospitalContactServiceInternals = {
   MAX_TRANSACTION_ATTEMPTS,
   RETRY_DELAYS_MS,
-  hospitalContactEditorSelect,
-  patientContactSelect,
   getActiveOwnerHospitalWhere,
   isKnownPrismaError,
   getPostgresSqlState,
@@ -767,4 +803,6 @@ export const hospitalContactServiceInternals = {
   lockAndRevalidateEditorAuthority,
   toEditorProjection,
   toPatientContactRead,
+  patientHospitalContactReadQuery,
+  hasPersistedPatientSelf,
 };

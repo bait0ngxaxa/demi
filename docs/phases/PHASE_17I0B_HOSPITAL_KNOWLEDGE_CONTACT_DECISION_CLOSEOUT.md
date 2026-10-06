@@ -1,6 +1,12 @@
 # Phase 17I.0B — Hospital Knowledge / Contact Owner Decision Closeout
 
-## CURRENT-status addendum — Phase 17I.3 Patient Content Consumption implementation (2026-10-05)
+## CURRENT-status addendum — Phase 17I.4A security review correction (2026-10-06)
+
+[Phase 17I.4A re-audit and correction evidence](./PHASE_17I4A_HOSPITAL_KNOWLEDGE_CONTACT_REAUDIT_UAT_READINESS.md): post-audit review found and corrected a MAJOR Contact read authorization TOCTOU. Owner and Patient Contact payload reads now use authority-scoped SQL; deterministic PostgreSQL revocation barriers cover committed role, membership, User, binding, relationship, and Hospital changes. Final `npm test` passed **243 files / 2,090 tests**; full disposable PostgreSQL verification applied all **38 migrations** and passed **35 files / 558 tests**, with cleanup verified. Typecheck and targeted ESLint passed. No unresolved BLOCKER/MAJOR finding remains. The 17I.0B owner decisions and Q84–Q111 remain closed and unchanged.
+
+Manual browser/mobile/device/BFCache UAT — **NOT EXECUTED / TRACK SEPARATELY**. Production deployment — **NOT EXECUTED**. Phase 17J — **NOT STARTED**.
+
+## Historical-status addendum — Phase 17I.3 Patient Content Consumption implementation (2026-10-05)
 
 [Patient Content Consumption implementation handoff](./PHASE_17I3_PATIENT_CONTENT_CONSUMPTION_IMPLEMENTATION.md): **CONTENT-01 — IMPLEMENTED; Phase 17I.3 — IMPLEMENTED / CLOSED.** Delivered request-time Personal feed/detail, exact persisted Patient SELF authorization inside every Content SELECT, own multi-Hospital union, category-only filter, signed live-view keyset cursor, minimal current-content projections and private history/BFCache safeguards. No schema/migration or Patient write/read audit; Publisher and Contact runtime unchanged.
 

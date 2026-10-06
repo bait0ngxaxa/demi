@@ -9,7 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ConflictError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const { recordAuditEvent } = vi.hoisted(() => ({ recordAuditEvent: vi.fn() }));
 
@@ -132,19 +132,16 @@ describe("Hospital Contact editor and Patient projections", () => {
     );
   });
 
-  it("returns only the editor projection and the row token, never the Contact row id", async () => {
-    const findFirst = vi.fn().mockResolvedValue({
-      id: hospitalId,
+  it("returns only the editor projection from one query carrying persisted direct Owner authority", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{
+      hospitalId,
       hospitalCode: "H-001",
-      name: "โรงพยาบาล ก",
-      contact: {
-        id: hospitalContactId,
-        addressText: "ถนนสุขภาพ",
-        phoneNumber: "02-123-4567",
-        updatedAt: version,
-      },
-    });
-    const database = { hospital: { findFirst } } as unknown as HospitalContactDatabase;
+      hospitalName: "โรงพยาบาล ก",
+      addressText: "ถนนสุขภาพ",
+      phoneNumber: "02-123-4567",
+      updatedAt: version,
+    }]);
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
 
     const result = await readHospitalContactForOwner(ownerActor(), hospitalId, database);
 
@@ -155,17 +152,31 @@ describe("Hospital Contact editor and Patient projections", () => {
       expectedUpdatedAt: version.toISOString(),
     });
     expect(JSON.stringify(result)).not.toContain(hospitalContactId);
-    expect(hospitalContactServiceInternals.hospitalContactEditorSelect.contact.select).not.toHaveProperty("id");
+    expect(queryRaw).toHaveBeenCalledOnce();
+    const query = queryRaw.mock.calls[0]?.[0] as { sql: string; values: unknown[] };
+    expect(query.sql).toContain('FROM "Hospital" AS hospital');
+    expect(query.sql).toContain('INNER JOIN "User" AS actor_user');
+    expect(query.sql).toContain('actor_user."status" = \'ACTIVE\'');
+    expect(query.sql).toContain('INNER JOIN "Person" AS actor_person');
+    expect(query.sql).toContain('actor_user."personId" = ?');
+    expect(query.sql).toContain('actor_role."role" = \'HOSPITAL\'');
+    expect(query.sql).toContain('owner_membership."membershipType" = \'OWNER\'');
+    expect(query.sql).toContain('owner_membership."status" = \'ACTIVE\'');
+    expect(query.sql).toContain('LEFT JOIN "HospitalContact" AS contact');
+    expect(query.sql).toContain('hospital."status" = \'ACTIVE\'');
+    expect(query.values).toEqual(expect.arrayContaining([userId, personId, hospitalId]));
   });
 
-  it("returns an empty editor projection with a null token when no row exists", async () => {
-    const findFirst = vi.fn().mockResolvedValue({
-      id: hospitalId,
+  it("keeps an absent Contact as a null projection under the same current Owner query", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{
+      hospitalId,
       hospitalCode: "H-001",
-      name: "โรงพยาบาล ก",
-      contact: null,
-    });
-    const database = { hospital: { findFirst } } as unknown as HospitalContactDatabase;
+      hospitalName: "โรงพยาบาล ก",
+      addressText: null,
+      phoneNumber: null,
+      updatedAt: null,
+    }]);
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
 
     await expect(readHospitalContactForOwner(ownerActor(), hospitalId, database)).resolves.toEqual({
       hospital: { id: hospitalId, hospitalCode: "H-001", name: "โรงพยาบาล ก" },
@@ -173,26 +184,20 @@ describe("Hospital Contact editor and Patient projections", () => {
       phoneNumber: null,
       expectedUpdatedAt: null,
     });
+    expect(queryRaw).toHaveBeenCalledOnce();
   });
 
-  it("minimizes an exact Patient SELF projection and withholds non-ACTIVE Hospital values", async () => {
-    const personFindFirst = vi.fn().mockResolvedValue({
-      patientProfile: {
-        hospitalRelationships: [
-          {
-            id: relationshipId,
-            hospital: {
-              hospitalCode: "H-001",
-              name: "โรงพยาบาล ก",
-              status: HospitalStatus.ACTIVE,
-              contact: { addressText: null, phoneNumber: null },
-            },
-          },
-        ],
-      },
-    });
+  it("reads exact Patient Contact only through a single query carrying current persisted SELF scope", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{
+      relationshipId,
+      hospitalCode: "H-001",
+      hospitalName: "โรงพยาบาล ก",
+      hospitalStatus: HospitalStatus.ACTIVE,
+      addressText: null,
+      phoneNumber: null,
+    }]);
     const patientActor = ownerActor({ roles: [Role.PATIENT, Role.HOSPITAL] });
-    const database = { person: { findFirst: personFindFirst } } as unknown as HospitalContactDatabase;
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
 
     await expect(readOwnPatientHospitalContact(patientActor, relationshipId, database)).resolves.toEqual({
       relationshipId,
@@ -203,51 +208,115 @@ describe("Hospital Contact editor and Patient projections", () => {
         phoneNumber: null,
       },
     });
-    expect(personFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          id: personId,
-          user: { is: { id: userId, status: UserStatus.ACTIVE, roles: { some: { role: Role.PATIENT } } } },
-        },
-      }),
-    );
+    expect(queryRaw).toHaveBeenCalledOnce();
+    const query = queryRaw.mock.calls[0]?.[0] as { sql: string; values: unknown[] };
+    expect(query.sql).toContain('FROM "User" AS actor_user');
+    expect(query.sql).toContain('INNER JOIN "Person" AS actor_person');
+    expect(query.sql).toContain('actor_person."id" = ?');
+    expect(query.sql).toContain('INNER JOIN "UserRole" AS patient_role');
+    expect(query.sql).toContain('patient_role."role" = \'PATIENT\'');
+    expect(query.sql).toContain('INNER JOIN "PatientProfile" AS patient_profile');
+    expect(query.sql).toContain('INNER JOIN "PatientHospitalRelationship" AS patient_relationship');
+    expect(query.sql).toContain('patient_relationship."id" = ?');
+    expect(query.sql).toContain('INNER JOIN "Hospital" AS hospital');
+    expect(query.sql).toContain('LEFT JOIN "HospitalContact" AS contact');
+    expect(query.sql).toContain('AND hospital."status" = \'ACTIVE\'');
+    expect(query.sql).not.toContain('patient_relationship."status"');
+    expect(query.values).toEqual(expect.arrayContaining([userId, personId, relationshipId]));
+  });
 
-    personFindFirst.mockResolvedValueOnce({
-      patientProfile: {
-        hospitalRelationships: [
-          {
-            id: relationshipId,
-            hospital: {
-              hospitalCode: "H-001",
-              name: "โรงพยาบาล ก",
-              status: HospitalStatus.SUSPENDED,
-              contact: { addressText: "ไม่ควรเปิดเผย", phoneNumber: "02-999-9999" },
-            },
-          },
-        ],
+  it("lists current relationship Contact rows with persisted SELF on the payload query and no relationship status", async () => {
+    const queryRaw = vi.fn().mockResolvedValue([
+      {
+        relationshipId,
+        hospitalCode: "H-001",
+        hospitalName: "โรงพยาบาล ก",
+        hospitalStatus: HospitalStatus.ACTIVE,
+        addressText: "ถนนสุขภาพ",
+        phoneNumber: null,
       },
-    });
+    ]);
+    const patientActor = ownerActor({ roles: [Role.PATIENT] });
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
+
+    await expect(listOwnPatientHospitalContacts(patientActor, database)).resolves.toEqual([
+      {
+        relationshipId,
+        availability: "AVAILABLE",
+        contact: {
+          hospital: { hospitalCode: "H-001", name: "โรงพยาบาล ก" },
+          addressText: "ถนนสุขภาพ",
+          phoneNumber: null,
+        },
+      },
+    ]);
+    expect(queryRaw).toHaveBeenCalledOnce();
+    const query = queryRaw.mock.calls[0]?.[0] as { sql: string; values: unknown[] };
+    expect(query.sql).toContain('INNER JOIN "UserRole" AS patient_role');
+    expect(query.sql).toContain('INNER JOIN "PatientProfile" AS patient_profile');
+    expect(query.sql).toContain('INNER JOIN "PatientHospitalRelationship" AS patient_relationship');
+    expect(query.sql).not.toContain('patient_relationship."id" = ?');
+    expect(query.sql).toContain('AND hospital."status" = \'ACTIVE\'');
+    expect(query.sql).not.toContain('patient_relationship."status"');
+    expect(query.values).toEqual(expect.arrayContaining([userId, personId]));
+  });
+
+  it("withholds Contact values for a non-ACTIVE Hospital and its SQL join cannot project them", async () => {
+    const queryRaw = vi.fn().mockResolvedValueOnce([{
+      relationshipId,
+      hospitalCode: "H-001",
+      hospitalName: "โรงพยาบาล ก",
+      hospitalStatus: HospitalStatus.SUSPENDED,
+      addressText: null,
+      phoneNumber: null,
+    }]);
+    const patientActor = ownerActor({ roles: [Role.PATIENT] });
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
 
     await expect(readOwnPatientHospitalContact(patientActor, relationshipId, database)).resolves.toEqual({
       relationshipId,
       availability: "UNAVAILABLE",
     });
+    const query = queryRaw.mock.calls[0]?.[0] as { sql: string };
+    expect(query.sql).toContain('contact."hospitalId" = hospital."id"');
+    expect(query.sql).toContain('AND hospital."status" = \'ACTIVE\'');
   });
 
-  it("fails closed when the persisted Patient binding or PatientProfile is missing from the relationship directory", async () => {
-    const personFindFirst = vi.fn().mockResolvedValue({ patientProfile: null });
+  it("distinguishes invalid persisted SELF from a valid Patient with no own relationships", async () => {
+    const queryRaw = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ authorized: true }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ authorized: false }]);
     const patientActor = ownerActor({ roles: [Role.PATIENT] });
-    const database = { person: { findFirst: personFindFirst } } as unknown as HospitalContactDatabase;
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
 
-    await expect(listOwnPatientHospitalContacts(patientActor, database)).rejects.toBeInstanceOf(NotFoundError);
-    expect(personFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          id: personId,
-          user: { is: { id: userId, status: UserStatus.ACTIVE, roles: { some: { role: Role.PATIENT } } } },
-        },
-      }),
-    );
+    await expect(listOwnPatientHospitalContacts(patientActor, database)).resolves.toEqual([]);
+    const selfCheck = queryRaw.mock.calls[1]?.[0] as { sql: string };
+    expect(selfCheck.sql).toContain('SELECT EXISTS');
+    expect(selfCheck.sql).toContain('INNER JOIN "UserRole" AS patient_role');
+    expect(selfCheck.sql).toContain('INNER JOIN "PatientProfile" AS patient_profile');
+    expect(selfCheck.sql).not.toContain('HospitalContact');
+
+    await expect(listOwnPatientHospitalContacts(patientActor, database)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(queryRaw).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps a missing or foreign relationship non-enumerating while rejecting a lost persisted SELF", async () => {
+    const queryRaw = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ authorized: true }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ authorized: false }]);
+    const patientActor = ownerActor({ roles: [Role.PATIENT] });
+    const database = { $queryRaw: queryRaw } as unknown as HospitalContactDatabase;
+
+    await expect(readOwnPatientHospitalContact(patientActor, relationshipId, database)).rejects.toBeInstanceOf(NotFoundError);
+    const missingSelfCheck = queryRaw.mock.calls[1]?.[0] as { sql: string };
+    expect(missingSelfCheck.sql).not.toContain('HospitalContact');
+    await expect(readOwnPatientHospitalContact(patientActor, relationshipId, database)).rejects.toBeInstanceOf(ForbiddenError);
+    const lostSelfCheck = queryRaw.mock.calls[3]?.[0] as { sql: string };
+    expect(lostSelfCheck.sql).not.toContain('HospitalContact');
   });
 });
 

@@ -2,15 +2,40 @@
 
 Audit date: 2026-10-06 (Asia/Bangkok). Repository: `bait0ngxaxa/demi`.
 
-## Disposition
+## Pre-correction disposition — superseded by security review correction
 
-**Phase 17I.4A — PASS / AUTOMATED RE-AUDIT COMPLETE.** No unresolved BLOCKER or MAJOR correctness, authorization, persistence, concurrency, or privacy defect was found. The only implementation addition is a focused PostgreSQL integration regression file; no runtime, Prisma schema, or migration change was needed.
+This records the original audit result at `81e48f8aba0fba5bfba001e2752fbe032e5e5dd7`. It is historical pre-correction evidence, not the current final disposition.
+
+**Pre-correction: Phase 17I.4A — PASS / AUTOMATED RE-AUDIT COMPLETE.** The original pass found no unresolved BLOCKER or MAJOR defect and added a focused PostgreSQL integration regression file. A later security review identified the Contact read TOCTOU below, superseding this disposition until corrected-runtime verification completes.
 
 **CONTENT-02 — IMPLEMENTED / AUTOMATED RE-AUDIT PASS.**
 **CONTENT-01 — IMPLEMENTED / AUTOMATED RE-AUDIT PASS.**
 **Phase 17I — IMPLEMENTED / AUTOMATED RE-AUDIT COMPLETE.**
 
 Manual browser/mobile/device/BFCache UAT — **NOT EXECUTED / TRACK SEPARATELY.** Production deployment — **NOT EXECUTED.** This disposition is not customer acceptance, production certification, penetration-test certification, legal/privacy governance approval, or manual UAT PASS.
+
+## Review-correction status — 2026-10-06
+
+The security correction was reviewed against starting HEAD `dd9abd9ecd7ab5475d6545a2e6fe724d4b15db91` on `main`; no schema or migration was changed.
+
+The post-audit review found a MAJOR authorization TOCTOU in the three Hospital Contact read paths: owner reads and Patient exact/list reads authorized a parent Prisma query, then obtained protected Contact fields through nested relations. With the configured application-level relation strategy, revocation could commit between those SQL statements.
+
+The Contact service has been corrected so the statement that returns `addressText` and `phoneNumber` also proves current persisted Owner authority or exact Patient SELF and relationship authority. Empty Patient results receive a separate Contact-free persisted SELF check to distinguish `ForbiddenError` from a safe missing/foreign relationship; suspended Hospitals retain their relationship presentation with Contact values withheld. Deterministic PostgreSQL barriers cover Owner role/membership/User/Hospital revocation and Patient role/User/binding revocation, relationship deletion, and Hospital suspension.
+
+Corrected-runtime automated verification:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Contact service unit tests | PASS | `src/modules/hospital-contact/services/hospital-contact-service.test.ts` — 1 file / 19 tests |
+| Contact PostgreSQL regressions | PASS | `tests/integration/hospital-contact.integration.test.ts` — 1 file / 36 tests, including deterministic committed-before-query barriers |
+| Cross-slice PostgreSQL regressions | PASS | `tests/integration/hospital-knowledge-contact-reaudit.integration.test.ts` — 1 file / 7 tests |
+| Patient Contact UI/page regressions | PASS | 6 files / 48 tests across Hospital Contact workspace and Patient Personal page-context/card/page tests |
+| Typecheck and targeted ESLint | PASS | `npm run typecheck`; `npx eslint` on the changed Contact service, unit test, and PostgreSQL test |
+| Final full unit suite | PASS | `npm test` — 243 files / 2,090 tests |
+| Final full PostgreSQL integration suite | PASS | `node scripts/integration.mjs verify` — clean disposable database, all 38 migrations, 35 files / 558 tests; container/network removed and `db:status` empty |
+| Prisma validation / production build | NOT RERUN | The schema/migrations and framework/runtime route boundaries did not change; the integration harness did regenerate Prisma Client. No build was needed for service/test/documentation-only changes. |
+
+The MAJOR finding is corrected and no unresolved BLOCKER/MAJOR defect remains in the bounded automated scope. The previous pre-correction evidence remains historical; this corrected-runtime evidence is the final automated disposition. Manual browser/mobile/device/BFCache UAT remains **NOT EXECUTED / TRACK SEPARATELY**; production deployment remains **NOT EXECUTED**; Phase 17J remains **NOT STARTED**.
 
 ## 1. Baseline and HEAD
 

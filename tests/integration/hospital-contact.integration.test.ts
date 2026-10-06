@@ -10,6 +10,7 @@ import {
   Prisma,
   Role,
   UserStatus,
+  type PrismaClient,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -220,6 +221,88 @@ async function waitForPostgresLockWait(expectedWaiters: number): Promise<void> {
   throw new Error(`PostgreSQL lock wait count was ${lastWaiters}; expected at least ${expectedWaiters}`);
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolvePromise: () => void = () => undefined;
+  const promise = new Promise<void>((resolve) => { resolvePromise = resolve; });
+  return { promise, resolve: resolvePromise };
+}
+
+function contactReadBarrier(): {
+  database: PrismaClient;
+  waitUntilReached: () => Promise<void>;
+  release: () => void;
+} {
+  const reached = deferred();
+  const resume = deferred();
+  let paused = false;
+  const database = new Proxy(prisma, {
+    get(target, property, receiver) {
+      if (property === "$queryRaw") {
+        return async <T = unknown>(query: Prisma.Sql): Promise<T> => {
+          if (!paused) {
+            if (!query.sql.includes('"HospitalContact"')) {
+              throw new Error("Expected the Contact-producing SQL statement at the read barrier");
+            }
+            paused = true;
+            reached.resolve();
+            await resume.promise;
+          }
+
+          return target.$queryRaw<T>(query);
+        };
+      }
+
+      const value = Reflect.get(target, property, receiver) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as PrismaClient;
+
+  return {
+    database,
+    async waitUntilReached(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          reached.promise,
+          new Promise<void>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error("Contact read SQL barrier was not reached")), 8_000);
+          }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    },
+    release: () => resume.resolve(),
+  };
+}
+
+async function readAfterCommittedRevocation<T>(
+  read: (database: PrismaClient) => Promise<T>,
+  revoke: () => Promise<void>,
+): Promise<T> {
+  const barrier = contactReadBarrier();
+  const result = read(barrier.database);
+  let failed = false;
+  let failure: unknown;
+
+  try {
+    await barrier.waitUntilReached();
+    await revoke();
+  } catch (error: unknown) {
+    failed = true;
+    failure = error;
+  } finally {
+    barrier.release();
+  }
+
+  if (failed) {
+    await result.catch(() => undefined);
+    throw failure;
+  }
+
+  return result;
+}
+
 describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
   beforeAll(async () => {
     await prisma.$connect();
@@ -395,6 +478,45 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
       expect(await prisma.auditEvent.count({ where: { action: "hospital_contact.created" } })).toBe(0);
       await clearDatabase();
     }
+  });
+
+  it.each([
+    "HOSPITAL role removal",
+    "OWNER membership demotion",
+    "OWNER membership removal",
+    "User suspension",
+    "Hospital suspension",
+  ] as const)("does not return Owner Contact when %s commits before its authorized SQL statement", async (change) => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    await updateHospitalContact(owner.actor, desiredState(hospital.id, null, "ที่อยู่ลับ", "02-555-0101"));
+
+    await expect(readHospitalContactForOwner(owner.actor, hospital.id)).resolves.toMatchObject({
+      addressText: "ที่อยู่ลับ",
+      phoneNumber: "02-555-0101",
+    });
+
+    const read = readAfterCommittedRevocation(
+      (database) => readHospitalContactForOwner(owner.actor, hospital.id, database),
+      async () => {
+        if (change === "HOSPITAL role removal") {
+          await prisma.userRole.delete({ where: { userId_role: { userId: owner.userId, role: Role.HOSPITAL } } });
+        } else if (change === "OWNER membership demotion") {
+          await prisma.hospitalMembership.update({
+            where: { id: owner.membershipId },
+            data: { membershipType: MembershipType.MEMBER },
+          });
+        } else if (change === "OWNER membership removal") {
+          await prisma.hospitalMembership.delete({ where: { id: owner.membershipId } });
+        } else if (change === "User suspension") {
+          await prisma.user.update({ where: { id: owner.userId }, data: { status: UserStatus.SUSPENDED } });
+        } else {
+          await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.SUSPENDED } });
+        }
+      },
+    );
+
+    await expect(read).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("isolates a multi-Hospital Owner directory to exact ACTIVE direct memberships", async () => {
@@ -825,7 +947,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
     expect(foreignHospital.id).not.toBe(hospital.id);
   });
 
-  it("fails closed for broken Patient binding, missing PatientProfile, inactive account, and removed role", async () => {
+  it("returns Forbidden for broken persisted Patient SELF binding, missing profile, inactive account, and removed role", async () => {
     const hospital = await createHospital();
     const activePatient = await createPatient();
     const otherPatient = await createPatient();
@@ -833,27 +955,140 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
     const brokenBinding: ActorContext = { ...activePatient.actor, personId: otherPatient.personId };
     await expect(
       readOwnPatientHospitalContact(brokenBinding, relationship.id),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toBeInstanceOf(ForbiddenError);
 
     const noProfile = await createUser({ roles: [Role.PATIENT] });
     await expect(
       readOwnPatientHospitalContact(noProfile.actor, randomUUID()),
-    ).rejects.toBeInstanceOf(NotFoundError);
-    await expect(listOwnPatientHospitalContacts(noProfile.actor)).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listOwnPatientHospitalContacts(noProfile.actor)).rejects.toBeInstanceOf(ForbiddenError);
 
     const suspendedPatient = await createPatient();
     await prisma.user.update({ where: { id: suspendedPatient.userId }, data: { status: UserStatus.SUSPENDED } });
     await expect(
       readOwnPatientHospitalContact(suspendedPatient.actor, randomUUID()),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toBeInstanceOf(ForbiddenError);
 
     await prisma.userRole.delete({
       where: { userId_role: { userId: activePatient.userId, role: Role.PATIENT } },
     });
     await expect(
       readOwnPatientHospitalContact(activePatient.actor, relationship.id),
-    ).rejects.toBeInstanceOf(NotFoundError);
+    ).rejects.toBeInstanceOf(ForbiddenError);
   });
+
+  it.each(["exact read", "relationship list"] as const)(
+    "rejects persisted Patient SELF lost before the %s Contact statement",
+    async (readKind) => {
+      for (const change of ["PATIENT role removal", "User suspension", "User↔Person binding change"] as const) {
+        const hospital = await createHospital();
+        const patient = await createPatient();
+        const relationship = await createPatientRelationship(patient.profileId, hospital.id);
+        const owner = await createOwner(hospital.id);
+        await updateHospitalContact(owner.actor, desiredState(hospital.id, null, "ข้อมูลส่วนตัว", "02-555-0202"));
+
+        const authorizedRead = readKind === "exact read"
+          ? readOwnPatientHospitalContact(patient.actor, relationship.id)
+          : listOwnPatientHospitalContacts(patient.actor);
+        await expect(authorizedRead).resolves.toMatchObject(
+          readKind === "exact read"
+            ? { availability: "AVAILABLE", contact: { addressText: "ข้อมูลส่วนตัว" } }
+            : [{ availability: "AVAILABLE", contact: { addressText: "ข้อมูลส่วนตัว" } }],
+        );
+
+        const read = readAfterCommittedRevocation<unknown>(
+          async (database) => {
+            if (readKind === "exact read") {
+              return readOwnPatientHospitalContact(patient.actor, relationship.id, database);
+            }
+
+            return listOwnPatientHospitalContacts(patient.actor, database);
+          },
+          async () => {
+            if (change === "PATIENT role removal") {
+              await prisma.userRole.delete({ where: { userId_role: { userId: patient.userId, role: Role.PATIENT } } });
+            } else if (change === "User suspension") {
+              await prisma.user.update({ where: { id: patient.userId }, data: { status: UserStatus.SUSPENDED } });
+            } else {
+              const replacementPerson = await prisma.person.create({
+                data: { identityKeyHash: `hc-${randomUUID()}` },
+                select: { id: true },
+              });
+              await prisma.user.update({ where: { id: patient.userId }, data: { personId: replacementPerson.id } });
+            }
+          },
+        );
+
+        await expect(read).rejects.toBeInstanceOf(ForbiddenError);
+        await clearDatabase();
+      }
+    },
+  );
+
+  it.each(["exact read", "relationship list"] as const)(
+    "does not expose Contact after the own relationship is deleted before the %s statement",
+    async (readKind) => {
+      const hospital = await createHospital();
+      const patient = await createPatient();
+      const relationship = await createPatientRelationship(patient.profileId, hospital.id);
+      const owner = await createOwner(hospital.id);
+      await updateHospitalContact(owner.actor, desiredState(hospital.id, null, "ข้อมูลก่อนลบความสัมพันธ์", "02-555-0303"));
+
+      const read = readAfterCommittedRevocation<unknown>(
+        async (database) => {
+          if (readKind === "exact read") {
+            return readOwnPatientHospitalContact(patient.actor, relationship.id, database);
+          }
+
+          return listOwnPatientHospitalContacts(patient.actor, database);
+        },
+        async () => {
+          await prisma.patientHospitalRelationship.delete({ where: { id: relationship.id } });
+        },
+      );
+
+      if (readKind === "exact read") {
+        await expect(read).rejects.toBeInstanceOf(NotFoundError);
+      } else {
+        await expect(read).resolves.toEqual([]);
+      }
+    },
+  );
+
+  it.each(["exact read", "relationship list"] as const)(
+    "keeps a Patient relationship but withholds Contact when Hospital suspension commits before the %s statement",
+    async (readKind) => {
+      const hospital = await createHospital();
+      const patient = await createPatient();
+      const relationship = await createPatientRelationship(patient.profileId, hospital.id);
+      const owner = await createOwner(hospital.id);
+      await updateHospitalContact(owner.actor, desiredState(hospital.id, null, "ข้อมูลโรงพยาบาลที่พักใช้", "02-555-0404"));
+
+      const read = readAfterCommittedRevocation<unknown>(
+        async (database) => {
+          if (readKind === "exact read") {
+            return readOwnPatientHospitalContact(patient.actor, relationship.id, database);
+          }
+
+          return listOwnPatientHospitalContacts(patient.actor, database);
+        },
+        async () => {
+          await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.SUSPENDED } });
+        },
+      );
+
+      if (readKind === "exact read") {
+        await expect(read).resolves.toEqual({ relationshipId: relationship.id, availability: "UNAVAILABLE" });
+      } else {
+        await expect(read).resolves.toEqual([{ relationshipId: relationship.id, availability: "UNAVAILABLE" }]);
+      }
+      expect(await prisma.patientHospitalRelationship.count({ where: { id: relationship.id } })).toBe(1);
+      expect(await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } })).toMatchObject({
+        addressText: "ข้อมูลโรงพยาบาลที่พักใช้",
+        phoneNumber: "02-555-0404",
+      });
+    },
+  );
 
   it("does not inherit a parent Hospital Contact through a child SELF relationship", async () => {
     const parent = await createHospital();
