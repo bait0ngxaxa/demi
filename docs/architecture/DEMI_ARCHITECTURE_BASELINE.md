@@ -1056,6 +1056,8 @@ Accepted rules:
 
 See [ADR-0007](../adr/0007-client-transport-and-mobile-ready-architecture.md) for the accepted decision and intentionally open questions.
 
+Phase 17J.0 establishes a dedicated DEMI LINE Provider with a DEMI Messaging API Channel/OA and DEMI LINE Login Channel/LIFF under the same Provider. A verified LINE identity may bind to an existing DEMI User but never supplies DEMI authorization. Existing User, Role, Membership, Capability, Scope and server Policy remain authoritative. Simple bounded actions may stay in LINE chat; complex or sensitive workflows use authenticated LIFF. LINE Messaging API is the approved proactive notification transport; domain event semantics remain separately gated. See [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md) and the [Phase 17J.0 implementation contract](../phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md). This is a target architecture, not a claim that LINE runtime exists.
+
 ### 19.6.1 Mobile UX Architectural Guidance
 
 For field-oriented `OSM` and `PATIENT` experiences, prefer:
@@ -1341,6 +1343,7 @@ The following decisions are accepted for project initialization:
 48. Phase 17E.1 implements only the 2026-09-30 owner-approved Patient general profile fields as Hospital-relationship-scoped values, with Patient SELF authority, legacy shared-profile fallback, and optimistic concurrency. Identity-sensitive correction, staff/OSM edits, and profile history remain outside this contract.
 49. Phase 17E.1 account UAT scope includes authenticated password change and assisted active-Patient recovery issued by an exact active Hospital Owner for an exact Patient relationship. This does not settle broader Hospital/Owner governance, other account recovery, or activation semantics.
 50. P17E-CONSENT-01..03 remain pending; no Phase 17E.2 consent behavior is implemented or approved.
+51. Phase 17J uses a dedicated DEMI LINE OA/Provider, verified external identity binding to an existing User, current server-side DEMI authorization, LINE-only proactive delivery, and combined eligible-role Rich Menu for multi-role users; see accepted [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md).
 
 ---
 
@@ -1357,7 +1360,7 @@ They require confirmed business requirements:
 - Who may approve a care plan?
 - Which additional Patient-submitted health measurements and future identity-correction/reconciliation workflows are approved? The bounded general profile fields approved for Phase 17E.1 are recorded in [the owner contract](../phases/PHASE_17E0_PROFILE_ACCOUNT_CONSENT_CONTRACT.md) and implementation handoff; they do not authorize identity-sensitive edits.
 - Which health measurements may patients submit themselves?
-- Which appointment notification events, recipients, timing, channels, preferences, and retry rules should be supported? P17D-NOTIF-01 remains open; Appointment authority and interaction semantics are resolved in [Phase 17D.0](../phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) and implemented in [Phase 17D.1](../phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md).
+- Which appointment notification events, recipients, timing, content, preferences/consent, quiet hours, and retry rules should be supported? P17D-NOTIF-01 remains open for those business semantics; LINE Messaging API is the approved transport in [Phase 17J.0](../phases/PHASE_17J0_LINE_OA_LIFF_ARCHITECTURE_IDENTITY_CONTRACT.md). Appointment authority and interaction semantics are resolved in [Phase 17D.0](../phases/PHASE_17D0_APPOINTMENT_INTERACTION_CONTRACT_CONSOLIDATION.md) and implemented in [Phase 17D.1](../phases/PHASE_17D1_APPOINTMENT_INTERACTION_IMPLEMENTATION.md).
 - Can OSM transfer or reassign a patient?
 - Can patients change their hospital affiliation?
 - What evidence is required to verify a hospital signup?
@@ -1372,9 +1375,8 @@ They require confirmed business requirements:
 
 Mobile, LIFF, and API requirements that remain open:
 
-- Which workflows will first be exposed through LIFF?
-- Will LIFF primarily target OSM, Patient, or both?
-- What exact LINE account-linking/activation flow will be used?
+- Which complex workflow follows the 17J.1 account-link foundation as the first additional LIFF business workflow?
+- What exact unlink/relink copy and recovery process applies when a user cannot access the previously linked LINE account?
 - Which future operations require `/api/v1`?
 - What authentication scheme will future native clients use?
 - Does field usage eventually require offline-first behavior?

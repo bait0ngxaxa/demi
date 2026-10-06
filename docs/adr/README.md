@@ -27,6 +27,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 | [ADR-0006](./0006-transactional-business-operations.md) | Accepted | Transactional Business Operations |
 | [ADR-0007](./0007-client-transport-and-mobile-ready-architecture.md) | Accepted | Client Transport and Mobile-Ready Architecture |
 | [ADR-0008](./0008-workforce-provisioning-and-activation.md) | Accepted | Workforce Provisioning and First-Time Activation |
+| [ADR-0009](./0009-demi-line-oa-liff-identity-and-messaging.md) | Accepted | DEMI LINE OA, LIFF Identity and Messaging Boundary |
 
 ## Change Rules
 
