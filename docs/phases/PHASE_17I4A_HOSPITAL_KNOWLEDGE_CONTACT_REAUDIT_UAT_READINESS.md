@@ -33,7 +33,9 @@ Corrected-runtime automated verification:
 | Typecheck and targeted ESLint | PASS | `npm run typecheck`; `npx eslint` on the changed Contact service, unit test, and PostgreSQL test |
 | Final full unit suite | PASS | `npm test` — 243 files / 2,090 tests |
 | Final full PostgreSQL integration suite | PASS | `node scripts/integration.mjs verify` — clean disposable database, all 38 migrations, 35 files / 558 tests; container/network removed and `db:status` empty |
-| Prisma validation / production build | NOT RERUN | The schema/migrations and framework/runtime route boundaries did not change; the integration harness did regenerate Prisma Client. No build was needed for service/test/documentation-only changes. |
+| Prisma Client generation | PASS (integration harness step) | The full integration harness regenerated Prisma Client; standalone `npm run prisma:generate` was not separately run. |
+| Prisma validation | NOT RERUN | `npx prisma validate` was not rerun; schema and migrations did not change. |
+| Production build | NOT RERUN | The correction changed service/tests/docs only and did not change route/UI Server-Client/framework boundaries, so the existing stable build evidence remains applicable. |
 
 The MAJOR finding is corrected and no unresolved BLOCKER/MAJOR defect remains in the bounded automated scope. The previous pre-correction evidence remains historical; this corrected-runtime evidence is the final automated disposition. Manual browser/mobile/device/BFCache UAT remains **NOT EXECUTED / TRACK SEPARATELY**; production deployment remains **NOT EXECUTED**; Phase 17J remains **NOT STARTED**.
 
@@ -217,7 +219,9 @@ The inspected Work and Personal components use semantic headings/sections, assoc
 
 The Impeccable detector ran once over the Contact, Publisher, Patient Knowledge, Personal Contact presentation, and Personal home targets and returned `[]`. UI code-level readiness is PASS. No viewport, keyboard, physical mobile, Android Chrome, desktop Chrome/Edge, or visual-device PASS is claimed.
 
-## 15. Automated verification evidence
+## 15. Pre-correction automated verification evidence — historical
+
+This section records the original automated audit at `81e48f8aba0fba5bfba001e2752fbe032e5e5dd7` / `dd9abd9ecd7ab5475d6545a2e6fe724d4b15db91`. It is historical pre-correction evidence and is superseded for final corrected-runtime evidence by the “Review-correction status — 2026-10-06” section above. The counts below were not rerun as corrected-runtime checks.
 
 All database commands below used the repository’s tracked `.env.integration` target, `demi_test` at `127.0.0.1:55432`, with no ambient database URL override and `NODE_ENV` not set to production.
 
@@ -266,7 +270,9 @@ Focused PostgreSQL total: **4 files / 100 tests PASS**. The focused run applied 
 
 The initial typecheck exposed a missing discriminant narrowing in the new test; it was corrected, then the focused PostgreSQL test and typecheck passed. The first post-populated seed regression targeted KANG, which the populated workflow had already given a Contact row; the fixture was changed to seeded KHON, the focused test passed, and the later full clean PostgreSQL suite passed. Neither issue was a product/runtime defect.
 
-## 16. Findings and residual limitations
+## 16. Pre-correction findings and residual limitations — historical
+
+The findings and severity counts in this section describe the original pre-correction audit only. The later MAJOR Contact authorization TOCTOU finding and its corrected-runtime disposition are recorded above; do not use this historical findings table as the current final result.
 
 | Severity | Count | Finding |
 | --- | ---: | --- |
@@ -275,7 +281,7 @@ The initial typecheck exposed a missing discriminant narrowing in the new test; 
 | MINOR | 0 | No bounded code-level UX/accessibility defect remained after source review and detector scan. |
 | INFO | 3 | Manual browser/mobile/device/BFCache behavior remains untested; production/provider deployment configuration was not inspected; the local role simulation does not certify live provider-role inheritance/default privileges. |
 
-No implementation change was justified. Local integration evidence is not production certification. Real-browser stale-page erasure, device layout/keyboard behavior, deployed PostgreSQL provider grants, operational credentials, and legal/privacy approvals remain outside this automated re-audit.
+At the original pre-correction audit, no implementation change was judged necessary. This conclusion was superseded by the later Contact authorization TOCTOU correction recorded above. Local integration evidence is not production certification. Real-browser stale-page erasure, device layout/keyboard behavior, deployed PostgreSQL provider grants, operational credentials, and legal/privacy approvals remain outside this automated re-audit.
 
 ## 17. Manual UAT readiness checklist — all NOT EXECUTED
 
