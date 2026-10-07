@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   init: vi.fn(), isLoggedIn: vi.fn(), getIDToken: vi.fn(), getAccessToken: vi.fn(),
+  isInClient: vi.fn(), getContext: vi.fn(), requestFriendship: vi.fn(),
   effects: [] as (() => void | (() => void))[], refs: [] as { current: unknown }[], refIndex: 0,
 }));
 vi.mock("@line/liff", () => ({ default: mocks }));
@@ -15,7 +16,11 @@ vi.mock("react", async (importOriginal) => ({
   useState: (initial: unknown) => [initial, vi.fn()],
 }));
 
-import { LineAccountClient, refreshLineAccountFriendship } from "./line-account-client";
+import {
+  LineAccountClient,
+  refreshLineAccountFriendship,
+  requestLineFriendshipAndRefresh,
+} from "./line-account-client";
 
 const initial = { status: "LINKED", canUnlink: true, reachability: "UNKNOWN", menuState: "UNKNOWN", cleanupState: null } as const;
 const fetcher = vi.fn<typeof fetch>();
@@ -31,6 +36,8 @@ describe("account page bounded LIFF friendship refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks(); mocks.refs.length = 0; mocks.effects.length = 0;
     mocks.init.mockResolvedValue(undefined); mocks.isLoggedIn.mockReturnValue(true);
+    mocks.isInClient.mockReturnValue(true); mocks.getContext.mockReturnValue({ type: "utou", viewType: "full" });
+    mocks.requestFriendship.mockResolvedValue(undefined);
     mocks.getIDToken.mockReturnValue("fresh-id-token"); mocks.getAccessToken.mockReturnValue("fresh-access-token");
     fetcher.mockImplementation(async () => Response.json({ reachability: "FRIEND", menuState: "UNKNOWN", cleanupState: null }));
     vi.stubGlobal("fetch", fetcher);
@@ -89,6 +96,15 @@ describe("account page bounded LIFF friendship refresh", () => {
     mocks[method].mockReturnValue(null);
     await expect(refreshLineAccountFriendship()).rejects.toThrow();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("refreshes reachability once after the user completes the LIFF add-or-unblock prompt", async () => {
+    await requestLineFriendshipAndRefresh();
+
+    expect(mocks.requestFriendship).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(mocks.requestFriendship.mock.invocationCallOrder[0]).toBeLessThan(fetcher.mock.invocationCallOrder[0]);
+    expect(fetcher.mock.calls[0][0]).toBe("/api/line/account/reachability");
   });
 
   it("skips friend, unauthenticated and clean unlinked accounts", async () => {

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  loginFamilyInvitationReturnToSchema,
+  loginReturnToSchema,
   loginInputSchema,
 } from "../schemas/login-schema";
 import {
@@ -61,7 +61,7 @@ export async function loginAction(
   }
 
   revalidatePath("/", "layout");
-  const requestedReturnTo = loginFamilyInvitationReturnToSchema.safeParse(
+  const requestedReturnTo = loginReturnToSchema.safeParse(
     formData.get("returnTo"),
   );
   redirect(requestedReturnTo.success ? requestedReturnTo.data : "/app");

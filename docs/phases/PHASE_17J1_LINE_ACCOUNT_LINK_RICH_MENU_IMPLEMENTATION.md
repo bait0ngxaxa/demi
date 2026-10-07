@@ -137,3 +137,16 @@ Fake adapters and local automated tests do **not** verify real LINE credentials,
 - Identity-history fingerprint retention/erasure and future cross-account reconciliation: **OPEN / NON-BLOCKING**.
 - Real DEMI LINE Provider/OA/LIFF setup, credential provisioning, provider assets/aliases/default, real account/mobile UAT, and production deployment: **NOT EXECUTED / NOT CLAIMED**.
 - P17D-NOTIF-01 and all reminder, Push, consent, MED-02, adherence, Family-authority expansion, and later 17J conversational workflows: **UNCHANGED / OPEN or DEFERRED**. No 17J.2 work is included.
+
+### LINE account UX correction: real-device checklist
+
+**Real LINE mobile/device UAT: NOT EXECUTED.** Perform these checks after deployment with non-production accounts:
+
+A. **New user / no DEMI session:** Rich Menu → LIFF → DEMI login → automatic return to `/line/account` → connect → clear success → tap **「กลับไปที่ LINE」**.
+B. **Existing DEMI session:** Rich Menu → LIFF → connect directly → clear success → tap **「กลับไปที่ LINE」**.
+C. **Not yet OA friend / blocked:** account stays connected → show clear add/unblock action → complete friendship recovery → one user-triggered refresh and existing menu reconciliation → no identity re-link.
+D. **Already linked:** show **「พร้อมใช้งานผ่าน LINE แล้ว」** when friendship and menu are confirmed → return to LINE → keep unlink secondary.
+E. **Unlink:** confirm explicitly → show immediate success → return to LINE → default menu may converge afterward.
+F. **Failure:** use no system vocabulary, provide no dead end, and show one clear next action.
+
+The finite Rich Menu catalog remains exactly 18 entries. Updated Thai role/chooser labels are generated from the catalog source of truth into `public/line/rich-menus/`; after deployment/review, the operator must rerun `npm run line:rich-menu:reconcile` and then `npm run line:rich-menu:reconcile -- --apply`. No real LINE Provider operation is part of this UX correction.

@@ -11,9 +11,15 @@ export const passwordLoginIdentifierSchema = z
   .transform((value) => value.trim())
   .pipe(z.string().min(1).max(32));
 
-export const loginFamilyInvitationReturnToSchema = z
-  .string()
-  .regex(/^\/app\/family\/invitations#[A-Za-z0-9_-]{43}$/u);
+const familyInvitationReturnToPattern = /^\/app\/family\/invitations#[A-Za-z0-9_-]{43}$/u;
+
+export const loginReturnToSchema = z.string().refine(
+  (value) => value === "/line/account" || familyInvitationReturnToPattern.test(value),
+);
+
+export const loginFamilyInvitationReturnToSchema = z.string().regex(familyInvitationReturnToPattern);
+
+export type LoginReturnTo = z.infer<typeof loginReturnToSchema>;
 
 export const loginInputSchema = z
   .object({

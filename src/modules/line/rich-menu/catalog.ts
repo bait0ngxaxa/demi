@@ -16,8 +16,8 @@ export type LineMenuDefinition = {
 };
 
 const roleLabels: Record<OperationalLineRole, string> = {
-  PATIENT: "พื้นที่ส่วนตัว",
-  OSM: "งานดูแลพื้นที่",
+  PATIENT: "ข้อมูลของฉัน",
+  OSM: "งาน อสม.",
   HOSPITAL: "งานโรงพยาบาล",
 };
 
@@ -55,7 +55,7 @@ const baseMenus: LineMenuDefinition[] = [
   createDefinition("UNLINKED", "u", "เชื่อมบัญชี DEMI", "ยังไม่ได้เชื่อมบัญชี", [
     { type: "uri", intent: "LINK_ACCOUNT", label: "เชื่อมบัญชี DEMI" },
   ]),
-  createDefinition("LINKED_INELIGIBLE", "i", "จัดการบัญชี", "บัญชีนี้ยังไม่มีพื้นที่ใช้งาน", [
+  createDefinition("LINKED_INELIGIBLE", "i", "จัดการบัญชี", "บัญชีนี้ยังไม่มีเมนูให้ใช้งาน", [
     { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" },
   ]),
 ];
@@ -67,8 +67,8 @@ for (const roles of roleSets) {
     createDefinition(
       chooserKey,
       `c_${suffix}`,
-      "เลือกพื้นที่ใช้งาน",
-      "เลือกพื้นที่ที่ต้องการ",
+      "เลือกเมนูที่ต้องการใช้",
+      "แตะเมนูที่ต้องการ",
       [
         ...roles.map((role) => ({
           type: "richmenuswitch" as const,
@@ -88,7 +88,7 @@ for (const roles of [["PATIENT"], ["OSM"], ["HOSPITAL"]] as const) {
       `${role}_DIRECT`,
       `d_${role.slice(0, 1).toLowerCase()}`,
       roleLabels[role],
-      "พื้นที่ใช้งานของคุณ",
+      "เมนูสำหรับคุณ",
       singleRoleActions(role),
     ),
   );
@@ -102,7 +102,7 @@ for (const roles of roleSets) {
         `${role}_${roles.join("_")}`,
         `${role.slice(0, 1).toLowerCase()}_${suffix}`,
         roleLabels[role],
-        "พื้นที่ใช้งานของคุณ",
+        "เมนูสำหรับคุณ",
         [
           { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
           ...roles

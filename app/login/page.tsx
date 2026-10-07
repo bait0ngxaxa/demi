@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context-service";
+import { loginReturnToSchema } from "@/modules/auth/schemas/login-schema";
 
 import { ClearHospitalContentRecoveryOnLogin } from "./clear-hospital-content-recovery";
 import { LoginForm } from "./login-form";
@@ -12,12 +13,19 @@ export const metadata: Metadata = {
   title: "เข้าสู่ระบบ",
 };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams = Promise.resolve({}),
+}: {
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+} = {}): Promise<React.JSX.Element> {
   await connection();
+  const query = await searchParams;
+  const parsedReturnTo = loginReturnToSchema.safeParse(query.returnTo);
+  const safeReturnTo = parsedReturnTo.success ? parsedReturnTo.data : null;
   const access = await resolveCurrentActorAccess();
 
   if (access.status === "AUTHORIZED") {
-    redirect("/app");
+    redirect(safeReturnTo === "/line/account" ? safeReturnTo : "/app");
   }
 
   return (
@@ -60,7 +68,7 @@ export default async function LoginPage() {
             ใช้เลขบัตรประชาชน หรือตัวระบุผู้ดูแลระบบ และรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
           </p>
 
-          <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} />
+          <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
 
           <p className="mt-4 text-sm leading-6 text-muted">
             ลืมรหัสผ่าน? โปรดติดต่อโรงพยาบาลที่ดูแล โรงพยาบาลจะตรวจสอบตัวตนก่อนออกลิงก์กู้คืนบัญชีให้คุณ

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { loginInputSchema, loginFamilyInvitationReturnToSchema } from "./login-schema";
+import { loginInputSchema, loginFamilyInvitationReturnToSchema, loginReturnToSchema } from "./login-schema";
 
 describe("login input validation", () => {
   it("accepts a valid Thai National ID and bounded password", () => {
@@ -54,5 +54,20 @@ describe("bounded Family invitation login destination", () => {
     `/app/family/invitations#${"!".repeat(43)}`, `/app/family/invitations#${token}\n`,
   ])("rejects unrelated or malformed destination %s", (destination) => {
     expect(loginFamilyInvitationReturnToSchema.safeParse(destination).success).toBe(false);
+  });
+});
+
+describe("allowlisted login return destination", () => {
+  const token = "a".repeat(43);
+
+  it.each(["/line/account", `/app/family/invitations#${token}`])("accepts the approved destination %s", (destination) => {
+    expect(loginReturnToSchema.parse(destination)).toBe(destination);
+  });
+
+  it.each([
+    "/app", "/line/account/settings", "//attacker.example/", "https://demi.example/line/account",
+    "https://attacker.example/", "javascript:alert(1)", `/app/family/invitations#${"!".repeat(43)}`,
+  ])("rejects an arbitrary or external destination %s", (destination) => {
+    expect(loginReturnToSchema.safeParse(destination).success).toBe(false);
   });
 });

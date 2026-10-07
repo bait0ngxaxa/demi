@@ -21,8 +21,8 @@ describe("DEMI LINE Messaging API boundary", () => {
     const payload = createLineRichMenuPayload(chooser);
     const switches = payload.areas.map(({ action }) => action).filter((action) => action.type === "richmenuswitch");
     expect(switches).toEqual([
-      { type: "richmenuswitch", label: "พื้นที่ส่วนตัว", richMenuAliasId: "d17j1_p_po", data: LINE_WORKSPACE_SWITCH_MARKER },
-      { type: "richmenuswitch", label: "งานดูแลพื้นที่", richMenuAliasId: "d17j1_o_po", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "richmenuswitch", label: "ข้อมูลของฉัน", richMenuAliasId: "d17j1_p_po", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "richmenuswitch", label: "งาน อสม.", richMenuAliasId: "d17j1_o_po", data: LINE_WORKSPACE_SWITCH_MARKER },
     ]);
     expect(payload.size).toEqual({ width: 2500, height: 1686 });
   });

@@ -45,4 +45,26 @@ describe("Login page assisted recovery guidance", () => {
     // This proves the server destination, not browser fragment inheritance.
   });
 
+  it("returns an already-authorized user to the safe LINE destination", async () => {
+    mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
+    mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
+
+    await expect(LoginPage({ searchParams: Promise.resolve({ returnTo: "/line/account" }) }))
+      .rejects.toThrow("redirect boundary");
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/line/account");
+  });
+
+  it.each(["/app/settings", "https://attacker.example/"]) (
+    "keeps an already-authorized login on /app for an unsafe return path %s",
+    async (returnTo) => {
+      mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
+      mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
+
+      await expect(LoginPage({ searchParams: Promise.resolve({ returnTo }) })).rejects.toThrow("redirect boundary");
+
+      expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    },
+  );
+
 });

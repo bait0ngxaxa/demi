@@ -89,7 +89,7 @@ describe("authentication Server Actions", () => {
     expect(mockedRedirect).toHaveBeenCalledWith(`/app/family/invitations#${"a".repeat(43)}`);
   });
 
-  it("does not allow a caller to redirect login to an arbitrary destination", async () => {
+  it("returns the authorized user to LINE account management after login", async () => {
     mockedAuthenticateWithPassword.mockResolvedValue({
       status: "AUTHORIZED",
       actor: {
@@ -101,7 +101,26 @@ describe("authentication Server Actions", () => {
       },
     });
     const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
-    formData.set("returnTo", "https://attacker.example/");
+    formData.set("returnTo", "/line/account");
+
+    await loginAction(initialLoginActionState, formData);
+
+    expect(mockedRedirect).toHaveBeenCalledWith("/line/account");
+  });
+
+  it.each(["/app/settings", "https://attacker.example/"]) ("does not allow a caller to redirect login to %s", async (returnTo) => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      },
+    });
+    const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
+    formData.set("returnTo", returnTo);
 
     await loginAction(initialLoginActionState, formData);
 

@@ -1,8 +1,18 @@
 import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { LineAccountClient, LineAccountScreen } from "./line-account-client";
+const liffMocks = vi.hoisted(() => ({
+  closeWindow: vi.fn(),
+}));
+
+vi.mock("@line/liff", () => ({ default: liffMocks }));
+
+import {
+  LineAccountClient,
+  LineAccountScreen,
+  closeLineLiffWindow,
+} from "./line-account-client";
 
 const emptyStatus = {
   reachability: null,
@@ -10,152 +20,321 @@ const emptyStatus = {
   cleanupState: null,
 };
 
+type ScreenProps = Parameters<typeof LineAccountScreen>[0];
+
 function renderScreen(
-  initial: Parameters<typeof LineAccountScreen>[0]["initial"],
-  state: Partial<Omit<Parameters<typeof LineAccountScreen>[0], "initial" | "confirmationRef">> = {},
+  initial: ScreenProps["initial"],
+  state: Partial<Omit<ScreenProps, "initial" | "confirmationRef">> = {},
 ): string {
   return renderToStaticMarkup(
     <LineAccountScreen
       initial={initial}
       accountStatus={state.accountStatus ?? initial.status}
       canUnlink={state.canUnlink ?? initial.canUnlink}
-      liffState={state.liffState ?? "UNAVAILABLE"}
+      liffState={state.liffState ?? "READY"}
+      isInClient={state.isInClient ?? true}
+      friendshipSupported={state.friendshipSupported ?? false}
+      canRefreshReachability={state.canRefreshReachability ?? false}
+      reachabilityBusy={state.reachabilityBusy ?? false}
+      friendshipBusy={state.friendshipBusy ?? false}
+      friendshipWarning={state.friendshipWarning ?? false}
       view={state.view ?? "READY"}
+      successAction={state.successAction ?? null}
       message={state.message ?? ""}
       providerWarning={state.providerWarning ?? false}
-      successMessage={state.successMessage ?? ""}
       confirmationRef={createRef<HTMLButtonElement>()}
       onStartLineLogin={() => undefined}
       onBeginLink={() => undefined}
       onBeginUnlink={() => undefined}
       onConfirmLink={() => undefined}
       onConfirmUnlink={() => undefined}
+      onRequestFriendship={() => undefined}
+      onRefreshReachability={() => undefined}
+      onReturnToLine={() => undefined}
       onCancel={() => undefined}
       onRestart={() => undefined}
+      onReload={() => undefined}
     />,
   );
 }
 
-describe("LINE account foundation UI", () => {
-  it.each([
-    ["FRIEND", "เพิ่ม DEMI เป็นเพื่อนแล้ว"],
-    ["NOT_FRIEND", "ยังไม่ได้เพิ่ม DEMI เป็นเพื่อน หรือบัญชีอาจบล็อก DEMI อยู่"],
-    ["UNKNOWN", "ยังยืนยันสถานะ LINE ไม่ได้"],
-  ] as const)("explains %s reachability accurately", (reachability, wording) => {
-    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability });
-    expect(markup).toContain(wording);
+describe("LINE account user experience", () => {
+  it("creates the allowlisted DEMI return target from the unauthenticated account page", () => {
+    const markup = renderToStaticMarkup(
+      <LineAccountClient
+        initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }}
+        liffId={null}
+        publicOrigin=""
+      />,
+    );
+
+    expect(markup).toContain('href="/login?returnTo=%2Fline%2Faccount"');
+    expect(markup).toContain("เข้าสู่ระบบ DEMI");
   });
 
-  it.each(["PENDING", "UNKNOWN", "UNAVAILABLE", "MISMATCH"] as const)("shows unresolved %s cleanup after authoritative unlink", (cleanupState) => {
-    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false, cleanupState, reachability: "UNKNOWN" });
-    expect(markup).toContain("ยกเลิกการเชื่อมต่อแล้ว แต่ยังปรับปรุงเมนู LINE ไม่สำเร็จ");
-    expect(markup).not.toContain("ยืนยันยกเลิกการเชื่อมต่อ</button>");
-  });
-  it("shows the existing DEMI sign-in flow to an unauthenticated visitor", () => {
+  it("keeps account linking unavailable while LIFF is loading", () => {
     const markup = renderToStaticMarkup(
-      <LineAccountClient initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }} liffId={null} publicOrigin="" />,
+      <LineAccountClient
+        initial={{ ...emptyStatus, status: "UNLINKED", canUnlink: false }}
+        liffId="1234567890-AbCdEfGh"
+        publicOrigin="https://demi.example.org"
+      />,
     );
-    expect(markup).toContain("กรุณาเข้าสู่ระบบ DEMI ก่อนจัดการบัญชี LINE");
-    expect(markup).toContain('href="/login"');
-    expect(markup).not.toContain("ยืนยันเชื่อมบัญชี");
-  });
 
-  it("keeps the link action unavailable while LIFF is loading", () => {
-    const markup = renderToStaticMarkup(
-      <LineAccountClient initial={{ ...emptyStatus, status: "UNLINKED", canUnlink: false }} liffId="1234567890-AbCdEfGh" publicOrigin="https://demi.example.org" />,
-    );
     expect(markup).toContain("กำลังเตรียมการเชื่อมต่อ LINE");
     expect(markup).not.toContain("เชื่อมบัญชี LINE นี้</button>");
   });
 
-  it("keeps account management available without advertising an ineligible workspace", () => {
-    const markup = renderToStaticMarkup(
-      <LineAccountClient initial={{ ...emptyStatus, status: "INELIGIBLE", canUnlink: true }} liffId={null} publicOrigin="" />,
-    );
-    expect(markup).toContain("บัญชี DEMI นี้ยังไม่พร้อมใช้งาน");
+  it("shows a ready linked account with return as the primary action and unlink secondary", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "APPLIED",
+    });
+
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
-    expect(markup).not.toContain("พื้นที่ส่วนตัว");
-    expect(markup).toContain("min-h-12");
-    expect(markup).toContain("focus-visible:outline-focus-ring");
-    expect(markup).toContain("max-w-xl");
+    expect(markup).not.toContain("warning");
   });
 
-  it("does not offer self-service unlink to a non-ACTIVE DEMI account", () => {
-    const markup = renderToStaticMarkup(
-      <LineAccountClient initial={{ ...emptyStatus, status: "INELIGIBLE", canUnlink: false }} liffId={null} publicOrigin="" />,
-    );
-    expect(markup).not.toContain("ยกเลิกการเชื่อมต่อ LINE</button>");
+  it("keeps a linked account successful while menu presentation is pending", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "UNKNOWN",
+    }, { canRefreshReachability: true });
+
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("เมนู LINE อาจยังไม่พร้อม");
+    expect(markup).not.toContain("UNKNOWN");
   });
 
-  it("renders self-service unlink after a successful link updates client state", () => {
-    const markup = renderScreen(
-      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
-      { accountStatus: "LINKED", canUnlink: true },
-    );
-    expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
-  });
-
-  it("renders the ready-to-link action only after LIFF is ready", () => {
-    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { liffState: "READY" });
-    expect(markup).toContain("เชื่อมบัญชี LINE นี้");
-    expect(markup).toContain("px-4");
-    expect(markup).toContain("w-full max-w-xl");
-    expect(markup).not.toContain("พื้นที่ส่วนตัว");
-    expect(markup).not.toContain("ตรวจสอบนัดหมาย");
-  });
-
-  it("renders explicit link and unlink confirmations with focusable actions", () => {
-    const link = renderScreen(
-      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
-      { view: "LINK_CONFIRM", liffState: "READY" },
-    );
-    expect(link).toContain("ยืนยันบัญชีที่เปิดอยู่");
-    expect(link).toContain("บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI");
-    expect(link).toContain("ยืนยันเชื่อมบัญชี");
-    expect(link).toContain("focus-visible:outline-focus-ring");
-
-    const unlink = renderScreen(
-      { ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState: "APPLIED" },
-      { view: "UNLINK_CONFIRM" },
-    );
-    expect(unlink).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
-    expect(unlink).toContain("เมนู LINE จะหยุดใช้กับบัญชี DEMI นี้ทันที");
-    expect(unlink).toContain("การยกเลิกไม่ลบบัญชี DEMI");
-    expect(unlink).toContain("ยืนยันยกเลิกการเชื่อมต่อ");
-  });
-
-  it("shows truthful linked status, provider reconciliation warning and success state", () => {
-    const linked = renderScreen({
+  it("keeps unknown reachability secondary and offers an explicit check when tokens are available", () => {
+    const markup = renderScreen({
       ...emptyStatus,
       status: "LINKED",
       canUnlink: true,
       reachability: "UNKNOWN",
-      menuState: "UNAVAILABLE",
-    });
-    expect(linked).toContain("บัญชี LINE เชื่อมกับบัญชี DEMI นี้แล้ว");
-    expect(linked).toContain("เมนู LINE อาจยังไม่พร้อม");
-    expect(linked).toContain("ยกเลิกการเชื่อมต่อ LINE");
+      menuState: "UNKNOWN",
+    }, { canRefreshReachability: true });
 
-    const success = renderScreen(
-      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
-      { view: "SUCCESS", successMessage: "ยกเลิกการเชื่อมต่อบัญชี LINE แล้ว", providerWarning: true },
-    );
-    expect(success).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE แล้ว");
-    expect(success).toContain("การปรับปรุงเมนู LINE อาจใช้เวลา");
-    expect(success).toContain('role="status"');
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
   });
 
-  it("renders only privacy-safe failure copy and keeps the screen readable on mobile", () => {
-    const markup = renderScreen(
-      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
-      { view: "FAILURE", message: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ กรุณาตรวจสอบบัญชีและลองใหม่" },
-    );
+  it("keeps a failed friendship check from hiding the linked result", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "NOT_FRIEND",
+      menuState: "UNKNOWN",
+    }, { friendshipWarning: true, canRefreshReachability: true });
+
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("บัญชีของคุณยังเชื่อมต่ออยู่");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+  });
+
+  it("offers the LIFF friendship action and a bounded refresh for a linked non-friend", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "NOT_FRIEND",
+      menuState: "UNKNOWN",
+    }, { friendshipSupported: true, canRefreshReachability: true });
+
+    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
+    expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).not.toContain("MISMATCH");
+  });
+
+  it("shows the linked result and account controls for a DEMI account without an available LINE menu", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "INELIGIBLE",
+      canUnlink: true,
+    });
+
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้");
+    expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
+    expect(markup).not.toContain("การเชื่อมต่อ LINE ล้มเหลว");
+  });
+
+  it("gives a later unlinked visit calm information when the default menu may still be updating", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+      cleanupState: "PENDING",
+    }, { liffState: "READY" });
+
+    expect(markup).toContain("เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น");
+    expect(markup).not.toContain("PENDING");
+    expect(markup).not.toContain("cleanup");
+  });
+
+  it("renders a dedicated successful link result without stale pre-link warnings", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+      reachability: "UNKNOWN",
+      menuState: "UNKNOWN",
+    }, {
+      accountStatus: "LINKED",
+      canUnlink: true,
+      view: "SUCCESS",
+      successAction: "LINK",
+      providerWarning: true,
+      friendshipWarning: true,
+      canRefreshReachability: true,
+    });
+
+    expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
+    expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
+    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
+    expect(markup).not.toContain("ยังตรวจสอบไม่สำเร็จ");
+    expect(markup).not.toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อน");
+    expect(markup).not.toContain("UNKNOWN");
+    expect(markup).not.toContain("MISMATCH");
+  });
+
+  it("keeps link success clear and actionable when friendship is required", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "NOT_FRIEND",
+      menuState: "UNKNOWN",
+    }, {
+      view: "SUCCESS",
+      successAction: "LINK",
+      friendshipSupported: true,
+      providerWarning: true,
+    });
+
+    expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
+    expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
+    expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
+    expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).not.toContain("ระบบกำลังเตรียมเมนู LINE");
+  });
+
+  it("renders authoritative unlink success while menu reset may still be pending", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+      reachability: "UNKNOWN",
+      cleanupState: "PENDING",
+    }, {
+      view: "SUCCESS",
+      successAction: "UNLINK",
+      providerWarning: true,
+    });
+
+    expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
+    expect(markup).toContain("บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว");
+    expect(markup).toContain("เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น");
+    expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).not.toContain("PENDING");
+    expect(markup).not.toContain("UNKNOWN");
+    expect(markup).not.toContain("provider");
+    expect(markup).not.toContain("cleanup");
+  });
+
+  it("shows truthful instructions without trying to close an external browser", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "APPLIED",
+    }, { isInClient: false });
+
+    expect(markup).toContain("กลับไปที่แชท LINE เพื่อใช้งานต่อ");
+    expect(markup).not.toContain(">กลับไปที่ LINE</button>");
+
+    liffMocks.closeWindow.mockClear();
+    closeLineLiffWindow(false);
+    expect(liffMocks.closeWindow).not.toHaveBeenCalled();
+  });
+
+  it("calls the supported LIFF close action only after an explicit in-client action", () => {
+    closeLineLiffWindow(true);
+    expect(liffMocks.closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it("gives unavailable account and LIFF states a retry action", () => {
+    const accountUnavailable = renderScreen({
+      ...emptyStatus,
+      status: "UNAVAILABLE",
+      canUnlink: false,
+    });
+    const liffUnavailable = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+    }, { liffState: "UNAVAILABLE" });
+
+    expect(accountUnavailable).toContain("ยังโหลดข้อมูลไม่ได้");
+    expect(accountUnavailable).toContain(">ลองอีกครั้ง</button>");
+    expect(liffUnavailable).toContain("ยังเปิดการเชื่อมต่อ LINE ไม่ได้");
+    expect(liffUnavailable).toContain(">ลองอีกครั้ง</button>");
+  });
+
+  it("keeps both link and unlink operations explicitly confirmed", () => {
+    const link = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+    }, { view: "LINK_CONFIRM" });
+    const unlink = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "APPLIED",
+    }, { view: "UNLINK_CONFIRM" });
+
+    expect(link).toContain("ยืนยันเชื่อมบัญชี");
+    expect(link).toContain("บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI");
+    expect(unlink).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
+    expect(unlink).toContain("ยืนยันยกเลิกการเชื่อมต่อ");
+  });
+
+  it("keeps recoverable operation failures safe and actionable", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+    }, {
+      view: "FAILURE",
+      message: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ กรุณาตรวจสอบบัญชีและลองใหม่",
+    });
+
     expect(markup).toContain('role="alert"');
-    expect(markup).toContain("เริ่มรายการใหม่");
+    expect(markup).toContain(">ลองใหม่</button>");
     expect(markup).not.toContain("LINE_USER_ID");
     expect(markup).not.toContain("National ID");
-    expect(markup).toContain("px-4");
-    expect(markup).toContain("max-w-xl");
-    expect(markup).toContain("min-h-12");
   });
 });

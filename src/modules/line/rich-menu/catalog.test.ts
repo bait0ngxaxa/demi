@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { LINE_RICH_MENU_CATALOG, LINE_RICH_MENU_BY_KEY } from "./catalog";
+import { getLineMenuAreaBounds } from "./layout";
 
 const roleSets = [
   ["PATIENT", "OSM"],
@@ -9,10 +10,16 @@ const roleSets = [
   ["PATIENT", "OSM", "HOSPITAL"],
 ] as const;
 const roleLabels = {
-  PATIENT: "พื้นที่ส่วนตัว",
-  OSM: "งานดูแลพื้นที่",
+  PATIENT: "ข้อมูลของฉัน",
+  OSM: "งาน อสม.",
   HOSPITAL: "งานโรงพยาบาล",
 } as const;
+type MenuRole = keyof typeof roleLabels;
+
+function roleLabel(role: MenuRole | undefined): string {
+  if (!role) throw new Error("Expected a role in the Rich Menu test case");
+  return roleLabels[role];
+}
 
 describe("DEMI shared Rich Menu catalog", () => {
   it("exposes only the truthful initial account and workspace actions", () => {
@@ -35,7 +42,11 @@ describe("DEMI shared Rich Menu catalog", () => {
 
   it.each(roleSets)("provides the exact chooser and workspace variants for %j", (...roles) => {
     const chooser = LINE_RICH_MENU_BY_KEY.get(`CHOOSER_${roles.join("_")}`);
-    expect(chooser?.actions.filter((action) => action.type === "richmenuswitch").map((action) => action.role)).toEqual(roles);
+    expect(chooser?.title).toBe("เลือกเมนูที่ต้องการใช้");
+    expect(chooser?.context).toBe("แตะเมนูที่ต้องการ");
+    const chooserActions = chooser?.actions.filter((action) => action.type === "richmenuswitch");
+    expect(chooserActions?.map((action) => action.role)).toEqual(roles);
+    expect(chooserActions?.map((action) => action.label)).toEqual(roles.map(roleLabel));
     expect(chooser?.actions.at(-1)).toMatchObject({ type: "uri", intent: "MANAGE_ACCOUNT" });
     for (const selected of roles) {
       const menu = LINE_RICH_MENU_BY_KEY.get(`${selected}_${roles.join("_")}`);
@@ -43,8 +54,10 @@ describe("DEMI shared Rich Menu catalog", () => {
         type: "uri",
         intent: selected === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE",
       });
-      expect(menu?.actions.filter((action) => action.type === "richmenuswitch").map((action) => action.role))
-        .toEqual(roles.filter((role) => role !== selected));
+      const switchActions = menu?.actions.filter((action) => action.type === "richmenuswitch");
+      const remainingRoles = roles.filter((role) => role !== selected);
+      expect(switchActions?.map((action) => action.role)).toEqual(remainingRoles);
+      expect(switchActions?.map((action) => action.label)).toEqual(remainingRoles.map(roleLabel));
       expect(menu?.actions.at(-1)).toMatchObject({ type: "uri", intent: "MANAGE_ACCOUNT" });
     }
   });
@@ -53,5 +66,31 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(LINE_RICH_MENU_CATALOG).toHaveLength(18);
     expect(LINE_RICH_MENU_CATALOG.some(({ key }) => key.includes("ADMIN"))).toBe(false);
     expect(JSON.stringify(LINE_RICH_MENU_CATALOG)).not.toMatch(/userId|patientId|hospitalId|national|hn|token|session|clinical/iu);
+  });
+
+  it("uses the same task label on each role menu and action", () => {
+    expect(LINE_RICH_MENU_BY_KEY.get("PATIENT_DIRECT")?.title).toBe("ข้อมูลของฉัน");
+    expect(LINE_RICH_MENU_BY_KEY.get("OSM_DIRECT")?.title).toBe("งาน อสม.");
+    expect(LINE_RICH_MENU_BY_KEY.get("HOSPITAL_DIRECT")?.title).toBe("งานโรงพยาบาล");
+    expect(LINE_RICH_MENU_CATALOG.every(({ context }) => !context.includes("พื้นที่ใช้งาน"))).toBe(true);
+  });
+
+  it("keeps each visible action label in a positive region inside the Rich Menu canvas", () => {
+    for (const menu of LINE_RICH_MENU_CATALOG) {
+      const bounds = getLineMenuAreaBounds(menu);
+      expect(bounds).toHaveLength(menu.actions.length);
+
+      for (const [index, action] of menu.actions.entries()) {
+        const region = bounds[index];
+        expect(action.label.trim().length).toBeGreaterThan(0);
+        if (!region) throw new Error(`Missing action region for ${menu.key}`);
+        expect(region.x).toBeGreaterThanOrEqual(0);
+        expect(region.y).toBeGreaterThanOrEqual(0);
+        expect(region.width).toBeGreaterThan(0);
+        expect(region.height).toBeGreaterThan(0);
+        expect(region.x + region.width).toBeLessThanOrEqual(2500);
+        expect(region.y + region.height).toBeLessThanOrEqual(1686);
+      }
+    }
   });
 });

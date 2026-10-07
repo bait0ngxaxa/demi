@@ -8,10 +8,14 @@ import {
   type LoginActionState,
 } from "@/modules/auth/transport/action-state";
 import { loginAction } from "@/modules/auth/transport/server-actions";
-import { loginFamilyInvitationReturnToSchema } from "@/modules/auth/schemas/login-schema";
+import {
+  loginFamilyInvitationReturnToSchema,
+  type LoginReturnTo,
+} from "@/modules/auth/schemas/login-schema";
 
 type LoginFormProps = {
   applicationAccessDenied: boolean;
+  safeReturnTo: LoginReturnTo | null;
 };
 
 function createFamilyInvitationReturnToStore(): {
@@ -58,7 +62,7 @@ function createFamilyInvitationReturnToStore(): {
   };
 }
 
-export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
+export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormProps) {
   const invitationReturnToStore = useMemo(() => createFamilyInvitationReturnToStore(), []);
   const familyInvitationReturnTo = useSyncExternalStore(
     invitationReturnToStore.subscribe,
@@ -70,6 +74,7 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
     initialLoginActionState,
   );
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
+  const returnTo = familyInvitationReturnTo || safeReturnTo;
 
   useEffect(() => {
     invitationReturnToStore.hydrate();
@@ -77,8 +82,8 @@ export function LoginForm({ applicationAccessDenied }: LoginFormProps) {
 
   return (
     <form action={formAction} className="mt-8 space-y-5">
-      {familyInvitationReturnTo ? (
-        <input name="returnTo" type="hidden" value={familyInvitationReturnTo} />
+      {returnTo ? (
+        <input name="returnTo" type="hidden" value={returnTo} />
       ) : null}
       {applicationAccessDenied ? (
         <div

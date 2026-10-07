@@ -12,6 +12,14 @@ This checklist is for an operator configuring real provider resources. The repos
 5. Enable LIFF `openid` and `profile` scopes. `openid` is used to obtain the ID token; `profile` is needed only for the optional server-verified friendship check.
 6. Set the Messaging API webhook URL to `https://<DEMI-origin>/api/line/webhook`, enable webhook delivery in LINE Console, and confirm the configured bot destination matches `DEMI_LINE_MESSAGING_BOT_USER_ID`.
 
+## LINE OA friendship prompt for UAT/demo
+
+Link the DEMI LINE Official Account to the same LINE Login channel that hosts the LIFF app. Set the LIFF app's Add friend option (`botPrompt`) to **Normal** for UAT/demo. LINE displays the add/unblock option on the consent screen; `Aggressive` adds a separate screen after consent and therefore adds another step. Normal is the shorter first-login path. This prompt may not appear again after consent, so use the account page's explicit **「เพิ่ม DEMI เป็นเพื่อน」** action for users who are still not friends or have blocked the OA.
+
+Keep the LIFF app screen size set to **Full**. The in-client `liff.requestFriendship()` action is available only in a Full LIFF browser. The app checks this environment before showing the action. The server-verified friendship check remains available through the existing account page flow.
+
+These are manual LINE Console settings. Do not infer that they are configured from application code. See LINE's [Add friend option for LINE Login](https://developers.line.biz/en/docs/line-login/link-a-bot/) and [LIFF `requestFriendship()` reference](https://developers.line.biz/en/reference/liff/#requestfriendship).
+
 ## Protected environment values
 
 Set these in the server environment through the existing secret-management process:
