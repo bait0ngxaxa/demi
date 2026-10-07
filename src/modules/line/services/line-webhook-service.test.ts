@@ -286,7 +286,10 @@ describe("LINE webhook ingestion", () => {
   it("creates one same-envelope job and preserves its first eligible token context", async () => {
     const harness = createDatabase();
     const first = patientNextAppointmentEvent(eventId("21"), { replyToken: "first-token" });
-    const duplicate = patientNextAppointmentEvent(eventId("21"), { replyToken: "later-token" });
+    const duplicate = patientNextAppointmentEvent(eventId("21"), {
+      replyToken: "later-token",
+      deliveryContext: { isRedelivery: true },
+    });
 
     const result = await processLineWebhookRequest(
       signedRequest(envelope([first, duplicate])),
@@ -298,12 +301,17 @@ describe("LINE webhook ingestion", () => {
     expect(result.duplicates).toBe(1);
     expect(result.reactiveWorkItems).toHaveLength(1);
     expect(result.reactiveWorkItems[0]?.replyToken).toBe("first-token");
+    expect(result.reactiveWorkItems[0]?.isRedelivery).toBe(false);
+    expect(result.reactiveWorkItems[0]?.localExecutionDeadline).toBe(55_000);
     expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
   });
 
-  it("keeps the first same-envelope receipt-only occurrence from gaining a later token", async () => {
+  it.each([
+    ["blank token", { replyToken: "  " }],
+    ["standby", { mode: "standby" }],
+  ])("selects the first eligible occurrence after a same-envelope %s receipt", async (_label, overrides) => {
     const harness = createDatabase();
-    const first = patientNextAppointmentEvent(eventId("23"), { replyToken: "  " });
+    const first = patientNextAppointmentEvent(eventId("23"), overrides);
     const later = patientNextAppointmentEvent(eventId("23"), { replyToken: "later-token" });
 
     const result = await processLineWebhookRequest(
@@ -313,8 +321,102 @@ describe("LINE webhook ingestion", () => {
 
     expect(result.accepted).toBe(1);
     expect(result.duplicates).toBe(1);
-    expect(result.reactiveWorkItems).toEqual([]);
+    expect(result.ignored).toBe(0);
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]?.replyToken).toBe("later-token");
+    expect(harness.receipts.size).toBe(1);
     expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a same-envelope timestamp conflict without replacing selected work", async () => {
+    const harness = createDatabase();
+    const first = patientNextAppointmentEvent(eventId("26"), { replyToken: "first-token" });
+    const conflict = { ...first, timestamp: first.timestamp + 1, replyToken: "conflict-token" };
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([first, conflict])),
+      harness.database,
+    );
+
+    expect(result).toMatchObject({ accepted: 1, duplicates: 0, ignored: 1 });
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]).toMatchObject({
+      replyToken: "first-token", eventOccurredAt: new Date(first.timestamp),
+    });
+    expect(harness.receipts.size).toBe(1);
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("selects canonical eligible work after receipt-only and conflicting siblings", async () => {
+    const harness = createDatabase();
+    const first = patientNextAppointmentEvent(eventId("27"), { replyToken: "" });
+    const conflict = { ...first, timestamp: first.timestamp + 1, replyToken: "conflict-token" };
+    const eligible = { ...first, replyToken: "canonical-token" };
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([first, conflict, eligible])),
+      harness.database,
+    );
+
+    expect(result).toMatchObject({ accepted: 1, duplicates: 1, ignored: 1 });
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]).toMatchObject({
+      replyToken: "canonical-token", eventOccurredAt: new Date(first.timestamp),
+    });
+    expect(harness.receipts.size).toBe(1);
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["mode", { mode: "ACTIVE" }],
+    ["delivery context", { deliveryContext: { isRedelivery: "false" } }],
+    ["required common field", { timestamp: "invalid" }],
+    ["group source", { source: { type: "group", userId: lineUserId } }],
+  ])("does not let an ignored %s sibling poison a later valid occurrence", async (_label, overrides) => {
+    const harness = createDatabase();
+    const valid = patientNextAppointmentEvent(eventId("28"));
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([{ ...valid, ...overrides }, valid])),
+      harness.database,
+    );
+
+    expect(result).toMatchObject({ accepted: 1, duplicates: 0, ignored: 1 });
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]?.replyToken).toBe(valid.replyToken);
+    expect(harness.receipts.size).toBe(1);
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+    expect(harness.transaction.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("allows a durable matching sibling after an initial durable timestamp conflict", async () => {
+    const harness = createDatabase();
+    const canonical = patientNextAppointmentEvent(eventId("29"), { replyToken: "canonical-token" });
+    const receipt = {
+      webhookEventId: canonical.webhookEventId,
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      eventOccurredAt: new Date(canonical.timestamp),
+      outcome: LineWebhookEventOutcome.ACCEPTED,
+    };
+    harness.receipts.set(canonical.webhookEventId, receipt);
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([
+        { ...canonical, timestamp: canonical.timestamp + 1, replyToken: "conflict-token" },
+        canonical,
+      ])),
+      harness.database,
+    );
+
+    expect(result).toMatchObject({ accepted: 0, duplicates: 1, ignored: 1 });
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]).toMatchObject({
+      replyToken: "canonical-token", eventOccurredAt: new Date(canonical.timestamp),
+    });
+    expect(harness.receipts.size).toBe(1);
+    expect(harness.receipts.get(canonical.webhookEventId)).toEqual(receipt);
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledTimes(2);
+    expect(harness.database.lineWebhookEventReceipt.findUnique).toHaveBeenCalledTimes(2);
   });
 
   it("allows matching duplicates in new requests to create a fresh current-work item", async () => {

@@ -375,7 +375,10 @@ export async function processLineWebhookRequest(
   let ignored = 0;
   const bindingIds = new Set<string>();
   const reactiveWorkItems: LineReactiveWorkItem[] = [];
-  const patientAppointmentEventIds = new Set<string>();
+  const patientAppointmentEvents = new Map<string, {
+    eventOccurredAt: number;
+    reactiveSelected: boolean;
+  }>();
   for (const candidate of envelope.data.events) {
     const event = lineWebhookEventSchema.safeParse(candidate);
     if (!event.success) {
@@ -387,11 +390,6 @@ export async function processLineWebhookRequest(
       providerEvent.type === "postback" &&
       providerEvent.postback?.data === LINE_PATIENT_NEXT_APPOINTMENT_MARKER
     ) {
-      if (patientAppointmentEventIds.has(providerEvent.webhookEventId)) {
-        duplicates += 1;
-        continue;
-      }
-
       const classification = classifyPatientNextAppointment(
         providerEvent,
         localExecutionDeadline,
@@ -400,28 +398,38 @@ export async function processLineWebhookRequest(
         ignored += 1;
         continue;
       }
-      patientAppointmentEventIds.add(providerEvent.webhookEventId);
-
       const eventOccurredAt =
         classification.status === "REACTIVE"
           ? classification.workItem.eventOccurredAt
           : classification.eventOccurredAt;
-      const durableResult = await persistPatientNextAppointmentReceipt(
-        providerEvent,
-        eventOccurredAt,
-        database,
-      );
-      if (durableResult.status === "ACCEPTED") {
-        accepted += 1;
-      } else if (durableResult.status === "MATCHING_DUPLICATE") {
+      let canonical = patientAppointmentEvents.get(providerEvent.webhookEventId);
+      if (canonical) {
+        if (canonical.eventOccurredAt !== eventOccurredAt.getTime()) {
+          ignored += 1;
+          continue;
+        }
         duplicates += 1;
       } else {
-        ignored += 1;
-        continue;
+        const durableResult = await persistPatientNextAppointmentReceipt(
+          providerEvent,
+          eventOccurredAt,
+          database,
+        );
+        if (durableResult.status === "ACCEPTED") {
+          accepted += 1;
+        } else if (durableResult.status === "MATCHING_DUPLICATE") {
+          duplicates += 1;
+        } else {
+          ignored += 1;
+          continue;
+        }
+        canonical = { eventOccurredAt: eventOccurredAt.getTime(), reactiveSelected: false };
+        patientAppointmentEvents.set(providerEvent.webhookEventId, canonical);
       }
 
-      if (classification.status === "REACTIVE") {
+      if (classification.status === "REACTIVE" && !canonical.reactiveSelected) {
         reactiveWorkItems.push(classification.workItem);
+        canonical.reactiveSelected = true;
       }
       continue;
     }
