@@ -367,8 +367,9 @@ async function reconcileUnlinked(
   if (binding.providerCleanupState === LineProviderCleanupState.CONFIRMED_CLEAN || !binding.lineUserId) return;
   if (binding.reachability !== LineReachability.FRIEND) {
     await db.lineAccountBinding.updateMany({
-      where: { id: binding.id, lifecycleVersion: binding.lifecycleVersion, reconcileLeaseToken: token, unlinkedAt: { not: null } },
-      data: { providerCleanupState: LineProviderCleanupState.UNKNOWN },
+      where: { id: binding.id, lifecycleVersion: binding.lifecycleVersion, reconcileLeaseToken: token, unlinkedAt: { not: null }, reachability: binding.reachability, reachabilityObservedAt: binding.reachabilityObservedAt },
+      data: { providerCleanupState: binding.reachability === LineReachability.NOT_FRIEND
+        ? LineProviderCleanupState.UNAVAILABLE : LineProviderCleanupState.UNKNOWN },
     });
     return;
   }
@@ -394,11 +395,8 @@ async function reconcileUnlinked(
     } else {
       await persistCleanupOutcome(binding, token, LineProviderCleanupState.MISMATCH, db, false);
     }
-  } catch (error: unknown) {
-    const outcome = error instanceof LineFailure && error.code === "LINE_PROVIDER_PERMANENT"
-      ? LineProviderCleanupState.MISMATCH
-      : LineProviderCleanupState.UNAVAILABLE;
-    await persistCleanupOutcome(binding, token, outcome, db, false);
+  } catch {
+    await persistCleanupOutcome(binding, token, LineProviderCleanupState.UNAVAILABLE, db, false);
   }
 }
 

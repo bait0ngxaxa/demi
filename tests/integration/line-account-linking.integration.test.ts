@@ -22,7 +22,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { LineFailure } from "@/modules/line/domain/line-errors";
 import { applyLineReachabilityObservation, isLinePushReachabilityEligible } from "@/modules/line/services/line-reachability-service";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { createLineAccountIntent, linkLineAccount, unlinkLineAccount } from "@/modules/line/services/line-account-service";
+import { createLineAccountIntent, getLineAccountSummary, refreshLineAccountReachability, linkLineAccount, unlinkLineAccount } from "@/modules/line/services/line-account-service";
 import { LINE_RICH_MENU_BY_KEY } from "@/modules/line/rich-menu/catalog";
 import { lineMenuReconcilerInternals, reconcileLineBinding, type LinePresentationProvider } from "@/modules/line/services/line-menu-reconciler";
 
@@ -235,6 +235,124 @@ describe("Phase 17J.1 LINE PostgreSQL invariants", () => {
     const userIndex = indexes.find(({ indexname }) => indexname === "LineAccountBinding_active_user_key");
     expect(subjectIndex?.indexdef).toMatch(/UNIQUE.*\("lineSubjectFingerprint"\).*WHERE \("unlinkedAt" IS NULL\)/u);
     expect(userIndex?.indexdef).toMatch(/UNIQUE.*\("userId"\).*WHERE \("unlinkedAt" IS NULL\)/u);
+  });
+
+  it.each([LineReachability.UNKNOWN, LineReachability.NOT_FRIEND])("recovers active %s reachability from fresh verified friendship", async (reachability) => {
+    const userId = await createUser();
+    const binding = await createBinding(userId);
+    await database.lineAccountBinding.update({ where: { id: binding.id }, data: { reachability } });
+    const verifyIdentity = vi.fn(async () => ({ subject: binding.lineUserId ?? "" }));
+    const verifyFriendship = vi.fn(async () => ({ friend: true }));
+    await refreshLineAccountReachability({ idToken: "fresh-id", accessToken: "fresh-access" }, {
+      database, currentSession: async () => ({ userId, sessionHash }), verifyIdentity, verifyFriendship,
+    });
+    expect(verifyIdentity).toHaveBeenCalledWith("fresh-id");
+    expect(verifyFriendship).toHaveBeenCalledWith("fresh-access", binding.lineUserId);
+    const refreshed = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
+    expect(refreshed.reachability).toBe(LineReachability.FRIEND);
+    expect(refreshed.lifecycleVersion).toBe(binding.lifecycleVersion);
+    expect(refreshed.presentationRole).toBeNull();
+  });
+
+  it("keeps binding UNKNOWN on transient initial friendship failure, then recovers on account entry", async () => {
+    const userId = await createUser();
+    const dependencies = lineAccountDependencies(userId, new Date());
+    const intent = await createLineAccountIntent(LineAccountAction.LINK, dependencies);
+    const linked = await linkLineAccount({ ...intent, idToken: "id-token", accessToken: "access-token" }, {
+      ...dependencies, verifyFriendship: async () => { throw new LineFailure("FRIENDSHIP_UNKNOWN_OR_UNAVAILABLE"); },
+    });
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } })).reachability).toBe(LineReachability.UNKNOWN);
+    await refreshLineAccountReachability({ idToken: "new-id", accessToken: "new-access" }, { ...dependencies, verifyFriendship: async () => ({ friend: true }) });
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } })).reachability).toBe(LineReachability.FRIEND);
+  });
+
+  it("denies mismatched identity and missing session; provider failure preserves state", async () => {
+    const userId = await createUser();
+    const binding = await createBinding(userId);
+    const verifyFriendship = vi.fn(async () => ({ friend: true }));
+    const dependencies = { database, currentSession: async () => ({ userId, sessionHash }), verifyIdentity: async () => ({ subject: subject("wrong") }), verifyFriendship };
+    const input = { idToken: "fresh-id", accessToken: "fresh-access" };
+    await expect(refreshLineAccountReachability(input, dependencies)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(verifyFriendship).not.toHaveBeenCalled();
+    await expect(refreshLineAccountReachability(input, { ...dependencies, currentSession: async () => { throw new Error("no session"); } })).rejects.toThrow();
+    await expect(refreshLineAccountReachability(input, {
+      ...dependencies, verifyIdentity: async () => ({ subject: binding.lineUserId ?? "" }),
+      verifyFriendship: async () => { throw new LineFailure("FRIENDSHIP_UNKNOWN_OR_UNAVAILABLE"); },
+    })).rejects.toBeInstanceOf(LineFailure);
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).reachability).toBe(LineReachability.UNKNOWN);
+  });
+
+  it("rejects stale lifecycle and orders late friendship checks behind newer signed observations", async () => {
+    const userId = await createUser();
+    const binding = await createBinding(userId);
+    const started = new Date();
+    const dependencies = {
+      database, currentSession: async () => ({ userId, sessionHash }), now: () => started,
+      verifyIdentity: async () => ({ subject: binding.lineUserId ?? "" }),
+      verifyFriendship: async () => {
+        await runSerializableTransaction(database, (tx) => applyLineReachabilityObservation(tx, binding.lineUserId ?? "", LineReachability.NOT_FRIEND, new Date(started.getTime() + 1000)));
+        return { friend: true };
+      },
+    };
+    const input = { idToken: "fresh-id", accessToken: "fresh-access" };
+    await refreshLineAccountReachability(input, dependencies);
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).reachability).toBe(LineReachability.NOT_FRIEND);
+    await refreshLineAccountReachability(input, { ...dependencies, now: () => new Date(started.getTime() + 1000), verifyFriendship: async () => ({ friend: true }) });
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).reachability).toBe(LineReachability.UNKNOWN);
+    await expect(refreshLineAccountReachability(input, { ...dependencies, verifyFriendship: async () => {
+      await database.lineAccountBinding.update({ where: { id: binding.id }, data: { lifecycleVersion: { increment: 1 } } });
+      return { friend: true };
+    } })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).reachability).toBe(LineReachability.UNKNOWN);
+  });
+
+  it("exposes safe unresolved cleanup and recovers it without reactivating identity", async () => {
+    const userId = await createUser();
+    const binding = await createBinding(userId, { unlinkedAt: new Date(), cleanupState: LineProviderCleanupState.UNAVAILABLE });
+    await database.lineAccountBinding.update({ where: { id: binding.id }, data: { providerCleanupLastAttemptAt: new Date(), providerCleanupAttemptCount: 2 } });
+    const dependencies = { database, currentSession: async () => ({ userId, sessionHash }), verifyIdentity: async () => ({ subject: binding.lineUserId ?? "" }), verifyFriendship: async () => ({ friend: true }) };
+    expect(await getLineAccountSummary(dependencies)).toEqual({ status: "UNLINKED", canUnlink: false, reachability: "UNKNOWN", menuState: null, cleanupState: "UNAVAILABLE" });
+    await refreshLineAccountReachability({ idToken: "fresh-id", accessToken: "fresh-access" }, dependencies);
+    const recovered = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
+    expect(recovered.unlinkedAt).toEqual(binding.unlinkedAt);
+    expect(recovered.lifecycleVersion).toBe(binding.lifecycleVersion);
+    expect(recovered.providerCleanupLastAttemptAt).toBeNull();
+    expect(recovered.reachability).toBe(LineReachability.FRIEND);
+    expect(recovered.lineUserId).toBe(binding.lineUserId);
+    const provider: LinePresentationProvider = { getAlias: async () => null, listAliases: async () => [], linkUserMenu: vi.fn(), unlinkUserMenu: vi.fn(async () => undefined), getUserMenu: async () => null };
+    await reconcileLineBinding(binding.id, { database, provider });
+    const cleaned = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
+    expect(cleaned.providerCleanupState).toBe(LineProviderCleanupState.CONFIRMED_CLEAN);
+    expect(cleaned.lineUserId).toBeNull();
+    expect(cleaned.unlinkedAt).toEqual(binding.unlinkedAt);
+    expect(cleaned.lineSubjectFingerprint).toBe(binding.lineSubjectFingerprint);
+    expect(provider.linkUserMenu).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [LineReachability.NOT_FRIEND, LineProviderCleanupState.UNAVAILABLE],
+    [LineReachability.UNKNOWN, LineProviderCleanupState.UNKNOWN],
+  ])("maps %s cleanup to %s without DELETE", async (reachability, outcome) => {
+    const userId = await createUser();
+    const binding = await createBinding(userId, { unlinkedAt: new Date() });
+    await database.lineAccountBinding.update({ where: { id: binding.id }, data: { reachability } });
+    const provider: LinePresentationProvider = { getAlias: vi.fn(), listAliases: vi.fn(), linkUserMenu: vi.fn(), unlinkUserMenu: vi.fn(), getUserMenu: vi.fn() };
+    await reconcileLineBinding(binding.id, { database, provider });
+    expect(provider.unlinkUserMenu).not.toHaveBeenCalled();
+    expect(provider.getUserMenu).not.toHaveBeenCalled();
+    const result = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
+    expect(result.providerCleanupState).toBe(outcome);
+    expect(result.lineUserId).toBe(binding.lineUserId);
+  });
+
+  it("does not label a permanent provider error without readback as mismatch", async () => {
+    const userId = await createUser();
+    const binding = await createBinding(userId, { unlinkedAt: new Date() });
+    await database.lineAccountBinding.update({ where: { id: binding.id }, data: { reachability: LineReachability.FRIEND, reachabilityObservedAt: new Date() } });
+    const provider: LinePresentationProvider = { getAlias: vi.fn(), listAliases: vi.fn(), linkUserMenu: vi.fn(), getUserMenu: vi.fn(), unlinkUserMenu: async () => { throw new LineFailure("LINE_PROVIDER_PERMANENT"); } };
+    await reconcileLineBinding(binding.id, { database, provider });
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).providerCleanupState).toBe(LineProviderCleanupState.UNAVAILABLE);
+    expect(provider.getUserMenu).not.toHaveBeenCalled();
   });
 
   it("links the verified subject to the authenticated DEMI User, handles idempotence, then unlinks locally first", async () => {

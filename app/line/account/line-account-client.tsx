@@ -47,6 +47,26 @@ function parseCleanupResult(value: unknown): { cleanup: string } {
   return { cleanup: record.cleanup };
 }
 
+export async function refreshLineAccountFriendship(): Promise<Pick<InitialStatus, "reachability" | "cleanupState" | "menuState">> {
+  const idToken = liff.getIDToken();
+  const accessToken = liff.getAccessToken();
+  if (!idToken || !accessToken) throw new Error(safeFailure);
+  const response = await fetch("/api/line/account/reachability", {
+    method: "POST", credentials: "same-origin", cache: "no-store",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken, accessToken }),
+  });
+  if (!response.ok) throw new Error(safeFailure);
+  const value = responseRecord(await response.json());
+  const reachability = value.reachability;
+  const cleanupState = value.cleanupState;
+  const menuState = value.menuState;
+  if ((reachability !== "FRIEND" && reachability !== "NOT_FRIEND" && reachability !== "UNKNOWN" && reachability !== null) ||
+    (cleanupState !== null && (typeof cleanupState !== "string" || !cleanupStates.has(cleanupState))) ||
+    (menuState !== null && (typeof menuState !== "string" || !menuStates.has(menuState)))) throw new Error(safeFailure);
+  return { reachability, cleanupState: cleanupState as InitialStatus["cleanupState"], menuState: menuState as InitialStatus["menuState"] };
+}
+
 type LineAccountScreenProps = {
   initial: InitialStatus;
   accountStatus: InitialStatus["status"];
@@ -55,6 +75,7 @@ type LineAccountScreenProps = {
   view: ViewState;
   message: string;
   providerWarning: boolean;
+  friendshipWarning?: boolean;
   successMessage: string;
   confirmationRef: React.RefObject<HTMLButtonElement | null>;
   onStartLineLogin: () => void;
@@ -74,6 +95,7 @@ export function LineAccountScreen({
   view,
   message,
   providerWarning,
+  friendshipWarning = false,
   successMessage,
   confirmationRef,
   onStartLineLogin,
@@ -119,7 +141,8 @@ export function LineAccountScreen({
           {linked && (
             <div className="mt-6 space-y-4">
               <p className="rounded-control bg-brand-soft px-4 py-3 text-sm text-brand-deep">
-                {initial.reachability === "FRIEND" ? "เพิ่ม DEMI เป็นเพื่อนแล้ว" : "สถานะการเพิ่ม DEMI เป็นเพื่อนยังยืนยันไม่ได้"}
+                {initial.reachability === "FRIEND" ? "เพิ่ม DEMI เป็นเพื่อนแล้ว" : initial.reachability === "NOT_FRIEND"
+                  ? "ยังไม่ได้เพิ่ม DEMI เป็นเพื่อน หรือบัญชีอาจบล็อก DEMI อยู่" : "ยังยืนยันสถานะ LINE ไม่ได้"}
               </p>
               {(initial.menuState !== "APPLIED" || initial.reachability !== "FRIEND") && (
                 <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-ink" role="status">
@@ -134,6 +157,11 @@ export function LineAccountScreen({
 
           {accountStatus === "UNLINKED" && (
             <div className="mt-6 space-y-4">
+              {initial.cleanupState && initial.cleanupState !== "CONFIRMED_CLEAN" && (
+                <p role="status" className="rounded-control bg-warning-soft px-4 py-3 text-sm text-ink">
+                  ยกเลิกการเชื่อมต่อแล้ว แต่ยังปรับปรุงเมนู LINE ไม่สำเร็จ หากเพิ่ม DEMI เป็นเพื่อนแล้ว สามารถลองเปิดหน้านี้อีกครั้งได้
+                </p>
+              )}
               {liffState === "LOGIN_REQUIRED" && (
                 <button type="button" onClick={onStartLineLogin} className="inline-flex min-h-12 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-5 py-3 font-semibold text-ink hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
                   เข้าสู่ระบบ LINE
@@ -172,6 +200,7 @@ export function LineAccountScreen({
           )}
 
           {busy && <p className="mt-5 text-sm text-muted" role="status">กำลังดำเนินการ…</p>}
+          {friendshipWarning && <p role="status" className="mt-5 text-sm text-muted">ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองเปิดหน้านี้อีกครั้งภายหลัง</p>}
           {view === "SUCCESS" && (
             <p className="mt-5 rounded-control bg-success-soft px-4 py-3 text-sm text-success" role="status">
               {successMessage}
@@ -207,13 +236,29 @@ export function LineAccountClient({
   const [accountStatus, setAccountStatus] = useState(initial.status);
   const [canUnlink, setCanUnlink] = useState(initial.canUnlink);
   const [successMessage, setSuccessMessage] = useState("");
+  const [summary, setSummary] = useState(initial);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const refreshAttempted = useRef(false);
+  const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!liffId) return;
     let active = true;
     liff.init({ liffId }).then(() => {
-      if (active) setLiffState(liff.isLoggedIn() ? "READY" : "LOGIN_REQUIRED");
+      if (!active) return;
+      const loggedIn = liff.isLoggedIn();
+      setLiffState(loggedIn ? "READY" : "LOGIN_REQUIRED");
+      const owned = initialSummary.current;
+      const useful = (owned.canUnlink || (owned.status === "UNLINKED" && owned.cleanupState !== null && owned.cleanupState !== "CONFIRMED_CLEAN")) &&
+        (owned.reachability === "UNKNOWN" || owned.reachability === "NOT_FRIEND");
+      if (!loggedIn || !useful || refreshAttempted.current) return;
+      refreshAttempted.current = true;
+      void refreshLineAccountFriendship().then((updated) => {
+        if (active) setSummary((current) => ({ ...current, ...updated }));
+      }).catch(() => {
+        if (active) setRefreshFailed(true);
+      });
     }).catch(() => {
       if (active) setLiffState("UNAVAILABLE");
     });
@@ -307,13 +352,14 @@ export function LineAccountClient({
 
   return (
     <LineAccountScreen
-      initial={initial}
+      initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}
       liffState={liffState}
       view={view}
       message={message}
       providerWarning={providerWarning}
+      friendshipWarning={refreshFailed}
       successMessage={successMessage}
       confirmationRef={confirmationRef}
       onStartLineLogin={startLineLogin}

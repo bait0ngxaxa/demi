@@ -15,6 +15,11 @@ export const lineLinkRequestSchema = lineIntentUseSchema.extend({
 
 export const lineUnlinkRequestSchema = lineIntentUseSchema;
 
+export const lineReachabilityRequestSchema = z.object({
+  idToken: z.string().min(20).max(16_384),
+  accessToken: z.string().min(20).max(16_384),
+}).strict();
+
 const webhookSourceSchema = z.object({
   type: z.string().min(1).max(40),
   userId: z.string().regex(/^U[0-9a-f]{32}$/iu).optional(),

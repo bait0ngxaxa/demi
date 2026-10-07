@@ -37,6 +37,20 @@ function renderScreen(
 }
 
 describe("LINE account foundation UI", () => {
+  it.each([
+    ["FRIEND", "เพิ่ม DEMI เป็นเพื่อนแล้ว"],
+    ["NOT_FRIEND", "ยังไม่ได้เพิ่ม DEMI เป็นเพื่อน หรือบัญชีอาจบล็อก DEMI อยู่"],
+    ["UNKNOWN", "ยังยืนยันสถานะ LINE ไม่ได้"],
+  ] as const)("explains %s reachability accurately", (reachability, wording) => {
+    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability });
+    expect(markup).toContain(wording);
+  });
+
+  it.each(["PENDING", "UNKNOWN", "UNAVAILABLE", "MISMATCH"] as const)("shows unresolved %s cleanup after authoritative unlink", (cleanupState) => {
+    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false, cleanupState, reachability: "UNKNOWN" });
+    expect(markup).toContain("ยกเลิกการเชื่อมต่อแล้ว แต่ยังปรับปรุงเมนู LINE ไม่สำเร็จ");
+    expect(markup).not.toContain("ยืนยันยกเลิกการเชื่อมต่อ</button>");
+  });
   it("shows the existing DEMI sign-in flow to an unauthenticated visitor", () => {
     const markup = renderToStaticMarkup(
       <LineAccountClient initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }} liffId={null} publicOrigin="" />,

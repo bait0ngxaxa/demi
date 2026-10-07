@@ -339,7 +339,17 @@ export async function getLineAccountSummary(dependencies: LineAccountDependencie
     where: { userId: session.userId, unlinkedAt: null },
     select: { reachability: true, menuSyncState: true, providerCleanupState: true },
   });
-  if (!binding) return { status: "UNLINKED", canUnlink: false, reachability: null, menuState: null, cleanupState: null };
+  if (!binding) {
+    const cleanup = await databaseOf(dependencies).lineAccountBinding.findFirst({
+      where: {
+        userId: session.userId, unlinkedAt: { not: null }, lineUserId: { not: null },
+        providerCleanupState: { in: ["PENDING", "UNKNOWN", "UNAVAILABLE", "MISMATCH"] },
+      },
+      orderBy: [{ unlinkedAt: "desc" }, { id: "desc" }],
+      select: { reachability: true, providerCleanupState: true },
+    });
+    return { status: "UNLINKED", canUnlink: false, reachability: cleanup?.reachability ?? null, menuState: null, cleanupState: cleanup?.providerCleanupState ?? null };
+  }
   const eligibleRoles = await resolveEligibleLineRoles(session.userId, databaseOf(dependencies));
   return {
     status: eligibleRoles.length ? "LINKED" : "INELIGIBLE",
@@ -348,6 +358,38 @@ export async function getLineAccountSummary(dependencies: LineAccountDependencie
     menuState: binding.menuSyncState,
     cleanupState: binding.providerCleanupState,
   };
+}
+
+export async function refreshLineAccountReachability(
+  input: { idToken: string; accessToken: string },
+  dependencies: LineAccountDependencies = {},
+): Promise<{ bindingId: string }> {
+  const session = await (dependencies.currentSession ?? getCurrentLineSession)();
+  const database = databaseOf(dependencies);
+  const user = await database.user.findUnique({ where: { id: session.userId }, select: { status: true } });
+  if (!user || user.status !== UserStatus.ACTIVE) throw new ForbiddenError();
+  const select = { id: true, lineUserId: true, lifecycleVersion: true } as const;
+  const binding = await database.lineAccountBinding.findFirst({
+    where: { userId: session.userId, unlinkedAt: null }, select,
+  }) ?? await database.lineAccountBinding.findFirst({
+    where: {
+      userId: session.userId, unlinkedAt: { not: null }, lineUserId: { not: null },
+      providerCleanupState: { in: ["PENDING", "UNKNOWN", "UNAVAILABLE", "MISMATCH"] },
+    },
+    orderBy: [{ unlinkedAt: "desc" }, { id: "desc" }], select,
+  });
+  if (!binding?.lineUserId) throw new ForbiddenError();
+  const verified = await (dependencies.verifyIdentity ?? verifyLineIdToken)(input.idToken);
+  if (verified.subject !== binding.lineUserId) throw new ForbiddenError();
+  const checkStartedAt = nowOf(dependencies);
+  const friendship = await (dependencies.verifyFriendship ?? verifyLineFriendship)(input.accessToken, verified.subject);
+  const accepted = await recordLineFriendshipObservation(
+    binding.id, binding.lifecycleVersion,
+    friendship.friend ? LineReachability.FRIEND : LineReachability.NOT_FRIEND,
+    checkStartedAt, database, true,
+  );
+  if (!accepted) throw new ForbiddenError();
+  return { bindingId: binding.id };
 }
 
 export const lineAccountInternals = { sha256, secureDigestMatch, randomChallenge, INTENT_TTL_MS };

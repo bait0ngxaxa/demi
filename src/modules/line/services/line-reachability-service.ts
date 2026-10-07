@@ -1,6 +1,6 @@
 import "server-only";
 
-import { LineReachability, type Prisma, type PrismaClient } from "@prisma/client";
+import { LineProviderCleanupState, LineReachability, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 
@@ -52,14 +52,17 @@ export async function recordLineFriendshipObservation(
   state: ReachabilityEventState,
   observedAt = new Date(),
   database: PrismaClient = getPrisma(),
+  allowUnlinkedCleanup = false,
 ): Promise<boolean> {
   return database.$transaction(async (transaction) => {
     await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${bindingId}::uuid FOR UPDATE`;
     const binding = await transaction.lineAccountBinding.findUnique({
       where: { id: bindingId },
-      select: { lifecycleVersion: true, reachability: true, reachabilityObservedAt: true, unlinkedAt: true },
+      select: { lifecycleVersion: true, reachability: true, reachabilityObservedAt: true, unlinkedAt: true, lineUserId: true, providerCleanupState: true },
     });
-    if (!binding || binding.lifecycleVersion !== lifecycleVersion || binding.unlinkedAt) return false;
+    if (!binding || binding.lifecycleVersion !== lifecycleVersion) return false;
+    if (binding.unlinkedAt && (!allowUnlinkedCleanup || !binding.lineUserId ||
+      !binding.providerCleanupState || binding.providerCleanupState === LineProviderCleanupState.CONFIRMED_CLEAN)) return false;
     const decision = nextReachabilityObservation(
       { state: binding.reachability, observedAt: binding.reachabilityObservedAt },
       { state, observedAt },
@@ -70,6 +73,9 @@ export async function recordLineFriendshipObservation(
       data: {
         reachability: decision === "CONFLICT" ? LineReachability.UNKNOWN : state,
         reachabilityObservedAt: observedAt,
+        ...(decision !== "CONFLICT" && state === LineReachability.FRIEND && binding.unlinkedAt
+          ? { providerCleanupLastAttemptAt: null }
+          : {}),
       },
     });
     return true;
