@@ -92,10 +92,11 @@ describe("LINE account user experience", () => {
       canUnlink: true,
       reachability: "FRIEND",
       menuState: "APPLIED",
-    });
+    }, { canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
     expect(markup).toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
     expect(markup).not.toContain("warning");
@@ -112,7 +113,7 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
     expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
-    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
     expect(markup).not.toContain("เมนู LINE อาจยังไม่พร้อม");
     expect(markup).not.toContain("UNKNOWN");
   });
@@ -157,9 +158,31 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
-    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).not.toContain("MISMATCH");
+  });
+
+  it.each(["UNKNOWN", "APPLIED"] as const)("makes return the only primary completion action for FRIEND with menu %s", (menuState) => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState,
+    }, {
+      view: "SUCCESS",
+      successAction: "LINK",
+      providerWarning: menuState !== "APPLIED",
+      canRefreshReachability: true,
+    });
+
+    expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">กลับไปที่ LINE<\/button>/u);
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
+    expect(markup).not.toContain("เพิ่ม DEMI เป็นเพื่อน</button>");
+    expect(markup).toContain(menuState === "APPLIED"
+      ? "พร้อมใช้งานผ่าน LINE แล้ว"
+      : "ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
   });
 
   it("shows the linked result and account controls for a DEMI account without an available LINE menu", () => {
@@ -167,11 +190,12 @@ describe("LINE account user experience", () => {
       ...emptyStatus,
       status: "INELIGIBLE",
       canUnlink: true,
-    });
+    }, { canRefreshReachability: true, friendshipWarning: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
     expect(markup).toContain("บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
     expect(markup).not.toContain("การเชื่อมต่อ LINE ล้มเหลว");
   });
 
@@ -229,6 +253,8 @@ describe("LINE account user experience", () => {
       successAction: "LINK",
       friendshipSupported: true,
       providerWarning: true,
+      canRefreshReachability: true,
+      friendshipWarning: true,
     });
 
     expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
@@ -236,6 +262,9 @@ describe("LINE account user experience", () => {
     expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">เพิ่ม DEMI เป็นเพื่อน<\/button>/u);
+    expect(markup).toMatch(/<button[^>]*class="[^"]*border-line-strong[^"]*">กลับไปที่ LINE<\/button>/u);
+    expect(markup).not.toContain("ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("ระบบกำลังเตรียมเมนู LINE");
   });
 

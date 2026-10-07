@@ -156,6 +156,12 @@ export function LineAccountScreen({
   const linked = accountStatus === "LINKED" || accountStatus === "INELIGIBLE";
   const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED";
   const notFriend = accountStatus === "LINKED" && initial.reachability === "NOT_FRIEND";
+  const hasFriendshipAction = notFriend && (
+    (friendshipSupported && liffState === "READY") || liffState === "LOGIN_REQUIRED"
+  );
+  const showReachabilityRetry = accountStatus === "LINKED" && canRefreshReachability &&
+    !menuReady && !hasFriendshipAction &&
+    (initial.reachability === "UNKNOWN" || initial.reachability === null || friendshipWarning);
 
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
@@ -189,7 +195,7 @@ export function LineAccountScreen({
                     </p>
                   ) : null}
                   {initial.reachability === "NOT_FRIEND" && friendshipSupported && liffState === "READY" ? (
-                    <button type="button" disabled={friendshipBusy || reachabilityBusy} onClick={onRequestFriendship} className={secondaryButtonClass}>
+                    <button type="button" disabled={friendshipBusy || reachabilityBusy} onClick={onRequestFriendship} className={primaryButtonClass}>
                       {friendshipBusy ? "กำลังเปิดหน้าเพิ่มเพื่อน..." : "เพิ่ม DEMI เป็นเพื่อน"}
                     </button>
                   ) : null}
@@ -197,10 +203,10 @@ export function LineAccountScreen({
                     <p className="text-sm text-muted">กลับไปที่แชท LINE แล้วเพิ่ม DEMI เป็นเพื่อน จากนั้นกลับมาตรวจสอบอีกครั้ง</p>
                   ) : null}
                   {initial.reachability === "NOT_FRIEND" && liffState === "LOGIN_REQUIRED" ? (
-                    <button type="button" onClick={onStartLineLogin} className={secondaryButtonClass}>เข้าสู่ระบบ LINE</button>
+                    <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>เข้าสู่ระบบ LINE</button>
                   ) : null}
-                  {(initial.reachability === "UNKNOWN" || initial.reachability === null || friendshipWarning) && canRefreshReachability ? (
-                    <button type="button" disabled={reachabilityBusy} onClick={onRefreshReachability} className={secondaryButtonClass}>
+                  {showReachabilityRetry ? (
+                    <button type="button" disabled={reachabilityBusy || friendshipBusy} onClick={onRefreshReachability} className={secondaryButtonClass}>
                       {reachabilityBusy ? "กำลังตรวจสอบ..." : "ตรวจสอบอีกครั้ง"}
                     </button>
                   ) : null}
@@ -216,7 +222,7 @@ export function LineAccountScreen({
                 </>
               )}
               {isInClient ? (
-                <button type="button" onClick={onReturnToLine} className={primaryButtonClass}>
+                <button type="button" onClick={onReturnToLine} className={successAction === "LINK" && hasFriendshipAction ? secondaryButtonClass : primaryButtonClass}>
                   กลับไปที่ LINE
                 </button>
               ) : (
@@ -279,7 +285,7 @@ export function LineAccountScreen({
                     <button
                       type="button"
                       onClick={onReturnToLine}
-                      className={notFriend && friendshipSupported ? secondaryButtonClass : primaryButtonClass}
+                      className={hasFriendshipAction ? secondaryButtonClass : primaryButtonClass}
                     >
                       กลับไปที่ LINE
                     </button>
@@ -287,7 +293,7 @@ export function LineAccountScreen({
                     <p className="text-sm text-muted">กลับไปที่แชท LINE เพื่อใช้งานต่อ</p>
                   )}
 
-                  {canRefreshReachability ? (
+                  {showReachabilityRetry ? (
                     <button type="button" disabled={reachabilityBusy || friendshipBusy} onClick={onRefreshReachability} className={secondaryButtonClass}>
                       {reachabilityBusy ? "กำลังตรวจสอบ..." : "ตรวจสอบอีกครั้ง"}
                     </button>
