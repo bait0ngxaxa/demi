@@ -16,6 +16,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
+import { reconcileCurrentLineAccount } from "@/modules/line/services/line-entry-reconciliation";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -126,6 +127,8 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
   ) {
     redirect("/app/personal");
   }
+
+  await reconcileCurrentLineAccount().catch(() => undefined);
 
   return (
     <div className="max-w-4xl">

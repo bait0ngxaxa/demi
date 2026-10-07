@@ -17,6 +17,7 @@ const supportedActions = new Set([
   "db:status",
   "migrate",
   "migrate:populated",
+  "migrate:line-populated",
   "test",
   "test:focused",
   "verify",
@@ -310,7 +311,7 @@ async function migratePopulated(environment, runtime) {
     databaseUp(runtime, environment);
 
     for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name === currentMigration) continue;
+      if (!entry.isDirectory() || entry.name >= currentMigration) continue;
       cpSync(join(migrationsRoot, entry.name), join(temporaryMigrations, entry.name), { recursive: true });
     }
     cpSync(join(migrationsRoot, "migration_lock.toml"), join(temporaryMigrations, "migration_lock.toml"));
@@ -385,6 +386,104 @@ async function migratePopulated(environment, runtime) {
       await verificationClient.$disconnect();
     }
   } finally {
+    if (safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+      rmSync(safeTemporaryRoot, { recursive: true, force: true });
+    }
+  }
+}
+
+async function migrateLinePopulated(environment, runtime) {
+  const migrationsRoot = resolve(repositoryRoot, "prisma", "migrations");
+  const currentMigration = "20261006120000_line_account_linking_rich_menu";
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "demi-line-migration-"));
+  const safeTemporaryRoot = resolve(temporaryRoot);
+  const safeTempBase = resolve(tmpdir());
+  if (!safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+    fail("temporary migration workspace resolved outside the system temporary directory");
+  }
+
+  const temporaryMigrations = join(safeTemporaryRoot, "migrations");
+  const temporarySchema = join(safeTemporaryRoot, "schema.prisma");
+  mkdirSync(temporaryMigrations);
+  let prisma;
+  try {
+    databaseDown(runtime, environment);
+    databaseUp(runtime, environment);
+    for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name >= currentMigration) continue;
+      cpSync(join(migrationsRoot, entry.name), join(temporaryMigrations, entry.name), { recursive: true });
+    }
+    cpSync(join(migrationsRoot, "migration_lock.toml"), join(temporaryMigrations, "migration_lock.toml"));
+    writeFileSync(temporarySchema, [
+      "generator client {",
+      '  provider = "prisma-client-js"',
+      "}",
+      "",
+      "datasource db {",
+      '  provider = "postgresql"',
+      '  url      = env("DATABASE_URL")',
+      "}",
+      "",
+    ].join("\n"), "utf8");
+
+    generate(environment);
+    run(process.execPath, [
+      resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"),
+      "migrate",
+      "deploy",
+      "--schema",
+      temporarySchema,
+    ], { env: environment });
+
+    const { createHash, randomUUID } = await import("node:crypto");
+    const { PrismaClient, Role, UserStatus } = await import("@prisma/client");
+    prisma = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    await prisma.$connect();
+    const fixture = randomUUID();
+    const person = await prisma.person.create({
+      data: {
+        identityKeyHash: createHash("sha256").update(`line-migration-person:${fixture}`).digest("hex"),
+        givenName: "ข้อมูลเดิม",
+      },
+      select: { id: true, identityKeyHash: true, givenName: true },
+    });
+    const user = await prisma.user.create({
+      data: { personId: person.id, status: UserStatus.ACTIVE },
+      select: { id: true, personId: true, status: true, authSubject: true },
+    });
+    await prisma.userRole.create({ data: { userId: user.id, role: Role.PATIENT } });
+    const rolesBefore = await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: true } });
+    await prisma.$disconnect();
+    prisma = undefined;
+
+    migrate(environment);
+    const verify = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    try {
+      const [personAfter, userAfter, rolesAfter, bindings, intents, receipts, indexes] = await Promise.all([
+        verify.person.findUniqueOrThrow({ where: { id: person.id }, select: { id: true, identityKeyHash: true, givenName: true } }),
+        verify.user.findUniqueOrThrow({ where: { id: user.id }, select: { id: true, personId: true, status: true, authSubject: true } }),
+        verify.userRole.findMany({ where: { userId: user.id }, select: { role: true } }),
+        verify.lineAccountBinding.count({ where: { userId: user.id } }),
+        verify.lineAccountActionIntent.count({ where: { userId: user.id } }),
+        verify.lineWebhookEventReceipt.count(),
+        verify.$queryRaw`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname IN ('LineAccountBinding_active_subject_fingerprint_key', 'LineAccountBinding_active_user_key')`,
+      ]);
+      if (
+        JSON.stringify(personAfter) !== JSON.stringify(person) ||
+        JSON.stringify(userAfter) !== JSON.stringify(user) ||
+        JSON.stringify(rolesAfter) !== JSON.stringify(rolesBefore) ||
+        bindings !== 0 || intents !== 0 || receipts !== 0 || indexes.length !== 2 ||
+        !indexes.every((index) => index.indexdef.includes("WHERE (\"unlinkedAt\" IS NULL)"))
+      ) {
+        fail("Line account migration failed its populated database preservation/invariant check");
+      }
+      console.log("LINE migration preserved an existing DEMI User, Person, and role; created empty account tables and both active-only indexes");
+    } finally {
+      await verify.$disconnect();
+    }
+  } finally {
+    if (prisma) await prisma.$disconnect();
+    databaseDown(runtime, environment);
     if (safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
       rmSync(safeTemporaryRoot, { recursive: true, force: true });
     }
@@ -485,4 +584,7 @@ if (action === "db:up") {
 } else if (action === "migrate:populated") {
   requireCommittedIntegrationTarget(environment);
   await migratePopulated(environment, runtime);
+} else if (action === "migrate:line-populated") {
+  requireCommittedIntegrationTarget(environment);
+  await migrateLinePopulated(environment, runtime);
 }

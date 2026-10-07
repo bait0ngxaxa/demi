@@ -1,12 +1,12 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17J.0B owner decision and 17J.1 contract (2026-10-06)
+## CURRENT-status addendum — Phase 17J.1 runtime (2026-10-06)
 
 Phase 17J.0 is **CLOSED / ARCHITECTURE CONTRACT COMPLETE**. Phase 17J.0B is **CLOSED / OWNER DECISION CLOSED**; multi-role Rich Menu is **CLOSED / OWNER APPROVED — OPTION C**. One operational role opens its role menu directly; multiple roles first see a neutral chooser, then switch with LINE-native aliases. Only currently eligible operational roles appear. Selection is presentation preference only; current DEMI server authorization remains authoritative.
 
-Phase 17J.1 technical contract is **COMPLETE / CLEARED FOR IMPLEMENTATION** and runtime is **NOT IMPLEMENTED**. See [owner closeout](./phases/PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md) and [implementation contract](./phases/PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md). No runtime/schema/migration/env/provider config, LINE provisioning, real-device UAT or deployment was performed. Current v1 uniqueness applies only to ACTIVE LINE bindings; cross-user rebind is denied when retained history conflicts. DEMI unlink is authoritative immediately; raw LINE subject may remain only as the temporary locator for unresolved provider Rich Menu cleanup and clears when cleanup is confirmed. Exact identity-history retention/erasure and future cross-account reconciliation remain OPEN, without permanent subject ownership, and do not block fail-closed v1.
+Phase 17J.1 technical contract is **COMPLETE** and runtime is **IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE**. See [owner closeout](./phases/PHASE_17J0B_MULTI_ROLE_RICH_MENU_DECISION_CLOSEOUT.md), [implementation contract](./phases/PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION_CONTRACT.md), and [implementation handoff](./phases/PHASE_17J1_LINE_ACCOUNT_LINK_RICH_MENU_IMPLEMENTATION.md). The additive schema/migration, authenticated LIFF link/unlink foundation, server-only LINE adapters, signed webhook, reachability, Option C preference, 18 shared Rich Menu assets, reconciliation, and bounded operator repair are implemented. PostgreSQL uniqueness applies only to ACTIVE LINE bindings; cross-user rebind fails closed while retained evidence conflicts. Unlink is authoritative at local commit; raw LINE subject remains only as an unresolved provider cleanup locator and clears after confirmed read-back. Exact identity-history retention/erasure and future cross-account reconciliation remain OPEN, without permanent subject ownership, and do not block fail-closed v1.
 
-P17D-NOTIF-01 and other notification semantics remain independently gated; the new 17J.1 contract does not implement reminders or Push delivery.
+External DEMI LINE provider/channel setup, real provisioning, real LINE account/mobile UAT, and production deployment are **NOT CLAIMED / NOT EXECUTED**. P17D-NOTIF-01 and other notification semantics remain independently gated; 17J.1 does not implement reminders or Push delivery.
 
 ## Historical-status addendum — Phase 17J.0 LINE / LIFF contract at initial closeout (2026-10-06)
 

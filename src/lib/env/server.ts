@@ -51,9 +51,38 @@ const patientEvidenceStorageEnvSchema = z.object({
   SUPABASE_PATIENT_EVIDENCE_BUCKET: z.string().trim().min(1).max(100),
 });
 
+const lineLoginEnvSchema = z.object({
+  DEMI_LINE_LOGIN_CHANNEL_ID: z.string().trim().regex(/^\d{4,20}$/u),
+  DEMI_LINE_PUBLIC_ORIGIN: z.string().trim().url(),
+  IDENTITY_HASH_SECRET: z.string().trim().min(32),
+}).superRefine((value, context) => {
+  const origin = new URL(value.DEMI_LINE_PUBLIC_ORIGIN);
+  const localDevelopmentOrigin =
+    process.env.NODE_ENV !== "production" &&
+    ["localhost", "127.0.0.1", "::1"].includes(origin.hostname);
+
+  if (origin.origin !== value.DEMI_LINE_PUBLIC_ORIGIN || (origin.protocol !== "https:" && !localDevelopmentOrigin)) {
+    context.addIssue({
+      code: "custom",
+      path: ["DEMI_LINE_PUBLIC_ORIGIN"],
+      message: "DEMI LINE origin must be a canonical HTTPS origin",
+    });
+  }
+});
+
+const lineMessagingEnvSchema = z.object({
+  DEMI_LINE_MESSAGING_CHANNEL_SECRET: z.string().trim().min(1).max(1024),
+  DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: z.string().trim().min(1).max(8192),
+  DEMI_LINE_MESSAGING_BOT_USER_ID: z.string().trim().regex(/^U[0-9a-f]{32}$/iu),
+});
+
+const lineLiffIdEnvSchema = z.string().trim().regex(/^\d{4,20}-[A-Za-z0-9]+$/u);
+
 export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
   SUPABASE_PATIENT_EVIDENCE_BUCKET: string;
 };
+export type LineLoginEnv = z.infer<typeof lineLoginEnvSchema>;
+export type LineMessagingEnv = z.infer<typeof lineMessagingEnvSchema>;
 
 let cachedServerEnv: ServerEnv | undefined;
 let cachedSupabaseAdminEnv: SupabaseAdminEnv | undefined;
@@ -122,4 +151,37 @@ export function getPatientEvidenceStorageEnv(): PatientEvidenceStorageEnv {
   };
 
   return cachedPatientEvidenceStorageEnv;
+}
+
+export function getLineLoginEnv(): LineLoginEnv {
+  const result = lineLoginEnvSchema.safeParse({
+    DEMI_LINE_LOGIN_CHANNEL_ID: process.env.DEMI_LINE_LOGIN_CHANNEL_ID,
+    DEMI_LINE_PUBLIC_ORIGIN: process.env.DEMI_LINE_PUBLIC_ORIGIN,
+    IDENTITY_HASH_SECRET: process.env.IDENTITY_HASH_SECRET,
+  });
+
+  if (!result.success) {
+    throw new Error("DEMI LINE Login configuration is unavailable");
+  }
+
+  return result.data;
+}
+
+export function getLineMessagingEnv(): LineMessagingEnv {
+  const result = lineMessagingEnvSchema.safeParse({
+    DEMI_LINE_MESSAGING_CHANNEL_SECRET: process.env.DEMI_LINE_MESSAGING_CHANNEL_SECRET,
+    DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: process.env.DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN,
+    DEMI_LINE_MESSAGING_BOT_USER_ID: process.env.DEMI_LINE_MESSAGING_BOT_USER_ID,
+  });
+
+  if (!result.success) {
+    throw new Error("DEMI LINE Messaging API configuration is unavailable");
+  }
+
+  return result.data;
+}
+
+export function getLineLiffId(): string | null {
+  const result = lineLiffIdEnvSchema.safeParse(process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID);
+  return result.success ? result.data : null;
 }

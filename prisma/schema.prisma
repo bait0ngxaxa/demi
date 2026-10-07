@@ -22,6 +22,57 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum LineWorkspaceRole {
+  PATIENT
+  OSM
+  HOSPITAL
+}
+
+enum LineReachability {
+  UNKNOWN
+  FRIEND
+  NOT_FRIEND
+}
+
+enum LineMenuSyncState {
+  UNKNOWN
+  APPLIED
+  MISMATCH
+  UNAVAILABLE
+}
+
+enum LineProviderCleanupState {
+  PENDING
+  CONFIRMED_CLEAN
+  MISMATCH
+  UNAVAILABLE
+  UNKNOWN
+}
+
+enum LineAccountAction {
+  LINK
+  UNLINK
+}
+
+enum LineAccountActionOutcome {
+  SUCCEEDED
+  CONFLICT
+  INELIGIBLE
+  UNAUTHORIZED
+}
+
+enum LineWebhookEventType {
+  FOLLOW
+  UNFOLLOW
+  RICHMENUSWITCH
+}
+
+enum LineWebhookEventOutcome {
+  APPLIED
+  STALE
+  IGNORED
+}
+
 enum AccountRecoveryDeliveryChannel {
   ASSISTED
 }
@@ -250,6 +301,8 @@ model User {
   patientProgramServiceOneDreamCardsRecorded PatientProgramServiceOneDreamCard[] @relation("PatientProgramServiceOneDreamCardRecordedBy")
   patientProgramServiceOneConfidencesRecorded PatientProgramServiceOneConfidence[] @relation("PatientProgramServiceOneConfidenceRecordedBy")
   auditEvents AuditEvent[]
+  lineAccountBindings LineAccountBinding[]
+  lineAccountActionIntents LineAccountActionIntent[]
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
 
@@ -1264,4 +1317,64 @@ model AuditEvent {
 
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId, createdAt])
+}
+
+model LineAccountBinding {
+  id                              String                     @id @default(uuid()) @db.Uuid
+  userId                          String                     @db.Uuid
+  lineUserId                      String?                    @db.VarChar(64)
+  lineSubjectFingerprint          String                     @db.VarChar(64)
+  lineSubjectFingerprintKeyId     String                     @db.VarChar(64)
+  linkedAt                        DateTime                   @default(now()) @db.Timestamptz(3)
+  lastLinkedAt                    DateTime                   @default(now()) @db.Timestamptz(3)
+  unlinkedAt                      DateTime?                  @db.Timestamptz(3)
+  lifecycleVersion                Int                        @default(1)
+  presentationRole               LineWorkspaceRole?
+  presentationRoleSelectedAt      DateTime?                  @db.Timestamptz(3)
+  reachability                    LineReachability           @default(UNKNOWN)
+  reachabilityObservedAt          DateTime?                  @db.Timestamptz(3)
+  menuExpectedKey                 String?                    @db.VarChar(100)
+  menuSyncState                   LineMenuSyncState          @default(UNKNOWN)
+  menuSyncedAt                    DateTime?                  @db.Timestamptz(3)
+  providerCleanupState            LineProviderCleanupState?
+  providerCleanupAttemptCount     Int                        @default(0)
+  providerCleanupLastAttemptAt    DateTime?                  @db.Timestamptz(3)
+  reconcileLeaseToken             String?                    @unique @db.Uuid
+  reconcileLeaseExpiresAt         DateTime?                  @db.Timestamptz(3)
+  createdAt                       DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                       DateTime                   @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([lineSubjectFingerprint])
+  @@index([lineSubjectFingerprintKeyId])
+  @@index([providerCleanupState, unlinkedAt])
+}
+
+model LineAccountActionIntent {
+  id             String                    @id @default(uuid()) @db.Uuid
+  userId         String                    @db.Uuid
+  action         LineAccountAction
+  challengeHash  String                    @db.VarChar(64)
+  sessionHash    String                    @db.VarChar(64)
+  createdAt      DateTime                  @default(now()) @db.Timestamptz(3)
+  expiresAt      DateTime                  @db.Timestamptz(3)
+  consumedAt     DateTime?                 @db.Timestamptz(3)
+  outcome        LineAccountActionOutcome?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model LineWebhookEventReceipt {
+  webhookEventId String                    @id @db.VarChar(26)
+  eventType      LineWebhookEventType
+  eventOccurredAt DateTime                 @db.Timestamptz(3)
+  acceptedAt     DateTime                  @default(now()) @db.Timestamptz(3)
+  outcome        LineWebhookEventOutcome
+
+  @@index([acceptedAt])
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { reconcileCurrentLineAccount } from "@/modules/line/services/line-entry-reconciliation";
 import {
   listWorkforce,
   listWorkforceOwnerHospitals,
@@ -43,6 +44,8 @@ export default async function WorkforcePage({ searchParams }: WorkforcePageProps
   if (hospitals.length === 0) {
     redirect("/app");
   }
+
+  await reconcileCurrentLineAccount().catch(() => undefined);
 
   const params = await searchParams;
   const requestedHospitalId = Array.isArray(params.hospitalId)
