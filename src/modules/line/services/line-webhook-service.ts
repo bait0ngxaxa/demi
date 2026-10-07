@@ -19,7 +19,6 @@ import { projectLineMenu } from "../domain/line-projection";
 import { lineWebhookEnvelopeSchema, lineWebhookEventSchema } from "../schemas/line-schemas";
 import { LINE_RICH_MENU_BY_ALIAS, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { resolveEligibleLineRoles } from "./line-eligibility-service";
-import { reconcileLineBindingIds } from "./line-menu-reconciler";
 import { applyLineReachabilityObservation } from "./line-reachability-service";
 
 const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
@@ -230,8 +229,7 @@ export async function readBoundedLineWebhookBody(request: Request): Promise<Uint
 export async function processLineWebhookRequest(
   request: Request,
   database: PrismaClient = getPrisma(),
-  reconcile: typeof reconcileLineBindingIds = reconcileLineBindingIds,
-): Promise<{ accepted: number; duplicates: number; ignored: number }> {
+): Promise<{ accepted: number; duplicates: number; ignored: number; bindingIds: readonly string[] }> {
   const rawBody = await readBoundedLineWebhookBody(request);
   if (!verifyLineWebhookSignature(rawBody, request.headers.get("x-line-signature"))) {
     throw new LineFailure("INVALID_LINE_IDENTITY", "Invalid LINE signature");
@@ -253,6 +251,7 @@ export async function processLineWebhookRequest(
   let accepted = 0;
   let duplicates = 0;
   let ignored = 0;
+  const bindingIds = new Set<string>();
   for (const candidate of envelope.data.events) {
     const event = lineWebhookEventSchema.safeParse(candidate);
     if (!event.success) {
@@ -264,12 +263,10 @@ export async function processLineWebhookRequest(
     else if (effect.outcome === "IGNORED") ignored += 1;
     else {
       accepted += 1;
-      if (effect.bindingIds.length) {
-        await reconcile(effect.bindingIds).catch(() => ({ reconciled: 0, busy: 0, missing: 0 }));
-      }
+      for (const bindingId of effect.bindingIds) bindingIds.add(bindingId);
     }
   }
-  return { accepted, duplicates, ignored };
+  return { accepted, duplicates, ignored, bindingIds: [...bindingIds] };
 }
 
 export const lineWebhookInternals = {

@@ -16,10 +16,16 @@ describe("LINE intent deep links", () => {
     expect(buildLineIntentUrl("OPEN_WORK_WORKSPACE")).toBe("https://demi.example.org/app");
   });
 
-  it("builds account actions only through the configured LIFF identifier", () => {
+  it("uses the LIFF root when the configured endpoint already contains /line/account", () => {
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
-    expect(buildLineIntentUrl("LINK_ACCOUNT")).toBe("https://liff.line.me/1234567890-AbCdEfGh/line/account?intent=LINK_ACCOUNT");
-    expect(buildLineIntentUrl("MANAGE_ACCOUNT")).toBe("https://liff.line.me/1234567890-AbCdEfGh/line/account?intent=MANAGE_ACCOUNT");
+    const endpoint = "https://demi.example.org/line/account";
+    const linkUrl = buildLineIntentUrl("LINK_ACCOUNT");
+    const manageUrl = buildLineIntentUrl("MANAGE_ACCOUNT");
+
+    expect(endpoint).toBe("https://demi.example.org/line/account");
+    expect(linkUrl).toBe("https://liff.line.me/1234567890-AbCdEfGh");
+    expect(manageUrl).toBe("https://liff.line.me/1234567890-AbCdEfGh");
+    expect(new URL(linkUrl).pathname).not.toContain("/line/account");
   });
 
   it("fails with a typed configuration error when LIFF is required but missing", () => {

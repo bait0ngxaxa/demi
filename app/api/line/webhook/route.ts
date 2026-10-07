@@ -1,5 +1,6 @@
 import { LineFailure } from "@/modules/line/domain/line-errors";
 import { processLineWebhookRequest } from "@/modules/line/services/line-webhook-service";
+import { scheduleLineBindingReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,7 +8,11 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   try {
     const result = await processLineWebhookRequest(request);
-    return Response.json(result, { status: 200, headers: { "cache-control": "no-store" } });
+    if (result.bindingIds.length > 0) scheduleLineBindingReconciliation(result.bindingIds);
+    return Response.json(
+      { accepted: result.accepted, duplicates: result.duplicates, ignored: result.ignored },
+      { status: 200, headers: { "cache-control": "no-store" } },
+    );
   } catch (error: unknown) {
     if (error instanceof LineFailure && error.code === "INVALID_LINE_IDENTITY") {
       return Response.json({ error: "Webhook validation failed" }, { status: 401 });

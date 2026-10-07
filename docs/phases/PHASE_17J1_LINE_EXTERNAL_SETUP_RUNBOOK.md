@@ -8,6 +8,7 @@ This checklist is for an operator configuring real provider resources. The repos
 2. Create/link the DEMI Official Account and its Messaging API channel under that Provider.
 3. Create the dedicated DEMI LINE Login channel and LIFF app under the same DEMI Provider. Do not reuse NHFapp provider/channel credentials or configuration.
 4. Set the LIFF endpoint to `https://<DEMI-origin>/line/account`, using the same canonical HTTPS origin configured as `DEMI_LINE_PUBLIC_ORIGIN`.
+   The account-management and account-link Rich Menu URI is `https://liff.line.me/<LIFF_ID>` with no extra path. LINE combines a path added after the LIFF ID with the configured endpoint path, so appending `/line/account` again would duplicate the route. See [Opening a LIFF app](https://developers.line.biz/en/docs/liff/opening-liff-app/).
 5. Enable LIFF `openid` and `profile` scopes. `openid` is used to obtain the ID token; `profile` is needed only for the optional server-verified friendship check.
 6. Set the Messaging API webhook URL to `https://<DEMI-origin>/api/line/webhook`, enable webhook delivery in LINE Console, and confirm the configured bot destination matches `DEMI_LINE_MESSAGING_BOT_USER_ID`.
 

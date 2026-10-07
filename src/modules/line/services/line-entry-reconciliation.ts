@@ -5,19 +5,15 @@ import { LineProviderCleanupState } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 
 import { getCurrentLineSession } from "./line-session-service";
-import { reconcileLineBinding } from "./line-menu-reconciler";
 
-export async function reconcileCurrentLineAccount(): Promise<void> {
+export async function resolveCurrentLineReconciliationTarget(): Promise<string | null> {
   const session = await getCurrentLineSession();
   const database = getPrisma();
   const active = await database.lineAccountBinding.findFirst({
     where: { userId: session.userId, unlinkedAt: null },
     select: { id: true },
   });
-  if (active) {
-    await reconcileLineBinding(active.id);
-    return;
-  }
+  if (active) return active.id;
   const cleanup = await database.lineAccountBinding.findFirst({
     where: {
       userId: session.userId,
@@ -34,5 +30,5 @@ export async function reconcileCurrentLineAccount(): Promise<void> {
     orderBy: { lastLinkedAt: "desc" },
     select: { id: true },
   });
-  if (cleanup) await reconcileLineBinding(cleanup.id);
+  return cleanup?.id ?? null;
 }

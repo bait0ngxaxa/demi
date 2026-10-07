@@ -2,7 +2,7 @@ import { connection } from "next/server";
 
 import { getLineLiffId, getLineLoginEnv } from "@/lib/env/server";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
-import { reconcileCurrentLineAccount } from "@/modules/line/services/line-entry-reconciliation";
+import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import { UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { LineAccountClient } from "./line-account-client";
@@ -20,8 +20,7 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   };
   try {
     initial = await getLineAccountSummary();
-    await reconcileCurrentLineAccount().catch(() => undefined);
-    initial = await getLineAccountSummary();
+    await scheduleCurrentLineAccountReconciliation();
   } catch (error: unknown) {
     initial = error instanceof UnauthenticatedError
       ? { status: "UNAUTHENTICATED", canUnlink: false, reachability: null, menuState: null, cleanupState: null }

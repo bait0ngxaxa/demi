@@ -10,23 +10,24 @@ export type LineNavigationIntent =
   | "OPEN_WORK_WORKSPACE"
   | "SWITCH_WORKSPACE";
 
-const paths: Record<LineNavigationIntent, string> = {
-  LINK_ACCOUNT: "/line/account?intent=LINK_ACCOUNT",
-  MANAGE_ACCOUNT: "/line/account?intent=MANAGE_ACCOUNT",
+function isAccountIntent(
+  intent: LineNavigationIntent,
+): intent is "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | "SWITCH_WORKSPACE" {
+  return intent === "LINK_ACCOUNT" || intent === "MANAGE_ACCOUNT" || intent === "SWITCH_WORKSPACE";
+}
+
+const paths: Record<Exclude<LineNavigationIntent, "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | "SWITCH_WORKSPACE">, string> = {
   OPEN_PATIENT_WORKSPACE: "/app/personal",
   OPEN_WORK_WORKSPACE: "/app",
-  SWITCH_WORKSPACE: "/line/account?intent=SWITCH_WORKSPACE",
 };
 
 export function buildLineIntentUrl(intent: LineNavigationIntent): string {
   const { DEMI_LINE_PUBLIC_ORIGIN } = getLineLoginEnv();
-  const path = paths[intent];
   const liffId = getLineLiffId();
-  if ((intent === "LINK_ACCOUNT" || intent === "MANAGE_ACCOUNT" || intent === "SWITCH_WORKSPACE") && !liffId) {
-    throw new LineFailure("LINE_CONFIGURATION_MISSING");
+  if (isAccountIntent(intent)) {
+    if (!liffId) throw new LineFailure("LINE_CONFIGURATION_MISSING");
+    // The LIFF Endpoint URL already points to /line/account. Do not append that path again.
+    return `https://liff.line.me/${liffId}`;
   }
-  if (liffId && (intent === "LINK_ACCOUNT" || intent === "MANAGE_ACCOUNT" || intent === "SWITCH_WORKSPACE")) {
-    return `https://liff.line.me/${liffId}${path}`;
-  }
-  return new URL(path, DEMI_LINE_PUBLIC_ORIGIN).toString();
+  return new URL(paths[intent], DEMI_LINE_PUBLIC_ORIGIN).toString();
 }

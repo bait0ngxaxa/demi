@@ -178,8 +178,19 @@ export async function linkLineAccount(
         return { status: "CONFLICT" as const, bindingId: userBinding.id };
       }
 
-      const history = await transaction.lineAccountBinding.findMany({
-        where: { lineSubjectFingerprint: { not: "" } },
+      const incompatibleHistory = await transaction.lineAccountBinding.findFirst({
+        where: {
+          lineSubjectFingerprint: { not: "" },
+          lineSubjectFingerprintKeyId: { not: identity.keyId },
+        },
+        select: { id: true },
+      });
+      if (incompatibleHistory) {
+        await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.CONFLICT);
+        return { status: "CONFLICT" as const, bindingId: userBinding?.id ?? "" };
+      }
+      const matchingHistory = await transaction.lineAccountBinding.findFirst({
+        where: { lineSubjectFingerprint: identity.fingerprint },
         select: {
           id: true,
           userId: true,
@@ -188,15 +199,10 @@ export async function linkLineAccount(
           unlinkedAt: true,
         },
       });
-      if (history.some((entry) => entry.lineSubjectFingerprintKeyId !== identity.keyId)) {
-        await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.CONFLICT);
-        return { status: "CONFLICT" as const, bindingId: userBinding?.id ?? "" };
-      }
       if (userBinding && userBinding.lineSubjectFingerprint === identity.fingerprint) {
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
         return { status: "ALREADY_LINKED" as const, bindingId: userBinding.id, lifecycleVersion: userBinding.lifecycleVersion };
       }
-      const matchingHistory = history.find((entry) => entry.lineSubjectFingerprint === identity.fingerprint);
       if (matchingHistory && matchingHistory.userId !== session.userId) {
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.CONFLICT);
         return { status: "CONFLICT" as const, bindingId: "" };

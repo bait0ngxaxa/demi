@@ -15,7 +15,6 @@ const secret = "dedicated-demi-line-messaging-secret";
 const botUserId = `U${"b".repeat(32)}`;
 const lineUserId = `U${"a".repeat(32)}`;
 const eventPrefix = "01ARZ3NDEKTSV4RRFFQ69G5F";
-const noOpReconcile = vi.fn(async () => ({ reconciled: 0, busy: 0, missing: 0 }));
 
 function eventId(suffix: string): string {
   return `${eventPrefix}${suffix.padStart(2, "0")}`;
@@ -128,7 +127,7 @@ describe("LINE webhook ingestion", () => {
   it("accepts an empty event array and unknown additive fields without mutation", async () => {
     const harness = createDatabase();
     const body = envelope([], botUserId, { futureEnvelopeField: { ignored: true } });
-    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({ accepted: 0, duplicates: 0, ignored: 0 });
+    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({ accepted: 0, duplicates: 0, ignored: 0, bindingIds: [] });
     expect(harness.database.$transaction).not.toHaveBeenCalled();
   });
 
@@ -157,7 +156,7 @@ describe("LINE webhook ingestion", () => {
       additive: true,
     }));
     const result = await processLineWebhookRequest(signedRequest(envelope(futureEvents)), harness.database);
-    expect(result).toEqual({ accepted: 0, duplicates: 0, ignored: 101 });
+    expect(result).toEqual({ accepted: 0, duplicates: 0, ignored: 101, bindingIds: [] });
     expect(harness.transaction.lineWebhookEventReceipt.create).not.toHaveBeenCalled();
   });
 
@@ -170,9 +169,10 @@ describe("LINE webhook ingestion", () => {
       { type: "message", webhookEventId: eventId("4"), timestamp: 1_791_254_400_003, source: { type: "user", userId: lineUserId }, message: { type: "text", text: "ignored" } },
       { type: "follow", webhookEventId: "invalid", timestamp: 1_791_254_400_004 },
     ];
-    const result = await processLineWebhookRequest(signedRequest(envelope(supported)), harness.database, vi.fn(async () => ({ reconciled: 0, busy: 0, missing: 0 })));
+    const result = await processLineWebhookRequest(signedRequest(envelope(supported)), harness.database);
     expect(result.accepted).toBe(2);
     expect(result.ignored).toBe(3);
+    expect(result.bindingIds).toEqual([harness.binding.id]);
     expect(harness.binding.reachability).toBe(LineReachability.FRIEND);
     expect(harness.receipts.size).toBe(2);
   });
@@ -180,9 +180,19 @@ describe("LINE webhook ingestion", () => {
   it("deduplicates redelivery without replaying its binding mutation", async () => {
     const harness = createDatabase();
     const body = envelope([follow(eventId("5"))]);
-    await expect(processLineWebhookRequest(signedRequest(body), harness.database, noOpReconcile)).resolves.toEqual({ accepted: 1, duplicates: 0, ignored: 0 });
+    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({
+      accepted: 1,
+      duplicates: 0,
+      ignored: 0,
+      bindingIds: [harness.binding.id],
+    });
     const observedAt = harness.binding.reachabilityObservedAt;
-    await expect(processLineWebhookRequest(signedRequest(body), harness.database, noOpReconcile)).resolves.toEqual({ accepted: 0, duplicates: 1, ignored: 0 });
+    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({
+      accepted: 0,
+      duplicates: 1,
+      ignored: 0,
+      bindingIds: [],
+    });
     expect(harness.binding.reachability).toBe(LineReachability.FRIEND);
     expect(harness.binding.reachabilityObservedAt).toEqual(observedAt);
   });
@@ -199,14 +209,15 @@ describe("LINE webhook ingestion", () => {
       postback: { data: LINE_WORKSPACE_SWITCH_MARKER, params: { status: "SUCCESS", newRichMenuAliasId: osmMenu.alias } },
       futureEventField: "ignored",
     };
-    await processLineWebhookRequest(signedRequest(envelope([valid])), harness.database, vi.fn(async () => ({ reconciled: 0, busy: 0, missing: 0 })));
+    const result = await processLineWebhookRequest(signedRequest(envelope([valid])), harness.database);
+    expect(result.bindingIds).toEqual([harness.binding.id]);
     expect(harness.binding.presentationRole).toBe(LineWorkspaceRole.OSM);
 
     const updateCount = harness.transaction.lineAccountBinding.update.mock.calls.length;
     harness.binding.presentationRole = null;
     harness.binding.presentationRoleSelectedAt = null;
-    await expect(processLineWebhookRequest(signedRequest(envelope([valid])), harness.database, noOpReconcile))
-      .resolves.toEqual({ accepted: 0, duplicates: 1, ignored: 0 });
+    await expect(processLineWebhookRequest(signedRequest(envelope([valid])), harness.database))
+      .resolves.toEqual({ accepted: 0, duplicates: 1, ignored: 0, bindingIds: [] });
     expect(harness.binding.presentationRole).toBeNull();
     expect(harness.transaction.lineAccountBinding.update).toHaveBeenCalledTimes(updateCount);
 
@@ -214,7 +225,8 @@ describe("LINE webhook ingestion", () => {
     const wrongMarker = { ...valid, webhookEventId: eventId("7"), postback: { ...valid.postback, data: "client-value" } };
     const unknownStatus = { ...valid, webhookEventId: eventId("8"), postback: { ...valid.postback, params: { ...valid.postback.params, status: "FUTURE" } } };
     const unknownAlias = { ...valid, webhookEventId: eventId("9"), postback: { ...valid.postback, params: { status: "SUCCESS", newRichMenuAliasId: "future_alias" } } };
-    await processLineWebhookRequest(signedRequest(envelope([wrongMarker, unknownStatus, unknownAlias])), harness.database);
+    const ignoredResult = await processLineWebhookRequest(signedRequest(envelope([wrongMarker, unknownStatus, unknownAlias])), harness.database);
+    expect(ignoredResult.bindingIds).toEqual([]);
     expect(harness.binding.presentationRole).toBe(previousRole);
   });
 
@@ -224,13 +236,13 @@ describe("LINE webhook ingestion", () => {
     await processLineWebhookRequest(signedRequest(envelope([
       follow(eventId("A"), "follow", lineUserId, timestamp),
       follow(eventId("B"), "unfollow", lineUserId, timestamp),
-    ])), harness.database, noOpReconcile);
+    ])), harness.database);
     expect(harness.binding.reachability).toBe(LineReachability.UNKNOWN);
     expect(harness.binding.reachabilityObservedAt).toEqual(new Date(timestamp));
 
     await processLineWebhookRequest(signedRequest(envelope([
       follow(eventId("C"), "follow", lineUserId, timestamp - 1),
-    ])), harness.database, noOpReconcile);
+    ])), harness.database);
     expect(harness.binding.reachability).toBe(LineReachability.UNKNOWN);
     expect(harness.transaction.lineAccountBinding.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ reachability: LineReachability.UNKNOWN }),

@@ -63,8 +63,17 @@ function createLinkHarness(options: {
       update: vi.fn().mockResolvedValue({}),
     },
     lineAccountBinding: {
-      findFirst: vi.fn().mockResolvedValue(binding),
-      findMany: vi.fn().mockResolvedValue(history),
+      findFirst: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("lineSubjectFingerprintKeyId" in where) {
+          const keyId = where.lineSubjectFingerprintKeyId as { not: string };
+          return history.find((entry) => entry.lineSubjectFingerprint !== "" && entry.lineSubjectFingerprintKeyId !== keyId.not) ?? null;
+        }
+        if ("lineSubjectFingerprint" in where) {
+          const fingerprint = where.lineSubjectFingerprint as string;
+          return history.find((entry) => entry.lineSubjectFingerprint === fingerprint) ?? null;
+        }
+        return binding;
+      }),
       create: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 1 }),
       update: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 2 }),
     },
@@ -267,6 +276,29 @@ describe("LINE account lifecycle service", () => {
       where: { id: intentId },
       data: { consumedAt: now, outcome: LineAccountActionOutcome.CONFLICT },
     });
+  });
+
+  it("fails closed on an incompatible retained fingerprint key version using targeted queries", async () => {
+    const incompatible = {
+      id: bindingId,
+      userId,
+      lineSubjectFingerprint: "b".repeat(64),
+      lineSubjectFingerprintKeyId: "legacy-key-version",
+      unlinkedAt: now,
+    };
+    const harness = createLinkHarness({ history: [incompatible] });
+
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, dependencies(harness.database)))
+      .rejects.toMatchObject({ code: "LINE_BINDING_CONFLICT" });
+
+    expect(harness.tx.lineAccountBinding.findFirst).toHaveBeenCalledWith({
+      where: {
+        lineSubjectFingerprint: { not: "" },
+        lineSubjectFingerprintKeyId: { not: createLineSubjectFingerprint(lineSubject).keyId },
+      },
+      select: { id: true },
+    });
+    expect(harness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
   });
 
   it("authoritatively unlinks locally and leaves provider cleanup for post-commit", async () => {
