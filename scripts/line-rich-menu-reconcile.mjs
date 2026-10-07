@@ -1,8 +1,10 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadEnvConfig } from "@next/env";
+import nextEnv from "@next/env";
 import { createJiti } from "jiti";
+
+const { loadEnvConfig } = nextEnv;
 
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 loadEnvConfig(repositoryRoot);
@@ -99,7 +101,16 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  void error;
-  console.error("คำสั่ง LINE Rich Menu ไม่สำเร็จ ตรวจสอบการตั้งค่าและสถานะผู้ให้บริการ");
+  console.error("คำสั่ง LINE Rich Menu ไม่สำเร็จ");
+  console.error(
+    error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : error,
+  );
+
+  if (error && typeof error === "object" && "code" in error) {
+    console.error("Code:", error.code);
+  }
+
   process.exitCode = 1;
 }
