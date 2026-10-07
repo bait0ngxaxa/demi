@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — Phase 17J.2A reactive messaging decision pack (2026-10-07)
+
+[Phase 17J.2A decision pack](./phases/PHASE_17J2A_REACTIVE_MESSAGING_DECISION_PACK.md) is **DECISION PACK COMPLETE / OWNER DECISIONS REQUIRED**. **Phase 17J.2B — NOT STARTED; Phase 17J.2 runtime — NOT IMPLEMENTED**. Source audit recommends a read-only PATIENT SELF upcoming-appointment command via deterministic postback, with an explicitly narrower LINE projection than the web DTO: **RECOMMENDATION — NOT OWNER APPROVED**. Exact disclosure, upcoming selection, response/help copy, navigation, delivery tradeoff and observability require owner closeout before the technical contract. The pack records the immediate Reply-token lifecycle tension with 17J.1 deferred provider reconciliation; no runtime, schema, migration, provider resource or Rich Menu change was made. Existing 17J.0/17J.0B decisions, 17J.1 implementation evidence and unrelated OPEN gates remain unchanged. Next after owner closeout: **Phase 17J.2B — Deterministic Reactive Messaging Technical Contract**.
+
 ## CURRENT-status addendum — Phase 17J.1 runtime (2026-10-06)
 
 Phase 17J.0 is **CLOSED / ARCHITECTURE CONTRACT COMPLETE**. Phase 17J.0B is **CLOSED / OWNER DECISION CLOSED**; multi-role Rich Menu is **CLOSED / OWNER APPROVED — OPTION C**. One operational role opens its role menu directly; multiple roles first see a neutral chooser, then switch with LINE-native aliases. Only currently eligible operational roles appear. Selection is presentation preference only; current DEMI server authorization remains authoritative.
