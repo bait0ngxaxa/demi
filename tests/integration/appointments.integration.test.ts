@@ -9,7 +9,7 @@ import {
   Role,
   UserStatus,
 } from "@prisma/client";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -34,6 +34,7 @@ import {
   rescheduleAppointment,
 } from "@/modules/appointments/services/appointment-service";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
+import { executeLineReactiveAppointment } from "@/modules/line/services/line-reactive-appointment-service";
 import { unassignOsmFromPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -351,6 +352,79 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "appointment.completed" } })).toBe(0);
     expect(await prisma.patientGoalPlan.count()).toBe(0);
     expect(await prisma.screeningAssessment.count()).toBe(0);
+  });
+
+  it("resolves current LINE authority and reads one own next appointment from PostgreSQL", async () => {
+    const hospital = await createHospital("LINE-REACTIVE");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+      profession: Profession.DOCTOR,
+    });
+    const hospitalNumber = `HN-${randomUUID().slice(0, 8)}`;
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "line-reactive-integration", value: randomUUID() },
+      targetHospitalId: hospital.id,
+      givenName: "ผู้ป่วยทดสอบ",
+      familyName: "LINE",
+      hospitalNumber,
+    });
+    await activateProvisionedPatient(patient.userId);
+    const scheduledAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const created = await createAppointment(
+      owner.actor,
+      appointmentInput(patient.relationshipId, { scheduledAt: bangkokIso(scheduledAt) }),
+    );
+    const currentHospitalName = "โรงพยาบาลเปลี่ยนชื่อก่อน LINE อ่าน";
+    await prisma.hospital.update({
+      where: { id: hospital.id },
+      data: { name: currentHospitalName, status: HospitalStatus.SUSPENDED },
+    });
+
+    const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
+    const binding = await prisma.lineAccountBinding.create({
+      data: {
+        userId: patient.userId,
+        lineUserId,
+        lineSubjectFingerprint: createHash("sha256").update(lineUserId).digest("hex"),
+        lineSubjectFingerprintKeyId: "integration-key-v1",
+      },
+      select: { id: true },
+    });
+    const asOf = new Date(Date.now());
+    let captureAsOfCount = 0;
+    const captureAsOf = (): Date => {
+      captureAsOfCount += 1;
+      return asOf;
+    };
+    let reply = "";
+
+    try {
+      const outcome = await executeLineReactiveAppointment({
+        intent: "PATIENT_NEXT_APPOINTMENT",
+        webhookEventId: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        eventOccurredAt: new Date("2000-01-01T00:00:00.000Z"),
+        localExecutionDeadline: 45_000,
+        lineUserId,
+        replyToken: "integration-only-reply-token",
+        isRedelivery: true,
+      }, {
+        database: prisma,
+        monotonicNow: () => 1_000,
+        captureAsOf,
+        replyText: async (_replyToken, text) => { reply = text; },
+      });
+
+      expect(outcome).toBe("COMPLETED_WITH_APPOINTMENT");
+      expect(captureAsOfCount).toBe(1);
+      expect(reply).toContain("นัดหมายถัดไปของคุณ");
+      expect(reply).toContain(currentHospitalName);
+      expect(reply).not.toContain("ผู้ป่วยทดสอบ");
+      expect(reply).not.toContain(hospitalNumber);
+      expect(reply).not.toContain(created.appointmentId);
+    } finally {
+      await prisma.lineAccountBinding.deleteMany({ where: { id: binding.id } });
+    }
   });
 
   it("enforces direct Hospital scope, exact OSM assignment, and responsible-member validation", async () => {

@@ -65,12 +65,14 @@ enum LineWebhookEventType {
   FOLLOW
   UNFOLLOW
   RICHMENUSWITCH
+  PATIENT_NEXT_APPOINTMENT
 }
 
 enum LineWebhookEventOutcome {
   APPLIED
   STALE
   IGNORED
+  ACCEPTED
 }
 
 enum AccountRecoveryDeliveryChannel {

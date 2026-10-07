@@ -19,7 +19,8 @@ const richMenuInfoSchema = z.object({ richMenuId: z.string(), name: z.string(), 
 
 export type LineRichMenuAction =
   | { type: "uri"; label: string; uri: string }
-  | { type: "richmenuswitch"; label: string; richMenuAliasId: string; data: string };
+  | { type: "richmenuswitch"; label: string; richMenuAliasId: string; data: string }
+  | { type: "postback"; label: string; data: string };
 
 export type LineRichMenuArea = {
   bounds: { x: number; y: number; width: number; height: number };
@@ -46,6 +47,8 @@ export function createLineRichMenuPayload(
     let providerAction: LineRichMenuAction;
     if (action.type === "uri") {
       providerAction = { type: "uri", label: action.label, uri: buildLineIntentUrl(action.intent) };
+    } else if (action.type === "postback") {
+      providerAction = { type: "postback", label: action.label, data: action.data };
     } else {
       const targetKey = roleSet.length === 1 ? `${action.role}_DIRECT` : `${action.role}_${roleSet.join("_")}`;
       const targetMenu = getLineMenuDefinition(targetKey);
@@ -78,6 +81,24 @@ export class LineMessagingClient {
     } catch (error: unknown) {
       if (error instanceof LineFailure) throw error;
       throw new LineFailure("LINE_PROVIDER_TRANSIENT");
+    }
+  }
+
+  async replyText(replyToken: string, text: string): Promise<void> {
+    const response = await this.request("/v2/bot/message/reply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        replyToken,
+        messages: [{ type: "text", text }],
+      }),
+    });
+    if (!response.ok) {
+      throw new LineFailure(
+        response.status === 429 || response.status >= 500
+          ? "LINE_PROVIDER_TRANSIENT"
+          : "LINE_PROVIDER_PERMANENT",
+      );
     }
   }
 

@@ -18,6 +18,7 @@ const supportedActions = new Set([
   "migrate",
   "migrate:populated",
   "migrate:line-populated",
+  "migrate:line-reactive-populated",
   "test",
   "test:focused",
   "verify",
@@ -490,6 +491,140 @@ async function migrateLinePopulated(environment, runtime) {
   }
 }
 
+async function migrateLineReactivePopulated(environment, runtime) {
+  const migrationsRoot = resolve(repositoryRoot, "prisma", "migrations");
+  const currentMigration = "20261007120000_line_reactive_patient_appointment_receipt";
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "demi-line-reactive-migration-"));
+  const safeTemporaryRoot = resolve(temporaryRoot);
+  const safeTempBase = resolve(tmpdir());
+  if (!safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+    throw new Error("temporary migration workspace resolved outside the system temporary directory");
+  }
+
+  const temporaryMigrations = join(safeTemporaryRoot, "migrations");
+  const temporarySchema = join(safeTemporaryRoot, "schema.prisma");
+  mkdirSync(temporaryMigrations);
+  let prisma;
+  try {
+    databaseDown(runtime, environment);
+    databaseUp(runtime, environment);
+    for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name >= currentMigration) continue;
+      cpSync(join(migrationsRoot, entry.name), join(temporaryMigrations, entry.name), { recursive: true });
+    }
+    cpSync(join(migrationsRoot, "migration_lock.toml"), join(temporaryMigrations, "migration_lock.toml"));
+    writeFileSync(temporarySchema, [
+      "generator client {",
+      '  provider = "prisma-client-js"',
+      "}",
+      "",
+      "datasource db {",
+      '  provider = "postgresql"',
+      '  url      = env("DATABASE_URL")',
+      "}",
+      "",
+    ].join("\n"), "utf8");
+
+    generate(environment);
+    run(process.execPath, [
+      resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"),
+      "migrate",
+      "deploy",
+      "--schema",
+      temporarySchema,
+    ], { env: environment });
+
+    const { PrismaClient, LineWebhookEventOutcome, LineWebhookEventType } = await import("@prisma/client");
+    prisma = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    const priorReceiptId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const newReceiptId = "01ARZ3NDEKTSV4RRFFQ69G5FAG";
+    const priorEventOccurredAt = new Date("2026-10-01T00:00:00.000Z");
+    await prisma.$connect();
+    const priorReceipt = await prisma.lineWebhookEventReceipt.create({
+      data: {
+        webhookEventId: priorReceiptId,
+        eventType: LineWebhookEventType.FOLLOW,
+        eventOccurredAt: priorEventOccurredAt,
+        outcome: LineWebhookEventOutcome.IGNORED,
+      },
+    });
+    await prisma.$disconnect();
+    prisma = undefined;
+
+    migrate(environment);
+
+    const verificationClient = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    prisma = verificationClient;
+    await verificationClient.$connect();
+    const retainedReceipt = await verificationClient.lineWebhookEventReceipt.findUniqueOrThrow({
+      where: { webhookEventId: priorReceiptId },
+    });
+    if (
+      retainedReceipt.webhookEventId !== priorReceipt.webhookEventId ||
+      retainedReceipt.eventType !== priorReceipt.eventType ||
+      retainedReceipt.eventOccurredAt.getTime() !== priorReceipt.eventOccurredAt.getTime() ||
+      retainedReceipt.acceptedAt.getTime() !== priorReceipt.acceptedAt.getTime() ||
+      retainedReceipt.outcome !== priorReceipt.outcome
+    ) {
+      throw new Error("reactive enum migration changed an existing LINE webhook receipt");
+    }
+
+    await verificationClient.lineWebhookEventReceipt.create({
+      data: {
+        webhookEventId: newReceiptId,
+        eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+        eventOccurredAt: new Date("2026-10-02T00:00:00.000Z"),
+        outcome: LineWebhookEventOutcome.ACCEPTED,
+      },
+    });
+    let duplicateCode;
+    try {
+      await verificationClient.lineWebhookEventReceipt.create({
+        data: {
+          webhookEventId: newReceiptId,
+          eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+          eventOccurredAt: new Date("2026-10-02T00:00:00.000Z"),
+          outcome: LineWebhookEventOutcome.ACCEPTED,
+        },
+      });
+    } catch (error) {
+      duplicateCode = error?.code;
+    }
+    const receiptColumns = await verificationClient.$queryRaw`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'LineWebhookEventReceipt'
+      ORDER BY ordinal_position
+    `;
+    const enumLabels = await verificationClient.$queryRaw`
+      SELECT t.typname AS enum_name, e.enumlabel AS value
+      FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
+      WHERE t.typname IN ('LineWebhookEventType', 'LineWebhookEventOutcome')
+      ORDER BY t.typname, e.enumsortorder
+    `;
+    const eventTypes = enumLabels.filter((row) => row.enum_name === "LineWebhookEventType").map((row) => row.value);
+    const outcomes = enumLabels.filter((row) => row.enum_name === "LineWebhookEventOutcome").map((row) => row.value);
+    if (
+      duplicateCode !== "P2002" ||
+      receiptColumns.map((row) => row.column_name).join(",") !== "webhookEventId,eventType,eventOccurredAt,acceptedAt,outcome" ||
+      eventTypes.join(",") !== "FOLLOW,UNFOLLOW,RICHMENUSWITCH,PATIENT_NEXT_APPOINTMENT" ||
+      outcomes.join(",") !== "APPLIED,STALE,IGNORED,ACCEPTED"
+    ) {
+      throw new Error("reactive LINE migration changed receipt schema, enum values, or webhookEventId uniqueness");
+    }
+
+    await verificationClient.lineWebhookEventReceipt.deleteMany({
+      where: { webhookEventId: { in: [priorReceiptId, newReceiptId] } },
+    });
+    console.log("LINE reactive enum migration preserved an existing receipt, retained all prior enum values, accepted a PATIENT_NEXT_APPOINTMENT/ACCEPTED receipt, and kept the five-column receipt shape and unique webhookEventId invariant");
+  } finally {
+    if (prisma) await prisma.$disconnect();
+    databaseDown(runtime, environment);
+    if (safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+      rmSync(safeTemporaryRoot, { recursive: true, force: true });
+    }
+  }
+}
+
 function generate(environment) {
   run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "generate"], {
     env: environment,
@@ -587,4 +722,7 @@ if (action === "db:up") {
 } else if (action === "migrate:line-populated") {
   requireCommittedIntegrationTarget(environment);
   await migrateLinePopulated(environment, runtime);
+} else if (action === "migrate:line-reactive-populated") {
+  requireCommittedIntegrationTarget(environment);
+  await migrateLineReactivePopulated(environment, runtime);
 }

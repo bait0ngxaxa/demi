@@ -141,6 +141,39 @@ function ownPatientWhere(actor: ActorContext): Prisma.PersonWhereInput {
   };
 }
 
+const ownPatientAppointmentIdentitySelect = {
+  patientProfile: {
+    select: {
+      hospitalRelationships: {
+        take: 1,
+        select: { id: true },
+      },
+    },
+  },
+} satisfies Prisma.PersonSelect;
+
+export async function hasOwnPatientAppointmentIdentity(
+  actor: ActorContext,
+  database: PatientSelfQueryDatabase,
+): Promise<boolean> {
+  if (!isAuthenticatedPatientActor(actor)) {
+    return false;
+  }
+
+  try {
+    const person = await database.person.findFirst({
+      where: ownPatientWhere(actor),
+      select: ownPatientAppointmentIdentitySelect,
+    });
+
+    return Boolean(
+      person?.patientProfile && person.patientProfile.hospitalRelationships.length > 0,
+    );
+  } catch {
+    throw new InfrastructureError("Patient self identity could not be verified");
+  }
+}
+
 export async function resolveOwnPatientContext(
   actor: ActorContext | null | undefined,
   dependencies: PatientSelfQueryDependencies = {},
@@ -243,6 +276,7 @@ export async function resolveOwnPatientRelationshipContext(
 export const patientSelfQueryInternals = {
   isAuthenticatedPatientActor,
   ownPatientWhere,
+  ownPatientAppointmentIdentitySelect,
   patientSelfRelationshipListSelect,
   patientSelfRelationshipNavigationSelect,
   toRelationshipNavigation,

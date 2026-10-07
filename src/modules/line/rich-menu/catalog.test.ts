@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 import { LINE_RICH_MENU_CATALOG, LINE_RICH_MENU_BY_KEY } from "./catalog";
 import { getLineMenuAreaBounds } from "./layout";
 
@@ -35,6 +36,9 @@ describe("DEMI shared Rich Menu catalog", () => {
       const direct = LINE_RICH_MENU_BY_KEY.get(`${role}_DIRECT`);
       expect(direct?.actions).toEqual([
         { type: "uri", intent: role === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE", label: roleLabels[role] },
+        ...(role === "PATIENT"
+          ? [{ type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER }]
+          : []),
         { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" },
       ]);
     }
@@ -55,6 +59,10 @@ describe("DEMI shared Rich Menu catalog", () => {
         intent: selected === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE",
       });
       const switchActions = menu?.actions.filter((action) => action.type === "richmenuswitch");
+      const appointmentActions = menu?.actions.filter((action) => action.type === "postback");
+      expect(appointmentActions).toEqual(selected === "PATIENT"
+        ? [{ type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER }]
+        : []);
       const remainingRoles = roles.filter((role) => role !== selected);
       expect(switchActions?.map((action) => action.role)).toEqual(remainingRoles);
       expect(switchActions?.map((action) => action.label)).toEqual(remainingRoles.map(roleLabel));
@@ -66,6 +74,19 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(LINE_RICH_MENU_CATALOG).toHaveLength(18);
     expect(LINE_RICH_MENU_CATALOG.some(({ key }) => key.includes("ADMIN"))).toBe(false);
     expect(JSON.stringify(LINE_RICH_MENU_CATALOG)).not.toMatch(/userId|patientId|hospitalId|national|hn|token|session|clinical/iu);
+  });
+
+  it("adds the exact appointment postback only to the four Patient presentation menus", () => {
+    const eligibleKeys = LINE_RICH_MENU_CATALOG
+      .filter((menu) => menu.actions.some((action) => action.type === "postback"))
+      .map((menu) => menu.key);
+    expect(eligibleKeys).toEqual([
+      "PATIENT_DIRECT",
+      "PATIENT_PATIENT_OSM",
+      "PATIENT_PATIENT_HOSPITAL",
+      "PATIENT_PATIENT_OSM_HOSPITAL",
+    ]);
+    expect(LINE_RICH_MENU_CATALOG).toHaveLength(18);
   });
 
   it("uses the same task label on each role menu and action", () => {
@@ -90,6 +111,23 @@ describe("DEMI shared Rich Menu catalog", () => {
         expect(region.height).toBeGreaterThan(0);
         expect(region.x + region.width).toBeLessThanOrEqual(2500);
         expect(region.y + region.height).toBeLessThanOrEqual(1686);
+      }
+    }
+  });
+
+  it("keeps Patient presentation hit areas non-overlapping", () => {
+    for (const menu of LINE_RICH_MENU_CATALOG.filter((entry) =>
+      entry.actions.some((action) => action.type === "postback"),
+    )) {
+      const bounds = getLineMenuAreaBounds(menu);
+      for (const [firstIndex, first] of bounds.entries()) {
+        for (const second of bounds.slice(firstIndex + 1)) {
+          const overlaps = first.x < second.x + second.width &&
+            first.x + first.width > second.x &&
+            first.y < second.y + second.height &&
+            first.y + first.height > second.y;
+          expect(overlaps).toBe(false);
+        }
       }
     }
   });

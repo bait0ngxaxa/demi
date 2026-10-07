@@ -1,6 +1,6 @@
 import "server-only";
 
-import { UserStatus, type Role } from "@prisma/client";
+import { Prisma, UserStatus, type Role, type PrismaClient } from "@prisma/client";
 import { isAuthError, isAuthSessionMissingError } from "@supabase/supabase-js";
 
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
@@ -25,6 +25,12 @@ export type ActorUserRecord = {
 export type ActorContextStore = {
   findUserByAuthSubject(authSubject: string): Promise<ActorUserRecord | null>;
 };
+
+export type ActorContextUserIdStore = {
+  findUserById(userId: string): Promise<ActorUserRecord | null>;
+};
+
+type ActorContextDatabase = PrismaClient | Prisma.TransactionClient;
 
 export type ActorAuthenticationProvider = {
   getUser(): Promise<{
@@ -69,81 +75,91 @@ export function isUnauthenticatedAuthError(error: unknown): boolean {
   return unauthenticatedAuthErrorCodes.has(error.code);
 }
 
-const prismaActorContextStore: ActorContextStore = {
-  async findUserByAuthSubject(authSubject): Promise<ActorUserRecord | null> {
-    try {
-      const user = await getPrisma().user.findUnique({
-        where: { authSubject },
-        select: {
-          id: true,
-          personId: true,
-          status: true,
-          roles: {
-            select: { role: true },
-          },
-          memberships: {
-            select: {
-              hospitalId: true,
-              membershipType: true,
-              profession: true,
-              status: true,
-              hospital: {
-                select: { status: true },
-              },
-            },
-          },
-          osmHospitalRelationships: {
-            select: {
-              hospitalId: true,
-              status: true,
-              hospital: {
-                select: { status: true },
-              },
-            },
-          },
-        },
-      });
-
-      if (!user) {
-        return null;
-      }
-
-      return {
-        id: user.id,
-        personId: user.personId,
-        status: user.status,
-        roles: user.roles.map(({ role }) => role),
-        hospitalMemberships: user.memberships.map((membership) => ({
-          hospitalId: membership.hospitalId,
-          membershipType: membership.membershipType,
-          profession: membership.profession,
-          status: membership.status,
-          hospitalStatus: membership.hospital.status,
-        })),
-        osmHospitalRelationships: user.osmHospitalRelationships.map((relationship) => ({
-          hospitalId: relationship.hospitalId,
-          status: relationship.status,
-          hospitalStatus: relationship.hospital.status,
-        })),
-      };
-    } catch {
-      throw new InfrastructureError("Actor context could not be loaded");
-    }
+const actorContextUserSelect = {
+  id: true,
+  personId: true,
+  status: true,
+  roles: {
+    select: { role: true },
   },
-};
+  memberships: {
+    select: {
+      hospitalId: true,
+      membershipType: true,
+      profession: true,
+      status: true,
+      hospital: {
+        select: { status: true },
+      },
+    },
+  },
+  osmHospitalRelationships: {
+    select: {
+      hospitalId: true,
+      status: true,
+      hospital: {
+        select: { status: true },
+      },
+    },
+  },
+} satisfies Prisma.UserSelect;
 
-export async function resolveActorAccessByAuthSubject(
-  authSubject: string,
-  store: ActorContextStore = prismaActorContextStore,
-): Promise<ActorSubjectAccess> {
-  const normalizedSubject = authSubject.trim();
+type ActorContextUserProjection = Prisma.UserGetPayload<{
+  select: typeof actorContextUserSelect;
+}>;
 
-  if (!normalizedSubject) {
-    return { status: "UNMAPPED" };
+function toActorUserRecord(user: ActorContextUserProjection): ActorUserRecord {
+  return {
+    id: user.id,
+    personId: user.personId,
+    status: user.status,
+    roles: user.roles.map(({ role }) => role),
+    hospitalMemberships: user.memberships.map((membership) => ({
+      hospitalId: membership.hospitalId,
+      membershipType: membership.membershipType,
+      profession: membership.profession,
+      status: membership.status,
+      hospitalStatus: membership.hospital.status,
+    })),
+    osmHospitalRelationships: user.osmHospitalRelationships.map((relationship) => ({
+      hospitalId: relationship.hospitalId,
+      status: relationship.status,
+      hospitalStatus: relationship.hospital.status,
+    })),
+  };
+}
+
+async function readActorUser(
+  where: Prisma.UserWhereUniqueInput,
+  database?: ActorContextDatabase,
+): Promise<ActorUserRecord | null> {
+  try {
+    const user = await (database ?? getPrisma()).user.findUnique({
+      where,
+      select: actorContextUserSelect,
+    });
+    return user ? toActorUserRecord(user) : null;
+  } catch {
+    throw new InfrastructureError("Actor context could not be loaded");
   }
+}
 
-  const user = await store.findUserByAuthSubject(normalizedSubject);
+export function createActorContextStore(
+  database?: ActorContextDatabase,
+): ActorContextStore & ActorContextUserIdStore {
+  return {
+    findUserByAuthSubject(authSubject): Promise<ActorUserRecord | null> {
+      return readActorUser({ authSubject }, database);
+    },
+    findUserById(userId): Promise<ActorUserRecord | null> {
+      return readActorUser({ id: userId }, database);
+    },
+  };
+}
 
+const prismaActorContextStore = createActorContextStore();
+
+function actorAccessFromRecord(user: ActorUserRecord | null): ActorSubjectAccess {
   if (!user) {
     return { status: "UNMAPPED" };
   }
@@ -162,6 +178,30 @@ export async function resolveActorAccessByAuthSubject(
       osmHospitalRelationships: user.osmHospitalRelationships,
     },
   };
+}
+
+export async function resolveActorAccessByAuthSubject(
+  authSubject: string,
+  store: ActorContextStore = prismaActorContextStore,
+): Promise<ActorSubjectAccess> {
+  const normalizedSubject = authSubject.trim();
+
+  if (!normalizedSubject) {
+    return { status: "UNMAPPED" };
+  }
+
+  return actorAccessFromRecord(await store.findUserByAuthSubject(normalizedSubject));
+}
+
+export async function resolveActorAccessByUserId(
+  userId: string,
+  store: ActorContextUserIdStore = prismaActorContextStore,
+): Promise<ActorSubjectAccess> {
+  if (!userId.trim()) {
+    return { status: "UNMAPPED" };
+  }
+
+  return actorAccessFromRecord(await store.findUserById(userId));
 }
 
 export async function resolveActorContextByAuthSubject(

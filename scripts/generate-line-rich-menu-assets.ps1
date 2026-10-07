@@ -1,5 +1,6 @@
 param(
-  [string]$OutputDirectory = "public/line/rich-menus"
+  [string]$OutputDirectory = "public/line/rich-menus",
+  [string[]]$AssetFiles = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,6 +9,14 @@ Add-Type -AssemblyName System.Drawing
 $manifestLines = & npx jiti scripts/line-rich-menu-asset-manifest.ts
 if ($LASTEXITCODE -ne 0) { throw "Could not read the TypeScript Rich Menu manifest." }
 $manifest = (($manifestLines -join "`n") | ConvertFrom-Json)
+if ($AssetFiles.Count -gt 0) {
+  $availableAssetFiles = @($manifest | ForEach-Object { $_.assetFile })
+  $unknownAssetFiles = @($AssetFiles | Where-Object { $_ -notin $availableAssetFiles })
+  if ($unknownAssetFiles.Count -gt 0) {
+    throw "Unknown Rich Menu asset file requested: $($unknownAssetFiles -join ', ')"
+  }
+  $manifest = @($manifest | Where-Object { $_.assetFile -in $AssetFiles })
+}
 $resolvedOutput = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $OutputDirectory))
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 

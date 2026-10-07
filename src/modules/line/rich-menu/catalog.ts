@@ -1,10 +1,12 @@
 import type { OperationalLineRole } from "../domain/line-types";
+import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 
 export const LINE_WORKSPACE_SWITCH_MARKER = "DEMI_LINE_WORKSPACE_SWITCH_V1";
 
 export type LineMenuAction =
   | { type: "uri"; label: string; intent: "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" }
-  | { type: "richmenuswitch"; label: string; role: OperationalLineRole };
+  | { type: "richmenuswitch"; label: string; role: OperationalLineRole }
+  | { type: "postback"; label: string; data: typeof LINE_PATIENT_NEXT_APPOINTMENT_MARKER };
 
 export type LineMenuDefinition = {
   key: string;
@@ -24,8 +26,15 @@ const roleLabels: Record<OperationalLineRole, string> = {
 const roleIntent = (role: OperationalLineRole): "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" =>
   role === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE";
 
+const appointmentAction: LineMenuAction = {
+  type: "postback",
+  label: "ตรวจสอบนัดหมาย",
+  data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
+};
+
 const singleRoleActions = (role: OperationalLineRole): LineMenuAction[] => [
   { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
+  ...(role === "PATIENT" ? [appointmentAction] : []),
   { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" },
 ];
 
@@ -105,6 +114,7 @@ for (const roles of roleSets) {
         "เมนูสำหรับคุณ",
         [
           { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
+          ...(role === "PATIENT" ? [appointmentAction] : []),
           ...roles
             .filter((candidate) => candidate !== role)
             .map((candidate) => ({

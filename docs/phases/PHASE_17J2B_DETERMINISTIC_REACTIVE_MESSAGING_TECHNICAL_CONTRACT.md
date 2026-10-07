@@ -1,10 +1,10 @@
 # Phase 17J.2B — Deterministic Reactive Messaging Technical Contract
 
 - **Phase 17J.2A — CLOSED / OWNER DECISION COMPLETE**
-- **Phase 17J.2B — TECHNICAL CONTRACT DRAFT COMPLETE / REVIEW REQUIRED**
-- **Phase 17J.2 runtime — NOT IMPLEMENTED**
+- **Phase 17J.2B — TECHNICAL CONTRACT COMPLETE / REVIEWED**
+- **Phase 17J.2 runtime — IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE**
 - Source/check date: **2026-10-07**; original draft inspected clean HEAD `fd3bb97ec260cd8fe6edf8240faeb15fcdc4e84b`; bounded correction re-audited HEAD `bbd52843a13b6a56d0949c3ac55944fb4c8b40a0` on **2026-10-07**. Current-state authority, one coherent read, local timing and unresolved receipt retention below supersede the original draft details; product decisions remain closed.
-- This is a documentation/source-audit/design artifact. All proposed types, enum additions, files, menu changes and tests below are **future implementation requirements subject to contract review**, not changes delivered here.
+- This document is the authoritative accepted technical contract. Runtime implementation and automated verification evidence are recorded in [the Phase 17J.2 implementation handoff](./PHASE_17J2_DETERMINISTIC_REACTIVE_MESSAGING_IMPLEMENTATION.md); implementation status does not broaden the requirements below.
 
 ## 1. Status and authority
 
@@ -405,8 +405,8 @@ No runtime TypeScript/schema/migration/assets/provider changes in 17J.2B draftin
 
 P17D-NOTIF-01 and proactive event/time/recipient/content/privacy/preferences/consent/quiet hours/retry/Push remain OPEN. MED-02, medication delivery/adherence, Follow-up prospective reminder source, Family LINE access, P17F-L04/L05, Q5 real-data governance, Phase 17E.2 consent, exact identity-history retention/erasure and future cross-account reconciliation retain their existing status. Exact LineWebhookEventReceipt retention/purge/storage policy is unresolved (§9), non-blocking for bounded implementation/demo after review but a production-readiness/operational-privacy follow-up before long-term retention/storage readiness claims. No cleanup implementation is approved. Real LINE provider setup/provisioning, mobile/device UAT, production deployment, 17J.3 and 17J.4 implementation are not executed/approved by this contract. Preserve 17J.0/0B/1 closure/evidence; sequence remains 17J.2 →17J.3 →17J.4 →17J.5A integrated audit →17J.5B real-device UAT.
 
-## 28. Review gate / implementation GO–NO-GO
+## 28. Review and implementation disposition
 
-**GO: review this technical draft. NO-GO: runtime implementation until contract review is explicitly accepted.** Locked owner product/privacy decisions remain closed. Review must confirm exact marker/classifier, ACCEPTED receipt meaning/two enum additions, post-response/partial-failure ordering, duplicate fresh-read policy/four workers, current-state binding authority/future transfer re-audit, shared actor mapping, one coherent late snapshot/read and residual external race, local-only scheduling guard and unresolved production receipt-retention follow-up, formatter/adapter/privacy/test boundaries. No product-owner choice of low-level retry/database algorithm is required; technical review judges this selected design.
+The corrected technical contract was reviewed and accepted. Phase 17J.2 runtime implementation proceeded within the accepted marker/classifier, `ACCEPTED` receipt meaning and two enum additions, post-response/partial-failure ordering, duplicate fresh-read policy/four workers, current-state binding authority, auth-owned actor mapping, one coherent late snapshot/read and accepted residual external race, local-only execution-age guard, unresolved receipt-retention gate, and formatter/adapter/privacy boundaries. Implementation and automated verification evidence are recorded in [the Phase 17J.2 implementation handoff](./PHASE_17J2_DETERMINISTIC_REACTIVE_MESSAGING_IMPLEMENTATION.md). Product/privacy decisions remain closed; no new decision was introduced by implementation.
 
-Final state: **17J.2A CLOSED / OWNER DECISION COMPLETE; 17J.2B TECHNICAL CONTRACT DRAFT COMPLETE / REVIEW REQUIRED; 17J.2 runtime NOT IMPLEMENTED**. Exact next step: **Review corrected Phase 17J.2B technical contract.** Stop at documentation/validation; runtime implementation remains blocked on contract review.
+Final state: **17J.2A CLOSED / OWNER DECISION COMPLETE; 17J.2B TECHNICAL CONTRACT COMPLETE / REVIEWED; 17J.2 runtime IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE**. Exact next step: **Review Phase 17J.2 runtime implementation and automated verification.** External LINE provisioning/UAT/deployment and receipt-retention policy remain separate open gates. Phase 17J.3 is not started.

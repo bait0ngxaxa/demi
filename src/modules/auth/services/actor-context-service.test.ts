@@ -2,6 +2,7 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  Prisma,
   Role,
   UserStatus,
 } from "@prisma/client";
@@ -13,12 +14,15 @@ import { InfrastructureError } from "@/shared/errors/application-error";
 
 import type { ActorContext } from "../types/actor-context";
 import {
+  createActorContextStore,
   isUnauthenticatedAuthError,
   resolveActorAccessByAuthSubject,
+  resolveActorAccessByUserId,
   resolveActorContextByAuthSubject,
   resolveCurrentActorAccess,
   resolveCurrentActorContext,
   type ActorContextStore,
+  type ActorContextUserIdStore,
   type ActorUserRecord,
 } from "./actor-context-service";
 
@@ -125,6 +129,91 @@ describe("ActorContext resolution", () => {
       status: "AUTHORIZED",
       actor,
     });
+  });
+
+  it("resolves by User ID through the same canonical actor mapping without Supabase", async () => {
+    const record = {
+      ...createActorUserRecord(),
+      roles: [Role.PATIENT, Role.OSM],
+      osmHospitalRelationships: [
+        {
+          hospitalId: "hospital-osm",
+          status: MembershipStatus.SUSPENDED,
+          hospitalStatus: HospitalStatus.SUSPENDED,
+        },
+      ],
+    } satisfies ActorUserRecord;
+    const store: ActorContextStore & ActorContextUserIdStore = {
+      findUserByAuthSubject: vi.fn().mockResolvedValue(record),
+      findUserById: vi.fn().mockResolvedValue(record),
+    };
+
+    const [subjectAccess, userIdAccess] = await Promise.all([
+      resolveActorAccessByAuthSubject("provider-user-1", store),
+      resolveActorAccessByUserId(actor.userId, store),
+    ]);
+
+    expect(userIdAccess).toEqual(subjectAccess);
+    expect(userIdAccess).toMatchObject({
+      status: "AUTHORIZED",
+      actor: {
+        userId: actor.userId,
+        personId: actor.personId,
+        roles: [Role.PATIENT, Role.OSM],
+        osmHospitalRelationships: [
+          {
+            hospitalId: "hospital-osm",
+            status: MembershipStatus.SUSPENDED,
+            hospitalStatus: HospitalStatus.SUSPENDED,
+          },
+        ],
+      },
+    });
+    expect(mockedGetServerSupabaseClient).not.toHaveBeenCalled();
+  });
+
+  it("preserves unmapped and inactive account states in the User-ID resolver", async () => {
+    const store: ActorContextUserIdStore = {
+      findUserById: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(
+        createActorUserRecord(UserStatus.SUSPENDED),
+      ),
+    };
+
+    await expect(resolveActorAccessByUserId(actor.userId, store)).resolves.toEqual({
+      status: "UNMAPPED",
+    });
+    await expect(resolveActorAccessByUserId(actor.userId, store)).resolves.toEqual({
+      status: "ACCOUNT_NOT_ACTIVE",
+      accountStatus: UserStatus.SUSPENDED,
+    });
+  });
+
+  it("uses an injected transaction client for the User-ID lookup", async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      id: actor.userId,
+      personId: actor.personId,
+      status: UserStatus.ACTIVE,
+      roles: [{ role: Role.PATIENT }],
+      memberships: [{
+        hospitalId: "hospital-a",
+        membershipType: MembershipType.MEMBER,
+        profession: null,
+        status: MembershipStatus.ACTIVE,
+        hospital: { status: HospitalStatus.ACTIVE },
+      }],
+      osmHospitalRelationships: [],
+    });
+    const store = createActorContextStore(
+      { user: { findUnique } } as unknown as Prisma.TransactionClient,
+    );
+
+    await expect(resolveActorAccessByUserId(actor.userId, store)).resolves.toMatchObject({
+      status: "AUTHORIZED",
+      actor,
+    });
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: actor.userId } }),
+    );
   });
 
   it("denies an unmapped provider user", async () => {

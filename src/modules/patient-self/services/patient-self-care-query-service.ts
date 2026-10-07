@@ -42,6 +42,7 @@ import {
 import { SCREENING_READ_CAPABILITY } from "@/modules/screening/policies/screening-policy";
 import {
   ApplicationError,
+  ForbiddenError,
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
@@ -49,6 +50,7 @@ import { z } from "zod";
 
 import { assertPatientSelfReadPolicy } from "../policies/patient-self-policy";
 import {
+  hasOwnPatientAppointmentIdentity,
   resolveOwnPatientRelationshipContext,
   type PatientSelfQueryDatabase,
   type PatientSelfRelationshipContext,
@@ -59,6 +61,18 @@ export type PatientSelfCareQueryDatabase = PrismaClient | Prisma.TransactionClie
 export type PatientSelfCareQueryDependencies = {
   database?: PatientSelfCareQueryDatabase;
 };
+
+export type PatientSelfNextAppointmentProjection = {
+  scheduledAt: Date;
+  hospitalName: string;
+};
+
+export type PatientSelfNextAppointmentResult =
+  | { status: "INELIGIBLE" }
+  | {
+      status: "AUTHORIZED";
+      appointment: PatientSelfNextAppointmentProjection | null;
+    };
 
 const PATIENT_SELF_HISTORY_PAGE_SIZE = 50;
 
@@ -910,6 +924,80 @@ export async function getOwnPatientFollowupDetail(
     }
 
     throw new InfrastructureError("Patient Follow-up could not be loaded");
+  }
+}
+
+const patientSelfNextAppointmentSelect = {
+  scheduledAt: true,
+  patientHospitalRelationship: {
+    select: {
+      hospital: {
+        select: { name: true },
+      },
+    },
+  },
+} satisfies Prisma.PatientAppointmentSelect;
+
+export async function getOwnNextAppointment(
+  actor: ActorContext | null | undefined,
+  captureAsOf: () => Date,
+  dependencies: { database: Prisma.TransactionClient },
+): Promise<PatientSelfNextAppointmentResult> {
+  try {
+    assertPatientSelfReadPolicy({ actor, capability: APPOINTMENT_READ_CAPABILITY });
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      return { status: "INELIGIBLE" };
+    }
+    throw error;
+  }
+
+  if (!actor) {
+    return { status: "INELIGIBLE" };
+  }
+
+  if (!(await hasOwnPatientAppointmentIdentity(actor, dependencies.database))) {
+    return { status: "INELIGIBLE" };
+  }
+
+  try {
+    const asOf = captureAsOf();
+    if (!(asOf instanceof Date) || Number.isNaN(asOf.getTime())) {
+      throw new InfrastructureError("Current appointment time could not be captured");
+    }
+
+    const appointments = await dependencies.database.patientAppointment.findMany({
+      where: {
+        status: "SCHEDULED",
+        scheduledAt: { gte: asOf },
+        patientHospitalRelationship: {
+          is: {
+            patientProfile: {
+              is: { personId: actor.personId },
+            },
+          },
+        },
+      },
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      take: 1,
+      select: patientSelfNextAppointmentSelect,
+    });
+    const appointment = appointments[0];
+
+    return {
+      status: "AUTHORIZED",
+      appointment: appointment
+        ? {
+            scheduledAt: appointment.scheduledAt,
+            hospitalName: appointment.patientHospitalRelationship.hospital.name,
+          }
+        : null,
+    };
+  } catch (error: unknown) {
+    if (error instanceof InfrastructureError) {
+      throw error;
+    }
+    throw new InfrastructureError("Next Patient appointment could not be loaded");
   }
 }
 

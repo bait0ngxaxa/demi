@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 import { LINE_RICH_MENU_BY_KEY, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { createLineRichMenuPayload, LineMessagingClient } from "./line-messaging-client";
 
@@ -27,6 +28,23 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(payload.size).toEqual({ width: 2500, height: 1686 });
   });
 
+  it("projects the Patient appointment action as an exact Rich Menu postback", () => {
+    const patientMenu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
+    if (!patientMenu) throw new Error("Expected the Patient presentation menu");
+
+    const postbacks = createLineRichMenuPayload(patientMenu).areas
+      .map(({ action }) => action)
+      .filter((action) => action.type === "postback");
+
+    expect(postbacks).toEqual([
+      {
+        type: "postback",
+        label: "ตรวจสอบนัดหมาย",
+        data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
+      },
+    ]);
+  });
+
   it("uses the authenticated Messaging API and requires GET read-back after unlink", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
@@ -40,5 +58,50 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "DELETE", cache: "no-store" });
     expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get("authorization")).toBe("Bearer dedicated-demi-line-access-token");
     expect(fetcher.mock.calls[1]?.[0]).toBe(`https://api.line.me/v2/bot/user/${userId}/richmenu`);
+  });
+
+  it("sends exactly one authenticated text Reply request", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const client = new LineMessagingClient(fetcher);
+
+    await client.replyText("transient-reply-token", "นัดหมายถัดไปของคุณ");
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.line.me/v2/bot/message/reply");
+    const request = fetcher.mock.calls[0]?.[1];
+    expect(request).toMatchObject({ method: "POST", cache: "no-store" });
+    const headers = new Headers(request?.headers);
+    expect(headers.get("authorization")).toBe("Bearer dedicated-demi-line-access-token");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("x-line-retry-key")).toBeNull();
+    expect(JSON.parse(String(request?.body)) as unknown).toEqual({
+      replyToken: "transient-reply-token",
+      messages: [{ type: "text", text: "นัดหมายถัดไปของคุณ" }],
+    });
+  });
+
+  it.each([
+    [400, "LINE_PROVIDER_PERMANENT"],
+    [404, "LINE_PROVIDER_PERMANENT"],
+    [429, "LINE_PROVIDER_TRANSIENT"],
+    [500, "LINE_PROVIDER_TRANSIENT"],
+  ] as const)("normalizes Reply HTTP %i as %s without parsing the response body", async (status, code) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response("private provider response", { status }),
+    );
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.replyText("transient-reply-token", "text")).rejects.toMatchObject({ code });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("normalizes network and timeout failures as transient without retrying", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("private network failure"));
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.replyText("transient-reply-token", "text")).rejects.toMatchObject({
+      code: "LINE_PROVIDER_TRANSIENT",
+    });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });

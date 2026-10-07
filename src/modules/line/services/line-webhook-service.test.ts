@@ -2,12 +2,15 @@ import { createHmac } from "node:crypto";
 
 import {
   LineReachability,
+  LineWebhookEventOutcome,
+  LineWebhookEventType,
   LineWorkspaceRole,
   Prisma,
   type PrismaClient,
 } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-types";
 import { LINE_RICH_MENU_BY_KEY, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { lineWebhookInternals, processLineWebhookRequest } from "./line-webhook-service";
 
@@ -31,6 +34,23 @@ function signedRequest(body: string, signatureBody = body): Request {
 
 function follow(id: string, type = "follow", userId = lineUserId, timestamp = 1_791_254_400_000) {
   return { type, webhookEventId: id, timestamp, source: { type: "user", userId } };
+}
+
+function patientNextAppointmentEvent(
+  id: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    type: "postback",
+    webhookEventId: id,
+    timestamp: 1_791_254_400_000,
+    source: { type: "user", userId: lineUserId },
+    replyToken: "incoming-reply-token",
+    mode: "active",
+    deliveryContext: { isRedelivery: false },
+    postback: { data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+    ...overrides,
+  };
 }
 
 function createDatabase() {
@@ -127,7 +147,7 @@ describe("LINE webhook ingestion", () => {
   it("accepts an empty event array and unknown additive fields without mutation", async () => {
     const harness = createDatabase();
     const body = envelope([], botUserId, { futureEnvelopeField: { ignored: true } });
-    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({ accepted: 0, duplicates: 0, ignored: 0, bindingIds: [] });
+    await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({ accepted: 0, duplicates: 0, ignored: 0, bindingIds: [], reactiveWorkItems: [] });
     expect(harness.database.$transaction).not.toHaveBeenCalled();
   });
 
@@ -137,6 +157,248 @@ describe("LINE webhook ingestion", () => {
     await expect(processLineWebhookRequest(signedRequest(body, `${body} `), harness.database)).rejects.toMatchObject({ code: "INVALID_LINE_IDENTITY" });
     await expect(processLineWebhookRequest(signedRequest(envelope([], lineUserId)), harness.database)).rejects.toMatchObject({ code: "INVALID_LINE_IDENTITY" });
     expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("durably accepts the exact Patient appointment postback and emits only transient transport data", async () => {
+    const harness = createDatabase();
+    const event = patientNextAppointmentEvent(eventId("10"));
+    const timestamp = event.timestamp;
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([event])),
+      harness.database,
+      { monotonicNow: () => 1_000 },
+    );
+
+    expect(result.accepted).toBe(1);
+    expect(result.reactiveWorkItems).toEqual([
+      {
+        intent: "PATIENT_NEXT_APPOINTMENT",
+        webhookEventId: eventId("10"),
+        eventOccurredAt: new Date(timestamp),
+        localExecutionDeadline: 46_000,
+        lineUserId,
+        replyToken: "incoming-reply-token",
+        isRedelivery: false,
+      },
+    ]);
+    expect(harness.receipts.get(eventId("10"))).toEqual({
+      webhookEventId: eventId("10"),
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      eventOccurredAt: new Date(timestamp),
+      outcome: LineWebhookEventOutcome.ACCEPTED,
+    });
+    expect(JSON.stringify([...harness.receipts.values()])).not.toMatch(
+      /replyToken|incoming-reply-token|lineUserId|scheduledAt|hospitalName|appointmentId|patientId/i,
+    );
+  });
+
+  it("ignores marker case, whitespace, prefix/suffix, arbitrary text, and unknown postbacks", async () => {
+    const harness = createDatabase();
+    const base = patientNextAppointmentEvent(eventId("11"));
+    const events = [
+      { ...base, webhookEventId: eventId("12"), postback: { data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER.toLowerCase() } },
+      { ...base, webhookEventId: eventId("13"), postback: { data: ` ${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}` } },
+      { ...base, webhookEventId: eventId("14"), postback: { data: `prefix-${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}` } },
+      { ...base, webhookEventId: eventId("15"), postback: { data: `${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}-suffix` } },
+      { ...base, webhookEventId: eventId("16"), type: "message", message: { type: "text", text: "ตรวจสอบนัดหมาย" } },
+      { ...base, webhookEventId: eventId("17"), postback: { data: "unknown-postback" } },
+    ];
+
+    const result = await processLineWebhookRequest(signedRequest(envelope(events)), harness.database);
+
+    expect(result.ignored).toBe(events.length);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.receipts.size).toBe(0);
+    expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
+  });
+
+  it("ignores group and room appointment markers before any Patient/account lookup or receipt", async () => {
+    const harness = createDatabase();
+    const events = [
+      patientNextAppointmentEvent(eventId("18"), { source: { type: "group", userId: lineUserId } }),
+      patientNextAppointmentEvent(eventId("19"), { source: { type: "room", userId: lineUserId } }),
+    ];
+
+    const result = await processLineWebhookRequest(signedRequest(envelope(events)), harness.database);
+
+    expect(result.ignored).toBe(2);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.receipts.size).toBe(0);
+    expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
+    expect(harness.transaction.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("records standby and unusable-token events without reactive work", async () => {
+    const harness = createDatabase();
+    const events = [
+      patientNextAppointmentEvent(eventId("1A"), { mode: "standby" }),
+      patientNextAppointmentEvent(eventId("1B"), { replyToken: "  " }),
+      patientNextAppointmentEvent(eventId("1C"), { replyToken: undefined }),
+    ];
+
+    const result = await processLineWebhookRequest(signedRequest(envelope(events)), harness.database);
+
+    expect(result.accepted).toBe(3);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.receipts.size).toBe(3);
+    for (const receipt of harness.receipts.values()) {
+      expect(receipt).toMatchObject({
+        eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+        outcome: LineWebhookEventOutcome.ACCEPTED,
+      });
+    }
+    expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
+  });
+
+  it("limits malformed mode and delivery context to the new command classifier", async () => {
+    const harness = createDatabase();
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([
+        patientNextAppointmentEvent(eventId("1D"), { mode: "ACTIVE" }),
+        patientNextAppointmentEvent(eventId("1E"), { deliveryContext: { isRedelivery: "false" } }),
+        follow(eventId("1F"), "follow", lineUserId, 1_791_254_400_001),
+      ])),
+      harness.database,
+    );
+
+    expect(result.ignored).toBe(2);
+    expect(result.accepted).toBe(1);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.binding.reachability).toBe(LineReachability.FRIEND);
+  });
+
+  it("accepts a representable provider timestamp ahead of local receipt time", async () => {
+    const harness = createDatabase();
+    const futureTimestamp = 1_900_000_000_000;
+    const event = patientNextAppointmentEvent(eventId("20"), { timestamp: futureTimestamp });
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([event])),
+      harness.database,
+      { monotonicNow: () => 5_000 },
+    );
+
+    expect(result.accepted).toBe(1);
+    expect(result.reactiveWorkItems[0]?.eventOccurredAt).toEqual(new Date(futureTimestamp));
+    expect(result.reactiveWorkItems[0]?.localExecutionDeadline).toBe(50_000);
+  });
+
+  it("creates one same-envelope job and preserves its first eligible token context", async () => {
+    const harness = createDatabase();
+    const first = patientNextAppointmentEvent(eventId("21"), { replyToken: "first-token" });
+    const duplicate = patientNextAppointmentEvent(eventId("21"), { replyToken: "later-token" });
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([first, duplicate])),
+      harness.database,
+      { monotonicNow: () => 10_000 },
+    );
+
+    expect(result.accepted).toBe(1);
+    expect(result.duplicates).toBe(1);
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]?.replyToken).toBe("first-token");
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the first same-envelope receipt-only occurrence from gaining a later token", async () => {
+    const harness = createDatabase();
+    const first = patientNextAppointmentEvent(eventId("23"), { replyToken: "  " });
+    const later = patientNextAppointmentEvent(eventId("23"), { replyToken: "later-token" });
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([first, later])),
+      harness.database,
+    );
+
+    expect(result.accepted).toBe(1);
+    expect(result.duplicates).toBe(1);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+  });
+
+  it("allows matching duplicates in new requests to create a fresh current-work item", async () => {
+    const harness = createDatabase();
+    const first = patientNextAppointmentEvent(eventId("22"), { replyToken: "first-token" });
+    const redelivery = patientNextAppointmentEvent(eventId("22"), {
+      replyToken: "fresh-inbound-token",
+      deliveryContext: { isRedelivery: true },
+    });
+    const originalResult = await processLineWebhookRequest(
+      signedRequest(envelope([first])),
+      harness.database,
+      { monotonicNow: () => 1_000 },
+    );
+    const redeliveryResult = await processLineWebhookRequest(
+      signedRequest(envelope([redelivery])),
+      harness.database,
+      { monotonicNow: () => 20_000 },
+    );
+
+    expect(originalResult.reactiveWorkItems[0]).not.toBe(redeliveryResult.reactiveWorkItems[0]);
+    expect(redeliveryResult.duplicates).toBe(1);
+    expect(redeliveryResult.reactiveWorkItems[0]).toMatchObject({
+      replyToken: "fresh-inbound-token",
+      isRedelivery: true,
+      localExecutionDeadline: 65_000,
+    });
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledTimes(2);
+    expect(harness.receipts.size).toBe(1);
+  });
+
+  it("fails closed on receipt event ID type/time conflicts", async () => {
+    const harness = createDatabase();
+    const typeConflictId = eventId("23");
+    const timeConflictId = eventId("24");
+    const eventOccurredAt = new Date(1_791_254_400_000);
+    harness.receipts.set(typeConflictId, {
+      webhookEventId: typeConflictId,
+      eventType: LineWebhookEventType.FOLLOW,
+      eventOccurredAt,
+      acceptedAt: eventOccurredAt,
+      outcome: LineWebhookEventOutcome.IGNORED,
+    });
+    harness.receipts.set(timeConflictId, {
+      webhookEventId: timeConflictId,
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      eventOccurredAt: new Date(eventOccurredAt.getTime() - 1),
+      acceptedAt: eventOccurredAt,
+      outcome: LineWebhookEventOutcome.ACCEPTED,
+    });
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([
+        patientNextAppointmentEvent(typeConflictId),
+        patientNextAppointmentEvent(timeConflictId),
+      ])),
+      harness.database,
+    );
+
+    expect(result.ignored).toBe(2);
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.receipts.get(typeConflictId)).toMatchObject({
+      eventType: LineWebhookEventType.FOLLOW,
+    });
+  });
+
+  it("treats an unconfirmed unique conflict as durable acceptance failure", async () => {
+    const harness = createDatabase();
+    const id = eventId("25");
+    harness.receipts.set(id, {
+      webhookEventId: id,
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      eventOccurredAt: new Date(1_791_254_400_000),
+      acceptedAt: new Date(),
+      outcome: LineWebhookEventOutcome.ACCEPTED,
+    });
+    vi.mocked(harness.database.lineWebhookEventReceipt.findUnique).mockResolvedValueOnce(null);
+
+    await expect(
+      processLineWebhookRequest(
+        signedRequest(envelope([patientNextAppointmentEvent(id)])),
+        harness.database,
+      ),
+    ).rejects.toMatchObject({ code: "P2002" });
   });
 
   it("enforces the exact local 1 MiB cap and has no event-count cap", async () => {
@@ -156,7 +418,7 @@ describe("LINE webhook ingestion", () => {
       additive: true,
     }));
     const result = await processLineWebhookRequest(signedRequest(envelope(futureEvents)), harness.database);
-    expect(result).toEqual({ accepted: 0, duplicates: 0, ignored: 101, bindingIds: [] });
+    expect(result).toEqual({ accepted: 0, duplicates: 0, ignored: 101, bindingIds: [], reactiveWorkItems: [] });
     expect(harness.transaction.lineWebhookEventReceipt.create).not.toHaveBeenCalled();
   });
 
@@ -185,6 +447,7 @@ describe("LINE webhook ingestion", () => {
       duplicates: 0,
       ignored: 0,
       bindingIds: [harness.binding.id],
+      reactiveWorkItems: [],
     });
     const observedAt = harness.binding.reachabilityObservedAt;
     await expect(processLineWebhookRequest(signedRequest(body), harness.database)).resolves.toEqual({
@@ -192,6 +455,7 @@ describe("LINE webhook ingestion", () => {
       duplicates: 1,
       ignored: 0,
       bindingIds: [],
+      reactiveWorkItems: [],
     });
     expect(harness.binding.reachability).toBe(LineReachability.FRIEND);
     expect(harness.binding.reachabilityObservedAt).toEqual(observedAt);
@@ -217,7 +481,7 @@ describe("LINE webhook ingestion", () => {
     harness.binding.presentationRole = null;
     harness.binding.presentationRoleSelectedAt = null;
     await expect(processLineWebhookRequest(signedRequest(envelope([valid])), harness.database))
-      .resolves.toEqual({ accepted: 0, duplicates: 1, ignored: 0, bindingIds: [] });
+      .resolves.toEqual({ accepted: 0, duplicates: 1, ignored: 0, bindingIds: [], reactiveWorkItems: [] });
     expect(harness.binding.presentationRole).toBeNull();
     expect(harness.transaction.lineAccountBinding.update).toHaveBeenCalledTimes(updateCount);
 

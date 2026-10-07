@@ -20,9 +20,11 @@ export const lineReachabilityRequestSchema = z.object({
   accessToken: z.string().min(20).max(16_384),
 }).strict();
 
+export const lineUserIdSchema = z.string().regex(/^U[0-9a-f]{32}$/iu);
+
 const webhookSourceSchema = z.object({
   type: z.string().min(1).max(40),
-  userId: z.string().regex(/^U[0-9a-f]{32}$/iu).optional(),
+  userId: lineUserIdSchema.optional(),
 }).passthrough();
 
 export const lineWebhookEventSchema = z.object({

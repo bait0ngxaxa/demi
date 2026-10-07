@@ -1,6 +1,7 @@
 import { LineFailure } from "@/modules/line/domain/line-errors";
 import { processLineWebhookRequest } from "@/modules/line/services/line-webhook-service";
 import { scheduleLineBindingReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
+import { scheduleLineReactiveWork } from "@/modules/line/transport/line-reactive-scheduler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +9,18 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   try {
     const result = await processLineWebhookRequest(request);
-    if (result.bindingIds.length > 0) scheduleLineBindingReconciliation(result.bindingIds);
+    try {
+      if (result.bindingIds.length > 0) scheduleLineBindingReconciliation(result.bindingIds);
+    } catch {
+      // Reactive work registration remains independent from menu reconciliation.
+    }
+    try {
+      if (result.reactiveWorkItems.length > 0) {
+        scheduleLineReactiveWork(result.reactiveWorkItems);
+      }
+    } catch {
+      // Durable webhook acceptance remains a successful acknowledgement.
+    }
     return Response.json(
       { accepted: result.accepted, duplicates: result.duplicates, ignored: result.ignored },
       { status: 200, headers: { "cache-control": "no-store" } },

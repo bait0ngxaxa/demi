@@ -23,6 +23,7 @@ import { LineFailure } from "@/modules/line/domain/line-errors";
 import { applyLineReachabilityObservation, isLinePushReachabilityEligible } from "@/modules/line/services/line-reachability-service";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { createLineAccountIntent, getLineAccountSummary, refreshLineAccountReachability, linkLineAccount, unlinkLineAccount } from "@/modules/line/services/line-account-service";
+import { lineWebhookInternals } from "@/modules/line/services/line-webhook-service";
 import { LINE_RICH_MENU_BY_KEY } from "@/modules/line/rich-menu/catalog";
 import { lineMenuReconcilerInternals, reconcileLineBinding, type LinePresentationProvider } from "@/modules/line/services/line-menu-reconciler";
 
@@ -205,6 +206,43 @@ describe("Phase 17J.1 LINE PostgreSQL invariants", () => {
       await database.$disconnect();
       connected = false;
     }
+  });
+
+  it("durably accepts reactive receipts and confirms matching duplicates without overwriting conflicts", async () => {
+    const webhookEventId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    const timestamp = Date.now();
+    const event = {
+      type: "postback",
+      webhookEventId,
+      timestamp,
+      source: { type: "user", userId: subject("reactive-receipt") },
+      replyToken: "integration-only-reply-token",
+      postback: { data: "DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1" },
+    };
+    const eventOccurredAt = new Date(timestamp);
+    receiptIds.push(webhookEventId);
+
+    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(event, eventOccurredAt, database))
+      .resolves.toEqual({ status: "ACCEPTED" });
+    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(event, eventOccurredAt, database))
+      .resolves.toEqual({ status: "MATCHING_DUPLICATE" });
+    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(
+      event,
+      new Date(timestamp + 1_000),
+      database,
+    )).resolves.toEqual({ status: "EVENT_ID_CONFLICT" });
+
+    const receipts = await database.lineWebhookEventReceipt.findMany({
+      where: { webhookEventId },
+      select: { webhookEventId: true, eventType: true, eventOccurredAt: true, acceptedAt: true, outcome: true },
+    });
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      webhookEventId,
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      eventOccurredAt,
+      outcome: LineWebhookEventOutcome.ACCEPTED,
+    });
   });
 
   it("enforces both active-only unique indexes and allows retained historical fingerprints", async () => {
