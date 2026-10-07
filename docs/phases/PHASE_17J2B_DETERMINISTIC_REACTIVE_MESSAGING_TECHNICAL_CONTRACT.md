@@ -3,7 +3,7 @@
 - **Phase 17J.2A — CLOSED / OWNER DECISION COMPLETE**
 - **Phase 17J.2B — TECHNICAL CONTRACT DRAFT COMPLETE / REVIEW REQUIRED**
 - **Phase 17J.2 runtime — NOT IMPLEMENTED**
-- Source/check date: **2026-10-07**; inspected clean HEAD `fd3bb97ec260cd8fe6edf8240faeb15fcdc4e84b`.
+- Source/check date: **2026-10-07**; original draft inspected clean HEAD `fd3bb97ec260cd8fe6edf8240faeb15fcdc4e84b`; bounded correction re-audited HEAD `bbd52843a13b6a56d0949c3ac55944fb4c8b40a0` on **2026-10-07**. Current-state authority, one coherent read, local timing and unresolved receipt retention below supersede the original draft details; product decisions remain closed.
 - This is a documentation/source-audit/design artifact. All proposed types, enum additions, files, menu changes and tests below are **future implementation requirements subject to contract review**, not changes delivered here.
 
 ## 1. Status and authority
@@ -50,7 +50,7 @@ These are provider facts; the local algorithm below is DEMI's technical decision
 | Official source | Verified constraint |
 | --- | --- |
 | [Signature](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/) | Verify HMAC-SHA256 with channel secret over original body bytes before processing; do not transform body. |
-| [Common fields](https://developers.line.biz/en/reference/messaging-api/nojs/#common-properties), [postback](https://developers.line.biz/en/reference/messaging-api/nojs/#postback-event), [source user](https://developers.line.biz/en/reference/messaging-api/nojs/#source-user) | Event ID is ULID; timestamp is original occurrence. Sources distinguish user/group/room. Standby has no Reply token and should not send messages. isRedelivery is transport metadata. |
+| [Common fields](https://developers.line.biz/en/reference/messaging-api/nojs/#common-properties), [postback](https://developers.line.biz/en/reference/messaging-api/nojs/#postback-event), [source user](https://developers.line.biz/en/reference/messaging-api/nojs/#source-user) | Event ID is ULID; timestamp is provider UNIX-millisecond original occurrence, unchanged on redelivery, not DEMI receive time or an authorization clock. Sources distinguish user/group/room. Standby has no Reply token and should not send messages. isRedelivery is transport metadata. |
 | [Webhook body](https://developers.line.biz/en/reference/messaging-api/nojs/#request-body), [response](https://developers.line.biz/en/reference/messaging-api/nojs/#response) | Multiple events/users can share one request; empty events allowed; successful receipt requires 2xx. |
 | [Redelivery](https://developers.line.biz/en/docs/messaging-api/receiving-messages/#webhook-redelivery) | Same event ID/token; isRedelivery changes. Enabled redelivery follows non-2xx; duplicates also arise otherwise. Delivery/count/interval are not guaranteed. |
 | [Reply API / token](https://developers.line.biz/en/reference/messaging-api/nojs/#send-reply-message) | Single-use; normally within one minute of receipt. Redelivery permits one minute from redelivery unless already used or event older than 20 minutes. Timing can change; send promptly, eligibility is not a guarantee. |
@@ -81,10 +81,12 @@ sequenceDiagram
     end
     Route->>After: Register transient jobs (catch registration failure)
     Route-->>LINE: HTTP 200 sanitized counters
-    After->>DB: Current ACTIVE binding + lifecycle check
-    After->>Domain: Fresh canonical actor; narrow SELF read
-    After->>Domain: Final current authority + fresh projection recheck
+    After->>After: Check local execution-age guard
+    After->>DB: Begin one short coherent current-state snapshot
+    After->>Domain: Current binding, canonical actor, persisted SELF; capture asOf; one narrow read
     Domain-->>After: Two fields / empty / refusal / infrastructure category
+    After->>DB: Close transaction
+    After->>After: Format; recheck local execution age
     After->>LINE: One eligible transient text Reply outside transaction
     Note over After,LINE: Best effort; no token persistence, retry queue or Push
 ```
@@ -107,7 +109,7 @@ Marker carries only intent/version. No role, Patient/User/Person/relationship/ap
 | Unknown/near-match postback; text/media/location/sticker/system event | Sanitized ignore; no new receipt | None; no help message |
 | Malformed sibling | Ignore sibling; no new receipt | None; supported siblings continue |
 
-Keep foundation envelope/event validation permissive for additive fields. Add an explicit typed common-field projection/validator at the new appointment classification seam for `mode` and `deliveryContext.isRedelivery`; do not make new fields mandatory or newly reject additive mode/deliveryContext values for existing foundation dispatch. The new appointment classifier requires mode `active` or `standby` and a deliveryContext with boolean isRedelivery; missing/unknown/wrongly typed values are malformed for the new class and ignored. Optional replyToken is accepted only as a string; absent/empty/whitespace-only token is ineligible. No token-format inference, authority inference or delayed compensation. Timestamp must be a representable Date; a new appointment event with timestamp later than captured request receivedAt is ignored as invalid timing. No clock-skew allowance that could let a pre-link event cross a lifecycle boundary; synchronized server clocks are an operational prerequisite (§11). Foundation events in standby retain their existing local effects/reconciliation behavior; they never acquire a reactive Reply path.
+Keep foundation envelope/event validation permissive for additive fields. Add an explicit typed common-field projection/validator at the new appointment classification seam for `mode` and `deliveryContext.isRedelivery`; do not make new fields mandatory or newly reject additive mode/deliveryContext values for existing foundation dispatch. The new appointment classifier requires mode `active` or `standby` and a deliveryContext with boolean isRedelivery; missing/unknown/wrongly typed values are malformed for the new class and ignored. Optional replyToken is accepted only as a string; absent/empty/whitespace-only token is ineligible. No token-format inference, authority inference or delayed compensation. Timestamp must satisfy existing nonnegative safe-integer validation and be a representable Date; nonsensical/unrepresentable values are malformed. Provider timestamp is transport metadata only: being later than DEMI receivedAt does not itself invalidate an event. No cross-clock ordering is an identity, authorization or token-validity test (§11/§18). Foundation events in standby retain their existing local effects/reconciliation behavior; they never acquire a reactive Reply path.
 
 ## 8. Rich Menu presentation contract
 
@@ -132,7 +134,7 @@ Existing APPLIED/STALE/IGNORED and foundation effect transactions remain unchang
 
 On uniqueness conflict, verify prior row exists with the **same eventType and eventOccurredAt** before reporting matching duplicate. A verified conflicting type/time is sanitized-ignore for the incoming event (EVENT_ID_CONFLICT), no overwrite/job. A P2002 without confirmed prior row, or lookup/commit failure, is acceptance failure → 503. Preserve any earlier sibling commits; do not claim request-wide atomicity.
 
-Receipt fields stay exactly provider ID/type/time/acceptance/outcome. No LINE subject/token, actor/resource IDs, appointment content, raw payload or provider body. Existing retention policy/gate is unchanged; this contract adds no retention duration.
+Receipt fields stay exactly provider ID/type/time/acceptance/outcome. No LINE subject/token, actor/resource IDs, appointment content, raw payload or provider body. Exact LineWebhookEventReceipt retention/purge duration is **NOT established by current repository evidence**. The 17J.1 contract webhook-receipt minimization rule describes a separately approved operational policy, but no exact duration, purge interval/job, archival behavior or table-size policy is demonstrated. This draft invents none. Reactive taps can create receipts more frequently than foundation events, making volume/storage and operational privacy more relevant. **OPEN production-readiness follow-up:** resolve retention/purge and storage policy before claiming long-term production readiness; not a blocker for bounded implementation/demo development after contract approval. No purge cron, TTL, archive or retention schema change is authorized without separate approval/evidence. Receipt existence proves DEMI saw this event ID, not its original binding lifecycle: no lifecycle witness is stored.
 
 ## 10. Transient work/result boundaries
 
@@ -141,50 +143,58 @@ Implementation types (specifications, not runtime code):
 | Boundary | Fields / permitted consumers |
 | --- | --- |
 | Durable receipt result | ACCEPTED / DUPLICATE / IGNORED + safe event identity/class; foundation opaque bindingIds remain separate |
-| `LineReactiveWorkItem` (server-only, memory) | intent PATIENT_NEXT_APPOINTMENT, webhookEventId, eventOccurredAt, request receivedAt, source lineUserId, replyToken, isRedelivery; mode is already narrowed to active |
+| `LineReactiveWorkItem` (server-only, memory) | intent PATIENT_NEXT_APPOINTMENT, webhookEventId, eventOccurredAt, request receivedAt plus process-local monotonic execution deadline, source lineUserId, replyToken, isRedelivery; mode is already narrowed to active |
 | Webhook internal result | Existing counters/bindingIds + readonly reactiveWorkItems; route serializes only existing counters |
 | Sanitized operational result | canonical intent, safe outcome/provider category, duration, permitted event/correlation ID, optional redelivery boolean; no payload/work item/authority witness |
 
-Capture receivedAt at request entry, before body reading. Jobs contain signed transport facts only, not actor, binding, roles, Patient or cached data. LINE subject/token are sensitive locators. Do not serialize jobs to DB/audit/analytics, log them, pass to client modules or expose in HTTP responses. Never overload bindingIds with token-bearing work. New dedicated `scheduleLineReactiveWork` registers after(); inject scheduling/execution/clock dependencies for focused tests. No cookies/session are required inside callback.
+Capture receivedAt and a process-local monotonic timing witness at request entry, before body reading; only the latter drives elapsed-time guards (§18). Jobs contain signed transport facts and local scheduling metadata only, not actor, binding, roles, Patient or cached data. LINE subject/token are sensitive locators. Do not serialize jobs to DB/audit/analytics, log them, pass to client modules or expose in HTTP responses. Never overload bindingIds with token-bearing work. New dedicated `scheduleLineReactiveWork` registers after(); inject scheduling/execution/clock dependencies for focused tests. No cookies/session are required inside callback.
 
-## 11. Binding lifecycle and stale-event fence
+## 11. Current binding authority and identity-lifecycle limits
 
-Resolve by exact signed user source: query current binding with `lineUserId = job.lineUserId AND unlinkedAt IS NULL`; project only binding id, owning User ID, lifecycleVersion and lastLinkedAt required internally. ACTIVE means unlinkedAt null, not reachability/menu state. If zero rows → generic refusal; if more than one (invariant violation) → generic refusal, no Patient read. Do not choose an arbitrary winner. Fingerprints/history/cleanup locators are never fallback identity.
+Inside the single callback transaction (§14), resolve exact signed source `lineUserId` against `LineAccountBinding` with `unlinkedAt IS NULL`. Zero rows or more than one (invariant conflict) gives generic refusal, no Appointment read; never choose an arbitrary winner. Current binding owner User is the only identity input to canonical auth resolution. Fingerprint/history, retained cleanup locator, reachability, menu state and presentationRole never authorize Patient access.
 
-Source proves `linkedAt` is original creation and `lastLinkedAt` is current lifecycle start: first creation defaults both to DB now; explicit reactivation sets lastLinkedAt and increments version; ALREADY_LINKED changes neither; unlink increments version and sets unlinkedAt. Therefore enforce **eventOccurredAt > current lastLinkedAt**, strictly. Earlier timestamps deny; equality is conservatively stale because millisecond timestamps cannot prove which operation happened first. Reply only generic refusal, not data. No grace period. This transport fence is separate from inclusive scheduledAt >= asOf business selection.
+Source evidence: initial linkedAt/lastLinkedAt use database defaults; relink writes an application timestamp and increments lifecycleVersion; ALREADY_LINKED preserves them; unlink sets unlinkedAt and increments version. These do not establish one universal clock shared with LINE. eventOccurredAt, lastLinkedAt and lifecycleVersion are not independent Patient authority. No provider/application timestamp comparison proves exact causal lifecycle membership. This first slice needs no lifecycle witness or timestamp fence; version may be an internal change witness in another bounded execution design, never cross-clock causal proof.
 
-Hold an in-memory witness `{ bindingId, userId, lifecycleVersion, lastLinkedAt }` from execution-time resolution. At final disclosure check require same exact active binding/subject, User and version/start; never silently retarget a job after unlink/relink, even to the same User. Old signed event redelivery retains its occurrence time and is denied after a later lifecycle. No lifecycle marker is added to postback or persistence. DB/server/provider clocks are compared in UTC instants; drift may cause conservative refusal. Monitor safe operational timing category, not raw timestamps/subject. This scheme does not prove causal order under arbitrary clock skew; do not claim that it does.
+A stale/copied static postback asks only for the currently authorized own next appointment. An old redelivery after unlink has no ACTIVE binding and discloses no Patient data; after same-user relink it may perform a fresh CURRENT read when current actor/SELF authority permits. Binding changes before callback are resolved from current snapshot state, never receipt-time/history state. No cached old result is replayed.
+
+Current account-service retained identity evidence fails closed against conflicting cross-user rebind. Cross-account subject transfer is not an approved feature. Exact identity-history erasure/future cross-account reconciliation remains an external gate: if it later permits a LINE subject to move to another User, static-postback/stale-redelivery semantics MUST be explicitly re-audited rather than inherited. A prior receipt proves event identity was seen, not which binding lifecycle originally received it.
 
 ## 12. Current actor-resolution dependency
 
 Add auth-owned server-only `resolveActorAccessByUserId(userId, store/dependencies)` alongside existing authSubject resolver. Access variants: AUTHORIZED with canonical ActorContext, UNMAPPED, ACCOUNT_NOT_ACTIVE. Blank/invalid internal ID fails closed; database failure is InfrastructureError, not UNMAPPED. Lookup by current DEMI User PK, not authSubject, Supabase session or LINE profile.
 
-Share the canonical User select/record mapping and ACTIVE-to-ActorContext mapping with the browser resolver: current Person ID, all persisted roles, current Hospital memberships (type/profession/status/Hospital status), OSM relationships (status/Hospital status). Preserve current authSubject trim/access/error behavior and browser tests. Support database/TransactionClient injection for final read transaction; no React/request cache for LINE authority. LINE must not construct ActorContext, omit membership data as an optimization, or reuse the presentation eligibility service's limited actor. No Supabase session/credential is created and no Supabase provider call is needed for this new resolver.
+Share the canonical User select/record mapping and ACTIVE-to-ActorContext mapping with the browser resolver: current Person ID, all persisted roles, current Hospital memberships (type/profession/status/Hospital status), OSM relationships (status/Hospital status). Preserve current authSubject trim/access/error behavior and browser tests. Support database/TransactionClient injection for the single coherent callback transaction; no React/request cache for LINE authority. LINE must not construct ActorContext, omit membership data as an optimization, or reuse the presentation eligibility service's limited actor. No Supabase session/credential is created and no Supabase provider call is needed for this new resolver.
 
 ## 13. Patient SELF upcoming query ownership
 
-Add `getOwnNextAppointment(actor, asOf, dependencies)` in existing `patient-self-care-query-service.ts`, with a narrow SELF identity helper in `patient-self-query-service.ts` sharing ownPatientWhere semantics. No LINE imports in these modules. Result: INELIGIBLE, or AUTHORIZED with `appointment: { scheduledAt: Date; hospitalName: string } | null`. Null means authorized empty; INELIGIBLE includes missing PatientProfile/no own relationships. Exceptions remain sanitized application infrastructure errors.
+Add `getOwnNextAppointment(actor, captureAsOf, dependencies)` in existing `patient-self-care-query-service.ts`, with a narrow SELF identity helper in `patient-self-query-service.ts` sharing ownPatientWhere semantics. No LINE imports in these modules. Result: INELIGIBLE, or AUTHORIZED with `appointment: { scheduledAt: Date; hospitalName: string } | null`. Null means authorized empty; INELIGIBLE includes missing PatientProfile/no own relationships. Exceptions remain sanitized application infrastructure errors.
 
 Algorithm within a short read transaction (or caller's TransactionClient):
 
-1. Validate finite asOf Date and assert SELF policy with APPOINTMENT_READ_CAPABILITY. Non-PATIENT/missing actor fails closed.
+1. Assert SELF policy with APPOINTMENT_READ_CAPABILITY. Non-PATIENT/missing actor fails closed. `captureAsOf` is an injected server clock function, never provider input.
 2. Narrow existence check of Person matching exact actor.personId → persisted User matching actor.userId, ACTIVE, persisted PATIENT → that Person's PatientProfile → at least one own Hospital relationship. Select only minimal existence booleans/opaque internal witness, not names/HN/navigation DTO. Share the ownership predicate instead of copying it into LINE. Missing identity/profile/relationships is INELIGIBLE, never empty.
-3. One patientAppointment findFirst, not one call per Hospital: status SCHEDULED, scheduledAt >= asOf; relationship.patientProfile.person matches the same canonical ownership predicate. No Hospital ACTIVE filter, assignment requirement, Family grant or 90-day window. Order scheduledAt ASC then id ASC; one result. IDs can be ORDER BY operands without SELECT/return.
+3. After successful persisted eligibility, invoke captureAsOf exactly once and validate the finite Date. One patientAppointment findFirst, not one call per Hospital: status SCHEDULED, scheduledAt >= asOf; relationship.patientProfile.person matches the same canonical ownership predicate. No Hospital ACTIVE filter, assignment requirement, Family grant or 90-day window. Order scheduledAt ASC then id ASC; one result. IDs can be ORDER BY operands without SELECT/return.
 4. Select only scheduledAt and relationship.hospital.name; return exactly scheduledAt/hospitalName. Never select whole DTO/type/status label/location/staff/OSM/acknowledgement/cancel requests/clinical notes. Internal query predicates can reference IDs/status without exposing them.
 
-Use current SELF read semantics across all own relationships, including suspended/pending Hospitals; no extra relationship-active predicate exists in this model. CANCELLED/COMPLETED/NO_SHOW excluded by canonical status. Pending/rejected/superseded cancellation requests and acknowledgement do not affect eligibility. Started before asOf is excluded even if duration is still running. asOf is captured once at job execution immediately before domain read; it is not webhook timestamp/start-of-today. Redelivery/new tap captures its own new asOf. Hospital name is authoritative current display name, not menu/webhook text.
+Use current SELF read semantics across all own relationships, including suspended/pending Hospitals; no extra relationship-active predicate exists in this model. CANCELLED/COMPLETED/NO_SHOW excluded by canonical status. Pending/rejected/superseded cancellation requests and acknowledgement do not affect eligibility. Started before asOf is excluded even if duration is still running. asOf is captured once inside the coherent callback transaction after current identity/SELF eligibility checks and immediately before appointment selection; it is not webhook timestamp/start-of-today. Redelivery/new tap captures its own new asOf. Hospital name is authoritative current display name, not menu/webhook text.
 
-Short query transaction uses RepeatableRead for identity-existence and appointment selection to share a snapshot; when a TransactionClient is provided, reuse caller's snapshot, no nested transaction. Bound standalone/final transaction maxWait to 2 seconds and execution timeout to 5 seconds; timeout is infrastructure failure, not an authorization/empty result. No transaction retry loop in transient work. These are local limits, not LINE timing guarantees. No long transaction/lock spans provider I/O.
+Short query transaction uses RepeatableRead for identity-existence and appointment selection to share a snapshot; when a TransactionClient is provided, reuse caller's snapshot, no nested transaction. Bound standalone/callback transaction maxWait to 2 seconds and execution timeout to 5 seconds; timeout is infrastructure failure, not an authorization/empty result. No transaction retry loop in transient work. These are local limits, not LINE timing guarantees. No long transaction/lock spans provider I/O.
 
-## 14. Authorization, final revalidation and TOCTOU
+## 14. One coherent last-moment authorized read and TOCTOU
 
-Execute authority at callback time, never acceptance time: active lifecycle-fenced binding → canonical current actor → persisted SELF query. Keep no authority cached across jobs. Each concurrent duplicate performs its own chain.
+No receipt-time actor/binding/Patient projection is trusted. Each transient execution checks local Reply context (§18), then starts **ONE short RepeatableRead transaction**, as late as practical before sending. Within the same injected TransactionClient/snapshot:
 
-Immediately before sending either appointment content **or authorized-empty copy**, run one short RepeatableRead transaction: re-resolve exact active binding and compare witness; resolve fresh current actor through auth User-ID seam; run narrow SELF query again with the **same captured asOf**. Replace initial projection with this final projection, including changed appointment/Hospital/status; do not reuse an earlier sensitive result. This deliberate second bounded read avoids leaking a relationship that was revoked between lookup and disclosure without passing appointment IDs into LINE presentation. Commit/close transaction, format text, recheck local token timing, then call provider immediately. No network, waiting, menu repair or telemetry body serialization between final gate and send.
+1. Resolve exact CURRENT ACTIVE binding by signed LINE subject; zero/conflicting bindings → INELIGIBLE.
+2. Resolve current canonical User/ActorContext using auth-owned User-ID resolver; inactive/unmapped → INELIGIBLE.
+3. Run persisted Patient SELF policy/ownership/profile/own-relationship eligibility through the domain-owned helper (§13).
+4. Capture one server asOf, then execute exactly one narrow upcoming Appointment query with §13 selection. Do not duplicate eligibility logic in LINE; the domain seam accepts the injected captureAsOf function (§13) so capture occurs exactly once after eligibility within this snapshot.
+5. Return only INELIGIBLE, AUTHORIZED_EMPTY or APPOINTMENT_SUMMARY `{ scheduledAt, hospitalName }`; infrastructure failure throws a sanitized category. No binding/actor/IDs escape into presentation.
 
-Witness mismatch/unlink/rebind, User inactive, revoked PATIENT, ownership/Profile/relationship loss → discard sensitive projection and generic refusal if token eligible. DB/actor/query failure → infrastructure copy, never sensitive/empty. Infrastructure during initial binding/actor resolution also gets the same non-disclosing infrastructure copy; no account-state cause is revealed. An initial INELIGIBLE outcome may return generic refusal directly because it contains no Patient disclosure.
+Close transaction, map approved Thai text, recheck only LOCAL transient execution-age eligibility, then immediately make one Reply call. No second Appointment query, second full actor resolution, initial sensitive projection or final re-read/witness comparison. No transaction retry loop, menu repair, intentional wait or provider I/O inside the snapshot. Existing §13 helper reuses caller TransactionClient, never opens a nested transaction; maxWait 2 seconds/timeout 5 seconds apply to the one callback transaction.
 
-No row lock/transaction can mathematically eliminate revocation between final DB snapshot and external delivery. Unlink/role change immediately after the final check may race an already-starting network request. Record this residual risk for review; mitigate with last-moment coherent recheck and no cross-network transaction, not an impossible atomic LINE/DEMI guarantee. Appointment facts come from the final current database snapshot using the captured asOf cutoff; asOf does not request historical database state. The response is not a reserved/confirmed appointment or promise the facts remain unchanged after Reply.
+Revocation/unlink/cancellation/Hospital rename committed before the snapshot is reflected in its current state. Ineligible → generic refusal; transaction/auth/query failure → infrastructure copy, never authorized-empty. A snapshot is coherent current database state, not a historical asOf database snapshot, appointment reservation or attendance confirmation.
+
+Authority/facts may change after this transaction commits and before/during LINE Reply. RepeatableRead does not make DEMI and provider delivery atomic. This residual TOCTOU race is explicitly retained: evaluate authority once coherently as late as practical, close DB work and send immediately, with no durable sensitive payload, delayed retry or Push. No added locks or redundant second read create an atomic-disclosure claim; a long cross-network DB transaction is forbidden.
 
 ## 15. Narrow server-safe presentation and copy
 
@@ -207,8 +217,8 @@ Example for `2026-10-15T02:00:00Z`:
 | Outcome | Exact first-slice text |
 | --- | --- |
 | Authorized successful empty | ไม่พบนัดหมายที่กำลังจะมาถึง |
-| Generic ineligible/stale lifecycle/revoked | ยังไม่สามารถตรวจสอบนัดหมายผ่าน LINE ได้ กรุณาเปิด “จัดการบัญชี DEMI” จากเมนู |
-| Infrastructure/query/final-check failure | ขณะนี้ยังตรวจสอบนัดหมายไม่ได้ กรุณาลองใหม่ภายหลัง |
+| Generic currently ineligible/revoked | ยังไม่สามารถตรวจสอบนัดหมายผ่าน LINE ได้ กรุณาเปิด “จัดการบัญชี DEMI” จากเมนู |
+| Infrastructure/transaction/query failure | ขณะนี้ยังตรวจสอบนัดหมายไม่ได้ กรุณาลองใหม่ภายหลัง |
 | Ignored/standby/missing or late token | No Reply |
 
 No status line, CTA, appointment link, IDs or other fields. Do not imply acknowledgement/attendance. Hospital display name is a single rendered line: trim, collapse whitespace/line separators, remove control characters; do not add other data or parse it as markup. Empty/unrenderable name or invalid Date fails presentation → infrastructure copy, not invented Hospital text. Database Hospital.name is bounded varchar(200); do not truncate arbitrary Patient fields or stringify DTOs. Stored scheduledAt is unchanged; timezone/calendar are display only. Tests assert Bangkok day/year rollover and midnight h23, independent of host timezone.
@@ -241,7 +251,9 @@ Separate four layers: one durable event identity; no duplicate business mutation
 - Concurrent original/duplicate executions may both query and attempt the same inbound token. Provider single-use behavior prevents a second successful token consumption; DEMI does not prove which request won, whether delivery is visible, or exactly-once. Unknown/timeout result stays unknown; do not reset receipt or retry internally.
 - A new user tap/new webhookEventId is a new fresh read/receipt and Reply context.
 
-Local eligibility is deliberately conservative: mode active, valid user source/common fields, nonempty token, now < receivedAt + 60 seconds and now < eventOccurredAt + 20 minutes; eventOccurredAt must not be future relative to receivedAt. Check before job authority work and again before provider attempt. These guards skip known late work, do not prove token validity or extend provider lifetime; the 20-minute cutoff is applied to all appointment jobs, including ambiguous duplicates. No waiting for a timing window; use asap. Dropped late work has no query/Reply if detected before execution; if it expires during query, discard projection and skip Reply. Token timing constants are tied to verified docs and must be rechecked before implementation/deployment.
+Local eligibility requires active mode, valid user/common fields and nonempty token, plus a conservative **DEMI-local execution-age guard**. Capture an in-memory monotonic request-entry time; carry that local deadline/elapsed-time witness in the transient work item and use the same process-local clock at callback start and immediately before send. No provider timestamp is an input. Future implementation must select and test a fixed safety margin below the documented one-minute window (no new configuration framework); late local work skips query/Reply, or discards its result if the guard elapses during DB work. This guard avoids obviously delayed work, does not prove token validity or extend provider lifetime. Never intentionally wait until expiry.
+
+Original inbound and redelivery both use their fresh inbound local execution context. isRedelivery is classification only, not authority. LINE's 20-minute event-age condition belongs to redelivered-token semantics; DEMI does **not** enforce eventOccurredAt + 20 minutes locally or compare provider event time to DEMI receive/lifecycle clocks. Representable provider times ahead of local receivedAt or before lastLinkedAt are not automatically invalid. Reply API remains authoritative for unused/eligible/expired/rejected token state; permanent rejection terminates this attempt. Recheck official timing before implementation/deployment, not by inventing clock synchronization guarantees.
 
 Provider-used/expired/invalid token, rate limit, server/network errors → sanitized transport category, no rollback/receipt reset/queue/Push. Redelivery can improve best effort only if provider sends a new inbound event context; it is not DEMI's durable Reply queue. No token is retrieved from historical persistence.
 
@@ -253,7 +265,7 @@ Choose **four fixed workers per request**, each taking the next eligible job in 
 
 ## 20. Failure/outcome matrix
 
-All rows: **Appointment/domain mutation = NO**. Foundation follow/unfollow/switch may retain their existing durable non-Appointment effects. HTTP refers to webhook acknowledgement, not Reply API status. `R` = one accepted appointment receipt (ACCEPTED) or its existing matching duplicate; `Q` = initial SELF read and, for data/empty, final re-read. `A` = at most one provider attempt in that transient execution. All logging uses only category/allowlisted telemetry (§21).
+All rows: **Appointment/domain mutation = NO**. Foundation follow/unfollow/switch may retain their existing durable non-Appointment effects. HTTP refers to webhook acknowledgement, not Reply API status. `R` = one accepted appointment receipt (ACCEPTED) or its existing matching duplicate; `Q` = one coherent current binding/actor/persisted SELF snapshot and exactly one Appointment query when eligible; no second read. `A` = at most one provider attempt in that transient execution. All logging uses only category/allowlisted telemetry (§21).
 
 | Case | Receipt | Domain query | Reply attempt / copy | HTTP | Recovery / log category | Sensitive disclosure |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -261,27 +273,30 @@ All rows: **Appointment/domain mutation = NO**. Foundation follow/unfollow/switc
 | Wrong destination | None | No | No | 401 | DESTINATION_REJECTED | No |
 | Oversized body | None | No | No | 413 | BODY_TOO_LARGE | No |
 | Malformed UTF-8/JSON/envelope | None | No | No | 401 | ENVELOPE_REJECTED | No |
-| Malformed sibling/future timestamp/invalid new common fields | None for sibling | No | No | 200 if others accepted | EVENT_MALFORMED; siblings continue | No |
+| Malformed sibling/unrepresentable timestamp/invalid new common fields | None for sibling | No | No | 200 if others accepted | EVENT_MALFORMED; siblings continue | No |
 | Unsupported text/media/system | None | No | No | 200 | UNSUPPORTED_IGNORED | No |
 | Unknown/near-match postback | None | No | No | 200 | UNSUPPORTED_IGNORED | No |
 | Group/room appointment marker | None | No | No | 200 | SOURCE_IGNORED | No, even generic account copy |
 | Standby appointment event | R | No | No | 200 | STANDBY_IGNORED | No |
 | Missing/empty token in recognized event | R | No | No | 200 | REPLY_CONTEXT_UNAVAILABLE | No |
-| Known timing cutoff exceeded | R | No if detected before work | No | 200 | REPLY_CONTEXT_LATE | No |
+| Local execution-age guard exceeded | R | No if detected before work | No | 200 | REPLY_CONTEXT_LATE | No |
 | Durable receipt/DB acceptance failure | None for failing event; prior commits retained | No | No jobs registered for request | 503 | ACCEPTANCE_UNAVAILABLE; provider may redeliver, not guaranteed | No |
 | No ACTIVE binding / invariant conflict | R | No | A generic refusal | 200 | INELIGIBLE | No |
-| Old lifecycle/equal start event | R | No | A generic refusal | 200 | STALE_LIFECYCLE | No |
+| Binding changes before callback transaction | R | Current Q if currently eligible | A current result or generic refusal | 200 | Current outcome; resolve current state | Current snapshot only |
+| Old event after same-user relink / provider time ahead of receivedAt | R | Current Q if eligible | A current result if local context eligible | 200 | Current outcome; no cross-clock suppression | Approved current own projection only |
+| Future cross-user subject transfer | No new behavior approved | Outside scope | Requires identity/reactive re-audit | Not defined by this tranche | External identity/reconciliation gate | No transfer authority invented |
 | User inactive / PATIENT removed | R | No Appointment read | A generic refusal | 200 | INELIGIBLE | No |
 | Missing/mismatched PatientProfile / no own relationships | R | SELF eligibility only | A generic refusal | 200 | INELIGIBLE | No |
-| Authorized successful empty | R | Q | A exact empty | 200 | AUTHORIZED_EMPTY | Empty fact only after final gate |
+| Authorized successful empty | R | Q | A exact empty | 200 | AUTHORIZED_EMPTY | Empty fact only after coherent authorized snapshot |
 | Appointment found | R | Q | A approved 3-line text | 200 | APPOINTMENT_SUMMARY | Exactly date/time + Hospital |
 | Binding/actor infrastructure failure | R | No/partial checks | A infrastructure copy | 200 | LOOKUP_UNAVAILABLE | No |
 | Patient query infrastructure failure | R | Attempt failed | A infrastructure copy | 200 | QUERY_UNAVAILABLE | No |
-| Unlink/rebind/role/profile/relationship revocation at final gate | R | Initial Q; final denied | A generic refusal | 200 | AUTHORITY_CHANGED | Discard prior data/empty |
-| Final gate infrastructure failure | R | Initial Q; final failed | A infrastructure copy | 200 | LOOKUP_UNAVAILABLE | Discard prior data/empty |
+| Unlink/role/profile/relationship revocation before snapshot | R | No Appointment read when denied | A generic refusal | 200 | INELIGIBLE | No |
+| Transaction infrastructure failure | R | No/failed single Q | A infrastructure copy | 200 | LOOKUP_UNAVAILABLE | No |
+| Unlink/revoke after commit before/during provider request | R | One completed current Q | A may disclose committed snapshot | 200 | Ordinary sanitized outcome; no race detection claim | Residual TOCTOU; not atomically preventable |
 | Presentation invalid date/name | R | Q | A infrastructure copy | 200 | PRESENTATION_UNAVAILABLE | No |
-| Token expires while queued/querying | R | No or Q already ran | No | 200 | REPLY_CONTEXT_LATE | No |
-| Reply 2xx | R unchanged | Prior Q/outcome | A already made | 200 | PROVIDER_ACCEPTED; not visible-delivery proof | Only payload passing final gate |
+| Local execution-age guard elapses while queued/querying | R | No or Q already ran | No | 200 | REPLY_CONTEXT_LATE | No |
+| Reply 2xx | R unchanged | Prior Q/outcome | A already made | 200 | PROVIDER_ACCEPTED; not visible-delivery proof | Only approved coherent-snapshot payload |
 | Reply 400 invalid/used/expired token | R unchanged | Prior Q/outcome | A failed, no second copy | 200 | LINE_PROVIDER_PERMANENT; precise use state unknown | No extra payload |
 | Reply 401/403/404/other 4xx | R unchanged | Prior Q/outcome | A failed | 200 | LINE_PROVIDER_PERMANENT | No extra payload |
 | Reply 429 | R unchanged | Prior Q/outcome | A failed | 200 | LINE_PROVIDER_TRANSIENT; no internal retry | No extra payload |
@@ -289,19 +304,19 @@ All rows: **Appointment/domain mutation = NO**. Foundation follow/unfollow/switc
 | Reply network/12s timeout | R unchanged | Prior Q/outcome | A unknown | 200 | LINE_PROVIDER_TRANSIENT; no retry/Push | No extra payload |
 | after registration throws | R committed | No | No | 200 | SCHEDULING_UNAVAILABLE; new tap/provider event only | No |
 | Process crash after 200 / callback platform limit | R committed | None/partial/completed | None/unknown | 200 already emitted | May lose reply; no crash recovery claim/log guarantee | No new permission; in-flight ambiguity remains |
-| Matching duplicate event in new request | Existing R | Fresh Q if context/authority valid | A if eligible | 200 | DUPLICATE + sanitized current outcome | Fresh final authorization only |
-| Same ID repeated in one envelope | Existing R | One job at most | A per selected job | 200 | DUPLICATE; collapse locally | Same gate |
+| Matching duplicate event in new request | Existing R | Fresh Q if context/authority valid | A if eligible | 200 | DUPLICATE + sanitized current outcome | Fresh coherent current authorization only |
+| Same ID repeated in one envelope | Existing R | One job at most | A per selected job | 200 | DUPLICATE; collapse locally | Same snapshot rule |
 | Same ID with conflicting type/time | Existing unchanged | No for conflict | No for conflict | 200 | EVENT_ID_CONFLICT | No |
-| Redelivery before original Reply | Existing R | Fresh Q if eligible | A may race original | 200 | REDELIVERY + current outcome; no cache | Same gate |
+| Redelivery before original Reply | Existing R | Fresh Q if eligible | A may race original | 200 | REDELIVERY + current outcome; no cache | Same snapshot rule |
 | Redelivery after token consumed | Existing R | Fresh Q may run | A may get permanent rejection | 200 | Safe provider category; receipt does not reveal consumption | No second success promised |
-| Concurrent duplicate/redelivery | One R via DB PK | Independent fresh Q | One A per execution; provider single-use arbitration | 200 after each acceptance | DUPLICATE/REDELIVERY; no attempt-state table | Each final gate independently |
+| Concurrent duplicate/redelivery | One R via DB PK | Independent fresh Q | One A per execution; provider single-use arbitration | 200 after each acceptance | DUPLICATE/REDELIVERY; no attempt-state table | Each coherent snapshot independently |
 | New tap/new event ID | New R | Fresh current Q/asOf | A if eligible | 200 | Current outcome | Exactly approved projection |
 
 For every R-based row, token ineligibility replaces A with no attempt. All transport failure rows: no durable retry, receipt rollback, cached response replay or Push; provider redelivery remains optional external behavior, user can safely tap again. Sensitive payload submitted in an ambiguous network result may already have reached LINE; failure category never establishes non-delivery.
 
 ## 21. Telemetry/privacy contract
 
-Allow only opaque random correlation ID, permitted webhookEventId under existing retention policy, canonical intent, sanitized event/outcome/provider category, duration/latency and optional isRedelivery boolean. Durations may cover acceptance/queue/read/provider latency, without absolute appointment times or identifying metadata. Do not stringify exceptions, jobs, query results or provider requests/responses. Sanitize at the emitter boundary, including scheduler catch paths.
+Allow only opaque random correlation ID, permitted webhookEventId subject to the unresolved operational retention gate (§9), canonical intent, sanitized event/outcome/provider category, duration/latency and optional isRedelivery boolean. Durations may cover acceptance/queue/read/provider latency, without absolute appointment times or identifying metadata. Do not stringify exceptions, jobs, query results or provider requests/responses. Sanitize at the emitter boundary, including scheduler catch paths.
 
 Never log raw LINE subject/body/text/postback/token/access/channel/profile data; Patient/User/Person/relationship/appointment IDs; Hospital name or relationship/content; HN/National ID/name/phone/address; appointment date/time, diagnosis/medication/clinical data. No ordinary successful clinical-read AuditEvent, no provider-attempt/delivery persistence, no receipt as clinical audit. Existing security/link/unlink lifecycle audits remain unchanged. Receipt permitted provider event timestamp is transport metadata, not appointment content.
 
@@ -323,7 +338,7 @@ No table/column/index change, no Reply/session/notification/attempt table, token
 | src/modules/line/services/line-webhook-service.ts | Exact classifier, truthful receipt type/outcome, matching duplicate checks, separate transient job result |
 | app/api/line/webhook/route.ts | Register independent reactive after seam; keep public counters; no awaited business/provider work |
 | src/modules/line/transport/line-reactive-scheduler.ts (new) | after registration, four workers, safe failures/deadlines; no repair state |
-| src/modules/line/services/line-reactive-appointment-service.ts (new) | Binding lifecycle gate, auth/domain orchestration, final transaction/recheck, one Reply |
+| src/modules/line/services/line-reactive-appointment-service.ts (new) | Current binding/auth/domain orchestration in one late coherent transaction, one Appointment query, local deadline recheck and one Reply |
 | src/modules/auth/services/actor-context-service.ts | Shared canonical projection/mapping and injected current User-ID resolver; browser behavior preserved |
 | src/modules/patient-self/services/patient-self-query-service.ts | Reusable narrow exact SELF identity/existence helper; no HN/name projection |
 | src/modules/patient-self/services/patient-self-care-query-service.ts | Narrow next appointment query/result with current ownership/asOf/status/order |
@@ -342,13 +357,14 @@ These are implementation obligations, **NOT checks run in this documentation tas
 
 | Area | Required focused assertions |
 | --- | --- |
-| Classification | Exact marker accepted; whitespace/case/prefix/suffix near-match ignored; text/media/unknown postback ignored/no help; user only; group/room never invokes binding/Patient query; typed active/standby/missing/wrong mode/redelivery/token cases; existing workspace SUCCESS/alias rules unchanged; invalid/future timestamps isolated. |
+| Classification | Exact marker accepted; whitespace/case/prefix/suffix near-match ignored; text/media/unknown postback ignored/no help; user only; group/room never invokes binding/Patient query; typed active/standby/missing/wrong mode/redelivery/token cases; existing workspace SUCCESS/alias rules unchanged; structurally invalid/unrepresentable timestamps isolated; representable timestamps ahead of DEMI receivedAt not rejected solely for clock order. |
 | Receipt / migration | First acceptance once; concurrent duplicates one row; PATIENT_NEXT_APPOINTMENT/ACCEPTED truthful; mismatched prior type/time ignored; no token/subject/content/provider result stored; foundation effects not replayed; fresh and populated PostgreSQL migration paths preserve existing rows/constraints. |
 | Actor authority | Shared User-ID/authSubject mapping parity for roles/memberships/OSM/Hospital statuses; inactive/unmapped/errors distinct internally; no Supabase call; no actor fabrication; existing browser tests preserved. |
-| Binding lifecycle | No binding, retained cleanup locator, unlinked binding, conflicts denied; pre-relink/equal start event denied; timestamp after start accepted; ALREADY_LINKED start/version preserved; relink bumps/version/start; same-user relink during query denies old witness; new User/subject never retargeted. |
+| Binding lifecycle | No binding/unlinked/conflict denies; no historical/cleanup fallback; presentationRole/reachability never authorize; current same-user relink permits current authorized read; changes before callback resolve current state. Provider timestamps before/equal lastLinkedAt or ahead of receivedAt do not themselves deny. Retained evidence cross-user conflict remains fail-closed; future transfer requires re-audit. |
 | SELF authorization | Persisted ACTIVE/PATIENT/exact User-Person/Profile ownership, no own relationships ineligible; fake/stale actor fails persisted predicate; multi-role Patient allowed regardless presentationRole; operator/Family/ADMIN-only denied. |
 | Upcoming selection | Nearest future SCHEDULED; scheduledAt == asOf included; past even ongoing-duration excluded; canonical terminal statuses excluded; pending/rejected/superseded cancellation/acknowledgement do not filter; multiple own Hospitals incl suspended/pending; scheduledAt/id tie; zero authorized result; one narrow query, no DTO/history pagination. |
-| Final gate / races | Pause after initial read, unlink/relink/role revoke/Profile/relationship loss → generic refusal; DB fail → infrastructure; appointment cancellation/Hospital rename between reads → updated narrow final projection; final snapshot coherent; no transaction active during mocked Reply; no claim of zero post-check external race. |
+| One coherent read / races | Exactly one Appointment business query and one full actor resolution per eligible transient execution; binding/actor/persisted SELF/query share one snapshot. Revocation before snapshot denies; cancellation/Hospital rename before snapshot reflected; DB fail → infrastructure. No provider call while transaction active; no second read; post-commit/pre-provider race is documented, never tested as impossible. |
+| Local timing / retention | Local elapsed deadline skips delayed query/Reply; redelivery not rejected by cross-clock 20-minute arithmetic; provider rejection authoritative/no retry/Push. No cleanup behavior invented; minimized receipt only; unresolved retention/purge remains production follow-up, not owner-product reopening. |
 | Presentation / privacy | Exact success/empty/refusal/error; Buddhist year/Thai month/Latin digits/h23 Bangkok midnight/day/year conversion independent of host timezone; only two data fields, no status/IDs/location/staff/HN/name/clinical/link; newline/control-safe Hospital display; raw DTO rejected by boundary; telemetry captures only allowlist. |
 | Adapter | Exact one-text body/token/channel Authorization/POST/no-store; no retry key/Push/custom sender; 404 explicitly rejected; 400/429/5xx/network/timeouts safe; one attempt even ambiguous result; no body/token logging or persisted outcomes; failed data Reply never triggers error Reply reuse. |
 | after / route | Callback remains unexecuted while route returns 200 after durable acceptance; deferred query/provider promises unresolved do not block response; registration throws still 200; separate menu/reactive registration independence; DB acceptance fail →503; no jobs scheduled on partial failure; counters contain no sensitive internal fields. |
@@ -363,8 +379,9 @@ Follow AGENTS proportional strategy: explicit focused Vitest paths during iterat
 | Forged webhook/postback | Raw signature + expected destination before parse; exact marker still requires current binding/SELF. Marker secrecy is not security. |
 | Group/room disclosure | Source classifier blocks before binding/Patient lookup/Reply, even if userId exists. |
 | Copied/stale menu | Presentation ignored; current authority per execution; valid stale action may read current own data, never expand scope. |
-| Old lifecycle redelivery after relink | eventOccurredAt strictly after lastLinkedAt plus same-lifecycle final witness; no history/fingerprint fallback. Millisecond ties deny; clock-skew causality limit explicit. |
-| Unlink/role revocation during async work | Final coherent active binding/actor/SELF re-read; discard old projection. No mathematically atomic DB/provider boundary; residual last-check-to-send race remains. |
+| Old redelivery after unlink / same-user relink | Unlinked → no ACTIVE binding/no Patient disclosure; same-user relink → fresh current authorized own read allowed. No timestamp lifecycle authority/history fallback. |
+| Future cross-user subject transfer | Current retained-evidence conflict guards fail closed; erasure/transfer requires explicit identity/static-postback/redelivery re-audit. Receipt has no original lifecycle witness. |
+| Unlink/role revocation during async work | One late coherent current binding/actor/persisted SELF snapshot denies prior revocation; send immediately after close. Post-commit authority change can race provider delivery; no atomic claim, second read, queued payload or cross-network transaction. |
 | Stale actor | Fresh auth-owned User-ID projection and persisted SELF predicate; no cache/presentation actor shortcut. |
 | Duplicate/concurrent events | One receipt PK; fresh read safe; no mutation/cached replay; provider single-use token arbitration, no delivery guarantee. |
 | Replay after consumed token | One provider attempt, safe permanent rejection, no token retry/Push/receipt reset. |
@@ -386,10 +403,10 @@ No runtime TypeScript/schema/migration/assets/provider changes in 17J.2B draftin
 
 ## 27. Unchanged open/external gates
 
-P17D-NOTIF-01 and proactive event/time/recipient/content/privacy/preferences/consent/quiet hours/retry/Push remain OPEN. MED-02, medication delivery/adherence, Follow-up prospective reminder source, Family LINE access, P17F-L04/L05, Q5 real-data governance, Phase 17E.2 consent, exact identity-history retention/erasure and future cross-account reconciliation retain their existing status. Real LINE provider setup/provisioning, mobile/device UAT, production deployment, 17J.3 and 17J.4 implementation are not executed/approved by this contract. Preserve 17J.0/0B/1 closure/evidence; sequence remains 17J.2 →17J.3 →17J.4 →17J.5A integrated audit →17J.5B real-device UAT.
+P17D-NOTIF-01 and proactive event/time/recipient/content/privacy/preferences/consent/quiet hours/retry/Push remain OPEN. MED-02, medication delivery/adherence, Follow-up prospective reminder source, Family LINE access, P17F-L04/L05, Q5 real-data governance, Phase 17E.2 consent, exact identity-history retention/erasure and future cross-account reconciliation retain their existing status. Exact LineWebhookEventReceipt retention/purge/storage policy is unresolved (§9), non-blocking for bounded implementation/demo after review but a production-readiness/operational-privacy follow-up before long-term retention/storage readiness claims. No cleanup implementation is approved. Real LINE provider setup/provisioning, mobile/device UAT, production deployment, 17J.3 and 17J.4 implementation are not executed/approved by this contract. Preserve 17J.0/0B/1 closure/evidence; sequence remains 17J.2 →17J.3 →17J.4 →17J.5A integrated audit →17J.5B real-device UAT.
 
 ## 28. Review gate / implementation GO–NO-GO
 
-**GO: review this technical draft. NO-GO: runtime implementation until contract review is explicitly accepted.** Locked owner product/privacy decisions remain closed. Review must confirm exact marker/classifier, ACCEPTED receipt meaning/two enum additions, post-response/partial-failure ordering, duplicate fresh-read policy/four workers, strict lifecycle timestamp fence/clock assumption, shared actor mapping, narrow query/final re-read and residual external race, formatter/adapter/privacy/test boundaries. No product-owner choice of low-level retry/database algorithm is required; technical review judges this selected design.
+**GO: review this technical draft. NO-GO: runtime implementation until contract review is explicitly accepted.** Locked owner product/privacy decisions remain closed. Review must confirm exact marker/classifier, ACCEPTED receipt meaning/two enum additions, post-response/partial-failure ordering, duplicate fresh-read policy/four workers, current-state binding authority/future transfer re-audit, shared actor mapping, one coherent late snapshot/read and residual external race, local-only scheduling guard and unresolved production receipt-retention follow-up, formatter/adapter/privacy/test boundaries. No product-owner choice of low-level retry/database algorithm is required; technical review judges this selected design.
 
-Final state: **17J.2A CLOSED / OWNER DECISION COMPLETE; 17J.2B TECHNICAL CONTRACT DRAFT COMPLETE / REVIEW REQUIRED; 17J.2 runtime NOT IMPLEMENTED**. Exact next step: **Review Phase 17J.2B technical contract.** Stop at documentation/validation; runtime implementation remains blocked on contract review.
+Final state: **17J.2A CLOSED / OWNER DECISION COMPLETE; 17J.2B TECHNICAL CONTRACT DRAFT COMPLETE / REVIEW REQUIRED; 17J.2 runtime NOT IMPLEMENTED**. Exact next step: **Review corrected Phase 17J.2B technical contract.** Stop at documentation/validation; runtime implementation remains blocked on contract review.
