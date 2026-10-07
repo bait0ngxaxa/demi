@@ -1,6 +1,7 @@
 # Phase 17J.2A — Reactive Messaging Decision Pack / First Command Boundary
 
 - วันที่ตรวจ: 2026-10-07; source baseline: `adebb1a`; working tree สะอาดก่อนเริ่ม
+- Bounded correction ตรวจจาก HEAD `fea64241087f5756f59d3549bd55e683777cbb81` และ current official LINE documentation; ปรับเฉพาะ recommendations/lifecycle separation โดยไม่เปลี่ยน runtime
 - **17J.2A — DECISION PACK COMPLETE / OWNER DECISIONS REQUIRED**
 - **17J.2B — NOT STARTED**; **17J.2 runtime — NOT IMPLEMENTED**
 - ทุกข้อเสนอในเอกสารนี้คือ **RECOMMENDATION — NOT OWNER APPROVED** จนมี owner closeout ระบุคำตอบ ผู้ตัดสินใจ และวันที่อย่างชัดเจน
@@ -44,7 +45,7 @@ External LINE provisioning, real LINE/mobile/device UAT และ production dep
 
 1. ADR-0009 owner addendum, 17J.0 CURRENT addendum และ 17J.0B §7 ยังกล่าวว่า 17J.1 runtime NOT IMPLEMENTED ในเอกสารที่เขียนก่อน implementation. เป็น **documentation chronology/status conflict** กับ current CONTEXT, 17J.1 handoff และ source ที่มี runtime จริง ใช้หลักฐานใหม่เป็นสถานะปัจจุบัน; ไม่เปิด architecture หรือ Option C ใหม่ และไม่แก้เอกสารเก่าข้าม scope งานนี้
 2. Immediate Reply กับ deferred provider work มี lifecycle tension (รายละเอียด §11) ไม่ใช่ข้อพิสูจน์ว่า 17J.1 ผิด เพราะ reconciliation มี durable repair แต่ Reply ไม่มี token ที่เก็บไว้ส่งภายหลังได้
-3. ยังไม่มี exact upcoming SELF query, appointment navigation intent ใน builder, business postback action, receipt enum สำหรับ reactive command หรือ Reply method. เป็น **implementation gaps ตาม phase boundary** ไม่ใช่ข้ออนุมัติให้ implement ใน 17J.2A
+3. ยังไม่มี exact upcoming SELF query, business postback action, receipt enum สำหรับ reactive command หรือ Reply method. เป็น **implementation gaps ตาม phase boundary** ไม่ใช่ข้ออนุมัติให้ implement ใน 17J.2A. Builder ไม่มี appointment navigation intent แต่ corrected first-slice recommendation ไม่ใช้ embedded appointment link; detailed/list navigation เลื่อนไป 17J.3
 
 ## 4. Current LINE runtime evidence
 
@@ -73,7 +74,7 @@ Canonical `PatientAppointment` ผูก `PatientHospitalRelationship`, `schedul
 | Candidate | Source / disposition |
 | --- | --- |
 | ตรวจสอบนัดหมาย — PATIENT SELF upcoming summary | E06–E09: existing authoritative read; **RECOMMENDATION — NOT OWNER APPROVED** สำหรับ first slice |
-| Minimal help / กลับเมนู | E01/E04: no Patient data; support UX candidate ตาม Q13 ไม่ใช่ business domain ใหม่ |
+| Unsupported text/generic postback/media | E03/E04: **RECOMMENDATION — NOT OWNER APPROVED** sanitized ignore ตาม Q13; ไม่เพิ่ม help reply/text command ใน first slice |
 | Account link/manage และ workspace switch | มีจริงใน 17J.1 (E02–E05); preserve ไม่เรียกว่า conversational business command ใหม่ |
 | PATIENT acknowledgement/cancellation request | มี web semantics (E06) แต่ **excluded from first reactive tranche**; การมี API/domain ไม่ใช่ chat approval |
 | OSM/HOSPITAL roster หรือ appointment commands | Work authority มีจริง แต่ไม่มี approved chat projection/scope interaction; deferred ไม่ invent capabilities |
@@ -81,9 +82,17 @@ Canonical `PatientAppointment` ผูก `PatientHospitalRelationship`, `schedul
 
 ## 7. Recommended first tranche
 
-**RECOMMENDATION — NOT OWNER APPROVED:** READ ONLY — PATIENT SELF “ตรวจสอบนัดหมาย”, deterministic Rich Menu business postback อย่างเดียว, 1:1 source, zero conversation state. เลือกนัด SCHEDULED ที่ใกล้ที่สุดหนึ่งรายการจากทุก own relationship ที่ policy เดิมอนุญาต ณ เวลา query; เผยเฉพาะ date/time/Hospital display name/high-level status หาก Q03 ได้รับการอนุมัติ พร้อม “ดูนัดหมายทั้งหมด” ไปหน้ารายการเดิม
+**RECOMMENDATION — NOT OWNER APPROVED:** READ ONLY — PATIENT SELF “ตรวจสอบนัดหมาย”, deterministic Rich Menu business postback อย่างเดียว, 1:1 source, zero conversation state. Resolve ACTIVE binding และ fresh current DEMI actor/PATIENT SELF authorization ทุก command; เลือกนัด canonical SCHEDULED ที่ใกล้ที่สุดหนึ่งรายการจากทุก own relationship ที่ policy เดิมอนุญาต ณ เวลา query. Q03 แนะนำ **D-NARROW: Thai date/time จาก scheduledAt + Hospital display name เท่านั้น**; ไม่มี status label/ข้อมูลอื่นหรือ embedded appointment-list/detail link. Arbitrary text/unsupported events sanitized-ignore; Reply best effort, no mutation/no Push fallback
 
-ข้อความตัวอย่างสำหรับ review เท่านั้น: “นัดหมายถัดไปของคุณ\nวันที่ … เวลา … (เวลาไทย)\nโรงพยาบาล …\nสถานะ: นัดหมายแล้ว”. ไม่ใช้ type/notes เพื่อแต่งข้อความ ไม่บอกว่าเป็นการยืนยันเข้าร่วม ไม่มี mutation และไม่สร้างคำสั่ง/marker/assets จริงในงานนี้
+ข้อความตัวอย่าง **RECOMMENDATION — NOT OWNER APPROVED** สำหรับ owner review เท่านั้น:
+
+```text
+นัดหมายถัดไปของคุณ
+วันที่ 15 ตุลาคม 2569 เวลา 09:00 น.
+โรงพยาบาล ...
+```
+
+Authorized successful empty result: “ไม่พบนัดหมายที่กำลังจะมาถึง”. วันเวลาแสดงตามกฎเวลาไทยใน Q04; ไม่มี status/attendance confirmation/acknowledgement หรือ CTA. ไม่ใช้ type/notes เพื่อแต่งข้อความ และไม่สร้างคำสั่ง/marker/assets จริงในงานนี้
 
 ## 8. J2-Q01..J2-Q14 decision table
 
@@ -92,23 +101,23 @@ Canonical `PatientAppointment` ผูก `PatientHospitalRelationship`, `schedul
 | ID / owner question | Evidence / options | Recommendation และเหตุผล | Privacy/security impact / implementation consequence | Exact status |
 | --- | --- | --- | --- | --- |
 | J2-Q01 เริ่ม domain ใด? | E01/E06/E07: A SELF appointment only; B PATIENT+OSM/HOSPITAL; C generic multi-domain; D owner-defined | **A** มี read path จริงและคุณค่าผู้ใช้โดยไม่เปิดหลาย Patient | ลด operator-data disclosure; หนึ่ง business intent เท่านั้น | **OPEN / OWNER DECISION REQUIRED** |
-| J2-Q02 เรียกคำสั่งอย่างไร? | E03/E04: A Rich Menu/postback only; B postback+tiny exact-text allowlist; C free-form/NLU; D other | **A** ลดการเดา intent; B พิจารณาแยกภายหลัง | Static versioned intent marker only ไม่มี role/resource/PII. C ขัด no-NLU boundary ต้องมี separate future contract; 17J.2B กำหนด exact parser/marker ต่างจาก workspace switch | **OPEN / OWNER DECISION REQUIRED**; no generic NLU **CLOSED — E01** |
-| J2-Q03 ส่ง appointment fields ใดใน LINE? | E01 §18/E07: A status-only; B date/time/Hospital/high-level status; C เพิ่ม type/duration/locationType; D explicit projection | **B** เฉพาะ nearest หนึ่งรายการ ช่วยจำวันไปโรงพยาบาลโดยไม่ต้องเปิด UI หลายขั้น; A เป็นทางเลือก minimization สูงสุด; ไม่แนะนำ C | B ยังเผย care association และเวลาใน chat/notification preview/screenshots/shared device. Owner/privacy ต้องรับรอง exact fields; ไม่มี approval = ไม่เผย detail; allowlist projection ตาม §9 | **OPEN / REQUIRED OWNER PRIVACY DECISION** |
+| J2-Q02 เรียกคำสั่งอย่างไร? | E03/E04: A Rich Menu/postback only; B postback+tiny exact-text allowlist; C free-form/NLU; D other | **A** เป็น business-command entry เดียวของ first slice; text alias เช่น “ตรวจสอบนัดหมาย” ต้องเป็น separately approved future extension | Static versioned intent marker only ไม่มี role/resource/PII. No text parser/aliases/help reply ใน first slice; C ขัด no-NLU boundary. 17J.2B กำหนด exact postback parser/marker ต่างจาก workspace switch | **OPEN / OWNER DECISION REQUIRED**; no generic NLU **CLOSED — E01** |
+| J2-Q03 ส่ง appointment fields ใดใน LINE? | E01 §18/E07: A existence/status-only; B previous minimal date/time/Hospital/high-level status; C เพิ่ม type/duration/locationType; D explicit owner-defined projection | **D-NARROW:** scheduledAt rendered as approved Thai date/time + Hospital display name เท่านั้น ช่วยจำวันไปโรงพยาบาล; ตัด status label ที่ซ้ำกับ SCHEDULED selection และอาจสับสนกับ acknowledgement | ยังเผย care association/เวลาใน chat/preview/screenshots/shared device; owner/privacy ต้องอนุมัติ exact fields. No type/duration/location/staff/OSM/acknowledgement/requests/IDs/HN/name/clinical data; no approval = no detail disclosure | **OPEN / REQUIRED OWNER PRIVACY DECISION** |
 | J2-Q04 “upcoming” หมายถึงอะไร/ข้าม Hospital หรือไม่? | E06–E09: A nearest future SCHEDULED ทุก own relationships; B today/day window; C bounded list/window; D owner-defined | **A:** `status=SCHEDULED`, `scheduledAt >= server query now` inclusive, ascending scheduledAt then id, take 1 across all own eligible relationships; no arbitrary 90-day cap | Exclude CANCELLED/COMPLETED/NO_SHOW. Pending/rejected/superseded request และ acknowledgement ไม่เปลี่ยน eligibility. Bangkok display only; no role/Hospital precedence. Narrow source query ต้องกำหนด exact selection (§5) | **OPEN / OWNER DECISION REQUIRED**; canonical status/request meaning **CLOSED — E06** |
-| J2-Q05 ถ้าไม่มีนัดที่เข้าเกณฑ์ตอบอย่างไร? | E07 history ≠ upcoming: A “ไม่พบนัดหมายที่กำลังจะมาถึง”; B same + navigation; C other | **B:** “ไม่พบนัดหมายที่กำลังจะมาถึง\nดูรายการนัดหมายได้ที่ «ดูนัดหมายทั้งหมด»” หาก Q06 อนุมัติ link; otherwise A | ใช้เฉพาะ authorized successful empty result; ไม่แปล missing authority/DB failure เป็น empty; ไม่สื่อไม่มีประวัติ/ลบข้อมูล | **OPEN / OWNER COPY DECISION REQUIRED** |
-| J2-Q06 ออกจาก chat ไปดูรายละเอียดอย่างไร? | E04/E08: A inside chat only; B bounded details/list link; C wait for 17J.3; D other | **B:** label “ดูนัดหมายทั้งหมด” ไป existing `/app/personal/appointments`; root เป็น chooser ไม่ใช่ one-record detail | ไม่มี IDs/authority/token ใน URL. Builder ยังไม่มี intent นี้; 17J.2B ระบุ allowlisted extension เฉพาะ navigation ไป existing authorized web UI; ไม่ทำ complex LIFF | **OPEN / OWNER DECISION REQUIRED** |
+| J2-Q05 ถ้าไม่มีนัดที่เข้าเกณฑ์ตอบอย่างไร? | E07 history ≠ upcoming: A “ไม่พบนัดหมายที่กำลังจะมาถึง”; B same + navigation; C other | **A:** “ไม่พบนัดหมายที่กำลังจะมาถึง” ไม่มี CTA/link ใน first tranche สอดคล้อง Q06-C | ใช้เฉพาะ authorized successful empty result; ไม่แปล missing authority/DB failure เป็น empty; ไม่สื่อไม่มีประวัติ/ลบข้อมูล | **OPEN / OWNER COPY DECISION REQUIRED** |
+| J2-Q06 ออกจาก chat ไปดูรายละเอียดอย่างไร? | E04/E08: A inside chat only; B bounded details/list link ไป `/app/personal/appointments`; C defer embedded navigation to 17J.3; D other | **C:** first reply อยู่ใน LINE chat; narrow summary มีประโยชน์โดยไม่บังคับ web flow. Detailed/list navigation รอ authenticated LIFF lifecycle/auth/session contract 17J.3 | LINE binding ≠ active DEMI/Supabase browser session; B อาจผ่าน login ก่อนดูหน้า เป็น UX tradeoff ไม่ใช่ unsafe route. Existing authorized web route คงเดิม; first slice ไม่เพิ่ม appointment-link intent หรือ LIFF session UX | **OPEN / OWNER DECISION REQUIRED** |
 | J2-Q07 unlinked/ineligible/suspended/stale/conflict/group? | E01/E03/E05/E07: A generic private refusal + account navigation; B silent all; C other safe copy | **A** สำหรับ recognized 1:1 intent; group/room silent ignore; รายละเอียด §10 | Generic denial ไม่บอก account/Patient/resource ของคนอื่น; recheck authority ก่อน query. Missing token = no reply/no fallback | **OPEN — COPY/INTERACTION**; fail closed/no group Patient data **CLOSED — E01** |
 | J2-Q08 multi-role ทำคำสั่ง PATIENT ได้เมื่ออยู่ workspace อื่นหรือไม่? | E02 §3/E06/E07: A current SELF authority independent of selected menu; B menu-dependent; C other | **A** เมื่อ exact command ถูกส่งและ SELF ปัจจุบัน valid แม้ selected OSM/HOSPITAL; ไม่ switch role หรือ precedence | Client role claims ignored; stale/copied postback expands zero authority; B ใช้เป็น authorization ไม่ได้ | **CLOSED / EXISTING OWNER-APPROVED AUTHORITY BOUNDARY — E02/E06**; ไม่เปิด Option C ใหม่ |
-| J2-Q09 Reply lifecycle ต้องรักษาอะไร? | ADR-0009 Decision 5, E01/E02/E04; official reference §11 | ใช้ event replyToken immediately, once, in memory only; no X-Line-Retry-Key for Reply, no Push fallback, no exactly-once claim, domain read success แยก provider outcome | ไม่ persist/reuse token. Immediate short-lived transport vs after-response durable repair ต้องแก้ใน technical contract โดยไม่ assume scheduler suitability | **CLOSED / EXISTING ARCHITECTURE BOUNDARY**; scheduling/timing mechanics **OPEN / 17J.2B TECHNICAL DESIGN REQUIRED** |
-| J2-Q10 duplicate/redelivery/repeated tap/Reply failure? | E03/E05/E10: A consume durable event once with best-effort reply; B replay reply on every redelivery; C other | **A** duplicate event ID no query/reply replay; unseen redelivery อาจเป็น first accept แต่ไม่รับประกัน Reply; new tap/new event ID = new authorized read | หลัง receipt durable แล้ว provider failure/crash ไม่เปิด receipt ซ้ำ; user may tap again. ไม่สร้าง mutation idempotency framework/delivery queue; §11 ระบุ lost-reply tradeoff | **OPEN / OWNER DELIVERY-UX DECISION REQUIRED**; existing duplicate no-effect **CLOSED — E02/E03** |
+| J2-Q09 Reply lifecycle ต้องรักษาอะไร? | ADR-0009 Decision 5, E01/E02/E04; official reference §11 | ใช้ event replyToken as soon as possible, single-use/transient; no X-Line-Retry-Key for Reply, no Push fallback, no exactly-once claim, domain truth แยก provider outcome | ไม่ persist เป็น future-delivery credential หรือใช้ token ที่ใช้แล้ว; unused eligible token ใน redelivery ไม่ถูกห้ามด้วย event dedup อย่างเดียว. Scheduling/recovery อยู่ 17J.2B ไม่ assume scheduler suitability | **CLOSED / EXISTING ARCHITECTURE BOUNDARY**; scheduling/recovery mechanics **OPEN / 17J.2B TECHNICAL DESIGN REQUIRED** |
+| J2-Q10 ยอมรับ best-effort reactive UX หรือไม่? | E01 §13/E03/E05/E10 และ official LINE §11: A best effort ผู้ใช้อาจไม่ได้รับ reply และกดใหม่ได้; B owner-defined product expectation ภายใน invariants | **A** ไม่สัญญาว่าทุก accepted webhook มีหนึ่ง visible reply; provider/network/crash failure อาจไม่มีข้อความตอบ ผู้ใช้เริ่ม read-only command ใหม่ได้อย่างปลอดภัย | แยก business effect dedup, authorized query, Reply attempt และ visible delivery. Owner ไม่เลือก transport/database algorithm; redelivery-assisted read/Reply, ambiguous outcome, receipt/query/Reply/2xx ordering และ concurrency เป็น 17J.2B | **CLOSED — EXISTING INVARIANTS**; **OPEN / OWNER PRODUCT-EXPECTATION DECISION REQUIRED**; **OPEN / 17J.2B TECHNICAL DESIGN REQUIRED** |
 | J2-Q11 ต้องมี conversation state หรือไม่? | E01 initial stateless UX; A zero state; B multi-message session; C other | **A:** tap → lookup → reply → done | ไม่มี pending question/session/wizard/chat OTP/HN/National-ID lookup. Existing account action intents/menu preference/event receipts ไม่ใช่ conversation state | **CLOSED / EXISTING INITIAL STATELESS BOUNDARY — E01**; future multi-message requires separate contract |
 | J2-Q12 log/audit อะไรบ้าง? | E01 privacy/E03 receipt/E05 link audit/E07 read path: A sanitized telemetry without clinical read audit; B durable every-read audit; C other approved policy | **A** correlation ID, permitted event ID, canonical intent, outcome/category, duration เท่านั้น | No raw text/postback/subject/tokens/PII/appointment/resource IDs/clinical data. Event ID access/retention ตาม existing policy; pack ไม่ขยาย retention. No evidence ordinary successful SELF read requires AuditEvent; lifecycle audits unchanged | **OPEN / OWNER OBSERVABILITY DECISION REQUIRED**; existing no-sensitive-logging boundary **CLOSED — E01** |
-| J2-Q13 unsupported text/postback/help? | E01/E03/E04: A silent ignore; B fixed minimal help for user text, unknown postback ignore; C other deterministic behavior | **B:** “กรุณาเลือกเมนู DEMI ด้านล่างเพื่อใช้งาน” once per accepted text event, no echo/no intent guessing; unknown postback silent ignore | Text ไม่ route business; group/room/media/system/invalid events ignored. Workspace-switch marker ยังคง dispatch 17J.1 ไม่ใช่ unknown/business command. Help acceptance/dedup ต้องกำหนดใน 17J.2B ไม่เพิ่ม state | **OPEN / OWNER HELP-UX DECISION REQUIRED** |
+| J2-Q13 unsupported events/messages ทำอย่างไร? | E01/E03/E04: A sanitized ignore; B owner-defined deterministic alternative requiring explicit scope review | **A:** arbitrary text, unknown/generic postback, image/audio/video/file/location/sticker และ group/room Patient events sanitized-ignore; no text help reply | Exact known business postback เท่านั้นเข้า reactive command; workspace-switch ใช้ 17J.1 unchanged. No message/text command, text parser/alias/fuzzy/NLU/LLM/chatbot/help state; future exact text alias ต้อง separately approved extension | **OPEN / OWNER UNSUPPORTED-EVENT UX DECISION REQUIRED** |
 | J2-Q14 first slice มี mutation หรือไม่? | E06 web interactions approved ≠ chat approval: A READ ONLY; B add acknowledgement/request etc.; C other | **A** scope เล็ก ทดสอบ authority/disclosure/transport ก่อน | No acknowledge/cancel request/reschedule/create/complete/no-show/coordination; no new domain side effects/read clinical audit automatically. B ต้องมี separate action contract ไม่ inherit web permission เป็น chat UX | **OPEN / OWNER FIRST-SLICE SCOPE DECISION REQUIRED** |
 
 ### Q04 precision and non-inherited rules
 
-Server query ใช้หนึ่ง captured current instant; ไม่ใช้ webhook timestamp เป็น business cutoff และไม่ใช้ “ตั้งแต่เที่ยงคืนวันนี้”. Appointment ตรง boundary ถูก include; นัดที่เริ่มก่อน now แม้ duration ยังไม่จบถูก exclude. Equal scheduledAt เลือก internal id ascending อย่าง deterministic โดยไม่ส่ง ID ไป LINE. ไม่มี count/รายการ Hospital อื่นใน reply; ทางดูรายการทั้งหมดอยู่หน้า web
+Server query ใช้หนึ่ง captured current instant; ไม่ใช้ webhook timestamp เป็น business cutoff และไม่ใช้ “ตั้งแต่เที่ยงคืนวันนี้”. Appointment ตรง boundary ถูก include; นัดที่เริ่มก่อน now แม้ duration ยังไม่จบถูก exclude. Equal scheduledAt เลือก internal id ascending อย่าง deterministic โดยไม่ส่ง ID ไป LINE. ไม่มี count/รายการ Hospital อื่นใน reply; รายการทั้งหมดอยู่ใน existing authorized web UI โดย first-slice Reply ไม่ embed link
 
 Scope ตาม SELF เดิมรวม own relationships โดยไม่เพิ่ม Hospital ACTIVE filter หรือ Family 90-day SCHEDULED/CANCELLED grant window. หาก owner ต้องการต่างจากนี้ให้ตอบ Q04 ชัดเจนก่อน technical contract. Missing PatientProfile/ไม่มี own relationship = ineligible response Q07; own relationship มีแต่ไม่มี matching appointment = empty Q05. การอ่าน own relationship ของ suspended Hospital ยังคงได้ตาม policy ที่ตรวจ ไม่สร้าง operational Hospital authority
 
@@ -118,28 +127,30 @@ Asia/Bangkok เป็น **display-time choice** ตาม `formatPatientDateTi
 
 **ทุก candidate disclosure ยัง NOT OWNER APPROVED.** Authenticated web allowlist หรือ Family grant disclosure ไม่ใช่ LINE approval. Rich Menu/postback มี intent marker เท่านั้น; ไม่มี Patient fields ทุกตัวเลือก
 
-| Field/content | A status-only | B minimal next appointment (recommended) | C broader | ข้อจำกัด/impact |
-| --- | --- | --- | --- | --- |
-| Upcoming existence / authorized empty | Candidate | Candidate | Candidate | แม้ A ก็เผยว่ามี care appointment; ต้อง owner review |
-| Date/time from scheduledAt | Exclude | Candidate | Candidate | Exact Thai display/เวลาไทย; reveals schedule |
-| Hospital display name | Exclude | Candidate | Candidate | Owning relationship Hospital; reveals care association; no code/ID/HN |
-| High-level canonical status | Exclude enum; existence copy only | Candidate “นัดหมายแล้ว” | Candidate | Not attendance confirmation; no pending-request/acknowledgement narrative |
-| Appointment type/duration/locationType | Exclude | Exclude | Candidate only if explicitly chosen | มากกว่าข้อมูลจำเป็น; not recommended for first slice |
-| National ID, HN, legal name, phone/address | Exclude | Exclude | Exclude | Not routine chat lookup/disclosure |
-| appointment/relationship/User/Person/database IDs, hidden resource locators | Exclude | Exclude | Exclude | Internal selection only; no payload, link, log disclosure |
-| locationDetail/free text, clinical note/diagnosis/medication/clinical data | Exclude | Exclude | Exclude | No approved LINE field; detailed sensitive workflows authenticated web/LIFF later |
-| responsible staff/OSM identity/profession, creator | Exclude | Exclude | Exclude | Web DTO permission does not carry into chat |
-| acknowledgement, cancellation requests/history, audit/version metadata | Exclude | Exclude | Exclude | Preserve canonical semantics internally; no interaction history in LINE |
-| LINE subject/tokens/session/access/OTP/authority claims | Exclude | Exclude | Exclude | Transient verified boundary input only where necessary, never output/log |
-| Constant allowlisted appointment-root link | Separate Q06 | Separate Q06 | Separate Q06 | No personalized query/fragment/ID/token; page reauthorizes |
+| Field/content | A existence/status-only | B previous minimal | C broader | D-NARROW (recommended) | ข้อจำกัด/impact |
+| --- | --- | --- | --- | --- | --- |
+| Upcoming existence / authorized empty | Candidate | Candidate | Candidate | Candidate via summary/empty copy | แม้ A ก็เผยว่ามี care appointment; ต้อง owner review |
+| Date/time from scheduledAt | Exclude | Candidate | Candidate | Candidate | Exact Thai display/เวลาไทย; reveals schedule |
+| Hospital display name | Exclude | Candidate | Candidate | Candidate | Owning relationship Hospital; reveals care association; no code/ID/HN |
+| High-level canonical status | Existence/status-only copy | Candidate only | Candidate only | **Exclude; no status label** | SCHEDULED selection เป็น internal rule ไม่ใช่ acknowledgement/attendance confirmation |
+| Appointment type/duration/locationType | Exclude | Exclude | Candidate only if explicitly chosen | Exclude | มากกว่าข้อมูลจำเป็น; not recommended for first slice |
+| National ID, HN, Patient/legal name, phone/address | Exclude | Exclude | Exclude | Exclude | Not routine chat lookup/disclosure |
+| appointment/relationship/User/Person/database IDs, hidden resource locators | Exclude | Exclude | Exclude | Exclude | Internal selection only; no payload, link, log disclosure |
+| locationDetail/free text, clinical note/diagnosis/medication/clinical data | Exclude | Exclude | Exclude | Exclude | No approved LINE field; detailed sensitive workflows authenticated web/LIFF later |
+| responsible staff/OSM identity/profession, creator | Exclude | Exclude | Exclude | Exclude | Web DTO permission does not carry into chat |
+| acknowledgement, cancellation requests/history, audit/version metadata | Exclude | Exclude | Exclude | Exclude | Preserve canonical semantics internally; no interaction history in LINE |
+| LINE subject/tokens/session/access/OTP/authority claims | Exclude | Exclude | Exclude | Exclude | Transient verified boundary input only where necessary, never output/log |
+| Embedded appointment-list/detail link | Separate Q06 option B | Separate Q06 option B | Separate Q06 option B | **Exclude in first slice; defer 17J.3** | Existing web route authorized; binding ≠ browser session; future navigation needs lifecycle/auth/session contract |
 
-Owner-defined D ต้องระบุแต่ละ field, rationale และ explicit privacy approval ใหม่. ไม่ใช้ D เป็นช่องอนุมัติ entire DTO. ถ้า B ไม่ผ่านให้ owner เลือก A หรือ narrow D; ทีมไม่ลด/เพิ่ม disclosure เองและไม่ implement ก่อน closeout
+Owner-defined D ต้องระบุแต่ละ field, rationale และ explicit privacy approval. D-NARROW แนะนำเพียง Thai date/time + Hospital display name ไม่มี status label หรือข้อมูลอื่น. ไม่ใช้ D เป็นช่องอนุมัติ entire DTO; ถ้า D-NARROW ไม่ผ่านให้ owner เลือก A หรือ explicit alternative เอง ทีมไม่ลด/เพิ่ม disclosure และไม่ implement ก่อน closeout
 
 ## 10. Chat vs LIFF / exception UX
 
-Chat first slice มีเพียง read-only approved summary/empty/generic refusal/help; complex multi-input, sensitive detail และ appointment mutations อยู่ authenticated existing web UI หรือ later explicitly approved LIFF workflow. Existing appointment page มี actions ตาม 17D; navigation ไม่ใช่ chat mutation และไม่ขยาย permission
+**RECOMMENDATION — NOT OWNER APPROVED:** Chat first slice มีเพียง narrow read-only summary/empty/generic refusal ของ recognized business postback; ไม่มี text help หรือ embedded appointment-list/detail link. Complex multi-input, sensitive detail และ appointment mutations อยู่ authenticated existing web UI หรือ later explicitly approved LIFF workflow. Existing appointment page มี actions ตาม 17D; route ปลอดภัยภายใต้ current server authorization และคงเดิม
 
-Builder ปัจจุบัน map OPEN_PATIENT_WORKSPACE → `/app/personal`, OPEN_WORK_WORKSPACE → `/app`; LINK/MANAGE/SWITCH → LIFF root ที่ endpoint `/line/account`. **ยังไม่มี appointment intent และไม่ใช่ generic LIFF router.** Q06-B เสนอ constant appointment-root URL ผ่าน centralized builder ในอนาคต เปิด existing web page ตาม session/login เดิม; ไม่อ้างว่า appointment screen เป็น LIFF workflow ที่ implement แล้ว ไม่ append appointment path เข้า account LIFF root โดยเดา lifecycle
+Builder ปัจจุบัน map OPEN_PATIENT_WORKSPACE → `/app/personal`, OPEN_WORK_WORKSPACE → `/app`; LINK/MANAGE/SWITCH → LIFF root ที่ endpoint `/line/account`. **ยังไม่มี appointment intent และไม่ใช่ generic LIFF router.** Q06-B ยังคงเป็น alternative “ดูนัดหมายทั้งหมด” ไป existing `/app/personal/appointments` ผ่าน centralized allowlist แต่ **LINE identity binding ≠ active DEMI/Supabase browser session**: session หมดอายุอาจต้อง login ก่อนเห็นรายการ เป็น UX/session-boundary tradeoff ไม่ใช่ security defect
+
+Q06-C แนะนำให้ first slice prove useful bounded action ใน chat โดยใช้ approved minimum summary; ไม่บังคับ web flow หรือเพิ่ม LIFF lifecycle/session UX. Existing authorized appointment web route ใช้สำหรับ normal application navigation ต่อไป; first Reply ไม่ embed route นี้. 17J.3 อาจออกแบบ detailed/list navigation หลังมี authenticated LIFF lifecycle/auth/session contract ของตน ทุก target reauthorizes SELF และ link ไม่ใส่ authority/Patient identity/role/HN/National ID/token. ไม่ append appointment path เข้า account LIFF root โดยเดา lifecycle และไม่ implement 17J.3 ในงานนี้
 
 **RECOMMENDATION — NOT OWNER APPROVED — Q07 response cases:**
 
@@ -148,48 +159,66 @@ Builder ปัจจุบัน map OPEN_PATIENT_WORKSPACE → `/app/personal`,
 | No ACTIVE binding | “ยังไม่สามารถตรวจสอบนัดหมายผ่าน LINE ได้ กรุณาเปิด «จัดการบัญชี DEMI» จากเมนู” พร้อม existing account navigation; ไม่บอกสถานะ account ของคนอื่น |
 | User not ACTIVE; PATIENT role removed; missing/mismatched PatientProfile/own relationship; binding conflict | ใช้ refusal ข้อความเดียวกัน ไม่บอก suspended/role removed/conflict owner/Patient existence; no appointment query/disclosure; no auto-link/recovery/transfer |
 | Stale/copied known business postback | Validate exact intent + current binding/actor/SELF; deny ถ้าไม่ valid, ถ้า valid ทำ same bounded current read; visible menu ไม่ขยาย authority |
+| Existing 17J.1 workspace-switch postback | Continue existing verified workspace preference/reconciliation behavior unchanged; ไม่เข้า appointment command |
+| Unknown/generic postback, arbitrary text, image/audio/video/file/location/sticker/etc. | Sanitized ignore; no text help reply/parser/alias/intent guessing |
 | group/room แม้มี userId | Silent ignore Patient command; no lookup/reply containing Patient data/account-status inference |
 | Successful authorized empty | Q05 wording เท่านั้น; แยกจาก ineligible |
 | Query/infrastructure failure | “ขณะนี้ยังตรวจสอบนัดหมายไม่ได้ กรุณาลองใหม่ภายหลัง” ถ้ามี immediate token; no stack trace/internal error และไม่อ้าง empty |
-| Missing/expired token หรือ Reply failure/uncertain transport | No delayed reply/Push; user ใช้เมนูใหม่หรือ existing web navigation ได้; ไม่ส่งข้อความที่สองเพื่อรายงาน failure ของ token เดิม |
+| Missing/expired token หรือ Reply failure/uncertain transport | No future-token delivery/Push fallback; อาจไม่มี visible reply ผู้ใช้กดคำสั่งใหม่ได้. Eligible redelivery recovery และ ambiguous outcome อยู่ 17J.2B ไม่สรุปว่าต้อง retry หรือห้าม retry; ไม่ใช้ token ที่ใช้แล้ว |
 
 ## 11. Reactive Reply lifecycle and deduplication
 
-Conceptual lifecycle **ไม่ใช่ approved implementation scheduling design**:
+Conceptual boundaries **ไม่ใช่ approved ordering/recovery algorithm**; ไม่ใช้ receipt existence เพื่อตัดสิน Reply eligibility:
 
 ```mermaid
 flowchart TD
     A[Signed LINE event] --> B[Raw signature / destination / bounded parsing]
     B --> C{1:1 supported canonical intent?}
-    C -->|No| I[Ignore or approved generic help only]
-    C -->|Yes| D{Durable event ID already accepted?}
-    D -->|Yes| Z[2xx no replay / no guaranteed Reply]
-    D -->|No| E[Accept event durably; token stays transient]
-    E --> F[Resolve ACTIVE binding / current actor / SELF policy]
-    F --> G[Existing domain query / narrow approved projection or safe refusal]
-    G --> H[Immediate single-use Reply outside DB transaction]
-    H --> J[Sanitized provider outcome independent of read result]
-    J --> K[Done; no token persistence / retry queue / Push fallback]
+    C -->|No| I[Sanitized ignore; preserve existing 17J.1 dispatch]
+    C -->|Yes| D[Event identity / business-effect dedup boundary]
+    D --> E[17J.2B defines receipt / query / Reply / 2xx ordering and redelivery recovery]
+    E -.-> F[Fresh ACTIVE binding / current actor / SELF authorized read]
+    F --> G[Narrow approved projection or safe refusal]
+    G -.-> H[Eligible transient single-use Reply outside DB transaction]
+    H --> J[Provider attempt outcome differs from visible delivery]
+    J --> K[Best effort; no future-token storage / Push fallback / exactly-once promise]
 ```
 
-Diagram แสดง logical dependencies เท่านั้น ไม่เลือกตำแหน่ง HTTP 2xx เทียบ Reply call. Invalid request ไม่ผ่าน validation; transaction acceptance failure ไม่ใช่ successful acceptance. Multi-event request ต้องรักษา supported-sibling isolation/durable acceptance เดิม; 17J.2B ต้องกำหนด latency budget และ crash/timeout/missing token/concurrency behavior ให้ตรวจสอบได้
+Diagram ไม่เลือกตำแหน่ง receipt/query/Reply/HTTP 2xx หรือกำหนด duplicate → no Reply. Invalid request ไม่ผ่าน validation; transaction acceptance failure ไม่ใช่ successful acceptance. Multi-event request ต้องรักษา supported-sibling isolation และ foundation acceptance invariants; 17J.2B ต้องกำหนด exact ordering, latency budget, crash/timeout/missing token และ concurrency behavior ให้ตรวจสอบได้
 
-Accepted Reply boundary: ใช้ token ของ event นั้นทันที ครั้งเดียว ไม่ persist เพื่อ future delivery ไม่ reuse ไม่ใช้ X-Line-Retry-Key semantics และไม่ fallback Push. Domain read success ไม่ขึ้นกับ provider success; successful API response ไม่ใช่ exactly-once visible delivery. Official [Reply reference](https://developers.line.biz/en/reference/messaging-api/nojs/#send-reply-message) ตรวจ 2026-10-07: ใช้ภายในหนึ่งนาทีหลังรับ webhook; เกินนั้นไม่ guaranteed และต้องส่งเร็วที่สุด. Redelivered token มีข้อจำกัดเมื่อใช้แล้ว/ผ่านเวลาจาก event; platform eligibility ไม่ใช่ DEMI retry guarantee
+### Current official LINE behavior — verified 2026-10-07
 
-**Architectural tension — OPEN / 17J.2B:** 17J.1 commit receipt/effect → schedule `after()` → return 2xx; deferred menu call มี durable state ให้ repair. Reply ต้อง token transient/short-lived; reuse scheduler/durable repair แบบเดิมอาจเสีย deadline หรือ crash หลัง receipt แล้วไม่มี Reply. Await Reply ก่อน 2xx ก็เปลี่ยน latency/provider-dependency boundary; token queue ก็ขัด no-persistence/no-delivery-queue scope. 17J.2A ไม่เลือก workaround/เพิ่ม storage/เปลี่ยน route. 17J.2B ต้องเขียน precise event acceptance + immediate transport lifecycle ที่ preserve foundation และระบุ tradeoff ก่อน implementation
+[Webhook redelivery guide](https://developers.line.biz/en/docs/messaging-api/receiving-messages/#redeliver-a-webhook-that-failed-to-be-received): `webhookEventId` ระบุ event และใช้ detect duplicate; redelivery คง event ID และ replyToken เดิม เปลี่ยน isRedelivery. Redelivery อาจสลับลำดับและไม่ guaranteed; ไม่ใช่ durable delivery queue
 
-**RECOMMENDATION — NOT OWNER APPROVED — Q10:**
+[Reply token reference](https://developers.line.biz/en/reference/messaging-api/nojs/#send-reply-message): single-use ใช้เร็วที่สุด ภายในหนึ่งนาทีหลังรับ webhook; เกินนั้นไม่ guaranteed. Token ใน redelivery อาจใช้ได้ภายในหนึ่งนาทีหลังรับ redelivery หากยังไม่ใช้ token จาก original event และยังไม่ผ่าน 20 นาทีจาก event occurrence. Limits อาจเปลี่ยนและ network delay มีผล; platform eligibility ไม่ใช่ Reply guarantee
 
-| Situation | Intended first-slice semantics |
+[Official retry guide](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/): retry-key support มี Push/Multicast/Narrowcast/Broadcast ไม่รวม Reply; unsupported endpoint ที่ส่ง X-Line-Retry-Key ถูก reject. Reply ไม่มี retry-key idempotency semantics หรือ exactly-once visible-delivery guarantee. `Invalid reply token` อาจหมายถึง expired หรือ used ตาม [error reference](https://developers.line.biz/en/reference/messaging-api/nojs/#error-messages); จึงไม่ใช้ error นี้เป็นหลักฐานว่า delivered แล้ว
+
+### Separate four layers
+
+| Layer | Boundary / status |
 | --- | --- |
-| Same durable webhookEventId | No duplicate query/business effect/Reply; 2xx. Receipt proves acceptance, not visible delivery |
-| LINE redelivery with receipt present | Same duplicate rule regardless isRedelivery; never guaranteed Reply retry |
-| LINE redelivery with no durable receipt | Can be first acceptance of eligible event; fresh authority/current query, immediate token only if usable; no retrospective delivery promise |
-| User taps again, new event ID | New current authorized read/new token; not duplicate by text/intent/Patient or timestamp |
-| Reply fails/expires/response ambiguous after receipt durable | Keep consumed event; sanitized provider outcome; no receipt reset, re-send, retry key, Push or domain rollback |
-| Crash after durable acceptance before Reply | Reply may be lost; duplicate suppressed; user may initiate a new tap. Owner must accept this limitation or request separately bounded contract change |
+| Business effect deduplication | **CLOSED / EXISTING INVARIANT:** event identity ป้องกัน duplicate domain mutation/effect; first command READ ONLY recommendation ไม่มี appointment mutation |
+| Domain/query execution | **OPEN / 17J.2B:** fresh authorized re-read vs reuse on redelivery; event dedup ไม่กำหนดว่าห้าม query ซ้ำโดยอัตโนมัติ |
+| Reply transport attempt | **OPEN / 17J.2B:** eligible unused token, not-attempted vs known-used vs unknown outcome, ordering/concurrency; durable receipt ไม่พิสูจน์ว่า token ใช้แล้วหรือห้าม attempt |
+| Provider-visible delivery | **OPEN / OWNER PRODUCT EXPECTATION:** best effort อาจไม่มี visible reply; ไม่สัญญาหนึ่ง reply ต่อ accepted event และผู้ใช้กดใหม่ได้ |
 
-Existing [webhook guide](https://developers.line.biz/en/docs/messaging-api/receiving-messages/#redeliver-a-webhook-that-failed-to-be-received) says duplicate detection uses event ID, redelivery can reorder and isn't guaranteed. Read-only command needs webhook deduplication but no business mutation idempotency ledger. Current receipt eventType enum cannot represent business intent/help; technical contract must acknowledge this gap explicitly without relabelling events RICHMENUSWITCH or writing migrations now
+**CLOSED / EXISTING INVARIANTS:** no duplicate domain mutation/effect; token single-use/transient ไม่ persist เป็น future-delivery credential ไม่ใช้ token ที่ใช้แล้ว; no X-Line-Retry-Key for Reply, no Push fallback, no exactly-once delivery claim; provider failure ไม่เปลี่ยน DEMI domain truth. Receipt persistence/event dedup ไม่ใช่ provider delivery receipt
+
+**Architectural tension — OPEN / 17J.2B:** 17J.1 commit receipt/effect → schedule `after()` → return 2xx; deferred menu call มี durable state ให้ repair. Reply ต้อง token transient/short-lived; reuse scheduler อาจเสีย deadline หรือ crash แล้วไม่มี visible reply. Await Reply ก่อน 2xx ก็เปลี่ยน latency/provider-dependency boundary. 17J.2B ต้องกำหนด redelivery-assisted Reply behavior, fresh authorized re-read vs reuse, receipt/query/Reply/2xx ordering, multi-event handling, timeout/crash/ambiguous provider outcome และ concurrency. ต้องประเมินว่าจำเป็นต้องมี bounded receipt state extension จริงหรือไม่; **ยังไม่อนุมัติ migration, delivery-attempt table หรือ queue**. 17J.2A ไม่เลือก algorithm/เพิ่ม storage/เปลี่ยน route
+
+**RECOMMENDATION — NOT OWNER APPROVED — Q10 product expectation:** ยอมรับ best-effort reactive lookup; transient provider/network/crash failure อาจไม่มี visible reply ผู้ใช้เริ่ม read-only command ใหม่ได้อย่างปลอดภัย. DEMI ไม่สัญญาว่าทุก accepted webhook มีหนึ่ง visible reply. Owner ตัดสินใจความคาดหวังนี้ ไม่เลือก transport/recovery/database algorithm
+
+| Situation | Existing invariant / product expectation / technical question |
+| --- | --- |
+| Same durable webhookEventId | Duplicate event identity ≠ duplicate business effect. ไม่อนุมาน no query/no Reply จาก receipt อย่างเดียว; query/attempt/2xx mechanics OPEN / 17J.2B |
+| LINE redelivery with receipt present | Same event ID/token; token อาจยัง eligible หาก unused/within limits. อนุญาต fresh authorized read + attempt หรือไม่ และตรวจ ambiguous outcome อย่างไร OPEN / 17J.2B; never guaranteed recovery |
+| LINE redelivery with no durable receipt | อาจเป็น first acceptance; exact receipt/query/Reply/2xx ordering และ current authorization OPEN / 17J.2B; no delivery promise |
+| User taps again, new event ID | New current authorized read/new token; not duplicate by text/intent/Patient or timestamp |
+| Reply fails/expires/response ambiguous after receipt durable | No Push/domain rollback/future-token credential/retry-key semantics. Known-used token ใช้ไม่ได้; unknown outcome ไม่ใช่ proof ว่า used/unused หรือ visible. Bounded recovery decision OPEN / 17J.2B |
+| Crash after durable acceptance before Reply | อาจไม่มี visible reply; receipt ไม่พิสูจน์ว่า token used. Eligible redelivery-assisted read/Reply mechanics OPEN / 17J.2B; owner review best-effort expectation ผู้ใช้กดใหม่ได้ |
+
+Read-only command ต้องแยก event identity/effect dedup จาก query และ transport recovery โดยไม่สร้าง business mutation idempotency ledger. Current receipt eventType enum ยัง represent business intent ไม่ได้; technical contract ต้องรับรู้ gap นี้โดยไม่ relabel เป็น RICHMENUSWITCH หรือ pre-approve schema change. Text help ไม่ใช่ supported first-slice event
 
 ## 12. Security invariants (already accepted; not reopened)
 
@@ -197,10 +226,10 @@ Existing [webhook guide](https://developers.line.biz/en/docs/messaging-api/recei
 - Current persisted User ACTIVE, Person relation, PATIENT role and exact SELF scope re-evaluated every command; policy fail closed. Role/membership/scope never come from text/postback/URL
 - presentationRole is UI preference only; preserve owner-approved Option C and no role precedence. OSM/HOSPITAL/ADMIN-only cannot acquire Patient authority; multi-role reads SELF only
 - group/room Patient commands ignored safely even if a userId exists; no Patient data delivered there
-- Postback contains canonical intent marker only; no IDs/PII/clinical fields/tokens/authority. Unknown text never grants business authority; no fuzzy/LLM/NLU router
+- Postback contains canonical intent marker only; no IDs/PII/clinical fields/tokens/authority. Recommended first-slice entry เป็น exact business postback เท่านั้น; existing workspace switch unchanged. Arbitrary text/unknown postback/media sanitized-ignore; no text parser/aliases/help reply/fuzzy/LLM/NLU router
 - No National ID/HN/OTP requested in chat after linking; existing DEMI auth/link/recovery flow remains authoritative
 - Minimum owner-approved projection only; no whole PatientSelfAppointmentItem. Target route rechecks authenticated SELF; route locator is not permission
-- No Reply-token persistence/reuse/Push fallback, proactive/reminder semantics, exactly-once claim, or dependence of domain outcome on LINE availability
+- No Reply-token persistence as future-delivery credential/used-token reuse/Push fallback, proactive/reminder semantics, exactly-once claim, or dependence of domain outcome on LINE availability. Event dedup ไม่ปิด eligible redelivery recovery โดยอัตโนมัติ; mechanics remain 17J.2B
 - No medication/adherence behavior, Family authority expansion or ADMIN operational Patient access; existing lifecycle audit/security constraints preserved
 
 ## 13. Explicit non-goals
@@ -222,15 +251,15 @@ P17D-NOTIF-01 (events/recipient/time/stale/cancel/preferences/consent/retry), ME
 ช่องว่างคือ OPEN ไม่ถือ default/recommendation/ไม่มีคำตอบเป็น approval. Owner closeout ต้องตอบทั้ง options และ exact projection/copy/selection/UX tradeoff; ระบุผู้ตัดสินใจ วันที่ และ authority evidence
 
 - [ ] Q01: domain A/B/C/D: ______
-- [ ] Q02: trigger A/B/D, exact-text alias ถ้ามีต้องระบุ separately: ______
-- [ ] Q03 **required privacy approval**: A/B/C/D และ exact permitted field list: ______; รับทราบ chat/preview/shared-device exposure: ______
+- [ ] Q02: trigger option: ______; recommendation A postback only ไม่มี text alias/parser; future alias ต้อง separately approved extension
+- [ ] Q03 **required privacy approval**: A/B/C/D: ______; recommendation D-NARROW = Thai date/time จาก scheduledAt + Hospital display name เท่านั้น ไม่มี status label/ข้อมูลอื่น; exact approved field list: ______; รับทราบ chat/preview/shared-device exposure: ______
 - [ ] Q04: status/time inclusive boundary/tie-break/take-one/all-own-Hospitals/window/display: ______; preserve canonical request semantics
-- [ ] Q05: exact empty Thai copy และ link variant: ______
-- [ ] Q06: navigation option/label/existing web route vs later LIFF: ______
+- [ ] Q05: exact empty Thai copy: ______; recommendation “ไม่พบนัดหมายที่กำลังจะมาถึง” ไม่มี CTA/link
+- [ ] Q06: navigation option: ______; recommendation C ไม่ embed appointment link ใน first slice, defer authenticated detailed/list LIFF navigation to 17J.3; รับทราบ binding ≠ browser session และ existing authorized web UI คงเดิม
 - [ ] Q07: generic private refusal/account route, unavailable copy, silent group/room: ______
-- [ ] Q10: duplicate no Reply replay และ accepted-event crash/lost-reply/new-tap tradeoff: ______
+- [ ] Q10 **product expectation only**: ยอมรับ best-effort อาจไม่มี visible reply หลัง provider/network/crash failure, ผู้ใช้กดใหม่ได้ และไม่สัญญาหนึ่ง reply ต่อ accepted event: ______; redelivery/query/Reply/receipt/2xx/recovery mechanics remain 17J.2B
 - [ ] Q12: minimal sanitized telemetry, permitted event ID handling/no ordinary clinical read AuditEvent: ______
-- [ ] Q13: ignore vs fixed help; exact Thai copy; unknown postback/media behavior: ______
+- [ ] Q13: unsupported-event UX option: ______; recommendation sanitized-ignore arbitrary text/unknown postback/media/group/room Patient events; no text help/parser/aliases/state, existing 17J.1 switch unchanged
 - [ ] Q14: **READ ONLY** หรือ separately bounded action-contract request: ______
 - [x] Q08: presentation != authorization, current SELF and Option C — CLOSED under existing approved sources; no new role precedence
 - [x] Q09: immediate single-use transient Reply/no Push fallback — CLOSED architecture; scheduling resolution remains technical dependency
@@ -238,8 +267,8 @@ P17D-NOTIF-01 (events/recipient/time/stale/cancel/preferences/consent/retry), ME
 
 ## 16. GO / NO-GO for 17J.2B and validation
 
-**GO — owner review/decision closeout ของ pack นี้. NO-GO — drafting a precise implementation-ready 17J.2B contract until OPEN owner choices above are explicitly closed, especially Q03 privacy, Q04 selection and Q10 lost-reply semantics. NO-GO — runtime/schema/provider work in this task.** Closed architecture items are cited and preserved; lifecycle tension becomes an explicit technical design obligation after owner closeout, not an excuse to implement early
+**GO — owner review/decision closeout ของ corrected pack นี้. NO-GO — drafting a precise implementation-ready 17J.2B contract until OPEN owner product choices above are explicitly closed, especially Q03 privacy, Q04 selection, Q06 no-first-slice-navigation และ Q10 best-effort product expectation. NO-GO — runtime/schema/provider work in this task.** Owner ไม่เลือก low-level transport/database algorithm; redelivery-assisted read/Reply, ambiguous outcome, ordering และ concurrency เป็น OPEN technical obligations ของ 17J.2B หลัง owner closeout ไม่ใช่ algorithm approval ของ 17J.2A
 
 17J.2A validation: ตรวจ relative Markdown targets และ local section references, strict UTF-8/Thai text, encoding/line endings ของ CONTEXT, accidental current-status contradictions, documentation-only changed-path allowlist, final diff และ `git diff --check`. Runtime tests/build/integration ไม่รัน; prior handoff results เป็น historical evidence เท่านั้น
 
-Exact next step after owner decision closeout: **Phase 17J.2B — Deterministic Reactive Messaging Technical Contract**. งานนี้หยุดที่ 17J.2A
+Exact next step: **Owner decision closeout for the corrected 17J.2A pack**. หลัง closeout จึงเป็น Phase 17J.2B — Deterministic Reactive Messaging Technical Contract; **ยังไม่เริ่ม 17J.2B**. งานนี้หยุดที่ 17J.2A
