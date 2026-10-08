@@ -8,6 +8,14 @@
 
 ## 1. Status and source baseline
 
+### Owner-directed target and care-navigation clarification — 2026-10-08
+
+The owner explicitly authorizes these two narrow revisions for the 17J.3B remediation. For LINE-launched OPEN_PATIENT_APPOINTMENTS only, the initial root is now **/line/workflow/appointments**, with history/detail and the existing interactions inside a mandatory LINE-scoped namespace. **/app/personal/appointments remains the unchanged ordinary DEMI route.** Both entry paths reuse existing Appointment presentation, application/domain services, policies and persistence. This is an integration boundary, not a second Appointment application.
+
+Broader care/personal navigation is an **explicit exit** from that scoped workflow. The UI must identify the destination as ordinary DEMI before navigation; ordinary authentication/domain authorization applies there and no LINE authority transfers. Returning to scoped routes requires a currently valid scoped context and all current checks; exit does not grant or extend it.
+
+This dated clarification supersedes only the historical ordinary-path initial target in Q01/Q04 and the previously unresolved care-navigation continuity boundary. Root-only first entry, all remaining Q01–Q16 restrictions, Q07=C, normal DEMI credentials, wrong-account denial, Q16 lifetime enforcement and ordinary-web independence remain binding. Historical tables/flow below record the original closeout unchanged. It grants neither technical clearance nor runtime implementation. See the [remediated 17J.3B contract](./PHASE_17J3B_MINI_APP_WORKFLOW_TECHNICAL_CONTRACT.md) for current mechanics, evidence limits and NO-GO gates.
+
 The owner explicitly approved J3-Q01 through J3-Q12 and J3-Q15 through J3-Q16 on 2026-10-08. J3-Q13 preserves the already-closed multi-role authorization architecture. J3-Q14 preserves the accepted first-slice URL/privacy boundary. These decisions close Phase 17J.3A product scope; they do not approve technical mechanics or runtime work.
 
 The reviewed baseline was clean at commit `6e70b38f01e67cdb3b4f15f3cc1d996f247e34d7`, which includes the 2026-10-08 decision-pack topology correction. No material conflict with accepted ADR-0009 was found: a new MINI App channel remains under DEMI's existing Provider, while LINE identity remains separate from DEMI authentication and authorization. ADR-0009 is unchanged.
