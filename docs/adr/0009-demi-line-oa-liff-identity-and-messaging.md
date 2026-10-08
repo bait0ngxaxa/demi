@@ -36,6 +36,14 @@ Authoritative unlink takes effect in DEMI at local transaction commit and is ind
 
 Exact LINE identity-history fingerprint/owner retention and erasure duration, and future cross-account correction/reconciliation/merge/transfer semantics remain OPEN. This open item does not block v1 if runtime remains fail-closed while retained evidence conflicts; it does not reopen Option C.
 
+## Full Disconnection amendment — 2026-10-08
+
+**Owner-decided product exception; engineering lifecycle proposal held / NO-GO.** “Unlink LINE from DEMI” now means one Full LINE Integration Disconnection operation: immediately revoke local binding and advance lifecycle, then terminate every applicable DEMI Account Login/LIFF and MINI internal-channel permission with independent honest status. Local authority and availability independence above remain Accepted. The older assumption that local unlink/Rich Menu cleanup is sufficient product completion, and unconditional same-User relink during unresolved remote termination, are superseded. Q07's same-Provider MINI addition retains separate audiences; unchanged-Account wording yields only to necessary termination/status/recovery/pending fences.
+
+The [17J.3B contract section 23.1](../phases/PHASE_17J3B_MINI_APP_WORKFLOW_TECHNICAL_CONTRACT.md#231-full-line-integration-disconnection--final-lifecycle-contract) selects one narrow LINE-owned channel-scoped lifecycle record proposal. Existing binding version/menu cleanup cannot express independent consent outcomes or ambiguous remote submissions. No new authentication system, generic framework, token persistence, schema/migration or worker is approved. The binding remains the sole local access authority; channel records would own external obligation/settlement only. User-first lock order and existing transaction retry/composition are retained, with provider I/O outside locks.
+
+Owner semantics do not approve a concrete schema, provider recovery mechanism or operator override. **B17J3-LIFECYCLE-RELEASE remains NO-GO** until a supported channel-specific absence/removal and late-request settlement rule permits safe recovery/relink. Local generation fencing cannot cancel remote requests. No indefinite restriction is approved. Account channel/LIFF/audience, explicit retained-history conflict policy, ordinary credentials/Patient access/data, OA friendship, Family, J2 and Rich Menu architecture remain unchanged except the stated product lifecycle consequences. This amendment records the dated decision and proposal boundary; it does not clear runtime implementation or alter the historical v1 handoff.
+
 ## Rationale
 
 - Provider identity namespace is a platform-level decision that is costly to reverse after channel creation.
