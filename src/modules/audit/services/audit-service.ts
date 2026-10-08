@@ -21,6 +21,14 @@ export async function recordAuditEvent(
   input: AuditEventInput,
   database?: AuditDatabase,
 ): Promise<void> {
+  await recordAuditEventWithId(input, database);
+}
+
+/** Same validation/persistence boundary, for transactional decision references. */
+export async function recordAuditEventWithId(
+  input: AuditEventInput,
+  database?: AuditDatabase,
+): Promise<string> {
   const parsed = auditEventInputSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -34,7 +42,7 @@ export async function recordAuditEvent(
   try {
     const db = database ?? getPrisma();
 
-    await db.auditEvent.create({
+    const event = await db.auditEvent.create({
       data: {
         actorUserId: parsed.data.actorUserId,
         action: parsed.data.action,
@@ -43,6 +51,7 @@ export async function recordAuditEvent(
         metadata,
       },
     });
+    return event.id;
   } catch (error: unknown) {
     // Let the enclosing serializable service transaction retry known write
     // conflicts instead of converting them into a terminal infrastructure error.

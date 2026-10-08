@@ -23,6 +23,8 @@ import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import { getCurrentLineSession, lineSessionHashMatches, type CurrentLineSession } from "./line-session-service";
 import { recordLineFriendshipObservation, type ReachabilityEventState } from "./line-reachability-service";
 import { resolveEligibleLineRoles } from "./line-eligibility-service";
+import { initializeLineTermination, observeLineAuthorization } from "./line-authorization-lifecycle-service";
+import { lineChannelTupleKey, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
 
 const INTENT_TTL_MS = 5 * 60 * 1000;
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -33,6 +35,8 @@ export type LineAccountDependencies = {
   verifyIdentity?: typeof verifyLineIdToken;
   verifyFriendship?: typeof verifyLineFriendship;
   currentSession?: () => Promise<CurrentLineSession>;
+  /** Staged server-only composition seam. No route/config enables it until recovery is executable. */
+  authorizationInventory?: LineChannelInventory;
 };
 
 function databaseOf(dependencies: LineAccountDependencies): PrismaClient {
@@ -58,6 +62,8 @@ export async function createLineAccountIntent(
   action: LineAccountAction,
   dependencies: LineAccountDependencies = {},
 ): Promise<{ intentId: string; challenge: string; expiresAt: string }> {
+  // Recovery requires a separate live exact-session/proof orchestration, not this legacy session check.
+  if (action === LineAccountAction.RECOVERY) throw new ForbiddenError();
   const session = await (dependencies.currentSession ?? getCurrentLineSession)();
   const db = databaseOf(dependencies);
   const now = nowOf(dependencies);
@@ -200,6 +206,7 @@ export async function linkLineAccount(
         },
       });
       if (userBinding && userBinding.lineSubjectFingerprint === identity.fingerprint) {
+        await observeAccountBinding(transaction, userBinding, dependencies, nowOf(dependencies));
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
         return { status: "ALREADY_LINKED" as const, bindingId: userBinding.id, lifecycleVersion: userBinding.lifecycleVersion };
       }
@@ -238,6 +245,7 @@ export async function linkLineAccount(
             },
           });
       await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
+      await observeAccountBinding(transaction, binding, dependencies, nowOf(dependencies));
       await recordAuditEvent({ actorUserId: session.userId, action: "line.account.linked", resourceType: "LineAccountBinding", resourceId: binding.id }, transaction);
       return {
         status: userBinding ? "ALREADY_LINKED" as const : "LINKED" as const,
@@ -278,6 +286,20 @@ async function consumeIntent(
   });
 }
 
+async function observeAccountBinding(
+  transaction: Prisma.TransactionClient,
+  binding: { id: string; userId: string; lifecycleVersion: number },
+  dependencies: LineAccountDependencies,
+  now: Date,
+): Promise<void> {
+  const inventory = dependencies.authorizationInventory;
+  if (!inventory) return;
+  const account = inventory.channels.find((channel) => channel.kind === "ACCOUNT");
+  if (!account) throw new ForbiddenError();
+  await observeLineAuthorization(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion },
+    inventory, lineChannelTupleKey(account), now);
+}
+
 export async function unlinkLineAccount(
   input: { intentId: string; challenge: string },
   dependencies: LineAccountDependencies = {},
@@ -311,8 +333,10 @@ export async function unlinkLineAccount(
           menuSyncState: LineMenuSyncState.UNKNOWN,
           menuSyncedAt: null,
         },
-        select: { id: true, lifecycleVersion: true },
       });
+      if (dependencies.authorizationInventory) {
+        await initializeLineTermination(transaction, updated, dependencies.authorizationInventory, nowOf(dependencies));
+      }
       await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
       await recordAuditEvent({ actorUserId: session.userId, action: "line.account.unlinked", resourceType: "LineAccountBinding", resourceId: binding.id }, transaction);
       return { status: "UNLINKED" as const, bindingId: updated.id, lifecycleVersion: updated.lifecycleVersion };

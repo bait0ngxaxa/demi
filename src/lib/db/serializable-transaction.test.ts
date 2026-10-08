@@ -7,6 +7,12 @@ import {
 } from "./serializable-transaction";
 
 describe("serializable transaction helper", () => {
+  it.each(["40001", "23514", "42601"])("retries raw-query SQLSTATE %s only when serialization failed", async (sqlState) => {
+    const failure = new Prisma.PrismaClientKnownRequestError("raw query failed", { code: "P2010", clientVersion: "6.19.3", meta: { code: sqlState } });
+    const database = { $transaction: vi.fn().mockRejectedValue(failure) } as unknown as SerializableTransactionDatabase;
+    await expect(runSerializableTransaction(database, async () => "not reached")).rejects.toBe(failure);
+    expect(database.$transaction).toHaveBeenCalledTimes(sqlState === "40001" ? 3 : 1);
+  });
   it("uses Serializable isolation and retries a bounded write conflict", async () => {
     const conflict = new Prisma.PrismaClientKnownRequestError("write conflict", {
       code: "P2034",

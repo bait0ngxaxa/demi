@@ -52,6 +52,30 @@ enum LineProviderCleanupState {
 enum LineAccountAction {
   LINK
   UNLINK
+  RECOVERY
+}
+
+enum LineGrantApplicability {
+  OBSERVED
+  UNKNOWN
+  PROVEN_ABSENT
+}
+
+enum LineTerminationOutcome {
+  OBSERVED
+  PENDING
+  REMOTE_UNCONFIRMED
+  REMOTE_CONFIRMED
+}
+
+enum LineTerminationReason {
+  ATTEMPT_RESERVED
+  TOKEN_UNAVAILABLE
+  KNOWN_NOT_DISPATCHED
+  POSSIBLY_DISPATCHED
+  PROVIDER_REJECTED
+  INVALID_RESPONSE
+  PROVIDER_204
 }
 
 enum LineAccountActionOutcome {
@@ -1316,6 +1340,7 @@ model AuditEvent {
   createdAt    DateTime @default(now())
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  lineRecoveryDecisions LineAuthorizationLifecycle[]
 
   @@index([actorUserId, createdAt])
   @@index([resourceType, resourceId, createdAt])
@@ -1347,6 +1372,8 @@ model LineAccountBinding {
   updatedAt                       DateTime                   @updatedAt @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  authorizationLifecycles LineAuthorizationLifecycle[]
+  recoveryIntents LineAccountActionIntent[]
 
   @@index([userId])
   @@index([lineSubjectFingerprint])
@@ -1364,11 +1391,47 @@ model LineAccountActionIntent {
   expiresAt      DateTime                  @db.Timestamptz(3)
   consumedAt     DateTime?                 @db.Timestamptz(3)
   outcome        LineAccountActionOutcome?
+  targetBindingId String? @db.Uuid
+  targetBindingVersion Int?
+  reviewedSetDigest String? @db.VarChar(64)
+
+  targetBinding LineAccountBinding? @relation(fields: [targetBindingId], references: [id], onDelete: Restrict)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([expiresAt])
+  @@index([targetBindingId])
+}
+
+// External evidence only: these rows never confer application authority.
+model LineAuthorizationLifecycle {
+  id String @id @default(uuid()) @db.Uuid
+  bindingId String @db.Uuid
+  bindingVersion Int
+  tupleKey String @db.VarChar(64)
+  // Canonical immutable tuple definition; remains interpretable after config changes.
+  tupleDefinition String @db.VarChar(512)
+  applicability LineGrantApplicability
+  evidenceReference String @db.VarChar(128)
+  observedAt DateTime? @db.Timestamptz(3)
+  remoteOutcome LineTerminationOutcome @default(OBSERVED)
+  requestedAt DateTime? @db.Timestamptz(3)
+  confirmedAt DateTime? @db.Timestamptz(3)
+  reason LineTerminationReason?
+  attemptId String? @unique @db.Uuid
+  reservedAt DateTime? @db.Timestamptz(3)
+  settledAt DateTime? @db.Timestamptz(3)
+  recoveryReleasedAt DateTime? @db.Timestamptz(3)
+  recoveryDecisionAuditId String? @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+  recoveryDecision AuditEvent? @relation(fields: [recoveryDecisionAuditId], references: [id], onDelete: Restrict)
+
+  @@unique([bindingId, bindingVersion, tupleKey], map: "LineAuthorizationLifecycle_binding_generation_tuple_key")
+  @@index([recoveryDecisionAuditId])
 }
 
 model LineWebhookEventReceipt {

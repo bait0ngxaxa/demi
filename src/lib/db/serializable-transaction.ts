@@ -9,7 +9,10 @@ export const DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES = 2;
 export function isRetryableSerializableTransactionError(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
-    (error.code === "P2002" || error.code === "P2034")
+    (error.code === "P2002" || error.code === "P2034" ||
+      // PostgreSQL serialization failures from $queryRaw locks are surfaced as
+      // P2010 + SQLSTATE 40001 by Prisma 6, rather than ORM-write P2034.
+      (error.code === "P2010" && error.meta?.code === "40001"))
   );
 }
 

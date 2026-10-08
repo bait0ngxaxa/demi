@@ -1,9 +1,15 @@
 import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
-import { recordAuditEvent, type AuditDatabase } from "./audit-service";
+import { recordAuditEvent, recordAuditEventWithId, type AuditDatabase } from "./audit-service";
 
 describe("audit service", () => {
+  it("returns a persisted decision ID through the same sensitive-metadata validation boundary", async () => {
+    const database = { auditEvent: { create: async () => ({ id: "persisted-audit-id" }) } } as unknown as AuditDatabase;
+    const input = { actorUserId: null, action: "line.lifecycle.recovery.released", resourceType: "LineAccountBinding", metadata: { policyVersion: "LINE_RECOVERY_V1" } };
+    await expect(recordAuditEventWithId(input, database)).resolves.toBe("persisted-audit-id");
+    await expect(recordAuditEventWithId({ ...input, metadata: { accessToken: "must-never-persist" } }, database)).rejects.toThrow();
+  });
   it("accepts a transaction-compatible database dependency", async () => {
     const created: Array<Record<string, unknown>> = [];
     const database = {
