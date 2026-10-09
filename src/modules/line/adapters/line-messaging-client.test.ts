@@ -109,7 +109,8 @@ describe("DEMI LINE Messaging API boundary", () => {
     [200, "ACCEPTED"],
     [409, "DUPLICATE_ACCEPTED"],
     [400, "PERMANENT_FAILURE"],
-    [429, "PERMANENT_FAILURE"],
+    [429, "RETRYABLE_HTTP_FAILURE"],
+    [500, "RETRYABLE_HTTP_FAILURE"],
     [503, "RETRYABLE_HTTP_FAILURE"],
   ] as const)("classifies Push HTTP %i as %s", async (status, expected) => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("private provider detail", { status }));
@@ -130,6 +131,20 @@ describe("DEMI LINE Messaging API boundary", () => {
       messages: [{ type: "text", text }],
     });
     expect(request?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("keeps the monthly-limit 429 retryable because its documented response can be temporary", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ message: "You have reached your monthly limit." }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.pushText(`U${"c".repeat(32)}`, "approved generic copy", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"))
+      .resolves.toEqual({ kind: "RETRYABLE_HTTP_FAILURE" });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("classifies a Push transport timeout as ambiguous and does not retry inside the adapter", async () => {

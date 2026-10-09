@@ -139,7 +139,7 @@ export class LineMessagingClient {
 
       if (response.status === 409) return { kind: "DUPLICATE_ACCEPTED" };
       if (response.ok) return { kind: "ACCEPTED" };
-      if (response.status >= 500) return { kind: "RETRYABLE_HTTP_FAILURE" };
+      if (response.status === 429 || response.status >= 500) return { kind: "RETRYABLE_HTTP_FAILURE" };
       return { kind: "PERMANENT_FAILURE" };
     } catch {
       return { kind: "AMBIGUOUS_TRANSPORT_FAILURE" };

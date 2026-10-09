@@ -1342,6 +1342,57 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(await prisma.appointmentLineNotification.findUnique({ where: { id: completed.id } })).toBeNull();
   });
 
+  it("bounds repeated temporary Push rate limits to three attempts with the same key and payload", async () => {
+    const subject = await createAppointmentNotificationSubject("RATE_LIMIT");
+    let now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push: async (lineUserId: string, text: string, retryKey: string) => {
+        calls.push({ lineUserId, text, retryKey });
+        return { kind: "RETRYABLE_HTTP_FAILURE" as const };
+      },
+      random: () => 0.5,
+      batchSize: 1,
+      logSummary: () => undefined,
+    };
+
+    const firstDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    let notification = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+    });
+    expect(firstDrain.retryScheduled).toBe(1);
+    expect(notification.attemptCount).toBe(1);
+
+    now = notification.dueAt;
+    const secondDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(secondDrain.retryScheduled).toBe(1);
+    expect(notification.attemptCount).toBe(2);
+
+    now = notification.dueAt;
+    const thirdDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(thirdDrain.unknownOutcome).toBe(1);
+    expect(notification.state).toBe(AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+    expect(notification.attemptCount).toBe(3);
+
+    const afterExhaustion = await drainAppointmentLineNotificationOutbox(dependencies);
+    expect(afterExhaustion.claimed).toBe(0);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toEqual(calls[1]);
+    expect(calls[1]).toEqual(calls[2]);
+    expect(calls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: notification.retryKey });
+    expect(calls[0]?.text).toBe("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+  });
+
   it("suppresses stale, opted-out, unlinked, and relinked intents before Push", async () => {
     const subject = await createAppointmentNotificationSubject("REVOKE");
     const base = new Date();
