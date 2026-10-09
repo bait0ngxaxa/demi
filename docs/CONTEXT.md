@@ -1,6 +1,10 @@
 # DEMI Project Context
 
-## CURRENT-status summary — Phase 17J.3D Account disconnection and Recovery (2026-10-09)
+## CURRENT-status summary — Phase 17J.3D-UAT.1 preflight (2026-10-09)
+
+[Activation readiness preflight](./phases/PHASE_17J3D_UAT1_ACTIVATION_READINESS_PREFLIGHT.md): **CONDITIONAL GO — OPERATOR ACTION REQUIRED; real-provider UAT not ready to begin.** Source HEAD **53e0d0fa36254b3181b5e077d59e177f957f3e6d**; 17J.3B contract complete, 17J.3C foundation implemented and 17J.3D Account orchestration activation staged remain unchanged. Local gates are false, manifest empty, Login secret present without credential verification. Configured HTTPS origin responds through Vercel; Demi-dev Auth reports v2.197.0. Deployed SHA/isolation, Console/MINI inventory, target migration, current Auth policies, token-egress privacy and permitted device/test population remain unverified. Existing friendship token-query egress is outside the new adapter gate; configuration loss can remove Recovery availability and hide the local unlink UI despite safe API fallback. See the [Thai operator guide](./phases/PHASE_17J3D_UAT_OPERATOR_SETUP_GUIDE.md) and [unexecuted UAT matrix](./phases/PHASE_17J3D_UAT_TEST_MATRIX.md). Focused source tests **36 files / 314 PASS**, typecheck/lint PASS; PostgreSQL tests, live LINE/device UAT, migration/deployment, env changes and activation NOT RUN. Next: operator inspection/attestation and entry-gate reassessment, then separately authorized UAT execution; no MINI runtime or Phase17J.4 starts here.
+
+## Historical-status summary — Phase 17J.3D Account disconnection and Recovery (2026-10-09)
 
 [Phase 17J.3D handoff](./phases/PHASE_17J3D_ACCOUNT_FULL_DISCONNECTION_RECOVERY_IMPLEMENTATION.md) records **FOUNDATION + ACCOUNT ORCHESTRATION IMPLEMENTED / ACTIVATION STAGED**, baseline HEAD **1dea19b09af8b7a9a02267be8b03d6de7d8ae9ec**. Source now composes atomic local unlink, independent Account provider termination, durable attempt outcomes, Auth-owned same-captured-JWT exact-session Recovery, five-minute reviewed intents, fresh server-verified Account identity, Thai self-service Recovery and transaction-safe Link/Relink guards. Recovery does not restore a binding or grant Patient access. MINI obligations remain channel-specific and unconfirmed unless independently satisfied; MINI transport/workflow is not implemented.
 
