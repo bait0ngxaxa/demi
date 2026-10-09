@@ -3,6 +3,8 @@
 import liff from "@line/liff";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
+import { disconnectionStatusSchema, initializeLineAccountLiff, LineRecoveryPanel } from "./line-recovery-panel";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -48,12 +50,13 @@ function parseMenuResult(value: unknown): { presentation: MenuPresentation } {
   return { presentation: record.presentation as MenuPresentation };
 }
 
-function parseCleanupResult(value: unknown): { cleanup: CleanupPresentation } {
+function parseCleanupResult(value: unknown): { cleanup: CleanupPresentation; disconnection?: LineDisconnectionStatus } {
   const record = responseRecord(value);
   if (typeof record.cleanup !== "string" || !cleanupStates.has(record.cleanup as CleanupPresentation)) {
     throw new Error(safeFailure);
   }
-  return { cleanup: record.cleanup as CleanupPresentation };
+  const disconnection = disconnectionStatusSchema.safeParse(record.disconnection);
+  return { cleanup: record.cleanup as CleanupPresentation, ...(disconnection.success ? { disconnection: disconnection.data } : {}) };
 }
 
 export async function refreshLineAccountFriendship(): Promise<Pick<InitialStatus, "reachability" | "cleanupState" | "menuState">> {
@@ -96,6 +99,9 @@ export function closeLineLiffWindow(isInClient: boolean): void {
 }
 
 type LineAccountScreenProps = {
+  fullDisconnectionEnabled?: boolean;
+  recoveryContent?: React.ReactNode;
+  canRelink?: boolean;
   initial: InitialStatus;
   accountStatus: InitialStatus["status"];
   canUnlink: boolean;
@@ -125,6 +131,9 @@ type LineAccountScreenProps = {
 };
 
 export function LineAccountScreen({
+  fullDisconnectionEnabled = false,
+  recoveryContent,
+  canRelink = true,
   initial,
   accountStatus,
   canUnlink,
@@ -340,20 +349,20 @@ export function LineAccountScreen({
                           เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น
                         </p>
                       ) : null}
-                      {liffState === "LOGIN_REQUIRED" ? (
+                      {canRelink && liffState === "LOGIN_REQUIRED" ? (
                         <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>
                           เข้าสู่ระบบ LINE
                         </button>
                       ) : null}
-                      {liffState === "READY" ? (
+                      {canRelink && liffState === "READY" ? (
                         <button type="button" disabled={busy} onClick={onBeginLink} className={primaryButtonClass}>
                           เชื่อมบัญชี LINE นี้
                         </button>
                       ) : null}
-                      {liffState === "LOADING" ? (
+                      {canRelink && liffState === "LOADING" ? (
                         <p role="status" className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">กำลังเตรียมการเชื่อมต่อ LINE…</p>
                       ) : null}
-                      {liffState === "UNAVAILABLE" ? (
+                      {canRelink && liffState === "UNAVAILABLE" ? (
                         <div className="space-y-3">
                           <p role="status" className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">ยังเปิดการเชื่อมต่อ LINE ไม่ได้</p>
                           <button type="button" onClick={onReload} className={secondaryButtonClass}>ลองอีกครั้ง</button>
@@ -378,7 +387,7 @@ export function LineAccountScreen({
               {view === "UNLINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-danger/40 bg-danger-soft p-4" aria-labelledby="unlink-confirm-title">
                   <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อบัญชี LINE?</h3>
-                  <p className="mt-2 text-sm text-ink">เมนู LINE จะหยุดใช้กับบัญชี DEMI นี้ทันที การยกเลิกไม่ลบบัญชี DEMI ของคุณ</p>
+                  <p className="mt-2 text-sm text-ink">{fullDisconnectionEnabled ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้" : "เมนู LINE จะหยุดใช้กับบัญชี DEMI นี้ทันที การยกเลิกไม่ลบบัญชี DEMI ของคุณหรือข้อมูลผู้ป่วย"}</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
@@ -395,6 +404,7 @@ export function LineAccountScreen({
               ) : null}
             </>
           )}
+          {recoveryContent}
         </section>
 
         <p className="type-readable mt-5 text-sm text-muted">DEMI ใช้การยืนยันบัญชี LINE เพื่อเชื่อมบัญชีเท่านั้น การเชื่อมนี้ไม่เปลี่ยนสิทธิ์หรือพื้นที่ใช้งานใน DEMI</p>
@@ -407,11 +417,14 @@ export function LineAccountClient({
   initial,
   liffId,
   publicOrigin,
+  disconnection,
 }: {
   initial: InitialStatus;
   liffId: string | null;
   publicOrigin: string;
+  disconnection?: LineDisconnectionStatus;
 }): React.JSX.Element {
+  const [termination, setTermination] = useState(disconnection);
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
   const [view, setView] = useState<ViewState>("READY");
   const [intent, setIntent] = useState<Intent | null>(null);
@@ -430,11 +443,14 @@ export function LineAccountClient({
   const refreshAttempted = useRef(false);
   const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
+  const privateRoot = useRef<HTMLDivElement>(null);
+
 
   useEffect(() => {
     if (!liffId) return;
+    if (disconnection && !disconnection.canRelink) return;
     let active = true;
-    liff.init({ liffId }).then(() => {
+    initializeLineAccountLiff(liffId).then(() => {
       if (!active) return;
       const loggedIn = liff.isLoggedIn();
       const inClient = liff.isInClient();
@@ -471,7 +487,17 @@ export function LineAccountClient({
       }
     });
     return () => { active = false; };
-  }, [liffId]);
+  }, [liffId, disconnection]);
+
+  useEffect(() => {
+    const hide = (): void => { if (privateRoot.current) { privateRoot.current.hidden = true; privateRoot.current.inert = true; } };
+    const restore = (event: PageTransitionEvent): void => { if (event.persisted) { hide(); window.location.reload(); } };
+    const history = (): void => { hide(); window.location.reload(); };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", restore);
+    window.addEventListener("popstate", history);
+    return () => { window.removeEventListener("pagehide", hide); window.removeEventListener("pageshow", restore); window.removeEventListener("popstate", history); };
+  }, []);
 
   useEffect(() => {
     if (view === "LINK_CONFIRM" || view === "UNLINK_CONFIRM") confirmationRef.current?.focus();
@@ -484,6 +510,7 @@ export function LineAccountClient({
       body: JSON.stringify(body),
       credentials: "same-origin",
       cache: "no-store",
+      signal: AbortSignal.timeout(25_000),
     });
     let value: unknown;
     try { value = await response.json(); } catch { throw new Error(safeFailure); }
@@ -560,7 +587,13 @@ export function LineAccountClient({
     setView("BUSY");
     setMessage("");
     try {
-      const result = await postJson("/api/line/account/unlink", intent, parseCleanupResult);
+      let accessToken: string | null = null;
+      try { if (liffState === "READY") accessToken = liff.getAccessToken(); } catch { /* local unlink remains independent */ }
+      const result = await postJson("/api/line/account/unlink", { ...intent, ...(accessToken ? { accessToken } : {}) }, parseCleanupResult);
+      if (disconnection) {
+        if (result.disconnection) setTermination(result.disconnection);
+        else { window.location.reload(); return; }
+      }
       setProviderWarning(result.cleanup !== "CONFIRMED_CLEAN");
       setSummary((current) => ({ ...current, status: "UNLINKED", canUnlink: false, cleanupState: result.cleanup }));
       setAccountStatus("UNLINKED");
@@ -608,7 +641,7 @@ export function LineAccountClient({
     }
   }
 
-  function startLineLogin(): void {
+  async function startLineLogin(): Promise<void> {
     if (!liffId || !publicOrigin) {
       setLiffState("UNAVAILABLE");
       setCanRefreshReachability(false);
@@ -616,6 +649,7 @@ export function LineAccountClient({
       return;
     }
     try {
+      if (termination) await postJson("/api/line/account/intents", { action: "LINK" }, parseIntent);
       liff.login({ redirectUri: publicOrigin + "/line/account" });
     } catch {
       setLiffState("UNAVAILABLE");
@@ -633,7 +667,11 @@ export function LineAccountClient({
   }
 
   return (
+    <div ref={privateRoot}>
     <LineAccountScreen
+      fullDisconnectionEnabled={termination !== undefined}
+      canRelink={termination?.canRelink ?? true}
+      recoveryContent={termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}
@@ -649,7 +687,7 @@ export function LineAccountClient({
       message={message}
       providerWarning={providerWarning}
       confirmationRef={confirmationRef}
-      onStartLineLogin={startLineLogin}
+      onStartLineLogin={() => void startLineLogin()}
       onBeginLink={() => void begin("LINK")}
       onBeginUnlink={() => void begin("UNLINK")}
       onConfirmLink={() => void confirmLink()}
@@ -661,5 +699,6 @@ export function LineAccountClient({
       onRestart={() => { setIntent(null); setMessage(""); setView("READY"); }}
       onReload={reloadPage}
     />
+    </div>
   );
 }

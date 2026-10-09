@@ -32,6 +32,7 @@ const serverEnv: ServerEnv = {
 };
 
 let capturedSetAll: SetAllCookies | undefined;
+let capturedFetch: typeof fetch | undefined;
 
 function getCapturedSetAll(): SetAllCookies {
   if (!capturedSetAll) {
@@ -50,12 +51,14 @@ function createCookieStore(): CookieStore {
 
 function createClientOptions(options: CreateServerClientOptions): void {
   capturedSetAll = options.cookies.setAll;
+  capturedFetch = options.global?.fetch;
 }
 
 describe("Supabase server cookie boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedSetAll = undefined;
+    capturedFetch = undefined;
     mockedGetServerEnv.mockReturnValue(serverEnv);
     mockedCreateServerClient.mockImplementation(
       (_url: string, _key: string, options: CreateServerClientOptions) => {
@@ -83,6 +86,22 @@ describe("Supabase server cookie boundary", () => {
       })(),
     ).resolves.toBeUndefined();
     expect(cookieStore.set).toHaveBeenCalledOnce();
+  });
+
+  it("exact-session transport blocks refresh and applies one provider deadline without changing ordinary clients", async () => {
+    mockedCookies.mockResolvedValue(createCookieStore());
+    const deadline = AbortSignal.timeout(10000);
+    await getServerSupabaseClient({ requireWritableCookies: true, exactSessionDeadline: deadline });
+    const exactFetch = capturedFetch;
+    if (!exactFetch) throw new Error("Expected exact-session fetch");
+    const network = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ safe: true }));
+    try {
+      const denied = await exactFetch("https://example.supabase.co/auth/v1/token?grant_type=refresh_token", { method: "POST" });
+      expect(denied.status).toBe(401); expect(network).not.toHaveBeenCalled();
+      await exactFetch("https://example.supabase.co/auth/v1/user");
+      expect(network).toHaveBeenCalledWith("https://example.supabase.co/auth/v1/user", expect.objectContaining({ signal: deadline, cache: "no-store" }));
+      await getServerSupabaseClient(); expect(capturedFetch).toBeUndefined();
+    } finally { network.mockRestore(); }
   });
 
   it("surfaces cookie write failures when mutations require writable cookies", async () => {

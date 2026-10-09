@@ -18,12 +18,12 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 import { LineFailure } from "../domain/line-errors";
-import { verifyLineFriendship, verifyLineIdToken } from "../adapters/line-login-client";
+import { verifyLineFriendship, verifyLineIdToken, verifyFreshLineIdToken } from "../adapters/line-login-client";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import { getCurrentLineSession, lineSessionHashMatches, type CurrentLineSession } from "./line-session-service";
 import { recordLineFriendshipObservation, type ReachabilityEventState } from "./line-reachability-service";
 import { resolveEligibleLineRoles } from "./line-eligibility-service";
-import { initializeLineTermination, observeLineAuthorization } from "./line-authorization-lifecycle-service";
+import { evaluateLineRelinkEligibility, initializeLineTermination, observeLineAuthorization } from "./line-authorization-lifecycle-service";
 import { lineChannelTupleKey, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
 
 const INTENT_TTL_MS = 5 * 60 * 1000;
@@ -35,8 +35,10 @@ export type LineAccountDependencies = {
   verifyIdentity?: typeof verifyLineIdToken;
   verifyFriendship?: typeof verifyLineFriendship;
   currentSession?: () => Promise<CurrentLineSession>;
-  /** Staged server-only composition seam. No route/config enables it until recovery is executable. */
+  /** Server-only composition seam. Inventory alone does not enable Relink restrictions. */
   authorizationInventory?: LineChannelInventory;
+  /** Installed only by the complete runtime bundle, never by inventory alone. */
+  enforceRelinkPolicy?: boolean;
 };
 
 function databaseOf(dependencies: LineAccountDependencies): PrismaClient {
@@ -72,6 +74,10 @@ export async function createLineAccountIntent(
     await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${session.userId}::uuid FOR UPDATE`;
     const user = await transaction.user.findUnique({ where: { id: session.userId }, select: { status: true } });
     if (!user || user.status !== UserStatus.ACTIVE) throw new ForbiddenError();
+    if (action === LineAccountAction.LINK && dependencies.enforceRelinkPolicy) {
+      const bindings = await transaction.lineAccountBinding.findMany({ where: { userId: session.userId }, orderBy: { id: "asc" } });
+      for (const binding of bindings) await requireRelinkEligibility(transaction, binding, now, Boolean(dependencies.authorizationInventory));
+    }
     if (action === LineAccountAction.UNLINK) {
       const binding = await transaction.lineAccountBinding.findFirst({ where: { userId: session.userId, unlinkedAt: null }, select: { id: true } });
       if (!binding) throw new ForbiddenError();
@@ -152,7 +158,7 @@ export async function linkLineAccount(
   const database = databaseOf(dependencies);
   await validateIntentBeforeProvider({ ...input, action: LineAccountAction.LINK }, session, database, now);
 
-  const verified = await (dependencies.verifyIdentity ?? verifyLineIdToken)(input.idToken);
+  const verified = await (dependencies.verifyIdentity ?? (dependencies.enforceRelinkPolicy ? verifyFreshLineIdToken : verifyLineIdToken))(input.idToken);
   const identity = createLineSubjectFingerprint(verified.subject);
   let friendshipObservation: { state: ReachabilityEventState; checkedAt: Date } | null = null;
   if (input.accessToken) {
@@ -174,6 +180,7 @@ export async function linkLineAccount(
       const user = await transaction.user.findUnique({ where: { id: session.userId }, select: { status: true } });
       const intent = await transaction.lineAccountActionIntent.findUnique({ where: { id: input.intentId } });
       if (!user || user.status !== UserStatus.ACTIVE) throw new LineFailure("DEMI_ACCOUNT_INELIGIBLE");
+      if (verified.expiresAt && verified.expiresAt <= nowOf(dependencies)) throw new LineFailure("LINE_TOKEN_INVALID_OR_EXPIRED");
       if (!intent || !checkIntentInTransaction(intent, input, session, nowOf(dependencies), LineAccountAction.LINK)) {
         throw new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
       }
@@ -203,8 +210,15 @@ export async function linkLineAccount(
           lineSubjectFingerprint: true,
           lineSubjectFingerprintKeyId: true,
           unlinkedAt: true,
+          lifecycleVersion: true,
         },
       });
+      if (dependencies.enforceRelinkPolicy) {
+        // Before both idempotent success and reactivation; serializable retries
+        // reread historical obligations rather than carrying a stale permit.
+        const bindings = await transaction.lineAccountBinding.findMany({ where: { userId: session.userId }, orderBy: { id: "asc" } });
+        for (const binding of bindings) await requireRelinkEligibility(transaction, binding, nowOf(dependencies), Boolean(dependencies.authorizationInventory));
+      }
       if (userBinding && userBinding.lineSubjectFingerprint === identity.fingerprint) {
         await observeAccountBinding(transaction, userBinding, dependencies, nowOf(dependencies));
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
@@ -274,6 +288,15 @@ export async function linkLineAccount(
   }
 }
 
+async function requireRelinkEligibility(transaction: Prisma.TransactionClient, binding: { id: string; userId: string; lifecycleVersion: number }, now: Date, includeLegacy: boolean): Promise<void> {
+  await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
+  // A disabled rollout leaves never-activated legacy users unchanged. Once
+  // durable termination exists, disabling config must not waive its obligations.
+  if (!includeLegacy && await transaction.lineAuthorizationLifecycle.count({ where: { bindingId: binding.id, requestedAt: { not: null } } }) === 0) return;
+  const eligibility = await evaluateLineRelinkEligibility(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion }, now);
+  if (!eligibility.eligible) throw new LineFailure("LINE_RECOVERY_REQUIRED");
+}
+
 async function consumeIntent(
   transaction: Prisma.TransactionClient,
   intentId: string,
@@ -319,6 +342,7 @@ export async function unlinkLineAccount(
       }
       const binding = await transaction.lineAccountBinding.findFirst({ where: { userId: session.userId, unlinkedAt: null } });
       if (!binding || !binding.lineUserId) throw new LineFailure("UNLINK_UNAUTHORIZED");
+      await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
       const updated = await transaction.lineAccountBinding.update({
         where: { id: binding.id },
         data: {

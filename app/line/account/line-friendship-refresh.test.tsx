@@ -41,6 +41,7 @@ describe("account page bounded LIFF friendship refresh", () => {
     mocks.getIDToken.mockReturnValue("fresh-id-token"); mocks.getAccessToken.mockReturnValue("fresh-access-token");
     fetcher.mockImplementation(async () => Response.json({ reachability: "FRIEND", menuState: "UNKNOWN", cleanupState: null }));
     vi.stubGlobal("fetch", fetcher);
+    vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn(), location: { reload: vi.fn() } });
   });
   afterEach(() => vi.unstubAllGlobals());
 

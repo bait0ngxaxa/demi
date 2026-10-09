@@ -60,10 +60,11 @@ const messages: Record<LineFailureCode, string> = {
   LINE_PROVIDER_PERMANENT: "ไม่สามารถปรับปรุงเมนู LINE ได้ กรุณาติดต่อผู้ดูแล",
   RICH_MENU_MISMATCH: "เมนู LINE ยังปรับปรุงไม่สำเร็จ",
   LINE_CONFIGURATION_MISSING: "บริการ LINE ยังไม่ได้ตั้งค่า",
+  LINE_RECOVERY_REQUIRED: "กรุณาตรวจสอบสิทธิ์ LINE และยืนยันตัวตนก่อนเชื่อมใหม่",
   LINE_RATE_LIMITED: "คุณเริ่มทำรายการหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
 };
 
-export function lineErrorResponse(error: unknown): Response {
+function errorResponse(error: unknown): Response {
   if (error instanceof UnauthenticatedError) {
     return Response.json({ error: "กรุณาเข้าสู่ระบบ DEMI ก่อน" }, { status: 401 });
   }
@@ -72,13 +73,19 @@ export function lineErrorResponse(error: unknown): Response {
   }
   if (error instanceof LineFailure) {
     const status = error.code === "LINE_RATE_LIMITED" ? 429
-      : error.code === "LINE_BINDING_CONFLICT" ? 409
+      : error.code === "LINE_BINDING_CONFLICT" || error.code === "LINE_RECOVERY_REQUIRED" ? 409
       : error.code === "DEMI_ACCOUNT_INELIGIBLE" || error.code === "UNLINK_UNAUTHORIZED" ? 403
       : error.code === "LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED" || error.code === "LINE_TOKEN_INVALID_OR_EXPIRED" ? 400
       : 503;
     return Response.json({ error: messages[error.code] }, { status });
   }
   return Response.json({ error: "ระบบไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง" }, { status: 503 });
+}
+
+export function lineErrorResponse(error: unknown): Response {
+  const response = errorResponse(error);
+  response.headers.set("cache-control", "private, no-store");
+  return response;
 }
 
 export const lineAccountHttpInternals = { MAX_ACCOUNT_REQUEST_BYTES };

@@ -1,6 +1,14 @@
 # DEMI Project Context
 
-## CURRENT-status summary — Phase 17J.3C lifecycle foundation (2026-10-08)
+## CURRENT-status summary — Phase 17J.3D Account disconnection and Recovery (2026-10-09)
+
+[Phase 17J.3D handoff](./phases/PHASE_17J3D_ACCOUNT_FULL_DISCONNECTION_RECOVERY_IMPLEMENTATION.md) records **FOUNDATION + ACCOUNT ORCHESTRATION IMPLEMENTED / ACTIVATION STAGED**, baseline HEAD **1dea19b09af8b7a9a02267be8b03d6de7d8ae9ec**. Source now composes atomic local unlink, independent Account provider termination, durable attempt outcomes, Auth-owned same-captured-JWT exact-session Recovery, five-minute reviewed intents, fresh server-verified Account identity, Thai self-service Recovery and transaction-safe Link/Relink guards. Recovery does not restore a binding or grant Patient access. MINI obligations remain channel-specific and unconfirmed unless independently satisfied; MINI transport/workflow is not implemented.
+
+The default operational flag remains disabled. No reviewed real channel inventory, target-environment migration acceptance, LINE credential/UAT evidence, mobile/browser UAT or deployment is claimed. Enabling the flag alone is not readiness evidence. Already-persisted pending obligations remain fenced even if the flag is disabled; after activation, keep the Recovery configuration available rather than disabling it and stranding pending users. Ordinary DEMI credential login and never-activated legacy Account behavior remain independent. The narrowly scoped outbound LINE token-verification query exception was explicitly owner-approved in this implementation session; browser URLs, redirects and logs must never contain tokens. See the handoff for exact configuration, automated evidence, operator acceptance gates and residual late-provider availability risk.
+
+Next: reviewed Account provisioning and disposable-user provider/device UAT. Do not start MINI Gateway, Appointment integration or Phase 17J.4 automatically. Phase 17J.3B/3C completion history below remains authoritative for its tested scope.
+
+## Historical-status summary — Phase 17J.3C lifecycle foundation (2026-10-08)
 
 [Phase 17J.3C handoff](./phases/PHASE_17J3C_FULL_LINE_DISCONNECTION_LIFECYCLE_FOUNDATION_IMPLEMENTATION.md) records **GO — FOUNDATION IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE / USER-FACING ACTIVATION STAGED**, baseline main/origin **9af86fb3ee0dcdabe62cade1a68545bf657cf054**. Narrow LINE-owned channel/generation lifecycle persistence, additive migration, atomic local-unlink composition seam, immutable attempt/history tracking, authorized recovery release/audit and transaction-compatible Relink evaluation are implemented. **Existing Account routes retain legacy local-only unlink and same-owner Relink; no pending restriction, provider dispatch or Recovery endpoint is activated.** Ordinary DEMI login/data and existing menu cleanup remain independent.
 

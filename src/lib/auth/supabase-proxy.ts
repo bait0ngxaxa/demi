@@ -5,11 +5,15 @@ import { NextResponse as NextResponseFactory } from "next/server";
 import { getServerEnv } from "@/lib/env/server";
 
 function createNextResponse(request: NextRequest): NextResponse {
-  return NextResponseFactory.next({
+  const response = NextResponseFactory.next({
     request: {
       headers: request.headers,
     },
   });
+  if (request.nextUrl.pathname === "/line/account" || request.nextUrl.pathname.startsWith("/api/line/account/")) {
+    response.headers.set("cache-control", "private, no-store");
+  }
+  return response;
 }
 
 export type SupabaseCookieToSet = {
@@ -41,6 +45,11 @@ export function propagateSupabaseCookies(
 }
 
 export async function updateSupabaseSession(request: NextRequest): Promise<NextResponse> {
+  // Recovery owns capture/verification. A proxy refresh must not replace a
+  // rejected or expired JWT before the exact-session authorization attempt.
+  if (["/api/line/account/recovery", "/api/line/account/recovery/prepare"].includes(request.nextUrl.pathname)) {
+    return createNextResponse(request);
+  }
   const env = getServerEnv();
   let response = createNextResponse(request);
 

@@ -198,7 +198,8 @@ export type AuthorizedLineRecoveryDecision = {
 export type LineRecoveryAuthority = {
   /** Runs OUTSIDE any transaction. Must verify captured same-JWT live session,
    * single-use challenge, acknowledgement, fresh channel proof and fingerprint.
-   * No production implementation is installed by this foundation. */
+   * Production composition is private to line-disconnection-service; transport
+   * callers never supply this authority or a verification result. */
   authorize: (request: AuthorizedLineRecoveryDecision) => Promise<{
     decision: AuthorizedLineRecoveryDecision;
     sessionHash: string;
@@ -259,6 +260,7 @@ export async function releaseLineRecovery(
   const auditId = await recordAuditEventWithId({ actorUserId: decision.ownerUserId, action: "line.lifecycle.recovery.released",
     resourceType: "LineAccountBinding", resourceId: binding.id, metadata: {
       bindingVersion: decision.bindingVersion, setDigest: digest, tupleCount: rows.length,
+      intentId: intent.id, riskAcknowledgedAt: evidence.riskAcknowledgedAt.toISOString(), proofMayRenewGrant: true,
       policyVersion: decision.policyVersion, copyVersion: decision.copyVersion,
       sessionCheckedAt: decision.sessionCheckedAt.toISOString(), sessionMatched: true,
       proofTupleKey: decision.proofTupleKey, proofVerifiedAt: decision.proofVerifiedAt.toISOString(),
@@ -275,7 +277,7 @@ export async function releaseLineRecovery(
   return auditId;
 }
 
-/** Preparation seam; session/challenge issuance belongs to future authenticated orchestration.
+/** Preparation seam; session/challenge issuance belongs to authenticated orchestration.
  * Returns only selectors to persist on its existing five-minute Recovery intent in the same tx.
  */
 export async function prepareLineRecoverySet(

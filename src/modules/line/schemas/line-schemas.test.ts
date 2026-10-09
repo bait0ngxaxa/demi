@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { lineIntentUseSchema, lineLinkRequestSchema, lineWebhookEventSchema } from "./line-schemas";
 
 describe("LINE input schemas", () => {
-  it("strips client supplied LINE identity, role, resource and scope fields", () => {
-    const parsed = lineLinkRequestSchema.parse({
+  it("rejects client supplied LINE identity, role, resource and scope fields at the Link boundary", () => {
+    const input = {
       intentId: "82ce5f58-4a66-4b03-a5e8-2418e8544271",
       challenge: "secure-256-bit-challenge-for-tests-000000000000000000000",
       idToken: "raw-line-id-token-value-at-least-20-characters",
@@ -15,19 +15,21 @@ describe("LINE input schemas", () => {
       hospitalId: "11111111-1111-4111-8111-111111111111",
       patientId: "22222222-2222-4222-8222-222222222222",
       resourcePath: "/app/patients/22222222-2222-4222-8222-222222222222",
-    });
-    expect(parsed).toEqual({
+    };
+    expect(lineLinkRequestSchema.safeParse(input).success).toBe(false);
+    const trustedShape = {
       intentId: "82ce5f58-4a66-4b03-a5e8-2418e8544271",
       challenge: "secure-256-bit-challenge-for-tests-000000000000000000000",
       idToken: "raw-line-id-token-value-at-least-20-characters",
-    });
+    };
+    expect(lineLinkRequestSchema.parse(trustedShape)).toEqual(trustedShape);
     const unlink = lineIntentUseSchema.parse({
-      intentId: parsed.intentId,
-      challenge: parsed.challenge,
+      intentId: trustedShape.intentId,
+      challenge: trustedShape.challenge,
       presentationRole: "OSM",
       hospitalId: "untrusted-resource",
     });
-    expect(unlink).toEqual({ intentId: parsed.intentId, challenge: parsed.challenge });
+    expect(unlink).toEqual({ intentId: trustedShape.intentId, challenge: trustedShape.challenge });
   });
 
   it("accepts future additive webhook fields while validating consumed event identifiers", () => {

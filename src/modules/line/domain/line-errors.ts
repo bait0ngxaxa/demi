@@ -10,6 +10,7 @@ export type LineFailureCode =
   | "LINE_PROVIDER_PERMANENT"
   | "RICH_MENU_MISMATCH"
   | "LINE_CONFIGURATION_MISSING"
+  | "LINE_RECOVERY_REQUIRED"
   | "LINE_RATE_LIMITED";
 
 export class LineFailure extends Error {

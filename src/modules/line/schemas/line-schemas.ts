@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const lineIntentActionSchema = z.enum(["LINK", "UNLINK"]);
-export const lineIntentRequestSchema = z.object({ action: lineIntentActionSchema });
+export const lineIntentRequestSchema = z.object({ action: lineIntentActionSchema }).strict();
 
 export const lineIntentUseSchema = z.object({
   intentId: z.string().uuid(),
@@ -11,9 +11,16 @@ export const lineIntentUseSchema = z.object({
 export const lineLinkRequestSchema = lineIntentUseSchema.extend({
   idToken: z.string().min(20).max(16_384),
   accessToken: z.string().min(20).max(16_384).optional(),
-});
+}).strict();
 
-export const lineUnlinkRequestSchema = lineIntentUseSchema;
+export const lineUnlinkRequestSchema = lineIntentUseSchema.extend({ accessToken: z.string().min(20).max(8192).optional() }).strict();
+
+export const lineRecoveryRequestSchema = lineIntentUseSchema.extend({
+  idToken: z.string().min(20).max(16_384),
+  riskAcknowledged: z.literal(true),
+  manualReviews: z.record(z.string().uuid(), z.enum(["REMOVED", "NOT_LISTED", "UNDETERMINED"]))
+    .refine((value) => Object.keys(value).length >= 1),
+}).strict();
 
 export const lineReachabilityRequestSchema = z.object({
   idToken: z.string().min(20).max(16_384),

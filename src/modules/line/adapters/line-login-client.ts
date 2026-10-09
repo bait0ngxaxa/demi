@@ -11,6 +11,7 @@ const lineIdentitySchema = z.object({
   sub: z.string().regex(/^U[0-9a-f]{32}$/iu),
   aud: z.string(),
   exp: z.number().int().positive(),
+  iat: z.number().int().positive().optional(),
 }).passthrough();
 
 const lineAccessTokenSchema = z.object({
@@ -33,13 +34,14 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-export type VerifiedLineIdentity = { subject: string };
+export type VerifiedLineIdentity = { subject: string; issuedAt?: Date; expiresAt?: Date };
+export type VerifiedFreshLineIdentity = VerifiedLineIdentity & { verifiedAt: Date; expiresAt: Date };
 export type VerifiedLineFriendship = { friend: boolean };
 
-export async function verifyLineIdToken(
+export async function verifyFreshLineIdToken(
   idToken: string,
   fetcher: typeof fetch = fetch,
-): Promise<VerifiedLineIdentity> {
+): Promise<VerifiedFreshLineIdentity> {
   const { DEMI_LINE_LOGIN_CHANNEL_ID } = getLineLoginEnv();
   const body = new URLSearchParams({ id_token: idToken, client_id: DEMI_LINE_LOGIN_CHANNEL_ID });
   let response: Response;
@@ -50,6 +52,7 @@ export async function verifyLineIdToken(
       body,
       signal: AbortSignal.timeout(10_000),
       cache: "no-store",
+      redirect: "error",
     });
   } catch {
     throw new LineFailure("LINE_PROVIDER_TRANSIENT");
@@ -61,7 +64,12 @@ export async function verifyLineIdToken(
   if (!response.ok || !result.success || result.data.aud !== DEMI_LINE_LOGIN_CHANNEL_ID || result.data.exp <= Math.floor(Date.now() / 1000)) {
     throw new LineFailure("LINE_TOKEN_INVALID_OR_EXPIRED");
   }
-  return { subject: result.data.sub };
+  return { subject: result.data.sub, issuedAt: result.data.iat ? new Date(result.data.iat * 1000) : undefined, expiresAt: new Date(result.data.exp * 1000), verifiedAt: new Date() };
+}
+
+export async function verifyLineIdToken(idToken: string, fetcher: typeof fetch = fetch): Promise<VerifiedLineIdentity> {
+  const verified = await verifyFreshLineIdToken(idToken, fetcher);
+  return { subject: verified.subject };
 }
 
 export async function verifyLineFriendship(
