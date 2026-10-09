@@ -27,7 +27,7 @@ const fetcher = vi.fn<typeof fetch>();
 function mount(status: Parameters<typeof LineAccountClient>[0]["initial"] = initial): void {
   mocks.refIndex = 0;
   mocks.effects.length = 0;
-  LineAccountClient({ initial: status, liffId: "123-app", publicOrigin: "https://demi.example.org" });
+  LineAccountClient({ initial: status, liffId: "123-app", publicOrigin: "https://demi.example.org", lifecycleReadiness: { state: "STAGED" } });
   for (const effect of mocks.effects) effect();
 }
 async function settle(): Promise<void> { for (let i = 0; i < 8; i++) await Promise.resolve(); }
@@ -83,7 +83,7 @@ describe("account page bounded LIFF friendship refresh", () => {
 
   it("waits for successful init and survives the Strict Mode effect restart with one request", async () => {
     mocks.refIndex = 0;
-    LineAccountClient({ initial, liffId: "123-app", publicOrigin: "https://demi.example.org" });
+    LineAccountClient({ initial, liffId: "123-app", publicOrigin: "https://demi.example.org", lifecycleReadiness: { state: "STAGED" } });
     const initialize = mocks.effects[0];
     const cleanup = initialize();
     if (cleanup) cleanup();

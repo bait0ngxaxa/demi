@@ -39,7 +39,14 @@ export type LineAccountDependencies = {
   authorizationInventory?: LineChannelInventory;
   /** Installed only by the complete runtime bundle, never by inventory alone. */
   enforceRelinkPolicy?: boolean;
+  /** Server-derived marker for local Unlink committed while readiness failed. */
+  disconnectionReadinessUnavailable?: boolean;
 };
+
+export function isLineDisconnectionReadinessUnavailableAudit(metadata: unknown): boolean {
+  return Boolean(metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
+    "disconnectionReadiness" in metadata && metadata.disconnectionReadiness === "UNAVAILABLE");
+}
 
 function databaseOf(dependencies: LineAccountDependencies): PrismaClient {
   return dependencies.database ?? getPrisma();
@@ -290,9 +297,16 @@ export async function linkLineAccount(
 
 async function requireRelinkEligibility(transaction: Prisma.TransactionClient, binding: { id: string; userId: string; lifecycleVersion: number }, now: Date, includeLegacy: boolean): Promise<void> {
   await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
-  // A disabled rollout leaves never-activated legacy users unchanged. Once
-  // durable termination exists, disabling config must not waive its obligations.
-  if (!includeLegacy && await transaction.lineAuthorizationLifecycle.count({ where: { bindingId: binding.id, requestedAt: { not: null } } }) === 0) return;
+  // Never-activated legacy bindings have no lifecycle rows and retain their
+  // existing path. Any known lifecycle history or recorded readiness-fallback
+  // Unlink keeps the current-generation guard active when the gate is disabled.
+  if (!includeLegacy && await transaction.lineAuthorizationLifecycle.count({ where: { bindingId: binding.id } }) === 0) {
+    const latestUnlink = await transaction.auditEvent.findFirst({
+      where: { action: "line.account.unlinked", resourceType: "LineAccountBinding", resourceId: binding.id },
+      orderBy: { createdAt: "desc" }, select: { metadata: true },
+    });
+    if (!isLineDisconnectionReadinessUnavailableAudit(latestUnlink?.metadata)) return;
+  }
   const eligibility = await evaluateLineRelinkEligibility(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion }, now);
   if (!eligibility.eligible) throw new LineFailure("LINE_RECOVERY_REQUIRED");
 }
@@ -362,7 +376,13 @@ export async function unlinkLineAccount(
         await initializeLineTermination(transaction, updated, dependencies.authorizationInventory, nowOf(dependencies));
       }
       await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
-      await recordAuditEvent({ actorUserId: session.userId, action: "line.account.unlinked", resourceType: "LineAccountBinding", resourceId: binding.id }, transaction);
+      await recordAuditEvent({
+        actorUserId: session.userId,
+        action: "line.account.unlinked",
+        resourceType: "LineAccountBinding",
+        resourceId: binding.id,
+        ...(dependencies.disconnectionReadinessUnavailable ? { metadata: { disconnectionReadiness: "UNAVAILABLE" } } : {}),
+      }, transaction);
       return { status: "UNLINKED" as const, bindingId: updated.id, lifecycleVersion: updated.lifecycleVersion };
     });
   } catch (error: unknown) {

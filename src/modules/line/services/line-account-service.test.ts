@@ -51,19 +51,27 @@ function createLinkHarness(options: {
   userStatus?: UserStatus;
   binding?: Record<string, unknown> | null;
   history?: readonly Record<string, unknown>[];
+  bindings?: readonly Record<string, unknown>[];
+  lifecycleRows?: readonly Record<string, unknown>[];
 } = {}) {
   const intent = options.intent === undefined ? activeIntent() : options.intent;
   const binding = options.binding ?? null;
   const history = options.history ?? [];
+  const bindings = options.bindings ?? (binding ? [binding] : []);
+  const lifecycleRows = options.lifecycleRows ?? [];
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([]),
     user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE }) },
     lineAccountActionIntent: {
       findUnique: vi.fn().mockImplementation(async () => intent),
       update: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      count: vi.fn().mockResolvedValue(0),
+      create: vi.fn().mockResolvedValue({ id: intentId, expiresAt: new Date(now.getTime() + 300_000) }),
     },
     lineAccountBinding: {
       findFirst: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("unlinkedAt" in where && where.unlinkedAt === null) return binding && binding.unlinkedAt == null ? binding : null;
         if ("lineSubjectFingerprintKeyId" in where) {
           const keyId = where.lineSubjectFingerprintKeyId as { not: string };
           return history.find((entry) => entry.lineSubjectFingerprint !== "" && entry.lineSubjectFingerprintKeyId !== keyId.not) ?? null;
@@ -74,10 +82,32 @@ function createLinkHarness(options: {
         }
         return binding;
       }),
+      findMany: vi.fn().mockResolvedValue(bindings),
+      findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => bindings.find((entry) => entry.id === where.id) ?? binding),
       create: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 1 }),
       update: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 2 }),
     },
-    auditEvent: { create: vi.fn().mockResolvedValue({}) },
+    lineAuthorizationLifecycle: {
+      count: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        const bindingIdFilter = where.bindingId;
+        const ids = bindingIdFilter && typeof bindingIdFilter === "object" && "in" in bindingIdFilter
+          ? bindingIdFilter.in as string[]
+          : [bindingIdFilter as string];
+        let rows = lifecycleRows.filter((row) => ids.includes(row.bindingId as string));
+        if (where.requestedAt && typeof where.requestedAt === "object" && "not" in where.requestedAt) {
+          rows = rows.filter((row) => row.requestedAt !== null && row.requestedAt !== undefined);
+        }
+        return rows.length;
+      }),
+      findMany: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        let rows = lifecycleRows.filter((row) => row.bindingId === where.bindingId);
+        if (where.requestedAt && typeof where.requestedAt === "object" && "not" in where.requestedAt) {
+          rows = rows.filter((row) => row.requestedAt !== null && row.requestedAt !== undefined);
+        }
+        return rows;
+      }),
+    },
+    auditEvent: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue(null) },
   };
   const database = {
     user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE }) },
@@ -259,6 +289,75 @@ describe("LINE account lifecycle service", () => {
     }));
   });
 
+  it("keeps pre-launch Link eligibility fail-closed for known history after the gate is disabled", async () => {
+    const identity = createLineSubjectFingerprint(lineSubject);
+    const revoked = {
+      id: bindingId,
+      userId,
+      lineSubjectFingerprint: identity.fingerprint,
+      lineSubjectFingerprintKeyId: identity.keyId,
+      unlinkedAt: now,
+      lifecycleVersion: 2,
+    };
+    const observedHistory = createLinkHarness({
+      history: [revoked],
+      bindings: [revoked],
+      lifecycleRows: [{ bindingId, bindingVersion: 1, requestedAt: null }],
+    });
+
+    await expect(createLineAccountIntent(LineAccountAction.LINK, {
+      ...dependencies(observedHistory.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    expect(observedHistory.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
+
+    const failedReadinessUnlink = createLinkHarness({ history: [revoked], bindings: [revoked] });
+    failedReadinessUnlink.tx.auditEvent.findFirst.mockResolvedValue({ metadata: { disconnectionReadiness: "UNAVAILABLE" } });
+    await expect(createLineAccountIntent(LineAccountAction.LINK, {
+      ...dependencies(failedReadinessUnlink.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    expect(failedReadinessUnlink.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
+
+    const neverActivatedLegacy = createLinkHarness({ history: [revoked], bindings: [revoked] });
+    await expect(createLineAccountIntent(LineAccountAction.LINK, {
+      ...dependencies(neverActivatedLegacy.database), enforceRelinkPolicy: true,
+    })).resolves.toMatchObject({ intentId, challenge: expect.any(String) });
+  });
+
+  it("retains the never-activated legacy Relink path but blocks known lifecycle history after gate disablement", async () => {
+    const identity = createLineSubjectFingerprint(lineSubject);
+    const legacy = {
+      id: bindingId,
+      userId,
+      lineSubjectFingerprint: identity.fingerprint,
+      lineSubjectFingerprintKeyId: identity.keyId,
+      unlinkedAt: now,
+      lifecycleVersion: 2,
+    };
+    const eligibleLegacy = createLinkHarness({ history: [legacy], bindings: [legacy] });
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
+      ...dependencies(eligibleLegacy.database), enforceRelinkPolicy: true,
+    })).resolves.toMatchObject({ status: "LINKED", bindingId });
+
+    const previouslyObserved = createLinkHarness({
+      history: [legacy],
+      binding: legacy,
+      bindings: [legacy],
+      lifecycleRows: [{ bindingId, bindingVersion: 1, requestedAt: null }],
+    });
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
+      ...dependencies(previouslyObserved.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    expect(previouslyObserved.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+    expect(previouslyObserved.tx.lineAccountBinding.create).not.toHaveBeenCalled();
+
+    const fallbackUnlink = createLinkHarness({ history: [legacy], binding: legacy, bindings: [legacy] });
+    fallbackUnlink.tx.auditEvent.findFirst.mockResolvedValue({ metadata: { disconnectionReadiness: "UNAVAILABLE" } });
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
+      ...dependencies(fallbackUnlink.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    expect(fallbackUnlink.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+  });
+
   it("consumes a conflicting cross-user history intent and never transfers the binding", async () => {
     const identity = createLineSubjectFingerprint(lineSubject);
     const historical = {
@@ -323,6 +422,7 @@ describe("LINE account lifecycle service", () => {
       database: database as unknown as PrismaClient,
       currentSession: async () => session,
       now: () => now,
+      disconnectionReadinessUnavailable: true,
     });
     expect(result).toEqual({ status: "UNLINKED", bindingId, lifecycleVersion: 9 });
     expect(tx.lineAccountBinding.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -336,6 +436,9 @@ describe("LINE account lifecycle service", () => {
       }),
     }));
     expect(JSON.stringify(tx.lineAccountBinding.update.mock.calls)).not.toContain(lineSubject);
+    expect(tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ metadata: { disconnectionReadiness: "UNAVAILABLE" } }),
+    }));
   });
 
   it("does not issue self-service intents for non-ACTIVE DEMI users", async () => {

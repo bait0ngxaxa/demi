@@ -17,8 +17,18 @@ export async function POST(request: Request): Promise<Response> {
     if (!parsed.success) return Response.json({ error: "คำขอไม่ถูกต้อง กรุณาเริ่มใหม่" }, { status: 400, headers: { "cache-control": "private, no-store" } });
     // Readiness loss cannot keep an authenticated owner's local binding active.
     // Link/Recovery still fail closed; repaired inventory lazily initializes history.
-    const configuration = await requireLineDisconnectionReadiness().catch(() => null);
-    const unlinked = configuration ? await disconnectLineAccount(parsed.data, { configuration }) : await unlinkLineAccount(parsed.data);
+    let configuration: Awaited<ReturnType<typeof requireLineDisconnectionReadiness>> = null;
+    let disconnectionReadinessUnavailable = false;
+    try {
+      configuration = await requireLineDisconnectionReadiness();
+    } catch {
+      disconnectionReadinessUnavailable = true;
+    }
+    const unlinked = configuration
+      ? await disconnectLineAccount(parsed.data, { configuration })
+      : disconnectionReadinessUnavailable
+        ? await unlinkLineAccount(parsed.data, { disconnectionReadinessUnavailable: true })
+        : await unlinkLineAccount(parsed.data);
     scheduleLineBindingReconciliation([unlinked.bindingId]);
     return Response.json(
       { status: unlinked.status, cleanup: LineProviderCleanupState.PENDING, ...("disconnection" in unlinked ? { disconnection: unlinked.disconnection } : {}) },

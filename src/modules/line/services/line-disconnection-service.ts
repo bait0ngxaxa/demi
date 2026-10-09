@@ -12,7 +12,7 @@ import { verifyFreshLineIdToken } from "../adapters/line-login-client";
 import { isLineObligationSatisfied, isLineRecoveryEligible, lineChannelTupleKey, lineObligationStatus, lineObligationSetDigest } from "../domain/line-authorization-lifecycle";
 import { LineFailure } from "../domain/line-errors";
 import { lineRecoveryRequestSchema } from "../schemas/line-schemas";
-import { unlinkLineAccount, type LineAccountDependencies } from "./line-account-service";
+import { isLineDisconnectionReadinessUnavailableAudit, unlinkLineAccount, type LineAccountDependencies } from "./line-account-service";
 import { authorizeLineRecoveryDecision, isLineTerminationDispatchAllowed, prepareLineRecoverySet, recordLineTerminationOutcome, releaseLineRecovery, reserveLineTerminationAttempt } from "./line-authorization-lifecycle-service";
 import type { LineDisconnectionConfiguration } from "./line-disconnection-configuration";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
@@ -52,6 +52,32 @@ export async function getLineDisconnectionStatus(deps: DisconnectionDependencies
     : rows.some((row) => row.recoveryReleasedAt) ? "RECOVERY_RELEASED_UNVERIFIED" : rows.length ? "REMOTE_CONFIRMED" : "NONE";
   return { state, canRelink: !legacy && blocked.length === 0,
     obligations: rows.map((row) => ({ id: row.id, appName: deps.configuration.appNames[row.tupleKey] ?? "แอป DEMI ที่เคยเชื่อมต่อ", status: lineObligationStatus(row) })) };
+}
+
+/**
+ * Read-only display support for the intentionally staged rollout. A disabled
+ * feature gate is only safe to present as ordinary Link/Relink when this owner
+ * has no durable lifecycle history. Backend Link guards remain authoritative.
+ */
+export async function hasLineLifecycleHistoryForCurrentOwner(
+  dependencies: Pick<DisconnectionDependencies, "database" | "currentSession"> = {},
+): Promise<boolean> {
+  const session = await (dependencies.currentSession ?? getCurrentLineSession)();
+  const database = dependencies.database ?? getPrisma();
+  const owner = await database.user.findUnique({ where: { id: session.userId }, select: { status: true } });
+  if (owner?.status !== "ACTIVE") throw new ForbiddenError();
+
+  const bindings = await database.lineAccountBinding.findMany({ where: { userId: session.userId }, select: { id: true } });
+  if (!bindings.length) return false;
+
+  const bindingIds = bindings.map((binding) => binding.id);
+  if (await database.lineAuthorizationLifecycle.count({ where: { bindingId: { in: bindingIds } } })) return true;
+
+  const unlinkAudits = await database.auditEvent.findMany({
+    where: { action: "line.account.unlinked", resourceType: "LineAccountBinding", resourceId: { in: bindingIds } },
+    select: { metadata: true },
+  });
+  return unlinkAudits.some((audit) => isLineDisconnectionReadinessUnavailableAudit(audit.metadata));
 }
 
 /** Provider failure and even post-commit persistence failure cannot undo local revocation.

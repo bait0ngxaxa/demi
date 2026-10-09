@@ -29,6 +29,8 @@ function renderScreen(
   return renderToStaticMarkup(
     <LineAccountScreen
       initial={initial}
+      lifecycleReadiness={state.lifecycleReadiness ?? { state: "READY" }}
+      relinkEligibility={state.relinkEligibility ?? "ELIGIBLE"}
       accountStatus={state.accountStatus ?? initial.status}
       canUnlink={state.canUnlink ?? initial.canUnlink}
       liffState={state.liffState ?? "READY"}
@@ -65,6 +67,7 @@ describe("LINE account user experience", () => {
         initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }}
         liffId={null}
         publicOrigin=""
+        lifecycleReadiness={{ state: "NOT_CHECKED" }}
       />,
     );
 
@@ -78,6 +81,7 @@ describe("LINE account user experience", () => {
         initial={{ ...emptyStatus, status: "UNLINKED", canUnlink: false }}
         liffId="1234567890-AbCdEfGh"
         publicOrigin="https://demi.example.org"
+        lifecycleReadiness={{ state: "STAGED" }}
       />,
     );
 
@@ -349,6 +353,78 @@ describe("LINE account user experience", () => {
     expect(link).toContain("บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI");
     expect(unlink).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
     expect(unlink).toContain("ยืนยันยกเลิกการเชื่อมต่อ");
+  });
+
+  it("keeps local unlink available and describes the remote uncertainty when readiness degrades", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "APPLIED",
+    }, {
+      lifecycleReadiness: { state: "DEGRADED", history: "PRESENT" },
+      relinkEligibility: "UNVERIFIED",
+    });
+
+    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("ยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน");
+    expect(markup).toContain(">ยกเลิกการเชื่อมต่อ LINE</button>");
+    expect(markup).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
+  });
+
+  it("blocks Relink while historical eligibility is unavailable and offers retry", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "UNLINKED",
+      canUnlink: false,
+      cleanupState: "PENDING",
+    }, {
+      lifecycleReadiness: { state: "DEGRADED", history: "PRESENT" },
+      relinkEligibility: "UNVERIFIED",
+    });
+
+    expect(markup).toContain("พบประวัติการถอนสิทธิ์เดิม แต่ขณะนี้ตรวจสอบเงื่อนไขการเชื่อมใหม่ไม่ได้");
+    expect(markup).toContain("คุณยังเข้าสู่ระบบ DEMI ตามปกติได้");
+    expect(markup).toContain(">ตรวจสอบสถานะอีกครั้ง</button>");
+    expect(markup).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
+    expect(markup).not.toContain(">เข้าสู่ระบบ LINE</button>");
+    expect(markup).not.toContain("ยังเริ่มการตรวจสอบเพื่อเชื่อมใหม่ได้");
+  });
+
+  it("keeps the staged path available only when the server marks Relink eligible", () => {
+    const staged = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
+      lifecycleReadiness: { state: "STAGED" },
+      relinkEligibility: "ELIGIBLE",
+    });
+    const unknown = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
+      lifecycleReadiness: { state: "DEGRADED", history: "UNKNOWN" },
+      relinkEligibility: "UNVERIFIED",
+    });
+
+    expect(staged).toContain(">เชื่อมบัญชี LINE นี้</button>");
+    expect(unknown).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
+  });
+
+  it("does not present a suspended or ineligible owner as having an active binding", () => {
+    const markup = renderScreen({ ...emptyStatus, status: "INELIGIBLE", canUnlink: false });
+
+    expect(markup).toContain("บัญชี DEMI นี้ยังไม่สามารถจัดการการเชื่อมต่อ LINE ได้");
+    expect(markup).not.toContain("เชื่อมต่อแล้ว");
+    expect(markup).not.toContain(">ยกเลิกการเชื่อมต่อ LINE</button>");
+  });
+
+  it("warns after local unlink when configuration cannot confirm remote removal", () => {
+    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
+      lifecycleReadiness: { state: "DEGRADED", history: "UNKNOWN" },
+      relinkEligibility: "UNVERIFIED",
+      view: "SUCCESS",
+      successAction: "UNLINK",
+    });
+
+    expect(markup).toContain("หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
+    expect(markup).toContain(">ตรวจสอบสถานะอีกครั้ง</button>");
+    expect(markup).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
   });
 
   it("keeps recoverable operation failures safe and actionable", () => {

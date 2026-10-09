@@ -20,6 +20,13 @@ type Intent = { intentId: string; challenge: string };
 type LiffState = "LOADING" | "READY" | "LOGIN_REQUIRED" | "UNAVAILABLE";
 type ViewState = "READY" | "LINK_CONFIRM" | "UNLINK_CONFIRM" | "BUSY" | "SUCCESS" | "FAILURE";
 type SuccessAction = "LINK" | "UNLINK" | null;
+type RelinkEligibility = "ELIGIBLE" | "BLOCKED" | "UNVERIFIED";
+
+export type LineAccountLifecycleReadiness =
+  | { state: "READY" }
+  | { state: "STAGED" }
+  | { state: "DEGRADED"; history: "PRESENT" | "NONE" | "UNKNOWN" }
+  | { state: "NOT_CHECKED" };
 
 const safeFailure = "ทำรายการไม่สำเร็จ กรุณาลองใหม่";
 const menuStates = new Set<MenuPresentation>(["UNKNOWN", "APPLIED", "MISMATCH", "UNAVAILABLE"]);
@@ -99,9 +106,9 @@ export function closeLineLiffWindow(isInClient: boolean): void {
 }
 
 type LineAccountScreenProps = {
-  fullDisconnectionEnabled?: boolean;
+  lifecycleReadiness: LineAccountLifecycleReadiness;
+  relinkEligibility: RelinkEligibility;
   recoveryContent?: React.ReactNode;
-  canRelink?: boolean;
   initial: InitialStatus;
   accountStatus: InitialStatus["status"];
   canUnlink: boolean;
@@ -131,9 +138,9 @@ type LineAccountScreenProps = {
 };
 
 export function LineAccountScreen({
-  fullDisconnectionEnabled = false,
+  lifecycleReadiness,
+  relinkEligibility,
   recoveryContent,
-  canRelink = true,
   initial,
   accountStatus,
   canUnlink,
@@ -162,7 +169,7 @@ export function LineAccountScreen({
   onReload,
 }: LineAccountScreenProps): React.JSX.Element {
   const busy = view === "BUSY";
-  const linked = accountStatus === "LINKED" || accountStatus === "INELIGIBLE";
+  const linked = accountStatus === "LINKED" || (accountStatus === "INELIGIBLE" && canUnlink);
   const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED";
   const notFriend = accountStatus === "LINKED" && initial.reachability === "NOT_FRIEND";
   const hasFriendshipAction = notFriend && (
@@ -223,6 +230,14 @@ export function LineAccountScreen({
               ) : (
                 <>
                   <p className="text-base text-ink">บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว</p>
+                  {lifecycleReadiness.state === "DEGRADED" || lifecycleReadiness.state === "STAGED" ? (
+                    <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning">
+                      <p>{lifecycleReadiness.state === "STAGED"
+                        ? "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่การถอนสิทธิ์จาก LINE ยังไม่เปิดใช้ในสภาพแวดล้อมนี้"
+                        : "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
+                      <button type="button" onClick={onReload} className={secondaryButtonClass}>ตรวจสอบสถานะอีกครั้ง</button>
+                    </div>
+                  ) : null}
                   {providerWarning ? (
                     <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
                       เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น
@@ -320,6 +335,13 @@ export function LineAccountScreen({
                       ยกเลิกการเชื่อมต่อ LINE
                     </button>
                   ) : null}
+                  {lifecycleReadiness.state === "DEGRADED" || lifecycleReadiness.state === "STAGED" ? (
+                    <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="status" aria-live="polite">
+                      {lifecycleReadiness.state === "STAGED"
+                        ? "การถอนสิทธิ์จาก LINE ยังไม่เปิดใช้ในสภาพแวดล้อมนี้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน"
+                        : "ขณะนี้ตรวจสอบการถอนสิทธิ์จาก LINE ไม่ได้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน"}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <>
@@ -327,6 +349,7 @@ export function LineAccountScreen({
                   <p className="mt-2 text-base text-muted" aria-live="polite">
                     {accountStatus === "UNAUTHENTICATED" && "กรุณาเข้าสู่ระบบ DEMI ก่อนจัดการบัญชี LINE"}
                     {accountStatus === "UNLINKED" && "ยังไม่ได้เชื่อมบัญชี LINE กับ DEMI"}
+                    {accountStatus === "INELIGIBLE" && "บัญชี DEMI นี้ยังไม่สามารถจัดการการเชื่อมต่อ LINE ได้"}
                     {accountStatus === "UNAVAILABLE" && "ยังโหลดข้อมูลไม่ได้"}
                   </p>
 
@@ -344,25 +367,33 @@ export function LineAccountScreen({
 
                   {accountStatus === "UNLINKED" ? (
                     <div className="mt-6 space-y-4">
+                      {lifecycleReadiness.state === "DEGRADED" ? (
+                        <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="status" aria-live="polite">
+                          <p>{lifecycleReadiness.history === "PRESENT"
+                            ? "พบประวัติการถอนสิทธิ์เดิม แต่ขณะนี้ตรวจสอบเงื่อนไขการเชื่อมใหม่ไม่ได้"
+                            : "ขณะนี้ตรวจสอบสถานะ LINE และเงื่อนไขการเชื่อมใหม่ไม่ได้"} คุณยังเข้าสู่ระบบ DEMI ตามปกติได้ การเชื่อมใหม่จะเปิดเมื่อระบบตรวจสอบสถานะได้อีกครั้ง</p>
+                          <button type="button" onClick={onReload} className={secondaryButtonClass}>ตรวจสอบสถานะอีกครั้ง</button>
+                        </div>
+                      ) : null}
                       {initial.cleanupState && initial.cleanupState !== "CONFIRMED_CLEAN" ? (
                         <p role="status" className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
                           เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น
                         </p>
                       ) : null}
-                      {canRelink && liffState === "LOGIN_REQUIRED" ? (
+                      {relinkEligibility === "ELIGIBLE" && liffState === "LOGIN_REQUIRED" ? (
                         <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>
                           เข้าสู่ระบบ LINE
                         </button>
                       ) : null}
-                      {canRelink && liffState === "READY" ? (
+                      {relinkEligibility === "ELIGIBLE" && liffState === "READY" ? (
                         <button type="button" disabled={busy} onClick={onBeginLink} className={primaryButtonClass}>
                           เชื่อมบัญชี LINE นี้
                         </button>
                       ) : null}
-                      {canRelink && liffState === "LOADING" ? (
+                      {relinkEligibility === "ELIGIBLE" && liffState === "LOADING" ? (
                         <p role="status" className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">กำลังเตรียมการเชื่อมต่อ LINE…</p>
                       ) : null}
-                      {canRelink && liffState === "UNAVAILABLE" ? (
+                      {relinkEligibility === "ELIGIBLE" && liffState === "UNAVAILABLE" ? (
                         <div className="space-y-3">
                           <p role="status" className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">ยังเปิดการเชื่อมต่อ LINE ไม่ได้</p>
                           <button type="button" onClick={onReload} className={secondaryButtonClass}>ลองอีกครั้ง</button>
@@ -387,7 +418,11 @@ export function LineAccountScreen({
               {view === "UNLINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-danger/40 bg-danger-soft p-4" aria-labelledby="unlink-confirm-title">
                   <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อบัญชี LINE?</h3>
-                  <p className="mt-2 text-sm text-ink">{fullDisconnectionEnabled ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้" : "เมนู LINE จะหยุดใช้กับบัญชี DEMI นี้ทันที การยกเลิกไม่ลบบัญชี DEMI ของคุณหรือข้อมูลผู้ป่วย"}</p>
+                  <p className="mt-2 text-sm text-ink">{lifecycleReadiness.state === "READY"
+                    ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มดำเนินการถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้"
+                    : lifecycleReadiness.state === "DEGRADED"
+                      ? "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"
+                      : "การเข้าถึง DEMI ผ่านการเชื่อมต่อ LINE เดิมจะหยุดทันที แต่การถอนสิทธิ์ LINE จากภายนอกยังไม่เปิดใช้ในสภาพแวดล้อมนี้ บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ"}</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
@@ -418,11 +453,13 @@ export function LineAccountClient({
   liffId,
   publicOrigin,
   disconnection,
+  lifecycleReadiness,
 }: {
   initial: InitialStatus;
   liffId: string | null;
   publicOrigin: string;
   disconnection?: LineDisconnectionStatus;
+  lifecycleReadiness: LineAccountLifecycleReadiness;
 }): React.JSX.Element {
   const [termination, setTermination] = useState(disconnection);
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -444,6 +481,11 @@ export function LineAccountClient({
   const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
   const privateRoot = useRef<HTMLDivElement>(null);
+  const relinkEligibility: RelinkEligibility = lifecycleReadiness.state === "STAGED"
+    ? "ELIGIBLE"
+    : lifecycleReadiness.state === "READY"
+      ? termination?.canRelink ? "ELIGIBLE" : "BLOCKED"
+      : "UNVERIFIED";
 
 
   useEffect(() => {
@@ -524,6 +566,7 @@ export function LineAccountClient({
   }
 
   async function begin(action: "LINK" | "UNLINK"): Promise<void> {
+    if (action === "LINK" && relinkEligibility !== "ELIGIBLE") return;
     setView("BUSY");
     setMessage("");
     try {
@@ -642,6 +685,7 @@ export function LineAccountClient({
   }
 
   async function startLineLogin(): Promise<void> {
+    if (accountStatus === "UNLINKED" && relinkEligibility !== "ELIGIBLE") return;
     if (!liffId || !publicOrigin) {
       setLiffState("UNAVAILABLE");
       setCanRefreshReachability(false);
@@ -669,9 +713,9 @@ export function LineAccountClient({
   return (
     <div ref={privateRoot}>
     <LineAccountScreen
-      fullDisconnectionEnabled={termination !== undefined}
-      canRelink={termination?.canRelink ?? true}
-      recoveryContent={termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
+      lifecycleReadiness={lifecycleReadiness}
+      relinkEligibility={relinkEligibility}
+      recoveryContent={lifecycleReadiness.state === "READY" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   requireSameOrigin: vi.fn(),
   readAccountJson: vi.fn(),
   lineErrorResponse: vi.fn(),
+  readiness: vi.fn(),
 }));
 
 vi.mock("@/modules/line/services/line-account-service", () => ({
@@ -19,6 +20,9 @@ vi.mock("@/modules/line/services/line-account-service", () => ({
 }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({
   scheduleLineBindingReconciliation: mocks.schedule,
+}));
+vi.mock("@/modules/line/services/line-disconnection-configuration", () => ({
+  requireLineDisconnectionReadiness: mocks.readiness,
 }));
 vi.mock("@/modules/line/transport/account-http", () => ({
   requireSameOrigin: mocks.requireSameOrigin,
@@ -40,6 +44,7 @@ describe("LINE account mutation response boundary", () => {
     vi.clearAllMocks();
     mocks.requireSameOrigin.mockResolvedValue(undefined);
     mocks.lineErrorResponse.mockReturnValue(Response.json({ error: "safe" }, { status: 503 }));
+    mocks.readiness.mockResolvedValue(null);
   });
 
   it("refreshes friendship then schedules presentation without exposing binding IDs or tokens", async () => {
@@ -99,6 +104,18 @@ describe("LINE account mutation response boundary", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "UNLINKED", cleanup: "PENDING" });
     expect(mocks.unlink.mock.invocationCallOrder[0]).toBeLessThan(mocks.schedule.mock.invocationCallOrder[0]);
+    expect(mocks.schedule).toHaveBeenCalledWith(["binding-id"]);
+  });
+
+  it("keeps local Unlink available and records the readiness fallback when configuration fails", async () => {
+    mocks.readAccountJson.mockResolvedValue(intent);
+    mocks.readiness.mockRejectedValue(new Error("reviewed configuration unavailable"));
+    mocks.unlink.mockResolvedValue({ status: "UNLINKED", bindingId: "binding-id", lifecycleVersion: 3 });
+
+    const response = await unlinkPOST(new Request("https://demi.example.org/api/line/account/unlink", { method: "POST" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.unlink).toHaveBeenCalledWith(intent, { disconnectionReadinessUnavailable: true });
     expect(mocks.schedule).toHaveBeenCalledWith(["binding-id"]);
   });
 });
