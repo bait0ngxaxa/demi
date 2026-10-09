@@ -193,6 +193,40 @@ enum AppointmentCancellationRequestStatus {
   SUPERSEDED
 }
 
+enum AppointmentLineNotificationEventKind {
+  CREATED
+  RESCHEDULED
+  CANCELLED
+}
+
+enum AppointmentLineNotificationState {
+  PENDING
+  CLAIMED
+  RETRY_SCHEDULED
+  PROVIDER_ACCEPTED
+  SUPPRESSED
+  PERMANENT_FAILURE
+  OUTCOME_UNKNOWN
+}
+
+enum AppointmentLineNotificationOutcome {
+  ACCEPTED
+  DUPLICATE_ACCEPTED
+  TRANSIENT_HTTP_FAILURE
+  AMBIGUOUS_TRANSPORT_FAILURE
+  PERMANENT_HTTP_FAILURE
+  RETRY_WINDOW_EXPIRED
+  STALE_SOURCE
+  AUTHORITY_CHANGED
+  OPT_IN_REVOKED
+  LINE_INELIGIBLE
+  ROLLOUT_CLOSED
+  OPT_IN_REQUIRED_AT_SOURCE
+  PATIENT_INELIGIBLE_AT_SOURCE
+  LINE_BINDING_INELIGIBLE_AT_SOURCE
+  PROCESS_OUTCOME_UNKNOWN
+}
+
 enum FollowupActivityProgressStatus {
   DONE
   PARTIAL
@@ -329,6 +363,8 @@ model User {
   auditEvents AuditEvent[]
   lineAccountBindings LineAccountBinding[]
   lineAccountActionIntents LineAccountActionIntent[]
+  lineAppointmentNotificationPreference LineAppointmentNotificationPreference?
+  appointmentLineNotificationIntents AppointmentLineNotification[] @relation("AppointmentLineNotificationRecipient")
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
 
@@ -880,11 +916,13 @@ model PatientAppointment {
   acknowledgements            PatientAppointmentAcknowledgement[]
   cancellationRequests        PatientAppointmentCancellationRequest[]
   coordinationEvents          PatientAppointmentCoordinationEvent[]
+  lineNotificationIntents     AppointmentLineNotification[]
   followups                   PatientFollowup[]
 
   @@index([patientHospitalRelationshipId, scheduledAt])
   @@index([responsibleUserId])
   @@index([status])
+  @@unique([id, patientHospitalRelationshipId])
 }
 
 model PatientAppointmentAcknowledgement {
@@ -1346,6 +1384,59 @@ model AuditEvent {
   @@index([resourceType, resourceId, createdAt])
 }
 
+model LineAppointmentNotificationPreference {
+  userId                    String   @id @db.Uuid
+  bindingId                 String   @unique @db.Uuid
+  bindingLifecycleVersion   Int
+  preferenceVersion         Int      @default(1)
+  enabled                   Boolean  @default(false)
+  changedAt                 DateTime @db.Timestamptz(3)
+  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime @updatedAt @db.Timestamptz(3)
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+}
+
+model AppointmentLineNotification {
+  id                          String                                @id @default(uuid()) @db.Uuid
+  appointmentId               String                                @db.Uuid
+  patientHospitalRelationshipId String                              @db.Uuid
+  sourceUpdatedAt              DateTime                              @db.Timestamptz(3)
+  eventKind                    AppointmentLineNotificationEventKind
+  recipientUserId              String?                               @db.Uuid
+  bindingId                    String?                               @db.Uuid
+  bindingLifecycleVersion      Int?
+  preferenceVersion            Int?
+  rolloutGeneration            String                                @db.Uuid
+  state                        AppointmentLineNotificationState     @default(PENDING)
+  dueAt                        DateTime                              @db.Timestamptz(3)
+  attemptCount                 Int                                   @default(0)
+  retryKey                     String                                @unique @default(uuid()) @db.Uuid
+  leaseToken                   String?                               @unique @db.Uuid
+  leaseExpiresAt               DateTime?                             @db.Timestamptz(3)
+  firstAttemptAt               DateTime?                             @db.Timestamptz(3)
+  lastAttemptAt                DateTime?                             @db.Timestamptz(3)
+  safeOutcome                  AppointmentLineNotificationOutcome?
+  terminalAt                   DateTime?                             @db.Timestamptz(3)
+  createdAt                    DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt                    DateTime                              @updatedAt @db.Timestamptz(3)
+
+  appointment               PatientAppointment         @relation(fields: [appointmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
+  recipient                 User?                      @relation("AppointmentLineNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  binding                   LineAccountBinding?        @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, sourceUpdatedAt])
+  @@index([state, dueAt])
+  @@index([state, leaseExpiresAt])
+  @@index([state, terminalAt])
+}
+
+model AppointmentLineNotificationWorkerState {
+  id                Int      @id @default(1)
+  lastInvocationAt  DateTime @default("1970-01-01T00:00:00.000Z") @db.Timestamptz(3)
+}
+
 model LineAccountBinding {
   id                              String                     @id @default(uuid()) @db.Uuid
   userId                          String                     @db.Uuid
@@ -1374,6 +1465,8 @@ model LineAccountBinding {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   authorizationLifecycles LineAuthorizationLifecycle[]
   recoveryIntents LineAccountActionIntent[]
+  appointmentNotificationPreference LineAppointmentNotificationPreference?
+  appointmentLineNotificationIntents AppointmentLineNotification[]
 
   @@index([userId])
   @@index([lineSubjectFingerprint])

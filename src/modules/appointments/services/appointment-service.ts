@@ -6,6 +6,7 @@ import {
   AppointmentStatus,
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
+  AppointmentLineNotificationEventKind,
   MembershipStatus,
   Prisma,
   Profession,
@@ -34,6 +35,10 @@ import {
 } from "../policies/appointment-policy";
 import type { AppointmentLocationValue } from "../domain/appointment-definitions";
 import {
+  getAppointmentLineNotificationRollout,
+  type AppointmentLineNotificationRollout,
+} from "../domain/appointment-line-notifications";
+import {
   appointmentCreateRequestSchema,
   appointmentAcknowledgementRequestSchema,
   appointmentCancellationRequestSchema,
@@ -46,6 +51,7 @@ import {
   type AppointmentTransitionRequest,
 } from "../schemas/appointment-schemas";
 import { resolveAppointmentAccessContext } from "./appointment-access-service";
+import { createAppointmentLineNotificationIntent } from "./appointment-line-notification-outbox-service";
 
 export type AppointmentDatabase = PrismaClient;
 
@@ -53,6 +59,7 @@ export type AppointmentServiceDependencies = {
   database?: AppointmentDatabase;
   now?: () => Date;
   transactionRetries?: number;
+  appointmentLineNotificationRollout?: AppointmentLineNotificationRollout;
 };
 
 export type AppointmentMutationResult = {
@@ -161,6 +168,10 @@ function getNow(dependencies: AppointmentServiceDependencies): Date {
   }
 
   return copy;
+}
+
+function getNotificationRollout(dependencies: AppointmentServiceDependencies): AppointmentLineNotificationRollout {
+  return dependencies.appointmentLineNotificationRollout ?? getAppointmentLineNotificationRollout();
 }
 
 function isKnownRequestError(error: unknown, code: string): boolean {
@@ -312,6 +323,7 @@ async function createInTransaction(
   actor: ActorContext,
   input: AppointmentCreateRequest,
   now: Date,
+  notificationRollout: AppointmentLineNotificationRollout,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
     actor,
@@ -385,6 +397,14 @@ async function createInTransaction(
     transaction,
   );
 
+  await createAppointmentLineNotificationIntent(transaction, {
+    appointmentId: appointment.id,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+    sourceUpdatedAt: appointment.updatedAt,
+    eventKind: AppointmentLineNotificationEventKind.CREATED,
+    patientUserId: access.target.patientUserId,
+  }, notificationRollout, now);
+
   return toMutationResult(appointment, access.target.hospitalId);
 }
 
@@ -404,9 +424,10 @@ export async function createAppointment(
   }
 
   try {
+    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
-      (transaction) => createInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      (transaction) => createInTransaction(transaction, actor, parsed.data, getNow(dependencies), notificationRollout),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
@@ -457,6 +478,7 @@ async function rescheduleInTransaction(
   actor: ActorContext,
   input: AppointmentRescheduleRequest,
   now: Date,
+  notificationRollout: AppointmentLineNotificationRollout,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
     actor,
@@ -546,6 +568,16 @@ async function rescheduleInTransaction(
     transaction,
   );
 
+  if (current.scheduledAt.getTime() !== fields.scheduledAt.getTime()) {
+    await createAppointmentLineNotificationIntent(transaction, {
+      appointmentId: result.id,
+      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      sourceUpdatedAt: result.updatedAt,
+      eventKind: AppointmentLineNotificationEventKind.RESCHEDULED,
+      patientUserId: access.target.patientUserId,
+    }, notificationRollout, now);
+  }
+
   return toMutationResult(result, access.target.hospitalId);
 }
 
@@ -565,9 +597,10 @@ export async function rescheduleAppointment(
   }
 
   try {
+    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
-      (transaction) => rescheduleInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      (transaction) => rescheduleInTransaction(transaction, actor, parsed.data, getNow(dependencies), notificationRollout),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
@@ -586,6 +619,7 @@ async function terminalTransitionInTransaction(
   input: AppointmentTransitionRequest,
   transition: TerminalTransition,
   now: Date,
+  notificationRollout: AppointmentLineNotificationRollout,
   exceptCancellationRequestId?: string,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
@@ -675,6 +709,16 @@ async function terminalTransitionInTransaction(
     transaction,
   );
 
+  if (transition.status === AppointmentStatus.CANCELLED) {
+    await createAppointmentLineNotificationIntent(transaction, {
+      appointmentId: result.id,
+      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      sourceUpdatedAt: result.updatedAt,
+      eventKind: AppointmentLineNotificationEventKind.CANCELLED,
+      patientUserId: access.target.patientUserId,
+    }, notificationRollout, now);
+  }
+
   return toMutationResult(result, access.target.hospitalId);
 }
 
@@ -695,6 +739,7 @@ async function transitionAppointment(
   }
 
   try {
+    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
       (transaction) =>
@@ -704,6 +749,7 @@ async function transitionAppointment(
           parsed.data,
           transition,
           getNow(dependencies),
+          notificationRollout,
         ),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
@@ -1164,6 +1210,7 @@ export async function reviewAppointmentCancellationRequest(
   }
 
   try {
+    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
@@ -1298,6 +1345,7 @@ export async function reviewAppointmentCancellationRequest(
           },
           { status: AppointmentStatus.CANCELLED, action: "appointment.cancelled" },
           now,
+          notificationRollout,
           request.id,
         );
         const resolved = await transaction.patientAppointmentCancellationRequest.updateMany({

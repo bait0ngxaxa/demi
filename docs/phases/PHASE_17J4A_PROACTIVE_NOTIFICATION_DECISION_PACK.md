@@ -1,7 +1,13 @@
 # Phase 17J.4A — Proactive Notification Decision Pack and Implementation Readiness
 
-- **Status: PROPOSAL READY FOR OWNER REVIEW — decisions below remain OPEN.**
-- **Phase 17J.4A is preparation only. Phase 17J.4 and P17D-NOTIF-01 are not complete or approved.**
+## Current-status addendum — owner decisions closed (2026-10-09)
+
+[Owner Decision Closeout](./PHASE_17J4A_OWNER_DECISION_CLOSEOUT.md) records J4A-OD01–OD10, Cutover Safety, and Honest Idempotency **APPROVED for isolated synthetic/demo implementation**. Its approved bounded scope supersedes the OPEN recommendation state below. This pack remains historical evidence of the pre-approval proposal and implementation-readiness review.
+
+Phase 17J.4B now records **IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE** for its bounded synthetic/demo scope after focused unit tests passed 7 files / 77 tests and focused PostgreSQL integration passed 1 file / 19 tests. This does not mark overall Phase 17J.4 complete/approved or close P17D-NOTIF-01. See [Phase 17J.4B implementation handoff](./PHASE_17J4B_APPOINTMENT_NOTIFICATION_IMPLEMENTATION.md) for scope, evidence, limitations, and next phase. Real Push, provider/device UAT, deployed activation, external privacy approval, environment/provider mutation, and production release remain unauthorized.
+
+- **Historical preparation status: PROPOSAL READY FOR OWNER REVIEW — decisions were OPEN at that time.**
+- **At preparation time, Phase 17J.4A was documentation only; Phase 17J.4 and P17D-NOTIF-01 were not complete or approved.**
 - Repository evidence reviewed at baseline **8ff60f1dc06e964f59051122434b2b45681b2b3a**.
 - This document changes no application code, schema, migration, dependency, environment, LINE resource, or deployment.
 

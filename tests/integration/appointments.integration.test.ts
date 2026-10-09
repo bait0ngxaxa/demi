@@ -1,8 +1,11 @@
 import {
+  AppointmentLineNotificationEventKind,
+  AppointmentLineNotificationState,
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
   AppointmentStatus,
   HospitalStatus,
+  LineReachability,
   MembershipStatus,
   MembershipType,
   Profession,
@@ -33,6 +36,16 @@ import {
   reviewAppointmentCancellationRequest,
   rescheduleAppointment,
 } from "@/modules/appointments/services/appointment-service";
+import { setOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
+import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
+import {
+  drainAppointmentLineNotificationOutbox,
+  purgeTerminalAppointmentLineNotifications,
+} from "@/modules/appointments/services/appointment-line-notification-delivery-service";
+import {
+  signAppointmentLineNotificationInvocation,
+  verifyAndConsumeAppointmentLineNotificationInvocation,
+} from "@/modules/appointments/services/appointment-line-notification-invocation-service";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { executeLineReactiveAppointment } from "@/modules/line/services/line-reactive-appointment-service";
 import { unassignOsmFromPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
@@ -42,6 +55,15 @@ const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.appointmentLineNotificationWorkerState.updateMany({
+    where: { id: 1 },
+    data: { lastInvocationAt: new Date(0) },
+  });
+  await prisma.appointmentLineNotification.deleteMany();
+  await prisma.lineAppointmentNotificationPreference.deleteMany();
+  await prisma.lineAuthorizationLifecycle.deleteMany();
+  await prisma.lineAccountActionIntent.deleteMany();
+  await prisma.lineAccountBinding.deleteMany();
   await prisma.patientAppointmentCoordinationEvent.deleteMany();
   await prisma.patientAppointmentCancellationRequest.deleteMany();
   await prisma.patientAppointmentAcknowledgement.deleteMany();
@@ -248,6 +270,51 @@ async function activateProvisionedPatient(userId: string): Promise<void> {
     data: { status: UserStatus.ACTIVE, authSubject: randomUUID() },
   });
 }
+
+async function createAppointmentNotificationSubject(label: string): Promise<{
+  hospitalId: string;
+  owner: ActorContext;
+  patient: Awaited<ReturnType<typeof provisionPatient>>;
+  patientActor: ActorContext;
+  lineUserId: string;
+  bindingId: string;
+}> {
+  const hospital = await createHospital(`NOTIF-${label.slice(0, 12)}`);
+  const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+  const patient = await provisionPatient(owner.actor, {
+    identity: { namespace: "appointment-line-notification-integration", value: randomUUID() },
+    targetHospitalId: hospital.id,
+    givenName: "ผู้ป่วยทดสอบสังเคราะห์",
+    familyName: `Notification ${label}`,
+  });
+  await activateProvisionedPatient(patient.userId);
+  const patientActor: ActorContext = {
+    userId: patient.userId,
+    personId: patient.personId,
+    roles: [Role.PATIENT],
+    hospitalMemberships: [],
+    osmHospitalRelationships: [],
+  };
+  const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
+  const binding = await prisma.lineAccountBinding.create({
+    data: {
+      userId: patient.userId,
+      lineUserId,
+      lineSubjectFingerprint: createHash("sha256").update(lineUserId).digest("hex"),
+      lineSubjectFingerprintKeyId: "synthetic-integration-v1",
+      reachability: LineReachability.FRIEND,
+      reachabilityObservedAt: new Date(),
+    },
+    select: { id: true },
+  });
+  await setOwnAppointmentLineNotificationPreference(patientActor, true, { database: prisma });
+  return { hospitalId: hospital.id, owner: owner.actor, patient, patientActor, lineUserId, bindingId: binding.id };
+}
+
+const notificationRollout = {
+  enabled: true,
+  generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+} as const;
 
 describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
   beforeAll(async () => {
@@ -1033,5 +1100,611 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "appointment.no_show" } })).toBe(1);
     expect(await prisma.patientGoalPlan.count()).toBe(0);
     expect(await prisma.screeningAssessment.count()).toBe(0);
+  });
+
+  it("persists only canonical appointment events and makes Hospital cancellation approval emit one cancellation intent", async () => {
+    const subject = await createAppointmentNotificationSubject("CANONICAL");
+    const now = new Date();
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    };
+    const firstInput = appointmentInput(subject.patient.relationshipId);
+    const created = await createAppointment(subject.owner, firstInput, dependencies);
+    const replay = await createAppointment(subject.owner, firstInput, dependencies);
+    expect(replay.appointmentId).toBe(created.appointmentId);
+    expect(await prisma.appointmentLineNotification.count()).toBe(1);
+
+    await acknowledgeOwnPatientAppointment(subject.patientActor, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: created.appointmentId,
+      expectedUpdatedAt: created.updatedAt.toISOString(),
+    }, dependencies);
+    const rejectedRequest = await requestOwnPatientAppointmentCancellation(subject.patientActor, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: created.appointmentId,
+      expectedUpdatedAt: created.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    }, dependencies);
+    await reviewAppointmentCancellationRequest(subject.owner, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: created.appointmentId,
+      requestId: rejectedRequest.requestId,
+      decision: "REJECT",
+    }, dependencies);
+    expect(await prisma.appointmentLineNotification.count()).toBe(1);
+
+    const rescheduled = await rescheduleAppointment(subject.owner, rescheduleInput(
+      subject.patient.relationshipId,
+      created.appointmentId,
+      created.updatedAt,
+    ), dependencies);
+    expect(await prisma.appointmentLineNotification.count()).toBe(2);
+
+    const approvalAppointment = await createAppointment(
+      subject.owner,
+      appointmentInput(subject.patient.relationshipId),
+      dependencies,
+    );
+    const cancellationRequest = await requestOwnPatientAppointmentCancellation(subject.patientActor, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: approvalAppointment.appointmentId,
+      expectedUpdatedAt: approvalAppointment.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    }, dependencies);
+    const approved = await reviewAppointmentCancellationRequest(subject.owner, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: approvalAppointment.appointmentId,
+      requestId: cancellationRequest.requestId,
+      decision: "APPROVE",
+    }, dependencies);
+    await reviewAppointmentCancellationRequest(subject.owner, {
+      patientHospitalRelationshipId: subject.patient.relationshipId,
+      appointmentId: approvalAppointment.appointmentId,
+      requestId: cancellationRequest.requestId,
+      decision: "APPROVE",
+    }, dependencies);
+
+    const events = await prisma.appointmentLineNotification.findMany({
+      orderBy: [{ appointmentId: "asc" }, { sourceUpdatedAt: "asc" }],
+      select: { appointmentId: true, eventKind: true, sourceUpdatedAt: true, state: true, recipientUserId: true },
+    });
+    expect(events).toHaveLength(4);
+    expect(events.map(({ eventKind }) => eventKind).sort()).toEqual([
+      AppointmentLineNotificationEventKind.CANCELLED,
+      AppointmentLineNotificationEventKind.CREATED,
+      AppointmentLineNotificationEventKind.CREATED,
+      AppointmentLineNotificationEventKind.RESCHEDULED,
+    ]);
+    expect(events.every(({ state, recipientUserId }) =>
+      state === AppointmentLineNotificationState.PENDING && recipientUserId === subject.patient.userId,
+    )).toBe(true);
+    expect(approved).toMatchObject({ requestStatus: AppointmentCancellationRequestStatus.APPROVED, appointmentStatus: AppointmentStatus.CANCELLED });
+    expect(rescheduled.status).toBe(AppointmentStatus.SCHEDULED);
+  });
+
+  it("keeps disabled-period mutations silent and suppresses pending work across an OFF cutover", async () => {
+    const subject = await createAppointmentNotificationSubject("CUTOVER");
+    const base = new Date();
+    const disabled = { enabled: false, generation: null } as const;
+    const disabledDependencies = {
+      database: prisma,
+      now: () => base,
+      appointmentLineNotificationRollout: disabled,
+    };
+    const oldInput = appointmentInput(subject.patient.relationshipId);
+    const oldAppointment = await createAppointment(subject.owner, oldInput, disabledDependencies);
+    const oldReschedule = await rescheduleAppointment(subject.owner, rescheduleInput(
+      subject.patient.relationshipId,
+      oldAppointment.appointmentId,
+      oldAppointment.updatedAt,
+    ), disabledDependencies);
+    await cancelAppointment(subject.owner, transitionInput(
+      subject.patient.relationshipId,
+      oldAppointment.appointmentId,
+      oldReschedule.updatedAt,
+    ), disabledDependencies);
+    expect(await prisma.appointmentLineNotification.count()).toBe(0);
+
+    const pending = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => base,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    expect(await prisma.appointmentLineNotification.count({ where: { appointmentId: pending.appointmentId } })).toBe(1);
+    let providerCalls = 0;
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      now: () => base,
+      rollout: () => disabled,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    expect(providerCalls).toBe(0);
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: pending.appointmentId },
+      select: { state: true },
+    })).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED });
+
+    const afterCutover = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => base,
+      appointmentLineNotificationRollout: {
+        enabled: true,
+        generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+    });
+    const drain = await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      now: () => base,
+      rollout: () => ({ enabled: true, generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    expect(drain.providerAccepted).toBe(1);
+    expect(providerCalls).toBe(1);
+    expect(await prisma.appointmentLineNotification.findMany({
+      where: { appointmentId: { in: [pending.appointmentId, afterCutover.appointmentId] } },
+      orderBy: { appointmentId: "asc" },
+      select: { appointmentId: true, rolloutGeneration: true, state: true },
+    })).toHaveLength(2);
+  });
+
+  it("rolls back an appointment when its enabled outbox intent cannot be persisted", async () => {
+    const subject = await createAppointmentNotificationSubject("ATOMICITY");
+    const input = appointmentInput(subject.patient.relationshipId);
+    await expect(createAppointment(subject.owner, input, {
+      database: prisma,
+      appointmentLineNotificationRollout: { enabled: true, generation: "invalid-uuid" },
+    })).rejects.toBeTruthy();
+    expect(await prisma.patientAppointment.count({ where: { submissionNonce: String(input.submissionNonce) } })).toBe(0);
+    expect(await prisma.appointmentLineNotification.count()).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { action: "appointment.created" } })).toBe(0);
+  });
+
+  it("enforces the database source-event uniqueness constraint", async () => {
+    const subject = await createAppointmentNotificationSubject("UNIQUE");
+    const appointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    const source = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: appointment.appointmentId },
+    });
+    await expect(prisma.appointmentLineNotification.create({
+      data: {
+        appointmentId: source.appointmentId,
+        patientHospitalRelationshipId: source.patientHospitalRelationshipId,
+        sourceUpdatedAt: source.sourceUpdatedAt,
+        eventKind: source.eventKind,
+        recipientUserId: source.recipientUserId,
+        bindingId: source.bindingId,
+        bindingLifecycleVersion: source.bindingLifecycleVersion,
+        preferenceVersion: source.preferenceVersion,
+        rolloutGeneration: source.rolloutGeneration,
+        state: AppointmentLineNotificationState.PENDING,
+        dueAt: source.dueAt,
+        retryKey: randomUUID(),
+        updatedAt: new Date(),
+      },
+    })).rejects.toMatchObject({ code: "P2002" });
+    expect(await prisma.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId } })).toBe(1);
+  });
+
+  it("retries ambiguous Push outcomes with one retry key and exact payload, then records acceptance only", async () => {
+    const subject = await createAppointmentNotificationSubject("RETRY");
+    let now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
+    let pushCount = 0;
+    const push = async (lineUserId: string, text: string, retryKey: string) => {
+      calls.push({ lineUserId, text, retryKey });
+      pushCount += 1;
+      return pushCount === 1 ? { kind: "AMBIGUOUS_TRANSPORT_FAILURE" as const } : { kind: "DUPLICATE_ACCEPTED" as const };
+    };
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push,
+      random: () => 0.5,
+      batchSize: 1,
+      logSummary: () => undefined,
+    };
+    const firstDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    const retry = await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId } });
+    expect(firstDrain.retryScheduled).toBe(1);
+    expect(retry.state).toBe(AppointmentLineNotificationState.RETRY_SCHEDULED);
+    expect(retry.attemptCount).toBe(1);
+
+    now = retry.dueAt;
+    const secondDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    const completed = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: retry.id } });
+    expect(secondDrain.providerAccepted).toBe(1);
+    expect(completed.state).toBe(AppointmentLineNotificationState.PROVIDER_ACCEPTED);
+    expect(completed.attemptCount).toBe(2);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual(calls[1]);
+    expect(calls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: retry.retryKey });
+    expect(calls[0]?.text).toBe("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(completed.safeOutcome).toBe("DUPLICATE_ACCEPTED");
+
+    await prisma.appointmentLineNotification.update({
+      where: { id: completed.id },
+      data: { terminalAt: new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000) },
+    });
+    expect(await purgeTerminalAppointmentLineNotifications({ database: prisma, now: new Date(now.getTime() + 1), batchSize: 1 })).toBe(1);
+    expect(await prisma.appointmentLineNotification.findUnique({ where: { id: completed.id } })).toBeNull();
+  });
+
+  it("suppresses stale, opted-out, unlinked, and relinked intents before Push", async () => {
+    const subject = await createAppointmentNotificationSubject("REVOKE");
+    const base = new Date();
+    const first = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => base,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, false, { database: prisma, now: () => base });
+    let providerCalls = 0;
+    const drain = (now: Date) => drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    await drain(base);
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: first.appointmentId }, select: { state: true, safeOutcome: true },
+    })).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "OPT_IN_REVOKED" });
+
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, true, { database: prisma, now: () => base });
+    const relinkedIntent = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => base,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    await prisma.lineAccountBinding.update({
+      where: { id: subject.bindingId },
+      data: { unlinkedAt: base, lineUserId: null, lifecycleVersion: { increment: 1 }, reachability: LineReachability.UNKNOWN, reachabilityObservedAt: null },
+    });
+    const noBindingPreference = await getOwnAppointmentLineNotificationPreference(subject.patientActor, prisma);
+    expect(noBindingPreference).toEqual({ enabled: false, canEnable: false });
+    await prisma.lineAccountBinding.update({
+      where: { id: subject.bindingId },
+      data: { unlinkedAt: null, lineUserId: subject.lineUserId, reachability: LineReachability.FRIEND, reachabilityObservedAt: base },
+    });
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, true, { database: prisma, now: () => base });
+    await drain(base);
+    const relinkedOutcome = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: relinkedIntent.appointmentId }, select: { state: true, safeOutcome: true },
+    });
+    expect(relinkedOutcome).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "LINE_INELIGIBLE" });
+    expect(providerCalls).toBe(0);
+  });
+
+  it("suppresses an appointment intent when the exact relationship resolves to a different Patient User", async () => {
+    const subject = await createAppointmentNotificationSubject("IDENTITY-SCOPE");
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    sequence += 1;
+    const replacementPerson = await prisma.person.create({
+      data: {
+        identityKeyHash: `appointment-replacement-patient-${sequence}`,
+        givenName: "Synthetic replacement",
+        familyName: String(sequence),
+      },
+      select: { id: true },
+    });
+    const replacementUser = await prisma.user.create({
+      data: { personId: replacementPerson.id, status: UserStatus.ACTIVE, authSubject: randomUUID() },
+      select: { id: true },
+    });
+    await prisma.userRole.create({ data: { userId: replacementUser.id, role: Role.PATIENT } });
+    const relationship = await prisma.patientHospitalRelationship.findUniqueOrThrow({
+      where: { id: subject.patient.relationshipId },
+      select: { patientProfileId: true },
+    });
+    await prisma.patientProfile.update({
+      where: { id: relationship.patientProfileId },
+      data: { personId: replacementPerson.id },
+    });
+
+    let providerCalls = 0;
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      rollout: () => notificationRollout,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+      select: { state: true, safeOutcome: true, recipientUserId: true },
+    })).toEqual({
+      state: AppointmentLineNotificationState.SUPPRESSED,
+      safeOutcome: "AUTHORITY_CHANGED",
+      recipientUserId: subject.patient.userId,
+    });
+    expect(providerCalls).toBe(0);
+  });
+
+  it("suppresses an appointment intent when its Hospital is no longer active", async () => {
+    const subject = await createAppointmentNotificationSubject("HOSPITAL-SCOPE");
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    await prisma.hospital.update({
+      where: { id: subject.hospitalId },
+      data: { status: HospitalStatus.SUSPENDED },
+    });
+
+    let providerCalls = 0;
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      rollout: () => notificationRollout,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+      select: { state: true, safeOutcome: true },
+    })).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "AUTHORITY_CHANGED" });
+    expect(providerCalls).toBe(0);
+  });
+
+  it("suppresses a superseded source version while the current reschedule remains eligible", async () => {
+    const subject = await createAppointmentNotificationSubject("STALE-SOURCE");
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    await rescheduleAppointment(subject.owner, rescheduleInput(
+      subject.patient.relationshipId,
+      created.appointmentId,
+      created.updatedAt,
+    ), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let providerCalls = 0;
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      rollout: () => notificationRollout,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+    expect(await prisma.appointmentLineNotification.findMany({
+      where: { appointmentId: created.appointmentId },
+      orderBy: { sourceUpdatedAt: "asc" },
+      select: { eventKind: true, state: true, safeOutcome: true },
+    })).toEqual([
+      { eventKind: AppointmentLineNotificationEventKind.CREATED, state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "STALE_SOURCE" },
+      { eventKind: AppointmentLineNotificationEventKind.RESCHEDULED, state: AppointmentLineNotificationState.PROVIDER_ACCEPTED, safeOutcome: "ACCEPTED" },
+    ]);
+    expect(providerCalls).toBe(1);
+  });
+
+  it("suppresses pending old-generation work across a concurrent cutover without recalling an in-flight Push", async () => {
+    const subject = await createAppointmentNotificationSubject("CONCURRENT-CUTOVER");
+    let now = new Date();
+    const first = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    now = new Date(now.getTime() + 1_000);
+    const second = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let rollout: { enabled: boolean; generation: string | null } = notificationRollout;
+    let releaseFirst: ((value: { kind: "ACCEPTED" }) => void) | null = null;
+    let signalProvider: () => void = () => undefined;
+    const providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
+    let calls = 0;
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => rollout,
+      batchSize: 1,
+      push: async () => {
+        calls += 1;
+        if (calls === 1) {
+          signalProvider();
+          return new Promise<{ kind: "ACCEPTED" }>((resolve) => { releaseFirst = resolve; });
+        }
+        return { kind: "ACCEPTED" as const };
+      },
+      logSummary: () => undefined,
+    };
+    const inFlight = drainAppointmentLineNotificationOutbox(dependencies);
+    await providerEntered;
+    rollout = { enabled: true, generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
+    const afterCutover = await drainAppointmentLineNotificationOutbox(dependencies);
+    expect(afterCutover.suppressed).toBe(1);
+    const completePush = releaseFirst as ((value: { kind: "ACCEPTED" }) => void) | null;
+    if (!completePush) throw new Error("Expected the first provider attempt to be in flight");
+    completePush({ kind: "ACCEPTED" });
+    await inFlight;
+
+    const outcomes = await prisma.appointmentLineNotification.findMany({
+      where: { appointmentId: { in: [first.appointmentId, second.appointmentId] } },
+      orderBy: { createdAt: "asc" },
+      select: { state: true, safeOutcome: true },
+    });
+    expect(outcomes).toEqual([
+      { state: AppointmentLineNotificationState.PROVIDER_ACCEPTED, safeOutcome: "ACCEPTED" },
+      { state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "ROLLOUT_CLOSED" },
+    ]);
+    expect(calls).toBe(1);
+  });
+
+  it("keeps opt-out and unlink/relink races from authorizing a later retry", async () => {
+    const subject = await createAppointmentNotificationSubject("PREFERENCE-RACE");
+    let now = new Date();
+    const firstAppointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let releaseFirst: ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null = null;
+    let signalProvider: () => void = () => undefined;
+    let providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
+    let providerCalls = 0;
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      batchSize: 1,
+      push: async () => {
+        providerCalls += 1;
+        signalProvider();
+        return new Promise<{ kind: "AMBIGUOUS_TRANSPORT_FAILURE" }>((resolve) => { releaseFirst = resolve; });
+      },
+      logSummary: () => undefined,
+    };
+    const optOutRace = drainAppointmentLineNotificationOutbox(dependencies);
+    await providerEntered;
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, false, { database: prisma, now: () => now });
+    const finishFirst = releaseFirst as ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null;
+    if (!finishFirst) throw new Error("Expected the first provider attempt to be in flight");
+    finishFirst({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" });
+    await optOutRace;
+    const optedOutRow = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: firstAppointment.appointmentId },
+      select: { dueAt: true },
+    });
+    now = optedOutRow.dueAt;
+    const afterOptOut = await drainAppointmentLineNotificationOutbox(dependencies);
+    expect(afterOptOut.suppressed).toBe(1);
+    expect(providerCalls).toBe(1);
+
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, true, { database: prisma, now: () => now });
+    const secondAppointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    releaseFirst = null;
+    providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
+    const relinkRace = drainAppointmentLineNotificationOutbox(dependencies);
+    await providerEntered;
+    await prisma.lineAccountBinding.update({
+      where: { id: subject.bindingId },
+      data: {
+        unlinkedAt: now,
+        lineUserId: null,
+        lifecycleVersion: { increment: 1 },
+        reachability: LineReachability.UNKNOWN,
+        reachabilityObservedAt: null,
+      },
+    });
+    await prisma.lineAccountBinding.update({
+      where: { id: subject.bindingId },
+      data: {
+        unlinkedAt: null,
+        lineUserId: subject.lineUserId,
+        reachability: LineReachability.FRIEND,
+        reachabilityObservedAt: now,
+      },
+    });
+    await setOwnAppointmentLineNotificationPreference(subject.patientActor, true, { database: prisma, now: () => now });
+    const finishRelink = releaseFirst as ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null;
+    if (!finishRelink) throw new Error("Expected the relink-race provider attempt to be in flight");
+    finishRelink({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" });
+    await relinkRace;
+    const relinkedRow = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: secondAppointment.appointmentId },
+      select: { dueAt: true },
+    });
+    now = relinkedRow.dueAt;
+    const afterRelink = await drainAppointmentLineNotificationOutbox(dependencies);
+    expect(afterRelink.suppressed).toBe(1);
+    expect(providerCalls).toBe(2);
+    expect(await prisma.appointmentLineNotification.findMany({
+      where: { appointmentId: { in: [firstAppointment.appointmentId, secondAppointment.appointmentId] } },
+      orderBy: { createdAt: "asc" },
+      select: { state: true, safeOutcome: true },
+    })).toEqual([
+      { state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "OPT_IN_REVOKED" },
+      { state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "LINE_INELIGIBLE" },
+    ]);
+  });
+
+  it("allows only one active worker claim and fences a stale worker after lease expiry", async () => {
+    const subject = await createAppointmentNotificationSubject("FENCING");
+    let now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let resolveFirst: ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null = null;
+    let callCount = 0;
+    const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
+    const push = (lineUserId: string, text: string, retryKey: string) => {
+      calls.push({ lineUserId, text, retryKey });
+      callCount += 1;
+      if (callCount === 1) {
+        enteredProvider();
+        return new Promise<{ kind: "AMBIGUOUS_TRANSPORT_FAILURE" }>((resolve) => { resolveFirst = resolve; });
+      }
+      return Promise.resolve({ kind: "ACCEPTED" as const });
+    };
+    const deps = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push,
+      batchSize: 1,
+      logSummary: () => undefined,
+    };
+    let enteredProvider = (): void => undefined;
+    const providerEntered = new Promise<void>((resolve) => { enteredProvider = resolve; });
+    const firstWorker = drainAppointmentLineNotificationOutbox(deps);
+    await providerEntered;
+    const overlapping = await drainAppointmentLineNotificationOutbox(deps);
+    expect(overlapping.claimed).toBe(0);
+    now = new Date(now.getTime() + 31_000);
+    const replacementWorker = await drainAppointmentLineNotificationOutbox(deps);
+    expect(replacementWorker.providerAccepted).toBe(1);
+    const finishFirst = resolveFirst as ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null;
+    if (!finishFirst) throw new Error("Expected the first provider attempt to be waiting");
+    finishFirst({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" });
+    await firstWorker;
+
+    const settled = await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId } });
+    expect(settled.state).toBe(AppointmentLineNotificationState.PROVIDER_ACCEPTED);
+    expect(settled.attemptCount).toBe(2);
+    expect(callCount).toBe(2);
+    expect(calls[0]).toEqual(calls[1]);
+  });
+
+  it("authenticates internal worker invocations and rejects a replayed timestamp", async () => {
+    const now = new Date();
+    const secret = "synthetic-internal-worker-secret-with-over-32-characters";
+    const timestamp = String(now.getTime());
+    const nonce = randomUUID();
+    const signature = signAppointmentLineNotificationInvocation({ timestamp, nonce, secret });
+    const headers = { timestamp, nonce, signature };
+
+    await expect(verifyAndConsumeAppointmentLineNotificationInvocation(headers, { database: prisma, now, secret }))
+      .resolves.toBeUndefined();
+    await expect(verifyAndConsumeAppointmentLineNotificationInvocation(headers, { database: prisma, now, secret }))
+      .rejects.toBeInstanceOf(ConflictError);
+    await expect(verifyAndConsumeAppointmentLineNotificationInvocation(
+      { ...headers, signature: "0".repeat(64) },
+      { database: prisma, now: new Date(now.getTime() + 1), secret },
+    )).rejects.toBeInstanceOf(ForbiddenError);
   });
 });

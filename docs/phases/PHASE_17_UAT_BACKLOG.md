@@ -1,6 +1,12 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
-## CURRENT-status addendum — Phase 17J.4A preparation (2026-10-09)
+## CURRENT-status addendum — Phase 17J.4A decision closeout / 17J.4B (2026-10-09)
+
+[Phase 17J.4A Owner Decision Closeout](./PHASE_17J4A_OWNER_DECISION_CLOSEOUT.md) records J4A-OD01–OD10, Cutover Safety, and Honest Idempotency **APPROVED for isolated synthetic/demo implementation**. Phase 17J.4B is **IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE** for the bounded appointment-only slice: focused unit tests passed 7 files / 77 tests and PostgreSQL integration passed 1 file / 19 tests. **Do not mark overall Phase 17J.4 complete/approved or close P17D-NOTIF-01.** Real Push, real-provider/device UAT, deployment, and production readiness remain unauthorized. Exact scope and verification are in the [implementation handoff](./PHASE_17J4B_APPOINTMENT_NOTIFICATION_IMPLEMENTATION.md).
+
+Scope is only appointment create, actual date/time reschedule, and canonical cancellation to the currently authorized Patient SELF user, with purpose-specific opt-in default OFF, current binding/Friend eligibility, generic approved Thai copy, transactional outbox, and bounded delivery. No real LINE Push/device UAT, external privacy/governance approval, deployed activation, scheduler, environment/provider mutation, deployment, or release is authorized or claimed. Keep **DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false**, independent of **DEMI_LINE_DISCONNECTION_ENABLED=false**. Continue original Phase 17 roadmap; after 17J.4B integration/verification closure, next is **17J.5A — Automated Integrated Re-audit / UAT Readiness**. Real-provider/device UAT remains a separately authorized later gate. Medication, follow-up, request-decision, additional-recipient, and general preference/consent expansion remain requirement-gated.
+
+## Historical-status addendum — Phase 17J.4A pre-approval proposal (2026-10-09)
 
 [Phase 17J.4A decision pack](./PHASE_17J4A_PROACTIVE_NOTIFICATION_DECISION_PACK.md) is **PROPOSAL READY FOR OWNER REVIEW**. Current appointment event sources and LINE reactive infrastructure were inspected; appointment-only proactive Push is the recommended first bounded slice. **J4A-OD01–OD10 remain OPEN; P17D-NOTIF-01 remains REQUIREMENT-GATED; Phase 17J.4 is not complete or approved.** Do not begin Phase 17J.4B delivery until owners explicitly approve the unresolved event, recipient, timing, reachability, opt-in, content/privacy, staleness, idempotency, retry, retention, and send-gate decisions. The owner’s separate LINE Login/LIFF and legacy Link/Unlink demo/UAT boundary, disabled disconnection flag, no-MINI decision, and no-deployment/provider-mutation boundary remain in force.
 

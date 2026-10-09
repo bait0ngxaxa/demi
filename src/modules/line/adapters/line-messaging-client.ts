@@ -22,6 +22,13 @@ export type LineRichMenuAction =
   | { type: "richmenuswitch"; label: string; richMenuAliasId: string; data: string }
   | { type: "postback"; label: string; data: string };
 
+export type LinePushResult =
+  | { kind: "ACCEPTED" }
+  | { kind: "DUPLICATE_ACCEPTED" }
+  | { kind: "RETRYABLE_HTTP_FAILURE" }
+  | { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }
+  | { kind: "PERMANENT_FAILURE" };
+
 export type LineRichMenuArea = {
   bounds: { x: number; y: number; width: number; height: number };
   action: LineRichMenuAction;
@@ -99,6 +106,43 @@ export class LineMessagingClient {
           ? "LINE_PROVIDER_TRANSIENT"
           : "LINE_PROVIDER_PERMANENT",
       );
+    }
+  }
+
+  async pushText(lineUserId: string, text: string, retryKey: string): Promise<LinePushResult> {
+    if (!/^U[0-9a-f]{32}$/iu.test(lineUserId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(retryKey)) {
+      return { kind: "PERMANENT_FAILURE" };
+    }
+
+    let accessToken: string;
+    try {
+      accessToken = getLineMessagingEnv().DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+    } catch {
+      return { kind: "PERMANENT_FAILURE" };
+    }
+
+    try {
+      const response = await this.fetcher("https://api.line.me/v2/bot/message/push", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "application/json",
+          "x-line-retry-key": retryKey,
+        },
+        body: JSON.stringify({
+          to: lineUserId,
+          messages: [{ type: "text", text }],
+        }),
+        signal: AbortSignal.timeout(8_000),
+        cache: "no-store",
+      });
+
+      if (response.status === 409) return { kind: "DUPLICATE_ACCEPTED" };
+      if (response.ok) return { kind: "ACCEPTED" };
+      if (response.status >= 500) return { kind: "RETRYABLE_HTTP_FAILURE" };
+      return { kind: "PERMANENT_FAILURE" };
+    } catch {
+      return { kind: "AMBIGUOUS_TRANSPORT_FAILURE" };
     }
   }
 

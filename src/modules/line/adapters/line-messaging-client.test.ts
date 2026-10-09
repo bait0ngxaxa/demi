@@ -104,4 +104,49 @@ describe("DEMI LINE Messaging API boundary", () => {
     });
     expect(fetcher).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    [200, "ACCEPTED"],
+    [409, "DUPLICATE_ACCEPTED"],
+    [400, "PERMANENT_FAILURE"],
+    [429, "PERMANENT_FAILURE"],
+    [503, "RETRYABLE_HTTP_FAILURE"],
+  ] as const)("classifies Push HTTP %i as %s", async (status, expected) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("private provider detail", { status }));
+    const client = new LineMessagingClient(fetcher);
+    const text = "มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ";
+    const retryKey = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    await expect(client.pushText(`U${"a".repeat(32)}`, text, retryKey)).resolves.toEqual({ kind: expected });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.line.me/v2/bot/message/push");
+    const request = fetcher.mock.calls[0]?.[1];
+    const headers = new Headers(request?.headers);
+    expect(headers.get("x-line-retry-key")).toBe(retryKey);
+    expect(headers.get("authorization")).toBe("Bearer dedicated-demi-line-access-token");
+    expect(JSON.parse(String(request?.body)) as unknown).toEqual({
+      to: `U${"a".repeat(32)}`,
+      messages: [{ type: "text", text }],
+    });
+    expect(request?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("classifies a Push transport timeout as ambiguous and does not retry inside the adapter", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new DOMException("timeout", "TimeoutError"));
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.pushText(`U${"b".repeat(32)}`, "approved generic copy", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"))
+      .resolves.toEqual({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("does not make a Push request when the recipient or retry key is malformed", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.pushText("not-a-line-user", "text", "not-a-uuid"))
+      .resolves.toEqual({ kind: "PERMANENT_FAILURE" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 });

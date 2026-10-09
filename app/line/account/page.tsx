@@ -2,6 +2,8 @@ import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
 
 import { getLineLiffId, getLineLoginEnv } from "@/lib/env/server";
+import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
 import { getLineDisconnectionStatus, hasLineLifecycleHistoryForCurrentOwner, type LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { requireLineDisconnectionReadiness } from "@/modules/line/services/line-disconnection-configuration";
@@ -9,6 +11,7 @@ import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transpo
 import { UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { LineAccountClient, type LineAccountLifecycleReadiness } from "./line-account-client";
+import type { AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +26,7 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
     cleanupState: "PENDING" | "CONFIRMED_CLEAN" | "MISMATCH" | "UNAVAILABLE" | "UNKNOWN" | null;
   };
   let lifecycleReadiness: LineAccountLifecycleReadiness = { state: "NOT_CHECKED" };
+  let notificationPreference: AppointmentNotificationPreferenceView | null = null;
   try {
     initial = await getLineAccountSummary();
   } catch (error: unknown) {
@@ -33,6 +37,14 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
 
   const accountManagementAvailable = initial.status !== "UNAUTHENTICATED" && initial.status !== "UNAVAILABLE" &&
     (initial.status !== "INELIGIBLE" || initial.canUnlink);
+  if (initial.status !== "UNAUTHENTICATED" && initial.status !== "UNAVAILABLE") {
+    try {
+      const actor = await getProtectedApplicationActor();
+      notificationPreference = await getOwnAppointmentLineNotificationPreference(actor);
+    } catch {
+      // The LINE Account screen remains available if preference lookup cannot be completed.
+    }
+  }
   if (accountManagementAvailable) {
     let configurationReady = false;
     let staged = false;
@@ -73,5 +85,5 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   } catch {
     // The client displays a safe configuration state when the dedicated LINE configuration is missing.
   }
-  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} disconnection={disconnection} lifecycleReadiness={lifecycleReadiness} />;
+  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} disconnection={disconnection} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
 }

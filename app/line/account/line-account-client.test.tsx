@@ -30,6 +30,8 @@ function renderScreen(
     <LineAccountScreen
       initial={initial}
       lifecycleReadiness={state.lifecycleReadiness ?? { state: "READY" }}
+      notificationPreference={state.notificationPreference}
+      preferenceUiGeneration={state.preferenceUiGeneration ?? 0}
       relinkEligibility={state.relinkEligibility ?? "ELIGIBLE"}
       accountStatus={state.accountStatus ?? initial.status}
       canUnlink={state.canUnlink ?? initial.canUnlink}
@@ -104,6 +106,25 @@ describe("LINE account user experience", () => {
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
     expect(markup).not.toContain("warning");
+  });
+
+  it("shows the purpose-specific appointment preference as OFF until the Patient enables it", () => {
+    const markup = renderScreen({
+      ...emptyStatus,
+      status: "LINKED",
+      canUnlink: true,
+      reachability: "FRIEND",
+      menuState: "APPLIED",
+    }, {
+      notificationPreference: { enabled: false, canEnable: true },
+    });
+
+    expect(markup).toContain("การแจ้งเตือนนัดหมายทาง LINE");
+    expect(markup).toContain("ใช้สำหรับแจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณเท่านั้น");
+    expect(markup).toContain("สถานะ: ปิด");
+    expect(markup).toContain("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(markup).toContain(">เปิดการแจ้งเตือน</button>");
+    expect(markup).toContain("ไม่รับประกันว่าข้อความจะถึงหรือแสดงบนอุปกรณ์");
   });
 
   it("keeps a linked account successful while menu presentation is pending", () => {

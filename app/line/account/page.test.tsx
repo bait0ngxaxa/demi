@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   reconcile: vi.fn(),
   liffId: vi.fn(),
   loginEnv: vi.fn(),
+  actor: vi.fn(),
+  notificationPreference: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -20,6 +22,10 @@ vi.mock("@/modules/line/services/line-disconnection-service", () => ({
 }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: mocks.reconcile }));
 vi.mock("@/lib/env/server", () => ({ getLineLiffId: mocks.liffId, getLineLoginEnv: mocks.loginEnv }));
+vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
+vi.mock("@/modules/appointments/services/appointment-line-notification-preference-service", () => ({
+  getOwnAppointmentLineNotificationPreference: mocks.notificationPreference,
+}));
 vi.mock("./line-account-client", () => ({ LineAccountClient: () => null }));
 
 import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
@@ -80,6 +86,8 @@ describe("Account page readiness composition", () => {
     mocks.reconcile.mockResolvedValue(undefined);
     mocks.liffId.mockReturnValue("1234567890-test");
     mocks.loginEnv.mockReturnValue({ DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org" });
+  mocks.actor.mockRejectedValue(new Error("no Patient session"));
+  mocks.notificationPreference.mockResolvedValue(null);
   });
 
   it("preserves an authorized binding and local unlink when readiness and reconciliation fail", async () => {
@@ -176,5 +184,15 @@ describe("Account page readiness composition", () => {
     const props = await clientProps();
 
     expect(props.lifecycleReadiness).toEqual({ state: "DEGRADED", history: "UNKNOWN" });
+  });
+
+  it("passes the current Patient SELF preference into the existing Account screen", async () => {
+    const preference = { enabled: true, canEnable: true };
+    mocks.actor.mockResolvedValue({ userId: "synthetic-user", roles: ["PATIENT"] });
+    mocks.notificationPreference.mockResolvedValue(preference);
+
+    const element = await LineAccountPage();
+
+    expect(element.props.notificationPreference).toEqual(preference);
   });
 });

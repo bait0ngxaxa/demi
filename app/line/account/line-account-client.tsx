@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { disconnectionStatusSchema, initializeLineAccountLiff, LineRecoveryPanel } from "./line-recovery-panel";
+import { AppointmentNotificationPreference, type AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -107,6 +108,8 @@ export function closeLineLiffWindow(isInClient: boolean): void {
 
 type LineAccountScreenProps = {
   lifecycleReadiness: LineAccountLifecycleReadiness;
+  notificationPreference?: AppointmentNotificationPreferenceView | null;
+  preferenceUiGeneration: number;
   relinkEligibility: RelinkEligibility;
   recoveryContent?: React.ReactNode;
   initial: InitialStatus;
@@ -139,6 +142,8 @@ type LineAccountScreenProps = {
 
 export function LineAccountScreen({
   lifecycleReadiness,
+  notificationPreference,
+  preferenceUiGeneration,
   relinkEligibility,
   recoveryContent,
   initial,
@@ -442,6 +447,8 @@ export function LineAccountScreen({
           {recoveryContent}
         </section>
 
+        {notificationPreference ? <AppointmentNotificationPreference key={preferenceUiGeneration} initial={notificationPreference} /> : null}
+
         <p className="type-readable mt-5 text-sm text-muted">DEMI ใช้การยืนยันบัญชี LINE เพื่อเชื่อมบัญชีเท่านั้น การเชื่อมนี้ไม่เปลี่ยนสิทธิ์หรือพื้นที่ใช้งานใน DEMI</p>
       </div>
     </main>
@@ -454,12 +461,14 @@ export function LineAccountClient({
   publicOrigin,
   disconnection,
   lifecycleReadiness,
+  notificationPreference,
 }: {
   initial: InitialStatus;
   liffId: string | null;
   publicOrigin: string;
   disconnection?: LineDisconnectionStatus;
   lifecycleReadiness: LineAccountLifecycleReadiness;
+  notificationPreference?: AppointmentNotificationPreferenceView | null;
 }): React.JSX.Element {
   const [termination, setTermination] = useState(disconnection);
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -477,6 +486,8 @@ export function LineAccountClient({
   const [friendshipSupported, setFriendshipSupported] = useState(false);
   const [canRefreshReachability, setCanRefreshReachability] = useState(false);
   const [successAction, setSuccessAction] = useState<SuccessAction>(null);
+  const [appointmentPreference, setAppointmentPreference] = useState(notificationPreference);
+  const [preferenceUiGeneration, setPreferenceUiGeneration] = useState(0);
   const refreshAttempted = useRef(false);
   const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
@@ -604,6 +615,10 @@ export function LineAccountClient({
       setAccountStatus("LINKED");
       setCanUnlink(true);
       setSuccessAction("LINK");
+      if (appointmentPreference) {
+        setAppointmentPreference({ enabled: false, canEnable: true });
+        setPreferenceUiGeneration((current) => current + 1);
+      }
       setRefreshFailed(false);
       setView("SUCCESS");
       setIntent(null);
@@ -639,6 +654,10 @@ export function LineAccountClient({
       }
       setProviderWarning(result.cleanup !== "CONFIRMED_CLEAN");
       setSummary((current) => ({ ...current, status: "UNLINKED", canUnlink: false, cleanupState: result.cleanup }));
+      if (appointmentPreference) {
+        setAppointmentPreference({ enabled: false, canEnable: false });
+        setPreferenceUiGeneration((current) => current + 1);
+      }
       setAccountStatus("UNLINKED");
       setCanUnlink(false);
       setSuccessAction("UNLINK");
@@ -714,6 +733,8 @@ export function LineAccountClient({
     <div ref={privateRoot}>
     <LineAccountScreen
       lifecycleReadiness={lifecycleReadiness}
+      notificationPreference={appointmentPreference}
+      preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
       recoveryContent={lifecycleReadiness.state === "READY" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
       initial={summary}
