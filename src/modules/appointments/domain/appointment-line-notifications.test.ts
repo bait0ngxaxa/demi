@@ -59,6 +59,7 @@ describe("appointment LINE notification policy", () => {
       now,
     })).toBe(false);
     expect(isFreshLineFriendObservation({ reachability: LineReachability.UNKNOWN, observedAt: now, now })).toBe(false);
+    expect(isFreshLineFriendObservation({ reachability: LineReachability.NOT_FRIEND, observedAt: now, now })).toBe(false);
     expect(isInsideLineRetryKeyWindow(now, new Date(now.getTime() + 22 * 60 * 60 * 1000))).toBe(true);
     expect(isInsideLineRetryKeyWindow(now, new Date(now.getTime() + 23 * 60 * 60 * 1000))).toBe(false);
   });

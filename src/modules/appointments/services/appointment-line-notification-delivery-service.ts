@@ -308,6 +308,7 @@ async function reserveProviderAttempt(
       firstAttemptAt,
       lastAttemptAt: now,
       leaseExpiresAt: new Date(now.getTime() + APPOINTMENT_LINE_NOTIFICATION_LEASE_MS),
+      safeOutcome: AppointmentLineNotificationOutcome.PROCESS_OUTCOME_UNKNOWN,
       updatedAt: now,
     },
   });
@@ -324,6 +325,9 @@ async function finishProviderOutcome(
   dependencies: AppointmentLineNotificationDeliveryDependencies,
 ): Promise<AppointmentLineNotificationState | null> {
   const now = nowOf(dependencies);
+  const priorOutcomeWasUnresolved =
+    notification.safeOutcome === AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE ||
+    notification.safeOutcome === AppointmentLineNotificationOutcome.PROCESS_OUTCOME_UNKNOWN;
 
   if (outcome.kind === "ACCEPTED" || outcome.kind === "DUPLICATE_ACCEPTED") {
     const settled = await settleClaim(database, notification, {
@@ -338,22 +342,29 @@ async function finishProviderOutcome(
   }
 
   if (outcome.kind === "PERMANENT_FAILURE") {
+    const state = priorOutcomeWasUnresolved
+      ? AppointmentLineNotificationState.OUTCOME_UNKNOWN
+      : AppointmentLineNotificationState.PERMANENT_FAILURE;
     const settled = await settleClaim(database, notification, {
-      state: AppointmentLineNotificationState.PERMANENT_FAILURE,
-      safeOutcome: AppointmentLineNotificationOutcome.PERMANENT_HTTP_FAILURE,
+      state,
+      safeOutcome: priorOutcomeWasUnresolved
+        ? AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE
+        : AppointmentLineNotificationOutcome.PERMANENT_HTTP_FAILURE,
       now,
       terminal: true,
     });
-    return settled ? AppointmentLineNotificationState.PERMANENT_FAILURE : null;
+    return settled ? state : null;
   }
 
+  const outcomeIsAmbiguous =
+    priorOutcomeWasUnresolved || outcome.kind === "AMBIGUOUS_TRANSPORT_FAILURE";
   const withinProviderWindow = isInsideLineRetryKeyWindow(attempt.firstAttemptAt, now);
   if (attempt.attemptCount < APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS && withinProviderWindow) {
     const dueAt = new Date(now.getTime() + appointmentLineNotificationRetryDelayMs(attempt.attemptCount, dependencies.random));
     if (isInsideLineRetryKeyWindow(attempt.firstAttemptAt, dueAt)) {
-      const safeOutcome = outcome.kind === "RETRYABLE_HTTP_FAILURE"
-        ? AppointmentLineNotificationOutcome.TRANSIENT_HTTP_FAILURE
-        : AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE;
+      const safeOutcome = outcomeIsAmbiguous
+        ? AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE
+        : AppointmentLineNotificationOutcome.TRANSIENT_HTTP_FAILURE;
       const settled = await settleClaim(database, notification, {
         state: AppointmentLineNotificationState.RETRY_SCHEDULED,
         safeOutcome,
@@ -366,15 +377,22 @@ async function finishProviderOutcome(
   }
 
   const windowExpired = !withinProviderWindow;
+  const state = outcome.kind === "RETRYABLE_HTTP_FAILURE" && !priorOutcomeWasUnresolved
+    ? AppointmentLineNotificationState.PERMANENT_FAILURE
+    : AppointmentLineNotificationState.OUTCOME_UNKNOWN;
   const settled = await settleClaim(database, notification, {
-    state: AppointmentLineNotificationState.OUTCOME_UNKNOWN,
-    safeOutcome: windowExpired
-      ? AppointmentLineNotificationOutcome.RETRY_WINDOW_EXPIRED
-      : AppointmentLineNotificationOutcome.PROCESS_OUTCOME_UNKNOWN,
+    state,
+    safeOutcome: state === AppointmentLineNotificationState.PERMANENT_FAILURE
+      ? AppointmentLineNotificationOutcome.TRANSIENT_HTTP_FAILURE
+      : outcomeIsAmbiguous
+        ? AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE
+        : windowExpired
+          ? AppointmentLineNotificationOutcome.RETRY_WINDOW_EXPIRED
+          : AppointmentLineNotificationOutcome.PROCESS_OUTCOME_UNKNOWN,
     now,
     terminal: true,
   });
-  return settled ? AppointmentLineNotificationState.OUTCOME_UNKNOWN : null;
+  return settled ? state : null;
 }
 
 function countState(
@@ -425,13 +443,25 @@ export async function drainAppointmentLineNotificationOutbox(
 
     const checkedAt = nowOf(dependencies);
     if (notification.firstAttemptAt && !isInsideLineRetryKeyWindow(notification.firstAttemptAt, checkedAt)) {
+      const knownRetryableResponse =
+        notification.safeOutcome === AppointmentLineNotificationOutcome.TRANSIENT_HTTP_FAILURE;
+      const unresolvedPriorAttempt =
+        notification.safeOutcome === AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE ||
+        notification.safeOutcome === AppointmentLineNotificationOutcome.PROCESS_OUTCOME_UNKNOWN;
+      const state = knownRetryableResponse
+        ? AppointmentLineNotificationState.PERMANENT_FAILURE
+        : AppointmentLineNotificationState.OUTCOME_UNKNOWN;
       const settled = await settleClaim(database, notification, {
-        state: AppointmentLineNotificationState.OUTCOME_UNKNOWN,
-        safeOutcome: AppointmentLineNotificationOutcome.RETRY_WINDOW_EXPIRED,
+        state,
+        safeOutcome: knownRetryableResponse
+          ? AppointmentLineNotificationOutcome.TRANSIENT_HTTP_FAILURE
+          : unresolvedPriorAttempt
+            ? AppointmentLineNotificationOutcome.AMBIGUOUS_TRANSPORT_FAILURE
+            : AppointmentLineNotificationOutcome.RETRY_WINDOW_EXPIRED,
         now: checkedAt,
         terminal: true,
       });
-      if (settled) countState(result, AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+      if (settled) countState(result, state);
       continue;
     }
 

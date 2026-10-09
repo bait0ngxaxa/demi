@@ -1380,8 +1380,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     now = notification.dueAt;
     const thirdDrain = await drainAppointmentLineNotificationOutbox(dependencies);
     notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
-    expect(thirdDrain.unknownOutcome).toBe(1);
-    expect(notification.state).toBe(AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+    expect(thirdDrain.permanentFailure).toBe(1);
+    expect(notification.state).toBe(AppointmentLineNotificationState.PERMANENT_FAILURE);
+    expect(notification.safeOutcome).toBe("TRANSIENT_HTTP_FAILURE");
     expect(notification.attemptCount).toBe(3);
 
     const afterExhaustion = await drainAppointmentLineNotificationOutbox(dependencies);
@@ -1391,6 +1392,136 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(calls[1]).toEqual(calls[2]);
     expect(calls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: notification.retryKey });
     expect(calls[0]?.text).toBe("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+  });
+
+  it("records a permanent provider rejection separately from exhausted transient retries", async () => {
+    const subject = await createAppointmentNotificationSubject("PERMANENT-REJECTION");
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+
+    const result = await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      rollout: () => notificationRollout,
+      push: async () => ({ kind: "PERMANENT_FAILURE" }),
+      logSummary: () => undefined,
+    });
+    const notification = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+      select: { state: true, safeOutcome: true, attemptCount: true },
+    });
+
+    expect(result.permanentFailure).toBe(1);
+    expect(notification).toEqual({
+      state: AppointmentLineNotificationState.PERMANENT_FAILURE,
+      safeOutcome: "PERMANENT_HTTP_FAILURE",
+      attemptCount: 1,
+    });
+  });
+
+  it("preserves an ambiguous Push outcome while later rate-limit responses exhaust retries", async () => {
+    const subject = await createAppointmentNotificationSubject("AMBIGUOUS-RATE-LIMIT");
+    let now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let pushCount = 0;
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push: async () => {
+        pushCount += 1;
+        return pushCount === 1
+          ? { kind: "AMBIGUOUS_TRANSPORT_FAILURE" as const }
+          : { kind: "RETRYABLE_HTTP_FAILURE" as const };
+      },
+      random: () => 0.5,
+      batchSize: 1,
+      logSummary: () => undefined,
+    };
+
+    await drainAppointmentLineNotificationOutbox(dependencies);
+    let notification = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+    });
+    expect(notification.safeOutcome).toBe("AMBIGUOUS_TRANSPORT_FAILURE");
+
+    now = notification.dueAt;
+    await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(notification.state).toBe(AppointmentLineNotificationState.RETRY_SCHEDULED);
+    expect(notification.safeOutcome).toBe("AMBIGUOUS_TRANSPORT_FAILURE");
+
+    now = notification.dueAt;
+    const finalDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(finalDrain.unknownOutcome).toBe(1);
+    expect(notification.state).toBe(AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+    expect(notification.safeOutcome).toBe("AMBIGUOUS_TRANSPORT_FAILURE");
+    expect(notification.attemptCount).toBe(3);
+  });
+
+  it("preserves an unobserved reserved attempt across lease recovery and later rate limits", async () => {
+    const subject = await createAppointmentNotificationSubject("LEASE-UNKNOWN-OUTCOME");
+    let now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      now: () => now,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    let signalProvider: (() => void) | null = null;
+    let releaseFirst: ((value: { kind: "ACCEPTED" }) => void) | null = null;
+    const providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
+    let providerCalls = 0;
+    const dependencies = {
+      database: prisma,
+      now: () => now,
+      rollout: () => notificationRollout,
+      push: async () => {
+        providerCalls += 1;
+        if (providerCalls === 1) {
+          signalProvider?.();
+          return new Promise<{ kind: "ACCEPTED" }>((resolve) => { releaseFirst = resolve; });
+        }
+        return { kind: "RETRYABLE_HTTP_FAILURE" as const };
+      },
+      random: () => 0.5,
+      batchSize: 1,
+      logSummary: () => undefined,
+    };
+
+    const firstWorker = drainAppointmentLineNotificationOutbox(dependencies);
+    await providerEntered;
+    let notification = await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+    });
+    expect(notification.safeOutcome).toBe("PROCESS_OUTCOME_UNKNOWN");
+
+    now = notification.leaseExpiresAt ?? now;
+    const recoveredWorker = await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(recoveredWorker.retryScheduled).toBe(1);
+    expect(notification.safeOutcome).toBe("AMBIGUOUS_TRANSPORT_FAILURE");
+
+    now = notification.dueAt;
+    const finalWorker = await drainAppointmentLineNotificationOutbox(dependencies);
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(finalWorker.unknownOutcome).toBe(1);
+    expect(notification.state).toBe(AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+    expect(notification.safeOutcome).toBe("AMBIGUOUS_TRANSPORT_FAILURE");
+    expect(notification.attemptCount).toBe(3);
+
+    const completeFirst = releaseFirst as ((value: { kind: "ACCEPTED" }) => void) | null;
+    if (!completeFirst) throw new Error("Expected the first provider attempt to be waiting");
+    completeFirst({ kind: "ACCEPTED" });
+    await firstWorker;
+    notification = await prisma.appointmentLineNotification.findUniqueOrThrow({ where: { id: notification.id } });
+    expect(notification.state).toBe(AppointmentLineNotificationState.OUTCOME_UNKNOWN);
+    expect(providerCalls).toBe(3);
   });
 
   it("suppresses stale, opted-out, unlinked, and relinked intents before Push", async () => {
@@ -1484,6 +1615,49 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       safeOutcome: "AUTHORITY_CHANGED",
       recipientUserId: subject.patient.userId,
     });
+    expect(providerCalls).toBe(0);
+  });
+
+  it("denies both reactive and proactive Patient access after the Patient role is revoked", async () => {
+    const subject = await createAppointmentNotificationSubject("ROLE-REVOKED");
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma,
+      appointmentLineNotificationRollout: notificationRollout,
+    });
+    await prisma.userRole.deleteMany({
+      where: { userId: subject.patient.userId, role: Role.PATIENT },
+    });
+
+    const reactiveReplies: string[] = [];
+    const reactiveResult = await executeLineReactiveAppointment({
+      intent: "PATIENT_NEXT_APPOINTMENT",
+      webhookEventId: "01ARZ3NDEKTSV4RRFFQ69G5F10",
+      eventOccurredAt: new Date(),
+      localExecutionDeadline: 45_000,
+      lineUserId: subject.lineUserId,
+      replyToken: "synthetic-reactive-reply-token",
+      isRedelivery: false,
+    }, {
+      database: prisma,
+      monotonicNow: () => 0,
+      replyText: async (_replyToken, text) => { reactiveReplies.push(text); },
+    });
+
+    let providerCalls = 0;
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      rollout: () => notificationRollout,
+      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
+      logSummary: () => undefined,
+    });
+
+    expect(reactiveResult).toBe("REFUSED_INELIGIBLE");
+    expect(reactiveReplies).toHaveLength(1);
+    expect(reactiveReplies[0]).not.toContain("โรงพยาบาล Appointment");
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: created.appointmentId },
+      select: { state: true, safeOutcome: true },
+    })).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "AUTHORITY_CHANGED" });
     expect(providerCalls).toBe(0);
   });
 
