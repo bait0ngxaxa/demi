@@ -58,7 +58,7 @@
 
 ## 3. Field authorization cases
 
-ไม่มี category ใดถือว่า approved จาก field ที่ source ปัจจุบันเลือกได้. Test หลัง implementation ต้องตรวจทั้ง DB select, domain projection, transport serialization, cache, logs และ denied response. ถ้า field ไม่อยู่ใน grant allowlist ให้ใช้ fail-closed behavior ตาม GR-SEC-15; ตารางนี้เสนอ deny ทั้ง response เมื่อ caller ขอ field ที่ไม่มีสิทธิ์
+ไม่มี category ใดถือว่า approved จาก field ที่ source ปัจจุบันเลือกได้. Test หลัง implementation ต้องตรวจทั้ง DB select, domain projection, transport serialization, cache, logs และ denied response. ถ้า field ไม่อยู่ใน grant allowlist ให้ใช้ fail-closed behavior ตาม GR-SEC-09/GR-SEC-10; ตารางนี้เสนอ deny ทั้ง response เมื่อ caller ขอ field ที่ไม่มีสิทธิ์
 
 | Field case | Capability/scope ที่ต้องมี | Expected synthetic result เมื่อไม่ได้อนุมัติ/ไม่ได้ grant | Evidence target |
 | --- | --- | --- | --- |
