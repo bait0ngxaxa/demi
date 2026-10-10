@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — Phase 18C.2 reporting architecture (2026-10-10)
+
+[Architecture Blueprint](./phases/PHASE_18C2_REPORTING_ARCHITECTURE_BLUEPRINT.md), [Field Lineage and Metric Catalog](./phases/PHASE_18C2_FIELD_LINEAGE_AND_METRIC_CATALOG.md) และ [Implementation Readiness Roadmap](./phases/PHASE_18C2_IMPLEMENTATION_READINESS_ROADMAP.md): **REPORTING ARCHITECTURE BLUEPRINT PREPARED / IMPLEMENTATION READINESS ASSESSED**. Hospital Dashboard และ Global Platform Admin Dashboard product direction เป็น OWNER_RECEIVED; Global Admin คือ Platform Role.ADMIN. Global Patient discovery/detail ยังคง SECURITY_PRIVACY_BLOCKED, GR-SEC-01–19 OPEN, R24A-D01–D15 PROPOSED, business/clinical rules pending, Data Controller approval pending และ runtime implementation NOT AUTHORIZED. HN-M08 ยังคง DEFERRED / NOT AUTHORIZED; RPT-24C export gates remain open.
+
 ## CURRENT-status addendum — Phase 18C.1B Global Reporting security contract (2026-10-10)
 
 [Phase 18C.1B Global Reporting Security Contract](./phases/PHASE_18C1B_GLOBAL_REPORTING_SECURITY_CONTRACT.md), [Security Decision Register](./phases/PHASE_18C1B_SECURITY_DECISION_REGISTER.md) and [Synthetic Acceptance Matrix](./phases/PHASE_18C1B_SECURITY_ACCEPTANCE_MATRIX.md): **SECURITY CONTRACT PREPARED — APPROVAL PENDING**. Global Admin is Platform Role.ADMIN, not Hospital OWNER/MEMBER or Network administrator. Product direction remains CONFIRMED / OWNER_RECEIVED (GR-REQ-01); Global policy is PROPOSED / SECURITY REVIEW PENDING; Patient-level access is SECURITY_PRIVACY_BLOCKED; Data Controller approval is PENDING; implementation is NOT AUTHORIZED. Role.ADMIN alone grants no clinical read, and no Hospital membership is required for a future Platform grant. R24A-D01–D15 remain PROPOSED; RPT-24C gates remain open; HN-M07/history gates remain open and HN-M08 remains DEFERRED / NOT AUTHORIZED.
