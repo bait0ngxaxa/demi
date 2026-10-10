@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — Phase 17K.0 Hospital Governance / Responsibility Area decision pack (2026-10-10)
+
+[Phase 17K.0 decision pack](./phases/PHASE_17K0_HOSPITAL_GOVERNANCE_RESPONSIBILITY_AREA_DECISION_PACK.md): **DECISION PACK COMPLETE / OWNER DECISIONS OPEN**; K-Q01–K-Q25 are **OPEN / NOT OWNER APPROVED**. Starting baseline for the pack was HEAD acd6a29797de01c5ac1841fd1a3666809d4729a1 on main; the worktree was clean before documentation changes. OWNER-01 and AREA-01 remain requirement-gated. Phase 17K.0B Owner decision closeout is the next step; Phase 17K.1–17K.3 are provisional and **NOT AUTHORIZED**. Completion of the pack does not close Owner decisions or complete Phase 17K.
+
 ## CURRENT-status addendum — Phase 17J.5A LINE integration re-audit (2026-10-09)
 
 [Phase 17J.5A](./phases/PHASE_17J5A_LINE_INTEGRATION_REAUDIT_UAT_READINESS.md): **PASS — AUTOMATED RE-AUDIT COMPLETE** at reviewed starting HEAD `1fcc038ea2bd9f0e10eba48d88671984cde49a2f`. The integrated LINE/appointment unit slice passed **37 files / 316 tests**; four focused disposable-PostgreSQL integration files passed **114 tests**; typecheck and targeted ESLint passed. The review corrected HTTP retry exhaustion to distinguish known retryable HTTP failures from permanent provider rejection and unresolved transport ambiguity. No schema/migration, environment, provider, or deployment change was made.
