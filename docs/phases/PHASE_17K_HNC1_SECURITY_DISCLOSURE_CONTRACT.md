@@ -9,6 +9,10 @@
 
 > เอกสารนี้กำหนดข้อเสนอด้าน security และ disclosure เพื่อให้พิจารณา ไม่ใช่หลักฐาน Product Owner/security/privacy approval, ไม่ติดตั้ง capability และไม่อนุมัติการพัฒนา การ deploy หรือการเปิดเผยข้อมูลจริง
 
+## Current direction record addendum — 2026-10-10
+
+[HN-C1 Decision Direction Record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md) บันทึก engineering direction D01–D13 ที่ผู้ร้องยืนยัน. ไม่ใช่ independent Product Owner/security/privacy/data-controller approval และไม่ปิด release gates ใน §9; สถานะ security/privacy, provenance, HN-M03 semantics และ read consistency ยังคงเปิดตาม authority/evidence ที่ต้องมี. ไม่มีการอนุญาต exposure ของ real Network aggregates หรือ HN-C2 implementation.
+
 ## 1. ขอบเขตและ security invariants
 
 ### 1.1 ขอบเขต
@@ -164,7 +168,9 @@ Schema ปัจจุบันมี `Hospital.parentHospitalId` และ `upd
 
 เมื่อ attribution ตามเวลาไม่พิสูจน์ได้ ให้ mark affected scope/metric ว่า `TEMPORAL_UNPROVEN` ภายในระบบ และ withhold ค่าตัวเลขทั้งหมดที่ได้รับผล. ห้ามแปลงเป็น 0, นับเฉพาะส่วนที่หาได้โดยไม่ระบุ, แสดงเป็น no contributor, หรือเลือก Parent ปัจจุบันเป็นย้อนหลัง. หากพิสูจน์ขอบเขต contamination แยกไม่ได้ ให้ปิด aggregate ที่ได้รับผลทั้ง scope/request จนกว่าจะมี decision ที่ระบุได้ว่าปิดส่วนใดอย่างปลอดภัย.
 
-### 4.3 ทางเลือกที่ไม่ผูกมัด (ยังไม่เลือก)
+### 4.3 ทางเลือกในข้อเสนอเดิม (ทิศทางปัจจุบันบันทึกแยก)
+
+ผู้ร้องยืนยัน Option A เป็นทิศทาง engineering ปัจจุบันใน [HN-C1 Decision Direction Record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md); นี่ไม่ใช่ independent Product Owner/security/privacy approval และไม่ยืนยันว่าแหล่งข้อมูลปัจจุบันพิสูจน์ provenance ได้เพียงพอ. Option B ยังคงเป็น architectural candidate ในอนาคต; Option C ไม่ได้เลือก.
 
 | ทางเลือก | ความหมาย | ข้อแลกเปลี่ยน/หลักฐานที่ต้องมีก่อนอนุมัติ |
 | --- | --- | --- |
@@ -172,7 +178,7 @@ Schema ปัจจุบันมี `Hospital.parentHospitalId` และ `upd
 | **B. Approved effective-dated source** | ใช้ hierarchy history หรือ authoritative provenance แยกที่ได้รับการอนุมัติและตรวจสอบได้ | ต้องมีเจ้าของ/source of truth, valid-from/to, correction/backdate, audit, concurrency, retention และ source-to-metric mapping; อาจต้องมีเอกสาร/schema/migration แยกภายหลัง แต่ HN-C1 ไม่สร้างสิ่งเหล่านี้ |
 | **C. Prospective-only cutover** | เริ่มสิทธิ์รายงานหลัง cutover ที่อนุมัติแยก โดยไม่ให้ authority ย้อนหลัง | ต้องกำหนด effective cutover จากหลักฐานอิสระและจัดการช่วงก่อนหน้า; M01–M03 เป็น current snapshots จึงยังต้องแก้คำถามว่าประชากรเดิมที่ยังอยู่ใน snapshot จะ withheld/แยก/เริ่มนับเมื่อใด. ห้ามใช้ `createdAt` หรือ `updatedAt` เดา parent eligibility. |
 
-ไม่มีการเลือก A/B/C ใน HN-C1.
+ตารางนี้คงทางเลือกจากข้อเสนอ HN-C1 เดิมไว้เพื่อ traceability; ทิศทางปัจจุบันและสถานะการอนุมัติแยกตาม D03 ใน decision record ข้างต้น.
 
 ### 4.4 หลักฐาน/คำตัดสินที่ต้องปิดก่อน HN-C2
 

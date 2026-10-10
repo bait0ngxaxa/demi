@@ -1,8 +1,8 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
-## CURRENT-status addendum — Phase 17K HN-C1 Security & Disclosure Contract (2026-10-10)
+## CURRENT-status addendum — Phase 17K HN-C1 requester direction (2026-10-10)
 
-[HN-C1 Security & Disclosure Contract](./PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md): **HN-C1 DOCUMENTATION PREPARED — SECURITY ACCEPTANCE PENDING**. The capability names and protections are proposals only; no Network reporting implementation or exposure is authorized. HN-M07 and historical reparent disclosure remain release blockers, HN-M03 and read consistency remain open, HN-M08 remains DEFERRED / NOT AUTHORIZED, and **HN-C2 IMPLEMENTATION BLOCKED**. OWNER-01/AREA-01, K-Q status, Phase 17K.1–17K.3, and Phase 17J.5B/LINE gates are unchanged.
+[HN-C1 Security & Disclosure Contract](./PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md) and [Decision Direction Record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md): **HN-C1 DOCUMENTATION PREPARED; ENGINEERING DIRECTION CONFIRMED BY REQUESTER; SECURITY / PRIVACY ACCEPTANCE PENDING**. D01–D13 are engineering direction only. HN-M07 disclosure and historical provenance/attribution remain release gates; HN-M03 reporting semantics require confirmation; read-consistency design is open; **HN-C2 IMPLEMENTATION BLOCKED** and no Network aggregate real-data exposure is authorized. HN-M08 remains DEFERRED / NOT AUTHORIZED. HN-C0, OWNER-01 / AREA-01, K-Q, 17K.1–17K.3 and 17J.5B/LINE statuses remain unchanged.
 
 ## CURRENT-status addendum — Phase 17K.0B HN-C0 Hospital Network decision closeout (2026-10-10)
 
