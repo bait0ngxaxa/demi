@@ -1,5 +1,9 @@
 # DEMI Phase 17 — UAT Implementation Backlog
 
+## CURRENT-status addendum — RPT-24 on-demand As-of Excel requirement (2026-10-10)
+
+[RPT-24 contract](./PHASE_17_RPT24_ON_DEMAND_ASOF_EXCEL_EXPORT_CONTRACT.md): **RPT-24 AS-OF EXPORT REQUIREMENT RECORDED — FIELD / AUTHORIZATION CONTRACT PENDING — IMPLEMENTATION NOT AUTHORIZED.** Requester-confirmed purpose/timing is on-demand Patient Program progress as recorded at an authoritative server-side As-of instant, including Programs at different lifecycle stages. Existing exact-Program report:program:read is not cohort/export authorization; no export capability or endpoint exists. Sheet fields, ID, cohort, roles, clinical semantics, privacy, read consistency/revocation, workbook overflow and delivery are still gated. This is separate from HN reporting: HN-M06-T01–T09 are unchanged; HN-M07/historical disclosure gates stay open; HN-M08 Network Export remains DEFERRED / NOT AUTHORIZED. No RPT-24 implementation is authorized.
+
 ## CURRENT-status addendum — Phase 17K HN-C1 requester direction (2026-10-10)
 
 [HN-C1 Security & Disclosure Contract](./PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md) and [Decision Direction Record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md): **HN-C1 DOCUMENTATION PREPARED; ENGINEERING DIRECTION CONFIRMED BY REQUESTER; SECURITY / PRIVACY ACCEPTANCE PENDING**. D01–D13 are engineering direction only. HN-M07 disclosure and historical provenance/attribution remain release gates; HN-M03 reporting semantics require confirmation; read-consistency design is open; **HN-C2 IMPLEMENTATION BLOCKED** and no Network aggregate real-data exposure is authorized. HN-M08 remains DEFERRED / NOT AUTHORIZED. HN-C0, OWNER-01 / AREA-01, K-Q, 17K.1–17K.3 and 17J.5B/LINE statuses remain unchanged.
