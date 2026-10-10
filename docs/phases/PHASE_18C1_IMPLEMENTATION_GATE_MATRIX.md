@@ -245,3 +245,11 @@ Phase 18C.2 สามารถรับช่วง decision closure และ�
 3. ทำ Global Reporting security/privacy contract แยกจาก RPT-24 exact-Hospital export และ HN-C0/HN-C1. เก็บ explicit field allowlist, purpose, grant, scope, revocation, audit, cache/search และ Data Controller evidence.
 4. จึงออกแบบ projection/query ตาม authoritative existing sources; เสนอ capture ใหม่เฉพาะ field ที่ยืนยันแล้วว่าขาดจริง.
 5. ขอ implementation authorization แยกก่อน runtime/schema/UI/export work. UAT ต้อง synthetic-first; ไม่มี production access จากเอกสารนี้.
+
+## Current-status addendum — Phase 18C.1B Global Reporting security contract (2026-10-10)
+
+- Security contract, decision register และ synthetic acceptance matrix เตรียมแล้ว: [Contract](./PHASE_18C1B_GLOBAL_REPORTING_SECURITY_CONTRACT.md), [Register](./PHASE_18C1B_SECURITY_DECISION_REGISTER.md), [Matrix](./PHASE_18C1B_SECURITY_ACCEPTANCE_MATRIX.md).
+- Disposition: SECURITY CONTRACT PREPARED; APPROVAL PENDING. Product direction remains CONFIRMED / OWNER_RECEIVED (GR-REQ-01); Global policy PROPOSED / SECURITY REVIEW PENDING; Patient-level access SECURITY_PRIVACY_BLOCKED; Data Controller approval PENDING; implementation NOT AUTHORIZED.
+- Global Admin = Platform Role.ADMIN. ADMIN-only has no clinical read; future Global grant does not require Hospital OWNER/MEMBER membership.
+- GR-SEC-01–19 are new, isolated and OPEN / PROPOSED FOR REVIEW. R24A-D01–D15 stay PROPOSED; RPT-24C gates stay OPEN; HN-M07/history gates stay OPEN; HN-M08 stays DEFERRED / NOT AUTHORIZED.
+- Acceptance cases are synthetic-only design; no tests were added or run. No runtime, schema, migration, RLS, API, UI or export changes were authorized or made.

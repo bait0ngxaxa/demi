@@ -261,6 +261,10 @@ Global Dashboard direction ไม่ขยาย RPT-24 D01 exact-Hospital expor
 - **RPT-24C:** export security/privacy/snapshot/revocation/audit/delivery gates ยัง OPEN.
 - **Implementation / production access:** NOT AUTHORIZED.
 
+## Current-status addendum — Phase 18C.1B security contract (2026-10-10)
+
+[Security Contract](./PHASE_18C1B_GLOBAL_REPORTING_SECURITY_CONTRACT.md), [Security Decision Register](./PHASE_18C1B_SECURITY_DECISION_REGISTER.md) และ [Synthetic Acceptance Matrix](./PHASE_18C1B_SECURITY_ACCEPTANCE_MATRIX.md) จัดทำแล้วบน main ณ fc8335450622209f1681425700f765344c4c0f27: **SECURITY CONTRACT PREPARED / APPROVAL PENDING**. Role.ADMIN หมายถึง Platform/System Admin; role นี้ไม่ให้ Patient read และไม่ต้องใช้ Hospital membership เพื่อ qualify สำหรับ Platform grant ในอนาคต. Product direction คง CONFIRMED / OWNER_RECEIVED (GR-REQ-01). Global policy คง PROPOSED / SECURITY REVIEW PENDING; Patient-level access คง SECURITY_PRIVACY_BLOCKED; Data Controller approval PENDING; implementation NOT AUTHORIZED. Security decisions ใช้ GR-SEC-01–19 แยก namespace; ทุกข้อ OPEN / PROPOSED FOR REVIEW. ไม่มี test ถูก implement หรือ execute. R24A-D01–D15 และ HN-C0/HN-C1 statuses ไม่เปลี่ยน; HN-M08 คง DEFERRED / NOT AUTHORIZED และ RPT-24C export gates คง OPEN.
+
 ผลที่ปิดได้คือ **PHASE 18C.1A — GLOBAL REPORTING REQUIREMENT RECORDED / ARCHITECTURE RECONCILIATION COMPLETE**. ไม่ใช่ Global patient access approval, clinical approval, export authorization, UAT หรือ production readiness.
 
 **ขั้นถัดไปที่แนะนำ:** Phase 18C.1B — Global Reporting Security Contract Preparation and Approval. เตรียมให้ Security/Privacy/Data Controller ตัดสิน A–O ใน §7 และแยก aggregate scope จาก Patient-detail scope. ไม่เริ่ม Phase 18C.1B หรือ implementation โดยอัตโนมัติ.
