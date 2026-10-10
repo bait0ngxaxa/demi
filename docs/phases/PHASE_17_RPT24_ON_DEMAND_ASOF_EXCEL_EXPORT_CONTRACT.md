@@ -1,19 +1,27 @@
 # DEMI Phase 17 — RPT-24 On-demand As-of Excel Export Requirement Contract
 
-**สถานะ:** RPT-24 AS-OF EXPORT REQUIREMENT RECORDED — FIELD / AUTHORIZATION CONTRACT PENDING — IMPLEMENTATION NOT AUTHORIZED
-**ประเภทงาน:** Documentation-only requirement consolidation และ technical contract preparation
-**ฐานเอกสาร:** branch **docs/rpt-24-on-demand-asof-excel-export** สืบทอดจาก **docs/hn-c1-security-disclosure-contract** ณ commit **5c4e509cca5306631014d88fb0918deff077674e**
-**ข้อจำกัด:** ไม่อนุมัติการเปิดเผยข้อมูลผู้ป่วยจริง, Product Owner, clinical, security, privacy, data-controller หรือ production use และไม่อนุญาตเริ่ม implementation
+- **สถานะ:** RPT-24 AS-OF EXPORT REQUIREMENT RECORDED — FIELD / AUTHORIZATION CONTRACT PENDING — IMPLEMENTATION NOT AUTHORIZED
+- **ประเภทงาน:** Documentation-only requirement consolidation และ technical contract preparation
+- **ประวัติการจัดทำ (historical provenance):** สร้างบน branch **docs/rpt-24-on-demand-asof-excel-export** สืบทอดจาก **docs/hn-c1-security-disclosure-contract** ณ commit **5c4e509cca5306631014d88fb0918deff077674e**; current repository location แยกบันทึกใน §2
+- **ข้อจำกัด:** ไม่อนุมัติการเปิดเผยข้อมูลผู้ป่วยจริง, Product Owner, clinical, security, privacy, data-controller หรือ production use และไม่อนุญาตเริ่ม implementation
 
 ## 1. Requirement ที่ผู้ร้องขอยืนยัน
 
-**RPT-24 — On-demand Current Progress Excel Export** คือการส่งออก Excel ตามคำขอของผู้ใช้ เพื่อแสดงความคืบหน้าการดูแลใน Patient Program ตามข้อมูลจริงที่ระบบบันทึกและผู้ใช้มีสิทธิ์เห็น ณ server-side As-of instant ของการส่งออก
+**RPT-24 — On-demand Current Progress Excel Export** คือการส่งออก Excel ตามคำขอของผู้ใช้ เพื่อแสดงความคืบหน้าการดูแลใน Patient Program ตามข้อมูลจริงที่ระบบบันทึกและผู้ใช้มีสิทธิ์เห็นจาก server-side data snapshot ที่ระบุขอบเขตได้ด้วยกลไก consistency ที่อนุมัติ
 
 รายงานหนึ่งชุดอาจมีผู้ป่วยอยู่ในสถานะต่างกัน เช่น ทำ Service 1 แล้วแต่ยังไม่เริ่ม Service 2, ทำ Services 1–4 แล้ว, จบ Program และมี Final Assessment, หรือยังมี Program สถานะ ACTIVE และไม่มี Final Assessment ได้ทั้งหมดเมื่ออยู่ในประชากรและ scope ที่อนุมัติแล้ว ไม่ต้องรอให้ทุก Program เป็น COMPLETED ไม่สร้างค่าบริการหรือผลลัพธ์ที่ไม่มี source และไม่แสดง Program ที่ยังไม่จบเสมือนจบแล้ว
 
 การขอ export ครั้งหลังอาจได้ค่าต่างจากไฟล์เดิม หากมีการบันทึกหรือแก้ไข source เพิ่ม ไฟล์ XLSX ที่ดาวน์โหลดแล้วเป็นสำเนาข้อมูลที่ส่งออกในเวลานั้นเท่านั้น จะไม่รับรอง historical reproducibility หรือการสร้างไฟล์เดิมซ้ำ เว้นแต่มี snapshot/versioning mechanism ที่อนุมัติแยกต่างหาก
 
-เก็บ authoritative server-side As-of instant เพียงค่าเดียว ณ request acceptance ที่ server สังเกตได้และก่อนเริ่ม source reads; นี่เป็นตัวแทนเชิงระบบของเวลาที่ผู้ใช้ขอ export ไม่ใช่เวลาสร้างไฟล์ แต่ timestamp เดียว **ไม่รับประกัน transactionally consistent database snapshot** และไม่ระบุว่า clinical event ในโลกจริงเกิดขึ้นเมื่อใด ระบบในอนาคตต้องกำหนด source-read, authorization, concurrent update และ revocation consistency contract ก่อนสร้างไฟล์จริง
+ต้องแยกเวลา/ขอบเขตสามชนิดให้ชัด และห้ามใช้แทนกัน:
+
+| ชื่อ | ความหมายที่เสนอ | สิ่งที่ห้ามสรุป |
+| --- | --- | --- |
+| `requestedAt` | authoritative server timestamp เมื่อรับคำขอ export | ไม่ใช่ database state time และไม่รับรอง source snapshot ที่ query ภายหลังอ่านได้ |
+| `dataAsOf` / snapshot boundary | ขอบเขตหรือ identity ของ database read ตามกลไก consistency ที่ยอมรับ; ทุกชีต, cohort count, pagination และ source lookup ต้องอ่านจาก snapshot เดียวกัน | ห้ามตั้งเท่ากับ `requestedAt` หากไม่มีหลักฐานว่า timestamp นั้นตรงกับ database snapshot; ถ้าระบุ wall-clock instant ที่แน่นอนไม่ได้ ให้รายงาน snapshot boundary/identity เท่าที่พิสูจน์ได้ ไม่สร้าง timestamp ปลอม |
+| `generatedAt` | authoritative server timestamp เมื่อสร้าง XLSX เสร็จ | ไม่ใช่ `requestedAt` หรือ `dataAsOf`; อาจเกิดภายหลังทั้งสองค่า |
+
+กลไก snapshot, ขอบเขตการได้มาของ snapshot และความสัมพันธ์ระหว่าง `requestedAt` กับ `dataAsOf` ยังเป็น technical design/release gate; ห้ามเลือก PostgreSQL isolation strategy โดยไม่มีหลักฐาน รองรับ concurrent updates, permission revocation และ long-running export เป็น security decisions แยกต่างหาก ทั้งนี้ snapshot ของฐานข้อมูลไม่ได้ระบุว่า clinical event ในโลกจริงเกิดเมื่อใด
 
 ไม่มีการกำหนดรายเดือน รายไตรมาส schedule หรือ publication cycle สำหรับ RPT-24 การจำกัดรอบเวลาที่คิดขึ้นเพื่อแก้ HN-M07 ไม่ถูกนำมาใช้กับ Excel นี้
 
@@ -26,7 +34,11 @@
 
 การอนุมัติ exact-Hospital patient/program export ในอนาคตจะไม่ทำให้ Parent OWNER อ่าน Child Hospital roster ได้ ไม่ขยายสิทธิ์จาก Person ที่มีหลาย Hospital relationship และไม่อนุญาต Network Export โดยปริยาย **report:program:read** ที่ติดตั้งอยู่เป็น exact-Program factual read เท่านั้น ไม่ใช่ cohort หรือ export permission
 
-HN-C1 อยู่บน branch ต้นทางที่ยังไม่ merge เข้า main เอกสาร RPT นี้สืบทอด branch นั้นเพื่อให้ link ไป [HN-C1 Security & Disclosure Contract](./PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md) และ [HN-C1 Decision Direction Record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md) ใช้งานได้ ความเชื่อมโยงนี้ไม่เปลี่ยน HN-C1 approval status, HN-M06-T01–T09, HN-M07, HN-M08 หรืออนุญาต HN-C2; HN-C1-D07 cross-request privacy ยัง OPEN และไม่มี Controlled Reporting Release ของ Network aggregates ได้รับอนุมัติจาก RPT-24
+ประวัติเอกสาร: HN-C1 ถูกจัดทำบน `docs/hn-c1-security-disclosure-contract` (security contract commit `7ef8c3d`, decision direction commit `5c4e509`); เอกสาร RPT-24 นี้ถูกจัดทำบน `docs/rpt-24-on-demand-asof-excel-export` และ commit `ba49040` ณ preflight ของ RPT-24A, HN-C1 และ RPT-24 commit เป็น ancestors ของ `main` ที่ `ba49040c7a674008a10493ae5cf5c7a99b7e6bfc` เอกสารปัจจุบันอยู่ใน repository history ของ `main`; branch ข้างต้นเป็น historical development provenance ไม่ใช่สถานะการ merge ปัจจุบัน
+
+Git merge ระบุเพียง repository location ไม่ใช่ Product Owner, security, privacy, clinical, data-controller หรือ implementation approval สถานะ HN-C1 ยังคง security/privacy acceptance pending, HN-M06-T01–T09 ไม่เปลี่ยน, HN-M07 และ historical reparent disclosure ยังเป็น release gates, HN-M08 ยังคง DEFERRED / NOT AUTHORIZED, HN-C1-D07 ยัง OPEN และไม่มี Controlled Reporting Release ของ Network aggregates ได้รับอนุมัติจาก RPT-24
+
+สำหรับข้อเสนอด้านประชากร, row grain, identity และ workbook field ให้ดู [RPT-24A Customer Workbook Decision Pack](./PHASE_17_RPT24A_CUSTOMER_WORKBOOK_DECISION_PACK.md); เป็นข้อเสนอรอ requester/customer acceptance ไม่ใช่การปิด gate หรืออนุมัติ implementation
 
 ## 3. หลักฐานและสถานะการตัดสินใจ
 
@@ -77,7 +89,7 @@ Phase 15A และ 15E เป็นหลักฐานการตัดส�
 | Classification | Current PatientProfile classification RISK/DIABETES และ Patient-global history; current count query จำกัด Hospital แล้วนับ PatientHospitalRelationship rows | ไม่ยืนยันว่า RISK = Pre-DM; นับ relationship ไม่ใช่ unique Person; cohort grain, deduplication และ historical state ยังต้องตัดสินใจ |
 | OSM | PatientOsmAssignment ผูกกับ exact Hospital relationship และเก็บ created/ended timestamp; OSM identity เป็น User/Person; policy ปัจจุบันตรวจ exact active assignment และ ACTIVE OSM-Hospital relationship | current assignment หาได้ แต่การแสดง current ณ export เทียบกับผู้รับผิดชอบช่วง Program/Follow-up ยังไม่อนุมัติ |
 | Program report access | report:program:read ใช้ direct ACTIVE HOSPITAL OWNER/MEMBER ต่อ exact Hospital หรือ OSM ที่มี exact active assignment; ADMIN-only/PATIENT-only ไม่มีสิทธิ์; access service re-read active User/roles/membership จาก DB | อนุญาตเฉพาะ exact Program read ปัจจุบัน ไม่ได้อนุญาต roster/cohort/XLSX; export capability ยังไม่มี |
-| Read consistency | Program report API รับ optional Prisma transaction client แต่ไม่ได้เปิด transaction เอง; อ่าน access, Program, Baseline, Final, GoalPlan และ Follow-up หลาย query และ query page/count บางส่วนทำพร้อมกัน | As-of timestamp เดียวไม่ทำให้ข้อมูลหลาย query เป็น snapshot เดียว; read isolation และ revocation race เป็น release gate |
+| Read consistency | Program report API รับ optional Prisma transaction client แต่ไม่ได้เปิด transaction เอง; อ่าน access, Program, Baseline, Final, GoalPlan และ Follow-up หลาย query และ query page/count บางส่วนทำพร้อมกัน | การแยก `requestedAt` ไม่ทำให้ข้อมูลหลาย query เป็น snapshot เดียว; coherent `dataAsOf`/snapshot boundary สำหรับทั้ง workbook, counts, pagination และ source lookup รวมถึง revocation behavior เป็น release gate |
 
 source paths ที่ตรวจจริงระบุไว้ใน [evidence index](#14-evidence-index) เอกสารเก่าอ้าง field ที่ยังไม่มีในเวลานั้นได้ถูกเก็บไว้เป็น historical observation; mapping ด้านล่างยึด current implementation
 
@@ -192,16 +204,18 @@ Current report query รองรับ GoalPlan/Follow-up page size 20 โด�
 
 กระบวนการต่อไปนี้เป็น **PROPOSED TECHNICAL PROCESS** ไม่ใช่ implementation approval:
 
-1. ผู้ใช้เริ่ม XLSX export โดยสมัครใจ; server จับ request acceptance instant หนึ่งครั้งก่อน source reads และยังไม่อ่าน/เปิดเผยข้อมูล
+1. ผู้ใช้เริ่ม XLSX export; server บันทึก `requestedAt` เป็นเวลารับคำขอเท่านั้น
 2. Resolve authenticated User จาก server session; ไม่รับ role/scope จาก client
-3. ตรวจ dedicated export capability และ exact Hospital reporting scope
-4. อ่าน authoritative role, User status, membership/assignment และ lifecycle status ปัจจุบัน
-5. ผูก authorization ที่ผ่านแล้วกับ request acceptance instant เดิม พร้อม timezone/absolute representation ที่ชัดเจน; ห้ามเปลี่ยน As-of เป็นเวลาสร้างไฟล์
-6. เปิด coherent source read ตาม approved transaction/snapshot and concurrency contract; รวม authorization และ source reads ให้สอดคล้องตาม release decision
-7. เลือก exact-Hospital Patient relationship และ exact Program population ตาม approved filters; ห้ามข้าม Hospital ผ่าน shared Person
-8. project เฉพาะ factual allowlist ของ Before/During/After และ service completeness; รักษา null/zero/absent/withheld states แยกกัน
-9. ตรวจ policy สำหรับ output fields, missing presentation, row limits, formula injection และ safe workbook formatting
-10. สร้างไฟล์จาก projection ที่ authorize แล้วเท่านั้น ส่งผ่าน authenticated private response และเขียน minimized audit event
+3. ตรวจ dedicated export capability และ exact Hospital reporting scope ตาม policy ที่อนุมัติ
+4. ได้มาซึ่ง coherent database snapshot ตาม approved consistency contract แล้วระบุ `dataAsOf` เป็น wall-clock boundary หรือ snapshot identity เท่าที่ระบบพิสูจน์ได้; ระบุความสัมพันธ์กับ `requestedAt` อย่างตรงไปตรงมา
+5. เลือก exact-Hospital Patient relationship และ Program population ตาม approved filters; ห้ามข้าม Hospital ผ่าน shared Person
+6. อ่าน Program, counts, linked source records และทุก page ที่ต้องใช้ รวมถึงข้อมูลของทั้งสอง worksheet จาก snapshot เดียวกัน
+7. project เฉพาะ factual allowlist ของ Before/During/After และ service completeness; รักษา null/zero/absent/withheld states แยกกัน
+8. ตรวจ policy สำหรับ output fields, missing presentation, row limits, formula injection และ safe workbook formatting
+9. สร้าง XLSX จาก projection ของ snapshot ที่ authorize แล้ว; บันทึก `generatedAt` เมื่อ generation เสร็จ
+10. reauthorize/ตรวจการเพิกถอนก่อนส่งไฟล์ตาม accepted delivery contract และเขียน minimized audit event
+
+ขั้นตอนนี้เป็น **candidate process**; การได้ snapshot ก่อนหรือหลัง authorization checks และ concurrency/revocation linearization point ต้องออกแบบร่วมกันโดย engineering/security โดยไม่กล่าวว่า `requestedAt` คือ snapshot time และไม่เลือก isolation strategy โดยไม่มีหลักฐาน
 
 ความหมายเวลา:
 
@@ -211,20 +225,22 @@ Current report query รองรับ GoalPlan/Follow-up page size 20 โด�
 | Baseline date | recordedOn เป็น business DATE; createdAt เป็น persistence timestamp |
 | Follow-up / Final recordedAt | application/server record time ตาม model/write path; ไม่ใช่ generic clinical observation date หรือช่วงเวลาที่วัด |
 | GoalPlan / Service 1 / evidence timestamps | created/recorded/associated/uploaded timestamps คนละเหตุการณ์; ห้ามใช้แทนกัน |
-| Export As-of | เวลา authoritative ที่ใช้ระบุ source snapshot เมื่อมีกลไก snapshot ที่รับรองแล้ว |
-| Export generatedAt | เวลาไฟล์ถูกสร้าง; แยกจาก As-of และอาจเกิดภายหลัง |
+| `requestedAt` | เวลา server รับคำขอ export; ไม่ใช่เวลาของ source state |
+| `dataAsOf` / snapshot boundary | ขอบเขต/identity ของ database snapshot ที่ approved consistency mechanism ใช้อ่าน source ทั้งชุด; timestamp แสดงได้เฉพาะเมื่อพิสูจน์ความสัมพันธ์กับ boundary ได้ |
+| `generatedAt` | เวลาไฟล์ถูกสร้างเสร็จ; แยกจาก request และ source snapshot และอาจเกิดภายหลัง |
 
-Timestamp แบบ absolute ต้องเก็บอย่างไม่กำกวม; วันที่/เวลาที่แสดงให้ผู้ใช้ใช้ Asia/Bangkok ตาม customer locale contract โดยไม่ timezone-shift DATE fields เอง ควรระบุ Data As-of พร้อม offset หรือ metadata ที่อ่านได้ และแยก Generated at หาก customer ต้องการ ทั้งสอง label ยังต้องอนุมัติ
+Timestamp แบบ absolute ต้องเก็บอย่างไม่กำกวม; วันที่/เวลาที่แสดงให้ผู้ใช้ใช้ Asia/Bangkok ตาม customer locale contract โดยไม่ timezone-shift DATE fields เอง Customer-facing metadata ต้องแยก request received, data snapshot boundary และ generation completion ตามค่าที่มีหลักฐานจริง; หาก snapshot มี identity/boundary แต่ไม่มี wall-clock time ที่พิสูจน์ได้ ห้ามแสดง request time แทน `dataAsOf` การเลือก label และการแสดง `requestedAt`/`dataAsOf`/`generatedAt` เป็น customer presentation decision ส่วนวิธีพิสูจน์ boundary เป็น engineering/security decision
 
-การรับรอง As-of ต้องไม่กล่าวอ้างว่า createdAt, recordedAt, completedAt หรือเวลาส่งออกเป็นเวลาเดียวกัน และไม่กล่าวว่า event จริงเกิดก่อน As-of เพียงเพราะ persistence timestamp อยู่ก่อนเวลา
+ห้ามใช้ `requestedAt`, `dataAsOf`/snapshot identity, `generatedAt`, `createdAt`, `recordedAt` และ `completedAt` แทนกัน และไม่กล่าวว่า clinical event จริงเกิดก่อน data snapshot เพียงเพราะ persistence timestamp อยู่ก่อนเวลา
 
 ### 8.1 Consistency และ revocation gate
 
-การทำหลาย query หลังเก็บ timestamp อาจเห็น source คนละ state หากมี concurrent update ระหว่าง query การรับ transaction client เป็น optional input ใน exact Program projection ปัจจุบันยังไม่ใช่คำรับรองว่า export ทั้งชุดอ่าน snapshot เดียว
+การทำหลาย query โดยไม่มี snapshot boundary ร่วมอาจเห็น source คนละ state หากมี concurrent update ระหว่าง query การรับ transaction client เป็น optional input ใน exact Program projection ปัจจุบันยังไม่ใช่คำรับรองว่า export ทั้งชุดอ่าน snapshot เดียว
 
 ก่อน implementation ต้องกำหนดและทดสอบอย่างน้อย:
 
-- snapshot boundary ที่ผูกกับ As-of และครอบคลุมทั้งสอง sheet, count, pagination และ source lookup
+- กลไกการได้ snapshot และ `dataAsOf`/snapshot identity ที่ตรวจสอบได้; ครอบคลุมทั้งสอง worksheet, cohort count, pagination และทุก source lookup ใน boundary เดียวกัน
+- ความสัมพันธ์ของ `requestedAt` กับเวลาหรือ identity ของ snapshot; หาก map เป็น wall-clock time ไม่ได้ ให้ระบุ snapshot boundary ที่มีจริงและห้ามประดิษฐ์ timestamp
 - semantics เมื่อ Program, GoalPlan, Follow-up, assignment หรือ Hospital/Patient relationship เปลี่ยนระหว่าง read
 - revocation linearization point สำหรับ User suspension, membership demotion/revocation, OSM reassignment, Hospital suspension และ scope change ระหว่าง long-running export
 - การตรวจ authority ซ้ำก่อน file delivery, การ cancel job/response และข้อจำกัดหลังเริ่มส่ง bytes ให้ผู้ใช้
@@ -285,7 +301,7 @@ RPT-24 ได้รับการยืนยัน requirement เฉพาะ
 | RPT-19–21 | free-text notes/GoalPlan rounds บางส่วนมี | controlled outcome, plan-adjustment event, obstacle vocabulary/source |
 | RPT-22 | current report DTO แยก recorded/missing states | Excel cell rendering และ withheld/absent distinction |
 | RPT-23 | workbook มีหก Follow-up slots; DB เป็น 0..N | exact layout, overflow behavior, supplementary sheet |
-| RPT-24 | REQUESTER-CONFIRMED REQUIREMENT: on-demand current progress as-of a defined server instant | field allowlist, exact cohort, ID, permission, complete template fidelity, As-of consistency, output/delivery decisions |
+| RPT-24 | REQUESTER-CONFIRMED REQUIREMENT: on-demand current progress from a defined server-side data snapshot | field allowlist, exact cohort, ID, permission, complete template fidelity, snapshot/dataAsOf consistency, output/delivery decisions |
 | RPT-25 | PDF requirement อยู่ใน Phase 15E register แต่ไม่ใช่ requirement ที่ยืนยันใน RPT-24 | PDF purpose/layout/PII contract แยกต่างหาก; RPT-24 ไม่อนุมัติ PDF |
 | RPT-26 | export audit contract ยังไม่มี | event types, access, purpose, retention และ failure logging |
 | RPT-27 | generated export ไม่มี version/snapshot mechanism | projection/template version, reproducibility และ correction expectations |
@@ -310,7 +326,7 @@ RPT-24 ได้รับการยืนยัน requirement เฉพาะ
 | R24-SVC-01 | Service 1 evidence/text และ GoalPlan/free-text output — OPEN | Product + clinical/privacy | เริ่มจาก completeness facts; default exclude free text and binary evidence | BLOCKS content-rich cells |
 | R24-FU-01 | หก slots, overflow, order, 2–4 expectation — OPEN | Customer/Product Owner | แสดงครบ; no truncation; expectation ไม่เป็น limit | BLOCKS final workbook layout |
 | R24-MISSING-01 | Excel blank/label สำหรับ null, no record, no link, withheld, denied — OPEN | Product + data owner + Security | preserve distinctions internally; no zero substitution | BLOCKS output mapping |
-| R24-ASOF-01 | snapshot/isolation และ As-of boundary หลาย query — OPEN | Architecture/DB owner + Security | database snapshot ที่พิสูจน์ได้ หรือ bounded failure; no timestamp-only claim | BLOCKS implementation |
+| R24-ASOF-01 | coherent snapshot/dataAsOf, ความสัมพันธ์กับ requestedAt และ generatedAt สำหรับหลาย query — OPEN | Architecture/DB owner + Security | database snapshot ที่พิสูจน์ได้; หาก wall-clock mapping ไม่ชัดให้แสดง boundary/identity จริง; no timestamp-only claim | BLOCKS implementation |
 | R24-REVOKE-01 | membership/status revocation ระหว่าง long export และก่อนส่งไฟล์ — OPEN | Security + Architecture | define linearization point, revalidation and cancellation | BLOCKS secure delivery |
 | R24-LIMIT-01 | row/byte/page/time/rate/resource limits — OPEN | Product + Operations + Security | explicit bounded export; no silent truncation | BLOCKS production operation |
 | R24-AUDIT-01 | audit event, log access, purpose และ retention — OPEN | Security/privacy governance | minimal actor/capability/scope/time/correlation/outcome only | BLOCKS real patient export |
