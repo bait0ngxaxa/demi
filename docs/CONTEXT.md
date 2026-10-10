@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — Phase 17K HN-C1 Security & Disclosure Contract (2026-10-10)
+
+[HN-C1 Security & Disclosure Contract](./phases/PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md): **HN-C1 DOCUMENTATION PREPARED — SECURITY ACCEPTANCE PENDING**. Candidate Network capabilities and safeguards remain proposals; no Product Owner/security/privacy acceptance or implementation authorization is recorded. HN-M07, historical reparent disclosure, HN-M03 eligibility and As-of/database consistency remain open gates; affected real aggregates stay withheld and **HN-C2 IMPLEMENTATION BLOCKED**. HN-M08 remains DEFERRED / NOT AUTHORIZED. HN-C0 OWNER_RECEIVED semantics, OWNER-01/AREA-01 separation, K-Q identities, Phase 17K.1–17K.3 status, and Phase 17J.5B/LINE gates remain unchanged.
+
 ## CURRENT-status addendum — Phase 17K.0B HN-C0 Hospital Network decision closeout (2026-10-10)
 
 [HN-C0 decision closeout](./phases/PHASE_17K0B_HN_OWNER_DECISION_CLOSEOUT.md): HN-A01–A06 and HN-M01–M06/time subdecisions are recorded as OWNER_RECEIVED; this is a requirement record, not an implemented feature. Hospital Network reporting remains IMPLEMENTATION_NOT_AUTHORIZED. HN-M07 Aggregate Privacy and historical reparent disclosure remain OPEN_BLOCKER; HN-M08 Network Export is DEFERRED / NOT AUTHORIZED. OWNER-01 and AREA-01 remain separately requirement-gated. Original K-Q IDs/statuses are preserved; only the K-Q01 hierarchy and K-Q22 Network direct-child facets are addressed, while K-Q01/K-Q22 overall, K-Q07 Area inheritance and K-Q17 Area historical reporting remain open. Phase 17K is not complete. Phase 17J.5B remains NOT AUTHORIZED / NOT EXECUTED; LINE gates remain unchanged: DEMI_LINE_DISCONNECTION_ENABLED=false and appointment notifications remain unset/default OFF.
