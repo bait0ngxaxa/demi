@@ -241,3 +241,98 @@
 - BR-01–BR-08 / CL-01–CL-07: ยัง OPEN; ไม่มีสูตรหรือ clinical rule ใดได้รับอนุมัติ.
 - RPT-24C export/security/privacy gates: ยังคง OPEN; HN-M08 ยังคง DEFERRED / NOT AUTHORIZED.
 - ขั้นถัดไปหลังได้คำตอบ: รวบรวม evidence, ตรวจ authority และ scope, update canonical decision register ผ่าน review ที่ได้รับอนุมัติ แล้วประเมิน Phase 18C.2. ไม่เริ่ม implementation โดยอัตโนมัติ.
+
+## Addendum — Phase 18C.1A Global Reporting review record
+
+- **วันที่บันทึกคำขอ:** 2026-10-10
+- **Source HEAD ที่ตรวจ:** main / 23dd09356db3c06e70507c0800b70f7923fcbfda
+- **Reference:** GR-REQ-01 เป็น requirement reference เท่านั้น ไม่ใช่ R24A Decision ID
+- **สถานะ:** Product direction OWNER_RECEIVED; Global access contract OPEN / SECURITY_PRIVACY_BLOCKED; implementation NOT AUTHORIZED
+
+### A. Product direction ที่ได้รับจาก requester
+
+| Scope | คำตอบที่ได้รับ | สถานะและขอบเขต |
+| --- | --- | --- |
+| Hospital Dashboard | Hospital แต่ละแห่งมี dashboard โดยใช้ customer workbook สอง worksheet เป็น evidence | OWNER_RECEIVED สำหรับ product direction; ไม่อนุมัติ metrics, Hospital member access, clinical meaning หรือ export |
+| Global overview | Global Platform Admin ต้องดู system-wide reporting summaries | OWNER_RECEIVED สำหรับ product direction; summary capability/population/privacy ยัง OPEN |
+| Per-Hospital comparison | Global Platform Admin ต้องดูและเปรียบเทียบผลแยก Hospital | OWNER_RECEIVED สำหรับ product direction; eligibility/denominator/suppression ยัง OPEN |
+| Global Patient drill-down | Global Admin ต้อง drill-down Patient ข้าม Hospital ได้ผ่าน separately approved, explicitly scoped patient-data permission เท่านั้น | OWNER_RECEIVED สำหรับ product requirement; ไม่มี permission/patient-field approval และ default deny ยังคงใช้ |
+
+**Evidence reference:** คำขอผู้ใช้ Phase 18C.1A ลงวันที่ 2026-10-10. **ชื่อผู้อนุมัติ:** NOT PROVIDED. **Meeting minutes/signature:** NOT PROVIDED. หลักฐานนี้บันทึก requester direction ตามที่ให้มาเท่านั้น.
+
+### B. Sign-off record — product intent (ไม่ใช่ access approval)
+
+| Field | Current record |
+| --- | --- |
+| Requirement reference | GR-REQ-01 (ไม่ใช่ Decision ID) |
+| Chosen product scope | Hospital dashboards; Global overview; per-Hospital comparison; cross-Hospital Patient drill-down only through separate scoped authorization |
+| Exact approved wording | NOT PROVIDED as a signed approval. คำขอที่ได้รับยืนยัน scope ตามสี่แถวใน §A เท่านั้น |
+| Approver name / role / authority basis | ชื่อ NOT PROVIDED; role ที่ได้รับทิศทางคือ requester/Product Owner |
+| Approval date | 2026-10-10 สำหรับ requester direction; ไม่ใช่ independent approval date |
+| Evidence URL or reference | User request: Phase 18C.1A instruction, 2026-10-10 |
+| Scope | Product direction only; no security/privacy/clinical/implementation grant |
+| Version / effective time | Requirement recorded 2026-10-10; deployment/effective release NOT PROVIDED |
+| Conditions | Security, Privacy/Data Controller, Clinical/Data Owner และ authorization policy approvals remain OPEN |
+| Resulting status | OWNER_RECEIVED for product intent; access contract OPEN; implementation NOT AUTHORIZED |
+
+การกรอกตารางนี้ไม่ได้เป็นลายมือชื่อหรือการอนุมัติ. ห้ามนำ OWNER_RECEIVED ไปใช้เป็น authorization grant.
+
+### C. Customer / Product Owner และ Hospital operations questions
+
+คำถามด้าน workbook ยังคงใช้ R24A-D01–D15 ใน [canonical RPT-24A](./PHASE_17_RPT24A_CUSTOMER_WORKBOOK_DECISION_PACK.md); ทุกข้อคง PROPOSED FOR REQUESTER / CUSTOMER REVIEW. Phase 18C.1A ไม่เลือก option แทนผู้ตอบ:
+
+- D01–D03: exact-Hospital export population/row grain เดิม และ separate Global aggregate population, Hospital eligibility, unique Patient vs relationship vs Program grain.
+- D04–D05: Patient ID/name, OSM meaning และ attribution; Global identity disclosure แยกจาก clinical detail.
+- D06–D10: stages, missing field coverage, DM/Pre-DM, derived metrics, service record/delivery/completeness.
+- D11–D15: Follow-up overflow, missing presentation, workbook compatibility, export timestamps/order. ไม่ขยาย decision เหล่านี้เป็น approval สำหรับ dashboard refresh หรือ Global access.
+- Hospital operations: ใครรับผิดชอบบันทึก Baseline/Service/Goal/Follow-up; target period/revision; service delivery evidence; OSM identity เทียบกับ actual care responsibility.
+
+**Selected answer:** NOT PROVIDED สำหรับ decision ข้างต้น. **Conditions/evidence/approver:** ให้บันทึกแยกต่อ Dxx ตามแบบฟอร์ม §6 เดิม.
+
+### D. Clinical / Data authority review
+
+ไม่มี clinical decision ได้รับการตอบจากคำขอนี้. CL-01–CL-07 และ BR-01–BR-08 ยังคง open ตาม Phase 18C.0/18C.1:
+
+- HbA1c, BMI, CVD Risk, DM/Pre-DM, illness duration และ PAM/PROMs ต้องมี clinical/data authority ที่เหมาะสม.
+- Weekly exercise, Goal Plan achievement, >70%, service completeness, structured outcome, plan adjustment และ obstacle ต้องมี semantic/source owner.
+- ห้ามสร้างสูตรหรือ mapping RISK → Pre-DM, Baseline → After, Program completion → clinical success.
+- **Clinical approver/evidence/version:** NOT PROVIDED.
+
+### E. Separate Global Security / Privacy / Data Controller sign-off
+
+รายละเอียดคำถาม A–O อยู่ใน [Phase 18C.1A §7](./PHASE_18C1A_GLOBAL_REPORTING_REQUIREMENT_RECONCILIATION.md). ไม่มี field ไหนได้รับคำตอบหรือ sign-off:
+
+| Review item | Current answer | Status |
+| --- | --- | --- |
+| Grantor / revoker; ADMIN necessary but insufficient? | NOT PROVIDED | OPEN |
+| Purpose and legal/privacy basis | NOT PROVIDED | OPEN |
+| Hospital subset/all eligible scope; Patient and Program fields | NOT PROVIDED | OPEN |
+| Identity permission vs clinical detail | NOT PROVIDED | OPEN |
+| Time bound, task bound, reason and approval provenance | NOT PROVIDED | OPEN |
+| Revocation point, long read, cache/search/pagination | NOT PROVIDED | OPEN |
+| Audit, retention, denied/error behavior | NOT PROVIDED | OPEN |
+| Emergency/break-glass, if any | NOT PROVIDED | OPEN |
+| Cross-Hospital isolation and aggregate suppression | NOT PROVIDED | OPEN |
+| Export/download permission | NOT PROVIDED; read does not imply export | OPEN / separate RPT-24C gate |
+
+**Required authority:** Security/IAM owner, Privacy/Data Controller, Product Owner และ Clinical/Data authority ตาม field ที่เปิดเผย. **Evidence URL/reference, approver names, dates, scope, version and conditions:** NOT PROVIDED. จนกว่าจะมีหลักฐานครบ ให้ DENY Global Patient discovery/detail และไม่เปิดข้อมูลจริง.
+
+### F. Reusable record for future Global access approval
+
+| Field | Record |
+| --- | --- |
+| Requirement reference | GR-REQ-01 |
+| Approved capability/scope wording | NOT PROVIDED |
+| Selected actor role(s) and grantor | NOT PROVIDED |
+| Patient discovery vs detail fields | NOT PROVIDED |
+| Purpose / Hospital and resource scope | NOT PROVIDED |
+| Chosen option and exclusions | NOT PROVIDED |
+| Approver name / role / authority basis | NOT PROVIDED |
+| Approval date and evidence URL/reference | NOT PROVIDED |
+| Version / effective time / expiry | NOT PROVIDED |
+| Revocation, audit, retention and cache conditions | NOT PROVIDED |
+| Independent Security / Privacy / Data Controller approvals | NOT PROVIDED |
+| Resulting status | OPEN / SECURITY_PRIVACY_BLOCKED |
+| Implementation authorization | NOT PROVIDED |
+
+ไม่มีการสร้าง Decision ID ใหม่. R24A-D01–D15 ไม่เปลี่ยนสถานะ. HN-M08 ยังคง DEFERRED / NOT AUTHORIZED; RPT-24C export gates ยังคง OPEN.

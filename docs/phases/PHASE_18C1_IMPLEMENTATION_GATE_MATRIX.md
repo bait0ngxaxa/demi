@@ -211,3 +211,37 @@ Phase 18C.2 สามารถรับช่วง decision closure และ�
 - **Optional / deferred:** G18-12 downstream automation ไม่ใช่ confirmed requirement; G18-13 HN-M08 DEFERRED / NOT AUTHORIZED.
 - **Acceptance:** G18-14 checklist design may proceed after scope confirmation; manual UAT pending, external provider/device verification not verified.
 - **Implementation:** ไม่มี runtime, schema, migration, API, calculation, UI, export, deployment หรือ provider change ใน Phase 18C.1.
+
+## Addendum — Phase 18C.1A Global Reporting dependencies
+
+- **Source HEAD ที่ตรวจ:** main / 23dd09356db3c06e70507c0800b70f7923fcbfda
+- **Product direction:** OWNER_RECEIVED ตามคำขอ 2026-10-10; อ้างอิง GR-REQ-01 (requirement reference only)
+- **Global Patient access / export:** OPEN / SECURITY_PRIVACY_BLOCKED
+- **Implementation:** NOT AUTHORIZED
+
+ส่วนนี้ map Global reporting ไปยัง G18 ที่มีอยู่แล้ว. ไม่สร้าง G18-15, ไม่เปลี่ยน decision IDs และไม่แทน accepted boundary ด้วย dashboard requirement.
+
+| Scope / existing gap | Current factual source / query | Missing projection or source | Required decisions / approvals | Readiness |
+| --- | --- | --- | --- | --- |
+| Hospital dashboard — G18-01, G18-02, G18-03, G18-04, G18-05, G18-06, G18-07, G18-08, G18-09, G18-10 | PatientHospitalRelationship, PatientProgram, Baseline, Classification, OSM assignment, Service 1, Goal Plan, Follow-up, Final; exact Program report projection | ไม่มี Hospital cohort dashboard; fields และ metric semantics ไม่ครบ; exact Program read ไม่ใช่ population query | R24A-D01–D15 คง PROPOSED; BR/CL ตาม fields; Hospital dashboard capability/field allowlist และ separate export gate | REQUIREMENT_BLOCKED + SECURITY_PRIVACY_BLOCKED; field-specific CLINICAL_APPROVAL_BLOCKED / DATA_SOURCE_BLOCKED |
+| Global Level A overview — G18-01, G18-03, G18-04, G18-06, G18-07, G18-09 | Hospital.status, PatientHospitalRelationship, PatientProgram และ domain facts เป็น raw authoritative sources | ไม่มี Global aggregate projection; eligible Hospitals, dedup, denominator, time semantics, suppression และ freshness ยังไม่กำหนด | Global aggregate capability/scope + Product/Operations population decision + Privacy/Security review; clinical metrics ต้องผ่าน D06–D10/CL gates | REQUIREMENT_BLOCKED + SECURITY_PRIVACY_BLOCKED; DATA_SOURCE_BLOCKED เฉพาะ metric ที่ไม่มี source |
+| Global Level B per-Hospital summary — G18-01, G18-07, G18-09 | Hospital governance directory และ exact-Hospital classification count query มีอยู่แต่ทำหน้าที่คนละอย่างกับ report | ไม่มี summary projection/compare query; current classification count เป็น relationship rows และไม่ใช่ approved DM/Pre-DM count | Hospital eligibility/status, common metric definitions, cross-Hospital dedup, suppression/differencing, field-free output | REQUIREMENT_BLOCKED + SECURITY_PRIVACY_BLOCKED; CLINICAL_APPROVAL_BLOCKED สำหรับ classification/achievement |
+| Global Level C Patient discovery — G18-02, G18-08, G18-09 | Hospital Patient directory จำกัด exact Hospital; OSM directory จำกัด assigned relationships; Person identity อาจเชื่อมหลาย Hospital | ไม่มี Global directory policy/query; identity and discovery field allowlist, Hospital subset, purpose, audit, rate/resource bounds | Separate report:global:patient-directory:read candidate; Security/Privacy/Data Controller approval; R24A-D04–D05 ไม่ได้ปิด global grant | SECURITY_PRIVACY_BLOCKED + REQUIREMENT_BLOCKED |
+| Global Level C Patient/Program detail — G18-02, G18-03, G18-05, G18-06, G18-08, G18-09 | Program report reads one exact Program using existing Program scope; policy test denies ADMIN-only | ไม่มี Global access resolver/policy; existing projection is limited; several clinical fields are missing/not projected | Separate detail capability, exact Hospital+relationship+Program grant, minimum fields, purpose, revocation, audit, privacy/Data Controller and clinical approval where applicable | SECURITY_PRIVACY_BLOCKED + CLINICAL_APPROVAL_BLOCKED + DATA_SOURCE_BLOCKED as applicable |
+| Global export / download — existing G18-01/G18-10 and RPT-24C | No export endpoint/capability or coherent cross-sheet snapshot | No approved Global export contract | Separate scope/actor/field/snapshot/delivery/audit approvals; RPT-24 D01 exact-Hospital scope unchanged | SECURITY_PRIVACY_BLOCKED; NOT AUTHORIZED |
+| Hospital Network separation — G18-13 | HN-C0/HN-C1 documentation defines Parent Owner aggregate scope; implementation not authorized | No Patient-level Network scope | HN-M07/history gates remain open; HN-M08 remains DEFERRED / NOT AUTHORIZED | DEFERRED for HN-M08; no dependency transfer to Global |
+| Manual acceptance — G18-14 | Current source/test files provide implementation evidence for existing modules | No customer Global/Hospital dashboard UAT or access-policy approval | After requirements and security scope close, prepare synthetic acceptance evidence and customer/Hospital review | READY_FOR_DESIGN_REVIEW for checklist preparation only; MANUAL_UAT_PENDING |
+
+### Global design review vs implementation gate
+
+การเตรียม **แยก architecture scope** เป็น READY_FOR_DESIGN_REVIEW ได้: Global aggregate, per-Hospital summary และ Patient detail ต้องเป็น capability/scope คนละระดับ และ Patient detail เป็น entitlement แยก. สถานะนี้อนุญาตให้ review ตัวเลือก policy เท่านั้น.
+
+ไม่มี Global summary, Hospital dashboard หรือ Patient drill-down ใด READY_FOR_IMPLEMENTATION. Role.ADMIN alone ยังคง DENY. ห้ามนำ source availability, existing exact-Program permission, Parent Hospital ownership หรือ HN Network scope มาแทน Global authorization approval.
+
+### Dependency sequencing
+
+1. ใช้ GR-REQ-01 เป็น product-direction evidence; เก็บ customer answers ของ R24A-D01–D15 โดยไม่สร้าง D16.
+2. ปิด BR/CL ที่เป็น dependency ของแต่ละ metric; ห้ามคำนวณเมื่อ formula, units, denominator หรือ event meaning ยัง open.
+3. ทำ Global Reporting security/privacy contract แยกจาก RPT-24 exact-Hospital export และ HN-C0/HN-C1. เก็บ explicit field allowlist, purpose, grant, scope, revocation, audit, cache/search และ Data Controller evidence.
+4. จึงออกแบบ projection/query ตาม authoritative existing sources; เสนอ capture ใหม่เฉพาะ field ที่ยืนยันแล้วว่าขาดจริง.
+5. ขอ implementation authorization แยกก่อน runtime/schema/UI/export work. UAT ต้อง synthetic-first; ไม่มี production access จากเอกสารนี้.

@@ -267,3 +267,48 @@ Phase 18C.2 เริ่มได้เมื่อระบุขอบเข�
 - **ผลที่ยังปิดไม่ได้:** CUSTOMER/CLINICAL DECISIONS APPROVED.
 
 เอกสารนี้เตรียมพร้อมสำหรับ Phase 18C.2 decision closure/design readiness หลังได้รับหลักฐานจริง; ไม่เริ่ม implementation หรือ Phase 18C.2 โดยอัตโนมัติ.
+
+## Addendum — Phase 18C.1A Global Reporting requirement reconciliation
+
+- **วันที่บันทึก:** 2026-10-10
+- **Source HEAD ที่ตรวจ:** main / 23dd09356db3c06e70507c0800b70f7923fcbfda
+- **หลักฐาน:** คำขอผู้ใช้ Phase 18C.1A ใน turn นี้; ไม่มีชื่อผู้อนุมัติ, signature, meeting minutes หรือ independent approval
+- **Requirement reference:** GR-REQ-01 (trace reference เท่านั้น ไม่ใช่ Decision ID)
+- **สถานะ product direction:** OWNER_RECEIVED / REQUESTER-CONFIRMED
+- **Global access contract:** OPEN / SECURITY_PRIVACY_BLOCKED
+- **Implementation:** NOT AUTHORIZED
+
+### GR-REQ-01 — Hospital และ Global reporting scope
+
+| รายการทบทวน | หลักฐาน / disposition |
+| --- | --- |
+| Business question | Hospital แต่ละแห่งต้องมี dashboard ตามสอง worksheet ของ customer workbook หรือไม่; Global Platform Admin ต้องเห็น summary ระบบ, compare Hospital และ drill-down Patient ข้าม Hospital ภายใต้ patient-data permission แยกหรือไม่? |
+| Customer evidence | คำขอ 2026-10-10 ยืนยัน scope ทั้งสามระดับ; [workbook จริง](../Dashboard%20App%20Demi.xlsx) มี Dashboard ภาพรวม และ รายงานการจัดบริการ |
+| Relevant workbook fields | Hospital/cohort summary; identity; Before/During/After; Service 1–6; Goal Plan; Follow-up; Final; approved outcome/achievement metrics |
+| Existing R24A identities | D01–D03 population/grain/Hospital isolation; D04–D05 identifiers/names/OSM; D06–D10 stage, field coverage, classification, derived metrics and service meaning; D11–D13 overflow/missing/compatibility; D14–D15 export timing/order. ไม่มีการเปลี่ยน semantics หรือ approval state |
+| Current source behavior | มี Program factual projection ต่อ exact Program; Hospital governance directory เป็น control-plane; Patient directory/classification queries มี Hospital-scoped behavior; ไม่พบ Hospital cohort dashboard, Global aggregate query หรือ Global Patient detail policy |
+| Existing approved boundary | ADR-0002 บังคับ Role + Capability + Scope และ fail closed; ADMIN ไม่ใช่ clinical permission. report:program:read เป็น exact Program read. HN-C0/HN-C1 เป็น Network aggregate context แยกและไม่ให้ Patient access |
+| Proposed options | Product scope ที่ requester ยืนยัน: Hospital view; Global aggregate; per-Hospital summary comparison; cross-Hospital Patient drill-down ภายใต้ policy แยก. Scope/grant/fields/methods ยังไม่ถูกเลือกหรืออนุมัติ |
+| Required approving authorities | Product Owner/requester สำหรับ product semantics; Hospital operations/data owner สำหรับ population/source; Clinical authority สำหรับ clinical meanings; Security/Privacy/Data Controller สำหรับ access, purpose, disclosure, retention และ revocation; Architecture/DB owner สำหรับ consistency |
+| Current status / evidence | Product intent OWNER_RECEIVED จากคำขอ 2026-10-10 เท่านั้น. ไม่มี signed approval ของ access contract. D01–D15 ยังคง PROPOSED FOR REQUESTER / CUSTOMER REVIEW ตาม RPT-24A |
+| Missing information | Global eligible-Hospital set; status/time denominator; Patient vs relationship vs Program grain; cross-Hospital dedup; field allowlist; identity-vs-clinical split; purpose; grantor; expiry; audit; revocation; cache/search/pagination; suppression; legal/privacy approval |
+| Implementation consequence | ไม่มี Global dashboard/query, cross-Hospital directory หรือ patient-detail capability ที่ได้รับอนุมัติ. ห้ามใช้ Role.ADMIN, exact Program capability, Hospital hierarchy หรือ Network scope เป็น bypass |
+| Safe fallback | ปฏิเสธ Global Patient discovery/detail. แสดงได้เฉพาะ current operation/report ที่ผ่าน existing exact-resource policy; ห้ามสร้าง aggregate ที่นิยาม/อนุญาตยังไม่ครบ |
+| Next action | ใช้ [Phase 18C.1A reconciliation](./PHASE_18C1A_GLOBAL_REPORTING_REQUIREMENT_RECONCILIATION.md) เตรียม Phase 18C.1B Global Reporting Security Contract และรวบรวมคำตอบ customer/clinical แยกตาม D01–D15 |
+
+### Reconcile existing decisions without creating D16
+
+ทิศทางใหม่ไม่สร้าง R24A-D16, ไม่สร้าง HN-Mxx และไม่ปิด decision เดิม:
+
+- D01 ยังคง exact-Hospital export population question สำหรับ RPT-24; ไม่ได้กลายเป็น Global dashboard/export population approval.
+- D02/D03 ยังคง workbook row grain และ Hospital isolation decisions; Global aggregate scope ไม่อนุญาต cross-Hospital Patient rows.
+- D04/D05 ยังคง identity/name/OSM attribution decisions; Global Patient drill-down ต้องมี field/disclosure gate เพิ่ม.
+- D06–D10 และ BR/CL decisions ยังคงเปิด; ไม่อนุมัติ stage semantics, clinical classification, achievement formula หรือ service completeness.
+- D11–D15 ยังคงเป็น export/workbook decisions ตามเดิม; dashboard freshness และ Global access ไม่ปิด decisions เหล่านี้.
+- RPT-24C export controls และ HN-M07/HN-M08 ยังคงแยก. HN-M08 = DEFERRED / NOT AUTHORIZED.
+
+### Historical documentation reconciliation
+
+Phase 17A RPT-02 บันทึก Hospital dashboard/export เป็น REQUIREMENT-GATED และไม่มี route ณ historical baseline; Phase 12A และ Phase 15E.1 มีข้อจำกัด scope ในเวลานั้น. ข้อความเหล่านั้นคงเป็น historical provenance ไม่ถูกเขียนย้อนหลัง. Current source ยังไม่มี dashboard/query; คำขอใหม่ทำให้ high-level product intent มีหลักฐานแล้ว แต่ไม่ลบ security, clinical, source หรือ implementation gates.
+
+RPT-24A ยังคง canonical decision register และ approval status. Phase 18C.1A เป็น requirement reconciliation addendum ไม่ใช่ competing accepted requirement source.
