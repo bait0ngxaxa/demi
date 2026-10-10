@@ -10,11 +10,11 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 | --- | --- | --- | --- | --- | --- | --- |
 | Hospital Dashboard summary | Exact-Hospital classification counts มี; shared summary projection ไม่มี | Product OWNER_RECEIVED; population, denominator และ workbook rules R24A-D01–D15 proposed | Existing Hospital policies; reporting disclosure/count policy open | READY_FOR_DESIGN_REVIEW | exact Hospital isolation, grain, nulls, small-cell policy | NOT AUTHORIZED; resolve population, D08/D12/D14 และ exact-Hospital disclosure |
 | Hospital reporting list/detail | Exact Program report มี; Hospital cohort/list projection ไม่มี | Product OWNER_RECEIVED; row grain/status/null/order proposed | Existing exact Program policy; cohort and Patient fields need separate review | READY_FOR_DESIGN_REVIEW | A/B isolation, multiple Programs, stable cursor and fields | NOT AUTHORIZED; customer decisions, scoped list policy, field review |
-| Global overview | Global aggregate read projection ไม่มี | Product OWNER_RECEIVED; eligible Hospitals/grain/metrics unresolved | GR-SEC-01–04 and privacy gates OPEN | READY_FOR_DESIGN_REVIEW | no identifiers, eligible/suspended Hospital, suppression/differencing | NOT AUTHORIZED; close aggregate scope, metric and small-cell decisions |
-| Global per-Hospital comparison | Comparison projection ไม่มี | ต้องใช้ metric/population version ร่วมกัน | Platform grant and Hospital set/scope decisions OPEN | READY_FOR_DESIGN_REVIEW | metric parity, eligibility, freshness and suppressed cells | NOT AUTHORIZED; close GR-SEC-01–04 and disclosure decisions |
-| Global Patient discovery | ไม่มี Global directory query; direct Hospital directory มี | Searchable fields/population undecided | SECURITY_PRIVACY_BLOCKED; GR-SEC-05–09 OPEN | DESIGN ONLY | exact/partial search, ambiguity, enumeration and revoke-between-pages | NOT AUTHORIZED; bounded search, purpose, Data Controller and Security approval |
-| Global Patient identity | Person name/Hospital-local HN exist; Global identity projection ไม่มี | Minimum identity fields/cross-Hospital correlation not accepted | SECURITY_PRIVACY_BLOCKED; GR-SEC-09/14 OPEN | DESIGN ONLY | identity allowlist, ambiguity and same-Person A/B isolation | NOT AUTHORIZED; identity allowlist, ambiguity and correlation rules |
-| Global Patient/Program detail | Exact-Hospital Program projection มี; Global grant path ไม่มี | Clinical fields and customer meaning pending | SECURITY_PRIVACY_BLOCKED; grants, purpose, scope, field allowlist OPEN | DESIGN ONLY | exact resource chain, denied fields, cache and revocation | NOT AUTHORIZED; GR-SEC-01–19 and Data Controller/clinical approvals |
+| Global overview | Global aggregate read projection ไม่มี | Product OWNER_RECEIVED; eligible Hospitals/grain/metrics unresolved | GR-SEC-01–04/15/16 and privacy gates OPEN | READY_FOR_DESIGN_REVIEW | no identifiers, eligible/suspended Hospital, suppression/differencing | NOT AUTHORIZED; close aggregate scope, metric and small-cell decisions |
+| Global per-Hospital comparison | Comparison projection ไม่มี | ต้องใช้ metric/population version ร่วมกัน | Platform grant and Hospital set/scope decisions OPEN | READY_FOR_DESIGN_REVIEW | metric parity, eligibility, freshness and suppressed cells | NOT AUTHORIZED; close GR-SEC-01–04/15/16 and disclosure decisions |
+| Global Patient discovery | ไม่มี Global directory query; direct Hospital directory มี | Searchable fields/population undecided | SECURITY_PRIVACY_BLOCKED; GR-SEC-01/02/05–09/11–15/17–19 OPEN | DESIGN ONLY | exact/partial search, ambiguity, enumeration and revoke-between-pages | NOT AUTHORIZED; bounded search, purpose, Data Controller and Security approval |
+| Global Patient identity | Person name/Hospital-local HN exist; Global identity projection ไม่มี | Minimum identity fields/cross-Hospital correlation not accepted | SECURITY_PRIVACY_BLOCKED; GR-SEC-09/17 OPEN | DESIGN ONLY | identity allowlist, ambiguity and same-Person A/B isolation | NOT AUTHORIZED; identity allowlist, ambiguity and correlation rules |
+| Global Patient/Program detail | Exact-Hospital Program projection มี; Global grant path ไม่มี | Clinical fields and customer meaning pending | SECURITY_PRIVACY_BLOCKED; grants, purpose, scope, field allowlist OPEN | DESIGN ONLY | exact resource chain, denied fields, cache and revocation | NOT AUTHORIZED; GR-SEC-01/02/05–07/09–15/17–19 and Data Controller/clinical approvals |
 | Clinical/derived metrics | Some raw facts exist; several sources/rules missing | BR-01–08 and CL-01–07 pending; no formula accepted | Field disclosure also open | BLOCKED where source/rule missing; otherwise design only | missing/zero/withheld, units, stages, denominator and rule boundaries | NOT AUTHORIZED; source and clinical approval before calculation |
 | RPT-24 workbook export | Workbook contract and exact Program source exist; export endpoint/snapshot absent | R24A-D01–D15 PROPOSED | RPT-24C gates OPEN | Design/decision closure only | two-sheet snapshot/count consistency, order, overflow, revocation | NOT AUTHORIZED; separate export, snapshot, authorization, privacy, delivery gates |
 | Hospital Network export | Aggregate contract only; no export permission | HN decisions unchanged | HN-M07/history open; HN-M08 DEFERRED / NOT AUTHORIZED | DEFERRED | child Patient denial and no hierarchy export | NOT AUTHORIZED; separate future Network decision |
@@ -70,7 +70,7 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 - Scope: system-wide overview over eligible Hospitals; no Patient identifiers or raw rows.
 - Reuse: approved metric catalog/source queries; not governance directory as a Patient endpoint.
 - Data/schema: none for already approved aggregate sources; count/snapshot shape may need query design.
-- Decisions: GR-SEC-01–04/13; R24A-D01/D08/D14; relevant BR/CL and small-cell/differencing review.
+- Decisions: GR-SEC-01–04/13/15/16; R24A-D01/D08/D14; relevant BR/CL and small-cell/differencing review.
 - Policy/query/DTO: Role.ADMIN plus explicit summary grant; approved Hospital population; aggregate-only response.
 - UI: Global Overview only.
 - Depends on: metric/population approval and independent Security/Privacy/Controller review as applicable.
@@ -84,7 +84,7 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 - Scope: aggregate comparison rows for explicitly eligible Hospital set using the same definitions as C.
 - Reuse: D metric catalog and C composition.
 - Data/schema: no change without measured evidence; design result shape/freshness semantics.
-- Decisions: GR-SEC-01–04/13; R24A-D01/D14/D15; business population and privacy approvals.
+- Decisions: GR-SEC-01–04/13/15/16; R24A-D01/D14/D15; business population and privacy approvals.
 - Policy/query/DTO: selected Hospitals from grant/server policy; no Parent-child inheritance; aggregate only.
 - UI: comparison → authorized Hospital Context.
 - Depends on: D and common approved metric version.
@@ -98,7 +98,7 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 - Scope: separately authorized discovery; does not imply clinical detail.
 - Reuse: bounded input-validation and domain relationship source; do not widen direct Hospital directory.
 - Data/schema: none unless approved search fields require new persistence.
-- Decisions: GR-SEC-01/05–09/11–13/15/19; R24A-D02–D05/D12; Controller purpose and identity-field approvals.
+- Decisions: GR-SEC-01/02/05–09/11–15/17–19; R24A-D02–D05/D12; Controller purpose and identity-field approvals.
 - Policy/query/DTO: Platform ADMIN + directory capability/grant, Hospital set, purpose, allowlist, exact/partial rule, bounded page/rate.
 - UI: future Patient Discovery view only after approval; no assumption of unrestricted name/National ID search.
 - Depends on: independent issuer, purpose, eligible set, field allowlist and enumeration controls.
@@ -112,7 +112,7 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 - Scope: exact Hospital → relationship → Program detail with independently approved identity/clinical fields.
 - Reuse: existing exact Program read/projection as base only after Global grant and field review.
 - Data/schema: only explicitly approved source/capture work; no inference or direct schema change in this phase.
-- Decisions: GR-SEC-01–19; R24A-D04–D07/D09–D12; applicable BR/CL; Controller and clinical authority.
+- Decisions: GR-SEC-01/02/05–07/09–15/17–19; R24A-D04–D07/D09–D12; applicable BR/CL; Controller and clinical authority.
 - Policy/query/DTO: grant bound to Hospital/resource/case/time/fields/purpose; exact DB predicates and field allowlist in query/serialization.
 - UI: exact detail navigation after directory authorization; no attachment/free-text by default, mutation or export.
 - Depends on: F, identity ambiguity/correlation, grant/revocation and audit decisions.
@@ -168,34 +168,34 @@ Candidate first implementation slice **after its gates close**: B, a bounded exa
 | # | Synthetic fixture | Expected factual result | Access precondition / decision dependency | Evidence after authorized implementation |
 | --- | --- | --- | --- | --- |
 | 1 | Program under Hospital A; caller selects B | A facts never appear in B | exact Hospital scope; D01/D03 | query/result proves A-only rows |
-| 2 | Same Person has relationships in A and B | relationship facts stay isolated | Person join is not permission; D03/GR-SEC-14 | no cross-Hospital identity or clinical leakage |
+| 2 | Same Person has relationships in A and B | relationship facts stay isolated | Person join is not permission; D03/GR-SEC-17 | no cross-Hospital identity or clinical leakage |
 | 3 | One relationship, two Programs with different Goal Plans | exact Program gets only linked facts | D02; exact Program scope | Program A/B projection isolation |
-| 4 | Program with and without linked Baseline | linked fact or explicit missing state; no fallback | D06/CL-01 | distinct linked/missing behavior |
+| 4 | Program with and without linked Baseline | linked fact or explicit missing state; no fallback | D06 | distinct linked/missing behavior |
 | 5 | Imported Baseline then Program opened | import alone creates no Program; linking only follows current service rule | existing import/Program policies | no implicit/duplicate Program |
 | 6 | Reimported Baseline conflicts with existing source | existing source owner reconciliation applies; no silent overwrite assumption | correction rule pending | conflict/no-op/update evidence |
 | 7 | COMPLETED Program without Final | lifecycle completed; Final remains missing | D06/D12 | no inferred success or synthetic Final |
 | 8 | Follow-ups 0, 1, 6, >6 | factual 0..N; six is not persistence limit | D11 | stable pagination and accepted overflow |
-| 9 | Goal target exists; achieved days absent | target only; achievement unavailable | CL-03/04, BR-04 | no target-to-achievement conversion |
+| 9 | Goal target exists; achieved days absent | target only; achievement unavailable | R24A-D09, BR-04; D12 only if approved missing-value behavior applies | no target-to-achievement conversion |
 | 10 | unknown, zero, withheld, unauthorized | preserve distinct states | D12/GR-SEC-09/10 | serializer/UI does not collapse values |
-| 11 | One Person, two Hospital relationships, one classification | relationship denominator may differ from Person denominator | D03/D08/CL-02 | approved denominator label/no silent dedup |
+| 11 | One Person, two Hospital relationships, one classification | relationship denominator may differ from Person denominator | D03/D08/CL-04 | approved denominator label/no silent dedup |
 | 12 | OSM reassigned after historical Program activity | current assignment does not rewrite historical responsibility | D05/BR-08 | no historical attribution inference |
-| 13 | Global ADMIN with summary-only grant | aggregate only within approved scope; Patient rows denied | GR-SEC-01–04/13 | response has no IDs/rows; detail denied |
-| 13b | Global ADMIN with per-Hospital summary grant for Hospital A only | A aggregate may be allowed; B aggregate and all Patient rows denied | GR-SEC-01–04; grant Hospital set approved | A-only scope evidence; no detail implication |
-| 14 | Global ADMIN with bounded Patient grant | only approved exact resources and fields allowed | GR-SEC-05–12/14–19; Controller approval | in-scope allow/out-of-scope deny |
-| 15 | Global ADMIN without reporting grant | deny despite Role.ADMIN | GR-SEC-01 | no aggregate or Patient payload |
-| 16 | Hospital OWNER requests Global view | deny without separate Platform grant | context separation | membership never implies Global access |
+| 13 | Global ADMIN with summary-only grant | aggregate only within approved scope; Patient rows denied | GR-SEC-01–04/15/16 | response has no IDs/rows; summary access audit evidence; detail denied |
+| 13b | Global ADMIN with per-Hospital summary grant for Hospital A only | A aggregate may be allowed; B aggregate and all Patient rows denied | GR-SEC-01–04/15/16; grant Hospital set approved | A-only scope and summary audit evidence; no detail implication |
+| 14 | Global ADMIN with bounded Patient grant | only approved exact resources and fields allowed | GR-SEC-01/02/05–07/09–15/17–19; Controller approval | in-scope allow/out-of-scope deny |
+| 15 | Global ADMIN without reporting grant | deny despite Role.ADMIN | GR-SEC-01/15 | no aggregate or Patient payload; denial audit evidence |
+| 16 | Hospital OWNER requests Global view | deny without separate Platform grant | GR-SEC-01/02; context separation | membership never implies Global access |
 | 17 | Parent OWNER requests child Patient detail | deny under Network aggregate context | HN-M07 open; HN-M08 deferred | hierarchy cannot yield detail/export |
-| 18 | ADMIN + HOSPITAL multi-role actor | evaluate explicit request context; no additive bypass | GR-SEC-01/17 | role/context isolation evidence |
-| 19 | Grant revoked between page requests | next page denied; cursor revalidated/invalidated | GR-SEC-12/13/16 | no post-revoke page and audit result |
-| 20 | Actor inactive/suspended or Hospital suspended | deny; not empty-success | GR-SEC-01/02 | current status revalidation and safe failure |
-| 21 | Repeated searches enumerate population | approved bounds/rate/abuse handling applies | GR-SEC-05/06/13/15 | threshold, audit and safe response |
+| 18 | ADMIN + HOSPITAL multi-role actor | evaluate explicit request context; no additive bypass | GR-SEC-01/02 | role/context isolation evidence |
+| 19 | Grant revoked between page requests | next page denied; cursor revalidated/invalidated | GR-SEC-12–15 | no post-revoke page and audit result |
+| 20 | Actor inactive/suspended or Hospital suspended | deny; not empty-success | GR-SEC-01/04 | current status revalidation and safe failure |
+| 21 | Repeated searches enumerate population | approved bounds/rate/abuse handling applies | GR-SEC-05/08/14/15 | threshold, audit and safe response |
 | 22 | Caller requests unapproved identity/clinical field | deny or omit per approved contract; fail closed | GR-SEC-09/10 | field allowlist assertion |
 | 23 | Detail route attempts CSV/XLSX, bulk API or mutation | deny; read grant does not expand action | GR-SEC-18; RPT-24C open | no artifact/download/mutation |
-| 24 | Detail asks for attachment bytes or free text | deny absent separate field/file permission | GR-SEC-10/18 | no body or storage URL in response |
-| 25 | Two actors/grants share apparent cache path | no shared Patient result; revoke invalidates future reads | GR-SEC-12/13/16 | cache isolation/no-store evidence |
-| 26 | Aggregate subgroup small or filters differ slightly | suppress/withhold under approved privacy policy | GR-SEC-04/13 | suppression and differencing tests |
+| 24 | Detail asks for attachment bytes or free text | deny absent separate field/file permission | GR-SEC-10 | no body or storage URL in response |
+| 25 | Two actors/grants share apparent cache path | no shared Patient result; revoke invalidates future reads | GR-SEC-13/14 | cache isolation/no-store evidence |
+| 26 | Aggregate subgroup small or filters differ slightly | suppress/withhold under approved privacy policy | GR-SEC-03/04/16 | suppression and differencing tests |
 | 27 | Same approved metric/population in Global and Hospital | same key/version/result when comparison is valid | D01/D08/D14; GR-SEC-03 | parity on same synthetic facts/as-of |
-| 28 | Clinical score lacks accepted source/algorithm | no score; raw fact remains separately scoped | CL-01–07 | absence not zero; no provisional formula |
+| 28 | CVD Risk Score lacks accepted source/algorithm | no score; raw fact remains separately scoped | CL-03 | absence not zero; no provisional formula |
 
 ## 5. Approval, implementation and stop conditions
 
