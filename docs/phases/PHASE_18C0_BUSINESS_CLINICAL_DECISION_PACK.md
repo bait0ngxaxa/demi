@@ -22,9 +22,9 @@ BR-01–BR-08 และ CL-01–CL-07 เป็นหัวข้อทบทว
 
 ### 1.1 Workbook evidence ที่จำเป็นต่อการคุย
 
-- Dashboard ภาพรวมแสดง Hospital, จำนวนเคส, เบาหวาน/Pre-DM, Patient ID, ระยะเวลาการเจ็บป่วย, OSM, Before, ระหว่าง Program และ After; worksheet rows 4–7 ระบุ CVD risk, HbA1c, DTX, body weight, BMI, height, waist, BP และช่องติดตาม 1–6
-- รายงานการจัดบริการแสดง Before/After PAM, PROMs, confidence, weekly exercise, Service 1–2, Follow-up 1–6, achieved days, achievement rate, outcome, plan adjustment และ obstacle; row 6 และช่วง row 31–35 มีข้อความหมายเหตุเพิ่มเติม
-- หมายเหตุรายงานการจัดบริการ!AI32 ให้คำอธิบาย Achieve score เป็นจำนวนครั้งที่ทำตามเป้าหมายเทียบกับจำนวนครั้งที่ตั้งเป้าหมายต่อสัปดาห์ แต่ไม่ได้กำหนด observation window, ผู้บันทึก, วิธีแปลง PARTIAL, denominator เมื่อ target เปลี่ยน, missing/zero/NA, rounding หรือการแก้ไขข้อมูล
+- Dashboard ภาพรวมแสดง Hospital, จำนวนเคส, เบาหวาน/Pre-DM, Patient ID, ระยะเวลาการเจ็บป่วย, OSM, Before, During 1–6 และ After; ช่อง During 1–6 มี DTX, body weight และ Achieve Score. Worksheet rows 4–7 ยังระบุ CVD risk, HbA1c, BMI, height, waist และ BP.
+- รายงานการจัดบริการแสดง Before/After PAM, PROMs, confidence, weekly exercise, Service 1–2 และ Follow-up Service 3–6; Service 3–6 มี Achieved Days และ Achievement Rate. Outcome, plan adjustment และ obstacle มีข้อความหมายเหตุใน row 31–35.
+- หมายเหตุรายงานการจัดบริการ!AK32 ให้คำอธิบาย Achieve score เป็นจำนวนครั้งที่ทำตามเป้าหมายเทียบกับจำนวนครั้งที่ตั้งเป้าหมายต่อสัปดาห์ แต่ไม่ได้กำหนด observation window, ผู้บันทึก, วิธีแปลง PARTIAL, denominator เมื่อ target เปลี่ยน, missing/zero/NA, rounding หรือการแก้ไขข้อมูล
 - หมายเหตุรายงานการจัดบริการ!AI33 ระบุว่า outcome มาจาก “ประโยค/วลี” ที่บันทึกในโปรแกรมและกล่าวถึง Drop down list; ใน workbook ที่ตรวจไม่พบ data validation list และ runtime ปัจจุบันยังไม่มี structured Follow-up outcome vocabulary ที่ยืนยันแล้ว
 - หมายเหตุรายงานการจัดบริการ!AI34 ระบุ obstacle แบบมี/ไม่มี; เป็น requirement evidence สำหรับคำถาม ไม่ได้พิสูจน์ว่ามี field หรือ rule นี้ในระบบ
 - หมายเหตุคาดหวัง Follow-up ประมาณ 2–4 ครั้งต่อ Program และ worksheet แสดง 6 ตำแหน่ง; เป็น expectation/presentation evidence ไม่ใช่ persistence limit เพราะ source รองรับ Follow-up 0..N
@@ -32,7 +32,7 @@ BR-01–BR-08 และ CL-01–CL-07 เป็นหัวข้อทบทว
 ### 1.2 จุดตีความที่ยังไม่ตรงกัน
 
 - Workbook note!AI33 กล่าวถึง phrase ที่ “บันทึกไว้ในโปรแกรม” และ dropdown; source/runtime ที่ตรวจยังไม่มี authoritative structured Follow-up outcome vocabulary และตัว workbook ไม่มี data validation list. ยังไม่รู้ว่า note อ้างถึงโปรแกรม/เครื่องมือรุ่นใด จึงต้องให้ customer ระบุ list, owner และ version ก่อน.
-- Workbook note!AI32 ให้แนวคิดสัดส่วนการทำตาม target ต่อสัปดาห์ แต่ source เก็บ target และ categorical Follow-up progress; ไม่มี actual-day observation หรือ denominator ที่ตกลง. ข้อความนี้เป็น requirement clue ไม่ใช่สูตรที่พร้อมใช้.
+- Workbook note!AK32 ให้แนวคิดสัดส่วนการทำตาม target ต่อสัปดาห์ แต่ source เก็บ target และ categorical Follow-up progress; ไม่มี actual-day observation หรือ denominator ที่ตกลง. ข้อความนี้เป็น requirement clue ไม่ใช่สูตรที่พร้อมใช้.
 - Workbook labels Before/During/After และ “วันที่สิ้นสุดโปรแกรม” ไม่กำหนดว่าเป็น observation date, service date หรือ Program lifecycle. Source timestamps จึงยัง map เข้าป้าย workbook โดยอัตโนมัติไม่ได้.
 - “อสม.ที่ดูแล” ใน workbook ไม่ระบุว่า current assignment, historical responsible OSM, recorder หรือ care deliverer; source ปัจจุบันแยก facts เหล่านี้.
 
@@ -94,15 +94,15 @@ BR-01–BR-08 และ CL-01–CL-07 เป็นหัวข้อทบทว
 - **Authority / impact:** Customer/Product Owner + Hospital operations + Clinical/Data authority. หากไม่ปิด การเทียบ achievement กับ target ยังไม่มี denominator/time window.
 - **หลังอนุมัติ / acceptance:** มี mapping ของ activity, unit, period start/end, effective date, version และการแก้ target; test scenario เปลี่ยน Plan แล้วไม่เปลี่ยนความหมายของ Follow-up เก่า. **Implementation gate:** ไม่ปรับ schema หรือคำนวณใน Phase 18C.0.
 
-### BR-04 — Actual Achievement and Achieve Score · OPEN · R24A-D09 (และ threshold dependency D08/D12)
+### BR-04 — Actual Achievement and Achieve Score · OPEN · R24A-D09 / G18-04 (พึ่ง D10/D12; D01–D03 เฉพาะเมื่อจำเป็นต่อ Reporting Population)
 
-- **Workbook asks:** จำนวนวันที่ทำได้, อัตราความสำเร็จตามเป้า, Achieve score และจำนวน Follow-up ที่เกิน 70%; worksheet note!AI32 ระบุแนวคิด “จำนวนครั้งที่ทำตามเป้าหมาย : จำนวนครั้งที่ตั้งเป้าหมาย/สัปดาห์”.
+- **Workbook asks:** จำนวนวันที่ทำได้, อัตราความสำเร็จตามเป้า, Achieve score และจำนวน Follow-up ที่เกิน 70%; worksheet note!AK32 ระบุแนวคิด “จำนวนครั้งที่ทำตามเป้าหมาย : จำนวนครั้งที่ตั้งเป้าหมาย/สัปดาห์”.
 - **Source / existing rule:** FollowupActivityProgress มีเพียง DONE/PARTIAL/NOT_DONE/NOT_APPLICABLE ต่อ activity; ไม่มี numeric achieved-day observation, numerator, denominator, period หรือ persisted score. GoalPlan เก็บ target เท่านั้น. PersonalExerciseEntry เป็น self-report ที่ไม่มี Program link.
 - **ยังต้องตัดสินก่อนคิดคะแนน:** นิยาม “ทำได้หนึ่งวัน/ครั้ง”; ผู้บันทึกและวิธีตรวจ; observation period; numerator; eligible denominator; การนับ PARTIAL; zero target; missing, unknown และ NA; score ระดับ activity, Follow-up หรือ Program; percent หรือคะแนนอื่น; precision/rounding; Plan revisions; correction history; >70% หมายถึง strictly greater หรือ at least; eligible Follow-up population; missing-score handling; counting unit และช่วงเวลาที่นับ.
 - **ตัวเลือก:** (A) คง categorical status และไม่แสดง numeric achievement; ไม่มีการเดาแต่ลูกค้าจะไม่ได้ตัวเลข; (B) ตกลง collection of actual occurrences พร้อม period/authority แล้วจึงกำหนดสูตรและ version; มีภาระบันทึกแต่ตรวจสอบได้; (C) รับค่าคะแนนจาก source ที่ clinical/data authority อนุมัติ; ลดการคำนวณใน DEMI แต่ต้องพิสูจน์ provenance และ Program linkage.
 - **ทิศทาง candidate:** ยังไม่เสนอ production formula และไม่แปลง DONE/PARTIAL เป็นวัน. Workbook note เป็น candidate intent ไม่ใช่ accepted denominator. นับ Follow-ups >70% ไม่ทำได้จนกว่าคะแนนและ eligible population จะได้รับอนุมัติ.
 - **Authority / impact:** Clinical authority + Data owner + Product Owner/Hospital operations; Customer ยืนยันความหมายในรายงาน. กรณีนี้ block ตัวเลข achievement และ >70% โดยตรง.
-- **หลังอนุมัติ / acceptance:** signed rule ครอบคลุมทุกประเด็นข้างต้น, test vectors ที่ clinical authority รับรองและ revision cases; numeric expected result จะเพิ่มได้หลังอนุมัติเท่านั้น. **Implementation gate:** G18-04 และ G18-07 คง REQUIREMENT_GATED.
+- **หลังอนุมัติ / acceptance:** signed rule ครอบคลุมทุกประเด็นข้างต้น, test vectors ที่ clinical authority รับรองและ revision cases; numeric expected result จะเพิ่มได้หลังอนุมัติเท่านั้น. **Implementation gate:** G18-04 คง REQUIREMENT_GATED; R24A-D09 เป็นกฎคะแนนหลัก ส่วน D10/D12 รองรับความหมายและ missing behavior. R24A-D01–D03 เกี่ยวเฉพาะเมื่อจำเป็นต้องกำหนด Reporting Population/row grain ของตัวนับ; D08/G18-07 เป็น decision ของ classification/cohort denominator แยกต่างหากและไม่ใช่ prerequisite ของ Achievement.
 
 ### BR-05 — Structured Follow-up Outcomes · OPEN · R24A-D10/D12
 

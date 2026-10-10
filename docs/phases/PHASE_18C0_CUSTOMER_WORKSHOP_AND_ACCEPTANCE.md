@@ -63,10 +63,10 @@
 - **เจ้าของ:** Customer/Product Owner + Hospital operations + Clinical/Data authority.
 - **Fallback:** แสดงเป็น target ที่บันทึกไว้เท่านั้น; ไม่ใช้เป็น achievement. รายละเอียด BR-03.
 
-### W6 — Achieve score และจำนวน Follow-up ที่ >70% · P0 · R24A-D09 (พึ่ง D08/D12)
+### W6 — Achieve score และจำนวน Follow-up ที่ >70% · P0 · R24A-D09 / G18-04 (พึ่ง D10/D12; D01–D03 เฉพาะเมื่อจำเป็นต่อ Reporting Population)
 
-- **ถาม:** “จำนวนวันที่ทำได้” ใครเป็นผู้ยืนยันและในช่วงใด? ตัวเศษ/ตัวหารคืออะไร? PARTIAL, zero target, missing, unknown และ not applicable จัดการอย่างไร? คะแนนอยู่ระดับ activity, Follow-up หรือ Program? >70% หมายถึงมากกว่า 70 จริงหรือ 70 ขึ้นไป และนับ Follow-up ชุดใด?
-- **หลักฐานให้ทบทวน:** worksheet note!AI32 มีคำอธิบายสัดส่วนจำนวนครั้งที่ทำได้กับจำนวนครั้งที่ตั้งเป้าหมายต่อสัปดาห์ แต่ยังไม่กำหนด period, observation method, status conversion, revision, rounding หรือ missing rules.
+- **ถาม:** Dashboard ภาพรวมต้องการ Achieve Score ใน During 1–6 ส่วนรายงานการจัดบริการต้องการ Achieved Days และ Achievement Rate ใน Service 3–6: “จำนวนวันที่ทำได้” ใครเป็นผู้ยืนยันและในช่วงใด? ตัวเศษ/ตัวหารคืออะไร? PARTIAL, zero target, missing, unknown และ not applicable จัดการอย่างไร? คะแนนอยู่ระดับ activity, Follow-up หรือ Program? >70% หมายถึงมากกว่า 70 จริงหรือ 70 ขึ้นไป และนับ Follow-up ชุดใด?
+- **หลักฐานให้ทบทวน:** worksheet note!AK32 มีคำอธิบายสัดส่วนจำนวนครั้งที่ทำได้กับจำนวนครั้งที่ตั้งเป้าหมายต่อสัปดาห์ แต่ยังไม่กำหนด period, observation method, status conversion, revision, rounding หรือ missing rules.
 - **ทางเลือก/ผล:** เก็บ categorical status อย่างเดียวและไม่แสดง score; เก็บ actual occurrences พร้อมผู้บันทึก/period แล้วค่อยอนุมัติ formula; รับ score จาก external/clinical source ที่มี provenance. Formula ต้องกำหนด strict/inclusive threshold, denominator, precision และ correction ด้วย.
 - **Candidate:** ไม่แปลง DONE/PARTIAL เป็นจำนวนวันและไม่คำนวณ >70% จนมี clinical/data-approved rule กับ synthetic test vectors.
 - **เจ้าของ:** Clinical authority + Data owner + Customer/Product Owner + Hospital operations.
