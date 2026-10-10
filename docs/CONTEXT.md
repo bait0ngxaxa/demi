@@ -1,8 +1,12 @@
 # DEMI Project Context
 
-## CURRENT-status addendum — Phase 17K.0 Hospital Governance / Responsibility Area decision pack (2026-10-10)
+## CURRENT-status addendum — Phase 17K.0B HN-C0 Hospital Network decision closeout (2026-10-10)
 
-[Phase 17K.0 decision pack](./phases/PHASE_17K0_HOSPITAL_GOVERNANCE_RESPONSIBILITY_AREA_DECISION_PACK.md): **DECISION PACK COMPLETE / OWNER DECISIONS OPEN**; K-Q01–K-Q25 are **OPEN / NOT OWNER APPROVED**. Starting baseline for the pack was HEAD acd6a29797de01c5ac1841fd1a3666809d4729a1 on main; the worktree was clean before documentation changes. OWNER-01 and AREA-01 remain requirement-gated. Phase 17K.0B Owner decision closeout is the next step; Phase 17K.1–17K.3 are provisional and **NOT AUTHORIZED**. Completion of the pack does not close Owner decisions or complete Phase 17K.
+[HN-C0 decision closeout](./phases/PHASE_17K0B_HN_OWNER_DECISION_CLOSEOUT.md): HN-A01–A06 and HN-M01–M06/time subdecisions are recorded as OWNER_RECEIVED; this is a requirement record, not an implemented feature. Hospital Network reporting remains IMPLEMENTATION_NOT_AUTHORIZED. HN-M07 Aggregate Privacy and historical reparent disclosure remain OPEN_BLOCKER; HN-M08 Network Export is DEFERRED / NOT AUTHORIZED. OWNER-01 and AREA-01 remain separately requirement-gated. Original K-Q IDs/statuses are preserved; only the K-Q01 hierarchy and K-Q22 Network direct-child facets are addressed, while K-Q01/K-Q22 overall, K-Q07 Area inheritance and K-Q17 Area historical reporting remain open. Phase 17K is not complete. Phase 17J.5B remains NOT AUTHORIZED / NOT EXECUTED; LINE gates remain unchanged: DEMI_LINE_DISCONNECTION_ENABLED=false and appointment notifications remain unset/default OFF.
+
+## Historical-status addendum — Phase 17K.0 Hospital Governance / Responsibility Area decision pack (2026-10-10; before HN-C0)
+
+[Phase 17K.0 decision pack](./phases/PHASE_17K0_HOSPITAL_GOVERNANCE_RESPONSIBILITY_AREA_DECISION_PACK.md) records its status at that time: **DECISION PACK COMPLETE / OWNER DECISIONS OPEN**; K-Q01–K-Q25 were **OPEN / NOT OWNER APPROVED**. Starting baseline for the pack was HEAD acd6a29797de01c5ac1841fd1a3666809d4729a1 on main; the worktree was clean before its documentation changes. OWNER-01 and AREA-01 remain requirement-gated. HN-C0 now records the separately accepted Hospital Network semantics but does not close those original scopes or authorize 17K.1–17K.3. See the current HN-C0 addendum above.
 
 ## CURRENT-status addendum — Phase 17J.5A LINE integration re-audit (2026-10-09)
 
