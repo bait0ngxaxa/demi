@@ -6,7 +6,7 @@
 
 - Repository: `bait0ngxaxa/demi`, branch `main`.
 - Starting HEAD: `a3e7c7d0643c5d44cd1426ce5269e0f439b8920b`.
-- Runtime implementation commit: `<recorded in the follow-up handoff update>`.
+- Ending runtime implementation commit: `90684876179d28cf7433c0d8a5ec0d95cd615e26` (the follow-up commit records this SHA in the handoff).
 - Hospital OWNER route: `/app/hospitals/reporting`; existing exact-Hospital Dashboard, Service Process report, direct-owned-Hospital selector, and two-sheet XLSX remain intact.
 - Global ADMIN route: `/app/admin/reporting`; the directory, Thai name/code search, status filtering, main/subordinate grouping, selected-Hospital Dashboard, Service Process report, and one-Hospital XLSX remain intact.
 - Global export: `GET /api/v1/admin/reporting/export?hospitalId=<uuid>`. It reuses the shared exact-Hospital query, RepeatableRead dataset collection, bounds, and workbook renderer. The workbook still contains exactly `Dashboard ภาพรวม` and `รายงานการจัดบริการ`.
