@@ -372,7 +372,7 @@ export function GlobalAdminReportingWorkspace({
             </Alert>
           ) : page ? (
             <HospitalReportWorkspace
-              audience="GLOBAL_ADMIN_DEMO"
+              audience="GLOBAL_ADMIN"
             key={`${selectedHospital.id}:${initialView}`}
               hospitals={[{
                 id: selectedHospital.id,

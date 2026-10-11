@@ -7,7 +7,7 @@ import {
   Role,
   UserStatus,
 } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -25,14 +25,10 @@ import {
   resolveDirectChildFacilities,
   resolveHospitalNetworkScope,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
-import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import approvedSource from "../../prisma/seed/hospital-master-v2.json";
 
 const prisma = getPrisma();
-const previousReportingEnvironment = new Map(
-  ["VERCEL", "VERCEL_ENV", "VERCEL_PROJECT_ID"].map((key) => [key, process.env[key]]),
-);
 
 type Fixture = {
   hospitalCodes: string[];
@@ -176,22 +172,9 @@ function syntheticMaster(prefix: string): ReturnType<typeof validateHospitalMast
   });
 }
 
-beforeAll(() => {
-  process.env.VERCEL = "1";
-  process.env.VERCEL_ENV = "production";
-  process.env.VERCEL_PROJECT_ID = TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID;
-});
-
 afterEach(async () => {
   if (currentFixture) await cleanFixture(currentFixture);
   currentFixture = null;
-});
-
-afterAll(() => {
-  for (const [key, value] of previousReportingEnvironment) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
 });
 
 describe("Hospital hierarchy and Master reconciliation on synthetic PostgreSQL", () => {

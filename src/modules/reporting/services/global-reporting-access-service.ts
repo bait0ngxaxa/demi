@@ -23,7 +23,6 @@ import {
   type GlobalReportingCapability,
 } from "../policies/global-reporting-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
-import { isReportingAvailableInCurrentDeployment } from "./reporting-deployment-boundary";
 
 export type GlobalReportingDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -57,10 +56,7 @@ export async function resolveGlobalReportingAccessContext(
   targetHospitalId?: unknown,
   database?: GlobalReportingDatabase,
 ): Promise<GlobalReportingAccessContext> {
-  const reportingAvailable = isReportingAvailableInCurrentDeployment();
-  if (!actor || !reportingAvailable) {
-    throw new NotFoundError();
-  }
+  if (!actor) throw new ForbiddenError();
 
   const targetCapability = globalReportingPolicyInternals.targetHospitalCapabilities.has(capability);
   const parsedHospitalId = targetCapability
@@ -91,7 +87,6 @@ export async function resolveGlobalReportingAccessContext(
     const decision = decideGlobalReportingPolicy({
       actor,
       capability,
-      reportingAvailable,
       currentUserStatus: currentUser?.status ?? null,
       currentRoles: currentUser?.roles.map(({ role }) => role) ?? [],
       ...(parsedHospitalId?.success ? {

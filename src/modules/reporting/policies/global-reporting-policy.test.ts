@@ -20,7 +20,6 @@ function decide(overrides: Partial<Parameters<typeof decideGlobalReportingPolicy
   return decideGlobalReportingPolicy({
     actor,
     capability: GLOBAL_REPORTING_CAPABILITIES.workspaceRead,
-    reportingAvailable: true,
     currentUserStatus: UserStatus.ACTIVE,
     currentRoles: [Role.ADMIN],
     ...overrides,
@@ -28,14 +27,10 @@ function decide(overrides: Partial<Parameters<typeof decideGlobalReportingPolicy
 }
 
 describe("Global Reporting policy", () => {
-  it("allows an active Platform ADMIN when the trusted deployment boundary permits reporting", () => {
+  it("allows an active Platform ADMIN under the Global Reporting role contract", () => {
     expect(decide()).toEqual({ allowed: true, reason: "eligible_active_platform_admin" });
     expect(decide({ currentRoles: [] })).toMatchObject({ allowed: false, reason: "active_admin_required" });
     expect(decide({ currentUserStatus: UserStatus.SUSPENDED })).toMatchObject({ allowed: false, reason: "active_admin_required" });
-    expect(decide({ reportingAvailable: false })).toMatchObject({
-      allowed: false,
-      reason: "reporting_unavailable_in_deployment",
-    });
   });
 
   it("keeps the Global capabilities independent from Hospital OWNER memberships", () => {

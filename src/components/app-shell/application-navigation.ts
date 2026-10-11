@@ -41,7 +41,6 @@ import {
   decideHospitalReportPolicy,
   HOSPITAL_REPORT_CAPABILITIES,
 } from "@/modules/reporting/policies/hospital-report-policy";
-import { isReportingAvailableInCurrentDeployment } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
@@ -79,18 +78,15 @@ function canManageHospitalContent(actor: ActorContext): boolean {
 }
 
 function canReadHospitalReports(actor: ActorContext): boolean {
-  return (
-    isReportingAvailableInCurrentDeployment() &&
-    actor.hospitalMemberships.some((membership) =>
-      decideHospitalReportPolicy({
-        actor,
-        capability: HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
-        target: {
-          hospitalId: membership.hospitalId,
-          hospitalStatus: membership.hospitalStatus,
-        },
-      }).allowed,
-    )
+  return actor.hospitalMemberships.some((membership) =>
+    decideHospitalReportPolicy({
+      actor,
+      capability: HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
+      target: {
+        hospitalId: membership.hospitalId,
+        hospitalStatus: membership.hospitalStatus,
+      },
+    }).allowed,
   );
 }
 
@@ -317,10 +313,7 @@ export function projectApplicationNavigation(
 
   const adminItems = [];
 
-  if (
-    actor.roles.includes(Role.ADMIN) &&
-    isReportingAvailableInCurrentDeployment()
-  ) {
+  if (actor.roles.includes(Role.ADMIN)) {
     adminItems.push({
       href: "/app/admin/reporting",
       label: "รายงานระบบ",

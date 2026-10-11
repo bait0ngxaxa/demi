@@ -5,7 +5,7 @@ import {
   Role,
   UserStatus,
 } from "@prisma/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
@@ -13,7 +13,6 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 import {
   HOSPITAL_REPORT_CAPABILITIES,
 } from "../policies/hospital-report-policy";
-import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "./reporting-deployment-boundary";
 import {
   listHospitalReportingHospitals,
   resolveHospitalReportingAccessContext,
@@ -44,6 +43,20 @@ const hospital = {
   name: "โรงพยาบาลทดสอบ",
   status: HospitalStatus.ACTIVE,
 };
+const runtimeEnvironments = [
+  ["local development", { NODE_ENV: "development" }],
+  ["Vercel Preview", { NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_PROJECT_ID: "preview-project" }],
+  ["Vercel Production", { NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "production", VERCEL_PROJECT_ID: "production-project" }],
+  ["VPS production", { NODE_ENV: "production" }],
+  ["Docker production", { NODE_ENV: "production", CONTAINER_RUNTIME: "docker" }],
+  ["non-Vercel production", { NODE_ENV: "production", VERCEL: "0" }],
+] as const;
+
+function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>>): void {
+  for (const key of ["NODE_ENV", "VERCEL", "VERCEL_ENV", "VERCEL_PROJECT_ID", "CONTAINER_RUNTIME"]) {
+    vi.stubEnv(key, environment[key] ?? "");
+  }
+}
 
 function database(membership: { hospital: typeof hospital } | null = { hospital }) {
   const findFirst = vi.fn().mockResolvedValue(membership);
@@ -58,24 +71,18 @@ function database(membership: { hospital: typeof hospital } | null = { hospital 
 }
 
 describe("Hospital reporting access service", () => {
-  beforeEach(() => {
-    vi.stubEnv("VERCEL", "1");
-    vi.stubEnv("VERCEL_ENV", "production");
-    vi.stubEnv("VERCEL_PROJECT_ID", TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID);
-  });
-
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("returns a not-found response for an untrusted deployment before querying Hospital authority", async () => {
-    vi.stubEnv("VERCEL_PROJECT_ID", "prj_unknown_project");
+  it.each(runtimeEnvironments)("allows the same direct ACTIVE OWNER on %s", async (_name, environment) => {
+    simulateRuntimeEnvironment(environment);
     const { database: db, findFirst } = database();
 
     await expect(
       resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, db),
-    ).rejects.toBeInstanceOf(NotFoundError);
-    expect(findFirst).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ actor, hospital });
+    expect(findFirst).toHaveBeenCalledOnce();
   });
 
   it("rechecks ACTIVE user, HOSPITAL role, direct OWNER membership, and ACTIVE Hospital in the database", async () => {

@@ -1,48 +1,48 @@
-# Phase 18D.2 — Reporting Configuration Simplification & UAT Handoff
+# Phase 18D.2 — Global Admin Reporting Implementation Handoff
 
-**Status: IMPLEMENTED FOR LOCAL DEVELOPMENT AND THE TRUSTED DEMI UAT VERCEL PROJECT.** Other Production projects and unknown deployments fail closed for both reporting surfaces. Global identifiable Patient/Program reporting in actual Production remains unapproved and unavailable.
+**Status: HOSTING-AGNOSTIC MVP IMPLEMENTED.** The selected-Hospital Global Admin reporting feature follows normal database-backed application authorization on every compatible host. No deployment was performed by this implementation.
 
 ## Delivery
 
 - Repository: `bait0ngxaxa/demi`, branch `main`.
-- Starting HEAD: `a3e7c7d0643c5d44cd1426ce5269e0f439b8920b`.
-- Ending runtime implementation commit: `90684876179d28cf7433c0d8a5ec0d95cd615e26` (the follow-up commit records this SHA in the handoff).
+- Starting HEAD for this hosting-agnostic correction: `46134a395201558dcac114ffe5c629725be34825`.
+- Earlier Reporting Configuration Simplification baseline: `a3e7c7d0643c5d44cd1426ce5269e0f439b8920b`.
 - Hospital OWNER route: `/app/hospitals/reporting`; existing exact-Hospital Dashboard, Service Process report, direct-owned-Hospital selector, and two-sheet XLSX remain intact.
 - Global ADMIN route: `/app/admin/reporting`; the directory, Thai name/code search, status filtering, main/subordinate grouping, selected-Hospital Dashboard, Service Process report, and one-Hospital XLSX remain intact.
 - Global export: `GET /api/v1/admin/reporting/export?hospitalId=<uuid>`. It reuses the shared exact-Hospital query, RepeatableRead dataset collection, bounds, and workbook renderer. The workbook still contains exactly `Dashboard ภาพรวม` and `รายงานการจัดบริการ`.
 - Removed the five old runtime configuration requirements: `DEMI_HOSPITAL_REPORTING_ENABLED`, `DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED`, `DEMI_GLOBAL_REPORTING_DEMO_ENABLED`, `DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS`, and `DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL`. `.env.example` retains the genuine cursor signing secret.
 - Removed the prominent Global UI message about demo authorization and internal database setup. The page still states that Patient/Program reports cover only the selected Hospital.
 
-## Trusted deployment boundary
+## Hosting-independent authorization
 
-- Local development is available when `NODE_ENV=development` and Vercel system metadata is absent.
-- The linked Vercel project was verified as `demi_demo` (`prj_QXcjnZaz0tqiaEJdWSlzy4yuk49p`). The server recognizes this exact project through the system-provided `VERCEL_PROJECT_ID`, with `VERCEL=1`. It remains UAT even when Vercel labels its deployment `VERCEL_ENV=production`.
-- Vercel system environment variables must be exposed to the runtime. The implementation uses the project ID as the trust boundary; it does not infer UAT from a project/database name, host name, deployment label, or duplicate database URL.
-- Other Vercel projects labeled Production are denied. Other Preview projects, missing project identity, partial Vercel metadata, and unknown deployment targets are untrusted and denied. The future actual Production deployment must use a separate Vercel project ID from this dedicated UAT project.
-- Product confirmed that UAT uses a separate database. Runtime does not inspect database contents or certify synthetic provenance; the deployment must keep the UAT project connected only to the isolated UAT database and authentication project. No UAT/Production credentials, project settings, database, or seed data were changed.
-- `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET` remains server-only and needs at least 32 random bytes to sign/verify continuation cursors. No other reporting feature configuration is required.
+- Reporting authorization does not inspect the hosting provider, `NODE_ENV`, Vercel deployment labels, project IDs, database URLs, or UAT/demo identity.
+- Hospital Reporting requires an authenticated ACTIVE user, current `Role.HOSPITAL`, a direct ACTIVE OWNER membership, an ACTIVE target Hospital, and the requested Hospital reporting capability.
+- Global Reporting requires an authenticated ACTIVE user and current database `Role.ADMIN`. The workspace/directory, selected-Hospital report read, and selected-Hospital export use separate Global operation capabilities. Report and export operations require an ACTIVE selected Hospital.
+- These checks are revalidated from the database for each protected request, pagination continuation, and export. Hospital OWNER and Platform ADMIN policies remain separate.
+- `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET` remains server-only and needs at least 32 random bytes to sign/verify continuation cursors. No reporting feature flags, deployment allowlists, or demo identities are required.
 
 ## Authorization and data scope
 
 - Hospital Reporting still requires an authenticated ACTIVE user, current `Role.HOSPITAL`, direct ACTIVE OWNER membership in the exact ACTIVE Hospital, and the operation-specific capability. MEMBER, OSM, PATIENT, ADMIN-only, unrelated OWNER, suspended user/membership/Hospital, and hierarchy-only relationships do not qualify.
-- Global Reporting independently requires an authenticated ACTIVE user and current database `Role.ADMIN`. Hospital membership is not required. No per-user UUID allowlist or Hospital role spoofing remains. Current role and deployment eligibility are revalidated on report pagination and export.
-- Navigation and server access use the same deployment classification. Authenticated users without the required reporting role are sent back to `/app`; invalid/missing resource contexts remain hidden. Menu visibility is not the authorization boundary.
+- Global Reporting independently requires an authenticated ACTIVE user and current database `Role.ADMIN`. Hospital membership is not required. No per-user UUID allowlist or Hospital role spoofing remains. Current role and selected-Hospital eligibility are revalidated on report pagination and export.
+- Navigation reflects the current actor's application roles and direct Hospital ownership context. Server access remains authoritative; menu visibility is not the authorization boundary.
 - Global report queries remain exact-Hospital scoped. Choosing a main Hospital never adds child records; choosing a child never adds parent or sibling records. Global ADMIN receives no exact-Program detail navigation, bulk export, Network export, or cross-Hospital Patient totals.
 - Existing HMAC cursors remain actor-, Hospital-, page-size-, ordering-, expiry-, and operation-bound. Hospital and Global operations cannot reuse one another's cursor. Audit, no-store handling, export limits, and snapshot behavior are unchanged.
 
 ## Verification
 
-- Focused deployment/policy/access/navigation/page-context/UI tests: **8 files, 54 tests passed**.
-- Query/cursor/workbook/Hospital and Global export-route/OWNER and Global workspace regression tests: **12 files, 85 tests passed**.
-- `npm run test:integration:focused -- tests/integration/hospital-reporting.integration.test.ts`: **6 tests passed** against local synthetic PostgreSQL `demi_test` on loopback. Covers exact-Hospital isolation, Global ADMIN without membership, Owner/Global projection parity, role/suspension/target denials, current-role revocation, UAT project classification, export revocation, and two-sheet XLSX.
-- `npm run test:integration:focused -- tests/integration/hospital-hierarchy.integration.test.ts`: **4 tests passed** against the same local synthetic PostgreSQL database.
-- `npx next typegen` regenerated Next route types; `npm run typecheck` passed.
-- Targeted ESLint over all modified TypeScript/TSX source and test files passed with no output. Impeccable detector on the changed Global Reporting workspace returned `[]`.
+- Focused reporting and regression tests: `npm run test -- src/modules/reporting/policies/global-reporting-policy.test.ts src/modules/reporting/policies/hospital-report-policy.test.ts src/modules/reporting/services/global-reporting-access-service.test.ts src/modules/reporting/services/hospital-report-access-service.test.ts src/modules/reporting/services/hospital-report-query-service.test.ts src/modules/reporting/services/hospital-report-workbook-service.test.ts src/modules/reporting/transport/global-reporting-page-context.test.ts src/modules/reporting/transport/hospital-report-page-context.test.ts src/modules/reporting/transport/program-report-page.test.ts app/api/v1/admin/reporting/export/route.test.ts app/api/v1/hospital/reporting/export/route.test.ts app/app/admin/reporting/global-admin-reporting-workspace.test.tsx app/app/hospitals/reporting/hospital-report-workspace.test.tsx src/components/app-shell/application-navigation.test.ts` — **14 files, 128 tests passed**. This includes six runtime-environment cases (local, Vercel Preview/Production, VPS, Docker, and non-Vercel production) for both report access surfaces and navigation.
+- `npm run test:integration:focused -- tests/integration/hospital-reporting.integration.test.ts` — **6 tests passed** against synthetic PostgreSQL `demi_test` on loopback (`127.0.0.1:55432`); no pending migrations.
+- `npm run test:integration:focused -- tests/integration/hospital-hierarchy.integration.test.ts` — **4 tests passed** against the same synthetic PostgreSQL database; no pending migrations.
+- `npm run typecheck` — passed.
+- `npx eslint` over all changed TypeScript/TSX files — passed with no output.
+- `npm run architecture:check` — not available; `package.json` defines no script with that name.
+- `git diff --check` — passed. Source scan found no reporting-specific Vercel, NODE_ENV, deployment-classification, or demo authorization references. Unrelated infrastructure/authentication environment handling remains outside Reporting.
 - No full repository suite or production build was run.
-- Authenticated browser UAT remains **unverified**. The connected Vercel project's latest deployment was CANCELED at inspection time, and no authenticated browser session tied to the isolated UAT account/database was available.
+- Authenticated browser acceptance remains **unverified** because no authenticated browser session tied to a verified application database was available.
 
 ## Remaining gates
 
-- Confirm Vercel exposes `VERCEL` and `VERCEL_PROJECT_ID` at runtime, keep the identified project dedicated to UAT with its separate DB/Auth project, and deploy the committed code. No manual reporting flags or ADMIN identity allowlist are needed.
-- Keep actual Production on a separate Vercel project. Global identifiable reporting there remains blocked pending the independent grant, Security, Privacy, and Data Controller approvals. Hospital Reporting Production release authorization remains separate and is not enabled by this UAT classification.
-- Global Patient discovery/detail, cross-Hospital aggregates, system-wide Patient totals, Network exports, and historical hierarchy disclosure remain out of scope. HN-M07 and historical-disclosure gates remain open.
+- Authenticated browser acceptance remains unverified. Infrastructure isolation, database connectivity, authentication configuration, and release operations remain deployment-owner responsibilities; they do not alter application authorization.
+- This MVP permits an ADMIN to inspect the organizational directory, select an ACTIVE Hospital, view its exact-Hospital report, and export that Hospital's workbook under the Product Owner-confirmed role contract. It does not grant unrestricted Global Patient search, exact-Program detail routes, merged cross-Hospital Patient reports, cross-Hospital aggregates/comparisons, Network reports/exports, or historical hierarchy disclosure.
+- HN-M07 and historical disclosure gates remain open for future Network aggregates. No independent Security, Privacy, Data Controller, or clinical approval is claimed for other scopes.

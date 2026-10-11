@@ -1,6 +1,6 @@
 # Phase 18D.1 — Hospital Reporting Implementation Handoff
 
-**Status: CODE HARDENING COMPLETE / UAT BROWSER FLOW UNVERIFIED.** The Hospital OWNER reporting runtime and this hardening are implemented and committed. No production rollout or real Patient-data query was performed.
+**Status: HOSPITAL OWNER REPORTING MVP IMPLEMENTED / BROWSER FLOW HISTORICALLY UNVERIFIED.** This handoff records Phase 18D.1 behavior at its implementation point. The current hosting-agnostic authorization and Global Admin integration are recorded in the Phase 18D.2 runtime correction handoff. No production rollout or real Patient-data query was performed during Phase 18D.1.
 
 ## Delivery
 
@@ -17,9 +17,9 @@ The workbook contains exactly `Dashboard ภาพรวม` and `รายง�
 
 ## Feature availability and operator setup
 
-Reporting is available in local development and in the dedicated DEMI UAT Vercel project. The server identifies UAT using Vercel's system-provided `VERCEL_PROJECT_ID` (`prj_QXcjnZaz0tqiaEJdWSlzy4yuk49p`), not the deployment's `VERCEL_ENV`; this project may use `VERCEL_ENV=production`. Other Production projects and deployments without a verified identity fail closed. The project must expose Vercel system environment variables at runtime. This deployment boundary does not inspect or certify database contents; the UAT project must remain connected only to its separately isolated UAT database and authentication project.
+Hospital Reporting authorization is independent of hosting provider and deployment labels. An authenticated ACTIVE user requires current `Role.HOSPITAL`, a direct ACTIVE OWNER membership and an ACTIVE target Hospital for the requested reporting operation. The server revalidates membership and Hospital status for reads, continuation pages and exports.
 
-The server-only `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET`, with at least 32 random bytes, signs pagination cursors. Set it in the local server environment and dedicated UAT project when reports need continuation pages. Reporting availability no longer depends on a manual per-environment reporting toggle or a second production-approval switch. Hospital access still requires an ACTIVE user with `Role.HOSPITAL` and a direct ACTIVE OWNER membership in the exact ACTIVE Hospital. No Vercel environment, database credential, or production release setting was changed by this implementation.
+The server-only `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET`, with at least 32 random bytes, signs pagination cursors. Configure this genuine secret in each runtime that needs cursor continuation. If a cursor is required and the secret is missing or too short, the service fails with an explicit infrastructure error; it does not issue an unsigned cursor. Database and authentication connection configuration remain ordinary deployment-owned infrastructure settings.
 
 ## Access, consistency, and release control
 
@@ -41,7 +41,7 @@ The DTO distinguishes `RECORDED` (including numeric zero), `NOT_RECORDED`, `UNAV
 ## Verification
 
 - `npm run test -- app/app/hospitals/reporting/hospital-report-workspace.test.tsx app/api/v1/hospital/reporting/export/route.test.ts src/components/app-shell/application-navigation.test.ts src/modules/reporting/services/hospital-report-access-service.test.ts src/modules/reporting/services/hospital-report-query-service.test.ts src/modules/reporting/services/hospital-report-release-control.test.ts src/modules/reporting/services/hospital-report-workbook-service.test.ts src/modules/reporting/transport/hospital-report-page-context.test.ts` — **8 files, 59 tests passed**.
-- This is the original Phase 18D.1 verification record. Phase 18D.2 replaced the release-control service/test in that command with the trusted deployment-boundary check; current focused verification is recorded in the Phase 18D.2 handoff.
+- This is the original Phase 18D.1 verification record. The release-control service/test was later removed; current hosting-independent verification is recorded in the Phase 18D.2 handoff.
 - `npm run test -- app/app/hospitals/reporting/hospital-report-workspace.test.tsx` — **1 file, 4 tests passed** after the final UI wording assertion.
 - `npm run test:integration:focused -- tests/integration/hospital-reporting.integration.test.ts` — **1 file, 3 tests passed** against local synthetic PostgreSQL `demi_test` on loopback. It covers scoped denials, revocation on a subsequent cursor page, final Dashboard revalidation after membership suspension, exact-Program regression, source grain, seven Follow-ups, export workbook/audit, and a concurrent insert isolated by RepeatableRead.
 - `npm run typecheck` — passed.
@@ -51,6 +51,6 @@ The DTO distinguishes `RECORDED` (including numeric zero), `NOT_RECORDED`, `UNAV
 
 ## Phase 18D.2 reuse and remaining limits
 
-Phase 18D.2 can reuse `HospitalReportProgramRow`, `HospitalReportingDataset`, factual source projections, export bounds, and the workbook renderer. It must add a Global Admin authorization and selected-Hospital query entry point; it must not widen the Hospital OWNER policy or treat `Role.ADMIN` as Hospital reporting authority. Global comparisons and cross-Hospital aggregation are not implemented here.
+Phase 18D.2 reuses `HospitalReportProgramRow`, `HospitalReportingDataset`, factual source projections, export bounds, and the workbook renderer. The selected-Hospital Global Admin report and export use a separate current-Role.ADMIN policy and never treat Platform ADMIN as Hospital OWNER authority. Cross-Hospital aggregates/comparisons, Global Patient discovery/identity/detail routes, and Network reporting are not implemented in this MVP.
 
-Remaining source gaps are limited to the unavailable or unapproved fields above. No clinical formula, capture flow, schema column, or migration was added. Production access, real-data disclosure approval, authenticated demo smoke, and any new clinical definitions remain separate work.
+Remaining source gaps are limited to the unavailable or unapproved fields above. No clinical formula, capture flow, schema column, or migration was added. Hospital OWNER production behavior follows the same direct ACTIVE OWNER policy; no deployment-specific release gate exists. Authenticated browser verification and any new clinical definitions remain separate work.

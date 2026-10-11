@@ -492,7 +492,10 @@ describe("Hospital reporting query service", () => {
     });
 
     await expect(getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database }))
-      .rejects.toBeInstanceOf(InfrastructureError);
+      .rejects.toMatchObject({
+        code: "INFRASTRUCTURE",
+        message: "Hospital reporting cursor signing is not configured",
+      });
   });
 
   it("turns database failures into a safe infrastructure error", async () => {

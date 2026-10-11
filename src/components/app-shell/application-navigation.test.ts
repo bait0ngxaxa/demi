@@ -8,12 +8,19 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import { projectApplicationNavigation } from "./application-navigation";
 import { isNavigationItemActive } from "./navigation-state";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
+const runtimeEnvironments = [
+  ["local development", { NODE_ENV: "development" }],
+  ["Vercel Preview", { NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_PROJECT_ID: "preview-project" }],
+  ["Vercel Production", { NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "production", VERCEL_PROJECT_ID: "production-project" }],
+  ["VPS production", { NODE_ENV: "production" }],
+  ["Docker production", { NODE_ENV: "production", CONTAINER_RUNTIME: "docker" }],
+  ["non-Vercel production", { NODE_ENV: "production", VERCEL: "0" }],
+] as const;
 
 function actor(overrides: Partial<ActorContext> = {}): ActorContext {
   return {
@@ -33,10 +40,10 @@ function navigationLabels(context: ActorContext): string[] {
   ]);
 }
 
-function stubTrustedUatReportingDeployment(): void {
-  vi.stubEnv("VERCEL", "1");
-  vi.stubEnv("VERCEL_ENV", "production");
-  vi.stubEnv("VERCEL_PROJECT_ID", TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID);
+function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>>): void {
+  for (const key of ["NODE_ENV", "VERCEL", "VERCEL_ENV", "VERCEL_PROJECT_ID", "CONTAINER_RUNTIME"]) {
+    vi.stubEnv(key, environment[key] ?? "");
+  }
 }
 
 describe("application navigation projection", () => {
@@ -50,17 +57,13 @@ describe("application navigation projection", () => {
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
   });
 
-  it("shows Global Reporting to every Platform ADMIN in trusted UAT, including production-labelled deployments", () => {
-    stubTrustedUatReportingDeployment();
-
+  it.each(runtimeEnvironments)("shows Global Reporting to Platform ADMIN on %s", (_name, environment) => {
+    simulateRuntimeEnvironment(environment);
     try {
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).toContain("รายงานระบบ");
       expect(navigationLabels(actor({ roles: [Role.ADMIN], userId: "99999999-9999-4999-8999-999999999999" }))).toContain("รายงานระบบ");
       expect(navigationLabels(actor({ roles: [Role.HOSPITAL] }))).not.toContain("รายงานระบบ");
       expect(navigationLabels(actor({ roles: [Role.ADMIN, Role.HOSPITAL] }))).toContain("รายงานระบบ");
-
-      vi.stubEnv("VERCEL_PROJECT_ID", "prj_actual_production");
-      expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานระบบ");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -102,9 +105,8 @@ describe("application navigation projection", () => {
     expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข่าวสารและความรู้");
   });
 
-  it("shows Hospital reporting in trusted UAT only for a direct active Hospital Owner", () => {
-    stubTrustedUatReportingDeployment();
-
+  it.each(runtimeEnvironments)("shows Hospital reporting to a direct active Hospital Owner on %s", (_name, environment) => {
+    simulateRuntimeEnvironment(environment);
     try {
       const ownerActor = actor({
         roles: [Role.HOSPITAL],
@@ -154,8 +156,6 @@ describe("application navigation projection", () => {
         ),
       ).not.toContain("รายงานโรงพยาบาล");
 
-      vi.stubEnv("VERCEL_PROJECT_ID", "prj_actual_production");
-      expect(navigationLabels(ownerActor)).not.toContain("รายงานโรงพยาบาล");
     } finally {
       vi.unstubAllEnvs();
     }

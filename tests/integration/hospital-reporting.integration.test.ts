@@ -32,18 +32,9 @@ import { resolveGlobalReportingAccessContext } from "@/modules/reporting/service
 import * as globalReportingAccessModule from "@/modules/reporting/services/global-reporting-access-service";
 import { GLOBAL_REPORTING_CAPABILITIES } from "@/modules/reporting/policies/global-reporting-policy";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
-import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 const prisma = getPrisma();
-const reportingEnvironmentKeys = [
-  "VERCEL",
-  "VERCEL_ENV",
-  "VERCEL_PROJECT_ID",
-  "DEMI_HOSPITAL_REPORTING_CURSOR_SECRET",
-] as const;
-const previousReportingEnvironment = new Map(
-  reportingEnvironmentKeys.map((key) => [key, process.env[key]]),
-);
+const previousCursorSecret = process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
 
 type Fixture = {
   hospitalIds: string[];
@@ -102,17 +93,6 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
     await prisma.hospital.deleteMany({ where: { id: { in: fixture.hospitalIds } } });
   }
   if (fixture.personIds.length > 0) await prisma.person.deleteMany({ where: { id: { in: fixture.personIds } } });
-}
-
-async function withOtherProductionProject<T>(callback: () => Promise<T>): Promise<T> {
-  const previousProjectId = process.env.VERCEL_PROJECT_ID;
-  process.env.VERCEL_PROJECT_ID = "prj_actual_production";
-  try {
-    return await callback();
-  } finally {
-    if (previousProjectId === undefined) delete process.env.VERCEL_PROJECT_ID;
-    else process.env.VERCEL_PROJECT_ID = previousProjectId;
-  }
 }
 
 async function createHospital(
@@ -407,9 +387,6 @@ function dashboardReadWithMembershipRevocationAfterProgramLoad(
 
 describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
   beforeAll(async () => {
-    process.env.VERCEL = "1";
-    process.env.VERCEL_ENV = "production";
-    process.env.VERCEL_PROJECT_ID = TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID;
     process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = "synthetic-hospital-reporting-integration-secret";
     await prisma.$connect();
   });
@@ -420,11 +397,8 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
   });
 
   afterAll(async () => {
-    for (const key of reportingEnvironmentKeys) {
-      const value = previousReportingEnvironment.get(key);
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    if (previousCursorSecret === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
+    else process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = previousCursorSecret;
     await prisma.$disconnect();
   });
 
@@ -644,7 +618,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     })).resolves.toMatchObject({ status: MembershipStatus.SUSPENDED });
   });
 
-  it("serves only the selected Hospital to an active UAT ADMIN and reuses the customer workbook", async () => {
+  it("serves only the selected Hospital to an active ADMIN and reuses the customer workbook", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parent = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่ายสังเคราะห์" });
@@ -753,7 +727,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     }
   });
 
-  it("rechecks current ADMIN status and denies Global Reporting outside the trusted UAT project", async () => {
+  it("rechecks current ADMIN status and denies suspended users or revoked ADMIN roles", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const hospital = await createHospital(fixture, { name: "โรงพยาบาลควบคุมการปล่อยสังเคราะห์" });
@@ -770,12 +744,6 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
       hospital.id,
     )).rejects.toBeInstanceOf(ForbiddenError);
-
-    await withOtherProductionProject(() => expect(resolveGlobalReportingAccessContext(
-      admin.actor,
-      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-      hospital.id,
-    )).rejects.toBeInstanceOf(NotFoundError));
 
     await prisma.userRole.deleteMany({ where: { userId: admin.userId, role: Role.ADMIN } });
     await expect(resolveGlobalReportingAccessContext(

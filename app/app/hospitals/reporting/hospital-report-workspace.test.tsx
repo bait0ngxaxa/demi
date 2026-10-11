@@ -225,7 +225,7 @@ describe("Hospital reporting dashboard presentation", () => {
       initialView: "overview",
       page: page([program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)]),
       selectedHospitalId: hospitalId,
-      audience: "GLOBAL_ADMIN_DEMO",
+      audience: "GLOBAL_ADMIN",
     }));
 
     expect(markup).toContain("Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้");

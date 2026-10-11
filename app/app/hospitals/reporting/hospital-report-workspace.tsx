@@ -547,10 +547,10 @@ export function HospitalReportWorkspace({
   initialView: string;
   page: HospitalReportingPageProjection;
   selectedHospitalId: string;
-  audience?: "HOSPITAL_OWNER" | "GLOBAL_ADMIN_DEMO";
+  audience?: "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
 }): React.JSX.Element {
   const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
-  const isGlobalAdmin = audience === "GLOBAL_ADMIN_DEMO";
+  const isGlobalAdmin = audience === "GLOBAL_ADMIN";
   const routeBase = isGlobalAdmin ? "/app/admin/reporting" : "/app/hospitals/reporting";
   const baseHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
   const allowProgramDetail = !isGlobalAdmin;

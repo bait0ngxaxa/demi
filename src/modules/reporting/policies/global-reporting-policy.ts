@@ -19,7 +19,6 @@ export type GlobalReportingPolicyDecision =
       reason:
         | "missing_actor"
         | "invalid_capability"
-        | "reporting_unavailable_in_deployment"
         | "active_admin_required"
         | "invalid_target_hospital"
         | "active_hospital_required";
@@ -37,7 +36,6 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 export function decideGlobalReportingPolicy(input: {
   actor: ActorContext | null | undefined;
   capability: unknown;
-  reportingAvailable: boolean;
   currentUserStatus: UserStatus | null;
   currentRoles: readonly Role[];
   targetHospitalId?: string;
@@ -50,10 +48,6 @@ export function decideGlobalReportingPolicy(input: {
     !allowedCapabilities.has(input.capability as GlobalReportingCapability)
   ) {
     return { allowed: false, reason: "invalid_capability" };
-  }
-
-  if (!input.reportingAvailable) {
-    return { allowed: false, reason: "reporting_unavailable_in_deployment" };
   }
 
   if (

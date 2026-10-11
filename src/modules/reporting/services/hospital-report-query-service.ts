@@ -81,7 +81,7 @@ export class HospitalReportExportLimitError extends ApplicationError {
 }
 
 type ReportCursor = { startedAt: Date; id: string };
-type ReportScopeOperation = "HOSPITAL_OWNER" | "GLOBAL_ADMIN_DEMO";
+type ReportScopeOperation = "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
 type ReportCursorContext = {
   actorId: string;
   hospitalId: string;
@@ -97,7 +97,7 @@ const cursorPayloadSchema = z
       hospitalId: z.string().uuid().transform((value) => value.toLowerCase()),
       pageSize: z.number().int().min(1).max(HOSPITAL_REPORT_MAX_PAGE_SIZE),
       ordering: z.literal(REPORT_CURSOR_ORDERING),
-      operation: z.enum(["HOSPITAL_OWNER", "GLOBAL_ADMIN_DEMO"]),
+      operation: z.enum(["HOSPITAL_OWNER", "GLOBAL_ADMIN"]),
     }).strict(),
     startedAt: z.string().datetime({ offset: true }),
     id: z.string().uuid().transform((value) => value.toLowerCase()),
@@ -638,7 +638,7 @@ async function resolveAuthorizedHospitalReportScope(
   purpose: "page" | "export",
   database: HospitalReportQueryDatabase,
 ): Promise<AuthorizedHospitalReportScope> {
-  if (operation === "GLOBAL_ADMIN_DEMO") {
+  if (operation === "GLOBAL_ADMIN") {
     const access = await resolveGlobalReportingAccessContext(
       actor,
       purpose === "export"
@@ -758,7 +758,13 @@ async function getHospitalReportingPageForOperation(
     );
     return projection;
   } catch (error: unknown) {
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
+    if (
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof InfrastructureError
+    ) {
+      throw error;
+    }
     throw new InfrastructureError("Hospital reporting data could not be loaded");
   }
 }
@@ -776,7 +782,7 @@ export async function getGlobalAdminHospitalReportingPage(
   input: unknown,
   dependencies: HospitalReportQueryDependencies = {},
 ): Promise<HospitalReportingPageProjection> {
-  return getHospitalReportingPageForOperation(actor, input, dependencies, "GLOBAL_ADMIN_DEMO");
+  return getHospitalReportingPageForOperation(actor, input, dependencies, "GLOBAL_ADMIN");
 }
 
 function assertExportBounds(input: {
@@ -892,7 +898,7 @@ async function getHospitalReportingDatasetForOperation(
     const dataset = await runConsistentRead(database, (transaction) =>
       loadHospitalReportingDataset(actor, parsed.data.hospitalId, transaction, operation),
     );
-    if (operation === "GLOBAL_ADMIN_DEMO") {
+    if (operation === "GLOBAL_ADMIN") {
       await resolveAuthorizedHospitalReportScope(
         actor,
         parsed.data.hospitalId,
@@ -927,7 +933,7 @@ export async function getGlobalAdminHospitalReportingDatasetForExport(
   input: unknown,
   dependencies: HospitalReportQueryDependencies = {},
 ): Promise<HospitalReportingDataset> {
-  return getHospitalReportingDatasetForOperation(actor, input, dependencies, "GLOBAL_ADMIN_DEMO");
+  return getHospitalReportingDatasetForOperation(actor, input, dependencies, "GLOBAL_ADMIN");
 }
 
 export const hospitalReportQueryInternals = {

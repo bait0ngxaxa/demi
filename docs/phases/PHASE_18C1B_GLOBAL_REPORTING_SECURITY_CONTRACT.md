@@ -3,20 +3,26 @@
 - **สถานะเอกสาร:** SECURITY CONTRACT PREPARED — APPROVAL PENDING
 - **ฐานตรวจสอบ:** branch `main`, HEAD `fc8335450622209f1681425700f765344c4c0f27`; working tree สะอาดก่อนเริ่ม
 - **Product direction:** CONFIRMED / OWNER_RECEIVED; อ้างอิง GR-REQ-01 จาก Phase 18C.1A
-- **Global reporting policy:** PROPOSED / SECURITY REVIEW PENDING
-- **Patient-level access:** SECURITY_PRIVACY_BLOCKED
-- **Data Controller approval:** PENDING
-- **Implementation:** NOT AUTHORIZED
+- **Original broad-scope Global reporting proposal:** PROPOSED / SECURITY REVIEW PENDING
+- **Patient discovery/identity/exact-Program detail:** SECURITY_PRIVACY_BLOCKED
+- **Data Controller approval for future broader scopes:** PENDING
+- **Implementation of original broad scopes:** NOT AUTHORIZED; selected-Hospital report/export was authorized and implemented later
 
-เอกสารนี้เป็นข้อเสนอเชิงความปลอดภัยเพื่อ review เท่านั้น ไม่มี customer clinical approval, independent Security approval, Privacy approval, Data Controller sign-off หรือ implementation authorization ที่แนบมา จึงไม่สร้าง capability จริง ไม่ปิด decision เดิม และไม่อนุญาตข้อมูลจริง
+เอกสารต้นฉบับเป็นข้อเสนอเชิงความปลอดภัยสำหรับ Global aggregates, comparisons, Patient discovery และ detail เท่านั้น ไม่มี customer clinical approval, independent Security approval, Privacy approval หรือ Data Controller sign-off แนบมา
+
+### Scope update — 2026-10-11
+
+ภายหลัง Product Owner ยืนยันให้ Platform ADMIN เลือก Hospital ทีละแห่ง ดู Dashboard/Service Process และส่งออก XLSX ของ Hospital ที่เลือกได้ ภายใต้ current ACTIVE database Role.ADMIN และ operation-specific Global policy. Phase 18D.2 implement ขอบเขตนี้ด้วย ACTIVE selected Hospital และ exact-Hospital query เท่านั้น; การเปลี่ยนแปลงนี้ไม่ใช่ approval จาก Security, Privacy, Data Controller หรือ clinical authority.
+
+ขอบเขตนี้ไม่ครอบคลุม Global Patient search/discovery, exact-Program clinical-detail route, การรวม Patient/Program ข้าม Hospital, system-wide/per-Hospital aggregate comparisons, Network aggregation หรือ bulk/Network export. GR-SEC decisions ด้านล่างยังเปิดสำหรับ operation เหล่านั้น; ไม่ได้ปิดหรือจำกัด selected-Hospital report และ single-Hospital export.
 
 ## 1. วัตถุประสงค์และ authorization boundaries
 
-Global Admin หมายถึงผู้ดูแล DEMI Platform/System ที่มี Role.ADMIN ตามระบบ ไม่ใช่ Hospital OWNER, Hospital MEMBER, Parent Hospital OWNER หรือ Hospital Network Administrator. Role.ADMIN เป็นตัวระบุ actor ฝั่ง Platform; ไม่ใช่สิทธิ์อ่าน clinical data โดยอัตโนมัติ และไม่จำเป็นต้องเป็นสมาชิก Hospital เพื่อให้มีสิทธิ์ reporting grant ในอนาคต
+Global Admin หมายถึงผู้ดูแล DEMI Platform/System ที่มี Role.ADMIN ตามระบบ ไม่ใช่ Hospital OWNER, Hospital MEMBER, Parent Hospital OWNER หรือ Hospital Network Administrator. สำหรับ selected-Hospital report/export ที่ Product Owner อนุมัติ Role.ADMIN ปัจจุบันร่วมกับ operation-specific policy และ ACTIVE target Hospital เป็นเงื่อนไขที่ใช้ได้ โดยไม่ต้องมี Hospital membership. สิ่งนี้ไม่ให้ Global search, exact-Program detail, cross-Hospital aggregation หรือ Network permission โดยอัตโนมัติ.
 
 | บริบท | Actor และ scope | สิ่งที่ role/ความสัมพันธ์พิสูจน์ | สิ่งที่ไม่ให้สิทธิ์ |
 | --- | --- | --- | --- |
-| Platform administration | Role.ADMIN; Global reporting ต้องมี capability/grant ที่อนุมัติแยก | ตัวตนผู้ดูแล Platform และ governance actions ที่มี policy เฉพาะ | Patient/Program read, Hospital OWNER authority, Network OWNER authority หรือ export |
+| Platform reporting ใน MVP | current Role.ADMIN; แยก capability สำหรับ workspace/directory, selected-Hospital report และ selected-Hospital export; report/export ต้อง resolve ACTIVE target Hospital | การดูรายงานของ Hospital ที่เลือกแบบ exact-Hospital และ workbook ของ Hospital เดียว | Hospital OWNER authority, exact-Program detail, cross-Hospital merged data, Global aggregate comparison หรือ Network access |
 | Hospital operations | Role.HOSPITAL พร้อม direct active HospitalMembership ที่ target Hospital; OSM ใช้ exact active assignment ตาม operation | เฉพาะ Hospital, PatientHospitalRelationship และ Program ที่ policy ปัจจุบัน resolve ได้ | Global reporting หรือ scope ของ Hospital อื่นจาก membership เดียว |
 | Hospital Network reporting | direct Parent Hospital OWNER ตาม contract HN-C0/HN-C1 ที่แยกต่างหาก | Network aggregate candidate ตาม direct Parent/eligible child contract | Patient-level access ผ่าน hierarchy, Global Platform access หรือ export |
 
@@ -45,16 +51,16 @@ HN-M07 และ historical reparent disclosure ยังคง OPEN blocker; HN
 
 ชื่อ capability ทั้งหมดในตารางเป็น **candidate identifiers only** ตามรูปแบบ vocabulary เดิม เช่น report:program:read. ยังไม่ใช่ permission ที่อนุมัติหรือ implement. Capability ไม่สืบทอดถึงกันเอง; การมี capability หนึ่งไม่ทำให้มี capability อื่น
 
-Readiness: ทุก candidate ยังไม่ approved และไม่มี runtime implementation. Global overview/per-Hospital summary ยังคงรอ policy, population/metric และ aggregate privacy review; Patient directory, identity และ detail อยู่ใน SECURITY_PRIVACY_BLOCKED จนกว่าจะมี independent approval และ field/scope contract.
+Readiness: capability candidates ในเอกสารนี้อธิบาย Global aggregates/comparisons และ Patient discovery/identity/detail ที่ยังไม่มี runtime authorization และยังรอ review. สิ่งเหล่านี้ไม่ใช่ขอบเขตเดียวกับ selected-Hospital report/export MVP ที่เพิ่มภายหลัง. Aggregates ยังรอ policy, population/metric และ privacy review; Patient discovery, identity และ detail ยังอยู่นอก MVP.
 
 | Candidate | Purpose / actor / additional grant | Target และ scope ที่ server ต้อง resolve | ข้อมูลที่อาจเปิดเผย / explicit exclusion | Dependency, revoke, audit และ classification | Authority / readiness |
 | --- | --- | --- | --- | --- | --- |
 | report:global:summary:read | ภาพรวมระบบให้ Platform Role.ADMIN ที่ active พร้อม grant เฉพาะ summary | Population ของ Hospitals/relationships/Programs ที่อนุมัติ; scope GLOBAL ใช้ได้เฉพาะกับ aggregate ที่อนุมัติ | Approved, non-identifying measures เท่านั้น; ห้าม Patient identifiers, row-level output หรือสูตรที่ยังไม่รับรอง | ต้องกำหนด population/grain/time/freshness/suppression; recheck role/grant/policy ทุก request; audit summary access/denial; aggregate remains sensitive | Product/Operations, Privacy/Security; metric owner/Clinical เมื่อมี clinical meaning; PROPOSED / SECURITY REVIEW PENDING |
-| report:global:hospital-summary:read | เปรียบเทียบ Hospital โดย Platform Role.ADMIN active และมี grant เฉพาะ per-Hospital summary | Hospital IDs จาก authoritative eligible set; server-resolved exact Hospital; ไม่รับ browser ID เป็น permission | Approved aggregate ตาม semantics เดียวกับ Level A; ไม่มี Patient rows/identifiers และไม่มี hierarchy inheritance | Hospital eligibility/status, metric consistency, small-cell/differencing, time/freshness; recheck Hospital/grant; audit selected target/decision โดยลด identifiers | Product/Operations, Privacy/Security, Data Controller ตามข้อมูล; PROPOSED / SECURITY REVIEW PENDING |
+| report:global:hospital-summary:read | เปรียบเทียบ aggregate ระหว่าง Hospitals โดย Platform Role.ADMIN และ scope ที่อนุมัติแยก | Hospital set จาก authoritative eligible set; ไม่รับ browser ID เป็น permission | เฉพาะ aggregate ที่อนุมัติ; ไม่มี Patient rows/identifiers และไม่มี hierarchy inheritance. ไม่ใช่รายงาน Patient/Program ของ Hospital เดียวที่เลือกใน MVP | Hospital eligibility/status, metric consistency, small-cell/differencing, time/freshness; recheck scope; audit selected targets/decision โดยลด identifiers | Product/Operations, Privacy/Security, Data Controller ตามข้อมูล; PROPOSED / SECURITY REVIEW PENDING |
 | report:global:patient-directory:read | ค้นพบ PatientHospitalRelationship โดย Role.ADMIN active พร้อม grant directory แยก | Exact grant scope: all eligible Hospitals เป็นเพียง option, selected Hospitals หรือ selected cases/relationships; ต้อง resolve relationship ใน Hospital นั้น | Discovery อาจคืน opaque relationship locator เท่าที่จำเป็น; ไม่ได้ให้ identity fields หรือ care detail | ต้องตัดสิน Hospital set, search fields/mode, page/limits, anti-enumeration, rate controls; reauthorize ทุก page; audit search/denial โดยไม่เก็บ raw term; identifiable lookup is sensitive | Product, Security, Privacy, Data Controller; PROPOSED / SECURITY_PRIVACY_BLOCKED |
 | report:global:patient-identity:read | เปิดเผย identity fields แยกจากการค้นพบ; Role.ADMIN active พร้อม identity grant | exact granted PatientHospitalRelationship; identity ที่คืนต้องอยู่ใน field allowlist และ Hospital context ที่ชัด | Candidate fields ต้องตัดสินเป็นราย field เช่น ชื่อ, Hospital-local number, วันเกิด, contact; national ID ไม่อนุญาตโดย default | Depends on disclosure purpose/necessity, cross-Hospital correlation and masking; recheck grant; audit identity access; identifiable personal data | Privacy, Data Controller, Security; Product/Data Owner; PROPOSED / SECURITY_PRIVACY_BLOCKED |
 | report:global:patient-detail:read | เปิด Patient/Program detail โดย Role.ADMIN active พร้อม detail grant ที่เจาะจง | Hospital → PatientHospitalRelationship → exact PatientProgram; selected Hospital, selected relationship/case, time interval และ field set เป็น grant options | เฉพาะ field allowlist ที่อนุมัติ; ไม่ทำให้ global Person link รวม care records; ไม่ให้ mutation/export | แยก identity, lifecycle, measurements, activity, notes, attachments; revalidate every request; audit detail open/denial/abort; health/clinical data | Data Controller, Privacy, Security, Clinical authority ตาม field, Product; PROPOSED / SECURITY_PRIVACY_BLOCKED |
-| report:hospital:summary:read | Hospital dashboard candidate; Role.HOSPITAL และ direct active membership; OWNER/MEMBER authority ตาม operation ยังต้องตัดสิน | exact direct Hospital membership; ไม่ขยาย parent/child; Patient scope ตาม existing domain policy | Aggregate ที่อนุมัติเท่านั้น; membership ไม่ให้ Global, Patient detail หรือ export โดยปริยาย | ต้องแยกจาก report:global:* และปิด metric/privacy gates; recheck membership/Hospital status ทุก request; audit access; aggregate sensitivity | Product, Hospital/Data Owner, Privacy/Security; PROPOSED / NOT IMPLEMENTED |
+| report:hospital:summary:read | Candidate aggregate-metric semantics for Hospital reporting; current 18D.1 factual report/export is implemented for direct ACTIVE OWNER | Exact direct Hospital membership; no parent/child expansion | This candidate's additional aggregate semantics remain subject to metric/privacy review; the current factual report is not inherited by Global or Network scope | Recheck membership/Hospital status for implemented OWNER reports; audit and aggregate sensitivity remain separate concerns | Broader metric contract remains proposed; see Phase 18D.1 handoff for implemented OWNER reporting |
 
 ### 2.1 Level A — Global overview
 
@@ -99,9 +105,11 @@ PatientProfile/Person global identity ห้ามใช้เป็น join sho
 
 รายการข้างต้นเป็น field-review checklist ไม่ใช่ allowlist. Patient detail grant ไม่ทำให้ทุก category visible; unauthorized field request ต้อง fail closed หรือส่งผล safe ตาม response contract ที่ Security/Privacy รับรอง. Detail read ไม่ให้สร้าง/แก้ record, assignment, impersonation, CSV/XLSX, bulk API หรือไฟล์แนบ
 
-## 3. Platform Admin entitlement/grant contract — proposal
+## 3. Platform Admin entitlement/grant contract — proposal for future scopes
 
-Role.ADMIN เป็น prerequisite ของ Platform grant ไม่ใช่ grant เอง. ผู้ใช้ที่มี ADMIN แต่ไม่มี reporting entitlement ต้องถูกปฏิเสธข้อมูล Patient และ Global reporting ที่ยังไม่ได้รับอนุมัติ. ไม่ต้องสร้าง Hospital OWNER/MEMBER membership เพื่อให้ Platform Admin มี reporting grant; membership เป็น Hospital operations scope คนละ authorization context
+ในขอบเขต MVP ที่ Product Owner ยืนยัน current ACTIVE Role.ADMIN ใช้กับ workspace/directory และรายงาน/export ของ ACTIVE Hospital ที่เลือกได้ ผ่าน capability ที่แยกตาม operation และ exact-Hospital query. สิทธิ์นี้ไม่ใช้ grant model สำหรับ Hospital OWNER และไม่ต้องมี Hospital membership. ระบบยังปฏิเสธ operation ที่อยู่นอกขอบเขตนี้ เช่น Patient discovery, exact-Program detail, aggregate comparison, cross-Hospital data merge และ Network operations.
+
+For this remaining scope, the grant alternatives below are proposals and are not required by the selected-Hospital MVP policy above.
 
 ### 3.1 ทางเลือกที่ต้อง review
 
@@ -157,7 +165,7 @@ Role.ADMIN เป็น prerequisite ของ Platform grant ไม่ใช่
 
 Boundary ที่ต้องบังคับเมื่อ implementation ได้รับอนุญาต: page/data loader และทุก Server Action/API transport, application service, policy/access resolver, DB query/resource predicate, field select/projection/serialization. หากเพิ่ม API ภายหลังให้ versioned contract ตาม ADR/project rules และเรียก service/policy เดิม. DB/RLS หากใช้เป็น defense-in-depth ไม่แทน application policy; phase นี้ไม่เสนอหรือแก้ RLS
 
-ห้ามใช้เงื่อนไข Role.ADMIN แล้ว allow ทั้งหมด. ห้ามนำ Hospital OWNER governance policy มาเป็น shortcut ให้ Patient read. ใช้รูปแบบที่ reuse ได้จากปัจจุบัน ได้แก่ server-resolved actor, exact Hospital predicate, exact relationship/Program checks, bounded query inputs, minimal Prisma select, shared service/policy across transports และ audit validator; อย่า reuse scope ที่กว้างไม่ตรง operation
+ห้ามใช้เงื่อนไข Role.ADMIN แล้ว allow ทุก operation. MVP อนุญาตเฉพาะ operation ที่ระบุและ Hospital ที่เลือกแบบ exact scope; aggregate comparison, discovery/detail และ Network operation ยังคงปิดนอก MVP. ห้ามนำ Hospital OWNER governance policy มาเป็น shortcut ให้ Global access. ใช้ server-resolved actor, exact Hospital predicate, bounded query inputs, minimal Prisma select, shared service/policy across transports และ audit validator; อย่า reuse scope ที่กว้างไม่ตรง operation
 
 ## 5. Revocation, consistency และ concurrency
 
@@ -191,7 +199,7 @@ ActorContext ปัจจุบันตรวจ User ACTIVE ระหว่า
 
 ### 6.1 Purpose / data governance
 
-ก่อนเปิด Patient data ต้องมี lawful/legitimate processing purpose, legal/privacy basis, Data Controller ที่รับผิดชอบ, authorized grant issuer, minimum necessary fields, disclosure conditions, access review cadence, retention/deletion, incident handling, audit access restrictions และ patient-notice/consent decision ตาม governance ที่ใช้จริง. Product requirement หรือ technical architecture ไม่ใช่การตัดสินกฎหมาย. เอกสารนี้ไม่อ้าง PDPA compliance
+สำหรับการขยายขอบเขตนอก selected-Hospital MVP ต้องทบทวน lawful/legitimate processing purpose, legal/privacy basis, Data Controller, authorized grant issuer, minimum necessary fields, disclosure conditions, access review cadence, retention/deletion, incident handling, audit access restrictions และ patient-notice/consent decision ตาม governance ที่ใช้จริง. Product requirement หรือ technical architecture ไม่ใช่การตัดสินกฎหมาย. Phase 18D.2 บันทึกเฉพาะ Product Owner authorization ของ bounded MVP; เอกสารนี้ไม่อ้าง PDPA compliance หรือ independent approval ใด.
 
 ### 6.2 Candidate audit events
 
@@ -203,33 +211,33 @@ ActorContext ปัจจุบันตรวจ User ACTIVE ระหว่า
 
 Metadata ขั้นต่ำที่ review ได้: actor User ID, action/capability, grant/policy reference/version, Hospital/resource reference เมื่อจำเป็น, decision/outcome category, timestamp, correlation/request ID และ approved purpose/case reference. บันทึกได้เฉพาะ metadata ที่ Security/Privacy อนุมัติ. ห้ามบันทึก Patient row/body, ชื่อ, National ID, raw search term, measurement, free-text note, attachment/workbook body, raw SQL/query payload, access token หรือเหตุผล error ภายใน. Resource IDs เองอาจ sensitive; ต้องเลือก pseudonymous/reference strategy และ access restriction ก่อนใช้
 
-AuditEvent/recordAuditEvent และ schema validation ปัจจุบันเป็นจุด reuse สำหรับ audit boundary เท่านั้น; ไม่พบ read-event implementation สำหรับ Reporting ใน source ที่ตรวจ. Retention, deletion, audit-log reader authorization, access review, failed/denied event retention และ incident process ยังเป็น decision ไม่ใช่คุณสมบัติที่ยืนยันแล้ว
+Phase 18D.2 เพิ่ม minimal audit events สำหรับ selected-Hospital report/export และ denial โดยไม่บันทึก clinical values, Patient identifiers หรือ workbook contents. Retention, deletion, audit-log reader authorization, access review, failed/denied event retention และ incident process สำหรับ broader operations ยังเป็น governance decisions ที่ไม่ถูกปิดด้วย implementation.
 
 ## 7. Cross-Hospital isolation และ policy separation
 
-- Platform global scope เป็น entitlement ที่อนุมัติแยก; ไม่เท่ากับ Role.ADMIN อย่างเดียวและไม่ต้องพึ่ง Hospital membership
+- Platform selected-Hospital MVP ใช้ current Role.ADMIN กับ operation-specific policy และ ACTIVE exact target; aggregate comparison, Patient discovery/detail และ Network scopes ยังต้องได้รับการตัดสินแยก และไม่พึ่ง Hospital membership
 - Hospital operations ใช้ direct Hospital membership/assignment และ exact relationship/Program ตาม policy ปัจจุบัน; ไม่ได้สิทธิ์ Global summary จาก OWNER/MEMBER
 - Hospital Network ใช้ direct Parent OWNER และ aggregate-only HN contract; no Patient rows, no clinical drill-down, no hierarchy-based patient permission
 - PatientProfile/Person อาจเชื่อม identity เดียวกับหลาย Hospital relationships; authorization ต่อ relationship A ไม่ให้ join/disclose relationship B
-- report:program:read, patient:read, program:read, hospital:read-governance, parentHospitalId และ local Hospital selection ไม่เป็น substitute สำหรับ Global grant
-- Patient detail ไม่ให้ mutation, OSM assignment, clinical record creation, impersonation, bulk API, CSV/XLSX หรือ attachment download
+- report:program:read, patient:read, program:read, hospital:read-governance, parentHospitalId และ local Hospital selection ไม่เป็น substitute สำหรับ Global Admin operation policy; MVP report ยังเลือก ACTIVE Hospital โดย Platform ADMIN และใช้ exact-Hospital filter
+- Exact-Program detail policy ไม่ให้ mutation, OSM assignment, clinical record creation, impersonation, bulk API, Global/Network XLSX หรือ attachment download; selected-Hospital workbook เป็น operation แยกของ MVP
 - RPT-24 exact-Hospital Excel export, Global on-screen reporting และ HN Network aggregate เป็นสาม contracts แยก; approval ในขอบเขตหนึ่งไม่ขยายอีกขอบเขตหนึ่ง
 
-ไม่จำเป็นต้องแก้ accepted ADR-0002 ใน phase documentation นี้. ก่อน implementation อาจเสนอ ADR addendum/proposal เพื่อระบุว่า Platform-scoped reporting grant แยกจาก role/membership และ Patient-level access มี scoped grant/purpose/field controls; ต้องให้ ADR authority พิจารณาเป็นงานแยก ห้ามเปลี่ยน accepted ADR โดยนัย
+ไม่มีการแก้ accepted ADR-0002 โดยนัย. การแยก Global operation policy ออกจาก Hospital OWNER policy และการ scope query ไปยัง Hospital ที่เลือกเป็นรายงาน MVP; capability grant/purpose/field controls สำหรับ discovery, clinical detail หรือ aggregates ยังเป็นข้อเสนอที่ต้อง review แยก.
 
 ## 8. Readiness gates
 
-Phase 18C.1B ผลลัพธ์คือ **SECURITY CONTRACT PREPARED** เท่านั้น. ก่อน design freeze/implementation ต้องปิด security decisions ใน [Security Decision Register](./PHASE_18C1B_SECURITY_DECISION_REGISTER.md), ตกลง field/population semantics ที่พึ่ง R24A-D01–D15 โดยไม่เปลี่ยนสถานะ, ปิด Data Controller/Privacy/Clinical approvals ที่เกี่ยวข้อง และรับ implementation authorization แยก. [Synthetic Acceptance Matrix](./PHASE_18C1B_SECURITY_ACCEPTANCE_MATRIX.md) เป็น test design เท่านั้น ยังไม่ใช่ test execution
+Phase 18C.1B เป็น **SECURITY CONTRACT PREPARED** ณ เวลาที่จัดทำ. ต่อมามี Product Owner authorization และ implementation เฉพาะ selected-Hospital report/export ตาม scope update ด้านบน. ก่อนเปิด aggregate, discovery, detail หรือ Network operation ต้องปิด security decisions ใน [Security Decision Register](./PHASE_18C1B_SECURITY_DECISION_REGISTER.md), ตกลง field/population semantics ที่เกี่ยวข้อง และได้รับ approvals จากผู้รับผิดชอบจริง; scope นี้ไม่อ้างว่าได้ approval เหล่านั้นแล้ว. [Synthetic Acceptance Matrix](./PHASE_18C1B_SECURITY_ACCEPTANCE_MATRIX.md) เป็น test design เริ่มต้น ไม่ใช่หลักฐานการอนุมัติ.
 
 - Requester product direction: CONFIRMED / OWNER_RECEIVED (GR-REQ-01)
-- Global policy: PROPOSED / SECURITY REVIEW PENDING
-- Patient-level access: SECURITY_PRIVACY_BLOCKED
-- Data Controller approval: PENDING
-- Implementation: NOT AUTHORIZED
+- Global aggregate/discovery/detail policy: PROPOSED / SECURITY REVIEW PENDING; selected-Hospital report/export MVP implemented under the Product Owner-confirmed Role.ADMIN contract
+- Global discovery/identity/exact-Program detail: SECURITY_PRIVACY_BLOCKED; selected-Hospital report/export implemented under the later product scope update
+- Data Controller approval for broader scopes: PENDING
+- Implementation: selected-Hospital report/export authorized and implemented; broader operations remain outside scope
 - HN-M07 / historical reparent disclosure: OPEN
 - HN-M08: DEFERRED / NOT AUTHORIZED
 - R24A-D01–D15: PROPOSED FOR REQUESTER / CUSTOMER REVIEW
-- RPT-24C export authorization/security/privacy/snapshot/delivery gates: OPEN
+- RPT-24C gates for export scopes beyond the selected-Hospital single-workbook MVP: OPEN
 
 ## 9. References
 
