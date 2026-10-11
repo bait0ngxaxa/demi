@@ -37,6 +37,11 @@ import {
   decideHospitalContentPolicy,
   HOSPITAL_CONTENT_CAPABILITIES,
 } from "@/modules/hospital-content/policies/hospital-content-policy";
+import {
+  decideHospitalReportPolicy,
+  HOSPITAL_REPORT_CAPABILITIES,
+} from "@/modules/reporting/policies/hospital-report-policy";
+import { isHospitalReportingEnabled } from "@/modules/reporting/services/hospital-report-release-control";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
@@ -70,6 +75,22 @@ function canManageHospitalContent(actor: ActorContext): boolean {
       scope: "DIRECT_HOSPITAL_OWNER",
       hospitalId,
     }).allowed,
+  );
+}
+
+function canReadHospitalReports(actor: ActorContext): boolean {
+  return (
+    isHospitalReportingEnabled() &&
+    actor.hospitalMemberships.some((membership) =>
+      decideHospitalReportPolicy({
+        actor,
+        capability: HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
+        target: {
+          hospitalId: membership.hospitalId,
+          hospitalStatus: membership.hospitalStatus,
+        },
+      }).allowed,
+    )
   );
 }
 
@@ -211,6 +232,9 @@ export function projectApplicationNavigation(
   }
   if (canManageHospitalContent(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/knowledge", label: "ข่าวสารและความรู้", match: "prefix" as const });
+  }
+  if (canReadHospitalReports(actor)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" as const });
   }
   if (hospitalWorkItems.length > 0) {
     groups.push({

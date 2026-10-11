@@ -79,6 +79,72 @@ describe("application navigation projection", () => {
     expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข่าวสารและความรู้");
   });
 
+  it("shows Hospital reporting only for an enabled direct active Hospital Owner", () => {
+    const previousEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
+    const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
+    delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+
+    try {
+      const ownerLabels = navigationLabels(
+        actor({
+          roles: [Role.HOSPITAL],
+          hospitalMemberships: [
+            {
+              hospitalId,
+              membershipType: MembershipType.OWNER,
+              profession: null,
+              status: MembershipStatus.ACTIVE,
+              hospitalStatus: HospitalStatus.ACTIVE,
+            },
+          ],
+        }),
+      );
+      const memberLabels = navigationLabels(
+        actor({
+          roles: [Role.HOSPITAL],
+          hospitalMemberships: [
+            {
+              hospitalId,
+              membershipType: MembershipType.MEMBER,
+              profession: Profession.NURSE,
+              status: MembershipStatus.ACTIVE,
+              hospitalStatus: HospitalStatus.ACTIVE,
+            },
+          ],
+        }),
+      );
+
+      expect(ownerLabels).toContain("รายงานโรงพยาบาล");
+      expect(memberLabels).not.toContain("รายงานโรงพยาบาล");
+      expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานโรงพยาบาล");
+      expect(
+        navigationLabels(
+          actor({
+            roles: [Role.HOSPITAL],
+            hospitalMemberships: [
+              {
+                hospitalId,
+                membershipType: MembershipType.OWNER,
+                profession: null,
+                status: MembershipStatus.SUSPENDED,
+                hospitalStatus: HospitalStatus.ACTIVE,
+              },
+            ],
+          }),
+        ),
+      ).not.toContain("รายงานโรงพยาบาล");
+    } finally {
+      if (previousEnabled === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
+      else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousEnabled;
+      if (previousProductionApproval === undefined) {
+        delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+      } else {
+        process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
+      }
+    }
+  });
+
   it("offers the shared Family management route to active actor types without granting authority", () => {
     for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN]] as const) {
       const familyItem = projectApplicationNavigation(actor({ roles }))

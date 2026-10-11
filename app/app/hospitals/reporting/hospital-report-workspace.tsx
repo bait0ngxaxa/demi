@@ -1,0 +1,484 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+import { Alert } from "@/components/ui/alert";
+import { Button, buttonClassName } from "@/components/ui/button";
+import { LocalNavigation } from "@/components/ui/local-navigation";
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type {
+  HospitalReportFact,
+  HospitalReportFollowup,
+  HospitalReportMeasurementSet,
+  HospitalReportProgramRow,
+  HospitalReportingPageProjection,
+} from "@/modules/reporting/projections/hospital-report-projection";
+import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
+
+type ReportView = "overview" | "service";
+
+const REPORT_VIEWS: readonly { label: string; value: ReportView }[] = [
+  { label: "Dashboard ภาพรวม", value: "overview" },
+  { label: "รายงานการจัดบริการ", value: "service" },
+];
+
+function factText<T extends number | string>(fact: HospitalReportFact<T>): string {
+  if (fact.state === "RECORDED") {
+    return typeof fact.value === "number" ? fact.value.toLocaleString("th-TH") : fact.value;
+  }
+  if (fact.state === "NOT_RECORDED") return "ยังไม่บันทึก";
+  return "ยังไม่พร้อมใช้งาน";
+}
+
+function factStatus<T extends number | string>(fact: HospitalReportFact<T>): string {
+  if (fact.state === "RECORDED") return "มีข้อมูลบันทึก";
+  if (fact.state === "NOT_RECORDED") return "ยังไม่บันทึก";
+  return unavailableText(fact.reason);
+}
+
+function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof HospitalReportProgramRow["unavailable"]]): string {
+  switch (reason) {
+    case "SOURCE_MISSING": return "ไม่มีแหล่งข้อมูลในระบบ";
+    case "CLINICAL_SEMANTICS_UNAPPROVED": return "มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง";
+    case "NOT_PROGRAM_SCOPED": return "ข้อมูลที่มีไม่ได้ผูกกับ Program นี้";
+    case "DERIVATION_UNAPPROVED": return "ยังไม่มีสูตรคำนวณที่ได้รับรอง";
+  }
+}
+
+function recordText<T>(record: { state: "PRESENT"; value: T } | { state: "MISSING" }): string {
+  return record.state === "PRESENT" ? "มีบันทึก" : "ไม่มีบันทึกใน Program นี้";
+}
+
+function displayDate(value: string): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(value));
+}
+
+function displayDateTime(value: string): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(value));
+}
+
+function MeasurementList({
+  measurements,
+}: {
+  measurements: HospitalReportMeasurementSet;
+}): React.JSX.Element {
+  const fields: readonly { key: keyof HospitalReportMeasurementSet; label: string; unit: string }[] = [
+    { key: "bloodSugar", label: "น้ำตาลปลายนิ้ว (DTX)", unit: "" },
+    { key: "weight", label: "น้ำหนัก", unit: "กก." },
+    { key: "waistCircumference", label: "รอบเอว", unit: "ซม." },
+    { key: "systolicBloodPressure", label: "ความดันตัวบน", unit: "มม.ปรอท" },
+    { key: "diastolicBloodPressure", label: "ความดันตัวล่าง", unit: "มม.ปรอท" },
+  ];
+
+  return (
+    <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2">
+      {fields.map(({ key, label, unit }) => (
+        <div className="min-w-0 border-b border-border pb-2" key={key}>
+          <dt className="text-sm text-text-muted">{label}</dt>
+          <dd className="mt-1 break-words font-medium text-text">
+            {factText(measurements[key])}{measurements[key].state === "RECORDED" && unit ? ` ${unit}` : ""}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ProgramContext({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+  const hospitalNumber = factText(program.patient.hospitalNumber);
+  const completedAt = program.lifecycle.completedAt.state === "RECORDED"
+    ? displayDate(program.lifecycle.completedAt.value)
+    : program.lifecycle.status === "ACTIVE"
+      ? "Program ยังดำเนินอยู่"
+      : "ยังไม่บันทึกวันที่สิ้นสุด";
+
+  return (
+    <dl className="grid min-w-0 gap-x-6 gap-y-3 border-b border-border pb-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="min-w-0"><dt className="text-sm text-text-muted">Patient-Hospital ID</dt><dd className="mt-1 break-words font-medium">{hospitalNumber}</dd></div>
+      <div className="min-w-0"><dt className="text-sm text-text-muted">เริ่ม Program</dt><dd className="mt-1 break-words font-medium">{displayDate(program.lifecycle.startedAt)}</dd></div>
+      <div className="min-w-0"><dt className="text-sm text-text-muted">วันที่สิ้นสุด</dt><dd className="mt-1 break-words font-medium">{completedAt}</dd></div>
+      <div className="min-w-0"><dt className="text-sm text-text-muted">อสม. ที่มอบหมายปัจจุบัน</dt><dd className="mt-1 break-words font-medium">{program.currentRelationshipOsmAssignment.state === "PRESENT" ? program.currentRelationshipOsmAssignment.value.displayName : "ไม่มีการมอบหมายปัจจุบัน"}</dd></div>
+    </dl>
+  );
+}
+
+function ProgramOverview({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+  return (
+    <Panel aria-labelledby={`overview-program-${program.patientProgramId}`} className="p-5 sm:p-6">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="break-words text-lg font-semibold text-text" id={`overview-program-${program.patientProgramId}`}>{program.patient.displayName}</h3>
+          <p className="mt-1 break-all text-xs text-text-muted">Program ID: {program.patientProgramId}</p>
+        </div>
+        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>
+          {program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "Program ปิดแล้ว"}
+        </StatusBadge>
+      </div>
+
+      <ProgramContext program={program} />
+
+      <div className="grid min-w-0 gap-6 pt-5 lg:grid-cols-3">
+        <section aria-labelledby={`before-${program.patientProgramId}`} className="min-w-0">
+          <h4 className="mb-3 font-semibold text-text" id={`before-${program.patientProgramId}`}>Before · Baseline</h4>
+          {program.baseline.state === "PRESENT" ? (
+            <>
+              <p className="mb-3 text-sm text-text-muted">บันทึกวันที่ {displayDate(program.baseline.value.recordedOn)}</p>
+              <MeasurementList measurements={program.baseline.value.measurements} />
+              <p className="mt-3 text-sm text-text-muted">ส่วนสูง: {factText(program.baseline.value.heightCm)}{program.baseline.value.heightCm.state === "RECORDED" ? " ซม." : ""}</p>
+            </>
+          ) : <p className="text-sm text-text-muted">ไม่มี Baseline ที่เชื่อมกับ Program นี้</p>}
+          <ul className="mt-3 space-y-1 text-sm text-text-muted">
+            <li>CVD Risk: {unavailableText(program.unavailable.baselineCvdRiskScore)}</li>
+            <li>HbA1c: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.hba1c) : "ไม่มี Baseline ที่เชื่อมกับ Program นี้"}</li>
+            <li>BMI: {unavailableText(program.unavailable.baselineBmi)}</li>
+          </ul>
+        </section>
+
+        <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่าง Program · Follow-up</h4>
+          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มี Follow-up ที่บันทึกใน Program นี้</p> : (
+            <ol className="space-y-4">
+              {program.followups.items.map((followup) => (
+                <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={followup.id}>
+                  <h5 className="font-medium text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h5>
+                  <div className="mt-3"><MeasurementList measurements={followup.measurements} /></div>
+                </li>
+              ))}
+            </ol>
+          )}
+          {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · ดูรายละเอียดทั้งหมดได้ที่รายงาน Program</p> : null}
+          <p className="mt-3 text-sm text-text-muted">Achievement score: {unavailableText(program.unavailable.achievementRate)}</p>
+        </section>
+
+        <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>After · Final Assessment</h4>
+          {program.finalAssessment.state === "PRESENT" ? (
+            <>
+              <p className="mb-3 text-sm text-text-muted">บันทึกวันที่ {displayDateTime(program.finalAssessment.value.recordedAt)}</p>
+              <MeasurementList measurements={program.finalAssessment.value.measurements} />
+            </>
+          ) : <p className="text-sm text-text-muted">ไม่มี Final Assessment ที่บันทึกใน Program นี้</p>}
+          <ul className="mt-3 space-y-1 text-sm text-text-muted">
+            <li>CVD Risk: {unavailableText(program.unavailable.afterCvdRiskScore)}</li>
+            <li>HbA1c: {unavailableText(program.unavailable.afterHba1c)}</li>
+            <li>BMI: {unavailableText(program.unavailable.afterBmi)}</li>
+            <li>ส่วนสูง: {unavailableText(program.unavailable.afterHeightCm)}</li>
+          </ul>
+        </section>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="break-words text-xs text-text-muted">Illness duration: {unavailableText(program.unavailable.illnessDuration)} · สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก</p>
+        <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}>
+          เปิดรายละเอียด Program
+        </Link>
+      </div>
+    </Panel>
+  );
+}
+
+function ServiceOne({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+  const services: readonly { key: keyof HospitalReportProgramRow["serviceOne"]; label: string }[] = [
+    { key: "floatingChart", label: "กราฟวัดลอยจม" },
+    { key: "dreamCard", label: "การ์ดความฝัน" },
+    { key: "routine", label: "ตารางกิจวัตร" },
+    { key: "confidence", label: "บันทึกคะแนนความมั่นใจ" },
+  ];
+  return (
+    <dl className="grid min-w-0 gap-x-5 gap-y-3 sm:grid-cols-2">
+      {services.map(({ key, label }) => {
+        const record = program.serviceOne[key];
+        return <div className="min-w-0" key={key}><dt className="text-sm text-text-muted">{label}</dt><dd className="mt-1 font-medium">{recordText(record)}</dd>{record.state === "PRESENT" ? <dd className="mt-1 text-xs text-text-muted">บันทึกเมื่อ {displayDateTime(record.value.recordedAt)}</dd> : null}</div>;
+      })}
+    </dl>
+  );
+}
+
+function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): React.JSX.Element {
+  return (
+    <li className="min-w-0 border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0">
+      <h5 className="font-semibold text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h5>
+      <div className="mt-3"><MeasurementList measurements={followup.measurements} /></div>
+      <div className="mt-4">
+        <h6 className="text-sm font-semibold text-text">ความคืบหน้ากิจกรรมที่บันทึก</h6>
+        {followup.activityProgress.length === 0 ? <p className="mt-1 text-sm text-text-muted">ไม่มีรายการความคืบหน้ากิจกรรมใน Follow-up นี้</p> : (
+          <ul className="mt-2 space-y-2">
+            {followup.activityProgress.map((item, index) => (
+              <li className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:justify-between" key={`${item.activityCode}-${index}`}>
+                <span className="break-words">{item.activityCode}</span>
+                <span className="text-text-muted">{item.status === "DONE" ? "บันทึกว่าทำได้" : item.status === "PARTIAL" ? "บันทึกว่าทำได้บางส่วน" : item.status === "NOT_DONE" ? "บันทึกว่ายังทำไม่ได้" : "บันทึกว่าไม่เกี่ยวข้อง"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function ServiceProgram({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+  const goalPlans = program.goalPlans.items;
+  return (
+    <Panel aria-labelledby={`service-program-${program.patientProgramId}`} className="p-5 sm:p-6">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0"><h3 className="break-words text-lg font-semibold text-text" id={`service-program-${program.patientProgramId}`}>{program.patient.displayName}</h3><p className="mt-1 break-all text-xs text-text-muted">Program ID: {program.patientProgramId}</p></div>
+        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "Program ปิดแล้ว"}</StatusBadge>
+      </div>
+      <ProgramContext program={program} />
+
+      <div className="grid min-w-0 gap-6 pt-5 lg:grid-cols-2">
+        <section aria-labelledby={`service-before-${program.patientProgramId}`} className="min-w-0">
+          <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>Before · ข้อมูลก่อนเริ่ม</h4>
+          {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มี Baseline ที่เชื่อมกับ Program นี้</p>}
+          <ul className="mt-4 space-y-1 text-sm text-text-muted">
+            <li>PAM / PROMs: {unavailableText(program.unavailable.beforePamScore)} / {unavailableText(program.unavailable.beforePromsScore)}</li>
+            <li>คะแนนความมั่นใจ: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.confidenceScore) : "ไม่มี Baseline ที่เชื่อมกับ Program นี้"}</li>
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.beforeWeeklyExercise)}</li>
+          </ul>
+          <h4 className="mb-3 mt-6 font-semibold text-text">After · ข้อมูลหลัง Program</h4>
+          {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มี Final Assessment ที่บันทึกใน Program นี้</p>}
+          <ul className="mt-4 space-y-1 text-sm text-text-muted">
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.afterWeeklyExercise)}</li>
+            <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {unavailableText(program.unavailable.achievementOver70Count)}</li>
+          </ul>
+        </section>
+
+        <section aria-labelledby={`service-one-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <h4 className="mb-3 font-semibold text-text" id={`service-one-${program.patientProgramId}`}>Service 1 · รู้จักตัวเอง</h4>
+          <ServiceOne program={program} />
+          <p className="mt-4 text-sm text-text-muted">สถานะนี้แสดงการมีบันทึกในระบบ ไม่ยืนยันการส่งมอบบริการหรือผลการรักษา</p>
+        </section>
+
+        <section aria-labelledby={`service-goal-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
+          <h4 className="mb-3 font-semibold text-text" id={`service-goal-${program.patientProgramId}`}>Service 2 · ทำแผนสุขภาพ / Goal Plan</h4>
+          {goalPlans.length === 0 ? <p className="text-sm text-text-muted">ไม่มี Goal Plan ที่ผูกกับ Program นี้</p> : (
+            <ol className="space-y-4">
+              {goalPlans.map((plan) => (
+                <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={plan.id}>
+                  <h5 className="font-medium">แผนรอบที่ {plan.roundNumber}: {plan.primaryGoalLabel}</h5>
+                  <p className="mt-1 break-words text-sm text-text-muted">รหัสเป้าหมาย {plan.primaryGoalCode}</p>
+                  {plan.items.length === 0 ? <p className="mt-2 text-sm text-text-muted">ไม่มีเป้าหมายกิจกรรมในแผนนี้</p> : (
+                    <ul className="mt-3 space-y-2">
+                      {plan.items.map((item) => (
+                        <li className="min-w-0 rounded-control border border-border px-3 py-3" key={item.activityCode}>
+                          <p className="break-words font-medium">{item.activityLabel}</p>
+                          <p className="mt-1 text-sm text-text-muted">เป้าหมาย {item.targetDays} วัน/สัปดาห์ · {factText(item.targetValue)} {factText(item.targetUnit)}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+          {program.goalPlans.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {goalPlans.length} จาก {program.goalPlans.totalCount} แผน · เปิดรายละเอียด Program เพื่อดูรายการทั้งหมด</p> : null}
+          <p className="mt-3 text-sm text-text-muted">ค่าในแผนเป็นเป้าหมายที่บันทึก ไม่ใช่ผลการปฏิบัติ</p>
+        </section>
+
+        <section aria-labelledby={`service-followup-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
+          <h4 className="mb-3 font-semibold text-text" id={`service-followup-${program.patientProgramId}`}>Service 3 เป็นต้นไป · Follow-up และความคืบหน้า</h4>
+          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มี Follow-up ที่บันทึกใน Program นี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
+          {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · ดูทั้งหมดในรายละเอียด Program หรือไฟล์ Excel</p> : null}
+          <ul className="mt-4 space-y-1 text-sm text-text-muted">
+            <li>วัน/อัตราความสำเร็จ: {unavailableText(program.unavailable.achievementDays)} / {unavailableText(program.unavailable.achievementRate)}</li>
+            <li>ผลลัพธ์และการปรับแผน: {unavailableText(program.unavailable.outcome)} / {unavailableText(program.unavailable.planAdjustment)}</li>
+            <li>อุปสรรค: {unavailableText(program.unavailable.obstacle)}</li>
+          </ul>
+        </section>
+      </div>
+
+      <div className="mt-5 flex justify-end border-t border-border pt-4">
+        <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}>เปิดรายละเอียด Program</Link>
+      </div>
+    </Panel>
+  );
+}
+
+function ExportButton({ hospitalId }: { hospitalId: string }): React.JSX.Element {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function download(): Promise<void> {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/v1/hospital/reporting/export?hospitalId=${encodeURIComponent(hospitalId)}`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        let errorMessage = "ส่งออกรายงานไม่สำเร็จ กรุณาลองอีกครั้ง";
+        try {
+          const payload: unknown = await response.json();
+          if (typeof payload === "object" && payload !== null && "error" in payload && typeof payload.error === "string") {
+            errorMessage = payload.error;
+          }
+        } catch {
+          // Use the safe local message when the response body is not JSON.
+        }
+        setMessage(errorMessage);
+        return;
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const disposition = response.headers.get("Content-Disposition");
+      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? "demi-hospital-report.xlsx";
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+      setMessage("สร้างไฟล์ Excel สำเร็จแล้ว");
+    } catch {
+      setMessage("เชื่อมต่อเพื่อส่งออกรายงานไม่ได้ กรุณาตรวจสอบเครือข่ายแล้วลองอีกครั้ง");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+      <Button onClick={() => void download()} loading={loading} type="button">
+        {loading ? "กำลังสร้างไฟล์ Excel" : "ส่งออก Excel"}
+      </Button>
+      {message ? <p aria-live="polite" className="max-w-sm text-sm text-text-muted" role="status">{message}</p> : null}
+    </div>
+  );
+}
+
+export function HospitalReportWorkspace({
+  hospitals,
+  initialView,
+  page,
+  selectedHospitalId,
+}: {
+  hospitals: readonly HospitalReportingHospital[];
+  initialView: string;
+  page: HospitalReportingPageProjection;
+  selectedHospitalId: string;
+}): React.JSX.Element {
+  const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
+  const baseHref = `/app/hospitals/reporting?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+
+  return (
+    <div className="min-w-0 max-w-[1440px]">
+      <PageHeader
+        actions={<ExportButton hospitalId={selectedHospitalId} />}
+        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานโรงพยาบาล" }]}
+        description="ตรวจภาพรวมผู้ป่วยและความครบถ้วนของข้อมูลกระบวนการบริการในโรงพยาบาล"
+        title="รายงานโรงพยาบาล"
+      />
+
+      {hospitals.length > 1 ? (
+        <form action="/app/hospitals/reporting" className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
+          <div className="min-w-0 flex-1">
+            <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง</label>
+            <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" name="hospitalId">
+              {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
+            </select>
+            <input name="view" type="hidden" value={view} />
+          </div>
+          <Button type="submit" variant="secondary">เปลี่ยนโรงพยาบาล</Button>
+        </form>
+      ) : null}
+
+      <section aria-labelledby="hospital-report-context-heading" className="mt-6">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
+            <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {page.hospital.hospitalCode}</p>
+          </div>
+          <p className="text-sm text-text-muted">ข้อมูลตาม Program ของโรงพยาบาลนี้</p>
+        </div>
+
+        <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+            <dt className="text-sm text-text-muted">ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล</dt>
+            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.patientHospitalRelationships.value.toLocaleString("th-TH")}</dd>
+            <p className="mt-1 text-xs text-text-muted">นับความสัมพันธ์ในโรงพยาบาล ไม่ใช่ Program</p>
+          </div>
+          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+            <dt className="text-sm text-text-muted">Program ทั้งหมด</dt>
+            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.programs.total.toLocaleString("th-TH")}</dd>
+            <p className="mt-1 text-xs text-text-muted">ACTIVE {page.counts.programs.active.toLocaleString("th-TH")} · COMPLETED {page.counts.programs.completed.toLocaleString("th-TH")}</p>
+          </div>
+          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+            <dt className="text-sm text-text-muted">Relationship ที่ยังไม่มี Program</dt>
+            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.relationshipsWithoutProgram.value.toLocaleString("th-TH")}</dd>
+            <p className="mt-1 text-xs text-text-muted">ไม่สร้างแถว Program ให้โดยอัตโนมัติ</p>
+          </div>
+          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+            <dt className="text-sm text-text-muted">DM / Pre-DM</dt>
+            <dd className="mt-1 font-semibold text-text">ยังสรุปไม่ได้</dd>
+            <p className="mt-1 text-xs text-text-muted">ไม่มีนิยามและตัวหารที่ได้รับรองสำหรับรายงานนี้</p>
+          </div>
+        </dl>
+      </section>
+
+      <div className="mt-6 max-w-full overflow-x-auto pb-1">
+        <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={setView} value={view} />
+      </div>
+
+      <section aria-labelledby={view === "overview" ? "overview-heading" : "service-heading"} className="mt-5">
+        <div className="mb-4">
+          <h2 className="text-2xl font-semibold text-text" id={view === "overview" ? "overview-heading" : "service-heading"}>
+            {view === "overview" ? "Dashboard ภาพรวม" : "รายงานการจัดบริการ"}
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
+            {view === "overview"
+              ? "แต่ละบัตรแทน PatientProgram หนึ่งรายการ Patient คนเดียวอาจมีหลาย Program; ค่าที่ไม่พร้อมใช้จะแสดงตามข้อจำกัดของแหล่งข้อมูล"
+              : "ตรวจการมีบันทึกของแต่ละบริการ เป้าหมายที่ตั้งไว้ และความคืบหน้าที่บันทึกไว้ โดยการมีบันทึกไม่ยืนยันว่าบริการส่งมอบหรือเกิดผลสำเร็จ"}
+          </p>
+        </div>
+
+        {view === "service" ? <Alert className="mb-4" variant="info">Goal Plan คือเป้าหมายที่บันทึก ส่วนสถานะ Follow-up เป็นข้อมูลที่บันทึกไว้ ไม่ใช่คะแนนผลสำเร็จหรือผลลัพธ์ทางคลินิก</Alert> : null}
+
+        {page.page.items.length === 0 && page.counts.programs.total === 0 ? (
+          <Panel>
+            <h3 className="font-semibold text-text">ยังไม่มี Program ที่รายงานได้</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
+              {page.counts.patientHospitalRelationships.value === 0
+                ? "ยังไม่มี Patient-Hospital relationship ในโรงพยาบาลนี้"
+                : `มี ${page.counts.relationshipsWithoutProgram.value.toLocaleString("th-TH")} relationship ที่ยังไม่มี Program จึงไม่มีแถว Program ให้แสดง`}
+            </p>
+          </Panel>
+        ) : page.page.items.length === 0 ? (
+          <Panel>
+            <h3 className="font-semibold text-text">ไม่มี Program ในหน้านี้</h3>
+            <p className="mt-2 text-sm leading-6 text-text-muted">ยังมี Program {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ โปรดกลับไปหน้าแรกของรายงาน</p>
+            <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`}>กลับไปหน้าแรก</Link>
+          </Panel>
+        ) : (
+          <div className="grid min-w-0 gap-4">
+            {page.page.items.map((program) => view === "overview"
+              ? <ProgramOverview key={program.patientProgramId} program={program} />
+              : <ServiceProgram key={program.patientProgramId} program={program} />)}
+          </div>
+        )}
+      </section>
+
+      {page.counts.programs.total > 0 ? <p className="mt-4 text-sm text-text-muted">แสดง {page.page.items.length.toLocaleString("th-TH")} รายการในหน้านี้ จากทั้งหมด {page.counts.programs.total.toLocaleString("th-TH")} Program</p> : null}
+
+      {page.page.nextCursor ? (
+        <nav aria-label="หน้ารายการ Program ของรายงานโรงพยาบาล" className="mt-5 flex justify-end">
+          <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} rel="next">ดู Program ถัดไป</Link>
+        </nav>
+      ) : null}
+      <p className="mt-4 text-xs leading-5 text-text-muted">การมอบหมาย อสม. เป็นการมอบหมายปัจจุบันของ relationship เท่านั้น และไม่แสดงผู้ดูแลย้อนหลังของบริการ</p>
+    </div>
+  );
+}
