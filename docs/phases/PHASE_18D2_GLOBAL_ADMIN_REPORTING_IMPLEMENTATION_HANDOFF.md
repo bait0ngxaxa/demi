@@ -6,6 +6,7 @@
 
 - Repository: `bait0ngxaxa/demi`, branch `main`.
 - Starting HEAD for this hosting-agnostic correction: `46134a395201558dcac114ffe5c629725be34825`.
+- Runtime correction commit: `bebf2684fae0bd1684327d1e12e1987c5ad4273e`.
 - Earlier Reporting Configuration Simplification baseline: `a3e7c7d0643c5d44cd1426ce5269e0f439b8920b`.
 - Hospital OWNER route: `/app/hospitals/reporting`; existing exact-Hospital Dashboard, Service Process report, direct-owned-Hospital selector, and two-sheet XLSX remain intact.
 - Global ADMIN route: `/app/admin/reporting`; the directory, Thai name/code search, status filtering, main/subordinate grouping, selected-Hospital Dashboard, Service Process report, and one-Hospital XLSX remain intact.
