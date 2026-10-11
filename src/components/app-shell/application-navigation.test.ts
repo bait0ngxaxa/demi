@@ -82,24 +82,24 @@ describe("application navigation projection", () => {
   it("shows Hospital reporting only for an enabled direct active Hospital Owner", () => {
     const previousEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
     const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+    const previousVercelEnv = process.env.VERCEL_ENV;
     process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
     delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
 
     try {
-      const ownerLabels = navigationLabels(
-        actor({
-          roles: [Role.HOSPITAL],
-          hospitalMemberships: [
-            {
-              hospitalId,
-              membershipType: MembershipType.OWNER,
-              profession: null,
-              status: MembershipStatus.ACTIVE,
-              hospitalStatus: HospitalStatus.ACTIVE,
-            },
-          ],
-        }),
-      );
+      const ownerActor = actor({
+        roles: [Role.HOSPITAL],
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.OWNER,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      });
+      const ownerLabels = navigationLabels(ownerActor);
       const memberLabels = navigationLabels(
         actor({
           roles: [Role.HOSPITAL],
@@ -134,6 +134,12 @@ describe("application navigation projection", () => {
           }),
         ),
       ).not.toContain("รายงานโรงพยาบาล");
+
+      process.env.VERCEL_ENV = "preview";
+      expect(navigationLabels(ownerActor)).toContain("รายงานโรงพยาบาล");
+
+      process.env.VERCEL_ENV = "production";
+      expect(navigationLabels(ownerActor)).not.toContain("รายงานโรงพยาบาล");
     } finally {
       if (previousEnabled === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
       else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousEnabled;
@@ -142,6 +148,8 @@ describe("application navigation projection", () => {
       } else {
         process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
       }
+      if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = previousVercelEnv;
     }
   });
 

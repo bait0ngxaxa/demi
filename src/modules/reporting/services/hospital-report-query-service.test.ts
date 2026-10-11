@@ -5,11 +5,12 @@ import {
   MembershipType,
   PatientProgramStatus,
   Role,
+  type PrismaClient,
 } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const mockedResolveAccess = vi.hoisted(() => vi.fn());
 vi.mock("./hospital-report-access-service", () => ({
@@ -20,7 +21,6 @@ import {
   HospitalReportExportLimitError,
   getHospitalReportingPage,
   hospitalReportQueryInternals,
-  type HospitalReportQueryDatabase,
 } from "./hospital-report-query-service";
 
 const hospitalAId = "11111111-1111-4111-8111-111111111111";
@@ -28,7 +28,11 @@ const relationshipId = "22222222-2222-4222-8222-222222222222";
 const actorUserId = "33333333-3333-4333-8333-333333333333";
 const programA1Id = "44444444-4444-4444-8444-444444444444";
 const programA2Id = "55555555-5555-4555-8555-555555555555";
+const programA3Id = "88888888-8888-4888-8888-000000000003";
+const actorBUserId = "99999999-9999-4999-8999-999999999999";
+const hospitalBId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const startedAt = new Date("2026-08-17T05:00:00.000Z");
+const cursorSecret = "synthetic-hospital-reporting-cursor-secret";
 
 const actor: ActorContext = {
   userId: actorUserId,
@@ -48,6 +52,26 @@ const access = {
   actor,
   hospital: { id: hospitalAId, hospitalCode: "DEMO-A", name: "โรงพยาบาล ก", status: HospitalStatus.ACTIVE },
 };
+const actorB: ActorContext = { ...actor, userId: actorBUserId };
+const accessForActorB = { actor: actorB, hospital: access.hospital };
+const actorWithBothHospitals: ActorContext = {
+  ...actorB,
+  hospitalMemberships: [
+    ...actorB.hospitalMemberships,
+    {
+      hospitalId: hospitalBId,
+      membershipType: MembershipType.OWNER,
+      profession: null,
+      status: MembershipStatus.ACTIVE,
+      hospitalStatus: HospitalStatus.ACTIVE,
+    },
+  ],
+};
+const accessForBothHospitalsA = { actor: actorWithBothHospitals, hospital: access.hospital };
+const accessForBothHospitalsB = {
+  actor: actorWithBothHospitals,
+  hospital: { id: hospitalBId, hospitalCode: "DEMO-B", name: "โรงพยาบาล ข", status: HospitalStatus.ACTIVE },
+};
 
 function followupRecord(roundNumber: number): Record<string, unknown> {
   return {
@@ -59,7 +83,8 @@ function followupRecord(roundNumber: number): Record<string, unknown> {
     systolicBloodPressure: 0,
     diastolicBloodPressure: null,
     bloodSugar: roundNumber,
-    activityProgress: [{ goalActivityCode: "walk", status: FollowupActivityProgressStatus.PARTIAL }],
+    sourceGoalPlan: { templateKey: "demi-goals", templateVersion: "legacy-prototype-v1" },
+    activityProgress: [{ goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.PARTIAL }],
   };
 }
 
@@ -109,7 +134,7 @@ function createDatabase(input: {
   relationshipsWithoutProgram?: number;
   followupCount?: number;
   goalPlanCount?: number;
-} = {}): HospitalReportQueryDatabase & {
+} = {}): PrismaClient & {
   patientProgram: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
   patientHospitalRelationship: { count: ReturnType<typeof vi.fn> };
   patientGoalPlan: { groupBy: ReturnType<typeof vi.fn> };
@@ -139,13 +164,19 @@ function createDatabase(input: {
       ),
     },
   };
-  return database as unknown as HospitalReportQueryDatabase & typeof database;
+  return database as unknown as PrismaClient & typeof database;
 }
 
 describe("Hospital reporting query service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("DEMI_HOSPITAL_REPORTING_CURSOR_SECRET", cursorSecret);
     mockedResolveAccess.mockResolvedValue(access);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
 
   it("uses an exact Hospital predicate and keeps separate Program rows under one relationship", async () => {
@@ -181,6 +212,7 @@ describe("Hospital reporting query service", () => {
     expect(result.page.items[1]?.finalAssessment).toEqual({ state: "MISSING" });
     expect(result.page.items[1]?.goalPlans).toMatchObject({ totalCount: 0, items: [], hasMore: false });
     expect(result.page.items[1]?.followups).toMatchObject({ totalCount: 0, items: [], hasMore: false });
+    expect(result.page.items[0]?.followups.items[0]?.activityProgress[0]?.activityLabel).toBe("เดินออกกำลังกาย");
     expect(database.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
@@ -216,6 +248,174 @@ describe("Hospital reporting query service", () => {
       orderBy: [{ startedAt: "desc" }, { id: "desc" }],
       select: { followups: { take: 6 }, goalPlans: { take: 3 } },
     });
+  });
+
+  it("continues with a valid signed cursor using the same Hospital, actor, page size, and ordering", async () => {
+    const firstDatabase = createDatabase({
+      programs: [
+        programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }),
+        programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE }),
+      ],
+    });
+    const firstPage = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database: firstDatabase });
+    const cursor = firstPage.page.nextCursor;
+    expect(cursor).toBeTruthy();
+
+    const secondDatabase = createDatabase({
+      programs: [programRecord({ id: programA3Id, status: PatientProgramStatus.COMPLETED })],
+    });
+    const secondPage = await getHospitalReportingPage(
+      actor,
+      { hospitalId: hospitalAId, pageSize: 1, cursor: cursor ?? undefined },
+      { database: secondDatabase },
+    );
+
+    expect(secondPage.page.items.map(({ patientProgramId }) => patientProgramId)).toEqual([programA3Id]);
+    expect(secondDatabase.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
+        OR: [
+          { startedAt: { lt: startedAt } },
+          { startedAt, id: { lt: programA1Id } },
+        ],
+      }),
+      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+    }));
+  });
+
+  it("rejects a cursor with a changed signature", async () => {
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }), programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE })],
+    });
+    const firstPage = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    const cursor = firstPage.page.nextCursor;
+    if (!cursor) throw new Error("Expected a continuation cursor");
+    const [payload, signature] = cursor.split(".");
+    if (!payload || !signature) throw new Error("Expected a signed cursor format");
+    const alteredSignature = `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}`;
+
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor: `${payload}.${alteredSignature}`,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("rejects a non-canonical base64url signature", async () => {
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }), programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE })],
+    });
+    const firstPage = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    const cursor = firstPage.page.nextCursor;
+    if (!cursor) throw new Error("Expected a continuation cursor");
+    const [payload, signature] = cursor.split(".");
+    if (!payload || !signature) throw new Error("Expected a signed cursor format");
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const finalCharacter = signature.at(-1);
+    if (!finalCharacter) throw new Error("Expected a cursor signature");
+    const finalIndex = alphabet.indexOf(finalCharacter);
+    const nonCanonicalCharacter = alphabet[(finalIndex & ~3) | ((finalIndex + 1) & 3)];
+    if (!nonCanonicalCharacter) throw new Error("Expected a base64url character");
+
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor: `${payload}.${signature.slice(0, -1)}${nonCanonicalCharacter}`,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("rejects cursors issued for a different Hospital, actor, or page size", async () => {
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }), programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE })],
+    });
+    mockedResolveAccess.mockResolvedValue(accessForBothHospitalsA);
+    const multiHospitalFirstPage = await getHospitalReportingPage(actorWithBothHospitals, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+    }, { database });
+    const multiHospitalCursor = multiHospitalFirstPage.page.nextCursor;
+    if (!multiHospitalCursor) throw new Error("Expected a continuation cursor");
+
+    mockedResolveAccess.mockResolvedValue(accessForBothHospitalsB);
+    await expect(getHospitalReportingPage(actorWithBothHospitals, {
+      hospitalId: hospitalBId,
+      pageSize: 1,
+      cursor: multiHospitalCursor,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+
+    mockedResolveAccess.mockResolvedValue(access);
+    const firstPage = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    const cursor = firstPage.page.nextCursor;
+    if (!cursor) throw new Error("Expected a continuation cursor");
+
+    mockedResolveAccess.mockResolvedValue(accessForActorB);
+    await expect(getHospitalReportingPage(actorB, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+
+    mockedResolveAccess.mockResolvedValue(access);
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId,
+      pageSize: 2,
+      cursor,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("rejects expired and malformed cursors", async () => {
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }), programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE })],
+    });
+    const firstPage = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    const cursor = firstPage.page.nextCursor;
+    if (!cursor) throw new Error("Expected a continuation cursor");
+
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 16 * 60 * 1000);
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+    vi.restoreAllMocks();
+
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor: "not-a-signed-cursor",
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("does not release an assembled projection when authority is revoked before final validation", async () => {
+    const database = createDatabase({ programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })] });
+    const events: string[] = [];
+    database.patientProgram.findMany.mockImplementation(async () => {
+      events.push("projection-collected");
+      return [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })];
+    });
+    mockedResolveAccess
+      .mockImplementationOnce(async () => {
+        events.push("initial-authorization");
+        return access;
+      })
+      .mockImplementationOnce(async () => {
+        events.push("final-authorization");
+        throw new NotFoundError();
+      });
+
+    await expect(getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database }))
+      .rejects.toBeInstanceOf(NotFoundError);
+    expect(events).toEqual(["initial-authorization", "projection-collected", "final-authorization"]);
+  });
+
+  it("fails safely when signing is required but the server secret is unavailable", async () => {
+    vi.stubEnv("DEMI_HOSPITAL_REPORTING_CURSOR_SECRET", "");
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }), programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE })],
+    });
+
+    await expect(getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database }))
+      .rejects.toBeInstanceOf(InfrastructureError);
   });
 
   it("turns database failures into a safe infrastructure error", async () => {

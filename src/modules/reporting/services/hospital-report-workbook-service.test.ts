@@ -32,6 +32,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     },
     activityProgress: [{
       activityCode: "walk",
+      activityLabel: "เดินออกกำลังกาย",
       status: "PARTIAL" as const,
     }],
   }));

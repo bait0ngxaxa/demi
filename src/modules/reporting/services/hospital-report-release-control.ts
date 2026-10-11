@@ -8,8 +8,17 @@ export function isHospitalReportingEnabled(
     return false;
   }
 
-  return (
-    environment.NODE_ENV !== "production" ||
-    environment[HOSPITAL_REPORTING_PRODUCTION_APPROVED_ENV] === "true"
-  );
+  const deploymentEnvironment = environment.VERCEL_ENV;
+  const isProduction = deploymentEnvironment === "production" ||
+    (deploymentEnvironment === undefined && environment.NODE_ENV === "production");
+
+  if (isProduction) {
+    return environment[HOSPITAL_REPORTING_PRODUCTION_APPROVED_ENV] === "true";
+  }
+
+  if (deploymentEnvironment !== undefined) {
+    return deploymentEnvironment === "preview" || deploymentEnvironment === "development";
+  }
+
+  return environment.NODE_ENV === "development" || environment.NODE_ENV === "test";
 }

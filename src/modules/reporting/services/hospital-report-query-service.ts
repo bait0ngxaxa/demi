@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Buffer } from "node:buffer";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   PatientProgramStatus,
   Prisma,
@@ -49,17 +50,24 @@ export const HOSPITAL_REPORT_EXPORT_MAX_FOLLOWUPS = 10_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_GOAL_PLANS = 5_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_ACTIVITY_PROGRESS = 50_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_GOAL_ITEMS = 20_000;
+export const HOSPITAL_REPORTING_CURSOR_SECRET_ENV = "DEMI_HOSPITAL_REPORTING_CURSOR_SECRET";
 
 const REPORT_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
   maxWait: 5_000,
   timeout: 25_000,
 } as const;
+const REPORT_CURSOR_VERSION = 1;
+const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
+const REPORT_CURSOR_ORDERING = "startedAt:desc,id:desc";
+const REPORT_CURSOR_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+const REPORT_CURSOR_PAYLOAD_PATTERN = /^[A-Za-z0-9_-]+$/u;
+const REPORT_CURSOR_SECRET_MIN_BYTES = 32;
 
 export type HospitalReportQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
 export type HospitalReportQueryDependencies = {
-  database?: HospitalReportQueryDatabase;
+  database?: PrismaClient;
 };
 
 export class HospitalReportExportLimitError extends ApplicationError {
@@ -70,11 +78,21 @@ export class HospitalReportExportLimitError extends ApplicationError {
 }
 
 type ReportCursor = { startedAt: Date; id: string };
+type ReportCursorContext = { actorId: string; hospitalId: string; pageSize: number };
 
 const cursorPayloadSchema = z
   .object({
+    version: z.literal(REPORT_CURSOR_VERSION),
+    context: z.object({
+      actorId: z.string().uuid().transform((value) => value.toLowerCase()),
+      hospitalId: z.string().uuid().transform((value) => value.toLowerCase()),
+      pageSize: z.number().int().min(1).max(HOSPITAL_REPORT_MAX_PAGE_SIZE),
+      ordering: z.literal(REPORT_CURSOR_ORDERING),
+    }).strict(),
     startedAt: z.string().datetime({ offset: true }),
-    id: z.string().uuid(),
+    id: z.string().uuid().transform((value) => value.toLowerCase()),
+    issuedAt: z.number().int().nonnegative(),
+    expiresAt: z.number().int().positive(),
   })
   .strict();
 
@@ -164,6 +182,7 @@ const reportProgramFollowupSelect = {
     systolicBloodPressure: true,
     diastolicBloodPressure: true,
     bloodSugar: true,
+    sourceGoalPlan: { select: { templateKey: true, templateVersion: true } },
     activityProgress: {
       orderBy: [{ goalActivityCode: "asc" }, { id: "asc" }],
       select: { goalActivityCode: true, status: true },
@@ -220,22 +239,84 @@ type HospitalReportExportProgramRecord = Prisma.PatientProgramGetPayload<{
   select: typeof hospitalReportExportProgramSelect;
 }>;
 
-function encodeCursor(record: { startedAt: Date; id: string }): string {
-  return Buffer.from(
-    JSON.stringify({ startedAt: record.startedAt.toISOString(), id: record.id }),
-    "utf8",
-  ).toString("base64url");
+function getCursorSigningSecret(): string {
+  const secret = process.env[HOSPITAL_REPORTING_CURSOR_SECRET_ENV];
+  if (!secret || Buffer.byteLength(secret, "utf8") < REPORT_CURSOR_SECRET_MIN_BYTES) {
+    throw new InfrastructureError("Hospital reporting cursor signing is not configured");
+  }
+  return secret;
 }
 
-function decodeCursor(value: string | undefined): ReportCursor | null {
+function encodeCursor(record: { startedAt: Date; id: string }, context: ReportCursorContext): string {
+  const issuedAt = Date.now();
+  const payload = Buffer.from(JSON.stringify({
+    version: REPORT_CURSOR_VERSION,
+    context: {
+      actorId: context.actorId.toLowerCase(),
+      hospitalId: context.hospitalId.toLowerCase(),
+      pageSize: context.pageSize,
+      ordering: REPORT_CURSOR_ORDERING,
+    },
+    startedAt: record.startedAt.toISOString(),
+    id: record.id.toLowerCase(),
+    issuedAt,
+    expiresAt: issuedAt + REPORT_CURSOR_TTL_MS,
+  }), "utf8").toString("base64url");
+  const signature = createHmac("sha256", getCursorSigningSecret()).update(payload, "utf8").digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function decodeCursor(value: string | undefined, context: ReportCursorContext): ReportCursor | null {
   if (!value) return null;
 
   try {
-    const decoded: unknown = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    const [encodedPayload, suppliedSignature, extra] = value.split(".");
+    if (
+      value.length > 512 ||
+      extra !== undefined ||
+      !encodedPayload ||
+      !suppliedSignature ||
+      !REPORT_CURSOR_PAYLOAD_PATTERN.test(encodedPayload) ||
+      !REPORT_CURSOR_SIGNATURE_PATTERN.test(suppliedSignature)
+    ) {
+      throw new Error("Malformed reporting cursor");
+    }
+
+    const payloadBytes = Buffer.from(encodedPayload, "base64url");
+    if (payloadBytes.toString("base64url") !== encodedPayload) throw new Error("Malformed reporting cursor");
+
+    const expectedSignature = createHmac("sha256", getCursorSigningSecret())
+      .update(encodedPayload, "utf8")
+      .digest();
+    const actualSignature = Buffer.from(suppliedSignature, "base64url");
+    if (
+      actualSignature.length !== expectedSignature.length ||
+      actualSignature.toString("base64url") !== suppliedSignature ||
+      !timingSafeEqual(actualSignature, expectedSignature)
+    ) {
+      throw new Error("Invalid reporting cursor signature");
+    }
+
+    const decoded: unknown = JSON.parse(payloadBytes.toString("utf8"));
     const parsed = cursorPayloadSchema.safeParse(decoded);
     if (!parsed.success) throw new Error("Invalid reporting cursor");
-    return { startedAt: new Date(parsed.data.startedAt), id: parsed.data.id.toLowerCase() };
-  } catch {
+    const now = Date.now();
+    const { data } = parsed;
+    if (
+      data.context.actorId !== context.actorId.toLowerCase() ||
+      data.context.hospitalId !== context.hospitalId.toLowerCase() ||
+      data.context.pageSize !== context.pageSize ||
+      data.context.ordering !== REPORT_CURSOR_ORDERING ||
+      data.expiresAt <= now ||
+      data.issuedAt > now + 30_000 ||
+      data.expiresAt <= data.issuedAt ||
+      data.expiresAt - data.issuedAt > REPORT_CURSOR_TTL_MS
+    ) {
+      throw new Error("Reporting cursor context or expiry is invalid");
+    }
+    return { startedAt: new Date(data.startedAt), id: data.id };
+  } catch (error: unknown) {
+    if (error instanceof InfrastructureError) throw error;
     throw new NotFoundError();
   }
 }
@@ -329,8 +410,12 @@ function toFollowup(record: {
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
+  sourceGoalPlan: { templateKey: string; templateVersion: string } | null;
   activityProgress: readonly { goalActivityCode: string; status: HospitalReportFollowup["activityProgress"][number]["status"] }[];
 }): HospitalReportFollowup {
+  const template = record.sourceGoalPlan
+    ? getGoalTemplate(record.sourceGoalPlan.templateKey, record.sourceGoalPlan.templateVersion)
+    : null;
   return {
     id: record.id,
     roundNumber: record.roundNumber,
@@ -338,6 +423,8 @@ function toFollowup(record: {
     measurements: toMeasurementSet(record),
     activityProgress: record.activityProgress.map((item) => ({
       activityCode: item.goalActivityCode,
+      activityLabel: template?.activities.find((activity) => activity.code === item.goalActivityCode)?.label
+        ?? "กิจกรรมที่บันทึก",
       status: item.status,
     })),
   };
@@ -539,7 +626,11 @@ async function loadHospitalReportingPage(
   });
 
   const pageSize = request.pageSize ?? HOSPITAL_REPORT_DEFAULT_PAGE_SIZE;
-  const cursor = decodeCursor(request.cursor);
+  const cursor = decodeCursor(request.cursor, {
+    actorId: access.actor.userId,
+    hospitalId: access.hospital.id,
+    pageSize,
+  });
   const where: Prisma.PatientProgramWhereInput = {
     ...reportHospitalProgramWhere(access.hospital.id),
     ...reportCursorWhere(cursor),
@@ -575,7 +666,11 @@ async function loadHospitalReportingPage(
     page: {
       items,
       pageSize,
-      nextCursor: hasMore && lastRecord ? encodeCursor(lastRecord) : null,
+      nextCursor: hasMore && lastRecord ? encodeCursor(lastRecord, {
+        actorId: access.actor.userId,
+        hospitalId: access.hospital.id,
+        pageSize,
+      }) : null,
     },
   };
 }
@@ -589,9 +684,17 @@ export async function getHospitalReportingPage(
   if (!parsed.success) throw new NotFoundError();
 
   try {
-    return await runConsistentRead(dependencies.database, (transaction) =>
+    const database = dependencies.database ?? getPrisma();
+    const projection = await runConsistentRead(database, (transaction) =>
       loadHospitalReportingPage(actor, parsed.data, transaction),
     );
+    await resolveHospitalReportingAccessContext(
+      actor,
+      parsed.data.hospitalId,
+      HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
+      database,
+    );
+    return projection;
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
     throw new InfrastructureError("Hospital reporting data could not be loaded");
@@ -723,8 +826,6 @@ export const hospitalReportQueryInternals = {
   assertExportBounds,
   countExportSourceRows,
   countProgramRelatedRows,
-  decodeCursor,
-  encodeCursor,
   reportCursorWhere,
   reportHospitalProgramWhere,
   toFact,

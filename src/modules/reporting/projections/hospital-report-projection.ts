@@ -42,6 +42,7 @@ export type HospitalReportFollowup = {
   measurements: HospitalReportMeasurementSet;
   activityProgress: readonly {
     activityCode: string;
+    activityLabel: string;
     status: FollowupActivityProgressStatus;
   }[];
 };

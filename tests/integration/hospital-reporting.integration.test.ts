@@ -9,6 +9,7 @@ import {
   Prisma,
   Role,
   UserStatus,
+  type PrismaClient,
 } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -19,13 +20,13 @@ import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/ho
 import {
   getHospitalReportingDatasetForExport,
   getHospitalReportingPage,
-  type HospitalReportQueryDatabase,
 } from "@/modules/reporting/services/hospital-report-query-service";
 import { NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 const previousReportingEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
 const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+const previousCursorSecret = process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
 
 type Fixture = {
   hospitalIds: string[];
@@ -279,7 +280,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 function repeatableReadAdapter(
   onProgramCount: () => Promise<void>,
   observedOptions: { value: unknown },
-): HospitalReportQueryDatabase {
+): PrismaClient {
   const adapter = {
     $transaction<T>(
       operation: (transaction: Prisma.TransactionClient) => Promise<T>,
@@ -315,13 +316,61 @@ function repeatableReadAdapter(
       }, options);
     },
   };
-  return adapter as unknown as HospitalReportQueryDatabase;
+  return adapter as unknown as PrismaClient;
+}
+
+function dashboardReadWithMembershipRevocationAfterProgramLoad(
+  userId: string,
+  hospitalId: string,
+): PrismaClient {
+  let revoked = false;
+  return new Proxy(prisma, {
+    get(target, property) {
+      if (property === "$transaction") {
+        return <T>(
+          operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+          options: { isolationLevel?: Prisma.TransactionIsolationLevel; maxWait?: number; timeout?: number },
+        ): Promise<T> => target.$transaction(async (transaction) => {
+          const programDelegate = new Proxy(transaction.patientProgram, {
+            get(delegate, delegateProperty) {
+              if (delegateProperty === "findMany") {
+                return async (...args: Parameters<typeof delegate.findMany>) => {
+                  const records = await delegate.findMany(...args);
+                  if (!revoked) {
+                    revoked = true;
+                    await prisma.hospitalMembership.update({
+                      where: { userId_hospitalId: { userId, hospitalId } },
+                      data: { status: MembershipStatus.SUSPENDED },
+                    });
+                  }
+                  return records;
+                };
+              }
+              const value: unknown = Reflect.get(delegate, delegateProperty, delegate);
+              return typeof value === "function" ? value.bind(delegate) : value;
+            },
+          });
+          const transactionView = new Proxy(transaction, {
+            get(transactionTarget, transactionProperty) {
+              if (transactionProperty === "patientProgram") return programDelegate;
+              const value: unknown = Reflect.get(transactionTarget, transactionProperty, transactionTarget);
+              return typeof value === "function" ? value.bind(transactionTarget) : value;
+            },
+          });
+          return operation(transactionView);
+        }, options);
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
   beforeAll(async () => {
     process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
     delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+    process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = "synthetic-hospital-reporting-integration-secret";
     await prisma.$connect();
   });
 
@@ -335,6 +384,8 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousReportingEnabled;
     if (previousProductionApproval === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
     else process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
+    if (previousCursorSecret === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
+    else process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = previousCursorSecret;
     await prisma.$disconnect();
   });
 
@@ -469,6 +520,11 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       where: { userId_hospitalId: { userId: ownerA.userId, hospitalId: hospitalA.id } },
       data: { status: MembershipStatus.SUSPENDED },
     });
+    await expect(getHospitalReportingPage(ownerA.actor, {
+      hospitalId: hospitalA.id,
+      cursor: firstPage.page.nextCursor ?? undefined,
+      pageSize: 1,
+    })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingPage(ownerA.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingDatasetForExport(ownerA.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
   });
@@ -523,5 +579,29 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     expect(snapshot.programs).toHaveLength(1);
     expect(snapshot.programs.some(({ patientProgramId }) => patientProgramId === concurrentProgram.id)).toBe(false);
     expect(await prisma.patientProgram.count({ where: { patientHospitalRelationshipId: relationship.id } })).toBe(2);
+  });
+
+  it("withholds the finalized Dashboard projection when membership is revoked after Program data is read", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const hospital = await createHospital(fixture, { name: "โรงพยาบาลเพิกถอนสิทธิ์" });
+    const owner = await createActor(fixture, { role: Role.HOSPITAL, hospital });
+    const profile = await createPatientProfile(fixture, "ข้อมูลสังเคราะห์สำหรับทดสอบการเพิกถอน");
+    const relationship = await createRelationship(fixture, profile.id, hospital.id, "REVOKE-01");
+    await createProgram(fixture, {
+      relationshipId: relationship.id,
+      createdByUserId: owner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+
+    await expect(getHospitalReportingPage(
+      owner.actor,
+      { hospitalId: hospital.id },
+      { database: dashboardReadWithMembershipRevocationAfterProgramLoad(owner.userId, hospital.id) },
+    )).rejects.toBeInstanceOf(NotFoundError);
+    await expect(prisma.hospitalMembership.findUnique({
+      where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
+      select: { status: true },
+    })).resolves.toMatchObject({ status: MembershipStatus.SUSPENDED });
   });
 });

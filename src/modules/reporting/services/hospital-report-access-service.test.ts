@@ -75,6 +75,16 @@ describe("Hospital reporting access service", () => {
     }
   });
 
+  it("returns a not-found response when reporting is disabled before querying Hospital authority", async () => {
+    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "false";
+    const { database: db, findFirst } = database();
+
+    await expect(
+      resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, db),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
   it("rechecks ACTIVE user, HOSPITAL role, direct OWNER membership, and ACTIVE Hospital in the database", async () => {
     const { database: db, findFirst } = database();
 

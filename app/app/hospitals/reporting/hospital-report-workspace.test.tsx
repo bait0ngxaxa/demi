@@ -92,7 +92,7 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
           systolicBloodPressure: { state: "NOT_RECORDED" },
           diastolicBloodPressure: { state: "NOT_RECORDED" },
         },
-        activityProgress: [{ activityCode: "walk", status: "PARTIAL" }],
+        activityProgress: [{ activityCode: "walk", activityLabel: "เดินออกกำลังกาย", status: "PARTIAL" }],
       }],
     },
     finalAssessment: { state: "MISSING" },
@@ -154,30 +154,35 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("Dashboard ภาพรวม");
     expect(markup).toContain("รายงานการจัดบริการ");
     expect(markup).toContain("ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล");
-    expect(markup).toContain("Relationship ที่ยังไม่มี Program");
+    expect(markup).toContain("ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program");
     expect(markup).toContain("ยังสรุปไม่ได้");
-    expect(markup).toContain("Before · Baseline");
-    expect(markup).toContain("ระหว่าง Program · Follow-up");
-    expect(markup).toContain("After · Final Assessment");
+    expect(markup).toContain("ก่อนเริ่ม · ข้อมูลตั้งต้น");
+    expect(markup).toContain("ระหว่าง Program · การติดตามผล");
+    expect(markup).toContain("หลัง Program · การประเมินครั้งสุดท้าย");
     expect(markup).toContain("ยังไม่บันทึก");
     expect(markup).toContain("HbA1c: มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง");
     expect(markup).toContain("0 กก.");
-    expect(markup.match(/Program ID:/gu)).toHaveLength(2);
+    expect(markup.match(/รหัสผู้ป่วยในโรงพยาบาล/gu)).toHaveLength(2);
+    expect(markup).not.toContain("Program ID:");
+    expect(markup).not.toContain("Illness duration:");
     expect(markup).toContain("/app/patients/22222222-2222-4222-8222-222222222222/programs/33333333-3333-4333-8333-333333333333/report");
+    const visibleText = markup.replace(/<[^>]*>/gu, "");
+    expect(visibleText).not.toContain("33333333-3333-4333-8333-333333333333");
+    expect(visibleText).not.toContain("walk");
     expect(markup).not.toContain("<table");
   });
 
   it("shows service presence, recorded targets and all progress facts without claiming delivery or success", () => {
     const markup = render("service", [program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)]);
 
-    expect(markup).toContain("Service 1 · รู้จักตัวเอง");
-    expect(markup).toContain("Service 2 · ทำแผนสุขภาพ / Goal Plan");
-    expect(markup).toContain("Service 3 เป็นต้นไป · Follow-up และความคืบหน้า");
+    expect(markup).toContain("บริการ 1 · รู้จักตัวเอง");
+    expect(markup).toContain("บริการ 2 · ทำแผนสุขภาพ");
+    expect(markup).toContain("บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า");
     expect(markup).toContain("มีบันทึก");
     expect(markup).toContain("ไม่มีบันทึกใน Program นี้");
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
-    expect(markup).toContain("PAM / PROMs: ข้อมูลที่มีไม่ได้ผูกกับ Program นี้ /");
+    expect(markup).toContain("แบบประเมิน PAM / PROMs: ข้อมูลที่มีไม่ได้ผูกกับ Program นี้ /");
     expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ยังไม่มีสูตรคำนวณที่ได้รับรอง");
     expect(markup).toContain("ครั้งที่ 1");
     expect(markup).toContain("บันทึกว่าทำได้บางส่วน");
@@ -189,7 +194,7 @@ describe("Hospital reporting dashboard presentation", () => {
   it("does not create a fake Program row when only a relationship without a Program exists", () => {
     const markup = render("overview", [], 0);
     expect(markup).toContain("ยังไม่มี Program ที่รายงานได้");
-    expect(markup).toContain("1 relationship ที่ยังไม่มี Program");
+    expect(markup).toContain("มีความสัมพันธ์ผู้ป่วย 1 รายที่ยังไม่มี Program");
     expect(markup).not.toContain("Program ID:");
   });
 
