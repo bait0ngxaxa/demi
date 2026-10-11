@@ -1,6 +1,6 @@
 # Phase 18D.1 — Hospital Reporting Implementation Handoff
 
-**Status: CODE HARDENING COMPLETE / DEMO ACCESS NOT VERIFIED.** The Hospital OWNER reporting runtime and this hardening are implemented and committed. No production rollout or real Patient-data query was performed.
+**Status: CODE HARDENING COMPLETE / UAT BROWSER FLOW UNVERIFIED.** The Hospital OWNER reporting runtime and this hardening are implemented and committed. No production rollout or real Patient-data query was performed.
 
 ## Delivery
 
@@ -17,9 +17,9 @@ The workbook contains exactly `Dashboard ภาพรวม` and `รายง�
 
 ## Feature availability and operator setup
 
-`DEMI_HOSPITAL_REPORTING_ENABLED=true` is required in every environment. Local development permits access with that explicit opt-in. Vercel Preview uses the server-provided `VERCEL_ENV=preview` indicator documented in the [Vercel system environment variables](https://vercel.com/docs/environment-variables/system-environment-variables) reference and does not require the production-approval switch, even though Preview runs with `NODE_ENV=production`. Actual Production remains off unless both `DEMI_HOSPITAL_REPORTING_ENABLED=true` and `DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED=true` are explicitly set. Unknown deployment values fail closed. Navigation and route access use the same availability function; the flag never grants user authority.
+Reporting is available in local development and in the dedicated DEMI UAT Vercel project. The server identifies UAT using Vercel's system-provided `VERCEL_PROJECT_ID` (`prj_QXcjnZaz0tqiaEJdWSlzy4yuk49p`), not the deployment's `VERCEL_ENV`; this project may use `VERCEL_ENV=production`. Other Production projects and deployments without a verified identity fail closed. The project must expose Vercel system environment variables at runtime. This deployment boundary does not inspect or certify database contents; the UAT project must remain connected only to its separately isolated UAT database and authentication project.
 
-Pagination also requires the server-only `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET`, with at least 32 random bytes. For an isolated local demo, configure the opt-in and cursor secret in the local server environment, use an isolated synthetic database and auth project, and sign in as an ACTIVE Hospital OWNER. For an isolated Vercel Preview demo, set `DEMI_HOSPITAL_REPORTING_ENABLED=true` and the cursor secret only in the Preview environment, confirm its database and Supabase Auth project contain synthetic/demo accounts and records, then create a new Preview deployment or redeploy. Vercel applies environment-variable changes to new deployments; editing `.env.example` alone does not alter a running deployment. Do not use `NEXT_PUBLIC_*` for these controls. No Vercel environment was changed. Production access remains blocked unless both switches are explicitly configured true; this task granted no production approval or real-data release.
+The server-only `DEMI_HOSPITAL_REPORTING_CURSOR_SECRET`, with at least 32 random bytes, signs pagination cursors. Set it in the local server environment and dedicated UAT project when reports need continuation pages. Reporting availability no longer depends on a manual per-environment reporting toggle or a second production-approval switch. Hospital access still requires an ACTIVE user with `Role.HOSPITAL` and a direct ACTIVE OWNER membership in the exact ACTIVE Hospital. No Vercel environment, database credential, or production release setting was changed by this implementation.
 
 ## Access, consistency, and release control
 
@@ -41,6 +41,7 @@ The DTO distinguishes `RECORDED` (including numeric zero), `NOT_RECORDED`, `UNAV
 ## Verification
 
 - `npm run test -- app/app/hospitals/reporting/hospital-report-workspace.test.tsx app/api/v1/hospital/reporting/export/route.test.ts src/components/app-shell/application-navigation.test.ts src/modules/reporting/services/hospital-report-access-service.test.ts src/modules/reporting/services/hospital-report-query-service.test.ts src/modules/reporting/services/hospital-report-release-control.test.ts src/modules/reporting/services/hospital-report-workbook-service.test.ts src/modules/reporting/transport/hospital-report-page-context.test.ts` — **8 files, 59 tests passed**.
+- This is the original Phase 18D.1 verification record. Phase 18D.2 replaced the release-control service/test in that command with the trusted deployment-boundary check; current focused verification is recorded in the Phase 18D.2 handoff.
 - `npm run test -- app/app/hospitals/reporting/hospital-report-workspace.test.tsx` — **1 file, 4 tests passed** after the final UI wording assertion.
 - `npm run test:integration:focused -- tests/integration/hospital-reporting.integration.test.ts` — **1 file, 3 tests passed** against local synthetic PostgreSQL `demi_test` on loopback. It covers scoped denials, revocation on a subsequent cursor page, final Dashboard revalidation after membership suspension, exact-Program regression, source grain, seven Follow-ups, export workbook/audit, and a concurrent insert isolated by RepeatableRead.
 - `npm run typecheck` — passed.

@@ -25,11 +25,14 @@ import {
   resolveDirectChildFacilities,
   resolveHospitalNetworkScope,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
+import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import approvedSource from "../../prisma/seed/hospital-master-v2.json";
 
 const prisma = getPrisma();
-const previousReportingEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
+const previousReportingEnvironment = new Map(
+  ["VERCEL", "VERCEL_ENV", "VERCEL_PROJECT_ID"].map((key) => [key, process.env[key]]),
+);
 
 type Fixture = {
   hospitalCodes: string[];
@@ -174,7 +177,9 @@ function syntheticMaster(prefix: string): ReturnType<typeof validateHospitalMast
 }
 
 beforeAll(() => {
-  process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
+  process.env.VERCEL = "1";
+  process.env.VERCEL_ENV = "production";
+  process.env.VERCEL_PROJECT_ID = TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID;
 });
 
 afterEach(async () => {
@@ -183,10 +188,9 @@ afterEach(async () => {
 });
 
 afterAll(() => {
-  if (previousReportingEnabled === undefined) {
-    delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-  } else {
-    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousReportingEnabled;
+  for (const [key, value] of previousReportingEnvironment) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 });
 

@@ -13,15 +13,14 @@ export type GlobalReportingCapability =
   (typeof GLOBAL_REPORTING_CAPABILITIES)[keyof typeof GLOBAL_REPORTING_CAPABILITIES];
 
 export type GlobalReportingPolicyDecision =
-  | { allowed: true; reason: "eligible_synthetic_demo_admin" }
+  | { allowed: true; reason: "eligible_active_platform_admin" }
   | {
       allowed: false;
       reason:
         | "missing_actor"
         | "invalid_capability"
-        | "demo_access_disabled"
+        | "reporting_unavailable_in_deployment"
         | "active_admin_required"
-        | "explicit_demo_admin_required"
         | "invalid_target_hospital"
         | "active_hospital_required";
     };
@@ -38,8 +37,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 export function decideGlobalReportingPolicy(input: {
   actor: ActorContext | null | undefined;
   capability: unknown;
-  demoAccessEnabled: boolean;
-  demoAdminIdentityAllowed: boolean;
+  reportingAvailable: boolean;
   currentUserStatus: UserStatus | null;
   currentRoles: readonly Role[];
   targetHospitalId?: string;
@@ -54,8 +52,8 @@ export function decideGlobalReportingPolicy(input: {
     return { allowed: false, reason: "invalid_capability" };
   }
 
-  if (!input.demoAccessEnabled) {
-    return { allowed: false, reason: "demo_access_disabled" };
+  if (!input.reportingAvailable) {
+    return { allowed: false, reason: "reporting_unavailable_in_deployment" };
   }
 
   if (
@@ -63,10 +61,6 @@ export function decideGlobalReportingPolicy(input: {
     !input.currentRoles.includes(Role.ADMIN)
   ) {
     return { allowed: false, reason: "active_admin_required" };
-  }
-
-  if (!input.demoAdminIdentityAllowed) {
-    return { allowed: false, reason: "explicit_demo_admin_required" };
   }
 
   if (targetHospitalCapabilities.has(input.capability as GlobalReportingCapability)) {
@@ -78,7 +72,7 @@ export function decideGlobalReportingPolicy(input: {
     }
   }
 
-  return { allowed: true, reason: "eligible_synthetic_demo_admin" };
+  return { allowed: true, reason: "eligible_active_platform_admin" };
 }
 
 export const globalReportingPolicyInternals = {

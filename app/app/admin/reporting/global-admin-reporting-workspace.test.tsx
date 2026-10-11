@@ -74,9 +74,9 @@ describe("Global Admin reporting workspace", () => {
     expect(markup).toContain("โรงพยาบาลลูกข่าย");
     expect(markup).toContain("ค้นหาชื่อหรือรหัสโรงพยาบาล");
     expect(markup).toContain("สถานะโรงพยาบาล");
-    expect(markup).toContain("Network Aggregate Dashboard ยังไม่เปิด");
-    expect(markup).toContain("ไม่อนุญาต Network Export");
-    expect(markup).toContain("ส่งออกได้เฉพาะ Hospital ที่เลือก");
+    expect(markup).toContain("Patient/Program จะแสดงเฉพาะ Hospital นั้น ไม่รวมข้อมูลจากแม่ข่ายหรือลูกข่าย");
+    expect(markup).not.toContain("เปิดใช้เฉพาะ ADMIN");
+    expect(markup).not.toContain("สภาพแวดล้อม demo");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
     expect(markup).toContain("รพ.สต.ลูกข่ายทดสอบ");
     expect(markup).toContain("โรงพยาบาลเดี่ยวทดสอบ");

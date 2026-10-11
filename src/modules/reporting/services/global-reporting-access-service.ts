@@ -3,7 +3,6 @@ import "server-only";
 import {
   HospitalStatus,
   Prisma,
-  Role,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -24,11 +23,7 @@ import {
   type GlobalReportingCapability,
 } from "../policies/global-reporting-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
-import {
-  getDesignatedGlobalReportingDatabaseName,
-  isGlobalReportingDemoAdminConfigured,
-  isGlobalReportingDemoDeploymentEnabled,
-} from "./global-reporting-demo-release-control";
+import { isReportingAvailableInCurrentDeployment } from "./reporting-deployment-boundary";
 
 export type GlobalReportingDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -56,30 +51,14 @@ function getDatabase(database?: GlobalReportingDatabase): GlobalReportingDatabas
   return database ?? getPrisma();
 }
 
-async function verifyDesignatedSyntheticDatabase(database: GlobalReportingDatabase): Promise<void> {
-  const expectedDatabaseName = getDesignatedGlobalReportingDatabaseName();
-  if (!expectedDatabaseName) throw new NotFoundError();
-
-  try {
-    const rows = await database.$queryRaw<Array<{ database_name: string }>>(
-      Prisma.sql`SELECT current_database() AS database_name`,
-    );
-    if (rows.length !== 1 || rows[0]?.database_name !== expectedDatabaseName) {
-      throw new NotFoundError();
-    }
-  } catch (error: unknown) {
-    if (error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Global reporting data source could not be verified");
-  }
-}
-
 export async function resolveGlobalReportingAccessContext(
   actor: ActorContext | null | undefined,
   capability: GlobalReportingCapability,
   targetHospitalId?: unknown,
   database?: GlobalReportingDatabase,
 ): Promise<GlobalReportingAccessContext> {
-  if (!actor || !isGlobalReportingDemoDeploymentEnabled() || !isGlobalReportingDemoAdminConfigured(actor.userId)) {
+  const reportingAvailable = isReportingAvailableInCurrentDeployment();
+  if (!actor || !reportingAvailable) {
     throw new NotFoundError();
   }
 
@@ -92,8 +71,6 @@ export async function resolveGlobalReportingAccessContext(
   const db = getDatabase(database);
 
   try {
-    await verifyDesignatedSyntheticDatabase(db);
-
     const currentUser = await db.user.findUnique({
       where: { id: actor.userId },
       select: {
@@ -114,8 +91,7 @@ export async function resolveGlobalReportingAccessContext(
     const decision = decideGlobalReportingPolicy({
       actor,
       capability,
-      demoAccessEnabled: isGlobalReportingDemoDeploymentEnabled(),
-      demoAdminIdentityAllowed: isGlobalReportingDemoAdminConfigured(actor.userId),
+      reportingAvailable,
       currentUserStatus: currentUser?.status ?? null,
       currentRoles: currentUser?.roles.map(({ role }) => role) ?? [],
       ...(parsedHospitalId?.success ? {
@@ -126,7 +102,6 @@ export async function resolveGlobalReportingAccessContext(
 
     if (!decision.allowed) throw new ForbiddenError();
     if (hospital && hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
-    if (!currentUser || !currentUser.roles.some(({ role }) => role === Role.ADMIN)) throw new NotFoundError();
 
     return { actor, hospital };
   } catch (error: unknown) {
@@ -169,8 +144,3 @@ export function globalReportingAuditReasonForError(error: unknown): GlobalReport
   if (error instanceof InfrastructureError) return "UNAVAILABLE";
   return "INVALID_REQUEST";
 }
-
-export const globalReportingAccessInternals = {
-  getDatabase,
-  verifyDesignatedSyntheticDatabase,
-};

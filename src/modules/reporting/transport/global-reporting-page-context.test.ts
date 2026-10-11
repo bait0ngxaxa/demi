@@ -160,6 +160,17 @@ describe("Global Reporting page context", () => {
     }));
   });
 
+  it("redirects an authenticated non-ADMIN away instead of presenting the authorized route as missing", async () => {
+    mockedResolveAccess.mockRejectedValueOnce(new ForbiddenError());
+
+    await expect(getGlobalReportingPageContext({})).rejects.toThrow("NEXT_REDIRECT:/app");
+    expect(mockedNotFound).not.toHaveBeenCalled();
+    expect(mockedRecordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      capability: GLOBAL_REPORTING_CAPABILITIES.workspaceRead,
+      outcome: "denied",
+    }));
+  });
+
   it("revalidates directory access before returning a pending Hospital context", async () => {
     const pendingHospital = { ...hospital, status: HospitalStatus.PENDING_VERIFICATION };
     mockedGetHospital.mockReturnValue(pendingHospital);
@@ -168,7 +179,8 @@ describe("Global Reporting page context", () => {
       .mockResolvedValueOnce({ actor, hospital: null })
       .mockRejectedValueOnce(new ForbiddenError());
 
-    await expect(getGlobalReportingPageContext({ hospitalId })).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(getGlobalReportingPageContext({ hospitalId })).rejects.toThrow("NEXT_REDIRECT:/app");
+    expect(mockedNotFound).not.toHaveBeenCalled();
     expect(mockedGetPage).not.toHaveBeenCalled();
     expect(mockedRecordAudit).toHaveBeenCalledWith(expect.objectContaining({
       capability: GLOBAL_REPORTING_CAPABILITIES.directoryRead,

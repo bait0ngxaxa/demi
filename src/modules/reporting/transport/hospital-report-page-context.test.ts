@@ -78,6 +78,13 @@ describe("Hospital report page context", () => {
     expect(mockedGetPage).not.toHaveBeenCalled();
   });
 
+  it("redirects an actor without a direct active Owner scope instead of presenting reporting as a missing route", async () => {
+    mockedListHospitals.mockResolvedValueOnce([]);
+
+    await expect(getHospitalReportPageContext(undefined, undefined, undefined)).rejects.toThrow("NEXT_REDIRECT:/app");
+    expect(mockedGetPage).not.toHaveBeenCalled();
+  });
+
   it("revalidates the page read after Hospital selection and masks a revoked scope", async () => {
     mockedGetPage.mockRejectedValue(new NotFoundError());
 

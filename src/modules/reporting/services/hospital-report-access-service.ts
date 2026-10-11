@@ -18,12 +18,12 @@ import {
   NotFoundError,
 } from "@/shared/errors/application-error";
 
+import { isReportingAvailableInCurrentDeployment } from "./reporting-deployment-boundary";
 import {
   assertHospitalReportPolicy,
   type HospitalReportCapability,
 } from "../policies/hospital-report-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
-import { isHospitalReportingEnabled } from "./hospital-report-release-control";
 
 export type HospitalReportAccessDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -43,8 +43,8 @@ function getDatabase(database?: HospitalReportAccessDatabase): HospitalReportAcc
   return database ?? getPrisma();
 }
 
-function validateActorAndFeature(actor: ActorContext | null | undefined): asserts actor is ActorContext {
-  if (!isHospitalReportingEnabled()) {
+function validateActorAndDeployment(actor: ActorContext | null | undefined): asserts actor is ActorContext {
+  if (!isReportingAvailableInCurrentDeployment()) {
     throw new NotFoundError();
   }
   if (!actor) {
@@ -56,7 +56,7 @@ export async function listHospitalReportingHospitals(
   actor: ActorContext | null | undefined,
   database?: HospitalReportAccessDatabase,
 ): Promise<HospitalReportingHospital[]> {
-  validateActorAndFeature(actor);
+  validateActorAndDeployment(actor);
 
   if (!actor.roles.includes(Role.HOSPITAL)) {
     return [];
@@ -98,7 +98,7 @@ export async function resolveHospitalReportingAccessContext(
   capability: HospitalReportCapability,
   database?: HospitalReportAccessDatabase,
 ): Promise<HospitalReportingAccessContext> {
-  validateActorAndFeature(actor);
+  validateActorAndDeployment(actor);
 
   const parsedHospitalId = hospitalReportHospitalIdSchema.safeParse(hospitalId);
   if (!parsedHospitalId.success) throw new NotFoundError();
@@ -145,6 +145,6 @@ export async function resolveHospitalReportingAccessContext(
 }
 
 export const hospitalReportAccessInternals = {
-  validateActorAndFeature,
+  validateActorAndDeployment,
   getDatabase,
 };

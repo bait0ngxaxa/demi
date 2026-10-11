@@ -13,6 +13,7 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 import {
   HOSPITAL_REPORT_CAPABILITIES,
 } from "../policies/hospital-report-policy";
+import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "./reporting-deployment-boundary";
 import {
   listHospitalReportingHospitals,
   resolveHospitalReportingAccessContext,
@@ -57,26 +58,18 @@ function database(membership: { hospital: typeof hospital } | null = { hospital 
 }
 
 describe("Hospital reporting access service", () => {
-  const previousEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-  const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-
   beforeEach(() => {
-    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
-    delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_PROJECT_ID", TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID);
   });
 
   afterEach(() => {
-    if (previousEnabled === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-    else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousEnabled;
-    if (previousProductionApproval === undefined) {
-      delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-    } else {
-      process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
-    }
+    vi.unstubAllEnvs();
   });
 
-  it("returns a not-found response when reporting is disabled before querying Hospital authority", async () => {
-    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "false";
+  it("returns a not-found response for an untrusted deployment before querying Hospital authority", async () => {
+    vi.stubEnv("VERCEL_PROJECT_ID", "prj_unknown_project");
     const { database: db, findFirst } = database();
 
     await expect(

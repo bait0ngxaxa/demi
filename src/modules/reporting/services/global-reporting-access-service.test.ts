@@ -5,11 +5,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
-import {
-  GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS_ENV,
-  GLOBAL_REPORTING_DEMO_ENABLED_ENV,
-  GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL_ENV,
-} from "./global-reporting-demo-release-control";
+import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "./reporting-deployment-boundary";
 import { resolveGlobalReportingAccessContext } from "./global-reporting-access-service";
 
 const actor: ActorContext = {
@@ -20,16 +16,13 @@ const actor: ActorContext = {
   osmHospitalRelationships: [],
 };
 const hospitalId = "11111111-1111-4111-8111-111111111111";
-const syntheticDatabaseUrl = "postgresql://demo:secret@127.0.0.1:5432/demi_synthetic";
 
 function createDatabase(input: {
-  databaseName?: string;
   userStatus?: UserStatus;
   roles?: readonly Role[];
   hospitalStatus?: HospitalStatus;
 } = {}): PrismaClient {
   const database = {
-    $queryRaw: vi.fn().mockResolvedValue([{ database_name: input.databaseName ?? "demi_synthetic" }]),
     user: {
       findUnique: vi.fn().mockResolvedValue({
         status: input.userStatus ?? UserStatus.ACTIVE,
@@ -51,18 +44,16 @@ function createDatabase(input: {
 describe("Global Reporting access service", () => {
   beforeEach(() => {
     vi.stubEnv("NODE_ENV", "test");
-    vi.stubEnv("VERCEL_ENV", "development");
-    vi.stubEnv(GLOBAL_REPORTING_DEMO_ENABLED_ENV, "true");
-    vi.stubEnv(GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS_ENV, actor.userId);
-    vi.stubEnv("DATABASE_URL", syntheticDatabaseUrl);
-    vi.stubEnv(GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL_ENV, syntheticDatabaseUrl);
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_PROJECT_ID", TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("allows an explicitly configured active ADMIN without Hospital membership", async () => {
+  it("allows an active ADMIN in the trusted UAT project without Hospital membership or reporting flags", async () => {
     const database = createDatabase();
     const access = await resolveGlobalReportingAccessContext(
       actor,
@@ -76,10 +67,9 @@ describe("Global Reporting access service", () => {
     expect(database.user.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: actor.userId },
     }));
-    expect(database.$queryRaw).toHaveBeenCalledOnce();
   });
 
-  it("denies missing, revoked, suspended, and non-ADMIN identities", async () => {
+  it("denies suspended users and users without the current ADMIN role", async () => {
     const database = createDatabase();
     await expect(resolveGlobalReportingAccessContext(
       actor,
@@ -88,15 +78,6 @@ describe("Global Reporting access service", () => {
       database,
     )).resolves.toMatchObject({ hospital: null });
 
-    vi.stubEnv(GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS_ENV, "33333333-3333-4333-8333-333333333333");
-    await expect(resolveGlobalReportingAccessContext(
-      actor,
-      GLOBAL_REPORTING_CAPABILITIES.directoryRead,
-      undefined,
-      database,
-    )).rejects.toBeInstanceOf(NotFoundError);
-
-    vi.stubEnv(GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS_ENV, actor.userId);
     await expect(resolveGlobalReportingAccessContext(
       actor,
       GLOBAL_REPORTING_CAPABILITIES.directoryRead,
@@ -111,24 +92,24 @@ describe("Global Reporting access service", () => {
     )).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it("rejects a non-ACTIVE selected Hospital and a runtime database name mismatch", async () => {
+  it("rejects a non-ACTIVE selected Hospital and a non-UAT Vercel production project", async () => {
     await expect(resolveGlobalReportingAccessContext(
       actor,
       GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
       hospitalId,
       createDatabase({ hospitalStatus: HospitalStatus.SUSPENDED }),
     )).rejects.toBeInstanceOf(ForbiddenError);
+    vi.stubEnv("VERCEL_PROJECT_ID", "prj_actual_production");
     await expect(resolveGlobalReportingAccessContext(
       actor,
-      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-      hospitalId,
-      createDatabase({ databaseName: "not_the_designated_database" }),
+      GLOBAL_REPORTING_CAPABILITIES.directoryRead,
+      undefined,
+      createDatabase(),
     )).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("cannot be enabled in Production, even with explicit demo flags and identity", async () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("VERCEL_ENV", "production");
+  it("fails closed when Vercel identity is missing or unknown", async () => {
+    vi.stubEnv("VERCEL_PROJECT_ID", "");
     await expect(resolveGlobalReportingAccessContext(
       actor,
       GLOBAL_REPORTING_CAPABILITIES.directoryRead,

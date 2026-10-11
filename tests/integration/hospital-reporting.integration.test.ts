@@ -32,17 +32,18 @@ import { resolveGlobalReportingAccessContext } from "@/modules/reporting/service
 import * as globalReportingAccessModule from "@/modules/reporting/services/global-reporting-access-service";
 import { GLOBAL_REPORTING_CAPABILITIES } from "@/modules/reporting/policies/global-reporting-policy";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 const prisma = getPrisma();
-const previousReportingEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-const previousCursorSecret = process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
-const globalDemoEnvironmentKeys = [
+const reportingEnvironmentKeys = [
+  "VERCEL",
   "VERCEL_ENV",
-  "DEMI_GLOBAL_REPORTING_DEMO_ENABLED",
-  "DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS",
-  "DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL",
+  "VERCEL_PROJECT_ID",
+  "DEMI_HOSPITAL_REPORTING_CURSOR_SECRET",
 ] as const;
+const previousReportingEnvironment = new Map(
+  reportingEnvironmentKeys.map((key) => [key, process.env[key]]),
+);
 
 type Fixture = {
   hospitalIds: string[];
@@ -103,24 +104,14 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
   if (fixture.personIds.length > 0) await prisma.person.deleteMany({ where: { id: { in: fixture.personIds } } });
 }
 
-async function withGlobalDemoEnvironment<T>(
-  adminUserId: string,
-  callback: () => Promise<T>,
-  deployment = "development",
-): Promise<T> {
-  const previous = new Map(globalDemoEnvironmentKeys.map((key) => [key, process.env[key]]));
-  process.env.VERCEL_ENV = deployment;
-  process.env.DEMI_GLOBAL_REPORTING_DEMO_ENABLED = "true";
-  process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = adminUserId;
-  process.env.DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL = process.env.DATABASE_URL;
+async function withOtherProductionProject<T>(callback: () => Promise<T>): Promise<T> {
+  const previousProjectId = process.env.VERCEL_PROJECT_ID;
+  process.env.VERCEL_PROJECT_ID = "prj_actual_production";
   try {
     return await callback();
   } finally {
-    for (const key of globalDemoEnvironmentKeys) {
-      const value = previous.get(key);
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
+    if (previousProjectId === undefined) delete process.env.VERCEL_PROJECT_ID;
+    else process.env.VERCEL_PROJECT_ID = previousProjectId;
   }
 }
 
@@ -416,8 +407,9 @@ function dashboardReadWithMembershipRevocationAfterProgramLoad(
 
 describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
   beforeAll(async () => {
-    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
-    delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+    process.env.VERCEL = "1";
+    process.env.VERCEL_ENV = "production";
+    process.env.VERCEL_PROJECT_ID = TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID;
     process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = "synthetic-hospital-reporting-integration-secret";
     await prisma.$connect();
   });
@@ -428,12 +420,11 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
   });
 
   afterAll(async () => {
-    if (previousReportingEnabled === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-    else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousReportingEnabled;
-    if (previousProductionApproval === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-    else process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
-    if (previousCursorSecret === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
-    else process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = previousCursorSecret;
+    for (const key of reportingEnvironmentKeys) {
+      const value = previousReportingEnvironment.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     await prisma.$disconnect();
   });
 
@@ -653,7 +644,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     })).resolves.toMatchObject({ status: MembershipStatus.SUSPENDED });
   });
 
-  it("serves only the selected Hospital to an explicitly entitled synthetic-demo ADMIN and reuses the customer workbook", async () => {
+  it("serves only the selected Hospital to an active UAT ADMIN and reuses the customer workbook", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parent = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่ายสังเคราะห์" });
@@ -695,7 +686,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       status: PatientProgramStatus.ACTIVE,
     });
 
-    await withGlobalDemoEnvironment(admin.userId, async () => {
+    {
       const directory = await getGlobalReportingDirectory(admin.actor);
       const parentGroup = directory.hierarchy.groups.find(({ mainHospital }) => mainHospital.id === parent.id);
       expect(parentGroup?.directChildren.map(({ id }) => id).sort()).toEqual(
@@ -757,51 +748,41 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       await expect(getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: suspended.id })).rejects.toBeInstanceOf(ForbiddenError);
       await expect(getGlobalAdminHospitalReportingDatasetForExport(admin.actor, { hospitalId: pending.id })).rejects.toBeInstanceOf(ForbiddenError);
       await expect(getProgramReportingProjection(admin.actor, childRelationship.id, childProgram.id)).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(getGlobalAdminHospitalReportingPage(childOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(NotFoundError);
-      await expect(getGlobalAdminHospitalReportingPage(parentOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(NotFoundError);
-    });
+      await expect(getGlobalAdminHospitalReportingPage(childOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getGlobalAdminHospitalReportingPage(parentOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(ForbiddenError);
+    }
   });
 
-  it("denies Global Reporting after entitlement or current ADMIN status is revoked and in production", async () => {
+  it("rechecks current ADMIN status and denies Global Reporting outside the trusted UAT project", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const hospital = await createHospital(fixture, { name: "โรงพยาบาลควบคุมการปล่อยสังเคราะห์" });
     const admin = await createActor(fixture, { role: Role.ADMIN });
     const suspendedAdmin = await createActor(fixture, { role: Role.ADMIN, userStatus: UserStatus.SUSPENDED });
 
-    await withGlobalDemoEnvironment(admin.userId, async () => {
-      await expect(resolveGlobalReportingAccessContext(
-        admin.actor,
-        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-        hospital.id,
-      )).resolves.toMatchObject({ hospital: { id: hospital.id } });
-
-      process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = randomUUID();
-      await expect(resolveGlobalReportingAccessContext(
-        admin.actor,
-        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-        hospital.id,
-      )).rejects.toBeInstanceOf(NotFoundError);
-      process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = `${admin.userId},${suspendedAdmin.userId}`;
-      await expect(resolveGlobalReportingAccessContext(
-        suspendedAdmin.actor,
-        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
-        hospital.id,
-      )).rejects.toBeInstanceOf(ForbiddenError);
-    });
-
-    await withGlobalDemoEnvironment(admin.userId, () => expect(resolveGlobalReportingAccessContext(
+    await expect(resolveGlobalReportingAccessContext(
       admin.actor,
       GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
       hospital.id,
-    )).rejects.toBeInstanceOf(NotFoundError), "production");
+    )).resolves.toMatchObject({ hospital: { id: hospital.id } });
+    await expect(resolveGlobalReportingAccessContext(
+      suspendedAdmin.actor,
+      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+      hospital.id,
+    )).rejects.toBeInstanceOf(ForbiddenError);
+
+    await withOtherProductionProject(() => expect(resolveGlobalReportingAccessContext(
+      admin.actor,
+      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+      hospital.id,
+    )).rejects.toBeInstanceOf(NotFoundError));
 
     await prisma.userRole.deleteMany({ where: { userId: admin.userId, role: Role.ADMIN } });
-    await withGlobalDemoEnvironment(admin.userId, () => expect(resolveGlobalReportingAccessContext(
+    await expect(resolveGlobalReportingAccessContext(
       admin.actor,
       GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
       hospital.id,
-    )).rejects.toBeInstanceOf(ForbiddenError));
+    )).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it("withholds a generated Global workbook when ADMIN access is revoked before file release", async () => {
@@ -819,9 +800,9 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       });
 
     try {
-      await withGlobalDemoEnvironment(admin.userId, () => expect(
+      await expect(
         exportGlobalAdminHospitalReportingWorkbook(admin.actor, { hospitalId: hospital.id }),
-      ).rejects.toBeInstanceOf(ForbiddenError));
+      ).rejects.toBeInstanceOf(ForbiddenError);
     } finally {
       authorizationSpy.mockRestore();
     }

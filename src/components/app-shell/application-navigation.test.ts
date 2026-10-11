@@ -8,6 +8,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import { projectApplicationNavigation } from "./application-navigation";
 import { isNavigationItemActive } from "./navigation-state";
@@ -32,6 +33,12 @@ function navigationLabels(context: ActorContext): string[] {
   ]);
 }
 
+function stubTrustedUatReportingDeployment(): void {
+  vi.stubEnv("VERCEL", "1");
+  vi.stubEnv("VERCEL_ENV", "production");
+  vi.stubEnv("VERCEL_PROJECT_ID", TRUSTED_DEMI_UAT_VERCEL_PROJECT_ID);
+}
+
 describe("application navigation projection", () => {
   it("shows Platform Admin navigation only to ADMIN", () => {
     const adminLabels = navigationLabels(actor({ roles: [Role.ADMIN] }));
@@ -43,37 +50,19 @@ describe("application navigation projection", () => {
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
   });
 
-  it("shows Global Reporting only for an explicitly configured synthetic-demo ADMIN", () => {
-    const keys = [
-      "VERCEL_ENV",
-      "DEMI_GLOBAL_REPORTING_DEMO_ENABLED",
-      "DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS",
-      "DATABASE_URL",
-      "DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL",
-    ] as const;
-    const previous = new Map(keys.map((key) => [key, process.env[key]]));
-    const syntheticDatabaseUrl = "postgresql://demo:secret@127.0.0.1:5432/demi_synthetic";
-    vi.stubEnv("NODE_ENV", "development");
-    process.env.VERCEL_ENV = "development";
-    process.env.DEMI_GLOBAL_REPORTING_DEMO_ENABLED = "true";
-    process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = "22222222-2222-4222-8222-222222222222";
-    process.env.DATABASE_URL = syntheticDatabaseUrl;
-    process.env.DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL = syntheticDatabaseUrl;
+  it("shows Global Reporting to every Platform ADMIN in trusted UAT, including production-labelled deployments", () => {
+    stubTrustedUatReportingDeployment();
 
     try {
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).toContain("รายงานระบบ");
-      expect(navigationLabels(actor({ roles: [Role.ADMIN], userId: "99999999-9999-4999-8999-999999999999" }))).not.toContain("รายงานระบบ");
+      expect(navigationLabels(actor({ roles: [Role.ADMIN], userId: "99999999-9999-4999-8999-999999999999" }))).toContain("รายงานระบบ");
       expect(navigationLabels(actor({ roles: [Role.HOSPITAL] }))).not.toContain("รายงานระบบ");
+      expect(navigationLabels(actor({ roles: [Role.ADMIN, Role.HOSPITAL] }))).toContain("รายงานระบบ");
 
-      vi.stubEnv("NODE_ENV", "production");
-      process.env.VERCEL_ENV = "production";
+      vi.stubEnv("VERCEL_PROJECT_ID", "prj_actual_production");
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานระบบ");
     } finally {
       vi.unstubAllEnvs();
-      for (const [key, value] of previous) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
     }
   });
 
@@ -113,12 +102,8 @@ describe("application navigation projection", () => {
     expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข่าวสารและความรู้");
   });
 
-  it("shows Hospital reporting only for an enabled direct active Hospital Owner", () => {
-    const previousEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-    const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-    const previousVercelEnv = process.env.VERCEL_ENV;
-    process.env.DEMI_HOSPITAL_REPORTING_ENABLED = "true";
-    delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
+  it("shows Hospital reporting in trusted UAT only for a direct active Hospital Owner", () => {
+    stubTrustedUatReportingDeployment();
 
     try {
       const ownerActor = actor({
@@ -169,21 +154,10 @@ describe("application navigation projection", () => {
         ),
       ).not.toContain("รายงานโรงพยาบาล");
 
-      process.env.VERCEL_ENV = "preview";
-      expect(navigationLabels(ownerActor)).toContain("รายงานโรงพยาบาล");
-
-      process.env.VERCEL_ENV = "production";
+      vi.stubEnv("VERCEL_PROJECT_ID", "prj_actual_production");
       expect(navigationLabels(ownerActor)).not.toContain("รายงานโรงพยาบาล");
     } finally {
-      if (previousEnabled === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
-      else process.env.DEMI_HOSPITAL_REPORTING_ENABLED = previousEnabled;
-      if (previousProductionApproval === undefined) {
-        delete process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
-      } else {
-        process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED = previousProductionApproval;
-      }
-      if (previousVercelEnv === undefined) delete process.env.VERCEL_ENV;
-      else process.env.VERCEL_ENV = previousVercelEnv;
+      vi.unstubAllEnvs();
     }
   });
 

@@ -41,8 +41,7 @@ import {
   decideHospitalReportPolicy,
   HOSPITAL_REPORT_CAPABILITIES,
 } from "@/modules/reporting/policies/hospital-report-policy";
-import { isGlobalReportingDemoAdminConfigured } from "@/modules/reporting/services/global-reporting-demo-release-control";
-import { isHospitalReportingEnabled } from "@/modules/reporting/services/hospital-report-release-control";
+import { isReportingAvailableInCurrentDeployment } from "@/modules/reporting/services/reporting-deployment-boundary";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationNavigationGroup } from "./navigation-types";
@@ -81,7 +80,7 @@ function canManageHospitalContent(actor: ActorContext): boolean {
 
 function canReadHospitalReports(actor: ActorContext): boolean {
   return (
-    isHospitalReportingEnabled() &&
+    isReportingAvailableInCurrentDeployment() &&
     actor.hospitalMemberships.some((membership) =>
       decideHospitalReportPolicy({
         actor,
@@ -320,7 +319,7 @@ export function projectApplicationNavigation(
 
   if (
     actor.roles.includes(Role.ADMIN) &&
-    isGlobalReportingDemoAdminConfigured(actor.userId)
+    isReportingAvailableInCurrentDeployment()
   ) {
     adminItems.push({
       href: "/app/admin/reporting",

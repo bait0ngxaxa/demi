@@ -72,7 +72,8 @@ async function denyAndHide(
     outcome: "denied",
     reason: globalReportingAuditReasonForError(error),
   });
-  if (error instanceof ForbiddenError || error instanceof NotFoundError) notFound();
+  if (error instanceof ForbiddenError) redirect("/app");
+  if (error instanceof NotFoundError) notFound();
   throw error;
 }
 

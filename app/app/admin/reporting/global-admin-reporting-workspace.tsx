@@ -330,16 +330,9 @@ export function GlobalAdminReportingWorkspace({
     <div className="min-w-0">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ" }, { label: "รายงานระบบ" }]}
-        description="ดูโครงสร้างหน่วยบริการและรายงานของโรงพยาบาลที่เลือก โดยรายงานผู้ป่วยยังแยกตาม Hospital"
+        description="ดูโครงสร้างหน่วยบริการแบบอ่านอย่างเดียว และรายงาน Hospital ที่เลือก โดย Patient/Program จะแสดงเฉพาะ Hospital นั้น ไม่รวมข้อมูลจากแม่ข่ายหรือลูกข่าย"
         title="รายงานสำหรับผู้ดูแลระบบ"
       />
-
-      <Alert className="mt-5" variant="info">
-        เปิดใช้เฉพาะ ADMIN ที่ได้รับอนุญาตในสภาพแวดล้อม demo ซึ่งตรวจสอบกับฐานข้อมูลสังเคราะห์ที่กำหนดไว้แล้ว การเปิดใช้นี้ไม่ใช่การอนุมัติใช้ข้อมูลจริง
-        <p className="mt-2 text-sm leading-6">
-          โครงสร้างโรงพยาบาลแสดงได้แบบอ่านอย่างเดียว; Network Aggregate Dashboard ยังไม่เปิด และไม่อนุญาต Network Export ไฟล์ Excel ในหน้านี้ส่งออกได้เฉพาะ Hospital ที่เลือก
-        </p>
-      </Alert>
 
       <section aria-labelledby="global-reporting-organization-heading" className="mt-7">
         <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="global-reporting-organization-heading">
