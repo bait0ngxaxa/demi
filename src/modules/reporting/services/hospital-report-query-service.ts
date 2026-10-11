@@ -81,6 +81,8 @@ export class HospitalReportExportLimitError extends ApplicationError {
 }
 
 type ReportCursor = { startedAt: Date; id: string };
+// RPT-NET-01 stops at target authorization. RPT-NET-02 must use a distinct cursor operation bound to the actor,
+// exact Child and Parent context, page size, ordering, expiry and signature, then re-resolve authority per continuation.
 type ReportScopeOperation = "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
 type ReportCursorContext = {
   actorId: string;

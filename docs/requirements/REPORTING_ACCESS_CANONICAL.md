@@ -63,8 +63,9 @@ HN-A01–A06 และ HN-M01–M06 ยังคง traceable เป็น histo
 | --- | --- | --- |
 | Hospital OWNER — view report | Hospital ที่มี direct ACTIVE OWNER membership; ACTIVE Hospital | `VERIFIED_IMPLEMENTED`; exact-Hospital report |
 | Hospital OWNER — export report | Hospital เดียวกัน | `VERIFIED_IMPLEMENTED`; exact-Hospital XLSX |
-| Parent OWNER — list/select Child for report | Current eligible direct children ของ exact ACTIVE Parent ที่ผู้ใช้เป็น ACTIVE OWNER | รายชื่อเด็กบางส่วนมีใน hierarchy view; reporting selection scope ยัง `IMPLEMENTATION_GAP` |
-| Parent OWNER — view selected Child report | exact ACTIVE direct Child Hospital ใน Parent scope; ไม่ต้องมี Child OWNER membership | `IMPLEMENTATION_GAP`; ต้องเพิ่ม server-side Parent-to-Child reporting authorization |
+| Parent OWNER — list/select Child for report | Current eligible direct children ของ exact ACTIVE Parent ที่ผู้ใช้เป็น ACTIVE OWNER | รายชื่อเด็กบางส่วนมีใน hierarchy view; reporting selection/journey ยัง `IMPLEMENTATION_GAP` |
+| Parent OWNER — authorize exact selected Child report target | exact ACTIVE direct Child Hospital ของ exact ACTIVE Parent; ไม่ต้องมี Child OWNER membership | `VERIFIED_IMPLEMENTED` สำหรับ RPT-NET-01 backend resolver เท่านั้น; คืน minimal exact-target context และไม่ query report data |
+| Parent OWNER — view selected Child report | exact ACTIVE direct Child Hospital ใน Parent scope; ไม่ต้องมี Child OWNER membership | `IMPLEMENTATION_GAP`; RPT-NET-02 consumer/query ยัง pending และ field disclosure ที่เปิดอยู่ยังต้องคงไว้ |
 | Parent OWNER — export selected Child report | exact selected eligible Child | `OPEN_REQUIREMENT`; อย่าอนุญาตหรือปฏิเสธโดยอนุมานจาก OR-RPT-01 |
 | Platform ADMIN — select/view Hospital report | eligible ACTIVE Hospital ใดก็ได้ในระบบ | `VERIFIED_IMPLEMENTED`; current database ACTIVE `Role.ADMIN`, exact-Hospital query |
 | Platform ADMIN — export selected Hospital report | exact selected eligible ACTIVE Hospital | `VERIFIED_IMPLEMENTED`; XLSX ของ Hospital ที่เลือกเท่านั้น |
@@ -82,16 +83,17 @@ Multi-role actor ใช้เฉพาะ authorization path ของ operation
 | Global ADMIN selected-Hospital report view | `VERIFIED_IMPLEMENTED` | [Global reporting policy](../../src/modules/reporting/policies/global-reporting-policy.ts), access service และ `/app/admin/reporting`; ไม่ต้องมี Hospital membership; [Phase 18D.2 handoff](../phases/PHASE_18D2_GLOBAL_ADMIN_REPORTING_IMPLEMENTATION_HANDOFF.md) |
 | Global ADMIN selected-Hospital XLSX | `VERIFIED_IMPLEMENTED` | `/api/v1/admin/reporting/export` revalidates current ADMIN และ selected ACTIVE Hospital; [Phase 18D.2 handoff](../phases/PHASE_18D2_GLOBAL_ADMIN_REPORTING_IMPLEMENTATION_HANDOFF.md) |
 | Parent OWNER structural hierarchy context | `VERIFIED_IMPLEMENTED` บางส่วน | [Hospital hierarchy service](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts) มี owner context และ `resolveHospitalNetworkScope()`; resolver ไม่ใช่ report capability |
-| Parent OWNER report selection and exact Child report view | `IMPLEMENTATION_GAP` | `listHospitalReportingHospitals()` แสดงเฉพาะ direct OWNER Hospital; current report access ยืนยัน membership ที่ target Hospital เอง จึงยังไม่มี inherited Parent-to-Child reporting path |
+| Parent OWNER exact Child report-target authorization | `VERIFIED_IMPLEMENTED` — RPT-NET-01 foundation only | [Parent-to-Child access resolver](../../src/modules/reporting/services/parent-child-hospital-report-access-service.ts) ใช้ [owner-specific direct-child resolver](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts), rechecks current Parent OWNER/Role.HOSPITAL/status/relationship และคืน target เดียว; ไม่เรียก report query/projection |
+| Parent OWNER Child selection and report consumer | `IMPLEMENTATION_GAP` — RPT-NET-02 pending | `listHospitalReportingHospitals()` และ current report page ยังเป็น direct OWNER path; ไม่มี Parent selector/approved Child report projection ที่เชื่อมกับ resolver ใหม่ |
 | Global merged aggregation / comparison | `FUTURE_NOT_PRIORITIZED` | ไม่มี initial product requirement; ไม่ใช่ dependency ของ selected-Hospital ADMIN reporting |
 | N-only Network aggregate as next primary slice | `SUPERSEDED_PRODUCT_ASSUMPTION` | ถูกแทนที่เป็น primary target ด้วย OR-RPT-01; aggregate contracts ยังคง historical/future |
 
-ในปัจจุบันหน้า Hospital Reporting แสดง hierarchy ของ direct children แต่ reporting selector/access path ยังจำกัดอยู่ที่ Hospital ที่ actor เป็น OWNER โดยตรง การมี directory หรือ structural resolver จึงไม่เท่ากับการอ่าน report ของ Child ได้
+หน้า Hospital Reporting แสดง hierarchy ของ direct children; RPT-NET-01 เพิ่ม backend resolver สำหรับ exact Child target แล้ว แต่ยังไม่มี selector/report consumer ที่ใช้ resolver นี้ การมี hierarchy directory หรือ authorization context จึงยังไม่เท่ากับการอ่าน report ของ Child ได้
 
 ## 4. ขอบเขต initial และ implementation priorities
 
-1. **RPT-NET-01 — Parent-to-Child Reporting Authorization:** เพิ่ม server-side reporting path ให้ Parent OWNER เลือกและอ่าน eligible direct Child report โดยใช้ current Parent relationship; ไม่จำลอง Child OWNER membership และไม่เปลี่ยน direct OWNER หรือ Global ADMIN policy เดิม
-2. **RPT-NET-02 — Parent Child-Hospital Reporting Consumer:** เพิ่ม/ปรับ selector และหน้าอ่าน exact report ของ Child ที่เลือก โดย reuse query/projection/UI ปัจจุบันเฉพาะส่วนที่ field disclosure อนุญาต; ไม่สร้าง reporting platform หรือ directory ซ้ำโดยไม่จำเป็น
+1. **RPT-NET-01 — Parent-to-Child Reporting Authorization:** `VERIFIED_IMPLEMENTED` เฉพาะ backend policy/access resolver ที่คืน exact ACTIVE direct Child target จาก current Parent OWNER scope; ไม่เชื่อม report query, page, Patient/clinical fields หรือ export และไม่เปลี่ยน direct OWNER หรือ Global ADMIN policy เดิม
+2. **RPT-NET-02 — Parent Child-Hospital Reporting Consumer:** `IMPLEMENTATION_GAP`; เพิ่ม/ปรับ selector และหน้าอ่าน exact report ของ Child ที่เลือก โดย re-resolve authority ทุก protected request/continuation และใช้เฉพาะ projection/fields ที่เปิดเผยให้ Parent ได้; ไม่สร้าง reporting platform หรือ directory ซ้ำโดยไม่จำเป็น
 3. **RPT-GLOBAL-01 — Global ADMIN Per-Hospital Reporting:** ตรวจสอบและรักษา Phase 18D.2 implementation; ไม่ทำซ้ำ
 4. **RPT-GLOBAL-02 — Global ADMIN Single-Hospital Export:** ตรวจสอบและรักษา XLSX ของ selected eligible Hospital; ไม่เปลี่ยนเป็น combined workbook
 5. **RPT-FUTURE-01 — Optional Network Aggregation:** เก็บ P/C/N และ HN metric/privacy/history work เป็น future scope; ไม่เป็น dependency ของ RPT-NET-01/02

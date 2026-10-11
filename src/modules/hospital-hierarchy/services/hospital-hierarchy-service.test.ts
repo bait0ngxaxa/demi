@@ -6,6 +6,7 @@ import { ConflictError, NotFoundError } from "@/shared/errors/application-error"
 import {
   buildHospitalHierarchyDirectory,
   getHospitalHierarchyContext,
+  resolveHospitalOwnerDirectChildFacility,
   resolveDirectChildFacilities,
   type HospitalHierarchyDatabase,
   type HospitalHierarchyUnit,
@@ -114,5 +115,42 @@ describe("Hospital hierarchy projections", () => {
     };
     await expect(getHospitalHierarchyContext(actor, "not-a-hospital-id", {} as HospitalHierarchyDatabase))
       .rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("resolves one direct Child through current Parent OWNER scope even for a multi-role ADMIN/HOSPITAL actor", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const childId = "22222222-2222-4222-8222-222222222222";
+    const actor = {
+      userId: "33333333-3333-4333-8333-333333333333",
+      personId: "44444444-4444-4444-8444-444444444444",
+      roles: [Role.ADMIN, Role.HOSPITAL],
+      hospitalMemberships: [{
+        hospitalId: parentId,
+        membershipType: "OWNER" as const,
+        profession: null,
+        status: "ACTIVE" as const,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+      osmHospitalRelationships: [],
+    };
+    const parent = {
+      ...unit(parentId, "PARENT", null),
+      parentHospital: null,
+      childHospitals: [unit(childId, "CHILD", parentId)],
+    };
+    const findFirst = vi.fn().mockResolvedValue({ hospital: parent });
+    const database = {
+      hospitalMembership: { findFirst },
+      hospital: { findUnique: vi.fn() },
+      user: { findFirst: vi.fn() },
+    } as unknown as HospitalHierarchyDatabase;
+
+    await expect(resolveHospitalOwnerDirectChildFacility(actor, parentId, childId, database)).resolves.toMatchObject({
+      parent: { id: parentId, status: HospitalStatus.ACTIVE, parentHospitalId: null },
+      child: { id: childId, status: HospitalStatus.ACTIVE, parentHospitalId: parentId },
+      issues: [],
+    });
+    expect(findFirst).toHaveBeenCalledOnce();
+    expect(database.user?.findFirst).not.toHaveBeenCalled();
   });
 });

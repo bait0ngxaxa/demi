@@ -459,6 +459,44 @@ export async function resolveDirectChildFacilities(
   return context.directChildren;
 }
 
+export async function resolveHospitalOwnerDirectChildFacility(
+  actor: ActorContext | null | undefined,
+  parentHospitalId: unknown,
+  childHospitalId: unknown,
+  database: HospitalHierarchyDatabase = getPrisma(),
+): Promise<{
+  parent: HospitalHierarchyUnit;
+  child: HospitalHierarchyUnit;
+  issues: readonly HospitalHierarchyIssue[];
+}> {
+  const parsedParentId = hospitalIdSchema.safeParse(parentHospitalId);
+  const parsedChildId = hospitalIdSchema.safeParse(childHospitalId);
+  if (!parsedParentId.success || !parsedChildId.success || parsedParentId.data === parsedChildId.data) {
+    throw new NotFoundError();
+  }
+  if (!actor?.roles.includes(Role.HOSPITAL)) throw new ForbiddenError();
+
+  try {
+    const context = await loadHospitalOwnerHierarchyContext(actor, parsedParentId.data, database);
+    if (
+      context.issues.length > 0 ||
+      context.classification !== "MAIN" ||
+      context.hospital.status !== HospitalStatus.ACTIVE
+    ) {
+      throw new NotFoundError();
+    }
+
+    const child = context.directChildren.find(({ id }) => id === parsedChildId.data);
+    if (!child || child.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
+
+    return { parent: context.hospital, child, issues: context.issues };
+  } catch (error: unknown) {
+    if (error instanceof ConflictError || error instanceof ValidationError) throw new NotFoundError();
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Hospital direct-child scope could not be verified");
+  }
+}
+
 export async function resolveHospitalNetworkScope(
   actor: ActorContext | null | undefined,
   parentHospitalId: unknown,

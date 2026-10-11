@@ -29,6 +29,7 @@ import {
 } from "@/modules/reporting/services/hospital-report-query-service";
 import { getGlobalReportingDirectory } from "@/modules/reporting/services/global-reporting-service";
 import { resolveGlobalReportingAccessContext } from "@/modules/reporting/services/global-reporting-access-service";
+import { resolveParentChildHospitalReportAccessContext } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import * as globalReportingAccessModule from "@/modules/reporting/services/global-reporting-access-service";
 import { GLOBAL_REPORTING_CAPABILITIES } from "@/modules/reporting/policies/global-reporting-policy";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
@@ -785,5 +786,131 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       select: { action: true },
     });
     expect(exportAudits).toEqual([{ action: "global_reporting.export.denied" }]);
+  });
+
+  it("authorizes one current direct Child report target only through a current Parent OWNER", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
+    const parentB = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย B สังเคราะห์" });
+    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายสังเคราะห์", parentHospitalId: parentA.id });
+    const sibling = await createHospital(fixture, { name: "โรงพยาบาลพี่น้องสังเคราะห์", parentHospitalId: parentA.id });
+    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", parentHospitalId: child.id });
+    const unrelated = await createHospital(fixture, { name: "โรงพยาบาลอื่นสังเคราะห์" });
+    const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
+    const member = await createActor(fixture, {
+      role: Role.HOSPITAL,
+      hospital: parentA,
+      membershipType: MembershipType.MEMBER,
+    });
+    const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: child });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const osm = await createActor(fixture, { role: Role.OSM, hospital: parentA });
+    const patient = await createActor(fixture, { role: Role.PATIENT });
+    const inactiveOwner = await createActor(fixture, {
+      role: Role.HOSPITAL,
+      hospital: parentA,
+      userStatus: UserStatus.SUSPENDED,
+    });
+    const revokedOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
+    const roleRemovedOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
+    const parentBOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentB });
+
+    await prisma.userRole.create({ data: { userId: childOwner.userId, role: Role.ADMIN } });
+    await prisma.userRole.create({ data: { userId: parentOwner.userId, role: Role.ADMIN } });
+    await prisma.userRole.create({ data: { userId: roleRemovedOwner.userId, role: Role.ADMIN } });
+    const multiRoleParentOwner: ActorContext = {
+      ...parentOwner.actor,
+      roles: [Role.HOSPITAL, Role.ADMIN],
+    };
+    const multiRoleChildOwner: ActorContext = {
+      ...childOwner.actor,
+      roles: [Role.HOSPITAL, Role.ADMIN],
+    };
+    const multiRoleRoleRemovedOwner: ActorContext = {
+      ...roleRemovedOwner.actor,
+      roles: [Role.HOSPITAL, Role.ADMIN],
+    };
+
+    const access = await resolveParentChildHospitalReportAccessContext(
+      multiRoleParentOwner,
+      parentA.id,
+      child.id,
+    );
+    expect(access).toEqual({
+      actorId: multiRoleParentOwner.userId,
+      capability: "hospital-network:child-report:read",
+      parentHospitalId: parentA.id,
+      hospital: { id: child.id, status: HospitalStatus.ACTIVE, parentHospitalId: parentA.id },
+    });
+    expect(Object.keys(access.hospital).sort()).toEqual(["id", "parentHospitalId", "status"]);
+    expect(await prisma.hospitalMembership.findUnique({
+      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: child.id } },
+      select: { id: true },
+    })).toBeNull();
+
+    await expect(resolveParentChildHospitalReportAccessContext(member.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(resolveParentChildHospitalReportAccessContext(multiRoleChildOwner, parentA.id, child.id))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(resolveParentChildHospitalReportAccessContext(admin.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(resolveParentChildHospitalReportAccessContext(osm.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(resolveParentChildHospitalReportAccessContext(patient.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(resolveParentChildHospitalReportAccessContext(inactiveOwner.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, sibling.id))
+      .resolves.toMatchObject({ hospital: { id: sibling.id } });
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, grandchild.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, unrelated.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, parentB.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, parentA.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, "invalid-id", child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+
+    await expect(resolveParentChildHospitalReportAccessContext(revokedOwner.actor, parentA.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id } });
+    await prisma.hospitalMembership.update({
+      where: { userId_hospitalId: { userId: revokedOwner.userId, hospitalId: parentA.id } },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(resolveParentChildHospitalReportAccessContext(revokedOwner.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+
+    await expect(resolveParentChildHospitalReportAccessContext(multiRoleRoleRemovedOwner, parentA.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id } });
+    await prisma.userRole.delete({ where: { userId_role: { userId: roleRemovedOwner.userId, role: Role.HOSPITAL } } });
+    await expect(resolveParentChildHospitalReportAccessContext(multiRoleRoleRemovedOwner, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id } });
+    await prisma.hospital.update({ where: { id: parentA.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await prisma.hospital.update({ where: { id: parentA.id }, data: { status: HospitalStatus.ACTIVE } });
+
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id } });
+    await prisma.hospital.update({ where: { id: child.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await prisma.hospital.update({ where: { id: child.id }, data: { status: HospitalStatus.ACTIVE } });
+
+    await expect(resolveParentChildHospitalReportAccessContext(parentBOwner.actor, parentB.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id } });
+    await prisma.hospital.update({ where: { id: child.id }, data: { parentHospitalId: parentB.id } });
+    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
+      .rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveParentChildHospitalReportAccessContext(parentBOwner.actor, parentB.id, child.id))
+      .resolves.toMatchObject({ hospital: { id: child.id, parentHospitalId: parentB.id } });
   });
 });

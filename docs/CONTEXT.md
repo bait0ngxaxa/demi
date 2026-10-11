@@ -8,7 +8,7 @@ Resolve apparent conflicts in this order: (1) latest confirmed Product Owner dir
 
 ## CURRENT reporting requirements — 2026-10-11
 
-Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) before using historical reporting plans. Parent OWNER per-eligible-Child-Hospital report viewing is confirmed product scope and is not implemented yet; the Parent need not own each Child. Global ADMIN selected-Hospital viewing and XLSX export are implemented. Global merged aggregation is not an initial requirement, and N-only Network aggregation is no longer the primary next slice. HN-M07 and historical attribution remain gates for aggregate disclosure only; field-level disclosure for Parent Child reports and Parent export remains open. Existing security architecture and exact operation scoping continue to apply.
+Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) before using historical reporting plans. Parent OWNER per-eligible-Child-Hospital report viewing is confirmed product scope; RPT-NET-01 has implemented the backend exact-Child authorization resolver, but the RPT-NET-02 selector/report consumer is still pending, and the Parent need not own each Child. Global ADMIN selected-Hospital viewing and XLSX export are implemented. Global merged aggregation is not an initial requirement, and N-only Network aggregation is no longer the primary next slice. HN-M07 and historical attribution remain gates for aggregate disclosure only; field-level disclosure for Parent Child reports and Parent export remains open. Existing security architecture and exact operation scoping continue to apply.
 
 ## CURRENT-status addendum — Phase 19A Global / Hospital Network reporting readiness (2026-10-11)
 
@@ -16,11 +16,11 @@ Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) 
 
 ## CURRENT-status addendum — Hosting-agnostic Reporting MVP (2026-10-11)
 
-[Phase 18D.2 implementation handoff](./phases/PHASE_18D2_GLOBAL_ADMIN_REPORTING_IMPLEMENTATION_HANDOFF.md): Global ADMIN workspace, eligible selected-Hospital Dashboard/Service Process read, and selected-Hospital XLSX export are implemented as separate server-authorized operations. They do not require Hospital OWNER membership and do not aggregate multiple Hospitals. Parent-to-Child exact report viewing is a separate confirmed requirement and implementation gap; no Patient mutation or general clinical access follows from hierarchy. Broader aggregate, Patient discovery/detail, and external-disclosure scopes remain separate.
+[Phase 18D.2 implementation handoff](./phases/PHASE_18D2_GLOBAL_ADMIN_REPORTING_IMPLEMENTATION_HANDOFF.md): Global ADMIN workspace, eligible selected-Hospital Dashboard/Service Process read, and selected-Hospital XLSX export are implemented as separate server-authorized operations. They do not require Hospital OWNER membership and do not aggregate multiple Hospitals. Parent-to-Child exact report viewing is a separate confirmed requirement; RPT-NET-01 later implemented its backend target authorization, while the consumer remains pending. No Patient mutation or general clinical access follows from hierarchy. Broader aggregate, Patient discovery/detail, and external-disclosure scopes remain separate.
 
 ## CURRENT-status addendum — Phase 18D.1 Hospital reporting runtime (2026-10-11)
 
-[Phase 18D.1 implementation handoff](./phases/PHASE_18D1_HOSPITAL_REPORTING_IMPLEMENTATION_HANDOFF.md): `/app/hospitals/reporting` and `/api/v1/hospital/reporting/export` provide the exact-Hospital OWNER Dashboard, Service Process view and two-sheet XLSX. Availability is hosting-agnostic; server authorization and exact-Hospital predicates are rechecked for the operation. Parent-to-Child report authorization/selection is not part of this implementation and remains the next confirmed reporting gap.
+[Phase 18D.1 implementation handoff](./phases/PHASE_18D1_HOSPITAL_REPORTING_IMPLEMENTATION_HANDOFF.md): `/app/hospitals/reporting` and `/api/v1/hospital/reporting/export` provide the exact-Hospital OWNER Dashboard, Service Process view and two-sheet XLSX. Availability is hosting-agnostic; server authorization and exact-Hospital predicates are rechecked for the operation. Phase 18D.1 did not include Parent-to-Child report authorization/selection; RPT-NET-01 later added the backend authorization foundation and RPT-NET-02 consumer remains pending.
 
 ## Historical-status addendum — Phase 18D.1 preflight Owner directions (2026-10-11)
 
@@ -942,7 +942,7 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 รายการ canonical อยู่ที่ [Explicitly Unresolved Questions](./architecture/DEMI_ARCHITECTURE_BASELINE.md#23-explicitly-unresolved-questions) โดยประเด็นที่ยังห้ามล็อกในการ implementation ได้แก่:
 
 - OSM scope นอกเหนือจาก Patient `ASSIGNED_PATIENTS`: area, geographic หรือ clinical scope ยังไม่ตัดสิน
-- สิทธิ์ของ parent/main hospital ต่อ child hospitals ใน workflow ที่ไม่ใช่ Patient access ยังไม่ตัดสิน; Patient authorization ใช้ direct Hospital scope เท่านั้น
+- สิทธิ์ทั่วไปของ parent/main hospital ต่อ child hospitals ใน workflow ที่ไม่ใช่ Patient access ยังไม่ตัดสิน; ข้อยกเว้นคือ Parent per-Child-Hospital reporting ตาม [canonical requirement](./requirements/REPORTING_ACCESS_CANONICAL.md) ซึ่งยืนยันแล้วและมี RPT-NET-01 authorization foundation. Field disclosure ของ report ยังเปิด; Patient authorization ยังคงใช้ direct Hospital scope เท่านั้น
 - การแต่งตั้ง Hospital Owner เพิ่มเติม
 - ความแตกต่างด้าน permission ระหว่าง Doctor/Nurse และผู้อนุมัติ care plan
 - Patient-submitted health measurements and any future identity-correction/reconciliation workflow remain open; the separate bounded general profile field set is approved and implemented in [Phase 17E.1](./phases/PHASE_17E1_PROFILE_ACCOUNT_SECURITY_IMPLEMENTATION.md).
