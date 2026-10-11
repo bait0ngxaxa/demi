@@ -116,7 +116,9 @@ DTO ฝั่ง client ในอนาคตควรมีเฉพาะ metr
 | **5. Data minimization, audit และ non-leaking errors** | Current OWNER projection มี identity/measurement/Program rows; Global directory มี Hospital labels/status. `AuditEvent` มี validated scalar metadata แต่ schema guard ไม่ใช่ general PHI detector และไม่มี Network audit/retention policy. | สร้าง allowlisted aggregate DTO แยก; log เฉพาะ actor, capability, Parent/child target ที่จำเป็น, request/correlation, time และ outcome; ไม่ log metric value, Patient IDs, search term หรือ response. แยก internal `DENIED`, `TEMPORAL_UNPROVEN`, `PRIVACY_WITHHELD`, `SOURCE_UNAVAILABLE`; map client เป็น generic non-numeric state. ใช้ private/no-store. ความปลอดภัยสูงขึ้นแต่รายละเอียด error สำหรับผู้ใช้น้อยลง. | Security/Privacy/Data Controller กำหนด event/retention/audit reader policy; Product/UX รับรองข้อความ unavailable; ยืนยัน field allowlist ของ Parent/child labels. Failure/audit ไม่ควรเปิดว่า Patient หรือ child มีข้อมูลหรือไม่. |
 | **6. Global aggregation is separate** | Global ADMIN MVP มี directory และ selected-Hospital report/export; ไม่มี system-wide Patient/Program aggregate. Global eligible Hospital population, metric definitions, cross-Hospital dedup, grants และ suppression ยังไม่อนุมัติใน 18C.1A/B. | สร้าง Global summary contract แยก actor/scope/DTO จาก HN. ต้องกำหนด eligible Hospital population, distinct identity semantics, metric/time/freshness, suppression และว่า current `Role.ADMIN` ทุกคนหรือเฉพาะผู้ได้รับ approval ใช้ summary ได้. ห้ามบวก selected-Hospital responses หรือ expose through existing `/app/admin/reporting`. | Product Owner/Data Owner กำหนด Global population/metrics; Security/Privacy/Data Controller อนุมัติ permission, privacy, purpose และ audit. ยืนยันว่า ADMIN ที่เข้าถึง selected-H report ไม่ได้ Global aggregate permission โดยอัตโนมัติ. |
 
-## 4. Conditional implementation roadmap — Phase 19B–19D
+## 4. HISTORICAL / SUPERSEDED — DO NOT EXECUTE AS CURRENT ROADMAP — Conditional implementation roadmap, Phase 19B–19D
+
+หัวข้อนี้เป็นแผน aggregate ตามการตีความเดิม ไม่ใช่ลำดับงานปัจจุบัน. ลำดับที่ยืนยันล่าสุดคือ [RPT-NET-01 และ RPT-NET-02 ใน canonical reporting requirements](../requirements/REPORTING_ACCESS_CANONICAL.md#4-ขอบเขต-initial-และ-implementation-priorities): Parent OWNER ต้องเข้าถึงรายงานของ eligible direct Child Hospital แยกเป็นราย Hospital. เก็บ roadmap และ decision gates ด้านล่างไว้เป็นหลักฐานประวัติศาสตร์สำหรับ aggregate work; อย่าใช้เป็น prerequisite ของ per-Hospital reporting. HN-M07 และ historical aggregate attribution ยังคงใช้กับ aggregate disclosure ตามขอบเขตเดิม.
 
 ทุก slice ด้านล่าง **ยังไม่เริ่มและยังไม่ได้รับ implementation authorization**. แต่ละ slice ต้องมี decision evidence จาก Product Owner, Security, Privacy, Data Controller, Data Owner และ Architecture ตามอำนาจ/ประเด็นที่เกี่ยวข้อง; การเรียงลำดับนี้ไม่ปิด gate หรืออนุมัติ runtime. หาก disclosure gate ใดยังเปิด ให้หยุดก่อน aggregate exposure หรือ consumer. ไม่มี slice ใดอนุญาต Network Export, unrestricted Global Patient discovery, clinical derivation หรือ historical disclosure.
 
@@ -180,7 +182,9 @@ DTO ฝั่ง client ในอนาคตควรมีเฉพาะ metr
 - **Rollback:** acceptance fail หรือ gate เปิดให้หยุด release และถอน consumer path ใหม่; exact-Hospital reports เดิมคง policy เดิม.
 - **Blockers:** controlled environment/credentials หรือ decision approval ขาด; identity/clinical leakage; non-deterministic authorization/privacy result. การผ่าน acceptance ไม่แทน Product Owner/security/privacy/data-controller release approval หรือ deployment authorization.
 
-## 5. Decision requests for the next authorized phase
+## 5. HISTORICAL / SUPERSEDED — DO NOT EXECUTE AS CURRENT ROADMAP — Previous decision requests
+
+รายการขอตัดสินด้านล่างจัดทำสำหรับ roadmap aggregate เดิม จึงไม่ใช่คำถามหรือ gate ปัจจุบันสำหรับ RPT-NET-01/02. สำหรับลำดับที่ใช้ปัจจุบัน ให้ดู [RPT-NET-01 และ RPT-NET-02 ใน canonical reporting requirements](../requirements/REPORTING_ACCESS_CANONICAL.md#4-ขอบเขต-initial-และ-implementation-priorities); คำถาม field-level ที่ยังเปิดสำหรับ Parent-to-Child reporting ระบุแยกในเอกสารนั้น. คงรายการเดิมไว้เพื่อ traceability โดยไม่เปลี่ยนสถานะ HN-M07 หรือ decision IDs.
 
 ก่อนพิจารณาเริ่ม slice ที่เกี่ยวข้องใน Phase 19B หรือ Global consumer 19C.1 โดยไม่เปลี่ยนนิยาม HN ที่รับไว้แล้ว ต้องมี decision evidence ตอบอย่างน้อย. การปิดรายการนี้ไม่ใช่ implementation หรือ disclosure authorization:
 

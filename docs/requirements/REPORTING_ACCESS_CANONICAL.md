@@ -106,6 +106,7 @@ Multi-role actor ใช้เฉพาะ authorization path ของ operation
 | Open requirement | ขอบเขตที่ต้องตัดสิน |
 | --- | --- |
 | Parent OWNER ดู Patient-identifying rows หรือเฉพาะ non-identifying view | อนุมัติ field allowlist สำหรับ exact Child report; อย่าสันนิษฐานว่า projection เดิมทั้งหมดเหมาะกับ Parent audience |
+| `OPEN_REQUIREMENT` — Parent-to-Child historical report disclosure after reparenting | เมื่อ Child ย้ายจาก Parent A ไป Parent B ให้กำหนดว่า Parent B เห็นข้อมูลรายงานที่เกิดก่อนการย้ายได้เพียงใด รวมถึง Patient rows, clinical measurements หรือ Program details ที่อยู่ในรายงาน และใช้หลักฐาน/ขอบเขตเวลาใดตัดสิน. นี่เป็นคำถามเรื่อง disclosure ของ exact-Hospital report; ไม่เปลี่ยนข้อกำหนดให้ Parent OWNER เข้าถึงรายงาน Child และไม่ใช่การนำ HN-M07 aggregate gate มาปิดการเข้าถึงดังกล่าว |
 | Parent OWNER export selected Child report | ยืนยันว่า export อยู่ในสิทธิ์ของ Parent reporting หรือไม่; OR-RPT-01 ยืนยัน report viewing เท่านั้น |
 | Child report export fields/formats | ถ้าอนุญาต export ให้กำหนด columns/format และข้อมูลที่ต้องตัดออก; ห้ามขยายจาก direct OWNER XLSX หรือ Global XLSX โดยอัตโนมัติ |
 | Clinical measurements และ exact Program details | ยืนยันทีละ field/section ว่าจะแสดงใน Parent-to-Child view หรือไม่ และจาก source/projection ใด |
