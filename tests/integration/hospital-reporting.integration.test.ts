@@ -11,22 +11,38 @@ import {
   UserStatus,
   type PrismaClient,
 } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import ExcelJS from "exceljs";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
-import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
 import {
+  exportGlobalAdminHospitalReportingWorkbook,
+  exportHospitalReportingWorkbook,
+} from "@/modules/reporting/services/hospital-report-workbook-service";
+import {
+  getGlobalAdminHospitalReportingDatasetForExport,
+  getGlobalAdminHospitalReportingPage,
   getHospitalReportingDatasetForExport,
   getHospitalReportingPage,
 } from "@/modules/reporting/services/hospital-report-query-service";
-import { NotFoundError } from "@/shared/errors/application-error";
+import { getGlobalReportingDirectory } from "@/modules/reporting/services/global-reporting-service";
+import { resolveGlobalReportingAccessContext } from "@/modules/reporting/services/global-reporting-access-service";
+import * as globalReportingAccessModule from "@/modules/reporting/services/global-reporting-access-service";
+import { GLOBAL_REPORTING_CAPABILITIES } from "@/modules/reporting/policies/global-reporting-policy";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 const previousReportingEnabled = process.env.DEMI_HOSPITAL_REPORTING_ENABLED;
 const previousProductionApproval = process.env.DEMI_HOSPITAL_REPORTING_PRODUCTION_APPROVED;
 const previousCursorSecret = process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
+const globalDemoEnvironmentKeys = [
+  "VERCEL_ENV",
+  "DEMI_GLOBAL_REPORTING_DEMO_ENABLED",
+  "DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS",
+  "DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL",
+] as const;
 
 type Fixture = {
   hospitalIds: string[];
@@ -62,7 +78,18 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
   if (fixture.profileIds.length > 0) await prisma.patientProfile.deleteMany({ where: { id: { in: fixture.profileIds } } });
   if (fixture.userIds.length > 0) {
     await prisma.auditEvent.deleteMany({
-      where: { actorUserId: { in: fixture.userIds }, action: "hospital_reporting.export.prepared" },
+      where: {
+        actorUserId: { in: fixture.userIds },
+        action: {
+          in: [
+            "hospital_reporting.export.prepared",
+            "global_reporting.access.read",
+            "global_reporting.access.denied",
+            "global_reporting.export.prepared",
+            "global_reporting.export.denied",
+          ],
+        },
+      },
     });
     await prisma.hospitalMembership.deleteMany({ where: { userId: { in: fixture.userIds } } });
     await prisma.osmHospitalRelationship.deleteMany({ where: { userId: { in: fixture.userIds } } });
@@ -74,6 +101,27 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
     await prisma.hospital.deleteMany({ where: { id: { in: fixture.hospitalIds } } });
   }
   if (fixture.personIds.length > 0) await prisma.person.deleteMany({ where: { id: { in: fixture.personIds } } });
+}
+
+async function withGlobalDemoEnvironment<T>(
+  adminUserId: string,
+  callback: () => Promise<T>,
+  deployment = "development",
+): Promise<T> {
+  const previous = new Map(globalDemoEnvironmentKeys.map((key) => [key, process.env[key]]));
+  process.env.VERCEL_ENV = deployment;
+  process.env.DEMI_GLOBAL_REPORTING_DEMO_ENABLED = "true";
+  process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = adminUserId;
+  process.env.DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL = process.env.DATABASE_URL;
+  try {
+    return await callback();
+  } finally {
+    for (const key of globalDemoEnvironmentKeys) {
+      const value = previous.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 async function createHospital(
@@ -603,5 +651,190 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
       select: { status: true },
     })).resolves.toMatchObject({ status: MembershipStatus.SUSPENDED });
+  });
+
+  it("serves only the selected Hospital to an explicitly entitled synthetic-demo ADMIN and reuses the customer workbook", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const parent = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่ายสังเคราะห์" });
+    const child = await createHospital(fixture, { name: "หน่วยบริการลูกสังเคราะห์", parentHospitalId: parent.id });
+    const sibling = await createHospital(fixture, { name: "หน่วยบริการพี่น้องสังเคราะห์", parentHospitalId: parent.id });
+    const pending = await createHospital(fixture, {
+      name: "หน่วยบริการรอตรวจสอบสังเคราะห์",
+      status: HospitalStatus.PENDING_VERIFICATION,
+      parentHospitalId: parent.id,
+    });
+    const suspended = await createHospital(fixture, {
+      name: "หน่วยบริการระงับสังเคราะห์",
+      status: HospitalStatus.SUSPENDED,
+      parentHospitalId: parent.id,
+    });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: child });
+    const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parent });
+
+    const childProfile = await createPatientProfile(fixture, "ระเบียนลูกที่เลือก");
+    const childRelationship = await createRelationship(fixture, childProfile.id, child.id, "GLOBAL-CHILD-01");
+    const childProgram = await createProgram(fixture, {
+      relationshipId: childRelationship.id,
+      createdByUserId: childOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+    const parentProfile = await createPatientProfile(fixture, "ระเบียนแม่ที่ไม่เลือก");
+    const parentRelationship = await createRelationship(fixture, parentProfile.id, parent.id, "GLOBAL-PARENT-01");
+    const parentProgram = await createProgram(fixture, {
+      relationshipId: parentRelationship.id,
+      createdByUserId: parentOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+    const siblingProfile = await createPatientProfile(fixture, "ระเบียนพี่น้องที่ไม่เลือก");
+    const siblingRelationship = await createRelationship(fixture, siblingProfile.id, sibling.id, "GLOBAL-SIBLING-01");
+    const siblingProgram = await createProgram(fixture, {
+      relationshipId: siblingRelationship.id,
+      createdByUserId: parentOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+
+    await withGlobalDemoEnvironment(admin.userId, async () => {
+      const directory = await getGlobalReportingDirectory(admin.actor);
+      const parentGroup = directory.hierarchy.groups.find(({ mainHospital }) => mainHospital.id === parent.id);
+      expect(parentGroup?.directChildren.map(({ id }) => id).sort()).toEqual(
+        [child.id, sibling.id, pending.id, suspended.id].sort(),
+      );
+      expect(directory.statusCounts).toMatchObject({
+        [HospitalStatus.ACTIVE]: expect.any(Number),
+        [HospitalStatus.PENDING_VERIFICATION]: expect.any(Number),
+        [HospitalStatus.SUSPENDED]: expect.any(Number),
+      });
+      expect(directory.statusCounts[HospitalStatus.PENDING_VERIFICATION]).toBeGreaterThanOrEqual(1);
+      expect(directory.statusCounts[HospitalStatus.SUSPENDED]).toBeGreaterThanOrEqual(1);
+
+      const globalPage = await getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: child.id, pageSize: 20 });
+      const ownerPage = await getHospitalReportingPage(childOwner.actor, { hospitalId: child.id, pageSize: 20 });
+      expect(globalPage.page.items.map(({ patientProgramId }) => patientProgramId)).toEqual([childProgram.id]);
+      expect(globalPage.counts).toEqual(ownerPage.counts);
+      expect(globalPage.page.items).toEqual(ownerPage.page.items);
+      expect(globalPage.page.items.some(({ patientProgramId }) => [parentProgram.id, siblingProgram.id].includes(patientProgramId))).toBe(false);
+
+      const dataset = await getGlobalAdminHospitalReportingDatasetForExport(admin.actor, { hospitalId: child.id });
+      expect(dataset.programs.map(({ patientProgramId }) => patientProgramId)).toEqual([childProgram.id]);
+      const generated = await exportGlobalAdminHospitalReportingWorkbook(admin.actor, { hospitalId: child.id });
+      const workbook = new ExcelJS.Workbook();
+      type ExcelJsInputBuffer = Parameters<typeof workbook.xlsx.load>[0];
+      await workbook.xlsx.load(generated.buffer as unknown as ExcelJsInputBuffer);
+      expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
+      const workbookText = workbook.worksheets.flatMap((sheet) => {
+        const values: string[] = [];
+        sheet.eachRow((row) => row.eachCell({ includeEmpty: false }, (cell) => values.push(String(cell.value ?? ""))));
+        return values;
+      }).join(" ");
+      expect(workbookText).toContain("ระเบียนลูกที่เลือก");
+      expect(workbookText).not.toContain("ระเบียนแม่ที่ไม่เลือก");
+      expect(workbookText).not.toContain("ระเบียนพี่น้องที่ไม่เลือก");
+      expect(generated.hospitalCode).toBe(child.hospitalCode);
+
+      const exportAudit = await prisma.auditEvent.findFirst({
+        where: {
+          actorUserId: admin.userId,
+          action: "global_reporting.export.prepared",
+          resourceId: child.id,
+        },
+        select: { metadata: true },
+      });
+      expect(exportAudit?.metadata).toMatchObject({
+        capability: GLOBAL_REPORTING_CAPABILITIES.export,
+        outcome: "prepared",
+      });
+      expect(JSON.stringify(exportAudit?.metadata)).not.toContain("ระเบียนลูกที่เลือก");
+
+      await expect(getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: parent.id })).resolves.toMatchObject({
+        counts: { programs: { total: 1 } },
+      });
+      await expect(getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: sibling.id })).resolves.toMatchObject({
+        page: { items: [{ patientProgramId: siblingProgram.id }] },
+      });
+      await expect(getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: pending.id })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getGlobalAdminHospitalReportingPage(admin.actor, { hospitalId: suspended.id })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getGlobalAdminHospitalReportingDatasetForExport(admin.actor, { hospitalId: pending.id })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getProgramReportingProjection(admin.actor, childRelationship.id, childProgram.id)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getGlobalAdminHospitalReportingPage(childOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(getGlobalAdminHospitalReportingPage(parentOwner.actor, { hospitalId: child.id })).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  it("denies Global Reporting after entitlement or current ADMIN status is revoked and in production", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const hospital = await createHospital(fixture, { name: "โรงพยาบาลควบคุมการปล่อยสังเคราะห์" });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const suspendedAdmin = await createActor(fixture, { role: Role.ADMIN, userStatus: UserStatus.SUSPENDED });
+
+    await withGlobalDemoEnvironment(admin.userId, async () => {
+      await expect(resolveGlobalReportingAccessContext(
+        admin.actor,
+        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+        hospital.id,
+      )).resolves.toMatchObject({ hospital: { id: hospital.id } });
+
+      process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = randomUUID();
+      await expect(resolveGlobalReportingAccessContext(
+        admin.actor,
+        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+        hospital.id,
+      )).rejects.toBeInstanceOf(NotFoundError);
+      process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = `${admin.userId},${suspendedAdmin.userId}`;
+      await expect(resolveGlobalReportingAccessContext(
+        suspendedAdmin.actor,
+        GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+        hospital.id,
+      )).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    await withGlobalDemoEnvironment(admin.userId, () => expect(resolveGlobalReportingAccessContext(
+      admin.actor,
+      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+      hospital.id,
+    )).rejects.toBeInstanceOf(NotFoundError), "production");
+
+    await prisma.userRole.deleteMany({ where: { userId: admin.userId, role: Role.ADMIN } });
+    await withGlobalDemoEnvironment(admin.userId, () => expect(resolveGlobalReportingAccessContext(
+      admin.actor,
+      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+      hospital.id,
+    )).rejects.toBeInstanceOf(ForbiddenError));
+  });
+
+  it("withholds a generated Global workbook when ADMIN access is revoked before file release", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const hospital = await createHospital(fixture, { name: "โรงพยาบาลเพิกถอนก่อนส่งไฟล์สังเคราะห์" });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const originalResolve = globalReportingAccessModule.resolveGlobalReportingAccessContext;
+    let authorizationChecks = 0;
+    const authorizationSpy = vi.spyOn(globalReportingAccessModule, "resolveGlobalReportingAccessContext")
+      .mockImplementation(async (...args: Parameters<typeof resolveGlobalReportingAccessContext>) => {
+        authorizationChecks += 1;
+        if (authorizationChecks === 3) throw new ForbiddenError();
+        return originalResolve(...args);
+      });
+
+    try {
+      await withGlobalDemoEnvironment(admin.userId, () => expect(
+        exportGlobalAdminHospitalReportingWorkbook(admin.actor, { hospitalId: hospital.id }),
+      ).rejects.toBeInstanceOf(ForbiddenError));
+    } finally {
+      authorizationSpy.mockRestore();
+    }
+
+    expect(authorizationChecks).toBe(3);
+    const exportAudits = await prisma.auditEvent.findMany({
+      where: {
+        actorUserId: admin.userId,
+        resourceId: hospital.id,
+        action: { in: ["global_reporting.export.prepared", "global_reporting.export.denied"] },
+      },
+      select: { action: true },
+    });
+    expect(exportAudits).toEqual([{ action: "global_reporting.export.denied" }]);
   });
 });

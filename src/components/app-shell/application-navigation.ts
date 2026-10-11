@@ -41,6 +41,7 @@ import {
   decideHospitalReportPolicy,
   HOSPITAL_REPORT_CAPABILITIES,
 } from "@/modules/reporting/policies/hospital-report-policy";
+import { isGlobalReportingDemoAdminConfigured } from "@/modules/reporting/services/global-reporting-demo-release-control";
 import { isHospitalReportingEnabled } from "@/modules/reporting/services/hospital-report-release-control";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
@@ -316,6 +317,18 @@ export function projectApplicationNavigation(
   }).allowed;
 
   const adminItems = [];
+
+  if (
+    actor.roles.includes(Role.ADMIN) &&
+    isGlobalReportingDemoAdminConfigured(actor.userId)
+  ) {
+    adminItems.push({
+      href: "/app/admin/reporting",
+      label: "รายงานระบบ",
+      match: "prefix" as const,
+      prefetch: false,
+    });
+  }
 
   if (canReadHospitalGovernance) {
     adminItems.push({

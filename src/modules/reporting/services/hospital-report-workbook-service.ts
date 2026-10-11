@@ -7,6 +7,7 @@ import ExcelJS from "exceljs";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { ValidationError } from "@/shared/errors/application-error";
 
 import type {
   HospitalReportFact,
@@ -14,8 +15,19 @@ import type {
   HospitalReportProgramRow,
   HospitalReportingDataset,
 } from "../projections/hospital-report-projection";
-import { HospitalReportExportLimitError, getHospitalReportingDatasetForExport } from "./hospital-report-query-service";
+import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
+import { hospitalReportExportRequestSchema } from "../schemas/hospital-report-schemas";
+import {
+  HospitalReportExportLimitError,
+  getGlobalAdminHospitalReportingDatasetForExport,
+  getHospitalReportingDatasetForExport,
+} from "./hospital-report-query-service";
 import { resolveHospitalReportingAccessContext } from "./hospital-report-access-service";
+import {
+  globalReportingAuditReasonForError,
+  recordGlobalReportingAudit,
+  resolveGlobalReportingAccessContext,
+} from "./global-reporting-access-service";
 
 const WORKBOOK_TEMPLATE_PATH = join(process.cwd(), "docs", "Dashboard App Demi.xlsx");
 const DASHBOARD_SHEET_NAME = "Dashboard ภาพรวม";
@@ -602,6 +614,53 @@ export async function exportHospitalReportingWorkbook(
   });
 
   return { buffer, generatedAt };
+}
+
+export async function exportGlobalAdminHospitalReportingWorkbook(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+): Promise<{ buffer: Buffer; generatedAt: Date; hospitalCode: string }> {
+  const parsed = hospitalReportExportRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    await recordGlobalReportingAudit({
+      actorUserId: actor?.userId,
+      capability: GLOBAL_REPORTING_CAPABILITIES.export,
+      outcome: "denied",
+      reason: "INVALID_REQUEST",
+    });
+    throw new ValidationError("ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง");
+  }
+
+  let dataset: HospitalReportingDataset;
+  let buffer: Buffer;
+  const generatedAt = new Date();
+  try {
+    dataset = await getGlobalAdminHospitalReportingDatasetForExport(actor, parsed.data);
+    buffer = await generateHospitalReportWorkbook(dataset, generatedAt);
+    await resolveGlobalReportingAccessContext(
+      actor,
+      GLOBAL_REPORTING_CAPABILITIES.export,
+      dataset.hospital.id,
+    );
+  } catch (error: unknown) {
+    await recordGlobalReportingAudit({
+      actorUserId: actor?.userId,
+      capability: GLOBAL_REPORTING_CAPABILITIES.export,
+      hospitalId: parsed.data.hospitalId,
+      outcome: "denied",
+      reason: globalReportingAuditReasonForError(error),
+    });
+    throw error;
+  }
+
+  await recordGlobalReportingAudit({
+    actorUserId: actor?.userId,
+    capability: GLOBAL_REPORTING_CAPABILITIES.export,
+    hospitalId: dataset.hospital.id,
+    outcome: "prepared",
+  });
+
+  return { buffer, generatedAt, hospitalCode: dataset.hospital.hospitalCode };
 }
 
 export const hospitalReportWorkbookInternals = {

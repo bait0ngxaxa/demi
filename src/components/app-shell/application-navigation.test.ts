@@ -5,7 +5,7 @@ import {
   Profession,
   Role,
 } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
@@ -41,6 +41,40 @@ describe("application navigation projection", () => {
     expect(adminLabels).toContain("การกำกับดูแลโรงพยาบาล");
     expect(adminLabels).toContain("คำขอขึ้นทะเบียนโรงพยาบาล");
     expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
+  });
+
+  it("shows Global Reporting only for an explicitly configured synthetic-demo ADMIN", () => {
+    const keys = [
+      "VERCEL_ENV",
+      "DEMI_GLOBAL_REPORTING_DEMO_ENABLED",
+      "DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS",
+      "DATABASE_URL",
+      "DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL",
+    ] as const;
+    const previous = new Map(keys.map((key) => [key, process.env[key]]));
+    const syntheticDatabaseUrl = "postgresql://demo:secret@127.0.0.1:5432/demi_synthetic";
+    vi.stubEnv("NODE_ENV", "development");
+    process.env.VERCEL_ENV = "development";
+    process.env.DEMI_GLOBAL_REPORTING_DEMO_ENABLED = "true";
+    process.env.DEMI_GLOBAL_REPORTING_DEMO_ADMIN_USER_IDS = "22222222-2222-4222-8222-222222222222";
+    process.env.DATABASE_URL = syntheticDatabaseUrl;
+    process.env.DEMI_GLOBAL_REPORTING_SYNTHETIC_DATABASE_URL = syntheticDatabaseUrl;
+
+    try {
+      expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).toContain("รายงานระบบ");
+      expect(navigationLabels(actor({ roles: [Role.ADMIN], userId: "99999999-9999-4999-8999-999999999999" }))).not.toContain("รายงานระบบ");
+      expect(navigationLabels(actor({ roles: [Role.HOSPITAL] }))).not.toContain("รายงานระบบ");
+
+      vi.stubEnv("NODE_ENV", "production");
+      process.env.VERCEL_ENV = "production";
+      expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานระบบ");
+    } finally {
+      vi.unstubAllEnvs();
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it("projects Hospital Contact Work navigation only for a direct active Owner", () => {

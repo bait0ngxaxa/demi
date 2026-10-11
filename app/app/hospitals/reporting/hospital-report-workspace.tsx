@@ -251,7 +251,34 @@ function ProgramContext({ program }: { program: HospitalReportProgramRow }): Rea
   );
 }
 
-function ProgramOverview({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+function ProgramDetailAccess({
+  program,
+  allowed,
+}: {
+  program: HospitalReportProgramRow;
+  allowed: boolean;
+}): React.JSX.Element {
+  return allowed ? (
+    <Link
+      className={buttonClassName({ variant: "secondary", size: "compact" })}
+      href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}
+    >
+      เปิดรายละเอียด Program
+    </Link>
+  ) : (
+    <p className="text-right text-xs leading-5 text-text-muted">
+      การเปิดรายละเอียด Program ใช้สิทธิ์ Hospital แยกต่างหาก
+    </p>
+  );
+}
+
+function ProgramOverview({
+  program,
+  allowProgramDetail,
+}: {
+  program: HospitalReportProgramRow;
+  allowProgramDetail: boolean;
+}): React.JSX.Element {
   return (
     <Panel aria-labelledby={`overview-program-${program.patientProgramId}`} className="p-5 sm:p-6">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -294,7 +321,7 @@ function ProgramOverview({ program }: { program: HospitalReportProgramRow }): Re
               ))}
             </ol>
           )}
-          {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · ดูรายละเอียดทั้งหมดได้ที่รายงาน Program</p> : null}
+          {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูรายละเอียดทั้งหมดได้ที่รายงาน Program" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <p className="mt-3 text-sm text-text-muted">คะแนนผลสำเร็จ: {unavailableText(program.unavailable.achievementRate)}</p>
         </section>
 
@@ -317,9 +344,7 @@ function ProgramOverview({ program }: { program: HospitalReportProgramRow }): Re
 
       <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {unavailableText(program.unavailable.illnessDuration)} · สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก</p>
-        <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}>
-          เปิดรายละเอียด Program
-        </Link>
+        <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
     </Panel>
   );
@@ -364,7 +389,13 @@ function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): Re
   );
 }
 
-function ServiceProgram({ program }: { program: HospitalReportProgramRow }): React.JSX.Element {
+function ServiceProgram({
+  program,
+  allowProgramDetail,
+}: {
+  program: HospitalReportProgramRow;
+  allowProgramDetail: boolean;
+}): React.JSX.Element {
   const goalPlans = program.goalPlans.items;
   return (
     <Panel aria-labelledby={`service-program-${program.patientProgramId}`} className="p-5 sm:p-6">
@@ -418,14 +449,14 @@ function ServiceProgram({ program }: { program: HospitalReportProgramRow }): Rea
               ))}
             </ol>
           )}
-          {program.goalPlans.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {goalPlans.length} จาก {program.goalPlans.totalCount} แผน · เปิดรายละเอียด Program เพื่อดูรายการทั้งหมด</p> : null}
+          {program.goalPlans.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {goalPlans.length} จาก {program.goalPlans.totalCount} แผน · {allowProgramDetail ? "เปิดรายละเอียด Program เพื่อดูรายการทั้งหมด" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <p className="mt-3 text-sm text-text-muted">ค่าในแผนเป็นเป้าหมายที่บันทึก ไม่ใช่ผลการปฏิบัติ</p>
         </section>
 
         <section aria-labelledby={`service-followup-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
           <h4 className="mb-3 font-semibold text-text" id={`service-followup-${program.patientProgramId}`}>บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า</h4>
           {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
-          {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · ดูทั้งหมดในรายละเอียด Program หรือไฟล์ Excel</p> : null}
+          {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูทั้งหมดในรายละเอียด Program หรือไฟล์ Excel" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>วัน/อัตราความสำเร็จ: {unavailableText(program.unavailable.achievementDays)} / {unavailableText(program.unavailable.achievementRate)}</li>
             <li>ผลลัพธ์และการปรับแผน: {unavailableText(program.unavailable.outcome)} / {unavailableText(program.unavailable.planAdjustment)}</li>
@@ -435,13 +466,19 @@ function ServiceProgram({ program }: { program: HospitalReportProgramRow }): Rea
       </div>
 
       <div className="mt-5 flex justify-end border-t border-border pt-4">
-        <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}>เปิดรายละเอียด Program</Link>
+        <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
     </Panel>
   );
 }
 
-function ExportButton({ hospitalId }: { hospitalId: string }): React.JSX.Element {
+function ExportButton({
+  hospitalId,
+  endpoint,
+}: {
+  hospitalId: string;
+  endpoint: string;
+}): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -449,7 +486,7 @@ function ExportButton({ hospitalId }: { hospitalId: string }): React.JSX.Element
     setLoading(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/v1/hospital/reporting/export?hospitalId=${encodeURIComponent(hospitalId)}`, {
+      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}`, {
         method: "GET",
         cache: "no-store",
         credentials: "same-origin",
@@ -503,29 +540,49 @@ export function HospitalReportWorkspace({
   initialView,
   page,
   selectedHospitalId,
+  audience = "HOSPITAL_OWNER",
 }: {
   hospitals: readonly HospitalReportingHospital[];
   hierarchy: HospitalHierarchyContext;
   initialView: string;
   page: HospitalReportingPageProjection;
   selectedHospitalId: string;
+  audience?: "HOSPITAL_OWNER" | "GLOBAL_ADMIN_DEMO";
 }): React.JSX.Element {
   const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
-  const baseHref = `/app/hospitals/reporting?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+  const isGlobalAdmin = audience === "GLOBAL_ADMIN_DEMO";
+  const routeBase = isGlobalAdmin ? "/app/admin/reporting" : "/app/hospitals/reporting";
+  const baseHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+  const allowProgramDetail = !isGlobalAdmin;
 
   return (
     <div className="min-w-0 max-w-[1440px]">
       <PageHeader
-        actions={<ExportButton hospitalId={selectedHospitalId} />}
-        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานโรงพยาบาล" }]}
-        description="ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"
+        actions={<ExportButton endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
+        breadcrumbs={isGlobalAdmin
+          ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
+          : [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานโรงพยาบาล" }]}
+        description={isGlobalAdmin
+          ? "Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้"
+          : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
         title="รายงานโรงพยาบาล"
       />
 
+      {isGlobalAdmin ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-3xl text-sm leading-6 text-text-muted">
+            รายงานนี้ใช้ข้อมูลของ Hospital ที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
+          </p>
+          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
+            กลับไปภาพรวมและเลือกโรงพยาบาล
+          </Link>
+        </div>
+      ) : null}
+
       {hospitals.length > 1 ? (
-        <form action="/app/hospitals/reporting" className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
+        <form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
           <div className="min-w-0 flex-1">
-            <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง</label>
+            <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">{isGlobalAdmin ? "เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง" : "เลือกโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"}</label>
             <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" name="hospitalId">
               {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
             </select>
@@ -541,9 +598,12 @@ export function HospitalReportWorkspace({
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {page.hospital.hospitalCode}</p>
+            <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {page.hospital.hospitalCode} · {hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}</p>
           </div>
-          <p className="text-sm text-text-muted">ข้อมูลตาม Program ของโรงพยาบาลนี้</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
+            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงาน exact-Hospital ของหน่วยนี้" : "ข้อมูลตาม Program ของโรงพยาบาลนี้"}</p>
+          </div>
         </div>
 
         <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -601,13 +661,13 @@ export function HospitalReportWorkspace({
           <Panel>
             <h3 className="font-semibold text-text">ไม่มี Program ในหน้านี้</h3>
             <p className="mt-2 text-sm leading-6 text-text-muted">ยังมี Program {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ โปรดกลับไปหน้าแรกของรายงาน</p>
-            <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`}>กลับไปหน้าแรก</Link>
+            <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`} prefetch={false}>กลับไปหน้าแรก</Link>
           </Panel>
         ) : (
           <div className="grid min-w-0 gap-4">
             {page.page.items.map((program) => view === "overview"
-              ? <ProgramOverview key={program.patientProgramId} program={program} />
-              : <ServiceProgram key={program.patientProgramId} program={program} />)}
+              ? <ProgramOverview allowProgramDetail={allowProgramDetail} key={program.patientProgramId} program={program} />
+              : <ServiceProgram allowProgramDetail={allowProgramDetail} key={program.patientProgramId} program={program} />)}
           </div>
         )}
       </section>
@@ -616,7 +676,7 @@ export function HospitalReportWorkspace({
 
       {page.page.nextCursor ? (
         <nav aria-label="หน้ารายการ Program ของรายงานโรงพยาบาล" className="mt-5 flex justify-end">
-          <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} rel="next">ดู Program ถัดไป</Link>
+          <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="next">ดู Program ถัดไป</Link>
         </nav>
       ) : null}
       <p className="mt-4 text-xs leading-5 text-text-muted">ชื่อ อสม. แสดงเฉพาะผู้ที่ได้รับมอบหมายให้ดูแลผู้ป่วยรายนี้ในปัจจุบัน รายงานนี้ไม่มีข้อมูลผู้ดูแลย้อนหลังของบริการ</p>

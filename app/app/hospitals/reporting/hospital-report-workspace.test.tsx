@@ -218,6 +218,23 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ส่งออก Excel");
   });
 
+  it("uses Global exact-Hospital export and never links ADMIN-only users to Program detail", () => {
+    const markup = renderToStaticMarkup(createElement(HospitalReportWorkspace, {
+      hospitals,
+      hierarchy,
+      initialView: "overview",
+      page: page([program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)]),
+      selectedHospitalId: hospitalId,
+      audience: "GLOBAL_ADMIN_DEMO",
+    }));
+
+    expect(markup).toContain("Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้");
+    expect(markup).toContain("ส่งออก Excel");
+    expect(markup).not.toContain("/app/patients/");
+    expect(markup).toContain("การเปิดรายละเอียด Program ใช้สิทธิ์ Hospital แยกต่างหาก");
+    expect(markup).toContain("รายงานนี้ใช้ข้อมูลของ Hospital ที่เลือกเท่านั้น");
+  });
+
   it("does not create a fake Program row when only a relationship without a Program exists", () => {
     const markup = render("overview", [], 0);
     expect(markup).toContain("ยังไม่มี Program ที่รายงานได้");

@@ -13,15 +13,21 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const mockedResolveAccess = vi.hoisted(() => vi.fn());
+const mockedResolveGlobalAccess = vi.hoisted(() => vi.fn());
 vi.mock("./hospital-report-access-service", () => ({
   resolveHospitalReportingAccessContext: mockedResolveAccess,
+}));
+vi.mock("./global-reporting-access-service", () => ({
+  resolveGlobalReportingAccessContext: mockedResolveGlobalAccess,
 }));
 
 import {
   HospitalReportExportLimitError,
+  getGlobalAdminHospitalReportingPage,
   getHospitalReportingPage,
   hospitalReportQueryInternals,
 } from "./hospital-report-query-service";
+import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
 
 const hospitalAId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -72,6 +78,7 @@ const accessForBothHospitalsB = {
   actor: actorWithBothHospitals,
   hospital: { id: hospitalBId, hospitalCode: "DEMO-B", name: "โรงพยาบาล ข", status: HospitalStatus.ACTIVE },
 };
+const globalActor: ActorContext = { ...actorWithBothHospitals, roles: [Role.ADMIN, Role.HOSPITAL] };
 
 function followupRecord(roundNumber: number): Record<string, unknown> {
   return {
@@ -172,6 +179,7 @@ describe("Hospital reporting query service", () => {
     vi.clearAllMocks();
     vi.stubEnv("DEMI_HOSPITAL_REPORTING_CURSOR_SECRET", cursorSecret);
     mockedResolveAccess.mockResolvedValue(access);
+    mockedResolveGlobalAccess.mockResolvedValue({ actor: globalActor, hospital: access.hospital });
   });
 
   afterEach(() => {
@@ -228,6 +236,75 @@ describe("Hospital reporting query service", () => {
     }));
     expect(JSON.stringify(result)).toContain("givenName");
     expect(JSON.stringify(result)).not.toContain("createdBy");
+  });
+
+  it("reuses the exact-Hospital projection for the separately authorized Global caller", async () => {
+    const database = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })],
+    });
+
+    const result = await getGlobalAdminHospitalReportingPage(
+      globalActor,
+      { hospitalId: hospitalAId },
+      { database },
+    );
+
+    expect(result.page.items.map(({ patientProgramId }) => patientProgramId)).toEqual([programA1Id]);
+    expect(database.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
+        status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
+      }),
+    }));
+    expect(mockedResolveGlobalAccess).toHaveBeenCalledWith(
+      globalActor,
+      GLOBAL_REPORTING_CAPABILITIES.hospitalRead,
+      hospitalAId,
+      expect.anything(),
+    );
+    expect(mockedResolveAccess).not.toHaveBeenCalled();
+  });
+
+  it("binds pagination cursors to the authorization operation as well as actor and Hospital", async () => {
+    const globalDatabase = createDatabase({
+      programs: [
+        programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }),
+        programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE }),
+      ],
+    });
+    const globalFirstPage = await getGlobalAdminHospitalReportingPage(
+      globalActor,
+      { hospitalId: hospitalAId, pageSize: 1 },
+      { database: globalDatabase },
+    );
+    const globalCursor = globalFirstPage.page.nextCursor;
+    if (!globalCursor) throw new Error("Expected a Global Reporting cursor");
+
+    await expect(getHospitalReportingPage(globalActor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor: globalCursor,
+    }, { database: createDatabase() })).rejects.toBeInstanceOf(NotFoundError);
+
+    const ownerDatabase = createDatabase({
+      programs: [
+        programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }),
+        programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE }),
+      ],
+    });
+    const ownerFirstPage = await getHospitalReportingPage(
+      globalActor,
+      { hospitalId: hospitalAId, pageSize: 1 },
+      { database: ownerDatabase },
+    );
+    const ownerCursor = ownerFirstPage.page.nextCursor;
+    if (!ownerCursor) throw new Error("Expected a Hospital OWNER cursor");
+
+    await expect(getGlobalAdminHospitalReportingPage(globalActor, {
+      hospitalId: hospitalAId,
+      pageSize: 1,
+      cursor: ownerCursor,
+    }, { database: createDatabase() })).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("keeps preview pagination explicit and uses deterministic cursor ordering", async () => {
