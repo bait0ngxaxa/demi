@@ -33,6 +33,10 @@ The product direction also changes operational ownership:
 
 The business requirements for each module are still being collected. Therefore this document fixes only the architectural baseline and explicitly leaves unresolved business rules open.
 
+## 1.1 Production-Ready MVP and Deployment-Neutral Runtime
+
+The project delivery contract is one production-ready MVP codebase for every compatible runtime. Deployment environment determines infrastructure configuration and release operations, not business behavior or authorization. Server policies resolve the current user, role, capability, resource status, and scope from authoritative application data; hosting provider, `NODE_ENV`, project identity, and deployment labels grant no application permission. Synthetic fixtures are for tests and controlled test databases. Production-ready code does not close unresolved clinical, Security, Privacy, Data Controller, or deployment acceptance gates. See [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md) and [Project Context](../CONTEXT.md) for the current delivery contract.
+
 ---
 
 # 2. Core Architecture Principles

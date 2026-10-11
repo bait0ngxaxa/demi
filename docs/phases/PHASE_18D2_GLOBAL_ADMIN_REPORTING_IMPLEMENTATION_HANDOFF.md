@@ -1,6 +1,6 @@
 # Phase 18D.2 — Global Admin Reporting Implementation Handoff
 
-**Status: HOSTING-AGNOSTIC MVP IMPLEMENTED.** The selected-Hospital Global Admin reporting feature follows normal database-backed application authorization on every compatible host. No deployment was performed by this implementation.
+**Status: HOSTING-AGNOSTIC MVP IMPLEMENTED.** The selected-Hospital Global Admin reporting feature follows normal database-backed application authorization on every compatible host. The project-wide delivery contract is recorded in [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md). No deployment was performed by this implementation.
 
 ## Delivery
 

@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Project-Wide Delivery Contract
+
+Treat DEMI as one production-ready MVP codebase: every approved feature is a complete vertical slice with normal persistence and server-side authorization. Keep business behavior independent of hosting providers, `NODE_ENV`, project IDs, and deployment labels; environment configuration, secrets, database separation, infrastructure, and release operations belong to the Product Owner and operators. Synthetic fixtures belong in tests and controlled test databases, not demo-only runtime paths. Do not use fake persistence, temporary authorization bypasses, mock success responses, or defer production conversion as technical debt. Production-ready code does not mean unresolved clinical requirements, privacy/security/data-controller approvals, or production deployment acceptance are complete; keep those capabilities out of scope until confirmed. When sources conflict, follow the latest confirmed Product Owner decision and Accepted ADRs over historical phase instructions.
+
 ## 1. Priorities and Scope
 
 * Priority order: **Correctness > Security > Maintainability > Performance > Speed**

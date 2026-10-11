@@ -1,6 +1,6 @@
 # DEMI Rewrite
 
-DEMI is being rewritten on the architecture documented in [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
+DEMI is one production-ready MVP codebase; compatible deployment environments do not change business authorization. See the [Production-Ready MVP Delivery Standard](PRODUCT.md#production-ready-mvp-delivery-standard), [ADR-0010](docs/adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md), [`docs/CONTEXT.md`](docs/CONTEXT.md), the [architecture baseline](docs/architecture/DEMI_ARCHITECTURE_BASELINE.md), and the [ADR index](docs/adr/README.md).
 
 โปรเจกต์ปิด **Phase 3B: Hospital Onboarding & Governance — MVP Vertical Slice** แล้ว โดยต่อยอดจาก contract ของ Phase 3A และยังคงใช้ authentication foundation ของ Phase 2.1 ระบบมี public hospital onboarding, manual Platform `ADMIN` review และการอนุมัติแบบ transactional ครบตาม MVP ส่วน **Phase 4A: Workforce Provisioning Requirement Closure and Architecture Synchronization** และ **Phase 4B: Workforce Provisioning + First-Time Activation MVP Vertical Slice** เสร็จแล้ว
 

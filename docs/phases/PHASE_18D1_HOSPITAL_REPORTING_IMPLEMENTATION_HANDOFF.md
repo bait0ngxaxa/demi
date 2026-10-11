@@ -1,6 +1,6 @@
 # Phase 18D.1 — Hospital Reporting Implementation Handoff
 
-**Status: HOSPITAL OWNER REPORTING MVP IMPLEMENTED / BROWSER FLOW HISTORICALLY UNVERIFIED.** This handoff records Phase 18D.1 behavior at its implementation point. The current hosting-agnostic authorization and Global Admin integration are recorded in the Phase 18D.2 runtime correction handoff. No production rollout or real Patient-data query was performed during Phase 18D.1.
+**Status: HOSPITAL OWNER REPORTING MVP IMPLEMENTED / BROWSER FLOW HISTORICALLY UNVERIFIED.** This handoff records Phase 18D.1 behavior and verification at its implementation point. The current production-ready, deployment-neutral delivery standard is recorded in [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md); current hosting-agnostic authorization and Global Admin integration are recorded in the Phase 18D.2 runtime correction handoff. No production rollout or real Patient-data query was performed during Phase 18D.1.
 
 ## Delivery
 
@@ -47,7 +47,7 @@ The DTO distinguishes `RECORDED` (including numeric zero), `NOT_RECORDED`, `UNAV
 - `npm run typecheck` — passed.
 - Local installed ESLint on all changed TypeScript/TSX source and test files — passed; the final UI file/test lint rerun also passed.
 - Impeccable detector on `hospital-report-workspace.tsx` — returned no findings (`[]`). `git diff --check` — clean.
-- Full repository tests, production build, and authenticated browser smoke were not run. The current browser/auth/database environment could not be certified as an isolated synthetic demo, so the required login → navigation → both views → downloaded two-sheet XLSX journey remains **unverified**. Automated synthetic integration verifies route services, authorization, XLSX generation, worksheet structure, scope, overflow, and snapshot behavior; it does not replace that browser smoke.
+- Full repository tests, production build, and authenticated browser smoke were not run. No authenticated browser session against a controlled test database was available, so the login → navigation → both views → downloaded two-sheet XLSX journey remains **unverified**. Automated synthetic integration verifies route services, authorization, XLSX generation, worksheet structure, scope, overflow, and snapshot behavior; it does not replace that browser smoke. This is a historical verification limitation, not a runtime restriction on Hospital Reporting.
 
 ## Phase 18D.2 reuse and remaining limits
 
