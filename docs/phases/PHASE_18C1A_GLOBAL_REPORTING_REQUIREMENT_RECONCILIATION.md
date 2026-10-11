@@ -1,5 +1,7 @@
 # Phase 18C.1A — Hospital and Global Reporting Requirement Reconciliation
 
+> **Current requirement supersession:** [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md) supersedes this document's earlier broad Global product interpretation for the initial delivery. Current Global scope is per-selected-Hospital report view/export (implemented in Phase 18D.2); merged system summaries/comparison are not initial requirements. Cross-Hospital Patient discovery/detail remains separate and is not implied by OR-RPT-02. This Phase 18C.1A record remains historical evidence.
+
 - **ผล Phase:** GLOBAL REPORTING PRODUCT DIRECTION RECORDED / ACCESS CONTRACT OPEN / IMPLEMENTATION NOT AUTHORIZED
 - **HEAD ที่ตรวจ:** main / 23dd09356db3c06e70507c0800b70f7923fcbfda
 - **วันที่บันทึกคำยืนยัน:** 2026-10-10
@@ -7,7 +9,7 @@
 
 เอกสารนี้เพิ่มหลักฐานและการตีความต่อจาก Phase 18C.1 โดยไม่แก้สถานะ R24A-D01–D15 หรือ HN-M01–HN-M08. รหัส **GR-REQ-01** เป็น requirement reference สำหรับ trace เท่านั้น ไม่ใช่ Decision ID และไม่แทน R24A-D16 หรือ HN-Mxx.
 
-## 1. ทิศทางผลิตภัณฑ์ที่ผู้ร้องขอยืนยัน
+## 1. Historical product direction recorded at Phase 18C.1A — superseded for initial scope
 
 คำขอ Phase 18C.1A ลงวันที่ 2026-10-10 ยืนยันว่าต้องมี reporting dashboard สำหรับ Hospital แต่ละแห่งและ Platform Admin ระดับระบบ โดย Global Admin ต้องทำได้ครบสามระดับ:
 
@@ -15,7 +17,7 @@
 2. เลือก Hospital และดูหรือเปรียบเทียบผลราย Hospital.
 3. drill-down ไปยังข้อมูลราย Patient ข้าม Hospital ได้ **เฉพาะเมื่อมี patient-data access permission แยกที่อนุมัติและกำหนด scope ไว้อย่างชัดเจน**.
 
-ข้อ 3 เป็น product requirement ที่บันทึกแล้ว ห้ามตัดออกเพราะ runtime ปัจจุบันยังไม่มีสิทธิ์ดังกล่าว. การยืนยันนี้ใช้สถานะ **OWNER_RECEIVED / REQUESTER-CONFIRMED PRODUCT DIRECTION** เฉพาะเจตนาผลิตภัณฑ์. ไม่พบชื่อผู้อนุมัติ ลายมือชื่อ minutes หรือหลักฐานอนุมัติจาก Security, Privacy, Data Controller หรือ Clinical authority.
+ข้อ 3 บันทึกความเข้าใจของ Phase 18C.1A ในเวลานั้นเท่านั้น; ต่อมาถูก supersede สำหรับ initial scope โดย OR-RPT-02/03 ใน canonical requirements. การยืนยันเดิมใช้สถานะ **OWNER_RECEIVED / REQUESTER-CONFIRMED PRODUCT DIRECTION** เฉพาะเจตนาตอนนั้น ไม่ใช่ข้อกำหนดให้ทำ Global aggregation หรือ cross-Hospital Patient discovery ใน initial delivery.
 
 การยืนยันผลิตภัณฑ์นี้ **ไม่ใช่** security/privacy/clinical approval, authorization policy, field disclosure approval, permission grant, implementation authorization หรือ production access. Default deny คงเดิมจนกว่าจะปิด gate ที่เกี่ยวข้อง.
 

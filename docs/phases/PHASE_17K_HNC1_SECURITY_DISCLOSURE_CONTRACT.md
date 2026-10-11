@@ -1,5 +1,7 @@
 # DEMI — Phase 17K HN-C1: Security & Disclosure Contract
 
+> **Current product requirements:** See [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This contract addresses proposed Network aggregate/directory operations. Its HN-M07, historical attribution, and aggregate disclosure gates do not veto OR-RPT-01 exact-Hospital Child report reads. The Parent-to-Child report entitlement is confirmed; its field-level disclosure, audit applicability, and Child export remain separately open. Historical HN-C1 status and decision IDs are retained.
+
 - **ขอบเขต:** documentation-only contract สำหรับ Hospital Network reporting ในอนาคต
 - **สถานะเอกสาร:** HN-C1 DOCUMENTATION PREPARED — SECURITY ACCEPTANCE PENDING
 - **สถานะข้อมูลจริง:** ยังห้ามเปิดเผย Network aggregate ที่ได้รับผลจาก temporal หรือ privacy gate

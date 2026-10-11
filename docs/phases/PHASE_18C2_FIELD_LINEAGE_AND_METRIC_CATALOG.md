@@ -1,5 +1,7 @@
 # Phase 18C.2 — Field Lineage and Metric Catalog
 
+> **Current requirement scope:** Refer to [the canonical Owner requirements](../requirements/REPORTING_ACCESS_CANONICAL.md). This catalog remains technical evidence for its listed fields/metrics, not the current product scope or disclosure approval. Parent OWNER per-Child-Hospital reporting is confirmed; Patient-row, clinical, exact Program, and export fields for that audience remain individually open where unspecified. HN-M07 applies to future aggregate outputs, not as a blanket blocker for exact-Hospital reports.
+
 สถานะ: **SOURCE / PROJECTION / SEMANTICS / DISCLOSURE แยกผลตรวจแล้ว; metric และ field authorization ยังไม่อนุมัติ**
 
 เอกสารนี้สังเคราะห์ field map จาก Phase 18B/RPT-24 และตรวจ source, schema, import/report query ที่ audited HEAD 99ab21c557def66406644845b639e8aa843ca9c1. Workbook docs/Dashboard App Demi.xlsx ใช้เป็นหลักฐานการนำเสนอ; Phase 18B บันทึก SHA-256 f70b4fc42d31b5ca5fb9b9f8f915a91709b376a31839fa420a62f8103efe7d43, worksheet Dashboard ภาพรวม ขนาด A1:AQ29 และ รายงานการจัดบริการ ขนาด A1:BM37. Phase นี้อ้าง field-to-source map ใน RPT-24 §§5–6/Phase 18B โดยไม่ได้อ่าน cell contents หรือข้อมูลผู้ป่วยจริง. Official import template public/templates/demi-patient-import-template-v1.xlsx เป็น blank template 28 columns A:AB. การมี worksheet/column ไม่พิสูจน์ persistence หรืออนุมัติการแสดงผล.

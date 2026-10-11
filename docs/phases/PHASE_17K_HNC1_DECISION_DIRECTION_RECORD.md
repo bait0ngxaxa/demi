@@ -1,5 +1,7 @@
 # DEMI — Phase 17K HN-C1 Decision Direction Record
 
+> **Current product requirements:** Use [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md) for current delivery intent. D01–D13 preserve historical engineering direction for Network aggregate work and do not define or cancel the confirmed Parent-to-Child exact-report flow. Aggregate privacy/history gates remain scoped to aggregates; field-specific Child report decisions remain open.
+
 - **ประเภทเอกสาร:** บันทึกทิศทาง engineering สำหรับ HN-C1 D01–D13; documentation-only
 - **สถานะ:** ENGINEERING DIRECTION CONFIRMED BY REQUESTER; SECURITY / PRIVACY ACCEPTANCE PENDING
 - **สาขา:** docs/hn-c1-security-disclosure-contract

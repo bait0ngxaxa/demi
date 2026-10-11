@@ -1,5 +1,7 @@
 # Phase 18C.1B — Global Reporting Security Decision Register
 
+> **Current requirement scope:** Use [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md) for current Global reporting intent. GR-SEC decisions remain open for their registered aggregate/comparison/discovery/detail scopes; they do not block the implemented selected-Hospital ADMIN report/export or act as a blanket veto on Parent-to-Child exact-Hospital reporting. Do not mark any GR-SEC decision resolved by this notice.
+
 - **สถานะ:** ทุกข้อ OPEN / PROPOSED FOR REVIEW
 - **ฐานตรวจสอบ:** main / fc8335450622209f1681425700f765344c4c0f27
 - **Product requirement reference:** GR-REQ-01 (ไม่ใช่ Security Decision ID)

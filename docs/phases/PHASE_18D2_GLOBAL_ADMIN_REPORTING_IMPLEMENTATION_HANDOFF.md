@@ -1,5 +1,7 @@
 # Phase 18D.2 — Global Admin Reporting Implementation Handoff
 
+> **Current requirement update:** See [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This handoff verifies the required Global ADMIN per-selected-Hospital report and XLSX export. It is not Global Aggregation; merged summaries/comparisons are not initial requirements. Preserve the implemented selected-Hospital behavior without inferring arbitrary external sharing.
+
 **Status: HOSTING-AGNOSTIC MVP IMPLEMENTED.** The selected-Hospital Global Admin reporting feature follows normal database-backed application authorization on every compatible host. The project-wide delivery contract is recorded in [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md). No deployment was performed by this implementation.
 
 ## Delivery

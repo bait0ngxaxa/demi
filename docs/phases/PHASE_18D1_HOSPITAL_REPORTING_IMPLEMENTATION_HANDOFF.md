@@ -1,5 +1,7 @@
 # Phase 18D.1 — Hospital Reporting Implementation Handoff
 
+> **Current requirement update:** See [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This handoff verifies direct-Hospital OWNER reporting only. OR-RPT-01 additionally requires Parent OWNER access to eligible direct Child reports without Child OWNER membership; that path is not implemented here. HN-M07 does not block this exact-Hospital flow, while Parent-specific Patient/clinical field disclosure and Child export remain open.
+
 **Status: HOSPITAL OWNER REPORTING MVP IMPLEMENTED / BROWSER FLOW HISTORICALLY UNVERIFIED.** This handoff records Phase 18D.1 behavior and verification at its implementation point. The current production-ready, deployment-neutral delivery standard is recorded in [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md); current hosting-agnostic authorization and Global Admin integration are recorded in the Phase 18D.2 runtime correction handoff. No production rollout or real Patient-data query was performed during Phase 18D.1.
 
 ## Delivery

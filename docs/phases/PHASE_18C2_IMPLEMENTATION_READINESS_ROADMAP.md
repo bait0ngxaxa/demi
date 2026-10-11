@@ -2,6 +2,17 @@
 
 สถานะ: **IMPLEMENTATION READINESS ASSESSED — NO RUNTIME WORK AUTHORIZED**
 
+> **Current reporting requirements:** Follow [the canonical Owner requirements](../requirements/REPORTING_ACCESS_CANONICAL.md). This roadmap's Global/Network aggregation candidates and prior ordering are historical design work, not current product prerequisites. The current Parent requirement is per-eligible-Child-Hospital report access. Global ADMIN selected-Hospital reporting and XLSX export are already implemented. Open aggregate privacy decisions apply to future aggregate outputs; they do not by themselves block exact-Hospital Child report access. Field-level disclosure decisions for the Parent audience remain open.
+
+## Current reporting delivery sequence
+
+| Tracking item | Current scope | Evidence/status | Next boundary |
+| --- | --- | --- | --- |
+| **RPT-NET-01 — Parent-to-Child Reporting Authorization** | Qualifying Parent OWNER selects and reads one eligible direct Child Hospital report at a time; no direct Child OWNER membership is required. | `IMPLEMENTATION_GAP`: structural hierarchy support exists, but exact report access still requires direct OWNER membership at the selected Hospital. | Design and implement a distinct server-side reporting path after the Parent audience field/report disclosure boundary and operation-specific safeguards are defined. No Patient mutation, workforce or Hospital administration authority. |
+| **RPT-NET-02 — Parent Child-Hospital Reporting Consumer** | Select a permitted direct Child and view its approved per-Hospital report. | `IMPLEMENTATION_GAP`: no Parent-to-Child reporting selection/access journey is verified. | Depends on RPT-NET-01 and the approved view projection; reuse existing report source and UI where their semantics match. |
+| **RPT-GLOBAL-01 / RPT-GLOBAL-02** | Global ADMIN selects, views and exports one eligible Hospital report at a time. | `VERIFIED_IMPLEMENTED` in Phase 18D.2; preserve and verify existing behavior rather than reimplement. | Keep exact selected-Hospital scope; external onward disclosure remains separately governed. |
+| **RPT-FUTURE-01 / RPT-FUTURE-02** | Optional Network P/C/N aggregates and merged Global metrics/comparison. | `FUTURE_NOT_PRIORITIZED`; HN/GR historical decisions remain traceable and open where applicable. | Not prerequisites for RPT-NET-01/02 or selected-Hospital ADMIN reporting. |
+
 Slices ในเอกสารนี้เป็น work packages สำหรับ review ในอนาคต. READY_FOR_DESIGN_REVIEW หมายถึงพร้อม review แบบเท่านั้น ไม่ใช่ READY_FOR_IMPLEMENTATION. Product direction ของ Hospital/Global เป็น OWNER_RECEIVED; metric, disclosure, Security/Privacy และ implementation approval ยังคงแยกกัน.
 
 ## 1. Readiness matrix
@@ -10,8 +21,10 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 | --- | --- | --- | --- | --- | --- | --- |
 | Hospital Dashboard summary | Exact-Hospital classification counts มี; shared summary projection ไม่มี | Product OWNER_RECEIVED; population, denominator และ workbook rules R24A-D01–D15 proposed | Existing Hospital policies; reporting disclosure/count policy open | READY_FOR_DESIGN_REVIEW | exact Hospital isolation, grain, nulls, small-cell policy | NOT AUTHORIZED; resolve population, D08/D12/D14 และ exact-Hospital disclosure |
 | Hospital reporting list/detail | Exact Program report มี; Hospital cohort/list projection ไม่มี | Product OWNER_RECEIVED; row grain/status/null/order proposed | Existing exact Program policy; cohort and Patient fields need separate review | READY_FOR_DESIGN_REVIEW | A/B isolation, multiple Programs, stable cursor and fields | NOT AUTHORIZED; customer decisions, scoped list policy, field review |
-| Global overview | Global aggregate read projection ไม่มี | Product OWNER_RECEIVED; eligible Hospitals/grain/metrics unresolved | GR-SEC-01–04/15/16 and privacy gates OPEN | READY_FOR_DESIGN_REVIEW | no identifiers, eligible/suspended Hospital, suppression/differencing | NOT AUTHORIZED; close aggregate scope, metric and small-cell decisions |
-| Global per-Hospital comparison | Comparison projection ไม่มี | ต้องใช้ metric/population version ร่วมกัน | Platform grant and Hospital set/scope decisions OPEN | READY_FOR_DESIGN_REVIEW | metric parity, eligibility, freshness and suppressed cells | NOT AUTHORIZED; close GR-SEC-01–04/15/16 and disclosure decisions |
+| Global overview | Global aggregate read projection ไม่มี | `FUTURE_NOT_PRIORITIZED`; no initial Owner requirement for merged system metrics | GR-SEC-01–04/15/16 remain open for any future aggregate | FUTURE / NOT CURRENT PRIORITY | no identifiers, eligible/suspended Hospital, suppression/differencing | Not a prerequisite for Global ADMIN selected-Hospital reports |
+| Global per-Hospital comparison | Comparison projection ไม่มี | `FUTURE_NOT_PRIORITIZED`; combined comparison is not the confirmed one-Hospital-at-a-time flow | Global aggregate/selection decisions remain separate and open | FUTURE / NOT CURRENT PRIORITY | metric parity, eligibility, freshness and suppressed cells | Not a prerequisite for Global ADMIN selected-Hospital reports |
+| Global ADMIN selected-Hospital report and export | Phase 18D.2 provides selected-Hospital report and XLSX | `VERIFIED_IMPLEMENTED`; current Role.ADMIN, one selected eligible Hospital | Existing exact-Hospital policy and field projection apply | IMPLEMENTED — PRESERVE | selected Hospital isolation and current ADMIN revalidation | Do not require a Global aggregate grant or Hospital OWNER membership |
+| Parent OWNER selected direct-Child report | Structural hierarchy support exists; report access still checks direct OWNER at selected Hospital | `IMPLEMENTATION_GAP` | Parent report field disclosure remains open by field/section | NEXT REQUIRED REPORTING FLOW | exact Parent/direct-Child scope, role combinations, deny unrelated Hospitals, approved fields | RPT-NET-01/02 are separate from aggregate HN-M07/history gates |
 | Global Patient discovery | ไม่มี Global directory query; direct Hospital directory มี | Searchable fields/population undecided | SECURITY_PRIVACY_BLOCKED; GR-SEC-01/02/05–09/11–15/17–19 OPEN | DESIGN ONLY | exact/partial search, ambiguity, enumeration and revoke-between-pages | NOT AUTHORIZED; bounded search, purpose, Data Controller and Security approval |
 | Global Patient identity | Person name/Hospital-local HN exist; Global identity projection ไม่มี | Minimum identity fields/cross-Hospital correlation not accepted | SECURITY_PRIVACY_BLOCKED; GR-SEC-09/17 OPEN | DESIGN ONLY | identity allowlist, ambiguity and same-Person A/B isolation | NOT AUTHORIZED; identity allowlist, ambiguity and correlation rules |
 | Global Patient/Program detail | Exact-Hospital Program projection มี; Global grant path ไม่มี | Clinical fields and customer meaning pending | SECURITY_PRIVACY_BLOCKED; grants, purpose, scope, field allowlist OPEN | DESIGN ONLY | exact resource chain, denied fields, cache and revocation | NOT AUTHORIZED; GR-SEC-01/02/05–07/09–15/17–19 and Data Controller/clinical approvals |
@@ -19,7 +32,9 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 | RPT-24 workbook export | Workbook contract and exact Program source exist; export endpoint/snapshot absent | R24A-D01–D15 PROPOSED | RPT-24C gates OPEN | Design/decision closure only | two-sheet snapshot/count consistency, order, overflow, revocation | NOT AUTHORIZED; separate export, snapshot, authorization, privacy, delivery gates |
 | Hospital Network export | Aggregate contract only; no export permission | HN decisions unchanged | HN-M07/history open; HN-M08 DEFERRED / NOT AUTHORIZED | DEFERRED | child Patient denial and no hierarchy export | NOT AUTHORIZED; separate future Network decision |
 
-## 2. Proposed implementation slices
+## 2. Historical Phase 18C design slices — aggregation and other reporting candidates
+
+The following A–I packages preserve the earlier Phase 18C design work. Their ordering does not supersede the current delivery sequence above. Global/Network aggregation items are future scope unless reprioritized; exact-Hospital Child report work must be assessed under RPT-NET-01/02 and its own field-level boundaries.
 
 ทุก slice ต้องได้ approvals ที่เกี่ยวข้องและ implementation authorization แยกก่อน code. Decision IDs เป็น dependencies ไม่ใช่การปิด decision.
 
@@ -149,17 +164,15 @@ Slices ในเอกสารนี้เป็น work packages สำหร�
 - Readiness: DESIGN/DECISION CLOSURE ONLY. Implementation NOT AUTHORIZED.
 - DoD after authorization: RPT-24C evidence, accepted workbook contract, snapshot tests and delivery controls.
 
-## 3. Risk-based order and candidate first slice
+## 3. Current risk-based order
 
-1. A — settle factual field contracts for facts already present; keep missing and clinical fields blocked.
-2. B — design exact-Hospital bounded reporting read and scope tests, reusing exact Program semantics without widening to Global.
-3. C — Hospital summary/navigation after population, disclosure and metric approvals.
-4. D then E — Global aggregates/comparison after non-identifying scope, population and small-cell approval.
-5. F then G — Global identity discovery then detail only after GR-SEC decisions, purpose, Data Controller and field approval.
-6. H — separate source/clinical work only when approved.
-7. I — RPT-24 export remains its own track; HN-M08 is not part of it.
+1. **RPT-NET-01:** define and implement the narrow Parent OWNER → eligible direct Child report authorization path, reusing the current hierarchy resolver and exact-Hospital report services only where semantics match. Keep any unapproved fields out of the Parent projection.
+2. **RPT-NET-02:** provide the Child selection and exact-Hospital report consumer after RPT-NET-01 and its view projection are ready.
+3. **RPT-GLOBAL-01 / 02:** preserve Phase 18D.2 selected-Hospital ADMIN view and XLSX; do not create a merged report.
+4. **RPT-FUTURE-01 / 02:** revisit Network or Global aggregates only after independent prioritization and their own source, privacy, and authorization decisions.
+5. Keep separate RPT-24 Program workbook contracts and clinical/data-capture decisions scoped to their own requirements; they do not redefine the confirmed reporting journeys above.
 
-Candidate first implementation slice **after its gates close**: B, a bounded exact-Hospital Program reporting list/query with stable pagination and approved minimal fields, reusing the existing exact Program policy/projection. This roadmap does not authorize it. If D01–D05 or exact-Hospital disclosure/row authorization remains open, do not code the list; continue design-only work.
+This document records readiness only. It does not authorize runtime implementation. Aggregate HN-M07 and historical aggregate attribution gates do not automatically block an exact-Hospital Parent-to-Child read; unresolved Parent field, historical content, audit, or disclosure requirements apply only to the affected operation/data.
 
 ## 4. Synthetic verification plan
 
@@ -184,7 +197,7 @@ Candidate first implementation slice **after its gates close**: B, a bounded exa
 | 14 | Global ADMIN with bounded Patient grant | only approved exact resources and fields allowed | GR-SEC-01/02/05–07/09–15/17–19; Controller approval | in-scope allow/out-of-scope deny |
 | 15 | Global ADMIN without reporting grant | deny despite Role.ADMIN | GR-SEC-01/15 | no aggregate or Patient payload; denial audit evidence |
 | 16 | Hospital OWNER requests Global view | deny without separate Platform grant | GR-SEC-01/02; context separation | membership never implies Global access |
-| 17 | Parent OWNER requests child Patient detail | deny under Network aggregate context | HN-M07 open; HN-M08 deferred | hierarchy cannot yield detail/export |
+| 17 | Parent OWNER requests an exact direct-Child Hospital report | Evaluate under the separate Parent-to-Child report policy; aggregate authorization neither grants nor denies this operation. Unapproved Patient/clinical fields remain excluded until their field boundary is decided. | OR-RPT-01; Parent report field/audit safeguards remain open; HN-M07 applies to future aggregate outputs | Enforce exact Child scope; do not infer Patient detail or export authority |
 | 18 | ADMIN + HOSPITAL multi-role actor | evaluate explicit request context; no additive bypass | GR-SEC-01/02 | role/context isolation evidence |
 | 19 | Grant revoked between page requests | next page denied; cursor revalidated/invalidated | GR-SEC-12–15 | no post-revoke page and audit result |
 | 20 | Actor inactive/suspended or Hospital suspended | deny; not empty-success | GR-SEC-01/04 | current status revalidation and safe failure |
@@ -219,8 +232,10 @@ Release stops:
 
 ## 6. State summary
 
-- Hospital Dashboard product direction: OWNER_RECEIVED.
-- Global Reporting product direction: OWNER_RECEIVED.
+- Parent-to-Child exact-Hospital reporting: `CONFIRMED_OWNER_REQUIREMENT`; runtime access path remains an implementation gap and Parent field disclosure remains open.
+- Global ADMIN selected-Hospital report and XLSX: `VERIFIED_IMPLEMENTED` in Phase 18D.2 and must be preserved.
+- Global merged aggregation/comparison: `FUTURE_NOT_PRIORITIZED`; its decision gates are not prerequisites for selected-Hospital reporting.
+- Network P/C/N aggregation: `FUTURE_NOT_PRIORITIZED`; HN aggregate privacy/history gates do not by themselves block exact Child report access.
 - Global security contract: PREPARED / APPROVAL PENDING; GR-SEC-01–19 OPEN.
 - Global Patient access: SECURITY_PRIVACY_BLOCKED.
 - R24A-D01–D15: PROPOSED FOR CUSTOMER REVIEW.
@@ -228,7 +243,7 @@ Release stops:
 - Data Controller approval: PENDING.
 - HN-M08: DEFERRED / NOT AUTHORIZED.
 - RPT-24C export gates: OPEN.
-- Runtime implementation: NOT AUTHORIZED.
+- This roadmap grants no new runtime implementation authorization.
 
 ## 7. References
 

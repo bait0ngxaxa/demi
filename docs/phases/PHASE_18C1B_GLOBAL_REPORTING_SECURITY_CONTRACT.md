@@ -1,5 +1,7 @@
 # Phase 18C.1B — Global Reporting Security & Authorization Contract
 
+> **Current requirement scope:** See [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This contract's aggregate, comparison, Patient discovery and detail decisions remain scoped to those broader operations. They do not make Global aggregation a prerequisite for the implemented selected-Hospital ADMIN report/XLSX, and they do not decide Parent-to-Child exact report access. Preserve open security/privacy decisions for the operations and fields they cover.
+
 - **สถานะเอกสาร:** SECURITY CONTRACT PREPARED — APPROVAL PENDING
 - **ฐานตรวจสอบ:** branch `main`, HEAD `fc8335450622209f1681425700f765344c4c0f27`; working tree สะอาดก่อนเริ่ม
 - **Product direction:** CONFIRMED / OWNER_RECEIVED; อ้างอิง GR-REQ-01 จาก Phase 18C.1A

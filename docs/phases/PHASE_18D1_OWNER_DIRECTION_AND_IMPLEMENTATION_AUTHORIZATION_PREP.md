@@ -1,5 +1,7 @@
 # Phase 18D.1 Preflight — Owner Direction & Implementation Authorization Preparation
 
+> **Current requirement supersession:** This preflight's direct-OWNER-only scope and Parent-only denial describe the earlier Phase 18D.1 exact-Hospital implementation proposal. Current product intent is in [the canonical reporting requirements](../requirements/REPORTING_ACCESS_CANONICAL.md): qualifying Parent OWNER per-Child-Hospital report access is confirmed, but the Parent field/view boundary is still open where unspecified. Preserve Phase 18D.1 as evidence for direct Hospital OWNER reporting; do not use its former scope as a denial of the new Parent reporting requirement.
+
 วันที่บันทึก/ตรวจ: 2026-10-11 · Branch: `main` · HEAD: `98427034d0ff47adfb7eae4461ef44af73e00a72` · working tree ก่อนแก้: clean
 
 **OWNER_DIRECTION_RECORDED / DESIGN_READY_FOR_APPROVAL_REVIEW / REQUIREMENT_APPROVAL_PENDING / SECURITY_PRIVACY_APPROVAL_PENDING / ARCHITECTURE_APPROVAL_PENDING / IMPLEMENTATION_NOT_AUTHORIZED**

@@ -1,6 +1,8 @@
 # DEMI — Phase 19A: Global Aggregation & Hospital Network Reporting Readiness
 
-- **สถานะ:** VERIFIED READINESS REVIEW COMPLETE / GLOBAL และ NETWORK AGGREGATION BLOCKED
+> **Current requirement supersession:** Use [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md) for current reporting intent. This readiness verdict covers merged Global/Network aggregates only. OR-RPT-01 confirms Parent OWNER per-eligible-Child-Hospital reports as a separate required flow; HN-M07 and historical aggregate attribution do not block that exact-Hospital read. Global merged aggregation and N-only Network reporting are not the primary next delivery.
+
+- **สถานะ:** VERIFIED AGGREGATE READINESS REVIEW COMPLETE / AGGREGATE GATES REMAIN OPEN
 - **ขอบเขต:** documentation-only; ไม่มี runtime, schema, migration, seed หรือ provider change
 - **ฐานตรวจ:** `main` / `3a15f55ee0e0eeaac0ac7718e20dc195d25a2e71`; working tree สะอาดก่อนเริ่ม
 - **ข้อมูลจริง:** ไม่เข้าถึง production หรือ Patient records; อ่าน source, schema, migrations, tests และเอกสารใน repository
@@ -14,13 +16,14 @@
 | Platform ADMIN selected-Hospital Dashboard, Service Process และ XLSX | **GO — มีอยู่แล้ว** | ACTIVE user + current database `ADMIN`; เลือก Hospital ACTIVE หนึ่งแห่ง; query และ workbook ยังคง exact-Hospital |
 | Organizational hierarchy directory | **GO — มีอยู่แล้ว** | แสดงโครงสร้าง/สถานะ Hospital ตาม policy ของ directory; เป็นข้อมูลจัดองค์กร ไม่ใช่ Patient/Program aggregation |
 | P/C/N structural scope resolution | **GO — มีอยู่บางส่วน** | `resolveHospitalNetworkScope()` ตรวจ Parent OWNER ปัจจุบันและคืน Parent, ACTIVE direct children, Network IDs; ยังไม่ใช่ reporting permission หรือ report query |
-| Global Patient/Program aggregation หรือ per-Hospital comparison | **BLOCKED** | ไม่มี global metrics projection; `statusCounts` ใน directory เป็นจำนวน Hospital แยกสถานะเท่านั้น |
-| Parent/Child Network metrics และ child aggregate breakdown | **BLOCKED** | ไม่มี aggregate query, Network reporting DTO, dashboard หรือ disclosure contract ที่ผ่าน gate |
-| Network-specific reporting authorization/disclosure | **BLOCKED — มีเพียง structural scope foundation** | ยังไม่มี report capability/policy, M07 suppression, temporal attribution contract หรือ release controls |
+| Parent OWNER per-Child-Hospital report view | **IMPLEMENTATION GAP — confirmed requirement** | Hierarchy context/Child list exists, but report access and selector remain limited to directly owned Hospital; no Parent-to-Child report grant is implemented |
+| Global Patient/Program aggregation หรือ per-Hospital comparison | **BLOCKED / FUTURE_NOT_PRIORITIZED** | ไม่มี global metrics projection; `statusCounts` ใน directory เป็นจำนวน Hospital แยกสถานะเท่านั้น; not an initial requirement |
+| Parent/Child Network metrics และ child aggregate breakdown | **BLOCKED / FUTURE_NOT_PRIORITIZED** | ไม่มี aggregate query, Network reporting DTO, dashboard หรือ disclosure contract ที่ผ่าน gate; separate from exact per-Hospital Child report |
+| Network aggregate-specific authorization/disclosure | **BLOCKED for aggregates** | ยังไม่มี aggregate capability/policy, M07 suppression, temporal attribution contract หรือ aggregate release controls; this is not a blanket block on exact-Hospital Child reads |
 | Network Export | **DEFERRED / NOT AUTHORIZED** | HN-M08; ห้ามอนุมานสิทธิ์จาก Hospital หรือ Global export |
 | Global Patient discovery/detail | **OUT OF SCOPE / SECURITY-PRIVACY GATED** | Role.ADMIN และ selected-Hospital report ไม่ให้ cross-Hospital discovery หรือ exact-Program detail |
 
-`GO` ในตารางหมายถึงความสามารถเดิมที่มีใน source ไม่ใช่การอนุญาตให้ขยาย scope ใน Phase 19A. ไม่มีความสามารถ aggregation ใหม่ที่ได้ GO สำหรับ implementation.
+`GO` ในตารางหมายถึงความสามารถเดิมที่มีใน source ไม่ใช่การอนุญาตให้ขยาย scope ใน Phase 19A. Parent-to-Child per-Hospital access เป็น confirmed business requirement แต่ยังเป็น implementation gap; field-level disclosure decisions ยังคงเปิด. ไม่มีความสามารถ aggregate ใหม่ที่ได้ GO สำหรับ implementation.
 
 ## 1. หลักฐานและสถานะของเอกสาร
 
@@ -52,7 +55,7 @@
 - **P:** Parent Hospital เป้าหมายหนึ่งแห่ง; ต้องเป็น ACTIVE และ actor ต้องมี User ACTIVE, `Role.HOSPITAL`, direct ACTIVE OWNER membership ของ Parent นั้น.
 - **C:** Hospital ที่ `child.parentHospitalId === P.id` เท่านั้น และสถานะ Hospital เป็น ACTIVE. ไม่รวม grandchild, sibling หรือ Hospital อิสระ. Child ที่ไม่ ACTIVE อาจอยู่ใน organizational directory แต่ไม่เป็น metric contributor และห้ามแสดงเป็นค่า 0.
 - **N:** P ∪ C. Query ต้อง resolve Hospital IDs จากฐานข้อมูลฝั่ง server. คำนวณ distinct ใหม่ตลอดแต่ละชุด; ห้ามนำค่า unique ของ P และ C มาบวกเป็น N.
-- Parent/child hierarchy เป็นขอบเขต Network aggregate เท่านั้น; ไม่ให้ Patient row, identifier, clinical read, child workforce management หรือสิทธิ์แก่ Role.ADMIN โดยลำพัง.
+- ใน HN aggregate contract นี้ Parent/child hierarchy กำหนด aggregate scope เท่านั้น. OR-RPT-01 แยก Parent-to-Child exact-Hospital report access เป็น operation ใหม่ที่ต้อง authorize บน server; มันยังไม่ให้ Patient mutation, child workforce management หรือสิทธิ์แก่ Role.ADMIN โดยลำพัง.
 
 ### 2.2 Source tables, grain และ predicates
 
@@ -213,4 +216,4 @@ DTO ฝั่ง client ในอนาคตควรมีเฉพาะ metr
 - Hospital Network: [17K.0B closeout](./PHASE_17K0B_HN_OWNER_DECISION_CLOSEOUT.md), [HN-C1 security/disclosure contract](./PHASE_17K_HNC1_SECURITY_DISCLOSURE_CONTRACT.md), [HN-C1 direction record](./PHASE_17K_HNC1_DECISION_DIRECTION_RECORD.md), [hierarchy service](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts), [hierarchy PostgreSQL integration](../../tests/integration/hospital-hierarchy.integration.test.ts), [reporting PostgreSQL integration](../../tests/integration/hospital-reporting.integration.test.ts).
 - Metric source: [Prisma schema](../../prisma/schema.prisma), [Hospital hierarchy migration](../../prisma/migrations/20260813120000_hospital_onboarding/migration.sql), [Hospital master reconciliation](../../src/modules/hospital-hierarchy/services/hospital-master-reconciliation-service.ts), [Program report policy](../../src/modules/reporting/policies/program-report-policy.ts), [Program reporting PostgreSQL integration](../../tests/integration/program-reporting.integration.test.ts), [Audit schema](../../src/modules/audit/schemas/audit-schemas.ts), [Audit service](../../src/modules/audit/services/audit-service.ts).
 
-**สรุป:** Phase 19A ปิด readiness review ได้; exact-Hospital reporting เดิมยัง GO ตาม contract ปัจจุบัน. Global aggregation และ Network metrics/UI ยัง BLOCKED จน decision/privacy/temporal gates ผ่านและได้รับ authorization แยก. หยุดที่ Phase 19A; ไม่มี runtime implementation.
+**สรุปตามขอบเขต Phase 19A:** readiness review นี้ปิดเฉพาะ Global/Network aggregation. Direct exact-Hospital OWNER และ selected-Hospital ADMIN report/export มีอยู่แล้ว; Parent OWNER per-Child-Hospital report เป็น confirmed requirement และยังเป็น implementation gap. Aggregate privacy/temporal gates ยังคงเปิดเฉพาะ aggregate outputs และไม่ block การวางแผน exact-Hospital Child report. Global aggregation เป็น future/not initial scope. ไม่มี runtime implementation ใน Phase 19A.

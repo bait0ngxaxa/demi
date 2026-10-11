@@ -1,5 +1,7 @@
 # Phase 18C.2 — Reporting Architecture Blueprint
 
+> **Current requirement and priority:** Follow [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This blueprint records an earlier broad reporting architecture; Global/Network merged aggregation is not an initial prerequisite. Direct OWNER and selected-Hospital ADMIN reporting are implemented. Parent OWNER per-Child-Hospital reporting is confirmed but remains a distinct implementation gap; do not infer Child Patient/clinical fields from this blueprint without the field decision.
+
 สถานะ: **REPORTING ARCHITECTURE BLUEPRINT PREPARED / IMPLEMENTATION READINESS ASSESSED**
 
 เอกสารนี้เป็นแบบออกแบบจาก source ปัจจุบัน ไม่อนุมัติ metric, clinical meaning, disclosure, permission, API หรือ implementation. Baseline ที่ตรวจคือ main HEAD 99ab21c557def66406644845b639e8aa843ca9c1; working tree ก่อนแก้เอกสารสะอาด. ไม่ได้ตรวจหรือใช้ข้อมูล Patient จริง.

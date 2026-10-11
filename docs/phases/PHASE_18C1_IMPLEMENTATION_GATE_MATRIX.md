@@ -1,5 +1,7 @@
 # Phase 18C.1 — Implementation Gate Matrix
 
+> **Current reporting requirement supersession:** Follow [the canonical Owner requirements](../requirements/REPORTING_ACCESS_CANONICAL.md). The G18/R24 gates below remain scoped to their source fields, metrics, and exports; they do not make HN-M07 or aggregate decisions prerequisites for the confirmed Parent OWNER exact-Child-Hospital report flow. Phase 18D.2 Global ADMIN selected-Hospital report/export is implemented.
+
 - **ผล Phase:** DECISION REVIEW READY — ไม่มี implementation authorization
 - **Source HEAD ที่ตรวจ:** main / 302acaec724ca14e60a9243a333bf235241ebb42
 - **จุดประสงค์:** แสดง decision/data/security dependencies ของ G18-01–G18-14 และเกณฑ์ก่อน Phase 18C.2

@@ -1,5 +1,7 @@
 # Phase 18C.1 — ทะเบียนทบทวน Business และ Clinical Decisions
 
+> **Current reporting requirement supersession:** Use [the canonical Owner requirements](../requirements/REPORTING_ACCESS_CANONICAL.md). This register's earlier Global/Hospital aggregate and exact-Hospital-only planning is historical; Parent OWNER per-Child-Hospital reports are now confirmed, with field-level disclosure still open where unspecified. HN/GR aggregate gates apply to aggregates and do not blanket-block exact-Hospital Child reporting. Phase 18D.2 Global ADMIN selected-Hospital view/export is implemented.
+
 - **ผล Phase:** PHASE 18C.1 — DECISION REVIEW READY / CUSTOMER & CLINICAL SIGN-OFF PENDING
 - **Source HEAD ที่ตรวจ:** main / 302acaec724ca14e60a9243a333bf235241ebb42
 - **สถานะเอกสาร:** เตรียมทะเบียนและหลักฐานสำหรับการทบทวน ไม่ใช่การอนุมัติ requirements หรือ implementation

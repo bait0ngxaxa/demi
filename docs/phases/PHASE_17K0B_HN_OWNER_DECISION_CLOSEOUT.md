@@ -1,5 +1,7 @@
 # DEMI Phase 17K.0B — HN-C0 Hospital Network Owner Decision Closeout
 
+> **Current product requirements:** Read [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). HN-C0 preserves historical P/C/N aggregate scope and metric semantics. Any reading of its hierarchy/aggregate framing as excluding Parent OWNER access to exact Child Hospital reports is superseded by OR-RPT-01: no direct OWNER membership at each Child is required. HN-M07 and historical attribution remain aggregate gates, not blanket blockers for exact-Hospital Child reports. Field disclosure remains open; this note does not rewrite HN-C0 decisions.
+
 - **ขอบเขต:** HN-C0 — ปิดข้อกำหนด Hospital Network / Hierarchy และ reporting semantics แบบเอกสารเท่านั้น
 - **สถานะ closeout:** DOCUMENTATION CLOSEOUT COMPLETE — บันทึกข้อกำหนดที่ Product Owner รับรองตามข้อมูลในคำสั่งงาน
 - **สถานะ implementation:** IMPLEMENTATION_NOT_AUTHORIZED

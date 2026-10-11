@@ -1,5 +1,7 @@
 # Phase 18D.0 — Hospital Reporting Implementation Preparation
 
+> **Current requirement supersession:** Use [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md) for current product intent. This Phase 18D.0 preparation predates implementation of direct OWNER/ADMIN reports and OR-RPT-01. Its statement that hierarchy alone cannot grant Patient access remains true; its omission of a Parent-authorized exact-Child report path is no longer a product exclusion. Field-level disclosure questions remain open.
+
 วันที่ตรวจ: 2026-10-11 · Branch: `main` · HEAD: `e3a2fd24b797f9d172e94d2b6eb6d21a32761fab` · working tree ก่อนแก้: clean
 
 **DESIGN_READY สำหรับ review เอกสาร / REQUIREMENT_BLOCKED / SECURITY_PRIVACY_BLOCKED / IMPLEMENTATION_NOT_AUTHORIZED**

@@ -1,5 +1,7 @@
 # Hospital Hierarchy Integration Handoff
 
+> **Current requirement update:** Read [Reporting Access Canonical](../requirements/REPORTING_ACCESS_CANONICAL.md). This handoff records the existing structural hierarchy and owner-facing Child directory. OR-RPT-01 adds per-Child-Hospital report access as a separate confirmed requirement and implementation gap; HN-M07/history gates apply to aggregate reporting, not every exact-Hospital Child read. Parent report fields and Child export remain open.
+
 **Status:** implemented for development and synthetic-demo use. No production rollout, schema migration, Patient access expansion, or network aggregate exposure was performed.
 
 ## Master reconciliation

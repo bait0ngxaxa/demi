@@ -1,5 +1,7 @@
 # DEMI Phase 17A — สัญญา Canonical Customer Flow และ UAT
 
+> **Reporting requirement precedence:** This historical flow contract remains useful for the flows it verified. For current reporting intent, use [REPORTING_ACCESS_CANONICAL.md](../requirements/REPORTING_ACCESS_CANONICAL.md), which supersedes any earlier assumption that Parent/Child exact-Hospital report access is excluded or that Global ADMIN needs a merged aggregate. Preserve the source implementation facts and genuine field-level decisions; do not infer new access from old scope limitations.
+
 สถานะ: **CLOSED — authoritative product contract และแผนยอมรับสำหรับ Phase 17B เป็นต้นไป**
 วันที่จัดทำ: 2026-09-29
 ขอบเขต: วิเคราะห์เอกสารและ runtime ปัจจุบันเท่านั้น ไม่มีการเปลี่ยน behavior ของผลิตภัณฑ์

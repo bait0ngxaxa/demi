@@ -1,5 +1,7 @@
 # Phase 18C.1B — Security Threat Model & Synthetic Acceptance Matrix
 
+> **Current requirement scope:** This matrix is historical security design for earlier broad Global/discovery/detail proposals. [Current reporting product intent](../requirements/REPORTING_ACCESS_CANONICAL.md) confirms Parent OWNER per-Child-Hospital report access and Global ADMIN selected-Hospital view/export. Preserve genuine field-level safeguards; do not apply aggregate-only HN-M07 as a blanket denial of exact-Hospital Child reports. Global aggregation and discovery remain outside initial scope.
+
 - **สถานะต้นฉบับ:** DESIGN ONLY; ไม่มี test implementation หรือ execution ณ วันที่จัดทำ
 - **ฐานตรวจสอบ:** main / fc8335450622209f1681425700f765344c4c0f27
 - **Requirement reference:** GR-REQ-01
