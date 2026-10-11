@@ -43,6 +43,7 @@ export default async function HospitalReportingPage({
   return (
     <HospitalReportWorkspace
       hospitals={context.hospitals}
+      hierarchy={context.hierarchy}
       initialView={requestedView ?? "overview"}
       page={context.page}
       selectedHospitalId={context.selectedHospitalId}

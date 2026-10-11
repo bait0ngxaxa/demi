@@ -7,12 +7,14 @@ const {
   mockedGetActor,
   mockedListHospitals,
   mockedGetPage,
+  mockedGetHierarchyContext,
   mockedNotFound,
   mockedRedirect,
 } = vi.hoisted(() => ({
   mockedGetActor: vi.fn(),
   mockedListHospitals: vi.fn(),
   mockedGetPage: vi.fn(),
+  mockedGetHierarchyContext: vi.fn(),
   mockedNotFound: vi.fn(),
   mockedRedirect: vi.fn(),
 }));
@@ -21,6 +23,9 @@ vi.mock("next/navigation", () => ({ notFound: mockedNotFound, redirect: mockedRe
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mockedGetActor }));
 vi.mock("../services/hospital-report-access-service", () => ({ listHospitalReportingHospitals: mockedListHospitals }));
 vi.mock("../services/hospital-report-query-service", () => ({ getHospitalReportingPage: mockedGetPage }));
+vi.mock("@/modules/hospital-hierarchy/services/hospital-hierarchy-service", () => ({
+  getHospitalHierarchyContext: mockedGetHierarchyContext,
+}));
 
 import { getHospitalReportPageContext } from "./hospital-report-page-context";
 
@@ -37,6 +42,14 @@ const page = {
   },
   page: { items: [], pageSize: 20, nextCursor: null },
 };
+const hierarchy = {
+  hospital: { id: hospitalId, hospitalCode: "DEMO-01", name: "โรงพยาบาลทดสอบ", status: HospitalStatus.ACTIVE, parentHospitalId: null },
+  classification: "MAIN",
+  parentHospital: null,
+  directChildCount: 0,
+  directChildren: [],
+  issues: [],
+};
 
 describe("Hospital report page context", () => {
   beforeEach(() => {
@@ -44,6 +57,7 @@ describe("Hospital report page context", () => {
     mockedGetActor.mockResolvedValue(actor);
     mockedListHospitals.mockResolvedValue([hospital]);
     mockedGetPage.mockResolvedValue(page);
+    mockedGetHierarchyContext.mockResolvedValue(hierarchy);
     mockedNotFound.mockImplementation(() => { throw new Error("NEXT_NOT_FOUND"); });
     mockedRedirect.mockImplementation((path: string) => { throw new Error(`NEXT_REDIRECT:${path}`); });
   });
@@ -53,6 +67,7 @@ describe("Hospital report page context", () => {
       hospitals: [hospital],
       selectedHospitalId: hospitalId,
       page,
+      hierarchy,
     });
     expect(mockedGetPage).toHaveBeenCalledWith(actor, { hospitalId, cursor: undefined, pageSize: undefined });
   });
@@ -72,6 +87,14 @@ describe("Hospital report page context", () => {
       cursor: "next-page-cursor",
       pageSize: 20,
     });
+  });
+
+  it("masks a revoked hierarchy context after the exact-Hospital report read", async () => {
+    mockedGetHierarchyContext.mockRejectedValue(new NotFoundError());
+
+    await expect(getHospitalReportPageContext(hospitalId, undefined, undefined)).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mockedGetPage).toHaveBeenCalledOnce();
+    expect(mockedGetHierarchyContext).toHaveBeenCalledWith(actor, hospitalId);
   });
 
   it("keeps the existing sign-in and application redirects", async () => {

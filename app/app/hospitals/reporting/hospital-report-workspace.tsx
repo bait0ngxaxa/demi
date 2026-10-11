@@ -17,6 +17,7 @@ import type {
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
+import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 
 type ReportView = "overview" | "service";
 
@@ -65,6 +66,144 @@ function displayDateTime(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Bangkok",
   }).format(new Date(value));
+}
+
+function hierarchyStatusLabel(status: HospitalHierarchyContext["hospital"]["status"]): string {
+  switch (status) {
+    case "ACTIVE": return "ใช้งานอยู่";
+    case "SUSPENDED": return "ถูกระงับ";
+    case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
+  }
+}
+
+function hierarchyStatusVariant(status: HospitalHierarchyContext["hospital"]["status"]): "success" | "danger" | "warning" {
+  switch (status) {
+    case "ACTIVE": return "success";
+    case "SUSPENDED": return "danger";
+    case "PENDING_VERIFICATION": return "warning";
+  }
+}
+
+function hierarchyIssueLabel(issue: HospitalHierarchyContext["issues"][number]): string {
+  switch (issue.code) {
+    case "MISSING_PARENT": return "ไม่พบโรงพยาบาลแม่ข่ายที่อ้างอิง";
+    case "SELF_PARENT": return "หน่วยนี้อ้างอิงตัวเองเป็นโรงพยาบาลแม่ข่าย";
+    case "CYCLE": return "พบวงจรในความสัมพันธ์ของโรงพยาบาล";
+    case "PARENT_IS_SUBORDINATE": return "โรงพยาบาลแม่ข่ายที่อ้างอิงเป็นโรงพยาบาลลูกข่าย";
+    case "PARENT_INVALID": return "ไม่สามารถยืนยันความสัมพันธ์กับโรงพยาบาลแม่ข่ายได้";
+    case "DUPLICATE_IDENTITY": return "พบข้อมูลโรงพยาบาลซ้ำ";
+  }
+}
+
+function HospitalReportingHierarchy({
+  hierarchy,
+}: {
+  hierarchy: HospitalHierarchyContext;
+}): React.JSX.Element {
+  const isMain = hierarchy.classification === "MAIN";
+  const hospital = hierarchy.hospital;
+
+  return (
+    <section aria-labelledby="hospital-hierarchy-context-heading" className="mt-6">
+      <Panel className="min-w-0 p-5 sm:p-6">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-text" id="hospital-hierarchy-context-heading">
+              โครงสร้างโรงพยาบาล
+            </h2>
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              โรงพยาบาลที่เลือก: {hospital.name} ({hospital.hospitalCode})
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge variant="info">
+              {isMain ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}
+            </StatusBadge>
+            <StatusBadge variant={hierarchyStatusVariant(hospital.status)}>
+              {hierarchyStatusLabel(hospital.status)}
+            </StatusBadge>
+          </div>
+        </div>
+
+        {isMain ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-sm leading-6 text-text-muted">
+              หน่วยบริการในเครือโดยตรง {hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง
+            </p>
+            {hierarchy.directChildren.length === 0 ? (
+              <p className="mt-2 text-sm text-text-muted">ยังไม่มีโรงพยาบาลลูกข่ายโดยตรง</p>
+            ) : (
+              <ul aria-label="โรงพยาบาลลูกข่ายโดยตรง" className="mt-2 divide-y divide-border border-t border-border">
+                {hierarchy.directChildren.map((child) => (
+                  <li className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={child.id}>
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-text">{child.name}</p>
+                      <p className="text-sm text-text-muted">รหัส {child.hospitalCode}</p>
+                    </div>
+                    <StatusBadge variant={hierarchyStatusVariant(child.status)}>
+                      {hierarchyStatusLabel(child.status)}
+                    </StatusBadge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 border-t border-border pt-4">
+            <p className="text-sm text-text-muted">โรงพยาบาลแม่ข่าย</p>
+            {hierarchy.parentHospital ? (
+              <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="break-words font-medium text-text">
+                  {hierarchy.parentHospital.name} ({hierarchy.parentHospital.hospitalCode})
+                </p>
+                <StatusBadge variant={hierarchyStatusVariant(hierarchy.parentHospital.status)}>
+                  {hierarchyStatusLabel(hierarchy.parentHospital.status)}
+                </StatusBadge>
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-danger-strong">ไม่พบข้อมูลโรงพยาบาลแม่ข่าย</p>
+            )}
+          </div>
+        )}
+
+        {hierarchy.issues.length > 0 ? (
+          <Alert className="mt-4" variant="warning">
+            <p className="font-semibold">พบความสัมพันธ์ที่ต้องตรวจสอบ</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6">
+              {hierarchy.issues.map((issue) => (
+                <li key={`${issue.code}:${issue.hospitalId}:${issue.parentHospitalCode ?? "none"}`}>
+                  {hierarchyIssueLabel(issue)}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
+
+        <Alert className="mt-4" variant="info">
+          ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมข้อมูลของโรงพยาบาลลูกข่ายหรือโรงพยาบาลอื่น
+        </Alert>
+
+        <dl className="mt-4 grid gap-x-6 sm:grid-cols-2">
+          <div className="border-t border-border py-3">
+            <dt className="font-semibold text-text">รายงานผู้ป่วย / Program</dt>
+            <dd className="mt-1 text-sm leading-6 text-text-muted">แสดงข้อมูลของโรงพยาบาลที่เลือกโดยตรง</dd>
+          </div>
+          <div className="border-t border-border py-3">
+            <dt className="font-semibold text-text">โครงสร้างเครือข่ายโรงพยาบาล</dt>
+            <dd className="mt-1 text-sm leading-6 text-text-muted">แสดงความสัมพันธ์แม่ข่ายและลูกข่ายโดยตรงแบบอ่านอย่างเดียว</dd>
+          </div>
+          <div className="border-t border-border py-3">
+            <dt className="font-semibold text-text">Dashboard ผลรวมเครือข่าย</dt>
+            <dd className="mt-1 text-sm leading-6 text-text-muted">ยังไม่เปิดใช้งาน ระหว่างรอกติกาคุ้มครองข้อมูล เงื่อนไขผู้มีสิทธิ์ และการตีความข้อมูลย้อนหลัง</dd>
+          </div>
+          <div className="border-t border-border py-3">
+            <dt className="font-semibold text-text">ส่งออกข้อมูลเครือข่าย</dt>
+            <dd className="mt-1 text-sm leading-6 text-text-muted">ยังไม่ได้รับอนุญาต</dd>
+          </div>
+        </dl>
+      </Panel>
+    </section>
+  );
 }
 
 function MeasurementList({
@@ -360,11 +499,13 @@ function ExportButton({ hospitalId }: { hospitalId: string }): React.JSX.Element
 
 export function HospitalReportWorkspace({
   hospitals,
+  hierarchy,
   initialView,
   page,
   selectedHospitalId,
 }: {
   hospitals: readonly HospitalReportingHospital[];
+  hierarchy: HospitalHierarchyContext;
   initialView: string;
   page: HospitalReportingPageProjection;
   selectedHospitalId: string;
@@ -393,6 +534,8 @@ export function HospitalReportWorkspace({
           <Button type="submit" variant="secondary">เปลี่ยนโรงพยาบาล</Button>
         </form>
       ) : null}
+
+      <HospitalReportingHierarchy hierarchy={hierarchy} />
 
       <section aria-labelledby="hospital-report-context-heading" className="mt-6">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

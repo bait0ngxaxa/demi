@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { HospitalReportFact, HospitalReportProgramRow, HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
+import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 
 import { HospitalReportWorkspace } from "./hospital-report-workspace";
 
@@ -16,6 +17,24 @@ const hospitals: readonly HospitalReportingHospital[] = [{
   name: "โรงพยาบาลทดสอบ",
   status: "ACTIVE" as HospitalReportingHospital["status"],
 }];
+const hierarchy: HospitalHierarchyContext = {
+  hospital: {
+    id: hospitalId,
+    hospitalCode: "DEMO-01",
+    name: "โรงพยาบาลทดสอบ",
+    status: "ACTIVE" as HospitalReportingHospital["status"],
+    parentHospitalId: null,
+  },
+  classification: "MAIN",
+  parentHospital: null,
+  directChildCount: 3,
+  directChildren: [
+    { id: "child-active", hospitalCode: "DEMO-C1", name: "โรงพยาบาลลูกข่ายที่ใช้งาน", status: "ACTIVE", parentHospitalId: hospitalId },
+    { id: "child-pending", hospitalCode: "DEMO-C2", name: "โรงพยาบาลลูกข่ายรอยืนยัน", status: "PENDING_VERIFICATION", parentHospitalId: hospitalId },
+    { id: "child-suspended", hospitalCode: "DEMO-C3", name: "โรงพยาบาลลูกข่ายที่ถูกระงับ", status: "SUSPENDED", parentHospitalId: hospitalId },
+  ],
+  issues: [],
+};
 
 function unavailable<T>(reason: "SOURCE_MISSING" | "CLINICAL_SEMANTICS_UNAPPROVED" = "SOURCE_MISSING"): HospitalReportFact<T> {
   return { state: "UNAVAILABLE", reason };
@@ -138,9 +157,10 @@ function page(items: HospitalReportProgramRow[], total = items.length): Hospital
 function render(view: string, items: HospitalReportProgramRow[] = [
   program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE),
   program("44444444-4444-4444-8444-444444444444", PatientProgramStatus.COMPLETED),
-], total = items.length): string {
+], total = items.length, hierarchyContext: HospitalHierarchyContext = hierarchy): string {
   return renderToStaticMarkup(createElement(HospitalReportWorkspace, {
     hospitals,
+    hierarchy: hierarchyContext,
     initialView: view,
     page: page(items, total),
     selectedHospitalId: hospitalId,
@@ -160,6 +180,13 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ระหว่าง Program · การติดตามผล");
     expect(markup).toContain("หลัง Program · การประเมินครั้งสุดท้าย");
     expect(markup).toContain("ยังไม่บันทึก");
+    expect(markup).toContain("โรงพยาบาลแม่ข่าย");
+    expect(markup).toContain("หน่วยบริการในเครือโดยตรง 3 แห่ง");
+    expect(markup).toContain("ใช้งานอยู่");
+    expect(markup).toContain("โรงพยาบาลลูกข่ายรอยืนยัน");
+    expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
+    expect(markup).toContain("รายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).toContain("ยังไม่ได้รับอนุญาต");
     expect(markup).toContain("HbA1c: มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง");
     expect(markup).toContain("0 กก.");
     expect(markup.match(/รหัสผู้ป่วยในโรงพยาบาล/gu)).toHaveLength(2);
@@ -203,5 +230,35 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ไม่มี Program ในหน้านี้");
     expect(markup).toContain("กลับไปหน้าแรก");
     expect(markup).not.toContain("ยังไม่มี Program ที่รายงานได้");
+  });
+
+  it("shows a subordinate Hospital's parent identity without sibling structure", () => {
+    const childHierarchy: HospitalHierarchyContext = {
+      hospital: {
+        id: "child-id",
+        hospitalCode: "DEMO-CHILD",
+        name: "รพ.สต.ทดสอบ",
+        status: "ACTIVE" as HospitalReportingHospital["status"],
+        parentHospitalId: "parent-id",
+      },
+      classification: "SUBORDINATE",
+      parentHospital: {
+        id: "parent-id",
+        hospitalCode: "DEMO-PARENT",
+        name: "โรงพยาบาลแม่ข่ายทดสอบ",
+        status: "ACTIVE" as HospitalReportingHospital["status"],
+        parentHospitalId: null,
+      },
+      directChildCount: 0,
+      directChildren: [],
+      issues: [],
+    };
+    const markup = render("overview", [], 0, childHierarchy);
+
+    expect(markup).toContain("รพ.สต.ทดสอบ (DEMO-CHILD)");
+    expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ (DEMO-PARENT)");
+    expect(markup).not.toContain("โรงพยาบาลลูกข่ายที่ใช้งาน");
+    expect(markup).not.toContain("หน่วยบริการในเครือโดยตรง");
+    expect(markup).toContain("ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
   });
 });

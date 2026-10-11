@@ -5,6 +5,10 @@ import { notFound, redirect } from "next/navigation";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  getHospitalHierarchyContext,
+  type HospitalHierarchyContext,
+} from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
+import {
   ForbiddenError,
   NotFoundError,
   UnauthenticatedError,
@@ -24,6 +28,7 @@ export type HospitalReportPageContext = {
   hospitals: readonly HospitalReportingHospital[];
   selectedHospitalId: string;
   page: HospitalReportingPageProjection;
+  hierarchy: HospitalHierarchyContext;
 };
 
 async function resolveActor(): Promise<ActorContext> {
@@ -66,7 +71,8 @@ export async function getHospitalReportPageContext(
 
   try {
     const page = await getHospitalReportingPage(actor, parsedRequest.data);
-    return { hospitals, selectedHospitalId, page };
+    const hierarchy = await getHospitalHierarchyContext(actor, selectedHospitalId);
+    return { hospitals, selectedHospitalId, page, hierarchy };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) notFound();
     throw error;
