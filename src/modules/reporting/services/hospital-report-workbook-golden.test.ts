@@ -145,6 +145,7 @@ function goldenProgram(): HospitalReportProgramRow {
       beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
+      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       achievementOver70Count: "DERIVATION_UNAPPROVED",
@@ -176,16 +177,25 @@ function dateToken(iso: string): string {
   return DATE_CELLS[iso] ?? `date:${iso.slice(0, 10)}`;
 }
 
-function followupDashboardColumns(): ColumnContract[] {
-  const letters = ["Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH"];
-  return letters.map((column, index): ColumnContract => {
-    const slot = Math.floor(index / 3);
-    const followup = FOLLOWUPS[slot];
-    if (!followup) {
-      return [column, index === FOLLOWUPS.length * 3 ? NO_MORE_FOLLOWUPS : null, index % 3 === 2 ? "SOURCE_MISSING" : "DECISION_OPEN"];
+const DASHBOARD_ROUND_LETTERS = ["Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH"] as const;
+
+// R24A-D11: round 1 = Service 1, round 2 = Goal Plan, rounds 3–6 = Follow-ups (4 per row).
+function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
+  const followups = row === 9 ? FOLLOWUPS.slice(0, 4) : FOLLOWUPS.slice(4);
+  return DASHBOARD_ROUND_LETTERS.map((column, index): ColumnContract => {
+    const round = Math.floor(index / 3) + 1;
+    const field = index % 3;
+    if (round <= 2) {
+      if (row === 10) return [column, null, "SOURCE_MISSING"];
+      return [column, field === 2 ? DERIVATION_UNAPPROVED : SOURCE_MISSING, "SOURCE_MISSING"];
     }
-    if (index % 3 === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "DECISION_OPEN"];
-    if (index % 3 === 1) return [column, followup.measurements.weight.state === "RECORDED" ? followup.measurements.weight.value : null, "DECISION_OPEN"];
+    const followup = followups[round - 3];
+    if (!followup) {
+      const isFirstEmptySlot = round - 3 === followups.length && field === 0;
+      return [column, isFirstEmptySlot ? NO_MORE_FOLLOWUPS : null, field === 2 ? "SOURCE_MISSING" : "DECISION_OPEN"];
+    }
+    if (field === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "DECISION_OPEN"];
+    if (field === 1) return [column, followup.measurements.weight.state === "RECORDED" ? followup.measurements.weight.value : null, "DECISION_OPEN"];
     return [column, DERIVATION_UNAPPROVED, "SOURCE_MISSING"];
   });
 }
@@ -207,7 +217,7 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["N", 92, "SOURCE_READY"],
   ["O", 138, "SOURCE_READY"],
   ["P", 88, "SOURCE_READY"],
-  ...followupDashboardColumns(),
+  ...dashboardRoundColumns(9),
   ["AI", dateToken(COMPLETED_AT), "SOURCE_READY"],
   ["AJ", SOURCE_MISSING, "SOURCE_MISSING"],
   ["AK", SOURCE_MISSING, "SOURCE_MISSING"],
@@ -330,10 +340,13 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     template = await loadWorkbook(await readFile(join(process.cwd(), "docs", "Dashboard App Demi.xlsx")));
   });
 
-  it("pins every Dashboard ภาพรวม customer column A–AQ", () => {
+  it("pins every Dashboard ภาพรวม customer column A–AQ and continues the fifth Follow-up", () => {
     expect(DASHBOARD_ROW_9).toHaveLength(43);
     for (const [column, expected] of DASHBOARD_ROW_9) {
       expect(normalizedCell(dashboard, `${column}9`), `Dashboard ภาพรวม!${column}9`).toEqual(expected);
+    }
+    for (const [column, expected] of dashboardRoundColumns(10)) {
+      expect(normalizedCell(dashboard, `${column}10`), `Dashboard ภาพรวม!${column}10`).toEqual(expected);
     }
   });
 
@@ -378,6 +391,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 27, DECISION_OPEN: 35, SOURCE_MISSING: 46 });
+    }).toEqual({ SOURCE_READY: 27, DECISION_OPEN: 31, SOURCE_MISSING: 50 });
   });
 });

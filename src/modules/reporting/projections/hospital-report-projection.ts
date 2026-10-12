@@ -106,6 +106,7 @@ export type HospitalReportProgramRow = {
     beforePromsScore: HospitalReportUnavailableReason;
     beforeWeeklyExercise: HospitalReportUnavailableReason;
     afterWeeklyExercise: HospitalReportUnavailableReason;
+    serviceRoundMeasurements: HospitalReportUnavailableReason;
     achievementDays: HospitalReportUnavailableReason;
     achievementRate: HospitalReportUnavailableReason;
     achievementOver70Count: HospitalReportUnavailableReason;
@@ -230,6 +231,10 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   afterHba1cAndHeight: {
     coverage: "SOURCE_MISSING",
     reason: "Final Assessment has no HbA1c or height field.",
+  },
+  serviceRoundMeasurements: {
+    coverage: "SOURCE_MISSING",
+    reason: "Service 1 and Goal Plan (rounds 1–2) record no DTX or body weight.",
   },
   achievement: {
     coverage: "SOURCE_MISSING_AND_DERIVATION_UNAPPROVED",

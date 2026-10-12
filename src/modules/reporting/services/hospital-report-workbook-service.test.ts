@@ -110,6 +110,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
       beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
+      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       achievementOver70Count: "DERIVATION_UNAPPROVED",
@@ -162,14 +163,17 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("D9").value).toBe("LOCAL-001");
     expect(dashboard.getCell("J9").value).toBe("ยังไม่บันทึก");
     expect(dashboard.getCell("K9").value).toBe(0);
-    expect(dashboard.getCell("Q9").value).toBe(1);
-    expect(dashboard.getCell("Q10").value).toBe(7);
+    expect(dashboard.getCell("Q9").value).toBe("ไม่มีแหล่งข้อมูลในระบบ");
+    expect(dashboard.getCell("Q10").value).toBeNull();
+    expect(dashboard.getCell("W9").value).toBe(1);
+    expect(dashboard.getCell("W10").value).toBe(5);
+    expect(dashboard.getCell("AC10").value).toBe(7);
     expect(dashboard.getCell("AS9").value).toBe(activeProgramId);
     expect(dashboard.getCell("AS11").value).toBe(completedProgramId);
     expect(dashboard.getCell("AI9").value).toBe("ยังดำเนิน Program");
     expect(dashboard.getCell("AI11").value).toBeInstanceOf(Date);
     expect(dashboard.getCell("H9").value).toContain("ไม่มีแหล่งข้อมูล");
-    expect(dashboard.getCell("Q11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
+    expect(dashboard.getCell("W11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
 
     expect(service.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
     expect(service.getCell("B9").value).toBe("สมชาย");

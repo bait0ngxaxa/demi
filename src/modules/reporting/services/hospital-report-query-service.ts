@@ -543,6 +543,7 @@ function toHospitalReportProgramRow(
       beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
+      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       achievementOver70Count: "DERIVATION_UNAPPROVED",

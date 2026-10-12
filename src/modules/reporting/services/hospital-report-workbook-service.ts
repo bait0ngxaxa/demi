@@ -33,7 +33,8 @@ const WORKBOOK_TEMPLATE_PATH = join(process.cwd(), "docs", "Dashboard App Demi.x
 const DASHBOARD_SHEET_NAME = "Dashboard ภาพรวม";
 const SERVICE_SHEET_NAME = "รายงานการจัดบริการ";
 const DATA_START_ROW = 9;
-const DASHBOARD_FOLLOWUPS_PER_ROW = 6;
+// Dashboard rounds 1–6 (R24A-D11): round 1 = Service 1, round 2 = Goal Plan, rounds 3–6 = Follow-ups.
+const DASHBOARD_FOLLOWUPS_PER_ROW = 4;
 const SERVICE_FOLLOWUPS_PER_ROW = 4;
 const EXCEL_CELL_TEXT_LIMIT = 32_767;
 
@@ -219,6 +220,7 @@ function programIdentity(program: HospitalReportProgramRow): readonly (string | 
 function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
   const groups = programContinuationGroups(programs, DASHBOARD_FOLLOWUPS_PER_ROW);
   const startColumn = 17;
+  const followupStartColumn = startColumn + 6;
   const programIdColumn = 45;
   const statusColumn = 44;
   const continuationColumn = 46;
@@ -253,14 +255,21 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(15).value = baselineMeasurementCell(program, "systolicBloodPressure");
     row.getCell(16).value = baselineMeasurementCell(program, "diastolicBloodPressure");
 
+    if (continuation === 1) {
+      for (const roundColumn of [startColumn, startColumn + 3]) {
+        row.getCell(roundColumn).value = unavailable(program.unavailable.serviceRoundMeasurements);
+        row.getCell(roundColumn + 1).value = unavailable(program.unavailable.serviceRoundMeasurements);
+        row.getCell(roundColumn + 2).value = unavailable(program.unavailable.achievementRate);
+      }
+    }
     followups.forEach((followup, followupIndex) => {
-      const column = startColumn + followupIndex * 3;
+      const column = followupStartColumn + followupIndex * 3;
       row.getCell(column).value = factCell(followup.measurements.bloodSugar);
       row.getCell(column + 1).value = factCell(followup.measurements.weight);
       row.getCell(column + 2).value = unavailable(program.unavailable.achievementRate);
     });
     if (followups.length < DASHBOARD_FOLLOWUPS_PER_ROW) {
-      const nextFollowupColumn = startColumn + followups.length * 3;
+      const nextFollowupColumn = followupStartColumn + followups.length * 3;
       row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
     }
 
@@ -574,6 +583,7 @@ export async function generateHospitalReportWorkbook(
   appendNotes(dashboardSheet, DATA_START_ROW + dashboardRowCount, [
     "จำนวนผู้ป่วยนับตาม Patient-Hospital relationship; จำนวน Program นับตาม PatientProgram และผู้ป่วยที่ไม่มี Program จะไม่มีแถว Program",
     "ผู้ดูแลที่แสดงเป็นการมอบหมายปัจจุบันของ relationship ณ เวลาที่อ่านข้อมูล ไม่ใช่ผู้ให้บริการย้อนหลังของ Program",
+    "ระหว่างโปรแกรม ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; Service 1 และ Goal Plan ยังไม่มีการบันทึกค่าวัดในระบบ",
     "แถวต่อเนื่องใช้เก็บ Follow-up ทุกครั้ง; ช่องคะแนนความสำเร็จและข้อมูลทางคลินิกที่ยังไม่มีแหล่งหรือสูตรรับรองแสดงสถานะที่ตรงไปตรงมา",
   ]);
   const detailStartRow = appendNotes(serviceSheet, DATA_START_ROW + serviceRowCount, [
