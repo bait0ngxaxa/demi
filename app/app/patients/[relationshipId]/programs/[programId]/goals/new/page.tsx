@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { goalPlanSourceFollowupIdSchema } from "@/modules/goals/schemas/goal-schemas";
 import { getGoalPlanCreateContextForProgram } from "@/modules/goals/services/goal-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
 import {
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
 
 type NewProgramGoalPlanPageProps = {
   params: Promise<{ relationshipId: string; programId: string }>;
-  searchParams: Promise<{ screeningId?: string | string[] }>;
+  searchParams: Promise<{ screeningId?: string | string[]; sourceFollowupId?: string | string[] }>;
 };
 
 async function resolveActor() {
@@ -51,6 +52,10 @@ export default async function NewProgramGoalPlanPage({
   const requestedScreeningId = Array.isArray(query.screeningId)
     ? query.screeningId[0]
     : query.screeningId;
+  // The service re-validates that this Follow-up is in the Program and chose to adjust the plan.
+  const parsedSourceFollowupId = goalPlanSourceFollowupIdSchema.safeParse(
+    Array.isArray(query.sourceFollowupId) ? query.sourceFollowupId[0] : query.sourceFollowupId,
+  );
   let programDetail;
   let context;
 
@@ -93,6 +98,7 @@ export default async function NewProgramGoalPlanPage({
         kind: "program",
         patientProgramId: context.patientProgramId,
         relationshipId,
+        sourceFollowupId: parsedSourceFollowupId.success ? parsedSourceFollowupId.data : null,
       }}
       submissionNonce={randomUUID()}
       template={context.template}

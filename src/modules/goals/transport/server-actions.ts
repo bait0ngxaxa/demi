@@ -25,6 +25,7 @@ const GOAL_PLAN_FORM_FIELDS = new Set([
 
 const GOAL_PLAN_PROGRAM_FORM_FIELDS = new Set([
   "patientProgramId",
+  "sourceFollowupId",
   "submissionNonce",
   "sourceScreeningAssessmentId",
   "primaryGoalCode",
@@ -122,6 +123,7 @@ function buildProgramSubmissionInput(formData: FormData): unknown {
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    sourceFollowupId: getOptionalString(formData, "sourceFollowupId")?.trim() || null,
     ...buildGoalPlanPayloadInput(formData),
   } satisfies Record<string, unknown>;
 }

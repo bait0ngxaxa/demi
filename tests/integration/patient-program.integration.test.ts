@@ -53,7 +53,7 @@ import {
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -65,6 +65,8 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientProgramServiceOneFloatingChart.deleteMany();
   await prisma.patientProgramServiceOneRoutine.deleteMany();
   await prisma.patientFollowupActivityProgress.deleteMany();
+  // Adjusted Goal Plans reference Follow-ups that may reference Goal Plans; clear the link first.
+  await prisma.patientGoalPlan.updateMany({ where: { sourceFollowupId: { not: null } }, data: { sourceFollowupId: null } });
   await prisma.patientFollowup.deleteMany();
   await prisma.patientFinalAssessment.deleteMany();
   await prisma.patientAppointment.deleteMany();
@@ -1324,6 +1326,73 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     );
     expect(goalAHistory.items.some((item) => item.goalPlanId === legacyGoal.goalPlanId)).toBe(false);
     expect(followupAHistory.items.some((item) => item.followupId === legacyFollowup.followupId)).toBe(false);
+  });
+
+  it("links an adjusted Goal Plan to the exact Program Follow-up that chose to adjust the plan", async () => {
+    const hospital = await createHospital("ADJUSTED-GOAL-PLAN");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, "adjusted-goal-plan");
+    const programA = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    const adjusted = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programA.patientProgramId, { planAdjusted: true }),
+    );
+    const notAdjusted = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programA.patientProgramId, { planAdjusted: false }),
+    );
+
+    const plan = await createGoalPlanForProgram(
+      owner.actor,
+      goalProgramInput(programA.patientProgramId, { sourceFollowupId: adjusted.followupId }),
+    );
+    expect(
+      await prisma.patientGoalPlan.findUniqueOrThrow({
+        where: { id: plan.goalPlanId },
+        select: { sourceFollowupId: true },
+      }),
+    ).toEqual({ sourceFollowupId: adjusted.followupId });
+    const audit = await prisma.auditEvent.findFirstOrThrow({
+      where: { action: "goal_plan.created", resourceId: plan.goalPlanId },
+    });
+    expect(audit.metadata).toMatchObject({ sourceFollowupId: adjusted.followupId });
+
+    await expect(
+      createGoalPlanForProgram(
+        owner.actor,
+        goalProgramInput(programA.patientProgramId, { sourceFollowupId: adjusted.followupId }),
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      createGoalPlanForProgram(
+        owner.actor,
+        goalProgramInput(programA.patientProgramId, { sourceFollowupId: notAdjusted.followupId }),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    await completePatientProgram(owner.actor, { patientProgramId: programA.patientProgramId });
+    const programB = await openPatientProgram(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+    });
+    await expect(
+      createGoalPlanForProgram(
+        owner.actor,
+        goalProgramInput(programB.patientProgramId, { sourceFollowupId: adjusted.followupId }),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    // Database backstop: a linked plan must stay in the Follow-up's Program and be Program-scoped.
+    await expect(
+      prisma.patientGoalPlan.update({
+        where: { id: plan.goalPlanId },
+        data: { patientProgramId: programB.patientProgramId },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.patientGoalPlan.update({ where: { id: plan.goalPlanId }, data: { patientProgramId: null } }),
+    ).rejects.toThrow();
   });
 
   it("keeps compatibility Follow-ups inside the pre-Program Goal Plan namespace", async () => {

@@ -53,6 +53,8 @@ export type GoalPlanFormScope =
       kind: "program";
       relationshipId: string;
       patientProgramId: string;
+      /** Follow-up that chose "ปรับแผน" and leads to this plan (Owner decision BR-06). */
+      sourceFollowupId?: string | null;
     };
 
 type GoalPlanFormProps = {
@@ -350,7 +352,10 @@ export function GoalPlanForm({
 
       <form action={action} className="space-y-6 pt-8">
         {scope.kind === "program" ? (
-          <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
+          <>
+            <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
+            <input name="sourceFollowupId" type="hidden" value={scope.sourceFollowupId ?? ""} />
+          </>
         ) : (
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         )}
@@ -382,6 +387,11 @@ export function GoalPlanForm({
           {scope.kind === "program" ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
               แผนนี้จะถูกบันทึกเป็นประวัติของโปรแกรมนี้โดยตรง และไม่แก้ไขแผนรอบเดิม
+            </p>
+          ) : null}
+          {scope.kind === "program" && scope.sourceFollowupId ? (
+            <p className="mt-3 text-sm leading-6 text-text-muted">
+              แผนนี้สร้างจากการติดตามผลที่เลือก “ปรับแผน” และจะเชื่อมกับการติดตามครั้งนั้น
             </p>
           ) : null}
         </Panel>

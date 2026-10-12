@@ -17,6 +17,7 @@ import {
   ConflictError,
   ForbiddenError,
   InfrastructureError,
+  NotFoundError,
   ValidationError,
 } from "@/shared/errors/application-error";
 
@@ -57,6 +58,7 @@ type GoalPlanRetrySnapshot = {
   patientProgramId: string | null;
   createdByUserId: string;
   sourceScreeningAssessmentId: string | null;
+  sourceFollowupId: string | null;
   submissionNonce: string;
   templateKey: string;
   templateVersion: string;
@@ -82,6 +84,7 @@ const goalPlanRetrySelect = {
   patientProgramId: true,
   createdByUserId: true,
   sourceScreeningAssessmentId: true,
+  sourceFollowupId: true,
   submissionNonce: true,
   templateKey: true,
   templateVersion: true,
@@ -173,8 +176,10 @@ function hasSamePlanPayload(
   actor: ActorContext,
   input: ValidatedGoalPlan,
   patientProgramId: string | null = null,
+  sourceFollowupId: string | null = null,
 ): boolean {
   return (
+    (existing.sourceFollowupId ?? null) === sourceFollowupId &&
     existing.patientHospitalRelationshipId === input.patientHospitalRelationshipId &&
     (existing.patientProgramId ?? null) === patientProgramId &&
     existing.createdByUserId === actor.userId &&
@@ -207,6 +212,36 @@ async function assertSourceScreeningIsAccessible(
   );
 }
 
+// The linked Follow-up must belong to the same locked Program, have answered "ปรับแผน",
+// and not already have an adjusted plan.
+async function assertAdjustedFollowupCanSourcePlan(
+  transaction: Prisma.TransactionClient,
+  patientProgramId: string,
+  sourceFollowupId: string,
+): Promise<void> {
+  const followup = await transaction.patientFollowup.findFirst({
+    where: { id: sourceFollowupId, patientProgramId },
+    select: { planAdjusted: true },
+  });
+
+  if (!followup) {
+    throw new NotFoundError();
+  }
+
+  if (followup.planAdjusted !== true) {
+    throw new ValidationError("Only a Follow-up that chose to adjust the plan can source a new Goal Plan");
+  }
+
+  const linked = await transaction.patientGoalPlan.findUnique({
+    where: { sourceFollowupId },
+    select: { id: true },
+  });
+
+  if (linked) {
+    throw new ConflictError("This Follow-up already has an adjusted Goal Plan");
+  }
+}
+
 function toSubmissionResult(input: {
   goalPlanId: string;
   patientProgramId: string | null;
@@ -234,8 +269,9 @@ function toRelationshipGoalPlanInput(
   input: GoalPlanProgramSubmitRequest,
   patientHospitalRelationshipId: string,
 ): GoalPlanSubmitRequest {
-  const { patientProgramId, ...payload } = input;
+  const { patientProgramId, sourceFollowupId, ...payload } = input;
   void patientProgramId;
+  void sourceFollowupId;
 
   return {
     patientHospitalRelationshipId,
@@ -250,8 +286,15 @@ async function createInTransaction(
   now: Date,
   patientProgramId: string | null = null,
   programAccessOverride?: PatientProgramAccessContext,
+  sourceFollowupId: string | null = null,
 ): Promise<GoalPlanSubmissionResult> {
   const normalizedProgramId = patientProgramId?.toLowerCase() ?? null;
+  const normalizedSourceFollowupId = sourceFollowupId?.toLowerCase() ?? null;
+
+  if (normalizedSourceFollowupId && !normalizedProgramId) {
+    throw new ValidationError("A source Follow-up can only be linked to a Program Goal Plan");
+  }
+
   const programAccess = normalizedProgramId
     ? programAccessOverride ??
       (await resolvePatientProgramByIdAccessContext(
@@ -293,7 +336,15 @@ async function createInTransaction(
   });
 
   if (existing) {
-    if (!hasSamePlanPayload(existing, authoritativeActor, validated, normalizedProgramId)) {
+    if (
+      !hasSamePlanPayload(
+        existing,
+        authoritativeActor,
+        validated,
+        normalizedProgramId,
+        normalizedSourceFollowupId,
+      )
+    ) {
       throw new ConflictError("This Goal Plan submission token has already been used");
     }
 
@@ -311,6 +362,10 @@ async function createInTransaction(
     const locked = await lockActivePatientProgram(transaction, actor, normalizedProgramId);
     access = toGoalAccessContext(locked.access);
     authoritativeActor = locked.access.actor;
+
+    if (normalizedSourceFollowupId) {
+      await assertAdjustedFollowupCanSourcePlan(transaction, normalizedProgramId, normalizedSourceFollowupId);
+    }
   }
 
   const latest = await transaction.patientGoalPlan.findFirst({
@@ -331,6 +386,7 @@ async function createInTransaction(
       patientProgramId: normalizedProgramId,
       createdByUserId: authoritativeActor.userId,
       sourceScreeningAssessmentId: validated.sourceScreeningAssessmentId,
+      sourceFollowupId: normalizedSourceFollowupId,
       submissionNonce: validated.submissionNonce,
       templateKey: template.key,
       templateVersion: template.version,
@@ -373,6 +429,7 @@ async function createInTransaction(
         ...(validated.sourceScreeningAssessmentId
           ? { sourceScreeningAssessmentId: validated.sourceScreeningAssessmentId }
           : {}),
+        ...(normalizedSourceFollowupId ? { sourceFollowupId: normalizedSourceFollowupId } : {}),
       },
     },
     transaction,
@@ -450,6 +507,7 @@ export async function createGoalPlanForProgram(
           getNow(dependencies),
           parsed.data.patientProgramId,
           programAccess,
+          parsed.data.sourceFollowupId ?? null,
         );
       },
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,

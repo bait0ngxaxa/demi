@@ -154,6 +154,7 @@ describe("Goal Plan Server Action", () => {
     expect(result).toMatchObject({ status: "SUCCESS", result: { goalPlanId, roundNumber: 1 } });
     expect(mockedCreateForProgram).toHaveBeenCalledWith(actor, {
       patientProgramId: programId,
+      sourceFollowupId: null,
       submissionNonce: nonce,
       sourceScreeningAssessmentId: null,
       primaryGoalCode: "weight",

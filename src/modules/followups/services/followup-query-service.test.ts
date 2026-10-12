@@ -257,6 +257,11 @@ function detailRecord(overrides: Record<string, unknown> = {}): Record<string, u
     reflectionNote: "สะท้อน",
     confidencePlan: "ทำต่อ",
     generalNote: "ทั่วไป",
+    serviceDate: new Date("2026-08-16T00:00:00.000Z"),
+    planAdjusted: true,
+    hasObstacle: false,
+    obstacleNote: null,
+    adjustedGoalPlans: [{ id: "77777777-7777-4777-8777-777777777777", roundNumber: 3 }],
     createdByUser: { person: { givenName: "ผู้บันทึก", familyName: "รอบแรก" } },
     appointment: {
       id: appointmentId,
@@ -466,6 +471,9 @@ describe("Follow-up query service", () => {
       followupId,
       roundNumber: 2,
       weight: 72.5,
+      serviceDate: new Date("2026-08-16T00:00:00.000Z"),
+      planAdjusted: true,
+      adjustedGoalPlan: { goalPlanId: "77777777-7777-4777-8777-777777777777", roundNumber: 3 },
       sourceGoalPlan: { goalPlanId, roundNumber: 2, items: [{ activityCode: "exercise_walk" }] },
       activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE" }],
     });

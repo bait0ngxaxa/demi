@@ -850,6 +850,8 @@ model PatientGoalPlan {
   patientProgramId              String?  @db.Uuid
   createdByUserId               String   @db.Uuid
   sourceScreeningAssessmentId   String?  @db.Uuid
+  // Workbook DoD BR-06: the Program Follow-up whose "ปรับแผน" answer produced this plan (at most one plan each).
+  sourceFollowupId              String?  @unique @db.Uuid
   submissionNonce               String   @unique @db.Uuid
   templateKey                   String   @db.VarChar(64)
   templateVersion               String   @db.VarChar(64)
@@ -863,6 +865,7 @@ model PatientGoalPlan {
   patientProgram              PatientProgram?             @relation("PatientProgramGoalPlans", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                       @relation("PatientGoalPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   sourceScreeningAssessment   ScreeningAssessment?       @relation("GoalPlanSourceScreening", fields: [sourceScreeningAssessmentId], references: [id], onDelete: Restrict)
+  sourceFollowup              PatientFollowup?           @relation("PatientGoalPlanSourceFollowup", fields: [sourceFollowupId, patientProgramId, patientHospitalRelationshipId], references: [id, patientProgramId, patientHospitalRelationshipId], onDelete: Restrict)
   items                       PatientGoalItem[]
   followupsSourced             PatientFollowup[]          @relation("PatientFollowupSourceGoalPlan")
   followupsSourcedProgramScoped PatientFollowup[]          @relation("PatientFollowupSourceGoalPlanProgramScoped")
@@ -1009,7 +1012,10 @@ model PatientFollowup {
   sourceGoalPlanProgramScoped PatientGoalPlan?            @relation("PatientFollowupSourceGoalPlanProgramScoped", fields: [sourceGoalPlanId, patientProgramId, patientHospitalRelationshipId], references: [id, patientProgramId, patientHospitalRelationshipId], onDelete: Restrict)
   createdByUser               User                       @relation("PatientFollowupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   activityProgress            PatientFollowupActivityProgress[]
+  adjustedGoalPlans           PatientGoalPlan[]          @relation("PatientGoalPlanSourceFollowup")
 
+  // This composite identity is the target of the adjusted Goal Plan -> Follow-up FK.
+  @@unique([id, patientProgramId, patientHospitalRelationshipId])
   // The nullable historical namespace is guarded by a partial SQL index in the migration.
   @@unique([patientProgramId, roundNumber])
   @@index([patientHospitalRelationshipId, recordedAt])

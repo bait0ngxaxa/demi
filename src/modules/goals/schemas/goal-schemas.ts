@@ -10,6 +10,7 @@ export const goalPlanRelationshipIdSchema = z.string().uuid();
 export const goalPlanIdSchema = z.string().uuid();
 export const goalPlanSubmissionNonceSchema = z.string().uuid();
 export const goalPlanSourceScreeningIdSchema = z.string().uuid();
+export const goalPlanSourceFollowupIdSchema = z.string().uuid();
 
 export const goalPlanItemSchema = z
   .object({
@@ -39,8 +40,12 @@ export const goalPlanSubmitRequestSchema = goalPlanPayloadSchema
   .extend({ patientHospitalRelationshipId: goalPlanRelationshipIdSchema })
   .strict();
 
+// A Program plan may record the Follow-up whose "ปรับแผน" answer produced it (Owner decision BR-06).
 export const goalPlanProgramSubmitRequestSchema = goalPlanPayloadSchema
-  .extend({ patientProgramId: patientProgramIdSchema })
+  .extend({
+    patientProgramId: patientProgramIdSchema,
+    sourceFollowupId: goalPlanSourceFollowupIdSchema.nullable().optional(),
+  })
   .strict();
 
 export type GoalPlanSubmitRequest = z.output<typeof goalPlanSubmitRequestSchema>;

@@ -113,6 +113,8 @@ export type FollowupDetail = {
   createdAt: Date;
   serviceDate: Date | null;
   planAdjusted: boolean | null;
+  /** Program Goal Plan created from this Follow-up's "ปรับแผน" answer, if any. */
+  adjustedGoalPlan: { goalPlanId: string; roundNumber: number } | null;
   hasObstacle: boolean | null;
   obstacleNote: string | null;
   createdByDisplayName: string;
@@ -177,6 +179,7 @@ const followupDetailSelect = {
   createdAt: true,
   serviceDate: true,
   planAdjusted: true,
+  adjustedGoalPlans: { select: { id: true, roundNumber: true }, take: 1 },
   hasObstacle: true,
   obstacleNote: true,
   weight: true,
@@ -453,6 +456,9 @@ function toDetail(
     createdAt: record.createdAt,
     serviceDate: record.serviceDate,
     planAdjusted: record.planAdjusted,
+    adjustedGoalPlan: record.adjustedGoalPlans[0]
+      ? { goalPlanId: record.adjustedGoalPlans[0].id, roundNumber: record.adjustedGoalPlans[0].roundNumber }
+      : null,
     hasObstacle: record.hasObstacle,
     obstacleNote: record.obstacleNote,
     createdByDisplayName: toDisplayName(record.createdByUser.person),

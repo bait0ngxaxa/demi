@@ -282,6 +282,27 @@ export function FollowupDetailView({
               <dd className="mt-1 font-semibold text-text">
                 {yesNoValue(detail.planAdjusted, "ปรับแผน", "ไม่ปรับแผน")}
               </dd>
+              {detail.planAdjusted && linkedProgramId ? (
+                <dd className="mt-2 text-sm leading-6">
+                  {detail.adjustedGoalPlan ? (
+                    <Link
+                      className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4"
+                      href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(linkedProgramId)}/goals/${encodeURIComponent(detail.adjustedGoalPlan.goalPlanId)}`}
+                    >
+                      แผนเป้าหมายที่ปรับ: รอบที่ {detail.adjustedGoalPlan.roundNumber}
+                    </Link>
+                  ) : scope.kind === "program" && scope.canManage && scope.programStatus === "ACTIVE" ? (
+                    <Link
+                      className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4"
+                      href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(linkedProgramId)}/goals/new?sourceFollowupId=${encodeURIComponent(detail.followupId)}`}
+                    >
+                      สร้างแผนเป้าหมายรอบใหม่จากการติดตามครั้งนี้
+                    </Link>
+                  ) : (
+                    <span className="text-text-muted">ยังไม่มีแผนเป้าหมายที่สร้างจากการติดตามครั้งนี้</span>
+                  )}
+                </dd>
+              ) : null}
             </div>
             <div>
               <dt className="text-sm text-text-muted">อุปสรรค</dt>

@@ -275,9 +275,12 @@ export function FollowupForm({
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
-      const destination = programId
-        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/followups/${encodeURIComponent(state.result.followupId)}`
-        : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`;
+      // Owner decision BR-06: a Program Follow-up that chose "ปรับแผน" continues to the new plan.
+      const destination = programId && planAdjusted === "true"
+        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/new?sourceFollowupId=${encodeURIComponent(state.result.followupId)}`
+        : programId
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/followups/${encodeURIComponent(state.result.followupId)}`
+          : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`;
 
       router.push(destination);
       return;
@@ -289,7 +292,7 @@ export function FollowupForm({
     ) {
       router.refresh();
     }
-  }, [programId, relationshipId, router, state]);
+  }, [planAdjusted, programId, relationshipId, router, state]);
 
   const serializedProgress = selectedGoalPlan
     ? selectedGoalPlan.items.flatMap((activity) => {
@@ -603,7 +606,9 @@ export function FollowupForm({
               ))}
               {planAdjusted === "true" ? (
                 <p className="text-sm leading-6 text-text-muted">
-                  หลังบันทึก ให้สร้างแผนเป้าหมายรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป
+                  {scope.kind === "program"
+                    ? "หลังบันทึก ระบบจะพาไปสร้างแผนเป้าหมายรอบใหม่ที่เชื่อมกับการติดตามครั้งนี้"
+                    : "หลังบันทึก ให้สร้างแผนเป้าหมายรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป"}
                 </p>
               ) : null}
             </fieldset>

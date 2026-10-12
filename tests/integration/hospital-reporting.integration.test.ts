@@ -68,6 +68,10 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
     await prisma.patientProgramServiceOneDreamCard.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneConfidence.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientFinalAssessment.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientGoalPlan.updateMany({
+      where: { patientProgramId: { in: programIds }, sourceFollowupId: { not: null } },
+      data: { sourceFollowupId: null },
+    });
     await prisma.patientFollowup.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientGoalItem.deleteMany({ where: { goalPlan: { patientProgramId: { in: programIds } } } });
     await prisma.patientGoalPlan.deleteMany({ where: { patientProgramId: { in: programIds } } });
