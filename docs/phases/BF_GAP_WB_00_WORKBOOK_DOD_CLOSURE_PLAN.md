@@ -159,10 +159,18 @@ Product Owner ตอบใน session นี้ โดยเลือกตา�
 | BR-02 | **CONFIRMED** | ครั้งที่ 1 “ทำ” = มีบันทึกกิจกรรม Service 1 นั้นใน Program; “ไม่ทำ” = ไม่มีบันทึก; ใช้หัวตาราง ทำ/ไม่ทำ ของ workbook และมีหมายเหตุว่าไม่ยืนยันผลการรักษา |
 | BR-03 | **CONFIRMED** | ใช้ Goal Plan รอบแรก (roundNumber ต่ำสุด) ของ Program: การลดมื้ออาหาร = มีเป้าหมาย `reduce_rice`; การเปลี่ยนอาหาร = มีเป้าหมายหมวด FOOD อื่น; จำนวนมื้อ/สัปดาห์ = targetDays สูงสุดของหมวด FOOD; เป้าหมายออกกำลัง = มีหมวด EXERCISE; จำนวนวัน/สัปดาห์ = targetDays สูงสุดของ EXERCISE; รวมเวลา/สัปดาห์ = Σ(targetDays × นาทีต่อครั้ง) ของ EXERCISE และถ้ากิจกรรมใดไม่มีนาทีจะไม่รวมบางส่วน |
 | BR-08 | **CONFIRMED** | อสม.ที่ดูแล = assignment ที่ active ณ วันออกรายงาน พร้อมป้าย “(มอบหมายปัจจุบัน)” (พฤติกรรมเดิม) |
+| BR-01 | **CONFIRMED** | Before = Baseline ที่ผูก Program, ระหว่าง = รอบบริการ, After = Final; เพิ่ม “วันที่ให้บริการ” (date, ค่าเริ่มต้นวันนี้ตามเวลาไทย เลือกย้อนหลังได้ ห้ามอนาคต) ใน Follow-up และ Final; รายงานใช้วันนี้ และ record เก่าใช้วันที่บันทึกพร้อมหมายเหตุ |
+| BR-04 | **CONFIRMED** | อสม./เจ้าหน้าที่บันทึก “จำนวนวันที่ทำได้” 0–7 ต่อกิจกรรมในช่วง 7 วันก่อนวันให้บริการ; อัตรา = Σวันที่ทำได้ ÷ Σวันเป้าหมายของ Goal Plan ที่ Follow-up อ้างอิง × 100 ปัดเป็นจำนวนเต็ม; ไม่นับกิจกรรมที่ไม่เกี่ยวข้อง; “>70%” = มากกว่า 70 อย่างเคร่งครัด (เทียบอัตราส่วนจริงก่อนปัด) |
+| BR-05 | **CONFIRMED (รอข้อมูล)** | ใช้รายการคำ (controlled vocabulary พร้อม version) ที่ Owner จะส่งให้ เลือก 1 ค่าต่อ Follow-up; ระหว่างรอ ช่องผลลัพธ์แสดง “ไม่มีแหล่งข้อมูลในระบบ” |
+| BR-06/BR-07 | **CONFIRMED** | ฟอร์มติดตามบังคับเลือก ปรับ/ไม่ปรับแผน และ มี/ไม่มีอุปสรรค (+ หมายเหตุอุปสรรคไม่บังคับ ไม่ออกในไฟล์รายงาน); ถ้าปรับแผนให้สร้าง Goal Plan รอบใหม่ |
 
-ข้อที่ยัง OPEN และ block S1 ส่วนที่เหลือ: BR-01 (ความหมาย Before/ระหว่าง/After และวันที่) และ CL-01/CL-06 (เฉพาะช่อง HbA1c/ไม้บรรทัดวัดใจ Before)
+ข้อที่ยัง OPEN: CL-01..CL-07 (ฝ่ายคลินิก) และรายการคำของ BR-05
 
-**สถานะ implementation (golden test `hospital-report-workbook-golden.test.ts`):** R24A-D11, BR-02, BR-03 และ BR-08 ถูก implement ใน workbook export แล้ว ความครอบคลุม 108 คอลัมน์ของแถวข้อมูล: SOURCE_READY 44 · DECISION_OPEN 14 · SOURCE_MISSING 50 (เริ่มต้น 27 · 35 · 46; ช่องค่าวัดครั้งที่ 1–2 ย้ายเป็น SOURCE_MISSING หลัง R24A-D11) ตาราง §4 เป็น baseline ก่อนการตัดสินใจ ให้ใช้ golden test เป็นสถานะปัจจุบัน
+**S2a (implemented):** migration `20261012120000_followup_workbook_facts` เพิ่ม `serviceDate`, `planAdjusted`, `hasObstacle`, `obstacleNote` ใน PatientFollowup และ `achievedDays` ใน PatientFollowupActivityProgress (nullable สำหรับ record เก่า; CHECK constraint ช่วง 0–7, NOT_APPLICABLE ต้องว่าง, obstacleNote ต้องมี hasObstacle = true) โดย application บังคับกรอกสำหรับ Follow-up ใหม่ ฟอร์ม/รายละเอียด/ประวัติแสดงค่าใหม่ สูตรอยู่ใน `src/modules/followups/domain/followup-achievement.ts` ใช้ร่วมกันทั้ง workbook และหน้ารายงานบนเว็บ
+
+**S2 ที่เหลือ:** (1) ช่องผลลัพธ์ที่ได้ เมื่อได้รายการคำ BR-05; (2) “วันที่ให้บริการ” ของ Final Assessment (BR-01 ฝั่ง After); (3) ผูก Goal Plan รอบใหม่กับ Follow-up ที่เลือก “ปรับแผน” (ตอนนี้ฟอร์มแจ้งให้สร้างแผนใหม่ แต่ยังไม่มี link ใน schema)
+
+**สถานะ implementation (golden test `hospital-report-workbook-golden.test.ts`):** R24A-D11, BR-01 (Follow-up), BR-02, BR-03, BR-04, BR-06, BR-07 และ BR-08 ถูก implement ใน workbook export แล้ว ความครอบคลุม 108 คอลัมน์ของแถวข้อมูล: SOURCE_READY 85 · DECISION_OPEN 2 · SOURCE_MISSING 21 (เริ่มต้น 27 · 35 · 46) ตาราง §4 เป็น baseline ก่อนการตัดสินใจ ให้ใช้ golden test เป็นสถานะปัจจุบัน
 
 ## 6. Implementation slices
 
