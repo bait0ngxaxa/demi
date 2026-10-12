@@ -203,6 +203,8 @@ Product Owner ตอบใน session นี้ โดยเลือกตา�
 
 ## 9. Next step
 
+สถานะ implementation ล่าสุดและหลักฐานการตรวจ: [BF-GAP-WB-01 handoff](./BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md)
+
 1. Owner และ Clinical authority ตอบ decision sheet §5 (ยอมรับ / แก้ไข / เลื่อน) โดยเฉพาะ WB-D01 และ R24A-D11 ซึ่งกำหนดโครงรอบของทั้งรายงาน และ WB-D02/WB-D03 ซึ่งกำหนดผู้ดาวน์โหลดและขอบเขตข้อมูล
 2. เมื่อ BR-01, BR-02, BR-03, BR-08 และ R24A-D11 ผ่าน → เริ่ม **S1**
 3. เมื่อ BR-04..07 ผ่าน → เริ่ม **S2**
