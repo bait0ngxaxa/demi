@@ -75,7 +75,9 @@ function toExcelDate(isoDate: string): Date {
 }
 
 function setExcelDate(row: ExcelJS.Row, column: number): void {
-  row.getCell(column).numFmt = "dd/mm/yyyy";
+  const cell = row.getCell(column);
+  // Template cells share one style object; assigning numFmt in place would date-format the whole row.
+  cell.style = { ...cell.style, numFmt: "dd/mm/yyyy" };
 }
 
 function unavailable(reason: keyof typeof unavailableLabels): string {
@@ -360,10 +362,8 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 8);
     row.getCell(9).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
-    row.getCell(11).value = program.baseline.state === "PRESENT"
-      ? unavailable(program.baseline.value.confidenceScore.state === "UNAVAILABLE" ? program.baseline.value.confidenceScore.reason : "CLINICAL_SEMANTICS_UNAPPROVED")
-      : "ไม่มี Baseline ที่เชื่อมกับ Program";
-    row.getCell(12).value = unavailable("NOT_PROGRAM_SCOPED");
+    row.getCell(11).value = unavailable(program.unavailable.beforePamScore);
+    row.getCell(12).value = unavailable(program.unavailable.beforePromsScore);
     row.getCell(13).value = program.baseline.state === "PRESENT"
       ? unavailable(program.baseline.value.confidenceScore.state === "UNAVAILABLE" ? program.baseline.value.confidenceScore.reason : "CLINICAL_SEMANTICS_UNAPPROVED")
       : "ไม่มี Baseline ที่เชื่อมกับ Program";
@@ -467,7 +467,7 @@ function goalAndProgressDetailRows(programs: readonly HospitalReportProgramRow[]
           followup.roundNumber,
           toExcelDate(followup.recordedAt),
           progress.activityCode,
-          progress.activityCode,
+          progress.activityLabel,
           null,
           null,
           null,
