@@ -27,14 +27,25 @@
 | Schema | `prisma/schema.prisma`: `PatientProgram`, `PatientBaseline`, `PatientProgramServiceOne*`, `PatientGoalPlan`/`PatientGoalItem`, `PatientFollowup`/`PatientFollowupActivityProgress`, `PatientFinalAssessment`, `ScreeningAssessment`, `PatientClassification`, `PatientOsmAssignment` |
 | Goal template | `src/modules/goals/domain/goal-templates/legacy-prototype-v1.ts` (activity code และ category FOOD/EXERCISE/MEASUREMENT/REST) |
 | Decision pack เดิม | [Phase 18C.0](./PHASE_18C0_BUSINESS_CLINICAL_DECISION_PACK.md): BR-01..08 และ CL-01..07 ทั้งหมด OPEN; [RPT-24A](./PHASE_17_RPT24A_CUSTOMER_WORKBOOK_DECISION_PACK.md): R24A-D01..D15 ยัง PROPOSED |
-| Canva whiteboard `DAHSvdQ3gvU` | วันที่ 2026-10-12 อ่านข้อความของ design ได้โดยตรงผ่าน Canva connector (ตอน BF-GAP-01R ถูกปฏิเสธสิทธิ์) ใช้เป็น intent evidence เท่านั้น การผูกกล่องกับรอบยังต้องยืนยันจาก visual layout |
+| Canva whiteboard `DAHSvdQ3gvU` | วันที่ 2026-10-12 อ่านข้อความของ design ได้โดยตรงผ่าน Canva connector (ตอน BF-GAP-01R ถูกปฏิเสธสิทธิ์) ใช้เป็น intent evidence เท่านั้น และ export PNG 16000×9000 เพื่อตรวจ visual layout (ลูกศร/การผูกกล่อง) ของ flow ผู้ป่วยและ อสม. ผลอยู่ใน §3.1 |
 
 ## 3. ข้อค้นพบหลัก
 
 1. **โครงรายงานมีอยู่แล้ว ช่องว่างเกิดจาก source/semantics ไม่ใช่จาก export** — export ปัจจุบันวาง layout ตาม workbook ครบ และติด label ตรงไปตรงมาในช่องที่ยังไม่มีข้อมูลที่อนุมัติ
-2. **Workbook ยืนยันโครง care model ปัจจุบัน** — workbook นิยาม ครั้งที่ 1 = รู้จักตัวเอง (กราฟวัดลอยจม, การ์ดความฝัน, ตารางกิจวัตร → Service 1), ครั้งที่ 2 = ทำแผนสุขภาพ เป้าหมายเล็กๆ (เป้าหมายอาหาร/ออกกำลัง → Goal Plan), ครั้งที่ 3–6 = ติดตามการฝึกซ้อมพฤติกรรม (→ Follow-up) และหมายเหตุ AI35 ระบุ “ติดตามกี่ครั้งก็ลงไปตามนั้น คาดหวัง 2–4 ครั้ง/โปรแกรม” ซึ่งสอดคล้องกับ Follow-up 0..N ที่มีอยู่ ชุดกิจกรรมรายรอบบน whiteboard (CARE-11/12) เป็น care choreography แยกจาก reporting DoD นี้
+2. **Workbook ยืนยันโครง care model ปัจจุบัน** — workbook นิยาม ครั้งที่ 1 = รู้จักตัวเอง (กราฟวัดลอยจม, การ์ดความฝัน, ตารางกิจวัตร → Service 1), ครั้งที่ 2 = ทำแผนสุขภาพ เป้าหมายเล็กๆ (เป้าหมายอาหาร/ออกกำลัง → Goal Plan), ครั้งที่ 3–6 = ติดตามการฝึกซ้อมพฤติกรรม (→ Follow-up) และหมายเหตุ AI35 ระบุ “ติดตามกี่ครั้งก็ลงไปตามนั้น คาดหวัง 2–4 ครั้ง/โปรแกรม” ซึ่งสอดคล้องกับ Follow-up 0..N ที่มีอยู่ แต่ **ชุดกิจกรรมรายรอบบน whiteboard ไม่ตรงกับ workbook** (ดู §3.1 ข้อ 1 และ decision WB-D01)
 3. **Gate หลักคือ decision** — 15 decision (BR-01..08, CL-01..07) ยัง OPEN ทุกข้อ ทำให้ช่องประมาณครึ่งหนึ่งของ workbook ยังเติมอย่างปลอดภัยไม่ได้
 4. **ไม่มี numeric achievement source** — Follow-up เก็บเพียง DONE/PARTIAL/NOT_DONE/NOT_APPLICABLE ต่อกิจกรรม จึงคำนวณ “จำนวนวันที่ทำได้/อัตราความสำเร็จ/Achieve score” ไม่ได้โดยไม่เพิ่ม source
+
+### 3.1 ผลตรวจ visual layout ของ whiteboard (2026-10-12)
+
+ตรวจจากภาพ export ความละเอียดสูงของ design `DAHSvdQ3gvU` เฉพาะ flow ผู้ป่วย/ญาติ และ อสม. (flow เจ้าหน้าที่และแอดมิน รพ. ตรวจจากข้อความเท่านั้น)
+
+1. **กิจกรรมรายรอบ (ยืนยันการผูกกล่องกับรอบแล้ว)** — แต่ละ “ครั้งที่ N” มีกล่องผลการจัดบริการที่ลูกศรผูกตรง: ทุกรอบมีฟอร์มอัตโนมัติ (ชื่อ-สกุล, อาชีพ, น้ำหนัก, ส่วนสูง, รอบเอว, ค่าน้ำตาล, ความดัน) และเพิ่ม: ครั้งที่ 1 = รู้จักตัวเอง, PAM, PROMs, กราฟวัดลอยจม, ผลไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, เส้นทางสุขภาพ; ครั้งที่ 2 = ทบทวนแผนสุขภาพ, ผลไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน; ครั้งที่ 3 = ทบทวนแผนสุขภาพ, ผลไม้บรรทัดวัดใจ, ความฝันของฉัน; ครั้งที่ 4 = ทบทวนแผนสุขภาพ, กราฟวัดลอยจม, ผลไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, แผนสุขภาพดีของฉัน; ครั้งที่ 5 = ทบทวนแผนสุขภาพ, ตารางชีวิตของฉัน; ครั้งที่ 6 = ทบทวนเส้นทางสุขภาพ, ทบทวนแผนสุขภาพ, ไม้บรรทัดวัดใจ; “การติดตามที่ Add เพิ่ม” = ฟอร์มอัตโนมัติ. **ขัดกับ workbook** ซึ่งวางการ์ดความฝันไว้ครั้งที่ 1 และ “ทำแผนสุขภาพ” ไว้ครั้งที่ 2 → decision WB-D01
+2. **ทุกรอบมีค่าวัด** — ฟอร์มอัตโนมัติของทุกรอบมีน้ำหนักและค่าน้ำตาล จึงสอดคล้องกับ Dashboard “ระหว่างโปรแกรม 1–6” ที่มี DTX/BW/Achieve ทุกช่อง หมายความว่าช่อง 1–6 น่าจะเป็น **รอบบริการที่ 1–6** ไม่ใช่ Follow-up ลำดับที่ 1–6 แต่ Service 1 และ Goal Plan ใน runtime ไม่มีค่าวัด → ค่าแนะนำ R24A-D11 ใน §5 ถูกแก้ตามนี้
+3. **แจ้งเตือนตามช่วงเวลา (เช้า/กลางวัน/เย็น/ก่อนนอน) ผูกกับ “ยา”** — ลูกศรจากเมนู ยา → หน้ารายการยา → หน้าเพิ่มยา → กล่องแจ้งเตือน ทั้งใน flow ผู้ป่วยและ อสม. เป็นหลักฐานให้ BF-GAP-02 ทบทวน NOTIF-01/MED-03 (BF-GAP-01R ระบุว่ายังผูก domain ไม่ได้เพราะไม่มี visual evidence)
+4. **ตอบรับ/เลื่อนนัดอยู่ใน flow อสม.** — flow อสม.: ตอบรับนัดหมาย → เลือกผู้ป่วยสำหรับจัดบริการ → รายละเอียดนัด → Popup ยืนยัน/เลื่อนนัด → กรณีขอเลื่อนนัด → หน้ากรอกวันใหม่; ส่วนสร้างนัด: นัดหมาย → ตนเอง/สมาชิกครอบครัว (เลือกสมาชิก/เลือกผู้ป่วย) → ประเภท ติดตาม/ประเมิน/ให้ความรู้ → เลือกแพทย์/พยาบาล/อสม. ใน flow ผู้ป่วยไม่พบกล่องตอบรับนัด เป็นหลักฐานให้ BF-GAP-02 ทบทวน actor ของ APT-03/04/07
+
+ข้อ 3–4 ไม่อยู่ใน DoD workbook จึงไม่เปลี่ยนแผน slice แต่ต้องส่งต่อให้ canonical register แก้ใน BF-GAP-02
 
 ## 4. Column crosswalk
 
@@ -111,7 +122,8 @@
 | ID | คำถาม | ค่าแนะนำ | ผู้อนุมัติ | ปลดล็อกคอลัมน์ |
 | --- | --- | --- | --- | --- |
 | BR-01 | Before / ระหว่าง / After และวันที่ หมายถึงอะไร | Before = Baseline ที่ผูกกับ Program (`initialBaselineId`); ระหว่าง = Follow-up ตาม roundNumber; After = Final Assessment ของ Program; วันเริ่ม/สิ้นสุด = lifecycle ของ Program; เพิ่ม “วันที่ให้บริการ” (date) แยกจาก recordedAt ใน Follow-up และ Final | Owner + Clinical + Data owner | G, AI, H/วันที่ติดตาม, Before/After ทั้งหมด |
-| R24A-D11 | “ระหว่างโปรแกรม 1–6” ใน Dashboard จับคู่อย่างไร และ Follow-up เกินช่องทำอย่างไร | Dashboard ช่อง 1–6 = Follow-up ลำดับที่ 1–6 ตามเวลาให้บริการ (Service 1/2 ไม่มีค่าวัด); sheet บริการ ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; ส่วนเกินลงแถวต่อเนื่อง (มีใน export แล้ว) ไม่ตัดทิ้ง | Owner | Q–AH, AH–BM |
+| R24A-D11 | “ระหว่างโปรแกรม 1–6” ใน Dashboard จับคู่อย่างไร และ Follow-up เกินช่องทำอย่างไร | ช่อง 1–6 = รอบบริการที่ 1–6 (ตาม §3.1 ข้อ 2): ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4 จึงต้องเพิ่มค่าวัด (DTX/BW) ให้ Service 1 และ Goal Plan หรือ Owner ยอมให้ช่อง 1–2 ว่าง; Follow-up ที่เกินลงแถวต่อเนื่อง (มีใน export แล้ว) ไม่ตัดทิ้ง | Owner | Q–AH, AH–BM |
+| WB-D01 | กิจกรรมแต่ละรอบยึด whiteboard หรือ workbook (เช่น การ์ดความฝัน ครั้งที่ 1 หรือ 3, ทำแผนสุขภาพ ครั้งที่ 2 หรือ แผนสุขภาพดีของฉัน ครั้งที่ 4) | ใช้ workbook เป็นนิยามรอบสำหรับรายงาน (เพราะเป็น DoD) และให้ Owner ยืนยันว่าลำดับกิจกรรมใน whiteboard เป็นแนวทาง UI ที่ยืดหยุ่นได้; ถ้า Owner ยึด whiteboard ต้องแก้ header ของ workbook ให้ตรงก่อน | Owner + Clinical | S–AG, Q–AH, CARE-11/12 |
 | BR-02 | “ทำ/ไม่ทำ” ของครั้งที่ 1 หมายถึงอะไร | “ทำ” = มี Service 1 record ของกิจกรรมนั้นใน Program; “ไม่ทำ” = ไม่มี record และระบุใน legend ว่าเป็นการบันทึกใน DEMI | Owner + Hospital operations | S–X |
 | BR-03 | activity code ใดเข้าหมวด workbook | การเปลี่ยนอาหาร = มี GoalItem หมวด FOOD; การลดมื้ออาหาร = **ไม่มี code ตรง** (ให้ Owner เลือก: map `reduce_rice` หรือเพิ่ม activity ใหม่ใน template version ใหม่); จำนวนมื้อ/สัปดาห์ = ให้ Owner นิยาม; เป้าหมายออกกำลัง = มี GoalItem หมวด EXERCISE; จำนวนวัน/สัปดาห์ = targetDays สูงสุดของ EXERCISE; รวมเวลา/สัปดาห์ = Σ(targetDays × targetValue นาที); ใช้ Goal Plan รอบแรกของ Program | Owner + Clinical | Y–AG |
 | BR-04 | Achieve score / วันที่ทำได้ / >70% | เพิ่ม `achievedDays` (0–7) ต่อกิจกรรมในแต่ละ Follow-up ซึ่ง อสม./เจ้าหน้าที่บันทึก; ช่วงนับ = 7 วันก่อนวันให้บริการ; อัตรา = Σ achievedDays ÷ Σ targetDays ของ Goal Plan ที่ Follow-up อ้าง (`sourceGoalPlanId`) ตามหมายเหตุ AK32; แสดงเป็น % ทศนิยม 0 ตำแหน่ง; NOT_APPLICABLE ไม่นับในตัวหาร; ไม่มีค่า = ว่าง ไม่ใช่ 0; “>70%” = มากกว่า 70 อย่างเคร่งครัด; R = จำนวน Follow-up ที่อัตรา >70% | Clinical + Data owner + Owner | S/V/Y/AB/AE/AH (Dashboard), R, AI/AJ ฯลฯ |
@@ -152,11 +164,11 @@
 ## 8. Verification
 
 - อ่าน workbook ด้วย exceljs แบบ read-only (header rows 4–8 และหมายเหตุ AH31–AH37) และเทียบกับ export service, projection และ schema ที่ HEAD ข้างต้น
-- อ่านข้อความ Canva whiteboard ผ่าน connector (ไม่ได้ตรวจ visual layout)
+- อ่านข้อความ Canva whiteboard ผ่าน connector และตรวจ visual layout จากภาพ export สำหรับ flow ผู้ป่วยและ อสม. (§3.1); flow เจ้าหน้าที่และแอดมิน รพ. ยังไม่ได้ตรวจด้วยภาพ
 - ไม่มีการเปลี่ยน runtime, schema, migration, policy, test หรือ reporting behavior ในเฟสนี้ จึงไม่ได้รัน test/typecheck/build
 
 ## 9. Next step
 
-1. Owner และ Clinical authority ตอบ decision sheet §5 (ยอมรับ / แก้ไข / เลื่อน)
+1. Owner และ Clinical authority ตอบ decision sheet §5 (ยอมรับ / แก้ไข / เลื่อน) โดยเฉพาะ WB-D01 และ R24A-D11 ซึ่งกำหนดโครงรอบของทั้งรายงาน
 2. เมื่อ BR-01, BR-02, BR-03, BR-08 และ R24A-D11 ผ่าน → เริ่ม **S1**
 3. เมื่อ BR-04..07 ผ่าน → เริ่ม **S2**
