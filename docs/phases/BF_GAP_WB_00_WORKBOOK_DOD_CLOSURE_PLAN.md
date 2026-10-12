@@ -212,6 +212,9 @@ Product Owner ยืนยันว่ารายการด้านล่า
 | P-10 | WB-D02 privacy review ก่อนเปิดดาวน์โหลดให้ MEMBER | Security/Privacy + Product Owner | อนุมัติการแสดงชื่อ/HN ให้เจ้าหน้าที่ | สิทธิ์ดาวน์โหลด (S6) |
 | P-11 | WB-D03 / AREA-01..05 เขตความรับผิดชอบ | Product Owner | นิยาม Area, สมาชิก, ลำดับชั้น, การลบ/ย้าย | ตัวกรองตามเขต (S6) |
 | P-12 | Manual UAT ของฟอร์มใหม่และไฟล์ Excel | Product Owner / ผู้ใช้งานจริง | ทดลองบันทึก Follow-up/Final แล้วเทียบไฟล์ Excel | ยืนยัน DoD |
+| P-13 | D1 — ServiceRequest ↔ downstream record ([BF-GAP-WB-03](./BF_GAP_WB_03_SERVICE_REQUEST_PROGRAM_LINK_DECISION_PACK.md) §3 D1) | Product Owner + Data Owner/Operator | target ต่อ offering, STARTED semantics, cardinality/transaction, inventory STARTED และ legacy/backfill ที่พิสูจน์ได้ | ไม่มีคอลัมน์ใหม่โดยตรง; causal trace request → delivery |
+| P-14 | D2 — OSM assignment acceptance ([BF-GAP-WB-03](./BF_GAP_WB_03_SERVICE_REQUEST_PROGRAM_LINK_DECISION_PACK.md) §3 D2) | Product Owner | ไม่ต้อง / accept only / accept-decline; pending authority ต้อง fail closed, transfer, notifications และ appointment snapshot | ไม่มีคอลัมน์ใหม่โดยตรง; ยืนยันผู้รับงานและ authority boundary |
+| P-15 | D3 — OSM preference → proposed candidate ([BF-GAP-WB-03](./BF_GAP_WB_03_SERVICE_REQUEST_PROGRAM_LINK_DECISION_PACK.md) §3 D3) | Product Owner | OWNER ยืนยัน preferred candidate หรือ Hospital เลือกทุกครั้ง; preference ห้ามให้ authority อัตโนมัติ | ไม่มีคอลัมน์ใหม่โดยตรง; แยก preferred/proposed/effective OSM |
 
 ## 6. Implementation slices
 
