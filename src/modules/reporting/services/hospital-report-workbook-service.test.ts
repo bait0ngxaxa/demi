@@ -90,6 +90,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
         items: [{
           activityCode: "walk",
           activityLabel: "เดินออกกำลังกาย",
+          category: "EXERCISE",
           targetDays: 3,
           targetValue: { state: "RECORDED", value: 0 },
           targetUnit: { state: "RECORDED", value: "นาที" },
@@ -178,8 +179,12 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
-    expect(service.getCell("S8").value).toBe("มีบันทึก");
-    expect(service.getCell("T9").value).toBe("ไม่มีบันทึก");
+    expect(service.getCell("S8").value).toBe("ทำ");
+    expect(service.getCell("T9").value).toBe("ไม่ทำ");
+    expect(service.getCell("W9").value).toBe("ทำ");
+    expect(service.getCell("AD9").value).toBe("มี");
+    expect(service.getCell("AF9").value).toBe(3);
+    expect(service.getCell("AG9").value).toBe("ยังไม่บันทึกเวลาครบทุกกิจกรรม");
     expect(service.getCell("AH9").value).toBeInstanceOf(Date);
     expect(service.getCell("AH10").value).toBeInstanceOf(Date);
     expect(service.getCell("AH11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");

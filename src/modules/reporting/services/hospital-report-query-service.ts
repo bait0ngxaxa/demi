@@ -417,6 +417,7 @@ function toGoalPlan(record: {
       activityLabel:
         template?.activities.find((activity) => activity.code === item.activityCode)?.label ??
         item.activityCode,
+      category: template?.activities.find((activity) => activity.code === item.activityCode)?.category ?? null,
       targetDays: item.targetDays,
       targetValue: toFact(item.targetValue),
       targetUnit: toFact(item.targetUnit),

@@ -27,7 +27,6 @@ const SEMANTICS_UNAPPROVED = "ยังไม่พร้อมใช้งา�
 const NOT_PROGRAM_SCOPED = "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้";
 const DERIVATION_UNAPPROVED = "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง";
 const NO_MORE_FOLLOWUPS = "ไม่มี Follow-up ในช่องที่เหลือ";
-const GOAL_DETAILS = "ดูตาราง Goal Plan และเป้าหมายที่บันทึกท้ายรายงาน";
 const UNAVAILABLE_LABELS = new Set([SOURCE_MISSING, SEMANTICS_UNAPPROVED, NOT_PROGRAM_SCOPED, DERIVATION_UNAPPROVED]);
 
 const programId = "33333333-3333-4333-8333-333333333333";
@@ -105,6 +104,7 @@ function goldenProgram(): HospitalReportProgramRow {
           {
             activityCode: "stop_sweet",
             activityLabel: "ลดหวาน",
+            category: "FOOD",
             targetDays: 4,
             targetValue: { state: "NOT_RECORDED" },
             targetUnit: { state: "NOT_RECORDED" },
@@ -112,6 +112,7 @@ function goldenProgram(): HospitalReportProgramRow {
           {
             activityCode: "exercise_walk",
             activityLabel: "เดินออกกำลังกาย",
+            category: "EXERCISE",
             targetDays: 3,
             targetValue: { state: "RECORDED", value: 30 },
             targetUnit: { state: "RECORDED", value: "minutes" },
@@ -206,7 +207,7 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
   ["E", SOURCE_MISSING, "SOURCE_MISSING"],
-  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "DECISION_OPEN"],
+  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", SOURCE_MISSING, "SOURCE_MISSING"],
   ["I", SEMANTICS_UNAPPROVED, "DECISION_OPEN"],
@@ -266,7 +267,7 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
   ["E", SOURCE_MISSING, "SOURCE_MISSING"],
-  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "DECISION_OPEN"],
+  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", dateToken(COMPLETED_AT), "SOURCE_READY"],
   ["I", 128, "SOURCE_READY"],
@@ -279,21 +280,21 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["P", 69, "SOURCE_READY"],
   ["Q", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
   ["R", DERIVATION_UNAPPROVED, "SOURCE_MISSING"],
-  ["S", "มีบันทึก", "DECISION_OPEN"],
-  ["T", null, "DECISION_OPEN"],
-  ["U", null, "DECISION_OPEN"],
-  ["V", "ไม่มีบันทึก", "DECISION_OPEN"],
-  ["W", "มีบันทึก", "DECISION_OPEN"],
-  ["X", null, "DECISION_OPEN"],
-  ["Y", GOAL_DETAILS, "DECISION_OPEN"],
-  ["Z", null, "DECISION_OPEN"],
-  ["AA", null, "DECISION_OPEN"],
-  ["AB", null, "DECISION_OPEN"],
-  ["AC", null, "DECISION_OPEN"],
-  ["AD", GOAL_DETAILS, "DECISION_OPEN"],
-  ["AE", null, "DECISION_OPEN"],
-  ["AF", null, "DECISION_OPEN"],
-  ["AG", null, "DECISION_OPEN"],
+  ["S", "ทำ", "SOURCE_READY"],
+  ["T", null, "SOURCE_READY"],
+  ["U", null, "SOURCE_READY"],
+  ["V", "ไม่ทำ", "SOURCE_READY"],
+  ["W", "ทำ", "SOURCE_READY"],
+  ["X", null, "SOURCE_READY"],
+  ["Y", null, "SOURCE_READY"],
+  ["Z", "ไม่มี", "SOURCE_READY"],
+  ["AA", "มี", "SOURCE_READY"],
+  ["AB", null, "SOURCE_READY"],
+  ["AC", 4, "SOURCE_READY"],
+  ["AD", "มี", "SOURCE_READY"],
+  ["AE", null, "SOURCE_READY"],
+  ["AF", 3, "SOURCE_READY"],
+  ["AG", 90, "SOURCE_READY"],
   ...followupServiceColumns(9),
 ];
 
@@ -373,15 +374,7 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     const templateDashboard = sheetOrThrow(template, "Dashboard ภาพรวม");
     const templateService = sheetOrThrow(template, "รายงานการจัดบริการ");
     expect(headerValues(dashboard, [4, 5, 6, 7], 43)).toEqual(headerValues(templateDashboard, [4, 5, 6, 7], 43));
-    expect(headerValues(service, [5, 6, 7], 65)).toEqual(headerValues(templateService, [5, 6, 7], 65));
-
-    const serviceRow8 = headerValues(service, [8], 65);
-    const templateRow8 = headerValues(templateService, [8], 65);
-    const recordPresenceColumns = new Set([19, 20, 21, 22, 23, 24]);
-    templateRow8.forEach((value, index) => {
-      if (recordPresenceColumns.has(index + 1)) return;
-      expect(serviceRow8[index], `รายงานการจัดบริการ row 8 column ${index + 1}`).toEqual(value);
-    });
+    expect(headerValues(service, [5, 6, 7, 8], 65)).toEqual(headerValues(templateService, [5, 6, 7, 8], 65));
   });
 
   it("reports the current DoD coverage of the customer columns", () => {
@@ -391,6 +384,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 27, DECISION_OPEN: 31, SOURCE_MISSING: 50 });
+    }).toEqual({ SOURCE_READY: 44, DECISION_OPEN: 14, SOURCE_MISSING: 50 });
   });
 });

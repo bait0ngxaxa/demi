@@ -1,5 +1,7 @@
 import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@prisma/client";
 
+import type { GoalActivityCategory } from "@/modules/goals/domain/goal-templates";
+
 export type HospitalReportUnavailableReason =
   | "SOURCE_MISSING"
   | "CLINICAL_SEMANTICS_UNAPPROVED"
@@ -29,6 +31,7 @@ export type HospitalReportGoalPlan = {
   items: readonly {
     activityCode: string;
     activityLabel: string;
+    category: GoalActivityCategory | null;
     targetDays: number;
     targetValue: HospitalReportFact<number>;
     targetUnit: HospitalReportFact<string>;

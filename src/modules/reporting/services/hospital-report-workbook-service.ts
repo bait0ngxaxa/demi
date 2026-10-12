@@ -12,6 +12,7 @@ import { ValidationError } from "@/shared/errors/application-error";
 import type {
   HospitalReportFact,
   HospitalReportFollowup,
+  HospitalReportGoalPlan,
   HospitalReportProgramRow,
   HospitalReportingDataset,
 } from "../projections/hospital-report-projection";
@@ -37,6 +38,9 @@ const DATA_START_ROW = 9;
 const DASHBOARD_FOLLOWUPS_PER_ROW = 4;
 const SERVICE_FOLLOWUPS_PER_ROW = 4;
 const EXCEL_CELL_TEXT_LIMIT = 32_767;
+// Owner decision BR-03: "การลดมื้ออาหาร" is the reduce-rice/starch goal; other FOOD goals are "การเปลี่ยนอาหาร".
+const REDUCE_MEAL_ACTIVITY_CODE = "reduce_rice";
+const GOAL_TARGET_MINUTES_UNIT = "minutes";
 
 const unavailableLabels = {
   SOURCE_MISSING: "ไม่มีแหล่งข้อมูลในระบบ",
@@ -303,9 +307,57 @@ function serviceOnePresence(
   return program.serviceOne[key].state === "PRESENT";
 }
 
-function goalDetailsText(program: HospitalReportProgramRow): string {
-  if (program.goalPlans.totalCount === 0) return "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
-  return "ดูตาราง Goal Plan และเป้าหมายที่บันทึกท้ายรายงาน";
+function firstGoalPlan(program: HospitalReportProgramRow): HospitalReportGoalPlan | null {
+  return program.goalPlans.items.reduce<HospitalReportGoalPlan | null>(
+    (first, plan) => (first === null || plan.roundNumber < first.roundNumber ? plan : first),
+    null,
+  );
+}
+
+function setPresenceCells(row: ExcelJS.Row, column: number, present: boolean, labels: readonly [string, string]): void {
+  row.getCell(column).value = present ? labels[0] : "";
+  row.getCell(column + 1).value = present ? "" : labels[1];
+}
+
+function maxTargetDays(items: HospitalReportGoalPlan["items"]): number | string {
+  return items.length === 0 ? "" : Math.max(...items.map((item) => item.targetDays));
+}
+
+function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): number | string {
+  if (items.length === 0) return "";
+  let total = 0;
+  for (const item of items) {
+    if (
+      item.targetValue.state !== "RECORDED" ||
+      item.targetUnit.state !== "RECORDED" ||
+      item.targetUnit.value !== GOAL_TARGET_MINUTES_UNIT
+    ) {
+      return "ยังไม่บันทึกเวลาครบทุกกิจกรรม";
+    }
+    total += item.targetDays * item.targetValue.value;
+  }
+  return total;
+}
+
+// Round 2 (Goal Plan) cells Y–AG from the Program's first Goal Plan, per Owner decision BR-03.
+function writeRoundTwoGoalCells(row: ExcelJS.Row, program: HospitalReportProgramRow): void {
+  const plan = firstGoalPlan(program);
+  if (plan === null) {
+    row.getCell(25).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
+    row.getCell(30).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
+    return;
+  }
+  const foodItems = plan.items.filter((item) => item.category === "FOOD");
+  const exerciseItems = plan.items.filter((item) => item.category === "EXERCISE");
+  const hasReduceMeal = foodItems.some((item) => item.activityCode === REDUCE_MEAL_ACTIVITY_CODE);
+  const hasFoodChange = foodItems.some((item) => item.activityCode !== REDUCE_MEAL_ACTIVITY_CODE);
+
+  setPresenceCells(row, 25, hasReduceMeal, ["มี", "ไม่มี"]);
+  setPresenceCells(row, 27, hasFoodChange, ["มี", "ไม่มี"]);
+  row.getCell(29).value = maxTargetDays(foodItems);
+  setPresenceCells(row, 30, exerciseItems.length > 0, ["มี", "ไม่มี"]);
+  row.getCell(32).value = maxTargetDays(exerciseItems);
+  row.getCell(33).value = weeklyExerciseMinutes(exerciseItems);
 }
 
 function writeServiceFollowupCells(
@@ -346,8 +398,6 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     { column: followupCountColumn, label: "จำนวน Follow-up ทั้งหมด", width: 23 },
   ];
   styleExtensionHeaders(sheet, 8, 65, appendedHeaders);
-  for (const column of [19, 21, 23]) sheet.getCell(8, column).value = "มีบันทึก";
-  for (const column of [20, 22, 24]) sheet.getCell(8, column).value = "ไม่มีบันทึก";
 
   groups.forEach(({ program, followups, continuation }, index) => {
     const rowNumber = DATA_START_ROW + index;
@@ -381,14 +431,13 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(16).value = finalMeasurementCell(program, "weight");
     row.getCell(17).value = unavailable(program.unavailable.afterWeeklyExercise);
     row.getCell(18).value = unavailable(program.unavailable.achievementOver70Count);
-    row.getCell(19).value = serviceOnePresence(program, "floatingChart") ? "มีบันทึก" : "";
-    row.getCell(20).value = serviceOnePresence(program, "floatingChart") ? "" : "ไม่มีบันทึก";
-    row.getCell(21).value = serviceOnePresence(program, "dreamCard") ? "มีบันทึก" : "";
-    row.getCell(22).value = serviceOnePresence(program, "dreamCard") ? "" : "ไม่มีบันทึก";
-    row.getCell(23).value = serviceOnePresence(program, "routine") ? "มีบันทึก" : "";
-    row.getCell(24).value = serviceOnePresence(program, "routine") ? "" : "ไม่มีบันทึก";
-    row.getCell(25).value = goalDetailsText(program);
-    row.getCell(30).value = goalDetailsText(program);
+    if (continuation === 1) {
+      // Owner decision BR-02: "ทำ" means the Service 1 activity has a record in DEMI.
+      setPresenceCells(row, 19, serviceOnePresence(program, "floatingChart"), ["ทำ", "ไม่ทำ"]);
+      setPresenceCells(row, 21, serviceOnePresence(program, "dreamCard"), ["ทำ", "ไม่ทำ"]);
+      setPresenceCells(row, 23, serviceOnePresence(program, "routine"), ["ทำ", "ไม่ทำ"]);
+      writeRoundTwoGoalCells(row, program);
+    }
     writeServiceFollowupCells(row, program, followups);
     row.getCell(statusColumn).value = program.lifecycle.status;
     row.getCell(programIdColumn).value = program.patientProgramId;
@@ -587,7 +636,8 @@ export async function generateHospitalReportWorkbook(
     "แถวต่อเนื่องใช้เก็บ Follow-up ทุกครั้ง; ช่องคะแนนความสำเร็จและข้อมูลทางคลินิกที่ยังไม่มีแหล่งหรือสูตรรับรองแสดงสถานะที่ตรงไปตรงมา",
   ]);
   const detailStartRow = appendNotes(serviceSheet, DATA_START_ROW + serviceRowCount, [
-    "Service 1 แสดงการมีหรือไม่มีบันทึก ไม่ยืนยันว่าบริการถูกส่งมอบหรือเกิดผลการรักษา",
+    "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
+    "ครั้งที่ 2 ใช้ Goal Plan รอบแรกของ Program: การลดมื้ออาหาร = เป้าหมายลดข้าว/แป้ง, การเปลี่ยนอาหาร = เป้าหมายอาหารอื่น, จำนวนมื้อและจำนวนวันต่อสัปดาห์ = วันเป้าหมายสูงสุดของหมวด, รวมเวลา = ผลรวมวันเป้าหมาย × นาทีต่อครั้ง ของกิจกรรมออกกำลังกาย",
     "Goal Plan เป็นค่าเป้าหมาย ไม่ใช่ผลที่ทำได้; Follow-up ที่เกิน 4 ครั้งแสดงในแถวต่อเนื่องและตารางรายละเอียดท้ายรายงาน",
     "Achievement days/rate, outcome, plan adjustment และ obstacle ยังไม่มีแหล่งข้อมูลหรือสูตรที่ได้รับรอง; ไม่อนุมานจากสถานะกิจกรรม",
     "Program COMPLETED เป็นสถานะ lifecycle ไม่ได้ยืนยันผลลัพธ์ทางคลินิก; generatedAt เป็นเวลาสร้างไฟล์ ไม่ใช่ dataAsOf",

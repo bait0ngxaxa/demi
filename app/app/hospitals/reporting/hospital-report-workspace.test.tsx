@@ -91,6 +91,7 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
         items: [{
           activityCode: "walk",
           activityLabel: "เดินออกกำลังกาย",
+          category: "EXERCISE",
           targetDays: 3,
           targetValue: { state: "RECORDED", value: 0 },
           targetUnit: { state: "RECORDED", value: "นาที" },
