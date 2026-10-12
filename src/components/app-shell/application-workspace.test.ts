@@ -46,7 +46,9 @@ describe("application workspace projection", () => {
       [],
     );
 
+    // Global ADMIN selected-Hospital reporting (RPT-33) is an ADMIN governance entry point.
     expect(projection.governanceActions.map(({ href }) => href)).toEqual([
+      "/app/admin/reporting",
       "/app/admin/hospitals",
       "/app/admin/hospital-onboarding",
     ]);
