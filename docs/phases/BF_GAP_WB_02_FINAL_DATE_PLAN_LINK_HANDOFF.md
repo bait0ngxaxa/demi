@@ -57,13 +57,19 @@ Start HEAD `9cb2bd8`, end HEAD `978f8f5` (implementation), branch `main`.
 | `prisma validate`, `prisma generate` | Pass |
 | `prisma migrate diff` (migrated test DB → schema) | No drift from these migrations; output shows only pre-existing constraint-name truncation renames and an unmodelled `CaregiverRelationship_source_pair_fkey` |
 | Focused integration (PostgreSQL) | patient-program 28/28 (incl. new adjusted-plan link and DB backstop test, Final service date persistence), program-reporting 2/2, followups 6/6 |
-| Full integration `npm run test:integration` | 36 of 40 files pass, 666 of 681 tests; see §5 |
+| Full integration `npm run test:integration` | First run 666/681 (see §5); after the seed fix 40 files / 681 tests pass |
 
 Not run: production build, browser/manual UAT.
 
-## 5. Open issue found during verification (not caused by this work)
+## 5. Integration failures found during verification — fixed
 
-The full integration run has 15 failures in four files: `hospital-onboarding` (12), `hospital-contact` (1), `hospital-content` (1) and `hospital-knowledge-contact-reaudit` (1). All fail immediately after `runHospitalMasterSeed()` with “No record was found” for a seeded Hospital. `hospital-onboarding` fails the same way in isolation. None of these files or the seed script changed in this work; the seed and onboarding test were last changed in `d417970` (hospital hierarchy integration, 2026-10-11). This was **not** verified against the pre-session baseline, because the shared test database already has the new migrations applied. It needs its own investigation.
+The first full integration run had 15 failures in `hospital-onboarding` (12), `hospital-contact`, `hospital-content` and `hospital-knowledge-contact-reaudit` (1 each), all right after `runHospitalMasterSeed()` with “No record was found” for a seeded Hospital.
+
+- **Root cause:** `d417970` (hospital hierarchy integration, 2026-10-11) made `scripts/seed-hospital-master.mjs` read-only by default; `--apply` is required to write ([handoff](./PHASE_HOSPITAL_HIERARCHY_INTEGRATION_HANDOFF.md) §11 confirms this is intended). The four test helpers still ran the script with no arguments, so the seed did a dry-run, exited 0 and created no Hospitals. The master data itself is unchanged (78 records, including `KANG`).
+- **Fix (`tests/integration` only):** the helpers now run the seed with `--apply --integration`, the mode designed for the local test database (it verifies `DEMI_TEST_DATABASE_URL` and refuses non-local or non-test targets). The seed script and product code are unchanged.
+- **Result:** the four files pass in isolation (12 + 36 + 18 + 7) and the full integration suite passes 681/681.
+
+These failures pre-date this work: they come from the seed-default change in `d417970` and do not depend on any file changed here.
 
 ## 6. Waiting items
 
