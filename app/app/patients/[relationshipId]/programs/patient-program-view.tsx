@@ -67,10 +67,8 @@ function InitialBaselineText({
 
 export function PatientProgramView({
   context,
-  prioritizeActive = true,
 }: {
   context: PatientProgramPageContext;
-  prioritizeActive?: boolean;
 }): React.JSX.Element {
   const completedPrograms = context.history.filter((program) => program.status === "COMPLETED");
   const active = context.active;
@@ -123,7 +121,7 @@ export function PatientProgramView({
                   </div>
                 </dl>
               </div>
-              <ProgramLink primary={prioritizeActive} program={context.active}>เปิดรายละเอียดโปรแกรม</ProgramLink>
+              <ProgramLink primary program={context.active}>เปิดรายละเอียดโปรแกรม</ProgramLink>
             </div>
           </div>
         ) : (
@@ -181,7 +179,7 @@ export function PatientProgramView({
               </p>
             </div>
             {completedPrograms.length > 0 ? (
-              <span className="text-sm text-text-muted">มี {completedPrograms.length} โปรแกรม</span>
+              <span className="text-sm text-text-muted">แสดง {completedPrograms.length} โปรแกรมจากรายการที่โหลด</span>
             ) : null}
           </div>
 

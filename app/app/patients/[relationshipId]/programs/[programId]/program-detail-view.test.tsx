@@ -76,7 +76,8 @@ describe("Patient care journey and Program workspace", () => {
     for (const path of ["report", "goals/new", "followups/new"]) {
       expect(html).toContain(`/app/patients/${relationshipId}/programs/${programId}/${path}`);
     }
-    expect(html).toContain(`href="/app/patients/${relationshipId}"`);
+    expect(html.match(new RegExp(`href="/app/patients/${relationshipId}"`, "gu"))).toHaveLength(2);
+    expect(html.match(/กลับไปยังรายละเอียดผู้ป่วย/gu)).toHaveLength(1);
     expect(html).toContain("ไม่ต้องทำตามลำดับ");
     expect(html).toContain("ยังไม่มีบันทึกกิจกรรม");
     expect(html).toContain("ยังไม่มีแผนเป้าหมาย");
@@ -115,6 +116,19 @@ describe("Patient care journey and Program workspace", () => {
     expect(html).toContain(`/programs/${programId}/report`);
   });
 
+  it("describes a bounded history list without implying an all-time total", () => {
+    const completed = { ...detail, status: "COMPLETED" as const, completedAt: now };
+    const context: PatientProgramPageContext = {
+      patient, active: null, history: Array.from({ length: 50 }, (_, index) => ({ ...completed, programId: `history-${index}` })),
+      canOpen: false, canManage: false,
+    };
+    const html = renderToStaticMarkup(createElement(PatientProgramView, { context }));
+    expect(html).toContain("แสดง 50 โปรแกรมจากรายการที่โหลด");
+    expect(html).not.toContain("มี 50 โปรแกรม");
+    expect(html).toContain("/programs/history-49");
+    expect(html).not.toContain("<form");
+  });
+
   it("honors read-only and Follow-up capability flags independently", () => {
     const html = renderProgram({ detail: { ...detail, canManage: false }, followupHistory: { ...history, canRecord: false } });
     expect(html).toContain("ไม่มีสิทธิ์จัดการโปรแกรม");
@@ -135,6 +149,8 @@ describe("Patient care journey and Program workspace", () => {
     expect(html).toContain('<details');
     expect(html).toContain("ประวัติโปรแกรมที่เสร็จสิ้น · อ่านอย่างเดียว");
     expect(html).toContain("/programs/historical-program");
+    expect(html).toContain("แสดง 1 โปรแกรมจากรายการที่โหลด");
+    expect(html).not.toContain("มี 1 โปรแกรม");
     expect(html).not.toContain("/programs/historical-program#");
     expect(html).not.toContain("<form");
     const empty = renderToStaticMarkup(createElement(PatientProgramView, { context: { ...context, active: null, canOpen: true } }));

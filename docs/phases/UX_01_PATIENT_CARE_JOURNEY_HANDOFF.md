@@ -50,7 +50,7 @@ Program → `/app/patients/[relationshipId]/programs/[programId]` ตรวจ�
 | Classification | Gap / disposition |
 | --- | --- |
 | UX_ONLY | แบ่ง Patient Detail เป็นบริบท → งานดูแลปัจจุบัน → ข้อมูลประกอบ/ประวัติ พร้อม local anchor navigation |
-| UX_ONLY | แนะนำ Baseline เมื่อ absent + `canCreate`; มิฉะนั้นเน้น active Program entry ถ้ามี โดยไม่สร้าง prerequisite |
+| UX_ONLY | หลัง post-review: ACTIVE Program มาก่อนเสมอ; หากไม่มี ACTIVE ให้เน้น missing Baseline + `canCreate` หรือ Program opening + `canOpen` ตาม flags โดยไม่สร้าง prerequisite |
 | UX_ONLY | แยก completed Program history ผ่าน native details/summary และ secondary links; classification current badge แสดงทันที ส่วน manage/history เปิด disclosure |
 | UX_ONLY | Program section navigation แสดง record presence จริงและ lifecycle/read-only context ก่อน workspaces; completion อยู่ร่วมกับ Final แต่ยังเป็น operation แยกกัน |
 | UX_ONLY | ตัด empty-state creation CTA ที่ซ้ำ โดยเก็บ header CTA และ URL เดิม; account recovery ลดลำดับไว้ใน supporting disclosure |
@@ -114,3 +114,33 @@ Source/render review: native links สำหรับ navigation, buttons/forms 
 ## 9. Next phase
 
 แนะนำ **UX-02 Role-based Home & Action Workspace** หลัง review/UAT UX-01 โดยใช้ actor capabilities และ local Hospital context เดิม. UX-02 ยังไม่เริ่ม. P-13–P-19 และ Workbook/clinical/governance gates ยังคงต้องตัดสินแยกตาม canonical documents.
+
+
+## 10. UX-01 post-review corrections — 2026-10-12
+
+Review target / correction baseline: `c25e923fa5cb948dd2e35cef9cf4e8ead536b90d`, branch `main`, clean working tree before corrections. Scope เป็น focused presentation corrections เท่านั้น; ไม่มี production services, authorization policies, database, mutations, clinical requirements, canonical BF statuses หรือ UX-02 changes.
+
+### Review fixes
+
+1. **Active Program priority (P1):** Patient Detail เปลี่ยน actual DOM/reading/focus order ให้ Program context มาก่อน Baseline เมื่อมี ACTIVE Program และใช้ primary Program entry เสมอ. Missing Baseline ที่มีสิทธิ์ยังเข้าถึงได้ด้วย secondary CTA จึงไม่กลายเป็น prerequisite. หากไม่มี ACTIVE และ missing Baseline + `canCreate` ให้ Baseline มาก่อน; หากไม่มี Baseline creation action แต่ `canOpen` ให้ Program มาก่อนพร้อมคำแนะนำเปิดรอบใหม่. หากไม่มี creation permission ใช้ neutral navigation. Render `PatientProgramView` เพียงหนึ่ง instance; ไม่เพิ่ม CTA หรือ query. ลบ prop `prioritizeActive` ที่ไม่จำเป็นแล้ว.
+2. **Classification scope (P1):** เพิ่มข้อความที่เห็นได้ใกล้ badge: “สถานะนี้เป็นข้อมูลระดับผู้ป่วย ใช้ร่วมกันในบริบทโรงพยาบาลที่เกี่ยวข้อง”. ไม่เปิดเผย Hospital อื่นหรือ relationship เพิ่ม และรักษา management/history disclosure กับ authorization เดิม.
+3. **Bounded history wording (P2):** ตรวจ read-only query contract ยืนยัน `PATIENT_PROGRAM_HISTORY_LIMIT = 50`; เปลี่ยนจำนวนเป็น “แสดง N โปรแกรมจากรายการที่โหลด” ซึ่งนับเฉพาะ completed records ใน loaded projection ไม่อ้าง historical total. ไม่มี aggregation/pagination/service changes.
+4. **Patient return navigation (P2):** ลบ header return CTA ที่อยู่ใกล้ breadcrumb ซ้ำ; เก็บ breadcrumb ด้านบนและ footer return ด้านท้ายหน้ายาว. Exact relationship route, patient/Hospital context, report และ section links เดิมยังอยู่.
+
+### Verification actually executed for corrections
+
+```powershell
+npm run test -- src/modules/patient-directory/transport/patient-detail-page.test.ts 'app/app/patients/[relationshipId]/programs/[programId]/program-detail-view.test.tsx' src/modules/patient-program/services/patient-program-query-service.test.ts src/modules/patient-program/policies/patient-program-policy.test.ts src/modules/patient-directory/policies/patient-directory-policy.test.ts src/modules/patient-baseline/policies/patient-baseline-policy.test.ts
+npm run test -- src/modules/patient-directory/transport/patient-detail-page.test.ts
+npm run lint -- --max-warnings=0
+npm run typecheck
+```
+
+- Focused combined run: **6 files / 62 tests PASS**. ครอบคลุม Active + existing Baseline, Active + permitted missing Baseline, no Active + Baseline creation, no Active + Program creation, no creation permissions, visible classification scope, bounded 50-record history wording, read-only presentation, existing destinations และ exact-scope authorization tests.
+- หลังเพิ่ม assertion ยืนยันว่าพบ Baseline CTA ก่อนตรวจ secondary styling: focused Patient Detail **19 tests PASS**. เป็น test-only assertion; ไม่เปลี่ยน production code/runtime contract หลัง typecheck.
+- Repository-wide ESLint zero warnings และ typecheck: **PASS**. `npx --no-install eslint src/modules/patient-directory/transport/patient-detail-page.test.ts --max-warnings=0`: **PASS** หลังเพิ่ม test-only assertion. Repo ไม่มี `lint:strict`; ใช้ existing lint script พร้อม `--max-warnings=0`. ไม่เปลี่ยน architecture boundaries จึงไม่เพิ่ม architecture script.
+- Initial 2-file iteration: 20 PASS / 5 FAIL จากการ assert React-generated key prefix; แก้ test ให้ตรวจลำดับ component ที่ render แทน internal key encoding แล้ว focused runs ผ่าน. ไม่มี production failure จาก iteration นี้.
+- Impeccable detector บนสาม production files: `[]` (ไม่มี findings). Complete source/test diff reviewed; `git diff --check` และ strict UTF-8/replacement-character inspection PASS.
+- Full suite, production build และ dev server ไม่รัน เพราะ correction จำกัด presentation. Browser inventory ไม่มี DEMI authenticated tab/session ที่พร้อมใช้งาน: **ไม่ได้ทำ real browser/mobile validation**. Source review ยืนยันลำดับ DOM ตรงกับ visual order, existing wrap/responsive layouts และ focus/link semantics; ยังต้อง manual desktop/mobile/keyboard UAT ตาม §8 โดยเฉพาะสอง care paths เมื่อ ACTIVE + missing Baseline และ breadcrumb/footer return บนมือถือ.
+
+Review fixes เปลี่ยนสาม production components, สอง focused test files และ handoff นี้เท่านั้น. P-13–P-19 / Workbook / clinical gates ยังไม่แตะต้อง และไม่เริ่ม UX-02.

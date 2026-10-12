@@ -1,7 +1,9 @@
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 
 import PatientDetailPage from "../../../../app/app/patients/[relationshipId]/page";
+import { PatientProgramView } from "../../../../app/app/patients/[relationshipId]/programs/patient-program-view";
 import { PatientProfileView } from "../../../../app/app/patients/[relationshipId]/patient-profile-view";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
@@ -112,6 +114,13 @@ function containsString(value: unknown, needle: string, seen = new Set<object>()
   }
 
   return Object.values(value).some((item) => containsString(item, needle, seen));
+}
+
+function elements(node: ReactNode): ReactElement<{ children?: ReactNode; id?: string }>[] {
+  return Children.toArray(node).flatMap((child) => {
+    if (!isValidElement<{ children?: ReactNode; id?: string }>(child)) return [];
+    return [child, ...elements(child.props.children)];
+  });
 }
 
 describe("Patient detail page authorization boundary", () => {
@@ -290,6 +299,53 @@ describe("Patient detail page authorization boundary", () => {
     });
     expect(containsString(page, "ทำงานต่อในโปรแกรมปัจจุบัน")).toBe(true);
     expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(false);
+  });
+
+  it.each([
+    { label: "active Program with Baseline", active: true, baseline: true, canCreate: true, canOpen: false, first: "program" },
+    { label: "active Program with permitted missing Baseline", active: true, baseline: false, canCreate: true, canOpen: false, first: "program" },
+    { label: "no active Program with Baseline creation", active: false, baseline: false, canCreate: true, canOpen: true, first: "baseline" },
+    { label: "no active Program with only Program creation", active: false, baseline: false, canCreate: false, canOpen: true, first: "program" },
+    { label: "no creation permissions", active: false, baseline: false, canCreate: false, canOpen: false, first: "baseline" },
+  ])("orders care entries for $label without duplicating paths", async ({ active, baseline, canCreate, canOpen, first }) => {
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({
+      baseline: baseline ? { recordedOn: new Date("2026-08-01T00:00:00Z") } : null, canCreate,
+    });
+    mockedGetPatientProgramPageContext.mockResolvedValue({
+      patient, active: active ? { programId: "current-program", status: "ACTIVE" } : null,
+      history: [], canOpen, canManage: canOpen || active,
+    });
+    const page = await PatientDetailPage({ params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }) });
+    const care = elements(page).find((element) => element.props.id === "patient-care");
+    expect(care).toBeDefined();
+    const entries = Children.toArray(care?.props.children).filter(isValidElement).slice(-2);
+    expect(entries.map((entry) => entry.type === PatientProgramView ? "program" : "baseline")).toEqual(first === "program" ? ["program", "baseline"] : ["baseline", "program"]);
+    expect(elements(page).filter((element) => element.type === PatientProgramView)).toHaveLength(1);
+    expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/baseline`)).toBe(baseline || canCreate);
+    if (active) {
+      expect(containsString(page, "ทำงานต่อในโปรแกรมปัจจุบัน")).toBe(true);
+      expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(false);
+    } else if (canCreate && !baseline) {
+      expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(true);
+    } else if (canOpen) {
+      expect(containsString(page, "สามารถเปิดโปรแกรมการดูแลรอบใหม่")).toBe(true);
+    } else {
+      expect(containsString(page, "เลือกดูข้อมูลตั้งต้นและโปรแกรมการดูแลตามสิทธิ์ปัจจุบัน")).toBe(true);
+    }
+    if (active && canCreate && !baseline) {
+      const baselineEntry = entries[1];
+      const link = elements(baselineEntry).find((element) => containsString(element.props.children, "บันทึกข้อมูลตั้งต้น"));
+      expect(link).toBeDefined();
+      expect(containsString(link, "bg-action-primary")).toBe(false);
+    }
+  });
+
+  it("explains shared patient-level classification outside the closed history disclosure", async () => {
+    const page = await PatientDetailPage({ params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }) });
+    const context = elements(page).find((element) => element.props.id === "patient-context");
+    const identityPanel = Children.toArray(context?.props.children)[0];
+    expect(containsString(identityPanel, "สถานะนี้เป็นข้อมูลระดับผู้ป่วย ใช้ร่วมกันในบริบทโรงพยาบาลที่เกี่ยวข้อง")).toBe(true);
+    expect(containsString(page, "สถานะผู้ป่วยและประวัติการเปลี่ยนแปลง")).toBe(true);
   });
 
   it("retains the selected Hospital directory for multi-role users with Patient self-access", async () => {

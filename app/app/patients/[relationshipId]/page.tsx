@@ -140,6 +140,46 @@ export default async function PatientDetailPage({
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
 
+  const missingBaselineAction = !baselineNavigation.baseline && baselineNavigation.canCreate;
+  const prioritizeProgram = Boolean(programContext.active) || (!missingBaselineAction && programContext.canOpen);
+  const baselinePanel = (
+    <Panel key="baseline">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ข้อมูลตั้งต้น</h2>
+          {baselineNavigation.baseline ? (
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              บันทึกเมื่อ {formatDateOnly(baselineNavigation.baseline.recordedOn)} · ข้อมูลอ่านอย่างเดียว
+            </p>
+          ) : (
+            <div>
+              <p className="mt-1 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลตั้งต้น</p>
+              {!baselineNavigation.canCreate ? (
+                <p className="mt-1 text-sm leading-6 text-text-muted">บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้นในขอบเขตนี้</p>
+              ) : null}
+            </div>
+          )}
+        </div>
+        {baselineNavigation.baseline ? (
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+            href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
+          >
+            ดูข้อมูลตั้งต้น
+          </Link>
+        ) : baselineNavigation.canCreate ? (
+          <Link
+            className={buttonClassName({ variant: programContext.active ? "secondary" : "primary", size: "compact" })}
+            href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
+          >
+            บันทึกข้อมูลตั้งต้น
+          </Link>
+        ) : null}
+      </div>
+    </Panel>
+  );
+  const programPanel = <PatientProgramView context={programContext} key="program" />;
+
   return (
     <div className="max-w-4xl">
       <PageHeader
@@ -185,6 +225,9 @@ export default async function PatientDetailPage({
                 {getPatientClassificationLabel(classificationContext.current?.classification)}
               </StatusBadge>
             </div>
+            <p className="mt-2 text-sm leading-6 text-text-muted">
+              สถานะนี้เป็นข้อมูลระดับผู้ป่วย ใช้ร่วมกันในบริบทโรงพยาบาลที่เกี่ยวข้อง
+            </p>
           </Panel>
 
           <details className="border-b border-border pb-4">
@@ -207,53 +250,17 @@ export default async function PatientDetailPage({
           <div>
             <h2 className="text-2xl font-semibold text-text" id="patient-care-heading">งานดูแลปัจจุบัน</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              {!baselineNavigation.baseline && baselineNavigation.canCreate
-                ? "แนะนำให้บันทึกข้อมูลตั้งต้น สามารถเลือกทำงานอื่นตามบริบทการดูแลได้"
-                : programContext.active
-                  ? "ทำงานต่อในโปรแกรมปัจจุบัน หรือเลือกดูบันทึกและประวัติที่เกี่ยวข้อง"
-                  : "เลือกดูข้อมูลตั้งต้นและโปรแกรมการดูแลตามสิทธิ์ปัจจุบัน"}
+              {programContext.active
+                ? "ทำงานต่อในโปรแกรมปัจจุบัน หรือเลือกดูบันทึกและประวัติที่เกี่ยวข้อง"
+                : missingBaselineAction
+                  ? "แนะนำให้บันทึกข้อมูลตั้งต้น สามารถเลือกทำงานอื่นตามบริบทการดูแลได้"
+                  : programContext.canOpen
+                    ? "สามารถเปิดโปรแกรมการดูแลรอบใหม่ หรือเลือกดูข้อมูลและประวัติที่เกี่ยวข้อง"
+                    : "เลือกดูข้อมูลตั้งต้นและโปรแกรมการดูแลตามสิทธิ์ปัจจุบัน"}
             </p>
           </div>
 
-          <Panel>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ข้อมูลตั้งต้น</h2>
-                {baselineNavigation.baseline ? (
-                  <p className="mt-1 text-sm leading-6 text-text-muted">
-                    บันทึกเมื่อ {formatDateOnly(baselineNavigation.baseline.recordedOn)} · ข้อมูลอ่านอย่างเดียว
-                  </p>
-                ) : (
-                  <div>
-                    <p className="mt-1 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลตั้งต้น</p>
-                    {!baselineNavigation.canCreate ? (
-                      <p className="mt-1 text-sm leading-6 text-text-muted">บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้นในขอบเขตนี้</p>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-              {baselineNavigation.baseline ? (
-                <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                  href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
-                >
-                  ดูข้อมูลตั้งต้น
-                </Link>
-              ) : baselineNavigation.canCreate ? (
-                <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                  href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}/baseline`}
-                >
-                  บันทึกข้อมูลตั้งต้น
-                </Link>
-              ) : null}
-            </div>
-          </Panel>
-
-          <PatientProgramView
-            context={programContext}
-            prioritizeActive={Boolean(baselineNavigation.baseline) || !baselineNavigation.canCreate}
-          />
+          {prioritizeProgram ? [programPanel, baselinePanel] : [baselinePanel, programPanel]}
         </section>
 
         <section aria-labelledby="patient-history-heading" className="scroll-mt-24 space-y-6" id="patient-history" tabIndex={-1}>
