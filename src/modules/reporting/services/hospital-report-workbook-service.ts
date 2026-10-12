@@ -6,6 +6,7 @@ import { join } from "node:path";
 import ExcelJS from "exceljs";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ValidationError } from "@/shared/errors/application-error";
 
@@ -83,6 +84,54 @@ function setExcelDate(row: ExcelJS.Row, column: number): void {
   const cell = row.getCell(column);
   // Template cells share one style object; assigning numFmt in place would date-format the whole row.
   cell.style = { ...cell.style, numFmt: "dd/mm/yyyy" };
+}
+
+function setExcelPercent(row: ExcelJS.Row, column: number, ratePercent: number): void {
+  const cell = row.getCell(column);
+  cell.value = ratePercent / 100;
+  cell.style = { ...cell.style, numFmt: "0%" };
+}
+
+const NO_ACHIEVEMENT_LABEL = "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
+const NOT_RECORDED_LEGACY_LABEL = "ไม่ได้บันทึก";
+
+// Owner decision BR-04: the Follow-up achievement rate as a percentage cell, or why it is missing.
+function writeAchievementRateCell(row: ExcelJS.Row, column: number, followup: HospitalReportFollowup): void {
+  if (followup.achievement === null) {
+    row.getCell(column).value = NO_ACHIEVEMENT_LABEL;
+    return;
+  }
+  setExcelPercent(row, column, followup.achievement.ratePercent);
+}
+
+// Yes/no pair columns (e.g. ปรับ/ไม่ปรับ); Follow-ups recorded before the answer existed say so.
+function setAnswerCells(
+  row: ExcelJS.Row,
+  column: number,
+  answer: boolean | null,
+  labels: readonly [string, string],
+): void {
+  if (answer === null) {
+    row.getCell(column).value = NOT_RECORDED_LEGACY_LABEL;
+    row.getCell(column + 1).value = "";
+    return;
+  }
+  row.getCell(column).value = answer ? labels[0] : "";
+  row.getCell(column + 1).value = answer ? "" : labels[1];
+}
+
+// Owner decision BR-01: report the service date; older Follow-ups fall back to the recorded date.
+function followupDate(followup: HospitalReportFollowup): Date {
+  return followup.serviceDate === null
+    ? toExcelDate(followup.recordedAt)
+    : toExcelDate(`${followup.serviceDate}T00:00:00.000Z`);
+}
+
+// Owner decision BR-04: number of scorable Follow-ups with an achievement rate strictly above 70%.
+function achievementOver70Cell(program: HospitalReportProgramRow): number | string {
+  if (program.followups.items.length === 0) return "ไม่มีการติดตาม";
+  const summary = summarizeFollowupAchievements(program.followups.items.map((followup) => followup.achievement));
+  return summary.scoredCount === 0 ? "ไม่มีการติดตามที่คำนวณได้" : summary.aboveThresholdCount;
 }
 
 function unavailable(reason: keyof typeof unavailableLabels): string {
@@ -270,7 +319,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
       const column = followupStartColumn + followupIndex * 3;
       row.getCell(column).value = factCell(followup.measurements.bloodSugar);
       row.getCell(column + 1).value = factCell(followup.measurements.weight);
-      row.getCell(column + 2).value = unavailable(program.unavailable.achievementRate);
+      writeAchievementRateCell(row, column + 2, followup);
     });
     if (followups.length < DASHBOARD_FOLLOWUPS_PER_ROW) {
       const nextFollowupColumn = followupStartColumn + followups.length * 3;
@@ -367,15 +416,13 @@ function writeServiceFollowupCells(
 ): void {
   followups.forEach((followup, index) => {
     const baseColumn = 34 + index * 8;
-    row.getCell(baseColumn).value = toExcelDate(followup.recordedAt);
+    row.getCell(baseColumn).value = followupDate(followup);
     setExcelDate(row, baseColumn);
-    row.getCell(baseColumn + 1).value = unavailable(program.unavailable.achievementDays);
-    row.getCell(baseColumn + 2).value = unavailable(program.unavailable.achievementRate);
+    row.getCell(baseColumn + 1).value = followup.achievement?.achievedDays ?? NO_ACHIEVEMENT_LABEL;
+    writeAchievementRateCell(row, baseColumn + 2, followup);
     row.getCell(baseColumn + 3).value = unavailable(program.unavailable.outcome);
-    row.getCell(baseColumn + 4).value = unavailable(program.unavailable.planAdjustment);
-    row.getCell(baseColumn + 5).value = unavailable(program.unavailable.planAdjustment);
-    row.getCell(baseColumn + 6).value = unavailable(program.unavailable.obstacle);
-    row.getCell(baseColumn + 7).value = unavailable(program.unavailable.obstacle);
+    setAnswerCells(row, baseColumn + 4, followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
+    setAnswerCells(row, baseColumn + 6, followup.hasObstacle, ["มี", "ไม่มี"]);
   });
   if (followups.length < SERVICE_FOLLOWUPS_PER_ROW) {
     const nextFollowupColumn = 34 + followups.length * 8;
@@ -430,7 +477,7 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(15).value = finalMeasurementCell(program, "bloodSugar");
     row.getCell(16).value = finalMeasurementCell(program, "weight");
     row.getCell(17).value = unavailable(program.unavailable.afterWeeklyExercise);
-    row.getCell(18).value = unavailable(program.unavailable.achievementOver70Count);
+    row.getCell(18).value = achievementOver70Cell(program);
     if (continuation === 1) {
       // Owner decision BR-02: "ทำ" means the Service 1 activity has a record in DEMI.
       setPresenceCells(row, 19, serviceOnePresence(program, "floatingChart"), ["ทำ", "ไม่ทำ"]);
@@ -639,7 +686,8 @@ export async function generateHospitalReportWorkbook(
     "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
     "ครั้งที่ 2 ใช้ Goal Plan รอบแรกของ Program: การลดมื้ออาหาร = เป้าหมายลดข้าว/แป้ง, การเปลี่ยนอาหาร = เป้าหมายอาหารอื่น, จำนวนมื้อและจำนวนวันต่อสัปดาห์ = วันเป้าหมายสูงสุดของหมวด, รวมเวลา = ผลรวมวันเป้าหมาย × นาทีต่อครั้ง ของกิจกรรมออกกำลังกาย",
     "Goal Plan เป็นค่าเป้าหมาย ไม่ใช่ผลที่ทำได้; Follow-up ที่เกิน 4 ครั้งแสดงในแถวต่อเนื่องและตารางรายละเอียดท้ายรายงาน",
-    "Achievement days/rate, outcome, plan adjustment และ obstacle ยังไม่มีแหล่งข้อมูลหรือสูตรที่ได้รับรอง; ไม่อนุมานจากสถานะกิจกรรม",
+    "วันที่ติดตาม = วันที่ให้บริการ (รายการก่อนมีช่องนี้ใช้วันที่บันทึก); จำนวนวันที่ทำได้ = ผลรวมวันที่ทำได้ใน 7 วันก่อนวันให้บริการ; อัตราความสำเร็จ = จำนวนวันที่ทำได้ ÷ วันเป้าหมายของแผนที่อ้างอิง ไม่นับกิจกรรมที่ไม่เกี่ยวข้อง; >70% นับเฉพาะการติดตามที่คำนวณได้",
+    "ผลลัพธ์ที่ได้ ยังรอรายการคำจาก Owner; ปรับแผนและอุปสรรคมาจากคำตอบในแบบบันทึกการติดตาม (รายการก่อนมีช่องนี้แสดง ไม่ได้บันทึก)",
     "Program COMPLETED เป็นสถานะ lifecycle ไม่ได้ยืนยันผลลัพธ์ทางคลินิก; generatedAt เป็นเวลาสร้างไฟล์ ไม่ใช่ dataAsOf",
   ]);
   appendDetailTable(serviceSheet, detailStartRow, goalAndProgressDetailRows(dataset.programs));

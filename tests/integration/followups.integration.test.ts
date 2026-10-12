@@ -175,6 +175,9 @@ function followupInput(relationshipId: string, overrides: Record<string, unknown
     reflectionNote: "ข้อความสะท้อนที่ไม่ควรอยู่ใน audit",
     confidencePlan: "แผนความมั่นใจแบบต้นแบบ",
     generalNote: "หมายเหตุทั่วไปที่ไม่ควรอยู่ใน audit",
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [],
     ...overrides,
   };
@@ -236,9 +239,12 @@ describe("Phase 9C.0 Follow-up PostgreSQL workflow", () => {
       submissionNonce: randomUUID(),
       appointmentId: appointment.appointmentId,
       sourceGoalPlanId: goal.goalPlanId,
+      serviceDate: "2026-08-01",
+      planAdjusted: false,
+      hasObstacle: false,
       activityProgress: [
-        { goalActivityCode: "stop_sweet", status: "PARTIAL", note: "ทำได้บางส่วน" },
-        { goalActivityCode: "exercise_walk", status: "DONE", note: null },
+        { goalActivityCode: "stop_sweet", status: "PARTIAL", achievedDays: 2, note: "ทำได้บางส่วน" },
+        { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2, note: null },
       ],
     });
 
@@ -258,9 +264,12 @@ describe("Phase 9C.0 Follow-up PostgreSQL workflow", () => {
       roundNumber: 1,
       appointment: { appointmentId: appointment.appointmentId },
       sourceGoalPlan: { goalPlanId: goal.goalPlanId, roundNumber: goal.roundNumber },
+      serviceDate: new Date("2026-08-01T00:00:00.000Z"),
+      planAdjusted: false,
+      hasObstacle: false,
       activityProgress: [
-        { goalActivityCode: "stop_sweet", status: "PARTIAL" },
-        { goalActivityCode: "exercise_walk", status: "DONE" },
+        { goalActivityCode: "stop_sweet", status: "PARTIAL", achievedDays: 2 },
+        { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 },
       ],
     });
     const audit = await prisma.auditEvent.findFirst({ where: { action: "followup.created" } });
@@ -342,6 +351,49 @@ describe("Phase 9C.0 Follow-up PostgreSQL workflow", () => {
       }),
     ).toBe(2);
     expect(await prisma.auditEvent.count({ where: { action: "followup.created" } })).toBe(2);
+  });
+
+  it("enforces achieved-day range, NOT_APPLICABLE and obstacle-note invariants in PostgreSQL", async () => {
+    const hospital = await createHospital("WORKBOOK-FACTS");
+    const owner = await createHospitalActor({
+      hospitalId: hospital.id,
+      membershipType: MembershipType.OWNER,
+    });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "followup-integration", value: "workbook-facts-patient" },
+      targetHospitalId: hospital.id,
+      givenName: "สมหญิง",
+      familyName: "ข้อมูลรายงาน",
+    });
+    const created = await createFollowup(
+      owner.actor,
+      followupInput(patient.relationshipId, { hasObstacle: true, obstacleNote: "ไม่มีเวลา" }),
+    );
+    expect(
+      await prisma.patientFollowup.findUnique({
+        where: { id: created.followupId },
+        select: { serviceDate: true, planAdjusted: true, hasObstacle: true, obstacleNote: true },
+      }),
+    ).toEqual({
+      serviceDate: new Date("2026-08-01T00:00:00.000Z"),
+      planAdjusted: false,
+      hasObstacle: true,
+      obstacleNote: "ไม่มีเวลา",
+    });
+
+    await expect(
+      prisma.patientFollowup.update({ where: { id: created.followupId }, data: { hasObstacle: false } }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.patientFollowupActivityProgress.create({
+        data: { followupId: created.followupId, goalActivityCode: "range", status: "DONE", achievedDays: 8 },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.patientFollowupActivityProgress.create({
+        data: { followupId: created.followupId, goalActivityCode: "na", status: "NOT_APPLICABLE", achievedDays: 0 },
+      }),
+    ).rejects.toThrow();
   });
 
   it("replays one committed Follow-up for concurrent identical nonce and payload", async () => {

@@ -26,6 +26,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import type { FollowupProgressStatus } from "../domain/followup-definitions";
+import { isServiceDateAfter, serviceDateToUtcDate } from "../domain/followup-service-date";
 import { FOLLOWUP_RECORD_CAPABILITY } from "../policies/followup-policy";
 import {
   followupCreateRequestSchema,
@@ -56,6 +57,7 @@ export type FollowupSubmissionResult = {
 type NormalizedFollowupProgress = {
   goalActivityCode: string;
   status: FollowupProgressStatus;
+  achievedDays: number | null;
   note: string | null;
 };
 
@@ -65,6 +67,10 @@ type NormalizedFollowupRequest = {
   submissionNonce: string;
   appointmentId: string | null;
   sourceGoalPlanId: string | null;
+  serviceDate: string;
+  planAdjusted: boolean;
+  hasObstacle: boolean;
+  obstacleNote: string | null;
   weight: number | null;
   waistCircumference: number | null;
   systolicBloodPressure: number | null;
@@ -184,6 +190,10 @@ function normalizeFollowupInput(
     submissionNonce: input.submissionNonce.toLowerCase(),
     appointmentId: nullableUuid(input.appointmentId),
     sourceGoalPlanId: nullableUuid(input.sourceGoalPlanId),
+    serviceDate: input.serviceDate,
+    planAdjusted: input.planAdjusted,
+    hasObstacle: input.hasObstacle,
+    obstacleNote: input.hasObstacle ? nullableText(input.obstacleNote) : null,
     weight: input.weight ?? null,
     waistCircumference: input.waistCircumference ?? null,
     systolicBloodPressure: input.systolicBloodPressure ?? null,
@@ -197,6 +207,7 @@ function normalizeFollowupInput(
       .map((row) => ({
         goalActivityCode: row.goalActivityCode.trim(),
         status: row.status,
+        achievedDays: row.achievedDays ?? null,
         note: nullableText(row.note),
       }))
       .sort((left, right) => left.goalActivityCode.localeCompare(right.goalActivityCode)),
@@ -214,6 +225,10 @@ function createFollowupRequestHash(
     ...(input.patientProgramId ? { patientProgramId: input.patientProgramId } : {}),
     appointmentId: input.appointmentId,
     sourceGoalPlanId: input.sourceGoalPlanId,
+    serviceDate: input.serviceDate,
+    planAdjusted: input.planAdjusted,
+    hasObstacle: input.hasObstacle,
+    obstacleNote: input.obstacleNote,
     weight: input.weight,
     waistCircumference: input.waistCircumference,
     systolicBloodPressure: input.systolicBloodPressure,
@@ -373,6 +388,10 @@ async function createInTransaction(
     return toSubmissionResult(existing, access.target.hospitalId);
   }
 
+  if (isServiceDateAfter(normalized.serviceDate, now)) {
+    throw new ValidationError("The Follow-up service date cannot be in the future");
+  }
+
   if (normalized.appointmentId) {
     await assertCompletedAppointment(
       transaction,
@@ -421,6 +440,10 @@ async function createInTransaction(
       submissionNonce: normalized.submissionNonce,
       submissionRequestHash,
       recordedAt: now,
+      serviceDate: serviceDateToUtcDate(normalized.serviceDate),
+      planAdjusted: normalized.planAdjusted,
+      hasObstacle: normalized.hasObstacle,
+      obstacleNote: normalized.obstacleNote,
       weight: normalized.weight,
       waistCircumference: normalized.waistCircumference,
       systolicBloodPressure: normalized.systolicBloodPressure,
@@ -437,6 +460,7 @@ async function createInTransaction(
               create: normalized.activityProgress.map((progress) => ({
                 goalActivityCode: progress.goalActivityCode,
                 status: progress.status,
+                achievedDays: progress.achievedDays,
                 note: progress.note,
                 createdAt: now,
               })),

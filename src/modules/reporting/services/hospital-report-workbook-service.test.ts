@@ -23,6 +23,10 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index + 1).padStart(12, "0")}`,
     roundNumber: index + 1,
     recordedAt: new Date(`2026-08-${String(17 + index).padStart(2, "0")}T05:00:00.000Z`).toISOString(),
+    serviceDate: null,
+    planAdjusted: null,
+    hasObstacle: null,
+    achievement: null,
     measurements: {
       bloodSugar: { state: "RECORDED" as const, value: index + 1 },
       weight: { state: "NOT_RECORDED" as const },
@@ -34,6 +38,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
       activityCode: "walk",
       activityLabel: "เดินออกกำลังกาย",
       status: "PARTIAL" as const,
+      achievedDays: null,
     }],
   }));
 
@@ -112,12 +117,8 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       serviceRoundMeasurements: "SOURCE_MISSING",
-      achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
-      achievementOver70Count: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
-      planAdjustment: "SOURCE_MISSING",
-      obstacle: "SOURCE_MISSING",
     },
   };
 }

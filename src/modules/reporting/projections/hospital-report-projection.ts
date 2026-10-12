@@ -1,5 +1,6 @@
 import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@prisma/client";
 
+import type { FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import type { GoalActivityCategory } from "@/modules/goals/domain/goal-templates";
 
 export type HospitalReportUnavailableReason =
@@ -42,11 +43,18 @@ export type HospitalReportFollowup = {
   id: string;
   roundNumber: number;
   recordedAt: string;
+  /** Date-only (YYYY-MM-DD); null for Follow-ups recorded before service dates were captured. */
+  serviceDate: string | null;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
+  /** Owner decision BR-04; null when the Follow-up has no Goal Plan or incomplete achieved days. */
+  achievement: FollowupAchievement | null;
   measurements: HospitalReportMeasurementSet;
   activityProgress: readonly {
     activityCode: string;
     activityLabel: string;
     status: FollowupActivityProgressStatus;
+    achievedDays: number | null;
   }[];
 };
 
@@ -110,12 +118,8 @@ export type HospitalReportProgramRow = {
     beforeWeeklyExercise: HospitalReportUnavailableReason;
     afterWeeklyExercise: HospitalReportUnavailableReason;
     serviceRoundMeasurements: HospitalReportUnavailableReason;
-    achievementDays: HospitalReportUnavailableReason;
     achievementRate: HospitalReportUnavailableReason;
-    achievementOver70Count: HospitalReportUnavailableReason;
     outcome: HospitalReportUnavailableReason;
-    planAdjustment: HospitalReportUnavailableReason;
-    obstacle: HospitalReportUnavailableReason;
   };
 };
 
@@ -240,11 +244,17 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     reason: "Service 1 and Goal Plan (rounds 1–2) record no DTX or body weight.",
   },
   achievement: {
-    coverage: "SOURCE_MISSING_AND_DERIVATION_UNAPPROVED",
-    reason: "No achieved-day source or accepted denominator/formula exists.",
+    coverage: "SOURCE_BACKED_NEW_RECORDS",
+    source: "PatientFollowupActivityProgress.achievedDays over the source Goal Plan targetDays (BR-04)",
+    limitation: "Follow-ups recorded before achieved days were captured cannot be scored.",
   },
-  outcomeAdjustmentObstacle: {
+  planAdjustmentObstacle: {
+    coverage: "SOURCE_BACKED_NEW_RECORDS",
+    source: "PatientFollowup.planAdjusted / hasObstacle (BR-06/BR-07)",
+    limitation: "Follow-ups recorded before these answers were captured show as not recorded.",
+  },
+  outcome: {
     coverage: "SOURCE_MISSING",
-    reason: "No structured outcome, plan-adjustment event, or Follow-up obstacle field exists.",
+    reason: "The Owner outcome vocabulary (BR-05) has not been supplied.",
   },
 } as const;

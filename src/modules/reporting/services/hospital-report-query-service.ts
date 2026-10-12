@@ -14,6 +14,7 @@ import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import {
   ApplicationError,
@@ -198,15 +199,24 @@ const reportProgramFollowupSelect = {
     id: true,
     roundNumber: true,
     recordedAt: true,
+    serviceDate: true,
+    planAdjusted: true,
+    hasObstacle: true,
     weight: true,
     waistCircumference: true,
     systolicBloodPressure: true,
     diastolicBloodPressure: true,
     bloodSugar: true,
-    sourceGoalPlan: { select: { templateKey: true, templateVersion: true } },
+    sourceGoalPlan: {
+      select: {
+        templateKey: true,
+        templateVersion: true,
+        items: { select: { activityCode: true, targetDays: true } },
+      },
+    },
     activityProgress: {
       orderBy: [{ goalActivityCode: "asc" }, { id: "asc" }],
-      select: { goalActivityCode: true, status: true },
+      select: { goalActivityCode: true, status: true, achievedDays: true },
     },
   },
 } satisfies Prisma.PatientProgramSelect["followups"];
@@ -429,13 +439,24 @@ function toFollowup(record: {
   id: string;
   roundNumber: number;
   recordedAt: Date;
+  serviceDate: Date | null;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
   weight: number | null;
   waistCircumference: number | null;
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
-  sourceGoalPlan: { templateKey: string; templateVersion: string } | null;
-  activityProgress: readonly { goalActivityCode: string; status: HospitalReportFollowup["activityProgress"][number]["status"] }[];
+  sourceGoalPlan: {
+    templateKey: string;
+    templateVersion: string;
+    items: readonly { activityCode: string; targetDays: number }[];
+  } | null;
+  activityProgress: readonly {
+    goalActivityCode: string;
+    status: HospitalReportFollowup["activityProgress"][number]["status"];
+    achievedDays: number | null;
+  }[];
 }): HospitalReportFollowup {
   const template = record.sourceGoalPlan
     ? getGoalTemplate(record.sourceGoalPlan.templateKey, record.sourceGoalPlan.templateVersion)
@@ -444,12 +465,19 @@ function toFollowup(record: {
     id: record.id,
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt.toISOString(),
+    serviceDate: record.serviceDate ? record.serviceDate.toISOString().slice(0, 10) : null,
+    planAdjusted: record.planAdjusted,
+    hasObstacle: record.hasObstacle,
+    achievement: record.sourceGoalPlan
+      ? computeFollowupAchievement(record.activityProgress, record.sourceGoalPlan.items)
+      : null,
     measurements: toMeasurementSet(record),
     activityProgress: record.activityProgress.map((item) => ({
       activityCode: item.goalActivityCode,
       activityLabel: template?.activities.find((activity) => activity.code === item.goalActivityCode)?.label
         ?? "กิจกรรมที่บันทึก",
       status: item.status,
+      achievedDays: item.achievedDays,
     })),
   };
 }
@@ -545,12 +573,8 @@ function toHospitalReportProgramRow(
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       serviceRoundMeasurements: "SOURCE_MISSING",
-      achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
-      achievementOver70Count: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
-      planAdjustment: "SOURCE_MISSING",
-      obstacle: "SOURCE_MISSING",
     },
   };
 }

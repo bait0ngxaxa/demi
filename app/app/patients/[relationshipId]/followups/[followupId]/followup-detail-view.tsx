@@ -58,6 +58,20 @@ function measurementValue(value: number | null, unit: string): string {
   return value === null ? "ไม่ได้ระบุ" : `${value} ${unit}`;
 }
 
+function formatServiceDate(value: Date | null): string {
+  return value === null
+    ? "ไม่ได้บันทึก (รายการก่อนมีช่องนี้)"
+    : new Intl.DateTimeFormat("th-TH", { dateStyle: "full", timeZone: "UTC" }).format(value);
+}
+
+function yesNoValue(value: boolean | null, yes: string, no: string): string {
+  if (value === null) {
+    return "ไม่ได้บันทึก (รายการก่อนมีช่องนี้)";
+  }
+
+  return value ? yes : no;
+}
+
 export function FollowupDetailView({
   detail,
   scope,
@@ -126,6 +140,10 @@ export function FollowupDetailView({
             </p>
           </div>
           <dl className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm text-text-muted">วันที่ให้บริการ</dt>
+              <dd className="mt-1 font-semibold text-text">{formatServiceDate(detail.serviceDate)}</dd>
+            </div>
             <div>
               <dt className="text-sm text-text-muted">บันทึกเมื่อ</dt>
               <dd className="mt-1 font-semibold text-text">{formatDate(detail.recordedAt)}</dd>
@@ -234,7 +252,17 @@ export function FollowupDetailView({
                       {FOLLOWUP_PROGRESS_STATUS_LABELS[progress.status]}
                     </StatusBadge>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-text">
+                  <p className="mt-3 text-sm leading-6 text-text-muted">
+                    จำนวนวันที่ทำได้:{" "}
+                    <span className="font-semibold text-text">
+                      {progress.achievedDays === null
+                        ? progress.status === "NOT_APPLICABLE"
+                          ? "ไม่เกี่ยวข้อง"
+                          : "ไม่ได้บันทึก"
+                        : `${progress.achievedDays} วัน`}
+                    </span>
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text">
                     {progress.note ?? "ไม่มีหมายเหตุกิจกรรม"}
                   </p>
                 </li>
@@ -245,6 +273,32 @@ export function FollowupDetailView({
             ) : null}
           </Panel>
         ) : null}
+
+        <Panel>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">การปรับแผนและอุปสรรค</h2>
+          <dl className="mt-5 grid gap-4 border-y border-border py-5 sm:grid-cols-2">
+            <div>
+              <dt className="text-sm text-text-muted">ปรับแผนใหม่</dt>
+              <dd className="mt-1 font-semibold text-text">
+                {yesNoValue(detail.planAdjusted, "ปรับแผน", "ไม่ปรับแผน")}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-text-muted">อุปสรรค</dt>
+              <dd className="mt-1 font-semibold text-text">
+                {yesNoValue(detail.hasObstacle, "มีอุปสรรค", "ไม่มีอุปสรรค")}
+              </dd>
+            </div>
+            {detail.hasObstacle ? (
+              <div className="sm:col-span-2">
+                <dt className="text-sm text-text-muted">รายละเอียดอุปสรรค</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
+                  {detail.obstacleNote ?? "ไม่ได้ระบุ"}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </Panel>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ</h2>

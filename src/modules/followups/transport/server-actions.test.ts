@@ -38,6 +38,10 @@ function validFormData(): FormData {
   formData.set("confidencePlan", "ทำต่อ");
   formData.set("generalNote", "ทั่วไป");
   formData.set("activityProgress", "[]");
+  formData.set("serviceDate", "2026-08-01");
+  formData.set("planAdjusted", "false");
+  formData.set("hasObstacle", "false");
+  formData.set("obstacleNote", "");
   return formData;
 }
 

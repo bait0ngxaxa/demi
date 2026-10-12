@@ -298,6 +298,9 @@ function followupProgramInput(
     reflectionNote: "บันทึกสะท้อนของโปรแกรม",
     confidencePlan: "แผนความมั่นใจของโปรแกรม",
     generalNote: "หมายเหตุของโปรแกรม",
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [],
     ...overrides,
   };
@@ -1214,6 +1217,9 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       reflectionNote: null,
       confidencePlan: null,
       generalNote: "ประวัติติดตามก่อน Program",
+      serviceDate: "2026-08-01",
+      planAdjusted: false,
+      hasObstacle: false,
       activityProgress: [],
     });
     const programA = await openPatientProgram(owner.actor, {
@@ -1358,6 +1364,9 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         reflectionNote: null,
         confidencePlan: null,
         generalNote: null,
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: [],
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -1379,13 +1388,19 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       reflectionNote: null,
       confidencePlan: null,
       generalNote: null,
-      activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE" }],
+      serviceDate: "2026-08-01",
+      planAdjusted: false,
+      hasObstacle: false,
+      activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE", achievedDays: 2 }],
     });
     const programFollowup = await createFollowupForProgram(
       owner.actor,
       followupProgramInput(program.patientProgramId, {
         sourceGoalPlanId: programGoal.goalPlanId,
-        activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE" }],
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
+        activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE", achievedDays: 2 }],
       }),
     );
 
@@ -1622,6 +1637,9 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       reflectionNote: null,
       confidencePlan: null,
       generalNote: null,
+      serviceDate: "2026-08-01",
+      planAdjusted: false,
+      hasObstacle: false,
       activityProgress: [],
     });
     await expect(

@@ -103,6 +103,9 @@ function validInput(overrides: Record<string, unknown> = {}): Record<string, unk
     reflectionNote: "สะท้อนแบบต้นแบบ",
     confidencePlan: "ลองทำต่อ",
     generalNote: "หมายเหตุทั่วไป",
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [],
     ...overrides,
   };
@@ -284,6 +287,48 @@ describe("Follow-up service", () => {
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("72.5");
   });
 
+  it("rejects a service date after today in Asia/Bangkok without persisting", async () => {
+    const { database, transaction } = createDatabase();
+    // 2026-08-17T05:00Z is 2026-08-17 12:00 in Bangkok.
+    await expect(
+      createFollowup(hospitalActor, validInput({ serviceDate: "2026-08-18" }), { database, now: () => now }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(transaction.patientFollowup.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts today's Bangkok date even when the UTC date is still the previous day", async () => {
+    const { database, transaction } = createDatabase({ createResult: followupRecord({ roundNumber: 1 }) });
+    const bangkokMorning = new Date("2026-08-17T18:30:00.000Z"); // 2026-08-18 01:30 in Bangkok
+
+    await createFollowup(hospitalActor, validInput({ serviceDate: "2026-08-18" }), {
+      database,
+      now: () => bangkokMorning,
+    });
+    expect(transaction.patientFollowup.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        serviceDate: new Date("2026-08-18T00:00:00.000Z"),
+        planAdjusted: false,
+        hasObstacle: false,
+        obstacleNote: null,
+      }),
+      select: expect.anything(),
+    });
+  });
+
+  it("stores the obstacle note only when an obstacle is recorded", async () => {
+    const { database, transaction } = createDatabase({ createResult: followupRecord({ roundNumber: 1 }) });
+
+    await createFollowup(
+      hospitalActor,
+      validInput({ hasObstacle: true, obstacleNote: "  ไม่มีเวลาออกกำลังกาย  " }),
+      { database, now: () => now },
+    );
+    expect(transaction.patientFollowup.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ hasObstacle: true, obstacleNote: "ไม่มีเวลาออกกำลังกาย" }),
+      select: expect.anything(),
+    });
+  });
+
   it("enforces followup:record at the create mutation boundary", async () => {
     mockedFollowupAccessState.denyRecord = true;
     const { database, transaction } = createDatabase();
@@ -305,7 +350,10 @@ describe("Follow-up service", () => {
       validInput({
         appointmentId,
         sourceGoalPlanId: goalPlanId,
-        activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", note: "ทำได้" }],
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
+        activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2, note: "ทำได้" }],
       }),
       { database, now: () => now },
     );
@@ -324,8 +372,11 @@ describe("Follow-up service", () => {
       data: expect.objectContaining({
         appointmentId,
         sourceGoalPlanId: goalPlanId,
+        serviceDate: new Date("2026-08-01T00:00:00.000Z"),
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: {
-          create: [expect.objectContaining({ goalActivityCode: "exercise_walk", status: "DONE" })],
+          create: [expect.objectContaining({ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 })],
         },
       }),
       select: expect.anything(),
@@ -354,7 +405,10 @@ describe("Follow-up service", () => {
         hospitalActor,
         validInput({
           sourceGoalPlanId: goalPlanId,
-          activityProgress: [{ goalActivityCode: "injected_activity", status: "DONE" }],
+          serviceDate: "2026-08-01",
+          planAdjusted: false,
+          hasObstacle: false,
+          activityProgress: [{ goalActivityCode: "injected_activity", status: "DONE", achievedDays: 2 }],
         }),
         { database },
       ),
@@ -368,7 +422,7 @@ describe("Follow-up service", () => {
     await expect(
       createFollowup(
         hospitalActor,
-        validInput({ activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE" }] }),
+        validInput({ activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 }] }),
         { database },
       ),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -399,15 +453,21 @@ describe("Follow-up service", () => {
       hospitalActor,
       validInput({
         sourceGoalPlanId: goalPlanId,
-        activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE" }],
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
+        activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 }],
       }),
       { database, now: () => now },
     );
 
     expect(transaction.patientFollowup.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
+        serviceDate: new Date("2026-08-01T00:00:00.000Z"),
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: {
-          create: [expect.objectContaining({ goalActivityCode: "exercise_walk", status: "DONE" })],
+          create: [expect.objectContaining({ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 })],
         },
       }),
       select: expect.anything(),
@@ -460,6 +520,9 @@ describe("Follow-up service", () => {
     ],
     ["changed Appointment provenance", validInput({ appointmentId: otherAppointmentId }), hospitalActor],
     ["changed Goal Plan provenance", validInput({ sourceGoalPlanId: otherGoalPlanId }), hospitalActor],
+    ["changed service date", validInput({ serviceDate: "2026-08-02" }), hospitalActor],
+    ["changed plan adjustment", validInput({ planAdjusted: true }), hospitalActor],
+    ["changed obstacle answer", validInput({ hasObstacle: true }), hospitalActor],
   ] as const)("conflicts when a nonce is reused with %s", async (_label, changedInput, changedActor) => {
     const originalInput = validInput();
     const normalized = followupServiceInternals.normalizeFollowupInput(

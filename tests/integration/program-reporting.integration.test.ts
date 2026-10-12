@@ -241,6 +241,9 @@ function followupInput(
     reflectionNote: null,
     confidencePlan: null,
     generalNote: null,
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [],
   };
 }
@@ -260,6 +263,9 @@ function relationshipFollowupInput(relationshipId: string): Record<string, unkno
     reflectionNote: null,
     confidencePlan: null,
     generalNote: "ประวัติก่อน Program",
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [],
   };
 }

@@ -5,6 +5,10 @@ const FOLLOWUP_FORM_FIELDS = new Set([
   "submissionNonce",
   "appointmentId",
   "sourceGoalPlanId",
+  "serviceDate",
+  "planAdjusted",
+  "hasObstacle",
+  "obstacleNote",
   "weight",
   "waistCircumference",
   "systolicBloodPressure",
@@ -22,6 +26,10 @@ const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
   "submissionNonce",
   "appointmentId",
   "sourceGoalPlanId",
+  "serviceDate",
+  "planAdjusted",
+  "hasObstacle",
+  "obstacleNote",
   "weight",
   "waistCircumference",
   "systolicBloodPressure",
@@ -56,6 +64,20 @@ function getOptionalString(formData: FormData, field: string): string | null | u
   }
 
   return values[0].trim() || null;
+}
+
+function getRequiredBoolean(formData: FormData, field: string): boolean | undefined {
+  const value = getSingleString(formData, field);
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return undefined;
 }
 
 function getOptionalNumber(formData: FormData, field: string): number | null | undefined {
@@ -103,6 +125,10 @@ function buildFollowupPayloadInput(formData: FormData): Record<string, unknown> 
     submissionNonce: getSingleString(formData, "submissionNonce"),
     appointmentId: getOptionalString(formData, "appointmentId"),
     sourceGoalPlanId: getOptionalString(formData, "sourceGoalPlanId"),
+    serviceDate: getSingleString(formData, "serviceDate"),
+    planAdjusted: getRequiredBoolean(formData, "planAdjusted"),
+    hasObstacle: getRequiredBoolean(formData, "hasObstacle"),
+    obstacleNote: getOptionalString(formData, "obstacleNote"),
     weight: getOptionalNumber(formData, "weight"),
     waistCircumference: getOptionalNumber(formData, "waistCircumference"),
     systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
@@ -160,7 +186,7 @@ export function mapFollowupError(error: unknown): {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบข้อมูลวัดผล ความคืบหน้ากิจกรรม และข้อความก่อนส่งอีกครั้ง",
+        message: "กรุณาตรวจสอบวันที่ให้บริการ ข้อมูลวัดผล จำนวนวันที่ทำได้ การปรับแผน อุปสรรค และข้อความก่อนส่งอีกครั้ง",
       };
     }
 

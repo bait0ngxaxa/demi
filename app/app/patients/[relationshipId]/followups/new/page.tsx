@@ -5,6 +5,7 @@ import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getFollowupCreateContext } from "@/modules/followups/services/followup-query-service";
+import { toServiceDateOnly } from "@/modules/followups/domain/followup-service-date";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { FollowupForm } from "./followup-form";
@@ -88,6 +89,7 @@ export default async function NewFollowupPage({
       selectedAppointmentId={context.selectedAppointmentId}
       selectedGoalPlanId={context.selectedGoalPlanId}
       submissionNonce={randomUUID()}
+      todayServiceDate={toServiceDateOnly(new Date())}
     />
   );
 }

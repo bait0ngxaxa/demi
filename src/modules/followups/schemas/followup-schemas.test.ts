@@ -26,8 +26,11 @@ function validInput(): Record<string, unknown> {
     reflectionNote: "สะท้อนผลแบบต้นแบบ",
     confidencePlan: "จะลองทำต่อในสัปดาห์หน้า",
     generalNote: "บันทึกทั่วไป",
+    serviceDate: "2026-08-01",
+    planAdjusted: false,
+    hasObstacle: false,
     activityProgress: [
-      { goalActivityCode: "exercise_walk", status: "PARTIAL", note: "ทำได้บางวัน" },
+      { goalActivityCode: "exercise_walk", status: "PARTIAL", achievedDays: 2, note: "ทำได้บางวัน" },
     ],
   };
 }
@@ -100,15 +103,21 @@ describe("Follow-up schemas", () => {
     expect(
       followupCreateRequestSchema.safeParse({
         ...validInput(),
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: [{ goalActivityCode: "exercise_walk", status: "GOOD" }],
       }).success,
     ).toBe(false);
     expect(
       followupCreateRequestSchema.safeParse({
         ...validInput(),
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: [
-          { goalActivityCode: "exercise_walk", status: "DONE" },
-          { goalActivityCode: "exercise_walk", status: "PARTIAL" },
+          { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 2 },
+          { goalActivityCode: "exercise_walk", status: "PARTIAL", achievedDays: 2 },
         ],
       }).success,
     ).toBe(false);
@@ -121,10 +130,56 @@ describe("Follow-up schemas", () => {
     expect(
       followupCreateRequestSchema.safeParse({
         ...validInput(),
+        serviceDate: "2026-08-01",
+        planAdjusted: false,
+        hasObstacle: false,
         activityProgress: Array.from({ length: 51 }, (_, index) => ({
           goalActivityCode: `activity_${index}`,
           status: "DONE",
+          achievedDays: 1,
         })),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a valid service date and explicit plan-adjustment and obstacle answers", () => {
+    for (const field of ["serviceDate", "planAdjusted", "hasObstacle"]) {
+      const input = validInput();
+      delete input[field];
+      expect(followupCreateRequestSchema.safeParse(input).success, field).toBe(false);
+    }
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), serviceDate: "2026-02-30" }).success).toBe(false);
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), planAdjusted: "false" }).success).toBe(false);
+  });
+
+  it("requires achieved days 0–7 for applicable activities and forbids them for NOT_APPLICABLE", () => {
+    const withProgress = (row: Record<string, unknown>): boolean =>
+      followupCreateRequestSchema.safeParse({ ...validInput(), activityProgress: [{ goalActivityCode: "a", ...row }] })
+        .success;
+
+    expect(withProgress({ status: "DONE", achievedDays: 0 })).toBe(true);
+    expect(withProgress({ status: "DONE", achievedDays: 7 })).toBe(true);
+    expect(withProgress({ status: "DONE", achievedDays: 8 })).toBe(false);
+    expect(withProgress({ status: "PARTIAL", achievedDays: 1.5 })).toBe(false);
+    expect(withProgress({ status: "NOT_DONE" })).toBe(false);
+    expect(withProgress({ status: "NOT_APPLICABLE" })).toBe(true);
+    expect(withProgress({ status: "NOT_APPLICABLE", achievedDays: 0 })).toBe(false);
+  });
+
+  it("accepts an obstacle note only when an obstacle is recorded", () => {
+    expect(
+      followupCreateRequestSchema.safeParse({ ...validInput(), hasObstacle: true, obstacleNote: "ไม่มีเวลา" }).success,
+    ).toBe(true);
+    expect(
+      followupCreateRequestSchema.safeParse({ ...validInput(), hasObstacle: false, obstacleNote: "ไม่มีเวลา" }).success,
+    ).toBe(false);
+    expect(
+      followupProgramCreateRequestSchema.safeParse({
+        ...validInput(),
+        patientHospitalRelationshipId: undefined,
+        patientProgramId: programId,
+        hasObstacle: false,
+        obstacleNote: "ไม่มีเวลา",
       }).success,
     ).toBe(false);
   });

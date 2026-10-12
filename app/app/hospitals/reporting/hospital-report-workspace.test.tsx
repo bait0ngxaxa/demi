@@ -105,6 +105,10 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
         id: `${id.slice(0, 8)}-6666-4666-8666-666666666666`,
         roundNumber: 1,
         recordedAt: "2026-08-18T05:00:00.000Z",
+        serviceDate: "2026-08-18",
+        planAdjusted: false,
+        hasObstacle: true,
+        achievement: { achievedDays: 2, targetDays: 3, ratePercent: 67, aboveThreshold: false },
         measurements: {
           bloodSugar: { state: "RECORDED", value: 98 },
           weight: { state: "NOT_RECORDED" },
@@ -112,7 +116,7 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
           systolicBloodPressure: { state: "NOT_RECORDED" },
           diastolicBloodPressure: { state: "NOT_RECORDED" },
         },
-        activityProgress: [{ activityCode: "walk", activityLabel: "เดินออกกำลังกาย", status: "PARTIAL" }],
+        activityProgress: [{ activityCode: "walk", activityLabel: "เดินออกกำลังกาย", status: "PARTIAL", achievedDays: 2 }],
       }],
     },
     finalAssessment: { state: "MISSING" },
@@ -129,12 +133,8 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       serviceRoundMeasurements: "SOURCE_MISSING",
-      achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
-      achievementOver70Count: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
-      planAdjustment: "SOURCE_MISSING",
-      obstacle: "SOURCE_MISSING",
     },
   };
 }
@@ -212,11 +212,13 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
     expect(markup).toContain("แบบประเมิน PAM / PROMs: ข้อมูลที่มีไม่ได้ผูกกับ Program นี้ /");
-    expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ยังไม่มีสูตรคำนวณที่ได้รับรอง");
+    expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ดูได้ในไฟล์ Excel (แสดงการติดตามไม่ครบในหน้านี้)");
     expect(markup).toContain("ครั้งที่ 1");
+    expect(markup).toContain("วันที่ทำได้ / อัตราความสำเร็จ: 2/3 วัน · 67%");
+    expect(markup).toContain("ปรับแผนใหม่: ไม่ปรับ · อุปสรรค: มี");
     expect(markup).toContain("บันทึกว่าทำได้บางส่วน");
     expect(markup).toContain("ไม่ใช่คะแนนผลสำเร็จ");
-    expect(markup).toContain("อุปสรรค: ไม่มีแหล่งข้อมูลในระบบ");
+    expect(markup).toContain("ผลลัพธ์ที่ได้: ไม่มีแหล่งข้อมูลในระบบ");
     expect(markup).toContain("ส่งออก Excel");
   });
 

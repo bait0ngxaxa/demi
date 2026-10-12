@@ -33,11 +33,29 @@ const programId = "33333333-3333-4333-8333-333333333333";
 const STARTED_AT = "2026-07-01T03:00:00.000Z";
 const COMPLETED_AT = "2026-10-01T03:00:00.000Z";
 
+// Follow-ups 1–4 carry the new structured facts; Follow-up 5 is a legacy record without them.
+const ACHIEVED_DAYS = [3, 2, 3, 1] as const;
+const FOLLOWUP_TARGET_DAYS = 3;
+
 function followupAt(index: number): HospitalReportFollowup {
+  const achievedDays = ACHIEVED_DAYS[index];
+  const recordedAt = `2026-0${7 + Math.floor(index / 2)}-${index % 2 === 0 ? "10" : "24"}T03:00:00.000Z`;
   return {
     id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index + 1).padStart(12, "0")}`,
     roundNumber: index + 1,
-    recordedAt: `2026-0${7 + Math.floor(index / 2)}-${index % 2 === 0 ? "10" : "24"}T03:00:00.000Z`,
+    recordedAt,
+    // Service dates are a day earlier than the recorded date to prove the report uses them.
+    serviceDate: achievedDays === undefined ? null : `2026-0${7 + Math.floor(index / 2)}-${index % 2 === 0 ? "09" : "23"}`,
+    planAdjusted: achievedDays === undefined ? null : index % 2 === 1,
+    hasObstacle: achievedDays === undefined ? null : index === 3,
+    achievement: achievedDays === undefined
+      ? null
+      : {
+          achievedDays,
+          targetDays: FOLLOWUP_TARGET_DAYS,
+          ratePercent: Math.round((achievedDays * 100) / FOLLOWUP_TARGET_DAYS),
+          aboveThreshold: achievedDays * 100 > 70 * FOLLOWUP_TARGET_DAYS,
+        },
     measurements: {
       bloodSugar: { state: "RECORDED", value: 120 - index },
       weight: { state: "RECORDED", value: 72 - index * 0.5 },
@@ -45,8 +63,19 @@ function followupAt(index: number): HospitalReportFollowup {
       systolicBloodPressure: { state: "NOT_RECORDED" },
       diastolicBloodPressure: { state: "NOT_RECORDED" },
     },
-    activityProgress: [{ activityCode: "exercise_walk", activityLabel: "เดินออกกำลังกาย", status: "DONE" }],
+    activityProgress: [{
+      activityCode: "exercise_walk",
+      activityLabel: "เดินออกกำลังกาย",
+      status: "DONE",
+      achievedDays: achievedDays ?? null,
+    }],
   };
+}
+
+const NO_ACHIEVEMENT = "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
+
+function rateCell(followup: HospitalReportFollowup): CellValue {
+  return followup.achievement === null ? NO_ACHIEVEMENT : followup.achievement.ratePercent / 100;
 }
 
 const FOLLOWUPS = Array.from({ length: 5 }, (_, index) => followupAt(index));
@@ -147,12 +176,8 @@ function goldenProgram(): HospitalReportProgramRow {
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       serviceRoundMeasurements: "SOURCE_MISSING",
-      achievementDays: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
-      achievementOver70Count: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
-      planAdjustment: "SOURCE_MISSING",
-      obstacle: "SOURCE_MISSING",
     },
   };
 }
@@ -193,11 +218,11 @@ function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
     const followup = followups[round - 3];
     if (!followup) {
       const isFirstEmptySlot = round - 3 === followups.length && field === 0;
-      return [column, isFirstEmptySlot ? NO_MORE_FOLLOWUPS : null, field === 2 ? "SOURCE_MISSING" : "DECISION_OPEN"];
+      return [column, isFirstEmptySlot ? NO_MORE_FOLLOWUPS : null, "SOURCE_READY"];
     }
-    if (field === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "DECISION_OPEN"];
-    if (field === 1) return [column, followup.measurements.weight.state === "RECORDED" ? followup.measurements.weight.value : null, "DECISION_OPEN"];
-    return [column, DERIVATION_UNAPPROVED, "SOURCE_MISSING"];
+    if (field === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "SOURCE_READY"];
+    if (field === 1) return [column, followup.measurements.weight.state === "RECORDED" ? followup.measurements.weight.value : null, "SOURCE_READY"];
+    return [column, rateCell(followup), "SOURCE_READY"];
   });
 }
 
@@ -245,18 +270,22 @@ function followupServiceColumns(row: 9 | 10): ColumnContract[] {
       return block.map((column): ColumnContract => [
         column,
         column === starts[followups.length] ? NO_MORE_FOLLOWUPS : null,
-        column === block[0] ? "DECISION_OPEN" : "SOURCE_MISSING",
+        column === block[3] ? "SOURCE_MISSING" : "SOURCE_READY",
       ]);
     }
+    const answer = (value: boolean | null, labels: readonly [string, string]): [CellValue, CellValue] =>
+      value === null ? ["ไม่ได้บันทึก", null] : value ? [labels[0], null] : [null, labels[1]];
+    const [adjusted, notAdjusted] = answer(followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
+    const [obstacle, noObstacle] = answer(followup.hasObstacle, ["มี", "ไม่มี"]);
     return [
-      [block[0], dateToken(followup.recordedAt), "DECISION_OPEN"],
-      [block[1], SOURCE_MISSING, "SOURCE_MISSING"],
-      [block[2], DERIVATION_UNAPPROVED, "SOURCE_MISSING"],
+      [block[0], dateToken(followup.serviceDate === null ? followup.recordedAt : `${followup.serviceDate}T00:00:00.000Z`), "SOURCE_READY"],
+      [block[1], followup.achievement?.achievedDays ?? NO_ACHIEVEMENT, "SOURCE_READY"],
+      [block[2], rateCell(followup), "SOURCE_READY"],
       [block[3], SOURCE_MISSING, "SOURCE_MISSING"],
-      [block[4], SOURCE_MISSING, "SOURCE_MISSING"],
-      [block[5], SOURCE_MISSING, "SOURCE_MISSING"],
-      [block[6], SOURCE_MISSING, "SOURCE_MISSING"],
-      [block[7], SOURCE_MISSING, "SOURCE_MISSING"],
+      [block[4], adjusted, "SOURCE_READY"],
+      [block[5], notAdjusted, "SOURCE_READY"],
+      [block[6], obstacle, "SOURCE_READY"],
+      [block[7], noObstacle, "SOURCE_READY"],
     ];
   });
 }
@@ -279,7 +308,7 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["O", 108, "SOURCE_READY"],
   ["P", 69, "SOURCE_READY"],
   ["Q", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
-  ["R", DERIVATION_UNAPPROVED, "SOURCE_MISSING"],
+  ["R", 2, "SOURCE_READY"],
   ["S", "ทำ", "SOURCE_READY"],
   ["T", null, "SOURCE_READY"],
   ["U", null, "SOURCE_READY"],
@@ -384,6 +413,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 44, DECISION_OPEN: 14, SOURCE_MISSING: 50 });
+    }).toEqual({ SOURCE_READY: 85, DECISION_OPEN: 2, SOURCE_MISSING: 21 });
   });
 });

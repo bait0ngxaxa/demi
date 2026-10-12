@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { FOLLOWUP_ACHIEVED_DAYS_MAX } from "@/modules/followups/domain/followup-achievement";
 import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
   FOLLOWUP_PROGRESS_STATUS_VALUES,
@@ -60,8 +61,21 @@ type GoalPlanOption = {
 
 type ProgressDraft = {
   status: FollowupProgressStatus | "";
+  achievedDays: string;
   note: string;
 };
+
+type YesNoDraft = "" | "true" | "false";
+
+const PLAN_ADJUSTED_CHOICES = [
+  ["true", "ปรับแผน"],
+  ["false", "ไม่ปรับแผน"],
+] as const;
+
+const OBSTACLE_CHOICES = [
+  ["true", "มีอุปสรรค"],
+  ["false", "ไม่มีอุปสรรค"],
+] as const;
 
 export type FollowupFormScope =
   | {
@@ -82,6 +96,7 @@ type FollowupFormProps = {
   selectedAppointmentId: string | null;
   selectedGoalPlanId: string | null;
   submissionNonce: string;
+  todayServiceDate: string;
 };
 
 const inputClassName =
@@ -117,7 +132,7 @@ function getInitialProgress(goalPlan: GoalPlanOption | null): Record<string, Pro
   return Object.fromEntries(
     goalPlan.items.map((activity) => [
       activity.activityCode,
-      { status: "", note: "" },
+      { status: "", achievedDays: "", note: "" },
     ]),
   );
 }
@@ -160,12 +175,14 @@ function ProgressEditor({
           <Select
             disabled={disabled}
             id={`progress-status-${activity.activityCode}`}
-            onChange={(event) =>
+            onChange={(event) => {
+              const status = event.target.value as FollowupProgressStatus | "";
               onChange({
                 ...draft,
-                status: event.target.value as FollowupProgressStatus | "",
-              })
-            }
+                status,
+                achievedDays: status === "NOT_APPLICABLE" ? "" : draft.achievedDays,
+              });
+            }}
             value={draft.status}
           >
             <option value="">กรุณาเลือกสถานะ</option>
@@ -176,7 +193,26 @@ function ProgressEditor({
             ))}
           </Select>
         </label>
-        <label className={labelClassName} htmlFor={`progress-note-${activity.activityCode}`}>
+        <label className={labelClassName} htmlFor={`progress-achieved-days-${activity.activityCode}`}>
+          <span>จำนวนวันที่ทำได้ (0–{FOLLOWUP_ACHIEVED_DAYS_MAX} วัน)</span>
+          <input
+            className={inputClassName}
+            disabled={disabled || !draft.status || draft.status === "NOT_APPLICABLE"}
+            id={`progress-achieved-days-${activity.activityCode}`}
+            inputMode="numeric"
+            max={FOLLOWUP_ACHIEVED_DAYS_MAX}
+            min={0}
+            onChange={(event) => onChange({ ...draft, achievedDays: event.target.value })}
+            required={Boolean(draft.status) && draft.status !== "NOT_APPLICABLE"}
+            step={1}
+            type="number"
+            value={draft.achievedDays}
+          />
+          <span className="text-xs font-normal leading-5 text-text-muted">
+            นับในช่วง 7 วันก่อนวันที่ให้บริการ เทียบกับเป้าหมาย {activity.targetDays} วัน/สัปดาห์
+          </span>
+        </label>
+        <label className={`${labelClassName} sm:col-span-2`} htmlFor={`progress-note-${activity.activityCode}`}>
           <span>หมายเหตุกิจกรรม (ไม่บังคับ)</span>
           <textarea
             className={`${inputClassName} min-h-24 py-3`}
@@ -201,6 +237,7 @@ export function FollowupForm({
   selectedAppointmentId,
   selectedGoalPlanId,
   submissionNonce,
+  todayServiceDate,
 }: FollowupFormProps): React.JSX.Element {
   const router = useRouter();
   const relationshipId = scope.relationshipId;
@@ -222,6 +259,10 @@ export function FollowupForm({
   const [reflectionNote, setReflectionNote] = useState("");
   const [confidencePlan, setConfidencePlan] = useState("");
   const [generalNote, setGeneralNote] = useState("");
+  const [serviceDate, setServiceDate] = useState(todayServiceDate);
+  const [planAdjusted, setPlanAdjusted] = useState<YesNoDraft>("");
+  const [hasObstacle, setHasObstacle] = useState<YesNoDraft>("");
+  const [obstacleNote, setObstacleNote] = useState("");
   const selectedGoalPlan = useMemo(
     () => goalPlans.find((plan) => plan.goalPlanId === goalPlanId) ?? null,
     [goalPlanId, goalPlans],
@@ -254,9 +295,20 @@ export function FollowupForm({
     ? selectedGoalPlan.items.flatMap((activity) => {
         const draft = progress[activity.activityCode];
 
-        return draft?.status
-          ? [{ goalActivityCode: activity.activityCode, status: draft.status, note: draft.note || null }]
-          : [];
+        if (!draft?.status) {
+          return [];
+        }
+
+        const achievedDays = draft.status === "NOT_APPLICABLE" || draft.achievedDays === ""
+          ? null
+          : Number(draft.achievedDays);
+
+        return [{
+          goalActivityCode: activity.activityCode,
+          status: draft.status,
+          achievedDays,
+          note: draft.note || null,
+        }];
       })
     : [];
   const measurementCount = [
@@ -309,6 +361,10 @@ export function FollowupForm({
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
         <input name="appointmentId" readOnly type="hidden" value={appointmentId} />
         <input name="sourceGoalPlanId" readOnly type="hidden" value={goalPlanId} />
+        <input name="serviceDate" readOnly type="hidden" value={serviceDate} />
+        <input name="planAdjusted" readOnly type="hidden" value={planAdjusted} />
+        <input name="hasObstacle" readOnly type="hidden" value={hasObstacle} />
+        <input name="obstacleNote" readOnly type="hidden" value={hasObstacle === "true" ? obstacleNote : ""} />
         <input name="weight" readOnly type="hidden" value={weight} />
         <input name="waistCircumference" readOnly type="hidden" value={waistCircumference} />
         <input name="systolicBloodPressure" readOnly type="hidden" value={systolicBloodPressure} />
@@ -342,6 +398,27 @@ export function FollowupForm({
               การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนเป้าหมายของโปรแกรมเดียวกันได้
             </p>
           ) : null}
+        </Panel>
+
+        <Panel>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">วันที่ให้บริการ</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            วันที่พบหรือติดตามผู้ป่วยจริง ใช้เป็นวันที่ติดตามในรายงาน เลือกย้อนหลังได้แต่เลือกวันในอนาคตไม่ได้
+          </p>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending}>
+            <label className={labelClassName} htmlFor="followup-service-date">
+              <span>วันที่ให้บริการ</span>
+              <input
+                className={inputClassName}
+                id="followup-service-date"
+                max={todayServiceDate}
+                onChange={(event) => setServiceDate(event.target.value)}
+                required
+                type="date"
+                value={serviceDate}
+              />
+            </label>
+          </fieldset>
         </Panel>
 
         <Panel>
@@ -491,7 +568,7 @@ export function FollowupForm({
                 <ProgressEditor
                   activity={activity}
                   disabled={pending}
-                  draft={progress[activity.activityCode] ?? { status: "", note: "" }}
+                  draft={progress[activity.activityCode] ?? { status: "", achievedDays: "", note: "" }}
                   key={activity.activityCode}
                   onChange={(draft) =>
                     setProgress((current) => ({ ...current, [activity.activityCode]: draft }))
@@ -501,6 +578,67 @@ export function FollowupForm({
             </ul>
           </Panel>
         ) : null}
+
+        <Panel>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">การปรับแผนและอุปสรรค</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            ต้องเลือกทั้งสองข้อ ข้อมูลนี้ใช้ในรายงานการจัดบริการ
+          </p>
+          <div className="mt-6 grid gap-6 sm:grid-cols-2">
+            <fieldset className="space-y-3" disabled={pending}>
+              <legend className="text-sm font-semibold text-text">ปรับแผนใหม่ในรอบนี้หรือไม่</legend>
+              {PLAN_ADJUSTED_CHOICES.map(([value, label]) => (
+                <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
+                  <input
+                    checked={planAdjusted === value}
+                    className="size-5"
+                    name="planAdjustedChoice"
+                    onChange={() => setPlanAdjusted(value)}
+                    required
+                    type="radio"
+                    value={value}
+                  />
+                  {label}
+                </label>
+              ))}
+              {planAdjusted === "true" ? (
+                <p className="text-sm leading-6 text-text-muted">
+                  หลังบันทึก ให้สร้างแผนเป้าหมายรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป
+                </p>
+              ) : null}
+            </fieldset>
+            <fieldset className="space-y-3" disabled={pending}>
+              <legend className="text-sm font-semibold text-text">มีอุปสรรคในรอบนี้หรือไม่</legend>
+              {OBSTACLE_CHOICES.map(([value, label]) => (
+                <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
+                  <input
+                    checked={hasObstacle === value}
+                    className="size-5"
+                    name="hasObstacleChoice"
+                    onChange={() => setHasObstacle(value)}
+                    required
+                    type="radio"
+                    value={value}
+                  />
+                  {label}
+                </label>
+              ))}
+              {hasObstacle === "true" ? (
+                <label className={labelClassName} htmlFor="followup-obstacle-note">
+                  <span>รายละเอียดอุปสรรค (ไม่บังคับ)</span>
+                  <textarea
+                    className={`${inputClassName} min-h-24 py-3`}
+                    id="followup-obstacle-note"
+                    maxLength={1_000}
+                    onChange={(event) => setObstacleNote(event.target.value)}
+                    placeholder="อุปสรรคที่พบ ใช้ประกอบการติดตาม ไม่แสดงในไฟล์รายงาน"
+                    value={obstacleNote}
+                  />
+                </label>
+              ) : null}
+            </fieldset>
+          </div>
+        </Panel>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ</h2>

@@ -986,6 +986,11 @@ model PatientFollowup {
   submissionNonce              String   @unique @db.Uuid
   submissionRequestHash        String   @db.VarChar(64)
   recordedAt                   DateTime @default(now()) @db.Timestamptz(3)
+  // Workbook DoD BR-01/06/07: nullable only for records created before these facts were captured.
+  serviceDate                  DateTime? @db.Date
+  planAdjusted                 Boolean?
+  hasObstacle                  Boolean?
+  obstacleNote                 String?  @db.VarChar(1000)
   weight                       Float?
   waistCircumference           Float?
   systolicBloodPressure        Float?
@@ -1199,6 +1204,8 @@ model PatientFollowupActivityProgress {
   followupId  String                         @db.Uuid
   goalActivityCode String                    @db.VarChar(64)
   status      FollowupActivityProgressStatus
+  // Workbook DoD BR-04: days achieved in the 7 days before the service date (0..7, checked in SQL).
+  achievedDays Int?
   note        String?                        @db.VarChar(1000)
   createdAt   DateTime                       @default(now()) @db.Timestamptz(3)
 

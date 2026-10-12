@@ -16,6 +16,7 @@ import type {
   HospitalReportProgramRow,
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
+import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
 import type { HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
@@ -371,11 +372,35 @@ function ServiceOne({ program }: { program: HospitalReportProgramRow }): React.J
   );
 }
 
+function answerText(answer: boolean | null, yes: string, no: string): string {
+  if (answer === null) return "ไม่ได้บันทึก";
+  return answer ? yes : no;
+}
+
+function achievementText(followup: HospitalReportFollowup): string {
+  if (followup.achievement === null) return "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
+  return `${followup.achievement.achievedDays}/${followup.achievement.targetDays} วัน · ${followup.achievement.ratePercent}%`;
+}
+
+function achievementOver70Text(program: HospitalReportProgramRow): string {
+  if (program.followups.hasMore) return "ดูได้ในไฟล์ Excel (แสดงการติดตามไม่ครบในหน้านี้)";
+  if (program.followups.items.length === 0) return "ไม่มีการติดตาม";
+  const summary = summarizeFollowupAchievements(program.followups.items.map((followup) => followup.achievement));
+  return summary.scoredCount === 0
+    ? "ไม่มีการติดตามที่คำนวณได้"
+    : `${summary.aboveThresholdCount} จาก ${summary.scoredCount} ครั้งที่คำนวณได้`;
+}
+
 function ServiceFollowup({ followup }: { followup: HospitalReportFollowup }): React.JSX.Element {
   return (
     <li className="min-w-0 border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0">
       <h5 className="font-semibold text-text">ครั้งที่ {followup.roundNumber} · บันทึก {displayDateTime(followup.recordedAt)}</h5>
+      <p className="mt-1 text-sm text-text-muted">วันที่ให้บริการ: {followup.serviceDate ?? "ไม่ได้บันทึก"}</p>
       <div className="mt-3"><MeasurementList measurements={followup.measurements} /></div>
+      <ul className="mt-3 space-y-1 text-sm text-text-muted">
+        <li>วันที่ทำได้ / อัตราความสำเร็จ: {achievementText(followup)}</li>
+        <li>ปรับแผนใหม่: {answerText(followup.planAdjusted, "ปรับ", "ไม่ปรับ")} · อุปสรรค: {answerText(followup.hasObstacle, "มี", "ไม่มี")}</li>
+      </ul>
       <div className="mt-4">
         <h6 className="text-sm font-semibold text-text">ความคืบหน้ากิจกรรมที่บันทึก</h6>
         {followup.activityProgress.length === 0 ? <p className="mt-1 text-sm text-text-muted">ไม่มีรายการความคืบหน้ากิจกรรมในการติดตามผลครั้งนี้</p> : (
@@ -422,7 +447,7 @@ function ServiceProgram({
           {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.afterWeeklyExercise)}</li>
-            <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {unavailableText(program.unavailable.achievementOver70Count)}</li>
+            <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {achievementOver70Text(program)}</li>
           </ul>
         </section>
 
@@ -462,9 +487,7 @@ function ServiceProgram({
           {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
           {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูทั้งหมดในรายละเอียด Program หรือไฟล์ Excel" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>วัน/อัตราความสำเร็จ: {unavailableText(program.unavailable.achievementDays)} / {unavailableText(program.unavailable.achievementRate)}</li>
-            <li>ผลลัพธ์และการปรับแผน: {unavailableText(program.unavailable.outcome)} / {unavailableText(program.unavailable.planAdjustment)}</li>
-            <li>อุปสรรค: {unavailableText(program.unavailable.obstacle)}</li>
+            <li>ผลลัพธ์ที่ได้: {unavailableText(program.unavailable.outcome)}</li>
           </ul>
         </section>
       </div>

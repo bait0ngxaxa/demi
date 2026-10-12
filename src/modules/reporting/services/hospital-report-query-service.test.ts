@@ -85,13 +85,22 @@ function followupRecord(roundNumber: number): Record<string, unknown> {
     id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(roundNumber).padStart(12, "0")}`,
     roundNumber,
     recordedAt: new Date(`2026-08-${String(17 + roundNumber).padStart(2, "0")}T05:00:00.000Z`),
+    serviceDate: new Date(`2026-08-${String(16 + roundNumber).padStart(2, "0")}T00:00:00.000Z`),
+    planAdjusted: roundNumber % 2 === 0,
+    hasObstacle: false,
     weight: null,
     waistCircumference: null,
     systolicBloodPressure: 0,
     diastolicBloodPressure: null,
     bloodSugar: roundNumber,
-    sourceGoalPlan: { templateKey: "demi-goals", templateVersion: "legacy-prototype-v1" },
-    activityProgress: [{ goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.PARTIAL }],
+    sourceGoalPlan: {
+      templateKey: "demi-goals",
+      templateVersion: "legacy-prototype-v1",
+      items: [{ activityCode: "exercise_walk", targetDays: 4 }],
+    },
+    activityProgress: [
+      { goalActivityCode: "exercise_walk", status: FollowupActivityProgressStatus.PARTIAL, achievedDays: 3 },
+    ],
   };
 }
 
@@ -221,6 +230,12 @@ describe("Hospital reporting query service", () => {
     expect(result.page.items[1]?.goalPlans).toMatchObject({ totalCount: 0, items: [], hasMore: false });
     expect(result.page.items[1]?.followups).toMatchObject({ totalCount: 0, items: [], hasMore: false });
     expect(result.page.items[0]?.followups.items[0]?.activityProgress[0]?.activityLabel).toBe("เดินออกกำลังกาย");
+    expect(result.page.items[0]?.followups.items[0]).toMatchObject({
+      serviceDate: "2026-08-17",
+      planAdjusted: false,
+      hasObstacle: false,
+      achievement: { achievedDays: 3, targetDays: 4, ratePercent: 75, aboveThreshold: true },
+    });
     expect(database.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         patientHospitalRelationship: { is: { hospitalId: hospitalAId } },

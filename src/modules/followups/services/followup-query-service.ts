@@ -64,6 +64,7 @@ export type FollowupHistoryItem = {
   patientProgramId: string | null;
   roundNumber: number;
   recordedAt: Date;
+  serviceDate: Date | null;
   createdByDisplayName: string;
   appointment: FollowupAppointmentContext | null;
   sourceGoalPlan: {
@@ -99,6 +100,7 @@ export type FollowupActivityProgressDetail = {
   progressId: string;
   goalActivityCode: string;
   status: FollowupProgressStatus;
+  achievedDays: number | null;
   note: string | null;
 };
 
@@ -109,6 +111,10 @@ export type FollowupDetail = {
   roundNumber: number;
   recordedAt: Date;
   createdAt: Date;
+  serviceDate: Date | null;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
+  obstacleNote: string | null;
   createdByDisplayName: string;
   appointment: FollowupAppointmentContext | null;
   sourceGoalPlan: AccessibleGoalPlanReference | null;
@@ -133,6 +139,7 @@ const followupHistorySelect = {
   patientProgramId: true,
   roundNumber: true,
   recordedAt: true,
+  serviceDate: true,
   createdByUser: {
     select: {
       person: {
@@ -168,6 +175,10 @@ const followupDetailSelect = {
   roundNumber: true,
   recordedAt: true,
   createdAt: true,
+  serviceDate: true,
+  planAdjusted: true,
+  hasObstacle: true,
+  obstacleNote: true,
   weight: true,
   waistCircumference: true,
   systolicBloodPressure: true,
@@ -202,6 +213,7 @@ const followupDetailSelect = {
       id: true,
       goalActivityCode: true,
       status: true,
+      achievedDays: true,
       note: true,
     },
   },
@@ -295,6 +307,7 @@ function toHistoryItem(
     patientProgramId: record.patientProgramId ?? null,
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt,
+    serviceDate: record.serviceDate,
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     appointment: toAppointmentContext(record.appointment, relationshipId),
     sourceGoalPlan: sourceGoalPlanMatchesScope && sourceGoalPlan
@@ -403,6 +416,7 @@ function toActivityProgress(
       progressId: progress.id,
       goalActivityCode: progress.goalActivityCode,
       status: progress.status,
+      achievedDays: progress.achievedDays,
       note: progress.note,
     }))
     .sort((left, right) => {
@@ -437,6 +451,10 @@ function toDetail(
     roundNumber: record.roundNumber,
     recordedAt: record.recordedAt,
     createdAt: record.createdAt,
+    serviceDate: record.serviceDate,
+    planAdjusted: record.planAdjusted,
+    hasObstacle: record.hasObstacle,
+    obstacleNote: record.obstacleNote,
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     appointment: toAppointmentContext(record.appointment, patient.patientHospitalRelationshipId),
     sourceGoalPlan,
