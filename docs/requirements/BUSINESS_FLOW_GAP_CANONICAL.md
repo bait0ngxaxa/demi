@@ -4,6 +4,7 @@
 **Current phase:** BF-GAP-01R — Customer Whiteboard Inventory Correction
 **Record date:** 2026-10-12 (Asia/Bangkok)
 **Status:** BF-GAP-01R — PASS / CUSTOMER WHITEBOARD INVENTORY CANONICALIZED. BF-GAP-02 has not started.
+**Update (2026-10-12):** a Product Owner–directed Workbook DoD track runs alongside this register — see [BF-GAP-WB-00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md) (plan, decisions §5.1, pending register §5.2), [BF-GAP-WB-01](../phases/BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md) and [BF-GAP-WB-02](../phases/BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md). Row statuses in §8 are not yet updated for that work; BF-GAP-02 must re-classify them against runtime.
 
 ## 1. Purpose
 
@@ -25,7 +26,7 @@ The register audits semantic and lifecycle equivalence. A route, page, model, te
 For this program, use the following order:
 
 1. Explicit current customer / Product Owner requirement.
-2. Customer Canva whiteboard “ร่าง DEMI App ใหม่”. Direct access to design DAHSvdQ3gvU was attempted for BF-GAP-01R but denied by Canva permissions. W1 is the original task-supplied extract; reviewer-verified BF-GAP-01R correction facts are W2 and are identified in §8.
+2. Customer Canva whiteboard “ร่าง DEMI App ใหม่”. Direct access to design DAHSvdQ3gvU was attempted for BF-GAP-01R but denied by Canva permissions. W1 is the original task-supplied extract; reviewer-verified BF-GAP-01R correction facts are W2 and are identified in §8. Update 2026-10-12: the design was then read directly through the Canva connector and its layout visually verified for all four flows; findings (per-round activities, medication-bound reminder slots, OSM appointment confirmation/postponement, staff/admin download and user management) are in BF-GAP-WB-00 §3.1 and should be applied to §8 in BF-GAP-02.
 3. Explicit later Owner decisions that clarify or supersede the whiteboard.
 4. Accepted architecture, security, privacy, and data-integrity invariants, including ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008, and ADR-0010.
 5. Runtime implementation and automated evidence at the analyzed HEAD.

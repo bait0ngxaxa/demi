@@ -12,9 +12,11 @@ Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) 
 
 RPT-CLOSE-01 ตรวจสอบระบบรายงาน MVP ปัจจุบันแบบอัตโนมัติผ่านเมื่อ 2026-10-12 ครอบคลุมเฉพาะขอบเขต Reporting MVP ที่ยืนยันแล้ว ไม่ได้หมายถึง manual browser/mobile UAT, production deployment หรือ external privacy/legal approval ดู [RPT-CLOSE-01 handoff](./phases/PHASE_RPT_CLOSE_01_REPORTING_INTEGRATED_REAUDIT_HANDOFF.md)
 
-## CURRENT Business Flow Closure Program — BF-GAP-01R (2026-10-12)
+## CURRENT Business Flow Closure Program — BF-GAP-01R + Workbook DoD track (2026-10-12)
 
 The Business Flow Closure Program is in BF-GAP-01R, the current correction phase for the [canonical business-flow register](./requirements/BUSINESS_FLOW_GAP_CANONICAL.md); see the [BF-GAP-01R correction handoff](./phases/BF_GAP_01R_WHITEBOARD_INVENTORY_CORRECTION.md). BF-GAP-02 has NOT STARTED. Dashboard/reporting feature expansion remains paused pending upstream business-flow and source-data audit; current direct OWNER, Global ADMIN selected-Hospital, Parent exact-Child summary and exact-Program runtime remains preserved. RPT-CLOSE-01 is historical evidence for its bounded automated scope, not proof that all customer reporting requirements are complete. After review, the next audit order is BF-GAP-02 Runtime Crosswalk → BF-GAP-03 Core Care Journey.
+
+**Workbook DoD track (2026-10-12):** the Product Owner set the customer workbook `docs/Dashboard App Demi.xlsx` as the Definition of Done. [BF-GAP-WB-00](./phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md) holds the column crosswalk, the Owner decisions (§5.1) and the pending register (§5.2); [BF-GAP-WB-01](./phases/BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md) and [BF-GAP-WB-02](./phases/BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md) record the implementation. Workbook coverage is 85 of 108 customer columns source-ready; reporting changes are limited to filling workbook columns under confirmed decisions, and export access is unchanged (direct Hospital OWNER, Global ADMIN selected Hospital). The Canva whiteboard was read directly and visually verified (WB-00 §3.1); the flow-gap summary against it is WB-00 §3.2. BF-GAP-02 runtime crosswalk has still not started.
 
 ## CURRENT-status addendum — Phase 19A Global / Hospital Network reporting readiness (2026-10-11)
 
