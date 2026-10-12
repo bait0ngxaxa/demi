@@ -38,6 +38,8 @@ import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, Vali
 const database = getPrisma();
 const execFileAsync = promisify(execFile);
 const seedScript = "scripts/seed-hospital-master.mjs";
+// The Master seed is read-only by default; integration tests apply it to the local test database.
+const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 const migrationPath = "prisma/migrations/20261005120000_hospital_content_publishing/migration.sql";
 const fixedNow = new Date("2026-10-05T12:00:00.000Z");
 let sequence = 0;
@@ -232,7 +234,7 @@ async function auditRows(contentId?: string) {
 }
 
 async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript], { cwd: process.cwd(), env: process.env });
+  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], { cwd: process.cwd(), env: process.env });
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {

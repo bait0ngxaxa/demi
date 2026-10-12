@@ -23,6 +23,8 @@ import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/serv
 const execFileAsync = promisify(execFile);
 const prisma = getPrisma();
 const seedScript = "scripts/seed-hospital-master.mjs";
+// The Master seed is read-only by default; integration tests apply it to the local test database.
+const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 
 const nationalIds = {
   first: "1000000000009",
@@ -48,7 +50,7 @@ async function clearDatabase(): Promise<void> {
 }
 
 async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript], {
+  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], {
     cwd: process.cwd(),
     env: process.env,
   });

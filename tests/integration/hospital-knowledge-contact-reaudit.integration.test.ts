@@ -39,6 +39,8 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 const database = getPrisma();
 const execFileAsync = promisify(execFile);
 const seedScript = "scripts/seed-hospital-master.mjs";
+// The Master seed is read-only by default; integration tests apply it to the local test database.
+const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 const fixedNow = new Date("2026-10-06T06:00:00.000Z");
 const users: string[] = [];
 const persons: string[] = [];
@@ -160,7 +162,7 @@ async function publishDraft(actor: ActorContext, contentId: string, expectedUpda
 }
 
 async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript], { cwd: process.cwd(), env: process.env });
+  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], { cwd: process.cwd(), env: process.env });
 }
 
 async function cleanup(): Promise<void> {
