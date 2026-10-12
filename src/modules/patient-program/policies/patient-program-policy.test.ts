@@ -49,6 +49,30 @@ function actor(overrides: Partial<ActorContext> = {}): ActorContext {
 }
 
 describe("Patient Program policy", () => {
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])(
+    "retains exact Hospital care access for %s with Patient self-access",
+    (membershipType) => {
+      const careActor = actor({ roles: [Role.HOSPITAL, Role.PATIENT] });
+      careActor.hospitalMemberships = careActor.hospitalMemberships.map((membership) => ({ ...membership, membershipType }));
+      for (const capability of [PATIENT_PROGRAM_READ_CAPABILITY, PATIENT_PROGRAM_MANAGE_CAPABILITY]) {
+        expect(decidePatientProgramPolicy({ actor: careActor, capability, target: target() }).allowed).toBe(true);
+        expect(decidePatientProgramPolicy({ actor: careActor, capability, target: target({ hospitalId: hospitalB }) }).allowed).toBe(false);
+      }
+    },
+  );
+
+  it("evaluates each direct Hospital relationship independently", () => {
+    const careActor = actor();
+    careActor.hospitalMemberships = [
+      ...careActor.hospitalMemberships,
+      ...careActor.hospitalMemberships.map((membership) => ({ ...membership, hospitalId: hospitalB })),
+    ];
+    for (const hospitalId of [hospitalA, hospitalB]) {
+      expect(decidePatientProgramPolicy({ actor: careActor, capability: PATIENT_PROGRAM_READ_CAPABILITY, target: target({ hospitalId }) }).allowed).toBe(true);
+    }
+    expect(decidePatientProgramPolicy({ actor: careActor, capability: PATIENT_PROGRAM_READ_CAPABILITY, target: target({ hospitalId: "unrelated-hospital" }) }).allowed).toBe(false);
+  });
+
   it.each([PATIENT_PROGRAM_READ_CAPABILITY, PATIENT_PROGRAM_MANAGE_CAPABILITY])(
     "allows an active direct Hospital actor to %s",
     (capability) => {

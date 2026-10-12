@@ -181,14 +181,6 @@ export function PatientProgramServiceTwoWorkspace({
           <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
             เมื่อพร้อม สามารถบันทึกแผนรอบแรกได้ แผนสุขภาพไม่จำเป็นต้องมีลำดับต่อจาก Service 1
           </p>
-          {canCreate ? (
-            <Link
-              className="mt-5 inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/new`}
-            >
-              สร้างแผนสุขภาพ
-            </Link>
-          ) : null}
         </div>
       )}
 

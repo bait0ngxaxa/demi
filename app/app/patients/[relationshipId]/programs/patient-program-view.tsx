@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
+import { buttonClassName } from "@/components/ui/button";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   PatientProgramOpenControl,
@@ -36,13 +37,15 @@ function statusVariant(status: PatientProgramProjection["status"]): StatusVarian
 function ProgramLink({
   program,
   children,
+  primary = false,
 }: {
   program: PatientProgramProjection;
   children: React.ReactNode;
+  primary?: boolean;
 }): React.JSX.Element {
   return (
     <Link
-      className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      className={buttonClassName({ variant: primary ? "primary" : "secondary", size: "compact" })}
       href={`/app/patients/${encodeURIComponent(program.patientHospitalRelationshipId)}/programs/${encodeURIComponent(program.programId)}`}
     >
       {children}
@@ -64,10 +67,13 @@ function InitialBaselineText({
 
 export function PatientProgramView({
   context,
+  prioritizeActive = true,
 }: {
   context: PatientProgramPageContext;
+  prioritizeActive?: boolean;
 }): React.JSX.Element {
   const completedPrograms = context.history.filter((program) => program.status === "COMPLETED");
+  const active = context.active;
 
   return (
     <section aria-labelledby="patient-program-heading" className="mt-6">
@@ -117,7 +123,7 @@ export function PatientProgramView({
                   </div>
                 </dl>
               </div>
-              <ProgramLink program={context.active}>เปิดรายละเอียดโปรแกรม</ProgramLink>
+              <ProgramLink primary={prioritizeActive} program={context.active}>เปิดรายละเอียดโปรแกรม</ProgramLink>
             </div>
           </div>
         ) : (
@@ -126,7 +132,7 @@ export function PatientProgramView({
               ยังไม่มีโปรแกรมที่กำลังดำเนินการ
             </h3>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              สามารถเปิดโปรแกรมรอบใหม่ได้เมื่อพร้อมดำเนินการ โดยระบบจะกำหนดเวลาเริ่มจากฝั่ง server
+              เลือกเปิดโปรแกรมรอบใหม่ได้เมื่อมีสิทธิ์และพร้อมดำเนินการ
             </p>
             {!context.canOpen ? (
               <p className="mt-4 text-sm leading-6 text-text-muted">
@@ -136,7 +142,35 @@ export function PatientProgramView({
           </div>
         )}
 
-        <div className="mt-6 border-t border-border pt-5">
+        {active ? (
+          <nav aria-label="งานในโปรแกรมปัจจุบัน" className="mt-5 border-t border-border pt-5">
+            <p className="text-sm leading-6 text-text-muted">
+              เลือกส่วนงานเพื่อดูบันทึกและการดำเนินการที่ใช้ได้ในโปรแกรมนี้ ไม่จำเป็นต้องทำตามลำดับ
+            </p>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {[
+                ["program-service-one", "Service 1 — รู้จักตัวเอง"],
+                ["program-goals", "แผนเป้าหมาย"],
+                ["program-followups", "การติดตามผล"],
+                ["program-final", "การประเมินสุดท้ายและจบโปรแกรม"],
+              ].map(([id, label]) => (
+                <li className="min-w-0" key={id}>
+                  <Link
+                    className={buttonClassName({ variant: "secondary", size: "compact", className: "w-full justify-start text-left" })}
+                    href={`/app/patients/${encodeURIComponent(context.patient.patientHospitalRelationshipId)}/programs/${encodeURIComponent(active.programId)}#${id}`}
+                  >
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
+
+        <details className="mt-6 border-t border-border pt-5">
+          <summary className="min-h-11 cursor-pointer content-center font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
+            ประวัติโปรแกรมที่เสร็จสิ้น · อ่านอย่างเดียว
+          </summary>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">
@@ -175,7 +209,7 @@ export function PatientProgramView({
           ) : (
             <p className="mt-5 text-sm leading-6 text-text-muted">ยังไม่มีประวัติโปรแกรมที่เสร็จสิ้น</p>
           )}
-        </div>
+        </details>
       </Panel>
     </section>
   );

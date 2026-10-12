@@ -260,6 +260,65 @@ describe("Patient detail page authorization boundary", () => {
     expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(false);
   });
 
+  it("keeps unavailable Baseline creation neutral and preserves all supporting destinations", async () => {
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+
+    expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/baseline`)).toBe(false);
+    expect(containsString(page, "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้น")).toBe(true);
+    for (const section of ["#patient-context", "#patient-care", "#patient-history"]) {
+      expect(containsString(page, section)).toBe(true);
+    }
+    for (const destination of ["screenings", "goals", "followups", "appointments", "evidence", "assignment"]) {
+      expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/${destination}`)).toBe(true);
+    }
+  });
+
+  it("suggests the authorized current Program without implying a mandatory Baseline prerequisite", async () => {
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
+    mockedGetPatientProgramPageContext.mockResolvedValue({
+      patient,
+      active: { programId: "current-program", status: "ACTIVE" },
+      history: [],
+      canOpen: false,
+      canManage: true,
+    });
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    expect(containsString(page, "ทำงานต่อในโปรแกรมปัจจุบัน")).toBe(true);
+    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(false);
+  });
+
+  it("retains the selected Hospital directory for multi-role users with Patient self-access", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ ...actor, roles: [Role.HOSPITAL, Role.OSM, Role.PATIENT] });
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    expect(containsString(page, `/app/patients?hospitalId=${patient.hospital.id}`)).toBe(true);
+    expect(containsString(page, "/app/personal")).toBe(false);
+  });
+
+  it("returns an authorized OSM to the assigned directory and omits Owner operations", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      ...actor,
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [{
+        hospitalId: patient.hospital.id,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    });
+    const page = await PatientDetailPage({
+      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    });
+    expect(containsString(page, "/app/patients/assigned")).toBe(true);
+    expect(containsString(page, "/assignment")).toBe(false);
+  });
+
   it("exposes the relationship-scoped Evidence entry point without changing profile behavior", async () => {
     const page = await PatientDetailPage({
       params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
