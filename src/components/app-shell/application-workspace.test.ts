@@ -71,9 +71,6 @@ describe("application workspace projection", () => {
       `/app/patients?hospitalId=${hospitalId}`,
       `/app/patients/provision?hospitalId=${hospitalId}`,
       `/app/patients/activation?hospitalId=${hospitalId}`,
-      "/app/patients/access-requests",
-      "/app/patients/service-requests",
-      "/app/patients/service-catalog",
     ]);
   });
 
@@ -91,9 +88,8 @@ describe("application workspace projection", () => {
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
-    expect(hrefs).toContain("/app/patients/access-requests");
-    expect(hrefs).toContain("/app/patients/service-requests");
-    expect(hrefs).not.toContain("/app/patients/service-catalog");
+    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/access-requests", "/app/patients/service-requests"]);
+    expect(projection.supportingActions).toHaveLength(0);
   });
 
   it("projects only assigned-patient and permitted provisioning work for OSM", () => {
@@ -157,4 +153,48 @@ describe("application workspace projection", () => {
       actions: [],
     });
   });
+  it("deduplicates actor-wide requests and tools across direct hospitals", () => {
+    const secondId = "55555555-5555-4555-8555-555555555555";
+    const projection = projectApplicationWorkspace(actor({
+      roles: [Role.HOSPITAL, Role.PATIENT],
+      hospitalMemberships: [directMembership(MembershipType.OWNER), { ...directMembership(MembershipType.OWNER), hospitalId: secondId }],
+    }), [workspace(), workspace({ hospitalId: secondId })]);
+    expect(projection.hospitals).toHaveLength(2);
+    for (const hospital of projection.hospitals) {
+      expect(hospital.actions.every(({ href }) => new URL(href, "https://demi.test").searchParams.get("hospitalId") === hospital.hospitalId)).toBe(true);
+      expect(hospital.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${hospital.hospitalId}`);
+    }
+    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/access-requests", "/app/patients/service-requests"]);
+    expect(projection.supportingActions.map(({ href }) => href)).toEqual([
+      "/app/patients/service-catalog", "/app/hospitals/contact", "/app/hospitals/knowledge", "/app/hospitals/reporting",
+    ]);
+    expect(projection.availableWorkspaces).toEqual(["personal", "work"]);
+  });
+
+  it("keeps multiple OSM associations distinct and the assigned directory shared", () => {
+    const secondId = "55555555-5555-4555-8555-555555555555";
+    const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [hospitalId, secondId].map((id) => ({ hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE })) }), [workspace(), workspace({ hospitalId: secondId })]);
+    expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
+    expect(projection.hospitals.map(({ actions }) => actions.map(({ href }) => href))).toEqual([
+      [`/app/patients/provision?hospitalId=${hospitalId}`], [`/app/patients/provision?hospitalId=${secondId}`],
+    ]);
+    expect(projection.requestActions).toHaveLength(0);
+    expect(projection.supportingActions).toHaveLength(0);
+  });
+
+  it("denies OSM entries without an active association", () => {
+    const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.SUSPENDED, hospitalStatus: HospitalStatus.ACTIVE }] }), [workspace()]);
+    expect(projection.assignedPatientsAction).toBeNull();
+    expect(projection.hospitals[0]?.actions).toEqual([]);
+    expect(projection.hospitals[0]?.contextLabel).toContain("ความสัมพันธ์ไม่พร้อมใช้งาน");
+    expect(projectApplicationWorkspace(actor({ roles: [Role.OSM] }), []).hospitals).toEqual([]);
+  });
+
+  it("does not grant Work operations from Patient self access or unrelated workspace data", () => {
+    const projection = projectApplicationWorkspace(actor(), [workspace()]);
+    expect(projection.hospitals[0]?.actions).toEqual([]);
+    expect(projection.requestActions).toEqual([]);
+    expect(projection.supportingActions).toEqual([]);
+  });
+
 });

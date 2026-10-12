@@ -1,4 +1,4 @@
-import { HospitalStatus } from "@prisma/client";
+import { HospitalStatus, MembershipStatus } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
@@ -29,10 +29,13 @@ export type ApplicationWorkspaceAction = {
   href: string;
   label: string;
   description: string;
+  category?: "care" | "patient" | "administration";
+  prefetch?: boolean;
 };
 
 export type ApplicationHospitalWorkspace = ActorHospitalWorkspace & {
   actions: readonly ApplicationWorkspaceAction[];
+  contextLabel: string;
 };
 
 export type ApplicationWorkspaceProjection = {
@@ -40,6 +43,8 @@ export type ApplicationWorkspaceProjection = {
   governanceActions: readonly ApplicationWorkspaceAction[];
   assignedPatientsAction: ApplicationWorkspaceAction | null;
   hospitals: readonly ApplicationHospitalWorkspace[];
+  requestActions: readonly ApplicationWorkspaceAction[];
+  supportingActions: readonly ApplicationWorkspaceAction[];
 };
 
 function withHospitalContext(path: string, hospitalId: string): string {
@@ -47,6 +52,9 @@ function withHospitalContext(path: string, hospitalId: string): string {
 }
 
 function navigationDescription(href: string): string {
+  if (href === "/app/admin/reporting") {
+    return "เลือกโรงพยาบาลเพื่อดูรายงานตามสิทธิ์ผู้ดูแลระบบ";
+  }
   if (href === "/app/admin/hospital-onboarding") {
     return "ตรวจสอบและตัดสินคำขอขึ้นทะเบียนโรงพยาบาล";
   }
@@ -64,6 +72,7 @@ function projectGovernanceActions(actor: ActorContext): ApplicationWorkspaceActi
       href: item.href,
       label: item.label,
       description: navigationDescription(item.href),
+      prefetch: item.prefetch,
     })) ?? []
   );
 }
@@ -77,7 +86,7 @@ function projectAssignedPatientsAction(actor: ActorContext): ApplicationWorkspac
     ? {
         href: assignedPatientsItem.href,
         label: assignedPatientsItem.label,
-        description: "เปิดรายชื่อผู้ป่วยที่ได้รับมอบหมายตามขอบเขตปัจจุบัน",
+        description: "เลือกผู้ป่วยที่ได้รับมอบหมายเพื่อเปิดข้อมูลและดูแลต่อเนื่อง สิทธิ์ตรวจตามผู้ป่วยและโรงพยาบาลแต่ละราย",
       }
     : null;
 }
@@ -104,6 +113,7 @@ function projectHospitalActions(
       href: withHospitalContext("/app/workforce", hospitalId),
       label: "จัดการบุคลากร",
       description: "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง",
+      category: "administration",
     });
   }
 
@@ -111,7 +121,8 @@ function projectHospitalActions(
     actions.push({
       href: withHospitalContext("/app/patients", hospitalId),
       label: "รายชื่อผู้ป่วย",
-      description: "ค้นหาและเปิดดูผู้ป่วยในขอบเขตโรงพยาบาลนี้",
+      description: "ค้นหาและเลือกผู้ป่วยในโรงพยาบาลนี้เพื่อเปิดข้อมูลและดูแลต่อเนื่อง",
+      category: "care",
     });
   }
 
@@ -121,8 +132,9 @@ function projectHospitalActions(
   ) {
     actions.push({
       href: withHospitalContext("/app/patients/provision", hospitalId),
-      label: "เพิ่มผู้ป่วย",
+      label: hasDirectHospitalProvisioningScope(actor, hospitalId) ? "เพิ่ม / นำเข้าผู้ป่วย" : "เพิ่มผู้ป่วย",
       description: "เพิ่มผู้ป่วยในโรงพยาบาลนี้ตามสิทธิ์ปัจจุบัน",
+      category: "patient",
     });
   }
 
@@ -131,6 +143,7 @@ function projectHospitalActions(
       href: withHospitalContext("/app/patients/activation", hospitalId),
       label: "เปิดใช้งานบัญชีผู้ป่วย",
       description: "จัดการการเปิดใช้งานบัญชีผู้ป่วยในโรงพยาบาลนี้",
+      category: "patient",
     });
   }
 
@@ -144,7 +157,7 @@ function projectHospitalActions(
     actions.push({
       href: "/app/patients/access-requests",
       label: "คำขอเปิดใช้งานผู้ป่วย",
-      description: "ตรวจสอบตัวตนและดำเนินคำขอในโรงพยาบาลนี้",
+      description: "ตรวจสอบตัวตนและดำเนินคำขอจากโรงพยาบาลที่บัญชีนี้มีสิทธิ์",
     });
   }
 
@@ -158,7 +171,7 @@ function projectHospitalActions(
     actions.push({
       href: "/app/patients/service-requests",
       label: "คำขอบริการผู้ป่วย",
-      description: "ทบทวนคำขอบริการที่ส่งถึงโรงพยาบาลนี้",
+      description: "ทบทวนคำขอบริการจากโรงพยาบาลที่บัญชีนี้มีสิทธิ์",
     });
   }
 
@@ -172,7 +185,7 @@ function projectHospitalActions(
     actions.push({
       href: "/app/patients/service-catalog",
       label: "บริการที่ผู้ป่วยขอได้",
-      description: "กำหนดบริการที่ผู้ป่วยขอได้จากโรงพยาบาลนี้",
+      description: "กำหนดบริการในโรงพยาบาลที่บัญชีนี้มีสิทธิ์จัดการ",
     });
   }
 
@@ -183,20 +196,51 @@ export function projectApplicationWorkspace(
   actor: ActorContext,
   workspaces: readonly ActorHospitalWorkspace[],
 ): ApplicationWorkspaceProjection {
-  const hospitals = workspaces
-    .map((workspace) => ({
-      ...workspace,
-      actions: projectHospitalActions(actor, workspace),
-    }))
-    .filter(
-      (workspace) =>
-        workspace.hospitalStatus !== HospitalStatus.ACTIVE || workspace.actions.length > 0,
-    );
+  const projected = workspaces.map((workspace) => ({
+    ...workspace,
+    actions: projectHospitalActions(actor, workspace),
+  }));
+  // These destinations resolve the actor's full permitted scope, not a selected Hospital.
+  const shared = new Map<string, ApplicationWorkspaceAction>();
+  for (const workspace of projected) {
+    for (const action of workspace.actions) {
+      if (!action.category) shared.set(action.href, action);
+    }
+  }
+  const supportingActions = projectApplicationNavigation(actor)
+    .filter(({ label }) => label === "โรงพยาบาล")
+    .flatMap(({ items }) => items.map((item) => ({
+      href: item.href,
+      label: item.label,
+      description: "เลือกโรงพยาบาลที่มีสิทธิ์ในหน้าปลายทาง",
+      prefetch: item.prefetch,
+    })));
+  const hospitals = projected.map((workspace) => ({
+    ...workspace,
+    contextLabel: workspaceContextLabel(actor, workspace.hospitalId),
+    actions: workspace.actions.filter((action) => Boolean(action.category)),
+  }));
 
   return {
     availableWorkspaces: getAvailableApplicationWorkspaces(actor),
     governanceActions: projectGovernanceActions(actor),
     assignedPatientsAction: projectAssignedPatientsAction(actor),
     hospitals,
+    requestActions: [...shared.values()].filter(({ href }) => href !== "/app/patients/service-catalog"),
+    supportingActions: [
+      ...[...shared.values()].filter(({ href }) => href === "/app/patients/service-catalog"),
+      ...supportingActions,
+    ],
   };
+}
+
+function workspaceContextLabel(actor: ActorContext, hospitalId: string): string {
+  const labels = actor.hospitalMemberships
+    .filter((membership) => membership.hospitalId === hospitalId)
+    .map((membership) => `${membership.membershipType === "OWNER" ? "เจ้าของโรงพยาบาล" : "สมาชิกโรงพยาบาล"}${membership.status !== MembershipStatus.ACTIVE ? " (สมาชิกไม่พร้อมใช้งาน)" : ""}`);
+  const relationship = actor.osmHospitalRelationships.find((item) => item.hospitalId === hospitalId);
+  if (relationship) {
+    labels.push(`อสม. ที่สัมพันธ์กับโรงพยาบาล${relationship.status !== MembershipStatus.ACTIVE ? " (ความสัมพันธ์ไม่พร้อมใช้งาน)" : ""}`);
+  }
+  return labels.join(" · ");
 }

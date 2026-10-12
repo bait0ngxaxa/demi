@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { HospitalStatus } from "@prisma/client";
+import { HospitalStatus, Role } from "@prisma/client";
 
 import {
   projectApplicationWorkspace,
@@ -11,6 +11,7 @@ import {
 } from "@/components/app-shell/application-workspace";
 import { roleLabels } from "@/components/app-shell/actor-presentation";
 import { Alert } from "@/components/ui/alert";
+import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -38,19 +39,24 @@ async function resolveProtectedActor(): Promise<ActorContext> {
 
 function WorkspaceActionList({
   actions,
+  primary = false,
 }: {
   actions: readonly ApplicationWorkspaceAction[];
+  primary?: boolean;
 }): React.JSX.Element {
   return (
     <ul className="divide-y divide-border border-y border-border">
-      {actions.map((action) => (
+      {actions.map((action, index) => (
         <li key={action.href}>
           <Link
-            className="flex min-h-16 flex-col justify-center gap-1 py-4 text-left transition-colors hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+            className={primary && index === 0
+              ? buttonClassName({ className: "my-3 w-full flex-col items-start gap-1 whitespace-normal text-left" })
+              : "flex min-h-16 flex-col justify-center gap-1 py-4 text-left transition-colors hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"}
             href={action.href}
+            prefetch={action.prefetch}
           >
-            <span className="font-semibold text-text">{action.label}</span>
-            <span className="text-sm leading-6 text-text-muted">{action.description}</span>
+            <span className="font-semibold">{action.label}</span>
+            <span className={primary && index === 0 ? "text-sm leading-6" : "text-sm leading-6 text-text-muted"}>{action.description}</span>
           </Link>
         </li>
       ))}
@@ -68,6 +74,8 @@ function HospitalWorkspaceSection({
   workspace: ApplicationHospitalWorkspace;
 }): React.JSX.Element {
   const isActive = workspace.hospitalStatus === HospitalStatus.ACTIVE;
+  const operationalActions = workspace.actions.filter(({ category }) => category !== "administration");
+  const administrationActions = workspace.actions.filter(({ category }) => category === "administration");
 
   return (
     <Panel aria-labelledby={`hospital-workspace-${workspace.hospitalId}`}>
@@ -80,13 +88,14 @@ function HospitalWorkspaceSection({
             {workspace.hospitalName}
           </h3>
           <p className="mt-1 text-sm text-text-muted">รหัส {workspace.hospitalCode}</p>
+          <p className="mt-1 text-sm leading-6 text-text-muted">{workspace.contextLabel}</p>
         </div>
         <StatusBadge
           variant={
             isActive ? "success" : workspace.hospitalStatus === HospitalStatus.SUSPENDED ? "danger" : "warning"
           }
         >
-          {isActive ? "พร้อมดำเนินงาน" : hospitalStatusLabel(workspace.hospitalStatus)}
+          {isActive ? "โรงพยาบาลใช้งานอยู่" : hospitalStatusLabel(workspace.hospitalStatus)}
         </StatusBadge>
       </div>
 
@@ -102,11 +111,17 @@ function HospitalWorkspaceSection({
         </Alert>
       ) : workspace.actions.length > 0 ? (
         <div className="mt-5">
-          <WorkspaceActionList actions={workspace.actions} />
+          {operationalActions.length > 0 ? <WorkspaceActionList actions={operationalActions} primary /> : null}
+          {administrationActions.length > 0 ? (
+            <details className="mt-5">
+              <summary className="min-h-11 cursor-pointer py-3 font-semibold focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">บริหารบุคลากรโรงพยาบาลนี้</summary>
+              <WorkspaceActionList actions={administrationActions} />
+            </details>
+          ) : null}
         </div>
       ) : (
         <p className="mt-5 text-sm leading-6 text-text-muted">
-          ยังไม่มีงานที่พร้อมใช้งานสำหรับขอบเขตของบัญชีนี้
+          ยังไม่มีการดำเนินงานที่เปิดให้บัญชีนี้ในโรงพยาบาลนี้ ความสัมพันธ์หรือสถานะสมาชิกไม่ได้ให้สิทธิ์ดูแลผู้ป่วยโดยอัตโนมัติ
         </p>
       )}
     </Panel>
@@ -131,80 +146,87 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
   await scheduleCurrentLineAccountReconciliation();
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-4xl break-words">
       <PageHeader
-        description="พื้นที่ทำงานตามบทบาทและงานที่พร้อมให้คุณดำเนินการ"
-        title="ยินดีต้อนรับสู่ DEMI"
+        description={projection.assignedPatientsAction || projection.hospitals.some(({ actions }) => actions.length > 0)
+          ? "เริ่มจากผู้ป่วยที่รับผิดชอบ หรือเลือกโรงพยาบาลเพื่อทำงานตามสิทธิ์ของคุณ"
+          : projection.governanceActions.length > 0
+            ? "เลือกงานกำกับดูแลหรือรายงานระบบตามสิทธิ์ของคุณ"
+            : "พื้นที่และรายการดำเนินงานแสดงตามสิทธิ์ปัจจุบันของบัญชี"}
+        title="พื้นที่ทำงาน"
+        actions={projection.availableWorkspaces.includes("personal") ? (
+          <Link className={buttonClassName({ variant: "secondary" })} href="/app/personal">ไปพื้นที่ส่วนตัว</Link>
+        ) : undefined}
       />
+      <ul className="mt-5 flex flex-wrap gap-2" aria-label="บทบาทการทำงาน">
+        {actor.roles.filter((role) => role !== Role.PATIENT).map((role) => (
+          <li key={role}><StatusBadge variant="info">{roleLabels[role]}</StatusBadge></li>
+        ))}
+      </ul>
+      {projection.availableWorkspaces.includes("personal") ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">หน้านี้เป็นพื้นที่ทำงาน ข้อมูลและบริการของคุณเองอยู่ในพื้นที่ส่วนตัว</p>
+      ) : null}
 
-      <section aria-labelledby="account-heading" className="pt-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold tracking-[-0.02em]" id="account-heading">
-            บัญชีปัจจุบัน
-          </h2>
-          <StatusBadge variant="success">บัญชีใช้งานอยู่</StatusBadge>
-        </div>
-        <p className="mt-2 text-sm leading-6 text-text-muted">
-          เลือกงานจากเมนูหลัก ระบบจะตรวจสิทธิ์ของแต่ละรายการอีกครั้งเมื่อเปิดหน้าหรือดำเนินการ
-        </p>
-        <div className="mt-6 border-y border-border py-5">
-          <h3 className="text-sm font-semibold text-text">บทบาทของคุณ</h3>
-          {actor.roles.length > 0 ? (
-            <ul className="mt-3 flex flex-wrap gap-2" aria-label="บทบาทของผู้ใช้งาน">
-              {actor.roles.map((role) => (
-                <li key={role}>
-                  <StatusBadge variant="info">{roleLabels[role]}</StatusBadge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีบทบาทสำหรับแสดงผล</p>
-          )}
-        </div>
-      </section>
+      {projection.assignedPatientsAction || projection.hospitals.length > 0 || projection.governanceActions.length === 0 ? (
+        <section aria-labelledby="workspace-heading" className="pt-8">
+          <h2 className="text-xl font-semibold tracking-[-0.02em]" id="workspace-heading">เริ่มงานดูแลผู้ป่วย</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">เลือกผู้ป่วยจากรายชื่อเพื่อเปิดข้อมูล โปรแกรม และประวัติการดูแล</p>
+          <div className="mt-5 space-y-5">
+            {projection.assignedPatientsAction ? (
+              <Panel aria-labelledby="assigned-heading">
+                <h3 className="text-lg font-semibold text-text" id="assigned-heading">ผู้ป่วยที่ อสม. รับผิดชอบ</h3>
+                <p className="mt-2 text-sm leading-6 text-text-muted">รวมเฉพาะขอบเขตการมอบหมายที่คุณมีสิทธิ์ ไม่ใช่รายชื่อผู้ป่วยทั้งหมดของโรงพยาบาล</p>
+                <div className="mt-5"><WorkspaceActionList actions={[projection.assignedPatientsAction]} primary /></div>
+              </Panel>
+            ) : null}
+            {projection.hospitals.map((workspace) => (
+              <HospitalWorkspaceSection key={workspace.hospitalId} workspace={workspace} />
+            ))}
+            {!projection.assignedPatientsAction && projection.hospitals.length === 0 ? (
+              <p className="text-sm leading-6 text-text-muted">บัญชีนี้ยังไม่มีขอบเขตงานดูแลผู้ป่วยที่เปิดให้ใช้งาน</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
-      <section aria-labelledby="workspace-heading" className="pt-8">
-        <h2 className="text-xl font-semibold tracking-[-0.02em]" id="workspace-heading">
-          งานถัดไป
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-text-muted">
-          เลือกงานที่ต้องการดำเนินการจากรายการด้านล่าง
-        </p>
+      {projection.requestActions.length > 0 ? (
+        <section aria-labelledby="requests-heading" className="pt-8">
+          <h2 className="text-xl font-semibold text-text" id="requests-heading">ทบทวนคำขอผู้ป่วย</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">แสดงคำขอจากทุกโรงพยาบาลที่คุณมีสิทธิ์ ไม่จำกัดเฉพาะโรงพยาบาลเดียว</p>
+          <div className="mt-5"><WorkspaceActionList actions={projection.requestActions} /></div>
+        </section>
+      ) : null}
 
-        <div className="mt-5 space-y-5">
-          {projection.governanceActions.length > 0 ? (
-            <Panel>
-              <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">งานกำกับดูแล</h3>
-              <p className="mt-1 text-sm leading-6 text-text-muted">รายการสำหรับผู้ดูแลระบบแพลตฟอร์มตามสิทธิ์ปัจจุบัน</p>
-              <div className="mt-5">
-                <WorkspaceActionList actions={projection.governanceActions} />
-              </div>
-            </Panel>
-          ) : null}
+      {projection.governanceActions.length > 0 ? (
+        <section aria-labelledby="governance-heading" className="pt-8">
+          <h2 className="text-xl font-semibold text-text" id="governance-heading">กำกับดูแลและรายงานระบบ</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">งานผู้ดูแลระบบ DEMI แยกจากสิทธิ์ดูแลผู้ป่วยในโรงพยาบาล</p>
+          <div className="mt-5"><WorkspaceActionList actions={projection.governanceActions} primary /></div>
+        </section>
+      ) : null}
 
-          {projection.assignedPatientsAction ? (
-            <Panel>
-              <h3 className="text-lg font-semibold tracking-[-0.02em] text-text">งานภาคสนาม</h3>
-              <div className="mt-5">
-                <WorkspaceActionList actions={[projection.assignedPatientsAction]} />
-              </div>
-            </Panel>
-          ) : null}
+      {projection.supportingActions.length > 0 ? (
+        <section aria-labelledby="supporting-heading" className="pt-8">
+          <h2 className="text-xl font-semibold text-text" id="supporting-heading">เครื่องมือบริหารและรายงานโรงพยาบาล</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">ใช้ขอบเขตที่บัญชีนี้มีสิทธิ์ เลือกโรงพยาบาลในหน้าปลายทางที่รองรับการเลือก</p>
+          <div className="mt-5"><WorkspaceActionList actions={projection.supportingActions} /></div>
+        </section>
+      ) : null}
 
-          {projection.hospitals.map((workspace) => (
-            <HospitalWorkspaceSection key={workspace.hospitalId} workspace={workspace} />
-          ))}
+      {projection.governanceActions.length === 0 && !projection.assignedPatientsAction &&
+        !projection.hospitals.some(({ actions }) => actions.length > 0) &&
+        projection.requestActions.length === 0 && projection.supportingActions.length === 0 ? (
+        <Alert className="mt-8" variant="neutral">
+          <p className="font-semibold">ยังไม่มีการดำเนินงานที่พร้อมใช้งาน</p>
+          <p className="mt-1">เมื่อมีบทบาทและความสัมพันธ์ที่ใช้งานได้ รายการตามสิทธิ์จะแสดงที่นี่</p>
+        </Alert>
+      ) : null}
 
-          {projection.governanceActions.length === 0 &&
-          !projection.assignedPatientsAction &&
-          projection.hospitals.length === 0 ? (
-            <Alert variant="neutral">
-              <p className="font-semibold">ยังไม่มีพื้นที่ทำงานที่พร้อมใช้งาน</p>
-              <p className="mt-1">ระบบยังไม่พบงานที่เปิดให้บัญชีนี้ดำเนินการได้ในขณะนี้</p>
-            </Alert>
-          ) : null}
-        </div>
-      </section>
+      <details className="mt-8 border-t border-border pt-3">
+        <summary className="min-h-11 cursor-pointer py-3 font-semibold focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">ข้อมูลบัญชีและสิทธิ์</summary>
+        <StatusBadge variant="success">บัญชีใช้งานอยู่</StatusBadge>
+        <p className="mt-3 text-sm leading-6 text-text-muted">ระบบตรวจสิทธิ์อีกครั้งเมื่อเปิดหน้าหรือดำเนินการ การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี</p>
+      </details>
     </div>
   );
 }
