@@ -122,7 +122,7 @@
 
 ## 5. Owner / Clinical decision sheet
 
-ทุกข้อเป็น **OPEN** คอลัมน์ “ค่าแนะนำ” เป็น engineering recommendation ไม่ใช่การอนุมัติ Owner ตอบได้ 3 แบบ: ยอมรับ / แก้ไข / เลื่อน (ช่องนั้นจะแสดง label “ยังไม่พร้อมใช้งาน” ต่อไป)
+ทุกข้อเป็น **OPEN** ยกเว้นข้อที่ระบุว่า **CONFIRMED** ใน §5.1 คอลัมน์ “ค่าแนะนำ” เป็น engineering recommendation ไม่ใช่การอนุมัติ Owner ตอบได้ 3 แบบ: ยอมรับ / แก้ไข / เลื่อน (ช่องนั้นจะแสดง label “ยังไม่พร้อมใช้งาน” ต่อไป)
 
 | ID | คำถาม | ค่าแนะนำ | ผู้อนุมัติ | ปลดล็อกคอลัมน์ |
 | --- | --- | --- | --- | --- |
@@ -145,6 +145,19 @@
 | CL-05 | ระยะเวลาการเจ็บป่วย | เพิ่ม “ปีที่ได้รับการวินิจฉัย” ที่ Hospital บันทึก; แสดงเป็นจำนวนปี ณ วันเริ่ม Program | Clinical + Data owner | E |
 | CL-06 | PAM / PROMs / ไม้บรรทัดวัดใจ | คลินิกระบุชื่อแบบประเมิน, version ภาษาไทย, วิธีให้คะแนน; ผูก assessment กับ Program stage (Before/After); ไม้บรรทัดวัดใจ Before = Service 1 Confidence (0–10) | Clinical | K, L, M |
 | CL-07 | เวลาออกกำลังกาย/สัปดาห์ | เจ้าหน้าที่/อสม. บันทึก นาที/สัปดาห์ ใน Baseline และ Final (operational record) ไม่ดึงจาก Personal Wellness | Clinical + Owner; Privacy | N, Q |
+
+### 5.1 Product Owner decisions (2026-10-12)
+
+Product Owner ตอบใน session นี้ โดยเลือกตามค่าแนะนำทั้ง 4 ข้อ:
+
+| ID | สถานะ | ผลการตัดสินใจ |
+| --- | --- | --- |
+| WB-D01 | **CONFIRMED** | รายงานใช้นิยามรอบตาม workbook (ครั้งที่ 1 = รู้จักตัวเอง/Service 1, ครั้งที่ 2 = ทำแผนสุขภาพ/Goal Plan, ครั้งที่ 3–6 = ติดตาม/Follow-up); ลำดับกิจกรรมใน whiteboard เป็นแนวทาง UI ไม่ใช่นิยามรายงาน |
+| R24A-D11 | **CONFIRMED** | Dashboard “ระหว่างโปรแกรม 1–6” = รอบบริการที่ 1–6: ช่อง 1 = Service 1, ช่อง 2 = Goal Plan, ช่อง 3–6 = Follow-up ลำดับที่ 1–4; Follow-up ที่เกินลงแถวต่อเนื่องในช่อง 3–6; ช่อง 1–2 แสดงว่ายังไม่มีแหล่งค่าวัดจนกว่า S2 จะเพิ่มการวัดในรอบนั้น |
+| WB-D02 | **CONFIRMED (มีเงื่อนไข)** | OWNER และ MEMBER ดาวน์โหลดได้ โดย MEMBER จำกัดเฉพาะ Hospital ที่สังกัดโดยตรง มี audit และ **ต้องผ่าน privacy review เรื่องการแสดงชื่อ/HN ก่อนเปิดใช้** จึงยังไม่ implement จนกว่า review ผ่าน (S6) |
+| WB-D03 | **CONFIRMED** | “ทั้งหมด” = Hospital เดียวที่ผู้ใช้สังกัดโดยตรง สอดคล้อง OR-RPT-03; ตัวกรองเขตความรับผิดชอบรอ AREA-01..05 |
+
+ข้อที่ยัง OPEN และ block S1 ส่วนที่เหลือ: BR-01, BR-02, BR-03, BR-08 และ CL-01/CL-06 (เฉพาะช่อง HbA1c/ไม้บรรทัดวัดใจ Before)
 
 ## 6. Implementation slices
 
