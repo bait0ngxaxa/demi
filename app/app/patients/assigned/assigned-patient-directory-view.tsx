@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { buttonClassName, Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -55,24 +55,25 @@ function PatientRow({ item }: { item: PatientDirectoryItem }): React.JSX.Element
     <li>
       <Link
         className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-        href={`/app/patients/${item.patientHospitalRelationshipId}`}
+        href={`/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`}
       >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="min-w-0">
             <h3 className="break-words text-lg font-semibold text-text group-hover:text-brand-strong">
               {item.displayName}
             </h3>
-            <p className="mt-1 text-sm leading-6 text-text-muted">{item.hospital.name}</p>
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">โรงพยาบาล: {item.hospital.name}</p>
+            <dl className="mt-2 text-sm leading-6">
+              <dt className="inline text-text-muted">HN ของโรงพยาบาลนี้: </dt>
+              <dd className="inline break-words font-semibold text-text">{item.hospitalNumber ?? "ไม่ระบุ"}</dd>
+            </dl>
           </div>
-          <dl className="shrink-0 text-sm leading-6 sm:text-right">
-            <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
-            <dd className="font-semibold text-text">{item.hospitalNumber ?? "ไม่ระบุ"}</dd>
-          </dl>
-          <div className="shrink-0 sm:text-right">
+          <div className="min-w-0 sm:text-right">
             <p className="text-xs text-text-muted">สถานะผู้ป่วย</p>
             <StatusBadge variant={item.classification ? "info" : "neutral"}>
               {getPatientClassificationLabel(item.classification)}
             </StatusBadge>
+            <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดผู้ป่วยเพื่อดูแลต่อ</p>
           </div>
         </div>
       </Link>
@@ -145,13 +146,14 @@ export function AssignedPatientDirectoryView({
     lookupType === "HOSPITAL_NUMBER"
       ? PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
+  const hasFilters = Boolean(result?.value) || (result?.classificationFilter ?? classificationFilter) !== "ALL";
 
   return (
-    <div>
+    <div className="max-w-4xl break-words">
       <PageHeader
         actions={<StatusBadge variant="info">ขอบเขตที่รับผิดชอบ</StatusBadge>}
-        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
-        description="แสดงเฉพาะผู้ป่วยที่ได้รับมอบหมายให้คุณในโรงพยาบาลที่มีความสัมพันธ์ใช้งานอยู่"
+        breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
+        description="เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติตามสิทธิ์ของคุณ แสดงเฉพาะความสัมพันธ์ผู้ป่วยที่มอบหมายให้คุณอยู่ในขณะนี้และมีขอบเขตโรงพยาบาลที่ใช้งานได้"
         title="ผู้ป่วยที่รับผิดชอบ"
       />
 
@@ -161,7 +163,7 @@ export function AssignedPatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
           </p>
-          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] lg:items-end" method="get">
+          <form action="/app/patients/assigned" className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem] lg:items-end" method="get">
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} name="lookupType">
@@ -187,7 +189,14 @@ export function AssignedPatientDirectoryView({
                 <option value="DIABETES">เบาหวาน</option>
               </Select>
             </label>
-            <Button type="submit">ค้นหา</Button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:col-span-3">
+              <Button type="submit">ค้นหา</Button>
+              {hasFilters || errorMessage ? (
+                <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/patients/assigned">
+                  ล้างการค้นหาและตัวกรอง
+                </Link>
+              ) : null}
+            </div>
           </form>
           <p className="mt-3 text-xs leading-5 text-text-subtle">
             แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้
@@ -207,9 +216,9 @@ export function AssignedPatientDirectoryView({
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
                   รายชื่อผู้ป่วยที่รับผิดชอบ
                 </h2>
-                <p className="mt-1 text-sm text-text-muted">รวมทุกโรงพยาบาลที่คุณมีสิทธิ์และผู้ป่วยที่ได้รับมอบหมาย</p>
+                <p className="mt-1 text-sm text-text-muted">แต่ละรายการเป็นความสัมพันธ์ผู้ป่วยกับโรงพยาบาล ตรวจสอบโรงพยาบาลและ HN ก่อนเปิดดูแลต่อ</p>
               </div>
-              <p className="text-sm text-text-muted">พบ {result.total} รายการ</p>
+              <p className="text-sm text-text-muted">พบ {result.total} ความสัมพันธ์ผู้ป่วย{hasFilters ? "ตามการค้นหาและตัวกรอง" : "ที่รับผิดชอบ"}</p>
             </div>
 
             {result.items.length > 0 ? (
@@ -226,10 +235,12 @@ export function AssignedPatientDirectoryView({
             ) : (
               <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
                 <p className="font-semibold text-text">
-                  {result.value ? "ไม่พบผู้ป่วยตามข้อมูลค้นหา" : "ยังไม่มีผู้ป่วยที่ได้รับมอบหมาย"}
+                  {hasFilters ? "ไม่พบผู้ป่วยตามการค้นหาและตัวกรอง" : "ยังไม่มีผู้ป่วยที่ได้รับมอบหมายในขอบเขตที่ใช้งานได้"}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-text-muted">
-                  หากต้องการให้มีผู้ป่วยในรายการนี้ กรุณาติดต่อเจ้าของโรงพยาบาลเพื่อจัดการการมอบหมายผู้ป่วย
+                  {hasFilters
+                    ? "ลองเปลี่ยนคำค้นหา ตรวจสอบ HN แบบตรงตัว หรือล้างตัวกรองเพื่อดูผู้ป่วยที่รับผิดชอบทั้งหมด"
+                    : "รายการนี้แสดงเฉพาะการมอบหมายที่ใช้งานได้ในขณะนี้ หากต้องการตรวจสอบการมอบหมาย กรุณาติดต่อเจ้าของโรงพยาบาล"}
                 </p>
               </div>
             )}

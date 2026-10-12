@@ -354,13 +354,14 @@ describe("Patient detail page authorization boundary", () => {
       params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
     });
     expect(containsString(page, `/app/patients?hospitalId=${patient.hospital.id}`)).toBe(true);
+    expect(containsString(page, "รายชื่อผู้ป่วยของโรงพยาบาล")).toBe(true);
     expect(containsString(page, "/app/personal")).toBe(false);
   });
 
-  it("returns an authorized OSM to the assigned directory and omits Owner operations", async () => {
+  it.each([[Role.OSM], [Role.OSM, Role.PATIENT]])("returns an authorized OSM with roles %j to the assigned directory and omits Owner operations", async (...roles) => {
     mockedGetProtectedApplicationActor.mockResolvedValue({
       ...actor,
-      roles: [Role.OSM],
+      roles,
       hospitalMemberships: [],
       osmHospitalRelationships: [{
         hospitalId: patient.hospital.id,
@@ -372,6 +373,8 @@ describe("Patient detail page authorization boundary", () => {
       params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
     });
     expect(containsString(page, "/app/patients/assigned")).toBe(true);
+    expect(containsString(page, "ผู้ป่วยที่รับผิดชอบ")).toBe(true);
+    expect(containsString(page, "/app/patients?hospitalId=")).toBe(false);
     expect(containsString(page, "/assignment")).toBe(false);
   });
 

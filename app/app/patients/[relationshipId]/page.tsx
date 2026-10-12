@@ -136,7 +136,9 @@ export default async function PatientDetailPage({
     actor,
     patient.hospital.id,
   ).allowed;
-  const backHref = hasDirectHospitalPatientReadScope(actor, patient.hospital.id)
+  const hasHospitalDirectoryAccess = hasDirectHospitalPatientReadScope(actor, patient.hospital.id);
+  const backLabel = hasHospitalDirectoryAccess ? "รายชื่อผู้ป่วยของโรงพยาบาล" : "ผู้ป่วยที่รับผิดชอบ";
+  const backHref = hasHospitalDirectoryAccess
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
 
@@ -184,7 +186,7 @@ export default async function PatientDetailPage({
     <div className="max-w-4xl">
       <PageHeader
         breadcrumbs={[
-          { href: backHref, label: "ผู้ป่วย" },
+          { href: backHref, label: backLabel },
           { label: "รายละเอียดผู้ป่วย" },
         ]}
         description="ข้อมูลผู้ป่วย งานดูแลปัจจุบัน และประวัติในขอบเขตโรงพยาบาลนี้"
@@ -327,7 +329,7 @@ export default async function PatientDetailPage({
           className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           href={backHref}
         >
-          กลับไปยังรายชื่อผู้ป่วย
+          กลับไปยัง{backLabel}
         </Link>
       </div>
     </div>
