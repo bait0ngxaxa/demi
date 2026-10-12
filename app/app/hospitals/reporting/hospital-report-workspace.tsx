@@ -16,8 +16,12 @@ import type {
   HospitalReportProgramRow,
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
+import type { HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
+import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
+
+import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
 
 type ReportView = "overview" | "service";
 
@@ -541,6 +545,8 @@ export function HospitalReportWorkspace({
   page,
   selectedHospitalId,
   audience = "HOSPITAL_OWNER",
+  parentGroups = [],
+  selection,
 }: {
   hospitals: readonly HospitalReportingHospital[];
   hierarchy: HospitalHierarchyContext;
@@ -548,12 +554,15 @@ export function HospitalReportWorkspace({
   page: HospitalReportingPageProjection;
   selectedHospitalId: string;
   audience?: "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
+  parentGroups?: readonly ParentChildHospitalReportTargetGroup[];
+  selection?: HospitalReportTargetSelection;
 }): React.JSX.Element {
   const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
   const isGlobalAdmin = audience === "GLOBAL_ADMIN";
   const routeBase = isGlobalAdmin ? "/app/admin/reporting" : "/app/hospitals/reporting";
   const baseHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
   const allowProgramDetail = !isGlobalAdmin;
+  const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
   return (
     <div className="min-w-0 max-w-[1440px]">
@@ -579,18 +588,28 @@ export function HospitalReportWorkspace({
         </div>
       ) : null}
 
-      {hospitals.length > 1 ? (
-        <form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
-          <div className="min-w-0 flex-1">
-            <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">{isGlobalAdmin ? "เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง" : "เลือกโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"}</label>
-            <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" name="hospitalId">
-              {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
-            </select>
-            <input name="view" type="hidden" value={view} />
-          </div>
-          <Button type="submit" variant="secondary">เปลี่ยนโรงพยาบาล</Button>
-        </form>
-      ) : null}
+      {isGlobalAdmin ? (
+        hospitals.length > 1 ? (
+          <form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
+            <div className="min-w-0 flex-1">
+              <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง</label>
+              <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" name="hospitalId">
+                {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
+              </select>
+              <input name="view" type="hidden" value={view} />
+            </div>
+            <Button type="submit" variant="secondary">เปลี่ยนโรงพยาบาล</Button>
+          </form>
+        ) : null
+      ) : (
+        <HospitalReportTargetSelector
+          hospitals={hospitals}
+          parentGroups={parentGroups}
+          routeBase={routeBase}
+          selection={targetSelection}
+          view={view}
+        />
+      )}
 
       <HospitalReportingHierarchy hierarchy={hierarchy} />
 
@@ -602,7 +621,7 @@ export function HospitalReportWorkspace({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
-            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงาน exact-Hospital ของหน่วยนี้" : "ข้อมูลตาม Program ของโรงพยาบาลนี้"}</p>
+            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงาน exact-Hospital ของหน่วยนี้" : "การเข้าถึง: เจ้าของโรงพยาบาลนี้โดยตรง"}</p>
           </div>
         </div>
 

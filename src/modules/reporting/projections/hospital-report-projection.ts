@@ -129,6 +129,17 @@ export type HospitalReportingPageProjection = {
   };
 };
 
+export type ParentChildHospitalReportPageProjection = {
+  operation: "PARENT_CHILD_REPORT";
+  access: "PARENT_OWNER";
+  parent: { id: string; name: string };
+  hospital: { id: string; name: string };
+  content: {
+    state: "WITHHELD";
+    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED";
+  };
+};
+
 export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page"> & {
   programs: readonly HospitalReportProgramRow[];
 };

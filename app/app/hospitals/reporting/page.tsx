@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { getHospitalReportPageContext } from "@/modules/reporting/transport/hospital-report-page-context";
 
 import { HospitalReportWorkspace } from "./hospital-report-workspace";
+import { ParentChildHospitalReportWorkspace } from "./parent-child-hospital-report-workspace";
 
 export const metadata: Metadata = { title: "รายงานโรงพยาบาล" };
 
@@ -12,6 +13,7 @@ type SearchParams = {
   hospitalId?: string | string[];
   cursor?: string | string[];
   pageSize?: string | string[];
+  target?: string | string[];
   view?: string | string[];
 };
 
@@ -27,10 +29,11 @@ export default async function HospitalReportingPage({
 }): Promise<React.JSX.Element> {
   await connection();
   const params = await searchParams;
-  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "view"].includes(key))) notFound();
+  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "target", "view"].includes(key))) notFound();
   const requestedHospitalId = readSingleParameter(params.hospitalId);
   const cursor = readSingleParameter(params.cursor);
   const pageSizeRaw = readSingleParameter(params.pageSize);
+  const requestedTarget = readSingleParameter(params.target);
   const requestedView = readSingleParameter(params.view);
 
   if (requestedView !== undefined && requestedView !== "overview" && requestedView !== "service") {
@@ -39,13 +42,26 @@ export default async function HospitalReportingPage({
   const pageSize = pageSizeRaw === undefined ? undefined : Number(pageSizeRaw);
   if (pageSizeRaw !== undefined && !Number.isInteger(pageSize)) notFound();
 
-  const context = await getHospitalReportPageContext(requestedHospitalId, cursor, pageSize);
+  const context = await getHospitalReportPageContext(requestedHospitalId, cursor, pageSize, requestedTarget);
+  if (context.mode === "PARENT_CHILD") {
+    return (
+      <ParentChildHospitalReportWorkspace
+        hospitals={context.hospitals}
+        parentGroups={context.parentGroups}
+        report={context.report}
+        selection={context.selection}
+      />
+    );
+  }
+
   return (
     <HospitalReportWorkspace
       hospitals={context.hospitals}
       hierarchy={context.hierarchy}
       initialView={requestedView ?? "overview"}
       page={context.page}
+      parentGroups={context.parentGroups}
+      selection={context.selection}
       selectedHospitalId={context.selectedHospitalId}
     />
   );

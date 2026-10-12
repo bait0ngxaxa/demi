@@ -36,11 +36,14 @@ import type {
   HospitalReportRecord,
   HospitalReportingDataset,
   HospitalReportingPageProjection,
+  ParentChildHospitalReportPageProjection,
 } from "../projections/hospital-report-projection";
 import {
   hospitalReportExportRequestSchema,
   hospitalReportPageRequestSchema,
+  parentChildHospitalReportRequestSchema,
 } from "../schemas/hospital-report-schemas";
+import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
 import { resolveHospitalReportingAccessContext } from "./hospital-report-access-service";
 import { resolveGlobalReportingAccessContext } from "./global-reporting-access-service";
 
@@ -81,8 +84,9 @@ export class HospitalReportExportLimitError extends ApplicationError {
 }
 
 type ReportCursor = { startedAt: Date; id: string };
-// RPT-NET-01 stops at target authorization. RPT-NET-02 must use a distinct cursor operation bound to the actor,
-// exact Child and Parent context, page size, ordering, expiry and signature, then re-resolve authority per continuation.
+// Parent results are withheld while no fields are approved, so this operation has no cursor. If an approved
+// pageable Parent projection is added, its signed cursor must bind the actor, exact Parent and Child, operation,
+// page size, ordering and expiry, then re-resolve authority on every continuation.
 type ReportScopeOperation = "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
 type ReportCursorContext = {
   actorId: string;
@@ -785,6 +789,78 @@ export async function getGlobalAdminHospitalReportingPage(
   dependencies: HospitalReportQueryDependencies = {},
 ): Promise<HospitalReportingPageProjection> {
   return getHospitalReportingPageForOperation(actor, input, dependencies, "GLOBAL_ADMIN");
+}
+
+/**
+ * Resolve and read one exact Child target through Parent authority. No Patient, Program, clinical, count, or export source is queried until a Parent field allowlist is approved.
+ */
+export async function getParentChildHospitalReportingPage(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<ParentChildHospitalReportPageProjection> {
+  const parsed = parentChildHospitalReportRequestSchema.safeParse(input);
+  if (!parsed.success) throw new NotFoundError();
+
+  try {
+    const database = dependencies.database ?? getPrisma();
+    const projection = await runConsistentRead(database, async (transaction) => {
+      const access = await resolveParentChildHospitalReportAccessContext(
+        actor,
+        parsed.data.parentHospitalId,
+        parsed.data.hospitalId,
+        transaction,
+      );
+      const target = await transaction.hospital.findFirst({
+        where: {
+          id: access.hospital.id,
+          status: HospitalStatus.ACTIVE,
+          parentHospitalId: access.parentHospitalId,
+          parentHospital: {
+            is: {
+              id: access.parentHospitalId,
+              status: HospitalStatus.ACTIVE,
+              parentHospitalId: null,
+            },
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          parentHospital: { select: { id: true, name: true } },
+        },
+      });
+      if (!target?.parentHospital) throw new NotFoundError();
+
+      return {
+        operation: "PARENT_CHILD_REPORT",
+        access: "PARENT_OWNER",
+        parent: target.parentHospital,
+        hospital: { id: target.id, name: target.name },
+        content: {
+          state: "WITHHELD",
+          reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
+        },
+      } satisfies ParentChildHospitalReportPageProjection;
+    });
+
+    await resolveParentChildHospitalReportAccessContext(
+      actor,
+      parsed.data.parentHospitalId,
+      parsed.data.hospitalId,
+      database,
+    );
+    return projection;
+  } catch (error: unknown) {
+    if (
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof InfrastructureError
+    ) {
+      throw error;
+    }
+    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+  }
 }
 
 function assertExportBounds(input: {

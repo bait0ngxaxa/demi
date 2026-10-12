@@ -63,16 +63,16 @@ HN-A01–A06 และ HN-M01–M06 ยังคง traceable เป็น histo
 | --- | --- | --- |
 | Hospital OWNER — view report | Hospital ที่มี direct ACTIVE OWNER membership; ACTIVE Hospital | `VERIFIED_IMPLEMENTED`; exact-Hospital report |
 | Hospital OWNER — export report | Hospital เดียวกัน | `VERIFIED_IMPLEMENTED`; exact-Hospital XLSX |
-| Parent OWNER — list/select Child for report | Current eligible direct children ของ exact ACTIVE Parent ที่ผู้ใช้เป็น ACTIVE OWNER | รายชื่อเด็กบางส่วนมีใน hierarchy view; reporting selection/journey ยัง `IMPLEMENTATION_GAP` |
-| Parent OWNER — authorize exact selected Child report target | exact ACTIVE direct Child Hospital ของ exact ACTIVE Parent; ไม่ต้องมี Child OWNER membership | `VERIFIED_IMPLEMENTED` สำหรับ RPT-NET-01 backend resolver เท่านั้น; คืน minimal exact-target context และไม่ query report data |
-| Parent OWNER — view selected Child report | exact ACTIVE direct Child Hospital ใน Parent scope; ไม่ต้องมี Child OWNER membership | `IMPLEMENTATION_GAP`; RPT-NET-02 consumer/query ยัง pending และ field disclosure ที่เปิดอยู่ยังต้องคงไว้ |
+| Parent OWNER — list/select Child for report | Current eligible direct children ของ exact ACTIVE Parent ที่ผู้ใช้เป็น ACTIVE OWNER | `VERIFIED_IMPLEMENTED` สำหรับ selector แบบจัดกลุ่มตาม Parent; แสดงเฉพาะ ACTIVE direct Child และแยก Parent ของแต่ละตัวเลือก |
+| Parent OWNER — authorize exact selected Child report target | exact ACTIVE direct Child Hospital ของ exact ACTIVE Parent; ไม่ต้องมี Child OWNER membership | `VERIFIED_IMPLEMENTED` — RPT-NET-02 เรียกใช้ RPT-NET-01 resolver ซ้ำในขอบเขต read operation |
+| Parent OWNER — read selected Child report boundary | exact ACTIVE direct Child Hospital ใน Parent scope; ไม่ต้องมี Child OWNER membership | `VERIFIED_IMPLEMENTED` เฉพาะ secure consumer/projection boundary; ปัจจุบันคืนชื่อและ ID ของ Parent/Child พร้อมสถานะ `WITHHELD` โดยไม่ query Patient, Program, clinical, count หรือ export sources. เนื้อหารายงานจริงยัง `OPEN_REQUIREMENT` และ user-facing journey จึงเป็น `PARTIAL` |
 | Parent OWNER — export selected Child report | exact selected eligible Child | `OPEN_REQUIREMENT`; อย่าอนุญาตหรือปฏิเสธโดยอนุมานจาก OR-RPT-01 |
 | Platform ADMIN — select/view Hospital report | eligible ACTIVE Hospital ใดก็ได้ในระบบ | `VERIFIED_IMPLEMENTED`; current database ACTIVE `Role.ADMIN`, exact-Hospital query |
 | Platform ADMIN — export selected Hospital report | exact selected eligible ACTIVE Hospital | `VERIFIED_IMPLEMENTED`; XLSX ของ Hospital ที่เลือกเท่านั้น |
 | Global ADMIN — merged multi-Hospital report | ระบบหรือชุด Hospital | `FUTURE_NOT_PRIORITIZED`; ไม่อยู่ใน initial scope |
 | Network — merged P/C/N aggregate | ตาม historical HN scopes | `FUTURE_NOT_PRIORITIZED`; HN-M07 และ temporal gates ใช้กับ aggregate ตามขอบเขตของมัน |
 
-Multi-role actor ใช้เฉพาะ authorization path ของ operation ที่เรียก: `ADMIN` เพียงอย่างเดียวไม่ grant Parent scope; `HOSPITAL + ADMIN` ใช้ Parent path ได้ต่อเมื่อผ่าน current HOSPITAL + direct Parent OWNER checks และใช้ Global path ได้เมื่อผ่าน current ADMIN checks
+Multi-role actor ใช้เฉพาะ authorization path ของ operation ที่เรียก: `ADMIN` เพียงอย่างเดียวไม่ grant Parent scope; `HOSPITAL + ADMIN` ใช้ Parent path ได้ต่อเมื่อผ่าน current HOSPITAL + direct Parent OWNER checks และใช้ Global path ได้เมื่อผ่าน current ADMIN checks. หากผู้ใช้เป็น direct OWNER ของ Child ที่เลือก ระบบคงใช้ direct OWNER operation; Parent operation ใช้เมื่อสิทธิ์มาจาก Parent เท่านั้น
 
 ## 3. ตรวจสอบ baseline จาก runtime ปัจจุบัน
 
@@ -84,16 +84,18 @@ Multi-role actor ใช้เฉพาะ authorization path ของ operation
 | Global ADMIN selected-Hospital XLSX | `VERIFIED_IMPLEMENTED` | `/api/v1/admin/reporting/export` revalidates current ADMIN และ selected ACTIVE Hospital; [Phase 18D.2 handoff](../phases/PHASE_18D2_GLOBAL_ADMIN_REPORTING_IMPLEMENTATION_HANDOFF.md) |
 | Parent OWNER structural hierarchy context | `VERIFIED_IMPLEMENTED` บางส่วน | [Hospital hierarchy service](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts) มี owner context และ `resolveHospitalNetworkScope()`; resolver ไม่ใช่ report capability |
 | Parent OWNER exact Child report-target authorization | `VERIFIED_IMPLEMENTED` — RPT-NET-01 foundation only | [Parent-to-Child access resolver](../../src/modules/reporting/services/parent-child-hospital-report-access-service.ts) ใช้ [owner-specific direct-child resolver](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts), rechecks current Parent OWNER/Role.HOSPITAL/status/relationship และคืน target เดียว; ไม่เรียก report query/projection |
-| Parent OWNER Child selection and report consumer | `IMPLEMENTATION_GAP` — RPT-NET-02 pending | `listHospitalReportingHospitals()` และ current report page ยังเป็น direct OWNER path; ไม่มี Parent selector/approved Child report projection ที่เชื่อมกับ resolver ใหม่ |
+| Parent OWNER Child selection | `VERIFIED_IMPLEMENTED` — RPT-NET-02 | `/app/hospitals/reporting` ใช้ selector เดียว จัด Child ตาม Parent ที่ actor เป็น direct ACTIVE OWNER; Child options ส่งเฉพาะ ID และชื่อ และแสดงเฉพาะ ACTIVE direct Child |
+| Parent OWNER selected Child report consumer | `VERIFIED_IMPLEMENTED` — secure infrastructure only | `getParentChildHospitalReportingPage()` re-resolves RPT-NET-01 authority ใน RepeatableRead read boundary; report identity query select เฉพาะ Hospital ID/ชื่อของ exact Parent/Child และ revalidates ก่อนคืนผล. Resolver อ่าน structural hierarchy metadata เพื่อยืนยันสิทธิ์ตามปกติ; ไม่มี Patient/Program/clinical/count report source query. Projection มีเฉพาะ Parent/Child ID และชื่อ พร้อม `WITHHELD`; ไม่มี sensitive fields หรือ exact-detail links ข้ามไปยัง Client Component |
+| Parent OWNER report result fields | `OPEN_REQUIREMENT` | ยังไม่มี Parent-facing field allowlist ที่ Owner อนุมัติ; ไม่มีผลรายงานส่งไปยัง browser จนกว่าจะกำหนด fields ที่เปิดเผยได้ |
 | Global merged aggregation / comparison | `FUTURE_NOT_PRIORITIZED` | ไม่มี initial product requirement; ไม่ใช่ dependency ของ selected-Hospital ADMIN reporting |
 | N-only Network aggregate as next primary slice | `SUPERSEDED_PRODUCT_ASSUMPTION` | ถูกแทนที่เป็น primary target ด้วย OR-RPT-01; aggregate contracts ยังคง historical/future |
 
-หน้า Hospital Reporting แสดง hierarchy ของ direct children; RPT-NET-01 เพิ่ม backend resolver สำหรับ exact Child target แล้ว แต่ยังไม่มี selector/report consumer ที่ใช้ resolver นี้ การมี hierarchy directory หรือ authorization context จึงยังไม่เท่ากับการอ่าน report ของ Child ได้
+หน้า `/app/hospitals/reporting` ใช้ selector เดียวสำหรับ My Hospitals และ Child Hospitals ภายใต้ Parent แต่ละแห่ง การเลือก Parent Hospital ใช้ direct OWNER report เดิม; การเลือก Child ที่ actor ไม่ได้เป็น direct OWNER ใช้ `PARENT_CHILD_REPORT` และ resolver ของ RPT-NET-01. Parent projection ปัจจุบันมีเพียง ID/ชื่อของโรงพยาบาลที่เกี่ยวข้องและสถานะเนื้อหา `WITHHELD`; ยังไม่มีผลรายงานจริงที่ส่งให้ Parent
 
 ## 4. ขอบเขต initial และ implementation priorities
 
 1. **RPT-NET-01 — Parent-to-Child Reporting Authorization:** `VERIFIED_IMPLEMENTED` เฉพาะ backend policy/access resolver ที่คืน exact ACTIVE direct Child target จาก current Parent OWNER scope; ไม่เชื่อม report query, page, Patient/clinical fields หรือ export และไม่เปลี่ยน direct OWNER หรือ Global ADMIN policy เดิม
-2. **RPT-NET-02 — Parent Child-Hospital Reporting Consumer:** `IMPLEMENTATION_GAP`; เพิ่ม/ปรับ selector และหน้าอ่าน exact report ของ Child ที่เลือก โดย re-resolve authority ทุก protected request/continuation และใช้เฉพาะ projection/fields ที่เปิดเผยให้ Parent ได้; ไม่สร้าง reporting platform หรือ directory ซ้ำโดยไม่จำเป็น
+2. **RPT-NET-02 — Parent Child-Hospital Reporting Consumer:** secure selector, exact-target read boundary, typed minimal projection และ UI integration `VERIFIED_IMPLEMENTED`. Parent result content `WITHHELD` เพราะไม่มี approved field allowlist; การใช้งานรายงานจากมุมมอง Parent จึงยัง `PARTIAL`. ปัจจุบันไม่มี pagination/cursor เนื่องจากไม่มี report rows ที่อนุญาตให้อ่าน และไม่มี Parent export operation
 3. **RPT-GLOBAL-01 — Global ADMIN Per-Hospital Reporting:** ตรวจสอบและรักษา Phase 18D.2 implementation; ไม่ทำซ้ำ
 4. **RPT-GLOBAL-02 — Global ADMIN Single-Hospital Export:** ตรวจสอบและรักษา XLSX ของ selected eligible Hospital; ไม่เปลี่ยนเป็น combined workbook
 5. **RPT-FUTURE-01 — Optional Network Aggregation:** เก็บ P/C/N และ HN metric/privacy/history work เป็น future scope; ไม่เป็น dependency ของ RPT-NET-01/02
@@ -107,12 +109,13 @@ Multi-role actor ใช้เฉพาะ authorization path ของ operation
 
 | Open requirement | ขอบเขตที่ต้องตัดสิน |
 | --- | --- |
-| Parent OWNER ดู Patient-identifying rows หรือเฉพาะ non-identifying view | อนุมัติ field allowlist สำหรับ exact Child report; อย่าสันนิษฐานว่า projection เดิมทั้งหมดเหมาะกับ Parent audience |
+| Parent OWNER ดู Patient-identifying rows หรือเฉพาะ non-identifying view | อนุมัติ field allowlist สำหรับ exact Child report. ปัจจุบัน projection มีเพียง Parent/Child ID และชื่อ; ไม่ส่งชื่อหรือรหัสผู้ป่วย, Patient/Program identifiers, clinical measurements, baseline/final assessment, Goal Plan, Follow-up, exact Program links หรือผลลัพธ์รายงานใด ๆ |
+| Parent OWNER ดู exact-Hospital counts และ numeric summaries | ตัดสิน field, grain, denominator และ disclosure safeguards แยกกัน; count ขนาดเล็กของ Hospital เดียวอาจยังเปิดเผยข้อมูลได้. Consumer ปัจจุบันไม่มี counts หรือ numeric measures |
 | `OPEN_REQUIREMENT` — Parent-to-Child historical report disclosure after reparenting | เมื่อ Child ย้ายจาก Parent A ไป Parent B ให้กำหนดว่า Parent B เห็นข้อมูลรายงานที่เกิดก่อนการย้ายได้เพียงใด รวมถึง Patient rows, clinical measurements หรือ Program details ที่อยู่ในรายงาน และใช้หลักฐาน/ขอบเขตเวลาใดตัดสิน. นี่เป็นคำถามเรื่อง disclosure ของ exact-Hospital report; ไม่เปลี่ยนข้อกำหนดให้ Parent OWNER เข้าถึงรายงาน Child และไม่ใช่การนำ HN-M07 aggregate gate มาปิดการเข้าถึงดังกล่าว |
 | Parent OWNER export selected Child report | ยืนยันว่า export อยู่ในสิทธิ์ของ Parent reporting หรือไม่; OR-RPT-01 ยืนยัน report viewing เท่านั้น |
 | Child report export fields/formats | ถ้าอนุญาต export ให้กำหนด columns/format และข้อมูลที่ต้องตัดออก; ห้ามขยายจาก direct OWNER XLSX หรือ Global XLSX โดยอัตโนมัติ |
 | Clinical measurements และ exact Program details | ยืนยันทีละ field/section ว่าจะแสดงใน Parent-to-Child view หรือไม่ และจาก source/projection ใด |
-| Audit, minimization และ disclosure safeguards | กำหนด operation/event, allowed metadata, readers/retention และ safe unavailable behavior สำหรับ Parent entitlement; ไม่ log Patient IDs, clinical values หรือ suppressed values |
+| Audit, minimization และ disclosure safeguards | กำหนด operation/event, allowed metadata, readers/retention และ safe unavailable behavior สำหรับ Parent entitlement. Consumer ปัจจุบันยังไม่สร้าง dedicated Parent report audit event; ห้าม log Patient IDs, clinical values หรือ suppressed values |
 | Global ADMIN onward distribution | ระบุ intended recipient, dataset และ transfer process; selected-Hospital download ไม่อนุมัติ arbitrary external sharing |
 | Child selector display fields | ใช้ minimum field ที่จำเป็นต่อการระบุ eligible Child; `hospitalCode` หรือ metadata เพิ่มเติมต้องมีเหตุผลและ disclosure review |
 

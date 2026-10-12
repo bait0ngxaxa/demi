@@ -26,10 +26,14 @@ import {
   getGlobalAdminHospitalReportingPage,
   getHospitalReportingDatasetForExport,
   getHospitalReportingPage,
+  getParentChildHospitalReportingPage,
 } from "@/modules/reporting/services/hospital-report-query-service";
 import { getGlobalReportingDirectory } from "@/modules/reporting/services/global-reporting-service";
 import { resolveGlobalReportingAccessContext } from "@/modules/reporting/services/global-reporting-access-service";
-import { resolveParentChildHospitalReportAccessContext } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
+import {
+  listParentChildHospitalReportTargetGroups,
+  resolveParentChildHospitalReportAccessContext,
+} from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import * as globalReportingAccessModule from "@/modules/reporting/services/global-reporting-access-service";
 import { GLOBAL_REPORTING_CAPABILITIES } from "@/modules/reporting/policies/global-reporting-policy";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
@@ -912,5 +916,141 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       .rejects.toBeInstanceOf(NotFoundError);
     await expect(resolveParentChildHospitalReportAccessContext(parentBOwner.actor, parentB.id, child.id))
       .resolves.toMatchObject({ hospital: { id: child.id, parentHospitalId: parentB.id } });
+  });
+
+  it("serves an exact Child reporting boundary to a multi-role Parent OWNER without exposing report fields", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
+    const parentB = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย B สังเคราะห์" });
+    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย A สังเคราะห์", parentHospitalId: parentA.id });
+    const sibling = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายข้างเคียงสังเคราะห์", parentHospitalId: parentA.id });
+    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", parentHospitalId: child.id });
+    const inactiveChild = await createHospital(fixture, {
+      name: "โรงพยาบาลลูกข่ายระงับสังเคราะห์",
+      parentHospitalId: parentA.id,
+      status: HospitalStatus.SUSPENDED,
+    });
+    const childB = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย B สังเคราะห์", parentHospitalId: parentB.id });
+    const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
+    await prisma.hospitalMembership.create({
+      data: {
+        userId: parentOwner.userId,
+        hospitalId: parentB.id,
+        membershipType: MembershipType.OWNER,
+        status: MembershipStatus.ACTIVE,
+      },
+    });
+    await prisma.userRole.create({ data: { userId: parentOwner.userId, role: Role.ADMIN } });
+    const multiParentOwner: ActorContext = {
+      ...parentOwner.actor,
+      roles: [Role.HOSPITAL, Role.ADMIN],
+      hospitalMemberships: [
+        ...parentOwner.actor.hospitalMemberships,
+        {
+          hospitalId: parentB.id,
+          membershipType: MembershipType.OWNER,
+          profession: null,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    };
+    const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: child });
+    const admin = await createActor(fixture, { role: Role.ADMIN });
+    const childPatient = await createPatientProfile(fixture, "ชื่อผู้ป่วยที่ห้ามเปิดเผย");
+    const siblingPatient = await createPatientProfile(fixture, "ชื่อผู้ป่วยโรงพยาบาลข้างเคียง");
+    const childRelationship = await createRelationship(fixture, childPatient.id, child.id, "CHILD-LOCAL-SECRET");
+    const siblingRelationship = await createRelationship(fixture, siblingPatient.id, sibling.id, "SIBLING-LOCAL-SECRET");
+    const childProgram = await createProgram(fixture, {
+      relationshipId: childRelationship.id,
+      createdByUserId: childOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+    const siblingProgram = await createProgram(fixture, {
+      relationshipId: siblingRelationship.id,
+      createdByUserId: childOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+
+    const targets = await listParentChildHospitalReportTargetGroups(
+      multiParentOwner,
+      [parentA.id, parentB.id],
+    );
+    expect(targets).toHaveLength(2);
+    expect(targets[0]).toMatchObject({
+      parent: { id: parentA.id, name: parentA.name },
+      children: expect.arrayContaining([
+        { id: child.id, name: child.name },
+        { id: sibling.id, name: sibling.name },
+      ]),
+    });
+    expect(targets[0]?.children).toHaveLength(2);
+    expect(targets[1]).toMatchObject({
+      parent: { id: parentB.id, name: parentB.name },
+      children: [{ id: childB.id, name: childB.name }],
+    });
+    expect(targets.flatMap(({ children }) => children.map(({ id }) => id)))
+      .not.toContain(grandchild.id);
+    expect(targets.flatMap(({ children }) => children.map(({ id }) => id)))
+      .not.toContain(inactiveChild.id);
+    expect(await prisma.hospitalMembership.findUnique({
+      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: child.id } },
+      select: { id: true },
+    })).toBeNull();
+
+    const ownParentReport = await getHospitalReportingPage(multiParentOwner, { hospitalId: parentA.id });
+    expect(ownParentReport.counts.programs.total).toBe(0);
+
+    const parentChildProjection = await getParentChildHospitalReportingPage(multiParentOwner, {
+      parentHospitalId: parentA.id,
+      hospitalId: child.id,
+    });
+    expect(parentChildProjection).toEqual({
+      operation: "PARENT_CHILD_REPORT",
+      access: "PARENT_OWNER",
+      parent: { id: parentA.id, name: parentA.name },
+      hospital: { id: child.id, name: child.name },
+      content: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+    });
+    expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยที่ห้ามเปิดเผย");
+    expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยโรงพยาบาลข้างเคียง");
+    expect(JSON.stringify(parentChildProjection)).not.toContain("CHILD-LOCAL-SECRET");
+    expect(JSON.stringify(parentChildProjection)).not.toContain(childProgram.id);
+    expect(JSON.stringify(parentChildProjection)).not.toContain(siblingProgram.id);
+
+    await expect(getParentChildHospitalReportingPage(admin.actor, {
+      parentHospitalId: parentA.id,
+      hospitalId: child.id,
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getParentChildHospitalReportingPage(multiParentOwner, {
+      parentHospitalId: parentA.id,
+      hospitalId: sibling.id,
+      cursor: "direct-owner-cursor",
+    })).rejects.toBeInstanceOf(NotFoundError);
+
+    const directChildReport = await getHospitalReportingPage(childOwner.actor, { hospitalId: child.id });
+    expect(directChildReport.page.items).toHaveLength(1);
+    expect(directChildReport.page.items[0]?.patient.displayName).toBe("สมชาย ชื่อผู้ป่วยที่ห้ามเปิดเผย");
+    expect(directChildReport.page.items[0]?.patientProgramId).toBe(childProgram.id);
+
+    await prisma.hospital.update({ where: { id: child.id }, data: { parentHospitalId: parentB.id } });
+    await expect(getParentChildHospitalReportingPage(multiParentOwner, {
+      parentHospitalId: parentA.id,
+      hospitalId: child.id,
+    })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(getParentChildHospitalReportingPage(multiParentOwner, {
+      parentHospitalId: parentB.id,
+      hospitalId: child.id,
+    })).resolves.toMatchObject({ parent: { id: parentB.id }, hospital: { id: child.id } });
+
+    await prisma.hospitalMembership.update({
+      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: parentB.id } },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(getParentChildHospitalReportingPage(multiParentOwner, {
+      parentHospitalId: parentB.id,
+      hospitalId: child.id,
+    })).rejects.toBeInstanceOf(NotFoundError);
   });
 });

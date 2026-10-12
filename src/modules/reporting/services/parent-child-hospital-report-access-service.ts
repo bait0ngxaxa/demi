@@ -1,19 +1,21 @@
 import "server-only";
 
-import { HospitalStatus, Prisma, type PrismaClient } from "@prisma/client";
+import { HospitalStatus, Prisma, Role, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  getHospitalOwnerHierarchyContext,
   resolveHospitalOwnerDirectChildFacility,
   type HospitalHierarchyDatabase,
+  type HospitalHierarchyContext,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import {
+  ApplicationError,
   ForbiddenError,
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
-
 import {
   decideHospitalNetworkChildReportPolicy,
   HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES,
@@ -31,6 +33,11 @@ export type ParentChildHospitalReportAccessContext = {
     status: HospitalStatus;
     parentHospitalId: string;
   };
+};
+
+export type ParentChildHospitalReportTargetGroup = {
+  parent: { id: string; name: string };
+  children: readonly { id: string; name: string }[];
 };
 
 const ACCESS_TRANSACTION_OPTIONS = {
@@ -111,5 +118,56 @@ export async function resolveParentChildHospitalReportAccessContext(
       throw error;
     }
     throw new InfrastructureError("Parent-to-Child Hospital report access could not be verified");
+  }
+}
+
+/** List only name/ID targets under Parents the current actor directly owns. Each report read still uses the exact-target resolver above. */
+export async function listParentChildHospitalReportTargetGroups(
+  actor: ActorContext | null | undefined,
+  parentHospitalIds: readonly string[],
+  database: ParentChildHospitalReportAccessDatabase = getPrisma(),
+): Promise<ParentChildHospitalReportTargetGroup[]> {
+  if (!actor) throw new ForbiddenError();
+  if (!actor.roles.includes(Role.HOSPITAL)) return [];
+
+  const parentIds = [...new Set(parentHospitalIds.flatMap((hospitalId) => {
+    const parsed = hospitalReportHospitalIdSchema.safeParse(hospitalId);
+    return parsed.success ? [parsed.data] : [];
+  }))];
+
+  try {
+    const groups = await Promise.all(parentIds.map(async (parentHospitalId) => {
+      let context: HospitalHierarchyContext;
+      try {
+        context = await getHospitalOwnerHierarchyContext(actor, parentHospitalId, database);
+      } catch (error: unknown) {
+        if (error instanceof ForbiddenError || error instanceof NotFoundError) return null;
+        throw error;
+      }
+
+      if (
+        context.classification !== "MAIN" ||
+        context.hospital.status !== HospitalStatus.ACTIVE ||
+        context.issues.length > 0
+      ) {
+        return null;
+      }
+
+      const group: ParentChildHospitalReportTargetGroup = {
+        parent: { id: context.hospital.id, name: context.hospital.name },
+        children: context.directChildren
+          .filter(({ status, parentHospitalId: currentParentId }) =>
+            status === HospitalStatus.ACTIVE && currentParentId === context.hospital.id,
+          )
+          .map(({ id, name }) => ({ id, name }))
+          .sort((left, right) => left.name.localeCompare(right.name, "th") || left.id.localeCompare(right.id)),
+      };
+      return group;
+    }));
+
+    return groups.filter((group): group is ParentChildHospitalReportTargetGroup => group !== null);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Parent-to-Child Hospital report targets could not be loaded");
   }
 }

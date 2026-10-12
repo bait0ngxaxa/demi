@@ -444,6 +444,24 @@ export async function getHospitalHierarchyContext(
   }
 }
 
+/** Resolve hierarchy through the current direct Hospital OWNER path, even for multi-role actors. */
+export async function getHospitalOwnerHierarchyContext(
+  actor: ActorContext | null | undefined,
+  hospitalId: unknown,
+  database: HospitalHierarchyDatabase = getPrisma(),
+): Promise<HospitalHierarchyContext> {
+  const parsedId = hospitalIdSchema.safeParse(hospitalId);
+  if (!parsedId.success) throw new NotFoundError();
+  if (!actor?.roles.includes(Role.HOSPITAL)) throw new ForbiddenError();
+
+  try {
+    return await loadHospitalOwnerHierarchyContext(actor, parsedId.data, database);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Hospital owner hierarchy context could not be loaded");
+  }
+}
+
 export async function resolveDirectChildFacilities(
   actor: ActorContext | null | undefined,
   parentHospitalId: unknown,
