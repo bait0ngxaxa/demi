@@ -65,7 +65,7 @@ Not run: production build, browser/manual UAT.
 
 The first full integration run had 15 failures in `hospital-onboarding` (12), `hospital-contact`, `hospital-content` and `hospital-knowledge-contact-reaudit` (1 each), all right after `runHospitalMasterSeed()` with “No record was found” for a seeded Hospital.
 
-- **Root cause:** `d417970` (hospital hierarchy integration, 2026-10-11) made `scripts/seed-hospital-master.mjs` read-only by default; `--apply` is required to write ([handoff](./PHASE_HOSPITAL_HIERARCHY_INTEGRATION_HANDOFF.md) §11 confirms this is intended). The four test helpers still ran the script with no arguments, so the seed did a dry-run, exited 0 and created no Hospitals. The master data itself is unchanged (78 records, including `KANG`).
+- **Root cause:** `d417970` (hospital hierarchy integration, 2026-10-11) made `scripts/seed-hospital-master.mjs` read-only by default; `--apply` is required to write (the [hierarchy handoff](./PHASE_HOSPITAL_HIERARCHY_INTEGRATION_HANDOFF.md) confirms this is intended). The four test helpers still ran the script with no arguments, so the seed did a dry-run, exited 0 and created no Hospitals. The master data itself is unchanged (78 records, including `KANG`).
 - **Fix (`tests/integration` only):** the helpers now run the seed with `--apply --integration`, the mode designed for the local test database (it verifies `DEMI_TEST_DATABASE_URL` and refuses non-local or non-test targets). The seed script and product code are unchanged.
 - **Result:** the four files pass in isolation (12 + 36 + 18 + 7) and the full integration suite passes 681/681.
 
