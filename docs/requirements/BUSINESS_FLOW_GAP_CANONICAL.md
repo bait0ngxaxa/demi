@@ -454,3 +454,5 @@ The initial BF-GAP-00/01 inventory introduced 82 new stable IDs. BF-GAP-01R adds
 ## 15. Next step
 
 The current phase is **BF-GAP-01R — Customer Whiteboard Inventory Correction**; BF-GAP-02 has **NOT STARTED**. After review accepts this corrected register, next is **BF-GAP-02 Runtime Crosswalk & Evidence Verification**, then **BF-GAP-03 Core Care / Service Journey**. No implementation sequence is established.
+
+**Product Owner direction (2026-10-12):** the Definition of Done for closing business-flow gaps is the customer workbook `docs/Dashboard App Demi.xlsx` populated from approved operational sources. The column crosswalk, Owner/Clinical decision sheet and slice plan are in [BF-GAP-WB-00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md). Its recommendations are not approvals; BR-01..08 and CL-01..07 remain OPEN until confirmed.
