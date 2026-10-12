@@ -64,6 +64,9 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
   if (programIds.length > 0) {
     await prisma.patientFollowupActivityProgress.deleteMany({ where: { followup: { patientProgramId: { in: programIds } } } });
     await prisma.patientProgramServiceOneRoutine.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientProgramServiceOneFloatingChart.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientProgramServiceOneDreamCard.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientProgramServiceOneConfidence.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientFinalAssessment.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientFollowup.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientGoalItem.deleteMany({ where: { goalPlan: { patientProgramId: { in: programIds } } } });
@@ -84,6 +87,9 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
             "global_reporting.access.denied",
             "global_reporting.export.prepared",
             "global_reporting.export.denied",
+            "parent_child_reporting.access.read",
+            "parent_child_reporting.access.denied",
+            "parent_child_reporting.access.failed",
           ],
         },
       },
@@ -958,19 +964,48 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     };
     const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: child });
     const admin = await createActor(fixture, { role: Role.ADMIN });
+    const parentPatient = await createPatientProfile(fixture, "ระเบียนของโรงพยาบาลแม่");
     const childPatient = await createPatientProfile(fixture, "ชื่อผู้ป่วยที่ห้ามเปิดเผย");
+    const childNoProgramPatient = await createPatientProfile(fixture, "ระเบียนลูกที่ไม่มี Program");
+    const childCompletedPatient = await createPatientProfile(fixture, "ระเบียน Program ที่สิ้นสุดแล้ว");
     const siblingPatient = await createPatientProfile(fixture, "ชื่อผู้ป่วยโรงพยาบาลข้างเคียง");
+    const childBPatient = await createPatientProfile(fixture, "ระเบียนของ Child นอก Parent ที่เลือก");
+    const parentRelationship = await createRelationship(fixture, parentPatient.id, parentA.id, "PARENT-LOCAL-SECRET");
     const childRelationship = await createRelationship(fixture, childPatient.id, child.id, "CHILD-LOCAL-SECRET");
+    await createRelationship(fixture, childNoProgramPatient.id, child.id, "CHILD-NO-PROGRAM");
+    const childCompletedRelationship = await createRelationship(fixture, childCompletedPatient.id, child.id, "CHILD-COMPLETED");
     const siblingRelationship = await createRelationship(fixture, siblingPatient.id, sibling.id, "SIBLING-LOCAL-SECRET");
+    const childBRelationship = await createRelationship(fixture, childBPatient.id, childB.id, "OTHER-PARENT-CHILD");
+    const parentProgram = await createProgram(fixture, {
+      relationshipId: parentRelationship.id,
+      createdByUserId: parentOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
     const childProgram = await createProgram(fixture, {
       relationshipId: childRelationship.id,
       createdByUserId: childOwner.userId,
       status: PatientProgramStatus.ACTIVE,
     });
+    const completedChildProgram = await createProgram(fixture, {
+      relationshipId: childCompletedRelationship.id,
+      createdByUserId: childOwner.userId,
+      status: PatientProgramStatus.COMPLETED,
+    });
     const siblingProgram = await createProgram(fixture, {
       relationshipId: siblingRelationship.id,
       createdByUserId: childOwner.userId,
       status: PatientProgramStatus.ACTIVE,
+    });
+    await createProgram(fixture, {
+      relationshipId: childBRelationship.id,
+      createdByUserId: childOwner.userId,
+      status: PatientProgramStatus.ACTIVE,
+    });
+    await prisma.patientProgramServiceOneRoutine.create({
+      data: { patientProgramId: childProgram.id, recordedByUserId: childOwner.userId },
+    });
+    await prisma.patientProgramServiceOneFloatingChart.create({
+      data: { patientProgramId: completedChildProgram.id, recordedByUserId: childOwner.userId },
     });
 
     const targets = await listParentChildHospitalReportTargetGroups(
@@ -1000,7 +1035,11 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     })).toBeNull();
 
     const ownParentReport = await getHospitalReportingPage(multiParentOwner, { hospitalId: parentA.id });
-    expect(ownParentReport.counts.programs.total).toBe(0);
+    expect(ownParentReport.counts).toEqual({
+      patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
+      relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },
+      programs: { grain: "PATIENT_PROGRAM", total: 1, active: 1, completed: 0 },
+    });
 
     const parentChildProjection = await getParentChildHospitalReportingPage(multiParentOwner, {
       parentHospitalId: parentA.id,
@@ -1011,18 +1050,62 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       access: "PARENT_OWNER",
       parent: { id: parentA.id, name: parentA.name },
       hospital: { id: child.id, name: child.name },
-      content: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+      content: {
+        state: "WITHHELD",
+        reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
+        dashboard: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+        serviceProcess: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+      },
     });
     expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยที่ห้ามเปิดเผย");
     expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยโรงพยาบาลข้างเคียง");
     expect(JSON.stringify(parentChildProjection)).not.toContain("CHILD-LOCAL-SECRET");
     expect(JSON.stringify(parentChildProjection)).not.toContain(childProgram.id);
     expect(JSON.stringify(parentChildProjection)).not.toContain(siblingProgram.id);
+    expect(JSON.stringify(parentChildProjection)).not.toContain(parentProgram.id);
+    expect(JSON.stringify(parentChildProjection)).not.toContain("PARENT-LOCAL-SECRET");
+    expect(JSON.stringify(parentChildProjection)).not.toContain("CHILD-NO-PROGRAM");
+
+    const parentReadAudit = await prisma.auditEvent.findFirst({
+      where: {
+        actorUserId: parentOwner.userId,
+        action: "parent_child_reporting.access.read",
+        resourceType: "Hospital",
+        resourceId: child.id,
+      },
+      select: { actorUserId: true, action: true, resourceId: true, metadata: true, createdAt: true },
+    });
+    expect(parentReadAudit).toMatchObject({
+      actorUserId: parentOwner.userId,
+      action: "parent_child_reporting.access.read",
+      resourceId: child.id,
+      metadata: {
+        operation: "PARENT_CHILD_REPORT",
+        outcome: "read",
+        parentHospitalId: parentA.id,
+      },
+    });
+    expect(parentReadAudit?.createdAt).toBeInstanceOf(Date);
+    expect(JSON.stringify(parentReadAudit?.metadata)).not.toMatch(/ชื่อผู้ป่วย|LOCAL-SECRET|ProgramId|count|bloodSugar/iu);
 
     await expect(getParentChildHospitalReportingPage(admin.actor, {
       parentHospitalId: parentA.id,
       hospitalId: child.id,
     })).rejects.toBeInstanceOf(ForbiddenError);
+    const deniedAudit = await prisma.auditEvent.findFirst({
+      where: {
+        actorUserId: admin.userId,
+        action: "parent_child_reporting.access.denied",
+        resourceId: child.id,
+      },
+      select: { metadata: true },
+    });
+    expect(deniedAudit?.metadata).toMatchObject({
+      operation: "PARENT_CHILD_REPORT",
+      outcome: "denied",
+      parentHospitalId: parentA.id,
+      reason: "NOT_AUTHORIZED",
+    });
     await expect(getParentChildHospitalReportingPage(multiParentOwner, {
       parentHospitalId: parentA.id,
       hospitalId: sibling.id,
@@ -1030,9 +1113,22 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     })).rejects.toBeInstanceOf(NotFoundError);
 
     const directChildReport = await getHospitalReportingPage(childOwner.actor, { hospitalId: child.id });
-    expect(directChildReport.page.items).toHaveLength(1);
-    expect(directChildReport.page.items[0]?.patient.displayName).toBe("สมชาย ชื่อผู้ป่วยที่ห้ามเปิดเผย");
-    expect(directChildReport.page.items[0]?.patientProgramId).toBe(childProgram.id);
+    expect(directChildReport.counts).toEqual({
+      patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
+      relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
+      programs: { grain: "PATIENT_PROGRAM", total: 2, active: 1, completed: 1 },
+    });
+    expect(directChildReport.page.items).toHaveLength(2);
+    expect(directChildReport.page.items.some(({ patientProgramId }) => patientProgramId === siblingProgram.id)).toBe(false);
+    expect(directChildReport.page.items.some(({ patientProgramId }) => patientProgramId === parentProgram.id)).toBe(false);
+    expect(directChildReport.page.items.some(({ patientProgramId }) => patientProgramId === childProgram.id)).toBe(true);
+    expect(directChildReport.page.items.some(({ patientProgramId }) => patientProgramId === completedChildProgram.id)).toBe(true);
+    expect(directChildReport.page.items.find(({ patientProgramId }) => patientProgramId === childProgram.id)?.patient.displayName)
+      .toBe("สมชาย ชื่อผู้ป่วยที่ห้ามเปิดเผย");
+    expect(directChildReport.page.items.find(({ patientProgramId }) => patientProgramId === childProgram.id)?.serviceOne.routine.state)
+      .toBe("PRESENT");
+    expect(directChildReport.page.items.find(({ patientProgramId }) => patientProgramId === completedChildProgram.id)?.serviceOne.floatingChart.state)
+      .toBe("PRESENT");
 
     await prisma.hospital.update({ where: { id: child.id }, data: { parentHospitalId: parentB.id } });
     await expect(getParentChildHospitalReportingPage(multiParentOwner, {

@@ -57,17 +57,37 @@ export function ParentChildHospitalReportWorkspace({
         </Alert>
 
         {report.content.state === "WITHHELD" ? (
-          <Panel aria-labelledby="parent-child-report-content-heading" className="mt-5 p-5 sm:p-6">
-            <h3 className="text-lg font-semibold text-text" id="parent-child-report-content-heading">
-              ยังไม่มีเนื้อหารายงานที่เปิดให้แสดง
-            </h3>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
-              การเลือกโรงพยาบาลและตรวจสอบสิทธิ์พร้อมแล้ว แต่ยังไม่มีรายการข้อมูลรายงานที่อนุมัติให้เปิดเผยแก่ผู้ใช้ผ่านโรงพยาบาลแม่ข่าย
-            </p>
-            <p className="mt-3 max-w-4xl text-sm leading-6 text-text-muted">
-              รายชื่อและรหัสผู้ป่วย ข้อมูลทางคลินิก ตัวชี้วัด และรายละเอียด Program จึงยังไม่แสดง จนกว่าจะมีการกำหนดรายการข้อมูลที่อนุญาตอย่างชัดเจน
-            </p>
-          </Panel>
+          <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-2">
+            <Panel aria-labelledby="parent-child-report-dashboard-heading" className="p-5 sm:p-6">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h3 className="text-lg font-semibold text-text" id="parent-child-report-dashboard-heading">
+                  ภาพรวมรายงาน
+                </h3>
+                <StatusBadge variant="warning">ยังไม่อนุมัติการเปิดเผยตัวเลข</StatusBadge>
+              </div>
+              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
+                ระบบตรวจสอบสรุปของโรงพยาบาลที่เลือกแล้ว แต่จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล ความสัมพันธ์ที่ไม่มี Program และจำนวน Program แยกตามสถานะยังไม่เปิดให้ผู้ใช้ผ่านโรงพยาบาลแม่ข่ายเห็น
+              </p>
+              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
+                ยังไม่มีข้อกำหนดที่ยืนยันสำหรับการเปิดเผยตัวเลขเหล่านี้ รวมถึงข้อมูลที่บันทึกไว้ก่อนเปลี่ยนโรงพยาบาลแม่ข่าย
+              </p>
+            </Panel>
+
+            <Panel aria-labelledby="parent-child-report-service-heading" className="p-5 sm:p-6">
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h3 className="text-lg font-semibold text-text" id="parent-child-report-service-heading">
+                  ขั้นตอนบริการ
+                </h3>
+                <StatusBadge variant="warning">ยังไม่อนุมัติการเปิดเผยตัวเลข</StatusBadge>
+              </div>
+              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
+                รายงานต้นทางตรวจการมีบันทึกในแต่ละ Program จำนวนบันทึกของขั้นตอนบริการยังไม่เปิดให้ผู้ใช้ผ่านโรงพยาบาลแม่ข่ายเห็น
+              </p>
+              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
+                การมีบันทึกไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ และยังไม่มีข้อกำหนดที่ยืนยันว่าจะแสดงจำนวนดังกล่าวได้
+              </p>
+            </Panel>
+          </div>
         ) : null}
       </section>
     </div>

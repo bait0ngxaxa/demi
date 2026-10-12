@@ -117,11 +117,7 @@ export type HospitalReportProgramRow = {
 
 export type HospitalReportingPageProjection = {
   hospital: { id: string; hospitalCode: string; name: string };
-  counts: {
-    patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP"; value: number };
-    relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP"; value: number };
-    programs: { grain: "PATIENT_PROGRAM"; total: number; active: number; completed: number };
-  };
+  counts: HospitalReportingSummary;
   page: {
     items: readonly HospitalReportProgramRow[];
     pageSize: number;
@@ -129,7 +125,18 @@ export type HospitalReportingPageProjection = {
   };
 };
 
-export type ParentChildHospitalReportPageProjection = {
+export type HospitalReportingSummary = {
+  patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP"; value: number };
+  relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP"; value: number };
+  programs: { grain: "PATIENT_PROGRAM"; total: number; active: number; completed: number };
+};
+
+export type ParentChildHospitalReportingSectionState = {
+  state: "WITHHELD";
+  reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED";
+};
+
+export type ParentChildHospitalReportingProjection = {
   operation: "PARENT_CHILD_REPORT";
   access: "PARENT_OWNER";
   parent: { id: string; name: string };
@@ -137,8 +144,12 @@ export type ParentChildHospitalReportPageProjection = {
   content: {
     state: "WITHHELD";
     reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED";
+    dashboard: ParentChildHospitalReportingSectionState;
+    serviceProcess: ParentChildHospitalReportingSectionState;
   };
 };
+
+export type ParentChildHospitalReportPageProjection = ParentChildHospitalReportingProjection;
 
 export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page"> & {
   programs: readonly HospitalReportProgramRow[];

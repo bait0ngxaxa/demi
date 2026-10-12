@@ -59,7 +59,12 @@ const childReport = {
   access: "PARENT_OWNER" as const,
   parent: { id: hospitalId, name: hospital.name },
   hospital: { id: childHospitalId, name: child.name },
-  content: { state: "WITHHELD" as const, reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const },
+  content: {
+    state: "WITHHELD" as const,
+    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const,
+    dashboard: { state: "WITHHELD" as const, reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const },
+    serviceProcess: { state: "WITHHELD" as const, reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const },
+  },
 };
 const hierarchy = {
   hospital: { id: hospitalId, hospitalCode: "DEMO-01", name: "โรงพยาบาลทดสอบ", status: HospitalStatus.ACTIVE, parentHospitalId: null },

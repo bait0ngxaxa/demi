@@ -36,7 +36,8 @@ import type {
   HospitalReportRecord,
   HospitalReportingDataset,
   HospitalReportingPageProjection,
-  ParentChildHospitalReportPageProjection,
+  HospitalReportingSummary,
+  ParentChildHospitalReportingProjection,
 } from "../projections/hospital-report-projection";
 import {
   hospitalReportExportRequestSchema,
@@ -44,6 +45,10 @@ import {
   parentChildHospitalReportRequestSchema,
 } from "../schemas/hospital-report-schemas";
 import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
+import {
+  parentChildHospitalReportingAuditReasonForError,
+  recordParentChildHospitalReportingAudit,
+} from "./parent-child-hospital-report-audit-service";
 import { resolveHospitalReportingAccessContext } from "./hospital-report-access-service";
 import { resolveGlobalReportingAccessContext } from "./global-reporting-access-service";
 
@@ -592,7 +597,7 @@ async function countProgramRelatedRows(
 async function loadSummary(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
-): Promise<HospitalReportingPageProjection["counts"]> {
+): Promise<HospitalReportingSummary> {
   const [relationshipCount, relationshipsWithoutProgram, programGroups] = await Promise.all([
     database.patientHospitalRelationship.count({ where: { hospitalId } }),
     database.patientHospitalRelationship.count({
@@ -612,6 +617,60 @@ async function loadSummary(
     patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: relationshipCount },
     relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: relationshipsWithoutProgram },
     programs: { grain: "PATIENT_PROGRAM", total: active + completed, active, completed },
+  };
+}
+
+type ParentChildHospitalReportingSourceSnapshot = {
+  dashboard: HospitalReportingSummary;
+  serviceProcess: {
+    programsWithRoutineRecord: number;
+    programsWithFloatingChartRecord: number;
+    programsWithDreamCardRecord: number;
+    programsWithConfidenceRecord: number;
+  };
+};
+
+async function loadParentChildHospitalReportingSourceSnapshot(
+  database: HospitalReportQueryDatabase,
+  hospitalId: string,
+): Promise<ParentChildHospitalReportingSourceSnapshot> {
+  const programWhere = reportHospitalProgramWhere(hospitalId);
+  const serviceProcessWhere = { patientProgram: { is: programWhere } };
+  const [dashboard, programsWithRoutineRecord, programsWithFloatingChartRecord,
+    programsWithDreamCardRecord, programsWithConfidenceRecord] = await Promise.all([
+    loadSummary(database, hospitalId),
+    database.patientProgramServiceOneRoutine.count({ where: serviceProcessWhere }),
+    database.patientProgramServiceOneFloatingChart.count({ where: serviceProcessWhere }),
+    database.patientProgramServiceOneDreamCard.count({ where: serviceProcessWhere }),
+    database.patientProgramServiceOneConfidence.count({ where: serviceProcessWhere }),
+  ]);
+
+  return {
+    dashboard,
+    serviceProcess: {
+      programsWithRoutineRecord,
+      programsWithFloatingChartRecord,
+      programsWithDreamCardRecord,
+      programsWithConfidenceRecord,
+    },
+  };
+}
+
+function projectParentChildHospitalReportingContent(
+  source: ParentChildHospitalReportingSourceSnapshot,
+): ParentChildHospitalReportingProjection["content"] {
+  // Source-backed candidate measures stay server-side until Parent field disclosure is approved.
+  void source;
+  const withheld = {
+    state: "WITHHELD",
+    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
+  } as const;
+
+  return {
+    state: "WITHHELD",
+    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
+    dashboard: withheld,
+    serviceProcess: withheld,
   };
 }
 
@@ -792,19 +851,20 @@ export async function getGlobalAdminHospitalReportingPage(
 }
 
 /**
- * Resolve and read one exact Child target through Parent authority. No Patient, Program, clinical, count, or export source is queried until a Parent field allowlist is approved.
+ * Resolve one exact Child target and query only source-backed Hospital summaries. Candidate measures stay withheld until Parent field disclosure is approved.
  */
 export async function getParentChildHospitalReportingPage(
   actor: ActorContext | null | undefined,
   input: unknown,
   dependencies: HospitalReportQueryDependencies = {},
-): Promise<ParentChildHospitalReportPageProjection> {
+): Promise<ParentChildHospitalReportingProjection> {
   const parsed = parentChildHospitalReportRequestSchema.safeParse(input);
   if (!parsed.success) throw new NotFoundError();
 
+  const database = dependencies.database ?? getPrisma();
+  let projection: ParentChildHospitalReportingProjection;
   try {
-    const database = dependencies.database ?? getPrisma();
-    const projection = await runConsistentRead(database, async (transaction) => {
+    projection = await runConsistentRead(database, async (transaction) => {
       const access = await resolveParentChildHospitalReportAccessContext(
         actor,
         parsed.data.parentHospitalId,
@@ -832,16 +892,15 @@ export async function getParentChildHospitalReportingPage(
       });
       if (!target?.parentHospital) throw new NotFoundError();
 
+      const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, target.id);
+
       return {
         operation: "PARENT_CHILD_REPORT",
         access: "PARENT_OWNER",
         parent: target.parentHospital,
         hospital: { id: target.id, name: target.name },
-        content: {
-          state: "WITHHELD",
-          reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
-        },
-      } satisfies ParentChildHospitalReportPageProjection;
+        content: projectParentChildHospitalReportingContent(source),
+      } satisfies ParentChildHospitalReportingProjection;
     });
 
     await resolveParentChildHospitalReportAccessContext(
@@ -850,8 +909,20 @@ export async function getParentChildHospitalReportingPage(
       parsed.data.hospitalId,
       database,
     );
-    return projection;
   } catch (error: unknown) {
+    try {
+      const denied = error instanceof ForbiddenError || error instanceof NotFoundError;
+      await recordParentChildHospitalReportingAudit({
+        actor,
+        parentHospitalId: parsed.data.parentHospitalId,
+        hospitalId: parsed.data.hospitalId,
+        outcome: denied ? "denied" : "failed",
+        reason: parentChildHospitalReportingAuditReasonForError(error),
+      }, database);
+    } catch {
+      throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+    }
+
     if (
       error instanceof ForbiddenError ||
       error instanceof NotFoundError ||
@@ -861,6 +932,19 @@ export async function getParentChildHospitalReportingPage(
     }
     throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
   }
+
+  try {
+    await recordParentChildHospitalReportingAudit({
+      actor,
+      parentHospitalId: parsed.data.parentHospitalId,
+      hospitalId: parsed.data.hospitalId,
+      outcome: "read",
+    }, database);
+  } catch {
+    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+  }
+
+  return projection;
 }
 
 function assertExportBounds(input: {
