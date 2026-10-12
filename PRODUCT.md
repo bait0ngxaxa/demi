@@ -6,6 +6,10 @@
 
 DEMI is one production-ready MVP codebase. Development, demo, UAT, staging, and production are deployment and verification contexts; the same authenticated roles, resource permissions, and database state use the same business behavior and authorization on every compatible host. Demo/UAT presents and verifies the application; synthetic fixtures belong in tests and controlled test databases, not in demo-only runtime paths. Infrastructure configuration, secrets, database separation, and release operations are managed separately from application authorization. Production-ready implementation does not claim unresolved clinical definitions, privacy/security/data-controller approvals, or deployment acceptance; unconfirmed requirements and unauthorized capabilities remain out of scope. See [ADR-0010](docs/adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## Current Business Flow Closure Program — 2026-10-12
+
+The Business Flow Closure Program is DEMI's current requirements/audit track. BF-GAP-00/01 establishes the baseline and [canonical customer business-flow register](docs/requirements/BUSINESS_FLOW_GAP_CANONICAL.md). Dashboard/reporting feature expansion is paused pending the upstream flow and data-source audit. Existing direct Hospital OWNER, Global Platform ADMIN, Parent-to-Child summary, and exact-Program reporting behavior remains preserved. RPT-CLOSE-01 remains historical evidence for its bounded automated scope and does not mean all customer reporting requirements are complete. The next deep audit is BF-GAP-02 / BF-GAP-03, beginning with Core Care Journey.
+
 ## Platform
 
 web

@@ -12,6 +12,10 @@ Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) 
 
 RPT-CLOSE-01 ตรวจสอบระบบรายงาน MVP ปัจจุบันแบบอัตโนมัติผ่านเมื่อ 2026-10-12 ครอบคลุมเฉพาะขอบเขต Reporting MVP ที่ยืนยันแล้ว ไม่ได้หมายถึง manual browser/mobile UAT, production deployment หรือ external privacy/legal approval ดู [RPT-CLOSE-01 handoff](./phases/PHASE_RPT_CLOSE_01_REPORTING_INTEGRATED_REAUDIT_HANDOFF.md)
 
+## CURRENT Business Flow Closure Program — BF-GAP-00/01 (2026-10-12)
+
+The Business Flow Closure Program has started; BF-GAP-00/01 is the current requirements/audit track. The [canonical business-flow register](./requirements/BUSINESS_FLOW_GAP_CANONICAL.md) records the baseline, customer whiteboard inventory and reporting freeze. Dashboard/reporting feature expansion is paused pending upstream business-flow and source-data audit; the current direct OWNER, Global ADMIN, Parent exact-Child summary and exact-Program runtime remains preserved. RPT-CLOSE-01 is historical evidence for its bounded automated scope, not proof that all customer reporting requirements are complete. The next deep audit is BF-GAP-02 Runtime Crosswalk and BF-GAP-03 Core Care Journey.
+
 ## CURRENT-status addendum — Phase 19A Global / Hospital Network reporting readiness (2026-10-11)
 
 [Phase 19A readiness review](./phases/PHASE_19A_GLOBAL_AGGREGATION_AND_HOSPITAL_NETWORK_REPORTING_READINESS.md) assessed aggregation readiness. Its HN-M07, historical attribution, M03 and aggregate consistency gates apply to Network aggregates; they do not block the separate confirmed Parent-to-Child exact-Hospital reporting flow. `resolveHospitalNetworkScope()` is structural scope infrastructure, not a report grant. See the canonical requirements for current priority and runtime gaps.
