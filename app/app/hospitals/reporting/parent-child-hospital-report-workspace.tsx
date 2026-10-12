@@ -20,6 +20,9 @@ export function ParentChildHospitalReportWorkspace({
   selection: HospitalReportTargetSelection;
   report: ParentChildHospitalReportPageProjection;
 }): React.JSX.Element {
+  const dashboard = report.content.dashboard.value;
+  const serviceProcess = report.content.serviceProcess.value;
+
   return (
     <div className="min-w-0 max-w-[1440px]">
       <PageHeader
@@ -53,43 +56,55 @@ export function ParentChildHospitalReportWorkspace({
         </div>
 
         <Alert className="mt-5" variant="info">
-          สิทธิ์นี้ใช้เพื่อเปิดรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น ไม่ได้ให้สิทธิ์จัดการบัญชีหรือข้อมูลของโรงพยาบาลนั้น และไม่รวมรายงานของโรงพยาบาลอื่น
+          แสดงรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น สิทธิ์นี้ไม่ครอบคลุมการจัดการบัญชี ข้อมูลผู้ป่วย หรือรายงานของโรงพยาบาลอื่น
         </Alert>
 
-        {report.content.state === "WITHHELD" ? (
-          <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-2">
-            <Panel aria-labelledby="parent-child-report-dashboard-heading" className="p-5 sm:p-6">
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <h3 className="text-lg font-semibold text-text" id="parent-child-report-dashboard-heading">
-                  ภาพรวมรายงาน
-                </h3>
-                <StatusBadge variant="warning">ยังไม่อนุมัติการเปิดเผยตัวเลข</StatusBadge>
-              </div>
-              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
-                ระบบตรวจสอบสรุปของโรงพยาบาลที่เลือกแล้ว แต่จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล ความสัมพันธ์ที่ไม่มี Program และจำนวน Program แยกตามสถานะยังไม่เปิดให้ผู้ใช้ผ่านโรงพยาบาลแม่ข่ายเห็น
-              </p>
-              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
-                ยังไม่มีข้อกำหนดที่ยืนยันสำหรับการเปิดเผยตัวเลขเหล่านี้ รวมถึงข้อมูลที่บันทึกไว้ก่อนเปลี่ยนโรงพยาบาลแม่ข่าย
-              </p>
-            </Panel>
-
-            <Panel aria-labelledby="parent-child-report-service-heading" className="p-5 sm:p-6">
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <h3 className="text-lg font-semibold text-text" id="parent-child-report-service-heading">
-                  ขั้นตอนบริการ
-                </h3>
-                <StatusBadge variant="warning">ยังไม่อนุมัติการเปิดเผยตัวเลข</StatusBadge>
-              </div>
-              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
-                รายงานต้นทางตรวจการมีบันทึกในแต่ละ Program จำนวนบันทึกของขั้นตอนบริการยังไม่เปิดให้ผู้ใช้ผ่านโรงพยาบาลแม่ข่ายเห็น
-              </p>
-              <p className="mt-3 max-w-prose text-sm leading-6 text-text-muted">
-                การมีบันทึกไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ และยังไม่มีข้อกำหนดที่ยืนยันว่าจะแสดงจำนวนดังกล่าวได้
-              </p>
-            </Panel>
+        <section aria-labelledby="parent-child-report-dashboard-heading" className="mt-6 min-w-0">
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold text-text" id="parent-child-report-dashboard-heading">
+              ภาพรวมรายงาน
+            </h3>
+            <p className="mt-2 max-w-prose text-sm leading-6 text-text-muted">
+              จำนวนความสัมพันธ์นับตามรายการในโรงพยาบาล ส่วน Program นับเฉพาะสถานะกำลังดำเนินและสิ้นสุดแล้ว
+            </p>
           </div>
-        ) : null}
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <ReportingMetric label="จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล" value={dashboard.patientHospitalRelationships.value} />
+            <ReportingMetric label="จำนวนความสัมพันธ์ที่ไม่มี Program" value={dashboard.relationshipsWithoutProgram.value} />
+            <ReportingMetric label="Program ทั้งหมด" value={dashboard.programs.total} />
+            <ReportingMetric label="Program ที่กำลังดำเนิน" value={dashboard.programs.active} />
+            <ReportingMetric label="Program ที่สิ้นสุดแล้ว" value={dashboard.programs.completed} />
+          </div>
+        </section>
+
+        <section aria-labelledby="parent-child-report-service-heading" className="mt-7 min-w-0">
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold text-text" id="parent-child-report-service-heading">
+              ขั้นตอนบริการ
+            </h3>
+            <p className="mt-2 max-w-prose text-sm leading-6 text-text-muted">
+              ตัวเลขแสดงจำนวน Program ที่มีบันทึกในแต่ละขั้นตอน ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ
+            </p>
+          </div>
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ReportingMetric label="Program ที่มีบันทึก Routine" value={serviceProcess.programsWithRoutineRecord.value} />
+            <ReportingMetric label="Program ที่มีบันทึก Floating Chart" value={serviceProcess.programsWithFloatingChartRecord.value} />
+            <ReportingMetric label="Program ที่มีบันทึก Dream Card" value={serviceProcess.programsWithDreamCardRecord.value} />
+            <ReportingMetric label="Program ที่มีบันทึก Confidence" value={serviceProcess.programsWithConfidenceRecord.value} />
+          </div>
+        </section>
       </section>
     </div>
+  );
+}
+
+function ReportingMetric({ label, value }: { label: string; value: number }): React.JSX.Element {
+  return (
+    <Panel aria-label={label} className="min-w-0">
+      <dl>
+        <dt className="text-sm leading-5 text-text-muted">{label}</dt>
+        <dd className="mt-2 tabular-nums text-2xl font-semibold text-text">{value.toLocaleString("th-TH")}</dd>
+      </dl>
+    </Panel>
   );
 }

@@ -659,18 +659,30 @@ async function loadParentChildHospitalReportingSourceSnapshot(
 function projectParentChildHospitalReportingContent(
   source: ParentChildHospitalReportingSourceSnapshot,
 ): ParentChildHospitalReportingProjection["content"] {
-  // Source-backed candidate measures stay server-side until Parent field disclosure is approved.
-  void source;
-  const withheld = {
-    state: "WITHHELD",
-    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
-  } as const;
-
   return {
-    state: "WITHHELD",
-    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
-    dashboard: withheld,
-    serviceProcess: withheld,
+    state: "AVAILABLE",
+    dashboard: { state: "AVAILABLE", value: source.dashboard },
+    serviceProcess: {
+      state: "AVAILABLE",
+      value: {
+        programsWithRoutineRecord: {
+          grain: "PATIENT_PROGRAM",
+          value: source.serviceProcess.programsWithRoutineRecord,
+        },
+        programsWithFloatingChartRecord: {
+          grain: "PATIENT_PROGRAM",
+          value: source.serviceProcess.programsWithFloatingChartRecord,
+        },
+        programsWithDreamCardRecord: {
+          grain: "PATIENT_PROGRAM",
+          value: source.serviceProcess.programsWithDreamCardRecord,
+        },
+        programsWithConfidenceRecord: {
+          grain: "PATIENT_PROGRAM",
+          value: source.serviceProcess.programsWithConfidenceRecord,
+        },
+      },
+    },
   };
 }
 
@@ -851,7 +863,7 @@ export async function getGlobalAdminHospitalReportingPage(
 }
 
 /**
- * Resolve one exact Child target and query only source-backed Hospital summaries. Candidate measures stay withheld until Parent field disclosure is approved.
+ * Resolve one exact Child target and return only its approved Hospital-level summary fields.
  */
 export async function getParentChildHospitalReportingPage(
   actor: ActorContext | null | undefined,

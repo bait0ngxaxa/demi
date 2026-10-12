@@ -924,7 +924,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       .resolves.toMatchObject({ hospital: { id: child.id, parentHospitalId: parentB.id } });
   });
 
-  it("serves an exact Child reporting boundary to a multi-role Parent OWNER without exposing report fields", async () => {
+  it("serves exact Child summary values to a multi-role Parent OWNER without exposing person-level report fields", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
@@ -1007,6 +1007,12 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     await prisma.patientProgramServiceOneFloatingChart.create({
       data: { patientProgramId: completedChildProgram.id, recordedByUserId: childOwner.userId },
     });
+    await prisma.patientProgramServiceOneDreamCard.create({
+      data: { patientProgramId: childProgram.id, recordedByUserId: childOwner.userId },
+    });
+    await prisma.patientProgramServiceOneConfidence.create({
+      data: { patientProgramId: completedChildProgram.id, recordedByUserId: childOwner.userId, score: 5 },
+    });
 
     const targets = await listParentChildHospitalReportTargetGroups(
       multiParentOwner,
@@ -1051,14 +1057,29 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       parent: { id: parentA.id, name: parentA.name },
       hospital: { id: child.id, name: child.name },
       content: {
-        state: "WITHHELD",
-        reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
-        dashboard: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
-        serviceProcess: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+        state: "AVAILABLE",
+        dashboard: {
+          state: "AVAILABLE",
+          value: {
+            patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
+            relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
+            programs: { grain: "PATIENT_PROGRAM", total: 2, active: 1, completed: 1 },
+          },
+        },
+        serviceProcess: {
+          state: "AVAILABLE",
+          value: {
+            programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+            programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+            programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+            programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+          },
+        },
       },
     });
     expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยที่ห้ามเปิดเผย");
     expect(JSON.stringify(parentChildProjection)).not.toContain("ชื่อผู้ป่วยโรงพยาบาลข้างเคียง");
+    expect(JSON.stringify(parentChildProjection)).not.toContain(childPatient.id);
     expect(JSON.stringify(parentChildProjection)).not.toContain("CHILD-LOCAL-SECRET");
     expect(JSON.stringify(parentChildProjection)).not.toContain(childProgram.id);
     expect(JSON.stringify(parentChildProjection)).not.toContain(siblingProgram.id);
@@ -1113,6 +1134,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     })).rejects.toBeInstanceOf(NotFoundError);
 
     const directChildReport = await getHospitalReportingPage(childOwner.actor, { hospitalId: child.id });
+    expect(parentChildProjection.content.dashboard.value).toEqual(directChildReport.counts);
     expect(directChildReport.counts).toEqual({
       patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
       relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
@@ -1138,7 +1160,16 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     await expect(getParentChildHospitalReportingPage(multiParentOwner, {
       parentHospitalId: parentB.id,
       hospitalId: child.id,
-    })).resolves.toMatchObject({ parent: { id: parentB.id }, hospital: { id: child.id } });
+    })).resolves.toMatchObject({
+      parent: { id: parentB.id },
+      hospital: { id: child.id },
+      content: {
+        dashboard: {
+          state: "AVAILABLE",
+          value: { patientHospitalRelationships: { value: 3 }, programs: { total: 2, active: 1, completed: 1 } },
+        },
+      },
+    });
 
     await prisma.hospitalMembership.update({
       where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: parentB.id } },

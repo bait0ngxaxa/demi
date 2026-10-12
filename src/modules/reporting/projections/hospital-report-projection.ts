@@ -131,9 +131,16 @@ export type HospitalReportingSummary = {
   programs: { grain: "PATIENT_PROGRAM"; total: number; active: number; completed: number };
 };
 
-export type ParentChildHospitalReportingSectionState = {
-  state: "WITHHELD";
-  reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED";
+export type ParentChildHospitalReportingSection<T> = {
+  state: "AVAILABLE";
+  value: T;
+};
+
+export type ParentChildHospitalReportingServiceProcessSummary = {
+  programsWithRoutineRecord: { grain: "PATIENT_PROGRAM"; value: number };
+  programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM"; value: number };
+  programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM"; value: number };
+  programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM"; value: number };
 };
 
 export type ParentChildHospitalReportingProjection = {
@@ -142,10 +149,9 @@ export type ParentChildHospitalReportingProjection = {
   parent: { id: string; name: string };
   hospital: { id: string; name: string };
   content: {
-    state: "WITHHELD";
-    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED";
-    dashboard: ParentChildHospitalReportingSectionState;
-    serviceProcess: ParentChildHospitalReportingSectionState;
+    state: "AVAILABLE";
+    dashboard: ParentChildHospitalReportingSection<HospitalReportingSummary>;
+    serviceProcess: ParentChildHospitalReportingSection<ParentChildHospitalReportingServiceProcessSummary>;
   };
 };
 

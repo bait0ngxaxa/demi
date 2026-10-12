@@ -60,10 +60,24 @@ const childReport = {
   parent: { id: hospitalId, name: hospital.name },
   hospital: { id: childHospitalId, name: child.name },
   content: {
-    state: "WITHHELD" as const,
-    reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const,
-    dashboard: { state: "WITHHELD" as const, reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const },
-    serviceProcess: { state: "WITHHELD" as const, reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" as const },
+    state: "AVAILABLE" as const,
+    dashboard: {
+      state: "AVAILABLE" as const,
+      value: {
+        patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP" as const, value: 3 },
+        relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP" as const, value: 1 },
+        programs: { grain: "PATIENT_PROGRAM" as const, total: 2, active: 1, completed: 1 },
+      },
+    },
+    serviceProcess: {
+      state: "AVAILABLE" as const,
+      value: {
+        programsWithRoutineRecord: { grain: "PATIENT_PROGRAM" as const, value: 1 },
+        programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM" as const, value: 1 },
+        programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM" as const, value: 0 },
+        programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM" as const, value: 0 },
+      },
+    },
   },
 };
 const hierarchy = {

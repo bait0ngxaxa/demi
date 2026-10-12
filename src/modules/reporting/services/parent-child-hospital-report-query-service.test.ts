@@ -94,7 +94,7 @@ function createDatabase() {
 }
 
 describe("Parent-to-Child Hospital report query", () => {
-  it("runs source-backed exact-Child summaries but withholds every unapproved measure", async () => {
+  it("returns source-backed summary values for the exact Child without projecting patient or program details", async () => {
     const {
       database,
       findMembership,
@@ -119,10 +119,24 @@ describe("Parent-to-Child Hospital report query", () => {
       parent: { id: parentHospitalId, name: "โรงพยาบาลแม่ข่ายสังเคราะห์" },
       hospital: { id: childHospitalId, name: "โรงพยาบาลลูกข่ายสังเคราะห์" },
       content: {
-        state: "WITHHELD",
-        reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED",
-        dashboard: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
-        serviceProcess: { state: "WITHHELD", reason: "PARENT_FIELD_DISCLOSURE_NOT_APPROVED" },
+        state: "AVAILABLE",
+        dashboard: {
+          state: "AVAILABLE",
+          value: {
+            patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
+            relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
+            programs: { grain: "PATIENT_PROGRAM", total: 3, active: 2, completed: 1 },
+          },
+        },
+        serviceProcess: {
+          state: "AVAILABLE",
+          value: {
+            programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 2 },
+            programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+            programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+            programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+          },
+        },
       },
     });
     expect(findMembership).toHaveBeenCalledTimes(2);
@@ -153,7 +167,7 @@ describe("Parent-to-Child Hospital report query", () => {
     expect(floatingChartCount).toHaveBeenCalledWith(serviceProcessWhere);
     expect(dreamCardCount).toHaveBeenCalledWith(serviceProcessWhere);
     expect(confidenceCount).toHaveBeenCalledWith(serviceProcessWhere);
-    expect(JSON.stringify(projection)).not.toMatch(/patient|program|clinical|hospitalCode|measurement|"value"|"counts"/iu);
+    expect(JSON.stringify(projection)).not.toMatch(/patientProgramId|patientHospitalRelationshipId|hospitalCode|hospitalNumber|displayName|measurement|bloodSugar|goalPlans|followups/iu);
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         actorUserId: actor.userId,
