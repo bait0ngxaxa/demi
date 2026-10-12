@@ -12,9 +12,9 @@ Read [Reporting Access Canonical](./requirements/REPORTING_ACCESS_CANONICAL.md) 
 
 RPT-CLOSE-01 ตรวจสอบระบบรายงาน MVP ปัจจุบันแบบอัตโนมัติผ่านเมื่อ 2026-10-12 ครอบคลุมเฉพาะขอบเขต Reporting MVP ที่ยืนยันแล้ว ไม่ได้หมายถึง manual browser/mobile UAT, production deployment หรือ external privacy/legal approval ดู [RPT-CLOSE-01 handoff](./phases/PHASE_RPT_CLOSE_01_REPORTING_INTEGRATED_REAUDIT_HANDOFF.md)
 
-## CURRENT Business Flow Closure Program — BF-GAP-00/01 (2026-10-12)
+## CURRENT Business Flow Closure Program — BF-GAP-01R (2026-10-12)
 
-The Business Flow Closure Program has started; BF-GAP-00/01 is the current requirements/audit track. The [canonical business-flow register](./requirements/BUSINESS_FLOW_GAP_CANONICAL.md) records the baseline, customer whiteboard inventory and reporting freeze. Dashboard/reporting feature expansion is paused pending upstream business-flow and source-data audit; the current direct OWNER, Global ADMIN, Parent exact-Child summary and exact-Program runtime remains preserved. RPT-CLOSE-01 is historical evidence for its bounded automated scope, not proof that all customer reporting requirements are complete. The next deep audit is BF-GAP-02 Runtime Crosswalk and BF-GAP-03 Core Care Journey.
+The Business Flow Closure Program is in BF-GAP-01R, the current correction phase for the [canonical business-flow register](./requirements/BUSINESS_FLOW_GAP_CANONICAL.md); see the [BF-GAP-01R correction handoff](./phases/BF_GAP_01R_WHITEBOARD_INVENTORY_CORRECTION.md). BF-GAP-02 has NOT STARTED. Dashboard/reporting feature expansion remains paused pending upstream business-flow and source-data audit; current direct OWNER, Global ADMIN selected-Hospital, Parent exact-Child summary and exact-Program runtime remains preserved. RPT-CLOSE-01 is historical evidence for its bounded automated scope, not proof that all customer reporting requirements are complete. After review, the next audit order is BF-GAP-02 Runtime Crosswalk → BF-GAP-03 Core Care Journey.
 
 ## CURRENT-status addendum — Phase 19A Global / Hospital Network reporting readiness (2026-10-11)
 

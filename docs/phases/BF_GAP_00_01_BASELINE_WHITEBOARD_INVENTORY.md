@@ -1,5 +1,9 @@
 # BF-GAP-00/01 — Baseline & Customer Whiteboard Inventory
 
+## Subsequent Review Status — BF-GAP-01R
+
+Independent review identified material defects in the initial BF-GAP-01 inventory. The BF-GAP-00 runtime baseline and reporting freeze remain valid. The initial BF-GAP-01 inventory disposition and counts are historical and are superseded for current status by [BF-GAP-01R — Customer Whiteboard Inventory Correction](./BF_GAP_01R_WHITEBOARD_INVENTORY_CORRECTION.md). BF-GAP-02 has not started.
+
 **Program:** Business Flow Closure Program
 **Date:** 2026-10-12 (Asia/Bangkok)
 **Repository:** bait0ngxaxa/demi
