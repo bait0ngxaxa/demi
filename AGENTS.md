@@ -2,10 +2,6 @@
 
 ## Project-Wide Delivery Contract
 
-Treat DEMI as one production-ready MVP codebase: every approved feature is a complete vertical slice with normal persistence and server-side authorization. Keep business behavior independent of hosting providers, `NODE_ENV`, project IDs, and deployment labels; environment configuration, secrets, database separation, infrastructure, and release operations belong to the Product Owner and operators. Synthetic fixtures belong in tests and controlled test databases, not demo-only runtime paths. Do not use fake persistence, temporary authorization bypasses, mock success responses, or defer production conversion as technical debt. Production-ready code does not mean unresolved clinical requirements, privacy/security/data-controller approvals, or production deployment acceptance are complete; keep those capabilities out of scope until confirmed. When sources conflict, follow the latest confirmed Product Owner decision and Accepted ADRs over historical phase instructions.
-
-Before planning, reviewing, or implementing reporting behavior, read [the canonical reporting requirements](docs/requirements/REPORTING_ACCESS_CANONICAL.md). Current confirmed Owner requirements define product intent; inspect runtime code to classify what is implemented, not to cap the required scope. Treat Phase 17K–19 reporting documents as historical where the canonical requirements do not reaffirm them. Keep unanswered field-level and governance decisions open, apply aggregate-only decisions only to aggregate operations, and retain the accepted security architecture. Do not change a confirmed reporting flow based on a conflicting historical decision pack.
-
 ## 1. Priorities and Scope
 
 * Priority order: **Correctness > Security > Maintainability > Performance > Speed**
