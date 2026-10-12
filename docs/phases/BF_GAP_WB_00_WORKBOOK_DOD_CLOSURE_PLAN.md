@@ -168,9 +168,28 @@ Product Owner ตอบใน session นี้ โดยเลือกตา�
 
 **S2a (implemented):** migration `20261012120000_followup_workbook_facts` เพิ่ม `serviceDate`, `planAdjusted`, `hasObstacle`, `obstacleNote` ใน PatientFollowup และ `achievedDays` ใน PatientFollowupActivityProgress (nullable สำหรับ record เก่า; CHECK constraint ช่วง 0–7, NOT_APPLICABLE ต้องว่าง, obstacleNote ต้องมี hasObstacle = true) โดย application บังคับกรอกสำหรับ Follow-up ใหม่ ฟอร์ม/รายละเอียด/ประวัติแสดงค่าใหม่ สูตรอยู่ใน `src/modules/followups/domain/followup-achievement.ts` ใช้ร่วมกันทั้ง workbook และหน้ารายงานบนเว็บ
 
-**S2 ที่เหลือ:** (1) ช่องผลลัพธ์ที่ได้ เมื่อได้รายการคำ BR-05; (2) “วันที่ให้บริการ” ของ Final Assessment (BR-01 ฝั่ง After); (3) ผูก Goal Plan รอบใหม่กับ Follow-up ที่เลือก “ปรับแผน” (ตอนนี้ฟอร์มแจ้งให้สร้างแผนใหม่ แต่ยังไม่มี link ใน schema)
+**S2 ที่เหลือ:** ช่องผลลัพธ์ที่ได้ เมื่อได้รายการคำ BR-05 (ดู §5.2) — วันที่ประเมินของ Final Assessment และการผูก Goal Plan กับ Follow-up ที่เลือก “ปรับแผน” implement แล้วใน [BF-GAP-WB-02](./BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md)
 
 **สถานะ implementation (golden test `hospital-report-workbook-golden.test.ts`):** R24A-D11, BR-01 (Follow-up), BR-02, BR-03, BR-04, BR-06, BR-07 และ BR-08 ถูก implement ใน workbook export แล้ว ความครอบคลุม 108 คอลัมน์ของแถวข้อมูล: SOURCE_READY 85 · DECISION_OPEN 2 · SOURCE_MISSING 21 (เริ่มต้น 27 · 35 · 46) ตาราง §4 เป็น baseline ก่อนการตัดสินใจ ให้ใช้ golden test เป็นสถานะปัจจุบัน
+
+### 5.2 Pending register — รายการที่รอผู้ตัดสิน/ข้อมูล (อัปเดต 2026-10-12)
+
+Product Owner ยืนยันว่ารายการด้านล่างต้องรอ engineering จะไม่เดาค่าหรือ implement ก่อนได้คำตอบ ช่องที่เกี่ยวข้องใน workbook ยังแสดงเหตุผลที่ไม่มีข้อมูลตามเดิม เมื่อได้คำตอบให้บันทึกใน §5.1 แล้วย้ายรายการออกจากตารางนี้
+
+| # | รายการที่รอ | ผู้ต้องตอบ/ส่ง | สิ่งที่ต้องได้ | คอลัมน์ / ผลที่ได้เมื่อปิด |
+| --- | --- | --- | --- | --- |
+| P-01 | BR-05 รายการคำ “ผลลัพธ์ที่ได้” | Product Owner + Clinical | รายการประโยค/วลีพร้อม version, เลือก 1 ค่าต่อ Follow-up | AK, AS, BA, BI (sheet บริการ) |
+| P-02 | ค่าวัด DTX/BW ในรอบบริการที่ 1–2 (ต่อจาก R24A-D11) | Product Owner | เพิ่มการวัดใน Service 1 และ Goal Plan หรือยอมให้ช่องว่าง | Q–V (Dashboard) |
+| P-03 | CL-01 HbA1c Before/After | Clinical authority | แหล่งข้อมูล, หน่วย, stage; ยืนยันเพิ่มใน Final | I, AK (Dashboard) |
+| P-04 | CL-02 BMI | Clinical authority | สูตร, การใช้ส่วนสูง Baseline, ทศนิยม | L, AN (Dashboard) |
+| P-05 | CL-03 CVD risk score | Clinical authority | วิธี/เครื่องมือที่ใช้ และรูปแบบค่าที่บันทึก | H, AJ (Dashboard) |
+| P-06 | CL-04 DM / Pre-DM | Clinical authority + Data owner | ยืนยันการ map DIABETES/RISK และตัวหาร | หัวรายงาน C2–C3 / C3–C4 |
+| P-07 | CL-05 ระยะเวลาการเจ็บป่วย | Clinical authority + Data owner | เหตุการณ์เริ่มนับ (เช่น ปีที่วินิจฉัย) และผู้บันทึก | E ทั้งสอง sheet |
+| P-08 | CL-06 PAM / PROMs / ไม้บรรทัดวัดใจ | Clinical authority | ชื่อแบบประเมิน, version, วิธีให้คะแนน, การผูก Before/After | K, L, M (sheet บริการ) |
+| P-09 | CL-07 เวลาออกกำลังกาย/สัปดาห์ | Clinical authority + Product Owner | แหล่ง (เจ้าหน้าที่บันทึกตอน Baseline/Final) และนิยามสัปดาห์ | N, Q (sheet บริการ) |
+| P-10 | WB-D02 privacy review ก่อนเปิดดาวน์โหลดให้ MEMBER | Security/Privacy + Product Owner | อนุมัติการแสดงชื่อ/HN ให้เจ้าหน้าที่ | สิทธิ์ดาวน์โหลด (S6) |
+| P-11 | WB-D03 / AREA-01..05 เขตความรับผิดชอบ | Product Owner | นิยาม Area, สมาชิก, ลำดับชั้น, การลบ/ย้าย | ตัวกรองตามเขต (S6) |
+| P-12 | Manual UAT ของฟอร์มใหม่และไฟล์ Excel | Product Owner / ผู้ใช้งานจริง | ทดลองบันทึก Follow-up/Final แล้วเทียบไฟล์ Excel | ยืนยัน DoD |
 
 ## 6. Implementation slices
 
@@ -203,7 +222,7 @@ Product Owner ตอบใน session นี้ โดยเลือกตา�
 
 ## 9. Next step
 
-สถานะ implementation ล่าสุดและหลักฐานการตรวจ: [BF-GAP-WB-01 handoff](./BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md)
+สถานะ implementation ล่าสุดและหลักฐานการตรวจ: [BF-GAP-WB-01 handoff](./BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md), [BF-GAP-WB-02 handoff](./BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md); รายการที่รออยู่: §5.2
 
 1. Owner และ Clinical authority ตอบ decision sheet §5 (ยอมรับ / แก้ไข / เลื่อน) โดยเฉพาะ WB-D01 และ R24A-D11 ซึ่งกำหนดโครงรอบของทั้งรายงาน และ WB-D02/WB-D03 ซึ่งกำหนดผู้ดาวน์โหลดและขอบเขตข้อมูล
 2. เมื่อ BR-01, BR-02, BR-03, BR-08 และ R24A-D11 ผ่าน → เริ่ม **S1**

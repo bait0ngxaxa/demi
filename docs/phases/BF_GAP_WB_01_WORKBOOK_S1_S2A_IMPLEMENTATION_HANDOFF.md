@@ -100,6 +100,8 @@ Not run: production build, full integration suite, browser/manual UAT of the new
 
 ## 7. Remaining work toward the DoD
 
+> Update: the Final Assessment service date, the adjusted Goal Plan link and the app-shell test were completed in [BF-GAP-WB-02](./BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md). The current list of waiting items is BF-GAP-WB-00 §5.2.
+
 | Item | Blocked on | Columns |
 | --- | --- | --- |
 | Outcome “ผลลัพธ์ที่ได้” | Owner vocabulary list (BR-05) | AK, AS, BA, BI |
