@@ -9,6 +9,7 @@ function validInput(overrides: Record<string, unknown> = {}): Record<string, unk
   return {
     patientProgramId: programId,
     patientHospitalRelationshipId: relationshipId,
+    serviceDate: "2026-08-21",
     weight: 72.5,
     waistCircumference: null,
     systolicBloodPressure: null,

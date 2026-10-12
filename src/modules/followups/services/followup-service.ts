@@ -24,9 +24,9 @@ import {
   InfrastructureError,
   ValidationError,
 } from "@/shared/errors/application-error";
+import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import type { FollowupProgressStatus } from "../domain/followup-definitions";
-import { isServiceDateAfter, serviceDateToUtcDate } from "../domain/followup-service-date";
 import { FOLLOWUP_RECORD_CAPABILITY } from "../policies/followup-policy";
 import {
   followupCreateRequestSchema,

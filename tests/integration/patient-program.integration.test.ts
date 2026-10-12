@@ -314,6 +314,7 @@ function finalAssessmentInput(
   return {
     patientProgramId,
     patientHospitalRelationshipId,
+    serviceDate: "2026-08-21",
     weight: 72.5,
     waistCircumference: 90,
     systolicBloodPressure: 120,
@@ -1850,6 +1851,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       createdAt: recordedAt,
     });
     expect(stored).toMatchObject({
+      serviceDate: new Date("2026-08-21T00:00:00.000Z"),
       patientProgramId: program.patientProgramId,
       patientHospitalRelationshipId: patient.relationshipId,
       recordedByUserId: owner.userId,

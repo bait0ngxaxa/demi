@@ -70,6 +70,7 @@ function validInput(overrides: Record<string, unknown> = {}): Record<string, unk
   return {
     patientProgramId: programId,
     patientHospitalRelationshipId: relationshipId,
+    serviceDate: "2026-08-21",
     weight: 72.5,
     waistCircumference: null,
     systolicBloodPressure: null,
@@ -194,6 +195,7 @@ describe("Patient Final Assessment service", () => {
         systolicBloodPressure: null,
         diastolicBloodPressure: null,
         bloodSugar: null,
+        serviceDate: new Date("2026-08-21T00:00:00.000Z"),
         recordedAt,
         createdAt: recordedAt,
       },
@@ -215,6 +217,22 @@ describe("Patient Final Assessment service", () => {
     );
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("72.5");
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("weight");
+  });
+
+  it("requires a service date and rejects one after today in Asia/Bangkok before locking the Program", async () => {
+    const { database, transaction } = createDatabase();
+    const input = validInput();
+    delete input.serviceDate;
+
+    await expect(createPatientFinalAssessment(actor, input, { database })).rejects.toBeInstanceOf(ValidationError);
+    // recordedAt is 2026-08-22 12:00 in Bangkok.
+    await expect(
+      createPatientFinalAssessment(actor, validInput({ serviceDate: "2026-08-23" }), {
+        database,
+        now: () => recordedAt,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated, empty, and browser-provided provenance input before persistence", async () => {

@@ -95,6 +95,7 @@ function existingFinal(): NonNullable<PatientFinalAssessmentProjection["finalAss
   return {
     id: "55555555-5555-4555-8555-555555555555",
     recordedBy: { id: "66666666-6666-4666-8666-666666666666", displayName: "ผู้บันทึก" },
+    serviceDate: new Date("2026-08-20T00:00:00.000Z"),
     recordedAt,
     createdAt: recordedAt,
     measurements: {
@@ -114,6 +115,7 @@ describe("Final Assessment Program workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientProgramFinalAssessmentWorkspace, {
         detail: detail(),
+        todayServiceDate: "2026-08-21",
         finalAssessment: projection(),
       }),
     );
@@ -123,6 +125,8 @@ describe("Final Assessment Program workspace", () => {
     expect(markup).toContain("บันทึก Final Assessment");
     expect(markup).toContain('name="patientHospitalRelationshipId"');
     expect(markup).toContain('name="patientProgramId"');
+    expect(markup).toContain('name="serviceDate"');
+    expect(markup).toContain('max="2026-08-21"');
     expect(markup).toContain('name="weight"');
     expect(markup).toContain('name="waistCircumference"');
     expect(markup).toContain('name="systolicBloodPressure"');
@@ -135,12 +139,15 @@ describe("Final Assessment Program workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientProgramFinalAssessmentWorkspace, {
         detail: detail(),
+        todayServiceDate: "2026-08-21",
         finalAssessment: projection({ finalAssessment: existingFinal() }),
       }),
     );
 
     expect(markup).toContain("บันทึกแล้ว · อ่านอย่างเดียว");
     expect(markup).toContain("72.5");
+    expect(markup).toContain("วันที่ประเมิน");
+    expect(markup).toContain("20 สิงหาคม 2569");
     expect(markup).toContain("ไม่ได้บันทึก");
     expect(markup).toContain("ผู้บันทึก");
     expect(markup).toContain("บันทึกในระบบเมื่อ");
@@ -153,6 +160,7 @@ describe("Final Assessment Program workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientProgramFinalAssessmentWorkspace, {
         detail: detail({ canManage: false }),
+        todayServiceDate: "2026-08-21",
         finalAssessment: projection(),
       }),
     );
@@ -167,6 +175,7 @@ describe("Final Assessment Program workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientProgramFinalAssessmentWorkspace, {
         detail: detail({ status: PatientProgramStatus.COMPLETED, canManage: false, completedAt: recordedAt }),
+        todayServiceDate: "2026-08-21",
         finalAssessment: projection({
           programStatus: PatientProgramStatus.COMPLETED,
           finalAssessment: existingFinal(),
@@ -185,6 +194,7 @@ describe("Final Assessment Program workspace", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientProgramFinalAssessmentWorkspace, {
         detail: detail({ status: PatientProgramStatus.COMPLETED, canManage: false, completedAt: recordedAt }),
+        todayServiceDate: "2026-08-21",
         finalAssessment: projection({ programStatus: PatientProgramStatus.COMPLETED }),
       }),
     );

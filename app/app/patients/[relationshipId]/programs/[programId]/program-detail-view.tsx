@@ -11,6 +11,7 @@ import type {
 import type { FollowupProgramHistory } from "@/modules/followups/services/followup-query-service";
 import type { PatientFinalAssessmentProjection } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import type { PatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import { toServiceDateOnly } from "@/shared/time/service-date";
 
 import { PatientProgramCompleteControl } from "../program-mutation-controls";
 
@@ -150,6 +151,7 @@ export function PatientProgramDetailView({
         <PatientProgramFinalAssessmentWorkspace
           detail={detail}
           finalAssessment={finalAssessment}
+          todayServiceDate={toServiceDateOnly(new Date())}
         />
 
         {detail.status === "ACTIVE" && detail.canManage ? (

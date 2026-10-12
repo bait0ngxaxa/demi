@@ -3,6 +3,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 const FINAL_ASSESSMENT_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
+  "serviceDate",
   "weight",
   "waistCircumference",
   "systolicBloodPressure",
@@ -70,6 +71,7 @@ export function buildCreateInput(formData: FormData): unknown {
       "patientHospitalRelationshipId",
     ),
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    serviceDate: getSingleString(formData, "serviceDate"),
     weight: getOptionalNumber(formData, "weight"),
     waistCircumference: getOptionalNumber(formData, "waistCircumference"),
     systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
@@ -86,7 +88,7 @@ export function mapPatientFinalAssessmentError(error: unknown): {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบแบบฟอร์ม Final Assessment และกรอกข้อมูลอย่างน้อย 1 รายการก่อนบันทึก",
+        message: "กรุณาตรวจสอบวันที่ประเมิน (ห้ามเป็นวันในอนาคต) และกรอกค่าอย่างน้อย 1 รายการก่อนบันทึก",
       };
     }
 

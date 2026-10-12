@@ -154,6 +154,7 @@ function goldenProgram(): HospitalReportProgramRow {
       state: "PRESENT",
       value: {
         recordedAt: "2026-09-30T03:00:00.000Z",
+        serviceDate: "2026-09-29",
         measurements: {
           bloodSugar: { state: "RECORDED", value: 108 },
           weight: { state: "RECORDED", value: 69 },

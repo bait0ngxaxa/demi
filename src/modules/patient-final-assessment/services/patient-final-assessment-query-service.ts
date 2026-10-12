@@ -33,6 +33,8 @@ export type PatientFinalAssessmentProjection = {
       id: string;
       displayName: string;
     };
+    /** Null for assessments recorded before service dates were captured. */
+    serviceDate: Date | null;
     recordedAt: Date;
     createdAt: Date;
     measurements: PatientFinalAssessmentMeasurements;
@@ -43,6 +45,7 @@ const patientFinalAssessmentSelect = {
   id: true,
   patientProgramId: true,
   patientHospitalRelationshipId: true,
+  serviceDate: true,
   recordedAt: true,
   createdAt: true,
   weight: true,
@@ -113,6 +116,7 @@ function toProjection(
             id: finalAssessment.recordedBy.id,
             displayName: toDisplayName(finalAssessment.recordedBy.person),
           },
+          serviceDate: finalAssessment.serviceDate,
           recordedAt: finalAssessment.recordedAt,
           createdAt: finalAssessment.createdAt,
           measurements: {

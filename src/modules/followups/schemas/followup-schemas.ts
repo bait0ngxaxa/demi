@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { serviceDateSchema } from "@/shared/time/service-date";
 
 import { FOLLOWUP_ACHIEVED_DAYS_MAX } from "../domain/followup-achievement";
 import {
@@ -31,17 +32,6 @@ const optionalMeasurementSchema = z
 
 const optionalNoteSchema = z.string().trim().max(FOLLOWUP_NOTE_MAX_LENGTH).nullable().optional();
 
-function isValidDateOnly(value: string): boolean {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-export const followupServiceDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/u)
-  .refine(isValidDateOnly, "The Follow-up service date is invalid");
-
 export const followupActivityProgressInputSchema = z
   .object({
     goalActivityCode: z.string().trim().min(1).max(64),
@@ -67,7 +57,7 @@ const followupPayloadSchema = z
     submissionNonce: followupSubmissionNonceSchema,
     appointmentId: followupAppointmentIdSchema.nullable().optional(),
     sourceGoalPlanId: followupGoalPlanIdSchema.nullable().optional(),
-    serviceDate: followupServiceDateSchema,
+    serviceDate: serviceDateSchema,
     planAdjusted: z.boolean(),
     hasObstacle: z.boolean(),
     obstacleNote: z.string().trim().max(FOLLOWUP_OBSTACLE_NOTE_MAX_LENGTH).nullable().optional(),

@@ -334,7 +334,7 @@ function ProgramOverview({
           <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลัง Program · การประเมินครั้งสุดท้าย</h4>
           {program.finalAssessment.state === "PRESENT" ? (
             <>
-              <p className="mb-3 text-sm text-text-muted">บันทึกวันที่ {displayDateTime(program.finalAssessment.value.recordedAt)}</p>
+              <p className="mb-3 text-sm text-text-muted">วันที่ประเมิน {program.finalAssessment.value.serviceDate ?? "ไม่ได้บันทึก"} · บันทึกวันที่ {displayDateTime(program.finalAssessment.value.recordedAt)}</p>
               <MeasurementList measurements={program.finalAssessment.value.measurements} />
             </>
           ) : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}

@@ -4,6 +4,7 @@ import {
   patientProgramIdSchema,
   patientProgramRelationshipIdSchema,
 } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { serviceDateSchema } from "@/shared/time/service-date";
 
 export const PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX = 1_000_000;
 
@@ -27,6 +28,7 @@ export const patientFinalAssessmentCreateRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     patientHospitalRelationshipId: patientProgramRelationshipIdSchema,
+    serviceDate: serviceDateSchema,
     weight: optionalMeasurementSchema,
     waistCircumference: optionalMeasurementSchema,
     systolicBloodPressure: optionalMeasurementSchema,

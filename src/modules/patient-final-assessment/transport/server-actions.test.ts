@@ -46,6 +46,7 @@ function validFormData(): FormData {
   const formData = new FormData();
   formData.set("patientHospitalRelationshipId", relationshipId);
   formData.set("patientProgramId", programId);
+  formData.set("serviceDate", "2026-08-21");
   formData.set("weight", "72.5");
   formData.set("waistCircumference", "");
   formData.set("systolicBloodPressure", "120");
@@ -92,6 +93,7 @@ describe("Patient Final Assessment Server Action", () => {
     expect(mockedCreate).toHaveBeenCalledWith(actor, {
       patientHospitalRelationshipId: relationshipId,
       patientProgramId: programId,
+      serviceDate: "2026-08-21",
       weight: 72.5,
       waistCircumference: null,
       systolicBloodPressure: 120,

@@ -103,6 +103,8 @@ export type HospitalReportProgramRow = {
   };
   finalAssessment: HospitalReportRecord<{
     recordedAt: string;
+    /** Date-only (YYYY-MM-DD); null for assessments recorded before service dates were captured. */
+    serviceDate: string | null;
     measurements: HospitalReportMeasurementSet;
   }>;
   unavailable: {

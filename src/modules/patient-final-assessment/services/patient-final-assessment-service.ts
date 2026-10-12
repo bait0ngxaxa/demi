@@ -15,6 +15,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/shared/errors/application-error";
+import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import {
   patientFinalAssessmentCreateRequestSchema,
@@ -57,6 +58,7 @@ type PatientFinalAssessmentMutationRecord = Prisma.PatientFinalAssessmentGetPayl
 type NormalizedPatientFinalAssessmentRequest = {
   patientProgramId: string;
   patientHospitalRelationshipId: string;
+  serviceDate: string;
   weight: number | null;
   waistCircumference: number | null;
   systolicBloodPressure: number | null;
@@ -137,6 +139,7 @@ function normalizeInput(
   return {
     patientProgramId: input.patientProgramId.toLowerCase(),
     patientHospitalRelationshipId: input.patientHospitalRelationshipId.toLowerCase(),
+    serviceDate: input.serviceDate,
     weight: input.weight ?? null,
     waistCircumference: input.waistCircumference ?? null,
     systolicBloodPressure: input.systolicBloodPressure ?? null,
@@ -167,6 +170,11 @@ async function createInTransaction(
   now: Date,
 ): Promise<PatientFinalAssessmentCreateResult> {
   const normalized = normalizeInput(input);
+
+  if (isServiceDateAfter(normalized.serviceDate, now)) {
+    throw new ValidationError("The Final Assessment service date cannot be in the future");
+  }
+
   const locked = await lockActivePatientProgram(
     transaction,
     actor,
@@ -199,6 +207,7 @@ async function createInTransaction(
       systolicBloodPressure: normalized.systolicBloodPressure,
       diastolicBloodPressure: normalized.diastolicBloodPressure,
       bloodSugar: normalized.bloodSugar,
+      serviceDate: serviceDateToUtcDate(normalized.serviceDate),
       recordedAt: now,
       createdAt: now,
     },

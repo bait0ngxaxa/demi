@@ -278,6 +278,7 @@ function finalInput(
   return {
     patientProgramId,
     patientHospitalRelationshipId: relationshipId,
+    serviceDate: "2026-08-21",
     weight,
     waistCircumference: null,
     systolicBloodPressure: null,

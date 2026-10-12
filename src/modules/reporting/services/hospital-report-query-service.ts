@@ -224,6 +224,7 @@ const reportProgramFollowupSelect = {
 const reportProgramFinalSelect = {
   select: {
     recordedAt: true,
+    serviceDate: true,
     weight: true,
     waistCircumference: true,
     systolicBloodPressure: true,
@@ -556,6 +557,7 @@ function toHospitalReportProgramRow(
       finalAssessment
         ? {
             recordedAt: finalAssessment.recordedAt.toISOString(),
+            serviceDate: finalAssessment.serviceDate ? finalAssessment.serviceDate.toISOString().slice(0, 10) : null,
             measurements: toMeasurementSet(finalAssessment),
           }
         : null,

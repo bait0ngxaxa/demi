@@ -44,6 +44,12 @@ function formatDateTime(value: Date): string {
   }).format(value);
 }
 
+function formatServiceDate(value: Date | null): string {
+  return value === null
+    ? "ไม่ได้บันทึก (รายการก่อนมีช่องนี้)"
+    : new Intl.DateTimeFormat("th-TH", { dateStyle: "long", timeZone: "UTC" }).format(value);
+}
+
 function statusLabel(status: PatientFinalAssessmentProjection["programStatus"]): string {
   return status === "ACTIVE" ? "กำลังดำเนินการ" : "เสร็จสิ้นแล้ว";
 }
@@ -83,9 +89,11 @@ function ActionFeedback({
 function FinalAssessmentForm({
   patientHospitalRelationshipId,
   patientProgramId,
+  todayServiceDate,
 }: {
   patientHospitalRelationshipId: string;
   patientProgramId: string;
+  todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending] = useActionState<
@@ -127,6 +135,25 @@ function FinalAssessmentForm({
         <input name="patientProgramId" type="hidden" value={patientProgramId} />
 
         <fieldset disabled={pending}>
+          <label className="block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor="final-assessment-service-date">
+            <span>วันที่ประเมิน</span>
+            <input
+              aria-describedby="final-assessment-service-date-help"
+              className={inputClassName}
+              defaultValue={todayServiceDate}
+              id="final-assessment-service-date"
+              max={todayServiceDate}
+              name="serviceDate"
+              required
+              type="date"
+            />
+            <span className="block text-xs font-normal leading-5 text-text-subtle" id="final-assessment-service-date-help">
+              วันที่ประเมินจริง เลือกย้อนหลังได้แต่เลือกวันในอนาคตไม่ได้
+            </span>
+          </label>
+        </fieldset>
+
+        <fieldset className="mt-6" disabled={pending}>
           <legend className="text-sm font-semibold text-text">ค่าที่ต้องการบันทึก</legend>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
             {measurementDefinitions.map((measurement) => {
@@ -214,6 +241,10 @@ function FinalAssessmentReadOnlyView({
 
       <dl className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
         <div>
+          <dt className="text-sm text-text-muted">วันที่ประเมิน</dt>
+          <dd className="mt-1 font-semibold text-text">{formatServiceDate(assessment.serviceDate)}</dd>
+        </div>
+        <div>
           <dt className="text-sm text-text-muted">ผู้บันทึก</dt>
           <dd className="mt-1 font-semibold text-text">{assessment.recordedBy.displayName}</dd>
         </div>
@@ -277,9 +308,11 @@ function FinalAssessmentAbsenceView({
 export function PatientProgramFinalAssessmentWorkspace({
   detail,
   finalAssessment,
+  todayServiceDate,
 }: {
   detail: PatientProgramDetail;
   finalAssessment: PatientFinalAssessmentProjection;
+  todayServiceDate: string;
 }): React.JSX.Element {
   const programStatus = finalAssessment.programStatus;
   const assessment = finalAssessment.finalAssessment;
@@ -317,6 +350,7 @@ export function PatientProgramFinalAssessmentWorkspace({
         <FinalAssessmentForm
           patientHospitalRelationshipId={finalAssessment.patientHospitalRelationshipId}
           patientProgramId={finalAssessment.patientProgramId}
+          todayServiceDate={todayServiceDate}
         />
       ) : null}
     </section>
@@ -325,6 +359,7 @@ export function PatientProgramFinalAssessmentWorkspace({
 
 export const patientFinalAssessmentWorkspaceInternals = {
   formatDateTime,
+  formatServiceDate,
   measurementValueLabel,
   statusLabel,
 };

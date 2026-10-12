@@ -1085,6 +1085,8 @@ model PatientFinalAssessment {
   systolicBloodPressure         Float?
   diastolicBloodPressure        Float?
   bloodSugar                    Float?
+  // Workbook DoD BR-01: nullable only for assessments recorded before service dates were captured.
+  serviceDate                   DateTime? @db.Date
   recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
   createdAt                     DateTime @default(now()) @db.Timestamptz(3)
 
