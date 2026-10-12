@@ -89,9 +89,9 @@ export class HospitalReportExportLimitError extends ApplicationError {
 }
 
 type ReportCursor = { startedAt: Date; id: string };
-// Parent results are withheld while no fields are approved, so this operation has no cursor. If an approved
-// pageable Parent projection is added, its signed cursor must bind the actor, exact Parent and Child, operation,
-// page size, ordering and expiry, then re-resolve authority on every continuation.
+// Parent reporting currently returns only an allowlisted exact-Child summary, with no pageable Patient/Program
+// rows or cursor. Any future pageable Parent operation must bind its signed cursor to the actor, exact Parent
+// and Child, operation, page size, ordering and expiry, then re-resolve authority on every continuation.
 type ReportScopeOperation = "HOSPITAL_OWNER" | "GLOBAL_ADMIN";
 type ReportCursorContext = {
   actorId: string;

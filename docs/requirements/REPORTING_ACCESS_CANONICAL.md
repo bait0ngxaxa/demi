@@ -1,7 +1,7 @@
 # ข้อกำหนดปัจจุบัน: Reporting Access
 
 - **สถานะ:** `CONFIRMED_OWNER_REQUIREMENT` สำหรับ OR-RPT-01–05; เอกสารนี้เป็นแหล่งความจริงปัจจุบันด้าน product intent
-- **ปรับปรุง:** 2026-10-11
+- **ปรับปรุง:** 2026-10-12
 - **ขอบเขต:** การอ่านและส่งออกผลรายงานของ Hospital; ไม่อนุมัติ runtime changes หรือการเปิดเผย field ที่ยังไม่ยืนยัน
 
 เอกสารนี้กำหนดว่า reporting ต้องรองรับงานใด ส่วน [ADR-0002](../adr/0002-role-capability-scope-authorization.md), [ADR-0005](../adr/0005-server-side-application-boundary.md) และ [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md) กำหนดขอบเขตสถาปัตยกรรมและความปลอดภัย โค้ดและการทดสอบปัจจุบันเป็นหลักฐานว่าอะไรทำงานแล้ว ไม่ใช่เพดานของ product scope เอกสาร Phase 17K–19 เป็นหลักฐานทางประวัติศาสตร์เมื่อขัดกับข้อกำหนดที่ยืนยันในที่นี้

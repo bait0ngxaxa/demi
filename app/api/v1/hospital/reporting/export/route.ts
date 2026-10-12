@@ -13,24 +13,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const NO_STORE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
 
 function errorResponse(error: unknown): NextResponse {
   if (error instanceof UnauthenticatedError) {
-    return NextResponse.json({ error: "กรุณาเข้าสู่ระบบก่อนส่งออกรายงาน" }, { status: 401 });
+    return NextResponse.json({ error: "กรุณาเข้าสู่ระบบก่อนส่งออกรายงาน" }, { status: 401, headers: NO_STORE_HEADERS });
   }
   if (error instanceof HospitalReportExportLimitError) {
-    return NextResponse.json({ error: error.message }, { status: 413 });
+    return NextResponse.json({ error: error.message }, { status: 413, headers: NO_STORE_HEADERS });
   }
   if (error instanceof ApplicationError && error.code === "NOT_FOUND") {
-    return NextResponse.json({ error: "ไม่พบรายงานหรือไม่มีสิทธิ์เข้าถึง" }, { status: 404 });
+    return NextResponse.json({ error: "ไม่พบรายงานหรือไม่มีสิทธิ์เข้าถึง" }, { status: 404, headers: NO_STORE_HEADERS });
   }
   if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
-    return NextResponse.json({ error: "ไม่มีสิทธิ์ส่งออกรายงานของโรงพยาบาลนี้" }, { status: 403 });
+    return NextResponse.json({ error: "ไม่มีสิทธิ์ส่งออกรายงานของโรงพยาบาลนี้" }, { status: 403, headers: NO_STORE_HEADERS });
   }
   if (error instanceof ApplicationError && error.code === "VALIDATION") {
-    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400 });
+    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400, headers: NO_STORE_HEADERS });
   }
-  return NextResponse.json({ error: "ระบบส่งออกรายงานไม่พร้อมใช้งาน กรุณาลองอีกครั้ง" }, { status: 503 });
+  return NextResponse.json({ error: "ระบบส่งออกรายงานไม่พร้อมใช้งาน กรุณาลองอีกครั้ง" }, { status: 503, headers: NO_STORE_HEADERS });
 }
 
 function safeFilenamePart(value: string): string {
@@ -45,14 +46,14 @@ export async function GET(request: Request): Promise<Response> {
     queryEntries[0]?.[0] !== "hospitalId" ||
     url.searchParams.getAll("hospitalId").length !== 1
   ) {
-    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400 });
+    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   const parsed = hospitalReportExportRequestSchema.safeParse({
     hospitalId: url.searchParams.get("hospitalId"),
   });
   if (!parsed.success) {
-    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400 });
+    return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
   try {
@@ -62,7 +63,7 @@ export async function GET(request: Request): Promise<Response> {
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        "Cache-Control": "private, no-store, max-age=0",
+        ...NO_STORE_HEADERS,
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Length": String(buffer.byteLength),
         "Content-Type": XLSX_CONTENT_TYPE,

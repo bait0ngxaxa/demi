@@ -10,6 +10,7 @@ const {
   mockedGetPage,
   mockedGetParentChildPage,
   mockedGetHierarchyContext,
+  mockedRecordParentChildAudit,
   mockedNotFound,
   mockedRedirect,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   mockedGetPage: vi.fn(),
   mockedGetParentChildPage: vi.fn(),
   mockedGetHierarchyContext: vi.fn(),
+  mockedRecordParentChildAudit: vi.fn(),
   mockedNotFound: vi.fn(),
   mockedRedirect: vi.fn(),
 }));
@@ -28,6 +30,9 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtec
 vi.mock("../services/hospital-report-access-service", () => ({ listHospitalReportingHospitals: mockedListHospitals }));
 vi.mock("../services/parent-child-hospital-report-access-service", () => ({
   listParentChildHospitalReportTargetGroups: mockedListParentGroups,
+}));
+vi.mock("../services/parent-child-hospital-report-audit-service", () => ({
+  recordParentChildHospitalReportingAudit: mockedRecordParentChildAudit,
 }));
 vi.mock("../services/hospital-report-query-service", () => ({
   getHospitalReportingPage: mockedGetPage,
@@ -165,6 +170,59 @@ describe("Hospital report page context", () => {
     expect(mockedNotFound).toHaveBeenCalledTimes(2);
     expect(mockedGetPage).not.toHaveBeenCalled();
     expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+    expect(mockedRecordParentChildAudit).toHaveBeenCalledWith({
+      actor,
+      parentHospitalId: hospitalId,
+      hospitalId: otherHospitalId,
+      outcome: "denied",
+      reason: "SCOPE_UNAVAILABLE",
+    });
+  });
+
+  it("audits malformed and mixed target locators without disclosing their values", async () => {
+    await expect(getHospitalReportPageContext(
+      undefined,
+      undefined,
+      undefined,
+      `PARENT_CHILD:invalid:${childHospitalId}`,
+    )).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(getHospitalReportPageContext(
+      hospitalId,
+      undefined,
+      undefined,
+      `PARENT_CHILD:${hospitalId}:${childHospitalId}`,
+    )).rejects.toThrow("NEXT_NOT_FOUND");
+
+    expect(mockedRecordParentChildAudit).toHaveBeenNthCalledWith(1, {
+      actor,
+      outcome: "denied",
+      reason: "SCOPE_UNAVAILABLE",
+    });
+    expect(mockedRecordParentChildAudit).toHaveBeenNthCalledWith(2, {
+      actor,
+      outcome: "denied",
+      reason: "SCOPE_UNAVAILABLE",
+    });
+    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+  });
+
+  it("audits Parent target attempts when the actor has no direct OWNER Hospital", async () => {
+    mockedListHospitals.mockResolvedValueOnce([]);
+
+    await expect(getHospitalReportPageContext(
+      undefined,
+      undefined,
+      undefined,
+      `PARENT_CHILD:${hospitalId}:${childHospitalId}`,
+    )).rejects.toThrow("NEXT_NOT_FOUND");
+
+    expect(mockedRecordParentChildAudit).toHaveBeenCalledWith({
+      actor,
+      outcome: "denied",
+      reason: "SCOPE_UNAVAILABLE",
+    });
+    expect(mockedListParentGroups).not.toHaveBeenCalled();
+    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
   });
 
   it("resets and rejects Parent report pagination state", async () => {
@@ -175,6 +233,13 @@ describe("Hospital report page context", () => {
       `PARENT_CHILD:${hospitalId}:${childHospitalId}`,
     )).rejects.toThrow("NEXT_NOT_FOUND");
     expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+    expect(mockedRecordParentChildAudit).toHaveBeenCalledWith({
+      actor,
+      parentHospitalId: hospitalId,
+      hospitalId: childHospitalId,
+      outcome: "denied",
+      reason: "NOT_AUTHORIZED",
+    });
   });
 
   it("masks a revoked Parent report scope after the dedicated read", async () => {

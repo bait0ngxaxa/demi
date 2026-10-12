@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import {
+  ForbiddenError,
+  InfrastructureError,
+  NotFoundError,
+  UnauthenticatedError,
+} from "@/shared/errors/application-error";
 import { HospitalReportExportLimitError } from "@/modules/reporting/services/hospital-report-query-service";
 
 const { mockedGetActor, mockedExport } = vi.hoisted(() => ({
@@ -38,6 +43,7 @@ describe("Hospital report export endpoint", () => {
   it("rejects malformed or extra query parameters before accessing report data", async () => {
     const response = await GET(new Request(`https://demi.example.test/api/v1/hospital/reporting/export?hospitalId=${hospitalId}&hospitalId=${hospitalId}`));
     expect(response.status).toBe(400);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(mockedGetActor).not.toHaveBeenCalled();
     expect(mockedExport).not.toHaveBeenCalled();
   });
@@ -46,6 +52,7 @@ describe("Hospital report export endpoint", () => {
     [new UnauthenticatedError(), 401],
     [new ForbiddenError(), 403],
     [new NotFoundError(), 404],
+    [new InfrastructureError("sensitive database error"), 503],
     [new HospitalReportExportLimitError("เกินขีดจำกัด"), 413],
   ])("maps authorization and export failures safely", async (error, status) => {
     mockedExport.mockRejectedValue(error);
@@ -53,6 +60,7 @@ describe("Hospital report export endpoint", () => {
     const payload: unknown = await response.json();
 
     expect(response.status).toBe(status);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(JSON.stringify(payload)).not.toContain("stack");
     expect(JSON.stringify(payload)).not.toContain("Prisma");
   });

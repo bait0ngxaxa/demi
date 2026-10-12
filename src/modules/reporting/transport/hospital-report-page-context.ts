@@ -32,6 +32,10 @@ import {
   type ParentChildHospitalReportTargetGroup,
 } from "../services/parent-child-hospital-report-access-service";
 import {
+  recordParentChildHospitalReportingAudit,
+  type ParentChildHospitalReportingAuditReason,
+} from "../services/parent-child-hospital-report-audit-service";
+import {
   getHospitalReportingPage,
   getParentChildHospitalReportingPage,
 } from "../services/hospital-report-query-service";
@@ -74,6 +78,22 @@ function parentGroupContainsTarget(
   );
 }
 
+async function denyAndHideParentChildTarget(
+  actor: ActorContext,
+  parentHospitalId?: string,
+  hospitalId?: string,
+  reason: ParentChildHospitalReportingAuditReason = "SCOPE_UNAVAILABLE",
+): Promise<never> {
+  await recordParentChildHospitalReportingAudit({
+    actor,
+    ...(parentHospitalId ? { parentHospitalId } : {}),
+    ...(hospitalId ? { hospitalId } : {}),
+    outcome: "denied",
+    reason,
+  });
+  notFound();
+}
+
 export async function getHospitalReportPageContext(
   requestedHospitalId: string | undefined,
   cursor: string | undefined,
@@ -89,12 +109,15 @@ export async function getHospitalReportPageContext(
     throw error;
   }
 
-  if (hospitals.length === 0) {
-    if (requestedHospitalId !== undefined || requestedTarget !== undefined) notFound();
-    redirect("/app");
+  if (requestedHospitalId !== undefined && requestedTarget !== undefined) {
+    await denyAndHideParentChildTarget(actor);
   }
 
-  if (requestedHospitalId !== undefined && requestedTarget !== undefined) notFound();
+  if (hospitals.length === 0) {
+    if (requestedTarget !== undefined) await denyAndHideParentChildTarget(actor);
+    if (requestedHospitalId !== undefined) notFound();
+    redirect("/app");
+  }
 
   const parentGroups = await listParentChildHospitalReportTargetGroups(
     actor,
@@ -106,7 +129,10 @@ export async function getHospitalReportPageContext(
       : { kind: "DIRECT_OWNER" as const, hospitalId: requestedHospitalId }
     : parseHospitalReportTargetSelection(requestedTarget);
 
-  if (!selection || selection.hospitalId === "") notFound();
+  if (!selection || selection.hospitalId === "") {
+    if (requestedTarget !== undefined) await denyAndHideParentChildTarget(actor);
+    notFound();
+  }
 
   if (selection.kind === "DIRECT_OWNER") {
     const parsedRequest = hospitalReportPageRequestSchema.safeParse({
@@ -136,7 +162,14 @@ export async function getHospitalReportPageContext(
     }
   }
 
-  if (cursor !== undefined || pageSize !== undefined) notFound();
+  if (cursor !== undefined || pageSize !== undefined) {
+    await denyAndHideParentChildTarget(
+      actor,
+      selection.parentHospitalId,
+      selection.hospitalId,
+      "NOT_AUTHORIZED",
+    );
+  }
 
   const directlyOwnedHospital = hospitals.find(({ id }) => id === selection.hospitalId);
   if (directlyOwnedHospital) {
@@ -169,7 +202,9 @@ export async function getHospitalReportPageContext(
     }
   }
 
-  if (!parentGroupContainsTarget(parentGroups, selection.parentHospitalId, selection.hospitalId)) notFound();
+  if (!parentGroupContainsTarget(parentGroups, selection.parentHospitalId, selection.hospitalId)) {
+    await denyAndHideParentChildTarget(actor, selection.parentHospitalId, selection.hospitalId);
+  }
 
   try {
     const report = await getParentChildHospitalReportingPage(actor, {
