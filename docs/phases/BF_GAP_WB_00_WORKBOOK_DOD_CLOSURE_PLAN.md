@@ -148,7 +148,7 @@
 
 ### 5.1 Product Owner decisions (2026-10-12)
 
-Product Owner ตอบใน session นี้ โดยเลือกตามค่าแนะนำทั้ง 4 ข้อ:
+Product Owner ตอบใน session นี้ โดยเลือกตามค่าแนะนำทุกข้อ:
 
 | ID | สถานะ | ผลการตัดสินใจ |
 | --- | --- | --- |
@@ -156,8 +156,13 @@ Product Owner ตอบใน session นี้ โดยเลือกตา�
 | R24A-D11 | **CONFIRMED** | Dashboard “ระหว่างโปรแกรม 1–6” = รอบบริการที่ 1–6: ช่อง 1 = Service 1, ช่อง 2 = Goal Plan, ช่อง 3–6 = Follow-up ลำดับที่ 1–4; Follow-up ที่เกินลงแถวต่อเนื่องในช่อง 3–6; ช่อง 1–2 แสดงว่ายังไม่มีแหล่งค่าวัดจนกว่า S2 จะเพิ่มการวัดในรอบนั้น |
 | WB-D02 | **CONFIRMED (มีเงื่อนไข)** | OWNER และ MEMBER ดาวน์โหลดได้ โดย MEMBER จำกัดเฉพาะ Hospital ที่สังกัดโดยตรง มี audit และ **ต้องผ่าน privacy review เรื่องการแสดงชื่อ/HN ก่อนเปิดใช้** จึงยังไม่ implement จนกว่า review ผ่าน (S6) |
 | WB-D03 | **CONFIRMED** | “ทั้งหมด” = Hospital เดียวที่ผู้ใช้สังกัดโดยตรง สอดคล้อง OR-RPT-03; ตัวกรองเขตความรับผิดชอบรอ AREA-01..05 |
+| BR-02 | **CONFIRMED** | ครั้งที่ 1 “ทำ” = มีบันทึกกิจกรรม Service 1 นั้นใน Program; “ไม่ทำ” = ไม่มีบันทึก; ใช้หัวตาราง ทำ/ไม่ทำ ของ workbook และมีหมายเหตุว่าไม่ยืนยันผลการรักษา |
+| BR-03 | **CONFIRMED** | ใช้ Goal Plan รอบแรก (roundNumber ต่ำสุด) ของ Program: การลดมื้ออาหาร = มีเป้าหมาย `reduce_rice`; การเปลี่ยนอาหาร = มีเป้าหมายหมวด FOOD อื่น; จำนวนมื้อ/สัปดาห์ = targetDays สูงสุดของหมวด FOOD; เป้าหมายออกกำลัง = มีหมวด EXERCISE; จำนวนวัน/สัปดาห์ = targetDays สูงสุดของ EXERCISE; รวมเวลา/สัปดาห์ = Σ(targetDays × นาทีต่อครั้ง) ของ EXERCISE และถ้ากิจกรรมใดไม่มีนาทีจะไม่รวมบางส่วน |
+| BR-08 | **CONFIRMED** | อสม.ที่ดูแล = assignment ที่ active ณ วันออกรายงาน พร้อมป้าย “(มอบหมายปัจจุบัน)” (พฤติกรรมเดิม) |
 
-ข้อที่ยัง OPEN และ block S1 ส่วนที่เหลือ: BR-01, BR-02, BR-03, BR-08 และ CL-01/CL-06 (เฉพาะช่อง HbA1c/ไม้บรรทัดวัดใจ Before)
+ข้อที่ยัง OPEN และ block S1 ส่วนที่เหลือ: BR-01 (ความหมาย Before/ระหว่าง/After และวันที่) และ CL-01/CL-06 (เฉพาะช่อง HbA1c/ไม้บรรทัดวัดใจ Before)
+
+**สถานะ implementation (golden test `hospital-report-workbook-golden.test.ts`):** R24A-D11, BR-02, BR-03 และ BR-08 ถูก implement ใน workbook export แล้ว ความครอบคลุม 108 คอลัมน์ของแถวข้อมูล: SOURCE_READY 44 · DECISION_OPEN 14 · SOURCE_MISSING 50 (เริ่มต้น 27 · 35 · 46; ช่องค่าวัดครั้งที่ 1–2 ย้ายเป็น SOURCE_MISSING หลัง R24A-D11) ตาราง §4 เป็น baseline ก่อนการตัดสินใจ ให้ใช้ golden test เป็นสถานะปัจจุบัน
 
 ## 6. Implementation slices
 
