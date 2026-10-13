@@ -55,6 +55,7 @@ export type PatientImportClassificationPreview = {
 
 export type PatientImportPreviewRow = {
   rowNumber: number;
+  sourceSequenceNumber: string | null;
   identityDisplay: string;
   givenName: string;
   familyName: string;

@@ -31,6 +31,7 @@ function row(
 ): PatientImportPreviewRow {
   return {
     rowNumber,
+    sourceSequenceNumber: null,
     identityDisplay: `••••••${String(rowNumber).padStart(4, "0")}`,
     givenName: `ชื่อ${rowNumber}`,
     familyName: "ทดสอบ",

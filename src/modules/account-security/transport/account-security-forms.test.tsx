@@ -37,6 +37,7 @@ const profile = {
     occupation: "เกษตรกร",
     educationLevel: "มัธยมศึกษา",
   },
+  emergencyContactRelationship: null,
   source: "LEGACY_FALLBACK" as const,
   version: 0,
 };

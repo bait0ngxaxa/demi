@@ -308,6 +308,7 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
     const detail = await getPatientDirectoryDetail(member.actor, firstPatient.id);
     expect(detail.profile).toEqual({
       dateOfBirth,
+      emergencyContactRelationship: null,
       gender: "ชาย",
       phoneNumber: "0812345678",
       addressText: "99 ถนนตัวอย่าง",

@@ -19,6 +19,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import type { PatientProvisioningImportCandidate } from "../import/patient-import-contract";
+import { readPatientImportProfile } from "../import/patient-import-profile";
 import {
   PatientProvisioningConflictError,
   provisionPatientInTransaction,
@@ -153,6 +154,12 @@ async function importPatientRosterRow(
           select: buildPreviewPersonSelect(patientInput.targetHospitalId),
         });
 
+        const importedProfile = readPatientImportProfile(candidate.canonicalRow);
+        if (person?.patientProfile?.dateOfBirth && importedProfile.dateOfBirth &&
+            person.patientProfile.dateOfBirth.toISOString().slice(0, 10) !== importedProfile.dateOfBirth) {
+          throw new PatientProvisioningConflictError("IDENTITY_CONFLICT", "Patient date of birth conflicts");
+        }
+
         if (person?.patientProfile?.hospitalRelationships.length) {
           const { classification, reason } = classifyExistingPatient(person, patientInput);
 
@@ -174,6 +181,17 @@ async function importPatientRosterRow(
             "The patient was added after the import preview",
           );
         }
+
+        const { dateOfBirth, ...hospitalProfile } = importedProfile;
+        if (dateOfBirth && !person?.patientProfile?.dateOfBirth) {
+          await transaction.patientProfile.update({
+            where: { id: patient.patientProfileId },
+            data: { dateOfBirth: new Date(`${dateOfBirth}T00:00:00.000Z`) },
+          });
+        }
+        await transaction.patientHospitalProfile.create({
+          data: { patientHospitalRelationshipId: patient.relationshipId, ...hospitalProfile },
+        });
 
         const now = getImportNow(dependencies);
         let baselineStatus: PatientImportBaselineStatus = "NOT_APPLICABLE";
@@ -230,7 +248,7 @@ function isExistingRow(
 }
 
 function importResultReason(result: PatientRosterImportRowResult): string {
-  const parts = ["บันทึกข้อมูลผู้ป่วยแล้ว"];
+  const parts = ["บันทึกข้อมูลผู้ป่วยและโปรไฟล์จากไฟล์แล้ว"];
 
   if (result.baselineStatus === "BASELINE_CREATED") {
     parts.push("บันทึกข้อมูลตั้งต้นแล้ว");

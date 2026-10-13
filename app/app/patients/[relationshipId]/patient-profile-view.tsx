@@ -69,7 +69,7 @@ export function PatientProfileView({
           ข้อมูลผู้ป่วย
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-          ข้อมูลโปรไฟล์ส่วนนี้แสดงแบบอ่านอย่างเดียวสำหรับการตรวจสอบความต้องการ
+          ข้อมูลทั่วไปและข้อมูลติดต่อของผู้ป่วยในโรงพยาบาลนี้
         </p>
         {profileSource === "LEGACY_FALLBACK" ? (
           <p className="mt-3 break-words text-sm leading-6 text-text-muted">
@@ -95,6 +95,7 @@ export function PatientProfileView({
           <ProfileSection
             fields={[
               { label: "ชื่อผู้ติดต่อ", value: displayText(profile.emergencyContactName) },
+              { label: "ความสัมพันธ์กับผู้ป่วย", value: displayText(profile.emergencyContactRelationship) },
               { label: "เบอร์โทรศัพท์", value: displayText(profile.emergencyContactPhone) },
             ]}
             title="ผู้ติดต่อกรณีฉุกเฉิน"

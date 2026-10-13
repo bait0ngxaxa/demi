@@ -10,6 +10,10 @@
 
 ---
 
+## Current decision addendum — Patient import profile persistence (2026-10-13)
+
+[ADR-0011](../adr/0011-patient-import-profile-persistence.md) extends the accepted provisioning/transaction boundaries with owner-approved Template v2 profile persistence. Global DOB belongs to PatientProfile, while hospital demographics/contact/structured address/emergency relationship belong to the exact PatientHospitalProfile. A row succeeds atomically with existing clinical domain writes; duplicate imports never overwrite established data. Address components and addressText are mutually exclusive, and both read paths use the same derived address. Historical profile gates below apply at their recorded dates; the new approval is limited to this scope.
+
 ## 1. Context
 
 DEMI is being redesigned from the existing application rather than preserving the existing architecture.

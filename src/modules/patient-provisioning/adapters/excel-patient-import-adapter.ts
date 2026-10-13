@@ -15,7 +15,6 @@ import {
   isPatientImportClassificationField,
   isPatientImportBaselineField,
   PATIENT_IMPORT_FIELD_KEYS,
-  PATIENT_IMPORT_UNSAVED_FIELD_KEYS,
 } from "../import/patient-import-contract";
 import type {
   CanonicalPatientImportRow,
@@ -29,6 +28,7 @@ import type {
   PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
 import { PATIENT_IMPORT_TEMPLATE_COLUMNS } from "../import/patient-import-template-contract";
+import { patientImportProfileSchema } from "../import/patient-import-profile";
 import {
   PATIENT_IMPORT_COLUMN_BINDINGS,
   validatePatientImportTemplateWorkbook,
@@ -39,6 +39,7 @@ import {
   normalizeNationalIdCell,
   normalizeNumericCell,
   normalizePhoneCell,
+  normalizeIdentifierTextCell,
   normalizePatientClassificationCell,
   normalizeTextCell,
 } from "../import/patient-import-normalization";
@@ -71,7 +72,6 @@ const diagnosticMessages: Readonly<Record<PatientImportDiagnosticCode, string>> 
   INVALID_VALUE: "ค่าบางรายการไม่อยู่ในรูปแบบที่รองรับ",
   LOSSY_EXCEL_VALUE: "ค่าใน Excel อาจสูญเสียข้อมูลจากการจัดรูปแบบ",
   AMBIGUOUS_VALUE: "ค่าบางรายการตีความได้มากกว่าหนึ่งแบบ",
-  REQUIREMENT_GATED: "ตรวจพบข้อมูลเพิ่มเติมที่ยังไม่บันทึกในระยะนี้",
   CLASSIFICATION_DATA_INVALID: "ค่ากลุ่มสถานะผู้ป่วยไม่ใช่ค่าที่รองรับ",
   FORMULA_VALUE: "ไม่รับค่าจากสูตร Excel เป็นข้อมูลอ้างอิงโดยอัตโนมัติ",
   EXCEL_ERROR: "เซลล์ Excel มีค่าผิดพลาด",
@@ -195,7 +195,7 @@ function assessmentStatus(
       ? "PARSED_FOR_INITIAL_BASELINE"
       : isPatientImportClassificationField(field)
         ? "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-        : "PARSED_REQUIREMENT_GATED";
+        : field === "sourceSequenceNumber" ? "IMPORT_METADATA" : "SUPPORTED_FOR_CURRENT_PROVISIONING";
 }
 
 function updateFieldAssessment(
@@ -211,7 +211,7 @@ function updateFieldAssessment(
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
     PARSED_FOR_INITIAL_BASELINE: 2,
     SUPPORTED_FOR_PATIENT_CLASSIFICATION: 2,
-    PARSED_REQUIREMENT_GATED: 1,
+    IMPORT_METADATA: 1,
     INVALID: 4,
     AMBIGUOUS: 5,
   };
@@ -236,22 +236,6 @@ function addDiagnostics(
 ): void {
   for (const code of codes) {
     diagnostics.push(createDiagnostic(code, field, sourceHeader));
-  }
-}
-
-function setRequirementDiagnostic(
-  diagnostics: PatientImportDiagnostic[],
-  field: PatientImportFieldKey,
-  sourceHeader: string,
-  value: string | number | null,
-): void {
-  if (
-    !CORE_FIELDS.has(field) &&
-    !isPatientImportBaselineField(field) &&
-    !isPatientImportClassificationField(field) &&
-    value !== null
-  ) {
-    diagnostics.push(createDiagnostic("REQUIREMENT_GATED", field, sourceHeader));
   }
 }
 
@@ -300,12 +284,13 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
 
     const result = field === "phoneNumber" || field === "emergencyContactPhone"
       ? normalizePhoneCell(row.getCell(binding.columnNumber))
-      : normalizeTextCell(row.getCell(binding.columnNumber));
+      : field === "hospitalNumber" || field === "postalCode"
+        ? normalizeIdentifierTextCell(row.getCell(binding.columnNumber))
+        : normalizeTextCell(row.getCell(binding.columnNumber));
     target(result.value);
     const status = assessmentStatus(field, result.diagnostics);
     updateFieldAssessment(assessments, field, binding.sourceHeader, status, result.diagnostics);
     addDiagnostics(diagnostics, field, binding.sourceHeader, result.diagnostics);
-    setRequirementDiagnostic(diagnostics, field, binding.sourceHeader, result.value);
   };
 
   const parseClassificationField = (): void => {
@@ -338,7 +323,6 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
     const status = assessmentStatus(field, result.diagnostics);
     updateFieldAssessment(assessments, field, binding.sourceHeader, status, result.diagnostics);
     addDiagnostics(diagnostics, field, binding.sourceHeader, result.diagnostics);
-    setRequirementDiagnostic(diagnostics, field, binding.sourceHeader, result.value);
   };
 
   const nationalBinding = bindingsByField.get("nationalId");
@@ -384,7 +368,6 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
     dateOfBirth = result.value;
     updateFieldAssessment(assessments, "dateOfBirth", dateBinding.sourceHeader, assessmentStatus("dateOfBirth", result.diagnostics), result.diagnostics);
     addDiagnostics(diagnostics, "dateOfBirth", dateBinding.sourceHeader, result.diagnostics);
-    setRequirementDiagnostic(diagnostics, "dateOfBirth", dateBinding.sourceHeader, result.value);
   }
 
   const numericFields: ReadonlyArray<readonly [PatientImportFieldKey, (value: number | null) => void]> = [
@@ -484,6 +467,22 @@ function buildCandidate(
   targetHospitalId: string,
 ): PatientProvisioningImportCandidate {
   const canonicalRow = readCanonicalRow(worksheet, rowNumber);
+  const profile = patientImportProfileSchema.safeParse({
+    ...canonicalRow.demographics, ...canonicalRow.contact, ...canonicalRow.address,
+  });
+  if (!profile.success) {
+    for (const issue of profile.error.issues) {
+      const field = PATIENT_IMPORT_FIELD_KEYS.find((key) => key === issue.path[0]);
+      if (!field) continue;
+      const header = PATIENT_IMPORT_COLUMN_BINDINGS.get(field)?.sourceHeader ?? "";
+      updateFieldAssessment(canonicalRow.fieldAssessments, field, header, "INVALID", ["INVALID_VALUE"]);
+      canonicalRow.diagnostics = [...canonicalRow.diagnostics, createDiagnostic("INVALID_VALUE", field, header)];
+    }
+  }
+  const invalidProfile = !profile.success || PATIENT_IMPORT_FIELD_KEYS.some((field) =>
+    !isPatientImportBaselineField(field) && !isPatientImportClassificationField(field) &&
+    canonicalRow.fieldAssessments[field].diagnostics.length > 0,
+  );
   const parsedRow = patientProvisionFormSchema.safeParse({
     nationalId: canonicalRow.identity.nationalId ?? "",
     givenName: canonicalRow.identity.givenName ?? "",
@@ -495,7 +494,7 @@ function buildCandidate(
   return {
     rowNumber,
     identityDisplay: maskIdentity(canonicalRow.identity.nationalId),
-    input: parsedRow.success
+    input: parsedRow.success && !invalidProfile
       ? {
           identity: {
             namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
@@ -510,7 +509,8 @@ function buildCandidate(
     givenName: canonicalRow.identity.givenName ?? "",
     familyName: canonicalRow.identity.familyName ?? "",
     hospitalNumber: canonicalRow.organizationCandidates.hospitalNumber,
-    validationMessage: parsedRow.success ? null : mapValidationMessage(parsedRow.error.issues, canonicalRow),
+    validationMessage: !parsedRow.success ? mapValidationMessage(parsedRow.error.issues, canonicalRow)
+      : invalidProfile ? "ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง กรุณาตรวจสอบวันเกิด ข้อมูลติดต่อ และที่อยู่" : null,
     canonicalRow,
     fileMetadata,
   };
@@ -603,7 +603,7 @@ export async function readPatientImportFile(
     throw new ValidationError(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);
   }
 
-  const requirementGatedFields = PATIENT_IMPORT_UNSAVED_FIELD_KEYS;
+  const requirementGatedFields: PatientImportFieldKey[] = [];
   const fileMetadata: PatientImportFileMetadata = {
     worksheetName: validation.worksheet.name,
     headerRowNumber: validation.headerRowNumber,

@@ -31,6 +31,9 @@ describe("Patient Hospital profile update schema", () => {
     "givenName",
     "familyName",
     "dateOfBirth",
+    "houseNumber",
+    "postalCode",
+    "emergencyContactRelationship",
     "nationalId",
     "identityKeyHash",
     "hospitalNumber",
@@ -53,7 +56,7 @@ describe("Patient Hospital profile update schema", () => {
     expect(
       patientHospitalProfileUpdateSchema.safeParse({
         expectedVersion: 0,
-        addressText: "x".repeat(501),
+        addressText: "x".repeat(2001),
       }).success,
     ).toBe(false);
     expect(patientHospitalProfileUpdateSchema.safeParse({ expectedVersion: 0 }).success).toBe(

@@ -21,6 +21,7 @@ describe("effective Hospital-scoped Patient profile values", () => {
       values: legacy,
       source: "LEGACY_FALLBACK",
       version: 0,
+      emergencyContactRelationship: null,
     });
   });
 
@@ -51,6 +52,7 @@ describe("effective Hospital-scoped Patient profile values", () => {
       },
       source: "HOSPITAL_LOCAL",
       version: 2,
+      emergencyContactRelationship: null,
     });
   });
 

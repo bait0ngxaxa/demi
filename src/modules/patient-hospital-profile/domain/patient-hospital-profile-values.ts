@@ -1,7 +1,9 @@
+import { formatPatientHospitalAddress, type PatientHospitalAddress } from "./patient-hospital-address";
+
 export const PATIENT_HOSPITAL_PROFILE_FIELD_LIMITS = {
   gender: 64,
   phoneNumber: 32,
-  addressText: 500,
+  addressText: 2000,
   emergencyContactName: 200,
   emergencyContactPhone: 32,
   occupation: 200,
@@ -28,20 +30,23 @@ export type EffectivePatientHospitalProfile = {
   values: PatientHospitalProfileValues;
   source: PatientHospitalProfileSource;
   version: number;
+  emergencyContactRelationship: string | null;
 };
 
 export type PatientHospitalProfilePatch = Partial<PatientHospitalProfileValues>;
 
 export function resolveEffectivePatientHospitalProfile(input: {
   legacy: PatientHospitalProfileValues;
-  local: (PatientHospitalProfileValues & { version: number }) | null;
+  local: (PatientHospitalProfileValues & Partial<PatientHospitalAddress> & {
+    version: number; emergencyContactRelationship?: string | null;
+  }) | null;
 }): EffectivePatientHospitalProfile {
   if (input.local) {
     return {
       values: {
         gender: input.local.gender,
         phoneNumber: input.local.phoneNumber,
-        addressText: input.local.addressText,
+        addressText: formatPatientHospitalAddress(input.local),
         emergencyContactName: input.local.emergencyContactName,
         emergencyContactPhone: input.local.emergencyContactPhone,
         occupation: input.local.occupation,
@@ -49,6 +54,7 @@ export function resolveEffectivePatientHospitalProfile(input: {
       },
       source: "HOSPITAL_LOCAL",
       version: input.local.version,
+      emergencyContactRelationship: input.local.emergencyContactRelationship ?? null,
     };
   }
 
@@ -56,6 +62,7 @@ export function resolveEffectivePatientHospitalProfile(input: {
     values: input.legacy,
     source: "LEGACY_FALLBACK",
     version: 0,
+    emergencyContactRelationship: null,
   };
 }
 

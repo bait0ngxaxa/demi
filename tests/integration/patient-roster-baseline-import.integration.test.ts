@@ -7,7 +7,19 @@ import {
   UserStatus,
   type PrismaClient,
 } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
+import { getOwnPatientHospitalProfile, updateOwnPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
+import { PatientProfileView } from "../../app/app/patients/[relationshipId]/patient-profile-view";
+import { previewPatientImportAction, confirmPatientImportAction } from "@/modules/patient-provisioning/transport/server-actions";
+
+const authenticatedActor = vi.hoisted(() => vi.fn());
+vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: authenticatedActor }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -219,6 +231,122 @@ function createBaselineFailureDatabase(): PrismaClient {
 }
 
 describe("Patient roster import (template v2, new patients only) PostgreSQL workflow", () => {
+  it("reconciles all 26 Excel fields through bound preview/confirm, detail, duplicates and hospital-local self edits", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    authenticatedActor.mockResolvedValue(actor);
+    const address = {
+      houseNumber: "99/1", villageNumber: "07", villageName: "บ้านสุขใจ",
+      soi: "สุขใจ", road: "ประชาร่วมใจ", province: "เชียงใหม่",
+      district: "เมืองเชียงใหม่", subdistrict: "สุเทพ", postalCode: "01234",
+    };
+    const row = templateRow(nationalIds.allFields, "ทดสอบนำเข้า", {
+      sourceSequenceNumber: "0001", hospitalNumber: "000071",
+      dateOfBirth: "15 มกราคม 2523", gender: "หญิง", phoneNumber: "0812345678",
+      ...address, emergencyContactName: "สมใจ ทดสอบ", emergencyContactPhone: "0891234567",
+      emergencyContactRelationship: "พี่สาว", diabetesClassification: "เบาหวาน",
+      weight: 72.5, height: 170, waistCircumference: 85, bloodSugarDtx: 126, hba1c: 6.5,
+    });
+    const file = await createTemplateUpload(hospital, [row], { rowNumbers: [7] });
+    const form = new FormData();
+    form.set("file", new File([await file.arrayBuffer()], file.name));
+    form.set("targetHospitalId", hospital.id);
+    form.set("effectiveDate", batchDate);
+    const preview = await previewPatientImportAction(form);
+    expect(preview.status).toBe("SUCCESS");
+    if (preview.status !== "SUCCESS") throw new Error("Preview did not succeed");
+    expect(preview.preview.rows[0]).toMatchObject({ classification: "READY", rowNumber: 7, sourceSequenceNumber: "0001", requirementGatedFields: [] });
+    form.set("previewTargetHospitalId", hospital.id);
+    form.set("fileFingerprint", preview.preview.fileFingerprint);
+    form.set("previewBinding", preview.preview.previewBinding);
+    form.set("importContractVersion", preview.preview.importContractVersion);
+    const confirmed = await confirmPatientImportAction(form);
+    expect(confirmed).toMatchObject({ status: "SUCCESS", summary: { imported: 1, baselineCreated: 1, classificationCreated: 1 } });
+
+    const stored = await prisma.patientHospitalRelationship.findFirstOrThrow({
+      where: { hospitalId: hospital.id }, include: { hospitalProfile: true, patientProfile: { include: { person: { include: { user: true } } } } },
+    });
+    expect(stored.hospitalNumber).toBe("000071");
+    expect(stored.patientProfile.dateOfBirth).toEqual(new Date("1980-01-15T00:00:00.000Z"));
+    expect(stored.hospitalProfile).toMatchObject({ ...address, addressText: null,
+      gender: "หญิง", phoneNumber: "0812345678", emergencyContactName: "สมใจ ทดสอบ",
+      emergencyContactPhone: "0891234567", emergencyContactRelationship: "พี่สาว", occupation: null, educationLevel: null,
+    });
+    expect(await prisma.patientBaseline.findFirstOrThrow({ where: { patientHospitalRelationshipId: stored.id } })).toMatchObject({
+      recordedOn: new Date(`${batchDate}T00:00:00.000Z`), weight: 72.5, heightCm: 170,
+      waistCircumference: 85, bloodSugarDtx: 126, hba1c: 6.5,
+    });
+    const detail = await getPatientDirectoryDetail(actor, stored.id);
+    expect(detail).toMatchObject({ displayName: "สมชาย ทดสอบนำเข้า", hospitalNumber: "000071", classification: "DIABETES", profileSource: "HOSPITAL_LOCAL" });
+    expect(detail.profile.addressText).toBe("99/1 หมู่ 07 บ้านสุขใจ ซอยสุขใจ ถนนประชาร่วมใจ ตำบลสุเทพ อำเภอเมืองเชียงใหม่ จังหวัดเชียงใหม่ 01234");
+    const markup = renderToStaticMarkup(createElement(PatientProfileView, { profile: detail.profile, profileSource: detail.profileSource }));
+    for (const value of ["15 มกราคม 2523", "หญิง", "0812345678", "สมใจ ทดสอบ", "0891234567", "พี่สาว", detail.profile.addressText]) expect(markup).toContain(value);
+    expect(markup).not.toContain("ตรวจสอบความต้องการ");
+    const repeated = await confirmPatientImportAction(form);
+    expect(repeated).toMatchObject({ status: "SUCCESS", summary: { imported: 0, alreadyExists: 1 } });
+    expect(await prisma.patientHospitalProfile.findUnique({ where: { patientHospitalRelationshipId: stored.id } })).toEqual(stored.hospitalProfile);
+    const changed = await readTemplateCandidates(hospital, [{ ...row, phoneNumber: "0800000000", houseNumber: "ใหม่" }]);
+    expect(await importPatientProvisioning(actor, hospital.id, changed)).toMatchObject({ alreadyExists: 1, imported: 0 });
+    expect(await prisma.patientHospitalProfile.findUnique({ where: { patientHospitalRelationshipId: stored.id } })).toEqual(stored.hospitalProfile);
+
+    const hospitalB = await createHospital();
+    const actorB = await createOwnerActor(hospitalB.id);
+    const conflictingBirth = await readTemplateCandidates(hospitalB, [{ ...row, dateOfBirth: "1981-01-15" }]);
+    expect(await importPatientProvisioning(actorB, hospitalB.id, conflictingBirth)).toMatchObject({ conflict: 1, imported: 0 });
+    expect(await prisma.patientHospitalRelationship.count({ where: { hospitalId: hospitalB.id } })).toBe(0);
+    const other = await readTemplateCandidates(hospitalB, [{ ...row, phoneNumber: "0822222222", houseNumber: "22/2" }]);
+    expect(await importPatientProvisioning(actorB, hospitalB.id, other, {}, { effectiveDate: batchDate })).toMatchObject({ imported: 1, classificationCreated: 0 });
+    const storedB = await prisma.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalId: hospitalB.id } });
+    const detailB = await getPatientDirectoryDetail(actorB, storedB.id);
+    expect(detailB.profile.phoneNumber).toBe("0822222222");
+    expect(detailB.profile.addressText).toContain("22/2");
+    await expect(getPatientDirectoryDetail(actor, storedB.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await getPatientDirectoryDetail(actor, stored.id)).profile.phoneNumber).toBe("0812345678");
+    const conflict = await readTemplateCandidates(hospitalB, [{ ...row, dateOfBirth: "1981-01-15" }]);
+    expect(await previewPatientProvisioning(actorB, hospitalB.id, conflict)).toMatchObject({ rows: [{ classification: "CONFLICT" }] });
+    expect(await importPatientProvisioning(actorB, hospitalB.id, conflict)).toMatchObject({ conflict: 1, imported: 0 });
+
+    const user = stored.patientProfile.person.user;
+    if (!user) throw new Error("Imported patient user is missing");
+    await prisma.user.update({ where: { id: user.id }, data: { status: UserStatus.ACTIVE, authSubject: randomUUID() } });
+    const patientActor: ActorContext = { userId: user.id, personId: user.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+    const own = await getOwnPatientHospitalProfile(patientActor, stored.id);
+    expect(own.profile.addressText).toBe(detail.profile.addressText);
+    expect(own.emergencyContactRelationship).toBe("พี่สาว");
+    await updateOwnPatientHospitalProfile(patientActor, stored.id, { expectedVersion: 1, phoneNumber: "0833333333", addressText: own.profile.addressText });
+    expect(await prisma.patientHospitalProfile.findUniqueOrThrow({ where: { patientHospitalRelationshipId: stored.id } })).toMatchObject({ ...address, addressText: null, version: 2, emergencyContactRelationship: "พี่สาว" });
+    await expect(updateOwnPatientHospitalProfile(patientActor, stored.id, { expectedVersion: 1, phoneNumber: "0844444444" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await updateOwnPatientHospitalProfile(patientActor, stored.id, { expectedVersion: 2, addressText: "ที่อยู่ใหม่ของผู้ป่วย" });
+    expect(await prisma.patientHospitalProfile.findUniqueOrThrow({ where: { patientHospitalRelationshipId: stored.id } })).toMatchObject({ houseNumber: null, villageNumber: null, villageName: null, soi: null, road: null, province: null, district: null, subdistrict: null, postalCode: null, addressText: "ที่อยู่ใหม่ของผู้ป่วย", version: 3, emergencyContactRelationship: "พี่สาว" });
+    expect((await getPatientDirectoryDetail(actor, stored.id)).profile.addressText).toBe("ที่อยู่ใหม่ของผู้ป่วย");
+    expect((await getOwnPatientHospitalProfile(patientActor, storedB.id)).profile.phoneNumber).toBe("0822222222");
+    const audits = JSON.stringify(await prisma.auditEvent.findMany({ select: { metadata: true } }));
+    for (const privateValue of [nationalIds.allFields, "0812345678", "สมใจ ทดสอบ", "99/1"]) expect(audits).not.toContain(privateValue);
+  }, 20000);
+
+  it("rejects malformed populated profile cells in both actual preview and confirmation", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    authenticatedActor.mockResolvedValue(actor);
+    const file = await createTemplateUpload(hospital, [
+      templateRow(nationalIds.allFields, "วันเกิดผิด", { dateOfBirth: "31/02/2523" }),
+      templateRow(nationalIds.partialFields, "รหัสผิด", { postalCode: "1234" }),
+      templateRow(nationalIds.noBaseline, "สูตรโทรศัพท์", { phoneNumber: { formula: "1+1", result: 2 } }),
+    ]);
+    const form = new FormData();
+    form.set("file", new File([await file.arrayBuffer()], file.name));
+    form.set("targetHospitalId", hospital.id);
+    const preview = await previewPatientImportAction(form);
+    if (preview.status !== "SUCCESS") throw new Error("Preview should report invalid rows");
+    expect(preview.preview.rows.map((row) => row.classification)).toEqual(["INVALID", "INVALID", "INVALID"]);
+    form.set("previewTargetHospitalId", hospital.id);
+    form.set("fileFingerprint", preview.preview.fileFingerprint);
+    form.set("previewBinding", preview.preview.previewBinding);
+    form.set("importContractVersion", preview.preview.importContractVersion);
+    expect(await confirmPatientImportAction(form)).toMatchObject({ status: "SUCCESS", summary: { imported: 0, invalid: 3 } });
+    expect(await prisma.patientProfile.count()).toBe(0);
+    expect(await prisma.patientHospitalProfile.count()).toBe(0);
+  });
   beforeAll(async () => {
     await prisma.$connect();
     await clearDatabase();
@@ -243,6 +371,9 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
         waistCircumference: 85,
         bloodSugarDtx: 126,
         hba1c: 6.5,
+        dateOfBirth: "15 มกราคม 2523",
+        gender: "หญิง",
+        phoneNumber: "0812345678",
       }),
     );
 
@@ -262,6 +393,12 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
       baselineStatus: "BASELINE_READY",
     });
     expect(summary).toMatchObject({ imported: 1, baselineCreated: 1 });
+    expect(await prisma.patientProfile.findFirstOrThrow()).toMatchObject({
+      dateOfBirth: new Date("1980-01-15T00:00:00.000Z"),
+    });
+    expect(await prisma.patientHospitalProfile.findFirstOrThrow()).toMatchObject({
+      gender: "หญิง", phoneNumber: "0812345678",
+    });
     expect(summary.rows[0]).toMatchObject({
       result: "IMPORTED",
       baselineStatus: "BASELINE_CREATED",
@@ -324,6 +461,16 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
 
     expect(partialSummary).toMatchObject({ imported: 1, baselineCreated: 1 });
     expect(noBaselineSummary).toMatchObject({ imported: 1, baselineCreated: 0 });
+    const withoutProfileFields = await prisma.patientHospitalRelationship.findFirstOrThrow({
+      where: { patientProfile: { person: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIds.noBaseline }) } } },
+      include: { patientProfile: true, hospitalProfile: true },
+    });
+    expect(withoutProfileFields.patientProfile.dateOfBirth).toBeNull();
+    expect(withoutProfileFields.hospitalProfile).toMatchObject({ gender: null, phoneNumber: null,
+      addressText: null, houseNumber: null, villageNumber: null, villageName: null, soi: null,
+      road: null, province: null, district: null, subdistrict: null, postalCode: null,
+      emergencyContactName: null, emergencyContactPhone: null, emergencyContactRelationship: null,
+    });
     expect(await prisma.patientBaseline.count()).toBe(1);
     expect(await prisma.patientBaseline.findFirstOrThrow({ select: { weight: true, heightCm: true, hba1c: true } })).toEqual({
       weight: 70,
@@ -364,6 +511,7 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
     expect(await prisma.userRole.count({ where: { role: Role.PATIENT } })).toBe(0);
     expect(await prisma.patientProfile.count()).toBe(0);
     expect(await prisma.patientHospitalRelationship.count()).toBe(0);
+    expect(await prisma.patientHospitalProfile.count()).toBe(0);
     expect(await prisma.patientBaseline.count()).toBe(0);
     expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(0);
     expect(await prisma.auditEvent.count({ where: { action: "patient_baseline.created" } })).toBe(0);

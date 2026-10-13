@@ -493,7 +493,25 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
       );
       expect(lostZero.canonicalRow.contact.phoneNumber).toBe("812345679");
       expect(lostZero.canonicalRow.fieldAssessments.phoneNumber.status).toBe("AMBIGUOUS");
+      expect(lostZero.input).toBeNull();
       expect(numericId.input).not.toBeNull();
+    });
+
+    it.each([
+      ["dateOfBirth", "31/02/2523"],
+      ["phoneNumber", "โทรศัพท์"],
+      ["emergencyContactPhone", { formula: "1+1", result: 2 }],
+      ["emergencyContactRelationship", { error: "#VALUE!" }],
+      ["postalCode", "1234"],
+      ["postalCode", 1234],
+      ["hospitalNumber", 71],
+      ["gender", "ก".repeat(65)],
+      ["houseNumber", "ก".repeat(201)],
+    ] satisfies readonly (readonly [PatientImportFieldKey, CellValue])[])("rejects malformed populated %s before preview", async (field, value) => {
+      const candidate = await readSingleRow({ ...syntheticPatientValues(), [field]: value });
+      expect(candidate.input).toBeNull();
+      expect(candidate.validationMessage).toBeTruthy();
+      expect(candidate.canonicalRow.fieldAssessments[field].diagnostics.length).toBeGreaterThan(0);
     });
 
     it("normalizes the Thai date text and Excel date cells as date-only values", async () => {

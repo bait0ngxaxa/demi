@@ -299,6 +299,7 @@ describe("Patient directory query boundary", () => {
       profileSource: "LEGACY_FALLBACK",
       profile: {
         dateOfBirth,
+        emergencyContactRelationship: null,
         gender: "ชาย",
         phoneNumber: "0812345678",
         addressText: "99 ถนนตัวอย่าง",
@@ -323,6 +324,7 @@ describe("Patient directory query boundary", () => {
       "emergencyContactPhone",
       "occupation",
       "educationLevel",
+      "emergencyContactRelationship",
     ]);
     expect(JSON.stringify(result)).not.toContain("identityKeyHash");
     expect(JSON.stringify(result)).not.toContain("authSubject");
@@ -363,6 +365,7 @@ describe("Patient directory query boundary", () => {
     expect(detail.profileSource).toBe("HOSPITAL_LOCAL");
     expect(detail.profile).toEqual({
       dateOfBirth,
+      emergencyContactRelationship: null,
       gender: null,
       phoneNumber: null,
       addressText: "ที่อยู่เฉพาะโรงพยาบาลนี้",

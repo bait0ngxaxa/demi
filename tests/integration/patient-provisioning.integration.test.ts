@@ -496,7 +496,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(preview.rows[0].identityDisplay).not.toContain(nationalIds.bulkFirst);
   });
 
-  it("persists approved roster Baseline and classification for new patients while keeping deferred fields transient", async () => {
+  it("persists roster Baseline, classification and profiles with correct global and hospital ownership", async () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-WIDE");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
     const candidates = await readTemplateCandidates(hospital, [
@@ -516,9 +516,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       classification: "READY",
       baselineStatus: "BASELINE_READY",
     });
-    expect(preview.rows[0].requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth"]),
-    );
+    expect(preview.rows[0].requirementGatedFields).toEqual([]);
     expect(preview.rows[0].requirementGatedFields).not.toContain("diabetesClassification");
     expect(preview.rows[0].requirementGatedFields).not.toContain("weight");
 
@@ -530,9 +528,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       { effectiveDate: "2026-08-01" },
     );
     expect(summary).toMatchObject({ imported: 1, classificationCreated: 1 });
-    expect(summary.file?.requirementGatedFields).toEqual(
-      expect.arrayContaining(["dateOfBirth"]),
-    );
+    expect(summary.file?.requirementGatedFields).toEqual([]);
     expect(summary.file?.requirementGatedFields).not.toContain("diabetesClassification");
     expect(summary.file?.requirementGatedFields).not.toContain("weight");
     const relationshipRecord = await prisma.patientHospitalRelationship.findFirstOrThrow({
@@ -540,6 +536,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       select: {
         id: true,
         hospitalNumber: true,
+        hospitalProfile: { select: { gender: true, phoneNumber: true } },
         patientProfile: {
           select: {
             dateOfBirth: true,
@@ -562,8 +559,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     ).toBe(0);
     expect(relationshipRecord).toMatchObject({
       hospitalNumber: "HN-WIDE-001",
+      hospitalProfile: { gender: "ตัวอย่างเพศ", phoneNumber: "0812345678" },
       patientProfile: {
-        dateOfBirth: null,
+        dateOfBirth: new Date("2025-05-04T00:00:00.000Z"),
         gender: null,
         phoneNumber: null,
       },

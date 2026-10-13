@@ -185,6 +185,7 @@ describe("Patient self page context", () => {
         occupation: null,
         educationLevel: null,
       },
+      emergencyContactRelationship: null,
       source: "LEGACY_FALLBACK" as const,
       version: 0,
     };

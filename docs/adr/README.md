@@ -29,6 +29,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 | [ADR-0008](./0008-workforce-provisioning-and-activation.md) | Accepted | Workforce Provisioning and First-Time Activation |
 | [ADR-0009](./0009-demi-line-oa-liff-identity-and-messaging.md) | Accepted | DEMI LINE OA, LIFF Identity and Messaging Boundary |
 | [ADR-0010](./0010-production-ready-mvp-and-deployment-neutral-runtime.md) | Accepted | Production-Ready MVP and Deployment-Neutral Runtime |
+| [ADR-0011](./0011-patient-import-profile-persistence.md) | Accepted | Patient Import Profile Persistence and Hospital Ownership |
 
 ## Change Rules
 

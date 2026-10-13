@@ -57,31 +57,20 @@ export function isPatientImportClassificationField(
   return field === "diabetesClassification";
 }
 
-/**
- * The columns import persists for a new patient (classification and baseline values
- * with their own conditions). Every other template column is read and validated but
- * not saved until a business requirement approves its persistence.
- */
-export const PATIENT_IMPORT_SAVED_FIELD_KEYS = [
-  "nationalId",
-  "givenName",
-  "familyName",
-  "hospitalNumber",
-  "diabetesClassification",
-  ...PATIENT_IMPORT_BASELINE_FIELD_KEYS,
-] as const satisfies readonly PatientImportFieldKey[];
+/** Every patient field is persisted for new relationships, subject to clinical rules. */
+export const PATIENT_IMPORT_SAVED_FIELD_KEYS = PATIENT_IMPORT_FIELD_KEYS.filter(
+  (field) => field !== "sourceSequenceNumber",
+);
 
-export const PATIENT_IMPORT_UNSAVED_FIELD_KEYS: readonly PatientImportFieldKey[] =
-  PATIENT_IMPORT_FIELD_KEYS.filter(
-    (field) => !(PATIENT_IMPORT_SAVED_FIELD_KEYS as readonly PatientImportFieldKey[]).includes(field),
-  );
+/** Source sequence is traceability metadata, not a patient attribute. */
+export const PATIENT_IMPORT_UNSAVED_FIELD_KEYS: readonly PatientImportFieldKey[] = ["sourceSequenceNumber"];
 
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
   | "PARSED_FOR_INITIAL_BASELINE"
   | "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-  | "PARSED_REQUIREMENT_GATED"
+  | "IMPORT_METADATA"
   | "INVALID"
   | "AMBIGUOUS";
 
@@ -89,7 +78,6 @@ export type PatientImportDiagnosticCode =
   | "INVALID_VALUE"
   | "LOSSY_EXCEL_VALUE"
   | "AMBIGUOUS_VALUE"
-  | "REQUIREMENT_GATED"
   | "FORMULA_VALUE"
   | "EXCEL_ERROR"
   | "CLASSIFICATION_DATA_INVALID";

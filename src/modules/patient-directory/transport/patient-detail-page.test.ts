@@ -71,6 +71,7 @@ const patient = {
     phoneNumber: "0812345678",
     addressText: "99 ถนนตัวอย่าง แขวงตัวอย่าง",
     emergencyContactName: "สมหญิง ผู้ติดต่อ",
+    emergencyContactRelationship: "พี่สาว",
     emergencyContactPhone: "0898765432",
     occupation: "เกษตรกร",
     educationLevel: "มัธยมศึกษา",
@@ -193,6 +194,7 @@ describe("Patient detail page authorization boundary", () => {
       "99 ถนนตัวอย่าง แขวงตัวอย่าง",
       "สมหญิง ผู้ติดต่อ",
       "0898765432",
+      "พี่สาว",
       "เกษตรกร",
       "มัธยมศึกษา",
     ]) {
@@ -200,6 +202,7 @@ describe("Patient detail page authorization boundary", () => {
     }
     expect(containsString(page, "0812345678")).toBe(true);
     expect(containsString(page, "แก้ไขข้อมูลโปรไฟล์")).toBe(false);
+    expect(containsString(profileView, "ตรวจสอบความต้องการ")).toBe(false);
   });
 
   it("keeps the profile structure visible and uses the missing-value label", async () => {
@@ -211,6 +214,7 @@ describe("Patient detail page authorization boundary", () => {
         phoneNumber: null,
         addressText: null,
         emergencyContactName: null,
+        emergencyContactRelationship: null,
         emergencyContactPhone: null,
         occupation: null,
         educationLevel: null,
@@ -227,6 +231,7 @@ describe("Patient detail page authorization boundary", () => {
         phoneNumber: null,
         addressText: null,
         emergencyContactName: null,
+        emergencyContactRelationship: null,
         emergencyContactPhone: null,
         occupation: null,
         educationLevel: null,

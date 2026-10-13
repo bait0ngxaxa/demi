@@ -32,6 +32,7 @@ const defaultClassification: PatientImportClassificationPreview = {
 function createRow(overrides: Partial<PatientImportPreviewRow> = {}): PatientImportPreviewRow {
   return {
     rowNumber: 3,
+    sourceSequenceNumber: null,
     identityDisplay,
     givenName: "สมชาย",
     familyName: "ผู้ป่วย",

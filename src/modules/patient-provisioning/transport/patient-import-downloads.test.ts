@@ -99,6 +99,7 @@ async function createSourceUpload(rowCount: number): Promise<PatientImportUpload
 function previewRow(rowNumber: number, classification: PatientImportPreviewRow["classification"], reason: string | null): PatientImportPreviewRow {
   return {
     rowNumber,
+    sourceSequenceNumber: null,
     identityDisplay: "••••••0009",
     givenName: "ตัวอย่าง",
     familyName: "ผู้ป่วย",

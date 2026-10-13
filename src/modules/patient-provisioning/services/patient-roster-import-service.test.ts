@@ -202,6 +202,7 @@ function existingPerson(overrides: {
         },
     patientProfile: {
       id: "profile-1",
+      dateOfBirth: null,
       patientClassification: overrides.classification
         ? { classification: overrides.classification }
         : null,
@@ -454,6 +455,7 @@ describe("Patient roster import: result summary", () => {
   ): PatientImportRowResult {
     return {
       rowNumber: 3,
+      sourceSequenceNumber: null,
       identityDisplay: "••••••0009",
       givenName: "สมชาย",
       familyName: "ผู้ป่วย",
@@ -517,6 +519,8 @@ describe("Patient roster import orchestration (re-validates and commits READY ro
     actorRole?: MembershipType;
   } = {}) {
     const transaction = {
+      patientProfile: { update: vi.fn() },
+      patientHospitalProfile: { create: vi.fn() },
       person: {
         findUnique: vi.fn(async () => options.concurrentPerson ?? null),
       },

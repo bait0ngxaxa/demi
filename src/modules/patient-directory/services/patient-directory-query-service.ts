@@ -13,6 +13,7 @@ import type { PatientClassificationType } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { patientHospitalAddressSelect } from "@/modules/patient-hospital-profile/domain/patient-hospital-address";
 import {
   resolveEffectivePatientHospitalProfile,
 } from "@/modules/patient-hospital-profile/domain/patient-hospital-profile-values";
@@ -65,6 +66,7 @@ export type PatientProfileDetail = {
   addressText: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  emergencyContactRelationship: string | null;
   occupation: string | null;
   educationLevel: string | null;
 };
@@ -141,6 +143,8 @@ export const patientDetailSelect = {
   },
   hospitalProfile: {
     select: {
+      ...patientHospitalAddressSelect,
+      emergencyContactRelationship: true,
       gender: true,
       phoneNumber: true,
       addressText: true,
@@ -351,18 +355,7 @@ export function toPatientDirectoryDetail(
       occupation: record.patientProfile.occupation,
       educationLevel: record.patientProfile.educationLevel,
     },
-    local: record.hospitalProfile
-      ? {
-          gender: record.hospitalProfile.gender,
-          phoneNumber: record.hospitalProfile.phoneNumber,
-          addressText: record.hospitalProfile.addressText,
-          emergencyContactName: record.hospitalProfile.emergencyContactName,
-          emergencyContactPhone: record.hospitalProfile.emergencyContactPhone,
-          occupation: record.hospitalProfile.occupation,
-          educationLevel: record.hospitalProfile.educationLevel,
-          version: record.hospitalProfile.version,
-        }
-      : null,
+    local: record.hospitalProfile,
   });
 
   return {
@@ -371,6 +364,7 @@ export function toPatientDirectoryDetail(
     profile: {
       dateOfBirth: record.patientProfile.dateOfBirth,
       ...effectiveProfile.values,
+      emergencyContactRelationship: effectiveProfile.emergencyContactRelationship,
     },
   };
 }

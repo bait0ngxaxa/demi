@@ -23,6 +23,8 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
+import { validatePatientImportProfile } from "../import/patient-import-profile";
+
 import {
   assertPatientBulkProvisioningPolicy,
   PATIENT_PROVISIONING_CAPABILITY,
@@ -35,8 +37,6 @@ import {
   PATIENT_IMPORT_BASELINE_FIELD_KEYS,
   PATIENT_IMPORT_CONTRACT_VERSION,
   PATIENT_IMPORT_FIELD_KEYS,
-  isPatientImportBaselineField,
-  isPatientImportClassificationField,
   type PatientImportBaselineFieldKey,
   type PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
@@ -68,6 +68,7 @@ export type PreviewPerson = {
   } | null;
   patientProfile: {
     id: string;
+    dateOfBirth: Date | null;
     patientClassification: {
       classification: PatientClassificationType;
     } | null;
@@ -130,6 +131,7 @@ export function buildPreviewPersonSelect(targetHospitalId: string) {
     patientProfile: {
       select: {
         id: true,
+        dateOfBirth: true,
         patientClassification: {
           select: { classification: true },
         },
@@ -397,31 +399,13 @@ function toPreviewRow(
     sourceClassification: null,
   },
 ): PatientImportPreviewRow {
-  const requirementGatedFields =
-    classification === "READY"
-      ? PATIENT_IMPORT_FIELD_KEYS.filter((field) => {
-          if (
-            field === "nationalId" ||
-            field === "givenName" ||
-            field === "familyName" ||
-            field === "hospitalNumber"
-          ) {
-            return false;
-          }
-
-          if (isPatientImportBaselineField(field) || isPatientImportClassificationField(field)) {
-            return false;
-          }
-
-          const assessment = candidate.canonicalRow.fieldAssessments[field];
-          return assessment.present && assessment.status !== "NOT_PRESENT";
-        })
-      : [];
+  const requirementGatedFields: PatientImportPreviewRow["requirementGatedFields"] = [];
 
   const diagnosticCodes = [...new Set(candidate.canonicalRow.diagnostics.map(({ code }) => code))];
 
   return {
     rowNumber: candidate.rowNumber,
+    sourceSequenceNumber: candidate.canonicalRow.provenance.sourceSequenceNumber,
     identityDisplay: candidate.identityDisplay,
     givenName: candidate.givenName,
     familyName: candidate.familyName,
@@ -430,9 +414,7 @@ function toPreviewRow(
     reason:
       reason ??
       classificationImportReason(patientClassification) ??
-      (requirementGatedFields.length > 0
-        ? "ข้อมูลหลักพร้อมนำเข้า แต่ข้อมูลเพิ่มเติมบางรายการยังไม่บันทึกในระยะนี้"
-        : baselineImportReason(baselineStatus)),
+      baselineImportReason(baselineStatus),
     baselineStatus,
     requirementGatedFields,
     diagnosticCodes,
@@ -447,6 +429,14 @@ export function normalizeImportCandidates(
   return candidates.map((candidate) => {
     if (!candidate.input) {
       return candidate;
+    }
+
+    const invalidField = PATIENT_IMPORT_FIELD_KEYS.some((field) => {
+      if (PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baseline) => baseline === field) || field === "diabetesClassification") return false;
+      return candidate.canonicalRow.fieldAssessments[field].diagnostics.length > 0;
+    });
+    if (invalidField || !validatePatientImportProfile(candidate.canonicalRow)) {
+      return { ...candidate, input: null, validationMessage: "ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง กรุณาตรวจสอบวันเกิด ข้อมูลติดต่อ และที่อยู่" };
     }
 
     const parsed = patientProvisionInputSchema.safeParse(candidate.input);
@@ -514,6 +504,12 @@ export function composePatientRosterPreviewRow(input: {
 
   if (input.hash && input.duplicateCount > 1) {
     return toPreviewRow(input.candidate, "DUPLICATE_IN_FILE", "พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
+  }
+
+  const existingDateOfBirth = input.existing?.patientProfile?.dateOfBirth;
+  const importedDateOfBirth = input.candidate.canonicalRow.demographics.dateOfBirth;
+  if (existingDateOfBirth && importedDateOfBirth && existingDateOfBirth.toISOString().slice(0, 10) !== importedDateOfBirth) {
+    return toPreviewRow(input.candidate, "CONFLICT", "วันเกิดไม่ตรงกับข้อมูลผู้ป่วยเดิม ต้องตรวจสอบโดยผู้ดูแล");
   }
 
   const identity = input.existing

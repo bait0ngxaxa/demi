@@ -87,6 +87,21 @@ function createDatabase(options: {
 }
 
 describe("Patient Hospital profile service", () => {
+  it("preserves long structured addresses and uneditable imported values on an unrelated full-form edit", async () => {
+    const local = { ...legacyValues, addressText: null, houseNumber: "99/1",
+      villageName: "ก".repeat(200), soi: "ข".repeat(200), road: "ค".repeat(200), postalCode: "01234",
+      emergencyContactRelationship: "พี่สาว", version: 1 };
+    const { database, profileUpdateMany } = createDatabase({ localProfile: local });
+    const own = await getOwnPatientHospitalProfile(actor(), relationshipId, database);
+    expect(own.profile.addressText?.length).toBeGreaterThan(500);
+    expect(own.emergencyContactRelationship).toBe("พี่สาว");
+    await updateOwnPatientHospitalProfile(actor(), relationshipId, {
+      expectedVersion: 1, phoneNumber: "0833333333", addressText: own.profile.addressText,
+    }, database);
+    expect(profileUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { version: { increment: 1 }, phoneNumber: "0833333333" },
+    }));
+  });
   it("reads the exact relationship and reports legacy values as fallback", async () => {
     const { database, profileFindFirst } = createDatabase();
 
@@ -95,6 +110,7 @@ describe("Patient Hospital profile service", () => {
       hospitalName: "โรงพยาบาล ก",
       person: { givenName: "สมชาย", familyName: "ใจดี" },
       profile: legacyValues,
+      emergencyContactRelationship: null,
       source: "LEGACY_FALLBACK",
       version: 0,
     });

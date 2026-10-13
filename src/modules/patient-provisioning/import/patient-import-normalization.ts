@@ -131,6 +131,14 @@ export function normalizeTextCell(cell: Cell): CellNormalizationResult<string> {
     : { value, diagnostics: [] };
 }
 
+/** Numeric identifiers can already have lost leading zeros; require text instead. */
+export function normalizeIdentifierTextCell(cell: Cell): CellNormalizationResult<string> {
+  if (readCellState(cell).kind === "number") {
+    return { value: null, diagnostics: ["LOSSY_EXCEL_VALUE"] };
+  }
+  return normalizeTextCell(cell);
+}
+
 function normalizePatientClassificationText(value: string): string {
   return value
     .normalize("NFC")

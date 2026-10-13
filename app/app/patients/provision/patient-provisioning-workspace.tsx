@@ -280,7 +280,7 @@ function PatientImportSavedFieldsNote({ className }: { className?: string }): Re
         {" "}(ประเภทเบาหวาน/กลุ่มเสี่ยงบันทึกเมื่อผู้ป่วยยังไม่มีสถานะ และข้อมูลตั้งต้นบันทึกเมื่อระบุวันที่ข้อมูลตั้งต้น)
       </p>
       <p className="mt-1">
-        <span className="font-semibold text-ink">อ่านจากไฟล์แต่ยังไม่บันทึกในระบบ:</span>{" "}
+        <span className="font-semibold text-ink">ใช้สำหรับอ้างอิงแถวในไฟล์:</span>{" "}
         {fieldLabels(PATIENT_IMPORT_UNSAVED_FIELD_KEYS)}
       </p>
     </div>
@@ -309,6 +309,7 @@ function PreviewRowDetails({ row }: { row: PatientImportPreviewRow }): React.JSX
 
   return (
     <div className="space-y-3">
+      {row.sourceSequenceNumber ? <p className="text-muted">ลำดับในไฟล์: {row.sourceSequenceNumber}</p> : null}
       {primaryReason ? <p className="text-muted">{primaryReason}</p> : null}
 
       {row.classification === "READY" && row.baselineStatus !== "NOT_APPLICABLE" ? (

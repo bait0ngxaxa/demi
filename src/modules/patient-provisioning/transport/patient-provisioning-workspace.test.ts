@@ -287,17 +287,17 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).toContain("การกำหนด อสม. ทำหลังนำเข้า");
   });
 
-  it("separates the columns that are saved from the columns that are read but not saved", () => {
+  it("explains all profile fields are saved and sequence is only row metadata", () => {
     const markup = renderToStaticMarkup(createElement(PatientImportUploadGuidance));
-    const [saved = "", notSaved = ""] = markup.split("อ่านจากไฟล์แต่ยังไม่บันทึกในระบบ");
+    const [saved = "", notSaved = ""] = markup.split("ใช้สำหรับอ้างอิงแถวในไฟล์");
 
     expect(saved).toContain("ระบบบันทึกจากไฟล์");
     for (const label of ["เลขบัตรประชาชน", "ชื่อ", "HN", "น้ำหนัก", "HbA1c", "ประเภทเบาหวาน/กลุ่มเสี่ยง"]) {
       expect(saved).toContain(label);
     }
     for (const label of ["วันเกิด", "เพศ", "เบอร์โทรศัพท์", "บ้านเลขที่", "ชื่อผู้ติดต่อฉุกเฉิน"]) {
-      expect(notSaved).toContain(label);
-      expect(saved).not.toContain(label);
+      expect(saved).toContain(label);
+      expect(notSaved).not.toContain(label);
     }
   });
 

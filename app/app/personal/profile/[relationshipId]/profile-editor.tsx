@@ -55,7 +55,7 @@ function ProfileEditorForm({
       name: "addressText",
       label: "ที่อยู่ติดต่อปัจจุบัน",
       value: profile.profile.addressText,
-      maxLength: 500,
+      maxLength: 2000,
       multiline: true,
     },
     {
@@ -120,6 +120,11 @@ function ProfileEditorForm({
           </div>
         ))}
       </div>
+
+      <dl className="mt-5">
+        <dt className="text-sm font-semibold text-text-muted">ความสัมพันธ์ผู้ติดต่อฉุกเฉินกับผู้ป่วย</dt>
+        <dd className="mt-1 break-words text-base text-text">{displayValue(profile.emergencyContactRelationship)}</dd>
+      </dl>
 
       {state.message ? (
         <p

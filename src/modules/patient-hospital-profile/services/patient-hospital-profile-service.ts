@@ -12,6 +12,8 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
+import { PATIENT_HOSPITAL_ADDRESS_FIELDS, patientHospitalAddressSelect, formatPatientHospitalAddress } from "../domain/patient-hospital-address";
+
 import {
   applyPatientHospitalProfilePatch,
   PATIENT_HOSPITAL_PROFILE_FIELDS,
@@ -38,6 +40,7 @@ export type PatientHospitalProfileDetail = {
     familyName: string | null;
   };
   profile: PatientHospitalProfileValues;
+  emergencyContactRelationship: string | null;
   source: "HOSPITAL_LOCAL" | "LEGACY_FALLBACK";
   version: number;
 };
@@ -47,6 +50,8 @@ export const patientHospitalProfileSelect = {
   hospital: { select: { name: true } },
   hospitalProfile: {
     select: {
+      ...patientHospitalAddressSelect,
+      emergencyContactRelationship: true,
       gender: true,
       phoneNumber: true,
       addressText: true,
@@ -103,12 +108,7 @@ function toProfileValues(input: {
 function toDetail(record: PatientHospitalProfileRecord): PatientHospitalProfileDetail {
   const effective = resolveEffectivePatientHospitalProfile({
     legacy: toProfileValues(record.patientProfile),
-    local: record.hospitalProfile
-      ? {
-          ...toProfileValues(record.hospitalProfile),
-          version: record.hospitalProfile.version,
-        }
-      : null,
+    local: record.hospitalProfile,
   });
 
   return {
@@ -119,6 +119,7 @@ function toDetail(record: PatientHospitalProfileRecord): PatientHospitalProfileD
       familyName: record.patientProfile.person.familyName,
     },
     profile: effective.values,
+    emergencyContactRelationship: effective.emergencyContactRelationship,
     source: effective.source,
     version: effective.version,
   };
@@ -252,6 +253,7 @@ export async function updateOwnPatientHospitalProfile(
             id: true,
             hospitalProfile: {
               select: {
+                ...patientHospitalAddressSelect,
                 gender: true,
                 phoneNumber: true,
                 addressText: true,
@@ -287,12 +289,20 @@ export async function updateOwnPatientHospitalProfile(
             throw new ConflictError("Patient profile changed after it was loaded");
           }
 
+          const data = toUpdateManyData(patch);
+          if (patch.addressText !== undefined &&
+              patch.addressText === formatPatientHospitalAddress(relationship.hospitalProfile)) {
+            // Full forms resubmit the displayed address even for unrelated edits.
+            delete data.addressText;
+          } else if (patch.addressText !== undefined) {
+            for (const field of PATIENT_HOSPITAL_ADDRESS_FIELDS) data[field] = null;
+          }
           const updated = await transaction.patientHospitalProfile.updateMany({
             where: {
               patientHospitalRelationshipId: relationship.id,
               version: expectedVersion,
             },
-            data: toUpdateManyData(patch),
+            data,
           });
 
           if (updated.count !== 1) {
