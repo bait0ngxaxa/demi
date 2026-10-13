@@ -284,7 +284,7 @@ describe("assignOsmToPatients", () => {
     expect(activeCount(state)).toBe(500);
     expect(database.$transaction).toHaveBeenCalledTimes(1);
     expect(state.audits).toHaveLength(501);
-    expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toMatchObject({ timeout: 15_000 });
+    expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toMatchObject({ timeout: 60_000 });
   });
 
   it("denies a MEMBER before touching any patient", async () => {

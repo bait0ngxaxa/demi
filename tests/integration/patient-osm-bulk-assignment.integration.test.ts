@@ -92,10 +92,17 @@ async function createHospitalActor(
   };
 }
 
-async function createOsm(hospitalId: string): Promise<string> {
+async function createOsm(
+  hospitalId: string,
+  name: { givenName: string | null; familyName: string | null } = { givenName: "อสม.", familyName: null },
+): Promise<string> {
   sequence += 1;
   const person = await prisma.person.create({
-    data: { identityKeyHash: `bulk-assignment-osm-${sequence}`, givenName: "อสม.", familyName: String(sequence) },
+    data: {
+      identityKeyHash: `bulk-assignment-osm-${sequence}`,
+      givenName: name.givenName,
+      familyName: name.familyName ?? String(sequence),
+    },
     select: { id: true },
   });
   const user = await prisma.user.create({
@@ -447,6 +454,100 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(result.assignedCount).toBe(500);
     expect(await activeAssignmentCount()).toBe(500);
   }, 300_000);
+
+  it("pages through every eligible OSM, including 40 with identical names, in a stable order", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-PAGING");
+    const otherHospital = await createHospital("BULK-ASSIGN-PAGING-OTHER");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const member = await createHospitalActor(hospital.id, MembershipType.MEMBER);
+    const otherOwner = await createHospitalActor(otherHospital.id, MembershipType.OWNER);
+    const sameName = { givenName: "สมชาย", familyName: "ใจดี" };
+    const eligible: string[] = [];
+
+    for (let index = 0; index < 40; index += 1) {
+      eligible.push(await createOsm(hospital.id, sameName));
+    }
+
+    eligible.push(await createOsm(hospital.id, { givenName: null, familyName: null }));
+    eligible.push(await createOsm(hospital.id, { givenName: "อรุณ", familyName: "แสงทอง" }));
+
+    const suspended = await createOsm(hospital.id, sameName);
+    await prisma.osmHospitalRelationship.updateMany({
+      where: { userId: suspended },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    const inactive = await createOsm(hospital.id, sameName);
+    await prisma.user.update({ where: { id: inactive }, data: { status: UserStatus.SUSPENDED } });
+    const foreign = await createOsm(otherHospital.id, sameName);
+
+    async function readAll(value?: string): Promise<string[]> {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+
+      for (let guard = 0; guard < 10; guard += 1) {
+        const page = await listPatientOsmBulkCandidates(owner.actor, {
+          hospitalId: hospital.id,
+          ...(value ? { value } : {}),
+          ...(cursor ? { cursor } : {}),
+        });
+
+        expect(page.candidates.length).toBeLessThanOrEqual(25);
+        ids.push(...page.candidates.map(({ userId }) => userId));
+
+        if (!page.hasMore) {
+          expect(page.nextCursor).toBeNull();
+          return ids;
+        }
+
+        expect(page.nextCursor).toBe(page.candidates[page.candidates.length - 1]?.userId);
+        cursor = page.nextCursor ?? undefined;
+      }
+
+      throw new Error("pagination did not terminate");
+    }
+
+    const all = await readAll();
+    const firstPage = await listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id });
+
+    expect(all).toHaveLength(42);
+    expect(new Set(all).size).toBe(42);
+    expect([...all].sort()).toEqual([...eligible].sort());
+    expect(all).not.toContain(suspended);
+    expect(all).not.toContain(inactive);
+    expect(all).not.toContain(foreign);
+    expect(all).not.toContain(owner.userId);
+    expect(firstPage.candidates.map(({ userId }) => userId)).toEqual(all.slice(0, 25));
+    expect(await readAll()).toEqual(all);
+    expect(await readAll("สมชาย")).toHaveLength(40);
+
+    // Exactly 25 matches: one page, no cursor.
+    const exact = await listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, value: "อรุณ" });
+    expect(exact).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(exact.candidates).toHaveLength(1);
+
+    // A cursor is bound to the hospital, the search term and eligibility.
+    const cursor = firstPage.nextCursor as string;
+    await expect(
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, value: "อรุณ", cursor }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: foreign }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: suspended }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: "not-a-uuid" }),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
+
+    // Authorization is re-checked on every page.
+    await expect(
+      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, cursor }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      listPatientOsmBulkCandidates(otherOwner.actor, { hospitalId: hospital.id, cursor }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  }, 120_000);
 
   it("lists only the unassigned patients and the eligible OSMs of the owned hospital", async () => {
     const hospital = await createHospital("BULK-ASSIGN-VIEW-A");

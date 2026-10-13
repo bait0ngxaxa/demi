@@ -103,7 +103,7 @@ parser ยอมรับคอลัมน์ท้าย `เหตุผล` 
 ## 6. Bulk OSM assignment
 
 - หน้า `/app/patients/assign-osm?hospitalId=…` (OWNER ของโรงพยาบาลนั้นเท่านั้น) เชื่อมจากรายชื่อผู้ป่วยและหน้าผลการนำเข้า
-  แสดงผู้ป่วยที่ **ยังไม่มี อสม. ปัจจุบัน** (สูงสุด 500) เลือกหลายคน ค้นหา อสม. ที่ eligible ของโรงพยาบาลด้วยชื่อ (ค้นหาฝั่ง server ทีละไม่เกิน 25 รายการ ไม่โหลด อสม. ทั้งหมดมาที่ client) เลือกหนึ่งคน แล้วมีขั้นยืนยัน
+  แสดงผู้ป่วยที่ **ยังไม่มี อสม. ปัจจุบัน** (สูงสุด 500) เลือกหลายคน ค้นหา อสม. ที่ eligible ของโรงพยาบาลด้วยชื่อ (ค้นหาฝั่ง server ทีละ 25 รายการ แบ่งหน้าด้วย cursor (user id) เรียงตามชื่อ/นามสกุล/id ปุ่ม “โหลดเพิ่มเติม” ต่อท้ายผลเดิม ไม่โหลด อสม. ทั้งหมดมาที่ client; ผล UI รวมเฉพาะ id ไม่ซ้ำ รีเซ็ตเมื่อเปลี่ยนคำค้น/โรงพยาบาล; cursor ต้องอยู่ในตัวกรอง hospital/คำค้น/eligibility เดียวกัน มิฉะนั้นถูกปฏิเสธ) เลือกหนึ่งคน แล้วมีขั้นยืนยัน
 - Server action `bulkAssignOsmToPatientsAction` → `assignOsmToPatients` → `assignOsmToPatientsInTransaction`
   นโยบายเดียวกับ `assignOsmToPatient` (OWNER-only): policy, owner และ eligibility ของ อสม. ตรวจ **ครั้งเดียวต่อ batch** (เหมือนกันทุกผู้ป่วยของโรงพยาบาลเดียว)
   บวกการตรวจแบบ set-based ว่าทุก relationship เป็นผู้ป่วย active ของโรงพยาบาลนั้นและไม่มี อสม. ปัจจุบัน; เขียนด้วย `createManyAndReturn` + audit แบบ batch
@@ -129,8 +129,12 @@ parser ยอมรับคอลัมน์ท้าย `เหตุผล` 
 2. ผู้ป่วยที่รู้จักในโรงพยาบาลอื่น (profile มี classification แล้ว) ที่ถูก import เข้าโรงพยาบาลใหม่ จะ **ไม่** ถูกเปลี่ยน classification
    (ตามข้อ 3) preview แสดงข้อความ "ผู้ป่วยมีสถานะอยู่แล้ว" — ยืนยันว่าพฤติกรรมนี้ตรงความต้องการ
 3. Bulk assignment เดิมเรียก `assignOsmToPatientInTransaction` ต่อผู้ป่วย (หลาย query ต่อรายการ) — ลดเหลือ query คงที่ต่อ batch แล้ว (ดู §6)
-   และ timeout ลดจาก 60 เป็น 15 วินาที **โดยยังไม่ได้วัดจริง** ต้องวัด query count / เวลาของ batch 50 และ 500 บน PostgreSQL ก่อนยืนยันตัวเลขนี้
-   (PostgreSQL integration tests รันได้บน `demi_test` และผ่านทั้งหมดที่ commit `002e47d`: 40 ไฟล์, 679 tests แต่ยังไม่มีการวัดประสิทธิภาพ)
+   timeout ของ transaction **คงที่ 60 วินาที** เป็น operational baseline เดิม ไม่ได้มาจาก benchmark และไม่รับประกันว่า batch จะเสร็จภายในเวลาใด
+   ห้ามลดจนกว่าจะวัด query count / เวลาของ batch 1, 50 และ 500 บน PostgreSQL ที่ใกล้เคียง production
+   วัดครั้งเดียวบน PostgreSQL ท้องถิ่น (`127.0.0.1:55432`, client เดียว, ไม่มี load อื่น, ไม่มี network latency; query นับรวม BEGIN/COMMIT):
+   1 คน = 12 queries / 75 ms, 50 คน = 12 queries / 128 ms, 500 คน = 12 queries / 305 ms — แสดงว่าจำนวน query คงที่ตามขนาด batch เท่านั้น
+   ไม่ใช่ benchmark ระดับ production และไม่ได้ใช้กำหนดค่า timeout
+   (PostgreSQL integration tests รันบน `demi_test` และผ่านที่ `002e47d`: 40 ไฟล์, 679 tests แต่นั่นไม่ใช่การวัดประสิทธิภาพ) — เป็น follow-up ที่ยังค้าง
 
 ## 9. Import: ฟิลด์ที่บันทึกกับที่ไม่บันทึก
 

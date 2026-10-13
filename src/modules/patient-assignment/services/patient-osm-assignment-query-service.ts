@@ -19,6 +19,7 @@ import {
 } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 import {
   patientOsmBulkAssignmentQuerySchema,
+  patientOsmBulkCandidateQuerySchema,
   patientOsmCandidateQuerySchema,
   PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
   PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,
@@ -83,6 +84,8 @@ export type PatientOsmBulkCandidatePage = {
   candidates: PatientOsmCandidate[];
   /** More eligible OSMs match than are listed; the owner narrows the name search. */
   hasMore: boolean;
+  /** Pass back as `cursor` to read the next page; null on the last page. */
+  nextCursor: string | null;
 };
 
 const OSM_CANDIDATE_PAGE_SIZE = 25;
@@ -260,10 +263,9 @@ export async function getPatientOsmAssignmentManagementView(
  */
 async function findEligibleOsmCandidates(
   database: PatientOsmAssignmentQueryDatabase,
-  input: { hospitalId: string; value?: string; excludeUserId?: string },
+  input: { hospitalId: string; value?: string; excludeUserId?: string; cursor?: string },
 ): Promise<PatientOsmBulkCandidatePage> {
-  const records = await database.user.findMany({
-    where: {
+  const where: Prisma.UserWhereInput = {
       status: UserStatus.ACTIVE,
       roles: { some: { role: Role.OSM } },
       ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
@@ -275,18 +277,37 @@ async function findEligibleOsmCandidates(
         },
       },
       person: input.value ? buildNameWhere(input.value) : {},
-    },
+  };
+
+  if (input.cursor) {
+    // A cursor is only valid inside the same hospital / search / eligibility filter.
+    const cursorRecord = await database.user.findFirst({
+      where: { AND: [where, { id: input.cursor }] },
+      select: { id: true },
+    });
+
+    if (!cursorRecord) {
+      throw new ValidationError("OSM candidate cursor is invalid");
+    }
+  }
+
+  const records = await database.user.findMany({
+    where,
     select: { id: true, person: { select: { givenName: true, familyName: true } } },
     orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
     take: OSM_CANDIDATE_PAGE_SIZE + 1,
+    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
   });
+  const page = records.slice(0, OSM_CANDIDATE_PAGE_SIZE);
+  const hasMore = records.length > OSM_CANDIDATE_PAGE_SIZE;
 
   return {
-    candidates: records.slice(0, OSM_CANDIDATE_PAGE_SIZE).map((record) => ({
+    candidates: page.map((record) => ({
       userId: record.id,
       displayName: toDisplayName(record.person),
     })),
-    hasMore: records.length > OSM_CANDIDATE_PAGE_SIZE,
+    hasMore,
+    nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
   };
 }
 
@@ -455,7 +476,7 @@ export async function listPatientOsmBulkCandidates(
   input: unknown,
   dependencies: PatientOsmAssignmentQueryDependencies = {},
 ): Promise<PatientOsmBulkCandidatePage> {
-  const parsed = patientOsmBulkAssignmentQuerySchema.safeParse(input);
+  const parsed = patientOsmBulkCandidateQuerySchema.safeParse(input);
 
   if (!parsed.success) {
     throw new ValidationError("OSM candidate search data is invalid");
@@ -486,6 +507,7 @@ export async function listPatientOsmBulkCandidates(
       hospitalId: hospital.id,
       value: parsed.data.value,
       excludeUserId: actor.userId,
+      cursor: parsed.data.cursor,
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

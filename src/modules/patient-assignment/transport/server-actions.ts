@@ -157,16 +157,17 @@ export async function bulkAssignOsmToPatientsAction(
 export async function searchPatientOsmBulkCandidatesAction(
   hospitalId: string,
   value: string,
+  cursor?: string,
 ): Promise<PatientOsmBulkCandidateSearchResult> {
   try {
     const actor = await getProtectedApplicationActor();
-    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value })) };
+    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value, ...(cursor ? { cursor } : {}) })) };
   } catch (error: unknown) {
     return {
       status: "ERROR",
       message:
         error instanceof ApplicationError && error.code === "VALIDATION"
-          ? "กรุณาค้นหาชื่อ อสม. ด้วยคำค้นหาที่สั้นลง"
+          ? "คำค้นหา อสม. ไม่ถูกต้องหรือหมดอายุ กรุณาค้นหาใหม่"
           : "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
     };
   }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,15 @@ import {
   searchPatientOsmBulkCandidatesAction,
 } from "@/modules/patient-assignment/transport/server-actions";
 
+import {
+  appendPage,
+  createLatestRequestGate,
+  listFromFirstPage,
+  OSM_SEARCH_ERROR,
+  osmCandidateListKey,
+  type OsmCandidateList,
+} from "./osm-candidate-paging";
+
 const OSM_SEARCH_DEBOUNCE_MS = 300;
 
 type OsmSearchPickerProps = {
@@ -40,8 +49,9 @@ type OsmSearchPickerProps = {
 };
 
 /**
- * Server-side OSM search: the list never holds more than one page, and the chosen OSM
- * lives in the parent so it survives any number of searches.
+ * Server-side, paginated OSM search. A new hospital or search term discards the list
+ * and the cursor; a response that is no longer current is ignored. The chosen OSM
+ * lives in the parent so it survives paging and searching within the hospital.
  */
 function OsmSearchPicker({
   hospitalId,
@@ -50,39 +60,58 @@ function OsmSearchPicker({
   onSelect,
 }: OsmSearchPickerProps): React.JSX.Element {
   const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState<{
-    hospitalId: string;
-    query: string;
-    result: PatientOsmBulkCandidateSearchResult;
-  } | null>(null);
-  const latestRequest = useRef(0);
+  const [list, setList] = useState<OsmCandidateList | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
+  const [requestGate] = useState(createLatestRequestGate);
   const trimmedQuery = query.trim();
-  const loading = answer === null || answer.hospitalId !== hospitalId || answer.query !== trimmedQuery;
-  const result = answer?.result ?? null;
+  const key = osmCandidateListKey(hospitalId, trimmedQuery);
+  const loading = list === null || list.key !== key;
+  const current = loading ? null : list;
 
   useEffect(() => {
-    latestRequest.current += 1;
-    const requestId = latestRequest.current;
+    const requestId = requestGate.start();
     const timer = setTimeout(
       () => {
         searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery)
           .catch(
-            (): PatientOsmBulkCandidateSearchResult => ({
-              status: "ERROR",
-              message: "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
-            }),
+            (): PatientOsmBulkCandidateSearchResult => ({ status: "ERROR", message: OSM_SEARCH_ERROR }),
           )
-          .then((next) => {
-            if (latestRequest.current === requestId) {
-              setAnswer({ hospitalId, query: trimmedQuery, result: next });
+          .then((result) => {
+            if (!requestGate.isCurrent(requestId)) {
+              return;
             }
+
+            setLoadingMore(false);
+            setList(listFromFirstPage(key, result));
           });
       },
       trimmedQuery === "" ? 0 : OSM_SEARCH_DEBOUNCE_MS,
     );
 
     return () => clearTimeout(timer);
-  }, [hospitalId, trimmedQuery]);
+  }, [hospitalId, key, requestGate, retryTick, trimmedQuery]);
+
+  function loadMore(): void {
+    if (!current || !current.nextCursor || loadingMore) {
+      return;
+    }
+
+    const requestId = requestGate.start();
+    setLoadingMore(true);
+    searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery, current.nextCursor)
+      .catch(
+        (): PatientOsmBulkCandidateSearchResult => ({ status: "ERROR", message: OSM_SEARCH_ERROR }),
+      )
+      .then((result) => {
+        if (!requestGate.isCurrent(requestId)) {
+          return;
+        }
+
+        setLoadingMore(false);
+        setList((previous) => appendPage(previous, key, result));
+      });
+  }
 
   return (
     <div className="mt-4 max-w-xl space-y-3">
@@ -113,27 +142,41 @@ function OsmSearchPicker({
           value={query}
         />
       </label>
-      <div aria-busy={loading}>
-        {loading ? (
+      <div aria-busy={loading || loadingMore}>
+        {!current ? (
           <p className="text-sm text-text-muted" role="status">
             กำลังค้นหา อสม....
           </p>
-        ) : result?.status === "ERROR" ? (
-          <Alert variant="danger">{result.message}</Alert>
-        ) : result && result.candidates.length === 0 ? (
+        ) : current.candidates.length === 0 && current.error ? (
+          <Alert variant="danger">
+            <p>{current.error}</p>
+            <Button
+              className="mt-3"
+              onClick={() => {
+                setList(null);
+                setRetryTick((tick) => tick + 1);
+              }}
+              size="compact"
+              type="button"
+              variant="secondary"
+            >
+              ลองอีกครั้ง
+            </Button>
+          </Alert>
+        ) : current.candidates.length === 0 ? (
           <p className="rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
             {trimmedQuery === ""
               ? "ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้"
               : "ไม่พบ อสม. ที่ตรงกับคำค้นหา"}
           </p>
-        ) : result ? (
+        ) : (
           <>
             <ul
               aria-label="ผลการค้นหา อสม."
               className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface"
               role="radiogroup"
             >
-              {result.candidates.map((candidate) => (
+              {current.candidates.map((candidate) => (
                 <li key={candidate.userId}>
                   <label className="flex items-center gap-3 px-4 py-3 text-sm">
                     <input
@@ -151,13 +194,28 @@ function OsmSearchPicker({
                 </li>
               ))}
             </ul>
-            {result.hasMore ? (
-              <p className="mt-2 text-sm text-text-muted">
-                แสดง {result.candidates.length} รายการแรก พิมพ์ชื่อเพื่อค้นหา อสม. คนอื่น
-              </p>
+            {current.error ? (
+              <Alert className="mt-2" variant="danger">
+                {current.error}
+              </Alert>
+            ) : null}
+            {current.hasMore ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <Button
+                  disabled={disabled || loadingMore}
+                  loading={loadingMore}
+                  onClick={loadMore}
+                  size="compact"
+                  type="button"
+                  variant="secondary"
+                >
+                  {loadingMore ? "กำลังโหลด..." : current.error ? "ลองโหลดเพิ่มเติมอีกครั้ง" : "โหลดเพิ่มเติม"}
+                </Button>
+                <span className="text-sm text-text-muted">แสดง {current.candidates.length} รายการ</span>
+              </div>
             ) : null}
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );

@@ -66,6 +66,7 @@ function createDatabase(options: { hospitalFound?: boolean } = {}) {
     findMany: vi.fn(async () => [
       { id: "77777777-7777-4777-8777-777777777777", person: { givenName: "สมหญิง", familyName: "ผู้ดูแล" } },
     ]),
+    findFirst: vi.fn(async () => null as { id: string } | null),
   };
 
   return {
@@ -183,6 +184,7 @@ describe("listPatientOsmBulkCandidates", () => {
     expect(page).toEqual({
       candidates: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง ผู้ดูแล" }],
       hasMore: false,
+      nextCursor: null,
     });
     expect(JSON.stringify((hospital.findFirst.mock.calls as unknown as unknown[][])[0]?.[0])).toContain("OWNER");
 
@@ -208,6 +210,73 @@ describe("listPatientOsmBulkCandidates", () => {
 
     expect(page.candidates).toHaveLength(25);
     expect(page.hasMore).toBe(true);
+    expect(page.nextCursor).toBe(page.candidates[24]?.userId);
+  });
+
+  it("returns no cursor for exactly 25 matches", async () => {
+    const { database, user } = createDatabase();
+    user.findMany.mockResolvedValueOnce(Array.from({ length: 25 }, (_, index) => osmRecord(index + 1)));
+
+    const page = await listPatientOsmBulkCandidates(actorWith(MembershipType.OWNER), { hospitalId }, { database });
+
+    expect(page).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(page.candidates).toHaveLength(25);
+  });
+
+  it("continues after the cursor under the same filters and the deterministic order", async () => {
+    const { database, user } = createDatabase();
+    const cursor = "88888888-8888-4888-8888-888888888888";
+    user.findFirst.mockResolvedValueOnce({ id: cursor });
+
+    await listPatientOsmBulkCandidates(
+      actorWith(MembershipType.OWNER),
+      { hospitalId, value: "สม", cursor },
+      { database },
+    );
+
+    const check = (user.findFirst.mock.calls as unknown as Array<[{ where: { AND: unknown[] } }]>)[0]?.[0];
+    expect(JSON.stringify(check?.where.AND[0])).toContain(hospitalId);
+    expect(JSON.stringify(check?.where.AND[0])).toContain("สม");
+    expect(check?.where.AND[1]).toEqual({ id: cursor });
+
+    const query = (user.findMany.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]?.[0];
+    expect(query).toMatchObject({
+      cursor: { id: cursor },
+      skip: 1,
+      take: 26,
+      orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
+    });
+    expect(JSON.stringify(query?.where)).toContain(hospitalId);
+  });
+
+  it("rejects a cursor that is malformed or outside the filtered set, before paging", async () => {
+    const { database, user } = createDatabase();
+
+    await expect(
+      listPatientOsmBulkCandidates(actorWith(MembershipType.OWNER), { hospitalId, cursor: "not-a-uuid" }, { database }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      listPatientOsmBulkCandidates(
+        actorWith(MembershipType.OWNER),
+        { hospitalId, cursor: "88888888-8888-4888-8888-888888888888" },
+        { database },
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("re-authorizes on a later page: a MEMBER with a cursor is denied before any query", async () => {
+    const { database, user } = createDatabase();
+
+    await expect(
+      listPatientOsmBulkCandidates(
+        actorWith(MembershipType.MEMBER),
+        { hospitalId, cursor: "88888888-8888-4888-8888-888888888888" },
+        { database },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(user.findFirst).not.toHaveBeenCalled();
+    expect(user.findMany).not.toHaveBeenCalled();
   });
 
   it("denies a MEMBER, an unowned hospital, a missing actor and malformed input before querying OSMs", async () => {

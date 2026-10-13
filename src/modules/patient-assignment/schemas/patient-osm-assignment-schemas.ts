@@ -59,8 +59,14 @@ export const patientOsmBulkAssignmentQuerySchema = z
   })
   .strict();
 
+export const patientOsmBulkCandidateQuerySchema = patientOsmBulkAssignmentQuerySchema.extend({
+  /** The `nextCursor` of the previous page: the user id the next page continues after. */
+  cursor: z.uuid().optional(),
+});
+
 export type PatientOsmAssignmentRequest = z.infer<typeof patientOsmAssignmentRequestSchema>;
 export type PatientOsmUnassignmentRequest = z.infer<typeof patientOsmUnassignmentRequestSchema>;
 export type PatientOsmCandidateQuery = z.infer<typeof patientOsmCandidateQuerySchema>;
 export type PatientOsmBulkAssignmentRequest = z.infer<typeof patientOsmBulkAssignmentRequestSchema>;
+export type PatientOsmBulkCandidateQuery = z.infer<typeof patientOsmBulkCandidateQuerySchema>;
 export type PatientOsmBulkAssignmentQuery = z.infer<typeof patientOsmBulkAssignmentQuerySchema>;
