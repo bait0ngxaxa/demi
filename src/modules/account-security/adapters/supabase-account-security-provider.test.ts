@@ -143,69 +143,11 @@ describe("Supabase account security provider boundary", () => {
     expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
   });
 
-  it("replaces the selected auth identity and globally signs out through an isolated client", async () => {
-    adminAuth.admin.updateUserById.mockResolvedValue({
-      data: { user: { id: authSubject } },
-      error: null,
-    });
-    isolatedAuth.signInWithPassword.mockResolvedValue({
-      data: { user: { id: authSubject }, session: { access_token: "target-access-jwt" } },
-      error: null,
-    });
-    adminAuth.admin.signOut.mockResolvedValue({ data: null, error: null });
-
-    await expect(
-      replacePasswordAndRevokeRecoverySessions({
-        userId: targetUserId,
-        authSubject,
-        newPassword: "new long password",
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(adminAuth.admin.updateUserById).toHaveBeenCalledWith(authSubject, {
-      password: "new long password",
-    });
-    expect(mockedCreateProviderLoginAlias).toHaveBeenCalledWith(targetUserId);
-    expect(isolatedAuth.signInWithPassword).toHaveBeenCalledWith({
-      email: `${targetUserId}@login.demi.invalid`,
-      password: "new long password",
-    });
-    expect(adminAuth.admin.signOut).toHaveBeenCalledWith("target-access-jwt", "global");
-    expect(isolatedAuth.signOut).not.toHaveBeenCalled();
-    expect(mockedCreateClient).toHaveBeenCalledWith(
-      "https://project.supabase.co",
-      "public-anon-key",
-      {
-        auth: {
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-          persistSession: false,
-        },
-      },
-    );
-  });
-
-  it("does not claim global invalidation when isolated authentication or sign-out is ambiguous", async () => {
-    adminAuth.admin.updateUserById.mockResolvedValue({
-      data: { user: { id: authSubject } },
-      error: null,
-    });
-    isolatedAuth.signInWithPassword.mockResolvedValue({
-      data: { user: { id: authSubject }, session: { access_token: "target-access-jwt" } },
-      error: null,
-    });
-    adminAuth.admin.signOut.mockResolvedValue({
-      data: null,
-      error: { message: "global revoke unavailable" },
-    });
-
-    await expect(
-      replacePasswordAndRevokeRecoverySessions({
-        userId: targetUserId,
-        authSubject,
-        newPassword: "new long password",
-      }),
-    ).rejects.toMatchObject({ message: "Account recovery could not be completed" });
-    expect(adminAuth.admin.signOut).toHaveBeenCalledWith("target-access-jwt", "global");
+  it("gates administrative recovery before password replacement or session effects", async () => {
+    await expect(replacePasswordAndRevokeRecoverySessions({ userId: targetUserId, authSubject, newPassword: "new long password" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(adminAuth.admin.updateUserById).not.toHaveBeenCalled();
+    expect(adminAuth.admin.signOut).not.toHaveBeenCalled();
+    expect(isolatedAuth.signInWithPassword).not.toHaveBeenCalled();
+    expect(mockedCreateClient).not.toHaveBeenCalled();
   });
 });

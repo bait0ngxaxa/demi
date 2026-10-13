@@ -212,7 +212,11 @@ describe("ActorContext resolution", () => {
       actor,
     });
     expect(findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: actor.userId } }),
+      expect.objectContaining({ where: {
+        id: actor.userId,
+        workforceActivations: { none: { purpose: "RESET", claimedAt: { not: null }, usedAt: null } },
+        accountRecoveries: { none: { claimedAt: { not: null }, completedAt: null } },
+      } }),
     );
   });
 

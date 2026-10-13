@@ -105,3 +105,15 @@ Verified official provider references (checked against the current docs and inst
 - Before production/UAT rollout, configure and validate deployment/auth callback environments and provide dedicated non-production actors for authenticated 390 px browser flow verification.
 
 Phase 17E.1 does not start or approve Phase 17E.2.
+
+
+## Security supersession — workforce v2 remediation
+
+The historical implementation and verification above remain recorded. The assisted recovery
+trust rule is superseded by [ADR-0012](../adr/0012-global-credential-recovery-proof.md): issuer-visible
+token, National ID and staff attestation do not independently verify the global account owner.
+Patient-only and multi-role assisted recovery are now SECURITY_GATED at issuance, preview and
+completion. Existing outstanding credentials are revoked conservatively; unfinished claimed
+operations quarantine application access until controlled reconciliation. Authenticated
+current-password change, profile editing and Patient first-time activation retain their contracts.
+This unresolved recovery requirement is not VERIFIED_COMPLETE.

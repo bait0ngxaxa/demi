@@ -3,9 +3,10 @@ import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { getServerEnv } from "@/lib/env/server";
-import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { InfrastructureError } from "@/shared/errors/application-error";
+
+import { assertIndependentCredentialRecoverySupported } from "@/modules/auth/services/credential-recovery-state";
 
 import { createProviderLoginAlias } from "@/modules/auth/services/provider-login-alias";
 
@@ -83,44 +84,12 @@ export async function updateAuthenticatedPassword(input: {
   }
 }
 
+/** Defense in depth: no provider administrative replacement until owner-proof policy is supported. */
 export async function replacePasswordAndRevokeRecoverySessions(input: {
   userId: string;
   authSubject: string;
   newPassword: string;
 }): Promise<void> {
-  try {
-    const admin = getSupabaseAdminClient();
-    const { data, error } = await admin.auth.admin.updateUserById(input.authSubject, {
-      password: input.newPassword,
-    });
-
-    if (error || data.user?.id !== input.authSubject) {
-      throw new Error("Provider password replacement was not confirmed");
-    }
-
-    const isolatedClient = createIsolatedAuthClient();
-    const signIn = await isolatedClient.auth.signInWithPassword({
-      email: createProviderLoginAlias(input.userId),
-      password: input.newPassword,
-    });
-
-    if (
-      signIn.error ||
-      signIn.data.user?.id !== input.authSubject ||
-      !signIn.data.session?.access_token
-    ) {
-      throw new Error("Isolated provider authentication was not confirmed");
-    }
-
-    const { error: signOutError } = await admin.auth.admin.signOut(
-      signIn.data.session.access_token,
-      "global",
-    );
-
-    if (signOutError) {
-      throw new Error("Provider global session invalidation was not confirmed");
-    }
-  } catch {
-    throw new InfrastructureError("Account recovery could not be completed");
-  }
+  void input;
+  return assertIndependentCredentialRecoverySupported();
 }

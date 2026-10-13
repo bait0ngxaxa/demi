@@ -15,6 +15,7 @@ import {
   createIdentityStore,
   resolvePerson,
 } from "@/modules/identity/services/identity-service";
+import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce-authority";
 import {
   ConflictError,
   ForbiddenError,
@@ -274,6 +275,19 @@ export async function provisionPatientInTransaction(
   }
 
   assertReusableUser(user);
+
+  // Adding PATIENT authority to an account still waiting for its first (workforce) activation would invalidate that
+  // activation and let a different issuer's token claim the same global credential. Never add it silently.
+  if (
+    reusedExistingUser &&
+    user.status === UserStatus.PROVISIONED &&
+    (await userHasWorkforceAuthority(transaction, user.id))
+  ) {
+    throw new PatientProvisioningConflictError(
+      "RECONCILIATION_REQUIRED",
+      "บัญชีนี้มีสิทธิ์บุคลากรที่รอเปิดใช้งานอยู่แล้ว ต้องเปิดใช้งานบัญชีให้เสร็จหรือให้ผู้ดูแลระบบตรวจสอบก่อน จึงจะเพิ่มข้อมูลผู้ป่วยได้",
+    );
+  }
 
   const existingPatientRole = await transaction.userRole.findUnique({
     where: {

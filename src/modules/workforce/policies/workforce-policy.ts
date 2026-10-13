@@ -13,6 +13,8 @@ export const WORKFORCE_CAPABILITIES = {
   suspend: "membership:suspend",
   restore: "membership:restore",
   osmProvision: "osm:provision",
+  activationRevoke: "activation:revoke",
+  osmRead: "osm:read",
   osmSuspend: "osm:suspend",
   osmRestore: "osm:restore",
 } as const;
@@ -20,8 +22,14 @@ export const WORKFORCE_CAPABILITIES = {
 export type WorkforceCapability =
   (typeof WORKFORCE_CAPABILITIES)[keyof typeof WORKFORCE_CAPABILITIES];
 
+// ADR-0008 amendment 2026-10-14 (D1): an ACTIVE direct MEMBER may provision and read OSM only.
+const MEMBER_OSM_CAPABILITIES: ReadonlySet<WorkforceCapability> = new Set<WorkforceCapability>([
+  WORKFORCE_CAPABILITIES.osmProvision,
+  WORKFORCE_CAPABILITIES.osmRead,
+]);
+
 export type WorkforcePolicyDecision =
-  | { allowed: true; reason: "active_hospital_owner" }
+  | { allowed: true; reason: "active_hospital_owner" | "active_hospital_member_osm_access" }
   | {
       allowed: false;
       reason:
@@ -59,22 +67,37 @@ export function decideWorkforcePolicy(input: {
     return { allowed: false, reason: "hospital_role_required" };
   }
 
-  const membership = input.actor.hospitalMemberships.find(
+  const targetHospitalId = input.targetHospitalId;
+  const capability = input.capability as WorkforceCapability;
+  const memberships = input.actor.hospitalMemberships.filter(
     (candidate) =>
-      candidate.hospitalId === input.targetHospitalId &&
-      candidate.membershipType === MembershipType.OWNER &&
-      candidate.status === MembershipStatus.ACTIVE,
+      candidate.hospitalId === targetHospitalId && candidate.status === MembershipStatus.ACTIVE,
+  );
+  const ownerMembership = memberships.find(
+    (candidate) => candidate.membershipType === MembershipType.OWNER,
   );
 
-  if (!membership) {
+  if (ownerMembership) {
+    if (ownerMembership.hospitalStatus !== HospitalStatus.ACTIVE) {
+      return { allowed: false, reason: "active_hospital_required" };
+    }
+
+    return { allowed: true, reason: "active_hospital_owner" };
+  }
+
+  const memberMembership = memberships.find(
+    (candidate) => candidate.membershipType === MembershipType.MEMBER,
+  );
+
+  if (!memberMembership || !MEMBER_OSM_CAPABILITIES.has(capability)) {
     return { allowed: false, reason: "active_owner_membership_required" };
   }
 
-  if (membership.hospitalStatus !== HospitalStatus.ACTIVE) {
+  if (memberMembership.hospitalStatus !== HospitalStatus.ACTIVE) {
     return { allowed: false, reason: "active_hospital_required" };
   }
 
-  return { allowed: true, reason: "active_hospital_owner" };
+  return { allowed: true, reason: "active_hospital_member_osm_access" };
 }
 
 export function assertWorkforcePolicy(input: {

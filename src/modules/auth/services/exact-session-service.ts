@@ -6,6 +6,7 @@ import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getServerEnv } from "@/lib/env/server";
 import { getPrisma } from "@/lib/db/prisma";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "./credential-recovery-state";
 
 const claimsSchema = z.object({
   sub: z.string().uuid(), session_id: z.string().uuid(),
@@ -44,7 +45,10 @@ export async function getLiveExactSession(): Promise<{ userId: string; sessionId
     if (live.error) denyProviderError(live.error);
     if (deadline.aborted) throw new InfrastructureError();
     if (live.data.user?.id !== claims.data.sub || claims.data.exp * 1000 <= Date.now()) throw new UnauthenticatedError();
-    const owner = await getPrisma().user.findUnique({ where: { authSubject: claims.data.sub }, select: { id: true, status: true } });
+    const owner = await getPrisma().user.findUnique({ where: { authSubject: claims.data.sub,
+      workforceActivations: { none: unreconciledWorkforceResetWhere },
+      accountRecoveries: { none: unreconciledAccountRecoveryWhere },
+    }, select: { id: true, status: true } });
     if (owner?.status !== "ACTIVE") throw new ForbiddenError();
     return { userId: owner.id, sessionId: claims.data.session_id, checkedAt: new Date() };
   } catch (error: unknown) {

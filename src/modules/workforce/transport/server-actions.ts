@@ -16,15 +16,23 @@ import {
   osmProvisionSchema,
   workforceActivationCompletionSchema,
   workforceActivationRequestSchema,
+  workforceKindSchema,
+  workforcePasswordResetRequestSchema,
+  WORKFORCE_BULK_MAX_ROWS,
 } from "../schemas/workforce-schemas";
 import {
   completeWorkforceActivation,
+  completeWorkforcePasswordReset,
   demoteHospitalOwner,
+  issueWorkforcePasswordReset,
+  previewWorkforceActivation,
   promoteHospitalOwner,
   provisionHospitalMember,
   provisionOsm,
+  provisionWorkforceBulk,
   regenerateWorkforceActivation,
-  revokeWorkforceActivation,
+  revokeIssuedWorkforceActivation,
+  WorkforceBulkDuplicateError,
   restoreOsmRelationship,
   restoreHospitalMembership,
   suspendOsmRelationship,
@@ -33,7 +41,10 @@ import {
 } from "../services/workforce-service";
 import type {
   WorkforceActivationActionState,
+  WorkforceActivationPreviewState,
+  WorkforceBulkActionState,
   WorkforceCompletionActionState,
+  WorkforcePasswordResetActionState,
   WorkforceField,
   WorkforceMembershipMutationActionState,
   WorkforceMembershipMutationResultState,
@@ -117,7 +128,7 @@ function mapCompletionError(error: unknown): {
     }
 
     if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
-      return { code: "CONFLICT", message: "ลิงก์เปิดใช้งานไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว" };
+      return { code: "CONFLICT", message: ACTIVATION_UNAVAILABLE_MESSAGE };
     }
   }
 
@@ -603,11 +614,7 @@ export async function startAssistedWorkforceActivationAction(
       await signOutCurrentSession();
     } catch {
       try {
-        await revokeWorkforceActivation(actor, {
-          userId: parsed.data.userId,
-          targetHospitalId: parsed.data.targetHospitalId,
-          kind: parsed.data.kind,
-        });
+        await revokeIssuedWorkforceActivation(actor, { activationId: result.activationId });
       } catch {
         return {
           status: "ERROR",
@@ -630,21 +637,42 @@ export async function startAssistedWorkforceActivationAction(
   }
 }
 
+const ACTIVATION_UNAVAILABLE_MESSAGE =
+  "ไม่สามารถยืนยันได้ ลิงก์อาจไม่ถูกต้อง หมดอายุ ถูกใช้แล้ว หรือเลขบัตรประชาชนไม่ตรงกัน หากกรอกผิดหลายครั้งลิงก์จะถูกยกเลิก";
+
+export async function previewWorkforceActivationAction(
+  token: string,
+): Promise<WorkforceActivationPreviewState> {
+  try {
+    const preview = await previewWorkforceActivation(token);
+    return { status: "SUCCESS", maskedName: preview.maskedName, purpose: preview.purpose };
+  } catch {
+    return { status: "ERROR", message: ACTIVATION_UNAVAILABLE_MESSAGE };
+  }
+}
+
 export async function completeWorkforceActivationAction(
   token: string,
+  purpose: "ACTIVATION" | "RESET",
   _previousState: WorkforceCompletionActionState,
   formData: FormData,
 ): Promise<WorkforceCompletionActionState> {
   const parsed = workforceActivationCompletionSchema.safeParse({
+    nationalId: getString(formData, "nationalId"),
     password: getString(formData, "password"),
     passwordConfirmation: getString(formData, "passwordConfirmation"),
   });
 
   if (!parsed.success) {
-    const fieldErrors: { password?: string; passwordConfirmation?: string } = {};
+    const fieldErrors: { nationalId?: string; password?: string; passwordConfirmation?: string } =
+      {};
 
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
+
+      if (field === "nationalId" && !fieldErrors.nationalId) {
+        fieldErrors.nationalId = "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง";
+      }
 
       if (field === "password" && !fieldErrors.password) {
         fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
@@ -658,16 +686,134 @@ export async function completeWorkforceActivationAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
       fieldErrors,
     };
   }
 
   try {
-    await completeWorkforceActivation(token, parsed.data);
+    if (purpose === "RESET") {
+      await completeWorkforcePasswordReset(token, parsed.data);
+    } else {
+      await completeWorkforceActivation(token, parsed.data);
+    }
   } catch (error: unknown) {
     return { status: "ERROR", ...mapCompletionError(error) };
   }
 
-  redirect("/login?activated=1");
+  redirect(purpose === "RESET" ? "/login?reset=1" : "/login?activated=1");
+}
+
+export async function issueWorkforcePasswordResetAction(
+  _previousState: WorkforcePasswordResetActionState,
+  formData: FormData,
+): Promise<WorkforcePasswordResetActionState> {
+  const parsed = workforcePasswordResetRequestSchema.safeParse({
+    userId: getString(formData, "userId"),
+    targetHospitalId: getString(formData, "targetHospitalId"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ไม่สามารถเริ่มการรีเซ็ตรหัสผ่านได้",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    await issueWorkforcePasswordReset(actor, parsed.data);
+    // The service is fail-closed. Never expose a credential or perform issuer handoff for RESET.
+    return { status: "ERROR", code: "FORBIDDEN", message: "การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน ต้องมีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแลก่อน" };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error), message: "การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน ต้องมีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแลก่อน" };
+  }
+}
+
+export async function provisionWorkforceBulkAction(
+  _previousState: WorkforceBulkActionState,
+  formData: FormData,
+): Promise<WorkforceBulkActionState> {
+  const kind = workforceKindSchema.safeParse(getString(formData, "kind"));
+  const nationalIds = formData.getAll("nationalId");
+  const givenNames = formData.getAll("givenName");
+  const familyNames = formData.getAll("familyName");
+  const professions = formData.getAll("profession");
+
+  if (!kind.success || nationalIds.length > WORKFORCE_BULK_MAX_ROWS) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: `เพิ่มได้ครั้งละไม่เกิน ${WORKFORCE_BULK_MAX_ROWS} รายการ`,
+    };
+  }
+
+  const text = (values: FormDataEntryValue[], index: number): string => {
+    const value = values[index];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const rows: Record<string, string>[] = [];
+  const rowNumbers: number[] = [];
+
+  for (let index = 0; index < nationalIds.length; index += 1) {
+    const row: Record<string, string> = {
+      nationalId: text(nationalIds, index),
+      givenName: text(givenNames, index),
+      familyName: text(familyNames, index),
+    };
+
+    if (kind.data === "HOSPITAL_MEMBER") {
+      row.profession = text(professions, index);
+    }
+
+    // Untouched rows are skipped; reported row numbers still refer to the visible form row.
+    if (row.nationalId || row.givenName || row.familyName || row.profession) {
+      rows.push(row);
+      rowNumbers.push(index + 1);
+    }
+  }
+
+  if (rows.length === 0) {
+    return { status: "ERROR", code: "INVALID_INPUT", message: "กรุณากรอกข้อมูลอย่างน้อย 1 แถว" };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await provisionWorkforceBulk(actor, {
+      submissionId: getString(formData, "submissionId"),
+      kind: kind.data,
+      targetHospitalId: getString(formData, "targetHospitalId"),
+      rows,
+      rowNumbers,
+    });
+    revalidatePath("/app/workforce");
+
+    return {
+      status: "SUCCESS",
+      result: {
+        kind: result.kind,
+        hospitalId: result.hospitalId,
+        rows: result.rows.map((row) => {
+          const rowNumber = rowNumbers[row.rowNumber - 1];
+
+          return row.status === "invalid"
+            ? { rowNumber, status: row.status, reason: row.reason }
+            : { rowNumber, status: row.status, activationRequired: row.activationRequired };
+        }),
+      },
+    };
+  } catch (error: unknown) {
+    if (error instanceof WorkforceBulkDuplicateError) {
+      return {
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message:
+          "พบเลขบัตรประชาชนซ้ำในรายการที่ส่ง ไม่มีการบันทึกข้อมูล กรุณาแก้ไขแถวที่ซ้ำแล้วลองใหม่",
+        duplicateRowNumbers: error.rowNumbers.map((number) => rowNumbers[number - 1]),
+      };
+    }
+
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
 }

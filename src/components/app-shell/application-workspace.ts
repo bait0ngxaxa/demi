@@ -48,6 +48,7 @@ export type ApplicationWorkspaceAction = {
 export type ApplicationHospitalWorkspace = ActorHospitalWorkspace & {
   actions: readonly ApplicationWorkspaceAction[];
   contextLabel: string;
+  administrationScope: "OWNER" | "MEMBER";
 };
 
 export type ApplicationWorkspaceProjection = {
@@ -114,17 +115,20 @@ function projectHospitalActions(
   const { hospitalId } = workspace;
   const actions: ApplicationWorkspaceAction[] = [];
 
-  if (
-    decideWorkforcePolicy({
-      actor,
-      capability: WORKFORCE_CAPABILITIES.read,
-      targetHospitalId: hospitalId,
-    }).allowed
-  ) {
+  const workforceDecision = decideWorkforcePolicy({
+    actor,
+    capability: WORKFORCE_CAPABILITIES.osmRead,
+    targetHospitalId: hospitalId,
+  });
+
+  if (workforceDecision.allowed) {
     actions.push({
       href: withHospitalContext("/app/workforce", hospitalId),
       label: "จัดการบุคลากร",
-      description: "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง",
+      description:
+        workforceDecision.reason === "active_hospital_owner"
+          ? "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
+          : "เพิ่ม อสม. และดูแลการเปิดใช้งานบัญชี อสม. ในโรงพยาบาลที่คุณเป็นสมาชิกโดยตรง",
       category: "administration",
     });
   }
@@ -264,6 +268,14 @@ export function projectApplicationWorkspace(
   const hospitals = projected.map((workspace) => ({
     ...workspace,
     contextLabel: workspaceContextLabel(actor, workspace.hospitalId),
+    administrationScope: actor.hospitalMemberships.some(
+      (membership) =>
+        membership.hospitalId === workspace.hospitalId &&
+        membership.membershipType === "OWNER" &&
+        membership.status === MembershipStatus.ACTIVE,
+    )
+      ? ("OWNER" as const)
+      : ("MEMBER" as const),
     actions: workspace.actions.filter((action) => Boolean(action.category)),
   }));
 

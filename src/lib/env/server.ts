@@ -84,6 +84,21 @@ export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
 export type LineLoginEnv = z.infer<typeof lineLoginEnvSchema>;
 export type LineMessagingEnv = z.infer<typeof lineMessagingEnvSchema>;
 
+/** The configured public application origin also used by LINE; never use request Host. */
+export function getApplicationPublicOrigin(): string {
+  const parsed = z.url().safeParse(process.env.DEMI_LINE_PUBLIC_ORIGIN);
+  if (!parsed.success) {
+    throw new Error("Application public origin is unavailable");
+  }
+  const url = new URL(parsed.data);
+  const local = process.env.NODE_ENV !== "production" &&
+    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.origin !== parsed.data || (url.protocol !== "https:" && !(local && url.protocol === "http:"))) {
+    throw new Error("Application public origin must be canonical HTTPS");
+  }
+  return url.origin;
+}
+
 let cachedServerEnv: ServerEnv | undefined;
 let cachedSupabaseAdminEnv: SupabaseAdminEnv | undefined;
 let cachedPatientEvidenceStorageEnv: PatientEvidenceStorageEnv | undefined;

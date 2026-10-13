@@ -49,7 +49,7 @@ function canManageWorkforce(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     decideWorkforcePolicy({
       actor,
-      capability: WORKFORCE_CAPABILITIES.read,
+      capability: WORKFORCE_CAPABILITIES.osmRead,
       targetHospitalId: hospitalId,
     }).allowed,
   );

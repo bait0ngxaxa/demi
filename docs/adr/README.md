@@ -26,7 +26,7 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 | [ADR-0005](./0005-server-side-application-boundary.md) | Accepted | Server-Side Application Boundary |
 | [ADR-0006](./0006-transactional-business-operations.md) | Accepted | Transactional Business Operations |
 | [ADR-0007](./0007-client-transport-and-mobile-ready-architecture.md) | Accepted | Client Transport and Mobile-Ready Architecture |
-| [ADR-0008](./0008-workforce-provisioning-and-activation.md) | Accepted | Workforce Provisioning and First-Time Activation |
+| [ADR-0008](./0008-workforce-provisioning-and-activation.md) | Accepted (amended 2026-10-14) | Workforce Provisioning and First-Time Activation |
 | [ADR-0009](./0009-demi-line-oa-liff-identity-and-messaging.md) | Accepted | DEMI LINE OA, LIFF Identity and Messaging Boundary |
 | [ADR-0010](./0010-production-ready-mvp-and-deployment-neutral-runtime.md) | Accepted | Production-Ready MVP and Deployment-Neutral Runtime |
 | [ADR-0011](./0011-patient-import-profile-persistence.md) | Accepted | Patient Import Profile Persistence and Hospital Ownership |
@@ -49,3 +49,5 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 - มีเหตุผลที่มีแนวโน้มถูกถามซ้ำในอนาคต
 
 ไม่ต้องสร้าง ADR สำหรับ implementation detail ปกติ การตั้งชื่อภายใน หรือ choice ที่เปลี่ยนได้ง่ายและไม่กระทบ boundary
+
+- [ADR-0012 — Global credential recovery proof](./0012-global-credential-recovery-proof.md): security restriction superseding assisted-recovery ownership assumptions; independent proof remains pending.

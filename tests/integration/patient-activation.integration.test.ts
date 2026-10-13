@@ -1022,4 +1022,49 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(first).resolves.toEqual({ userId: patient.userId, hospitalId: hospital.id });
     expect(provisioner).toHaveBeenCalledOnce();
   });
+  it("projects workforce-gated PROVISIONED candidates as RECONCILIATION_REQUIRED with one batched gate query", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-GATED-LOOKUP");
+    const { actor } = await createHospitalActor({ hospitalId: hospital.id, hospitalStatus: hospital.status });
+    const lookup = { targetHospitalId: hospital.id, lookupType: "NAME" as const, value: "คัดกรองรวม" };
+    const common = { hospitalId: hospital.id, familyName: "คัดกรองรวม" };
+    const plain = await createPatient({ ...common, givenName: "ปกติ" });
+    const withOsm = await createPatient({ ...common, givenName: "มีโอเอสเอ็ม", extraRoles: [Role.OSM] });
+    await prisma.osmHospitalRelationship.create({ data: { userId: withOsm.userId, hospitalId: hospital.id, status: MembershipStatus.PROVISIONED } });
+    const withStaff = await createPatient({ ...common, givenName: "มีบุคลากร", extraRoles: [Role.HOSPITAL] });
+    await prisma.hospitalMembership.create({ data: { userId: withStaff.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: "NURSE", status: MembershipStatus.PROVISIONED } });
+    const withOperation = await createPatient({ ...common, givenName: "มีงานค้าง" });
+    await prisma.workforceActivation.create({ data: {
+      userId: withOperation.userId, tokenHash: `legacy-${withOperation.userId}`.padEnd(64, "0").slice(0, 64), mode: "REMOTE",
+      expiresAt: new Date(Date.now() + 3_600_000), createdByUserId: actor.userId, operationState: "PROVIDER_STARTED", claimedAt: new Date(),
+    } });
+    const activeMulti = await createPatient({ ...common, givenName: "ใช้งานแล้ว", status: UserStatus.ACTIVE, extraRoles: [Role.OSM] });
+    await prisma.osmHospitalRelationship.create({ data: { userId: activeMulti.userId, hospitalId: hospital.id, status: MembershipStatus.ACTIVE } });
+
+    let gateQueries = 0;
+    const database = new Proxy(prisma, {
+      get(target, key) {
+        if (key !== "user") return Reflect.get(target, key);
+        return new Proxy(target.user, {
+          get(delegate, method) {
+            if (method !== "findMany") return Reflect.get(delegate, method);
+            return (...args: Parameters<typeof delegate.findMany>) => { gateQueries += 1; return delegate.findMany(...args); };
+          },
+        });
+      },
+    });
+    const candidates = await findPatientActivationCandidates(actor, lookup, { database });
+    const byUser = new Map(candidates.map((candidate) => [candidate.userId, candidate]));
+
+    expect(candidates).toHaveLength(5);
+    expect(gateQueries).toBe(1);
+    expect(byUser.get(plain.userId)).toMatchObject({ activationStatus: "NOT_ISSUED", activationMayBeIssued: true });
+    for (const gated of [withOsm, withStaff, withOperation]) {
+      expect(byUser.get(gated.userId)).toMatchObject({ activationStatus: "RECONCILIATION_REQUIRED", activationMayBeIssued: false });
+      // The service rejects exactly what the lookup stopped offering.
+      await expect(issuePatientActivation(actor, { userId: gated.userId, targetHospitalId: hospital.id, reissue: false }))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+    }
+    expect(byUser.get(activeMulti.userId)).toMatchObject({ activationStatus: "ACTIVE", activationMayBeIssued: false });
+    expect(await prisma.patientActivation.count()).toBe(0);
+  });
 });

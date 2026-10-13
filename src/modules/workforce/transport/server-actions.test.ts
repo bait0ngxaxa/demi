@@ -3,17 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
+import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
 
 import {
   completeWorkforceActivation,
+  completeWorkforcePasswordReset,
   demoteHospitalOwner,
+  issueWorkforcePasswordReset,
+  previewWorkforceActivation,
   promoteHospitalOwner,
   provisionHospitalMember,
+  provisionWorkforceBulk,
+  regenerateWorkforceActivation,
   restoreHospitalMembership,
   restoreOsmRelationship,
+  revokeIssuedWorkforceActivation,
   suspendHospitalMembership,
   suspendOsmRelationship,
   updateHospitalMembershipProfession,
+  WorkforceBulkDuplicateError,
 } from "../services/workforce-service";
 import {
   initialWorkforceCompletionActionState,
@@ -24,7 +32,11 @@ import {
 import {
   completeWorkforceActivationAction,
   demoteHospitalOwnerAction,
+  issueWorkforcePasswordResetAction,
+  previewWorkforceActivationAction,
   provisionHospitalMemberAction,
+  provisionWorkforceBulkAction,
+  startAssistedWorkforceActivationAction,
   promoteHospitalOwnerAction,
   restoreHospitalMembershipAction,
   restoreOsmRelationshipAction,
@@ -46,12 +58,21 @@ vi.mock("@/modules/auth/services/authentication-service", () => ({
 }));
 vi.mock("../services/workforce-service", () => ({
   completeWorkforceActivation: vi.fn(),
+  completeWorkforcePasswordReset: vi.fn(),
   demoteHospitalOwner: vi.fn(),
+  issueWorkforcePasswordReset: vi.fn(),
+  previewWorkforceActivation: vi.fn(),
   promoteHospitalOwner: vi.fn(),
   provisionHospitalMember: vi.fn(),
   provisionOsm: vi.fn(),
+  provisionWorkforceBulk: vi.fn(),
   regenerateWorkforceActivation: vi.fn(),
-  revokeWorkforceActivation: vi.fn(),
+  revokeIssuedWorkforceActivation: vi.fn(),
+  WorkforceBulkDuplicateError: class extends Error {
+    constructor(readonly rowNumbers: number[]) {
+      super("duplicate");
+    }
+  },
   restoreHospitalMembership: vi.fn(),
   restoreOsmRelationship: vi.fn(),
   suspendHospitalMembership: vi.fn(),
@@ -62,6 +83,12 @@ vi.mock("../services/workforce-service", () => ({
 const mockedGetProtectedApplicationActor = vi.mocked(getProtectedApplicationActor);
 const mockedSignOutCurrentSession = vi.mocked(signOutCurrentSession);
 const mockedCompleteWorkforceActivation = vi.mocked(completeWorkforceActivation);
+const mockedCompleteWorkforcePasswordReset = vi.mocked(completeWorkforcePasswordReset);
+const mockedIssueWorkforcePasswordReset = vi.mocked(issueWorkforcePasswordReset);
+const mockedPreviewWorkforceActivation = vi.mocked(previewWorkforceActivation);
+const mockedProvisionWorkforceBulk = vi.mocked(provisionWorkforceBulk);
+const mockedRegenerateWorkforceActivation = vi.mocked(regenerateWorkforceActivation);
+const mockedRevokeIssuedWorkforceActivation = vi.mocked(revokeIssuedWorkforceActivation);
 const mockedDemoteHospitalOwner = vi.mocked(demoteHospitalOwner);
 const mockedPromoteHospitalOwner = vi.mocked(promoteHospitalOwner);
 const mockedProvisionHospitalMember = vi.mocked(provisionHospitalMember);
@@ -162,27 +189,218 @@ describe("workforce Server Actions", () => {
     expect(JSON.stringify(result)).not.toContain("GLOBAL");
   });
 
-  it("passes the ephemeral activation token to the completion service and redirects to login", async () => {
+  it("passes the ephemeral token, national ID and purpose to the completion service and redirects to login", async () => {
     mockedCompleteWorkforceActivation.mockResolvedValue({ userId: "user-1" });
     const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
 
     await completeWorkforceActivationAction(
       "one-time-token",
+      "ACTIVATION",
       initialWorkforceCompletionActionState,
       formData,
     );
 
-    expect(mockedCompleteWorkforceActivation).toHaveBeenCalledWith(
-      "one-time-token",
-      {
-        password: "target-owned-workforce-password",
-        passwordConfirmation: "target-owned-workforce-password",
-      },
-    );
+    expect(mockedCompleteWorkforceActivation).toHaveBeenCalledWith("one-time-token", {
+      nationalId: "1000000000009",
+      password: "target-owned-workforce-password",
+      passwordConfirmation: "target-owned-workforce-password",
+    });
+    expect(mockedCompleteWorkforcePasswordReset).not.toHaveBeenCalled();
     expect(mockedRedirect).toHaveBeenCalledWith("/login?activated=1");
     expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
+  });
+
+  it("routes a RESET purpose to the password reset service only", async () => {
+    mockedCompleteWorkforcePasswordReset.mockResolvedValue({ userId: "user-1" });
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+
+    await completeWorkforceActivationAction(
+      "one-time-token",
+      "RESET",
+      initialWorkforceCompletionActionState,
+      formData,
+    );
+
+    expect(mockedCompleteWorkforcePasswordReset).toHaveBeenCalledTimes(1);
+    expect(mockedCompleteWorkforceActivation).not.toHaveBeenCalled();
+    expect(mockedRedirect).toHaveBeenCalledWith("/login?reset=1");
+  });
+
+  it("requires a valid national ID before any service call", async () => {
+    const formData = new FormData();
+    formData.set("nationalId", "123");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+
+    const result = await completeWorkforceActivationAction(
+      "one-time-token",
+      "ACTIVATION",
+      initialWorkforceCompletionActionState,
+      formData,
+    );
+
+    expect(result).toMatchObject({
+      status: "ERROR",
+      fieldErrors: { nationalId: expect.any(String) },
+    });
+    expect(mockedCompleteWorkforceActivation).not.toHaveBeenCalled();
+  });
+
+  it("returns the same generic message for every completion conflict and preview failure", async () => {
+    mockedCompleteWorkforceActivation.mockRejectedValue(new ConflictError("anything specific"));
+    mockedPreviewWorkforceActivation.mockRejectedValue(new ConflictError("missing"));
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+
+    const result = await completeWorkforceActivationAction(
+      "one-time-token",
+      "ACTIVATION",
+      initialWorkforceCompletionActionState,
+      formData,
+    );
+    const preview = await previewWorkforceActivationAction("one-time-token");
+
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toContain("anything specific");
+    expect(preview).toMatchObject({
+      status: "ERROR",
+      message: (result as { message: string }).message,
+    });
+  });
+
+  it("exposes only the masked name and purpose from a preview", async () => {
+    mockedPreviewWorkforceActivation.mockResolvedValue({
+      maskedName: "สม*** ใจ***",
+      purpose: "RESET",
+    });
+
+    await expect(previewWorkforceActivationAction("one-time-token")).resolves.toEqual({
+      status: "SUCCESS",
+      maskedName: "สม*** ใจ***",
+      purpose: "RESET",
+    });
+  });
+
+  it("rejects unsupported recovery without signing out or exposing issuer credentials", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
+    mockedIssueWorkforcePasswordReset.mockRejectedValue(new ForbiddenError());
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "HOSPITAL_OWNER");
+    const result = await issueWorkforcePasswordResetAction({ status: "IDLE" }, formData);
+    expect(result).toMatchObject({ status: "ERROR", code: "FORBIDDEN" });
+    expect(JSON.stringify(result)).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
+    expect(mockedRevokeIssuedWorkforceActivation).not.toHaveBeenCalled();
+  });
+
+  it("compensates a failed assisted activation handoff with the internal revoke of its own token", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "member-1" } as never);
+    mockedRegenerateWorkforceActivation.mockResolvedValue({
+      activationId: "activation-2",
+      userId: "33333333-3333-4333-8333-333333333333",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      activationToken: "activation-token",
+      activationExpiresAt: new Date("2026-10-14T00:15:00.000Z"),
+      activationMode: "ASSISTED",
+    });
+    mockedSignOutCurrentSession.mockRejectedValue(new Error("sign out failed"));
+    mockedRevokeIssuedWorkforceActivation.mockResolvedValue(undefined);
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "OSM");
+
+    const result = await startAssistedWorkforceActivationAction({ status: "IDLE" }, formData);
+
+    expect(mockedRevokeIssuedWorkforceActivation).toHaveBeenCalledWith(
+      { userId: "member-1" },
+      { activationId: "activation-2" },
+    );
+    expect(result.status).toBe("ERROR");
+  });
+
+  it("maps bulk rows back to their visible row numbers and never returns tokens", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
+    mockedProvisionWorkforceBulk.mockResolvedValue({
+      kind: "OSM",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      rows: [
+        {
+          rowNumber: 1,
+          status: "created",
+          userId: "u1",
+          relationshipId: "r1",
+          activationRequired: true,
+        },
+        { rowNumber: 2, status: "invalid", reason: "INVALID_ROW" },
+      ],
+    });
+    const formData = new FormData();
+    formData.set("kind", "OSM");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    for (const [nationalId, givenName, familyName] of [
+      ["1000000000009", "ก", "ข"],
+      ["", "", ""],
+      ["12", "ค", "ง"],
+    ]) {
+      formData.append("nationalId", nationalId);
+      formData.append("givenName", givenName);
+      formData.append("familyName", familyName);
+    }
+
+    const result = await provisionWorkforceBulkAction({ status: "IDLE" }, formData);
+
+    expect(mockedProvisionWorkforceBulk).toHaveBeenCalledWith(
+      { userId: "owner-1" },
+      {
+        submissionId: "",
+        kind: "OSM",
+        targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        rowNumbers: [1, 3],
+        rows: [
+          { nationalId: "1000000000009", givenName: "ก", familyName: "ข" },
+          { nationalId: "12", givenName: "ค", familyName: "ง" },
+        ],
+      },
+    );
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: {
+        rows: [
+          { rowNumber: 1, status: "created" },
+          { rowNumber: 3, status: "invalid", reason: "INVALID_ROW" },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/token|userId|relationshipId/i);
+  });
+
+  it("reports in-batch duplicate national IDs against the visible rows without saving", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
+    mockedProvisionWorkforceBulk.mockRejectedValue(new WorkforceBulkDuplicateError([1, 2]));
+    const formData = new FormData();
+    formData.set("kind", "OSM");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    for (const nationalId of ["1000000000009", "1000000000009"]) {
+      formData.append("nationalId", nationalId);
+      formData.append("givenName", "ก");
+      formData.append("familyName", "ข");
+    }
+
+    const result = await provisionWorkforceBulkAction({ status: "IDLE" }, formData);
+
+    expect(result).toMatchObject({ status: "ERROR", duplicateRowNumbers: [1, 2] });
   });
 
   it("validates and forwards only the bounded profession mutation input", async () => {

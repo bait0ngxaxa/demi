@@ -28,6 +28,31 @@ export type WorkforceActivationResultState = {
   activationMode: WorkforceActivationMode;
 };
 
+export type WorkforcePasswordResetResultState = {
+  userId: string;
+  hospitalId: string;
+  activationToken: string;
+  activationExpiresAt: string;
+};
+
+export type WorkforceBulkRowResultState =
+  | {
+      rowNumber: number;
+      status: "created" | "existing";
+      activationRequired: boolean;
+    }
+  | {
+      rowNumber: number;
+      status: "invalid";
+      reason: "INVALID_ROW" | "CONFLICT" | "UNAVAILABLE";
+    };
+
+export type WorkforceBulkResultState = {
+  kind: WorkforceKind;
+  hospitalId: string;
+  rows: WorkforceBulkRowResultState[];
+};
+
 export type WorkforceMembershipMutationResultState = {
   relationshipId: string;
   hospitalId: string;
@@ -92,9 +117,28 @@ export type WorkforceCompletionActionState =
       status: "ERROR";
       code: WorkforceErrorCode;
       message: string;
-      fieldErrors?: { password?: string; passwordConfirmation?: string };
+      fieldErrors?: { nationalId?: string; password?: string; passwordConfirmation?: string };
     }
   | { status: "SUCCESS" };
+
+export type WorkforcePasswordResetActionState =
+  | { status: "IDLE" }
+  | { status: "ERROR"; code: WorkforceErrorCode; message: string }
+  | { status: "SUCCESS"; result: WorkforcePasswordResetResultState };
+
+export type WorkforceBulkActionState =
+  | { status: "IDLE" }
+  | {
+      status: "ERROR";
+      code: WorkforceErrorCode;
+      message: string;
+      duplicateRowNumbers?: number[];
+    }
+  | { status: "SUCCESS"; result: WorkforceBulkResultState };
+
+export type WorkforceActivationPreviewState =
+  | { status: "SUCCESS"; maskedName: string; purpose: "ACTIVATION" | "RESET" }
+  | { status: "ERROR"; message: string };
 
 export type WorkforceMembershipMutationActionState =
   | { status: "IDLE" }
@@ -144,5 +188,13 @@ export const initialWorkforceOsmRelationshipMutationActionState: WorkforceOsmRel
 };
 
 export const initialWorkforceOwnerGovernanceMutationActionState: WorkforceOwnerGovernanceMutationActionState = {
+  status: "IDLE",
+};
+
+export const initialWorkforcePasswordResetActionState: WorkforcePasswordResetActionState = {
+  status: "IDLE",
+};
+
+export const initialWorkforceBulkActionState: WorkforceBulkActionState = {
   status: "IDLE",
 };

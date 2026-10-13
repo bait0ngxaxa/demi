@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { LoadingSpinner } from "@/components/ui/button";
 import {
   initialWorkforceCompletionActionState,
+  type WorkforceActivationPreviewState,
   type WorkforceCompletionActionState,
 } from "@/modules/workforce/transport/action-state";
-import { completeWorkforceActivationAction } from "@/modules/workforce/transport/server-actions";
+import {
+  completeWorkforceActivationAction,
+  previewWorkforceActivationAction,
+} from "@/modules/workforce/transport/server-actions";
 
 type ActivationTokenStore = {
   getSnapshot: () => string | null;
@@ -58,14 +62,37 @@ function createActivationTokenStore(): ActivationTokenStore {
 export function WorkforceActivationForm(): React.JSX.Element {
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+  const [preview, setPreview] = useState<WorkforceActivationPreviewState | null>(null);
+  const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
   const [state, formAction, pending] = useActionState<
     WorkforceCompletionActionState,
     FormData
-  >(completeWorkforceActivationAction.bind(null, token ?? ""), initialWorkforceCompletionActionState);
+  >(
+    completeWorkforceActivationAction.bind(null, token ?? "", purpose),
+    initialWorkforceCompletionActionState,
+  );
 
   useEffect(() => {
     store.hydrate();
   }, [store]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+
+    void previewWorkforceActivationAction(token).then((result) => {
+      if (active) {
+        setPreview(result);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors : undefined;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -79,10 +106,63 @@ export function WorkforceActivationForm(): React.JSX.Element {
     );
   }
 
+  if (!preview) {
+    return (
+      <p className="mt-8 text-sm leading-6 text-muted" role="status">
+        กำลังตรวจสอบลิงก์...
+      </p>
+    );
+  }
+
+  if (preview.status === "ERROR") {
+    return (
+      <div
+        className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950"
+        role="alert"
+      >
+        <p className="font-semibold">ไม่สามารถใช้ลิงก์นี้ได้</p>
+        <p className="mt-1">{preview.message}</p>
+        <p className="mt-1">ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
+      </div>
+    );
+  }
+
   return (
     <form action={formAction} className="mt-8 space-y-5">
       <div className="rounded-[14px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
-        ลิงก์นี้ใช้ได้ครั้งเดียว กรุณาตั้งรหัสผ่านด้วยตนเองและอย่าบอกให้ผู้อื่นทราบ
+        <p>
+          {purpose === "RESET" ? "รีเซ็ตรหัสผ่านของ" : "เปิดใช้งานบัญชีของ"}{" "}
+          <span className="font-semibold">{preview.maskedName}</span>
+        </p>
+        <p className="mt-1">
+          ลิงก์นี้ใช้ได้ครั้งเดียว กรุณากรอกเลขบัตรประชาชนของคุณเองและตั้งรหัสผ่านด้วยตนเอง
+          อย่าบอกให้ผู้อื่นทราบ
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
+          เลขบัตรประชาชน 13 หลัก
+        </label>
+        <input
+          aria-describedby={fieldErrors?.nationalId ? "nationalId-error" : undefined}
+          aria-invalid={fieldErrors?.nationalId ? true : undefined}
+          autoComplete="off"
+          className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
+          disabled={pending}
+          id="nationalId"
+          inputMode="numeric"
+          maxLength={13}
+          name="nationalId"
+          pattern="[0-9]{13}"
+          required
+          type="text"
+        />
+        {fieldErrors?.nationalId ? (
+          <p className="text-sm leading-6 text-danger" id="nationalId-error" role="alert">
+            {fieldErrors.nationalId}
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2">
@@ -150,7 +230,11 @@ export function WorkforceActivationForm(): React.JSX.Element {
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}
-        {pending ? "กำลังเปิดใช้งาน..." : "เปิดใช้งานบัญชี"}
+        {pending
+          ? "กำลังดำเนินการ..."
+          : purpose === "RESET"
+            ? "ตั้งรหัสผ่านใหม่"
+            : "เปิดใช้งานบัญชี"}
       </button>
 
       <p className="text-center text-sm leading-6 text-muted">

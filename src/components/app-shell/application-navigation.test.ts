@@ -193,7 +193,8 @@ describe("application navigation projection", () => {
     expect(labels).toContain("คำขอเปิดใช้งานผู้ป่วย");
     expect(labels).toContain("คำขอบริการผู้ป่วย");
     expect(labels).not.toContain("บริการที่ผู้ป่วยขอได้");
-    expect(labels).not.toContain("จัดการบุคลากร");
+    // ADR-0008 amendment (D1): a direct MEMBER reaches workforce for OSM only.
+    expect(labels).toContain("จัดการบุคลากร");
   });
 
   it("shows the service catalog only to an exact active Hospital owner", () => {

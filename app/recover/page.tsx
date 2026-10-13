@@ -3,7 +3,9 @@ import type { Metadata } from "next";
 import { PublicAccountRecoveryForm } from "./public-account-recovery-form";
 
 export const metadata: Metadata = {
-  title: "ตั้งรหัสผ่านใหม่",
+  title: "การกู้คืนรหัสผ่าน",
+  robots: { index: false, follow: false },
+  referrer: "no-referrer",
 };
 
 export default function RecoverAccountPage(): React.JSX.Element {

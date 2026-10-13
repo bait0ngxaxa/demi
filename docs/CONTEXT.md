@@ -1001,3 +1001,20 @@ Family delegated-data grant is separate from ZERO-data family-delegation-v1 rela
 - ไม่สร้าง HTTP API โดยไม่มี identified current consumer/use case
 - ไม่ออก full database schema จาก conceptual entities ใน baseline โดยไม่มี task อนุมัติ
 - เมื่อ architecture decision เปลี่ยนสาระสำคัญ ให้สร้าง ADR ใหม่เพื่อ supersede ฉบับเดิม แล้ว sync baseline/context
+
+## Workforce onboarding v2 remediation (review e61cd863)
+
+Current implementation/security restrictions supersede the historical Phase 4B/D3 summary above:
+ACTIVE MEMBER can provision/read OSM only; OWNER retains direct staff/OSM management. Directory
+queries are keyset-paginated and searchable; bulk submissions have durable actor/Hospital/kind/
+payload-bound HMAC receipts with stable per-row replay outcomes and a 30-day key lifetime.
+Global assisted password recovery (workforce and Patient-only) is deliberately unavailable
+without approved independent account-owner proof, including for ADMIN and multi-role identities.
+[ADR-0012](./adr/0012-global-credential-recovery-proof.md) supersedes the Phase 17E.1 assisted
+recovery trust assumption without rewriting its history. Pending first-time
+activation spanning Hospitals is also gated pending an explicit trust decision. Initial activation
+now binds issuer/Hospital/relationship context and has durable provider-operation states; old
+unbound credentials are revoked and ambiguous claimed RESETs quarantine application access.
+This is remediation implementation, not production deployment or complete account-recovery
+acceptance. See [ADR-0008 amendment](./adr/0008-workforce-provisioning-and-activation.md) and
+[verification/runbook handoff](./phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md).

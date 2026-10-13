@@ -29,6 +29,13 @@ describe("workforce activation credentials", () => {
     );
   });
 
+  it("expires a remote credential after 72 hours and an assisted one after 15 minutes", () => {
+    const now = new Date("2026-10-14T00:00:00.000Z");
+
+    expect(getWorkforceActivationExpiry(now, "REMOTE").toISOString()).toBe("2026-10-17T00:00:00.000Z");
+    expect(getWorkforceActivationExpiry(now, "ASSISTED").toISOString()).toBe("2026-10-14T00:15:00.000Z");
+  });
+
   it("does not accept an empty token for digest lookup", () => {
     expect(() => hashWorkforceActivationToken(" ")).toThrow();
   });

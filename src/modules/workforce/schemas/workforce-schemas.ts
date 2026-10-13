@@ -33,7 +33,14 @@ export const osmProvisionSchema = z
   .strict();
 
 export const workforceListSchema = z
-  .object({ targetHospitalId: workforceTargetHospitalIdSchema })
+  .object({
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    staffCursor: z.string().max(2048).optional(),
+    osmCursor: z.string().max(2048).optional(),
+    search: z.string().trim().max(120).optional(),
+    status: z.enum(["PROVISIONED", "INVITED", "ACTIVE", "SUSPENDED"]).optional(),
+    pageSize: z.number().int().min(1).max(50).optional(),
+  })
   .strict();
 
 export const workforceDetailRequestSchema = z
@@ -89,6 +96,7 @@ export const workforceActivationRequestSchema = z
 
 export const workforceActivationCompletionSchema = z
   .object({
+    nationalId: thaiNationalIdSchema,
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
   })
@@ -104,6 +112,43 @@ export const workforceActivationCompletionSchema = z
   });
 
 export const workforceActivationTokenSchema = z.string().trim().min(1).max(256);
+
+export const WORKFORCE_BULK_MAX_ROWS = 50;
+export const WORKFORCE_SLIP_MAX_PEOPLE = 50;
+
+export const workforcePasswordResetRequestSchema = z
+  .object({
+    userId: z.uuid(),
+    targetHospitalId: workforceTargetHospitalIdSchema,
+  })
+  .strict();
+
+// Rows are validated one by one so a single invalid row never blocks the others.
+export const workforceBulkProvisionSchema = z
+  .object({
+    // The timestamp is part of the key: expired keys stay unusable even after receipt pruning.
+    submissionId: z.string().regex(/^\d{13}\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u),
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    kind: workforceKindSchema,
+    rows: z.array(z.unknown()).min(1).max(WORKFORCE_BULK_MAX_ROWS),
+    rowNumbers: z.array(z.number().int().min(1).max(WORKFORCE_BULK_MAX_ROWS)).max(WORKFORCE_BULK_MAX_ROWS).optional(),
+  })
+  .strict()
+  .refine(({ rows, rowNumbers }) => !rowNumbers || (rowNumbers.length === rows.length &&
+    rowNumbers.every((row, index) => index === 0 || row > rowNumbers[index - 1])));
+
+export const workforceActivationSlipRequestSchema = z
+  .object({
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    kind: workforceKindSchema,
+    userIds: z.array(z.uuid()).min(1).max(WORKFORCE_SLIP_MAX_PEOPLE),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (new Set(input.userIds).size !== input.userIds.length) {
+      context.addIssue({ code: "custom", path: ["userIds"], message: "Duplicate user selection" });
+    }
+  });
 
 export type HospitalMemberProvisionInput = z.infer<typeof hospitalMemberProvisionSchema>;
 export type OsmProvisionInput = z.infer<typeof osmProvisionSchema>;
@@ -126,6 +171,11 @@ export type WorkforceActivationRequestInput = z.infer<
 >;
 export type WorkforceActivationCompletionInput = z.infer<
   typeof workforceActivationCompletionSchema
+>;
+export type WorkforcePasswordResetRequestInput = z.infer<typeof workforcePasswordResetRequestSchema>;
+export type WorkforceBulkProvisionInput = z.infer<typeof workforceBulkProvisionSchema>;
+export type WorkforceActivationSlipRequestInput = z.infer<
+  typeof workforceActivationSlipRequestSchema
 >;
 export type WorkforceKind = z.infer<typeof workforceKindSchema>;
 export type WorkforceActivationMode = z.infer<typeof workforceActivationModeSchema>;

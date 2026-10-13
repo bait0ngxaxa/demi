@@ -19,6 +19,7 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
+import { WorkforcePasswordResetControl } from "../../workforce-password-reset-control";
 import { OsmRelationshipControls } from "./osm-relationship-controls";
 import { StaffMembershipControls } from "./staff-membership-controls";
 
@@ -178,7 +179,16 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           </Alert>
         ) : null}
 
-        {isStaff ? (
+        {detail.viewerScope === "MEMBER" ? (
+          <Alert variant="info">
+            <p className="font-semibold">มุมมองสำหรับสมาชิกโรงพยาบาล</p>
+            <p className="mt-1">
+              สมาชิกดูข้อมูล อสม. ได้อย่างเดียว การระงับ คืนสถานะ ยกเลิกลิงก์ และรีเซ็ตรหัสผ่านทำได้เฉพาะเจ้าของโรงพยาบาล
+            </p>
+          </Alert>
+        ) : null}
+
+        {detail.viewerScope !== "OWNER" ? null : isStaff ? (
           <StaffMembershipControls
             accountStatus={detail.accountStatus}
             actions={detail.actions}
@@ -202,6 +212,14 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             targetHospitalId={detail.hospital.id}
           />
         )}
+
+        {detail.viewerScope === "OWNER" ? (
+          <WorkforcePasswordResetControl
+            subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
+            targetHospitalId={detail.hospital.id}
+            userId={detail.userId}
+          />
+        ) : null}
 
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

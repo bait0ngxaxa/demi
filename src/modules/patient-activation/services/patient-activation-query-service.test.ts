@@ -106,4 +106,13 @@ describe("patient activation query projection", () => {
       ).activationStatus,
     ).toBe("RECONCILIATION_REQUIRED");
   });
+  it("fails closed with RECONCILIATION_REQUIRED and no issuance when the User has workforce authority", () => {
+    expect(
+      patientActivationQueryInternals.projectActivationStatus(baseUser, [], now, true),
+    ).toEqual({
+      activationStatus: "RECONCILIATION_REQUIRED",
+      activationExpiresAt: null,
+      activationMayBeIssued: false,
+    });
+  });
 });

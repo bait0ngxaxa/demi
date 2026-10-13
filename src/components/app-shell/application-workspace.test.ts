@@ -77,7 +77,7 @@ describe("application workspace projection", () => {
     ]);
   });
 
-  it("does not give an ordinary Hospital member workforce management", () => {
+  it("gives an ordinary Hospital member only the OSM-scoped workforce entry", () => {
     const projection = projectApplicationWorkspace(
       actor({
         roles: [Role.HOSPITAL],
@@ -87,7 +87,12 @@ describe("application workspace projection", () => {
     );
     const hrefs = (projection.hospitals[0]?.actions ?? []).map(({ href }) => href);
 
-    expect(hrefs).not.toContain(`/app/workforce?hospitalId=${hospitalId}`);
+    const workforceAction = (projection.hospitals[0]?.actions ?? []).find(
+      ({ href }) => href === `/app/workforce?hospitalId=${hospitalId}`,
+    );
+
+    expect(workforceAction?.description).toContain("เพิ่ม อสม.");
+    expect(workforceAction?.description).not.toContain("เจ้าของโดยตรง");
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
@@ -208,7 +213,11 @@ describe("application workspace projection", () => {
       osmHospitalRelationships: [{ hospitalId: secondId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
     }), [workspace(), workspace({ hospitalId: secondId })]);
     expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(4);
-    expect(projection.hospitals[1]?.actions.filter(({ category }) => category === "administration")).toEqual([]);
+    expect(
+      projection.hospitals[1]?.actions
+        .filter(({ category }) => category === "administration")
+        .map(({ href }) => href),
+    ).toEqual([`/app/workforce?hospitalId=${secondId}`]);
     expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${secondId}`);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals[1]?.contextLabel).toContain("สมาชิกโรงพยาบาล");

@@ -1181,7 +1181,7 @@ The detailed checklist is in the [Phase 4A Workforce Provisioning Contract](../p
   activation uses one opaque, one-time activation capability. Copy URL, QR and
   assisted in-person activation are presentations of the same capability, and
   the target user establishes their own password.
-- Copy/QR activation has a default `24 hours` expiry and assisted activation has
+- Copy/QR activation has a default `72 hours` expiry (ADR-0008 amendment 2026-10-14, supersedes `24 hours`) and assisted activation has
   a default `15 minutes` expiry. The activation record stores only a secure
   deterministic digest and bounded lifecycle timestamps; it is single-use,
   revocable, regeneratable, and concurrency-safe.
@@ -1347,7 +1347,7 @@ The following decisions are accepted for project initialization:
 42. Existing `ACTIVE` Users with valid provider mapping and established credential ownership reuse their identity and do not re-activate credentials when a trusted operation adds a workforce role or relationship.
 43. New workforce accounts start `PROVISIONED` and require target-owned first-time activation before entering `/app`.
 44. Workforce first-time activation uses one opaque, one-time activation capability; activation URL, QR, and assisted in-person flow are presentations of the same capability.
-45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 24 hours and assisted activation to 15 minutes.
+45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 72 hours (ADR-0008 amendment 2026-10-14) and assisted activation to 15 minutes; activation and assisted password reset also require the target's national ID, with the token revoked after 5 failed checks.
 46. Workforce target users set their own passwords; Hospital staff must not know or set them, and email/SMS/LINE/LIFF/ThaID/external identity are not core activation dependencies.
 47. Workforce provider effects remain behind the existing server-only authentication boundary and use compensation/reconciliation outside the local PostgreSQL transaction boundary.
 48. Phase 17E.1 implements only the 2026-09-30 owner-approved Patient general profile fields as Hospital-relationship-scoped values, with Patient SELF authority, legacy shared-profile fallback, and optimistic concurrency. Identity-sensitive correction, staff/OSM edits, and profile history remain outside this contract.
@@ -1491,3 +1491,40 @@ Transaction / Persistence
 ```
 
 This is the accepted starting architecture for DEMI project initialization.
+
+## Workforce onboarding v2 security amendment (review e61cd863)
+
+[ADR-0008 remediation amendment](../adr/0008-workforce-provisioning-and-activation.md) supersedes
+historical assisted RESET permission/identity-proof/claim-release statements in this baseline.
+National ID identifies a Person; issuer-visible capabilities and staff supervision cannot prove
+ownership of a global credential. Workforce and Patient-only assisted recovery are server-gated
+for every actor/target under [ADR-0012](../adr/0012-global-credential-recovery-proof.md). Auth-owned actor and
+exact-session reads quarantine unused claimed legacy RESETs and unfinished claimed AccountRecovery without changing Person/User identity
+or Hospital memberships. No immediate provider access-JWT invalidation is claimed.
+
+Initial activation binds exact issuer/Hospital/relationship/purpose and reauthorizes before
+provider start and finalization. Cross-Hospital pending activation requires a product/security
+decision. Durable provider-operation state, guarded initial-identity compensation, and retained
+ambiguous claims keep external effects distinct from database commits. Directory reads use
+bounded `(createdAt, id)` keyset pages; MEMBER receives only OSM. Bulk receipts and domain writes
+commit together per row, preserving partial success and submission replay without secret/PII
+payload retention. Source-of-truth hierarchy and the four roles remain unchanged.
+
+
+### Identity ownership and pending-scope amendment (review ff33a38)
+
+The first credential is global to a User. A User that owns the Patient domain (`PATIENT` role or
+`PatientProfile`) and is not `ACTIVE` with a provider mapping cannot be issued or activated through a
+workforce flow; `ACTIVE` Users keep multi-role and multi-Hospital reuse with no new credential. A
+`PROVISIONED` User may hold pending workforce state in a single Hospital only (same-Hospital
+MEMBER + OSM allowed); a conflicting request is rejected before commit and the first Hospital's
+activation stays usable. Already-stranded cross-Hospital records stay blocked and are identified by the
+read-only query in the remediation handoff. Both gates are SECURITY_GATED, not VERIFIED_COMPLETE.
+
+
+Cross-domain addendum (review 6a68463): Patient ownership is resolved from the Person for every
+`PROVISIONED` User (including a newly created one), and the reverse gate is enforced: Patient
+provisioning and activation reject a `PROVISIONED` User with pending workforce authority (ADMIN role,
+any Hospital/OSM relationship, unfinished `WorkforceActivation`). `ACTIVE` Users keep multi-role reuse
+with no credential change. Mixed legacy identities stay blocked and unmodified. Patient-only activation
+still lacks independent owner proof (SECURITY_GATED).

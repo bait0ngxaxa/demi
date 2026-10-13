@@ -10,21 +10,22 @@ vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof imp
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/modules/workforce/transport/server-actions", () => ({
   provisionHospitalMemberAction: vi.fn(), provisionOsmAction: vi.fn(),
+  provisionWorkforceBulkAction: vi.fn(),
   regenerateWorkforceActivationAction: vi.fn(), startAssistedWorkforceActivationAction: vi.fn(),
 }));
 
 import { WorkforceWorkspace } from "./workforce-workspace";
 
-const hospital = { id: "11111111-1111-4111-8111-111111111111", name: "โรงพยาบาล ก", hospitalCode: "H-001" };
+const hospital = { id: "11111111-1111-4111-8111-111111111111", name: "โรงพยาบาล ก", hospitalCode: "H-001", scope: "OWNER" as const };
 const second = { ...hospital, id: "22222222-2222-4222-8222-222222222222", name: "โรงพยาบาล ข", hospitalCode: "H-002" };
 const row: WorkforceListRow = {
   id: "33333333-3333-4333-8333-333333333333", userId: "user", displayName: "บุคลากรทดสอบ",
   kind: "HOSPITAL_MEMBER", membershipType: MembershipType.MEMBER, profession: Profession.NURSE,
   relationshipStatus: MembershipStatus.ACTIVE, accountStatus: UserStatus.ACTIVE,
-  activationRequired: false, activationExpiresAt: null, activationMode: null,
+  activationRequired: false, activationStatus: null, activationExpiresAt: null, activationMode: null,
 };
-function render(rows: WorkforceListRow[] = [row]): string {
-  return renderToStaticMarkup(<WorkforceWorkspace hospitals={[hospital, second]} selectedHospitalId={second.id} workforce={{ hospital: second, rows }} />);
+function render(rows: WorkforceListRow[] = [row], viewerScope: "OWNER" | "MEMBER" = "OWNER"): string {
+  return renderToStaticMarkup(<WorkforceWorkspace hospitals={[hospital, { ...second, scope: viewerScope }]} selectedHospitalId={second.id} workforce={{ hospital: second, viewerScope, rows, pageInfo: { pageSize: 25, serverTime: 1791849600000, search: "", status: null, staffCursor: null, osmCursor: null, staffNextCursor: null, osmNextCursor: null } }} />);
 }
 
 describe("Hospital workforce operational continuity", () => {
@@ -40,7 +41,7 @@ describe("Hospital workforce operational continuity", () => {
     expect(html).toContain("วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล");
     expect(html).toContain(`href="/app/workforce/staff/${row.id}"`);
     expect(html).not.toContain(`/app/workforce/staff/${row.userId}`);
-    expect(html.match(new RegExp(`name="targetHospitalId"[^>]*value="${second.id}"`, "g"))).toHaveLength(2);
+    expect(html.match(new RegExp(`name="targetHospitalId"[^>]*value="${second.id}"`, "g"))).toHaveLength(3);
     expect(html).not.toMatch(/งานค้าง|ครบกำหนด|ล่าช้า|เปอร์เซ็นต์/);
     expect(html).toContain('href="#workforce-roster"');
     expect(html).toContain('href="#workforce-provision"');
@@ -48,14 +49,14 @@ describe("Hospital workforce operational continuity", () => {
 
   it("keeps an empty roster separate from the available add operations", () => {
     const html = render([]);
-    expect(html.match(/ยังไม่มีรายการในโรงพยาบาลนี้/g)).toHaveLength(2);
+    expect(html.match(/ไม่พบรายการในหน้านี้หรือไม่ตรงกับการค้นหา/g)).toHaveLength(2);
     expect(html).toContain("เพิ่มบุคลากร</button>");
     expect(html).toContain("เพิ่ม อสม.</button>");
     expect(html).toContain("ยังไม่มีการกำหนดพื้นที่หรือผู้ป่วย");
   });
 
   it("preserves activation availability and terminal relationship display", () => {
-    const html = render([{ ...row, relationshipStatus: MembershipStatus.SUSPENDED }, { ...row, id: "osm-relationship", kind: "OSM", membershipType: null, profession: null, relationshipStatus: MembershipStatus.PROVISIONED, accountStatus: UserStatus.PROVISIONED, activationRequired: true }]);
+    const html = render([{ ...row, relationshipStatus: MembershipStatus.SUSPENDED }, { ...row, id: "osm-relationship", kind: "OSM", membershipType: null, profession: null, relationshipStatus: MembershipStatus.PROVISIONED, accountStatus: UserStatus.PROVISIONED, activationRequired: true, activationStatus: "PENDING" }]);
     expect(html).toContain("ถูกระงับ");
     expect(html).toContain("รอเปิดใช้งาน");
     expect(html).toContain('href="/app/workforce/osm/osm-relationship"');
@@ -67,8 +68,8 @@ describe("Hospital workforce operational continuity", () => {
     hooks.actionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), true]);
     const html = render();
     const buttons = html.match(/<button\b[^>]*>/g) ?? [];
-    expect(buttons).toHaveLength(2);
-    expect(buttons.every((button) => button.includes('disabled=""'))).toBe(true);
+    expect(buttons).toHaveLength(6);
+    expect(buttons.filter((button) => button.includes('disabled=""'))).toHaveLength(5);
   });
 
   it("keeps success continuation bound to the persisted result Hospital and relationship", () => {
@@ -101,5 +102,42 @@ describe("Hospital workforce operational continuity", () => {
     expect(html).toContain("ไม่สามารถเริ่มการเปิดใช้งานแบบช่วยเหลือได้");
     expect(html.indexOf("ไม่สามารถเริ่มการเปิดใช้งานแบบช่วยเหลือได้")).toBeLessThan(html.indexOf(row.displayName));
     expect(html).not.toContain("สร้างบุคลากรแล้ว");
+  });
+
+  it("shows a MEMBER only the OSM roster and form, never staff management", () => {
+    const osmRow: WorkforceListRow = { ...row, id: "osm-1", userId: "osm-user", kind: "OSM", membershipType: null, profession: null };
+    const html = render([osmRow], "MEMBER");
+    expect(html).toContain("สมาชิกโรงพยาบาล");
+    expect(html).toContain("เพิ่ม อสม.</button>");
+    expect(html).not.toContain("เพิ่มบุคลากรโรงพยาบาล</h2>");
+    expect(html).not.toContain("เพิ่มบุคลากร</button>");
+    expect(html).not.toContain("บุคลากรโรงพยาบาล</h2>");
+    expect(html).not.toContain('value="HOSPITAL_MEMBER"');
+  });
+
+  it("lists pending people with status, latest expiry and the print action", () => {
+    const expiry = new Date("2026-10-20T03:00:00.000Z");
+    const pendingOsm: WorkforceListRow = {
+      ...row, id: "osm-pending", userId: "pending-user", displayName: "รออสม", kind: "OSM", membershipType: null,
+      profession: null, relationshipStatus: MembershipStatus.PROVISIONED, accountStatus: UserStatus.PROVISIONED,
+      activationRequired: true, activationStatus: "PENDING", activationExpiresAt: expiry,
+    };
+    const expiredOsm: WorkforceListRow = { ...pendingOsm, id: "osm-expired", userId: "expired-user", displayName: "หมดอายุอสม", activationStatus: "EXPIRED" };
+    const html = render([pendingOsm, expiredOsm]);
+    expect(html).toContain('id="workforce-pending"');
+    expect(html).toContain("รอเปิดใช้งาน</span>");
+    expect(html).toContain("ลิงก์หมดอายุ</span>");
+    expect(html).toContain('action="/app/workforce/slips"');
+    expect(html).toContain('method="post"');
+    expect(html).toMatch(/<input[^>]*type="checkbox"[^>]*value="pending-user"/);
+    expect(html).toMatch(/<input[^>]*form="slip-form-OSM"[^>]*name="userId"/);
+    expect(html).toContain("พิมพ์ใบเปิดใช้งาน (0)");
+  });
+
+  it("offers the multi-row add with the staff option only for an OWNER", () => {
+    expect(render([row], "OWNER")).toContain("เพิ่มหลายคน");
+    expect(render([row], "OWNER")).toContain('value="HOSPITAL_MEMBER"');
+    expect(render([], "MEMBER")).toContain("เพิ่มหลายคน");
+    expect(render([], "MEMBER")).not.toContain('value="HOSPITAL_MEMBER"');
   });
 });
