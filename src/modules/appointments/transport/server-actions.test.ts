@@ -2,7 +2,7 @@ import { AppointmentStatus, HospitalStatus, MembershipStatus, MembershipType, Ro
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedCreate = vi.hoisted(() => vi.fn());
@@ -313,6 +313,25 @@ describe("Appointment Server Actions", () => {
       requestId: "77777777-7777-4777-8777-777777777777",
       decision: "APPROVE",
     });
+  });
+
+  it("returns superseded review distinctly and revalidates the exact Work appointment", async () => {
+    mockedReviewCancellation.mockResolvedValue({
+      appointmentId, patientHospitalRelationshipId: relationshipId, requestStatus: "SUPERSEDED",
+      appointmentStatus: AppointmentStatus.SCHEDULED, updatedAt, wasSuperseded: true,
+    });
+    const result = await approveAppointmentCancellationRequestAction(initialAppointmentInteractionActionState, cancellationReviewFormData());
+    expect(result).toMatchObject({ status: "SUCCESS", operation: "CANCELLATION_SUPERSEDED", appointmentStatus: AppointmentStatus.SCHEDULED });
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/appointments/${appointmentId}`);
+    expect(mockedCancel).not.toHaveBeenCalled();
+  });
+
+  it("keeps stale SELF acknowledgement conflicts safe without reporting success or invalidating another scope", async () => {
+    mockedAcknowledgeSelf.mockRejectedValue(new ConflictError("internal stale appointment version"));
+    const result = await acknowledgeOwnPatientAppointmentAction(initialAppointmentInteractionActionState, acknowledgementFormData());
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toContain("internal stale");
+    expect(mockedRevalidatePath).not.toHaveBeenCalled();
   });
 
   it.each(["unknown field", "duplicate field", "authority field"])(

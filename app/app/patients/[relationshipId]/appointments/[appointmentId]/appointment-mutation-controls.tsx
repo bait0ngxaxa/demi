@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { APPOINTMENT_STATUS_LABELS } from "@/modules/appointments/domain/appointment-definitions";
 import {
   cancelAppointmentAction,
   completeAppointmentAction,
@@ -69,18 +70,19 @@ export function AppointmentMutationControls({
     }
   }, [cancelState, completeState, noShowState, router]);
 
-  if (!canManage || status !== "SCHEDULED") {
+  if (!canManage) {
     return null;
   }
 
   return (
     <div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      {status === "SCHEDULED" ? <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <form action={completeAction}>
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
+            className="w-full sm:w-auto"
             disabled={pending}
             loading={completePending}
             onClick={(event) => {
@@ -98,7 +100,7 @@ export function AppointmentMutationControls({
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <Button disabled={pending} loading={noShowPending} type="submit" variant="secondary">
+          <Button className="w-full sm:w-auto" disabled={pending} loading={noShowPending} type="submit" variant="secondary">
             {noShowPending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าไม่มาตามนัด"}
           </Button>
         </form>
@@ -108,6 +110,7 @@ export function AppointmentMutationControls({
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
+            className="w-full sm:w-auto"
             disabled={pending}
             loading={cancelPending}
             onClick={(event) => {
@@ -121,7 +124,10 @@ export function AppointmentMutationControls({
             {cancelPending ? "กำลังยกเลิก..." : "ยกเลิกนัดหมาย"}
           </Button>
         </form>
-      </div>
+      </div> : <p className="text-sm text-text-muted">นัดหมายนี้เป็นประวัติผลนัด ไม่มีการเปลี่ยนสถานะหรือเลื่อนนัด</p>}
+      {[cancelState, completeState, noShowState].map((state, index) => state.status === "SUCCESS" ? (
+        <Alert className="mt-4" key={index} variant="success">บันทึกสถานะนัดหมายแล้ว: {APPOINTMENT_STATUS_LABELS[state.result.status]}</Alert>
+      ) : null)}
       <ErrorFeedback states={[cancelState, completeState, noShowState]} />
     </div>
   );

@@ -54,6 +54,22 @@ function actor(overrides: Partial<ActorContext> = {}): ActorContext {
 }
 
 describe("Appointment policy", () => {
+  it("evaluates each Hospital membership independently for a multi-role actor", () => {
+    const membership = actor().hospitalMemberships[0];
+    if (!membership) throw new Error("Missing membership fixture");
+    const multiRole = actor({
+      roles: [Role.ADMIN, Role.HOSPITAL, Role.PATIENT],
+      hospitalMemberships: [membership, { ...membership, hospitalId: hospitalB, membershipType: MembershipType.MEMBER }],
+    });
+    for (const hospitalId of [hospitalA, hospitalB]) {
+      expect(decideAppointmentPolicy({ actor: multiRole, target: target({ hospitalId }), capability: APPOINTMENT_MANAGE_CAPABILITY }).allowed).toBe(true);
+    }
+    expect(decideAppointmentPolicy({ actor: multiRole, target: target({ hospitalId: "another-hospital" }), capability: APPOINTMENT_MANAGE_CAPABILITY }).allowed).toBe(false);
+    expect(decideAppointmentPolicy({
+      actor: { ...multiRole, hospitalMemberships: [membership, { ...membership, hospitalId: hospitalB, status: MembershipStatus.SUSPENDED }] },
+      target: target({ hospitalId: hospitalB }), capability: APPOINTMENT_MANAGE_CAPABILITY,
+    }).allowed).toBe(false);
+  });
   it.each([MembershipType.OWNER, MembershipType.MEMBER])(
     "allows active direct Hospital %s to read and manage",
     (membershipType) => {

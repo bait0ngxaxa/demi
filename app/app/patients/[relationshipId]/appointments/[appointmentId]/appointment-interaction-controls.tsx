@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
+  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
   APPOINTMENT_INTERACTION_SOURCE_LABELS,
   APPOINTMENT_RESCHEDULE_GUIDANCE,
 } from "@/modules/appointments/domain/appointment-interaction-definitions";
@@ -125,24 +127,24 @@ export function AppointmentInteractionControls({
   ]);
 
   const isScheduled = status === "SCHEDULED";
+  const pending = acknowledgementPending || cancellationPending || coordinationPending || approvalPending || rejectionPending;
   const pendingRequest = cancellationRequests.find((request) => request.status === "PENDING");
-  const hasInteractions =
-    canProxyPatientActions ||
-    canRecordCoordination ||
-    Boolean(acknowledgement) ||
-    cancellationRequests.length > 0 ||
-    coordinationEvents.length > 0;
   const reviewWasSuperseded =
     (approvalState.status === "SUCCESS" && approvalState.operation === "CANCELLATION_SUPERSEDED") ||
     (rejectionState.status === "SUCCESS" && rejectionState.operation === "CANCELLATION_SUPERSEDED");
 
-  if (!hasInteractions) {
-    return null;
-  }
-
   return (
     <Panel>
       <div className="space-y-6">
+        <section aria-labelledby="appointment-acknowledgement-heading">
+          <h2 className="text-lg font-semibold" id="appointment-acknowledgement-heading">การรับทราบนัดหมาย</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
+          <p className="mt-2 break-words text-sm text-text" role="status">
+            {acknowledgement
+              ? `รับทราบนัดหมายแล้วโดย ${acknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[acknowledgement.source]} · ${formatInteractionTime(acknowledgement.acknowledgedAt)}`
+              : "ยังไม่มีการรับทราบนัดหมายสำหรับกำหนดการนี้"}
+          </p>
+        </section>
         {canProxyPatientActions ? (
           <section aria-labelledby="appointment-osm-interactions-heading" className="space-y-4">
             <div>
@@ -150,20 +152,16 @@ export function AppointmentInteractionControls({
                 การประสานงานกับผู้ป่วย
               </h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                การรับทราบแทนผู้ป่วยเป็นเพียงการบันทึกว่าได้รับแจ้งนัดแล้ว ไม่ใช่การยืนยันว่าจะมา
+                บันทึกแทนผู้ป่วยภายใต้สิทธิ์ที่ได้รับมอบหมาย ไม่ใช่การตอบรับงานมอบหมาย OSM
               </p>
             </div>
 
-            {acknowledgement ? (
-              <p className="text-sm text-text-muted" role="status">
-                รับทราบนัดหมายแล้วโดย {acknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[acknowledgement.source]} · {formatInteractionTime(acknowledgement.acknowledgedAt)}
-              </p>
-            ) : isScheduled ? (
+            {acknowledgement ? null : isScheduled ? (
               <form action={acknowledgeAction}>
                 <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
                 <input name="appointmentId" type="hidden" value={appointmentId} />
                 <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-                <Button disabled={acknowledgementPending} loading={acknowledgementPending} type="submit">
+                <Button className="w-full sm:w-auto" disabled={pending} loading={acknowledgementPending} type="submit">
                   {acknowledgementPending ? "กำลังบันทึก..." : "บันทึกว่าผู้ป่วยรับทราบนัดหมายแล้ว"}
                 </Button>
               </form>
@@ -173,6 +171,8 @@ export function AppointmentInteractionControls({
             {acknowledgementState.status === "SUCCESS" ? (
               <Alert variant="success">บันทึกการรับทราบแทนผู้ป่วยแล้ว</Alert>
             ) : null}
+
+            <p className="text-sm leading-6 text-text-muted">{APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}</p>
 
             {pendingRequest ? (
               <p className="text-sm font-semibold text-text" role="status">
@@ -185,7 +185,8 @@ export function AppointmentInteractionControls({
                 <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
                 <input name="submissionNonce" type="hidden" value={cancellationRequestNonce} />
                 <Button
-                  disabled={cancellationPending}
+                  className="w-full sm:w-auto"
+                  disabled={pending}
                   loading={cancellationPending}
                   type="submit"
                   variant="secondary"
@@ -212,14 +213,14 @@ export function AppointmentInteractionControls({
                 บันทึกการประสานงาน
               </h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                ระบบบันทึกเวลาและผู้บันทึก โดยไม่มีช่องกรอกข้อความอิสระ
+                บันทึกเวลาและผู้ประสานงานเท่านั้น ไม่เปลี่ยนสถานะนัดหรือบันทึกการรับทราบแทนผู้ป่วย
               </p>
             </div>
             <form action={coordinationAction}>
               <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
               <input name="appointmentId" type="hidden" value={appointmentId} />
               <input name="submissionNonce" type="hidden" value={coordinationSubmissionNonce} />
-              <Button disabled={coordinationPending} loading={coordinationPending} type="submit" variant="secondary">
+              <Button className="w-full sm:w-auto" disabled={pending} loading={coordinationPending} type="submit" variant="secondary">
                 {coordinationPending ? "กำลังบันทึก..." : "บันทึกว่าประสานงานแล้ว"}
               </Button>
             </form>
@@ -257,7 +258,8 @@ export function AppointmentInteractionControls({
                 <input name="appointmentId" type="hidden" value={appointmentId} />
                 <input name="requestId" type="hidden" value={pendingRequest.requestId} />
                 <Button
-                  disabled={approvalPending || rejectionPending}
+                  className="w-full sm:w-auto"
+                  disabled={pending}
                   loading={approvalPending}
                   onClick={(event) => {
                     if (!window.confirm("อนุมัติคำขอนี้และยกเลิกนัดหมายหรือไม่")) {
@@ -274,7 +276,8 @@ export function AppointmentInteractionControls({
                 <input name="appointmentId" type="hidden" value={appointmentId} />
                 <input name="requestId" type="hidden" value={pendingRequest.requestId} />
                 <Button
-                  disabled={approvalPending || rejectionPending}
+                  className="w-full sm:w-auto"
+                  disabled={pending}
                   loading={rejectionPending}
                   type="submit"
                   variant="secondary"
@@ -283,22 +286,23 @@ export function AppointmentInteractionControls({
                 </Button>
               </form>
             </div>
-            {approvalState.status === "SUCCESS" || rejectionState.status === "SUCCESS" ? (
-              <Alert variant={reviewWasSuperseded ? "warning" : "success"}>
-                {approvalState.status === "SUCCESS" && approvalState.operation === "CANCELLATION_APPROVED"
-                  ? "อนุมัติและยกเลิกนัดหมายแล้ว"
-                  : rejectionState.status === "SUCCESS" && rejectionState.operation === "CANCELLATION_REJECTED"
-                    ? "ปฏิเสธคำขอแล้ว และนัดหมายยังคงอยู่"
-                    : "คำขอนี้สิ้นผลแล้ว เพราะนัดหมายมีการเปลี่ยนแปลง"}
-              </Alert>
-            ) : null}
           </section>
+        ) : null}
+
+        {canManage && (approvalState.status === "SUCCESS" || rejectionState.status === "SUCCESS") ? (
+          <Alert variant={reviewWasSuperseded ? "warning" : "success"}>
+            {approvalState.status === "SUCCESS" && approvalState.operation === "CANCELLATION_APPROVED"
+              ? "อนุมัติและยกเลิกนัดหมายแล้ว"
+              : rejectionState.status === "SUCCESS" && rejectionState.operation === "CANCELLATION_REJECTED"
+                ? "ปฏิเสธคำขอแล้ว โดยไม่เปลี่ยนสถานะนัดหมาย"
+                : "คำขอนี้สิ้นผลแล้ว เพราะนัดหมายมีการเปลี่ยนแปลง"}
+          </Alert>
         ) : null}
 
         {cancellationRequests.length > 0 ? (
           <section aria-labelledby="appointment-cancellation-history-heading">
             <h2 className="text-sm font-semibold text-text" id="appointment-cancellation-history-heading">
-              ประวัติคำขอยกเลิก
+              คำขอยกเลิกล่าสุด (ไม่เกิน 5 รายการ)
             </h2>
             <ul className="mt-2 space-y-2 text-sm text-text-muted">
               {cancellationRequests.map((request) => (

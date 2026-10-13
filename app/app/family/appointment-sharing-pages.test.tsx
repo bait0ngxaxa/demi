@@ -49,6 +49,7 @@ describe("bounded appointment sharing UI", () => {
     mocks.detail.mockResolvedValue(appointment);
     const detail = renderToStaticMarkup(await DetailPage({ params: Promise.resolve({ grantId: "grant", appointmentId: "appointment" }) }));
     expect(mocks.detail).toHaveBeenCalledWith("grant", "appointment"); expect(detail).toContain("ยกเลิกแล้ว");
+    expect(detail).not.toMatch(/<form|<button|การรับทราบนัดหมาย|คำขอยกเลิก|ผู้รับผิดชอบ|OSM|\/app\/personal\/appointments|\/app\/patients/);
     mocks.detail.mockRejectedValue(new Error("denied"));
     await expect(DetailPage({ params: Promise.resolve({ grantId: "grant", appointmentId: "foreign" }) })).rejects.toThrow("denied");
   });

@@ -15,9 +15,6 @@ import {
   appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
-import {
-  APPOINTMENT_INTERACTION_SOURCE_LABELS,
-} from "@/modules/appointments/domain/appointment-interaction-definitions";
 import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
 import {
   getAppointmentDetail,
@@ -109,11 +106,6 @@ function AppointmentDetailView({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={
-          <StatusBadge variant={statusVariant(detail.status)}>
-            {APPOINTMENT_STATUS_LABELS[detail.status]}
-          </StatusBadge>
-        }
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
@@ -133,10 +125,12 @@ function AppointmentDetailView({
         {detail.status === "COMPLETED" ? (
           <Alert variant="info">
             <p className="font-semibold">นัดหมายนี้เสร็จสิ้นแล้ว</p>
+            <p className="mt-1">สถานะนัดหมายไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือการจบโปรแกรม ต้องตรวจรายการดูแลแยกกัน</p>
             <p className="mt-1">{followupContext.description}</p>
             <Link
-              className="mt-3 inline-flex min-h-9 items-center rounded-control border border-border-strong bg-surface px-3 py-1 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              className="mt-3 inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={followupContext.href}
+              prefetch={false}
             >
               {followupContext.label}
             </Link>
@@ -188,6 +182,7 @@ function AppointmentDetailView({
               <dd className="mt-1 break-words font-semibold text-text">
                 {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
               </dd>
+              <dd className="mt-1 text-sm leading-6 text-text-muted">เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน</dd>
             </div>
             <div>
               <dt className="text-sm text-text-muted">ระยะเวลา</dt>
@@ -226,16 +221,6 @@ function AppointmentDetailView({
               {detail.note ?? "ไม่ได้ระบุ"}
             </p>
           </div>
-          <div className="mt-5 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text">การรับทราบนัดหมาย</h3>
-            {detail.currentAcknowledgement ? (
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                รับทราบโดย {detail.currentAcknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[detail.currentAcknowledgement.source]}
-              </p>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีการรับทราบนัดหมายสำหรับกำหนดการนี้</p>
-            )}
-          </div>
         </Panel>
 
         <AppointmentInteractionControls
@@ -253,19 +238,22 @@ function AppointmentDetailView({
           status={detail.status}
         />
 
-        {detail.canManage && detail.status === "SCHEDULED" ? (
+        {detail.canManage ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">การดำเนินการ</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสถานะนัดหมายโดยโรงพยาบาล</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-                ตรวจสอบข้อมูลล่าสุดก่อนดำเนินการทุกครั้ง
+              การเลื่อนนัดเปลี่ยนกำหนดการ ส่วนการยกเลิก เสร็จสิ้น และไม่มาตามนัดเป็นผลของนัด ไม่สร้างบันทึกการติดตามผลหรือจบโปรแกรมอัตโนมัติ
             </p>
             <div className="mt-5 flex flex-col gap-5">
-              <Link
-                className="inline-flex min-h-11 w-fit items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/${encodeURIComponent(detail.appointmentId)}/edit`}
-              >
-                เลื่อนนัดหมาย
-              </Link>
+              {detail.status === "SCHEDULED" ? (
+                <Link
+                  className="inline-flex min-h-11 w-fit items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/${encodeURIComponent(detail.appointmentId)}/edit`}
+                  prefetch={false}
+                >
+                  เลื่อนนัดหมาย
+                </Link>
+              ) : null}
               <AppointmentMutationControls
                 appointmentId={detail.appointmentId}
                 canManage={detail.canManage}
@@ -281,14 +269,16 @@ function AppointmentDetailView({
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments`}
+            prefetch={false}
           >
             กลับไปประวัตินัดหมาย
           </Link>
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={`/app/patients/${encodeURIComponent(relationshipId)}`}
+            href={`/app/patients/${encodeURIComponent(relationshipId)}#patient-care`}
+            prefetch={false}
           >
-            กลับไปยังรายละเอียดผู้ป่วย
+            กลับไปดูแลผู้ป่วยต่อ
           </Link>
         </div>
       </div>

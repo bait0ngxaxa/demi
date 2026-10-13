@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
+  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
   APPOINTMENT_INTERACTION_SOURCE_LABELS,
   APPOINTMENT_RESCHEDULE_GUIDANCE,
 } from "@/modules/appointments/domain/appointment-interaction-definitions";
@@ -19,13 +21,22 @@ import {
   initialAppointmentInteractionActionState,
   type AppointmentInteractionActionState,
 } from "@/modules/appointments/transport/action-state";
-import type { PatientSelfAppointmentItem } from "@/modules/patient-self/services/patient-self-care-query-service";
+import type { PatientSelfAppointmentDetail, PatientSelfAppointmentItem } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 type PatientAppointmentInteractionControlsProps = {
   relationshipId: string;
   appointment: PatientSelfAppointmentItem;
   cancellationRequestNonce: string;
+  hospitalStatus: PatientSelfAppointmentDetail["relationship"]["hospitalStatus"];
 };
+
+function formatInteractionTime(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
 
 function ActionError({ state }: { state: AppointmentInteractionActionState }): React.JSX.Element | null {
   if (state.status !== "ERROR") {
@@ -43,6 +54,7 @@ export function PatientAppointmentInteractionControls({
   relationshipId,
   appointment,
   cancellationRequestNonce,
+  hospitalStatus,
 }: PatientAppointmentInteractionControlsProps): React.JSX.Element {
   const router = useRouter();
   const [acknowledgementState, acknowledgeAction, acknowledgementPending] = useActionState<
@@ -61,35 +73,40 @@ export function PatientAppointmentInteractionControls({
   }, [acknowledgementState, cancellationState, router]);
 
   const isScheduled = appointment.status === "SCHEDULED";
+  const canSubmitPatientInteraction = isScheduled && hospitalStatus === "ACTIVE";
+  const pending = acknowledgementPending || cancellationPending;
   const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
 
   return (
     <Panel>
+      {hospitalStatus !== "ACTIVE" ? (
+        <Alert className="mb-5" variant="info">อ่านข้อมูลนัดหมายเดิมได้ แต่ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้ในขณะที่โรงพยาบาลไม่อยู่ในสถานะเปิดใช้งาน</Alert>
+      ) : null}
       <section aria-labelledby="patient-appointment-response-heading" className="space-y-5">
         <div>
           <h2 className="text-lg font-semibold text-text" id="patient-appointment-response-heading">
             การรับทราบนัดหมาย
           </h2>
           <p className="mt-1 text-sm leading-6 text-text-muted">
-            การรับทราบเป็นเพียงการบันทึกว่าเห็นข้อมูลนัดแล้ว ไม่ใช่การยืนยันว่าจะเข้ารับบริการ
+            {APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}
           </p>
         </div>
 
         {appointment.acknowledgement ? (
           <p className="text-sm font-semibold text-text" role="status">
-            รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
+            รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]} · {formatInteractionTime(appointment.acknowledgement.acknowledgedAt)}
           </p>
-        ) : isScheduled ? (
+        ) : canSubmitPatientInteraction ? (
           <form action={acknowledgeAction}>
             <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
             <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
             <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
-            <Button disabled={acknowledgementPending} loading={acknowledgementPending} type="submit">
+            <Button className="w-full sm:w-auto" disabled={pending} loading={acknowledgementPending} type="submit">
               {acknowledgementPending ? "กำลังบันทึก..." : "รับทราบนัดหมาย"}
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-text-muted">นัดหมายนี้ไม่อยู่ในสถานะที่รับทราบได้</p>
+          <p className="text-sm text-text-muted">ยังไม่สามารถบันทึกการรับทราบสำหรับนัดหมายนี้ได้</p>
         )}
         {acknowledgementState.status === "SUCCESS" ? (
           <Alert variant="success">บันทึกการรับทราบนัดหมายแล้ว</Alert>
@@ -103,7 +120,7 @@ export function PatientAppointmentInteractionControls({
             คำขอยกเลิกนัด
           </h2>
           <p className="mt-1 text-sm leading-6 text-text-muted">
-            การส่งคำขอไม่ได้ยกเลิกนัดทันที โรงพยาบาลจะเป็นผู้พิจารณาและดำเนินการยกเลิก
+            {APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}
           </p>
         </div>
 
@@ -111,14 +128,15 @@ export function PatientAppointmentInteractionControls({
           <p className="text-sm font-semibold text-text" role="status">
             {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[pendingRequest.status]}
           </p>
-        ) : isScheduled ? (
+        ) : canSubmitPatientInteraction ? (
           <form action={cancellationAction}>
             <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
             <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
             <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
             <input name="submissionNonce" type="hidden" value={cancellationRequestNonce} />
             <Button
-              disabled={cancellationPending}
+              className="w-full sm:w-auto"
+              disabled={pending}
               loading={cancellationPending}
               type="submit"
               variant="secondary"
@@ -127,7 +145,7 @@ export function PatientAppointmentInteractionControls({
             </Button>
           </form>
         ) : (
-          <p className="text-sm text-text-muted">นัดหมายนี้ไม่อยู่ในสถานะที่ส่งคำขอยกเลิกได้</p>
+          <p className="text-sm text-text-muted">ยังไม่สามารถส่งคำขอยกเลิกสำหรับนัดหมายนี้ได้</p>
         )}
         {cancellationState.status === "SUCCESS" ? (
           <Alert variant="success">ส่งคำขอไปยังโรงพยาบาลแล้ว นัดหมายยังไม่ถูกยกเลิก</Alert>
@@ -136,11 +154,11 @@ export function PatientAppointmentInteractionControls({
 
         {appointment.cancellationRequests.length > 0 ? (
           <div>
-            <h3 className="text-sm font-semibold text-text">ประวัติคำขอ</h3>
+            <h3 className="text-sm font-semibold text-text">คำขอยกเลิกล่าสุด (ไม่เกิน 5 รายการ)</h3>
             <ul className="mt-2 space-y-2 text-sm text-text-muted">
               {appointment.cancellationRequests.map((request, index) => (
                 <li key={`${request.submittedAt.toISOString()}-${index}`}>
-                  {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[request.status]} · {APPOINTMENT_INTERACTION_SOURCE_LABELS[request.source]}
+                  {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[request.status]} · {APPOINTMENT_INTERACTION_SOURCE_LABELS[request.source]} · {formatInteractionTime(request.submittedAt)}
                 </li>
               ))}
             </ul>

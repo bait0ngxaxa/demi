@@ -89,4 +89,46 @@ describe("Work appointment responsibility labels", () => {
     expect(markup).not.toContain("แพทย์ผู้ดูแล: Coordinator Example");
     expect(markup).not.toContain("พยาบาลผู้ดูแล: Coordinator Example");
   });
+
+  it("prioritizes persisted scheduled rows over terminal history without claiming complete totals", () => {
+    const first = history.items[0];
+    if (!first) throw new Error("Missing fixture");
+    const markup = renderToStaticMarkup(<AppointmentHistoryView history={{ ...history, items: [
+      { ...first, appointmentId: "completed", status: "COMPLETED" },
+      { ...first, appointmentId: "cancelled", status: "CANCELLED" },
+      { ...first, appointmentId: "no-show", status: "NO_SHOW" },
+      { ...first, appointmentId: "scheduled", status: "SCHEDULED" },
+    ] }} />);
+    const scheduledPosition = markup.indexOf('/appointments/scheduled"');
+    const completedPosition = markup.indexOf('/appointments/completed"');
+    expect(scheduledPosition).toBeGreaterThan(-1);
+    expect(completedPosition).toBeGreaterThan(scheduledPosition);
+    expect(markup).toContain("ยกเลิกแล้ว");
+    expect(markup).toContain("ไม่มาตามนัด");
+    expect(markup).toContain("ไม่ใช่ประวัติทั้งหมด");
+    expect(markup).not.toContain("แสดง 4 รายการ");
+    expect(markup).not.toMatch(/เกินกำหนด|ยืนยันว่าจะมาแล้ว|ส่ง LINE แล้ว/);
+  });
+
+  it.each([true, false])("keeps one creation entry only when canCreate=%s, including the empty workspace", (canCreate) => {
+    const markup = renderToStaticMarkup(<AppointmentHistoryView history={{ ...history, canCreate, items: [] }} />);
+    expect([...markup.matchAll(/href="[^"]*\/appointments\/new"/g)]).toHaveLength(canCreate ? 1 : 0);
+    expect(markup).toContain("ยังไม่มีนัดหมายสำหรับผู้ป่วยรายนี้");
+    if (!canCreate) expect(markup).not.toContain("สร้างรายการแรก");
+  });
+
+  it("shows empty status groups honestly and preserves exact Patient/Hospital navigation", () => {
+    const scheduledMarkup = renderToStaticMarkup(<AppointmentHistoryView history={history} />);
+    expect(scheduledMarkup).toContain("ไม่มีประวัติผลนัดในรายการล่าสุดที่แสดง");
+    expect(scheduledMarkup).toContain(`href="/app/patients/${history.patient.patientHospitalRelationshipId}"`);
+    const markup = renderToStaticMarkup(<AppointmentHistoryView history={{ ...history,
+      patient: { ...history.patient, patientHospitalRelationshipId: "other-relationship", hospital: { id: "other-hospital", name: "โรงพยาบาล ข" } },
+      items: history.items.map((item) => ({ ...item, status: "COMPLETED" })),
+    }} />);
+    expect(markup).toContain("โรงพยาบาล ข");
+    expect(markup).toContain("ไม่มีสถานะนัดหมายแล้วใน 50 รายการล่าสุดที่แสดง");
+    expect(markup).toContain('<details open=""');
+    expect(markup).toContain(`href="/app/patients/other-relationship/appointments/${history.items[0]?.appointmentId}"`);
+    expect(markup).not.toContain(`/app/patients/${history.patient.patientHospitalRelationshipId}`);
+  });
 });

@@ -12,6 +12,7 @@ import {
 } from "@/modules/appointments/domain/appointment-definitions";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
   APPOINTMENT_INTERACTION_SOURCE_LABELS,
 } from "@/modules/appointments/domain/appointment-interaction-definitions";
 import type {
@@ -63,6 +64,7 @@ function AppointmentHistoryRow({
       <Link
         className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
         href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/${encodeURIComponent(item.appointmentId)}`}
+        prefetch={false}
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
           <div className="min-w-0">
@@ -85,10 +87,12 @@ function AppointmentHistoryRow({
               OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
             </p>
             {item.currentAcknowledgement ? (
-              <p className="mt-1 text-sm leading-6 text-text-muted">
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
                 รับทราบนัดหมายแล้วโดย {item.currentAcknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[item.currentAcknowledgement.source]}
               </p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-sm leading-6 text-text-muted">ยังไม่มีการรับทราบสำหรับกำหนดการนี้</p>
+            )}
             {item.cancellationRequests[0] ? (
               <p className="mt-1 text-sm leading-6 text-text-muted">
                 คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[item.cancellationRequests[0].status]}
@@ -107,8 +111,8 @@ function AppointmentHistoryRow({
             </dd>
           </div>
           <div>
-            <dt className="text-text-muted">สถานะ</dt>
-            <dd className="mt-1 font-semibold text-text">{APPOINTMENT_STATUS_LABELS[item.status]}</dd>
+            <dt className="text-text-muted">รายละเอียดและการดำเนินการที่มีสิทธิ์</dt>
+            <dd className="mt-1 font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</dd>
           </div>
         </dl>
       </Link>
@@ -118,6 +122,8 @@ function AppointmentHistoryRow({
 
 export function AppointmentHistoryView({ history }: { history: AppointmentHistory }): React.JSX.Element {
   const relationshipId = history.patient.patientHospitalRelationshipId;
+  const scheduled = history.items.filter((item) => item.status === "SCHEDULED");
+  const historical = history.items.filter((item) => item.status !== "SCHEDULED");
 
   return (
     <div>
@@ -127,6 +133,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}
+              prefetch={false}
             >
               สร้างนัดหมาย
             </Link>
@@ -139,14 +146,14 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
           },
           { label: "นัดหมาย" },
         ]}
-        description="ประวัตินัดหมายของผู้ป่วยในโรงพยาบาลนี้ เรียงจากรายการล่าสุด"
+        description="นัดหมายของผู้ป่วยในโรงพยาบาลนี้ แยกกำหนดการที่ยังนัดหมายอยู่กับประวัติผลนัด"
         title="นัดหมาย"
       />
 
       <div className="space-y-6 pt-8">
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
+            <div className="min-w-0">
               <h2 className="break-words text-2xl font-semibold tracking-[-0.03em] text-text">
                 {history.patient.displayName}
               </h2>
@@ -154,7 +161,7 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
                 {history.patient.hospital.name}
               </p>
             </div>
-            <p className="text-sm text-text-muted">
+            <p className="break-words text-sm text-text-muted">
               HN ของโรงพยาบาลนี้: {history.patient.hospitalNumber ?? "ไม่ระบุ"}
             </p>
           </div>
@@ -164,35 +171,46 @@ export function AppointmentHistoryView({ history }: { history: AppointmentHistor
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="appointment-history-heading">
-                ประวัตินัดหมาย
+                รายการนัดหมายล่าสุด
               </h2>
-              <p className="mt-1 text-sm text-text-muted">แสดงรายการล่าสุดไม่เกิน 50 รายการ</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">ใช้วันนัดล่าสุดไม่เกิน 50 รายการในการแบ่งกลุ่มนี้ ไม่ใช่ประวัติทั้งหมด</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
             </div>
-            <p className="text-sm text-text-muted">แสดง {history.items.length} รายการ</p>
           </div>
 
           {history.items.length > 0 ? (
-            <div className="mt-4 overflow-hidden rounded-panel border border-border bg-surface">
-              <ul className="divide-y divide-border" aria-label="ประวัตินัดหมาย">
-                {history.items.map((item) => (
-                  <AppointmentHistoryRow item={item} key={item.appointmentId} relationshipId={relationshipId} />
-                ))}
-              </ul>
+            <div className="mt-6 space-y-6">
+              <section aria-labelledby="scheduled-appointments-heading">
+                <h3 className="text-lg font-semibold" id="scheduled-appointments-heading">ยังอยู่ในกำหนดนัด</h3>
+                {scheduled.length > 0 ? (
+                  <ul className="mt-3 divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface" aria-label="ยังอยู่ในกำหนดนัด">
+                    {scheduled.map((item) => (
+                      <AppointmentHistoryRow item={item} key={item.appointmentId} relationshipId={relationshipId} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-text-muted">ไม่มีสถานะนัดหมายแล้วใน 50 รายการล่าสุดที่แสดง</p>
+                )}
+              </section>
+              <details open={scheduled.length === 0} className="rounded-panel border border-border bg-surface">
+                <summary className="min-h-11 cursor-pointer rounded-panel px-5 py-4 font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7">ประวัติผลนัด: เสร็จสิ้น ยกเลิก หรือไม่มาตามนัด</summary>
+                {historical.length > 0 ? (
+                  <ul className="divide-y divide-border border-t border-border" aria-label="ประวัติผลนัด">
+                    {historical.map((item) => (
+                      <AppointmentHistoryRow item={item} key={item.appointmentId} relationshipId={relationshipId} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-5 pb-5 text-sm text-text-muted sm:px-7">ไม่มีประวัติผลนัดในรายการล่าสุดที่แสดง</p>
+                )}
+              </details>
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
               <p className="font-semibold text-text">ยังไม่มีนัดหมายสำหรับผู้ป่วยรายนี้</p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                สร้างรายการแรกเพื่อบันทึกกำหนดการดูแลผู้ป่วย
+                {history.canCreate ? "ใช้ปุ่มสร้างนัดหมายด้านบนเพื่อบันทึกกำหนดการใหม่" : "เมื่อมีรายการนัดหมายที่บัญชีนี้อ่านได้ ข้อมูลจะแสดงที่นี่"}
               </p>
-              {history.canCreate ? (
-                <Link
-                  className="mt-5 inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                  href={`/app/patients/${encodeURIComponent(relationshipId)}/appointments/new`}
-                >
-                  สร้างนัดหมายแรก
-                </Link>
-              ) : null}
             </div>
           )}
         </section>

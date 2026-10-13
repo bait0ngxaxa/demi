@@ -295,7 +295,7 @@ describe("Patient Personal care read views", () => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
-        detail={{ ...appointment, relationship: ownRelationship }}
+        detail={{ ...appointment, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
       />,
     );
 
@@ -307,13 +307,29 @@ describe("Patient Personal care read views", () => {
     expect(detailMarkup).toContain("แพทย์ผู้ดูแล");
     expect(detailMarkup).toContain("ขอยกเลิกนัด");
     expect(detailMarkup).toContain("กรุณาติดต่อโรงพยาบาลโดยตรง");
-    expect(detailMarkup).not.toContain("ยืนยันว่าจะมา");
+    expect(detailMarkup).toContain("ไม่ใช่การยืนยันว่าจะมาตามนัด");
+    expect(detailMarkup).not.toMatch(/<button[^>]*>ยืนยันว่าจะมา/);
     for (const withheld of ["ผู้สร้างนัด", "internal note", "responsibleUserId", "createdByUserId", "เบอร์โทร"]) {
       expect(historyMarkup).not.toContain(withheld);
       expect(detailMarkup).not.toContain(withheld);
     }
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111/66666666-6666-4666-8666-666666666666"');
     expect(historyMarkup).toContain('href="/app/personal/appointments/11111111-1111-4111-8111-111111111111?page=2"');
+    expect(detailMarkup).toContain("กลับไปนัดหมายของโรงพยาบาลนี้");
+    expect(detailMarkup).toContain("กลับพื้นที่ส่วนตัว");
+    expect(historyMarkup).toContain("ยังไม่มีการรับทราบสำหรับกำหนดการนี้");
+  });
+
+  it.each([AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW])("keeps %s factual and separate from Program/Follow-up evidence", (status) => {
+    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, relationship: anotherRelationship, status }} />);
+    expect(markup).not.toContain("<button");
+    expect(markup).toContain("เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่");
+    if (status === AppointmentStatus.COMPLETED) expect(markup).toContain("สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว");
+    expect(markup).toContain("เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน");
+    expect(markup).toContain(`href="/app/personal/appointments/${anotherRelationship.relationshipId}"`);
+    expect(markup).toContain(anotherRelationship.hospitalName);
+    expect(markup).not.toContain(ownRelationship.hospitalName);
+    expect(markup).not.toMatch(/href="\/app\/patients|ส่ง LINE แล้ว/);
   });
 
   it.each([

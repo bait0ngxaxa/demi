@@ -165,6 +165,11 @@ describe("Appointment query service", () => {
     });
     expect(JSON.stringify(history)).toContain("สมชาย ผู้ป่วย");
     expect(JSON.stringify(history)).not.toContain("ลิงก์ส่วนตัว");
+    expect(database.patientAppointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { patientHospitalRelationshipId: relationshipId },
+      orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
+      take: 50,
+    }));
   });
 
   it("does not expose manage projection to an exact-assigned OSM", async () => {
@@ -185,6 +190,12 @@ describe("Appointment query service", () => {
     const history = await getAppointmentHistory(osm, relationshipId, { database });
 
     expect(history.canManage).toBe(false);
+    expect(history.canCreate).toBe(true);
+    const detail = await getAppointmentDetail(osm, relationshipId, appointmentId, { database });
+    expect(detail).toMatchObject({ canManage: false, canProxyPatientActions: true, canRecordCoordination: true, osmAtCreationDisplayName: null });
+    expect(database.patientAppointment.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
+    }));
   });
 
   it("returns safe not-found for an Appointment outside the relationship", async () => {
@@ -193,6 +204,9 @@ describe("Appointment query service", () => {
     await expect(getAppointmentDetail(hospitalActor, relationshipId, appointmentId, { database })).rejects.toBeInstanceOf(
       NotFoundError,
     );
+    expect(database.patientAppointment.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
+    }));
   });
 
   it("returns only doctor/nurse selections without exposing membership type", async () => {

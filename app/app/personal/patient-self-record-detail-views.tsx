@@ -14,6 +14,8 @@ import {
 } from "@/modules/appointments/domain/appointment-definitions";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
+  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
   APPOINTMENT_INTERACTION_SOURCE_LABELS,
 } from "@/modules/appointments/domain/appointment-interaction-definitions";
 import {
@@ -287,6 +289,11 @@ export function PatientSelfAppointmentHistoryView({
       />
       <div className="space-y-6 pt-6">
         <PatientSelfHospitalContext relationship={history.relationship} />
+        <div className="space-y-2 text-sm leading-6 text-text-muted">
+          <p>{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
+          <p>{APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}</p>
+          <p>แสดงรายการในหน้านี้ตามวันนัด เปิดรายละเอียดเพื่อดูผลล่าสุดและการดำเนินการที่มีสิทธิ์</p>
+        </div>
         {history.appointments.length > 0 ? (
           <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
             {history.appointments.map((appointment) => (
@@ -294,6 +301,7 @@ export function PatientSelfAppointmentHistoryView({
                 <Link
                   className="group block min-w-0 px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
                   href={`/app/personal/appointments/${encodeURIComponent(relationshipId)}/${encodeURIComponent(appointment.appointmentId)}`}
+                  prefetch={false}
                 >
                   <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
@@ -336,12 +344,15 @@ export function PatientSelfAppointmentHistoryView({
                     <p className="mt-2 break-words text-sm text-text-muted">
                       รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="mt-2 break-words text-sm text-text-muted">ยังไม่มีการรับทราบสำหรับกำหนดการนี้</p>
+                  )}
                   {appointment.cancellationRequests[0] ? (
                     <p className="mt-2 break-words text-sm text-text-muted">
                       คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[appointment.cancellationRequests[0].status]}
                     </p>
                   ) : null}
+                  <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</p>
                 </Link>
               </li>
             ))}
@@ -387,12 +398,13 @@ export function PatientSelfAppointmentDetailView({
           { href: historyHref, label: detail.relationship.hospitalName },
           { label: "รายละเอียดนัดหมาย" },
         ]}
-        description="รายละเอียดกำหนดการที่บันทึกไว้"
+        description="นัดหมายของคุณตามข้อมูลที่โรงพยาบาลบันทึกไว้"
         title="รายละเอียดนัดหมาย"
       />
       <div className="space-y-6 pt-6">
         <PatientSelfHospitalContext relationship={detail.relationship} />
         <Panel>
+          <h2 className="mb-5 text-lg font-semibold">กำหนดการและสถานะนัดหมาย</h2>
           <dl className="grid min-w-0 gap-x-8 gap-y-5 sm:grid-cols-2">
             <div className="min-w-0 sm:col-span-2">
               <dt className="text-sm font-semibold text-text-muted">วันและเวลานัด</dt>
@@ -407,7 +419,7 @@ export function PatientSelfAppointmentDetailView({
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">สถานะ</dt>
+              <dt className="text-sm font-semibold text-text-muted">สถานะนัดหมาย</dt>
               <dd className="mt-1 break-words font-semibold text-text">
                 {APPOINTMENT_STATUS_LABELS[detail.status as AppointmentStatusValue]}
               </dd>
@@ -433,6 +445,12 @@ export function PatientSelfAppointmentDetailView({
               </div>
             ) : null}
           </dl>
+          {detail.status !== "SCHEDULED" ? (
+            <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">
+              เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่
+              {detail.status === "COMPLETED" ? " สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว" : ""}
+            </p>
+          ) : null}
         </Panel>
         <Panel>
           <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
@@ -455,14 +473,20 @@ export function PatientSelfAppointmentDetailView({
               <dd className="mt-1 break-words font-semibold text-text">
                 {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
               </dd>
+              <dd className="mt-1 text-sm leading-6 text-text-muted">เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน</dd>
             </div>
           </dl>
         </Panel>
         <PatientAppointmentInteractionControls
           appointment={detail}
           cancellationRequestNonce={cancellationRequestNonce}
+          hospitalStatus={detail.relationship.hospitalStatus}
           relationshipId={relationshipId}
         />
+        <nav aria-label="กลับจากรายละเอียดนัดหมาย" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <Link className={linkClassName} href={historyHref} prefetch={false}>กลับไปนัดหมายของโรงพยาบาลนี้</Link>
+          <Link className={linkClassName} href="/app/personal" prefetch={false}>กลับพื้นที่ส่วนตัว</Link>
+        </nav>
       </div>
     </div>
   );
