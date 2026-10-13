@@ -7,14 +7,21 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   patientOsmAssignmentRequestSchema,
+  patientOsmBulkAssignmentRequestSchema,
   patientOsmUnassignmentRequestSchema,
 } from "../schemas/patient-osm-assignment-schemas";
+import { listPatientOsmBulkCandidates } from "../services/patient-osm-assignment-query-service";
 import {
   assignOsmToPatient,
+  assignOsmToPatients,
   unassignOsmFromPatient,
 } from "../services/patient-osm-assignment-service";
 
-import type { PatientOsmAssignmentActionState } from "./action-state";
+import type {
+  PatientOsmAssignmentActionState,
+  PatientOsmBulkAssignmentActionState,
+  PatientOsmBulkCandidateSearchResult,
+} from "./action-state";
 
 function getString(formData: FormData, field: string): string {
   const value = formData.get(field);
@@ -86,6 +93,83 @@ export async function assignOsmToPatientAction(
     return { status: "SUCCESS", result };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapAssignmentError(error) };
+  }
+}
+
+function mapBulkAssignmentError(error: unknown): {
+  code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "CONFLICT") {
+      return {
+        code: "CONFLICT",
+        message:
+          "บางรายการมี อสม. ผู้รับผิดชอบแล้วหรือข้อมูลเปลี่ยนแปลง ระบบไม่บันทึกรายการใดเลย กรุณาโหลดหน้าแล้วเลือกใหม่",
+      };
+    }
+
+    if (error.code === "NOT_FOUND") {
+      return {
+        code: "CONFLICT",
+        message: "ไม่พบผู้ป่วยบางรายที่เลือก ระบบไม่บันทึกรายการใดเลย กรุณาโหลดหน้าแล้วเลือกใหม่",
+      };
+    }
+  }
+
+  return mapAssignmentError(error);
+}
+
+export async function bulkAssignOsmToPatientsAction(
+  _previousState: PatientOsmBulkAssignmentActionState,
+  formData: FormData,
+): Promise<PatientOsmBulkAssignmentActionState> {
+  const parsed = patientOsmBulkAssignmentRequestSchema.safeParse({
+    hospitalId: getString(formData, "hospitalId"),
+    osmUserId: getString(formData, "osmUserId"),
+    submissionNonce: getString(formData, "submissionNonce"),
+    patientHospitalRelationshipIds: formData
+      .getAll("patientHospitalRelationshipId")
+      .filter((value): value is string => typeof value === "string"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาเลือกผู้ป่วยไม่เกิน 500 คน และเลือก อสม. ที่ต้องการมอบหมาย",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await assignOsmToPatients(actor, parsed.data);
+    revalidatePath("/app/patients");
+    revalidatePath("/app/patients/assigned");
+    revalidatePath("/app/patients/assign-osm");
+    return { status: "SUCCESS", result };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapBulkAssignmentError(error) };
+  }
+}
+
+/** Server-side OSM name search for the bulk selector; re-authorized on every call. */
+export async function searchPatientOsmBulkCandidatesAction(
+  hospitalId: string,
+  value: string,
+  cursor?: string,
+): Promise<PatientOsmBulkCandidateSearchResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value, ...(cursor ? { cursor } : {}) })) };
+  } catch (error: unknown) {
+    return {
+      status: "ERROR",
+      message:
+        error instanceof ApplicationError && error.code === "VALIDATION"
+          ? "คำค้นหา อสม. ไม่ถูกต้องหรือหมดอายุ กรุณาค้นหาใหม่"
+          : "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    };
   }
 }
 

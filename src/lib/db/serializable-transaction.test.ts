@@ -53,4 +53,24 @@ describe("serializable transaction helper", () => {
     ).rejects.toBe(failure);
     expect(database.$transaction).toHaveBeenCalledOnce();
   });
+
+  it("passes an explicit interactive transaction budget only when asked", async () => {
+    const operation = vi.fn().mockResolvedValue("done");
+    const database = {
+      $transaction: vi.fn(async (callback: (transaction: Prisma.TransactionClient) => Promise<string>) =>
+        callback({} as Prisma.TransactionClient),
+      ),
+    } as unknown as SerializableTransactionDatabase;
+
+    await runSerializableTransaction(database, operation, 0, { timeout: 60_000 });
+    await runSerializableTransaction(database, operation, 0);
+
+    expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toEqual({
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 60_000,
+    });
+    expect(vi.mocked(database.$transaction).mock.calls[1]?.[1]).toEqual({
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
 });

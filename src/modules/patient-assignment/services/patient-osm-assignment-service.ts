@@ -22,8 +22,13 @@ import {
 
 import {
   patientOsmAssignmentRequestSchema,
+  patientOsmBulkAssignmentRequestSchema,
   patientOsmUnassignmentRequestSchema,
 } from "../schemas/patient-osm-assignment-schemas";
+import {
+  assignOsmToPatientsInTransaction,
+  type PatientOsmBulkAssignmentResult,
+} from "./patient-osm-bulk-assignment-transaction";
 import {
   assignOsmToPatientInTransaction,
   patientOsmAssignmentTransactionInternals,
@@ -36,7 +41,19 @@ export type {
   PatientOsmAssignmentOperation,
 } from "./patient-osm-assignment-transaction";
 
+export type {
+  PatientOsmBulkAssignmentOperation,
+  PatientOsmBulkAssignmentResult,
+} from "./patient-osm-bulk-assignment-transaction";
+
 export type PatientOsmAssignmentDatabase = PrismaClient;
+
+/**
+ * Operational baseline for one batch of up to 500 assignments in a single transaction.
+ * It predates the set-based rewrite and is not a benchmark-derived optimum; do not
+ * shorten it without latency measurements on production-like infrastructure.
+ */
+const BULK_ASSIGNMENT_TRANSACTION_TIMEOUT_MS = 60_000;
 
 export type PatientOsmAssignmentServiceDependencies = {
   database?: PatientOsmAssignmentDatabase;
@@ -95,6 +112,34 @@ export async function assignOsmToPatient(
       (transaction) =>
         assignOsmToPatientInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
       dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+export async function assignOsmToPatients(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientOsmAssignmentServiceDependencies = {},
+): Promise<PatientOsmBulkAssignmentResult> {
+  const parsed = patientOsmBulkAssignmentRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Patient bulk assignment data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializableTransaction(
+      getDatabase(dependencies),
+      (transaction) =>
+        assignOsmToPatientsInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+      { timeout: BULK_ASSIGNMENT_TRANSACTION_TIMEOUT_MS },
     );
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);

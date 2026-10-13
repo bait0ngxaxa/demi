@@ -43,20 +43,16 @@ import {
   importPatientRoster,
   patientRosterImportInternals,
   previewPatientRosterImport,
-  previewPatientRosterImportInternal,
-  projectPatientRosterImportPreview,
-  PatientBaselineImportConflictError,
 } from "./patient-roster-import-service";
 import type {
   PatientImportOptions,
   PatientImportPreview,
-  PatientImportPreviewInternal,
   PatientImportResultSummary,
 } from "./patient-roster-import-types";
 
 export type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 export type { PatientProvisioningImportCandidate } from "../import/patient-import-contract";
-export { PatientBaselineImportConflictError, PatientProvisioningConflictError };
+export { PatientProvisioningConflictError };
 export type {
   PatientProvisioningAuthorizationMode,
   PatientProvisioningConflictKind,
@@ -69,16 +65,9 @@ export type {
   PatientImportClassification,
   PatientImportClassificationPreview,
   PatientImportClassificationStatus,
-  PatientImportClassificationReconciliation,
-  PatientImportClassificationReconciliationChoice,
   PatientImportOptions,
-  PatientImportOsmCandidatePreview,
-  PatientImportOsmAssignmentChoice,
-  PatientImportOsmAssignmentPreview,
   PatientImportPreview,
-  PatientImportPreviewInternal,
   PatientImportPreviewRow,
-  PatientImportPreviewRowInternal,
   PatientImportResultSummary,
   PatientImportRowResult,
   PatientRosterImportDatabase,
@@ -276,30 +265,6 @@ export async function listPatientProvisioningScopes(
 
     throw new InfrastructureError("Patient provisioning scope could not be loaded");
   }
-}
-
-/** @deprecated Use the PatientRosterImportService API directly. */
-export async function previewPatientProvisioningInternal(
-  actor: ActorContext | null | undefined,
-  targetHospitalId: string,
-  candidates: readonly import("../import/patient-import-contract").PatientProvisioningImportCandidate[],
-  database: PatientDatabase = getPrisma(),
-  options: PatientImportOptions = {},
-): Promise<PatientImportPreviewInternal> {
-  return previewPatientRosterImportInternal(
-    actor,
-    targetHospitalId,
-    candidates,
-    database,
-    options,
-  );
-}
-
-/** @deprecated Use projectPatientRosterImportPreview from the roster service. */
-export function projectPatientImportPreview(
-  preview: PatientImportPreviewInternal,
-): PatientImportPreview {
-  return projectPatientRosterImportPreview(preview);
 }
 
 /** @deprecated Use previewPatientRosterImport from the roster service. */

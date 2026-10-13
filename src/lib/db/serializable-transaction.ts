@@ -4,6 +4,11 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 export type SerializableTransactionDatabase = Pick<PrismaClient, "$transaction">;
 
+export type SerializableTransactionOptions = {
+  /** Interactive transaction budget in milliseconds; Prisma's default applies when omitted. */
+  timeout?: number;
+};
+
 export const DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES = 2;
 
 export function isRetryableSerializableTransactionError(error: unknown): boolean {
@@ -20,6 +25,7 @@ export async function runSerializableTransaction<T>(
   database: SerializableTransactionDatabase,
   operation: (transaction: Prisma.TransactionClient) => Promise<T>,
   retryLimit = DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+  options: SerializableTransactionOptions = {},
 ): Promise<T> {
   let retryCount = 0;
 
@@ -27,6 +33,7 @@ export async function runSerializableTransaction<T>(
     try {
       return await database.$transaction(operation, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
       });
     } catch (error: unknown) {
       if (!isRetryableSerializableTransactionError(error) || retryCount >= retryLimit) {

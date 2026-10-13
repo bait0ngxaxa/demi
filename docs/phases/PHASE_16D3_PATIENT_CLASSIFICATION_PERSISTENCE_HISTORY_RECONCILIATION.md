@@ -1,5 +1,7 @@
 # DEMI Phase 16D.3 — Patient Classification Persistence, History & Roster Reconciliation
 
+> **Superseded in part by [Phase 16F](./PHASE_16F_PATIENT_IMPORT_STRICT_TEMPLATE_V2_DECISION.md).** Roster classification reconciliation (`CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION` and the confirmation bindings) was removed from import; import records a classification only for a new patient whose profile has none. Classification history and in-app changes are unchanged.
+
 **สถานะ:** Implemented
 
 **วันที่ดำเนินการ:** 2026-08-27

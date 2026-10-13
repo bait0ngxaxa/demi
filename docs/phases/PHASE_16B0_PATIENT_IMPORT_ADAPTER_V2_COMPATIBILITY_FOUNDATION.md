@@ -1,5 +1,7 @@
 # DEMI Phase 16B.0 — Patient Import Adapter V2 Compatibility Foundation
 
+> **Superseded in part by [Phase 16F](./PHASE_16F_PATIENT_IMPORT_STRICT_TEMPLATE_V2_DECISION.md).** The compatibility layer (alias/layout guessing and `COMPATIBILITY` mode) was removed; the parser accepts template v2 only.
+
 - **Status:** Implemented compatibility foundation
 - **Starting HEAD:** `4bb6a35966ce7f7319577defaf59e9c7a6ea3ff4`
 - **Implementation commit:** see Git history for the Phase 16B.0 change; this document intentionally does not embed a self-referential amended SHA

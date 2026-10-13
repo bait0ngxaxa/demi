@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { recordAuditEvent, recordAuditEventWithId, type AuditDatabase } from "./audit-service";
+import { recordAuditEvent, recordAuditEvents, recordAuditEventWithId, type AuditDatabase } from "./audit-service";
 
 describe("audit service", () => {
   it("returns a persisted decision ID through the same sensitive-metadata validation boundary", async () => {
@@ -65,5 +65,23 @@ describe("audit service", () => {
         database,
       ),
     ).rejects.toBe(conflict);
+  });
+
+  it("validates every event before persisting a batch in one statement", async () => {
+    const createMany = vi.fn<(args: { data: unknown[] }) => Promise<{ count: number }>>(async () => ({ count: 2 }));
+    const database = { auditEvent: { createMany } } as unknown as AuditDatabase;
+    const event = { actorUserId: null, action: "foundation.test", resourceType: "TestResource" };
+
+    await recordAuditEvents([event, { ...event, resourceId: "r2" }], database);
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0]?.[0].data).toHaveLength(2);
+
+    await expect(
+      recordAuditEvents([event, { ...event, metadata: { accessToken: "must-never-persist" } }], database),
+    ).rejects.toThrow();
+    expect(createMany).toHaveBeenCalledTimes(1);
+
+    await recordAuditEvents([], database);
+    expect(createMany).toHaveBeenCalledTimes(1);
   });
 });

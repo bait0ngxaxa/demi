@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import {
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 import { listPatientProvisioningScopes } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -57,6 +61,13 @@ export default async function PatientProvisioningPage({
 
   return (
     <PatientProvisioningWorkspace
+      canAssignOsm={
+        decidePatientOsmAssignmentPolicy({
+          actor,
+          capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+          targetHospitalId: selectedHospitalId,
+        }).allowed
+      }
       key={selectedHospitalId}
       scopes={scopes}
       selectedHospitalId={selectedHospitalId}
