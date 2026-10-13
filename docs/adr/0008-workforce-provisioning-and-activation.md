@@ -282,3 +282,102 @@ copy link/QR/ใบเปิดใช้งานที่พิมพ์มี 
 - [ADR-0005: Server-Side Application Boundary](./0005-server-side-application-boundary.md)
 - [ADR-0006: Transactional Business Operations](./0006-transactional-business-operations.md)
 - [Phase 4A Workforce Provisioning Contract](../phases/PHASE_4A_WORKFORCE_PROVISIONING.md)
+
+## Remediation amendment — review `e61cd8638ca6be450cdc017fd2405475f059fc74`
+
+This amendment supersedes D3, the recovery interpretation of the national-ID check, and the
+unconditional claim-release/provider-retry statement above. Historical decisions remain visible.
+D1 (MEMBER OSM provisioning/read) and D2 (72-hour remote activation) remain accepted.
+
+### Global credential ownership
+
+Hospital authority can establish a provisioning relationship or justify a recovery **request**;
+it does not prove ownership of the global User credential. Supervising an in-person ceremony is
+separate from approving credential replacement. OWNER and ADMIN have no independent ownership
+proof merely by holding their roles, knowing National ID, or possessing an issuer-visible token.
+A checkbox, birth date, masked name, or successful issuer sign-out cannot supply that proof.
+
+**Implemented security restriction:** workforce RESET issuance, preview, and completion are
+unavailable for all targets, including ordinary single-Hospital users. The replacement sink and
+its retry/finalization implementation were removed. Old RESET tokens never reach the provider.
+ADMIN cannot override this restriction. Normal authenticated password change still verifies the
+current password against the authenticated provider subject. Activation establishes a first
+credential only; it cannot replace a credential of an ACTIVE or mapped account.
+
+PATIENT + workforce/ADMIN accounts cannot use Patient assisted recovery as an alternate entry
+point. Workforce grants also reject an in-progress Patient recovery or ambiguous legacy RESET.
+Patient-only assisted recovery is also server-gated: the same issuer-visible token and staff
+attestation cannot authorize global credential replacement. This restriction supersedes the
+Phase 17E.1 assisted-recovery trust rule, preserving its historical record. See
+[ADR-0012](./0012-global-credential-recovery-proof.md).
+
+**Pending product-owner/security decision:** approve an independent account-owner proof and
+operational recovery process that works for users without universal email, phone, smartphone,
+OTP, or external identity. No such fallback was invented. Future global recovery must bind exact
+User, Hospital, relationship ID/type, purpose, issuer/current authority, issue/expiry times and
+credential/recovery version; revalidate all facts before replacing the credential and use a
+per-User durable concurrency/reconciliation protocol. This future reset workflow is NOT
+VERIFIED_COMPLETE and is not enabled by the activation operation states below.
+
+### Initial activation scope and provider consistency
+
+New ACTIVATION records bind `hospitalId`, `relationshipId`, `relationshipKind`, target User,
+creator, purpose and expiry. Claim and finalization both require the original relationship to
+remain eligible and the original issuer to retain current direct authority. A pending staff
+relationship requires OWNER authority even when the selected activation is OSM. An ADMIN role
+or OWNER relationship anywhere disqualifies first-time workforce activation.
+
+Pending relationships in another Hospital make first-time activation unavailable. The former
+all-Hospital `updateMany` could silently expand one issuer's activation ceremony; the approved
+cross-Hospital trust semantics are unresolved. Within one Hospital, eligible pending workforce
+relationships retain the existing shared-account activation semantics, subject to OWNER
+approval when staff is involved. ACTIVE accounts still reuse one Person/User/credential across
+roles and Hospitals. Accounts are never split to work around recovery.
+
+The operation is represented durably by `NOT_STARTED → CLAIMED → PROVIDER_STARTED →
+PROVIDER_CONFIRMED → FINALIZED`, or `RECONCILIATION_REQUIRED`. Provider I/O stays outside database
+locks. `PROVIDER_STARTED` means an effect may have happened; it is never automatically replayed
+after an ambiguous outcome. A definitive provider rejection permits release. Local failure may
+compensate only the newly created initial identity, with expected PROVISIONED User/subject
+checks; release follows only confirmed compensation. A lost DB response is checked against a
+committed finalization before any compensation. Existing Auth identities are never deleted as
+password-reset compensation. Plaintext passwords and tokens are never durable operation data.
+
+### Migration, quarantine and reconciliation
+
+Forward migrations `20261015100000` through `20261015140000` retain original token hashes and
+consumed history, revoke every outstanding legacy unbound credential, preserve ambiguous
+claims, and add context/state checks. Unclaimed ACTIVATION tokens require reissuance. Claimed
+legacy tokens require reconciliation; the migrations never assume provider rollback.
+
+An unused claimed RESET or unfinished claimed AccountRecovery quarantines global application access at the auth-owned actor and
+exact-session database boundaries, even if the token is revoked/expired and User is ACTIVE.
+Token revocation alone cannot undo a password that may already have changed. Reconciliation
+must not clear a claim simply to permit login. See the [remediation handoff and operator
+runbook](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md). No production provider or data
+operations were performed during implementation.
+
+### Directory and bulk receipts
+
+Directory pages use `(createdAt, id)` keyset ordering, bounded per-kind queries, server-side
+name/status filters and context-checked cursors. MEMBER queries/projected metadata remain
+OSM-only. Activation queries select only current-page Users and ACTIVATION credentials.
+
+Each bulk submission has an actor-scoped, time-qualified random key and a domain-separated
+HMAC of Hospital/kind/normalized rows/visible row mapping, using the existing server identity
+secret. A row receipt commits with successful domain writes and audits. Replays retain
+`created` results; changed payloads conflict. Unavailable rows resume with at most three
+attempts; terminal invalid/conflict rows stay stable. Receipts contain no names, National IDs,
+identity hashes, passwords or bearer tokens. Keys expire after 30 days and cannot be reused
+by changing their embedded time (that creates a different key); bounded opportunistic pruning
+removes expired metadata. No queue, worker, Redis or generic job framework is introduced.
+
+### Session semantics
+
+Supabase global sign-out revokes refresh sessions; existing access JWTs may remain valid until
+expiry. DEMI does not claim immediate provider JWT invalidation. Issuer handoff closes its local
+session and clears the authentication cookies before exposing an assisted activation link;
+this is not target identity proof, nor a guarantee that a shared browser's entire history is
+sanitized. Operators must use a clean target browser/profile/device rather than exposing the
+issuer's prior application history. See [Supabase sign-out](https://supabase.com/docs/guides/auth/signout)
+and [session semantics](https://supabase.com/docs/guides/auth/sessions).

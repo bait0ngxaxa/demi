@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
+import { PasswordAuthProvisioningProviderRejectedError, PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 import {
   completeWorkforceActivation,
   getWorkforceDetail,
@@ -505,7 +505,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
         },
-        { provisionIdentity: vi.fn().mockRejectedValue(new Error("provider unavailable")) },
+        { provisionIdentity: vi.fn().mockRejectedValue(new PasswordAuthProvisioningProviderRejectedError()) },
       ),
     ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
 

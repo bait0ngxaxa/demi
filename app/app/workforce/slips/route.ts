@@ -1,5 +1,7 @@
 import QRCode from "qrcode";
 
+import { getApplicationPublicOrigin } from "@/lib/env/server";
+
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { workforceActivationSlipRequestSchema } from "@/modules/workforce/schemas/workforce-schemas";
 import { issueWorkforceActivationSlips } from "@/modules/workforce/services/workforce-service";
@@ -33,25 +35,53 @@ function htmlError(message: string, status: number): Response {
 }
 
 // Route handlers have no built-in CSRF protection, unlike server actions.
-function isSameOriginRequest(request: Request): boolean {
+function isSameOriginRequest(request: Request, origin: string): boolean {
   const fetchSite = request.headers.get("sec-fetch-site");
+  return request.headers.get("origin") === origin && (!fetchSite || fetchSite === "same-origin");
+}
 
-  if (fetchSite) {
-    return fetchSite === "same-origin";
+async function readSlipForm(request: Request): Promise<FormData> {
+  const limit = 32 * 1024;
+  if (Number(request.headers.get("content-length")) > limit || !request.body) {
+    throw new Error("Slip request exceeds its limit");
   }
-
-  return request.headers.get("origin") === new URL(request.url).origin;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = request.body.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new Error("Slip request exceeds its limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return new Response(Buffer.concat(chunks), { headers: {
+    "content-type": request.headers.get("content-type") ?? "",
+  } }).formData();
 }
 
 export async function POST(request: Request): Promise<Response> {
-  if (!isSameOriginRequest(request)) {
+  let origin: string;
+  try {
+    origin = getApplicationPublicOrigin();
+  } catch {
+    return htmlError("ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับใบเปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ", 503);
+  }
+  if (!isSameOriginRequest(request, origin)) {
     return htmlError("คำขอไม่ถูกต้อง", 403);
   }
 
   let formData: FormData;
 
   try {
-    formData = await request.formData();
+    formData = await readSlipForm(request);
   } catch {
     return htmlError("ข้อมูลที่ส่งมาไม่ถูกต้อง", 400);
   }
@@ -69,7 +99,6 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const actor = await getProtectedApplicationActor();
     const result = await issueWorkforceActivationSlips(actor, parsed.data);
-    const origin = new URL(request.url).origin;
     const slips = await Promise.all(
       result.slips.map(async (slip) => ({
         maskedName: slip.maskedName,

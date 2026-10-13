@@ -49,3 +49,5 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 - มีเหตุผลที่มีแนวโน้มถูกถามซ้ำในอนาคต
 
 ไม่ต้องสร้าง ADR สำหรับ implementation detail ปกติ การตั้งชื่อภายใน หรือ choice ที่เปลี่ยนได้ง่ายและไม่กระทบ boundary
+
+- [ADR-0012 — Global credential recovery proof](./0012-global-credential-recovery-proof.md): security restriction superseding assisted-recovery ownership assumptions; independent proof remains pending.

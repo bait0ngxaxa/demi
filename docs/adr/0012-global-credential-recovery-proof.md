@@ -1,0 +1,37 @@
+# ADR-0012 — Global credential recovery requires independent owner proof
+
+Status: Accepted security restriction for the workforce v2 remediation; recovery product decision pending.
+Supersedes: ADR-0008 D3 credential-replacement trust and Phase 17E.1 assisted-recovery ownership assumptions.
+
+## Context
+
+One User credential authorizes all persisted roles and Hospital memberships. An issuer who sees
+an assisted bearer token and knows the National ID can complete the same ceremony as the target.
+Staff attestation, ADMIN/OWNER authority and issuer sign-out do not independently prove account
+ownership. Existing verified current-password change provides user-controlled proof but cannot
+serve a user who has forgotten that password. No approved universal recovery proof exists.
+
+## Decision
+
+Distinguish Hospital authority to request recovery, authority to supervise/approve assistance,
+actual independent account-owner proof, and permission to replace the global credential. The first
+two never imply the latter two. Disable workforce RESET and Patient assisted recovery at all
+service entry points, including Patient-only, ADMIN and cross-scope targets. Remove the reachable
+replacement execution paths. Preserve normal login, authenticated current-password change and
+first-time activation; do not split identities or add messaging/external providers.
+
+Forward-only migrations revoke outstanding unsupported capabilities while retaining hashes,
+claims and consumed history. Unfinished claimed recovery quarantines auth-owned application
+access even after revocation/expiry, because provider effects cannot be assumed rolled back.
+Controlled reconciliation must preserve evidence and may not clear claims solely on ADMIN
+attestation. See the [operation runbook](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md).
+
+## Consequences and pending decision
+
+Thai UI explains the unavailable workflow and directs operational escalation without collecting
+additional PII or passwords. Users who cannot supply their current password have no supported
+replacement path until product/security owners approve independent proof and reconciliation
+for users without universal email, phone, smartphone, OTP or external identity. Future recovery
+must bind exact immutable authorization context, reauthorize at completion, serialize per User
+and durably distinguish ambiguous provider effects from local commits. The unavailable feature
+is SECURITY_GATED, never VERIFIED_COMPLETE. Historical decisions/tests remain historical evidence.

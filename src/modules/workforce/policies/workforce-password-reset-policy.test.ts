@@ -67,11 +67,11 @@ function ownerIn(status: MembershipStatus, hospitalStatus: HospitalStatus): Acto
 
 describe("workforce password reset policy (ADR-0008 amendment D3)", () => {
   it.each(["HOSPITAL_MEMBER", "OSM"] as const)(
-    "allows an OWNER to reset %s of the same Hospital",
+    "requires independent owner proof even for an OWNER initiating %s",
     (kind) => {
       expect(decide(actorWith(MembershipType.OWNER), kind)).toEqual({
-        allowed: true,
-        reason: "active_hospital_owner",
+        allowed: false,
+        reason: "independent_owner_proof_unavailable",
       });
     },
   );
@@ -83,15 +83,15 @@ describe("workforce password reset policy (ADR-0008 amendment D3)", () => {
     });
   });
 
-  it("allows Platform ADMIN to reset an OWNER of any Hospital", () => {
+  it("requires independent owner proof even for Platform ADMIN", () => {
     const admin = actorWith(null, { roles: [Role.ADMIN] });
 
     expect(decide(admin, "HOSPITAL_OWNER")).toEqual({
-      allowed: true,
-      reason: "platform_admin_owner_reset",
+      allowed: false,
+      reason: "independent_owner_proof_unavailable",
     });
     expect(decide(admin, "HOSPITAL_OWNER", { targetHospitalId: otherHospitalId }).allowed).toBe(
-      true,
+      false,
     );
   });
 

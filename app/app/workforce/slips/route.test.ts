@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import QRCode from "qrcode";
 
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -42,6 +43,7 @@ function slipRequest(
 describe("activation slips route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
     mockedActor.mockResolvedValue({ userId: "owner-1" });
     mockedIssueSlips.mockResolvedValue({
       kind: "OSM",
@@ -93,10 +95,39 @@ describe("activation slips route", () => {
     expect(mockedIssueSlips).not.toHaveBeenCalled();
   });
 
-  it("accepts a same-origin Sec-Fetch-Site request", async () => {
+  it("requires canonical Origin even with Sec-Fetch-Site", async () => {
     const response = await POST(slipRequest(undefined, { "sec-fetch-site": "same-origin" }));
 
+    expect(response.status).toBe(403);
+  });
+
+  it("uses the configured QR destination behind proxies and ignores request/forwarded hosts", async () => {
+    const qr = vi.spyOn(QRCode, "toDataURL");
+    const original = slipRequest();
+    const response = await POST(new Request("https://hostile.example/app/workforce/slips", {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded",
+        origin: "https://demi.example", "x-forwarded-host": "evil.example", "x-forwarded-proto": "http" },
+      body: await original.text(),
+    }));
     expect(response.status).toBe(200);
+    expect(qr).toHaveBeenCalledWith(`https://demi.example/activate/workforce#${secretToken}`, expect.any(Object));
+    qr.mockRestore();
+    const rejected = await POST(slipRequest(undefined, { origin: "https://evil.example", "sec-fetch-site": "same-origin" }));
+    expect(rejected.status).toBe(403);
+  });
+
+  it.each(["", "https://demi.example/path", "http://public.example", "https://user:secret@demi.example"])(
+    "does not issue credentials with invalid public origin %s", async (origin) => {
+      vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", origin);
+      expect((await POST(slipRequest())).status).toBe(503);
+      expect(mockedIssueSlips).not.toHaveBeenCalled();
+    },
+  );
+
+  it("bounds the real request body even when Content-Length is absent or false", async () => {
+    const request = slipRequest([["padding", "x".repeat(33 * 1024)]], { origin: "https://demi.example", "content-length": "1" });
+    expect((await POST(request)).status).toBe(400);
+    expect(mockedIssueSlips).not.toHaveBeenCalled();
   });
 
   it.each([

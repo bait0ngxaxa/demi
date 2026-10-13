@@ -213,7 +213,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           />
         )}
 
-        {detail.actions.resetPassword ? (
+        {detail.viewerScope === "OWNER" ? (
           <WorkforcePasswordResetControl
             subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
             targetHospitalId={detail.hospital.id}

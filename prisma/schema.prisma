@@ -162,6 +162,15 @@ enum WorkforceActivationMode {
   ASSISTED
 }
 
+enum WorkforceActivationOperationState {
+  NOT_STARTED
+  CLAIMED
+  PROVIDER_STARTED
+  PROVIDER_CONFIRMED
+  FINALIZED
+  RECONCILIATION_REQUIRED
+}
+
 enum WorkforceActivationPurpose {
   ACTIVATION
   RESET
@@ -321,6 +330,7 @@ model User {
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
   workforceActivations WorkforceActivation[] @relation("WorkforceActivationTarget")
   workforceActivationsCreated WorkforceActivation[] @relation("WorkforceActivationCreator")
+  workforceBulkSubmissions WorkforceBulkSubmission[]
   patientActivations PatientActivation[] @relation("PatientActivationTarget")
   patientActivationsCreated PatientActivation[] @relation("PatientActivationCreator")
   accountRecoveries AccountRecovery[] @relation("AccountRecoveryTarget")
@@ -389,6 +399,8 @@ model UserRole {
 }
 
 model Hospital {
+  workforceBulkSubmissions WorkforceBulkSubmission[]
+  workforceActivationContexts WorkforceActivation[] @relation("WorkforceActivationHospital")
   id              String         @id @default(uuid()) @db.Uuid
   hospitalCode    String         @unique @db.VarChar(32)
   name            String         @db.VarChar(200)
@@ -460,6 +472,7 @@ model HospitalMembership {
 
   @@unique([userId, hospitalId])
   @@index([hospitalId, status])
+  @@index([hospitalId, createdAt, id])
 }
 
 model PatientProfile {
@@ -1355,12 +1368,48 @@ model OsmHospitalRelationship {
 
   @@unique([userId, hospitalId])
   @@index([hospitalId, status])
+  @@index([hospitalId, createdAt, id])
   @@index([userId, status])
+}
+
+// No submitted PII or bearer credentials are stored. A row receipt commits with its domain writes.
+model WorkforceBulkSubmission {
+  actorUserId String @db.Uuid
+  submissionId String @db.VarChar(64)
+  hospitalId String @db.Uuid
+  kind String @db.VarChar(32)
+  requestFingerprint String @db.VarChar(64)
+  rowCount Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  rows WorkforceBulkRowReceipt[]
+
+  @@id([actorUserId, submissionId])
+  @@index([expiresAt])
+}
+
+model WorkforceBulkRowReceipt {
+  actorUserId String @db.Uuid
+  submissionId String @db.VarChar(64)
+  rowNumber Int
+  attempts Int @default(1)
+  result Json @db.JsonB
+  submission WorkforceBulkSubmission @relation(fields: [actorUserId, submissionId], references: [actorUserId, submissionId], onDelete: Cascade)
+
+  @@id([actorUserId, submissionId, rowNumber])
 }
 
 model WorkforceActivation {
   id              String                  @id @default(uuid()) @db.Uuid
   userId          String                  @db.Uuid
+  hospitalId String? @db.Uuid
+  relationshipId String? @db.Uuid
+  relationshipKind String? @db.VarChar(32)
+  reconciliationRequiredAt DateTime?
+  operationState WorkforceActivationOperationState @default(NOT_STARTED)
+  hospital Hospital? @relation("WorkforceActivationHospital", fields: [hospitalId], references: [id], onDelete: Restrict)
   tokenHash       String                  @unique @db.VarChar(64)
   mode            WorkforceActivationMode @default(REMOTE)
   purpose         WorkforceActivationPurpose @default(ACTIVATION)

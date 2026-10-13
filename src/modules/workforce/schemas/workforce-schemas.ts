@@ -33,7 +33,14 @@ export const osmProvisionSchema = z
   .strict();
 
 export const workforceListSchema = z
-  .object({ targetHospitalId: workforceTargetHospitalIdSchema })
+  .object({
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    staffCursor: z.string().max(2048).optional(),
+    osmCursor: z.string().max(2048).optional(),
+    search: z.string().trim().max(120).optional(),
+    status: z.enum(["PROVISIONED", "INVITED", "ACTIVE", "SUSPENDED"]).optional(),
+    pageSize: z.number().int().min(1).max(50).optional(),
+  })
   .strict();
 
 export const workforceDetailRequestSchema = z
@@ -119,11 +126,16 @@ export const workforcePasswordResetRequestSchema = z
 // Rows are validated one by one so a single invalid row never blocks the others.
 export const workforceBulkProvisionSchema = z
   .object({
+    // The timestamp is part of the key: expired keys stay unusable even after receipt pruning.
+    submissionId: z.string().regex(/^\d{13}\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u),
     targetHospitalId: workforceTargetHospitalIdSchema,
     kind: workforceKindSchema,
     rows: z.array(z.unknown()).min(1).max(WORKFORCE_BULK_MAX_ROWS),
+    rowNumbers: z.array(z.number().int().min(1).max(WORKFORCE_BULK_MAX_ROWS)).max(WORKFORCE_BULK_MAX_ROWS).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ rows, rowNumbers }) => !rowNumbers || (rowNumbers.length === rows.length &&
+    rowNumbers.every((row, index) => index === 0 || row > rowNumbers[index - 1])));
 
 export const workforceActivationSlipRequestSchema = z
   .object({

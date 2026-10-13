@@ -723,41 +723,11 @@ export async function issueWorkforcePasswordResetAction(
 
   try {
     const actor = await getProtectedApplicationActor();
-    const result = await issueWorkforcePasswordReset(actor, parsed.data);
-
-    // Same assisted handoff as activation: end the issuer's session before the device changes hands.
-    try {
-      await signOutCurrentSession();
-    } catch {
-      try {
-        await revokeIssuedWorkforceActivation(actor, { activationId: result.activationId });
-      } catch {
-        return {
-          status: "ERROR",
-          code: "UNAVAILABLE",
-          message: "ระบบไม่สามารถปิดเซสชันผู้ดูแลได้ จึงยกเลิกการรีเซ็ตรหัสผ่านชั่วคราวไม่สำเร็จ",
-        };
-      }
-
-      return {
-        status: "ERROR",
-        code: "UNAVAILABLE",
-        message: "ระบบไม่สามารถส่งต่ออุปกรณ์ให้ผู้ใช้งานได้ กรุณาลองใหม่อีกครั้ง",
-      };
-    }
-
-    revalidatePath("/app/workforce");
-    return {
-      status: "SUCCESS",
-      result: {
-        userId: result.userId,
-        hospitalId: result.hospitalId,
-        activationToken: result.activationToken,
-        activationExpiresAt: result.activationExpiresAt.toISOString(),
-      },
-    };
+    await issueWorkforcePasswordReset(actor, parsed.data);
+    // The service is fail-closed. Never expose a credential or perform issuer handoff for RESET.
+    return { status: "ERROR", code: "FORBIDDEN", message: "การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน ต้องมีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแลก่อน" };
   } catch (error: unknown) {
-    return { status: "ERROR", ...mapWorkforceError(error) };
+    return { status: "ERROR", ...mapWorkforceError(error), message: "การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน ต้องมีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแลก่อน" };
   }
 }
 
@@ -811,9 +781,11 @@ export async function provisionWorkforceBulkAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await provisionWorkforceBulk(actor, {
+      submissionId: getString(formData, "submissionId"),
       kind: kind.data,
       targetHospitalId: getString(formData, "targetHospitalId"),
       rows,
+      rowNumbers,
     });
     revalidatePath("/app/workforce");
 

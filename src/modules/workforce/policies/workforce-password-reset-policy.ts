@@ -4,6 +4,8 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 
 import { ForbiddenError } from "@/shared/errors/application-error";
 
+import { assertIndependentCredentialRecoverySupported } from "@/modules/auth/services/credential-recovery-state";
+
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 // ADR-0008 amendment 2026-10-14 (D3): assisted workforce password reset.
@@ -19,7 +21,8 @@ export type WorkforcePasswordResetDecision =
         | "self_reset_denied"
         | "owner_reset_requires_platform_admin"
         | "active_owner_membership_required"
-        | "active_hospital_required";
+        | "active_hospital_required"
+        | "independent_owner_proof_unavailable";
     };
 
 const targetKinds = new Set<WorkforceResetTargetKind>([
@@ -57,7 +60,7 @@ export function decideWorkforcePasswordResetPolicy(input: {
 
   if (targetKind === "HOSPITAL_OWNER") {
     return input.actor.roles.includes(Role.ADMIN)
-      ? { allowed: true, reason: "platform_admin_owner_reset" }
+      ? { allowed: false, reason: "independent_owner_proof_unavailable" }
       : { allowed: false, reason: "owner_reset_requires_platform_admin" };
   }
 
@@ -80,7 +83,12 @@ export function decideWorkforcePasswordResetPolicy(input: {
     return { allowed: false, reason: "active_hospital_required" };
   }
 
-  return { allowed: true, reason: "active_hospital_owner" };
+  return { allowed: false, reason: "independent_owner_proof_unavailable" };
+}
+
+/** Fail closed for every credential-replacement entry point, including old RESET tokens. */
+export function assertWorkforceCredentialReplacementSupported(): never {
+  return assertIndependentCredentialRecoverySupported();
 }
 
 export function assertWorkforcePasswordResetPolicy(

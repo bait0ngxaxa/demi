@@ -25,7 +25,7 @@ const row: WorkforceListRow = {
   activationRequired: false, activationStatus: null, activationExpiresAt: null, activationMode: null,
 };
 function render(rows: WorkforceListRow[] = [row], viewerScope: "OWNER" | "MEMBER" = "OWNER"): string {
-  return renderToStaticMarkup(<WorkforceWorkspace hospitals={[hospital, { ...second, scope: viewerScope }]} selectedHospitalId={second.id} workforce={{ hospital: second, viewerScope, rows }} />);
+  return renderToStaticMarkup(<WorkforceWorkspace hospitals={[hospital, { ...second, scope: viewerScope }]} selectedHospitalId={second.id} workforce={{ hospital: second, viewerScope, rows, pageInfo: { pageSize: 25, serverTime: 1791849600000, search: "", status: null, staffCursor: null, osmCursor: null, staffNextCursor: null, osmNextCursor: null } }} />);
 }
 
 describe("Hospital workforce operational continuity", () => {
@@ -49,7 +49,7 @@ describe("Hospital workforce operational continuity", () => {
 
   it("keeps an empty roster separate from the available add operations", () => {
     const html = render([]);
-    expect(html.match(/ยังไม่มีรายการในโรงพยาบาลนี้/g)).toHaveLength(2);
+    expect(html.match(/ไม่พบรายการในหน้านี้หรือไม่ตรงกับการค้นหา/g)).toHaveLength(2);
     expect(html).toContain("เพิ่มบุคลากร</button>");
     expect(html).toContain("เพิ่ม อสม.</button>");
     expect(html).toContain("ยังไม่มีการกำหนดพื้นที่หรือผู้ป่วย");
@@ -68,8 +68,8 @@ describe("Hospital workforce operational continuity", () => {
     hooks.actionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), true]);
     const html = render();
     const buttons = html.match(/<button\b[^>]*>/g) ?? [];
-    expect(buttons).toHaveLength(4);
-    expect(buttons.every((button) => button.includes('disabled=""'))).toBe(true);
+    expect(buttons).toHaveLength(6);
+    expect(buttons.filter((button) => button.includes('disabled=""'))).toHaveLength(5);
   });
 
   it("keeps success continuation bound to the persisted result Hospital and relationship", () => {

@@ -362,3 +362,12 @@ Hospital และ staff profession ก็ยังต้องมี requiremen
 - assisted handoff ล้าง Owner auth session ก่อน handoff
 - provider I/O อยู่นอก long local transaction และ failure ไม่สร้าง ACTIVE จาก
   uncertain state
+
+## Workforce onboarding v2 remediation follow-up
+
+This handoff remains historical Phase 4B evidence. Current D1/D2 changes, recovery restrictions,
+activation context/operation states, pagination, durable bulk receipts and migration procedures
+are in [WORKFORCE_ONBOARDING_V2_REMEDIATION](./WORKFORCE_ONBOARDING_V2_REMEDIATION.md). In particular,
+the earlier all-pending-Hospital activation and generic provider-failure retry descriptions must
+not override the ADR-0008 security amendment. Workforce RESET is unavailable pending independent
+account-owner proof; in-person staff confirmation is not a credential ownership boundary.

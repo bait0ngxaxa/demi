@@ -191,10 +191,10 @@ export default async function HospitalGovernanceDetailPage({
               รีเซ็ตรหัสผ่านเจ้าของโรงพยาบาล
             </h2>
             <p className="text-sm leading-6 text-text-muted">
-              การรีเซ็ตรหัสผ่านของเจ้าของโรงพยาบาลทำได้โดยผู้ดูแลระบบเท่านั้น และต้องทำต่อหน้าเจ้าของบัญชี
+              การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน สิทธิ์ผู้ดูแลระบบไม่ใช่หลักฐานว่าเป็นเจ้าของบัญชี
             </p>
             {owners.map((owner) =>
-              owner.canReset ? (
+              !owner.canReset ? (
                 <WorkforcePasswordResetControl
                   key={owner.userId}
                   subjectLabel={owner.displayName}

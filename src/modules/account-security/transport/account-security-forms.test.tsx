@@ -81,27 +81,29 @@ describe("account security form presentation", () => {
     expect(markup).not.toContain("targetUserId");
   });
 
-  it("offers only the assisted Hospital recovery handoff", () => {
+  it("shows the independent account ownership restriction without issuer controls", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientAccountRecoveryPanel, {
         relationshipId: profile.relationshipId,
       }),
     );
 
-    expect(markup).toContain("ข้าพเจ้าได้ตรวจสอบตัวตน");
-    expect(markup).toContain('name="nationalId"');
-    expect(markup).toContain('name="nationalIdConfirmation"');
+    expect(markup).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(markup).not.toContain('name="nationalId"');
+    expect(markup).not.toContain('name="nationalIdConfirmation"');
+    expect(markup).not.toContain("<form");
     expect(markup).toContain("บัญชี DEMI เดียว");
     expect(markup).not.toContain("อีเมล");
     expect(markup).not.toContain("SMS");
     expect(markup).not.toContain("LINE");
   });
 
-  it("keeps the public recovery claimant message generic until the fragment is checked", () => {
+  it("blocks legacy recovery links without requesting a password", () => {
     const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm));
 
-    expect(markup).toContain("ตั้งรหัสผ่านบัญชี DEMI ใหม่");
-    expect(markup).toContain("กำลังตรวจสอบลิงก์");
+    expect(markup).toContain("การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน");
+    expect(markup).toContain("ลิงก์กู้คืนเดิม");
+    expect(markup).not.toContain("<form");
     expect(markup).not.toContain('name="newPassword"');
     expect(markup).not.toContain("providerAlias");
   });

@@ -6,6 +6,7 @@ import { isAuthError, isAuthSessionMissingError } from "@supabase/supabase-js";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
+import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "./credential-recovery-state";
 
 import type {
   ActorContext,
@@ -135,7 +136,13 @@ async function readActorUser(
 ): Promise<ActorUserRecord | null> {
   try {
     const user = await (database ?? getPrisma()).user.findUnique({
-      where,
+      where: {
+        ...where,
+        // A legacy global RESET may already have changed the provider password. Token revocation
+        // alone cannot make that identity safe; quarantine application access pending reconciliation.
+        workforceActivations: { none: unreconciledWorkforceResetWhere },
+        accountRecoveries: { none: unreconciledAccountRecoveryWhere },
+      },
       select: actorContextUserSelect,
     });
     return user ? toActorUserRecord(user) : null;

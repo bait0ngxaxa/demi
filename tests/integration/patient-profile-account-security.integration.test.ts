@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { createActorContextStore } from "@/modules/auth/services/actor-context-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { getOwnPatientHospitalProfile, updateOwnPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
@@ -288,97 +289,46 @@ describe("Phase 17E.1 Patient profile and account security PostgreSQL workflows"
     expect(rejection?.status === "rejected" ? rejection.reason : null).toBeInstanceOf(ConflictError);
   });
 
-  it("issues, supersedes, claims, and completes one assisted recovery capability without changing domain data", async () => {
-    const hospital = await createHospital("โรงพยาบาล กู้คืน");
+  it.each([null, Role.HOSPITAL, Role.OSM, Role.ADMIN])("blocks legacy assisted recovery for PATIENT plus %s without mutating identity", async (role) => {
+    const hospital = await createHospital("โรงพยาบาล กู้คืนหลายบทบาท");
+    const owner = await createHospitalOwner(hospital.id);
+    const patient = await createPatient([hospital.id]);
+    if (role) await prisma.userRole.create({ data: { userId: patient.userId, role } });
+    const token = "T".repeat(43);
+    const relationshipId = patient.relationshipIds[0];
+    if (!relationshipId) throw new Error("Missing test relationship");
+    const legacy = await prisma.accountRecovery.create({ data: {
+      targetUserId: patient.userId, patientHospitalRelationshipId: relationshipId, issuedByUserId: owner.userId,
+      tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + ACCOUNT_RECOVERY_TTL_MS),
+    } });
+    const userBefore = await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } });
+    const replacePasswordAndRevokeSessions = vi.fn();
+    const dependencies = { database: prisma, replacePasswordAndRevokeSessions };
+    await expect(issuePatientAccountRecovery(owner.actor, relationshipId, { nationalId: "1000000000009", nationalIdConfirmation: "1000000000009", identityVerified: true }, dependencies)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(getPatientAccountRecoveryAvailability(token, dependencies)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const results = await Promise.allSettled(Array.from({ length: 2 }, () => completePatientAccountRecovery({ token, newPassword: "new-patient-password", passwordConfirmation: "new-patient-password" }, dependencies)));
+    expect(results.every((result) => result.status === "rejected")).toBe(true);
+    expect(replacePasswordAndRevokeSessions).not.toHaveBeenCalled();
+    expect(await prisma.accountRecovery.findUniqueOrThrow({ where: { id: legacy.id } })).toEqual(legacy);
+    expect(await prisma.accountRecovery.count()).toBe(1);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toEqual(userBefore);
+    expect(await prisma.auditEvent.count()).toBe(0);
+  });
+
+  it("quarantines revoked ambiguous Patient recovery without changing roles or issuer authority", async () => {
+    const hospital = await createHospital("โรงพยาบาล ตรวจสถานะ");
     const owner = await createHospitalOwner(hospital.id);
     const patient = await createPatient([hospital.id]);
     const relationshipId = patient.relationshipIds[0];
-
-    if (!relationshipId) {
-      throw new Error("Test Patient relationship was not created");
-    }
-
-    const now = new Date();
-    let tokenSequence = 0;
-    const deliveredUrls: string[] = [];
-    const delivery = {
-      channel: "ASSISTED" as const,
-      async deliver(url: string) {
-        deliveredUrls.push(url);
-        return { handoffUrl: url };
-      },
-    };
-    const dependencies = {
-      database: prisma,
-      findPerson: async () => ({ id: patient.personId }),
-      createToken: () => {
-        tokenSequence += 1;
-        return String(tokenSequence).padStart(43, "T");
-      },
-      now: () => now,
-      delivery,
-    };
-    const issueInput = {
-      nationalId: "1000000000009",
-      nationalIdConfirmation: "1000000000009",
-      identityVerified: true,
-    };
-    const personBefore = await prisma.person.findUniqueOrThrow({ where: { id: patient.personId } });
-    const userBefore = await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } });
-    const patientProfileBefore = await prisma.patientProfile.findUniqueOrThrow({
-      where: { id: patient.patientProfileId },
-    });
-
-    const first = await issuePatientAccountRecovery(owner.actor, relationshipId, issueInput, dependencies);
-    const firstToken = first.handoffUrl?.split("#")[1];
-    expect(first.expiresAt.getTime() - now.getTime()).toBe(ACCOUNT_RECOVERY_TTL_MS);
-    expect(first.deliveryChannel).toBe("ASSISTED");
-    expect(firstToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    const firstStored = await prisma.accountRecovery.findUniqueOrThrow({
-      where: { id: first.recoveryId },
-    });
-    expect(firstStored.tokenHash).toBe(createHash("sha256").update(firstToken ?? "", "utf8").digest("hex"));
-    expect(firstStored.tokenHash).not.toBe(firstToken);
-    await expect(getPatientAccountRecoveryAvailability(firstToken, { database: prisma })).resolves.toEqual({
-      expiresAt: first.expiresAt,
-    });
-
-    const second = await issuePatientAccountRecovery(owner.actor, relationshipId, issueInput, dependencies);
-    const secondToken = second.handoffUrl?.split("#")[1];
-    expect(secondToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
-    await expect(getPatientAccountRecoveryAvailability(firstToken, { database: prisma })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
-    await expect(getPatientAccountRecoveryAvailability(secondToken, { database: prisma })).resolves.toEqual({
-      expiresAt: second.expiresAt,
-    });
-    expect(deliveredUrls).toEqual([`/recover#${firstToken}`, `/recover#${secondToken}`]);
-
-    const replacePasswordAndRevokeSessions = vi.fn().mockResolvedValue(undefined);
-    const newPassword = "integration-new-password-long";
-    await completePatientAccountRecovery(
-      { token: secondToken, newPassword, passwordConfirmation: newPassword },
-      { database: prisma, replacePasswordAndRevokeSessions },
-    );
-    expect(replacePasswordAndRevokeSessions).toHaveBeenCalledWith({
-      userId: patient.userId,
-      authSubject: userBefore.authSubject,
-      newPassword,
-    });
-    await expect(getPatientAccountRecoveryAvailability(secondToken, { database: prisma })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
-    await expect(prisma.accountRecovery.count({ where: { targetUserId: patient.userId } })).resolves.toBe(2);
-    await expect(prisma.accountRecovery.count({
-      where: { targetUserId: patient.userId, completedAt: null, revokedAt: null },
-    })).resolves.toBe(0);
-
-    expect(await prisma.person.findUniqueOrThrow({ where: { id: patient.personId } })).toEqual(personBefore);
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toEqual(userBefore);
-    expect(await prisma.patientProfile.findUniqueOrThrow({ where: { id: patient.patientProfileId } })).toEqual(
-      patientProfileBefore,
-    );
-    expect(await prisma.patientHospitalProfile.count()).toBe(0);
-    expect(await prisma.patientHospitalRelationship.count()).toBe(1);
+    if (!relationshipId) throw new Error("Missing test relationship");
+    const store = createActorContextStore(prisma);
+    await expect(store.findUserById(patient.userId)).resolves.not.toBeNull();
+    await prisma.accountRecovery.create({ data: { targetUserId: patient.userId, patientHospitalRelationshipId: relationshipId, issuedByUserId: owner.userId,
+      tokenHash: "f".repeat(64), claimedAt: new Date(), revokedAt: new Date(), expiresAt: new Date(0) } });
+    await expect(store.findUserById(patient.userId)).resolves.toBeNull();
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } });
+    await expect(store.findUserByAuthSubject(user.authSubject ?? "missing")).resolves.toBeNull();
+    await expect(store.findUserById(owner.userId)).resolves.not.toBeNull();
+    expect(user.status).toBe(UserStatus.ACTIVE);
   });
 });

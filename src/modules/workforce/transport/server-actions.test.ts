@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
-import { ConflictError } from "@/shared/errors/application-error";
+import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
 
 import {
   completeWorkforceActivation,
@@ -289,60 +289,18 @@ describe("workforce Server Actions", () => {
     });
   });
 
-  it("issues an assisted reset from only the user and Hospital, then ends the issuer session", async () => {
+  it("rejects unsupported recovery without signing out or exposing issuer credentials", async () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
-    mockedIssueWorkforcePasswordReset.mockResolvedValue({
-      activationId: "activation-1",
-      userId: "33333333-3333-4333-8333-333333333333",
-      hospitalId: "11111111-1111-4111-8111-111111111111",
-      targetKind: "OSM",
-      activationToken: "reset-token",
-      activationExpiresAt: new Date("2026-10-14T00:15:00.000Z"),
-      activationMode: "ASSISTED",
-    });
+    mockedIssueWorkforcePasswordReset.mockRejectedValue(new ForbiddenError());
     const formData = new FormData();
     formData.set("userId", "33333333-3333-4333-8333-333333333333");
     formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
     formData.set("kind", "HOSPITAL_OWNER");
-
     const result = await issueWorkforcePasswordResetAction({ status: "IDLE" }, formData);
-
-    expect(mockedIssueWorkforcePasswordReset).toHaveBeenCalledWith(
-      { userId: "owner-1" },
-      {
-        userId: "33333333-3333-4333-8333-333333333333",
-        targetHospitalId: "11111111-1111-4111-8111-111111111111",
-      },
-    );
-    expect(mockedSignOutCurrentSession).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ status: "SUCCESS", result: { activationToken: "reset-token" } });
-  });
-
-  it("revokes the just-issued reset token and withholds it when the handoff fails", async () => {
-    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
-    mockedIssueWorkforcePasswordReset.mockResolvedValue({
-      activationId: "activation-1",
-      userId: "33333333-3333-4333-8333-333333333333",
-      hospitalId: "11111111-1111-4111-8111-111111111111",
-      targetKind: "OSM",
-      activationToken: "reset-token",
-      activationExpiresAt: new Date("2026-10-14T00:15:00.000Z"),
-      activationMode: "ASSISTED",
-    });
-    mockedSignOutCurrentSession.mockRejectedValue(new Error("sign out failed"));
-    mockedRevokeIssuedWorkforceActivation.mockResolvedValue(undefined);
-    const formData = new FormData();
-    formData.set("userId", "33333333-3333-4333-8333-333333333333");
-    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
-
-    const result = await issueWorkforcePasswordResetAction({ status: "IDLE" }, formData);
-
-    expect(mockedRevokeIssuedWorkforceActivation).toHaveBeenCalledWith(
-      { userId: "owner-1" },
-      { activationId: "activation-1" },
-    );
-    expect(result.status).toBe("ERROR");
-    expect(JSON.stringify(result)).not.toContain("reset-token");
+    expect(result).toMatchObject({ status: "ERROR", code: "FORBIDDEN" });
+    expect(JSON.stringify(result)).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
+    expect(mockedRevokeIssuedWorkforceActivation).not.toHaveBeenCalled();
   });
 
   it("compensates a failed assisted activation handoff with the internal revoke of its own token", async () => {
@@ -406,8 +364,10 @@ describe("workforce Server Actions", () => {
     expect(mockedProvisionWorkforceBulk).toHaveBeenCalledWith(
       { userId: "owner-1" },
       {
+        submissionId: "",
         kind: "OSM",
         targetHospitalId: "11111111-1111-4111-8111-111111111111",
+        rowNumbers: [1, 3],
         rows: [
           { nationalId: "1000000000009", givenName: "ก", familyName: "ข" },
           { nationalId: "12", givenName: "ค", familyName: "ง" },

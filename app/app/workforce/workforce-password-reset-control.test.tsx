@@ -16,18 +16,17 @@ describe("workforce password reset control", () => {
     />,
   );
 
-  it("explains the in-person assisted flow and never asks the issuer for a password", () => {
-    expect(html).toContain("รีเซ็ตรหัสผ่าน (ต่อหน้า)");
-    expect(html).toContain("15 นาที");
-    expect(html).toContain("ห้ามกรอกรหัสผ่านแทนผู้ใช้");
-    expect(html).not.toContain('type="password"');
+  it("explains the unavailable global recovery boundary in Thai", () => {
+    expect(html).toContain("การกู้คืนรหัสผ่าน");
+    expect(html).toContain("ยังไม่เปิดให้ผู้ดูแลรีเซ็ตรหัสผ่าน");
+    expect(html).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(html).toContain("ยืนยันรหัสผ่านปัจจุบัน");
   });
 
-  it("submits only the target user and Hospital, and stays disabled until in-person identity is confirmed", () => {
-    expect(html).toContain('name="userId"');
-    expect(html).toContain('value="22222222-2222-4222-8222-222222222222"');
-    expect(html).toContain('name="targetHospitalId"');
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*type="submit"|<button[^>]*type="submit"[^>]*disabled=""/);
-    expect(html).toContain("ยืนยันตัวตนของเจ้าของบัญชีต่อหน้าแล้ว");
+  it("exposes no issuer confirmation, token or actionable reset form", () => {
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).not.toContain('type="password"');
+    expect(html).not.toContain('name="userId"');
   });
 });

@@ -1491,3 +1491,21 @@ Transaction / Persistence
 ```
 
 This is the accepted starting architecture for DEMI project initialization.
+
+## Workforce onboarding v2 security amendment (review e61cd863)
+
+[ADR-0008 remediation amendment](../adr/0008-workforce-provisioning-and-activation.md) supersedes
+historical assisted RESET permission/identity-proof/claim-release statements in this baseline.
+National ID identifies a Person; issuer-visible capabilities and staff supervision cannot prove
+ownership of a global credential. Workforce and Patient-only assisted recovery are server-gated
+for every actor/target under [ADR-0012](../adr/0012-global-credential-recovery-proof.md). Auth-owned actor and
+exact-session reads quarantine unused claimed legacy RESETs and unfinished claimed AccountRecovery without changing Person/User identity
+or Hospital memberships. No immediate provider access-JWT invalidation is claimed.
+
+Initial activation binds exact issuer/Hospital/relationship/purpose and reauthorizes before
+provider start and finalization. Cross-Hospital pending activation requires a product/security
+decision. Durable provider-operation state, guarded initial-identity compensation, and retained
+ambiguous claims keep external effects distinct from database commits. Directory reads use
+bounded `(createdAt, id)` keyset pages; MEMBER receives only OSM. Bulk receipts and domain writes
+commit together per row, preserving partial success and submission replay without secret/PII
+payload retention. Source-of-truth hierarchy and the four roles remain unchanged.
