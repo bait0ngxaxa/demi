@@ -29,8 +29,8 @@ export function PageHeaderSkeleton({ actions = false }: { actions?: boolean }): 
   return (
     <header aria-hidden="true" className="border-b border-border pb-8">
       <Skeleton className="mb-4 h-4 w-36" />
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-5">
+        <div className="min-w-0 basis-80 flex-1">
           <Skeleton className="h-10 w-full max-w-sm" />
           <Skeleton className="mt-4 h-4 w-full max-w-2xl" />
           <Skeleton className="mt-2 h-4 w-3/5 max-w-lg" />
@@ -126,7 +126,7 @@ export function DirectorySkeleton({
       <div className="space-y-6 pt-8">
         <Panel aria-hidden="true">
           <Skeleton className="h-6 w-44" />
-          <div className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_8rem] lg:items-end">
+          <div className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_8rem] @5xl/workspace:items-end">
             <div>
               <Skeleton className="h-4 w-20" />
               <Skeleton className="mt-2 h-12 w-full" />

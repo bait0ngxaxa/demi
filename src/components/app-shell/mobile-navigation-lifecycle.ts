@@ -18,6 +18,7 @@ type MobileNavigationMediaQueryList = {
 
 type MobileNavigationLifecycleOptions = {
   document: MobileNavigationDocument;
+  dialog: Pick<HTMLDialogElement, "showModal" | "close">;
   mediaQueryList: MobileNavigationMediaQueryList;
   onDesktopTransition: () => void;
   onEscape: () => void;
@@ -26,6 +27,7 @@ type MobileNavigationLifecycleOptions = {
 
 export function setupMobileNavigationLifecycle({
   document,
+  dialog,
   mediaQueryList,
   onDesktopTransition,
   onEscape,
@@ -53,11 +55,13 @@ export function setupMobileNavigationLifecycle({
     }
   }
 
+  dialog.showModal();
   document.body.style.overflow = "hidden";
   document.addEventListener("keydown", handleKeyDown);
   mediaQueryList.addEventListener("change", handleMediaChange);
 
   return () => {
+    dialog.close();
     document.body.style.overflow = previousOverflow;
     document.removeEventListener("keydown", handleKeyDown);
     mediaQueryList.removeEventListener("change", handleMediaChange);

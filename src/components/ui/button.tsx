@@ -29,7 +29,7 @@ export function buttonClassName({
   className?: string;
 } = {}): string {
   return classNames(
-    "inline-flex items-center justify-center rounded-control transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed",
+    "inline-flex max-w-full whitespace-normal text-center items-center justify-center rounded-control transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed",
     variantClasses[variant],
     sizeClasses[size],
     className,
@@ -71,7 +71,7 @@ export function LoadingSpinner({ className }: { className?: string } = {}): Reac
     <span
       aria-hidden="true"
       className={classNames(
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
+        "inline-block h-4 w-4 animate-spin motion-reduce:animate-none rounded-full border-2 border-current border-t-transparent",
         className,
       )}
     />

@@ -18,7 +18,7 @@ export function AppShell({
   return (
     <div className="min-h-svh bg-canvas text-text lg:flex">
       <a
-        className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"
+        className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform motion-reduce:transition-none focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"
         href="#application-main-content"
       >
         ข้ามไปยังเนื้อหาหลัก
@@ -27,7 +27,7 @@ export function AppShell({
       <div className="min-w-0 flex-1">
         <AppHeader navigation={navigation} roleLabels={roleLabels} />
         <main
-          className="min-w-0 w-full px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12"
+          className="@container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12"
           id="application-main-content"
           tabIndex={-1}
         >

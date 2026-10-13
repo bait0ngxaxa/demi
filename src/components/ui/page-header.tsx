@@ -27,26 +27,26 @@ export function PageHeader({
         <nav aria-label="ลำดับหน้า" className="mb-4">
           <ol className="flex flex-wrap items-center gap-2 text-sm leading-6 text-text-muted">
             {breadcrumbs.map((breadcrumb, index) => (
-              <li className="flex items-center gap-2" key={`${breadcrumb.label}-${index}`}>
-                {index > 0 ? <span aria-hidden="true">/</span> : null}
+              <li className="flex min-w-0 max-w-full items-start gap-2" key={`${breadcrumb.label}-${index}`}>
+                {index > 0 ? <span aria-hidden="true" className="inline-flex min-h-11 shrink-0 items-center">/</span> : null}
                 {breadcrumb.href ? (
                   <Link
-                    className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                    className="inline-flex min-h-11 min-w-0 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                     href={breadcrumb.href}
                     onClick={onBreadcrumbClick}
                   >
                     {breadcrumb.label}
                   </Link>
                 ) : (
-                  <span aria-current="page">{breadcrumb.label}</span>
+                  <span aria-current="page" className="inline-flex min-h-11 min-w-0 items-center">{breadcrumb.label}</span>
                 )}
               </li>
             ))}
           </ol>
         </nav>
       ) : null}
-      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-5">
+        <div className="min-w-0 basis-80 flex-1">
           <h1 className="text-balance text-3xl font-bold tracking-[-0.03em] text-text sm:text-4xl">
             {title}
           </h1>

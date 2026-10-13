@@ -149,7 +149,7 @@ export function AssignedPatientDirectoryView({
   const hasFilters = Boolean(result?.value) || (result?.classificationFilter ?? classificationFilter) !== "ALL";
 
   return (
-    <div className="max-w-4xl break-words">
+    <div className="content-workspace break-words">
       <PageHeader
         actions={<StatusBadge variant="info">ขอบเขตที่รับผิดชอบ</StatusBadge>}
         breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
@@ -163,7 +163,7 @@ export function AssignedPatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
           </p>
-          <form action="/app/patients/assigned" className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem] lg:items-end" method="get">
+          <form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end" method="get">
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} name="lookupType">
@@ -189,7 +189,7 @@ export function AssignedPatientDirectoryView({
                 <option value="DIABETES">เบาหวาน</option>
               </Select>
             </label>
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:col-span-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap @5xl/workspace:col-span-3">
               <Button type="submit">ค้นหา</Button>
               {hasFilters || errorMessage ? (
                 <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/patients/assigned">

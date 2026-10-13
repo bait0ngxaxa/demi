@@ -247,7 +247,7 @@ function ProgramContext({ program }: { program: HospitalReportProgramRow }): Rea
       : "ยังไม่บันทึกวันที่สิ้นสุด";
 
   return (
-    <dl className="grid min-w-0 gap-x-6 gap-y-3 border-b border-border pb-5 sm:grid-cols-2 lg:grid-cols-4">
+    <dl className="grid min-w-0 gap-x-6 gap-y-3 border-b border-border pb-5 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
       <div className="min-w-0"><dt className="text-sm text-text-muted">รหัสผู้ป่วยในโรงพยาบาล</dt><dd className="mt-1 break-words font-medium">{hospitalNumber}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">เริ่ม Program</dt><dd className="mt-1 break-words font-medium">{displayDate(program.lifecycle.startedAt)}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">วันที่สิ้นสุด</dt><dd className="mt-1 break-words font-medium">{completedAt}</dd></div>
@@ -297,7 +297,7 @@ function ProgramOverview({
 
       <ProgramContext program={program} />
 
-      <div className="grid min-w-0 gap-6 pt-5 lg:grid-cols-3">
+      <div className="grid min-w-0 gap-6 pt-5 @5xl/workspace:grid-cols-3">
         <section aria-labelledby={`before-${program.patientProgramId}`} className="min-w-0">
           <h4 className="mb-3 font-semibold text-text" id={`before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
           {program.baseline.state === "PRESENT" ? (
@@ -314,7 +314,7 @@ function ProgramOverview({
           </ul>
         </section>
 
-        <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
           <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่าง Program · การติดตามผล</h4>
           {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : (
             <ol className="space-y-4">
@@ -330,7 +330,7 @@ function ProgramOverview({
           <p className="mt-3 text-sm text-text-muted">คะแนนผลสำเร็จ: {unavailableText(program.unavailable.achievementRate)}</p>
         </section>
 
-        <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
           <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลัง Program · การประเมินครั้งสุดท้าย</h4>
           {program.finalAssessment.state === "PRESENT" ? (
             <>
@@ -434,7 +434,7 @@ function ServiceProgram({
       </div>
       <ProgramContext program={program} />
 
-      <div className="grid min-w-0 gap-6 pt-5 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6 pt-5 @5xl/workspace:grid-cols-2">
         <section aria-labelledby={`service-before-${program.patientProgramId}`} className="min-w-0">
           <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
           {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
@@ -451,7 +451,7 @@ function ServiceProgram({
           </ul>
         </section>
 
-        <section aria-labelledby={`service-one-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <section aria-labelledby={`service-one-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
           <h4 className="mb-3 font-semibold text-text" id={`service-one-${program.patientProgramId}`}>บริการ 1 · รู้จักตัวเอง</h4>
           <ServiceOne program={program} />
           <p className="mt-4 text-sm text-text-muted">สถานะนี้แสดงการมีบันทึกในระบบ ไม่ยืนยันการส่งมอบบริการหรือผลการรักษา</p>
@@ -588,7 +588,7 @@ export function HospitalReportWorkspace({
   const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
   return (
-    <div className="min-w-0 max-w-[1440px]">
+    <div className="content-workspace">
       <PageHeader
         actions={<ExportButton endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
         breadcrumbs={isGlobalAdmin
@@ -648,7 +648,7 @@ export function HospitalReportWorkspace({
           </div>
         </div>
 
-        <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
           <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
             <dt className="text-sm text-text-muted">ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล</dt>
             <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.patientHospitalRelationships.value.toLocaleString("th-TH")}</dd>

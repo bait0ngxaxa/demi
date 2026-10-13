@@ -24,7 +24,7 @@ export function ParentChildHospitalReportWorkspace({
   const serviceProcess = report.content.serviceProcess.value;
 
   return (
-    <div className="min-w-0 max-w-[1440px]">
+    <div className="content-workspace">
       <PageHeader
         breadcrumbs={[
           { label: "งานโรงพยาบาลแม่ข่าย", href: `/app#hospital-workspace-${encodeURIComponent(report.parent.id)}` },
@@ -68,7 +68,7 @@ export function ParentChildHospitalReportWorkspace({
               จำนวนความสัมพันธ์นับตามรายการในโรงพยาบาล ส่วน Program นับเฉพาะสถานะกำลังดำเนินและสิ้นสุดแล้ว
             </p>
           </div>
-          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-5">
             <ReportingMetric label="จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล" value={dashboard.patientHospitalRelationships.value} />
             <ReportingMetric label="จำนวนความสัมพันธ์ที่ไม่มี Program" value={dashboard.relationshipsWithoutProgram.value} />
             <ReportingMetric label="Program ทั้งหมด" value={dashboard.programs.total} />
@@ -86,7 +86,7 @@ export function ParentChildHospitalReportWorkspace({
               ตัวเลขแสดงจำนวน Program ที่มีบันทึกในแต่ละขั้นตอน ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ
             </p>
           </div>
-          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
             <ReportingMetric label="Program ที่มีบันทึก Routine" value={serviceProcess.programsWithRoutineRecord.value} />
             <ReportingMetric label="Program ที่มีบันทึก Floating Chart" value={serviceProcess.programsWithFloatingChartRecord.value} />
             <ReportingMetric label="Program ที่มีบันทึก Dream Card" value={serviceProcess.programsWithDreamCardRecord.value} />

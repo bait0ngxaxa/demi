@@ -183,7 +183,7 @@ export default async function PatientDetailPage({
   const programPanel = <PatientProgramView context={programContext} key="program" />;
 
   return (
-    <div className="max-w-4xl">
+    <div className="content-detail">
       <PageHeader
         breadcrumbs={[
           { href: backHref, label: backLabel },
@@ -205,8 +205,8 @@ export default async function PatientDetailPage({
         ))}
       </nav>
 
-      <div className="space-y-6 pt-8">
-        <section aria-label="บริบทผู้ป่วย" className="scroll-mt-24 space-y-6 break-words" id="patient-context" tabIndex={-1}>
+      <div className="grid min-w-0 gap-6 pt-8 @5xl/workspace:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] @5xl/workspace:items-start">
+        <section aria-label="บริบทผู้ป่วย" className="min-w-0 scroll-mt-24 space-y-6 break-words" id="patient-context" tabIndex={-1}>
           <Panel>
             <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">
               {patient.displayName}
@@ -248,7 +248,7 @@ export default async function PatientDetailPage({
           ) : null}
         </section>
 
-        <section aria-labelledby="patient-care-heading" className="scroll-mt-24 space-y-6" id="patient-care" tabIndex={-1}>
+        <section aria-labelledby="patient-care-heading" className="min-w-0 scroll-mt-24 space-y-6" id="patient-care" tabIndex={-1}>
           <div>
             <h2 className="text-2xl font-semibold text-text" id="patient-care-heading">งานดูแลปัจจุบัน</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
@@ -265,7 +265,7 @@ export default async function PatientDetailPage({
           {prioritizeProgram ? [programPanel, baselinePanel] : [baselinePanel, programPanel]}
         </section>
 
-        <section aria-labelledby="patient-history-heading" className="scroll-mt-24 space-y-6" id="patient-history" tabIndex={-1}>
+        <section aria-labelledby="patient-history-heading" className="min-w-0 scroll-mt-24 space-y-6 @5xl/workspace:col-span-2" id="patient-history" tabIndex={-1}>
           <h2 className="text-2xl font-semibold text-text" id="patient-history-heading">ข้อมูลประกอบและประวัติ</h2>
           <PatientProfileView profile={patient.profile} profileSource={patient.profileSource} />
 

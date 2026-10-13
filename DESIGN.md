@@ -232,7 +232,16 @@ Form controls ใช้ corner 12px (`control`), panel ใช้ 14px (`panel`) 
 - **Desktop:** sidebar สี navigation-background กว้าง 17rem มี group label, nested domain item และ active item ใช้ navigation-active
 - **Header:** sticky surface header แสดง DEMI, role context และ logout; mobile เพิ่ม accessible menu trigger
 - **Mobile:** drawer จากด้านซ้าย ใช้เมนูชุดเดียวกับ desktop รองรับ Escape, focus containment/restoration และ route navigation ปิด drawer
-- Active route ใช้ `aria-current="page"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
+- Active route ใช้ `aria-current="page"`; ตัวเลือกพื้นที่ Work/Personal ใช้ `aria-current="location"` เพื่อแยกบริบทจากหน้าปัจจุบัน; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
+
+### Content Width and Responsive Layout
+
+- Header และ Main ใช้ gutters เดียวกัน: 16px บน mobile, 24px ตั้งแต่ `sm`, 32px ตั้งแต่ `lg`.
+- Main เป็น named `workspace` container; grid ของ directory, Workforce, Patient Detail และ reporting ใช้พื้นที่จริงหลังหัก Sidebar แทน viewport เพียงอย่างเดียว.
+- `content-workspace` ใช้เต็มพื้นที่จนถึง 90rem และจัดกึ่งกลางสำหรับ Work Home, directories, Workforce และ reporting. Work Home ใช้ auto-fit columns ขั้นต่ำ 28rem โดย card เดียวใช้เต็มแถว.
+- `content-detail` จำกัด 72rem และจัดกึ่งกลางสำหรับ Patient Detail; บริบทและงานดูแลอยู่สองคอลัมน์เมื่อ container กว้างอย่างน้อย 64rem ส่วนประวัติใช้เต็มแถว. ลำดับ DOM และ mobile ยังคงบริบท → งานดูแล → ประวัติ.
+- Reading forms, Contact, Content, Personal และรายละเอียดการบันทึกยังรักษา local max-width เดิม; prose ใช้ `type-readable` 68ch. ไม่ใช้ global override เพื่อยืดทุกหน้า.
+- Mobile navigation ใช้ native modal `dialog` เพื่อทำให้ background inert; ปิดตามปกติคืน focus ไป trigger ส่วน navigation/desktop transition ย้าย focus ไป Main. Skeleton ใช้ gutters และ width policy ของปลายทาง.
 
 ### Local Navigation
 

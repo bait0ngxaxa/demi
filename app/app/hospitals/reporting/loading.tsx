@@ -2,7 +2,7 @@ import { PageHeaderSkeleton, PanelSkeleton } from "@/components/ui/loading-skele
 
 export default function HospitalReportingLoading(): React.JSX.Element {
   return (
-    <div aria-busy="true" aria-label="กำลังโหลดรายงานโรงพยาบาล" className="max-w-6xl">
+    <div aria-busy="true" aria-label="กำลังโหลดรายงานโรงพยาบาล" className="content-workspace">
       <PageHeaderSkeleton actions />
       <PanelSkeleton className="mt-6" rows={4} />
       <PanelSkeleton className="mt-5" rows={7} />

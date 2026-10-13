@@ -177,7 +177,7 @@ function ActivationPresentation({
       <p className="font-semibold">สร้างบุคลากรแล้ว · รอเปิดใช้งาน</p>
       <p className="mt-1 text-muted">ส่งลิงก์นี้ให้ผู้ใช้งานตั้งรหัสผ่านของตนเอง</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex h-52 w-52 items-center justify-center rounded-control bg-surface p-2">
+        <div className="flex h-52 w-52 max-w-full shrink-0 items-center justify-center rounded-control bg-surface p-2">
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI" className="h-full w-full" src={qrDataUrl} />
@@ -352,7 +352,7 @@ export function WorkforceWorkspace({
   const anyPending = staffPending || osmPending || remotePending || assistedPending;
 
   return (
-    <div className="min-w-0 break-words">
+    <div className="content-workspace break-words">
       <PageHeader
         actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "จัดการบุคลากร" }]}
@@ -393,12 +393,12 @@ export function WorkforceWorkspace({
         {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
 
-        <div className="mt-8 grid scroll-mt-24 gap-6 xl:grid-cols-2" id="workforce-roster" tabIndex={-1}>
+        <div className="mt-8 grid scroll-mt-24 gap-6 @5xl/workspace:grid-cols-2" id="workforce-roster" tabIndex={-1}>
           {([
             ["บุคลากรโรงพยาบาล", staffRows],
             ["อสม.", osmRows],
           ] as const).map(([title, rows]) => (
-            <section className="overflow-hidden rounded-panel border border-border bg-surface" key={title}>
+            <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface" key={title}>
               <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
                 <StatusBadge>{rows.length} รายการ</StatusBadge>
@@ -425,7 +425,7 @@ export function WorkforceWorkspace({
           ))}
         </div>
 
-        <div className="mt-6 grid scroll-mt-24 gap-6 xl:grid-cols-2" id="workforce-provision" tabIndex={-1}>
+        <div className="mt-6 grid scroll-mt-24 gap-6 @5xl/workspace:grid-cols-2" id="workforce-provision" tabIndex={-1}>
           <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>

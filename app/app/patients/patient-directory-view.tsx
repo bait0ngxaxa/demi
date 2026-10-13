@@ -179,7 +179,7 @@ export function PatientDirectoryView({
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
 
   return (
-    <div>
+    <div className="content-workspace">
       <PageHeader
         actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedScope.hospitalId)}` }, { label: "รายชื่อผู้ป่วย" }]}
@@ -225,7 +225,7 @@ export function PatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวภายในโรงพยาบาลที่เลือก
           </p>
-          <form className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] lg:items-end" method="get">
+          <form className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] @5xl/workspace:items-end" method="get">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>

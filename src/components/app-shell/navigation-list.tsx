@@ -81,9 +81,9 @@ export function NavigationList({
                 return (
                   <li key={item.href}>
                     <Link
-                      aria-current={active ? "page" : undefined}
+                      aria-current={active ? (item.workspaceContext ? "location" : "page") : undefined}
                       className={classNames(
-                        "flex min-h-11 items-center rounded-control px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        "flex min-w-0 min-h-11 items-center rounded-control px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
                         tone === "desktop"
                           ? active
                             ? "type-nav-active bg-navigation-active text-brand-deep focus-visible:ring-brand-bright"
@@ -94,7 +94,7 @@ export function NavigationList({
                       )}
                       href={item.href}
                       prefetch={item.prefetch}
-                      onClick={onNavigate}
+                      onNavigate={onNavigate}
                     >
                       {item.label}
                     </Link>

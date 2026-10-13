@@ -153,7 +153,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
   await scheduleCurrentLineAccountReconciliation();
 
   return (
-    <div className="max-w-4xl break-words">
+    <div className="content-workspace break-words">
       <PageHeader
         description={projection.assignedPatientsAction || projection.hospitals.some(({ actions }) => actions.length > 0)
           ? "เริ่มจากผู้ป่วยที่รับผิดชอบ หรือเลือกโรงพยาบาลเพื่อทำงานตามสิทธิ์ของคุณ"
@@ -191,7 +191,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
               </ul>
             </nav>
           ) : null}
-          <div className="mt-5 space-y-5">
+          <div className="mt-5 grid min-w-0 gap-5 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))]">
             {projection.assignedPatientsAction ? (
               <Panel aria-labelledby="assigned-heading">
                 <h3 className="text-lg font-semibold text-text" id="assigned-heading">ผู้ป่วยที่ อสม. รับผิดชอบ</h3>

@@ -42,6 +42,7 @@ function createLifecycleEnvironment(initialOverflow = "auto") {
 
   return {
     body,
+    dialog: { showModal: vi.fn(), close: vi.fn() },
     document,
     mediaQueryList,
     dispatchKeyDown(event: KeyboardEvent): void {
@@ -67,18 +68,21 @@ describe("Mobile navigation lifecycle", () => {
     const environment = createLifecycleEnvironment("scroll");
     const cleanup = setupMobileNavigationLifecycle({
       document: environment.document,
+      dialog: environment.dialog,
       mediaQueryList: environment.mediaQueryList,
       onDesktopTransition: vi.fn(),
       onEscape: vi.fn(),
       onTabKeyDown: vi.fn(),
     });
 
+    expect(environment.dialog.showModal).toHaveBeenCalledOnce();
     expect(environment.body.style.overflow).toBe("hidden");
     expect(environment.hasKeyDownListener()).toBe(true);
     expect(environment.hasMediaChangeListener()).toBe(true);
 
     cleanup();
 
+    expect(environment.dialog.close).toHaveBeenCalledOnce();
     expect(environment.body.style.overflow).toBe("scroll");
     expect(environment.hasKeyDownListener()).toBe(false);
     expect(environment.hasMediaChangeListener()).toBe(false);
@@ -90,6 +94,7 @@ describe("Mobile navigation lifecycle", () => {
     const onTabKeyDown = vi.fn();
     const cleanup = setupMobileNavigationLifecycle({
       document: environment.document,
+      dialog: environment.dialog,
       mediaQueryList: environment.mediaQueryList,
       onDesktopTransition: vi.fn(),
       onEscape,
@@ -110,6 +115,7 @@ describe("Mobile navigation lifecycle", () => {
     const onDesktopTransition = vi.fn();
     const cleanup = setupMobileNavigationLifecycle({
       document: environment.document,
+      dialog: environment.dialog,
       mediaQueryList: environment.mediaQueryList,
       onDesktopTransition,
       onEscape: vi.fn(),
@@ -119,6 +125,7 @@ describe("Mobile navigation lifecycle", () => {
     environment.dispatchMediaChange(true);
 
     expect(onDesktopTransition).toHaveBeenCalledOnce();
+    expect(environment.dialog.showModal).toHaveBeenCalledOnce();
     expect(environment.body.style.overflow).toBe("hidden");
 
     cleanup();
@@ -132,6 +139,7 @@ describe("Mobile navigation lifecycle", () => {
     const onDesktopTransition = vi.fn();
     const cleanup = setupMobileNavigationLifecycle({
       document: environment.document,
+      dialog: environment.dialog,
       mediaQueryList: environment.mediaQueryList,
       onDesktopTransition,
       onEscape: vi.fn(),
@@ -140,6 +148,8 @@ describe("Mobile navigation lifecycle", () => {
 
     expect(onDesktopTransition).toHaveBeenCalledOnce();
     expect(environment.body.style.overflow).toBe("scroll");
+    expect(environment.dialog.showModal).not.toHaveBeenCalled();
+    expect(environment.dialog.close).not.toHaveBeenCalled();
     expect(environment.hasKeyDownListener()).toBe(false);
     expect(environment.hasMediaChangeListener()).toBe(false);
 
