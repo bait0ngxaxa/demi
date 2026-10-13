@@ -27,8 +27,10 @@ import { hashIdentityReference } from "@/modules/identity/services/identity-serv
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
 import {
   readPatientImportCandidates,
+  readPatientImportFile,
   type PatientImportUpload,
 } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
+import { PATIENT_IMPORT_TEMPLATE_COLUMNS } from "@/modules/patient-provisioning/import/patient-import-template-contract";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
   importPatientProvisioning,
@@ -231,6 +233,157 @@ function createBaselineFailureDatabase(): PrismaClient {
 }
 
 describe("Patient roster import (template v2, new patients only) PostgreSQL workflow", () => {
+  function completeRow(nationalId: string): TemplateRow {
+    return templateRow(nationalId, "ทดสอบนำเข้า", {
+      dateOfBirth: "15/01/2523", gender: "หญิง", phoneNumber: "0812345678",
+      houseNumber: "99/1", villageNumber: "07", villageName: "บ้านสุขใจ", soi: "สุขใจ", road: "ประชาร่วมใจ",
+      province: "เชียงใหม่", district: "เมืองเชียงใหม่", subdistrict: "สุเทพ", postalCode: "01234",
+      emergencyContactName: "สมใจ ทดสอบ", emergencyContactPhone: "0891234567", emergencyContactRelationship: "พี่สาว",
+      diabetesClassification: "เบาหวาน", weight: 72.5, height: 170, waistCircumference: 85, bloodSugarDtx: 126, hba1c: 6.5,
+    });
+  }
+
+  async function patientSnapshot(): Promise<unknown> {
+    return {
+      people: await prisma.person.findMany({ orderBy: { id: "asc" } }),
+      users: await prisma.user.findMany({ orderBy: { id: "asc" } }),
+      roles: await prisma.userRole.findMany({ orderBy: [{ userId: "asc" }, { role: "asc" }] }),
+      profiles: await prisma.patientProfile.findMany({ orderBy: { id: "asc" } }),
+      relationships: await prisma.patientHospitalRelationship.findMany({ orderBy: { id: "asc" } }),
+      hospitalProfiles: await prisma.patientHospitalProfile.findMany({ orderBy: { id: "asc" } }),
+      baselines: await prisma.patientBaseline.findMany({ orderBy: { id: "asc" } }),
+      classifications: await prisma.patientClassification.findMany({ orderBy: { id: "asc" } }),
+      history: await prisma.patientClassificationHistory.findMany({ orderBy: { id: "asc" } }),
+      audits: await prisma.auditEvent.findMany({ orderBy: { id: "asc" } }),
+    };
+  }
+
+  it.each([
+    ["phoneNumber", "invalid", "ALREADY_EXISTS"],
+    ["postalCode", "1234", "ALREADY_EXISTS"],
+    ["emergencyContactPhone", "invalid", "ALREADY_EXISTS"],
+    ["houseNumber", "ก".repeat(201), "ALREADY_EXISTS"],
+    ["diabetesClassification", "invalid", "ALREADY_EXISTS"],
+    ["weight", "invalid", "ALREADY_EXISTS"],
+    ["dateOfBirth", "31/02/2523", "ALREADY_EXISTS"],
+    ["dateOfBirth", "16/01/2523", "CONFLICT"],
+    ["hospitalNumber", "HN-other", "CONFLICT"],
+    ["givenName", "ชื่ออื่น", "CONFLICT"],
+    ["familyName", "นามสกุลอื่น", "CONFLICT"],
+    ["nationalId", "invalid", "INVALID"],
+    ["givenName", null, "INVALID"],
+    ["hospitalNumber", 71, "INVALID"],
+  ] as const)("existing %s=%s keeps identity rules and never writes (%s)", async (field, value, expected) => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    const row = completeRow(nationalIds.allFields);
+    await importPatientProvisioning(actor, hospital.id, await readTemplateCandidates(hospital, [row]), importDependencies(), { effectiveDate: batchDate });
+    const before = await patientSnapshot();
+    const candidates = await readTemplateCandidates(hospital, [{ ...row, [field]: value }]);
+    // Existing rows do not need a baseline effective date even when baseline values are present.
+    expect((await previewPatientProvisioning(actor, hospital.id, candidates, prisma)).rows[0]?.classification).toBe(expected);
+    expect((await importPatientProvisioning(actor, hospital.id, candidates, importDependencies())).rows[0]?.result).toBe(expected);
+    expect(await patientSnapshot()).toEqual(before);
+  });
+
+  it("appends a complete patient beside malformed ignored existing fields and exports only invalid new rows", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    authenticatedActor.mockResolvedValue(actor);
+    const rowA = completeRow(nationalIds.allFields);
+    await importPatientProvisioning(actor, hospital.id, await readTemplateCandidates(hospital, [rowA]), importDependencies(), { effectiveDate: batchDate });
+    const before = await prisma.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalId: hospital.id }, include: { hospitalProfile: true, patientProfile: true, baseline: true } });
+    const rowB = completeRow(nationalIds.partialFields);
+    const upload = await createTemplateUpload(hospital, [
+      { ...rowA, phoneNumber: "invalid", postalCode: "wrong", houseNumber: "ก".repeat(201), dateOfBirth: "invalid", diabetesClassification: "invalid", weight: "invalid" },
+      rowB,
+      { ...completeRow(nationalIds.noBaseline), phoneNumber: "invalid-source" },
+      { ...completeRow(nationalIds.rollback), postalCode: "bad" },
+      { ...completeRow(nationalIds.independentValid), dateOfBirth: "bad" },
+      { ...completeRow(nationalIds.independentConflict), weight: "bad" },
+    ], { rowNumbers: [7, 8, 10, 11, 12, 13] });
+    const form = new FormData();
+    form.set("file", new File([await upload.arrayBuffer()], upload.name));
+    form.set("targetHospitalId", hospital.id);
+    form.set("effectiveDate", batchDate);
+    const preview = await previewPatientImportAction(form);
+    if (preview.status !== "SUCCESS") throw new Error("Preview failed");
+    expect(preview.preview.rows.map((row) => row.classification)).toEqual(["ALREADY_EXISTS", "READY", "INVALID", "INVALID", "INVALID", "INVALID"]);
+    expect(preview.preview.rows[0]?.diagnosticCodes.length).toBeGreaterThan(0);
+    form.set("previewTargetHospitalId", hospital.id);
+    form.set("fileFingerprint", preview.preview.fileFingerprint);
+    form.set("previewBinding", preview.preview.previewBinding);
+    form.set("importContractVersion", preview.preview.importContractVersion);
+    const confirmed = await confirmPatientImportAction(form);
+    if (confirmed.status !== "SUCCESS") throw new Error("Confirmation failed");
+    expect(confirmed.summary).toMatchObject({ alreadyExists: 1, imported: 1, invalid: 4 });
+    expect(await prisma.patientHospitalRelationship.findUniqueOrThrow({ where: { id: before.id }, include: { hospitalProfile: true, patientProfile: true, baseline: true } })).toEqual(before);
+    expect(await prisma.patientHospitalRelationship.count()).toBe(2);
+    const storedB = await prisma.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalNumber: rowB.hospitalNumber as string }, include: { hospitalProfile: true, patientProfile: true } });
+    const profileFields = ["gender", "phoneNumber", "houseNumber", "villageNumber", "villageName", "soi", "road", "province", "district", "subdistrict", "postalCode", "emergencyContactName", "emergencyContactPhone", "emergencyContactRelationship"] as const;
+    const profileB = Object.fromEntries(profileFields.map((field) => [field, rowB[field]]));
+    expect(storedB.hospitalProfile).toMatchObject(profileB);
+    expect(storedB.patientProfile.dateOfBirth).toEqual(new Date("1980-01-15T00:00:00.000Z"));
+    const detail = await getPatientDirectoryDetail(actor, storedB.id);
+    expect(detail.profile).toMatchObject({ phoneNumber: "0812345678", emergencyContactRelationship: "พี่สาว" });
+    expect(detail.profile.addressText).toContain("01234");
+    expect((await getPatientDirectoryDetail(actor, before.id)).profile).toEqual(detail.profile);
+    const download = await createPatientImportFailedRowsDownload(actor, { targetHospitalId: hospital.id, previewTargetHospitalId: hospital.id, fileFingerprint: preview.preview.fileFingerprint, previewBinding: preview.preview.previewBinding, effectiveDate: batchDate, importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION, failedRowNumbers: [] }, upload);
+    const bytes = Uint8Array.from(download.buffer);
+    const failed = await readPatientImportFile({ name: download.filename, size: bytes.byteLength, arrayBuffer: async () => bytes.slice().buffer }, importTargetOf(hospital));
+    expect(failed.candidates).toHaveLength(4);
+    const firstFailed = failed.candidates[0];
+    if (!firstFailed) throw new Error("Failed row missing");
+    const phoneIndex = PATIENT_IMPORT_TEMPLATE_COLUMNS.findIndex(({ field }) => field === "phoneNumber");
+    expect(failed.sourceRows.get(firstFailed.rowNumber)?.[phoneIndex]).toBe("invalid-source");
+    expect(firstFailed.canonicalRow.fieldAssessments.phoneNumber.diagnostics).toContain("INVALID_VALUE");
+  });
+
+  it("rechecks a relationship created after preview and again inside the Serializable transaction", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    authenticatedActor.mockResolvedValue(actor);
+    const rowAfterPreview = completeRow(nationalIds.partialFields);
+    const upload = await createTemplateUpload(hospital, [{ ...rowAfterPreview, phoneNumber: "invalid", weight: "invalid", dateOfBirth: "invalid" }]);
+    const form = new FormData();
+    form.set("file", new File([await upload.arrayBuffer()], upload.name));
+    form.set("targetHospitalId", hospital.id);
+    const preview = await previewPatientImportAction(form);
+    if (preview.status !== "SUCCESS") throw new Error("Preview failed");
+    expect(preview.preview.rows[0]?.classification).toBe("INVALID");
+    await importPatientProvisioning(actor, hospital.id, await readTemplateCandidates(hospital, [rowAfterPreview]), importDependencies(), { effectiveDate: batchDate });
+    const afterCreated = await patientSnapshot();
+    form.set("previewTargetHospitalId", hospital.id);
+    form.set("fileFingerprint", preview.preview.fileFingerprint);
+    form.set("previewBinding", preview.preview.previewBinding);
+    form.set("importContractVersion", preview.preview.importContractVersion);
+    expect(await confirmPatientImportAction(form)).toMatchObject({ status: "SUCCESS", summary: { alreadyExists: 1, imported: 0 } });
+    expect(await patientSnapshot()).toEqual(afterCreated);
+    const row = completeRow(nationalIds.allFields);
+    const candidates = await readTemplateCandidates(hospital, [row]);
+    expect((await previewPatientProvisioning(actor, hospital.id, candidates, prisma, { effectiveDate: batchDate })).rows[0]?.classification).toBe("READY");
+    let created = false;
+    let before: unknown;
+    const raceDatabase = new Proxy(prisma, {
+      get(target, property, receiver): unknown {
+        if (property !== "$transaction") return Reflect.get(target, property, receiver);
+        return async (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>, options: Parameters<PrismaClient["$transaction"]>[1]): Promise<unknown> => {
+          if (!created) {
+            created = true;
+            await importPatientProvisioning(actor, hospital.id, candidates, importDependencies(), { effectiveDate: batchDate });
+            before = await patientSnapshot();
+          }
+          return target.$transaction(operation, options);
+        };
+      },
+    });
+    expect(await importPatientProvisioning(actor, hospital.id, candidates, importDependencies(raceDatabase), { effectiveDate: batchDate })).toMatchObject({ alreadyExists: 1, imported: 0, baselineCreated: 0, classificationCreated: 0 });
+    expect(await patientSnapshot()).toEqual(before);
+    const ignored = await readTemplateCandidates(hospital, [{ ...row, phoneNumber: "invalid", weight: "invalid", dateOfBirth: "invalid" }]);
+    expect(await importPatientProvisioning(actor, hospital.id, ignored, importDependencies())).toMatchObject({ alreadyExists: 1, imported: 0 });
+    expect(await patientSnapshot()).toEqual(before);
+  });
+
   it("reconciles all 26 Excel fields through bound preview/confirm, detail, duplicates and hospital-local self edits", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);

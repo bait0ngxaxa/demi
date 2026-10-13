@@ -30,6 +30,8 @@ import {
   buildPreviewPersonSelect,
   classifyExistingPatient,
   getImportNow,
+  hasInvalidPatientImportProfile,
+  readValidImportedDateOfBirth,
   normalizeImportCandidates,
   normalizeImportOptions,
   patientRosterImportPreviewInternals,
@@ -126,22 +128,6 @@ async function importPatientRosterRow(
   }
 
   const patientInput = candidate.input;
-  const baselineState = readBaselineImportState(candidate, effectiveDate);
-
-  if (baselineState.status === "BASELINE_DATA_INVALID") {
-    throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่ถูกต้อง");
-  }
-
-  if (baselineState.status === "BASELINE_DATE_REQUIRED") {
-    throw new ValidationError("ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า");
-  }
-
-  const classificationSource = readPatientClassificationImportState(candidate, null);
-
-  if (classificationSource.status === "CLASSIFICATION_DATA_INVALID") {
-    throw new ValidationError("สถานะผู้ป่วยจากไฟล์ไม่ใช่ค่าที่รองรับ");
-  }
-
   try {
     return await runSerializableTransaction(
       getDatabase(dependencies),
@@ -154,9 +140,9 @@ async function importPatientRosterRow(
           select: buildPreviewPersonSelect(patientInput.targetHospitalId),
         });
 
-        const importedProfile = readPatientImportProfile(candidate.canonicalRow);
-        if (person?.patientProfile?.dateOfBirth && importedProfile.dateOfBirth &&
-            person.patientProfile.dateOfBirth.toISOString().slice(0, 10) !== importedProfile.dateOfBirth) {
+        const importedDateOfBirth = readValidImportedDateOfBirth(candidate);
+        if (person?.patientProfile?.dateOfBirth && importedDateOfBirth &&
+            person.patientProfile.dateOfBirth.toISOString().slice(0, 10) !== importedDateOfBirth) {
           throw new PatientProvisioningConflictError("IDENTITY_CONFLICT", "Patient date of birth conflicts");
         }
 
@@ -166,6 +152,26 @@ async function importPatientRosterRow(
           if (classification !== "READY") {
             return { existing: { classification, reason } };
           }
+        }
+
+        if (hasInvalidPatientImportProfile(candidate)) {
+          throw new ValidationError("ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง");
+        }
+        const importedProfile = readPatientImportProfile(candidate.canonicalRow);
+        const baselineState = readBaselineImportState(candidate, effectiveDate);
+
+        if (baselineState.status === "BASELINE_DATA_INVALID") {
+          throw new ValidationError("ข้อมูลตั้งต้นของแถวนี้ไม่ถูกต้อง");
+        }
+
+        if (baselineState.status === "BASELINE_DATE_REQUIRED") {
+          throw new ValidationError("ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า");
+        }
+
+        const classificationSource = readPatientClassificationImportState(candidate, null);
+
+        if (classificationSource.status === "CLASSIFICATION_DATA_INVALID") {
+          throw new ValidationError("สถานะผู้ป่วยจากไฟล์ไม่ใช่ค่าที่รองรับ");
         }
 
         const patient = await provisionPatientInTransaction(

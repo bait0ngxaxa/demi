@@ -479,8 +479,7 @@ function buildCandidate(
       canonicalRow.diagnostics = [...canonicalRow.diagnostics, createDiagnostic("INVALID_VALUE", field, header)];
     }
   }
-  const invalidProfile = !profile.success || PATIENT_IMPORT_FIELD_KEYS.some((field) =>
-    !isPatientImportBaselineField(field) && !isPatientImportClassificationField(field) &&
+  const invalidIdentity = [...CORE_FIELDS].some((field) =>
     canonicalRow.fieldAssessments[field].diagnostics.length > 0,
   );
   const parsedRow = patientProvisionFormSchema.safeParse({
@@ -494,7 +493,7 @@ function buildCandidate(
   return {
     rowNumber,
     identityDisplay: maskIdentity(canonicalRow.identity.nationalId),
-    input: parsedRow.success && !invalidProfile
+    input: parsedRow.success && !invalidIdentity
       ? {
           identity: {
             namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
@@ -510,7 +509,7 @@ function buildCandidate(
     familyName: canonicalRow.identity.familyName ?? "",
     hospitalNumber: canonicalRow.organizationCandidates.hospitalNumber,
     validationMessage: !parsedRow.success ? mapValidationMessage(parsedRow.error.issues, canonicalRow)
-      : invalidProfile ? "ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง กรุณาตรวจสอบวันเกิด ข้อมูลติดต่อ และที่อยู่" : null,
+      : invalidIdentity ? "ข้อมูลแถวนี้ไม่ถูกต้อง" : null,
     canonicalRow,
     fileMetadata,
   };

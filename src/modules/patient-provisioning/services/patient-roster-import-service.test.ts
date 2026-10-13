@@ -228,6 +228,17 @@ function compose(
   });
 }
 
+describe("Relationship-aware profile validation", () => {
+  it.each(["phoneNumber", "postalCode", "emergencyContactPhone", "houseNumber", "dateOfBirth", "diabetesClassification", "weight"] as const)("ignores invalid %s only for an existing relationship", (field) => {
+    const candidate = createCandidate({ assessments: { [field]: { ...emptyAssessment, status: "INVALID", diagnostics: ["INVALID_VALUE"] } } });
+    const [normalized] = patientRosterImportInternals.normalizeImportCandidates([candidate], targetHospitalId);
+    expect(normalized?.input).toEqual(defaultInput);
+    if (!normalized) throw new Error("Missing normalized row");
+    expect(compose(normalized, existingPerson()).classification).toBe("ALREADY_EXISTS");
+    expect(compose(normalized, undefined).classification).toBe("INVALID");
+  });
+});
+
 describe("Patient roster import: option and candidate normalization", () => {
   it("normalizes options once and accepts nothing but the effective date and contract version", () => {
     expect(patientRosterImportInternals.normalizeImportOptions({})).toEqual({
@@ -686,6 +697,19 @@ describe("Patient roster import orchestration (re-validates and commits READY ro
     expect(provisionPatientInTransaction).not.toHaveBeenCalled();
     expect(createPatientBaselineInTransaction).not.toHaveBeenCalled();
     expect(setPatientClassificationInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("preserves the valid DOB conflict check on a late relationship", async () => {
+    const person = existingPerson({ relationship: { hospitalNumber: "HN-001" } });
+    if (!person.patientProfile) throw new Error("Patient profile missing");
+    person.patientProfile.dateOfBirth = new Date("1980-01-15T00:00:00.000Z");
+    const candidate = createCandidate();
+    candidate.canonicalRow.demographics.dateOfBirth = "1981-01-15";
+    const { database, transaction } = createDatabase({ concurrentPerson: person });
+    expect(await importPatientRoster(actor, targetHospitalId, [candidate], { database })).toMatchObject({ conflict: 1, imported: 0 });
+    expect(provisionPatientInTransaction).not.toHaveBeenCalled();
+    expect(transaction.patientProfile.update).not.toHaveBeenCalled();
+    expect(transaction.patientHospitalProfile.create).not.toHaveBeenCalled();
   });
 
   it("reports CONFLICT when the late relationship does not match the file's identity", async () => {

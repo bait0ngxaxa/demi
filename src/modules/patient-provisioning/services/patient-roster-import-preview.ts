@@ -431,12 +431,9 @@ export function normalizeImportCandidates(
       return candidate;
     }
 
-    const invalidField = PATIENT_IMPORT_FIELD_KEYS.some((field) => {
-      if (PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baseline) => baseline === field) || field === "diabetesClassification") return false;
-      return candidate.canonicalRow.fieldAssessments[field].diagnostics.length > 0;
-    });
-    if (invalidField || !validatePatientImportProfile(candidate.canonicalRow)) {
-      return { ...candidate, input: null, validationMessage: "ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง กรุณาตรวจสอบวันเกิด ข้อมูลติดต่อ และที่อยู่" };
+    const invalidIdentity = ["nationalId", "givenName", "familyName", "hospitalNumber"] as const;
+    if (invalidIdentity.some((field) => candidate.canonicalRow.fieldAssessments[field].diagnostics.length > 0)) {
+      return { ...candidate, input: null, validationMessage: "ข้อมูลแถวนี้ไม่ถูกต้อง" };
     }
 
     const parsed = patientProvisionInputSchema.safeParse(candidate.input);
@@ -466,6 +463,22 @@ export function normalizeImportCandidates(
       validationMessage: null,
     };
   });
+}
+
+/** Profile diagnostics remain on the canonical row; only new relationships block on them. */
+export function hasInvalidPatientImportProfile(candidate: PatientProvisioningImportCandidate): boolean {
+  return !validatePatientImportProfile(candidate.canonicalRow) || PATIENT_IMPORT_FIELD_KEYS.some((field) =>
+    field !== "sourceSequenceNumber" &&
+    !PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baseline) => baseline === field) &&
+    field !== "diabetesClassification" &&
+    candidate.canonicalRow.fieldAssessments[field].diagnostics.length > 0,
+  );
+}
+
+export function readValidImportedDateOfBirth(candidate: PatientProvisioningImportCandidate): string | null {
+  const date = candidate.canonicalRow.demographics.dateOfBirth;
+  return candidate.canonicalRow.fieldAssessments.dateOfBirth.diagnostics.length === 0 &&
+    patientBaselineDateOnlySchema.safeParse(date).success ? date : null;
 }
 
 export function validateRosterImportTarget(
@@ -507,7 +520,7 @@ export function composePatientRosterPreviewRow(input: {
   }
 
   const existingDateOfBirth = input.existing?.patientProfile?.dateOfBirth;
-  const importedDateOfBirth = input.candidate.canonicalRow.demographics.dateOfBirth;
+  const importedDateOfBirth = readValidImportedDateOfBirth(input.candidate);
   if (existingDateOfBirth && importedDateOfBirth && existingDateOfBirth.toISOString().slice(0, 10) !== importedDateOfBirth) {
     return toPreviewRow(input.candidate, "CONFLICT", "วันเกิดไม่ตรงกับข้อมูลผู้ป่วยเดิม ต้องตรวจสอบโดยผู้ดูแล");
   }
@@ -518,6 +531,10 @@ export function composePatientRosterPreviewRow(input: {
 
   if (identity.classification !== "READY") {
     return toPreviewRow(input.candidate, identity.classification, identity.reason);
+  }
+
+  if (hasInvalidPatientImportProfile(input.candidate)) {
+    return toPreviewRow(input.candidate, "INVALID", "ข้อมูลโปรไฟล์ในแถวนี้ไม่ถูกต้อง กรุณาตรวจสอบวันเกิด ข้อมูลติดต่อ และที่อยู่");
   }
 
   const patientClassification = readPatientClassificationImportState(

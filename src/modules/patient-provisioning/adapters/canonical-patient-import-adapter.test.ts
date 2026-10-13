@@ -493,7 +493,7 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
       );
       expect(lostZero.canonicalRow.contact.phoneNumber).toBe("812345679");
       expect(lostZero.canonicalRow.fieldAssessments.phoneNumber.status).toBe("AMBIGUOUS");
-      expect(lostZero.input).toBeNull();
+      expect(lostZero.input).not.toBeNull();
       expect(numericId.input).not.toBeNull();
     });
 
@@ -507,10 +507,9 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
       ["hospitalNumber", 71],
       ["gender", "ก".repeat(65)],
       ["houseNumber", "ก".repeat(201)],
-    ] satisfies readonly (readonly [PatientImportFieldKey, CellValue])[])("rejects malformed populated %s before preview", async (field, value) => {
+    ] satisfies readonly (readonly [PatientImportFieldKey, CellValue])[])("retains diagnostics for malformed %s independently of identity eligibility", async (field, value) => {
       const candidate = await readSingleRow({ ...syntheticPatientValues(), [field]: value });
-      expect(candidate.input).toBeNull();
-      expect(candidate.validationMessage).toBeTruthy();
+      expect(candidate.input === null).toBe(field === "hospitalNumber");
       expect(candidate.canonicalRow.fieldAssessments[field].diagnostics.length).toBeGreaterThan(0);
     });
 

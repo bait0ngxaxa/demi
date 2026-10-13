@@ -132,3 +132,55 @@ Branch: `fix/patient-import-profile-persistence`. No merge into main is authoriz
 - `tests/integration/patient-directory.integration.test.ts`
 - `tests/integration/patient-provisioning.integration.test.ts`
 - `tests/integration/patient-roster-baseline-import.integration.test.ts`
+
+
+## Final P2 regression: relationship-aware import validation (2026-10-13)
+
+**READY FOR REVIEW** on `fix/patient-import-profile-persistence`.
+
+The adapter and candidate normalizer previously discarded valid identity input when unrelated profile fields were malformed. Such rows never reached relationship resolution and incorrectly became INVALID, including patients whose profiles would never be updated.
+
+The adapter still parses and validates profile fields and retains their canonical values/diagnostics. Identity eligibility now depends only on national identity, given/family names, HN and authorized hospital scope. Preview resolves the relationship before blocking on profile diagnostics. Existing relationships retain identity/name/HN/account-state checks, ignore unused profile/clinical errors and need no baseline date. A valid populated DOB mismatch remains CONFLICT; malformed DOB is ignored only for existing relationships. New relationships still require the complete approved profile/clinical validation. The same ordering is enforced inside the existing Serializable transaction before any provisioning writes, including late relationships. HMAC, confirmation re-parsing, retries, export, ownership and schema remain unchanged.
+
+### Files modified for the regression
+
+- `src/modules/patient-provisioning/adapters/excel-patient-import-adapter.ts`
+- `src/modules/patient-provisioning/services/patient-roster-import-preview.ts`
+- `src/modules/patient-provisioning/services/patient-roster-import-service.ts`
+- `src/modules/patient-provisioning/adapters/canonical-patient-import-adapter.test.ts`
+- `src/modules/patient-provisioning/services/patient-roster-import-service.test.ts`
+- `tests/integration/patient-roster-baseline-import.integration.test.ts`
+- This handoff addendum.
+
+### Regression coverage and executed verification
+
+Eight new unit cases cover independent identity eligibility for seven malformed profile/clinical fields and the valid-DOB conflict check on a late relationship. Parser assertions now require identity retention plus diagnostics, while malformed core HN still has no eligible input.
+
+Sixteen new real-PostgreSQL cases cover fourteen existing-row variants (ignored malformed data, valid DOB/name/HN conflicts, malformed identity), mixed append-only import plus invalid new rows and failed-row source preservation, and relationship creation both between HMAC preview/confirmation and after the server's re-preview but before its Serializable transaction. Snapshots include identity, accounts/roles, global/local profiles, relationships, baseline, classification/history and audits to detect writes on existing rows. Existing integration cases still verify complete persistence, hospital isolation and rollback.
+
+| Command | Actual result |
+| --- | --- |
+| `npm run test -- src/modules/patient-provisioning/services/patient-roster-import-service.test.ts` | Initial reproduction: 38 passed, 5 failed because profile diagnostics erased identity input. Final: 44/44 passed. |
+| `npm run test -- src/modules/patient-provisioning` | After aligning parser assertions with the new validation boundary: 16 files, 219/219 passed. The subsequently added DOB transaction case is included in the final 44/44 run above. |
+| `npm run test:db:status` | Existing repository-owned tmpfs PostgreSQL 17 container healthy, bound to 127.0.0.1:55432/demi_test; inherited DATABASE_URL absent. |
+| `npm run test:integration:focused -- tests/integration/patient-roster-baseline-import.integration.test.ts` | Final: 31/31 passed. First run: 30 passed and one export assertion incorrectly checked normalized instead of original source-cell data; corrected to inspect sourceRows. All 46 existing migrations applied already, no pending migration. |
+| `npm run lint -- --max-warnings=0` | Final passed; earlier test-only unused-variable warnings resolved. |
+| `npm run typecheck` | Final passed; earlier new test fixture type errors resolved. |
+| `git diff --check` | Passed. |
+
+No migration, database reset, production/shared data changes, dependencies, UI redesign or history rewrite. Integration fixture cleanup ran only against the verified disposable repository PostgreSQL target. The full repository suite/build/browser UAT were not run for this isolated validation-order change; affected import unit and real database workflows were executed.
+
+### Final acceptance
+
+- [x] Existing patients with malformed ignored fields return ALREADY_EXISTS.
+- [x] Core identity conflicts are not bypassed.
+- [x] Valid global DOB conflicts remain enforced.
+- [x] New patients still require complete profile validation.
+- [x] Mixed append-only imports work correctly.
+- [x] Existing records remain unchanged.
+- [x] New records persist the complete approved profile.
+- [x] Failed-rows behavior remains correct.
+- [x] Relevant PostgreSQL integration tests pass.
+- [x] No unrelated changes were introduced.
+
+Merge approval remains with the reviewer; this branch is not merged into main.
