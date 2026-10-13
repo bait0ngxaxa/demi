@@ -87,12 +87,16 @@ describe("application home workspace routing", () => {
     expect(html).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
     expect(html).toContain('href="/app/patients/service-requests"');
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลเดียว");
-    expect(html.includes(`/app/workforce?hospitalId=${hospitalId}`)).toBe(type === MembershipType.OWNER);
+    // ADR-0008 amendment (D1): a MEMBER reaches workforce only for OSM, with a scoped description.
+    expect(html.includes(`/app/workforce?hospitalId=${hospitalId}`)).toBe(true);
+    expect(html.includes("เพิ่ม อสม. และดูแลการเปิดใช้งานบัญชี อสม.")).toBe(type === MembershipType.MEMBER);
+    expect(html.includes("จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
     expect(html.includes('href="/app/patients/service-catalog"')).toBe(type === MembershipType.OWNER);
     for (const path of ["contact", "knowledge", "reporting"]) {
       expect(html.includes(`href="/app/hospitals/${path}?hospitalId=${hospitalId}"`)).toBe(type === MembershipType.OWNER);
     }
     expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
+    expect(html.includes("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง")).toBe(type === MembershipType.MEMBER);
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
     expect(html).not.toMatch(/งานถัดไป|งานค้าง|วันนี้|เปอร์เซ็นต์/);
     expect(html).toContain("focus-visible:ring-focus-ring");

@@ -1181,7 +1181,7 @@ The detailed checklist is in the [Phase 4A Workforce Provisioning Contract](../p
   activation uses one opaque, one-time activation capability. Copy URL, QR and
   assisted in-person activation are presentations of the same capability, and
   the target user establishes their own password.
-- Copy/QR activation has a default `24 hours` expiry and assisted activation has
+- Copy/QR activation has a default `72 hours` expiry (ADR-0008 amendment 2026-10-14, supersedes `24 hours`) and assisted activation has
   a default `15 minutes` expiry. The activation record stores only a secure
   deterministic digest and bounded lifecycle timestamps; it is single-use,
   revocable, regeneratable, and concurrency-safe.
@@ -1347,7 +1347,7 @@ The following decisions are accepted for project initialization:
 42. Existing `ACTIVE` Users with valid provider mapping and established credential ownership reuse their identity and do not re-activate credentials when a trusted operation adds a workforce role or relationship.
 43. New workforce accounts start `PROVISIONED` and require target-owned first-time activation before entering `/app`.
 44. Workforce first-time activation uses one opaque, one-time activation capability; activation URL, QR, and assisted in-person flow are presentations of the same capability.
-45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 24 hours and assisted activation to 15 minutes.
+45. Workforce activation credentials use at least 256 bits of secure randomness, hash-at-rest, expiry, single-use, revocation, regeneration invalidation, and concurrency-safe consumption; copy/QR default to 72 hours (ADR-0008 amendment 2026-10-14) and assisted activation to 15 minutes; activation and assisted password reset also require the target's national ID, with the token revoked after 5 failed checks.
 46. Workforce target users set their own passwords; Hospital staff must not know or set them, and email/SMS/LINE/LIFF/ThaID/external identity are not core activation dependencies.
 47. Workforce provider effects remain behind the existing server-only authentication boundary and use compensation/reconciliation outside the local PostgreSQL transaction boundary.
 48. Phase 17E.1 implements only the 2026-09-30 owner-approved Patient general profile fields as Hospital-relationship-scoped values, with Patient SELF authority, legacy shared-profile fallback, and optimistic concurrency. Identity-sensitive correction, staff/OSM edits, and profile history remain outside this contract.

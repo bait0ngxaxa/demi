@@ -14,22 +14,26 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   initialWorkforceActivationActionState,
+  initialWorkforceBulkActionState,
   initialWorkforceProvisionActionState,
   type WorkforceActivationActionState,
   type WorkforceActivationResultState,
+  type WorkforceBulkActionState,
   type WorkforceProvisionActionState,
   type WorkforceProvisionResultState,
 } from "@/modules/workforce/transport/action-state";
 import {
   provisionHospitalMemberAction,
   provisionOsmAction,
+  provisionWorkforceBulkAction,
   regenerateWorkforceActivationAction,
   startAssistedWorkforceActivationAction,
 } from "@/modules/workforce/transport/server-actions";
+import type { WorkforceKind } from "@/modules/workforce/schemas/workforce-schemas";
 import type {
+  WorkforceHospital,
   WorkforceListResult,
   WorkforceListRow,
-  WorkforceOwnerHospital,
 } from "@/modules/workforce/services/workforce-service";
 
 const professionLabels = {
@@ -40,7 +44,7 @@ const professionLabels = {
 } as const;
 
 type WorkforceWorkspaceProps = {
-  hospitals: WorkforceOwnerHospital[];
+  hospitals: WorkforceHospital[];
   selectedHospitalId: string;
   workforce: WorkforceListResult;
 };
@@ -207,6 +211,318 @@ function ActivationPresentation({
   );
 }
 
+const MAX_SLIP_SELECTION = 50;
+const MAX_BULK_ROWS = 50;
+const INITIAL_BULK_ROWS = 5;
+
+const bulkReasonLabels = {
+  INVALID_ROW: "ข้อมูลในแถวไม่ถูกต้อง",
+  CONFLICT: "ขัดแย้งกับข้อมูลเดิม",
+  UNAVAILABLE: "ระบบไม่พร้อม ลองใหม่ได้",
+} as const;
+
+function PendingActivationGroup({
+  title,
+  kind,
+  rows,
+  hospitalId,
+  remoteAction,
+  remotePending,
+  anyPending,
+}: {
+  title: string;
+  kind: WorkforceKind;
+  rows: WorkforceListRow[];
+  hospitalId: string;
+  remoteAction: (formData: FormData) => void;
+  remotePending: boolean;
+  anyPending: boolean;
+}): React.JSX.Element {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const slipFormId = `slip-form-${kind}`;
+  const allSelected = rows.length > 0 && selected.size >= Math.min(rows.length, MAX_SLIP_SELECTION);
+
+  function toggle(userId: string): void {
+    setSelected((current) => {
+      const next = new Set(current);
+
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else if (next.size < MAX_SLIP_SELECTION) {
+        next.add(userId);
+      }
+
+      return next;
+    });
+  }
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
+        <h3 className="text-lg font-semibold tracking-[-0.02em]">{title}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() =>
+              setSelected(
+                allSelected
+                  ? new Set()
+                  : new Set(rows.slice(0, MAX_SLIP_SELECTION).map(({ userId }) => userId)),
+              )
+            }
+            size="compact"
+            type="button"
+            variant="secondary"
+          >
+            {allSelected ? "ยกเลิกการเลือก" : "เลือกทั้งหมด"}
+          </Button>
+          {/* Opens the print page in a new tab; credentials are only in that one response. */}
+          <form action="/app/workforce/slips" id={slipFormId} method="post" target="_blank">
+            <input name="targetHospitalId" type="hidden" value={hospitalId} />
+            <input name="kind" type="hidden" value={kind} />
+            <Button
+              disabled={anyPending || selected.size === 0}
+              size="compact"
+              type="submit"
+            >
+              พิมพ์ใบเปิดใช้งาน ({selected.size})
+            </Button>
+          </form>
+        </div>
+      </div>
+      {rows.length > MAX_SLIP_SELECTION ? (
+        <p className="border-b border-line px-4 py-3 text-xs leading-5 text-muted sm:px-6">
+          พิมพ์ได้ครั้งละไม่เกิน {MAX_SLIP_SELECTION} คน
+        </p>
+      ) : null}
+      <ul>
+        {rows.map((row) => (
+          <li
+            className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+            key={row.userId}
+          >
+            <label className="flex min-w-0 items-start gap-3">
+              <input
+                checked={selected.has(row.userId)}
+                className="mt-1 h-5 w-5 shrink-0"
+                disabled={anyPending}
+                form={slipFormId}
+                name="userId"
+                onChange={() => toggle(row.userId)}
+                type="checkbox"
+                value={row.userId}
+              />
+              <span className="min-w-0">
+                <span className="block font-semibold text-ink">{row.displayName}</span>
+                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <StatusBadge variant={row.activationStatus === "PENDING" ? "warning" : "danger"}>
+                    {row.activationStatus === "PENDING" ? "รอเปิดใช้งาน" : "ลิงก์หมดอายุ"}
+                  </StatusBadge>
+                  <span>
+                    {row.activationExpiresAt
+                      ? `ลิงก์ล่าสุดหมดอายุ ${formatDate(row.activationExpiresAt)}`
+                      : "ยังไม่มีลิงก์ที่ใช้งานได้"}
+                  </span>
+                </span>
+              </span>
+            </label>
+            <form action={remoteAction}>
+              <input name="userId" type="hidden" value={row.userId} />
+              <input name="targetHospitalId" type="hidden" value={hospitalId} />
+              <input name="kind" type="hidden" value={row.kind} />
+              <Button
+                disabled={anyPending}
+                loading={remotePending}
+                size="compact"
+                type="submit"
+                variant="secondary"
+              >
+                ออกลิงก์ใหม่
+              </Button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function PendingActivationSection({
+  rows,
+  hospitalId,
+  remoteAction,
+  remotePending,
+  anyPending,
+}: {
+  rows: WorkforceListRow[];
+  hospitalId: string;
+  remoteAction: (formData: FormData) => void;
+  remotePending: boolean;
+  anyPending: boolean;
+}): React.JSX.Element | null {
+  const pending = rows.filter(
+    (row) => row.activationStatus !== null && row.membershipType !== "OWNER",
+  );
+
+  if (pending.length === 0) {
+    return null;
+  }
+
+  const groups = [
+    ["บุคลากรโรงพยาบาลที่รอเปิดใช้งาน", "HOSPITAL_MEMBER"],
+    ["อสม. ที่รอเปิดใช้งาน", "OSM"],
+  ] as const;
+
+  return (
+    <section className="mt-8 scroll-mt-24" id="workforce-pending" tabIndex={-1}>
+      <h2 className="text-xl font-semibold tracking-[-0.02em]">รอเปิดใช้งาน</h2>
+      <p className="mt-2 text-sm leading-6 text-muted">
+        เลือกรายชื่อเพื่อพิมพ์ใบเปิดใช้งาน ระบบจะออกลิงก์ใหม่ให้ทุกคนที่เลือกและยกเลิกลิงก์เดิม
+        ลิงก์ใช้ได้ 72 ชั่วโมงและใช้ได้ครั้งเดียว ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเอง
+      </p>
+      <div className="mt-4 grid gap-6 @5xl/workspace:grid-cols-2">
+        {groups.map(([title, kind]) => {
+          const groupRows = pending.filter((row) => row.kind === kind);
+
+          return groupRows.length > 0 ? (
+            <PendingActivationGroup
+              anyPending={anyPending}
+              hospitalId={hospitalId}
+              key={kind}
+              kind={kind}
+              remoteAction={remoteAction}
+              remotePending={remotePending}
+              rows={groupRows}
+              title={title}
+            />
+          ) : null;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function BulkAddPanel({
+  hospitalId,
+  canAddStaff,
+  state,
+  action,
+  pending,
+  anyPending,
+}: {
+  hospitalId: string;
+  canAddStaff: boolean;
+  state: WorkforceBulkActionState;
+  action: (formData: FormData) => void;
+  pending: boolean;
+  anyPending: boolean;
+}): React.JSX.Element {
+  const [kind, setKind] = useState<WorkforceKind>(canAddStaff ? "HOSPITAL_MEMBER" : "OSM");
+  const [rowCount, setRowCount] = useState(INITIAL_BULK_ROWS);
+  const duplicateRows = new Set(state.status === "ERROR" ? (state.duplicateRowNumbers ?? []) : []);
+  const result = state.status === "SUCCESS" ? state.result : null;
+  const counts = {
+    created: result?.rows.filter(({ status }) => status === "created").length ?? 0,
+    existing: result?.rows.filter(({ status }) => status === "existing").length ?? 0,
+    invalid: result?.rows.filter(({ status }) => status === "invalid").length ?? 0,
+  };
+
+  return (
+    <Panel className="mt-6">
+      <details>
+        <summary className="cursor-pointer text-xl font-semibold tracking-[-0.02em]">
+          เพิ่มหลายคน
+        </summary>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          เพิ่มได้ครั้งละไม่เกิน {MAX_BULK_ROWS} คน ครั้งละหนึ่งประเภท ระบบบันทึกทีละแถว แถวที่มีอยู่แล้วจะไม่ถูกสร้างซ้ำ
+          เลขบัตรประชาชนต้องไม่ซ้ำกันในรายการที่ส่ง หลังบันทึกให้พิมพ์ใบเปิดใช้งานจากส่วน &quot;รอเปิดใช้งาน&quot;
+        </p>
+        <form action={action} className="mt-6 space-y-4">
+          <input name="targetHospitalId" type="hidden" value={hospitalId} />
+          <label className="block max-w-xs space-y-2 text-sm font-semibold">
+            <span>ประเภท</span>
+            <Select
+              name="kind"
+              onChange={(event) => setKind(event.target.value === "OSM" ? "OSM" : "HOSPITAL_MEMBER")}
+              value={kind}
+            >
+              {canAddStaff ? <option value="HOSPITAL_MEMBER">บุคลากรโรงพยาบาล</option> : null}
+              <option value="OSM">อสม.</option>
+            </Select>
+          </label>
+          <div className="space-y-3">
+            {Array.from({ length: rowCount }, (_, index) => (
+              <div
+                className={`grid gap-3 rounded-control border p-3 sm:grid-cols-2 ${
+                  duplicateRows.has(index + 1) ? "border-danger" : "border-border"
+                } ${kind === "HOSPITAL_MEMBER" ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
+                key={index}
+              >
+                <label className="space-y-1 text-xs font-semibold">
+                  <span>แถว {index + 1} · เลขบัตรประชาชน</span>
+                  <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" type="text" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold">
+                  <span>ชื่อ</span>
+                  <Input name="givenName" type="text" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold">
+                  <span>นามสกุล</span>
+                  <Input name="familyName" type="text" />
+                </label>
+                {kind === "HOSPITAL_MEMBER" ? (
+                  <label className="space-y-1 text-xs font-semibold">
+                    <span>วิชาชีพ</span>
+                    <Select defaultValue="" name="profession">
+                      <option value="">เลือกวิชาชีพ</option>
+                      {Object.entries(professionLabels).map(([value, label]) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </Select>
+                  </label>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {rowCount < MAX_BULK_ROWS ? (
+            <Button
+              disabled={anyPending}
+              onClick={() => setRowCount((count) => Math.min(MAX_BULK_ROWS, count + 5))}
+              size="compact"
+              type="button"
+              variant="secondary"
+            >
+              เพิ่มแถว
+            </Button>
+          ) : null}
+          {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
+          {result ? (
+            <Alert variant={counts.invalid > 0 ? "warning" : "success"}>
+              <p className="font-semibold">
+                สร้างใหม่ {counts.created} · มีอยู่แล้ว {counts.existing} · ไม่สำเร็จ {counts.invalid}
+              </p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {result.rows.map((row) => (
+                  <li key={row.rowNumber}>
+                    แถว {row.rowNumber}:{" "}
+                    {row.status === "invalid"
+                      ? `ไม่สำเร็จ · ${bulkReasonLabels[row.reason]}`
+                      : row.status === "created"
+                        ? "สร้างแล้ว"
+                        : "มีอยู่ในโรงพยาบาลนี้แล้ว"}
+                  </li>
+                ))}
+              </ul>
+            </Alert>
+          ) : null}
+          <Button className="w-full" disabled={anyPending} loading={pending} type="submit">
+            {pending ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
+          </Button>
+        </form>
+      </details>
+    </Panel>
+  );
+}
+
 function WorkforceRow({
   row,
   hospitalId,
@@ -335,6 +651,11 @@ export function WorkforceWorkspace({
     WorkforceActivationActionState,
     FormData
   >(startAssistedWorkforceActivationAction, initialWorkforceActivationActionState);
+  const [bulkState, bulkAction, bulkPending] = useActionState<WorkforceBulkActionState, FormData>(
+    provisionWorkforceBulkAction,
+    initialWorkforceBulkActionState,
+  );
+  const isOwner = workforce.viewerScope === "OWNER";
 
   useEffect(() => {
     if (assistedState.status !== "SUCCESS") {
@@ -349,14 +670,21 @@ export function WorkforceWorkspace({
   const staffResult = staffState.status === "SUCCESS" ? staffState.result : null;
   const osmResult = osmState.status === "SUCCESS" ? osmState.result : null;
   const remoteResult = remoteState.status === "SUCCESS" ? remoteState.result : null;
-  const anyPending = staffPending || osmPending || remotePending || assistedPending;
+  const anyPending =
+    staffPending || osmPending || remotePending || assistedPending || bulkPending;
 
   return (
     <div className="content-workspace break-words">
       <PageHeader
-        actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
+        actions={
+          <StatusBadge variant="info">{isOwner ? "เจ้าของโรงพยาบาล" : "สมาชิกโรงพยาบาล"}</StatusBadge>
+        }
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "จัดการบุคลากร" }]}
-        description="เพิ่มบุคลากรและ อสม. รวมถึงจัดการบทบาทเจ้าของโรงพยาบาลและสมาชิกในโรงพยาบาลที่คุณดูแล"
+        description={
+          isOwner
+            ? "เพิ่มบุคลากรและ อสม. รวมถึงจัดการบทบาทเจ้าของโรงพยาบาลและสมาชิกในโรงพยาบาลที่คุณดูแล"
+            : "เพิ่ม อสม. และดูแลการเปิดใช้งานบัญชี อสม. ของโรงพยาบาลที่คุณเป็นสมาชิก"
+        }
         title="จัดการบุคลากรโรงพยาบาล"
       />
 
@@ -380,24 +708,35 @@ export function WorkforceWorkspace({
             ))}
           </Select>
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} · {workforce.hospital.hospitalCode} เท่านั้น ใช้สิทธิ์เจ้าของโรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
+            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} · {workforce.hospital.hospitalCode} เท่านั้น ใช้สิทธิ์{isOwner ? "เจ้าของ" : "สมาชิก"}โรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
         </Panel>
 
         <nav aria-label="ส่วนงานบุคลากรโรงพยาบาล" className="mt-5 flex flex-wrap gap-2">
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-roster" prefetch={false}>รายชื่อในโรงพยาบาล</Link>
-          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>แบบฟอร์มเพิ่มบุคลากรและ อสม.</Link>
+          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
         </nav>
 
         {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
         {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
 
-        <div className="mt-8 grid scroll-mt-24 gap-6 @5xl/workspace:grid-cols-2" id="workforce-roster" tabIndex={-1}>
-          {([
-            ["บุคลากรโรงพยาบาล", staffRows],
-            ["อสม.", osmRows],
-          ] as const).map(([title, rows]) => (
+        <PendingActivationSection
+          anyPending={anyPending}
+          hospitalId={selectedHospitalId}
+          remoteAction={remoteAction}
+          remotePending={remotePending}
+          rows={workforce.rows}
+        />
+
+        <div className={`mt-8 grid scroll-mt-24 gap-6 ${isOwner ? "@5xl/workspace:grid-cols-2" : ""}`} id="workforce-roster" tabIndex={-1}>
+          {(isOwner
+            ? ([
+                ["บุคลากรโรงพยาบาล", staffRows],
+                ["อสม.", osmRows],
+              ] as const)
+            : ([["อสม.", osmRows]] as const)
+          ).map(([title, rows]) => (
             <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface" key={title}>
               <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
@@ -425,7 +764,8 @@ export function WorkforceWorkspace({
           ))}
         </div>
 
-        <div className="mt-6 grid scroll-mt-24 gap-6 @5xl/workspace:grid-cols-2" id="workforce-provision" tabIndex={-1}>
+        <div className={`mt-6 grid scroll-mt-24 gap-6 ${isOwner ? "@5xl/workspace:grid-cols-2" : ""}`} id="workforce-provision" tabIndex={-1}>
+          {isOwner ? (
           <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>
@@ -465,6 +805,7 @@ export function WorkforceWorkspace({
               </Button>
             </form>
           </Panel>
+          ) : null}
 
           <Panel>
             <div>
@@ -500,6 +841,15 @@ export function WorkforceWorkspace({
             </form>
           </Panel>
         </div>
+
+        <BulkAddPanel
+          action={bulkAction}
+          anyPending={anyPending}
+          canAddStaff={isOwner}
+          hospitalId={selectedHospitalId}
+          pending={bulkPending}
+          state={bulkState}
+        />
       </div>
     </div>
   );

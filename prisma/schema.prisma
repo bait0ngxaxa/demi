@@ -162,6 +162,11 @@ enum WorkforceActivationMode {
   ASSISTED
 }
 
+enum WorkforceActivationPurpose {
+  ACTIVATION
+  RESET
+}
+
 enum AppointmentType {
   FOLLOW_UP
   CONSULTATION
@@ -1358,6 +1363,8 @@ model WorkforceActivation {
   userId          String                  @db.Uuid
   tokenHash       String                  @unique @db.VarChar(64)
   mode            WorkforceActivationMode @default(REMOTE)
+  purpose         WorkforceActivationPurpose @default(ACTIVATION)
+  failedVerificationCount Int             @default(0)
   expiresAt       DateTime
   claimedAt       DateTime?
   usedAt          DateTime?

@@ -89,6 +89,7 @@ export const workforceActivationRequestSchema = z
 
 export const workforceActivationCompletionSchema = z
   .object({
+    nationalId: thaiNationalIdSchema,
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
   })
@@ -104,6 +105,38 @@ export const workforceActivationCompletionSchema = z
   });
 
 export const workforceActivationTokenSchema = z.string().trim().min(1).max(256);
+
+export const WORKFORCE_BULK_MAX_ROWS = 50;
+export const WORKFORCE_SLIP_MAX_PEOPLE = 50;
+
+export const workforcePasswordResetRequestSchema = z
+  .object({
+    userId: z.uuid(),
+    targetHospitalId: workforceTargetHospitalIdSchema,
+  })
+  .strict();
+
+// Rows are validated one by one so a single invalid row never blocks the others.
+export const workforceBulkProvisionSchema = z
+  .object({
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    kind: workforceKindSchema,
+    rows: z.array(z.unknown()).min(1).max(WORKFORCE_BULK_MAX_ROWS),
+  })
+  .strict();
+
+export const workforceActivationSlipRequestSchema = z
+  .object({
+    targetHospitalId: workforceTargetHospitalIdSchema,
+    kind: workforceKindSchema,
+    userIds: z.array(z.uuid()).min(1).max(WORKFORCE_SLIP_MAX_PEOPLE),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (new Set(input.userIds).size !== input.userIds.length) {
+      context.addIssue({ code: "custom", path: ["userIds"], message: "Duplicate user selection" });
+    }
+  });
 
 export type HospitalMemberProvisionInput = z.infer<typeof hospitalMemberProvisionSchema>;
 export type OsmProvisionInput = z.infer<typeof osmProvisionSchema>;
@@ -126,6 +159,11 @@ export type WorkforceActivationRequestInput = z.infer<
 >;
 export type WorkforceActivationCompletionInput = z.infer<
   typeof workforceActivationCompletionSchema
+>;
+export type WorkforcePasswordResetRequestInput = z.infer<typeof workforcePasswordResetRequestSchema>;
+export type WorkforceBulkProvisionInput = z.infer<typeof workforceBulkProvisionSchema>;
+export type WorkforceActivationSlipRequestInput = z.infer<
+  typeof workforceActivationSlipRequestSchema
 >;
 export type WorkforceKind = z.infer<typeof workforceKindSchema>;
 export type WorkforceActivationMode = z.infer<typeof workforceActivationModeSchema>;

@@ -6,7 +6,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import {
   listWorkforce,
-  listWorkforceOwnerHospitals,
+  listWorkforceHospitals,
 } from "@/modules/workforce/services/workforce-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -39,7 +39,7 @@ async function resolveActor() {
 export default async function WorkforcePage({ searchParams }: WorkforcePageProps) {
   await connection();
   const actor = await resolveActor();
-  const hospitals = await listWorkforceOwnerHospitals(actor);
+  const hospitals = await listWorkforceHospitals(actor);
 
   if (hospitals.length === 0) {
     redirect("/app");

@@ -120,8 +120,16 @@ function HospitalWorkspaceSection({
           ) : null}
           {administrationActions.length > 0 ? (
             <div className="mt-6">
-              <h4 className="font-semibold text-text">บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง</h4>
-              <p className="mb-3 mt-1 text-sm leading-6 text-text-muted">เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้ สมาชิกทั่วไปไม่ได้รับสิทธิ์บริหารจากบทบาทบุคลากร</p>
+              <h4 className="font-semibold text-text">
+                {workspace.administrationScope === "OWNER"
+                  ? "บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง"
+                  : "จัดการ อสม. · สิทธิ์สมาชิกโดยตรง"}
+              </h4>
+              <p className="mb-3 mt-1 text-sm leading-6 text-text-muted">
+                {workspace.administrationScope === "OWNER"
+                  ? "เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้ สมาชิกทั่วไปไม่ได้รับสิทธิ์บริหารจากบทบาทบุคลากร"
+                  : "สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น การบริหารบุคลากรและการจัดการอื่นเป็นสิทธิ์ของเจ้าของโรงพยาบาล"}
+              </p>
               <WorkspaceActionList actions={administrationActions} />
             </div>
           ) : null}

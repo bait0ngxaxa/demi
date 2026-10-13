@@ -240,6 +240,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await completeWorkforceActivation(
       result.activationToken!,
       {
+        nationalId: nationalIds.staff,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
       },
@@ -404,6 +405,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       completeWorkforceActivation(
         result.activationToken!,
         {
+          nationalId: nationalIds.activationConcurrent,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
         },
@@ -414,6 +416,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await completeWorkforceActivation(
       regenerated.activationToken,
       {
+        nationalId: nationalIds.activationConcurrent,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
       },
@@ -449,6 +452,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     const completion = completeWorkforceActivation(
       result.activationToken!,
       {
+        nationalId: nationalIds.activationConcurrent,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
       },
@@ -497,6 +501,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       completeWorkforceActivation(
         result.activationToken!,
         {
+          nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
         },
@@ -549,6 +554,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       completeWorkforceActivation(
         result.activationToken!,
         {
+          nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
         },
@@ -574,6 +580,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       completeWorkforceActivation(
         result.activationToken!,
         {
+          nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
         },
@@ -614,6 +621,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     });
     const provisionIdentity = vi.fn().mockImplementation(createProvisioner("55555555-5555-4555-8555-555555555555"));
     const input = {
+      nationalId: nationalIds.activationConcurrent,
       password: "integration-workforce-password",
       passwordConfirmation: "integration-workforce-password",
     };
@@ -994,7 +1002,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       kind: "osm",
       relationshipId: osm.relationshipId,
     });
-    expect(osmDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false });
+    expect(osmDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false, resetPassword: false });
 
     const ownerMembership = await prisma.hospitalMembership.findFirstOrThrow({
       where: { userId: actor.userId, hospitalId, membershipType: MembershipType.OWNER },
@@ -1005,6 +1013,6 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       relationshipId: ownerMembership.id,
     });
     expect(ownerDetail.membershipType).toBe(MembershipType.OWNER);
-    expect(ownerDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false });
+    expect(ownerDetail.actions).toEqual({ updateProfession: false, suspend: false, restore: false, resetPassword: false });
   });
 });

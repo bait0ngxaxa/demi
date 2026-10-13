@@ -30,7 +30,7 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 
 vi.mock("@/modules/workforce/services/workforce-service", () => ({
   listWorkforce: mockedListWorkforce,
-  listWorkforceOwnerHospitals: mockedListWorkforceOwnerHospitals,
+  listWorkforceHospitals: mockedListWorkforceOwnerHospitals,
 }));
 
 const hospitals = [

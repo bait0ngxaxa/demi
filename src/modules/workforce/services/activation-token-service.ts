@@ -12,7 +12,7 @@ import {
   type WorkforceActivationMode as WorkforceActivationModeValue,
 } from "../schemas/workforce-schemas";
 
-export const WORKFORCE_REMOTE_ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
+export const WORKFORCE_REMOTE_ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000;
 export const WORKFORCE_ASSISTED_ACTIVATION_TTL_MS = 15 * 60 * 1000;
 
 export type ActivationCredential = {

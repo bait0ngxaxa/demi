@@ -22,6 +22,12 @@ import {
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
+import { WorkforcePasswordResetControl } from "../../../workforce/workforce-password-reset-control";
+import {
+  listHospitalOwnersForPasswordReset,
+  type WorkforceHospitalOwnerForReset,
+} from "@/modules/workforce/services/workforce-service";
+
 import { HospitalGovernanceControls } from "./hospital-governance-controls";
 
 export const metadata: Metadata = {
@@ -128,9 +134,11 @@ export default async function HospitalGovernanceDetailPage({
   const actor = await requirePlatformAdmin();
   const { hospitalId } = await params;
   let hospital: HospitalGovernanceProjection;
+  let owners: WorkforceHospitalOwnerForReset[] = [];
 
   try {
     hospital = await getHospitalGovernanceDetail(actor, hospitalId);
+    owners = await listHospitalOwnersForPasswordReset(actor, hospitalId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -176,6 +184,31 @@ export default async function HospitalGovernanceDetailPage({
             </p>
           </Alert>
         )}
+
+        {hospital.status === HospitalStatus.ACTIVE && owners.length > 0 ? (
+          <section aria-labelledby="owner-reset-heading" className="space-y-4">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]" id="owner-reset-heading">
+              รีเซ็ตรหัสผ่านเจ้าของโรงพยาบาล
+            </h2>
+            <p className="text-sm leading-6 text-text-muted">
+              การรีเซ็ตรหัสผ่านของเจ้าของโรงพยาบาลทำได้โดยผู้ดูแลระบบเท่านั้น และต้องทำต่อหน้าเจ้าของบัญชี
+            </p>
+            {owners.map((owner) =>
+              owner.canReset ? (
+                <WorkforcePasswordResetControl
+                  key={owner.userId}
+                  subjectLabel={owner.displayName}
+                  targetHospitalId={hospital.id}
+                  userId={owner.userId}
+                />
+              ) : (
+                <Alert key={owner.userId} variant="neutral">
+                  {owner.displayName} · ยังไม่สามารถรีเซ็ตรหัสผ่านผ่านหน้านี้ได้
+                </Alert>
+              ),
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );

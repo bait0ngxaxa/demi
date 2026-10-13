@@ -193,3 +193,81 @@ describe("workforce policy", () => {
     },
   );
 });
+
+describe("workforce policy: ACTIVE MEMBER OSM access (ADR-0008 amendment D1)", () => {
+  function memberActor(
+    overrides: { status?: MembershipStatus; hospitalStatus?: HospitalStatus; hospital?: string } = {},
+  ) {
+    return createActor({
+      hospitalMemberships: [
+        {
+          hospitalId: overrides.hospital ?? hospitalId,
+          membershipType: MembershipType.MEMBER,
+          profession: null,
+          status: overrides.status ?? MembershipStatus.ACTIVE,
+          hospitalStatus: overrides.hospitalStatus ?? HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+  }
+
+  it.each([WORKFORCE_CAPABILITIES.osmProvision, WORKFORCE_CAPABILITIES.osmRead])(
+    "allows an ACTIVE direct MEMBER for %s with a distinct reason",
+    (capability) => {
+      expect(
+        decideWorkforcePolicy({ actor: memberActor(), capability, targetHospitalId: hospitalId }),
+      ).toEqual({ allowed: true, reason: "active_hospital_member_osm_access" });
+    },
+  );
+
+  it.each([
+    WORKFORCE_CAPABILITIES.read,
+    WORKFORCE_CAPABILITIES.create,
+    WORKFORCE_CAPABILITIES.update,
+    WORKFORCE_CAPABILITIES.suspend,
+    WORKFORCE_CAPABILITIES.restore,
+    WORKFORCE_CAPABILITIES.osmSuspend,
+    WORKFORCE_CAPABILITIES.osmRestore,
+    WORKFORCE_CAPABILITIES.activationRevoke,
+  ])("keeps %s OWNER-only for a MEMBER", (capability) => {
+    expect(
+      decideWorkforcePolicy({ actor: memberActor(), capability, targetHospitalId: hospitalId })
+        .allowed,
+    ).toBe(false);
+    expect(
+      decideWorkforcePolicy({ actor: createActor(), capability, targetHospitalId: hospitalId })
+        .allowed,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["inactive membership", memberActor({ status: MembershipStatus.SUSPENDED })],
+    ["inactive Hospital", memberActor({ hospitalStatus: HospitalStatus.SUSPENDED })],
+    ["another Hospital", memberActor({ hospital: "44444444-4444-4444-8444-444444444444" })],
+    ["no HOSPITAL role", createActor({ ...memberActor(), roles: [Role.OSM] })],
+  ])("denies a MEMBER with %s", (_label, actor) => {
+    expect(
+      decideWorkforcePolicy({
+        actor,
+        capability: WORKFORCE_CAPABILITIES.osmProvision,
+        targetHospitalId: hospitalId,
+      }).allowed,
+    ).toBe(false);
+  });
+
+  it("does not let an OSM relationship alone provision OSM", () => {
+    expect(
+      decideWorkforcePolicy({
+        actor: createActor({
+          roles: [Role.HOSPITAL],
+          hospitalMemberships: [],
+          osmHospitalRelationships: [
+            { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+          ],
+        }),
+        capability: WORKFORCE_CAPABILITIES.osmProvision,
+        targetHospitalId: hospitalId,
+      }).allowed,
+    ).toBe(false);
+  });
+});

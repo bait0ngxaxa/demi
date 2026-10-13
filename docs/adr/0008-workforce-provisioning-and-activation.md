@@ -1,6 +1,6 @@
 # ADR-0008: Workforce Provisioning and First-Time Activation
 
-- Status: Accepted
+- Status: Accepted (amended 2026-10-14)
 - Date: 2026-08-14
 
 ## Context
@@ -201,6 +201,78 @@ ADR นี้ไม่ตัดสิน:
 - การสร้าง OWNER เพิ่ม, multiple-owner governance หรือ ownership transfer
 - generic RBAC/ACL framework
 - LIFF, ThaID, native application และ SMS/email provider integration
+
+## Amendment 2026-10-14: Workforce onboarding v2
+
+ส่วนนี้แก้ไขและ supersede ข้อความเดิมของ ADR-0008 เฉพาะประเด็นที่ระบุด้านล่าง ข้อความเดิมด้านบนคงไว้เพื่อ
+ประวัติการตัดสินใจ ส่วนที่ไม่ถูกกล่าวถึงที่นี่ยังมีผลตามเดิม (Person/User resolution และ reuse, multi-role,
+multi-Hospital, opaque one-time token แบบ hash-only, concurrency-safe claim, provider I/O นอก lock พร้อม
+compensation, Serializable retry, login ด้วยเลขบัตรประชาชนและรหัสผ่านที่ผู้ใช้เป็นเจ้าของ)
+
+### D1: ACTIVE MEMBER เพิ่ม OSM ได้ (supersedes "Trusted workforce authority" เฉพาะ `osm:provision`)
+
+ข้อความเดิมที่ว่า provisioning workforce เป็น OWNER เท่านั้นถูก supersede **เฉพาะ capability `osm:provision`**
+รวมถึงการออกและ regenerate activation ของ OSM และการอ่านรายชื่อ/รายละเอียด OSM (`osm:read`) actor ที่ได้สิทธิ์ต้อง
+เป็น `Role = HOSPITAL` ที่มี `HospitalMembership` โดยตรงแบบ `OWNER` หรือ `MEMBER`, `status = ACTIVE` ใน
+Hospital ที่ `ACTIVE` เหตุผลที่อนุญาตของ MEMBER คือ `active_hospital_member_osm_access`
+
+ทุก capability อื่นยังเป็น OWNER เท่านั้น: provision บุคลากร, suspend/restore/แก้วิชาชีพ, revoke activation
+(`activation:revoke`), reset รหัสผ่าน, การจัดการ OWNER และการมอบหมายผู้ป่วย MEMBER เห็นรายการ OSM,
+สถานะรอเปิดใช้งาน และหน้ารายละเอียด OSM แบบอ่านอย่างเดียว แต่ไม่เห็นรายชื่อบุคลากร UI ซ่อนปุ่มเพื่อความชัดเจน
+เท่านั้น server re-check สิทธิ์จาก database ทุกครั้ง
+
+การ revoke ที่เป็น compensation ของ assisted handoff (ผู้ออก token ปิด session ไม่สำเร็จ) ใช้ operation ภายใน
+ที่ยกเลิกได้เฉพาะ credential ที่ actor คนเดียวกันเพิ่งออกและยังไม่ถูกใช้ จึงไม่เปิดสิทธิ์ revoke ทั่วไปให้ MEMBER
+
+### D2: อายุลิงก์ REMOTE เป็น 72 ชั่วโมง (supersedes "24 hours")
+
+copy link/QR/ใบเปิดใช้งานที่พิมพ์มี expiry 72 ชั่วโมง เพราะการส่งต่อจริงมักเปิดในวันถัดไป assisted ยังคง 15 นาที
+ไม่มี token framework เพิ่ม
+
+### Identity check ตอน activation และ reset
+
+การถือ token อย่างเดียวไม่เพียงพออีกต่อไป (extends "Security Properties"):
+
+- หน้า activation แสดงชื่อที่ถูก mask (เช่น `สม*** ใจ***`) ที่ server resolve จาก token ไม่แสดงชื่อเต็มหรือเลขบัตร
+- ผู้ใช้ต้องกรอกเลขบัตรประชาชนเต็ม server ตรวจกับ Person ของ token ด้วย identity hashing เดิมและเทียบแบบ
+  constant-time ไม่ตรงให้ error เดียวกับ token ใช้ไม่ได้ จึงไม่เปิดเผยว่าเลขบัตรมีอยู่ที่อื่นหรือไม่
+- นับครั้งที่ผิดใน `WorkforceActivation.failedVerificationCount` ครบ 5 ครั้งให้ตั้ง `revokedAt` และ audit
+  ผู้ใช้ต้องขอ token ใหม่ การนับอยู่ระดับ token ไม่เพิ่ม rate-limit infrastructure
+- ผลที่ยอมรับ: ผู้ที่ได้ลิงก์ไปสุ่มเลขบัตรสามารถทำให้ token ของเจ้าตัวถูกยกเลิกได้ ผู้ดูแลออกลิงก์ใหม่เพื่อแก้
+
+### D3: Workforce password reset แบบ assisted (ต่อหน้าเท่านั้น)
+
+เพิ่ม `purpose` (`ACTIVATION` | `RESET`) ใน `WorkforceActivation` token ใช้ข้าม purpose ไม่ได้ทั้งสองทิศ
+ไม่นับเป็นครั้งที่ผิด และไม่ consume token อีกฝั่ง
+
+- ออกได้เฉพาะกับ User `ACTIVE` ที่มี `authSubject` และมี relationship `ACTIVE` ใน Hospital เป้าหมาย
+  ประเภทเป้าหมายถูกอนุมานจาก database ไม่รับจาก client
+- OWNER reset MEMBER staff และ OSM ของ Hospital เดียวกันได้; OWNER reset OWNER ไม่ได้; Platform `ADMIN`
+  reset OWNER ของ Hospital ใดก็ได้ (ไม่ reset ประเภทอื่น); ไม่มีใคร reset บัญชีตัวเอง; MEMBER reset ไม่ได้
+- mode เป็น ASSISTED เท่านั้น 15 นาที การออกใหม่ revoke token เดิมของ User เสมอ
+- ผู้ใช้ทำตาม identity check เดียวกัน แล้ว server เรียก `replacePasswordAndRevokeRecoverySessions` เพื่อเปลี่ยน
+  รหัสผ่านและยกเลิก session เดิมทั้งหมด provider I/O อยู่นอก lock ถ้า provider หรือ local finalization ล้มเหลว
+  ไม่รายงานสำเร็จและคืน claim ให้ใช้ token เดิมได้ (การเปลี่ยนรหัสผ่านเป็น idempotent จึงไม่ต้องมี compensation
+  แบบลบ identity) ถ้าคืน claim ไม่ได้ให้เข้า reconciliation
+- audit: `workforce_password_reset.issued | completed | revoked | verification_failed` ระบุ actor/target
+  ไม่มี secret
+- ผลที่ยอมรับ: ความปลอดภัยพึ่งพาการยืนยันตัวบุคคลต่อหน้าของ OWNER/ADMIN เช่นเดียวกับ assisted activation
+  ไม่มี self-service "forgot password" และไม่มี OTP
+
+### การส่งมอบ activation
+
+- ใบเปิดใช้งานแบบพิมพ์: server ออก REMOTE token ใหม่ (revoke ของเดิม) สูงสุด 50 คนต่อครั้ง และตอบเป็นหน้า HTML
+  ที่ `Cache-Control: no-store` ซึ่ง plaintext token อยู่ใน QR ของตอบกลับนั้นเท่านั้น ไม่ persist ไม่ log
+  ไม่ใส่ audit
+- เพิ่มหลายคน: สูงสุด 50 แถวต่อครั้ง หนึ่งประเภทต่อครั้ง แต่ละแถวใช้ logic provisioning เดิมใน Serializable
+  transaction ของตัวเอง เลขบัตรซ้ำภายในรายการเดียวกันถูกปฏิเสธก่อนเขียน ไม่คืน plaintext token
+
+### Persistence / migration
+
+`20261014100000_workforce_activation_purpose` เพิ่ม enum `WorkforceActivationPurpose`, คอลัมน์ `purpose`
+(default `ACTIVATION`) และ `failedVerificationCount` (default 0, `CHECK >= 0`) แถวเดิมจึงเป็น activation ที่ยังไม่
+มีความพยายามที่ผิด ไม่มีการเปลี่ยน schema อื่น และ partial unique index "หนึ่ง token ที่ใช้ได้ต่อ User" ครอบคลุมทั้ง
+สอง purpose
 
 ## References
 

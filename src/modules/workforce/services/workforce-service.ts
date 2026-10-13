@@ -8,8 +8,10 @@ import {
   Role,
   UserStatus,
   WorkforceActivationMode,
+  WorkforceActivationPurpose,
   type PrismaClient,
 } from "@prisma/client";
+import { z } from "zod";
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getPrisma } from "@/lib/db/prisma";
@@ -34,7 +36,17 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import { assertWorkforcePolicy, WORKFORCE_CAPABILITIES } from "../policies/workforce-policy";
+import { replacePasswordAndRevokeRecoverySessions } from "@/modules/account-security/adapters/supabase-account-security-provider";
+
+import {
+  assertWorkforcePasswordResetPolicy,
+  type WorkforceResetTargetKind,
+} from "../policies/workforce-password-reset-policy";
+import {
+  assertWorkforcePolicy,
+  decideWorkforcePolicy,
+  WORKFORCE_CAPABILITIES,
+} from "../policies/workforce-policy";
 import {
   assertHospitalOwnerPolicy,
   HOSPITAL_OWNER_CAPABILITIES,
@@ -44,7 +56,11 @@ import {
   osmProvisionSchema,
   workforceActivationCompletionSchema,
   workforceActivationRequestSchema,
+  workforceActivationSlipRequestSchema,
   workforceActivationTokenSchema,
+  workforceBulkProvisionSchema,
+  workforceTargetHospitalIdSchema,
+  workforcePasswordResetRequestSchema,
   workforceDetailRequestSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipTransitionSchema,
@@ -59,6 +75,8 @@ import {
   type OsmProvisionInput,
   type WorkforceActivationCompletionInput,
   type WorkforceActivationRequestInput,
+  type WorkforceActivationSlipRequestInput,
+  type WorkforceBulkProvisionInput,
   type WorkforceActivationMode as WorkforceActivationModeValue,
   type WorkforceDetailKind,
   type WorkforceKind,
@@ -71,6 +89,11 @@ import {
   toPrismaActivationMode,
   type ActivationCredentialGenerator,
 } from "./activation-token-service";
+import {
+  matchesPersonNationalId,
+  maskPersonName,
+  WORKFORCE_MAX_FAILED_VERIFICATIONS,
+} from "./activation-identity";
 
 export type WorkforceDatabase = PrismaClient;
 
@@ -82,6 +105,11 @@ export type WorkforceServiceDependencies = {
     userId: string;
     password: string;
   }) => Promise<ProvisionPasswordAuthIdentityResult>;
+  replacePassword?: (input: {
+    userId: string;
+    authSubject: string;
+    newPassword: string;
+  }) => Promise<void>;
   deleteProviderIdentity?: (authSubject: string) => Promise<void>;
   detachAuthSubject?: (input: { userId: string; authSubject: string }) => Promise<boolean>;
   transactionRetries?: number;
@@ -103,11 +131,16 @@ export type WorkforceProvisioningResult = {
   idempotent: boolean;
 };
 
-export type WorkforceOwnerHospital = {
+export type WorkforceViewerScope = "OWNER" | "MEMBER";
+
+export type WorkforceHospital = {
   id: string;
   hospitalCode: string;
   name: string;
+  scope: WorkforceViewerScope;
 };
+
+export type WorkforceActivationStatus = "PENDING" | "EXPIRED";
 
 export type WorkforceListRow = {
   id: string;
@@ -119,17 +152,20 @@ export type WorkforceListRow = {
   relationshipStatus: MembershipStatus;
   accountStatus: UserStatus;
   activationRequired: boolean;
+  activationStatus: WorkforceActivationStatus | null;
   activationExpiresAt: Date | null;
   activationMode: WorkforceActivationModeValue | null;
 };
 
 export type WorkforceListResult = {
-  hospital: WorkforceOwnerHospital;
+  hospital: Omit<WorkforceHospital, "scope">;
+  viewerScope: WorkforceViewerScope;
   rows: WorkforceListRow[];
 };
 
 export type WorkforceDetail = {
   relationshipId: string;
+  userId: string;
   kind: WorkforceDetailKind;
   hospital: {
     id: string;
@@ -158,10 +194,12 @@ export type WorkforceDetail = {
     canPromote: boolean;
     canDemote: boolean;
   };
+  viewerScope: WorkforceViewerScope;
   actions: {
     updateProfession: boolean;
     suspend: boolean;
     restore: boolean;
+    resetPassword: boolean;
   };
 };
 
@@ -202,10 +240,21 @@ type WorkforceIdentity = {
   reusedExistingUser: boolean;
 };
 
+export type WorkforceActivationIssueResult = {
+  activationId: string;
+  userId: string;
+  hospitalId: string;
+  kind: WorkforceKind;
+  activationToken: string;
+  activationExpiresAt: Date;
+  activationMode: WorkforceActivationModeValue;
+};
+
 type ActivationClaim = {
   activationId: string;
   userId: string;
   claimedAt: Date;
+  authSubject: string | null;
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
@@ -213,6 +262,7 @@ const workforceActivationSelect = {
   id: true,
   userId: true,
   mode: true,
+  purpose: true,
   expiresAt: true,
   claimedAt: true,
   usedAt: true,
@@ -242,6 +292,7 @@ const workforceMembershipDetailSelect = {
   user: {
     select: {
       status: true,
+      authSubject: true,
       roles: { select: { role: true } },
       person: {
         select: {
@@ -269,6 +320,7 @@ const workforceOsmDetailSelect = {
   user: {
     select: {
       status: true,
+      authSubject: true,
       roles: { select: { role: true } },
       person: {
         select: {
@@ -343,10 +395,11 @@ async function runSerializable<T>(
   }
 }
 
-async function assertOwnerInDatabase(
+async function assertHospitalActorInDatabase(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
   targetHospitalId: string,
+  allowedMembershipTypes: readonly MembershipType[],
 ): Promise<void> {
   const actor = await transaction.user.findUnique({
     where: { id: actorUserId },
@@ -363,20 +416,45 @@ async function assertOwnerInDatabase(
     throw new ForbiddenError();
   }
 
-  const ownerMembership = await transaction.hospitalMembership.findFirst({
+  const actorMembership = await transaction.hospitalMembership.findFirst({
     where: {
       userId: actorUserId,
       hospitalId: targetHospitalId,
-      membershipType: MembershipType.OWNER,
+      membershipType: { in: [...allowedMembershipTypes] },
       status: MembershipStatus.ACTIVE,
       hospital: { status: HospitalStatus.ACTIVE },
     },
     select: { id: true },
   });
 
-  if (!ownerMembership) {
+  if (!actorMembership) {
     throw new ForbiddenError();
   }
+}
+
+async function assertOwnerInDatabase(
+  transaction: Prisma.TransactionClient,
+  actorUserId: string,
+  targetHospitalId: string,
+): Promise<void> {
+  await assertHospitalActorInDatabase(transaction, actorUserId, targetHospitalId, [
+    MembershipType.OWNER,
+  ]);
+}
+
+// ADR-0008 amendment 2026-10-14 (D1): an ACTIVE MEMBER may provision OSM only.
+async function assertWorkforceProvisionerInDatabase(
+  transaction: Prisma.TransactionClient,
+  actorUserId: string,
+  targetHospitalId: string,
+  kind: WorkforceKind,
+): Promise<void> {
+  await assertHospitalActorInDatabase(
+    transaction,
+    actorUserId,
+    targetHospitalId,
+    kind === "OSM" ? [MembershipType.OWNER, MembershipType.MEMBER] : [MembershipType.OWNER],
+  );
 }
 
 function assertActorPolicy(
@@ -726,7 +804,12 @@ async function createOrReuseWorkforceIdentity(
     dependencies: WorkforceServiceDependencies;
   },
 ): Promise<WorkforceIdentity> {
-  await assertOwnerInDatabase(transaction, input.actorUserId, input.hospitalId);
+  await assertWorkforceProvisionerInDatabase(
+    transaction,
+    input.actorUserId,
+    input.hospitalId,
+    input.kind,
+  );
 
   const person = await resolvePerson(
     {
@@ -946,10 +1029,10 @@ export async function provisionOsm(
   return provisionWorkforce(actor, "OSM", parsed.data, dependencies);
 }
 
-export async function listWorkforceOwnerHospitals(
+export async function listWorkforceHospitals(
   actor: ActorContext | null | undefined,
   database: WorkforceDatabase = getPrisma(),
-): Promise<WorkforceOwnerHospital[]> {
+): Promise<WorkforceHospital[]> {
   if (!actor?.roles.includes(Role.HOSPITAL)) {
     throw new ForbiddenError();
   }
@@ -967,22 +1050,37 @@ export async function listWorkforceOwnerHospitals(
       throw new ForbiddenError();
     }
 
+    // ADR-0008 amendment 2026-10-14 (D1): MEMBER scope is limited to OSM; scope is returned
+    // so callers can hide staff management, but every operation re-checks on the server.
     const hospitals = await database.hospital.findMany({
       where: {
         status: HospitalStatus.ACTIVE,
         memberships: {
           some: {
             userId: actor.userId,
-            membershipType: MembershipType.OWNER,
+            membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
             status: MembershipStatus.ACTIVE,
           },
         },
       },
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }],
-      select: { id: true, hospitalCode: true, name: true },
+      select: {
+        id: true,
+        hospitalCode: true,
+        name: true,
+        memberships: {
+          where: { userId: actor.userId, status: MembershipStatus.ACTIVE },
+          select: { membershipType: true },
+        },
+      },
     });
 
-    return hospitals;
+    return hospitals.map(({ memberships, ...hospital }) => ({
+      ...hospital,
+      scope: memberships.some(({ membershipType }) => membershipType === MembershipType.OWNER)
+        ? ("OWNER" as const)
+        : ("MEMBER" as const),
+    }));
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
       throw error;
@@ -1004,13 +1102,16 @@ type WorkforceOsmDetailRecord = Prisma.OsmHospitalRelationshipGetPayload<{
   select: typeof workforceOsmDetailSelect;
 }>;
 
-function activeOwnerHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+function activeHospitalActorWhere(
+  actorUserId: string,
+  membershipTypes: readonly MembershipType[],
+): Prisma.HospitalWhereInput {
   return {
     status: HospitalStatus.ACTIVE,
     memberships: {
       some: {
         userId: actorUserId,
-        membershipType: MembershipType.OWNER,
+        membershipType: { in: [...membershipTypes] },
         status: MembershipStatus.ACTIVE,
         user: {
           status: UserStatus.ACTIVE,
@@ -1057,6 +1158,9 @@ async function findDetailActivation(
 
 function toWorkforceDetailActions(input: {
   kind: WorkforceDetailKind;
+  viewerScope: WorkforceViewerScope;
+  isSelf: boolean;
+  hasAuthSubject: boolean;
   membershipType: MembershipType | null;
   accountStatus: UserStatus;
   relationshipStatus: MembershipStatus;
@@ -1064,6 +1168,11 @@ function toWorkforceDetailActions(input: {
   hasOsmRole: boolean;
   currentAssignmentCount: number | null;
 }): WorkforceDetail["actions"] {
+  // MEMBER is read-only for OSM: no lifecycle or reset controls (ADR-0008 amendment, D1).
+  if (input.viewerScope !== "OWNER") {
+    return { updateProfession: false, suspend: false, restore: false, resetPassword: false };
+  }
+
   const canManageStaff =
     input.kind === "staff" &&
     input.membershipType === MembershipType.MEMBER &&
@@ -1082,6 +1191,14 @@ function toWorkforceDetailActions(input: {
       (canManageStaff || canManageOsm) && input.relationshipStatus === MembershipStatus.ACTIVE,
     restore:
       (canManageStaff || canManageOsm) && input.relationshipStatus === MembershipStatus.SUSPENDED,
+    // D3: an OWNER resets MEMBER staff and OSM only; never themselves or another OWNER.
+    resetPassword:
+      !input.isSelf &&
+      input.hasAuthSubject &&
+      input.accountStatus === UserStatus.ACTIVE &&
+      input.relationshipStatus === MembershipStatus.ACTIVE &&
+      input.hospitalStatus === HospitalStatus.ACTIVE &&
+      (input.kind === "osm" ? input.hasOsmRole : input.membershipType === MembershipType.MEMBER),
   };
 }
 
@@ -1129,6 +1246,7 @@ function toWorkforceDetail(
   activation: Awaited<ReturnType<typeof findDetailActivation>>,
   currentAssignmentCount: number | null,
   eligibleOwnerCount: number | null,
+  viewer: { scope: WorkforceViewerScope; userId: string },
 ): WorkforceDetail {
   const membershipType = kind === "staff" ? (record as WorkforceMembershipDetailRecord).membershipType : null;
   const profession = kind === "staff" ? (record as WorkforceMembershipDetailRecord).profession : null;
@@ -1148,6 +1266,7 @@ function toWorkforceDetail(
 
   return {
     relationshipId: record.id,
+    userId: record.userId,
     kind,
     hospital: record.hospital,
     displayName: toDisplayName(record.user.person.givenName, record.user.person.familyName),
@@ -1168,6 +1287,7 @@ function toWorkforceDetail(
       currentAssignmentCount,
     }),
     relationshipUpdatedAt: record.updatedAt,
+    viewerScope: viewer.scope,
     ownerGovernance: {
       canPromote:
         targetIsEligibleOwnerGovernanceState && membershipType === MembershipType.MEMBER,
@@ -1178,6 +1298,9 @@ function toWorkforceDetail(
     },
     actions: toWorkforceDetailActions({
       kind,
+      viewerScope: viewer.scope,
+      isSelf: record.userId === viewer.userId,
+      hasAuthSubject: record.user.authSubject !== null,
       membershipType,
       accountStatus,
       relationshipStatus,
@@ -1204,7 +1327,13 @@ export async function getWorkforceDetail(
   }
 
   try {
-    const scopedHospital = activeOwnerHospitalWhere(actor.userId);
+    // Staff detail stays OWNER-only; OSM detail is also readable by an ACTIVE MEMBER (read-only).
+    const scopedHospital = activeHospitalActorWhere(
+      actor.userId,
+      parsed.data.kind === "osm"
+        ? [MembershipType.OWNER, MembershipType.MEMBER]
+        : [MembershipType.OWNER],
+    );
     const record =
       parsed.data.kind === "staff"
         ? await database.hospitalMembership.findFirst({
@@ -1226,7 +1355,19 @@ export async function getWorkforceDetail(
       throw new NotFoundError("The workforce relationship was not found");
     }
 
-    assertActorPolicy(actor, WORKFORCE_CAPABILITIES.read, record.hospital.id);
+    const readDecision = decideWorkforcePolicy({
+      actor,
+      capability:
+        parsed.data.kind === "osm" ? WORKFORCE_CAPABILITIES.osmRead : WORKFORCE_CAPABILITIES.read,
+      targetHospitalId: record.hospital.id,
+    });
+
+    if (!readDecision.allowed) {
+      throw new ForbiddenError();
+    }
+
+    const viewerScope: WorkforceViewerScope =
+      readDecision.reason === "active_hospital_owner" ? "OWNER" : "MEMBER";
 
     if (parsed.data.kind === "staff") {
       assertHospitalOwnerPolicy({
@@ -1254,6 +1395,7 @@ export async function getWorkforceDetail(
       activation,
       currentAssignmentCount,
       eligibleOwnerCount,
+      { scope: viewerScope, userId: actor.userId },
     );
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
@@ -1275,7 +1417,18 @@ export async function listWorkforce(
     throw new ValidationError("Workforce Hospital selection is invalid");
   }
 
-  assertActorPolicy(actor, WORKFORCE_CAPABILITIES.read, parsed.data.targetHospitalId);
+  const readDecision = decideWorkforcePolicy({
+    actor,
+    capability: WORKFORCE_CAPABILITIES.osmRead,
+    targetHospitalId: parsed.data.targetHospitalId,
+  });
+
+  if (!readDecision.allowed) {
+    throw new ForbiddenError();
+  }
+
+  const viewerScope: WorkforceViewerScope =
+    readDecision.reason === "active_hospital_owner" ? "OWNER" : "MEMBER";
 
   try {
     const hospital = await database.hospital.findFirst({
@@ -1285,7 +1438,8 @@ export async function listWorkforce(
         memberships: {
           some: {
             userId: actor!.userId,
-            membershipType: MembershipType.OWNER,
+            membershipType:
+              viewerScope === "OWNER" ? MembershipType.OWNER : MembershipType.MEMBER,
             status: MembershipStatus.ACTIVE,
             user: {
               status: UserStatus.ACTIVE,
@@ -1302,23 +1456,26 @@ export async function listWorkforce(
     }
 
     const [memberships, osmRelationships] = await Promise.all([
-      database.hospitalMembership.findMany({
-        where: { hospitalId: hospital.id },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: {
-          id: true,
-          userId: true,
-          membershipType: true,
-          profession: true,
-          status: true,
-          user: {
+      // A MEMBER never receives the staff roster.
+      viewerScope === "MEMBER"
+        ? Promise.resolve([])
+        : database.hospitalMembership.findMany({
+            where: { hospitalId: hospital.id },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
             select: {
+              id: true,
+              userId: true,
+              membershipType: true,
+              profession: true,
               status: true,
-              person: { select: { givenName: true, familyName: true } },
+              user: {
+                select: {
+                  status: true,
+                  person: { select: { givenName: true, familyName: true } },
+                },
+              },
             },
-          },
-        },
-      }),
+          }),
       database.osmHospitalRelationship.findMany({
         where: { hospitalId: hospital.id },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -1355,9 +1512,26 @@ export async function listWorkforce(
           },
         })
       : [];
-    const activationByUserId = new Map(
-      activations.map((activation) => [activation.userId, activation]),
-    );
+    // Rows are ordered newest first, so keep the first (latest) activation per user.
+    const activationByUserId = new Map<string, (typeof activations)[number]>();
+
+    for (const activation of activations) {
+      if (!activationByUserId.has(activation.userId)) {
+        activationByUserId.set(activation.userId, activation);
+      }
+    }
+
+    const now = new Date();
+    const toActivationStatus = (
+      accountStatus: UserStatus,
+      activation: (typeof activations)[number] | undefined,
+    ): WorkforceActivationStatus | null => {
+      if (accountStatus !== UserStatus.PROVISIONED) {
+        return null;
+      }
+
+      return activation && activation.expiresAt > now ? "PENDING" : "EXPIRED";
+    };
 
     const rows: WorkforceListRow[] = [
       ...memberships.map((membership) => {
@@ -1375,6 +1549,7 @@ export async function listWorkforce(
           relationshipStatus: membership.status,
           accountStatus: membership.user.status,
           activationRequired: membership.user.status === UserStatus.PROVISIONED,
+          activationStatus: toActivationStatus(membership.user.status, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
         };
@@ -1394,13 +1569,14 @@ export async function listWorkforce(
           relationshipStatus: relationship.status,
           accountStatus: relationship.user.status,
           activationRequired: relationship.user.status === UserStatus.PROVISIONED,
+          activationStatus: toActivationStatus(relationship.user.status, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
         };
       }),
     ];
 
-    return { hospital, rows };
+    return { hospital, viewerScope, rows };
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       throw error;
@@ -2255,16 +2431,17 @@ async function regenerateActivationInTransaction(
     request: WorkforceActivationRequestInput;
     now: Date;
     dependencies: WorkforceServiceDependencies;
+    source?: "explicit_regeneration" | "activation_slip";
   },
-): Promise<{
-  userId: string;
-  hospitalId: string;
-  kind: WorkforceKind;
-  activationToken: string;
-  activationExpiresAt: Date;
-  activationMode: WorkforceActivationModeValue;
-}> {
-  await assertOwnerInDatabase(transaction, input.actorUserId, input.request.targetHospitalId);
+): Promise<WorkforceActivationIssueResult> {
+  const source = input.source ?? "explicit_regeneration";
+
+  await assertWorkforceProvisionerInDatabase(
+    transaction,
+    input.actorUserId,
+    input.request.targetHospitalId,
+    input.request.kind,
+  );
 
   const user = await transaction.user.findUnique({
     where: { id: input.request.userId },
@@ -2311,7 +2488,7 @@ async function regenerateActivationInTransaction(
         action: "workforce_activation.revoked",
         resourceType: "WorkforceActivation",
         resourceId: current.id,
-        metadata: { source: "explicit_regeneration" },
+        metadata: { source },
       },
       transaction,
     );
@@ -2341,13 +2518,14 @@ async function regenerateActivationInTransaction(
       metadata: {
         mode: prismaMode,
         status: UserStatus.PROVISIONED,
-        source: "explicit_regeneration",
+        source,
       },
     },
     transaction,
   );
 
   return {
+    activationId: activation.id,
     userId: user.id,
     hospitalId: input.request.targetHospitalId,
     kind: input.request.kind,
@@ -2361,14 +2539,7 @@ export async function regenerateWorkforceActivation(
   actor: ActorContext | null | undefined,
   input: WorkforceActivationRequestInput,
   dependencies: WorkforceServiceDependencies = {},
-): Promise<{
-  userId: string;
-  hospitalId: string;
-  kind: WorkforceKind;
-  activationToken: string;
-  activationExpiresAt: Date;
-  activationMode: WorkforceActivationModeValue;
-}> {
+): Promise<WorkforceActivationIssueResult> {
   const parsed = workforceActivationRequestSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -2411,11 +2582,7 @@ export async function revokeWorkforceActivation(
     throw new ValidationError("Activation revocation data is invalid");
   }
 
-  const capability =
-    parsed.data.kind === "OSM"
-      ? WORKFORCE_CAPABILITIES.osmProvision
-      : WORKFORCE_CAPABILITIES.create;
-  assertActorPolicy(actor, capability, parsed.data.targetHospitalId);
+  assertActorPolicy(actor, WORKFORCE_CAPABILITIES.activationRevoke, parsed.data.targetHospitalId);
 
   try {
     await runSerializable(
@@ -2481,8 +2648,195 @@ export async function revokeWorkforceActivation(
   }
 }
 
+const ACTIVATION_UNAVAILABLE_MESSAGE =
+  "ไม่สามารถยืนยันได้ ลิงก์อาจไม่ถูกต้อง หมดอายุ ถูกใช้แล้ว หรือเลขบัตรประชาชนไม่ตรงกัน";
+
+function auditActionFor(
+  purpose: WorkforceActivationPurpose,
+  event: "verification_failed" | "revoked" | "completed" | "issued",
+): string {
+  return purpose === WorkforceActivationPurpose.RESET
+    ? `workforce_password_reset.${event}`
+    : `workforce_activation.${event}`;
+}
+
+async function recordFailedVerification(
+  transaction: Prisma.TransactionClient,
+  activation: { id: string; userId: string; purpose: WorkforceActivationPurpose },
+  now: Date,
+): Promise<void> {
+  const updated = await transaction.workforceActivation.update({
+    where: { id: activation.id },
+    data: { failedVerificationCount: { increment: 1 } },
+    select: { failedVerificationCount: true },
+  });
+
+  await recordAuditEvent(
+    {
+      actorUserId: null,
+      action: auditActionFor(activation.purpose, "verification_failed"),
+      resourceType: "WorkforceActivation",
+      resourceId: activation.id,
+      metadata: {
+        targetUserId: activation.userId,
+        attempt: updated.failedVerificationCount,
+      },
+    },
+    transaction,
+  );
+
+  if (updated.failedVerificationCount < WORKFORCE_MAX_FAILED_VERIFICATIONS) {
+    return;
+  }
+
+  const revoked = await transaction.workforceActivation.updateMany({
+    where: { id: activation.id, usedAt: null, revokedAt: null },
+    data: { revokedAt: now },
+  });
+
+  if (revoked.count === 1) {
+    await recordAuditEvent(
+      {
+        actorUserId: null,
+        action: auditActionFor(activation.purpose, "revoked"),
+        resourceType: "WorkforceActivation",
+        resourceId: activation.id,
+        metadata: { targetUserId: activation.userId, source: "verification_failures" },
+      },
+      transaction,
+    );
+  }
+}
+
+const workforceActivationClaimTargetSelect = {
+  id: true,
+  userId: true,
+  purpose: true,
+  expiresAt: true,
+  claimedAt: true,
+  usedAt: true,
+  revokedAt: true,
+  user: {
+    select: {
+      status: true,
+      authSubject: true,
+      person: { select: { identityKeyHash: true, givenName: true, familyName: true } },
+      memberships: {
+        select: { membershipType: true, status: true, hospital: { select: { status: true } } },
+      },
+      osmHospitalRelationships: {
+        select: { status: true, hospital: { select: { status: true } } },
+      },
+    },
+  },
+} satisfies Prisma.WorkforceActivationSelect;
+
+type WorkforceActivationClaimTarget = Prisma.WorkforceActivationGetPayload<{
+  select: typeof workforceActivationClaimTargetSelect;
+}>;
+
+function isActivationUsable(
+  activation: WorkforceActivationClaimTarget | null,
+  purpose: WorkforceActivationPurpose,
+  now: Date,
+): activation is WorkforceActivationClaimTarget {
+  return Boolean(
+    activation &&
+      activation.purpose === purpose &&
+      !activation.usedAt &&
+      !activation.revokedAt &&
+      !activation.claimedAt &&
+      activation.expiresAt > now,
+  );
+}
+
+function isActivationTargetEligible(
+  activation: WorkforceActivationClaimTarget,
+  purpose: WorkforceActivationPurpose,
+): boolean {
+  const { user } = activation;
+  const hospitalIsActive = ({ hospital }: { hospital: { status: HospitalStatus } }) =>
+    hospital.status === HospitalStatus.ACTIVE;
+
+  if (purpose === WorkforceActivationPurpose.RESET) {
+    return (
+      user.status === UserStatus.ACTIVE &&
+      user.authSubject !== null &&
+      zUuid(user.authSubject) &&
+      (user.memberships.some(
+        (membership) =>
+          membership.status === MembershipStatus.ACTIVE && hospitalIsActive(membership),
+      ) ||
+        user.osmHospitalRelationships.some(
+          (relationship) =>
+            relationship.status === MembershipStatus.ACTIVE && hospitalIsActive(relationship),
+        ))
+    );
+  }
+
+  return (
+    user.status === UserStatus.PROVISIONED &&
+    !user.authSubject &&
+    (user.memberships.some(
+      (membership) =>
+        membership.membershipType === MembershipType.MEMBER &&
+        membership.status === MembershipStatus.PROVISIONED &&
+        hospitalIsActive(membership),
+    ) ||
+      user.osmHospitalRelationships.some(
+        (relationship) =>
+          relationship.status === MembershipStatus.PROVISIONED && hospitalIsActive(relationship),
+      ))
+  );
+}
+
+/**
+ * Read-only: resolves the masked identity cue for a valid, unconsumed token.
+ * Every failure is the same generic conflict; the full name is never returned.
+ */
+export async function previewWorkforceActivation(
+  token: string,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<{ maskedName: string; purpose: WorkforceActivationPurpose }> {
+  const parsedToken = workforceActivationTokenSchema.safeParse(token);
+
+  if (!parsedToken.success) {
+    throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+  }
+
+  const now = getNow(dependencies);
+
+  try {
+    const activation = await getDatabase(dependencies).workforceActivation.findUnique({
+      where: { tokenHash: hashWorkforceActivationToken(parsedToken.data) },
+      select: workforceActivationClaimTargetSelect,
+    });
+
+    if (
+      !activation ||
+      !isActivationUsable(activation, activation.purpose, now) ||
+      !isActivationTargetEligible(activation, activation.purpose)
+    ) {
+      throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+    }
+
+    return {
+      maskedName: maskPersonName(activation.user.person.givenName, activation.user.person.familyName),
+      purpose: activation.purpose,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ConflictError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Workforce activation could not be previewed");
+  }
+}
+
 async function claimWorkforceActivation(
   token: string,
+  purpose: WorkforceActivationPurpose,
+  nationalId: string,
   dependencies: WorkforceServiceDependencies,
 ): Promise<ActivationClaim> {
   const tokenHash = hashWorkforceActivationToken(token);
@@ -2490,62 +2844,25 @@ async function claimWorkforceActivation(
   const now = getNow(dependencies);
 
   try {
-    return await runSerializable(
+    // A failed identity check must persist its attempt, so it returns null instead of throwing.
+    const claim = await runSerializable(
       database,
-      async (transaction) => {
+      async (transaction): Promise<ActivationClaim | null> => {
         const activation = await transaction.workforceActivation.findUnique({
           where: { tokenHash },
-          select: {
-            id: true,
-            userId: true,
-            tokenHash: true,
-            expiresAt: true,
-            claimedAt: true,
-            usedAt: true,
-            revokedAt: true,
-          },
+          select: workforceActivationClaimTargetSelect,
         });
 
         if (
-          !activation ||
-          activation.usedAt ||
-          activation.revokedAt ||
-          activation.claimedAt ||
-          activation.expiresAt <= now
+          !isActivationUsable(activation, purpose, now) ||
+          !isActivationTargetEligible(activation, purpose)
         ) {
-          throw new ConflictError("ลิงก์เปิดใช้งานไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว");
+          throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
         }
 
-        const user = await transaction.user.findUnique({
-          where: { id: activation.userId },
-          select: {
-            status: true,
-            authSubject: true,
-            memberships: {
-              where: {
-                membershipType: MembershipType.MEMBER,
-                status: MembershipStatus.PROVISIONED,
-                hospital: { status: HospitalStatus.ACTIVE },
-              },
-              select: { id: true },
-            },
-            osmHospitalRelationships: {
-              where: {
-                status: MembershipStatus.PROVISIONED,
-                hospital: { status: HospitalStatus.ACTIVE },
-              },
-              select: { id: true },
-            },
-          },
-        });
-
-        if (
-          !user ||
-          user.status !== UserStatus.PROVISIONED ||
-          user.authSubject ||
-          user.memberships.length + user.osmHospitalRelationships.length === 0
-        ) {
-          throw new ConflictError("บัญชีนี้ไม่อยู่ในสถานะที่เปิดใช้งานได้");
+        if (!matchesPersonNationalId(activation.user.person.identityKeyHash, nationalId)) {
+          await recordFailedVerification(transaction, activation, now);
+          return null;
         }
 
         const claimedAt = now;
@@ -2553,6 +2870,7 @@ async function claimWorkforceActivation(
           where: {
             id: activation.id,
             tokenHash,
+            purpose,
             claimedAt: null,
             usedAt: null,
             revokedAt: null,
@@ -2562,13 +2880,24 @@ async function claimWorkforceActivation(
         });
 
         if (claimed.count !== 1) {
-          throw new ConflictError("ลิงก์เปิดใช้งานกำลังถูกใช้งานหรือไม่สามารถใช้งานได้");
+          throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
         }
 
-        return { activationId: activation.id, userId: activation.userId, claimedAt };
+        return {
+          activationId: activation.id,
+          userId: activation.userId,
+          claimedAt,
+          authSubject: activation.user.authSubject,
+        };
       },
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
+
+    if (!claim) {
+      throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+    }
+
+    return claim;
   } catch (error: unknown) {
     if (error instanceof ConflictError) {
       throw error;
@@ -2622,6 +2951,7 @@ async function finalizeWorkforceActivationLocally(
         select: {
           id: true,
           userId: true,
+          purpose: true,
           claimedAt: true,
           usedAt: true,
           revokedAt: true,
@@ -2635,6 +2965,7 @@ async function finalizeWorkforceActivationLocally(
 
       if (
         !activation ||
+        activation.purpose !== WorkforceActivationPurpose.ACTIVATION ||
         activation.userId !== claim.userId ||
         activation.claimedAt?.getTime() !== claim.claimedAt.getTime() ||
         activation.usedAt ||
@@ -2778,7 +3109,12 @@ export async function completeWorkforceActivation(
     throw new ValidationError("Workforce activation data is invalid");
   }
 
-  const claim = await claimWorkforceActivation(parsedToken.data, dependencies);
+  const claim = await claimWorkforceActivation(
+    parsedToken.data,
+    WorkforceActivationPurpose.ACTIVATION,
+    parsedInput.data.nationalId,
+    dependencies,
+  );
   const provisionIdentity = dependencies.provisionIdentity ?? provisionPasswordAuthIdentity;
   let provisionedIdentity: ProvisionPasswordAuthIdentityResult;
 
@@ -2829,4 +3165,695 @@ export async function completeWorkforceActivation(
   }
 
   return { userId: claim.userId };
+}
+
+export type WorkforcePasswordResetIssueResult = {
+  activationId: string;
+  userId: string;
+  hospitalId: string;
+  targetKind: WorkforceResetTargetKind;
+  activationToken: string;
+  activationExpiresAt: Date;
+  activationMode: "ASSISTED";
+};
+
+async function assertPlatformAdminInDatabase(
+  transaction: Prisma.TransactionClient,
+  actorUserId: string,
+): Promise<void> {
+  const actor = await transaction.user.findUnique({
+    where: { id: actorUserId },
+    select: { status: true, roles: { select: { role: true } } },
+  });
+
+  if (actor?.status !== UserStatus.ACTIVE || !actor.roles.some(({ role }) => role === Role.ADMIN)) {
+    throw new ForbiddenError();
+  }
+}
+
+// The target kind is derived from persisted relationships, never from client input.
+async function resolvePasswordResetTarget(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  hospitalId: string,
+): Promise<WorkforceResetTargetKind> {
+  const user = await transaction.user.findUnique({
+    where: { id: userId },
+    select: { status: true, authSubject: true, roles: { select: { role: true } } },
+  });
+
+  if (!user) {
+    throw new NotFoundError("The workforce account was not found");
+  }
+
+  if (
+    user.status !== UserStatus.ACTIVE ||
+    !user.authSubject ||
+    !zUuid(user.authSubject) ||
+    user.roles.some(({ role }) => role === Role.ADMIN)
+  ) {
+    throw new ConflictError("The workforce account is not eligible for password reset");
+  }
+
+  const [membership, osmRelationship] = await Promise.all([
+    transaction.hospitalMembership.findUnique({
+      where: { userId_hospitalId: { userId, hospitalId } },
+      select: { membershipType: true, status: true, hospital: { select: { status: true } } },
+    }),
+    transaction.osmHospitalRelationship.findUnique({
+      where: { userId_hospitalId: { userId, hospitalId } },
+      select: { status: true, hospital: { select: { status: true } } },
+    }),
+  ]);
+  const activeMembership =
+    membership?.status === MembershipStatus.ACTIVE &&
+    user.roles.some(({ role }) => role === Role.HOSPITAL)
+      ? membership
+      : null;
+  const activeOsm =
+    osmRelationship?.status === MembershipStatus.ACTIVE &&
+    user.roles.some(({ role }) => role === Role.OSM)
+      ? osmRelationship
+      : null;
+
+  if (!activeMembership && !activeOsm) {
+    throw new NotFoundError("The workforce relationship was not found");
+  }
+
+  if ((activeMembership ?? activeOsm)!.hospital.status !== HospitalStatus.ACTIVE) {
+    throw new ConflictError("The Hospital is not active");
+  }
+
+  if (activeMembership?.membershipType === MembershipType.OWNER) {
+    return "HOSPITAL_OWNER";
+  }
+
+  return activeMembership ? "HOSPITAL_MEMBER" : "OSM";
+}
+
+export async function issueWorkforcePasswordReset(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforcePasswordResetIssueResult> {
+  const parsed = workforcePasswordResetRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Password reset data is invalid");
+  }
+
+  // Nobody resets their own account through this flow.
+  if (!actor || actor.userId === parsed.data.userId) {
+    throw new ForbiddenError();
+  }
+
+  const now = getNow(dependencies);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        const targetKind = await resolvePasswordResetTarget(
+          transaction,
+          parsed.data.userId,
+          parsed.data.targetHospitalId,
+        );
+        const decision = assertWorkforcePasswordResetPolicy({
+          actor,
+          targetUserId: parsed.data.userId,
+          targetHospitalId: parsed.data.targetHospitalId,
+          targetKind,
+        });
+
+        if (decision.reason === "platform_admin_owner_reset") {
+          await assertPlatformAdminInDatabase(transaction, actor.userId);
+        } else {
+          await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
+        }
+
+        const current = await findCurrentActivation(transaction, parsed.data.userId);
+
+        if (current?.claimedAt) {
+          throw new ConflictError("The activation credential is currently being used");
+        }
+
+        if (current) {
+          const revoked = await transaction.workforceActivation.updateMany({
+            where: {
+              id: current.id,
+              userId: parsed.data.userId,
+              claimedAt: null,
+              usedAt: null,
+              revokedAt: null,
+            },
+            data: { revokedAt: now },
+          });
+
+          if (revoked.count !== 1) {
+            throw new ConflictError("The activation credential changed during password reset");
+          }
+
+          await recordAuditEvent(
+            {
+              actorUserId: actor.userId,
+              action: auditActionFor(current.purpose, "revoked"),
+              resourceType: "WorkforceActivation",
+              resourceId: current.id,
+              metadata: { source: "password_reset_issue", targetUserId: parsed.data.userId },
+            },
+            transaction,
+          );
+        }
+
+        const credential = (dependencies.generateCredential ??
+          generateWorkforceActivationCredential)();
+        const expiresAt = getWorkforceActivationExpiry(now, "ASSISTED");
+        const activation = await transaction.workforceActivation.create({
+          data: {
+            userId: parsed.data.userId,
+            tokenHash: credential.tokenHash,
+            mode: WorkforceActivationMode.ASSISTED,
+            purpose: WorkforceActivationPurpose.RESET,
+            expiresAt,
+            createdByUserId: actor.userId,
+          },
+          select: { id: true },
+        });
+
+        await recordAuditEvent(
+          {
+            actorUserId: actor.userId,
+            action: auditActionFor(WorkforceActivationPurpose.RESET, "issued"),
+            resourceType: "WorkforceActivation",
+            resourceId: activation.id,
+            metadata: {
+              mode: WorkforceActivationMode.ASSISTED,
+              targetUserId: parsed.data.userId,
+              targetHospitalId: parsed.data.targetHospitalId,
+              targetKind,
+            },
+          },
+          transaction,
+        );
+
+        return {
+          activationId: activation.id,
+          userId: parsed.data.userId,
+          hospitalId: parsed.data.targetHospitalId,
+          targetKind,
+          activationToken: credential.plaintextToken,
+          activationExpiresAt: expiresAt,
+          activationMode: "ASSISTED" as const,
+        };
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Password reset could not be issued");
+  }
+}
+
+async function finalizeWorkforcePasswordResetLocally(
+  claim: ActivationClaim,
+  dependencies: WorkforceServiceDependencies,
+): Promise<void> {
+  const now = getNow(dependencies);
+
+  await runSerializable(
+    getDatabase(dependencies),
+    async (transaction) => {
+      const activation = await transaction.workforceActivation.findUnique({
+        where: { id: claim.activationId },
+        select: { userId: true, purpose: true, claimedAt: true, usedAt: true, revokedAt: true },
+      });
+
+      if (
+        !activation ||
+        activation.purpose !== WorkforceActivationPurpose.RESET ||
+        activation.userId !== claim.userId ||
+        activation.claimedAt?.getTime() !== claim.claimedAt.getTime() ||
+        activation.usedAt ||
+        activation.revokedAt
+      ) {
+        throw new ConflictError("Password reset state changed before completion");
+      }
+
+      const consumed = await transaction.workforceActivation.updateMany({
+        where: {
+          id: claim.activationId,
+          userId: claim.userId,
+          purpose: WorkforceActivationPurpose.RESET,
+          claimedAt: claim.claimedAt,
+          usedAt: null,
+          revokedAt: null,
+        },
+        data: { usedAt: now },
+      });
+
+      if (consumed.count !== 1) {
+        throw new ConflictError("Password reset credential changed during completion");
+      }
+
+      await recordAuditEvent(
+        {
+          actorUserId: null,
+          action: auditActionFor(WorkforceActivationPurpose.RESET, "completed"),
+          resourceType: "User",
+          resourceId: claim.userId,
+          metadata: { source: "workforce_password_reset" },
+        },
+        transaction,
+      );
+    },
+    dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+  );
+}
+
+export async function completeWorkforcePasswordReset(
+  token: string,
+  input: WorkforceActivationCompletionInput,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<{ userId: string }> {
+  const parsedToken = workforceActivationTokenSchema.safeParse(token);
+  const parsedInput = workforceActivationCompletionSchema.safeParse(input);
+
+  if (!parsedToken.success || !parsedInput.success) {
+    throw new ValidationError("Password reset data is invalid");
+  }
+
+  const claim = await claimWorkforceActivation(
+    parsedToken.data,
+    WorkforceActivationPurpose.RESET,
+    parsedInput.data.nationalId,
+    dependencies,
+  );
+  const replacePassword = dependencies.replacePassword ?? replacePasswordAndRevokeRecoverySessions;
+
+  try {
+    if (!claim.authSubject || !zUuid(claim.authSubject)) {
+      throw new InfrastructureError("Password reset target has no authentication mapping");
+    }
+
+    // The provider call is idempotent for the same password, so a failure anywhere after this
+    // point releases the claim and lets the user retry the same assisted link.
+    await replacePassword({
+      userId: claim.userId,
+      authSubject: claim.authSubject,
+      newPassword: parsedInput.data.password,
+    });
+    await finalizeWorkforcePasswordResetLocally(claim, dependencies);
+  } catch (error: unknown) {
+    await releaseWorkforceActivationClaim(claim, dependencies);
+
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Password reset could not be completed");
+  }
+
+  return { userId: claim.userId };
+}
+
+/**
+ * Compensation for an assisted handoff that failed after this actor issued the token.
+ * It can only revoke an unused credential created by the same actor.
+ */
+export async function revokeIssuedWorkforceActivation(
+  actor: ActorContext | null | undefined,
+  input: { activationId: string },
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<void> {
+  const activationId = z.uuid().safeParse(input.activationId);
+
+  if (!activationId.success) {
+    throw new ValidationError("Activation revocation data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        const activation = await transaction.workforceActivation.findUnique({
+          where: { id: activationId.data },
+          select: { id: true, purpose: true, createdByUserId: true, claimedAt: true, usedAt: true, revokedAt: true },
+        });
+
+        if (!activation || activation.createdByUserId !== actor.userId) {
+          throw new ForbiddenError();
+        }
+
+        if (activation.usedAt || activation.revokedAt) {
+          return;
+        }
+
+        if (activation.claimedAt) {
+          throw new ConflictError("The activation credential is currently being used");
+        }
+
+        const revoked = await transaction.workforceActivation.updateMany({
+          where: { id: activation.id, claimedAt: null, usedAt: null, revokedAt: null },
+          data: { revokedAt: getNow(dependencies) },
+        });
+
+        if (revoked.count !== 1) {
+          throw new ConflictError("The activation credential changed during revocation");
+        }
+
+        await recordAuditEvent(
+          {
+            actorUserId: actor.userId,
+            action: auditActionFor(activation.purpose, "revoked"),
+            resourceType: "WorkforceActivation",
+            resourceId: activation.id,
+            metadata: { source: "assisted_handoff_failure" },
+          },
+          transaction,
+        );
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Activation revocation could not be completed");
+  }
+}
+
+export class WorkforceBulkDuplicateError extends ValidationError {
+  readonly rowNumbers: readonly number[];
+
+  constructor(rowNumbers: readonly number[]) {
+    super("Duplicate national IDs were submitted");
+    this.name = "WorkforceBulkDuplicateError";
+    this.rowNumbers = rowNumbers;
+  }
+}
+
+export type WorkforceBulkRowResult =
+  | {
+      rowNumber: number;
+      status: "created" | "existing";
+      userId: string;
+      relationshipId: string;
+      activationRequired: boolean;
+    }
+  | {
+      rowNumber: number;
+      status: "invalid";
+      reason: "INVALID_ROW" | "CONFLICT" | "UNAVAILABLE";
+    };
+
+export type WorkforceBulkProvisionResult = {
+  kind: WorkforceKind;
+  hospitalId: string;
+  rows: WorkforceBulkRowResult[];
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function findDuplicateNationalIdRows(rows: readonly unknown[]): number[] {
+  const firstSeen = new Map<string, number>();
+  const duplicates = new Set<number>();
+
+  rows.forEach((row, index) => {
+    const nationalId =
+      isRecord(row) && typeof row.nationalId === "string" ? row.nationalId.trim() : "";
+
+    if (!nationalId) {
+      return;
+    }
+
+    const first = firstSeen.get(nationalId);
+
+    if (first === undefined) {
+      firstSeen.set(nationalId, index);
+      return;
+    }
+
+    duplicates.add(first + 1);
+    duplicates.add(index + 1);
+  });
+
+  return [...duplicates].sort((left, right) => left - right);
+}
+
+/**
+ * Provisions up to 50 people of one kind. Every row runs the single-person provisioning logic in
+ * its own serializable transaction, so one bad row never blocks the others. Plaintext activation
+ * tokens are intentionally dropped; they are only issued through activation slips or regeneration.
+ */
+export async function provisionWorkforceBulk(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceBulkProvisionResult> {
+  const parsed = workforceBulkProvisionSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Bulk workforce data is invalid");
+  }
+
+  const { kind, rows, targetHospitalId }: WorkforceBulkProvisionInput = parsed.data;
+
+  assertActorPolicy(
+    actor,
+    kind === "OSM" ? WORKFORCE_CAPABILITIES.osmProvision : WORKFORCE_CAPABILITIES.create,
+    targetHospitalId,
+  );
+
+  const duplicateRowNumbers = findDuplicateNationalIdRows(rows);
+
+  if (duplicateRowNumbers.length > 0) {
+    throw new WorkforceBulkDuplicateError(duplicateRowNumbers);
+  }
+
+  const results: WorkforceBulkRowResult[] = [];
+
+  for (const [index, row] of rows.entries()) {
+    const rowNumber = index + 1;
+
+    try {
+      const rowInput = { ...(isRecord(row) ? row : {}), targetHospitalId };
+      const result =
+        kind === "OSM"
+          ? await provisionOsm(actor, rowInput as OsmProvisionInput, dependencies)
+          : await provisionHospitalMember(
+              actor,
+              rowInput as HospitalMemberProvisionInput,
+              dependencies,
+            );
+
+      results.push({
+        rowNumber,
+        status: result.idempotent ? "existing" : "created",
+        userId: result.userId,
+        relationshipId: result.relationshipId,
+        activationRequired: result.activationRequired,
+      });
+    } catch (error: unknown) {
+      if (error instanceof ForbiddenError) {
+        throw error;
+      }
+
+      results.push({
+        rowNumber,
+        status: "invalid",
+        reason:
+          error instanceof ValidationError
+            ? "INVALID_ROW"
+            : error instanceof ConflictError
+              ? "CONFLICT"
+              : "UNAVAILABLE",
+      });
+    }
+  }
+
+  return { kind, hospitalId: targetHospitalId, rows: results };
+}
+
+export type WorkforceActivationSlip = {
+  userId: string;
+  maskedName: string;
+  hospitalName: string;
+  activationToken: string;
+  activationExpiresAt: Date;
+};
+
+export type WorkforceActivationSlipFailure = {
+  userId: string;
+  reason: "NOT_PENDING" | "IN_USE" | "UNAVAILABLE";
+};
+
+export type WorkforceActivationSlipResult = {
+  kind: WorkforceKind;
+  slips: WorkforceActivationSlip[];
+  failures: WorkforceActivationSlipFailure[];
+};
+
+const IN_USE_ACTIVATION_MESSAGE = "The activation credential is currently being used";
+
+/**
+ * Issues fresh REMOTE credentials (revoking the previous ones) for selected pending people.
+ * The returned plaintext tokens exist only in this result; callers must never persist or log them.
+ */
+export async function issueWorkforceActivationSlips(
+  actor: ActorContext | null | undefined,
+  input: WorkforceActivationSlipRequestInput,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceActivationSlipResult> {
+  const parsed = workforceActivationSlipRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Activation slip data is invalid");
+  }
+
+  const { kind, targetHospitalId, userIds } = parsed.data;
+
+  assertActorPolicy(
+    actor,
+    kind === "OSM" ? WORKFORCE_CAPABILITIES.osmProvision : WORKFORCE_CAPABILITIES.create,
+    targetHospitalId,
+  );
+
+  const database = getDatabase(dependencies);
+  const slips: WorkforceActivationSlip[] = [];
+  const failures: WorkforceActivationSlipFailure[] = [];
+
+  for (const userId of userIds) {
+    try {
+      const slip = await runSerializable(
+        database,
+        async (transaction) => {
+          const issued = await regenerateActivationInTransaction(transaction, {
+            actorUserId: actor!.userId,
+            request: { userId, targetHospitalId, kind, mode: "REMOTE" },
+            now: getNow(dependencies),
+            dependencies,
+            source: "activation_slip",
+          });
+          const [user, hospital] = await Promise.all([
+            transaction.user.findUnique({
+              where: { id: userId },
+              select: { person: { select: { givenName: true, familyName: true } } },
+            }),
+            transaction.hospital.findUnique({
+              where: { id: targetHospitalId },
+              select: { name: true },
+            }),
+          ]);
+
+          if (!user || !hospital) {
+            throw new NotFoundError("The workforce account was not found");
+          }
+
+          return {
+            userId,
+            maskedName: maskPersonName(user.person.givenName, user.person.familyName),
+            hospitalName: hospital.name,
+            activationToken: issued.activationToken,
+            activationExpiresAt: issued.activationExpiresAt,
+          };
+        },
+        dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+      );
+
+      slips.push(slip);
+    } catch (error: unknown) {
+      if (error instanceof ForbiddenError) {
+        throw error;
+      }
+
+      failures.push({
+        userId,
+        reason:
+          error instanceof ConflictError && error.message === IN_USE_ACTIVATION_MESSAGE
+            ? "IN_USE"
+            : error instanceof ConflictError || error instanceof NotFoundError
+              ? "NOT_PENDING"
+              : "UNAVAILABLE",
+      });
+    }
+  }
+
+  return { kind, slips, failures };
+}
+
+export type WorkforceHospitalOwnerForReset = {
+  userId: string;
+  displayName: string;
+  canReset: boolean;
+};
+
+/** Platform ADMIN only: the OWNERs of a Hospital whose password can be reset in person (D3). */
+export async function listHospitalOwnersForPasswordReset(
+  actor: ActorContext | null | undefined,
+  hospitalId: string,
+  database: WorkforceDatabase = getPrisma(),
+): Promise<WorkforceHospitalOwnerForReset[]> {
+  const parsedHospitalId = workforceTargetHospitalIdSchema.safeParse(hospitalId);
+
+  if (!parsedHospitalId.success) {
+    throw new ValidationError("Hospital selection is invalid");
+  }
+
+  if (!actor?.roles.includes(Role.ADMIN)) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const currentActor = await database.user.findUnique({
+      where: { id: actor.userId },
+      select: { status: true, roles: { select: { role: true } } },
+    });
+
+    if (
+      currentActor?.status !== UserStatus.ACTIVE ||
+      !currentActor.roles.some(({ role }) => role === Role.ADMIN)
+    ) {
+      throw new ForbiddenError();
+    }
+
+    const owners = await database.hospitalMembership.findMany({
+      where: {
+        hospitalId: parsedHospitalId.data,
+        membershipType: MembershipType.OWNER,
+        status: MembershipStatus.ACTIVE,
+        hospital: { status: HospitalStatus.ACTIVE },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        userId: true,
+        user: {
+          select: {
+            status: true,
+            authSubject: true,
+            roles: { select: { role: true } },
+            person: { select: { givenName: true, familyName: true } },
+          },
+        },
+      },
+    });
+
+    return owners.map(({ userId, user }) => ({
+      userId,
+      displayName: toDisplayName(user.person.givenName, user.person.familyName),
+      canReset:
+        userId !== actor.userId &&
+        user.status === UserStatus.ACTIVE &&
+        user.authSubject !== null &&
+        user.roles.some(({ role }) => role === Role.HOSPITAL) &&
+        !user.roles.some(({ role }) => role === Role.ADMIN),
+    }));
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Hospital Owners could not be loaded");
+  }
 }
