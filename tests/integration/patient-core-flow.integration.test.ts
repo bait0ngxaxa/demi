@@ -842,8 +842,74 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     expect(own).toHaveLength(1);
     expect(own[0]?.requests.map(({ requestId }) => requestId)).toEqual([requestA.requestId]);
     const hospitalList = await listHospitalPatientServiceRequests(memberA.actor);
-    expect(hospitalList).toHaveLength(2);
-    await expect(listHospitalPatientServiceRequests(ownerB.actor)).resolves.toEqual([]);
+    expect(hospitalList.requests).toHaveLength(2);
+    await expect(listHospitalPatientServiceRequests(ownerB.actor)).resolves.toMatchObject({ requests: [], nextCursor: null });
+  });
+
+  it("rechecks persisted reviewer membership, Hospital and ADMIN exclusions without granting stale actor authority", async () => {
+    const hospital = await createHospital("CORE-REQUEST-REVOKED");
+    const otherHospital = await createHospital("CORE-REQUEST-MULTI");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const member = await createHospitalActor({ hospitalId: hospital.id });
+    const inactive = await createHospitalActor({ hospitalId: hospital.id, membershipStatus: MembershipStatus.SUSPENDED });
+    const mixed = await createHospitalActor({ hospitalId: hospital.id, extraRoles: [Role.ADMIN] });
+    const patient = await createActivePatient({ hospitalId: hospital.id });
+    const offering = await enableService(owner.actor, hospital.id);
+    const patientActor: ActorContext = { userId: patient.userId, personId: patient.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    for (const denied of [inactive.actor, mixed.actor, patientActor]) {
+      await expect(listHospitalPatientServiceRequests(denied)).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(reviewPatientServiceRequest(denied, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    await prisma.hospitalMembership.create({ data: { userId: member.userId, hospitalId: otherHospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
+    const otherPatient = await createActivePatient({ hospitalId: otherHospital.id });
+    const otherOwner = await createHospitalActor({ hospitalId: otherHospital.id, membershipType: MembershipType.OWNER });
+    const otherOffering = await enableService(otherOwner.actor, otherHospital.id);
+    await prisma.patientServiceRequest.create({ data: { patientHospitalRelationshipId: otherPatient.relationshipId, hospitalId: otherHospital.id, offeringId: otherOffering.id, requestedByUserId: otherPatient.userId } });
+    const multi = await listHospitalPatientServiceRequests(member.actor);
+    expect(new Set(multi.requests.map(({ hospitalId }) => hospitalId))).toEqual(new Set([hospital.id, otherHospital.id]));
+    // Keep the original ACTIVE actor snapshot; persistence is authoritative for mutations.
+    await prisma.hospitalMembership.updateMany({ where: { userId: owner.userId }, data: { status: MembershipStatus.SUSPENDED } });
+    await expect(reviewPatientServiceRequest(owner.actor, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const stillEligible = await listHospitalPatientServiceRequests(member.actor);
+    expect(stillEligible.requests.map(({ hospitalId }) => hospitalId)).toEqual([otherHospital.id]);
+    await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
+    await prisma.userRole.create({ data: { userId: member.userId, role: Role.ADMIN } });
+    await expect(reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(listHospitalPatientServiceRequests(member.actor)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await prisma.auditEvent.count({ where: { resourceId: request.requestId } })).toBe(0);
+  });
+
+  it("pages persisted status groups with tied timestamps and stable request/relationship associations", async () => {
+    const hospital = await createHospital("CORE-REQUEST-PAGING");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const patient = await createActivePatient({ hospitalId: hospital.id });
+    const offering = await enableService(owner.actor, hospital.id);
+    const createdAt = new Date("2026-10-01T00:00:00.000Z");
+    await prisma.patientServiceRequest.createMany({ data: Array.from({ length: 25 }, () => ({
+      patientHospitalRelationshipId: patient.relationshipId,
+      hospitalId: hospital.id,
+      offeringId: offering.id,
+      requestedByUserId: patient.userId,
+      status: PatientServiceRequestStatus.REJECTED,
+      createdAt,
+    })) });
+    const first = await listHospitalPatientServiceRequests(owner.actor, {}, { group: "HISTORY" });
+    expect(first.requests).toHaveLength(20);
+    expect(first.nextCursor).toEqual({ createdAt: createdAt.toISOString(), requestId: first.requests.at(-1)?.requestId });
+    expect(first.requests.every((request) => request.status === "REJECTED" && request.relationshipId === patient.relationshipId)).toBe(true);
+    // Keyset navigation still works when the boundary row changes status.
+    await prisma.patientServiceRequest.update({ where: { id: first.nextCursor?.requestId }, data: { status: PatientServiceRequestStatus.APPROVED } });
+    const second = await listHospitalPatientServiceRequests(owner.actor, {}, { group: "HISTORY", after: first.nextCursor });
+    expect(second.requests).toHaveLength(5);
+    expect(second.nextCursor).toBeNull();
+    const ids = [...first.requests, ...second.requests].map(({ requestId }) => requestId);
+    expect(new Set(ids).size).toBe(25);
+    const approved = await listHospitalPatientServiceRequests(owner.actor, {}, { group: "APPROVED" });
+    expect(approved.requests.map(({ requestId }) => requestId)).toEqual([first.nextCursor?.requestId]);
+    await expect(listHospitalPatientServiceRequests(owner.actor)).resolves.toMatchObject({ group: "PENDING", requests: [], nextCursor: null });
   });
 
   it("enforces PENDING/APPROVED duplicate rules and allows a new request after STARTED", async () => {
@@ -868,6 +934,11 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     await expect(withdrawOwnPatientServiceRequest(patientActor, { requestId: request.requestId })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
     expect(await prisma.patientProgram.count()).toBe(0);
+    expect(await prisma.patientOsmAssignment.count()).toBe(0);
+    expect(await prisma.screeningAssessment.count()).toBe(0);
+    expect(await prisma.patientFollowup.count()).toBe(0);
+    await expect(reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "START")).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await prisma.auditEvent.count({ where: { resourceId: request.requestId, action: "PATIENT_SERVICE_REQUEST_STARTED" } })).toBe(1);
   });
 
   it("allows Patient withdrawal from PENDING and APPROVED and rejects withdrawal after STARTED", async () => {

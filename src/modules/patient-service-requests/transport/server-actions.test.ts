@@ -1,0 +1,55 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ConflictError, ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+
+const mocks = vi.hoisted(() => ({ actor: vi.fn(), review: vi.fn(), revalidate: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
+vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
+vi.mock("../services/patient-service-request-service", () => ({ reviewPatientServiceRequest: mocks.review }));
+import { reviewPatientServiceRequestAction } from "./server-actions";
+
+const requestId = "11111111-1111-4111-8111-111111111111";
+function form(decision: string): FormData {
+  const data = new FormData();
+  data.set("requestId", requestId);
+  data.set("decision", decision);
+  return data;
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.actor.mockResolvedValue({ userId: "trusted-reviewer" });
+});
+
+describe("Hospital review action feedback", () => {
+  it.each([
+    ["APPROVE", "อนุมัติคำขอแล้ว"], ["REJECT", "บันทึกผลไม่อนุมัติแล้ว"], ["START", "บันทึกสถานะเริ่มให้บริการแล้ว"],
+  ])("confirms %s and invalidates both review and Patient readback", async (decision, message) => {
+    const result = await reviewPatientServiceRequestAction({ status: "IDLE" }, form(decision));
+    expect(result).toMatchObject({ status: "SUCCESS", message: expect.stringContaining(message) });
+    expect(mocks.review).toHaveBeenCalledWith({ userId: "trusted-reviewer" }, { requestId }, decision);
+    expect(mocks.revalidate.mock.calls).toEqual([["/app/patients/service-requests"], ["/app/personal/services"]]);
+    if (decision === "START") expect(result).toMatchObject({ message: expect.stringContaining("ไม่ได้สร้าง Program หรือมอบหมาย อสม. อัตโนมัติ") });
+  });
+
+  it("refreshes persisted status on a concurrent/repeated mutation conflict", async () => {
+    mocks.review.mockRejectedValue(new ConflictError("internal conflict details"));
+    const state = await reviewPatientServiceRequestAction({ status: "IDLE" }, form("START"));
+    expect(state).toMatchObject({ status: "ERROR", conflict: true, message: "คำขอซ้ำหรือสถานะเปลี่ยนไปแล้ว กรุณาตรวจสอบรายการอีกครั้ง" });
+    expect(mocks.revalidate).toHaveBeenCalledWith("/app/patients/service-requests");
+    expect(JSON.stringify(state)).not.toContain("internal");
+  });
+
+  it.each([new ForbiddenError(), new InfrastructureError("secret backend details")])("keeps non-conflict errors sanitized", async (error) => {
+    mocks.review.mockRejectedValue(error);
+    const state = await reviewPatientServiceRequestAction({ status: "IDLE" }, form("APPROVE"));
+    expect(state.status).toBe("ERROR");
+    expect(state).not.toHaveProperty("conflict");
+    expect(JSON.stringify(state)).not.toContain("secret");
+    expect(mocks.revalidate).not.toHaveBeenCalled();
+  });
+
+  it.each(["DELETE", "WITHDRAW", "STARTED", ""]) ("rejects forged decision %s before calling the service", async (decision) => {
+    expect(await reviewPatientServiceRequestAction({ status: "IDLE" }, form(decision))).toMatchObject({ status: "ERROR" });
+    expect(mocks.review).not.toHaveBeenCalled();
+  });
+});

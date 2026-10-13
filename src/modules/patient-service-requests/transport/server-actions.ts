@@ -148,8 +148,20 @@ export async function reviewPatientServiceRequestAction(
     await reviewPatientServiceRequest(actor, { requestId: parsed.data.requestId }, parsed.data.decision);
     revalidatePath("/app/patients/service-requests");
     revalidatePath("/app/personal/services");
-    return { status: "SUCCESS" };
+    return {
+      status: "SUCCESS",
+      message: parsed.data.decision === "APPROVE"
+        ? "อนุมัติคำขอแล้ว ดูรายการในกลุ่มอนุมัติแล้วเพื่อดำเนินงานต่อ"
+        : parsed.data.decision === "REJECT"
+          ? "บันทึกผลไม่อนุมัติแล้ว ดูรายการในกลุ่มเริ่มบริการและประวัติ"
+          : "บันทึกสถานะเริ่มให้บริการแล้ว ไม่ได้สร้าง Program หรือมอบหมาย อสม. อัตโนมัติ ดูรายการในกลุ่มเริ่มบริการและประวัติ",
+    };
   } catch (error: unknown) {
-    return mapMutationError(error);
+    const state = mapMutationError(error);
+    if (state.status === "ERROR" && error instanceof ApplicationError && error.code === "CONFLICT") {
+      revalidatePath("/app/patients/service-requests");
+      return { ...state, conflict: true };
+    }
+    return state;
   }
 }

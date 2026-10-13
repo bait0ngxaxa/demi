@@ -1,7 +1,7 @@
 export type PatientServiceMutationActionState =
   | { status: "IDLE" }
-  | { status: "SUCCESS" }
-  | { status: "ERROR"; message: string };
+  | { status: "SUCCESS"; message?: string }
+  | { status: "ERROR"; message: string; conflict?: boolean };
 
 export const initialPatientServiceMutationActionState: PatientServiceMutationActionState = {
   status: "IDLE",

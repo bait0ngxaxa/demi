@@ -1,58 +1,47 @@
 "use client";
 
-import { useActionState } from "react";
-
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  initialPatientServiceMutationActionState,
-} from "@/modules/patient-service-requests/transport/action-state";
-import { reviewPatientServiceRequestAction } from "@/modules/patient-service-requests/transport/server-actions";
+import type { HospitalPatientServiceRequestView } from "@/modules/patient-service-requests/services/patient-service-request-service";
 
 export function HospitalPatientServiceRequestReviewControls({
   requestId,
   status,
+  action,
+  pending,
 }: {
   requestId: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "STARTED" | "WITHDRAWN";
-}): React.JSX.Element {
-  const [state, action, pending] = useActionState(
-    reviewPatientServiceRequestAction,
-    initialPatientServiceMutationActionState,
-  );
-
-  if (status === "PENDING") {
-    return (
-      <div className="mt-4">
-        <form action={action} className="flex flex-wrap gap-2">
-          <input name="requestId" type="hidden" value={requestId} />
-          <Button disabled={pending} loading={pending} name="decision" size="compact" type="submit" value="APPROVE">
-            อนุมัติคำขอ
-          </Button>
-          <Button disabled={pending} name="decision" size="compact" type="submit" value="REJECT" variant="danger">
-            ไม่อนุมัติ
-          </Button>
-        </form>
-        {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">บันทึกผลแล้ว</p> : null}
-        {state.status === "ERROR" ? <Alert className="mt-3" variant="danger">{state.message}</Alert> : null}
-      </div>
-    );
+  status: HospitalPatientServiceRequestView["status"];
+  action: (formData: FormData) => void;
+  pending: boolean;
+}): React.JSX.Element | null {
+  if (status !== "PENDING" && status !== "APPROVED") {
+    return null;
   }
 
-  if (status === "APPROVED") {
-    return (
-      <div className="mt-4">
-        <form action={action}>
-          <input name="requestId" type="hidden" value={requestId} />
-          <Button disabled={pending} loading={pending} name="decision" size="compact" type="submit" value="START">
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="mb-3 text-sm leading-6 text-text-muted" id={`review-help-${requestId}`}>
+        {status === "PENDING"
+          ? "อนุมัติเพื่อรับคำขอไว้ดำเนินงานต่อ หรือไม่อนุมัติเพื่อบันทึกผลการตรวจสอบ การอนุมัติยังไม่ใช่การเริ่มให้บริการ"
+          : "ยืนยันเมื่อเริ่มให้บริการแล้ว ระบบบันทึกเฉพาะสถานะคำขอและประวัติการดำเนินการ ไม่ได้สร้าง Program มอบหมาย อสม. หรือบันทึกผลบริการอัตโนมัติ"}
+      </p>
+      <form action={action} aria-busy={pending} aria-describedby={`review-help-${requestId}`} className="flex flex-wrap gap-2">
+        <input name="requestId" type="hidden" value={requestId} />
+        {status === "PENDING" ? (
+          <>
+            <Button disabled={pending} name="decision" size="compact" type="submit" value="APPROVE">
+              อนุมัติคำขอ
+            </Button>
+            <Button disabled={pending} name="decision" size="compact" type="submit" value="REJECT" variant="secondary">
+              ไม่อนุมัติคำขอ
+            </Button>
+          </>
+        ) : (
+          <Button disabled={pending} name="decision" size="compact" type="submit" value="START">
             ยืนยันว่าเริ่มให้บริการแล้ว
           </Button>
-        </form>
-        {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">บันทึกสถานะเริ่มบริการแล้ว</p> : null}
-        {state.status === "ERROR" ? <Alert className="mt-3" variant="danger">{state.message}</Alert> : null}
-      </div>
-    );
-  }
-
-  return <></>;
+        )}
+      </form>
+    </div>
+  );
 }

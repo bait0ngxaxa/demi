@@ -29,8 +29,10 @@ import {
   decidePatientServiceRequestPolicy,
 } from "../policies/patient-service-request-policy";
 import {
+  hospitalServiceRequestListSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
+  type HospitalServiceRequestListInput,
 } from "../schemas/patient-service-request-schemas";
 
 export type PatientServiceRequestDatabase = PrismaClient;
@@ -70,6 +72,15 @@ export type HospitalPatientServiceRequestView = {
   preferredOsmName: string | null;
   createdAt: Date;
 };
+
+export type HospitalPatientServiceRequestPage = {
+  requests: readonly HospitalPatientServiceRequestView[];
+  group: HospitalServiceRequestListInput["group"];
+  after: HospitalServiceRequestListInput["after"];
+  nextCursor: HospitalServiceRequestListInput["after"] | null;
+};
+
+const HOSPITAL_REQUEST_PAGE_SIZE = 20;
 
 function getDatabase(dependencies: PatientServiceRequestDependencies): PrismaClient {
   return dependencies.database ?? getPrisma();
@@ -583,10 +594,17 @@ export async function reviewPatientServiceRequest(
 export async function listHospitalPatientServiceRequests(
   actor: ActorContext | null | undefined,
   dependencies: PatientServiceRequestDependencies = {},
-): Promise<readonly HospitalPatientServiceRequestView[]> {
+  input: unknown = {},
+): Promise<HospitalPatientServiceRequestPage> {
   if (!actor) {
     throw new ForbiddenError();
   }
+
+  const parsed = hospitalServiceRequestListSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("Hospital request list parameters are invalid");
+  }
+  const { group, after } = parsed.data;
 
   const database = getDatabase(dependencies);
 
@@ -621,7 +639,16 @@ export async function listHospitalPatientServiceRequests(
     }
 
     const requests = await database.patientServiceRequest.findMany({
-      where: { hospitalId: { in: hospitalIds } },
+      where: {
+        hospitalId: { in: hospitalIds },
+        status: group === "HISTORY"
+          ? { in: [PatientServiceRequestStatus.STARTED, PatientServiceRequestStatus.REJECTED, PatientServiceRequestStatus.WITHDRAWN] }
+          : group,
+        ...(after ? { OR: [
+          { createdAt: { lt: new Date(after.createdAt) } },
+          { createdAt: new Date(after.createdAt), id: { lt: after.requestId } },
+        ] } : {}),
+      },
       select: {
         id: true,
         hospitalId: true,
@@ -643,29 +670,39 @@ export async function listHospitalPatientServiceRequests(
           select: { person: { select: { givenName: true, familyName: true } } },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: HOSPITAL_REQUEST_PAGE_SIZE + 1,
     });
 
-    return requests.map((request) => ({
-      requestId: request.id,
-      relationshipId: request.relationship.id,
-      hospitalId: request.hospitalId,
-      hospitalName: request.relationship.hospital.name,
-      hospitalCode: request.relationship.hospital.hospitalCode,
-      patientName: fullName(
-        request.relationship.patientProfile.person.givenName,
-        request.relationship.patientProfile.person.familyName,
-      ),
-      serviceCode: request.offering.code,
-      status: request.status,
-      preferredOsmName: request.preferredOsm
-        ? fullName(
-            request.preferredOsm.person.givenName,
-            request.preferredOsm.person.familyName,
-          )
+    const visible = requests.slice(0, HOSPITAL_REQUEST_PAGE_SIZE);
+    const last = visible.at(-1);
+    return {
+      group,
+      after,
+      nextCursor: requests.length > HOSPITAL_REQUEST_PAGE_SIZE && last
+        ? { createdAt: last.createdAt.toISOString(), requestId: last.id }
         : null,
-      createdAt: request.createdAt,
-    }));
+      requests: visible.map((request) => ({
+        requestId: request.id,
+        relationshipId: request.relationship.id,
+        hospitalId: request.hospitalId,
+        hospitalName: request.relationship.hospital.name,
+        hospitalCode: request.relationship.hospital.hospitalCode,
+        patientName: fullName(
+          request.relationship.patientProfile.person.givenName,
+          request.relationship.patientProfile.person.familyName,
+        ),
+        serviceCode: request.offering.code,
+        status: request.status,
+        preferredOsmName: request.preferredOsm
+          ? fullName(
+              request.preferredOsm.person.givenName,
+              request.preferredOsm.person.familyName,
+            )
+          : null,
+        createdAt: request.createdAt,
+      })),
+    };
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);
   }
