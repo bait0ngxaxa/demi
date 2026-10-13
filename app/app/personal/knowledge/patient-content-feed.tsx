@@ -13,7 +13,14 @@ const emptyCopy = {
   EMPTY_C: "ยังไม่มีข่าวสารและความรู้ในหมวดหมู่นี้",
 };
 export function PatientContentFeed({ context }: { context: HospitalContentPatientFeedContext }): React.JSX.Element {
+  const breadcrumbs = <nav aria-label="ลำดับหน้า">
+    <ol className="flex flex-wrap items-center gap-2 text-sm leading-6 text-text-muted">
+      <li><PatientContentLink href="/app/personal" className={patientContentControlClass}>พื้นที่ส่วนตัว</PatientContentLink></li>
+      <li><span aria-hidden="true">/ </span><span aria-current="page">ข่าวสารและความรู้</span></li>
+    </ol>
+  </nav>;
   if (context.outcome === "VALIDATION") return <div className="min-w-0 max-w-4xl space-y-6">
+    {breadcrumbs}
     <PageHeader title="ข่าวสารและความรู้" description="ข่าวสารและความรู้ที่จัดทำโดยโรงพยาบาล" />
     <Alert variant="warning">ไม่สามารถเปิดหน้ารายการที่ขอได้ กรุณาโหลดรายการล่าสุด</Alert>
     <PatientContentLink href={base} className={patientContentControlClass}>โหลดรายการล่าสุด</PatientContentLink>
@@ -23,6 +30,7 @@ export function PatientContentFeed({ context }: { context: HospitalContentPatien
   if (page.category !== null) continuation.set("category", page.category);
   if (page.nextCursor !== null) continuation.set("cursor", page.nextCursor);
   return <div className="min-w-0 max-w-4xl space-y-8">
+    {breadcrumbs}
     <PageHeader title="ข่าวสารและความรู้" description="ข่าวสารและความรู้ที่จัดทำโดยโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ" />
     <nav aria-label="เลือกหมวดหมู่ข่าวสารและความรู้" className="flex flex-wrap gap-2">
       <PatientContentLink href={base} current={page.category === null} className={patientContentControlClass}>{page.category === null ? "ทุกหมวดหมู่ (เลือกอยู่)" : "ทุกหมวดหมู่"}</PatientContentLink>

@@ -22,6 +22,7 @@ export default async function PatientSelfCarePage(): Promise<React.JSX.Element> 
         title="ข้อมูลการดูแล"
       />
       <PatientSelfRelationshipNavigation
+        area="care"
         emptyMessage="เมื่อมีข้อมูลความสัมพันธ์กับโรงพยาบาล รายการประวัติจะปรากฏที่นี่"
         relationships={relationships}
       />

@@ -2,6 +2,7 @@ import { HospitalStatus } from "@prisma/client";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
+import { buttonClassName } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientSelfRelationshipNavigation } from "@/modules/patient-self/services/patient-self-query-service";
@@ -15,9 +16,11 @@ const hospitalStatusLabels: Record<HospitalStatus, string> = {
 export function PatientSelfRelationshipNavigation({
   relationships,
   emptyMessage,
+  area,
 }: {
   relationships: readonly PatientSelfRelationshipNavigation[];
   emptyMessage: string;
+  area: "care" | "appointments";
 }): React.JSX.Element {
   if (relationships.length === 0) {
     return (
@@ -42,32 +45,22 @@ export function PatientSelfRelationshipNavigation({
                   รหัสโรงพยาบาล: {relationship.hospitalCode}
                 </p>
                 <p className="mt-1 break-words text-sm text-text-muted">
-                  HN: {relationship.hospitalNumber ?? "ยังไม่ได้บันทึก"}
+                  รหัสผู้ป่วยที่โรงพยาบาล: {relationship.hospitalNumber ?? "ยังไม่ได้บันทึก"}
                 </p>
               </div>
               <StatusBadge variant="neutral">
                 สถานะโรงพยาบาล: {hospitalStatusLabels[relationship.hospitalStatus]}
               </StatusBadge>
             </div>
-            <nav aria-label={`ประวัติของ ${relationship.hospitalName}`} className="mt-5">
-              <ul className="grid gap-2 sm:grid-cols-2">
-                <li>
-                  <Link
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-control bg-action-primary px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                    href={`/app/personal/care/${encodeURIComponent(relationship.relationshipId)}`}
-                  >
-                    ข้อมูลการดูแล
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-center text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                    href={`/app/personal/appointments/${encodeURIComponent(relationship.relationshipId)}`}
-                  >
-                    นัดหมาย
-                  </Link>
-                </li>
-              </ul>
+            <nav aria-label={`ข้อมูลของฉันที่ ${relationship.hospitalName}`} className="mt-5">
+              <Link
+                className={buttonClassName({ size: "compact", className: "w-full max-w-full break-words text-center" })}
+                href={`/app/personal/${area}/${encodeURIComponent(relationship.relationshipId)}`}
+                prefetch={false}
+              >
+                {area === "care" ? "ดูข้อมูลการดูแล" : "ดูนัดหมาย"}
+                <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+              </Link>
             </nav>
           </Panel>
         </li>

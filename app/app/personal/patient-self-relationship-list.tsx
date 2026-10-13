@@ -1,6 +1,8 @@
 import { HospitalStatus } from "@prisma/client";
 import Link from "next/link";
 
+import { buttonClassName } from "@/components/ui/button";
+
 import type { PatientSelfContactAvailability } from "@/modules/patient-self/transport/patient-self-page-context";
 import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
 
@@ -16,8 +18,10 @@ const hospitalStatusLabels: Record<HospitalStatus, string> = {
 
 export function PatientSelfRelationshipList({
   relationships,
+  showCareLink = false,
 }: {
   relationships: readonly PatientSelfHospitalRelationship[];
+  showCareLink?: boolean;
 }): React.JSX.Element {
   return (
     <section aria-labelledby="patient-self-hospitals-heading" className="mt-8">
@@ -27,12 +31,13 @@ export function PatientSelfRelationshipList({
       >
         โรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย
       </h2>
+      {showCareLink ? <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลการดูแลและข้อมูลส่วนตัวแยกตามโรงพยาบาล เลือกโรงพยาบาลที่ต้องการดูหรือติดต่อ</p> : null}
       {relationships.length > 0 ? (
         <ul className="mt-4 divide-y divide-border border-y border-border">
-          {relationships.map((relationship, index) => (
+          {relationships.map((relationship) => (
             <li
               className="min-w-0 py-4"
-              key={`${relationship.hospitalCode}-${relationship.hospitalName}-${index}`}
+              key={relationship.relationshipId}
             >
               <h3 className="break-words font-semibold text-text">{relationship.hospitalName}</h3>
               <p className="mt-1 break-words text-sm leading-6 text-text-muted">
@@ -97,12 +102,26 @@ export function PatientSelfRelationshipList({
                   )}
                 </section>
               ) : null}
-              <Link
-                className="mt-4 inline-flex min-h-11 max-w-full items-center justify-center rounded-control bg-action-primary px-4 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-                href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}
-              >
-                ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
-              </Link>
+              <nav aria-label={`ข้อมูลของฉันที่ ${relationship.hospitalName}`} className="mt-4 flex flex-wrap gap-3">
+                {showCareLink ? (
+                  <Link
+                    className={buttonClassName({ className: "w-full max-w-full break-words text-center sm:w-auto" })}
+                    href={`/app/personal/care/${encodeURIComponent(relationship.relationshipId)}`}
+                    prefetch={false}
+                  >
+                    ข้อมูลการดูแลของโรงพยาบาลนี้
+                    <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+                  </Link>
+                ) : null}
+                <Link
+                  className={buttonClassName({ variant: showCareLink ? "secondary" : "primary", className: "w-full max-w-full break-words text-center sm:w-auto" })}
+                  href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}
+                  prefetch={false}
+                >
+                  ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
+                  <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+                </Link>
+              </nav>
             </li>
           ))}
         </ul>

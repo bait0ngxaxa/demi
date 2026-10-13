@@ -292,11 +292,15 @@ describe("Patient self query boundary", () => {
     });
   });
 
-  it("fails closed when a Patient locates a relationship owned by another Patient", async () => {
+  it.each([
+    [Role.PATIENT],
+    [Role.OSM, Role.PATIENT],
+    [Role.HOSPITAL, Role.PATIENT],
+  ])("fails closed on another Patient relationship even with roles %s", async (...roles) => {
     const { database, findFirst } = createDatabase(null);
 
     await expect(
-      resolveOwnPatientRelationshipContext(actor(), hospitalTwoId, { database }),
+      resolveOwnPatientRelationshipContext(actor(roles), hospitalTwoId, { database }),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

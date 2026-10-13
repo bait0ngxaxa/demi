@@ -186,6 +186,7 @@ describe("Patient Personal care read views", () => {
   it("keeps each Hospital relationship as a separate navigation choice", () => {
     const markup = renderToStaticMarkup(
       <PatientSelfRelationshipNavigation
+        area="care"
         emptyMessage="ยังไม่มีประวัติ"
         relationships={[ownRelationship, anotherRelationship]}
       />,
@@ -194,7 +195,8 @@ describe("Patient Personal care read views", () => {
     expect(markup).toContain("โรงพยาบาล ก");
     expect(markup).toContain("โรงพยาบาล ข");
     expect(markup).toContain('href="/app/personal/care/11111111-1111-4111-8111-111111111111"');
-    expect(markup).toContain('href="/app/personal/appointments/22222222-2222-4222-8222-222222222222"');
+    expect(markup).toContain('href="/app/personal/care/22222222-2222-4222-8222-222222222222"');
+    expect(markup).not.toContain('href="/app/personal/appointments/');
     expect(markup).toContain("สถานะโรงพยาบาล: ถูกระงับการใช้งาน");
     expect(markup).not.toContain("โรงพยาบาลหลัก");
     expect(markup).toContain("min-h-11");

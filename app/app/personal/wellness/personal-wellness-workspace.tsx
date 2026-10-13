@@ -29,13 +29,13 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   }, [authority]);
 
   if (session === null) return <div className="max-w-4xl space-y-6">
-    <PageHeader title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
+    <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
     <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>
   </div>;
 
   const linkClassName = "inline-flex min-h-11 items-center rounded-control px-4 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
   return <div className="max-w-4xl space-y-8">
-    <PageHeader title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
+    <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
     <nav aria-label="หัวข้อสุขภาพ" className="flex flex-wrap gap-2"><a className={linkClassName} href="#meal">อาหาร</a><a className={linkClassName} href="#exercise">การออกกำลังกาย</a><a className={linkClassName} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
     <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace initialPage={session.mealPage} today={today} initialNonce={session.mealNonce} authority={authority} /></section>
     <section id="exercise" aria-label="การออกกำลังกาย" className="scroll-mt-24 border-t border-border pt-8"><PersonalExerciseWorkspace initialPage={session.exercisePage} today={today} initialNonce={session.exerciseNonce} authority={authority} /></section>

@@ -46,7 +46,7 @@ export function PersonalMedicationWorkspace({ active, stopped, selected, safeErr
 }): React.JSX.Element {
   const [feedback, setFeedback] = useState<PersonalMedicationActionState>({ status: "IDLE" });
   return <div className="max-w-4xl space-y-6">
-    <PageHeader title="ยาของฉัน" description="รายการยาที่คุณบันทึก" />
+    <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ยาของฉัน" }]} title="ยาของฉัน" description="รายการยาที่คุณบันทึก" />
     <p className="max-w-prose text-text-muted">ใช้ติดตามรายการส่วนตัวใน DEMI ข้อความประกอบเป็นข้อมูลที่คุณกรอก ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
     {safeError ? <Alert variant="danger">{safeError} <Link className="underline" href="/app/personal/medications">โหลดรายการล่าสุด</Link></Alert> : null}
     {selected && feedback.item?.id === selected.id ? <div role="status"><MedicationFeedback state={feedback} /></div> : null}

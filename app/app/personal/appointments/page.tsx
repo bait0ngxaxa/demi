@@ -22,6 +22,7 @@ export default async function PatientSelfAppointmentsPage(): Promise<React.JSX.E
         title="นัดหมาย"
       />
       <PatientSelfRelationshipNavigation
+        area="appointments"
         emptyMessage="เมื่อมีข้อมูลความสัมพันธ์กับโรงพยาบาล รายการนัดหมายจะปรากฏที่นี่"
         relationships={relationships}
       />

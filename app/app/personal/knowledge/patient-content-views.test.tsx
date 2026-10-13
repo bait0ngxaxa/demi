@@ -20,6 +20,8 @@ describe("Patient Content read presentation", () => {
     expect(html).not.toContain("plain Markdown"); expect(html).not.toContain("https://example.com");
     expect(html).not.toMatch(/firstPublishedAt|updatedAt|author|reviewer/u);
     expect(html).toContain('data-prefetch="false"');
+    expect(html).toMatch(/<a(?=[^>]*href="\/app\/personal")(?=[^>]*data-prefetch="false")[^>]*>/u);
+    expect(html).toContain('aria-label="ลำดับหน้า"');
     expect(html).toContain("min-w-0"); expect(html).toContain("overflow-wrap:anywhere");
   });
   it("uses GET category buttons, all via base URL, and never carries an old cursor on filter change", () => {
@@ -43,6 +45,7 @@ describe("Patient Content read presentation", () => {
   it("renders validation separately with a bounded restart", () => {
     const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "VALIDATION" }} />);
     expect(html).toContain("ไม่สามารถเปิดหน้ารายการที่ขอได้"); expect(html).not.toContain("ยังไม่มีข่าวสาร");
+    expect(html).toContain('href="/app/personal"');
   });
   it("renders escaped plain LF/Markdown text and unlinked source with informational trust copy", () => {
     const html = renderToStaticMarkup(<PatientContentDetail content={content} />);
