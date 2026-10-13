@@ -244,3 +244,100 @@ quiesce old recovery traffic, evaluate historical ambiguous/consumed operations,
 trusted public origin, validate actual Supabase/deployment behavior and complete browser/mobile
 UAT. Existing unrelated database drift remains unchanged. No unsupported recovery path is labeled
 VERIFIED_COMPLETE and no operator is authorized by this report to weaken account-owner proof.
+
+
+## Final identity and cross-Hospital remediation (review `ff33a3871d24ae6b5a9221ff7dd5997860ea8ba9`)
+
+### P0 — unactivated PATIENT identity versus workforce activation
+
+**Reproduced (pre-fix, PostgreSQL).** A `PROVISIONED` User with the `PATIENT` role, a `PatientProfile`
+and a Patient/Hospital relationship, and no `authSubject`, could be provisioned as OSM or Hospital
+member by an OWNER (or an OSM by a MEMBER). `isInitialWorkforceScopeEligible` rejected ADMIN and
+OWNER but not PATIENT, so the issuer — who holds the activation token and typed the national ID —
+could call `completeWorkforceActivation`, which invoked the provider create-user call with an
+issuer-chosen password and finalized the User to `ACTIVE` with that `authSubject`. Actor resolution
+(`actor-context-service`) loads **all** `UserRole` rows for an `ACTIVE` mapped User, so the same
+credential then resolved the `PATIENT` role and its Patient relationships. The failing tests
+"rejects a PATIENT role added between issuance and provider start…" etc. failed on `ff33a38`
+(the provider was called) and pass now.
+
+**Invariant.** The first password is global to the User, not scoped to a role. National ID,
+Hospital role assignment and possession of an activation token are not account-owner proof. A User
+that is not yet `ACTIVE` with a provider mapping and owns the patient domain (`PATIENT` role **or**
+a `PatientProfile`) therefore never receives a first credential through the workforce flow.
+
+**Enforcement (all in `workforce-service.ts`, all inside the existing Serializable transactions).**
+
+| Boundary | Check |
+| --- | --- |
+| Provisioning (single, bulk, repeat) — `createOrReuseWorkforceIdentity` | `assertNoUnactivatedPatientIdentity` for a reused `PROVISIONED` User, before any role/relationship/token is written |
+| Regeneration, printable slips, assisted activation — `regenerateActivationInTransaction` | same DB assertion before the previous token is revoked |
+| Preview, claim, provider-start transition, finalization | `isInitialWorkforceScopeEligible` now rejects `PATIENT` role and `patientProfile` using the row loaded in that transaction |
+
+The rejection is a `ConflictError` with a Thai message directing the Patient to activate their own
+account first. It happens before the provider is called; a role added after provider confirmation
+is caught at finalization, which compensates only the newly created initial identity (existing
+mechanism). Patient business data is never modified. An `ACTIVE` mapped PATIENT continues to be
+reused for OSM/Hospital relationships with no credential change; a fresh workforce-only User keeps
+the approved activation flow.
+
+Product decision still required (SECURITY_GATED): activating a workforce role for an unactivated
+Patient requires an approved independent ownership proof (for example the Patient first activating
+through the Patient activation flow). No weaker workaround is provided.
+
+### P1 — cross-Hospital pending scope
+
+**Reproduced (pre-fix).** Hospital A provisions an OSM (pending relationship + token). Hospital B
+provisions the same Person: the User gained a second `PROVISIONED` relationship, but
+`isInitialWorkforceScopeEligible` refuses any initial activation when pending relationships exist in
+another Hospital, so neither Hospital's link could ever complete.
+
+**Invariant.** Until cross-Hospital first-time trust semantics are approved, a `PROVISIONED` User
+may hold pending workforce state in **one** Hospital only (any number of roles inside it, e.g.
+MEMBER + OSM). `assertSingleHospitalPendingScope` rejects, with a Thai conflict message, any
+provisioning or regeneration for Hospital H when the User has a `PROVISIONED` membership/OSM
+relationship in another Hospital, or an unresolved (unused, unrevoked) `ACTIVATION` row whose
+`hospitalId` is another Hospital or null. It runs inside the same Serializable transaction as the
+write, so two concurrent Hospitals cannot both commit (one retries, then conflicts). A rejected
+call rolls back entirely: Hospital A's relationship, token and audit history are untouched. Bulk
+provisioning surfaces the conflict as that row's `CONFLICT` receipt while valid rows succeed, and
+replays return the original receipt. `ACTIVE` Users are not restricted and may join any number of
+Hospitals. No general one-Hospital-per-User rule and no schema change.
+
+### Already-stranded records (operator procedure)
+
+No automatic mutation is performed. Existing stranded Users remain blocked (provisioning,
+regeneration, slips and activation all conflict) and nothing is deleted or demoted. Identify them
+read-only (verified by the integration test "keeps historical cross-Hospital pending records
+blocked, unchanged and identifiable"):
+
+```sql
+SELECT u."id" AS "userId",
+       COUNT(DISTINCT p."hospitalId") AS "hospitalCount",
+       ARRAY_AGG(DISTINCT p."hospitalId") AS "hospitalIds"
+FROM "User" u
+JOIN (
+  SELECT "userId", "hospitalId" FROM "HospitalMembership" WHERE "status" = 'PROVISIONED'
+  UNION SELECT "userId", "hospitalId" FROM "OsmHospitalRelationship" WHERE "status" = 'PROVISIONED'
+) p ON p."userId" = u."id"
+WHERE u."status" = 'PROVISIONED' AND u."authSubject" IS NULL
+GROUP BY u."id" HAVING COUNT(DISTINCT p."hospitalId") > 1;
+```
+
+Before any resolution an authorized operator must verify: the affected Person identity and which
+Hospital's issuer legitimately onboarded them; no `WorkforceActivation` row is claimed, in
+`PROVIDER_STARTED`/`PROVIDER_CONFIRMED`/`RECONCILIATION_REQUIRED` or used (those require the
+provider reconciliation runbook first); no provider identity exists for the User; the audit trail
+(`*.provisioned`, `workforce_activation.*`) is preserved. Choosing which Hospital proceeds, or
+enabling multi-Hospital first activation, is an explicit product/security decision that is **not**
+made here; relationships are never deleted or activated automatically.
+
+### Verification executed for this remediation
+
+- Pre-fix: new PostgreSQL tests against `ff33a38` logic — 11 failed / 66 passed (reproduction).
+- Post-fix: `workforce-onboarding-v2.integration.test.ts` 77/77; `workforce` 16/16;
+  `patient-activation` 24/24; `patient-provisioning` 15/15; `workforce-remediation-migration` 2/2.
+- Unit: workforce/auth/patient-activation/patient-provisioning modules 460/460; `tsc --noEmit` and
+  ESLint on touched files clean. No Prisma schema or migration changed. Full-suite run not repeated
+  (change confined to `workforce-service.ts` guards).
+- Not performed: live Supabase calls, production data operations, browser/mobile UAT.

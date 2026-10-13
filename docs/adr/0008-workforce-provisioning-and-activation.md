@@ -381,3 +381,30 @@ this is not target identity proof, nor a guarantee that a shared browser's entir
 sanitized. Operators must use a clean target browser/profile/device rather than exposing the
 issuer's prior application history. See [Supabase sign-out](https://supabase.com/docs/guides/auth/signout)
 and [session semantics](https://supabase.com/docs/guides/auth/sessions).
+
+
+## Amendment — identity ownership and single-Hospital pending scope (review `ff33a38`)
+
+Historical decisions above are preserved; these rules are additive.
+
+1. **Credential ownership is global, role assignment is not proof.** The first password belongs to
+   the User. A workforce issuer knows the national ID and holds the activation capability, so it
+   must never establish the first credential of a User that already owns the Patient domain
+   (`PATIENT` role or `PatientProfile`) and is not yet `ACTIVE` with a provider mapping. Such
+   provisioning, regeneration, preview, claim, provider start and finalization fail closed with a
+   Thai conflict error. The Patient activates their own account first (ADR-0004); workforce
+   authority is then added to the `ACTIVE` User without a new credential.
+2. **ACTIVE reuse is unchanged.** An `ACTIVE`, correctly mapped User (any mix of PATIENT/OSM/HOSPITAL)
+   keeps its identity and may gain relationships in any number of authorized Hospitals.
+3. **A PROVISIONED User holds pending workforce state in one Hospital only.** Same-Hospital MEMBER +
+   OSM remains one activation. A request that would add pending state in a different Hospital
+   (including an unresolved activation row for another/unknown Hospital) is rejected before
+   commit, preserving the first Hospital's token. This replaces a latent state in which
+   provisioning succeeded but activation could never complete. It is a restriction until the
+   cross-Hospital first-activation trust semantics are approved; it is not a one-Hospital-per-User rule.
+4. **Stranded legacy rows are not auto-repaired.** See the operator procedure in the
+   [remediation handoff](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md).
+
+Status: SECURITY_GATED pending product/security owners (independent ownership proof for activating
+workforce authority on an unactivated Patient; cross-Hospital first-activation semantics). Neither
+is VERIFIED_COMPLETE.

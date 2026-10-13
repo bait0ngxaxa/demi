@@ -823,6 +823,58 @@ async function assertTargetUserCanReceiveWorkforce(
   }
 }
 
+const PATIENT_IDENTITY_CREDENTIAL_MESSAGE =
+  "บัญชีนี้เป็นบัญชีผู้ป่วยที่ยังไม่ได้เปิดใช้งาน จึงไม่สามารถเพิ่มสิทธิ์บุคลากรหรือออกลิงก์เปิดใช้งานบุคลากรได้ ผู้ป่วยต้องเปิดใช้งานบัญชีของตนเองก่อน";
+const CROSS_HOSPITAL_PENDING_MESSAGE =
+  "บัญชีนี้มีสิทธิ์บุคลากรที่รอเปิดใช้งานในโรงพยาบาลอื่นอยู่แล้ว จึงยังเพิ่มสิทธิ์ในโรงพยาบาลนี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบก่อน";
+
+/**
+ * The first password is global to the User, not scoped to one role. A workforce issuer knows the national ID and
+ * holds the activation token, so an unactivated PATIENT identity must never receive its first credential here.
+ */
+async function assertNoUnactivatedPatientIdentity(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  const patientIdentity = await transaction.user.findFirst({
+    where: {
+      id: userId,
+      OR: [{ roles: { some: { role: Role.PATIENT } } }, { person: { patientProfile: { isNot: null } } }],
+    },
+    select: { id: true },
+  });
+
+  if (patientIdentity) throw new ConflictError(PATIENT_IDENTITY_CREDENTIAL_MESSAGE);
+}
+
+/**
+ * Initial activation completes one Hospital scope only. A PROVISIONED User with pending workforce state in another
+ * Hospital (relationship or unresolved activation) must not gain more, or the activation path becomes unusable.
+ */
+async function assertSingleHospitalPendingScope(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  hospitalId: string,
+): Promise<void> {
+  const [membership, osm, activation] = await Promise.all([
+    transaction.hospitalMembership.findFirst({
+      where: { userId, status: MembershipStatus.PROVISIONED, hospitalId: { not: hospitalId } }, select: { id: true },
+    }),
+    transaction.osmHospitalRelationship.findFirst({
+      where: { userId, status: MembershipStatus.PROVISIONED, hospitalId: { not: hospitalId } }, select: { id: true },
+    }),
+    transaction.workforceActivation.findFirst({
+      where: {
+        userId, purpose: WorkforceActivationPurpose.ACTIVATION, usedAt: null, revokedAt: null,
+        OR: [{ hospitalId: null }, { hospitalId: { not: hospitalId } }],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (membership || osm || activation) throw new ConflictError(CROSS_HOSPITAL_PENDING_MESSAGE);
+}
+
 async function createOrReuseWorkforceIdentity(
   transaction: Prisma.TransactionClient,
   input: {
@@ -884,6 +936,11 @@ async function createOrReuseWorkforceIdentity(
 
   await assertTargetUserCanReceiveWorkforce(transaction, user.id);
   assertUserAccountCanReceiveWorkforce(user);
+
+  if (user.status === UserStatus.PROVISIONED) {
+    if (reusedExistingUser) await assertNoUnactivatedPatientIdentity(transaction, user.id);
+    await assertSingleHospitalPendingScope(transaction, user.id, input.hospitalId);
+  }
 
   // Do not grant workforce authority while an existing Patient recovery may be changing this global credential.
   const inFlightRecovery = await transaction.accountRecovery.findFirst({
@@ -2525,6 +2582,8 @@ async function regenerateActivationInTransaction(
   }
 
   await assertInitialCredentialStateInDatabase(transaction, input.request.userId);
+  await assertNoUnactivatedPatientIdentity(transaction, user.id);
+  await assertSingleHospitalPendingScope(transaction, user.id, input.request.targetHospitalId);
   await assertActivationTargetRelationship(transaction, input.request);
 
   const relationship = input.request.kind === "OSM"
@@ -2803,7 +2862,7 @@ const workforceActivationClaimTargetSelect = {
       status: true,
       authSubject: true,
       roles: { select: { role: true } },
-      person: { select: { identityKeyHash: true, givenName: true, familyName: true } },
+      person: { select: { identityKeyHash: true, givenName: true, familyName: true, patientProfile: { select: { id: true } } } },
       memberships: {
         select: { id: true, hospitalId: true, updatedAt: true, membershipType: true, status: true, hospital: { select: { status: true } } },
       },
@@ -2851,7 +2910,8 @@ function isInitialWorkforceScopeEligible(
   allowMappedSubject = false,
 ): boolean {
   if (user.status !== UserStatus.PROVISIONED || (!allowMappedSubject && user.authSubject) ||
-    user.roles.some(({ role }) => role === Role.ADMIN) || user.memberships.some(({ membershipType }) => membershipType === MembershipType.OWNER)) return false;
+    user.roles.some(({ role }) => role === Role.ADMIN || role === Role.PATIENT) || user.person.patientProfile ||
+    user.memberships.some(({ membershipType }) => membershipType === MembershipType.OWNER)) return false;
   const pendingStaff = user.memberships.filter(({ status }) => status === MembershipStatus.PROVISIONED);
   const pendingOsm = user.osmHospitalRelationships.filter(({ status }) => status === MembershipStatus.PROVISIONED);
   if ((pendingStaff.length && !user.roles.some(({ role }) => role === Role.HOSPITAL)) ||

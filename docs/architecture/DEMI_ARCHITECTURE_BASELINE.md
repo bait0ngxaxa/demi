@@ -1509,3 +1509,14 @@ ambiguous claims keep external effects distinct from database commits. Directory
 bounded `(createdAt, id)` keyset pages; MEMBER receives only OSM. Bulk receipts and domain writes
 commit together per row, preserving partial success and submission replay without secret/PII
 payload retention. Source-of-truth hierarchy and the four roles remain unchanged.
+
+
+### Identity ownership and pending-scope amendment (review ff33a38)
+
+The first credential is global to a User. A User that owns the Patient domain (`PATIENT` role or
+`PatientProfile`) and is not `ACTIVE` with a provider mapping cannot be issued or activated through a
+workforce flow; `ACTIVE` Users keep multi-role and multi-Hospital reuse with no new credential. A
+`PROVISIONED` User may hold pending workforce state in a single Hospital only (same-Hospital
+MEMBER + OSM allowed); a conflicting request is rejected before commit and the first Hospital's
+activation stays usable. Already-stranded cross-Hospital records stay blocked and are identified by the
+read-only query in the remediation handoff. Both gates are SECURITY_GATED, not VERIFIED_COMPLETE.

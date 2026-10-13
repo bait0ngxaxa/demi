@@ -562,3 +562,8 @@ regression evidence from unresolved recovery decisions. D1 MEMBER OSM-only autho
 bulk replay are implemented. Global assisted recovery and cross-Hospital pending initial
 activation are SECURITY_GATED, not VERIFIED_COMPLETE. No general-user, clinical, Area, or platform
 governance requirement is inferred from this change.
+
+The `ff33a38` review follow-up adds two fail-closed rules: workforce activation never establishes
+the first credential of an unactivated PATIENT identity, and a PROVISIONED User holds pending
+workforce state in one Hospital only (rejected before commit; stranded legacy rows are blocked and
+identifiable, never auto-repaired). Both remain SECURITY_GATED pending product/security decisions.

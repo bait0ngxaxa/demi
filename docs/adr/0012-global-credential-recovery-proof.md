@@ -35,3 +35,13 @@ for users without universal email, phone, smartphone, OTP or external identity. 
 must bind exact immutable authorization context, reauthorize at completion, serialize per User
 and durably distinguish ambiguous provider effects from local commits. The unavailable feature
 is SECURITY_GATED, never VERIFIED_COMPLETE. Historical decisions/tests remain historical evidence.
+
+
+## Addendum — first credential of an unactivated PATIENT identity
+
+The same ownership argument applies to **initial** credentials: a workforce activation token and
+the national ID typed by its issuer do not prove ownership of the global credential of a User that
+already owns the Patient domain and has not activated it. The workforce activation flow therefore
+refuses such Users at issuance and at every activation step (see ADR-0008 amendment
+"identity ownership and single-Hospital pending scope"). No recovery or replacement path is added
+and no restriction in this ADR is weakened.
