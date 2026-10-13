@@ -11,6 +11,7 @@ import {
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
 import {
   ForbiddenError,
   NotFoundError,
@@ -147,6 +148,29 @@ async function resolveActiveAssignment(
   });
 }
 
+/** The audit event of one created assignment, shared by the single and the bulk path. */
+export function buildPatientOsmAssignedAuditEvent(input: {
+  actorUserId: string;
+  assignmentId: string;
+  hospitalId: string;
+  patientHospitalRelationshipId: string;
+  osmUserId: string;
+  previousOsmUserId?: string | null;
+}): AuditEventInput {
+  return {
+    actorUserId: input.actorUserId,
+    action: input.previousOsmUserId ? "patient.osm_reassigned" : "patient.osm_assigned",
+    resourceType: "PatientOsmAssignment",
+    resourceId: input.assignmentId,
+    metadata: {
+      hospitalId: input.hospitalId,
+      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      osmUserId: input.osmUserId,
+      ...(input.previousOsmUserId ? { previousOsmUserId: input.previousOsmUserId } : {}),
+    },
+  };
+}
+
 export async function assignOsmToPatientInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
@@ -208,18 +232,14 @@ export async function assignOsmToPatientInTransaction(
   });
 
   await recordAuditEvent(
-    {
+    buildPatientOsmAssignedAuditEvent({
       actorUserId: actor.userId,
-      action: activeAssignment ? "patient.osm_reassigned" : "patient.osm_assigned",
-      resourceType: "PatientOsmAssignment",
-      resourceId: assignment.id,
-      metadata: {
-        hospitalId: relationship.hospitalId,
-        patientHospitalRelationshipId: relationship.id,
-        osmUserId: assignment.osmUserId,
-        ...(activeAssignment ? { previousOsmUserId: activeAssignment.osmUserId } : {}),
-      },
-    },
+      assignmentId: assignment.id,
+      hospitalId: relationship.hospitalId,
+      patientHospitalRelationshipId: relationship.id,
+      osmUserId: assignment.osmUserId,
+      previousOsmUserId: activeAssignment?.osmUserId,
+    }),
     transaction,
   );
 

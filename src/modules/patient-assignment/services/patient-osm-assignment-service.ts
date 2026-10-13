@@ -48,8 +48,8 @@ export type {
 
 export type PatientOsmAssignmentDatabase = PrismaClient;
 
-/** One batch of up to 500 assignments runs in a single transaction; the default budget is too short. */
-const BULK_ASSIGNMENT_TRANSACTION_TIMEOUT_MS = 60_000;
+/** One batch of up to 500 assignments is a handful of set-based statements in one transaction; a stalled batch should roll back, not hold locks. Not benchmarked. */
+const BULK_ASSIGNMENT_TRANSACTION_TIMEOUT_MS = 15_000;
 
 export type PatientOsmAssignmentServiceDependencies = {
   database?: PatientOsmAssignmentDatabase;

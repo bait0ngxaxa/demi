@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,150 @@ import {
 import type {
   PatientOsmAssignmentScope,
   PatientOsmBulkAssignmentView,
+  PatientOsmCandidate,
 } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
   initialPatientOsmBulkAssignmentActionState,
   type PatientOsmBulkAssignmentActionState,
+  type PatientOsmBulkCandidateSearchResult,
 } from "@/modules/patient-assignment/transport/action-state";
-import { bulkAssignOsmToPatientsAction } from "@/modules/patient-assignment/transport/server-actions";
+import {
+  bulkAssignOsmToPatientsAction,
+  searchPatientOsmBulkCandidatesAction,
+} from "@/modules/patient-assignment/transport/server-actions";
+
+const OSM_SEARCH_DEBOUNCE_MS = 300;
+
+type OsmSearchPickerProps = {
+  hospitalId: string;
+  selected: PatientOsmCandidate | null;
+  disabled: boolean;
+  onSelect: (candidate: PatientOsmCandidate | null) => void;
+};
+
+/**
+ * Server-side OSM search: the list never holds more than one page, and the chosen OSM
+ * lives in the parent so it survives any number of searches.
+ */
+function OsmSearchPicker({
+  hospitalId,
+  selected,
+  disabled,
+  onSelect,
+}: OsmSearchPickerProps): React.JSX.Element {
+  const [query, setQuery] = useState("");
+  const [answer, setAnswer] = useState<{
+    hospitalId: string;
+    query: string;
+    result: PatientOsmBulkCandidateSearchResult;
+  } | null>(null);
+  const latestRequest = useRef(0);
+  const trimmedQuery = query.trim();
+  const loading = answer === null || answer.hospitalId !== hospitalId || answer.query !== trimmedQuery;
+  const result = answer?.result ?? null;
+
+  useEffect(() => {
+    latestRequest.current += 1;
+    const requestId = latestRequest.current;
+    const timer = setTimeout(
+      () => {
+        searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery)
+          .catch(
+            (): PatientOsmBulkCandidateSearchResult => ({
+              status: "ERROR",
+              message: "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+            }),
+          )
+          .then((next) => {
+            if (latestRequest.current === requestId) {
+              setAnswer({ hospitalId, query: trimmedQuery, result: next });
+            }
+          });
+      },
+      trimmedQuery === "" ? 0 : OSM_SEARCH_DEBOUNCE_MS,
+    );
+
+    return () => clearTimeout(timer);
+  }, [hospitalId, trimmedQuery]);
+
+  return (
+    <div className="mt-4 max-w-xl space-y-3">
+      <p aria-live="polite" className="text-sm" role="status">
+        {selected ? (
+          <>
+            อสม. ที่เลือก: <span className="font-semibold">{selected.displayName}</span>
+            <button
+              className="ml-3 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring disabled:opacity-50"
+              disabled={disabled}
+              onClick={() => onSelect(null)}
+              type="button"
+            >
+              ล้างการเลือก
+            </button>
+          </>
+        ) : (
+          <span className="text-text-muted">ยังไม่ได้เลือก อสม.</span>
+        )}
+      </p>
+      <label className="block space-y-2 text-sm font-semibold">
+        <span>ค้นหาชื่อ อสม.</span>
+        <Input
+          disabled={disabled}
+          maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
+          onChange={(event) => setQuery(event.target.value)}
+          type="search"
+          value={query}
+        />
+      </label>
+      <div aria-busy={loading}>
+        {loading ? (
+          <p className="text-sm text-text-muted" role="status">
+            กำลังค้นหา อสม....
+          </p>
+        ) : result?.status === "ERROR" ? (
+          <Alert variant="danger">{result.message}</Alert>
+        ) : result && result.candidates.length === 0 ? (
+          <p className="rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
+            {trimmedQuery === ""
+              ? "ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้"
+              : "ไม่พบ อสม. ที่ตรงกับคำค้นหา"}
+          </p>
+        ) : result ? (
+          <>
+            <ul
+              aria-label="ผลการค้นหา อสม."
+              className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface"
+              role="radiogroup"
+            >
+              {result.candidates.map((candidate) => (
+                <li key={candidate.userId}>
+                  <label className="flex items-center gap-3 px-4 py-3 text-sm">
+                    <input
+                      checked={selected?.userId === candidate.userId}
+                      className="size-4 accent-brand-strong"
+                      disabled={disabled}
+                      name="osm-candidate"
+                      onChange={() => onSelect(candidate)}
+                      type="radio"
+                    />
+                    <span className="min-w-0 flex-1 break-words font-semibold text-text">
+                      {candidate.displayName}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            {result.hasMore ? (
+              <p className="mt-2 text-sm text-text-muted">
+                แสดง {result.candidates.length} รายการแรก พิมพ์ชื่อเพื่อค้นหา อสม. คนอื่น
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 type PatientOsmBulkAssignmentWorkspaceProps = {
   scopes: readonly PatientOsmAssignmentScope[];
@@ -46,12 +184,10 @@ export function PatientOsmBulkAssignmentWorkspace({
     initialPatientOsmBulkAssignmentActionState,
   );
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
-  const [osmUserId, setOsmUserId] = useState("");
+  const [selectedOsm, setSelectedOsm] = useState<PatientOsmCandidate | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [submissionNonce, setSubmissionNonce] = useState("");
   const patients = view?.patients ?? [];
-  const osmCandidates = view?.osmCandidates ?? [];
-  const selectedOsm = osmCandidates.find((candidate) => candidate.userId === osmUserId) ?? null;
   const allSelected = patients.length > 0 && selectedIds.size === patients.length;
   const succeeded = state.status === "SUCCESS";
   const selectedPatients = patients.filter((patient) =>
@@ -231,29 +367,12 @@ export function PatientOsmBulkAssignmentWorkspace({
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 แสดงเฉพาะบัญชี อสม. ที่เปิดใช้งานและมีความสัมพันธ์กับโรงพยาบาลนี้
               </p>
-              {osmCandidates.length > 0 ? (
-                <label className="mt-4 block max-w-xl space-y-2 text-sm font-semibold">
-                  <span>อสม. ที่ต้องการมอบหมาย</span>
-                  <Select
-                    disabled={confirming || pending}
-                    onChange={(event) => setOsmUserId(event.target.value)}
-                    value={osmUserId}
-                  >
-                    <option disabled value="">
-                      เลือก อสม.
-                    </option>
-                    {osmCandidates.map((candidate) => (
-                      <option key={candidate.userId} value={candidate.userId}>
-                        {candidate.displayName}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-              ) : (
-                <p className="mt-4 rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
-                  ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้
-                </p>
-              )}
+              <OsmSearchPicker
+                disabled={confirming || pending}
+                hospitalId={selectedScope.hospitalId}
+                onSelect={setSelectedOsm}
+                selected={selectedOsm}
+              />
 
               {!confirming ? (
                 <Button

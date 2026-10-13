@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   HospitalStatus,
   MembershipStatus,
@@ -28,7 +30,8 @@ type AuditRecord = {
 const mockedAudit = vi.hoisted(() => vi.fn());
 
 vi.mock("@/modules/audit/services/audit-service", () => ({
-  recordAuditEvent: mockedAudit,
+  recordAuditEvent: vi.fn(),
+  recordAuditEvents: mockedAudit,
 }));
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
@@ -42,6 +45,10 @@ function relationshipIds(count: number): string[] {
   return Array.from({ length: count }, (_, index) =>
     `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
   );
+}
+
+function fingerprintOf(ids: readonly string[]): string {
+  return createHash("sha256").update([...ids].sort().join(",")).digest("hex");
 }
 
 function actorWith(membershipType: MembershipType, overrides: Partial<ActorContext> = {}): ActorContext {
@@ -79,14 +86,15 @@ function createFakeDatabase(input: {
   relationships: FakeRelationship[];
   eligibleOsmUserIds?: string[];
   ownerMembership?: boolean;
-  failCreateOnCall?: number;
+  failCreate?: boolean;
+  failAudit?: boolean;
+  existingAudits?: AuditRecord[];
 }) {
   const state = {
     relationships: new Map(
       input.relationships.map((relationship) => [relationship.id, structuredClone(relationship)]),
     ),
-    audits: [] as AuditRecord[],
-    createCalls: 0,
+    audits: [...(input.existingAudits ?? [])],
   };
   const eligibleOsm = new Set(input.eligibleOsmUserIds ?? [osmUserId]);
   let assignmentSequence = 0;
@@ -128,29 +136,23 @@ function createFakeDatabase(input: {
       ),
     },
     patientOsmAssignment: {
-      findFirst: vi.fn(async ({ where }: { where: { patientHospitalRelationshipId: string } }) => {
-        const relationship = state.relationships.get(where.patientHospitalRelationshipId);
-        const [active] = relationship ? activeAssignments(relationship) : [];
-        return active ? { id: active.id, osmUserId: active.osmUserId } : null;
-      }),
-      update: vi.fn(async () => ({})),
-      create: vi.fn(
-        async ({ data }: { data: { patientHospitalRelationshipId: string; osmUserId: string } }) => {
-          state.createCalls += 1;
-
-          if (input.failCreateOnCall === state.createCalls) {
+      createManyAndReturn: vi.fn(
+        async ({ data }: { data: Array<{ patientHospitalRelationshipId: string; osmUserId: string }> }) => {
+          if (input.failCreate) {
             throw new Prisma.PrismaClientKnownRequestError("unique", {
               code: "P2002",
               clientVersion: "test",
             });
           }
 
-          assignmentSequence += 1;
-          const id = `assignment-${assignmentSequence}`;
-          state.relationships
-            .get(data.patientHospitalRelationshipId)
-            ?.assignments.push({ id, osmUserId: data.osmUserId, endedAt: null });
-          return { id, osmUserId: data.osmUserId };
+          return data.map((row) => {
+            assignmentSequence += 1;
+            const id = `assignment-${assignmentSequence}`;
+            state.relationships
+              .get(row.patientHospitalRelationshipId)
+              ?.assignments.push({ id, osmUserId: row.osmUserId, endedAt: null });
+            return { id, patientHospitalRelationshipId: row.patientHospitalRelationshipId };
+          });
         },
       ),
     },
@@ -185,8 +187,12 @@ function createFakeDatabase(input: {
     }),
   } as unknown as PatientOsmAssignmentDatabase;
 
-  mockedAudit.mockImplementation(async (record: AuditRecord) => {
-    state.audits.push(record);
+  mockedAudit.mockImplementation(async (records: AuditRecord[]) => {
+    if (input.failAudit) {
+      throw new Error("audit failed");
+    }
+
+    state.audits.push(...records);
   });
 
   return { database, state, transaction };
@@ -260,12 +266,12 @@ describe("assignOsmToPatients", () => {
         action: "patient.osm_bulk_assigned",
         resourceType: "PatientOsmBulkAssignment",
         resourceId: nonce,
-        metadata: { hospitalId, osmUserId, assignedCount: 3 },
+        metadata: { hospitalId, osmUserId, assignedCount: 3, selectionFingerprint: fingerprintOf(ids) },
       },
     ]);
   });
 
-  it("handles the maximum batch of 500 in one transaction with a widened timeout", async () => {
+  it("handles the maximum batch of 500 in one transaction with a bounded timeout", async () => {
     const ids = relationshipIds(500);
     const { database, state } = createFakeDatabase({ relationships: freeRelationships(ids) });
 
@@ -277,7 +283,8 @@ describe("assignOsmToPatients", () => {
     expect(result.assignedCount).toBe(500);
     expect(activeCount(state)).toBe(500);
     expect(database.$transaction).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toMatchObject({ timeout: 60_000 });
+    expect(state.audits).toHaveLength(501);
+    expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toMatchObject({ timeout: 15_000 });
   });
 
   it("denies a MEMBER before touching any patient", async () => {
@@ -395,12 +402,27 @@ describe("assignOsmToPatients", () => {
     expect(activeCount(state)).toBe(0);
   });
 
-  it("rolls back every assignment when one item fails mid-batch", async () => {
+  it("rolls back every assignment and persists no replay marker when the audit write fails", async () => {
     const ids = relationshipIds(5);
     const { database, state } = createFakeDatabase({
       relationships: freeRelationships(ids),
-      failCreateOnCall: 4,
+      failAudit: true,
     });
+
+    await expect(
+      assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), {
+        database,
+        now: () => now,
+        transactionRetries: 0,
+      }),
+    ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    expect(activeCount(state)).toBe(0);
+    expect(state.audits).toEqual([]);
+  });
+
+  it("maps a unique-index conflict on insert to CONFLICT and assigns nobody", async () => {
+    const ids = relationshipIds(5);
+    const { database, state } = createFakeDatabase({ relationships: freeRelationships(ids), failCreate: true });
 
     await expect(
       assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), {
@@ -413,23 +435,81 @@ describe("assignOsmToPatients", () => {
     expect(state.audits).toEqual([]);
   });
 
-  it("replays a double submit of the same nonce instead of assigning twice", async () => {
+  it("runs the shared checks and the writes once, not once per patient", async () => {
+    const ids = relationshipIds(500);
+    const { database, transaction } = createFakeDatabase({ relationships: freeRelationships(ids) });
+
+    await assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now });
+
+    expect(transaction.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(transaction.hospitalMembership.findFirst).toHaveBeenCalledTimes(1);
+    expect(transaction.user.findFirst).toHaveBeenCalledTimes(1);
+    expect(transaction.patientHospitalRelationship.findMany).toHaveBeenCalledTimes(1);
+    expect(transaction.patientHospitalRelationship.findFirst).not.toHaveBeenCalled();
+    expect(transaction.patientOsmAssignment.createManyAndReturn).toHaveBeenCalledTimes(1);
+    expect(mockedAudit).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays a double submit of the same nonce and selection instead of assigning twice", async () => {
     const ids = relationshipIds(3);
     const { database, state, transaction } = createFakeDatabase({ relationships: freeRelationships(ids) });
     const actor = actorWith(MembershipType.OWNER);
 
     const first = await assignOsmToPatients(actor, request(ids), { database, now: () => now });
-    const createCallsAfterFirst = transaction.patientOsmAssignment.create.mock.calls.length;
     const second = await assignOsmToPatients(actor, request(ids), { database, now: () => now });
 
     expect(first.operation).toBe("ASSIGNED");
     expect(second).toEqual({ operation: "REPLAYED", hospitalId, osmUserId, assignedCount: 3 });
-    expect(transaction.patientOsmAssignment.create.mock.calls.length).toBe(createCallsAfterFirst);
+    expect(transaction.patientOsmAssignment.createManyAndReturn).toHaveBeenCalledTimes(1);
     expect(activeCount(state)).toBe(3);
     expect(state.audits.filter(({ action }) => action === "patient.osm_bulk_assigned")).toHaveLength(1);
   });
 
-  it("rejects a reused nonce for a different request", async () => {
+  it("replays a reordered selection of the same patients", async () => {
+    const ids = relationshipIds(4);
+    const { database, state } = createFakeDatabase({ relationships: freeRelationships(ids) });
+    const actor = actorWith(MembershipType.OWNER);
+
+    await assignOsmToPatients(actor, request(ids), { database, now: () => now });
+    const replay = await assignOsmToPatients(actor, request([...ids].reverse()), { database, now: () => now });
+
+    expect(replay.operation).toBe("REPLAYED");
+    expect(activeCount(state)).toBe(4);
+  });
+
+  it("rejects a reused nonce for different patients without claiming success", async () => {
+    const first = relationshipIds(3);
+    const others = relationshipIds(6).slice(3);
+    const { database, state } = createFakeDatabase({ relationships: freeRelationships([...first, ...others]) });
+    const actor = actorWith(MembershipType.OWNER);
+
+    await assignOsmToPatients(actor, request(first), { database, now: () => now });
+
+    await expect(
+      assignOsmToPatients(actor, request(others), { database, now: () => now }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(activeCount(state)).toBe(3);
+    for (const id of others) {
+      expect(state.relationships.get(id)?.assignments).toEqual([]);
+    }
+  });
+
+  it("rejects a reused nonce for a subset or superset of the original selection", async () => {
+    const ids = relationshipIds(4);
+    const { database } = createFakeDatabase({ relationships: freeRelationships(ids) });
+    const actor = actorWith(MembershipType.OWNER);
+
+    await assignOsmToPatients(actor, request(ids.slice(0, 3)), { database, now: () => now });
+
+    await expect(
+      assignOsmToPatients(actor, request(ids.slice(0, 2)), { database, now: () => now }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      assignOsmToPatients(actor, request(ids), { database, now: () => now }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects a reused nonce for a different OSM", async () => {
     const ids = relationshipIds(2);
     const otherOsmUserId = "55555555-5555-4555-8555-555555555555";
     const { database, state } = createFakeDatabase({
@@ -447,6 +527,70 @@ describe("assignOsmToPatients", () => {
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(activeCount(state)).toBe(2);
+  });
+
+  it("rejects a reused nonce for a different hospital", async () => {
+    const ids = relationshipIds(2);
+    const { database } = createFakeDatabase({ relationships: freeRelationships(ids) });
+    const owner = actorWith(MembershipType.OWNER, {
+      hospitalMemberships: [
+        ...actorWith(MembershipType.OWNER).hospitalMemberships,
+        {
+          hospitalId: otherHospitalId,
+          membershipType: MembershipType.OWNER,
+          profession: null,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+
+    await assignOsmToPatients(owner, request(ids), { database, now: () => now });
+
+    await expect(
+      assignOsmToPatients(owner, request(ids, { hospitalId: otherHospitalId }), { database, now: () => now }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("rejects a reused nonce from a different actor", async () => {
+    const ids = relationshipIds(2);
+    const { database } = createFakeDatabase({ relationships: freeRelationships(ids) });
+
+    await assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now });
+
+    await expect(
+      assignOsmToPatients(
+        actorWith(MembershipType.OWNER, { userId: "66666666-6666-4666-8666-666666666666" }),
+        request(ids),
+        { database, now: () => now },
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it.each<[string, Record<string, unknown> | null]>([
+    ["has no metadata", null],
+    ["has no fingerprint (legacy marker)", { hospitalId, osmUserId, assignedCount: 3 }],
+    ["has a malformed fingerprint", { hospitalId, osmUserId, assignedCount: 3, selectionFingerprint: "xyz" }],
+    ["has a non-integer count", { hospitalId, osmUserId, assignedCount: 2.5, selectionFingerprint: "a".repeat(64) }],
+  ])("fails closed when the stored replay marker %s", async (_name, metadata) => {
+    const ids = relationshipIds(3);
+    const { database, state } = createFakeDatabase({
+      relationships: freeRelationships(ids),
+      existingAudits: [
+        {
+          actorUserId: ownerUserId,
+          action: "patient.osm_bulk_assigned",
+          resourceType: "PatientOsmBulkAssignment",
+          resourceId: nonce,
+          ...(metadata ? { metadata: metadata as AuditRecord["metadata"] } : {}),
+        },
+      ],
+    });
+
+    await expect(
+      assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(activeCount(state)).toBe(0);
   });
 
   it("rejects malformed input before any database work", async () => {

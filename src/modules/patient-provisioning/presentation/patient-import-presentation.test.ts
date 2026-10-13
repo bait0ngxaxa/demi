@@ -242,7 +242,7 @@ describe("patient import presentation helpers", () => {
     }));
     expect(clean).toMatchObject({
       variant: "success",
-      heading: "นำเข้าข้อมูลเรียบร้อยแล้ว",
+      heading: "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว",
       detail: null,
       hasAttentionRows: false,
     });

@@ -77,10 +77,15 @@ export type PatientOsmBulkAssignmentView = {
   patients: PatientDirectoryItem[];
   /** Number of patients without a current OSM in the Hospital (may exceed `patients`). */
   totalWithoutOsm: number;
-  osmCandidates: PatientOsmCandidate[];
 };
 
-const BULK_OSM_CANDIDATE_LIMIT = 200;
+export type PatientOsmBulkCandidatePage = {
+  candidates: PatientOsmCandidate[];
+  /** More eligible OSMs match than are listed; the owner narrows the name search. */
+  hasMore: boolean;
+};
+
+const OSM_CANDIDATE_PAGE_SIZE = 25;
 
 export async function countCurrentAssignmentsForOsmInHospital(
   database: PatientOsmAssignmentCountDatabase,
@@ -248,6 +253,43 @@ export async function getPatientOsmAssignmentManagementView(
   }
 }
 
+/**
+ * Active OSM accounts with an active relationship to one Hospital, optionally narrowed by
+ * name. The single and the bulk selector share this filter; callers authorize the
+ * Hospital first.
+ */
+async function findEligibleOsmCandidates(
+  database: PatientOsmAssignmentQueryDatabase,
+  input: { hospitalId: string; value?: string; excludeUserId?: string },
+): Promise<PatientOsmBulkCandidatePage> {
+  const records = await database.user.findMany({
+    where: {
+      status: UserStatus.ACTIVE,
+      roles: { some: { role: Role.OSM } },
+      ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
+      osmHospitalRelationships: {
+        some: {
+          hospitalId: input.hospitalId,
+          status: MembershipStatus.ACTIVE,
+          hospital: { status: HospitalStatus.ACTIVE },
+        },
+      },
+      person: input.value ? buildNameWhere(input.value) : {},
+    },
+    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+    orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
+    take: OSM_CANDIDATE_PAGE_SIZE + 1,
+  });
+
+  return {
+    candidates: records.slice(0, OSM_CANDIDATE_PAGE_SIZE).map((record) => ({
+      userId: record.id,
+      displayName: toDisplayName(record.person),
+    })),
+    hasMore: records.length > OSM_CANDIDATE_PAGE_SIZE,
+  };
+}
+
 export async function listPatientOsmCandidates(
   actor: ActorContext | null | undefined,
   input: unknown,
@@ -283,43 +325,12 @@ export async function listPatientOsmCandidates(
       targetHospitalId: relationship.hospitalId,
     });
 
-    const personWhere: Prisma.PersonWhereInput = parsed.data.value
-      ? buildNameWhere(parsed.data.value)
-      : {};
-    const candidates = await database.user.findMany({
-      where: {
-        status: UserStatus.ACTIVE,
-        roles: { some: { role: Role.OSM } },
-        osmHospitalRelationships: {
-          some: {
-            hospitalId: relationship.hospitalId,
-            status: MembershipStatus.ACTIVE,
-            hospital: { status: HospitalStatus.ACTIVE },
-          },
-        },
-        person: personWhere,
-      },
-      select: {
-        id: true,
-        person: {
-          select: {
-            givenName: true,
-            familyName: true,
-          },
-        },
-      },
-      orderBy: [
-        { person: { givenName: "asc" } },
-        { person: { familyName: "asc" } },
-        { id: "asc" },
-      ],
-      take: 25,
-    });
-
-    return candidates.map((candidate) => ({
-      userId: candidate.id,
-      displayName: toDisplayName(candidate.person),
-    }));
+    return (
+      await findEligibleOsmCandidates(database, {
+        hospitalId: relationship.hospitalId,
+        value: parsed.data.value,
+      })
+    ).candidates;
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -361,8 +372,8 @@ export async function listPatientOsmAssignmentScopes(
 }
 
 /**
- * Patients of one Hospital who have no current OSM, and the OSMs that may be assigned
- * to them. The page is advisory: the bulk action re-authorizes every patient.
+ * Patients of one Hospital who have no current OSM. The page is advisory: the bulk
+ * action re-authorizes the owner, the OSM and every patient.
  */
 export async function getPatientOsmBulkAssignmentView(
   actor: ActorContext | null | undefined,
@@ -406,7 +417,7 @@ export async function getPatientOsmBulkAssignmentView(
       },
       osmAssignments: { none: { endedAt: null } },
     };
-    const [records, totalWithoutOsm, candidates] = await Promise.all([
+    const [records, totalWithoutOsm] = await Promise.all([
       database.patientHospitalRelationship.findMany({
         where: patientWhere,
         select: patientDirectorySelect,
@@ -418,37 +429,12 @@ export async function getPatientOsmBulkAssignmentView(
         take: PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
       }),
       database.patientHospitalRelationship.count({ where: patientWhere }),
-      database.user.findMany({
-        where: {
-          status: UserStatus.ACTIVE,
-          roles: { some: { role: Role.OSM } },
-          id: { not: actor.userId },
-          osmHospitalRelationships: {
-            some: {
-              hospitalId: hospital.id,
-              status: MembershipStatus.ACTIVE,
-              hospital: { status: HospitalStatus.ACTIVE },
-            },
-          },
-        },
-        select: { id: true, person: { select: { givenName: true, familyName: true } } },
-        orderBy: [
-          { person: { givenName: "asc" } },
-          { person: { familyName: "asc" } },
-          { id: "asc" },
-        ],
-        take: BULK_OSM_CANDIDATE_LIMIT,
-      }),
     ]);
 
     return {
       hospital: { hospitalId: hospital.id, hospitalName: hospital.name },
       patients: records.map(toPatientDirectoryItem),
       totalWithoutOsm,
-      osmCandidates: candidates.map((candidate) => ({
-        userId: candidate.id,
-        displayName: toDisplayName(candidate.person),
-      })),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -456,6 +442,57 @@ export async function getPatientOsmBulkAssignmentView(
     }
 
     throw new InfrastructureError("Bulk patient assignment could not be loaded");
+  }
+}
+
+/**
+ * Server-side OSM search for the bulk selector: eligible OSMs of one owned Hospital,
+ * matched by name, at most one page per request. The final submission re-validates
+ * the chosen OSM, so this list is advisory.
+ */
+export async function listPatientOsmBulkCandidates(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientOsmAssignmentQueryDependencies = {},
+): Promise<PatientOsmBulkCandidatePage> {
+  const parsed = patientOsmBulkAssignmentQuerySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("OSM candidate search data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  assertPatientOsmAssignmentPolicy({
+    actor,
+    capability: "patient:assign-osm",
+    targetHospitalId: parsed.data.hospitalId,
+  });
+
+  try {
+    const database = getDatabase(dependencies);
+    const hospital = await database.hospital.findFirst({
+      where: { id: parsed.data.hospitalId, ...buildOwnerHospitalWhere(actor.userId) },
+      select: { id: true },
+    });
+
+    if (!hospital) {
+      throw new ForbiddenError();
+    }
+
+    return await findEligibleOsmCandidates(database, {
+      hospitalId: hospital.id,
+      value: parsed.data.value,
+      excludeUserId: actor.userId,
+    });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("OSM candidates could not be loaded");
   }
 }
 

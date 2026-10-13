@@ -57,6 +57,25 @@ export function isPatientImportClassificationField(
   return field === "diabetesClassification";
 }
 
+/**
+ * The columns import persists for a new patient (classification and baseline values
+ * with their own conditions). Every other template column is read and validated but
+ * not saved until a business requirement approves its persistence.
+ */
+export const PATIENT_IMPORT_SAVED_FIELD_KEYS = [
+  "nationalId",
+  "givenName",
+  "familyName",
+  "hospitalNumber",
+  "diabetesClassification",
+  ...PATIENT_IMPORT_BASELINE_FIELD_KEYS,
+] as const satisfies readonly PatientImportFieldKey[];
+
+export const PATIENT_IMPORT_UNSAVED_FIELD_KEYS: readonly PatientImportFieldKey[] =
+  PATIENT_IMPORT_FIELD_KEYS.filter(
+    (field) => !(PATIENT_IMPORT_SAVED_FIELD_KEYS as readonly PatientImportFieldKey[]).includes(field),
+  );
+
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"

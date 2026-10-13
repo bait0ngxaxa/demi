@@ -15,6 +15,7 @@ import {
   isPatientImportClassificationField,
   isPatientImportBaselineField,
   PATIENT_IMPORT_FIELD_KEYS,
+  PATIENT_IMPORT_UNSAVED_FIELD_KEYS,
 } from "../import/patient-import-contract";
 import type {
   CanonicalPatientImportRow,
@@ -94,29 +95,36 @@ function normalizeCellText(value: string): string {
 }
 
 function cellHasMeaningfulValue(cell: Cell): boolean {
-  if (cell.value === null || cell.value === undefined) {
+  const value = cell.value;
+
+  if (value === null || value === undefined) {
     return false;
   }
 
-  if (typeof cell.value === "string") {
-    const text = normalizeCellText(cell.value);
+  if (typeof value === "string") {
+    const text = normalizeCellText(value);
     return text !== "" && text !== "-";
   }
 
-  return cell.type !== ExcelJS.ValueType.Null;
+  if (typeof value !== "object" || value instanceof Date) {
+    return true;
+  }
+
+  // Formulas and error cells are data the parser reports on; rich text and
+  // hyperlinks count only when their displayed text is not blank.
+  if (cell.type === ExcelJS.ValueType.Formula || cell.type === ExcelJS.ValueType.Error) {
+    return true;
+  }
+
+  const text = normalizeCellText(cell.text ?? "");
+  return text !== "" && text !== "-";
 }
 
-const PATIENT_CORE_SIGNAL_FIELDS: readonly PatientImportFieldKey[] = [
-  "nationalId",
-  "givenName",
-  "familyName",
-];
-
-function rowHasPatientCoreSignal(row: ExcelJS.Row): boolean {
-  return PATIENT_CORE_SIGNAL_FIELDS.some((field) => {
-    const binding = PATIENT_IMPORT_COLUMN_BINDINGS.get(field);
-    return binding ? cellHasMeaningfulValue(row.getCell(binding.columnNumber)) : false;
-  });
+/** A row is patient data when any of the template's columns holds a value. */
+function rowHasPatientData(row: ExcelJS.Row): boolean {
+  return PATIENT_IMPORT_TEMPLATE_COLUMNS.some((_, index) =>
+    cellHasMeaningfulValue(row.getCell(index + 1)),
+  );
 }
 
 function inspectDataRows(
@@ -127,7 +135,7 @@ function inspectDataRows(
   let tooManyRows = false;
 
   worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber < dataStartRowNumber || !rowHasPatientCoreSignal(row)) {
+    if (rowNumber < dataStartRowNumber || !rowHasPatientData(row)) {
       return;
     }
 
@@ -595,12 +603,7 @@ export async function readPatientImportFile(
     throw new ValidationError(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);
   }
 
-  const requirementGatedFields = PATIENT_IMPORT_FIELD_KEYS.filter(
-    (field) =>
-      !CORE_FIELDS.has(field) &&
-      !isPatientImportBaselineField(field) &&
-      !isPatientImportClassificationField(field),
-  );
+  const requirementGatedFields = PATIENT_IMPORT_UNSAVED_FIELD_KEYS;
   const fileMetadata: PatientImportFileMetadata = {
     worksheetName: validation.worksheet.name,
     headerRowNumber: validation.headerRowNumber,

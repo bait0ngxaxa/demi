@@ -2,18 +2,22 @@ import { Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedAssign = vi.hoisted(() => vi.fn());
 const mockedBulkAssign = vi.hoisted(() => vi.fn());
 const mockedUnassign = vi.hoisted(() => vi.fn());
+const mockedBulkCandidates = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mockedActor,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
+vi.mock("../services/patient-osm-assignment-query-service", () => ({
+  listPatientOsmBulkCandidates: mockedBulkCandidates,
+}));
 vi.mock("../services/patient-osm-assignment-service", () => ({
   assignOsmToPatient: mockedAssign,
   assignOsmToPatients: mockedBulkAssign,
@@ -23,6 +27,7 @@ vi.mock("../services/patient-osm-assignment-service", () => ({
 import {
   assignOsmToPatientAction,
   bulkAssignOsmToPatientsAction,
+  searchPatientOsmBulkCandidatesAction,
   unassignOsmFromPatientAction,
 } from "./server-actions";
 import {
@@ -236,6 +241,39 @@ describe("Patient assignment Server Actions", () => {
       expect(
         await bulkAssignOsmToPatientsAction(initialPatientOsmBulkAssignmentActionState, bulkFormData()),
       ).toMatchObject({ status: "SUCCESS", result: { operation: "REPLAYED" } });
+    });
+  });
+
+  describe("searchPatientOsmBulkCandidatesAction", () => {
+    const hospitalId = "55555555-5555-4555-8555-555555555555";
+
+    it("authorizes through the service with the protected actor and returns one page", async () => {
+      mockedBulkCandidates.mockResolvedValue({
+        candidates: [{ userId: osmUserId, displayName: "อสม. หนึ่ง" }],
+        hasMore: true,
+      });
+
+      await expect(searchPatientOsmBulkCandidatesAction(hospitalId, "หนึ่ง")).resolves.toEqual({
+        status: "OK",
+        candidates: [{ userId: osmUserId, displayName: "อสม. หนึ่ง" }],
+        hasMore: true,
+      });
+      expect(mockedBulkCandidates).toHaveBeenCalledWith(actor, { hospitalId, value: "หนึ่ง" });
+    });
+
+    it("returns a Thai error and no candidates when the service denies or fails", async () => {
+      mockedBulkCandidates.mockRejectedValueOnce(new ForbiddenError());
+      const denied = await searchPatientOsmBulkCandidatesAction(hospitalId, "");
+      mockedBulkCandidates.mockRejectedValueOnce(new ValidationError("bad"));
+      const invalid = await searchPatientOsmBulkCandidatesAction(hospitalId, "x");
+      mockedActor.mockRejectedValueOnce(new Error("session"));
+      const failed = await searchPatientOsmBulkCandidatesAction(hospitalId, "");
+
+      for (const outcome of [denied, invalid, failed]) {
+        expect(outcome.status).toBe("ERROR");
+        expect(outcome).not.toHaveProperty("candidates");
+      }
+      expect(invalid).toMatchObject({ message: "กรุณาค้นหาชื่อ อสม. ด้วยคำค้นหาที่สั้นลง" });
     });
   });
 });

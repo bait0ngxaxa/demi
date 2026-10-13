@@ -34,7 +34,11 @@ import {
   summarizePatientImportPreview,
 } from "@/modules/patient-provisioning/presentation/patient-import-presentation";
 import type { PatientProvisioningScope } from "@/modules/patient-provisioning/services/patient-provisioning-service";
-import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
+import {
+  PATIENT_IMPORT_SAVED_FIELD_KEYS,
+  PATIENT_IMPORT_UNSAVED_FIELD_KEYS,
+  type PatientImportFieldKey,
+} from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
   createPatientImportTemplateDownloadPath,
   createPatientImportTemplateFilename,
@@ -92,7 +96,7 @@ const baselineStatusLabels: Record<PatientImportBaselineStatus, string> = {
 };
 
 const importResultLabels: Record<PatientImportRowResult["result"], string> = {
-  IMPORTED: "นำเข้าสำเร็จ",
+  IMPORTED: "นำเข้าผู้ป่วยใหม่แล้ว",
   ALREADY_EXISTS: "มีอยู่แล้ว",
   DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
   INVALID: "ข้อมูลไม่ถูกต้อง",
@@ -266,13 +270,33 @@ function ProvisionResult({
   );
 }
 
+/** One batch-level statement of what an import saves, instead of a warning on every row. */
+function PatientImportSavedFieldsNote({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <div className={className}>
+      <p>
+        <span className="font-semibold text-ink">ระบบบันทึกจากไฟล์:</span>{" "}
+        {fieldLabels(PATIENT_IMPORT_SAVED_FIELD_KEYS)}
+        {" "}(ประเภทเบาหวาน/กลุ่มเสี่ยงบันทึกเมื่อผู้ป่วยยังไม่มีสถานะ และข้อมูลตั้งต้นบันทึกเมื่อระบุวันที่ข้อมูลตั้งต้น)
+      </p>
+      <p className="mt-1">
+        <span className="font-semibold text-ink">อ่านจากไฟล์แต่ยังไม่บันทึกในระบบ:</span>{" "}
+        {fieldLabels(PATIENT_IMPORT_UNSAVED_FIELD_KEYS)}
+      </p>
+    </div>
+  );
+}
+
 export function PatientImportUploadGuidance(): React.JSX.Element {
   return (
-    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted">
-      <li>นำเข้าซ้ำได้: เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิม ระบบจะเพิ่มเฉพาะผู้ป่วยใหม่</li>
-      <li>การแก้ไขข้อมูลของผู้ป่วยที่มีอยู่แล้วในไฟล์จะไม่ถูกนำไปใช้ ให้แก้ไขในระบบ</li>
-      <li>การกำหนด อสม. ทำหลังนำเข้า</li>
-    </ul>
+    <>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted">
+        <li>นำเข้าซ้ำได้: เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิม ระบบจะเพิ่มเฉพาะผู้ป่วยใหม่</li>
+        <li>การแก้ไขข้อมูลของผู้ป่วยที่มีอยู่แล้วในไฟล์จะไม่ถูกนำไปใช้ ให้แก้ไขในระบบ</li>
+        <li>การกำหนด อสม. ทำหลังนำเข้า</li>
+      </ul>
+      <PatientImportSavedFieldsNote className="mt-3 text-sm leading-6 text-muted" />
+    </>
   );
 }
 
@@ -310,16 +334,9 @@ function PreviewRowDetails({ row }: { row: PatientImportPreviewRow }): React.JSX
         </div>
       ) : null}
 
-      {row.requirementGatedFields.length > 0 ? (
-        <p className="border-l-2 border-border-strong pl-3 text-muted">
-          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้: {fieldLabels(row.requirementGatedFields)}
-        </p>
-      ) : null}
-
       {!primaryReason &&
       row.baselineStatus === "NOT_APPLICABLE" &&
-      classification.status === "NOT_APPLICABLE" &&
-      row.requirementGatedFields.length === 0 ? (
+      classification.status === "NOT_APPLICABLE" ? (
         <span className="text-muted">-</span>
       ) : null}
     </div>
@@ -490,9 +507,7 @@ export function PreviewFileSummary({
         วันที่ข้อมูลตั้งต้นของผู้ป่วยใหม่: {preview.effectiveDate ?? "ยังไม่ได้ระบุ"}
       </p>
       {file?.requirementGatedFields.length ? (
-        <p className="mt-2 text-muted">
-          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้: {fieldLabels(file.requirementGatedFields)}
-        </p>
+        <PatientImportSavedFieldsNote className="mt-2 text-muted" />
       ) : null}
     </section>
   );
@@ -577,7 +592,7 @@ export function ImportSummary({
 
       <dl className="mt-3 flex flex-wrap divide-y divide-line border-y border-line sm:divide-x sm:divide-y-0">
         <div className="min-w-28 flex-1 px-3 py-3 first:pl-0">
-          <dt className="text-muted">นำเข้าสำเร็จ</dt>
+          <dt className="text-muted">นำเข้าผู้ป่วยใหม่</dt>
           <dd className="text-lg font-semibold text-success">{summary.imported}</dd>
         </div>
         <div className="min-w-28 flex-1 px-3 py-3">
@@ -644,11 +659,8 @@ export function ImportSummary({
         </div>
       ) : null}
 
-      {summary.file?.requirementGatedFields.length ? (
-        <p className="mt-4 border-t border-border pt-4 text-muted">
-          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้:{" "}
-          {fieldLabels(summary.file.requirementGatedFields)}
-        </p>
+      {summary.imported > 0 || summary.file?.requirementGatedFields.length ? (
+        <PatientImportSavedFieldsNote className="mt-4 border-t border-border pt-4 text-muted" />
       ) : null}
 
       {recoveryGuidance.length > 0 ? (

@@ -1,9 +1,11 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { HospitalStatus, Prisma, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { recordAuditEvents } from "@/modules/audit/services/audit-service";
 import {
   ConflictError,
   ForbiddenError,
@@ -16,7 +18,7 @@ import {
 } from "../policies/patient-osm-assignment-policy";
 import type { PatientOsmBulkAssignmentRequest } from "../schemas/patient-osm-assignment-schemas";
 import {
-  assignOsmToPatientInTransaction,
+  buildPatientOsmAssignedAuditEvent,
   patientOsmAssignmentTransactionInternals,
 } from "./patient-osm-assignment-transaction";
 
@@ -32,30 +34,47 @@ export type PatientOsmBulkAssignmentResult = {
   assignedCount: number;
 };
 
-function readReplayMetadata(metadata: Prisma.JsonValue | null): {
+type ReplayMetadata = {
   hospitalId: string;
   osmUserId: string;
   assignedCount: number;
-} | null {
+  selectionFingerprint: string;
+};
+
+const SELECTION_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
+
+/** SHA-256 of the sorted patient relationship ids: the same set always yields the same value. */
+function fingerprintPatientSelection(patientHospitalRelationshipIds: readonly string[]): string {
+  return createHash("sha256")
+    .update([...patientHospitalRelationshipIds].sort().join(","))
+    .digest("hex");
+}
+
+function readReplayMetadata(metadata: Prisma.JsonValue | null): ReplayMetadata | null {
   if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
     return null;
   }
 
-  const { hospitalId, osmUserId, assignedCount } = metadata;
+  const { hospitalId, osmUserId, assignedCount, selectionFingerprint } = metadata;
 
   return typeof hospitalId === "string" &&
     typeof osmUserId === "string" &&
-    typeof assignedCount === "number"
-    ? { hospitalId, osmUserId, assignedCount }
+    typeof assignedCount === "number" &&
+    Number.isInteger(assignedCount) &&
+    typeof selectionFingerprint === "string" &&
+    SELECTION_FINGERPRINT_PATTERN.test(selectionFingerprint)
+    ? { hospitalId, osmUserId, assignedCount, selectionFingerprint }
     : null;
 }
 
 /**
  * Assigns one OSM to many patients of one Hospital, all-or-nothing. Authorization is
- * exactly the single-patient policy and is re-checked for every patient by
- * `assignOsmToPatientInTransaction`. A patient that already has a current OSM is
- * rejected (reassignment stays a per-patient decision). The submission nonce is
- * recorded as an audit marker so a repeated submit is replayed, never re-applied.
+ * the single-patient policy and owner / OSM-eligibility checks, evaluated once for the
+ * batch (they are identical for every patient of one hospital), plus one set-based
+ * check that every selected relationship is an active patient of that hospital. A
+ * patient that already has a current OSM is rejected (reassignment stays a per-patient
+ * decision). The submission nonce is recorded as an audit marker together with a
+ * fingerprint of the selection, so only the identical request is replayed.
  */
 export async function assignOsmToPatientsInTransaction(
   transaction: Prisma.TransactionClient,
@@ -89,6 +108,8 @@ export async function assignOsmToPatientsInTransaction(
     select: { actorUserId: true, metadata: true },
   });
 
+  const selectionFingerprint = fingerprintPatientSelection(input.patientHospitalRelationshipIds);
+
   if (previous) {
     const replay = readReplayMetadata(previous.metadata);
 
@@ -96,12 +117,14 @@ export async function assignOsmToPatientsInTransaction(
       previous.actorUserId !== actor.userId ||
       !replay ||
       replay.hospitalId !== input.hospitalId ||
-      replay.osmUserId !== input.osmUserId
+      replay.osmUserId !== input.osmUserId ||
+      replay.assignedCount !== input.patientHospitalRelationshipIds.length ||
+      replay.selectionFingerprint !== selectionFingerprint
     ) {
       throw new ConflictError("The bulk assignment submission conflicts with another request");
     }
 
-    return { operation: "REPLAYED", ...replay };
+    return { operation: "REPLAYED", hospitalId: replay.hospitalId, osmUserId: replay.osmUserId, assignedCount: replay.assignedCount };
   }
 
   const relationships = await transaction.patientHospitalRelationship.findMany({
@@ -129,31 +152,44 @@ export async function assignOsmToPatientsInTransaction(
     throw new ConflictError("A selected patient already has a current OSM");
   }
 
-  for (const patientHospitalRelationshipId of [...input.patientHospitalRelationshipIds].sort()) {
-    const result = await assignOsmToPatientInTransaction(
-      transaction,
-      actor,
-      { patientHospitalRelationshipId, osmUserId: input.osmUserId },
-      now,
-    );
+  const created = await transaction.patientOsmAssignment.createManyAndReturn({
+    data: [...input.patientHospitalRelationshipIds].sort().map((patientHospitalRelationshipId) => ({
+      patientHospitalRelationshipId,
+      osmUserId: input.osmUserId,
+      assignedByUserId: actor.userId,
+      createdAt: now,
+    })),
+    select: { id: true, patientHospitalRelationshipId: true },
+  });
 
-    if (result.operation !== "ASSIGNED" || result.hospitalId !== input.hospitalId) {
-      throw new ConflictError("The patient assignment changed during the bulk assignment");
-    }
+  if (created.length !== input.patientHospitalRelationshipIds.length) {
+    throw new ConflictError("The patient assignment changed during the bulk assignment");
   }
 
-  await recordAuditEvent(
-    {
-      actorUserId: actor.userId,
-      action: PATIENT_OSM_BULK_ASSIGNMENT_AUDIT_ACTION,
-      resourceType: PATIENT_OSM_BULK_ASSIGNMENT_RESOURCE_TYPE,
-      resourceId: input.submissionNonce,
-      metadata: {
-        hospitalId: input.hospitalId,
-        osmUserId: input.osmUserId,
-        assignedCount: input.patientHospitalRelationshipIds.length,
+  await recordAuditEvents(
+    [
+      ...created.map(({ id, patientHospitalRelationshipId }) =>
+        buildPatientOsmAssignedAuditEvent({
+          actorUserId: actor.userId,
+          assignmentId: id,
+          hospitalId: input.hospitalId,
+          patientHospitalRelationshipId,
+          osmUserId: input.osmUserId,
+        }),
+      ),
+      {
+        actorUserId: actor.userId,
+        action: PATIENT_OSM_BULK_ASSIGNMENT_AUDIT_ACTION,
+        resourceType: PATIENT_OSM_BULK_ASSIGNMENT_RESOURCE_TYPE,
+        resourceId: input.submissionNonce,
+        metadata: {
+          hospitalId: input.hospitalId,
+          osmUserId: input.osmUserId,
+          assignedCount: created.length,
+          selectionFingerprint,
+        },
       },
-    },
+    ],
     transaction,
   );
 
@@ -161,6 +197,8 @@ export async function assignOsmToPatientsInTransaction(
     operation: "ASSIGNED",
     hospitalId: input.hospitalId,
     osmUserId: input.osmUserId,
-    assignedCount: input.patientHospitalRelationshipIds.length,
+    assignedCount: created.length,
   };
 }
+
+export const patientOsmBulkAssignmentInternals = { fingerprintPatientSelection, readReplayMetadata };

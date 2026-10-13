@@ -13,6 +13,7 @@ import { ForbiddenError, ValidationError } from "@/shared/errors/application-err
 import {
   getPatientOsmBulkAssignmentView,
   listPatientOsmAssignmentScopes,
+  listPatientOsmBulkCandidates,
   type PatientOsmAssignmentQueryDatabase,
 } from "./patient-osm-assignment-query-service";
 
@@ -95,7 +96,7 @@ describe("listPatientOsmAssignmentScopes", () => {
 });
 
 describe("getPatientOsmBulkAssignmentView", () => {
-  it("returns unassigned patients capped at the batch size, the total and eligible OSMs", async () => {
+  it("returns unassigned patients capped at the batch size and the total, without loading OSMs", async () => {
     const { database, patientHospitalRelationship, user } = createDatabase();
     const view = await getPatientOsmBulkAssignmentView(
       actorWith(MembershipType.OWNER),
@@ -108,10 +109,6 @@ describe("getPatientOsmBulkAssignmentView", () => {
     expect(view.patients).toEqual([
       expect.objectContaining({ displayName: "สมชาย ผู้ป่วย", hospitalNumber: "HN-1" }),
     ]);
-    expect(view.osmCandidates).toEqual([
-      { userId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง ผู้ดูแล" },
-    ]);
-
     const patientCalls = patientHospitalRelationship.findMany.mock.calls as unknown as Array<
       [{ where: Record<string, unknown>; take: number }]
     >;
@@ -122,14 +119,7 @@ describe("getPatientOsmBulkAssignmentView", () => {
       osmAssignments: { none: { endedAt: null } },
     });
     expect(JSON.stringify(patientQuery.where)).toContain("PATIENT");
-
-    const osmCalls = user.findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown> }]>;
-    const osmQuery = osmCalls[0]?.[0] as { where: Record<string, unknown> };
-    expect(osmQuery.where).toMatchObject({
-      status: UserStatus.ACTIVE,
-      id: { not: ownerUserId },
-      osmHospitalRelationships: { some: { hospitalId, status: MembershipStatus.ACTIVE } },
-    });
+    expect(user.findMany).not.toHaveBeenCalled();
   });
 
   it("denies a MEMBER before querying", async () => {
@@ -172,5 +162,69 @@ describe("getPatientOsmBulkAssignmentView", () => {
     await expect(getPatientOsmBulkAssignmentView(null, { hospitalId }, { database })).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+  });
+});
+
+describe("listPatientOsmBulkCandidates", () => {
+  const osmRecord = (index: number) => ({
+    id: `77777777-7777-4777-8777-${String(index).padStart(12, "0")}`,
+    person: { givenName: `อสม.${index}`, familyName: "ผู้ดูแล" },
+  });
+
+  it("returns one page of eligible OSMs of the owned hospital, excluding the actor, and filters by name", async () => {
+    const { database, user, hospital } = createDatabase();
+
+    const page = await listPatientOsmBulkCandidates(
+      actorWith(MembershipType.OWNER),
+      { hospitalId, value: "สมหญิง" },
+      { database },
+    );
+
+    expect(page).toEqual({
+      candidates: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง ผู้ดูแล" }],
+      hasMore: false,
+    });
+    expect(JSON.stringify((hospital.findFirst.mock.calls as unknown as unknown[][])[0]?.[0])).toContain("OWNER");
+
+    const query = (user.findMany.mock.calls as unknown as Array<[{ where: Record<string, unknown>; take: number }]>)[0]?.[0];
+    expect(query?.where).toMatchObject({
+      status: UserStatus.ACTIVE,
+      id: { not: ownerUserId },
+      osmHospitalRelationships: { some: { hospitalId, status: MembershipStatus.ACTIVE } },
+    });
+    expect(JSON.stringify(query?.where)).toContain("สมหญิง");
+    expect(query?.take).toBe(26);
+  });
+
+  it("reports hasMore and lists at most 25 when more OSMs match", async () => {
+    const { database, user } = createDatabase();
+    user.findMany.mockResolvedValueOnce(Array.from({ length: 26 }, (_, index) => osmRecord(index + 1)));
+
+    const page = await listPatientOsmBulkCandidates(
+      actorWith(MembershipType.OWNER),
+      { hospitalId },
+      { database },
+    );
+
+    expect(page.candidates).toHaveLength(25);
+    expect(page.hasMore).toBe(true);
+  });
+
+  it("denies a MEMBER, an unowned hospital, a missing actor and malformed input before querying OSMs", async () => {
+    const { database, user } = createDatabase({ hospitalFound: false });
+
+    await expect(
+      listPatientOsmBulkCandidates(actorWith(MembershipType.MEMBER), { hospitalId }, { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(
+      listPatientOsmBulkCandidates(actorWith(MembershipType.OWNER), { hospitalId }, { database }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listPatientOsmBulkCandidates(null, { hospitalId }, { database })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    await expect(
+      listPatientOsmBulkCandidates(actorWith(MembershipType.OWNER), { hospitalId: "x" }, { database }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(user.findMany).not.toHaveBeenCalled();
   });
 });

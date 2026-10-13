@@ -10,6 +10,7 @@ import {
   patientOsmBulkAssignmentRequestSchema,
   patientOsmUnassignmentRequestSchema,
 } from "../schemas/patient-osm-assignment-schemas";
+import { listPatientOsmBulkCandidates } from "../services/patient-osm-assignment-query-service";
 import {
   assignOsmToPatient,
   assignOsmToPatients,
@@ -19,6 +20,7 @@ import {
 import type {
   PatientOsmAssignmentActionState,
   PatientOsmBulkAssignmentActionState,
+  PatientOsmBulkCandidateSearchResult,
 } from "./action-state";
 
 function getString(formData: FormData, field: string): string {
@@ -148,6 +150,25 @@ export async function bulkAssignOsmToPatientsAction(
     return { status: "SUCCESS", result };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapBulkAssignmentError(error) };
+  }
+}
+
+/** Server-side OSM name search for the bulk selector; re-authorized on every call. */
+export async function searchPatientOsmBulkCandidatesAction(
+  hospitalId: string,
+  value: string,
+): Promise<PatientOsmBulkCandidateSearchResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value })) };
+  } catch (error: unknown) {
+    return {
+      status: "ERROR",
+      message:
+        error instanceof ApplicationError && error.code === "VALIDATION"
+          ? "กรุณาค้นหาชื่อ อสม. ด้วยคำค้นหาที่สั้นลง"
+          : "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    };
   }
 }
 

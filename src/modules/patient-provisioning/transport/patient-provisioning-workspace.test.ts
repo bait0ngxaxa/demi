@@ -6,6 +6,11 @@ import {
   PatientImportUploadGuidance,
   PatientProvisioningWorkspace,
 } from "../../../../app/app/patients/provision/patient-provisioning-workspace";
+import {
+  PATIENT_IMPORT_FIELD_KEYS,
+  PATIENT_IMPORT_SAVED_FIELD_KEYS,
+  PATIENT_IMPORT_UNSAVED_FIELD_KEYS,
+} from "../import/patient-import-contract";
 import type { PatientProvisionActionState } from "./action-state";
 
 const mockedUseActionState = vi.hoisted(() => vi.fn());
@@ -280,5 +285,26 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).toContain("เพิ่มเฉพาะผู้ป่วยใหม่");
     expect(markup).toContain("ไม่ถูกนำไปใช้ ให้แก้ไขในระบบ");
     expect(markup).toContain("การกำหนด อสม. ทำหลังนำเข้า");
+  });
+
+  it("separates the columns that are saved from the columns that are read but not saved", () => {
+    const markup = renderToStaticMarkup(createElement(PatientImportUploadGuidance));
+    const [saved = "", notSaved = ""] = markup.split("อ่านจากไฟล์แต่ยังไม่บันทึกในระบบ");
+
+    expect(saved).toContain("ระบบบันทึกจากไฟล์");
+    for (const label of ["เลขบัตรประชาชน", "ชื่อ", "HN", "น้ำหนัก", "HbA1c", "ประเภทเบาหวาน/กลุ่มเสี่ยง"]) {
+      expect(saved).toContain(label);
+    }
+    for (const label of ["วันเกิด", "เพศ", "เบอร์โทรศัพท์", "บ้านเลขที่", "ชื่อผู้ติดต่อฉุกเฉิน"]) {
+      expect(notSaved).toContain(label);
+      expect(saved).not.toContain(label);
+    }
+  });
+
+  it("keeps the saved and unsaved key sets disjoint and covering every template column", () => {
+    const saved: readonly string[] = PATIENT_IMPORT_SAVED_FIELD_KEYS;
+
+    expect(PATIENT_IMPORT_UNSAVED_FIELD_KEYS.filter((field) => saved.includes(field))).toEqual([]);
+    expect(saved.length + PATIENT_IMPORT_UNSAVED_FIELD_KEYS.length).toBe(PATIENT_IMPORT_FIELD_KEYS.length);
   });
 });

@@ -2,6 +2,7 @@ import type {
   PatientOsmAssignmentMutationResult,
   PatientOsmBulkAssignmentResult,
 } from "../services/patient-osm-assignment-service";
+import type { PatientOsmBulkCandidatePage } from "../services/patient-osm-assignment-query-service";
 
 export type PatientOsmAssignmentActionState =
   | { status: "IDLE" }
@@ -28,3 +29,7 @@ export type PatientOsmBulkAssignmentActionState =
 export const initialPatientOsmBulkAssignmentActionState: PatientOsmBulkAssignmentActionState = {
   status: "IDLE",
 };
+
+export type PatientOsmBulkCandidateSearchResult =
+  | ({ status: "OK" } & PatientOsmBulkCandidatePage)
+  | { status: "ERROR"; message: string };

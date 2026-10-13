@@ -13,7 +13,10 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useActionState: mockedUseActionState };
 });
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock("./server-actions", () => ({ bulkAssignOsmToPatientsAction: vi.fn() }));
+vi.mock("./server-actions", () => ({
+  bulkAssignOsmToPatientsAction: vi.fn(),
+  searchPatientOsmBulkCandidatesAction: vi.fn(),
+}));
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const scope = { hospitalId, hospitalName: "โรงพยาบาลสังเคราะห์" };
@@ -29,7 +32,6 @@ const view = {
   hospital: scope,
   patients,
   totalWithoutOsm: 3,
-  osmCandidates: [{ userId: "20000000-0000-4000-8000-000000000001", displayName: "อสม. หนึ่ง" }],
 };
 
 function render(
@@ -65,8 +67,8 @@ describe("Bulk OSM assignment workspace", () => {
     expect(markup).toContain("พบ 3 คน");
     expect(markup).toContain("เลือกทั้งหมดที่แสดง (3)");
     expect(markup.match(/type="checkbox"/gu)).toHaveLength(4);
-    expect(markup.match(/<select/gu)).toHaveLength(1);
-    expect(markup).toContain("อสม. หนึ่ง");
+    expect(markup).toContain("ค้นหาชื่อ อสม.");
+    expect(markup).not.toContain("<select");
     expect(markup).toContain("HN ไม่ระบุ");
   });
 
@@ -91,11 +93,13 @@ describe("Bulk OSM assignment workspace", () => {
     expect(markup).toContain("ผู้ป่วยทุกคนในโรงพยาบาลนี้มี อสม. ผู้รับผิดชอบแล้ว");
   });
 
-  it("shows a message and no OSM picker when the hospital has no eligible OSM", () => {
-    const markup = render({ status: "IDLE" }, { view: { ...view, osmCandidates: [] } });
+  it("renders a searchable OSM picker in its loading state without fetching every OSM", () => {
+    const markup = render({ status: "IDLE" });
 
-    expect(markup).toContain("ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้");
-    expect(markup).not.toContain("<select");
+    expect(markup).toContain("ยังไม่ได้เลือก อสม.");
+    expect(markup).toContain("กำลังค้นหา อสม....");
+    expect(markup).toContain('type="search"');
+    expect(markup).not.toContain('type="radio"');
   });
 
   it("confirms success and replay without offering the form again", () => {

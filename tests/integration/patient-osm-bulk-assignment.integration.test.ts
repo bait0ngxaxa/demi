@@ -12,6 +12,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   getPatientOsmBulkAssignmentView,
   listPatientOsmAssignmentScopes,
+  listPatientOsmBulkCandidates,
 } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
   assignOsmToPatient,
@@ -195,9 +196,149 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     ]);
 
     expect(outcomes.some(({ status }) => status === "fulfilled")).toBe(true);
+    expect(
+      outcomes.filter(
+        (outcome) => outcome.status === "fulfilled" && outcome.value.operation === "ASSIGNED",
+      ),
+    ).toHaveLength(1);
     expect(await activeAssignmentCount()).toBe(4);
     expect(await prisma.patientOsmAssignment.count()).toBe(4);
+    expect(await prisma.auditEvent.count({ where: { action: "patient.osm_bulk_assigned" } })).toBe(1);
   });
+
+  it("replays a reordered selection but rejects the same nonce for different patients", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-NONCE");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const osmUserId = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, 6, "nonce");
+    const firstIds = ids.slice(0, 3);
+    const otherIds = ids.slice(3);
+    const submissionNonce = newNonce();
+    const request = (patientHospitalRelationshipIds: string[]) => ({
+      hospitalId: hospital.id,
+      osmUserId,
+      patientHospitalRelationshipIds,
+      submissionNonce,
+    });
+
+    await assignOsmToPatients(owner.actor, request(firstIds));
+
+    await expect(assignOsmToPatients(owner.actor, request([...firstIds].reverse()))).resolves.toMatchObject({
+      operation: "REPLAYED",
+      assignedCount: 3,
+    });
+    await expect(assignOsmToPatients(owner.actor, request(otherIds))).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    await expect(assignOsmToPatients(owner.actor, request(ids))).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(await activeAssignmentCount()).toBe(3);
+    expect(
+      await prisma.patientOsmAssignment.count({
+        where: { patientHospitalRelationshipId: { in: otherIds } },
+      }),
+    ).toBe(0);
+  });
+
+  it("rejects a legacy replay marker without a selection fingerprint", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-LEGACY");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const osmUserId = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, 2, "legacy");
+    const submissionNonce = newNonce();
+
+    await prisma.auditEvent.create({
+      data: {
+        actorUserId: owner.userId,
+        action: "patient.osm_bulk_assigned",
+        resourceType: "PatientOsmBulkAssignment",
+        resourceId: submissionNonce,
+        metadata: { hospitalId: hospital.id, osmUserId, assignedCount: 2 },
+      },
+    });
+
+    await expect(
+      assignOsmToPatients(owner.actor, {
+        hospitalId: hospital.id,
+        osmUserId,
+        patientHospitalRelationshipIds: ids,
+        submissionNonce,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await prisma.patientOsmAssignment.count()).toBe(0);
+  });
+
+  it("lets exactly one of two concurrent batches with different OSMs win the same patients", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-RACE");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const firstOsm = await createOsm(hospital.id);
+    const secondOsm = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, 6, "race");
+
+    const outcomes = await Promise.allSettled([firstOsm, secondOsm].map((osmUserId) =>
+      assignOsmToPatients(owner.actor, {
+        hospitalId: hospital.id,
+        osmUserId,
+        patientHospitalRelationshipIds: ids,
+        submissionNonce: newNonce(),
+      }),
+    ));
+
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(await activeAssignmentCount()).toBe(6);
+    expect(await prisma.patientOsmAssignment.count()).toBe(6);
+    expect(await prisma.patientOsmAssignment.groupBy({ by: ["osmUserId"], where: { endedAt: null } })).toHaveLength(1);
+  });
+
+  it("re-checks eligibility at execution time: a deactivated OSM or demoted owner writes nothing", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-REVOKED");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const osmUserId = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, 3, "revoked");
+    const request = () => ({
+      hospitalId: hospital.id,
+      osmUserId,
+      patientHospitalRelationshipIds: ids,
+      submissionNonce: newNonce(),
+    });
+
+    await prisma.osmHospitalRelationship.updateMany({
+      where: { userId: osmUserId },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(assignOsmToPatients(owner.actor, request())).rejects.toBeInstanceOf(ForbiddenError);
+
+    await prisma.osmHospitalRelationship.updateMany({
+      where: { userId: osmUserId },
+      data: { status: MembershipStatus.ACTIVE },
+    });
+    await prisma.hospitalMembership.updateMany({
+      where: { userId: owner.userId },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(assignOsmToPatients(owner.actor, request())).rejects.toBeInstanceOf(ForbiddenError);
+
+    expect(await prisma.patientOsmAssignment.count()).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { action: "patient.osm_bulk_assigned" } })).toBe(0);
+  });
+
+  it.each([1, 50])("assigns a batch of %i patient(s) with one audit per assignment", async (size) => {
+    const hospital = await createHospital(`BULK-ASSIGN-SIZE-${size}`);
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const osmUserId = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, size, `size${size}`);
+
+    const result = await assignOsmToPatients(owner.actor, {
+      hospitalId: hospital.id,
+      osmUserId,
+      patientHospitalRelationshipIds: ids,
+      submissionNonce: newNonce(),
+    });
+
+    expect(result.assignedCount).toBe(size);
+    expect(await activeAssignmentCount()).toBe(size);
+    expect(await prisma.auditEvent.count({ where: { action: "patient.osm_assigned" } })).toBe(size);
+  }, 120_000);
 
   it("denies a MEMBER and writes nothing", async () => {
     const hospital = await createHospital("BULK-ASSIGN-MEMBER");
@@ -325,7 +466,14 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(view.patients.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId).sort()).toEqual(
       ids.slice(1).sort(),
     );
-    expect(view.osmCandidates.map(({ userId }) => userId)).toEqual([osmUserId]);
+    expect(
+      (await listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id })).candidates.map(
+        ({ userId }) => userId,
+      ),
+    ).toEqual([osmUserId]);
+    await expect(
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: otherHospital.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
       getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: otherHospital.id }),
     ).rejects.toBeInstanceOf(ForbiddenError);

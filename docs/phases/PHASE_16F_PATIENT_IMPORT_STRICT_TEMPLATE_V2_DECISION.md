@@ -103,14 +103,18 @@ parser ยอมรับคอลัมน์ท้าย `เหตุผล` 
 ## 6. Bulk OSM assignment
 
 - หน้า `/app/patients/assign-osm?hospitalId=…` (OWNER ของโรงพยาบาลนั้นเท่านั้น) เชื่อมจากรายชื่อผู้ป่วยและหน้าผลการนำเข้า
-  แสดงผู้ป่วยที่ **ยังไม่มี อสม. ปัจจุบัน** (สูงสุด 500) เลือกหลายคน เลือก อสม. หนึ่งคนจาก อสม. ที่ eligible ของโรงพยาบาล แล้วมีขั้นยืนยัน
+  แสดงผู้ป่วยที่ **ยังไม่มี อสม. ปัจจุบัน** (สูงสุด 500) เลือกหลายคน ค้นหา อสม. ที่ eligible ของโรงพยาบาลด้วยชื่อ (ค้นหาฝั่ง server ทีละไม่เกิน 25 รายการ ไม่โหลด อสม. ทั้งหมดมาที่ client) เลือกหนึ่งคน แล้วมีขั้นยืนยัน
 - Server action `bulkAssignOsmToPatientsAction` → `assignOsmToPatients` → `assignOsmToPatientsInTransaction`
-  นโยบายเดียวกับ `assignOsmToPatient` (OWNER-only), ทุกผู้ป่วยผ่าน `assignOsmToPatientInTransaction` (ตรวจ policy/DB ซ้ำรายคน), all-or-nothing ใน
-  Serializable transaction เดียว, ไม่เกิน 500, audit ต่อการมอบหมายหนึ่งรายการ (`patient.osm_assigned`) + marker ของ batch
+  นโยบายเดียวกับ `assignOsmToPatient` (OWNER-only): policy, owner และ eligibility ของ อสม. ตรวจ **ครั้งเดียวต่อ batch** (เหมือนกันทุกผู้ป่วยของโรงพยาบาลเดียว)
+  บวกการตรวจแบบ set-based ว่าทุก relationship เป็นผู้ป่วย active ของโรงพยาบาลนั้นและไม่มี อสม. ปัจจุบัน; เขียนด้วย `createManyAndReturn` + audit แบบ batch
+  (`recordAuditEvents`) all-or-nothing ใน Serializable transaction เดียว, ไม่เกิน 500, audit ต่อการมอบหมายหนึ่งรายการ (`patient.osm_assigned`, builder
+  เดียวกับเส้นทางรายคน) + marker ของ batch
 - ผู้ป่วยที่มี อสม. อยู่แล้วถูกปฏิเสธทั้ง batch (ไม่ reassign เงียบๆ; reassign ยังเป็นรายคน)
 - Double submit: `submissionNonce` ถูกบันทึกเป็น audit marker (`PatientOsmBulkAssignment`) ใน transaction เดียวกัน ส่งซ้ำ
   ได้ผล `REPLAYED` ไม่มอบหมายซ้ำ — เลือกวิธีนี้แทนตาราง nonce เพราะห้ามทำ migration; partial unique index
-  ของ active assignment เป็นเกราะชั้นที่สองของ DB
+  ของ active assignment เป็นเกราะชั้นที่สองของ DB. marker เก็บ `selectionFingerprint` (SHA-256 ของ relationship id ที่เรียงแล้ว) ด้วย:
+  replay ได้ก็ต่อเมื่อ actor, hospital, อสม. และชุดผู้ป่วยตรงกับคำขอเดิม (ลำดับไม่สำคัญ) มิฉะนั้น `CONFLICT`; marker ที่ไม่มี fingerprint
+  หรือรูปแบบผิด (รวมถึง marker รุ่นก่อนหน้า) ถูกปฏิเสธ (fail closed)
 
 ## 7. ผลต่อ test และ docs อื่น
 
@@ -124,5 +128,18 @@ parser ยอมรับคอลัมน์ท้าย `เหตุผล` 
    โรงพยาบาลที่ผู้ใช้มีสิทธิ์อยู่แล้ว (สิทธิ์ตัดสินที่ server) — ต้องการลายเซ็นหรือไม่
 2. ผู้ป่วยที่รู้จักในโรงพยาบาลอื่น (profile มี classification แล้ว) ที่ถูก import เข้าโรงพยาบาลใหม่ จะ **ไม่** ถูกเปลี่ยน classification
    (ตามข้อ 3) preview แสดงข้อความ "ผู้ป่วยมีสถานะอยู่แล้ว" — ยืนยันว่าพฤติกรรมนี้ตรงความต้องการ
-3. Bulk assignment ใช้ `assignOsmToPatientInTransaction` ตรงๆ (ถูกเรียกต่อผู้ป่วยซ้ำพร้อม query ตรวจสิทธิ์) ที่ 500 รายการ transaction
-   ถูกขยาย timeout เป็น 60 วินาที; ถ้า latency ของ DB สูงมากอาจต้องปรับ batch size หรือรวมการตรวจที่ซ้ำกัน
+3. Bulk assignment เดิมเรียก `assignOsmToPatientInTransaction` ต่อผู้ป่วย (หลาย query ต่อรายการ) — ลดเหลือ query คงที่ต่อ batch แล้ว (ดู §6)
+   และ timeout ลดจาก 60 เป็น 15 วินาที **โดยยังไม่ได้วัดจริง** (ไม่มี PostgreSQL ในสภาพแวดล้อมที่พัฒนา) ต้องวัด query count / เวลาของ batch 50 และ 500
+   บน PostgreSQL ก่อนยืนยันตัวเลขนี้
+
+## 9. Import: ฟิลด์ที่บันทึกกับที่ไม่บันทึก
+
+ระบบบันทึกจากไฟล์: เลขบัตรประชาชน ชื่อ นามสกุล HN, ประเภทเบาหวาน/กลุ่มเสี่ยง (เมื่อ profile ยังไม่มี) และข้อมูลตั้งต้น
+(น้ำหนัก ส่วนสูง รอบเอว DTX HbA1c เมื่อระบุวันที่ข้อมูลตั้งต้น). คอลัมน์อื่น (วันเกิด เพศ เบอร์โทร ที่อยู่ ผู้ติดต่อฉุกเฉิน ลำดับ) อ่านและตรวจรูปแบบ
+แต่ **ยังไม่บันทึก** จนกว่าจะมี requirement อนุมัติ (`PATIENT_IMPORT_SAVED_FIELD_KEYS` / `PATIENT_IMPORT_UNSAVED_FIELD_KEYS`). UI แจ้งเป็นข้อความระดับ batch
+(คำแนะนำก่อนอัปโหลด, preview, ผลนำเข้า) แทนคำเตือนซ้ำทุกแถว
+
+## 10. การตรวจแถวที่กรอกแล้ว
+
+แถวข้อมูลคือแถวที่มีค่า *ใดๆ* ใน 26 คอลัมน์ของ template (ข้อความว่าง/`-`/rich text ว่าง/การจัดรูปแบบอย่างเดียวไม่นับ; สูตรและ error cell นับ) แถวที่ไม่มี
+เลขบัตร/ชื่อ จึงปรากฏใน preview เป็น `INVALID` พร้อมเลขแถวเดิมใน Excel และนับรวมใน limit 500 — ไม่มีแถวที่กรอกแล้วหายเงียบ

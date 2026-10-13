@@ -105,7 +105,7 @@ export function getPatientImportResultPresentation(
     : hasAttentionRows && hasSuccessfulRows
       ? "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว และยังมีบางรายการที่ต้องแก้ไข"
       : !hasAttentionRows && summary.imported > 0
-        ? "นำเข้าข้อมูลเรียบร้อยแล้ว"
+        ? "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว"
         : "ยังไม่มีรายการที่บันทึกได้";
   const detail = allIdempotent
     ? "ผู้ป่วยที่มีอยู่แล้วไม่ถูกสร้างซ้ำและไม่ถูกเปลี่ยนแปลง"

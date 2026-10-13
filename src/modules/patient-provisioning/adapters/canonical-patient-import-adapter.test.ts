@@ -556,6 +556,107 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
   });
 });
 
+describe("populated-row detection (no silent skipping)", () => {
+  it.each<[string, SyntheticPatientValues]>([
+    ["HN only", { hospitalNumber: "HN-ONLY" }],
+    ["clinical data only", { weight: 70, hba1c: 6.1 }],
+    ["date of birth only", { dateOfBirth: "04/05/2568" }],
+    ["contact data only", { phoneNumber: "0812345678" }],
+    ["address data only", { province: "จังหวัดสังเคราะห์" }],
+    ["name without a national id", { givenName: "ตัวอย่าง", familyName: "ผู้ป่วย" }],
+    ["sequence number only", { sourceSequenceNumber: 1 }],
+    ["a numeric zero", { weight: 0 }],
+  ])("keeps a row with %s as an invalid candidate at its own row number", async (_name, values) => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
+
+    setPatientRow(worksheet, 6, values);
+
+    const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.rowNumber).toBe(6);
+    expect(candidates[0]?.input).toBeNull();
+    expect(candidates[0]?.validationMessage).not.toBeNull();
+  });
+
+  it("keeps formula and error cells as populated rows", async () => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
+
+    worksheet.getCell("F3").value = { formula: "1+1", result: 2 };
+    worksheet.getCell("F4").value = { error: "#N/A" };
+    worksheet.getCell("F5").value = { richText: [{ text: "   " }] };
+
+    const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+    expect(candidates.map(({ rowNumber }) => rowNumber)).toEqual([3, 4]);
+  });
+
+  it("ignores styled, blank and placeholder-only rows and keeps the original row number after gaps", async () => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
+
+    for (let rowNumber = 3; rowNumber <= 9; rowNumber += 1) {
+      worksheet.getCell(`D${rowNumber}`).style = { font: { bold: true } };
+      worksheet.getCell(`D${rowNumber}`).value = rowNumber === 4 ? "   " : rowNumber === 5 ? "-" : null;
+    }
+
+    setPatientRow(worksheet, 10, syntheticPatientValues());
+
+    const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.rowNumber).toBe(10);
+    expect(candidates[0]?.input).not.toBeNull();
+  });
+
+  it("counts invalid populated rows toward the 500-row limit", async () => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
+
+    for (let rowNumber = 3; rowNumber < 3 + MAX_PATIENT_IMPORT_ROWS; rowNumber += 1) {
+      setPatientRow(worksheet, rowNumber, syntheticPatientValues());
+    }
+
+    worksheet.getCell(`F${3 + MAX_PATIENT_IMPORT_ROWS}`).value = "HN-INVALID-501";
+
+    await expect(
+      readPatientImportCandidates(await createUpload(workbook), hospitalA),
+    ).rejects.toThrow(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);
+  }, 20000);
+
+  it("does not treat the trailing reason column as patient data", async () => {
+    const workbook = await createPatientImportFailedRowsWorkbook(hospitalA, [
+      { values: PATIENT_IMPORT_TEMPLATE_COLUMNS.map(() => null), reason: "เหตุผลที่ไม่ใช่ข้อมูลผู้ป่วย" },
+    ]);
+
+    await expect(readPatientImportCandidates(await createUpload(workbook), hospitalA)).resolves.toEqual([]);
+  });
+
+  it("re-imports a failed-rows workbook once the invalid cell is corrected", async () => {
+    const values = PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ field }) =>
+      field === "nationalId" ? "123" : (syntheticPatientValues()[field] ?? null),
+    );
+    const workbook = await createPatientImportFailedRowsWorkbook(hospitalA, [
+      { values, reason: "เลขบัตรประชาชนไม่ถูกต้อง" },
+    ]);
+    const worksheet = findPatientImportDataWorksheet(workbook);
+
+    if (!worksheet) {
+      throw new Error("The failed-rows workbook has no patient worksheet");
+    }
+
+    const [invalid] = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+    expect(invalid?.input).toBeNull();
+
+    const nationalIdColumn = PATIENT_IMPORT_TEMPLATE_COLUMNS.find(({ field }) => field === "nationalId");
+    worksheet.getCell(`${nationalIdColumn?.column}3`).value = "1000000000009";
+
+    const [corrected] = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+    expect(corrected?.input).not.toBeNull();
+    expect(corrected?.rowNumber).toBe(3);
+  });
+});
+
 describe("secondary header contract", () => {
   it("keeps the classification caption on exactly one column", () => {
     expect(Object.keys(PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS)).toEqual(["L"]);
