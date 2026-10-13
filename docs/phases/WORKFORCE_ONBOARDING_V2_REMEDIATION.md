@@ -408,3 +408,14 @@ relationship grants no scope and keeps the existing Patient activation behavior 
   independent global recovery proof remain undecided. Mixed legacy identities are blocked, never
   auto-reconciled; resolution needs the controlled reconciliation procedure above plus an explicit
   product/security decision.
+
+### P2 — Patient activation candidate lookup (review `537100d`)
+
+`findPatientActivationCandidates` did not apply the workforce-authority gate, so a `PROVISIONED` Patient
+with pending workforce authority showed "NOT_ISSUED" with an issue button that the service then refused
+with a generic error. The lookup now evaluates the same predicate (`workforceAuthorityUserWhere`) in
+one batched query per page (no per-candidate lookups) and projects `RECONCILIATION_REQUIRED` with
+`activationMayBeIssued: false`; the existing handoff UI already renders that state without an issue
+button. Backend enforcement was already in place, so this was a UX/state-consistency defect only.
+Verified by a PostgreSQL test (plain, OSM, staff, unfinished-operation and ACTIVE multi-role
+candidates; one gate query; service rejects what the lookup withholds) and a unit test.

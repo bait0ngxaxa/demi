@@ -16,6 +16,7 @@ import {
   hashIdentityReference,
 } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import { workforceAuthorityUserWhere } from "@/modules/identity/services/workforce-authority";
 import {
   ConflictError,
   ForbiddenError,
@@ -119,6 +120,7 @@ function projectActivationStatus(
   user: Pick<CandidateUser, "status" | "authSubject" | "roles">,
   activations: readonly CandidateActivation[],
   now: Date,
+  hasWorkforceAuthority = false,
 ): {
   activationStatus: PatientActivationStatus;
   activationExpiresAt: Date | null;
@@ -140,7 +142,9 @@ function projectActivationStatus(
   if (
     user.status !== UserStatus.PROVISIONED ||
     user.authSubject !== null ||
-    !user.roles.some(({ role }) => role === Role.PATIENT)
+    !user.roles.some(({ role }) => role === Role.PATIENT) ||
+    // Same predicate as the issuance/claim gates: the service would refuse, so never offer the action.
+    hasWorkforceAuthority
   ) {
     return {
       activationStatus: "RECONCILIATION_REQUIRED",
@@ -396,6 +400,15 @@ export async function findPatientActivationCandidates(
       activationsByUser.set(activation.userId, current);
     }
 
+    // One batched query for the whole page (no per-candidate lookups).
+    const gated = new Set(
+      (
+        await db.user.findMany({
+          where: { id: { in: userIds }, ...workforceAuthorityUserWhere },
+          select: { id: true },
+        })
+      ).map(({ id }) => id),
+    );
     const now = getNow(dependencies.now);
 
     return candidates.map(({ relationship, user }) => {
@@ -403,6 +416,7 @@ export async function findPatientActivationCandidates(
         user,
         activationsByUser.get(user.id) ?? [],
         now,
+        gated.has(user.id),
       );
 
       return {
