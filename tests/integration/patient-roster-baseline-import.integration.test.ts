@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import {
   HospitalStatus,
   MembershipStatus,
@@ -18,6 +17,7 @@ import {
   readPatientImportCandidates,
   type PatientImportUpload,
 } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
+import { PATIENT_IMPORT_CONTRACT_VERSION } from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
   importPatientProvisioning,
   previewPatientProvisioning,
@@ -25,6 +25,19 @@ import {
   type PatientProvisioningServiceDependencies,
   type ProvisionPatientInput,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import {
+  createPatientImportPreviewBinding,
+  hashPatientImportFile,
+} from "@/modules/patient-provisioning/transport/patient-import-file-binding";
+import { createPatientImportFailedRowsDownload } from "@/modules/patient-provisioning/transport/patient-import-downloads";
+
+import {
+  createTemplateUpload,
+  importTargetOf,
+  readTemplateCandidates,
+  type ImportTestHospital,
+  type TemplateRow,
+} from "./support/patient-import-template-upload";
 
 const prisma = getPrisma();
 const transactionNow = new Date("2026-08-25T05:00:00.000Z");
@@ -37,22 +50,24 @@ const nationalIds = {
   existingWithoutBaseline: "1000000000033",
   sameImport: "1000000000041",
   blankHeight: "1000000000050",
-  partialConflict: "1000000000068",
-  weightConflict: "1000000000076",
-  heightConflict: "1000000000084",
-  waistConflict: "1000000000092",
-  dtxConflict: "1000000000106",
-  hba1cConflict: "1000000000114",
-  dateConflict: "1000000000122",
   concurrent: "1000000000130",
   rollback: "1000000000148",
   independentValid: "1000000000155",
   independentConflict: "1000000000163",
 } as const;
 
+/** A valid Thai national ID for a numeric seed (13th digit is the mod-11 check digit). */
+function thaiNationalId(seed: number): string {
+  const digits = String(100000000000 + seed).slice(-12).split("").map(Number);
+  const sum = digits.reduce((total, digit, index) => total + digit * (13 - index), 0);
+  return `${digits.join("")}${(11 - (sum % 11)) % 10}`;
+}
+
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientClassificationHistory.deleteMany();
+  await prisma.patientClassification.deleteMany();
   await prisma.patientBaseline.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
@@ -70,7 +85,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.person.deleteMany();
 }
 
-async function createHospital(): Promise<{ id: string }> {
+async function createHospital(): Promise<ImportTestHospital> {
   sequence += 1;
 
   return prisma.hospital.create({
@@ -79,7 +94,7 @@ async function createHospital(): Promise<{ id: string }> {
       name: "โรงพยาบาลทดสอบ Phase 16D.2 " + sequence,
       status: HospitalStatus.ACTIVE,
     },
-    select: { id: true },
+    select: { id: true, hospitalCode: true, name: true },
   });
 }
 
@@ -135,35 +150,27 @@ function patientInput(
   };
 }
 
-async function createRosterUpload(
-  headers: readonly string[],
-  rows: readonly (readonly unknown[])[],
-): Promise<PatientImportUpload> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Synthetic roster");
-  worksheet.addRow([...headers]);
-
-  for (const row of rows) {
-    worksheet.addRow([...row]);
-  }
-
-  const written = await workbook.xlsx.writeBuffer();
-  const bytes = Uint8Array.from(new Uint8Array(written));
-
+function templateRow(
+  nationalId: string,
+  familyName: string,
+  extra: TemplateRow = {},
+): TemplateRow {
   return {
-    name: "synthetic-phase-16d2.xlsx",
-    size: bytes.byteLength,
-    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
+    nationalId,
+    givenName: "สมชาย",
+    familyName,
+    hospitalNumber: "HN-" + nationalId.slice(-4),
+    ...extra,
   };
 }
 
-async function readRosterCandidate(
-  hospitalId: string,
-  headers: readonly string[],
-  row: readonly unknown[],
-) {
-  const upload = await createRosterUpload(headers, [row]);
-  const [candidate] = await readPatientImportCandidates(upload, hospitalId, { mode: "COMPATIBILITY" });
+async function readCandidate(hospital: ImportTestHospital, row: TemplateRow) {
+  const [candidate] = await readTemplateCandidates(hospital, [row]);
+
+  if (!candidate) {
+    throw new Error("The synthetic template row was not parsed");
+  }
+
   return candidate;
 }
 
@@ -211,7 +218,7 @@ function createBaselineFailureDatabase(): PrismaClient {
   }) as unknown as PrismaClient;
 }
 
-describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () => {
+describe("Patient roster import (template v2, new patients only) PostgreSQL workflow", () => {
   beforeAll(async () => {
     await prisma.$connect();
     await clearDatabase();
@@ -228,21 +235,15 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
   it("persists all approved Baseline fields with one shared date and bounded audits", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const headers = [
-      "Thai National ID",
-      "First name",
-      "Last name",
-      "HN",
-      "น้ำหนัก",
-      "ส่วนสูง",
-      "รอบเอว",
-      "ค่าน้ำตาลในเลือด",
-      "HbA1c",
-    ];
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      headers,
-      [nationalIds.allFields, "สมชาย", "ทดสอบนำเข้า", "HN-0009", 72.5, 170, 85, 126, 6.5],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.allFields, "ทดสอบนำเข้า", {
+        weight: 72.5,
+        height: 170,
+        waistCircumference: 85,
+        bloodSugarDtx: 126,
+        hba1c: 6.5,
+      }),
     );
 
     const preview = await previewPatientProvisioning(actor, hospital.id, [candidate], prisma, {
@@ -260,12 +261,7 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
       classification: "READY",
       baselineStatus: "BASELINE_READY",
     });
-    expect(summary).toMatchObject({
-      imported: 1,
-      baselineCreated: 1,
-      baselineAlreadyExists: 0,
-      baselineConflict: 0,
-    });
+    expect(summary).toMatchObject({ imported: 1, baselineCreated: 1 });
     expect(summary.rows[0]).toMatchObject({
       result: "IMPORTED",
       baselineStatus: "BASELINE_CREATED",
@@ -303,16 +299,13 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
   it("creates a partial Baseline only when at least one approved value exists", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const headers = ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ส่วนสูง", "HbA1c"];
-    const partialCandidate = await readRosterCandidate(
-      hospital.id,
-      headers,
-      [nationalIds.partialFields, "สมชาย", "บางส่วน", "HN-0017", 70, "", ""],
+    const partialCandidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.partialFields, "บางส่วน", { weight: 70, height: "", hba1c: "" }),
     );
-    const noBaselineCandidate = await readRosterCandidate(
-      hospital.id,
-      headers,
-      [nationalIds.noBaseline, "สมชาย", "ไม่มีข้อมูลตั้งต้น", "HN-0025", "", "", ""],
+    const noBaselineCandidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.noBaseline, "ไม่มีข้อมูลตั้งต้น", { weight: "", height: "", hba1c: "" }),
     );
 
     const partialSummary = await importPatientProvisioning(
@@ -342,10 +335,9 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
   it("rolls back a newly provisioned Patient core when the Baseline write fails", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก"],
-      [nationalIds.rollback, "สมชาย", "แถวล้มเหลว", "HN-0148", 72.5],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.rollback, "แถวล้มเหลว", { weight: 72.5 }),
     );
 
     const summary = await importPatientProvisioning(
@@ -377,48 +369,33 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
     expect(await prisma.auditEvent.count({ where: { action: "patient_baseline.created" } })).toBe(0);
   });
 
-  it("keeps independent rows independent when one Baseline conflicts", async () => {
+  it("keeps independent rows independent when one existing patient does not match", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const existingPatient = await provisionPatient(
+    await provisionPatient(
       actor,
       patientInput(nationalIds.independentConflict, hospital.id, "แถวขัดแย้ง"),
     );
-    await createPatientBaseline(
-      actor,
-      {
-        patientHospitalRelationshipId: existingPatient.relationshipId,
-        recordedOn: batchDate,
-        weight: 70,
-      },
-      importDependencies(),
-    );
-    const headers = ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก"];
-    const upload = await createRosterUpload(headers, [
-      [nationalIds.independentValid, "สมชาย", "แถวสำเร็จ", "HN-0155", 71],
-      [nationalIds.independentConflict, "สมชาย", "แถวขัดแย้ง", "HN-0163", 71],
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.independentValid, "แถวสำเร็จ", { weight: 71 }),
+      templateRow(nationalIds.independentConflict, "ชื่อไม่ตรงกัน", { weight: 71 }),
     ]);
-    const [validCandidate, conflictingCandidate] = await readPatientImportCandidates(
-      upload,
-      hospital.id,
-      { mode: "COMPATIBILITY" },
-    );
 
     const summary = await importPatientProvisioning(
       actor,
       hospital.id,
-      [validCandidate, conflictingCandidate],
+      candidates,
       importDependencies(),
       { effectiveDate: batchDate },
     );
 
-    expect(summary).toMatchObject({ imported: 1, conflict: 1, baselineCreated: 1, baselineConflict: 1 });
+    expect(summary).toMatchObject({ imported: 1, conflict: 1, baselineCreated: 1 });
     expect(summary.rows.map(({ result }) => result)).toEqual(["IMPORTED", "CONFLICT"]);
     expect(await prisma.patientHospitalRelationship.count()).toBe(2);
-    expect(await prisma.patientBaseline.count()).toBe(2);
+    expect(await prisma.patientBaseline.count()).toBe(1);
   });
 
-  it("reconciles only present import fields and preserves unrelated Baseline values", async () => {
+  it("never changes an existing patient: changed baseline values are ignored and nothing is overwritten", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
     const patient = await provisionPatient(
@@ -438,42 +415,83 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
       },
       importDependencies(),
     );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "รอบเอว"],
-      [nationalIds.sameImport, "สมชาย", "ข้อมูลเดิม", "HN-0041", 70, 85],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.sameImport, "ข้อมูลเดิม", {
+        weight: 99,
+        waistCircumference: 120,
+        height: 190,
+        hba1c: 9,
+      }),
     );
 
     const preview = await previewPatientProvisioning(actor, hospital.id, [candidate], prisma, {
-      effectiveDate: batchDate,
+      effectiveDate: "2026-08-15",
     });
     const summary = await importPatientProvisioning(
       actor,
       hospital.id,
       [candidate],
       importDependencies(),
-      { effectiveDate: batchDate },
+      { effectiveDate: "2026-08-15" },
     );
 
-    expect(preview.rows[0]).toMatchObject({
-      classification: "ALREADY_EXISTS",
-      baselineStatus: "BASELINE_ALREADY_EXISTS",
-    });
-    expect(summary).toMatchObject({ imported: 0, alreadyExists: 1, baselineAlreadyExists: 1 });
+    expect(preview.rows[0]).toMatchObject({ classification: "ALREADY_EXISTS", baselineStatus: "NOT_APPLICABLE" });
+    expect(summary).toMatchObject({ imported: 0, alreadyExists: 1, conflict: 0, baselineCreated: 0 });
     expect(await prisma.patientBaseline.count()).toBe(1);
-    expect(await prisma.patientBaseline.findFirstOrThrow({ select: { bloodPressureSystolic: true, summary: true } })).toEqual({
+    expect(
+      await prisma.patientBaseline.findFirstOrThrow({
+        select: {
+          recordedOn: true,
+          weight: true,
+          waistCircumference: true,
+          heightCm: true,
+          hba1c: true,
+          bloodPressureSystolic: true,
+          summary: true,
+        },
+      }),
+    ).toEqual({
+      recordedOn: new Date(batchDate + "T00:00:00.000Z"),
+      weight: 70,
+      waistCircumference: 85,
+      heightCm: null,
+      hba1c: null,
       bloodPressureSystolic: 120,
       summary: "สรุปเดิม",
     });
   });
 
-  it("treats a blank source height as no assertion and never clears the existing value", async () => {
+  it("does not create a Baseline for an existing patient that has none, and does not need a date for it", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const patient = await provisionPatient(
+    await provisionPatient(
       actor,
-      patientInput(nationalIds.blankHeight, hospital.id, "ส่วนสูงเดิม"),
+      patientInput(nationalIds.existingWithoutBaseline, hospital.id, "มี core แล้ว"),
     );
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.existingWithoutBaseline, "มี core แล้ว", { weight: 70 }),
+    );
+
+    const preview = await previewPatientProvisioning(actor, hospital.id, [candidate], prisma);
+    const summary = await importPatientProvisioning(actor, hospital.id, [candidate], importDependencies());
+
+    expect(preview.baselineDateRequired).toBe(false);
+    expect(summary).toMatchObject({ imported: 0, alreadyExists: 1, baselineCreated: 0 });
+    expect(summary.rows[0]).toMatchObject({ result: "ALREADY_EXISTS", baselineStatus: "NOT_APPLICABLE" });
+    expect(await prisma.patientHospitalRelationship.count()).toBe(1);
+    expect(await prisma.patientBaseline.count()).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(1);
+  });
+
+  it("does not fill in a missing HN or touch a blank source height of an existing patient", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    const patient = await provisionPatient(actor, {
+      ...patientInput(nationalIds.blankHeight, hospital.id, "ส่วนสูงเดิม"),
+      hospitalNumber: undefined,
+    });
     await createPatientBaseline(
       actor,
       {
@@ -484,10 +502,9 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
       },
       importDependencies(),
     );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ส่วนสูง"],
-      [nationalIds.blankHeight, "สมชาย", "ส่วนสูงเดิม", "HN-0050", 70, ""],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.blankHeight, "ส่วนสูงเดิม", { weight: 70, height: "" }),
     );
 
     const summary = await importPatientProvisioning(
@@ -498,191 +515,22 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
       { effectiveDate: batchDate },
     );
 
-    expect(summary).toMatchObject({ conflict: 0, baselineAlreadyExists: 1 });
+    expect(summary).toMatchObject({ alreadyExists: 1, conflict: 0 });
     expect(await prisma.patientBaseline.findFirstOrThrow({ select: { heightCm: true } })).toEqual({
       heightCm: 170,
     });
-  });
-
-  it("rejects an immutable partial update instead of filling a missing field", async () => {
-    const hospital = await createHospital();
-    const actor = await createOwnerActor(hospital.id);
-    const patient = await provisionPatient(
-      actor,
-      patientInput(nationalIds.partialConflict, hospital.id, "ข้อมูลบางส่วน"),
-    );
-    await createPatientBaseline(
-      actor,
-      {
-        patientHospitalRelationshipId: patient.relationshipId,
-        recordedOn: batchDate,
-        weight: 70,
-        waistCircumference: null,
-      },
-      importDependencies(),
-    );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "รอบเอว"],
-      [nationalIds.partialConflict, "สมชาย", "ข้อมูลบางส่วน", "HN-0068", 70, 85],
-    );
-
-    const summary = await importPatientProvisioning(
-      actor,
-      hospital.id,
-      [candidate],
-      importDependencies(),
-      { effectiveDate: batchDate },
-    );
-
-    expect(summary).toMatchObject({ conflict: 1, baselineConflict: 1, baselineCreated: 0 });
-    expect(summary.rows[0]).toMatchObject({
-      result: "CONFLICT",
-      baselineStatus: "BASELINE_CONFLICT",
-    });
-    expect(await prisma.patientBaseline.findFirstOrThrow({ select: { waistCircumference: true } })).toEqual({
-      waistCircumference: null,
-    });
-  });
-
-  it.each([
-    {
-      id: nationalIds.weightConflict,
-      header: "น้ำหนัก",
-      existing: { weight: 70 },
-      sourceValue: 71,
-    },
-    {
-      id: nationalIds.heightConflict,
-      header: "ส่วนสูง",
-      existing: { heightCm: 170 },
-      sourceValue: 171,
-    },
-    {
-      id: nationalIds.waistConflict,
-      header: "รอบเอว",
-      existing: { waistCircumference: 85 },
-      sourceValue: 86,
-    },
-    {
-      id: nationalIds.dtxConflict,
-      header: "ค่าน้ำตาลในเลือด",
-      existing: { bloodSugarDtx: 126 },
-      sourceValue: 127,
-    },
-    {
-      id: nationalIds.hba1cConflict,
-      header: "HbA1c",
-      existing: { hba1c: 6.5 },
-      sourceValue: 6.6,
-    },
-  ])("returns BASELINE_CONFLICT for a differing $header value", async ({ id, header, existing, sourceValue }) => {
-    const hospital = await createHospital();
-    const actor = await createOwnerActor(hospital.id);
-    const patient = await provisionPatient(actor, patientInput(id, hospital.id, "ค่าต่างกัน"));
-    await createPatientBaseline(
-      actor,
-      {
-        patientHospitalRelationshipId: patient.relationshipId,
-        recordedOn: batchDate,
-        ...existing,
-      },
-      importDependencies(),
-    );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", header],
-      [id, "สมชาย", "ค่าต่างกัน", "HN-" + id.slice(-4), sourceValue],
-    );
-
-    const summary = await importPatientProvisioning(
-      actor,
-      hospital.id,
-      [candidate],
-      importDependencies(),
-      { effectiveDate: batchDate },
-    );
-
-    expect(summary).toMatchObject({ conflict: 1, baselineConflict: 1 });
-    expect(summary.rows[0]).toMatchObject({ result: "CONFLICT", baselineStatus: "BASELINE_CONFLICT" });
-  });
-
-  it("returns BASELINE_CONFLICT when the batch effective date differs", async () => {
-    const hospital = await createHospital();
-    const actor = await createOwnerActor(hospital.id);
-    const patient = await provisionPatient(
-      actor,
-      patientInput(nationalIds.dateConflict, hospital.id, "วันที่ต่างกัน"),
-    );
-    await createPatientBaseline(
-      actor,
-      {
-        patientHospitalRelationshipId: patient.relationshipId,
-        recordedOn: batchDate,
-        weight: 70,
-      },
-      importDependencies(),
-    );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก"],
-      [nationalIds.dateConflict, "สมชาย", "วันที่ต่างกัน", "HN-0122", 70],
-    );
-
-    const summary = await importPatientProvisioning(
-      actor,
-      hospital.id,
-      [candidate],
-      importDependencies(),
-      { effectiveDate: "2026-08-15" },
-    );
-
-    expect(summary).toMatchObject({ conflict: 1, baselineConflict: 1 });
-    expect(summary.rows[0]).toMatchObject({ result: "CONFLICT", baselineStatus: "BASELINE_CONFLICT" });
-  });
-
-  it("creates a Baseline for an existing Patient core without changing the core", async () => {
-    const hospital = await createHospital();
-    const actor = await createOwnerActor(hospital.id);
-    await provisionPatient(
-      actor,
-      patientInput(nationalIds.existingWithoutBaseline, hospital.id, "มี core แล้ว"),
-    );
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก"],
-      [nationalIds.existingWithoutBaseline, "สมชาย", "มี core แล้ว", "HN-0033", 70],
-    );
-
-    const summary = await importPatientProvisioning(
-      actor,
-      hospital.id,
-      [candidate],
-      importDependencies(),
-      { effectiveDate: batchDate },
-    );
-
-    expect(summary).toMatchObject({
-      imported: 0,
-      alreadyExists: 1,
-      baselineCreated: 1,
-    });
-    expect(summary.rows[0]).toMatchObject({
-      result: "ALREADY_EXISTS",
-      baselineStatus: "BASELINE_CREATED",
-    });
-    expect(await prisma.patientHospitalRelationship.count()).toBe(1);
-    expect(await prisma.patientBaseline.count()).toBe(1);
+    expect(
+      await prisma.patientHospitalRelationship.findFirstOrThrow({ select: { hospitalNumber: true } }),
+    ).toEqual({ hospitalNumber: null });
     expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(1);
   });
 
-  it("requires an explicit date for approved Baseline data and never fabricates it", async () => {
+  it("requires an explicit date for new patients with Baseline data and never fabricates it", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก"],
-      [nationalIds.allFields, "สมชาย", "ต้องระบุวันที่", "HN-0009", 70],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.allFields, "ต้องระบุวันที่", { weight: 70 }),
     );
 
     const preview = await previewPatientProvisioning(actor, hospital.id, [candidate], prisma);
@@ -704,10 +552,9 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
   it("keeps concurrent confirmations idempotent without duplicate core or Baseline rows", async () => {
     const hospital = await createHospital();
     const actor = await createOwnerActor(hospital.id);
-    const candidate = await readRosterCandidate(
-      hospital.id,
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ส่วนสูง"],
-      [nationalIds.concurrent, "สมชาย", "พร้อมกัน", "HN-0130", 70, 170],
+    const candidate = await readCandidate(
+      hospital,
+      templateRow(nationalIds.concurrent, "พร้อมกัน", { weight: 70, height: 170 }),
     );
 
     const outcomes = await Promise.all([
@@ -720,6 +567,8 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
     ]);
 
     expect(outcomes.every((summary) => summary.failed === 0 && summary.conflict === 0)).toBe(true);
+    expect(outcomes.reduce((total, summary) => total + summary.imported, 0)).toBe(1);
+    expect(outcomes.reduce((total, summary) => total + summary.alreadyExists, 0)).toBe(1);
     expect(
       await prisma.person.count({
         where: {
@@ -735,5 +584,151 @@ describe("Phase 16D.2 initial Baseline roster import PostgreSQL workflow", () =>
     expect(await prisma.patientBaseline.count()).toBe(1);
     expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(1);
     expect(await prisma.auditEvent.count({ where: { action: "patient_baseline.created" } })).toBe(1);
+  });
+
+  describe("append-only re-import", () => {
+    const names = (seed: number): TemplateRow =>
+      templateRow(thaiNationalId(seed), "ผู้ป่วยต่อท้าย", { weight: 60 + (seed % 20) });
+
+    it("imports 100, then re-imports 130: 30 new, 100 already exist, no duplicates, existing data unchanged", async () => {
+      const hospital = await createHospital();
+      const actor = await createOwnerActor(hospital.id);
+      const first = Array.from({ length: 100 }, (_, index) => names(index));
+      const firstSummary = await importPatientProvisioning(
+        actor,
+        hospital.id,
+        await readTemplateCandidates(hospital, first),
+        importDependencies(),
+        { effectiveDate: batchDate },
+      );
+
+      expect(firstSummary).toMatchObject({ imported: 100, alreadyExists: 0 });
+      const patientAudits = await prisma.auditEvent.count({ where: { action: "patient.provisioned" } });
+      const baselineBefore = await prisma.patientBaseline.findMany({
+        orderBy: { patientHospitalRelationshipId: "asc" },
+        select: { patientHospitalRelationshipId: true, weight: true, recordedOn: true },
+      });
+
+      // The 30 appended patients are new; the first 100 now carry *different* values in the file.
+      const appended = Array.from({ length: 30 }, (_, index) => names(1000 + index));
+      const changedExisting = first.map((row) => ({ ...row, weight: 200, diabetesClassification: "เบาหวาน" }));
+      const secondSummary = await importPatientProvisioning(
+        actor,
+        hospital.id,
+        await readTemplateCandidates(hospital, [...changedExisting, ...appended]),
+        importDependencies(),
+        { effectiveDate: "2026-09-01" },
+      );
+
+      expect(secondSummary).toMatchObject({
+        imported: 30,
+        alreadyExists: 100,
+        conflict: 0,
+        failed: 0,
+        invalid: 0,
+        classificationCreated: 0,
+      });
+      expect(await prisma.patientHospitalRelationship.count()).toBe(130);
+      expect(await prisma.patientProfile.count()).toBe(130);
+      expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(patientAudits + 30);
+      expect(await prisma.patientClassification.count()).toBe(0);
+
+      const baselineAfter = await prisma.patientBaseline.findMany({
+        where: { patientHospitalRelationshipId: { in: baselineBefore.map((row) => row.patientHospitalRelationshipId) } },
+        orderBy: { patientHospitalRelationshipId: "asc" },
+        select: { patientHospitalRelationshipId: true, weight: true, recordedOn: true },
+      });
+      expect(baselineAfter).toEqual(baselineBefore);
+      expect(await prisma.patientBaseline.count()).toBe(130);
+    }, 120_000);
+
+    it("keeps imported patients free of an OSM", async () => {
+      const hospital = await createHospital();
+      const actor = await createOwnerActor(hospital.id);
+
+      await importPatientProvisioning(
+        actor,
+        hospital.id,
+        await readTemplateCandidates(hospital, [names(1), names(2)]),
+        importDependencies(),
+        { effectiveDate: batchDate },
+      );
+
+      expect(await prisma.patientOsmAssignment.count()).toBe(0);
+    });
+  });
+
+  describe("hospital binding", () => {
+    it("rejects hospital B's file for hospital A without writing anything", async () => {
+      const hospitalA = await createHospital();
+      const hospitalB = await createHospital();
+      await createOwnerActor(hospitalA.id);
+
+      await expect(
+        readTemplateCandidates(hospitalB, [names(1)], {}, hospitalA),
+      ).rejects.toMatchObject({ code: "VALIDATION" });
+      expect(await prisma.patientHospitalRelationship.count()).toBe(0);
+    });
+
+    function names(seed: number): TemplateRow {
+      return templateRow(thaiNationalId(seed), "ผู้ป่วยโรงพยาบาล");
+    }
+  });
+
+  describe("failed-rows export", () => {
+    it("exports only the rows that were not imported, and the fixed file imports", async () => {
+      const hospital = await createHospital();
+      const actor = await createOwnerActor(hospital.id);
+      await provisionPatient(actor, patientInput(nationalIds.independentConflict, hospital.id, "แถวขัดแย้ง"));
+      const upload: PatientImportUpload = await createTemplateUpload(hospital, [
+        templateRow(nationalIds.independentValid, "แถวสำเร็จ"),
+        templateRow(nationalIds.independentConflict, "แถวขัดแย้ง"),
+        templateRow(thaiNationalId(9001), "ข้อมูลผิด", { nationalId: "123" }),
+        templateRow(nationalIds.independentConflict, "ชื่อไม่ตรงกัน"),
+      ]);
+      const fileFingerprint = await hashPatientImportFile(upload);
+      const previewBinding = createPatientImportPreviewBinding(fileFingerprint, hospital.id, actor.userId);
+      const candidates = await readPatientImportCandidates(upload, importTargetOf(hospital));
+
+      const summary = await importPatientProvisioning(actor, hospital.id, candidates, importDependencies());
+      expect(summary).toMatchObject({ imported: 1, alreadyExists: 0, conflict: 0 });
+      expect(summary.rows.map(({ result }) => result)).toEqual([
+        "IMPORTED",
+        "DUPLICATE_IN_FILE",
+        "INVALID",
+        "DUPLICATE_IN_FILE",
+      ]);
+
+      const download = await createPatientImportFailedRowsDownload(
+        actor,
+        {
+          targetHospitalId: hospital.id,
+          previewTargetHospitalId: hospital.id,
+          fileFingerprint,
+          previewBinding,
+          importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+          failedRowNumbers: [],
+        },
+        upload,
+      );
+      const failedUpload: PatientImportUpload = {
+        name: download.filename,
+        size: download.buffer.byteLength,
+        arrayBuffer: async () =>
+          download.buffer.buffer.slice(
+            download.buffer.byteOffset,
+            download.buffer.byteOffset + download.buffer.byteLength,
+          ) as ArrayBuffer,
+      };
+      const failedCandidates = await readPatientImportCandidates(failedUpload, importTargetOf(hospital));
+
+      // Rows 5 (invalid) and the two duplicates come back; the imported and existing rows do not.
+      expect(failedCandidates.map(({ rowNumber }) => rowNumber)).toEqual([3, 4, 5]);
+      expect(failedCandidates.map(({ canonicalRow }) => canonicalRow.identity.familyName)).toEqual([
+        "แถวขัดแย้ง",
+        "ข้อมูลผิด",
+        "ชื่อไม่ตรงกัน",
+      ]);
+    });
   });
 });

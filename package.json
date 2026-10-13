@@ -12,7 +12,6 @@
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "db:seed": "node scripts/seed-hospital-master.mjs",
     "prisma:generate": "prisma generate",
-    "generate:patient-import-template": "jiti scripts/generate-patient-import-template.ts",
     "line:rich-menu:reconcile": "node scripts/line-rich-menu-reconcile.mjs",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",

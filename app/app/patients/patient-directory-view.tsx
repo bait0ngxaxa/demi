@@ -30,6 +30,8 @@ type PatientDirectoryViewProps = {
   errorMessage: string | null;
   classificationFilter: PatientDirectoryClassificationFilter;
   classificationCounts: PatientClassificationCounts;
+  /** Active OWNER of the selected Hospital: may open the bulk OSM assignment page. */
+  canAssignOsm?: boolean;
 };
 
 function directoryUrl(input: {
@@ -171,6 +173,7 @@ export function PatientDirectoryView({
   errorMessage,
   classificationFilter,
   classificationCounts,
+  canAssignOsm = false,
 }: PatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
   const maxLength =
@@ -214,9 +217,19 @@ export function PatientDirectoryView({
                 </p>
               )}
             </div>
-            <p className="max-w-xl text-sm leading-6 text-text-muted">
-              แสดงเฉพาะผู้ป่วยของโรงพยาบาลที่เลือก
-            </p>
+            <div className="max-w-xl space-y-3">
+              <p className="text-sm leading-6 text-text-muted">
+                แสดงเฉพาะผู้ป่วยของโรงพยาบาลที่เลือก
+              </p>
+              {canAssignOsm ? (
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  href={`/app/patients/assign-osm?hospitalId=${encodeURIComponent(selectedScope.hospitalId)}`}
+                >
+                  กำหนด อสม. ให้ผู้ป่วยหลายคน
+                </Link>
+              ) : null}
+            </div>
           </div>
         </Panel>
 

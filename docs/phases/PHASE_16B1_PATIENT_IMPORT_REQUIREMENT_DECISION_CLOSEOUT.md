@@ -1,5 +1,7 @@
 # DEMI Phase 16B.1 — Patient Import Requirement Decision Closeout
 
+> **Superseded in part by [Phase 16F](./PHASE_16F_PATIENT_IMPORT_STRICT_TEMPLATE_V2_DECISION.md) (2026-10-13).** `IMP-REQ-04` (OSM/Coach column = actual assignment) is superseded: OSM is no longer part of import and is assigned in the app (per patient and in bulk). `IMP-REQ-01/02/05` now apply to *new* patients only; import never changes an existing patient. `IMP-REQ-03` stays OPEN. The text below is kept unchanged as history.
+
 - **สถานะ:** CLOSED — requirement decision closeout / documentation-only handoff
 - **Starting HEAD:** `b4d6fd0be1963e0bf59f259d18343e7c6749fa93` (`feat(patient-import): add V2 compatibility foundation`)
 - **วันที่:** 2026-08-25 (Asia/Bangkok)

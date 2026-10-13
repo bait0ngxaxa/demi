@@ -1,5 +1,7 @@
 # Phase 16D.4A Canonical Patient Import Template v1
 
+> **Superseded by [Phase 16F](./PHASE_16F_PATIENT_IMPORT_STRICT_TEMPLATE_V2_DECISION.md).** `patient-import-template-v1` and the static `public/templates` file were replaced by the per-hospital `patient-import-template-v2` generated on demand.
+
 สถานะ: implement แล้วสำหรับ re-audit ก่อนเริ่ม Phase 16D.5
 
 เอกสารนี้กำหนดขอบเขตของ Canonical Patient Import Template v1 ซึ่งเป็น workbook

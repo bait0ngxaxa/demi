@@ -1,3 +1,4 @@
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PatientProvisioningPage from "../../../../app/app/patients/provision/page";
@@ -49,7 +50,13 @@ describe("Patient provisioning page Hospital context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedConnection.mockResolvedValue(undefined);
-    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "actor" });
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      userId: "actor",
+      personId: "person",
+      roles: [],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    });
     mockedListPatientProvisioningScopes.mockResolvedValue(scopes);
   });
 
@@ -73,5 +80,39 @@ describe("Patient provisioning page Hospital context", () => {
 
     expect(invalidHospital.key).toBe(scopes[0].hospitalId);
     expect(invalidHospital.key).not.toBe("not-authorized");
+  });
+
+  it("offers bulk OSM assignment only to an active OWNER of the selected Hospital", async () => {
+    const actorFor = (membershipType: MembershipType) => ({
+      userId: "actor",
+      personId: "person",
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [
+        {
+          hospitalId: scopes[0].hospitalId,
+          membershipType,
+          profession: null,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+      osmHospitalRelationships: [],
+    });
+
+    mockedGetProtectedApplicationActor.mockResolvedValue(actorFor(MembershipType.OWNER));
+    const owner = await PatientProvisioningPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId }),
+    });
+    const ownerElsewhere = await PatientProvisioningPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[1].hospitalId }),
+    });
+    mockedGetProtectedApplicationActor.mockResolvedValue(actorFor(MembershipType.MEMBER));
+    const member = await PatientProvisioningPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId }),
+    });
+
+    expect(owner.props.canAssignOsm).toBe(true);
+    expect(ownerElsewhere.props.canAssignOsm).toBe(false);
+    expect(member.props.canAssignOsm).toBe(false);
   });
 });

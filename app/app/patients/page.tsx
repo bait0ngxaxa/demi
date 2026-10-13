@@ -5,6 +5,10 @@ import { connection } from "next/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
+import {
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
   type PatientDirectoryClassificationFilter,
   type PatientDirectoryLookupType,
@@ -145,6 +149,13 @@ export default async function PatientDirectoryPage({
       lookupType={result?.lookupType ?? lookupType}
       result={result}
       classificationCounts={classificationCounts}
+      canAssignOsm={
+        decidePatientOsmAssignmentPolicy({
+          actor,
+          capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+          targetHospitalId: selectedScope.hospitalId,
+        }).allowed
+      }
       scopes={scopes}
       selectedScope={selectedScope}
       value={result?.value ?? displayValue}

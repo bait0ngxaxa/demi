@@ -1,5 +1,7 @@
 # DEMI Phase 16D.4 — OSM / Coach Roster Resolution, Reconciliation & Assignment
 
+> **Superseded by [Phase 16F](./PHASE_16F_PATIENT_IMPORT_STRICT_TEMPLATE_V2_DECISION.md).** OSM roster resolution, reconciliation and assignment were removed from import (including `patient-osm-roster-resolver`). OSM is assigned in the app: per patient and, new in 16F, in bulk.
+
 **สถานะ:** Remediated — พร้อมส่ง re-audit (ยังไม่เริ่ม Phase 16D.5)
 
 **วันที่ดำเนินการ:** 2026-08-27

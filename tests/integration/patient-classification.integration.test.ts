@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import {
   HospitalStatus,
   MembershipStatus,
@@ -21,11 +20,6 @@ import {
 import { setPatientClassification } from "@/modules/patient-classification/services/patient-classification-service";
 import { findPatientDirectory } from "@/modules/patient-directory/services/patient-directory-query-service";
 import {
-  readPatientImportCandidates,
-  type PatientImportUpload,
-} from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
-import { createPatientImportTemplateWorkbook } from "@/modules/patient-provisioning/import/patient-import-template";
-import {
   importPatientProvisioning,
   previewPatientProvisioning,
   provisionPatient,
@@ -33,6 +27,8 @@ import {
   type ProvisionPatientInput,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+
+import { readTemplateCandidates, type ImportTestHospital } from "./support/patient-import-template-upload";
 
 const prisma = getPrisma();
 const transactionNow = new Date("2026-08-27T05:00:00.000Z");
@@ -74,7 +70,7 @@ async function clearDatabase(): Promise<void> {
 
 async function createHospital(
   status: HospitalStatus = HospitalStatus.ACTIVE,
-): Promise<{ id: string; status: HospitalStatus }> {
+): Promise<ImportTestHospital & { status: HospitalStatus }> {
   sequence += 1;
 
   return prisma.hospital.create({
@@ -83,7 +79,7 @@ async function createHospital(
       name: `โรงพยาบาลสังเคราะห์ Phase 16D.3 ${sequence}`,
       status,
     },
-    select: { id: true, status: true },
+    select: { id: true, hospitalCode: true, name: true, status: true },
   });
 }
 
@@ -209,67 +205,33 @@ function importDependencies(
   return { database, now: () => now, transactionRetries: 2 };
 }
 
-async function createRosterUpload(
-  headers: readonly string[],
-  rows: readonly (readonly unknown[])[],
-): Promise<PatientImportUpload> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Synthetic roster");
-  worksheet.addRow([...headers]);
-
-  for (const row of rows) {
-    worksheet.addRow([...row]);
-  }
-
-  const written = await workbook.xlsx.writeBuffer();
-  const bytes = Uint8Array.from(new Uint8Array(written));
-
-  return {
-    name: "synthetic-phase-16d3.xlsx",
-    size: bytes.byteLength,
-    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
-  };
-}
-
 async function readCanonicalClassificationCandidates(
-  hospitalId: string,
+  hospital: ImportTestHospital,
   rows: readonly {
     rowNumber: number;
     nationalId: string;
     classification: string;
   }[],
-): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
-  const workbook = await createPatientImportTemplateWorkbook();
-  const worksheet = workbook.worksheets[0];
-
-  if (!worksheet) {
-    throw new Error("The synthetic canonical classification workbook has no worksheet");
-  }
-
-  for (const row of rows) {
-    worksheet.getCell(`B${row.rowNumber}`).value = row.nationalId;
-    worksheet.getCell(`D${row.rowNumber}`).value = "ผู้ป่วยสังเคราะห์";
-    worksheet.getCell(`E${row.rowNumber}`).value = "แถวพิกัด";
-    worksheet.getCell(`F${row.rowNumber}`).value = `HN-${row.nationalId.slice(-4)}`;
-    worksheet.getCell(`L${row.rowNumber}`).value = row.classification;
-  }
-
-  const written = await workbook.xlsx.writeBuffer();
-  const bytes = Uint8Array.from(new Uint8Array(written));
-
-  return readPatientImportCandidates({
-    name: "synthetic-canonical-classification-source-rows.xlsx",
-    size: bytes.byteLength,
-    arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer,
-  }, hospitalId, { mode: "CANONICAL" });
+): Promise<Awaited<ReturnType<typeof readTemplateCandidates>>> {
+  return readTemplateCandidates(
+    hospital,
+    rows.map((row) => ({
+      nationalId: row.nationalId,
+      givenName: "ผู้ป่วยสังเคราะห์",
+      familyName: "แถวพิกัด",
+      hospitalNumber: `HN-${row.nationalId.slice(-4)}`,
+      diabetesClassification: row.classification,
+    })),
+    { rowNumbers: rows.map(({ rowNumber }) => rowNumber) },
+  );
 }
 
 async function readClassificationCandidate(
-  hospitalId: string,
+  hospital: ImportTestHospital,
   nationalId: string,
   classification: string,
-): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>[number]> {
-  const [candidate] = await readClassificationCandidates(hospitalId, [{ nationalId, classification }]);
+): Promise<Awaited<ReturnType<typeof readTemplateCandidates>>[number]> {
+  const [candidate] = await readClassificationCandidates(hospital, [{ nationalId, classification }]);
 
   if (!candidate) {
     throw new Error("Synthetic classification candidate was not created");
@@ -279,25 +241,23 @@ async function readClassificationCandidate(
 }
 
 async function readClassificationCandidates(
-  hospitalId: string,
+  hospital: ImportTestHospital,
   rows: readonly { nationalId: string; classification: string }[],
-): Promise<Awaited<ReturnType<typeof readPatientImportCandidates>>> {
-  const upload = await createRosterUpload(
-    ["Thai National ID", "First name", "Last name", "HN", "ประเภทเบาหวาน"],
-    rows.map(({ nationalId, classification }) => [
+): Promise<Awaited<ReturnType<typeof readTemplateCandidates>>> {
+  return readTemplateCandidates(
+    hospital,
+    rows.map(({ nationalId, classification }) => ({
       nationalId,
-      "ผู้ป่วยสังเคราะห์",
-      "ระยะที่สิบหกดีสาม",
-      `HN-${nationalId.slice(-4)}`,
-      classification,
-    ]),
+      givenName: "ผู้ป่วยสังเคราะห์",
+      familyName: "ระยะที่สิบหกดีสาม",
+      hospitalNumber: `HN-${nationalId.slice(-4)}`,
+      diabetesClassification: classification,
+    })),
   );
-
-  return readPatientImportCandidates(upload, hospitalId, { mode: "COMPATIBILITY" });
 }
 
 async function readCandidateClassification(
-  candidate: Awaited<ReturnType<typeof readPatientImportCandidates>>[number],
+  candidate: Awaited<ReturnType<typeof readTemplateCandidates>>[number],
 ) {
   if (!candidate.input) {
     throw new Error("Synthetic classification candidate is invalid");
@@ -559,11 +519,11 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "patient_classification.created" } })).toBe(1);
   });
 
-  it("creates, no-ops, previews, and explicitly confirms roster classification reconciliation", async () => {
+  it("records classification for new patients only and never changes an existing patient's classification", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const createCandidate = await readClassificationCandidate(
-      hospital.id,
+      hospital,
       nationalIds.rosterCreate,
       " กลุ่มเสี่ยง ",
     );
@@ -584,128 +544,59 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       classification: "READY",
       patientClassification: {
         status: "CLASSIFICATION_READY",
-        currentClassification: null,
         sourceClassification: "RISK",
       },
     });
     expect(createSummary).toMatchObject({ imported: 1, classificationCreated: 1 });
     expect(await prisma.patientClassificationHistory.count()).toBe(1);
 
-    const sameCandidate = await readClassificationCandidate(
-      hospital.id,
-      nationalIds.rosterCreate,
-      "เบาหวาน",
-    );
-    const samePreview = await previewPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      [sameCandidate],
-      prisma,
-    );
-    expect(samePreview.rows[0]?.patientClassification.status).toBe(
-      "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
-    );
-
-    const sourceRiskCandidate = await readClassificationCandidate(
-      hospital.id,
-      nationalIds.rosterSame,
-      "กลุ่มเสี่ยง",
-    );
-    const sourceRiskSummary = await importPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      [sourceRiskCandidate],
-      importDependencies(),
-    );
-    expect(sourceRiskSummary).toMatchObject({ imported: 1, classificationCreated: 1 });
+    // Same value in the file: nothing to do for an existing patient.
     const sameValueSummary = await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [sourceRiskCandidate],
+      [createCandidate],
       importDependencies(),
     );
-    expect(sameValueSummary).toMatchObject({
-      alreadyExists: 1,
-      classificationCreated: 0,
-      classificationAlreadyExists: 1,
-      classificationChanged: 0,
-    });
+    expect(sameValueSummary).toMatchObject({ alreadyExists: 1, classificationCreated: 0 });
 
-    const conflictCandidate = await readClassificationCandidate(
-      hospital.id,
-      nationalIds.rosterConflict,
-      "กลุ่มเสี่ยง",
-    );
-    await importPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      [conflictCandidate],
-      importDependencies(),
-    );
-    const conflictingCandidate = await readClassificationCandidate(
-      hospital.id,
-      nationalIds.rosterConflict,
+    // A different value in the file is ignored: no review, no confirmation, no change.
+    const changedCandidate = await readClassificationCandidate(
+      hospital,
+      nationalIds.rosterCreate,
       "เบาหวาน",
     );
-    const conflictPreview = await previewPatientProvisioning(
+    const changedPreview = await previewPatientProvisioning(
       owner.actor,
       hospital.id,
-      [conflictingCandidate],
+      [changedCandidate],
       prisma,
     );
-    expect(conflictPreview).toMatchObject({
-      classificationReconciliations: [{
-        rowNumber: 2,
-        currentClassification: "RISK",
-        sourceClassification: "DIABETES",
-      }],
-    });
-    expect(conflictPreview.rows[0]).toMatchObject({
-      classification: "NEEDS_REVIEW",
-      patientClassification: {
-        status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
-        currentClassification: "RISK",
-        sourceClassification: "DIABETES",
-      },
-    });
-
-    const unconfirmed = await importPatientProvisioning(
+    const changedSummary = await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [conflictingCandidate],
+      [changedCandidate],
       importDependencies(),
     );
-    expect(unconfirmed).toMatchObject({ needsReview: 1, classificationNeedsReview: 1 });
-    expect(await prisma.patientClassificationHistory.count()).toBe(3);
 
-    const confirmed = await importPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      [conflictingCandidate],
-      importDependencies(),
-      {
-        classificationReconciliationChoices: [{
-          rowNumber: 2,
-          currentClassification: "RISK",
-          sourceClassification: "DIABETES",
-        }],
-      },
-    );
-    expect(confirmed).toMatchObject({ alreadyExists: 1, classificationChanged: 1 });
-    expect(await prisma.patientClassificationHistory.count()).toBe(4);
-    await expect(readCandidateClassification(conflictingCandidate)).resolves.toEqual({
-      classification: "DIABETES",
+    expect(changedPreview.rows[0]).toMatchObject({
+      classification: "ALREADY_EXISTS",
+      patientClassification: { status: "NOT_APPLICABLE", sourceClassification: null },
+    });
+    expect(changedSummary).toMatchObject({ alreadyExists: 1, classificationCreated: 0 });
+    expect(await prisma.patientClassificationHistory.count()).toBe(1);
+    await expect(readCandidateClassification(createCandidate)).resolves.toEqual({
+      classification: "RISK",
     });
   });
 
-  it("accepts classification reconciliation at canonical source rows 501 and 502", async () => {
+  it("ignores changed classifications at canonical source rows 501 and 502", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const rows = [
       { rowNumber: 501, nationalId: nationalIds.rosterConfirmed, classification: "กลุ่มเสี่ยง" },
       { rowNumber: 502, nationalId: nationalIds.rosterStale, classification: "กลุ่มเสี่ยง" },
     ] as const;
-    const initialCandidates = await readCanonicalClassificationCandidates(hospital.id, rows);
+    const initialCandidates = await readCanonicalClassificationCandidates(hospital, rows);
 
     expect(initialCandidates.map(({ rowNumber }) => rowNumber)).toEqual([501, 502]);
     await expect(
@@ -718,57 +609,28 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     ).resolves.toMatchObject({ imported: 2, classificationCreated: 2 });
 
     const changedCandidates = await readCanonicalClassificationCandidates(
-      hospital.id,
+      hospital,
       rows.map((row) => ({ ...row, classification: "เบาหวาน" })),
     );
-    const preview = await previewPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      changedCandidates,
-      prisma,
-    );
-
-    expect(preview.classificationReconciliations).toEqual([
-      {
-        rowNumber: 501,
-        currentClassification: "RISK",
-        sourceClassification: "DIABETES",
-      },
-      {
-        rowNumber: 502,
-        currentClassification: "RISK",
-        sourceClassification: "DIABETES",
-      },
-    ]);
-
-    const unconfirmed = await importPatientProvisioning(
+    const summary = await importPatientProvisioning(
       owner.actor,
       hospital.id,
       changedCandidates,
       importDependencies(),
     );
-    expect(unconfirmed).toMatchObject({ needsReview: 2, classificationNeedsReview: 2 });
 
-    const confirmed = await importPatientProvisioning(
-      owner.actor,
-      hospital.id,
-      changedCandidates,
-      importDependencies(),
-      { classificationReconciliationChoices: preview.classificationReconciliations },
-    );
-
-    expect(confirmed).toMatchObject({
-      alreadyExists: 2,
-      classificationChanged: 2,
-      classificationNeedsReview: 0,
-    });
+    expect(summary).toMatchObject({ alreadyExists: 2, classificationCreated: 0 });
+    expect(await prisma.patientClassificationHistory.count()).toBe(2);
+    expect(
+      await prisma.patientClassification.count({ where: { classification: "RISK" } }),
+    ).toBe(2);
   });
 
   it("rejects an invalid source classification without persisting the Patient", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const candidate = await readClassificationCandidate(
-      hospital.id,
+      hospital,
       nationalIds.rosterInvalid,
       "เบาหวาน type 2",
     );
@@ -785,7 +647,7 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       classification: "INVALID",
       patientClassification: { status: "CLASSIFICATION_DATA_INVALID" },
     });
-    expect(summary).toMatchObject({ invalid: 1, classificationInvalid: 1, imported: 0 });
+    expect(summary).toMatchObject({ invalid: 1, imported: 0 });
     expect(await prisma.patientProfile.count()).toBe(0);
     expect(await prisma.patientClassification.count()).toBe(0);
   });
@@ -793,15 +655,21 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
   it("commits Baseline and classification atomically with the new Patient core", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
-    const candidate = await createRosterUpload(
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ประเภทเบาหวาน"],
-      [[nationalIds.rosterAtomic, "ผู้ป่วยสังเคราะห์", "อะตอมมิก", "HN-0050", 72.5, "เบาหวาน"]],
-    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" }))[0]);
+    const [candidate] = await readTemplateCandidates(hospital, [
+      {
+        nationalId: nationalIds.rosterAtomic,
+        givenName: "ผู้ป่วยสังเคราะห์",
+        familyName: "อะตอมมิก",
+        hospitalNumber: "HN-0050",
+        weight: 72.5,
+        diabetesClassification: "เบาหวาน",
+      },
+    ]);
 
     const summary = await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [candidate],
+      candidate ? [candidate] : [],
       importDependencies(),
       { effectiveDate: "2026-08-01" },
     );
@@ -820,15 +688,21 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
   it("rolls back newly created core and Baseline when classification persistence fails", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
-    const candidate = await createRosterUpload(
-      ["Thai National ID", "First name", "Last name", "HN", "น้ำหนัก", "ประเภทเบาหวาน"],
-      [[nationalIds.rosterRollback, "ผู้ป่วยสังเคราะห์", "ย้อนกลับ", "HN-0068", 70, "กลุ่มเสี่ยง"]],
-    ).then(async (upload) => (await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" }))[0]);
+    const [candidate] = await readTemplateCandidates(hospital, [
+      {
+        nationalId: nationalIds.rosterRollback,
+        givenName: "ผู้ป่วยสังเคราะห์",
+        familyName: "ย้อนกลับ",
+        hospitalNumber: "HN-0068",
+        weight: 70,
+        diabetesClassification: "กลุ่มเสี่ยง",
+      },
+    ]);
 
     const summary = await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [candidate],
+      candidate ? [candidate] : [],
       importDependencies(createClassificationFailureDatabase()),
       { effectiveDate: "2026-08-01" },
     );
@@ -852,21 +726,21 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count()).toBe(0);
   });
 
-  it("keeps independent valid roster rows independent from one unconfirmed conflict", async () => {
+  it("imports a new row next to an existing row whose classification differs", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
-    const conflictingCandidate = await readClassificationCandidate(
-      hospital.id,
+    const existingCandidate = await readClassificationCandidate(
+      hospital,
       nationalIds.rosterIndependentConflict,
       "กลุ่มเสี่ยง",
     );
     await importPatientProvisioning(
       owner.actor,
       hospital.id,
-      [conflictingCandidate],
+      [existingCandidate],
       importDependencies(),
     );
-    const [validCandidate, changedCandidate] = await readClassificationCandidates(hospital.id, [
+    const [validCandidate, changedCandidate] = await readClassificationCandidates(hospital, [
       { nationalId: nationalIds.rosterIndependentValid, classification: "เบาหวาน" },
       { nationalId: nationalIds.rosterIndependentConflict, classification: "เบาหวาน" },
     ]);
@@ -884,15 +758,17 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
 
     expect(summary).toMatchObject({
       imported: 1,
-      needsReview: 1,
+      alreadyExists: 1,
       classificationCreated: 1,
-      classificationNeedsReview: 1,
     });
-    expect(summary.rows.map(({ result }) => result)).toEqual(["IMPORTED", "NEEDS_REVIEW"]);
+    expect(summary.rows.map(({ result }) => result)).toEqual(["IMPORTED", "ALREADY_EXISTS"]);
     expect(await prisma.patientClassification.count()).toBe(2);
+    await expect(readCandidateClassification(changedCandidate)).resolves.toEqual({
+      classification: "RISK",
+    });
   });
 
-  it("re-evaluates current state at confirmation and makes a stale same-target choice a NOOP", async () => {
+  it("never overwrites a classification another user set after the file was prepared", async () => {
     const hospital = await createHospital();
     const owner = await createHospitalActor({ hospitalId: hospital.id });
     const patient = await provisionPatient(
@@ -906,13 +782,10 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       importDependencies(prisma, new Date("2026-08-27T05:00:00.000Z")),
     );
     const candidate = await readClassificationCandidate(
-      hospital.id,
+      hospital,
       nationalIds.rosterStale,
       "เบาหวาน",
     );
-    const preview = await previewPatientProvisioning(owner.actor, hospital.id, [candidate], prisma);
-
-    expect(preview.classificationReconciliations).toHaveLength(1);
     await setPatientClassification(
       owner.actor,
       { patientHospitalRelationshipId: patient.relationshipId, classification: "DIABETES" },
@@ -924,17 +797,54 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       hospital.id,
       [candidate],
       importDependencies(),
-      {
-        classificationReconciliationChoices: [{
-          rowNumber: 2,
-          currentClassification: "RISK",
-          sourceClassification: "DIABETES",
-        }],
-      },
     );
 
-    expect(result).toMatchObject({ classificationAlreadyExists: 1, classificationChanged: 0 });
+    expect(result).toMatchObject({ alreadyExists: 1, classificationCreated: 0 });
     expect(await prisma.patientClassificationHistory.count()).toBe(2);
+    await expect(readCandidateClassification(candidate)).resolves.toEqual({
+      classification: "DIABETES",
+    });
+  });
+
+  it("keeps the classification of a patient known at another hospital when importing them into a new one", async () => {
+    const hospital = await createHospital();
+    const otherHospital = await createHospital();
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const otherOwner = await createHospitalActor({ hospitalId: otherHospital.id });
+    const patient = await provisionPatient(
+      otherOwner.actor,
+      patientInput(nationalIds.rosterConfirmed, otherHospital.id),
+      importDependencies(),
+    );
+    await setPatientClassification(
+      otherOwner.actor,
+      { patientHospitalRelationshipId: patient.relationshipId, classification: "RISK" },
+      importDependencies(),
+    );
+    const candidate = await readClassificationCandidate(
+      hospital,
+      nationalIds.rosterConfirmed,
+      "เบาหวาน",
+    );
+
+    const preview = await previewPatientProvisioning(owner.actor, hospital.id, [candidate], prisma);
+    const summary = await importPatientProvisioning(
+      owner.actor,
+      hospital.id,
+      [candidate],
+      importDependencies(),
+    );
+
+    expect(preview.rows[0]).toMatchObject({
+      classification: "READY",
+      patientClassification: { status: "CLASSIFICATION_ALREADY_EXISTS" },
+    });
+    expect(summary).toMatchObject({ imported: 1, classificationCreated: 0 });
+    expect(await prisma.patientHospitalRelationship.count()).toBe(2);
+    expect(await prisma.patientClassificationHistory.count()).toBe(1);
+    await expect(readCandidateClassification(candidate)).resolves.toEqual({
+      classification: "RISK",
+    });
   });
 
   it("filters and counts current classification without history inflation or cross-Hospital leakage", async () => {

@@ -12,9 +12,15 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { assertPatientOsmAssignmentPolicy } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 import {
+  assertPatientOsmAssignmentPolicy,
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
+import {
+  patientOsmBulkAssignmentQuerySchema,
   patientOsmCandidateQuerySchema,
+  PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
   PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,
 } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import {
@@ -59,6 +65,22 @@ export type PatientOsmCandidate = {
   userId: string;
   displayName: string;
 };
+
+export type PatientOsmAssignmentScope = {
+  hospitalId: string;
+  hospitalName: string;
+};
+
+export type PatientOsmBulkAssignmentView = {
+  hospital: PatientOsmAssignmentScope;
+  /** Patients of the Hospital with no current OSM, capped at the bulk batch size. */
+  patients: PatientDirectoryItem[];
+  /** Number of patients without a current OSM in the Hospital (may exceed `patients`). */
+  totalWithoutOsm: number;
+  osmCandidates: PatientOsmCandidate[];
+};
+
+const BULK_OSM_CANDIDATE_LIMIT = 200;
 
 export async function countCurrentAssignmentsForOsmInHospital(
   database: PatientOsmAssignmentCountDatabase,
@@ -304,6 +326,136 @@ export async function listPatientOsmCandidates(
     }
 
     throw new InfrastructureError("OSM candidates could not be loaded");
+  }
+}
+
+export async function listPatientOsmAssignmentScopes(
+  actor: ActorContext | null | undefined,
+  dependencies: PatientOsmAssignmentQueryDependencies = {},
+): Promise<PatientOsmAssignmentScope[]> {
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const hospitals = await getDatabase(dependencies).hospital.findMany({
+      where: buildOwnerHospitalWhere(actor.userId),
+      select: { id: true, name: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    });
+
+    return hospitals
+      .filter(({ id }) =>
+        decidePatientOsmAssignmentPolicy({
+          actor,
+          capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+          targetHospitalId: id,
+        }).allowed,
+      )
+      .map(({ id, name }) => ({ hospitalId: id, hospitalName: name }));
+  } catch (error: unknown) {
+    throw error instanceof ApplicationError
+      ? error
+      : new InfrastructureError("Patient assignment scopes could not be loaded");
+  }
+}
+
+/**
+ * Patients of one Hospital who have no current OSM, and the OSMs that may be assigned
+ * to them. The page is advisory: the bulk action re-authorizes every patient.
+ */
+export async function getPatientOsmBulkAssignmentView(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientOsmAssignmentQueryDependencies = {},
+): Promise<PatientOsmBulkAssignmentView> {
+  const parsed = patientOsmBulkAssignmentQuerySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Bulk assignment query data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  assertPatientOsmAssignmentPolicy({
+    actor,
+    capability: "patient:assign-osm",
+    targetHospitalId: parsed.data.hospitalId,
+  });
+
+  try {
+    const database = getDatabase(dependencies);
+    const hospital = await database.hospital.findFirst({
+      where: { id: parsed.data.hospitalId, ...buildOwnerHospitalWhere(actor.userId) },
+      select: { id: true, name: true },
+    });
+
+    if (!hospital) {
+      throw new ForbiddenError();
+    }
+
+    const patientWhere: Prisma.PatientHospitalRelationshipWhereInput = {
+      hospitalId: hospital.id,
+      patientProfile: {
+        person: {
+          user: { roles: { some: { role: Role.PATIENT } } },
+          ...(parsed.data.value ? buildNameWhere(parsed.data.value) : {}),
+        },
+      },
+      osmAssignments: { none: { endedAt: null } },
+    };
+    const [records, totalWithoutOsm, candidates] = await Promise.all([
+      database.patientHospitalRelationship.findMany({
+        where: patientWhere,
+        select: patientDirectorySelect,
+        orderBy: [
+          { patientProfile: { person: { givenName: "asc" } } },
+          { patientProfile: { person: { familyName: "asc" } } },
+          { id: "asc" },
+        ],
+        take: PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
+      }),
+      database.patientHospitalRelationship.count({ where: patientWhere }),
+      database.user.findMany({
+        where: {
+          status: UserStatus.ACTIVE,
+          roles: { some: { role: Role.OSM } },
+          id: { not: actor.userId },
+          osmHospitalRelationships: {
+            some: {
+              hospitalId: hospital.id,
+              status: MembershipStatus.ACTIVE,
+              hospital: { status: HospitalStatus.ACTIVE },
+            },
+          },
+        },
+        select: { id: true, person: { select: { givenName: true, familyName: true } } },
+        orderBy: [
+          { person: { givenName: "asc" } },
+          { person: { familyName: "asc" } },
+          { id: "asc" },
+        ],
+        take: BULK_OSM_CANDIDATE_LIMIT,
+      }),
+    ]);
+
+    return {
+      hospital: { hospitalId: hospital.id, hospitalName: hospital.name },
+      patients: records.map(toPatientDirectoryItem),
+      totalWithoutOsm,
+      osmCandidates: candidates.map((candidate) => ({
+        userId: candidate.id,
+        displayName: toDisplayName(candidate.person),
+      })),
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Bulk patient assignment could not be loaded");
   }
 }
 

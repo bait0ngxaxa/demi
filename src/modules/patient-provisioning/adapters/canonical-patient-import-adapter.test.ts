@@ -6,27 +6,46 @@ import { ValidationError } from "@/shared/errors/application-error";
 
 import {
   MAX_PATIENT_IMPORT_BYTES,
-  MAX_PATIENT_IMPORT_COLUMNS,
   MAX_PATIENT_IMPORT_ROWS,
   readPatientImportCandidates,
+  readPatientImportFile,
   type PatientImportUpload,
 } from "./excel-patient-import-adapter";
-import type { PatientImportFieldKey } from "../import/patient-import-contract";
-import { createPatientImportTemplateWorkbook } from "../import/patient-import-template";
+import { PATIENT_IMPORT_FIELD_KEYS, type PatientImportFieldKey } from "../import/patient-import-contract";
 import {
+  createPatientImportFailedRowsWorkbook,
+  createPatientImportTemplateWorkbook,
+} from "../import/patient-import-template";
+import {
+  PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER,
   PATIENT_IMPORT_TEMPLATE_COLUMNS,
+  PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME,
   PATIENT_IMPORT_TEMPLATE_MERGES,
   PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
   PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS,
+  PATIENT_IMPORT_TEMPLATE_SHEET_NAME,
 } from "../import/patient-import-template-contract";
+import {
+  findPatientImportDataWorksheet,
+  type PatientImportTemplateTarget,
+} from "../import/patient-import-template-validation";
 
-const targetHospitalId = "11111111-1111-4111-8111-111111111111";
+const hospitalA: PatientImportTemplateTarget = {
+  hospitalId: "11111111-1111-4111-8111-111111111111",
+  hospitalCode: "SYN-A",
+  hospitalName: "โรงพยาบาลสังเคราะห์เอ",
+};
+const hospitalB: PatientImportTemplateTarget = {
+  hospitalId: "22222222-2222-4222-8222-222222222222",
+  hospitalCode: "SYN-B",
+  hospitalName: "โรงพยาบาลสังเคราะห์บี",
+};
 
 type SyntheticPatientValues = Partial<Record<PatientImportFieldKey, CellValue>>;
 
 async function createUpload(
   workbook: ExcelJS.Workbook,
-  name = "synthetic-canonical-patients.xlsx",
+  name = "synthetic-patients.xlsx",
 ): Promise<PatientImportUpload> {
   const written = await workbook.xlsx.writeBuffer();
   const bytes = Uint8Array.from(new Uint8Array(written));
@@ -64,7 +83,6 @@ function syntheticPatientValues(): SyntheticPatientValues {
     diabetesClassification: "กลุ่มเสี่ยง",
     bloodSugarDtx: 126,
     hba1c: 6.5,
-    hospitalName: "โรงพยาบาลสังเคราะห์",
     houseNumber: "99/1",
     villageNumber: "7",
     villageName: "หมู่บ้านสังเคราะห์",
@@ -77,19 +95,27 @@ function syntheticPatientValues(): SyntheticPatientValues {
     emergencyContactName: "ผู้ติดต่อสังเคราะห์",
     emergencyContactPhone: "0823456789",
     emergencyContactRelationship: "ญาติ",
-    osmCaregiverName: "ผู้ดูแลสังเคราะห์",
   };
+}
+
+async function createTemplateWorkbook(
+  hospital: PatientImportTemplateTarget = hospitalA,
+): Promise<{ workbook: ExcelJS.Workbook; worksheet: ExcelJS.Worksheet }> {
+  const workbook = await createPatientImportTemplateWorkbook(hospital);
+  const worksheet = findPatientImportDataWorksheet(workbook);
+
+  if (!worksheet) {
+    throw new Error("The synthetic template workbook has no patient worksheet");
+  }
+
+  return { workbook, worksheet };
 }
 
 async function createCanonicalUpload(
   values: SyntheticPatientValues | null = syntheticPatientValues(),
+  hospital: PatientImportTemplateTarget = hospitalA,
 ): Promise<PatientImportUpload> {
-  const workbook = await createPatientImportTemplateWorkbook();
-  const worksheet = workbook.worksheets[0];
-
-  if (!worksheet) {
-    throw new Error("The synthetic canonical workbook has no worksheet");
-  }
+  const { workbook, worksheet } = await createTemplateWorkbook(hospital);
 
   if (values) {
     setPatientRow(worksheet, 3, values);
@@ -98,96 +124,77 @@ async function createCanonicalUpload(
   return createUpload(workbook);
 }
 
-function createHeaderRowsWorkbook({
-  title = false,
-  duplicate = false,
-  unmerged = false,
-}: {
-  title?: boolean;
-  duplicate?: boolean;
-  unmerged?: boolean;
-} = {}): ExcelJS.Workbook {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("รายชื่อผู้ป่วย");
-  const headerRowNumber = title ? 2 : 1;
-  const secondaryRowNumber = headerRowNumber + 1;
-
-  if (title) {
-    worksheet.getCell("A1").value = "DEMI Patient roster";
-  }
-
-  for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
-    worksheet.getCell(`${column.column}${headerRowNumber}`).value = column.header;
-    worksheet.getCell(`${column.column}${secondaryRowNumber}`).value =
-      PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column.column] ?? null;
-  }
-
-  if (!unmerged) {
-    for (const merge of PATIENT_IMPORT_TEMPLATE_MERGES) {
-      const [start, end] = merge.split(":");
-      const startColumn = start?.replace(/1$/u, String(headerRowNumber));
-      const endColumn = end?.replace(/2$/u, String(secondaryRowNumber));
-
-      if (startColumn && endColumn) {
-        worksheet.mergeCells(`${startColumn}:${endColumn}`);
-      }
-    }
-  }
-
-  if (duplicate) {
-    for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
-      worksheet.getCell(`${column.column}${secondaryRowNumber}`).value = column.header;
-    }
-  }
-
-  return workbook;
+async function expectTemplateMismatch(upload: PatientImportUpload): Promise<void> {
+  await expect(readPatientImportCandidates(upload, hospitalA)).rejects.toSatisfy(
+    (error: unknown) => {
+      expect(error).toBeInstanceOf(ValidationError);
+      expect(error).toMatchObject({
+        code: "VALIDATION",
+        message: PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
+      });
+      return true;
+    },
+  );
 }
 
-function assertValidationError(error: unknown, message: string): void {
-  expect(error).toBeInstanceOf(ValidationError);
-  expect(error).toMatchObject({ code: "VALIDATION", message });
+function setMetadata(workbook: ExcelJS.Workbook, cell: "B1" | "B2", value: CellValue): void {
+  const metadata = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME);
+
+  if (!metadata) {
+    throw new Error("The synthetic template has no metadata sheet");
+  }
+
+  metadata.getCell(cell).value = value;
 }
 
-describe("Canonical Patient import adapter", () => {
-  it("parses the generated blank template and its first synthetic Patient row", async () => {
-    const blankUpload = await createCanonicalUpload(null);
-    await expect(readPatientImportCandidates(blankUpload, targetHospitalId)).resolves.toEqual([]);
+describe("Strict hospital-bound patient import parser (template v2)", () => {
+  it("parses the blank template and its first synthetic patient row", async () => {
+    await expect(readPatientImportCandidates(await createCanonicalUpload(null), hospitalA)).resolves.toEqual(
+      [],
+    );
 
-    const upload = await createCanonicalUpload();
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
+    const candidates = await readPatientImportCandidates(await createCanonicalUpload(), hospitalA);
     const candidate = candidates[0];
 
-    expect(candidate).toBeDefined();
     expect(candidate?.input).toMatchObject({
       givenName: "ตัวอย่าง",
       familyName: "ผู้ป่วย",
       hospitalNumber: "HN-SYN-001",
-      targetHospitalId,
+      targetHospitalId: hospitalA.hospitalId,
     });
     expect(candidate?.canonicalRow.provenance.sourceRowNumber).toBe(3);
     expect(candidate?.canonicalRow.identity.nationalId).toBe("1000000000009");
     expect(candidate?.canonicalRow.contact.phoneNumber).toBe("0812345678");
     expect(candidate?.canonicalRow.contact.emergencyContactPhone).toBe("0823456789");
-    expect(candidate?.canonicalRow.clinicalCandidates).toMatchObject({
+    expect(candidate?.canonicalRow.clinicalCandidates).toEqual({
+      weight: 72.5,
+      height: 165,
+      waistCircumference: 88,
       diabetesClassification: "RISK",
       bloodSugarDtx: 126,
-      bloodSugar: null,
       hba1c: 6.5,
     });
     expect(candidate?.fileMetadata).toMatchObject({
       worksheetName: "รายชื่อผู้ป่วย",
       headerRowNumber: 1,
-      layout: "OPERATIONAL_ROSTER",
+      templateVersion: "patient-import-template-v2",
+      hospitalCode: hospitalA.hospitalCode,
     });
   }, 10000);
 
-  it("reads all 500 canonical Patient rows and preserves the final worksheet coordinate", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const worksheet = workbook.worksheets[0];
+  it("carries no hospital or OSM field in the canonical row", async () => {
+    const [candidate] = await readPatientImportCandidates(await createCanonicalUpload(), hospitalA);
 
-    if (!worksheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
+    expect(candidate?.canonicalRow.organizationCandidates).toEqual({ hospitalNumber: "HN-SYN-001" });
+    expect(candidate?.canonicalRow).not.toHaveProperty("caregiverCandidates");
+    expect(Object.keys(candidate?.canonicalRow.fieldAssessments ?? {})).toEqual([
+      ...PATIENT_IMPORT_FIELD_KEYS,
+    ]);
+    expect(PATIENT_IMPORT_FIELD_KEYS).toHaveLength(PATIENT_IMPORT_TEMPLATE_COLUMNS.length);
+  });
+
+  it("reads all 500 patient rows, preserves the final coordinate and returns the source cells", async () => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
 
     for (let index = 0; index < 500; index += 1) {
       setPatientRow(worksheet, index + 3, {
@@ -196,259 +203,363 @@ describe("Canonical Patient import adapter", () => {
       });
     }
 
-    const candidates = await readPatientImportCandidates(
-      await createUpload(workbook, "synthetic-canonical-500-patients.xlsx"),
-      targetHospitalId,
+    const { candidates, sourceRows } = await readPatientImportFile(
+      await createUpload(workbook, "synthetic-500-patients.xlsx"),
+      hospitalA,
     );
     const lastCandidate = candidates[candidates.length - 1];
 
     expect(candidates).toHaveLength(500);
     expect(candidates[0]?.rowNumber).toBe(3);
     expect(lastCandidate?.rowNumber).toBe(502);
-    expect(lastCandidate?.canonicalRow.provenance.sourceRowNumber).toBe(502);
-  }, 10000);
+    expect(sourceRows.size).toBe(500);
+    expect(sourceRows.get(3)).toHaveLength(PATIENT_IMPORT_TEMPLATE_COLUMNS.length);
+    expect(sourceRows.get(3)?.[1]).toBe("1000000000009");
+  }, 20000);
 
-  it("accepts the operational merged two-row header without a duplicate-header error", async () => {
-    const upload = await createCanonicalUpload();
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId);
-
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.canonicalRow.identity.givenName).toBe("ตัวอย่าง");
-  });
-
-  it("keeps the legacy compatibility scanner merge-aware for the operational header", async () => {
-    const upload = await createCanonicalUpload();
-    const candidates = await readPatientImportCandidates(upload, targetHospitalId, {
-      mode: "COMPATIBILITY",
-    });
-
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.canonicalRow.contact.phoneNumber).toBe("0812345678");
-  });
-
-  it("keeps a non-canonical legacy workbook out of the default production path", async () => {
-    const workbook = createHeaderRowsWorkbook({ unmerged: true });
-    const worksheet = workbook.worksheets[0];
-
-    if (!worksheet) {
-      throw new Error("The synthetic legacy workbook has no worksheet");
-    }
-
-    worksheet.getCell("B1").value = "วันเกิด";
-    worksheet.getCell("C1").value = "เลขบัตรประชาชน";
-    setPatientRow(worksheet, 3, syntheticPatientValues());
-    worksheet.getCell("B3").value = "04/05/2568";
-    worksheet.getCell("C3").value = "1000000000009";
-
-    const upload = await createUpload(workbook, "synthetic-legacy-patients.xlsx");
-    const compatibilityCandidates = await readPatientImportCandidates(
-      upload,
-      targetHospitalId,
-      { mode: "COMPATIBILITY" },
-    );
-
-    expect(compatibilityCandidates[0]?.input).toMatchObject({
-      givenName: "ตัวอย่าง",
-      familyName: "ผู้ป่วย",
-      targetHospitalId,
-    });
-
-    await expect(readPatientImportCandidates(upload, targetHospitalId)).rejects.toSatisfy(
-      (error: unknown) => {
-        assertValidationError(error, PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
-        return true;
-      },
-    );
-  });
-
-  it("accepts a semantically identical unmerged header", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const worksheet = workbook.worksheets[0];
-
-    if (!worksheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
-
-    for (const merge of PATIENT_IMPORT_TEMPLATE_MERGES) {
-      worksheet.unMergeCells(merge);
-    }
-    setPatientRow(worksheet, 3, syntheticPatientValues());
-
-    const candidates = await readPatientImportCandidates(
-      await createUpload(workbook),
-      targetHospitalId,
-    );
-
-    expect(candidates[0]?.canonicalRow.contact.phoneNumber).toBe("0812345678");
-  });
-
-  it("allows a bounded title row before the canonical header group", async () => {
-    const workbook = createHeaderRowsWorkbook({ title: true });
-    const worksheet = workbook.worksheets[0];
-
-    if (!worksheet) {
-      throw new Error("The synthetic title workbook has no worksheet");
-    }
-
-    setPatientRow(worksheet, 4, syntheticPatientValues());
-    const candidates = await readPatientImportCandidates(
-      await createUpload(workbook),
-      targetHospitalId,
-    );
-
-    expect(candidates[0]?.rowNumber).toBe(4);
-    expect(candidates[0]?.fileMetadata?.headerRowNumber).toBe(2);
-  });
-
-  it.each([
-    ["wrong column order", (worksheet: ExcelJS.Worksheet) => {
-      worksheet.getCell("B1").value = "วันเกิด";
-      worksheet.getCell("C1").value = "เลขบัตรประชาชน";
-    }],
-    ["missing canonical column", (worksheet: ExcelJS.Worksheet) => {
-      worksheet.getCell("AB1").value = null;
-    }],
-    ["renamed semantic column", (worksheet: ExcelJS.Worksheet) => {
-      worksheet.getCell("B1").value = "เลขประจำตัว";
-    }],
-    ["extra canonical-area column", (worksheet: ExcelJS.Worksheet) => {
-      worksheet.getCell("AC1").value = "คอลัมน์ที่ไม่รองรับ";
-    }],
-  ])("rejects %s", async (_caseName, mutate) => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const worksheet = workbook.worksheets[0];
-
-    if (!worksheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
-
-    mutate(worksheet);
-    const upload = await createUpload(workbook);
-
-    await expect(readPatientImportCandidates(upload, targetHospitalId)).rejects.toSatisfy(
-      (error: unknown) => {
-        assertValidationError(error, PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
-        return true;
-      },
-    );
-  });
-
-  it("accepts only the confirmed classification values under the canonical position", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const worksheet = workbook.worksheets[0];
-
-    if (!worksheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
-
-    setPatientRow(worksheet, 3, {
-      ...syntheticPatientValues(),
-      diabetesClassification: "เบาหวาน type 2",
-    });
-    const [candidate] = await readPatientImportCandidates(
-      await createUpload(workbook),
-      targetHospitalId,
-    );
-
-    expect(candidate?.canonicalRow.clinicalCandidates.diabetesClassification).toBeNull();
-    expect(candidate?.canonicalRow.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ code: "CLASSIFICATION_DATA_INVALID" }),
-      ]),
-    );
-  });
-
-  it("rejects genuinely independent duplicate Patient header rows", async () => {
-    const workbook = createHeaderRowsWorkbook({ duplicate: true, unmerged: true });
-    const upload = await createUpload(workbook);
-
-    await expect(readPatientImportCandidates(upload, targetHospitalId)).rejects.toSatisfy(
-      (error: unknown) => {
-        assertValidationError(error, "พบหัวตารางผู้ป่วยมากกว่าหนึ่งแถวในแผ่นงานเดียวกัน");
-        return true;
-      },
-    );
-  });
-
-  it("selects a populated canonical sheet after a blank template-only sheet", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const worksheet = workbook.addWorksheet("ข้อมูลผู้ป่วย");
-
-    for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
-      worksheet.getCell(`${column.column}1`).value = column.header;
-      worksheet.getCell(`${column.column}2`).value =
-        PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column.column] ?? null;
-    }
-    setPatientRow(worksheet, 3, syntheticPatientValues());
-
-    const candidates = await readPatientImportCandidates(
-      await createUpload(workbook),
-      targetHospitalId,
-    );
-
-    expect(candidates[0]?.canonicalRow.provenance.sourceSheetName).toBe("ข้อมูลผู้ป่วย");
-  });
-
-  it("rejects multiple populated canonical Patient sheets", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
-    const firstSheet = workbook.worksheets[0];
-    const secondSheet = workbook.addWorksheet("ข้อมูลผู้ป่วย");
-
-    if (!firstSheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
-
-    setPatientRow(firstSheet, 3, syntheticPatientValues());
-    for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
-      secondSheet.getCell(`${column.column}1`).value = column.header;
-      secondSheet.getCell(`${column.column}2`).value =
-        PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column.column] ?? null;
-    }
-    setPatientRow(secondSheet, 3, {
-      ...syntheticPatientValues(),
-      nationalId: "1000000000017",
-    });
-
-    await expect(
-      readPatientImportCandidates(await createUpload(workbook), targetHospitalId),
-    ).rejects.toMatchObject({
-      code: "VALIDATION",
-      message: "พบแผ่นงานผู้ป่วยที่มีข้อมูลมากกว่าหนึ่งแผ่น กรุณาแยกไฟล์ก่อนนำเข้า",
-    });
-  });
-
-  it("keeps the existing row, file-size, and column limits", async () => {
-    const tooManyRowsWorkbook = await createPatientImportTemplateWorkbook();
-    const tooManyRowsSheet = tooManyRowsWorkbook.worksheets[0];
-
-    if (!tooManyRowsSheet) {
-      throw new Error("The synthetic canonical workbook has no worksheet");
-    }
+  it("rejects a 501st patient row", async () => {
+    const { workbook, worksheet } = await createTemplateWorkbook();
 
     for (let rowNumber = 3; rowNumber <= MAX_PATIENT_IMPORT_ROWS + 3; rowNumber += 1) {
-      tooManyRowsSheet.getCell(`D${rowNumber}`).value = "ผู้ป่วยสังเคราะห์";
+      worksheet.getCell(`D${rowNumber}`).value = "ผู้ป่วยสังเคราะห์";
     }
 
     await expect(
-      readPatientImportCandidates(await createUpload(tooManyRowsWorkbook), targetHospitalId),
+      readPatientImportCandidates(await createUpload(workbook), hospitalA),
     ).rejects.toThrow(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);
+  }, 20000);
 
-    const tooLargeUpload: PatientImportUpload = {
-      name: "too-large.xlsx",
-      size: MAX_PATIENT_IMPORT_BYTES + 1,
-      arrayBuffer: async () => new ArrayBuffer(0),
-    };
-    await expect(readPatientImportCandidates(tooLargeUpload, targetHospitalId)).rejects.toThrow(
-      "ไฟล์ Excel ต้องมีขนาดไม่เกิน 5 MB",
-    );
+  describe("hospital binding", () => {
+    it("accepts the file for its own hospital", async () => {
+      await expect(
+        readPatientImportCandidates(await createCanonicalUpload(undefined, hospitalB), hospitalB),
+      ).resolves.toHaveLength(1);
+    });
 
-    const tooManyColumnsWorkbook = new ExcelJS.Workbook();
-    const tooManyColumnsSheet = tooManyColumnsWorkbook.addWorksheet("ข้อมูล");
-    tooManyColumnsSheet.addRow(
-      Array.from({ length: MAX_PATIENT_IMPORT_COLUMNS + 1 }, (_, index) => `คอลัมน์${index + 1}`),
-    );
-    await expect(
-      readPatientImportCandidates(await createUpload(tooManyColumnsWorkbook), targetHospitalId),
-    ).rejects.toBeInstanceOf(ValidationError);
+    it("rejects hospital B's file when hospital A is selected, naming only A", async () => {
+      const upload = await createCanonicalUpload(undefined, hospitalB);
+      let rejection: unknown;
+
+      await readPatientImportCandidates(upload, hospitalA).catch((error: unknown) => {
+        rejection = error;
+      });
+
+      expect(rejection).toBeInstanceOf(ValidationError);
+      const message = (rejection as ValidationError).message;
+      expect(message).toContain(hospitalA.hospitalName);
+      expect(message).toContain(hospitalA.hospitalCode);
+      expect(message).not.toContain(hospitalB.hospitalName);
+      expect(message).not.toContain(hospitalB.hospitalCode);
+      expect(message).not.toBe(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
+    });
+
+    it("rejects a file without the metadata sheet", async () => {
+      const { workbook } = await createTemplateWorkbook();
+      const metadata = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME);
+
+      if (!metadata) {
+        throw new Error("The synthetic template has no metadata sheet");
+      }
+
+      workbook.removeWorksheet(metadata.id);
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("rejects any template version other than v2", async () => {
+      const { workbook } = await createTemplateWorkbook();
+      setMetadata(workbook, "B1", "patient-import-template-v1");
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("rejects metadata without a hospital code", async () => {
+      const { workbook } = await createTemplateWorkbook();
+      setMetadata(workbook, "B2", null);
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("rejects a v1-shaped file: hospital and OSM columns, no metadata", async () => {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
+      const v1Headers: string[] = PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ header }) => header);
+
+      v1Headers.splice(14, 0, "โรงพยาบาล");
+      v1Headers.push("ชื่อผู้ดูแล (อสม.)");
+      worksheet.addRow(v1Headers);
+      worksheet.addRow([]);
+      worksheet.addRow(
+        v1Headers.map((header, index) => (index === 1 ? "1000000000009" : header)),
+      );
+
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("never treats the metadata sheet as the patient sheet", async () => {
+      const { workbook } = await createTemplateWorkbook();
+      const patientSheet = findPatientImportDataWorksheet(workbook);
+      const metadata = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME);
+
+      if (!patientSheet || !metadata) {
+        throw new Error("The synthetic template is incomplete");
+      }
+
+      expect(findPatientImportDataWorksheet(workbook)?.name).toBe(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
+      expect(findPatientImportDataWorksheet(workbook)?.name).not.toBe(metadata.name);
+
+      // Even if the patient sheet is gone and the metadata sheet imitates a patient header.
+      for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
+        metadata.getCell(`${column.column}3`).value = column.header;
+      }
+      workbook.removeWorksheet(patientSheet.id);
+
+      expect(findPatientImportDataWorksheet(workbook)).toBeNull();
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("ignores other sheets and reads patients only from the template sheet", async () => {
+      const { workbook, worksheet } = await createTemplateWorkbook();
+      setPatientRow(worksheet, 3, syntheticPatientValues());
+      const extra = workbook.addWorksheet("บันทึกอื่น");
+      extra.getCell("A1").value = "โน้ตของผู้ใช้";
+
+      const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]?.canonicalRow.provenance.sourceSheetName).toBe(
+        PATIENT_IMPORT_TEMPLATE_SHEET_NAME,
+      );
+    });
+  });
+
+  describe("header contract", () => {
+    it("accepts a semantically identical unmerged header", async () => {
+      const { workbook, worksheet } = await createTemplateWorkbook();
+
+      for (const merge of PATIENT_IMPORT_TEMPLATE_MERGES) {
+        worksheet.unMergeCells(merge);
+      }
+      setPatientRow(worksheet, 3, syntheticPatientValues());
+
+      const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+      expect(candidates[0]?.canonicalRow.contact.phoneNumber).toBe("0812345678");
+    });
+
+    it.each([
+      ["wrong column order", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("B1").value = "วันเกิด";
+        worksheet.getCell("C1").value = "เลขบัตรประชาชน";
+      }],
+      ["missing column", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("Z1").value = null;
+      }],
+      ["renamed column", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("B1").value = "เลขประจำตัว";
+      }],
+      ["changed secondary caption", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("L2").value = "ข้อความอื่น";
+      }],
+      ["extra column with an unknown header", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("AA1").value = "คอลัมน์ที่ไม่รองรับ";
+      }],
+      ["extra column behind the reason column", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("AA1").value = PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER;
+        worksheet.getCell("AB1").value = "คอลัมน์ที่ไม่รองรับ";
+      }],
+      ["stray value in a later column", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.getCell("AD7").value = "โน้ต";
+      }],
+      ["header shifted down by a title row", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.spliceRows(1, 0, ["DEMI Patient roster"]);
+      }],
+      ["the legacy hospital column re-inserted", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.spliceColumns(15, 0, ["โรงพยาบาล", null]);
+      }],
+    ])("rejects %s", async (_caseName, mutate) => {
+      const { workbook, worksheet } = await createTemplateWorkbook();
+
+      mutate(worksheet);
+      await expectTemplateMismatch(await createUpload(workbook));
+    });
+
+    it("accepts exactly one trailing reason column and ignores it", async () => {
+      const workbook = await createPatientImportFailedRowsWorkbook(hospitalA, [
+        {
+          values: PATIENT_IMPORT_TEMPLATE_COLUMNS.map(
+            ({ field }) => syntheticPatientValues()[field] ?? null,
+          ),
+          reason: "เลขบัตรประชาชนไม่ถูกต้อง",
+        },
+      ]);
+
+      const candidates = await readPatientImportCandidates(await createUpload(workbook), hospitalA);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0]?.canonicalRow.identity.nationalId).toBe("1000000000009");
+      expect(JSON.stringify(candidates[0]?.canonicalRow)).not.toContain("เลขบัตรประชาชนไม่ถูกต้อง");
+    });
+
+    it("rejects a failed-rows file for another hospital", async () => {
+      const workbook = await createPatientImportFailedRowsWorkbook(hospitalB, [
+        {
+          values: PATIENT_IMPORT_TEMPLATE_COLUMNS.map(
+            ({ field }) => syntheticPatientValues()[field] ?? null,
+          ),
+          reason: "ข้อมูลไม่ถูกต้อง",
+        },
+      ]);
+
+      await expect(
+        readPatientImportCandidates(await createUpload(workbook), hospitalA),
+      ).rejects.toThrow(hospitalA.hospitalName);
+    });
+  });
+
+  describe("cell values", () => {
+    async function readSingleRow(values: SyntheticPatientValues) {
+      const [candidate] = await readPatientImportCandidates(
+        await createCanonicalUpload(values),
+        hospitalA,
+      );
+
+      if (!candidate) {
+        throw new Error("The synthetic row was not parsed");
+      }
+
+      return candidate;
+    }
+
+    it("maps only the confirmed Thai classification values", async () => {
+      const risk = await readSingleRow({ ...syntheticPatientValues(), diabetesClassification: "  กลุ่มเสี่ยง  " });
+      const diabetes = await readSingleRow({ ...syntheticPatientValues(), diabetesClassification: "เบาหวาน" });
+      const other = await readSingleRow({
+        ...syntheticPatientValues(),
+        diabetesClassification: "เบาหวาน type 2",
+      });
+
+      expect(risk.canonicalRow.clinicalCandidates.diabetesClassification).toBe("RISK");
+      expect(diabetes.canonicalRow.clinicalCandidates.diabetesClassification).toBe("DIABETES");
+      expect(other.canonicalRow.clinicalCandidates.diabetesClassification).toBeNull();
+      expect(other.canonicalRow.fieldAssessments.diabetesClassification.status).toBe("INVALID");
+      expect(other.canonicalRow.diagnostics).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "CLASSIFICATION_DATA_INVALID" })]),
+      );
+    });
+
+    it("keeps blank and dash baseline cells as no assertion instead of zero", async () => {
+      const candidate = await readSingleRow({
+        ...syntheticPatientValues(),
+        weight: "-",
+        height: "",
+        waistCircumference: null,
+        bloodSugarDtx: " ",
+        hba1c: "-",
+      });
+
+      expect(candidate.canonicalRow.clinicalCandidates).toMatchObject({
+        weight: null,
+        height: null,
+        waistCircumference: null,
+        bloodSugarDtx: null,
+        hba1c: null,
+      });
+      expect(candidate.canonicalRow.diagnostics).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "INVALID_VALUE" })]),
+      );
+    });
+
+    it("reads height as centimeters and flags a malformed baseline value", async () => {
+      const candidate = await readSingleRow({
+        ...syntheticPatientValues(),
+        weight: "not-a-number",
+        height: "170",
+      });
+
+      expect(candidate.canonicalRow.clinicalCandidates.height).toBe(170);
+      expect(candidate.canonicalRow.clinicalCandidates).not.toHaveProperty("heightUnit");
+      expect(candidate.canonicalRow.fieldAssessments.weight.status).toBe("INVALID");
+      expect(candidate.canonicalRow.diagnostics).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "INVALID_VALUE", field: "weight" })]),
+      );
+    });
+
+    it("keeps National ID lossiness and phone leading-zero loss visible", async () => {
+      const lossyId = await readSingleRow({ ...syntheticPatientValues(), nationalId: "1.0008E+12" });
+      const lostZero = await readSingleRow({ ...syntheticPatientValues(), phoneNumber: 812345679 });
+      const numericId = await readSingleRow({ ...syntheticPatientValues(), nationalId: 1000000000033 });
+
+      expect(lossyId.input).toBeNull();
+      expect(lossyId.canonicalRow.diagnostics).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: "LOSSY_EXCEL_VALUE" })]),
+      );
+      expect(lostZero.canonicalRow.contact.phoneNumber).toBe("812345679");
+      expect(lostZero.canonicalRow.fieldAssessments.phoneNumber.status).toBe("AMBIGUOUS");
+      expect(numericId.input).not.toBeNull();
+    });
+
+    it("normalizes the Thai date text and Excel date cells as date-only values", async () => {
+      const text = await readSingleRow({ ...syntheticPatientValues(), dateOfBirth: "4 พฤษภาคม 2568" });
+      const dmy = await readSingleRow({ ...syntheticPatientValues(), dateOfBirth: "04/05/2568" });
+      const excelDate = await readSingleRow({
+        ...syntheticPatientValues(),
+        dateOfBirth: new Date(Date.UTC(2010, 0, 2)),
+      });
+
+      expect(text.canonicalRow.demographics.dateOfBirth).toBe("2025-05-04");
+      expect(dmy.canonicalRow.demographics.dateOfBirth).toBe("2025-05-04");
+      expect(excelDate.canonicalRow.demographics.dateOfBirth).toBe("2010-01-02");
+    });
+
+    it("flags a missing name instead of accepting the row", async () => {
+      const candidate = await readSingleRow({ ...syntheticPatientValues(), givenName: null });
+
+      expect(candidate.input).toBeNull();
+      expect(candidate.validationMessage).toBe("กรุณาระบุชื่อ");
+    });
+  });
+
+  describe("limits", () => {
+    it("rejects a non-xlsx name, an empty file and an oversized file", async () => {
+      const upload = await createCanonicalUpload();
+
+      await expect(
+        readPatientImportCandidates({ ...upload, name: "patients.csv" }, hospitalA),
+      ).rejects.toThrow("รองรับเฉพาะไฟล์ Excel .xlsx");
+      await expect(
+        readPatientImportCandidates({ ...upload, size: 0 }, hospitalA),
+      ).rejects.toThrow("ไฟล์ Excel ต้องมีขนาดไม่เกิน 5 MB");
+      await expect(
+        readPatientImportCandidates(
+          { name: "too-large.xlsx", size: MAX_PATIENT_IMPORT_BYTES + 1, arrayBuffer: async () => new ArrayBuffer(0) },
+          hospitalA,
+        ),
+      ).rejects.toThrow("ไฟล์ Excel ต้องมีขนาดไม่เกิน 5 MB");
+    });
+
+    it("rejects bytes that are not a workbook", async () => {
+      await expect(
+        readPatientImportCandidates(
+          {
+            name: "not-a-workbook.xlsx",
+            size: 16,
+            arrayBuffer: async () => new TextEncoder().encode("not a zip archive").buffer as ArrayBuffer,
+          },
+          hospitalA,
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
+    });
+
+    it("rejects a hospital id that is not a UUID", async () => {
+      await expect(
+        readPatientImportCandidates(await createCanonicalUpload(), { ...hospitalA, hospitalId: "not-a-uuid" }),
+      ).rejects.toThrow("โรงพยาบาลที่เลือกไม่ถูกต้อง");
+    });
+  });
+});
+
+describe("secondary header contract", () => {
+  it("keeps the classification caption on exactly one column", () => {
+    expect(Object.keys(PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS)).toEqual(["L"]);
+    expect(PATIENT_IMPORT_TEMPLATE_MERGES).not.toContain("L1:L2");
+    expect(PATIENT_IMPORT_TEMPLATE_MERGES).toHaveLength(PATIENT_IMPORT_TEMPLATE_COLUMNS.length - 1);
   });
 });

@@ -1,20 +1,46 @@
 import type { PatientImportFieldKey } from "./patient-import-contract";
 
-export const PATIENT_IMPORT_TEMPLATE_VERSION = "patient-import-template-v1" as const;
+export const PATIENT_IMPORT_TEMPLATE_VERSION = "patient-import-template-v2" as const;
 export const PATIENT_IMPORT_TEMPLATE_SHEET_NAME = "รายชื่อผู้ป่วย" as const;
-export const PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH =
-  "/templates/demi-patient-import-template-v1.xlsx" as const;
-export const PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME =
-  "DEMI_แบบฟอร์มนำเข้ารายชื่อผู้ป่วย_v1.xlsx" as const;
+export const PATIENT_IMPORT_TEMPLATE_INFO_SHEET_NAME = "ข้อมูลโรงพยาบาล" as const;
+export const PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME = "_demi_meta" as const;
+export const PATIENT_IMPORT_TEMPLATE_METADATA_VERSION_KEY = "templateVersion" as const;
+export const PATIENT_IMPORT_TEMPLATE_METADATA_HOSPITAL_CODE_KEY = "hospitalCode" as const;
 export const PATIENT_IMPORT_TEMPLATE_HEADER_ROW = 1 as const;
 export const PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADER_ROW = 2 as const;
 export const PATIENT_IMPORT_TEMPLATE_DATA_START_ROW = 3 as const;
 export const PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS = 500 as const;
 export const PATIENT_IMPORT_TEMPLATE_DATA_END_ROW =
   PATIENT_IMPORT_TEMPLATE_DATA_START_ROW + PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS - 1;
-export const PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS = 8 as const;
 export const PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE =
   "รูปแบบไฟล์ไม่ตรงกับ Template รายชื่อผู้ป่วยของระบบ กรุณาดาวน์โหลด Template ล่าสุดและกรอกข้อมูลใหม่";
+
+export function createPatientImportTemplateHospitalMismatchMessage(hospital: {
+  hospitalName: string;
+  hospitalCode: string;
+}): string {
+  return `ไฟล์นี้ไม่ได้จัดทำสำหรับ ${hospital.hospitalName} (${hospital.hospitalCode}) กรุณาดาวน์โหลด Template ของโรงพยาบาลที่เลือกแล้วกรอกข้อมูลใหม่`;
+}
+
+export const PATIENT_IMPORT_FAILED_ROWS_DOWNLOAD_PATH =
+  "/api/v1/hospital/patient-import/failed-rows" as const;
+
+export function createPatientImportTemplateDownloadPath(hospitalId: string): string {
+  return `/api/v1/hospital/patient-import/template?hospitalId=${encodeURIComponent(hospitalId)}`;
+}
+
+export function createPatientImportTemplateFilename(hospitalCode: string): string {
+  const safeCode = hospitalCode.replace(/[^A-Za-z0-9_-]/gu, "_");
+  return `DEMI_patient_import_${safeCode}_v2.xlsx`;
+}
+
+export const PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER = "เหตุผล" as const;
+export const PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX = "failed_rows" as const;
+
+export function createPatientImportFailedRowsFilename(hospitalCode: string): string {
+  const safeCode = hospitalCode.replace(/[^A-Za-z0-9_-]/gu, "_");
+  return `DEMI_patient_import_${safeCode}_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
+}
 
 export const PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES = ["กลุ่มเสี่ยง", "เบาหวาน"] as const;
 
@@ -67,73 +93,50 @@ export const PATIENT_IMPORT_TEMPLATE_COLUMNS = [
     format: "numeric",
     width: 22,
   },
-  { column: "O", field: "hospitalName", header: "โรงพยาบาล", format: "text", width: 22 },
-  { column: "P", field: "houseNumber", header: "บ้านเลขที่", format: "text", width: 14 },
-  { column: "Q", field: "villageNumber", header: "หมู่ที่/ชุมชน", format: "text", width: 16 },
-  { column: "R", field: "villageName", header: "หมู่บ้าน", format: "text", width: 18 },
-  { column: "S", field: "soi", header: "ซอย", format: "text", width: 16 },
-  { column: "T", field: "road", header: "ถนน", format: "text", width: 18 },
-  { column: "U", field: "province", header: "จังหวัด", format: "text", width: 18 },
-  { column: "V", field: "district", header: "อำเภอ", format: "text", width: 18 },
-  { column: "W", field: "subdistrict", header: "ตำบล", format: "text", width: 18 },
-  { column: "X", field: "postalCode", header: "รหัสไปรษณีย์", format: "text", width: 16 },
+  { column: "O", field: "houseNumber", header: "บ้านเลขที่", format: "text", width: 14 },
+  { column: "P", field: "villageNumber", header: "หมู่ที่/ชุมชน", format: "text", width: 16 },
+  { column: "Q", field: "villageName", header: "หมู่บ้าน", format: "text", width: 18 },
+  { column: "R", field: "soi", header: "ซอย", format: "text", width: 16 },
+  { column: "S", field: "road", header: "ถนน", format: "text", width: 18 },
+  { column: "T", field: "province", header: "จังหวัด", format: "text", width: 18 },
+  { column: "U", field: "district", header: "อำเภอ", format: "text", width: 18 },
+  { column: "V", field: "subdistrict", header: "ตำบล", format: "text", width: 18 },
+  { column: "W", field: "postalCode", header: "รหัสไปรษณีย์", format: "text", width: 16 },
   {
-    column: "Y",
+    column: "X",
     field: "emergencyContactName",
     header: "ชื่อผู้ติดต่อ(ญาติ)",
     format: "text",
     width: 22,
   },
-  { column: "Z", field: "emergencyContactPhone", header: "เบอร์โทร", format: "text", width: 16 },
+  { column: "Y", field: "emergencyContactPhone", header: "เบอร์โทร", format: "text", width: 16 },
   {
-    column: "AA",
+    column: "Z",
     field: "emergencyContactRelationship",
     header: "ความสัมพันธ์",
     format: "text",
     width: 18,
-  },
-  {
-    column: "AB",
-    field: "osmCaregiverName",
-    header: "ชื่อผู้ดูแล (อสม.)",
-    format: "text",
-    width: 22,
   },
 ] as const satisfies readonly PatientImportTemplateColumn[];
 
 export const PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT =
   PATIENT_IMPORT_TEMPLATE_COLUMNS.length;
 
+/** Failed-rows exports append exactly one trailing column; the parser ignores it. */
+export const PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN = "AA" as const;
+export const PATIENT_IMPORT_FAILED_ROWS_COLUMN_COUNT =
+  PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT + 1;
+
 export const PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS: Readonly<Record<string, string>> = {
   L: "กลุ่มเสี่ยง หรือ เบาหวาน (ไม่ต้องมี Type)",
 };
 
+/** Every column is a merged two-row header except the one carrying a secondary caption. */
 export const PATIENT_IMPORT_TEMPLATE_MERGES = [
-  "A1:A2",
-  "B1:B2",
-  "C1:C2",
-  "D1:D2",
-  "E1:E2",
-  "F1:F2",
-  "G1:G2",
-  "H1:H2",
-  "I1:I2",
-  "J1:J2",
-  "K1:K2",
-  "M1:M2",
-  "N1:N2",
-  "O1:O2",
-  "P1:P2",
-  "Q1:Q2",
-  "R1:R2",
-  "S1:S2",
-  "T1:T2",
-  "U1:U2",
-  "V1:V2",
-  "W1:W2",
-  "X1:X2",
-  "Y1:Y2",
-  "Z1:Z2",
-  "AA1:AA2",
-  "AB1:AB2",
+  ...PATIENT_IMPORT_TEMPLATE_COLUMNS.filter(
+    ({ column }) => PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column] === undefined,
+  ).map(({ column }) => `${column}1:${column}2`),
 ] as const;
+
+export const PATIENT_IMPORT_FAILED_ROWS_MERGE =
+  `${PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN}1:${PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN}2` as const;

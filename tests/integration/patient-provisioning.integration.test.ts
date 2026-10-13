@@ -1,4 +1,3 @@
-import ExcelJS from "exceljs";
 import {
   HospitalStatus,
   MembershipStatus,
@@ -13,7 +12,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
-import { readPatientImportCandidates, type PatientImportUpload } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
 import {
   importPatientProvisioning,
   previewPatientProvisioning,
@@ -21,6 +19,12 @@ import {
   type ProvisionPatientInput,
 } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+
+import {
+  readTemplateCandidates,
+  type ImportTestHospital,
+  type TemplateRow,
+} from "./support/patient-import-template-upload";
 
 const prisma = getPrisma();
 
@@ -64,14 +68,14 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   code: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-): Promise<{ id: string; status: HospitalStatus }> {
+): Promise<ImportTestHospital & { status: HospitalStatus }> {
   return prisma.hospital.create({
     data: {
       hospitalCode: code,
       name: `โรงพยาบาลทดสอบ ${code}`,
       status,
     },
-    select: { id: true, status: true },
+    select: { id: true, hospitalCode: true, name: true, status: true },
   });
 }
 
@@ -171,48 +175,19 @@ function patientInput(
   };
 }
 
-async function createXlsxUpload(
-  rows: readonly (readonly [string, string, string, string])[],
-): Promise<PatientImportUpload> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Patients");
-  worksheet.addRow(["Thai National ID", "First name", "Last name", "HN"]);
-
-  for (const row of rows) {
-    worksheet.addRow([...row]);
-  }
-
-  const written = await workbook.xlsx.writeBuffer();
-  const bytes = new Uint8Array(written);
-  const stableBytes = Uint8Array.from(bytes);
-
+function templateRow(
+  nationalId: string,
+  givenName: string,
+  familyName: string,
+  hospitalNumber: string,
+  extra: TemplateRow = {},
+): TemplateRow {
   return {
-    name: "patients.xlsx",
-    size: stableBytes.byteLength,
-    arrayBuffer: async () => stableBytes.slice().buffer as ArrayBuffer,
-  };
-}
-
-async function createRosterXlsxUpload(
-  headers: readonly string[],
-  rows: readonly (readonly unknown[])[],
-): Promise<PatientImportUpload> {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Patients");
-  worksheet.addRow([...headers]);
-
-  for (const row of rows) {
-    worksheet.addRow([...row]);
-  }
-
-  const written = await workbook.xlsx.writeBuffer();
-  const bytes = new Uint8Array(written);
-  const stableBytes = Uint8Array.from(bytes);
-
-  return {
-    name: "synthetic-roster.xlsx",
-    size: stableBytes.byteLength,
-    arrayBuffer: async () => stableBytes.slice().buffer as ArrayBuffer,
+    nationalId,
+    givenName,
+    familyName,
+    hospitalNumber: hospitalNumber || null,
+    ...extra,
   };
 }
 
@@ -504,13 +479,12 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-PREVIEW");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
     await provisionPatient(actor, patientInput(nationalIds.bulkFirst, hospital.id));
-    const upload = await createXlsxUpload([
-      [nationalIds.bulkFirst, "สมชาย", "ผู้ป่วย", ""],
-      [nationalIds.bulkSecond, "สมหญิง", "พร้อมใหม่", "HN-002"],
-      [nationalIds.bulkSecond, "สมหญิง", "พร้อมใหม่", "HN-002"],
-      ["123", "ข้อมูล", "ไม่ถูกต้อง", ""],
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.bulkFirst, "สมชาย", "ผู้ป่วย", ""),
+      templateRow(nationalIds.bulkSecond, "สมหญิง", "พร้อมใหม่", "HN-002"),
+      templateRow(nationalIds.bulkSecond, "สมหญิง", "พร้อมใหม่", "HN-002"),
+      templateRow("123", "ข้อมูล", "ไม่ถูกต้อง", ""),
     ]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
 
     expect(preview.rows.map(({ classification }) => classification)).toEqual([
@@ -522,40 +496,18 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(preview.rows[0].identityDisplay).not.toContain(nationalIds.bulkFirst);
   });
 
-  it("persists approved roster Baseline fields while keeping deferred fields transient", async () => {
-    const hospitalCode = "INTEGRATION-PATIENT-WIDE";
-    const hospital = await createHospital(hospitalCode);
+  it("persists approved roster Baseline and classification for new patients while keeping deferred fields transient", async () => {
+    const hospital = await createHospital("INTEGRATION-PATIENT-WIDE");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
-    const upload = await createRosterXlsxUpload(
-      [
-        "Thai National ID",
-        "First name",
-        "Last name",
-        "HN",
-        "วันเกิด",
-        "เพศ",
-        "เบอร์โทร",
-        "น้ำหนัก",
-        "ประเภทเบาหวาน",
-        "โรงพยาบาล",
-        "โค้ช",
-      ],
-      [[
-        nationalIds.bulkFirst,
-        "ตัวอย่าง",
-        "ผู้ป่วย",
-        "HN-WIDE-001",
-        "04/05/2568",
-        "ตัวอย่างเพศ",
-        "0812345678",
-        72.5,
-        "กลุ่มเสี่ยง",
-        `โรงพยาบาลทดสอบ ${hospitalCode}`,
-        "",
-      ]],
-    );
-
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.bulkFirst, "ตัวอย่าง", "ผู้ป่วย", "HN-WIDE-001", {
+        dateOfBirth: "04/05/2568",
+        gender: "ตัวอย่างเพศ",
+        phoneNumber: "0812345678",
+        weight: 72.5,
+        diabetesClassification: "กลุ่มเสี่ยง",
+      }),
+    ]);
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates, undefined, {
       effectiveDate: "2026-08-01",
     });
@@ -567,7 +519,6 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(preview.rows[0].requirementGatedFields).toEqual(
       expect.arrayContaining(["dateOfBirth"]),
     );
-    expect(preview.rows[0].requirementGatedFields).not.toContain("osmCaregiverName");
     expect(preview.rows[0].requirementGatedFields).not.toContain("diabetesClassification");
     expect(preview.rows[0].requirementGatedFields).not.toContain("weight");
 
@@ -578,12 +529,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       {},
       { effectiveDate: "2026-08-01" },
     );
-    expect(summary).toMatchObject({
-      imported: 1,
-      needsReview: 0,
-      hospitalMismatch: 0,
-      classificationCreated: 1,
-    });
+    expect(summary).toMatchObject({ imported: 1, classificationCreated: 1 });
     expect(summary.file?.requirementGatedFields).toEqual(
       expect.arrayContaining(["dateOfBirth"]),
     );
@@ -624,23 +570,19 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     });
   });
 
-  it("reports source Hospital text mismatch without changing the authorized target scope", async () => {
-    const hospital = await createHospital("INTEGRATION-PATIENT-MISMATCH");
-    const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
-    const upload = await createRosterXlsxUpload(
-      ["Thai National ID", "First name", "Last name", "โรงพยาบาล"],
-      [[nationalIds.bulkFirst, "ตัวอย่าง", "ผู้ป่วย", "โรงพยาบาลอื่นจากไฟล์"]],
-    );
+  it("rejects a file bound to another hospital before any row is read or written", async () => {
+    const hospital = await createHospital("INTEGRATION-PATIENT-FILE-A");
+    const otherHospital = await createHospital("INTEGRATION-PATIENT-FILE-B");
+    await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
 
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
-    const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
-    const summary = await importPatientProvisioning(actor, hospital.id, candidates);
-
-    expect(preview.rows[0]).toMatchObject({
-      classification: "HOSPITAL_MISMATCH",
-      reason: "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก ต้องตรวจสอบก่อนนำเข้า",
-    });
-    expect(summary).toMatchObject({ imported: 0, hospitalMismatch: 1 });
+    await expect(
+      readTemplateCandidates(
+        otherHospital,
+        [templateRow(nationalIds.bulkFirst, "ตัวอย่าง", "ผู้ป่วย", "")],
+        {},
+        hospital,
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION" });
     expect(await prisma.patientHospitalRelationship.count()).toBe(0);
   });
 
@@ -648,13 +590,12 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-IMPORT");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
     await provisionPatient(actor, patientInput(nationalIds.bulkConflict, hospital.id, { hospitalNumber: "HN-OLD" }));
-    const upload = await createXlsxUpload([
-      [nationalIds.bulkFirst, "สมชาย", "แถวหนึ่ง", "HN-001"],
-      [nationalIds.bulkSecond, "สมหญิง", "แถวสอง", "HN-002"],
-      [nationalIds.bulkConflict, "สมชาย", "แถวขัดแย้ง", "HN-NEW"],
-      ["123", "ข้อมูล", "ไม่ถูกต้อง", ""],
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.bulkFirst, "สมชาย", "แถวหนึ่ง", "HN-001"),
+      templateRow(nationalIds.bulkSecond, "สมหญิง", "แถวสอง", "HN-002"),
+      templateRow(nationalIds.bulkConflict, "สมชาย", "ผู้ป่วย", "HN-NEW"),
+      templateRow("123", "ข้อมูล", "ไม่ถูกต้อง", ""),
     ]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
     const summary = await importPatientProvisioning(actor, hospital.id, candidates);
 
     expect(summary).toMatchObject({
@@ -679,8 +620,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
   it("revalidates current database state during Excel confirmation instead of trusting the earlier preview", async () => {
     const hospital = await createHospital("PATIENT-IMPORT-REVALIDATE");
     const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
-    const upload = await createXlsxUpload([[nationalIds.bulkRevalidation, "สมชาย", "ตรวจซ้ำ", "HN-NEW"]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.bulkRevalidation, "สมชาย", "ตรวจซ้ำ", "HN-NEW"),
+    ]);
     const preview = await previewPatientProvisioning(actor, hospital.id, candidates);
 
     expect(preview.rows[0]?.classification).toBe("READY");
@@ -701,8 +643,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
   it("does not allow OSM to use the Hospital-only bulk import adapter", async () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-OSM-BULK");
     const { actor } = await createActor({ kind: "OSM", hospitalId: hospital.id });
-    const upload = await createXlsxUpload([[nationalIds.osm, "อสม.", "ทดสอบ", ""]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.osm, "อสม.", "ทดสอบ", ""),
+    ]);
 
     await expect(previewPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(importPatientProvisioning(actor, hospital.id, candidates)).rejects.toBeInstanceOf(ForbiddenError);
@@ -711,8 +654,9 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
   it("does not let a multi-role actor fall back to OSM scope after Hospital bulk scope is revoked", async () => {
     const hospital = await createHospital("PATIENT-MULTI-ROLE-BULK");
     const { actor, userId } = await createMultiRoleHospitalOsmActor(hospital.id);
-    const upload = await createXlsxUpload([[nationalIds.multiRoleBulk, "หลายบทบาท", "ทดสอบ", ""]]);
-    const candidates = await readPatientImportCandidates(upload, hospital.id, { mode: "COMPATIBILITY" });
+    const candidates = await readTemplateCandidates(hospital, [
+      templateRow(nationalIds.multiRoleBulk, "หลายบทบาท", "ทดสอบ", ""),
+    ]);
     const database = createDatabaseThatRevokesHospitalBulkScope(userId, hospital.id);
 
     await expect(

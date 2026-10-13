@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 import ExcelJS from "exceljs";
@@ -23,10 +21,8 @@ import {
 } from "./patient-import-xlsx-resource-preflight";
 
 const targetHospitalId = "11111111-1111-4111-8111-111111111111";
-const publicTemplatePath = resolve(
-  process.cwd(),
-  "public/templates/demi-patient-import-template-v1.xlsx",
-);
+const templateHospital = { hospitalCode: "SYN-A", hospitalName: "โรงพยาบาลสังเคราะห์เอ" };
+const importTarget = { hospitalId: targetHospitalId, ...templateHospital };
 
 type TestZipEntry = {
   name: string;
@@ -185,28 +181,28 @@ function createUpload(buffer: Buffer, name = "unsafe.xlsx"): PatientImportUpload
 }
 
 describe("Patient XLSX resource preflight", () => {
-  it("accepts the official blank Canonical Template v1", async () => {
-    const buffer = await readFile(publicTemplatePath);
+  it("accepts the generated blank hospital template v2", async () => {
+    const buffer = await workbookBuffer(await createPatientImportTemplateWorkbook(templateHospital));
     const summary = await preflightPatientImportXlsx(buffer);
 
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
-      zipEntries: 16,
-      declaredTotalUncompressedBytes: 314_273,
-      actualTotalUncompressedBytes: 314_273,
-      worksheetPartCount: 1,
-      worksheetCellElements: 14056,
-      worksheetRowElements: 502,
+      zipEntries: 18,
+      declaredTotalUncompressedBytes: 298_550,
+      actualTotalUncompressedBytes: 298_550,
+      worksheetPartCount: 3,
+      worksheetCellElements: 13066,
+      worksheetRowElements: 509,
       maxRowCoordinate: 502,
-      maxColumnCoordinate: 28,
-      mergeDeclarations: 27,
+      maxColumnCoordinate: 26,
+      mergeDeclarations: 25,
       maxMergeArea: 2,
-      totalMergeArea: 54,
+      totalMergeArea: 50,
     });
   });
 
   it("accepts a synthetic Canonical Template with exactly 500 patients", async () => {
-    const workbook = await createPatientImportTemplateWorkbook();
+    const workbook = await createPatientImportTemplateWorkbook(templateHospital);
     const worksheet = workbook.worksheets[0];
 
     if (!worksheet) {
@@ -225,17 +221,17 @@ describe("Patient XLSX resource preflight", () => {
 
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
-      zipEntries: 16,
-      declaredTotalUncompressedBytes: 1_029_351,
-      actualTotalUncompressedBytes: 1_029_351,
-      worksheetPartCount: 1,
-      worksheetCellElements: 14056,
-      worksheetRowElements: 502,
+      zipEntries: 18,
+      declaredTotalUncompressedBytes: 960_872,
+      actualTotalUncompressedBytes: 960_872,
+      worksheetPartCount: 3,
+      worksheetCellElements: 13066,
+      worksheetRowElements: 509,
       maxRowCoordinate: 502,
-      maxColumnCoordinate: 28,
-      mergeDeclarations: 27,
+      maxColumnCoordinate: 26,
+      mergeDeclarations: 25,
       maxMergeArea: 2,
-      totalMergeArea: 54,
+      totalMergeArea: 50,
     });
   });
 
@@ -587,7 +583,7 @@ describe("Patient XLSX resource preflight", () => {
 
     try {
       await expect(
-        readPatientImportCandidates(upload, targetHospitalId, { mode: "COMPATIBILITY" }),
+        readPatientImportCandidates(upload, importTarget),
       ).rejects.toBeInstanceOf(PatientImportXlsxResourceLimitError);
       expect(loadSpy).not.toHaveBeenCalled();
     } finally {
@@ -610,7 +606,7 @@ describe("Patient XLSX resource preflight", () => {
 
     try {
       await expect(
-        readPatientImportCandidates(upload, targetHospitalId, { mode: "COMPATIBILITY" }),
+        readPatientImportCandidates(upload, importTarget),
       ).rejects.toBeInstanceOf(PatientImportXlsxMalformedError);
       expect(loadSpy).not.toHaveBeenCalled();
     } finally {

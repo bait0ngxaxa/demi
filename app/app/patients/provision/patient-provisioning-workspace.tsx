@@ -21,28 +21,23 @@ import type {
   PatientImportRowResult,
   PatientImportResultSummary,
 } from "@/modules/patient-provisioning/services/patient-roster-import-types";
-import {
-  isPatientImportAttentionClassification,
-  isPatientImportAttentionResult,
-} from "@/modules/patient-provisioning/services/patient-roster-import-types";
+import { isPatientImportAttentionResult } from "@/modules/patient-provisioning/services/patient-roster-import-types";
 import {
   countPatientImportExecutableRows,
   countPatientImportRowsRequiringAttention,
   getPatientImportBaselineReason,
   getPatientImportAttentionReason,
   getPatientImportClassificationReason,
-  getPatientImportOsmReason,
   getPatientImportRecoveryGuidance,
   getPatientImportResultPresentation,
-  getPatientImportRowPresentationStatus,
-  selectedPatientImportOsmCandidate,
+  partitionPatientImportPreviewRows,
   summarizePatientImportPreview,
 } from "@/modules/patient-provisioning/presentation/patient-import-presentation";
 import type { PatientProvisioningScope } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
 import {
-  PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME,
-  PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH,
+  createPatientImportTemplateDownloadPath,
+  createPatientImportTemplateFilename,
   PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
 } from "@/modules/patient-provisioning/import/patient-import-template-contract";
 import {
@@ -56,30 +51,28 @@ import {
   initialPatientProvisionActionState,
   type PatientImportActionState,
   type PatientImportPreviewBinding,
-  type PatientImportOsmAssignmentChoiceBinding,
-  type PatientImportPreviewReconciliationBinding,
   type PatientImportPreviewActionState,
   type PatientProvisionActionState,
   type PatientProvisionResultState,
 } from "@/modules/patient-provisioning/transport/action-state";
+import { downloadPatientImportFailedRows } from "@/modules/patient-provisioning/transport/patient-import-failed-rows-client";
 
 type PatientProvisioningWorkspaceProps = {
   scopes: PatientProvisioningScope[];
   selectedHospitalId: string;
   selectedScope: PatientProvisioningScope;
+  /** Active OWNER of the selected Hospital: the import result links to bulk OSM assignment. */
+  canAssignOsm?: boolean;
 };
 
 type ProvisioningMode = "SINGLE" | "EXCEL";
 
 const classificationLabels: Record<PatientImportClassification, string> = {
-  READY: "พร้อมนำเข้า",
+  READY: "ผู้ป่วยใหม่",
   ALREADY_EXISTS: "มีอยู่แล้ว",
   DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
   INVALID: "ข้อมูลไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้ง",
-  NEEDS_REVIEW: "ต้องตรวจสอบ",
-  HOSPITAL_MISMATCH: "โรงพยาบาลไม่ตรงกัน",
-  UNSUPPORTED_REQUIREMENT: "รอยืนยันข้อกำหนด",
 };
 
 const classificationVariants: Record<PatientImportClassification, StatusVariant> = {
@@ -88,17 +81,12 @@ const classificationVariants: Record<PatientImportClassification, StatusVariant>
   DUPLICATE_IN_FILE: "warning",
   INVALID: "danger",
   CONFLICT: "danger",
-  NEEDS_REVIEW: "warning",
-  HOSPITAL_MISMATCH: "danger",
-  UNSUPPORTED_REQUIREMENT: "warning",
 };
 
 const baselineStatusLabels: Record<PatientImportBaselineStatus, string> = {
   NOT_APPLICABLE: "",
   BASELINE_READY: "ข้อมูลตั้งต้นพร้อมบันทึก",
   BASELINE_CREATED: "บันทึกข้อมูลตั้งต้นแล้ว",
-  BASELINE_ALREADY_EXISTS: "ข้อมูลตั้งต้นมีอยู่แล้ว",
-  BASELINE_CONFLICT: "ข้อมูลตั้งต้นขัดแย้ง",
   BASELINE_DATE_REQUIRED: "ต้องระบุวันที่ข้อมูลตั้งต้น",
   BASELINE_DATA_INVALID: "ข้อมูลตั้งต้นไม่ถูกต้อง",
 };
@@ -109,9 +97,6 @@ const importResultLabels: Record<PatientImportRowResult["result"], string> = {
   DUPLICATE_IN_FILE: "ซ้ำในไฟล์",
   INVALID: "ข้อมูลไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้ง",
-  NEEDS_REVIEW: "ต้องตรวจสอบ",
-  HOSPITAL_MISMATCH: "โรงพยาบาลไม่ตรงกัน",
-  UNSUPPORTED_REQUIREMENT: "รอยืนยันข้อกำหนด",
   FAILED: "บันทึกไม่สำเร็จ",
 };
 
@@ -121,9 +106,6 @@ const importResultVariants: Record<PatientImportRowResult["result"], StatusVaria
   DUPLICATE_IN_FILE: "warning",
   INVALID: "danger",
   CONFLICT: "danger",
-  NEEDS_REVIEW: "warning",
-  HOSPITAL_MISMATCH: "danger",
-  UNSUPPORTED_REQUIREMENT: "warning",
   FAILED: "danger",
 };
 
@@ -132,7 +114,6 @@ const importFieldLabels: Record<PatientImportFieldKey, string> = {
   dateOfBirth: "วันเกิด",
   givenName: "ชื่อ",
   familyName: "นามสกุล",
-  combinedNameText: "ชื่อรวม",
   hospitalNumber: "HN",
   gender: "เพศ",
   phoneNumber: "เบอร์โทรศัพท์",
@@ -140,12 +121,8 @@ const importFieldLabels: Record<PatientImportFieldKey, string> = {
   height: "ส่วนสูง",
   waistCircumference: "รอบเอว",
   diabetesClassification: "ประเภทเบาหวาน/กลุ่มเสี่ยง",
-  bloodSugar: "ค่าน้ำตาลในเลือด",
   bloodSugarDtx: "ค่าน้ำตาลในเลือด (DTX)",
   hba1c: "HbA1c",
-  hospitalName: "โรงพยาบาลจากไฟล์",
-  subHospitalName: "รพ.สต. จากไฟล์",
-  organizationCombinedText: "โรงพยาบาล/รพ.สต. จากไฟล์",
   houseNumber: "บ้านเลขที่",
   villageNumber: "หมู่ที่/ชุมชน",
   villageName: "หมู่บ้าน",
@@ -158,26 +135,15 @@ const importFieldLabels: Record<PatientImportFieldKey, string> = {
   emergencyContactName: "ชื่อผู้ติดต่อฉุกเฉิน",
   emergencyContactPhone: "เบอร์ผู้ติดต่อฉุกเฉิน",
   emergencyContactRelationship: "ความสัมพันธ์กับผู้ติดต่อ",
-  osmCaregiverName: "ชื่อผู้ดูแล/โค้ช",
   sourceSequenceNumber: "ลำดับจากไฟล์",
-  externalPatientId: "PID",
-  ageAtRoster: "อายุ ณ วันที่จัดทำไฟล์",
-  addressText: "ที่อยู่",
-  bloodPressureText: "ความดันโลหิต",
-  pulseRate: "ชีพจร",
-  bmi: "BMI",
-  dtxReading: "ค่า DTX",
-  riskFactorText: "ปัจจัยเสี่ยง",
-  serviceVisitDate: "วันที่รับบริการ",
-  extendedMeasurementSeries: "ชุดข้อมูลการติดตามเพิ่มเติม",
 };
 
 function fieldLabels(fields: readonly PatientImportFieldKey[]): string {
   return fields.map((field) => importFieldLabels[field]).join(", ");
 }
 
-function patientImportRowName(row: Pick<PatientImportPreviewRow, "givenName" | "familyName" | "combinedNameText">): string {
-  return [row.givenName, row.familyName].filter(Boolean).join(" ") || row.combinedNameText || "ไม่ระบุชื่อ";
+function patientImportRowName(row: Pick<PatientImportPreviewRow, "givenName" | "familyName">): string {
+  return [row.givenName, row.familyName].filter(Boolean).join(" ") || "ไม่ระบุชื่อ";
 }
 
 function formatFileSize(size: number): string {
@@ -219,26 +185,12 @@ function createPatientImportConfirmFormData(
   previewBinding: string,
   effectiveDate: string | null,
   importContractVersion: string,
-  classificationReconciliationChoices: readonly PatientImportPreviewReconciliationBinding[],
-  osmAssignmentChoices: readonly PatientImportOsmAssignmentChoiceBinding[],
 ): FormData {
   const formData = createPatientImportFormData(file, targetHospitalId, effectiveDate ?? "");
   formData.set("previewTargetHospitalId", previewTargetHospitalId);
   formData.set("fileFingerprint", fileFingerprint);
   formData.set("previewBinding", previewBinding);
   formData.set("importContractVersion", importContractVersion);
-
-  if (classificationReconciliationChoices.length > 0) {
-    formData.set(
-      "classificationReconciliationChoices",
-      JSON.stringify(classificationReconciliationChoices),
-    );
-  }
-
-  if (osmAssignmentChoices.length > 0) {
-    formData.set("osmAssignmentChoices", JSON.stringify(osmAssignmentChoices));
-  }
-
   return formData;
 }
 
@@ -314,61 +266,28 @@ function ProvisionResult({
   );
 }
 
-function PreviewRowDetails({
-  row,
-  reconciliation,
-  osmReconciliation,
-  selectedReconciliation,
-  selectedOsmReassignment,
-  onToggleReconciliation,
-  onToggleOsmReassignment,
-  canManageOsmAssignment,
-  disabled,
-}: {
-  row: PatientImportPreviewRow;
-  reconciliation: PatientImportPreviewBinding["classificationReconciliations"][number] | undefined;
-  osmReconciliation: PatientImportPreviewBinding["osmAssignmentReconciliations"][number] | undefined;
-  selectedReconciliation: boolean;
-  selectedOsmReassignment: boolean;
-  onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
-  onToggleOsmReassignment: (rowNumber: number, checked: boolean) => void;
-  canManageOsmAssignment: boolean;
-  disabled: boolean;
-}): React.JSX.Element {
-  const classification = row.patientClassification;
-  const osm = row.patientOsmAssignment;
-  const osmCandidate = osmReconciliation
-    ? selectedPatientImportOsmCandidate(osmReconciliation)
-    : null;
-  const candidateDisplayName =
-    osmCandidate?.displayName ?? osm.resolvedCandidate?.displayName ?? null;
-  const currentCaregiver = osm.currentCaregiver;
-  const classificationChangeNeedsConfirmation =
-    classification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION";
-  const osmReassignmentNeedsConfirmation = Boolean(
-    canManageOsmAssignment &&
-      osm.assignmentStatus !== "OSM_OWNER_REQUIRED" &&
-      currentCaregiver &&
-      osmCandidate &&
-      !osmCandidate.sameAsCurrent,
+export function PatientImportUploadGuidance(): React.JSX.Element {
+  return (
+    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-muted">
+      <li>นำเข้าซ้ำได้: เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิม ระบบจะเพิ่มเฉพาะผู้ป่วยใหม่</li>
+      <li>การแก้ไขข้อมูลของผู้ป่วยที่มีอยู่แล้วในไฟล์จะไม่ถูกนำไปใช้ ให้แก้ไขในระบบ</li>
+      <li>การกำหนด อสม. ทำหลังนำเข้า</li>
+    </ul>
   );
+}
+
+function PreviewRowDetails({ row }: { row: PatientImportPreviewRow }): React.JSX.Element {
+  const classification = row.patientClassification;
   const primaryReason =
-    row.classification === "ALREADY_EXISTS"
-      ? row.reason ?? "ข้อมูลมีอยู่แล้ว ระบบจะไม่สร้างซ้ำ"
-      : isPatientImportAttentionClassification(row.classification)
-        ? getPatientImportAttentionReason(row)
-        : row.classification === "READY"
-          ? null
-          : row.reason;
+    row.classification === "READY" ? null : getPatientImportAttentionReason(row);
   const baselineReason = getPatientImportBaselineReason(row);
   const classificationReason = getPatientImportClassificationReason(row);
-  const osmReason = getPatientImportOsmReason(row);
 
   return (
     <div className="space-y-3">
       {primaryReason ? <p className="text-muted">{primaryReason}</p> : null}
 
-      {row.baselineStatus !== "NOT_APPLICABLE" ? (
+      {row.classification === "READY" && row.baselineStatus !== "NOT_APPLICABLE" ? (
         <div className="border-l-2 border-border-strong pl-3">
           <p className="font-semibold text-ink">ข้อมูลตั้งต้น</p>
           <p className="mt-1 text-muted">{baselineStatusLabels[row.baselineStatus]}</p>
@@ -376,146 +295,30 @@ function PreviewRowDetails({
         </div>
       ) : null}
 
-      {classification.status !== "NOT_APPLICABLE" ? (
+      {row.classification === "READY" && classification.status !== "NOT_APPLICABLE" ? (
         <div className="border-l-2 border-border-strong pl-3">
           <p className="font-semibold text-ink">สถานะผู้ป่วย</p>
-          {classificationChangeNeedsConfirmation ? (
-            <>
-              <p className="mt-1 text-muted">
-                เปลี่ยนจาก {getPatientClassificationLabel(classification.currentClassification)} →{" "}
-                {getPatientClassificationLabel(classification.sourceClassification)}
-              </p>
-              {classificationReason ? (
-                <p className="mt-1 text-warning">{classificationReason}</p>
-              ) : null}
-              {reconciliation ? (
-                <label
-                  className="mt-2 flex items-start gap-2 font-normal text-ink"
-                  htmlFor={"patient-import-classification-" + row.rowNumber}
-                >
-                  <input
-                    checked={selectedReconciliation}
-                    className="mt-1 size-4 accent-brand-strong"
-                    disabled={disabled}
-                    id={"patient-import-classification-" + row.rowNumber}
-                    onChange={(event) =>
-                      onToggleReconciliation(row.rowNumber, event.currentTarget.checked)
-                    }
-                    type="checkbox"
-                  />
-                  <span>
-                    ยืนยันเปลี่ยนสถานะผู้ป่วยจาก{" "}
-                    {getPatientClassificationLabel(classification.currentClassification)} เป็น{" "}
-                    {getPatientClassificationLabel(classification.sourceClassification)}
-                  </span>
-                </label>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {classification.sourceClassification ? (
-                <p className="mt-1 text-muted">
-                  จากไฟล์: {getPatientClassificationLabel(classification.sourceClassification)}
-                </p>
-              ) : null}
-              {classificationReason ? (
-                <p className="mt-1 text-danger">{classificationReason}</p>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : null}
-
-      {osm.sourceCaregiverName || osm.assignmentStatus === "OSM_OWNER_REQUIRED" ? (
-        <div className="border-l-2 border-border-strong pl-3">
-          <p className="font-semibold text-ink">ผู้ดูแล</p>
-          <p className="mt-1 text-muted">
-            จากไฟล์: {osm.sourceCaregiverName ?? "ไม่ระบุชื่อผู้ดูแล"}
-          </p>
-          {currentCaregiver ? (
+          {classification.sourceClassification ? (
             <p className="mt-1 text-muted">
-              ผู้ดูแลปัจจุบัน: {currentCaregiver.displayName}
+              จากไฟล์: {getPatientClassificationLabel(classification.sourceClassification)}
             </p>
           ) : null}
-
-          {osm.resolutionStatus === "OSM_MATCHED" && candidateDisplayName ? (
-            <>
-              <p className="mt-1 text-muted">ผู้ดูแลที่จับคู่ได้: {candidateDisplayName}</p>
-              {!currentCaregiver &&
-              canManageOsmAssignment &&
-              osm.assignmentStatus !== "OSM_OWNER_REQUIRED" ? (
-                <p className="mt-1 text-success">
-                  เมื่อยืนยัน ระบบจะกำหนดผู้ดูแล: {candidateDisplayName}
-                </p>
-              ) : osmCandidate?.sameAsCurrent ? (
-                <p className="mt-1 text-muted">
-                  ผู้ดูแลตรงกับปัจจุบัน ระบบจะไม่เปลี่ยนแปลง
-                </p>
-              ) : currentCaregiver &&
-                !canManageOsmAssignment &&
-                osm.assignmentStatus === "OSM_OWNER_REQUIRED" ? (
-                <p className="mt-1 text-warning">
-                  ผู้ดูแลปัจจุบัน → ผู้ดูแลจากไฟล์: {currentCaregiver.displayName} →{" "}
-                  {candidateDisplayName}
-                </p>
-              ) : currentCaregiver && osmReassignmentNeedsConfirmation ? (
-                <>
-                  <p className="mt-1 text-warning">
-                    ผู้ดูแลปัจจุบัน → ผู้ดูแลจากไฟล์: {currentCaregiver.displayName} →{" "}
-                    {candidateDisplayName}
-                  </p>
-                  <label
-                    className="mt-2 flex items-start gap-2 font-normal text-ink"
-                    htmlFor={"patient-import-osm-" + row.rowNumber}
-                  >
-                    <input
-                      checked={selectedOsmReassignment}
-                      className="mt-1 size-4 accent-brand-strong"
-                      disabled={disabled}
-                      id={"patient-import-osm-" + row.rowNumber}
-                      onChange={(event) =>
-                        onToggleOsmReassignment(row.rowNumber, event.currentTarget.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span>ยืนยันเปลี่ยนผู้ดูแลเป็น {candidateDisplayName}</span>
-                  </label>
-                </>
-              ) : null}
-            </>
+          {classification.status === "CLASSIFICATION_ALREADY_EXISTS" ? (
+            <p className="mt-1 text-muted">ผู้ป่วยมีสถานะอยู่แล้ว ระบบจะไม่เปลี่ยนสถานะเดิม</p>
           ) : null}
-
-          {osm.resolutionStatus === "OSM_NOT_FOUND" ||
-          osm.resolutionStatus === "OSM_AMBIGUOUS" ||
-          osm.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
-          osm.resolutionStatus === "OSM_DATA_INVALID" ? (
-            <p className="mt-1 text-danger">{osmReason}</p>
-          ) : null}
-
-          {osm.assignmentStatus === "OSM_OWNER_REQUIRED" ? (
-            <p className="mt-1 text-warning">
-              รายการนี้ต้องให้เจ้าของโรงพยาบาลยืนยันผู้ดูแล
-            </p>
-          ) : null}
-
-          {osm.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT" &&
-          !osmReassignmentNeedsConfirmation ? (
-            <p className="mt-1 text-warning">{osmReason}</p>
-          ) : null}
+          {classificationReason ? <p className="mt-1 text-danger">{classificationReason}</p> : null}
         </div>
       ) : null}
 
       {row.requirementGatedFields.length > 0 ? (
         <p className="border-l-2 border-border-strong pl-3 text-muted">
-          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้:{" "}
-          {fieldLabels(row.requirementGatedFields)}
+          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้: {fieldLabels(row.requirementGatedFields)}
         </p>
       ) : null}
 
       {!primaryReason &&
       row.baselineStatus === "NOT_APPLICABLE" &&
       classification.status === "NOT_APPLICABLE" &&
-      !osm.sourceCaregiverName &&
       row.requirementGatedFields.length === 0 ? (
         <span className="text-muted">-</span>
       ) : null}
@@ -523,27 +326,62 @@ function PreviewRowDetails({
   );
 }
 
-function PreviewTable({
-  preview,
-  selectedReconciliationRows,
-  selectedOsmReassignmentRows,
-  onToggleReconciliation,
-  onToggleOsmReassignment,
-  disabled,
+function PreviewRowsTable({
+  rows,
+  caption,
+  showDetails,
 }: {
-  preview: PatientImportPreviewBinding;
-  selectedReconciliationRows: ReadonlySet<number>;
-  selectedOsmReassignmentRows: ReadonlySet<number>;
-  onToggleReconciliation: (rowNumber: number, checked: boolean) => void;
-  onToggleOsmReassignment: (rowNumber: number, checked: boolean) => void;
-  disabled: boolean;
+  rows: readonly PatientImportPreviewRow[];
+  caption: string;
+  showDetails: boolean;
 }): React.JSX.Element {
-  const {
-    canManageOsmAssignment,
-    classificationReconciliations: reconciliations,
-    osmAssignmentReconciliations,
-    rows,
-  } = preview;
+  return (
+    <div className="overflow-x-auto rounded-panel border border-border">
+      <table className="min-w-[760px] divide-y divide-line bg-surface text-left text-sm">
+        <caption className="sr-only">{caption}</caption>
+        <thead className="bg-canvas text-xs font-semibold text-muted">
+          <tr>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">แถวใน Excel</th>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">เลขบัตรประชาชน</th>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">ชื่อ-นามสกุล</th>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">HN</th>
+            <th className="whitespace-nowrap px-3 py-3" scope="col">สถานะ</th>
+            {showDetails ? (
+              <th className="min-w-[22rem] px-3 py-3" scope="col">รายละเอียด</th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {rows.map((row) => (
+            <tr key={row.rowNumber}>
+              <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
+              <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">
+                {row.identityDisplay}
+              </td>
+              <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
+                {patientImportRowName(row)}
+              </td>
+              <td className="whitespace-nowrap px-3 py-3 text-muted">{row.hospitalNumber ?? "-"}</td>
+              <td className="whitespace-nowrap px-3 py-3 align-top">
+                <StatusBadge variant={classificationVariants[row.classification]}>
+                  {classificationLabels[row.classification]}
+                </StatusBadge>
+              </td>
+              {showDetails ? (
+                <td className="px-3 py-3 align-top">
+                  <PreviewRowDetails row={row} />
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function PreviewTable({ preview }: { preview: PatientImportPreviewBinding }): React.JSX.Element {
+  const { rows } = preview;
 
   if (rows.length === 0) {
     return (
@@ -553,76 +391,37 @@ function PreviewTable({
     );
   }
 
-  const reconciliationByRow = new Map(
-    reconciliations.map((reconciliation) => [reconciliation.rowNumber, reconciliation]),
-  );
-  const osmReconciliationByRow = new Map(
-    osmAssignmentReconciliations.map((reconciliation) => [reconciliation.rowNumber, reconciliation]),
-  );
+  const { primaryRows, alreadyExistsRows } = partitionPatientImportPreviewRows(rows);
 
   return (
-    <div className="overflow-x-auto rounded-panel border border-border">
-      <table className="min-w-[920px] divide-y divide-line bg-surface text-left text-sm">
-        <caption className="sr-only">ผลการตรวจสอบรายชื่อผู้ป่วยจากไฟล์</caption>
-        <thead className="bg-canvas text-xs font-semibold text-muted">
-          <tr>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">แถวใน Excel</th>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">เลขบัตรประชาชน</th>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">ชื่อ-นามสกุล</th>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">HN</th>
-            <th className="whitespace-nowrap px-3 py-3" scope="col">สถานะ</th>
-            <th className="min-w-[26rem] px-3 py-3" scope="col">รายละเอียด</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {rows.map((row) => {
-            const presentationStatus = getPatientImportRowPresentationStatus(
-              row,
-              preview,
-              selectedReconciliationRows,
-              selectedOsmReassignmentRows,
-            );
+    <div className="space-y-4">
+      {primaryRows.length > 0 ? (
+        <PreviewRowsTable
+          caption="ผลการตรวจสอบรายชื่อผู้ป่วยใหม่และรายการที่ต้องแก้ไข"
+          rows={primaryRows}
+          showDetails
+        />
+      ) : null}
 
-            return (
-              <tr key={row.rowNumber}>
-                <td className="whitespace-nowrap px-3 py-3 text-muted">{row.rowNumber}</td>
-                <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-muted">
-                  {row.identityDisplay}
-                </td>
-                <td className="max-w-56 break-words px-3 py-3 font-semibold text-ink">
-                  {patientImportRowName(row)}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-muted">
-                  {row.hospitalNumber ?? "-"}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 align-top">
-                  <StatusBadge variant={classificationVariants[presentationStatus]}>
-                    {classificationLabels[presentationStatus]}
-                  </StatusBadge>
-                </td>
-                <td className="px-3 py-3 align-top">
-                  <PreviewRowDetails
-                    canManageOsmAssignment={canManageOsmAssignment}
-                    disabled={disabled}
-                    onToggleOsmReassignment={onToggleOsmReassignment}
-                    onToggleReconciliation={onToggleReconciliation}
-                    osmReconciliation={osmReconciliationByRow.get(row.rowNumber)}
-                    reconciliation={reconciliationByRow.get(row.rowNumber)}
-                    row={row}
-                    selectedOsmReassignment={selectedOsmReassignmentRows.has(row.rowNumber)}
-                    selectedReconciliation={selectedReconciliationRows.has(row.rowNumber)}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {alreadyExistsRows.length > 0 ? (
+        <details className="rounded-panel border border-border bg-surface">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
+            ผู้ป่วยที่มีอยู่แล้ว {alreadyExistsRows.length} รายการ (ไม่ถูกเปลี่ยนแปลง)
+          </summary>
+          <div className="border-t border-border p-3">
+            <PreviewRowsTable
+              caption="ผู้ป่วยที่มีอยู่แล้วในโรงพยาบาล"
+              rows={alreadyExistsRows}
+              showDetails={false}
+            />
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }
 
-function PreviewFileSummary({
+export function PreviewFileSummary({
   preview,
   executableRowCount,
   attentionRowCount,
@@ -644,11 +443,7 @@ function PreviewFileSummary({
       <h3 className="font-semibold text-ink">สรุปผลการตรวจไฟล์</h3>
       <dl className="mt-3 flex flex-wrap divide-y divide-line border-y border-line sm:divide-x sm:divide-y-0">
         <div className="min-w-28 flex-1 px-3 py-3 first:pl-0">
-          <dt className="text-muted">ทั้งหมด</dt>
-          <dd className="text-lg font-semibold text-ink">{summary.total}</dd>
-        </div>
-        <div className="min-w-28 flex-1 px-3 py-3">
-          <dt className="text-muted">พร้อมนำเข้า</dt>
+          <dt className="text-muted">ใหม่</dt>
           <dd className="text-lg font-semibold text-success">{executableRowCount}</dd>
         </div>
         <div className="min-w-28 flex-1 px-3 py-3">
@@ -656,12 +451,8 @@ function PreviewFileSummary({
           <dd className="text-lg font-semibold text-ink">{summary.alreadyExists}</dd>
         </div>
         <div className="min-w-28 flex-1 px-3 py-3">
-          <dt className="text-muted">ต้องตรวจสอบ</dt>
+          <dt className="text-muted">ต้องแก้ไข</dt>
           <dd className="text-lg font-semibold text-warning">{attentionRowCount}</dd>
-        </div>
-        <div className="min-w-28 flex-1 px-3 py-3">
-          <dt className="text-muted">ข้อมูลไม่ถูกต้อง</dt>
-          <dd className="text-lg font-semibold text-danger">{summary.invalid}</dd>
         </div>
       </dl>
 
@@ -673,28 +464,19 @@ function PreviewFileSummary({
         ) : null}
         {allRowsAlreadyExist ? (
           <p className="font-semibold text-ink">
-            ข้อมูลทั้งหมดมีอยู่แล้ว ไม่มีรายการที่ต้องบันทึกเพิ่ม
+            ผู้ป่วยทั้งหมดมีอยู่แล้ว ไม่มีผู้ป่วยใหม่ที่ต้องบันทึก
           </p>
         ) : executableRowCount > 0 ? (
           <>
             <p className="font-semibold text-success">
-              พร้อมนำเข้า {executableRowCount} จาก {summary.total} รายการ
+              พร้อมนำเข้าผู้ป่วยใหม่ {executableRowCount} จาก {summary.total} รายการ
             </p>
             {attentionRowCount > 0 ? (
-              <>
-                <p className="font-semibold text-warning">
-                  ยังต้องตรวจสอบ {attentionRowCount} รายการ
-                </p>
-                <p className="text-muted">
-                  ระบบจะนำเข้าเฉพาะรายการที่พร้อม ส่วนรายการที่ต้องตรวจสอบจะไม่ถูกบันทึก
-                </p>
-              </>
+              <p className="text-muted">
+                ระบบจะนำเข้าเฉพาะผู้ป่วยใหม่ที่พร้อม ส่วนรายการที่ต้องแก้ไขจะไม่ถูกบันทึก
+              </p>
             ) : null}
           </>
-        ) : attentionRowCount > 0 ? (
-          <p className="font-semibold text-warning">
-            ยังไม่มีรายการที่พร้อมนำเข้า กรุณาตรวจสอบรายการด้านล่าง
-          </p>
         ) : summary.total > 0 ? (
           <p className="font-semibold text-warning">
             ยังไม่มีรายการที่พร้อมนำเข้า กรุณาตรวจสอบรายการด้านล่าง
@@ -705,26 +487,79 @@ function PreviewFileSummary({
       </div>
 
       <p className="mt-4 border-t border-border pt-4 text-muted">
-        วันที่ข้อมูลตั้งต้นของไฟล์: {preview.effectiveDate ?? "ยังไม่ได้ระบุ"}
+        วันที่ข้อมูลตั้งต้นของผู้ป่วยใหม่: {preview.effectiveDate ?? "ยังไม่ได้ระบุ"}
       </p>
       {file?.requirementGatedFields.length ? (
         <p className="mt-2 text-muted">
-          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้:{" "}
-          {fieldLabels(file.requirementGatedFields)}
+          คอลัมน์ต่อไปนี้จะยังไม่ถูกบันทึกในเวอร์ชันนี้: {fieldLabels(file.requirementGatedFields)}
         </p>
       ) : null}
     </section>
   );
 }
 
-function ImportSummary({
+function FailedRowsDownloadButton({
+  file,
+  preview,
+  failedRowNumbers,
+}: {
+  file: File | null;
+  preview: PatientImportPreviewBinding;
+  failedRowNumbers: readonly number[];
+}): React.JSX.Element {
+  const [pending, startTransition] = useTransition();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  function handleDownload(): void {
+    if (!file) {
+      return;
+    }
+
+    setErrorMessage(null);
+    startTransition(async () => {
+      const result = await downloadPatientImportFailedRows({ file, preview, failedRowNumbers });
+      setErrorMessage(result.status === "ERROR" ? result.message : null);
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button
+        disabled={pending || !file}
+        loading={pending}
+        onClick={handleDownload}
+        size="compact"
+        type="button"
+        variant="secondary"
+      >
+        {pending ? "กำลังสร้างไฟล์..." : "ดาวน์โหลดแถวที่ไม่ผ่าน"}
+      </Button>
+      {errorMessage ? (
+        <p aria-live="polite" className="text-sm text-danger">
+          {errorMessage}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function ImportSummary({
   summary,
+  preview,
+  file,
+  canAssignOsm,
   onNewImport,
 }: {
   summary: PatientImportResultSummary;
+  preview: PatientImportPreviewBinding;
+  file: File | null;
+  canAssignOsm: boolean;
   onNewImport: () => void;
 }): React.JSX.Element {
   const attentionRows = summary.rows.filter((row) => isPatientImportAttentionResult(row.result));
+  const failedRowNumbers = summary.rows
+    .filter((row) => row.result === "FAILED")
+    .map((row) => row.rowNumber);
   const {
     detail,
     hasAttentionRows,
@@ -750,12 +585,8 @@ function ImportSummary({
           <dd className="text-lg font-semibold text-ink">{summary.alreadyExists}</dd>
         </div>
         <div className="min-w-28 flex-1 px-3 py-3">
-          <dt className="text-muted">ต้องตรวจสอบ</dt>
-          <dd className="text-lg font-semibold text-warning">{reviewCount}</dd>
-        </div>
-        <div className="min-w-28 flex-1 px-3 py-3">
-          <dt className="text-muted">ข้อมูลไม่ถูกต้อง</dt>
-          <dd className="text-lg font-semibold text-danger">{summary.invalid}</dd>
+          <dt className="text-muted">ต้องแก้ไข</dt>
+          <dd className="text-lg font-semibold text-warning">{reviewCount + summary.invalid}</dd>
         </div>
         <div className="min-w-28 flex-1 px-3 py-3">
           <dt className="text-muted">บันทึกไม่สำเร็จ</dt>
@@ -765,10 +596,10 @@ function ImportSummary({
 
       {hasAttentionRows ? (
         <div className="mt-5 border-t border-border pt-4">
-          <h3 className="font-semibold">แถวที่ต้องตรวจสอบ</h3>
+          <h3 className="font-semibold">แถวที่ไม่ผ่าน</h3>
           <div className="mt-3 overflow-x-auto rounded-panel border border-border bg-surface">
             <table className="min-w-[820px] divide-y divide-line text-left text-sm">
-              <caption className="sr-only">รายการที่ต้องตรวจสอบหลังนำเข้า</caption>
+              <caption className="sr-only">รายการที่ไม่ผ่านหลังนำเข้า</caption>
               <thead className="bg-canvas text-xs font-semibold text-muted">
                 <tr>
                   <th className="whitespace-nowrap px-3 py-3" scope="col">แถวใน Excel</th>
@@ -782,10 +613,9 @@ function ImportSummary({
               <tbody className="divide-y divide-line">
                 {attentionRows.map((row) => {
                   const reason =
-                    row.reason ??
-                    (row.result === "FAILED"
+                    row.result === "FAILED"
                       ? "ระบบไม่สามารถบันทึกรายการนี้ได้ กรุณาลองใหม่"
-                      : getPatientImportAttentionReason(row));
+                      : getPatientImportAttentionReason(row);
 
                   return (
                     <tr key={row.rowNumber}>
@@ -835,7 +665,31 @@ function ImportSummary({
         </div>
       ) : null}
 
+      {summary.imported > 0 ? (
+        <p className="mt-4 border-t border-border pt-4 text-muted">
+          ผู้ป่วยที่นำเข้าใหม่ยังไม่มี อสม. ผู้รับผิดชอบ{" "}
+          {canAssignOsm
+            ? "กำหนด อสม. ให้ผู้ป่วยหลายคนได้ในขั้นตอนถัดไป"
+            : "เจ้าของโรงพยาบาลเป็นผู้กำหนด อสม. หลังนำเข้า"}
+        </p>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        {hasAttentionRows ? (
+          <FailedRowsDownloadButton
+            failedRowNumbers={failedRowNumbers}
+            file={file}
+            preview={preview}
+          />
+        ) : null}
+        {summary.imported > 0 && canAssignOsm ? (
+          <Link
+            className={buttonClassName({ size: "compact", variant: "secondary" })}
+            href={`/app/patients/assign-osm?hospitalId=${encodeURIComponent(summary.targetHospitalId)}`}
+          >
+            กำหนด อสม.
+          </Link>
+        ) : null}
         <Button
           onClick={onNewImport}
           size="compact"
@@ -855,39 +709,11 @@ function ImportSummary({
   );
 }
 
-function createOsmAssignmentChoices(
-  preview: PatientImportPreviewBinding,
-  selectedReassignmentRows: ReadonlySet<number>,
-): PatientImportOsmAssignmentChoiceBinding[] {
-  return preview.osmAssignmentReconciliations.flatMap((reconciliation) => {
-    const candidate = selectedPatientImportOsmCandidate(reconciliation);
-
-    if (!candidate) {
-      return [];
-    }
-
-    const explicitReassignment = Boolean(
-      reconciliation.currentCaregiver &&
-        !candidate.sameAsCurrent &&
-        selectedReassignmentRows.has(reconciliation.rowNumber),
-    );
-
-    return [{
-      rowNumber: reconciliation.rowNumber,
-      resolutionStatus: reconciliation.resolutionStatus,
-      candidateToken: candidate.candidateToken,
-      candidateReferenceToken: candidate.candidateReferenceToken,
-      explicitReassignment,
-      ...(explicitReassignment && candidate.reassignmentToken
-        ? { reassignmentToken: candidate.reassignmentToken }
-        : {}),
-    }];
-  });
-}
 export function PatientProvisioningWorkspace({
   scopes,
   selectedHospitalId,
   selectedScope,
+  canAssignOsm = false,
 }: PatientProvisioningWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [provisionState, provisionAction, provisionPending] = useActionState<
@@ -903,11 +729,6 @@ export function PatientProvisioningWorkspace({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [effectiveDate, setEffectiveDate] = useState("");
-  const [selectedClassificationReconciliationRows, setSelectedClassificationReconciliationRows] =
-    useState<Set<number>>(new Set());
-  const [selectedOsmReassignmentRows, setSelectedOsmReassignmentRows] = useState<Set<number>>(
-    new Set(),
-  );
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
@@ -927,24 +748,14 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
-    setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
   }, [selectedHospitalId]);
 
   const importableRowCount = previewState.status === "SUCCESS"
-    ? countPatientImportExecutableRows(
-        previewState.preview,
-        selectedClassificationReconciliationRows,
-        selectedOsmReassignmentRows,
-      )
+    ? countPatientImportExecutableRows(previewState.preview)
     : 0;
   const attentionRowCount = previewState.status === "SUCCESS"
-    ? countPatientImportRowsRequiringAttention(
-        previewState.preview,
-        selectedClassificationReconciliationRows,
-        selectedOsmReassignmentRows,
-      )
+    ? countPatientImportRowsRequiringAttention(previewState.preview)
     : 0;
   const hasImportableRows = importableRowCount > 0;
   const previewAllRowsAlreadyExist = previewState.status === "SUCCESS" &&
@@ -964,8 +775,6 @@ export function PatientProvisioningWorkspace({
     setPreviewFile(null);
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
-    setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmReassignmentRows(new Set());
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -1042,13 +851,6 @@ export function PatientProvisioningWorkspace({
     const requestVersion = importContextVersion.current;
     const file = selectedFile;
     const preview = previewState.preview;
-    const classificationReconciliationChoices = preview.classificationReconciliations.filter(
-      ({ rowNumber }) => selectedClassificationReconciliationRows.has(rowNumber),
-    );
-    const osmAssignmentChoices = createOsmAssignmentChoices(
-      preview,
-      selectedOsmReassignmentRows,
-    );
 
     startImportTransition(async () => {
       const result = await confirmPatientImportAction(
@@ -1060,8 +862,6 @@ export function PatientProvisioningWorkspace({
           preview.previewBinding,
           preview.effectiveDate,
           preview.importContractVersion,
-          classificationReconciliationChoices,
-          osmAssignmentChoices,
         ),
       );
 
@@ -1070,34 +870,6 @@ export function PatientProvisioningWorkspace({
       }
 
       setImportState(result);
-    });
-  }
-
-  function toggleClassificationReconciliation(rowNumber: number, checked: boolean): void {
-    setSelectedClassificationReconciliationRows((current) => {
-      const next = new Set(current);
-
-      if (checked) {
-        next.add(rowNumber);
-      } else {
-        next.delete(rowNumber);
-      }
-
-      return next;
-    });
-  }
-
-  function toggleOsmReassignment(rowNumber: number, checked: boolean): void {
-    setSelectedOsmReassignmentRows((current) => {
-      const next = new Set(current);
-
-      if (checked) {
-        next.add(rowNumber);
-      } else {
-        next.delete(rowNumber);
-      }
-
-      return next;
     });
   }
 
@@ -1112,8 +884,6 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
-    setSelectedClassificationReconciliationRows(new Set());
-    setSelectedOsmReassignmentRows(new Set());
     setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
   }
@@ -1169,13 +939,15 @@ export function PatientProvisioningWorkspace({
               </p>
               <a
                 className={buttonClassName({ size: "compact", variant: "secondary" })}
-                download={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME}
-                href={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH}
+                download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
+                href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
               >
-                ดาวน์โหลด Template
+                ดาวน์โหลด Template ของ {selectedScope.hospitalName}
               </a>
               <p className="text-xs text-muted">รองรับสูงสุด 500 รายการต่อไฟล์</p>
-              <p className="text-xs text-muted">หากรูปแบบคอลัมน์ถูกแก้ไข ระบบอาจไม่รับไฟล์</p>
+              <p className="text-xs text-muted">
+                Template ใช้ได้กับโรงพยาบาลนี้เท่านั้น หากแก้ไขหัวตารางหรือเพิ่มคอลัมน์ ระบบจะไม่รับไฟล์
+              </p>
             </div>
             <LocalNavigation
               ariaLabel="รูปแบบการเพิ่มผู้ป่วย"
@@ -1238,6 +1010,7 @@ export function PatientProvisioningWorkspace({
                 <p className="mt-2 text-sm leading-6 text-muted">
                   ตรวจสอบผลลัพธ์ก่อนยืนยัน ระบบจะประมวลผลแต่ละแถวแยกกัน
                 </p>
+                <PatientImportUploadGuidance />
               </div>
 
               <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>
@@ -1321,10 +1094,10 @@ export function PatientProvisioningWorkspace({
                         size: "compact",
                         variant: "secondary",
                       })}
-                      download={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_FILENAME}
-                      href={PATIENT_IMPORT_TEMPLATE_DOWNLOAD_PATH}
+                      download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
+                      href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
                     >
-                      ดาวน์โหลด Template
+                      ดาวน์โหลด Template ของ {selectedScope.hospitalName}
                     </a>
                   </Alert>
                 ) : null}
@@ -1355,9 +1128,6 @@ export function PatientProvisioningWorkspace({
                       <p className="mt-1 text-sm leading-6 text-muted">
                         หากเปลี่ยนไฟล์ โรงพยาบาล หรือวันที่ข้อมูลตั้งต้น ต้องตรวจสอบใหม่
                       </p>
-                      <p className="mt-1 text-sm leading-6 text-muted">
-                        ติ๊กยืนยันเฉพาะการเปลี่ยนสถานะผู้ป่วยหรือผู้ดูแลที่ต้องการดำเนินการ
-                      </p>
                     </div>
 
                     <PreviewFileSummary
@@ -1367,14 +1137,16 @@ export function PatientProvisioningWorkspace({
                     />
 
                     {importState.status !== "SUCCESS" ? (
-                      <PreviewTable
-                        disabled={previewPending || importPending}
-                        onToggleReconciliation={toggleClassificationReconciliation}
-                        onToggleOsmReassignment={toggleOsmReassignment}
-                        preview={previewState.preview}
-                        selectedOsmReassignmentRows={selectedOsmReassignmentRows}
-                        selectedReconciliationRows={selectedClassificationReconciliationRows}
-                      />
+                      <>
+                        <PreviewTable preview={previewState.preview} />
+                        {attentionRowCount > 0 ? (
+                          <FailedRowsDownloadButton
+                            failedRowNumbers={[]}
+                            file={selectedFile}
+                            preview={previewState.preview}
+                          />
+                        ) : null}
+                      </>
                     ) : null}
 
                     {importState.status === "ERROR" ? (
@@ -1383,7 +1155,13 @@ export function PatientProvisioningWorkspace({
                       </Alert>
                     ) : null}
                     {importState.status === "SUCCESS" ? (
-                      <ImportSummary onNewImport={handleNewImport} summary={importState.summary} />
+                      <ImportSummary
+                        canAssignOsm={canAssignOsm}
+                        file={selectedFile}
+                        onNewImport={handleNewImport}
+                        preview={previewState.preview}
+                        summary={importState.summary}
+                      />
                     ) : null}
 
                     <div
@@ -1392,11 +1170,11 @@ export function PatientProvisioningWorkspace({
                     >
                       {importableRowCount > 0 ? (
                         <p className="font-semibold text-ink">
-                          พร้อมนำเข้า {importableRowCount} จาก {previewState.preview.rows.length} รายการ
+                          พร้อมนำเข้าผู้ป่วยใหม่ {importableRowCount} จาก {previewState.preview.rows.length} รายการ
                         </p>
                       ) : previewAllRowsAlreadyExist ? (
                         <p className="font-semibold text-ink">
-                          ข้อมูลทั้งหมดมีอยู่แล้ว ไม่มีรายการที่ต้องบันทึกเพิ่ม
+                          ผู้ป่วยทั้งหมดมีอยู่แล้ว ไม่มีผู้ป่วยใหม่ที่ต้องบันทึก
                         </p>
                       ) : (
                         <p className="font-semibold text-warning">
@@ -1405,7 +1183,7 @@ export function PatientProvisioningWorkspace({
                       )}
                       {importableRowCount > 0 && attentionRowCount > 0 ? (
                         <p className="mt-1 text-muted">
-                          ระบบจะนำเข้าเฉพาะรายการที่พร้อม ส่วนรายการที่ต้องตรวจสอบจะไม่ถูกบันทึก
+                          ระบบจะนำเข้าเฉพาะผู้ป่วยใหม่ที่พร้อม ส่วนรายการที่ต้องแก้ไขจะไม่ถูกบันทึก
                         </p>
                       ) : null}
                     </div>

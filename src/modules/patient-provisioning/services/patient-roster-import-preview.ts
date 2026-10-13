@@ -3,25 +3,12 @@ import "server-only";
 import {
   Role,
   UserStatus,
+  type Prisma,
 } from "@prisma/client";
-import { z } from "zod";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import {
-  decidePatientOsmAssignmentPolicy,
-  PATIENT_ASSIGN_OSM_CAPABILITY,
-} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
-import {
-  buildRosterOsmAssignmentPreview,
-  listEligibleRosterOsmCandidates,
-  normalizeRosterOsmCaregiverName,
-  type PatientOsmRosterAssignmentPreviewInternal,
-  type PatientOsmRosterCandidate,
-} from "@/modules/patient-assignment/services/patient-osm-roster-resolver";
-import { formatPatientOsmDisplayName } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
-import {
-  dateOnlyToUtcDate,
   patientBaselineCreateRequestSchema,
   patientBaselineDateOnlySchema,
   patientBaselineMeasurementSchema,
@@ -41,19 +28,15 @@ import {
   PATIENT_PROVISIONING_CAPABILITY,
 } from "../policies/patient-provisioning-policy";
 import {
-  patientImportClassificationReconciliationSchema,
-  patientImportOsmAssignmentChoiceSchema,
   patientProvisionInputSchema,
   patientProvisionScopeSchema,
 } from "../schemas/patient-provisioning-schemas";
-import { normalizePatientImportOrganizationText } from "../import/patient-import-layouts";
 import {
   PATIENT_IMPORT_BASELINE_FIELD_KEYS,
   PATIENT_IMPORT_CONTRACT_VERSION,
   PATIENT_IMPORT_FIELD_KEYS,
   isPatientImportBaselineField,
   isPatientImportClassificationField,
-  isPatientImportOsmAssignmentField,
   type PatientImportBaselineFieldKey,
   type PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
@@ -65,18 +48,14 @@ import type {
   PatientImportBaselineStatus,
   PatientImportClassification,
   PatientImportClassificationPreview,
-  PatientImportClassificationReconciliationChoice,
   PatientImportOptions,
-  PatientImportOsmAssignmentChoice,
-  PatientImportOsmAssignmentPreview,
   PatientImportPreview,
-  PatientImportPreviewInternal,
-  PatientImportPreviewRowInternal,
+  PatientImportPreviewRow,
   PatientRosterImportDatabase,
   PatientRosterImportServiceDependencies,
 } from "./patient-roster-import-types";
 
-type PreviewPerson = {
+export type PreviewPerson = {
   id: string;
   identityKeyHash: string;
   givenName: string | null;
@@ -95,30 +74,9 @@ type PreviewPerson = {
     hospitalRelationships: {
       id: string;
       hospitalNumber: string | null;
-      baseline: PreviewBaseline | null;
-      osmAssignments: {
-        osmUserId: string;
-        osmUser: {
-          person: {
-            givenName: string | null;
-            familyName: string | null;
-          };
-        };
-      }[];
     }[];
   } | null;
 };
-
-type PreviewBaseline = {
-  recordedOn: Date;
-  weight: number | null;
-  heightCm: number | null;
-  waistCircumference: number | null;
-  bloodSugarDtx: number | null;
-  hba1c: number | null;
-};
-
-type PreviewRelationship = NonNullable<PreviewPerson["patientProfile"]>["hospitalRelationships"][number];
 
 type BaselineImportTargetField =
   | "weight"
@@ -154,17 +112,38 @@ const emptyBaselineImportValues: BaselineImportValues = {
   hba1c: null,
 };
 
-const emptyPatientOsmAssignmentPreview: PatientOsmRosterAssignmentPreviewInternal = {
-  resolutionStatus: "OSM_NOT_APPLICABLE",
-  assignmentStatus: null,
-  sourceCaregiverName: null,
-  normalizedSourceCaregiverName: null,
-  currentOsmUserId: null,
-  currentCaregiverDisplayName: null,
-  resolvedOsmUserId: null,
-  resolvedCandidateDisplayName: null,
-  candidates: [],
-};
+/** The person fields an identity check needs, scoped to the target Hospital's relationship. */
+export function buildPreviewPersonSelect(targetHospitalId: string) {
+  return {
+    id: true,
+    identityKeyHash: true,
+    givenName: true,
+    familyName: true,
+    user: {
+      select: {
+        id: true,
+        status: true,
+        authSubject: true,
+        roles: { select: { role: true } },
+      },
+    },
+    patientProfile: {
+      select: {
+        id: true,
+        patientClassification: {
+          select: { classification: true },
+        },
+        hospitalRelationships: {
+          where: { hospitalId: targetHospitalId },
+          select: {
+            id: true,
+            hospitalNumber: true,
+          },
+        },
+      },
+    },
+  } satisfies Prisma.PersonSelect;
+}
 
 export function getImportNow(dependencies: PatientRosterImportServiceDependencies): Date {
   const now = dependencies.now ? dependencies.now() : new Date();
@@ -180,8 +159,6 @@ export function getImportNow(dependencies: PatientRosterImportServiceDependencie
 export function normalizeImportOptions(options: PatientImportOptions): {
   effectiveDate: string | null;
   importContractVersion: typeof PATIENT_IMPORT_CONTRACT_VERSION;
-  classificationReconciliationChoices: readonly PatientImportClassificationReconciliationChoice[];
-  osmAssignmentChoices: readonly PatientImportOsmAssignmentChoice[];
 } {
   const effectiveDate = options.effectiveDate ?? null;
 
@@ -195,58 +172,7 @@ export function normalizeImportOptions(options: PatientImportOptions): {
     throw new ValidationError("เวอร์ชันการนำเข้าไม่ถูกต้อง");
   }
 
-  const parsedChoices = z
-    .array(patientImportClassificationReconciliationSchema)
-    .max(500)
-    .safeParse(options.classificationReconciliationChoices ?? []);
-
-  if (!parsedChoices.success) {
-    throw new ValidationError("การยืนยันเปลี่ยนสถานะผู้ป่วยไม่ถูกต้อง");
-  }
-
-  const choices = parsedChoices.data;
-  const rowNumbers = new Set<number>();
-
-  for (const choice of choices) {
-    if (
-      rowNumbers.has(choice.rowNumber) ||
-      choice.currentClassification === choice.sourceClassification
-    ) {
-      throw new ValidationError("การยืนยันเปลี่ยนสถานะผู้ป่วยไม่ถูกต้อง");
-    }
-
-    rowNumbers.add(choice.rowNumber);
-  }
-
-  const parsedOsmChoices = z
-    .array(patientImportOsmAssignmentChoiceSchema)
-    .max(500)
-    .safeParse(options.osmAssignmentChoices ?? []);
-
-  if (!parsedOsmChoices.success) {
-    throw new ValidationError("การยืนยันผู้ดูแลจากไฟล์ไม่ถูกต้อง");
-  }
-
-  const osmRowNumbers = new Set<number>();
-
-  for (const choice of parsedOsmChoices.data) {
-    if (
-      osmRowNumbers.has(choice.rowNumber) ||
-      normalizeRosterOsmCaregiverName(choice.sourceCaregiverName) !==
-        choice.normalizedSourceCaregiverName
-    ) {
-      throw new ValidationError("การยืนยันผู้ดูแลจากไฟล์ไม่ถูกต้อง");
-    }
-
-    osmRowNumbers.add(choice.rowNumber);
-  }
-
-  return {
-    effectiveDate,
-    importContractVersion,
-    classificationReconciliationChoices: choices,
-    osmAssignmentChoices: parsedOsmChoices.data,
-  };
+  return { effectiveDate, importContractVersion };
 }
 
 function hasBaselineSourceAssertion(
@@ -276,7 +202,6 @@ export function readBaselineImportState(
     }
 
     if (
-      (sourceField === "height" && clinical.heightUnit !== "cm") ||
       candidate.canonicalRow.fieldAssessments[sourceField].diagnostics.length > 0 ||
       value === null ||
       !patientBaselineMeasurementSchema.safeParse(value).success
@@ -304,29 +229,10 @@ export function readBaselineImportState(
   return { status: "BASELINE_READY", effectiveDate, presentFields, values };
 }
 
-export function baselineImportMatchesExisting(
-  state: BaselineImportState,
-  existing: PreviewBaseline,
-): boolean {
-  if (state.status !== "BASELINE_READY" || state.effectiveDate === null) {
-    return false;
-  }
-
-  if (existing.recordedOn.getTime() !== dateOnlyToUtcDate(state.effectiveDate).getTime()) {
-    return false;
-  }
-
-  return state.presentFields.every((field) => existing[field] === state.values[field]);
-}
-
 export function baselineImportReason(status: PatientImportBaselineStatus): string | null {
   switch (status) {
     case "BASELINE_READY":
       return "ข้อมูลตั้งต้นพร้อมบันทึกตามวันที่ที่เลือก";
-    case "BASELINE_ALREADY_EXISTS":
-      return "ข้อมูลตั้งต้นชุดเดียวกันมีอยู่แล้ว ระบบจะไม่สร้างซ้ำ";
-    case "BASELINE_CONFLICT":
-      return "ข้อมูลตั้งต้นจากไฟล์ขัดแย้งกับข้อมูลที่บันทึกไว้แล้ว ต้องตรวจสอบก่อนนำเข้า";
     case "BASELINE_DATE_REQUIRED":
       return "ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า";
     case "BASELINE_DATA_INVALID":
@@ -345,16 +251,16 @@ function hasClassificationSourceAssertion(
   return value !== null || assessment.diagnostics.length > 0;
 }
 
+/**
+ * Classification belongs to the patient profile and import never changes one that
+ * is already set: it is only recorded when the profile has none yet.
+ */
 export function readPatientClassificationImportState(
   candidate: PatientProvisioningImportCandidate,
   currentClassification: PatientClassificationType | null,
 ): PatientImportClassificationPreview {
   if (!hasClassificationSourceAssertion(candidate)) {
-    return {
-      status: "NOT_APPLICABLE",
-      currentClassification,
-      sourceClassification: null,
-    };
+    return { status: "NOT_APPLICABLE", sourceClassification: null };
   }
 
   const sourceClassification = candidate.canonicalRow.clinicalCandidates.diabetesClassification;
@@ -366,35 +272,12 @@ export function readPatientClassificationImportState(
     !parsedSourceClassification.success ||
     assessment.diagnostics.length > 0
   ) {
-    return {
-      status: "CLASSIFICATION_DATA_INVALID",
-      currentClassification,
-      sourceClassification: null,
-    };
-  }
-
-  const normalizedSourceClassification = parsedSourceClassification.data;
-
-  if (currentClassification === null) {
-    return {
-      status: "CLASSIFICATION_READY",
-      currentClassification,
-      sourceClassification: normalizedSourceClassification,
-    };
-  }
-
-  if (currentClassification === normalizedSourceClassification) {
-    return {
-      status: "CLASSIFICATION_ALREADY_EXISTS",
-      currentClassification,
-      sourceClassification: normalizedSourceClassification,
-    };
+    return { status: "CLASSIFICATION_DATA_INVALID", sourceClassification: null };
   }
 
   return {
-    status: "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION",
-    currentClassification,
-    sourceClassification: normalizedSourceClassification,
+    status: currentClassification === null ? "CLASSIFICATION_READY" : "CLASSIFICATION_ALREADY_EXISTS",
+    sourceClassification: parsedSourceClassification.data,
   };
 }
 
@@ -405,9 +288,7 @@ export function classificationImportReason(
     case "CLASSIFICATION_READY":
       return "สถานะผู้ป่วยจากไฟล์พร้อมบันทึก";
     case "CLASSIFICATION_ALREADY_EXISTS":
-      return "สถานะผู้ป่วยตรงกับข้อมูลปัจจุบัน ระบบจะไม่สร้างประวัติซ้ำ";
-    case "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION":
-      return "สถานะผู้ป่วยจากไฟล์แตกต่างจากสถานะปัจจุบัน ต้องยืนยันการเปลี่ยนแปลงโดยชัดเจน";
+      return "ผู้ป่วยมีสถานะอยู่แล้ว ระบบจะไม่เปลี่ยนสถานะเดิม";
     case "CLASSIFICATION_DATA_INVALID":
       return "สถานะผู้ป่วยจากไฟล์ไม่ใช่ค่าที่รองรับ";
     default:
@@ -446,10 +327,16 @@ function hasNameConflict(
   );
 }
 
+/**
+ * Identity check for a person that already exists. A patient that already has a
+ * relationship with the target Hospital is `ALREADY_EXISTS` or `CONFLICT` and
+ * nothing else about them is evaluated; a person known only elsewhere is `READY`
+ * (a new relationship with this Hospital).
+ */
 export function classifyExistingPatient(
   existing: PreviewPerson,
   input: NonNullable<PatientProvisioningImportCandidate["input"]>,
-): { classification: PatientImportClassification; reason: string | null } {
+): { classification: "READY" | "ALREADY_EXISTS" | "CONFLICT"; reason: string | null } {
   if (hasNameConflict(existing, input)) {
     return {
       classification: "CONFLICT",
@@ -470,8 +357,12 @@ export function classifyExistingPatient(
 
   const relationship = existing.patientProfile?.hospitalRelationships[0];
 
+  if (!relationship) {
+    return { classification: "READY", reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
+  }
+
   if (
-    relationship?.hospitalNumber &&
+    relationship.hospitalNumber &&
     input.hospitalNumber &&
     relationship.hospitalNumber !== input.hospitalNumber
   ) {
@@ -483,11 +374,17 @@ export function classifyExistingPatient(
 
   const hasPatientRole = existing.user?.roles.some(({ role }) => role === Role.PATIENT) ?? false;
 
-  if (relationship && hasPatientRole) {
-    return { classification: "ALREADY_EXISTS", reason: "มีข้อมูลผู้ป่วยและความสัมพันธ์นี้แล้ว" };
+  if (!hasPatientRole) {
+    return {
+      classification: "CONFLICT",
+      reason: "ข้อมูลผู้ป่วยเดิมอยู่ในสถานะที่ต้องตรวจสอบโดยผู้ดูแล",
+    };
   }
 
-  return { classification: "READY", reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
+  return {
+    classification: "ALREADY_EXISTS",
+    reason: "มีผู้ป่วยรายนี้ในโรงพยาบาลแล้ว ระบบไม่เปลี่ยนแปลงข้อมูลเดิม",
+  };
 }
 
 function toPreviewRow(
@@ -497,33 +394,29 @@ function toPreviewRow(
   baselineStatus: PatientImportBaselineStatus = "NOT_APPLICABLE",
   patientClassification: PatientImportClassificationPreview = {
     status: "NOT_APPLICABLE",
-    currentClassification: null,
     sourceClassification: null,
   },
-  patientOsmAssignment: PatientOsmRosterAssignmentPreviewInternal =
-    emptyPatientOsmAssignmentPreview,
-): PatientImportPreviewRowInternal {
-  const requirementGatedFields = PATIENT_IMPORT_FIELD_KEYS.filter((field) => {
-    if (
-      field === "nationalId" ||
-      field === "givenName" ||
-      field === "familyName" ||
-      field === "hospitalNumber"
-    ) {
-      return false;
-    }
+): PatientImportPreviewRow {
+  const requirementGatedFields =
+    classification === "READY"
+      ? PATIENT_IMPORT_FIELD_KEYS.filter((field) => {
+          if (
+            field === "nationalId" ||
+            field === "givenName" ||
+            field === "familyName" ||
+            field === "hospitalNumber"
+          ) {
+            return false;
+          }
 
-    if (
-      isPatientImportBaselineField(field) ||
-      isPatientImportClassificationField(field) ||
-      isPatientImportOsmAssignmentField(field)
-    ) {
-      return false;
-    }
+          if (isPatientImportBaselineField(field) || isPatientImportClassificationField(field)) {
+            return false;
+          }
 
-    const assessment = candidate.canonicalRow.fieldAssessments[field];
-    return assessment.present && assessment.status !== "NOT_PRESENT";
-  });
+          const assessment = candidate.canonicalRow.fieldAssessments[field];
+          return assessment.present && assessment.status !== "NOT_PRESENT";
+        })
+      : [];
 
   const diagnosticCodes = [...new Set(candidate.canonicalRow.diagnostics.map(({ code }) => code))];
 
@@ -532,7 +425,6 @@ function toPreviewRow(
     identityDisplay: candidate.identityDisplay,
     givenName: candidate.givenName,
     familyName: candidate.familyName,
-    combinedNameText: candidate.combinedNameText,
     hospitalNumber: candidate.hospitalNumber,
     classification,
     reason:
@@ -545,211 +437,7 @@ function toPreviewRow(
     requirementGatedFields,
     diagnosticCodes,
     patientClassification,
-    patientOsmAssignment,
   };
-}
-
-export function toPublicPatientOsmAssignmentPreview(
-  preview: PatientOsmRosterAssignmentPreviewInternal,
-): PatientImportOsmAssignmentPreview {
-  return {
-    resolutionStatus: preview.resolutionStatus,
-    assignmentStatus: preview.assignmentStatus,
-    sourceCaregiverName: preview.sourceCaregiverName,
-    currentCaregiver: preview.currentCaregiverDisplayName
-      ? { displayName: preview.currentCaregiverDisplayName }
-      : null,
-    resolvedCandidate: preview.resolvedCandidateDisplayName
-      ? { displayName: preview.resolvedCandidateDisplayName }
-      : null,
-    candidates:
-      preview.resolutionStatus === "OSM_MATCHED"
-        ? preview.candidates.map(({ displayName }) => ({ displayName }))
-        : [],
-  };
-}
-
-export function projectPatientRosterImportPreview(
-  preview: PatientImportPreviewInternal,
-): PatientImportPreview {
-  return {
-    ...preview,
-    rows: preview.rows.map((row) => ({
-      ...row,
-      patientOsmAssignment: toPublicPatientOsmAssignmentPreview(row.patientOsmAssignment),
-    })),
-  };
-}
-
-export function applyPatientOsmPreviewState(
-  baselineClassification: {
-    classification: PatientImportClassification;
-    reason: string | null;
-  },
-  patientOsmAssignment: PatientOsmRosterAssignmentPreviewInternal,
-): {
-  classification: PatientImportClassification;
-  reason: string | null;
-} {
-  if (
-    baselineClassification.classification === "INVALID" ||
-    baselineClassification.classification === "CONFLICT" ||
-    baselineClassification.classification === "DUPLICATE_IN_FILE" ||
-    baselineClassification.classification === "HOSPITAL_MISMATCH"
-  ) {
-    return baselineClassification;
-  }
-
-  const resolutionReason =
-    patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND"
-      ? "ไม่พบ อสม./โค้ชที่ตรงกับชื่อในโรงพยาบาลนี้ ต้องตรวจสอบก่อนนำเข้า"
-      : patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS"
-        ? "พบผู้ดูแลชื่อเดียวกันมากกว่า 1 คน และยังไม่มีข้อมูลเพียงพอที่จะระบุผู้ดูแลที่ถูกต้อง"
-        : patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN"
-          ? "ไม่สามารถกำหนดตนเองเป็นผู้ดูแลผู้ป่วยได้"
-          : patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID"
-            ? "ชื่อผู้ดูแลจากไฟล์ไม่ถูกต้อง ต้องตรวจสอบก่อนนำเข้า"
-            : patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT"
-              ? "ผู้ดูแลปัจจุบันแตกต่างจากไฟล์ ต้องยืนยันการเปลี่ยนแปลงโดยเจ้าของโรงพยาบาล"
-              : patientOsmAssignment.assignmentStatus === "OSM_OWNER_REQUIRED"
-                ? "การกำหนดหรือเปลี่ยนผู้ดูแลจากไฟล์ต้องดำเนินการโดยเจ้าของโรงพยาบาล"
-                : null;
-
-  const isBlocking =
-    patientOsmAssignment.resolutionStatus === "OSM_NOT_FOUND" ||
-    patientOsmAssignment.resolutionStatus === "OSM_AMBIGUOUS" ||
-    patientOsmAssignment.resolutionStatus === "OSM_SELF_ASSIGNMENT_FORBIDDEN" ||
-    patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID" ||
-    patientOsmAssignment.assignmentStatus === "OSM_ASSIGNMENT_CONFLICT" ||
-    patientOsmAssignment.assignmentStatus === "OSM_OWNER_REQUIRED";
-
-  return isBlocking
-    ? {
-        classification:
-          patientOsmAssignment.resolutionStatus === "OSM_DATA_INVALID"
-            ? "INVALID"
-            : "NEEDS_REVIEW",
-        reason: resolutionReason,
-      }
-    : baselineClassification;
-}
-
-export function hasHospitalTextMismatch(
-  candidate: PatientProvisioningImportCandidate,
-  targetHospitalName: string,
-): boolean {
-  const sourceHospitalName = candidate.canonicalRow.organizationCandidates.hospitalName;
-
-  if (!sourceHospitalName) {
-    return false;
-  }
-
-  return (
-    normalizePatientImportOrganizationText(sourceHospitalName) !==
-    normalizePatientImportOrganizationText(targetHospitalName)
-  );
-}
-
-export function applyBaselinePreviewState(
-  coreClassification: PatientImportClassification,
-  coreReason: string | null,
-  baselineState: BaselineImportState,
-  existingBaseline: PreviewBaseline | null,
-): {
-  classification: PatientImportClassification;
-  reason: string | null;
-  baselineStatus: PatientImportBaselineStatus;
-} {
-  if (baselineState.status === "NOT_APPLICABLE") {
-    return {
-      classification: coreClassification,
-      reason: coreReason,
-      baselineStatus: baselineState.status,
-    };
-  }
-
-  if (
-    baselineState.status === "BASELINE_DATA_INVALID" ||
-    baselineState.status === "BASELINE_DATE_REQUIRED"
-  ) {
-    return {
-      classification: coreClassification === "CONFLICT" ? coreClassification : "INVALID",
-      reason:
-        coreClassification === "CONFLICT"
-          ? coreReason
-          : baselineImportReason(baselineState.status),
-      baselineStatus: baselineState.status,
-    };
-  }
-
-  if (!existingBaseline) {
-    return {
-      classification: coreClassification === "ALREADY_EXISTS" ? "READY" : coreClassification,
-      reason:
-        coreClassification === "ALREADY_EXISTS"
-          ? "ผู้ป่วยมีข้อมูลอยู่แล้ว แต่พร้อมบันทึกข้อมูลตั้งต้น"
-          : coreReason,
-      baselineStatus: baselineState.status,
-    };
-  }
-
-  if (baselineImportMatchesExisting(baselineState, existingBaseline)) {
-    return {
-      classification: coreClassification === "CONFLICT" ? coreClassification : "ALREADY_EXISTS",
-      reason:
-        coreClassification === "CONFLICT"
-          ? coreReason
-          : baselineImportReason("BASELINE_ALREADY_EXISTS"),
-      baselineStatus: "BASELINE_ALREADY_EXISTS",
-    };
-  }
-
-  return {
-    classification: coreClassification === "CONFLICT" ? coreClassification : "CONFLICT",
-    reason:
-      coreClassification === "CONFLICT"
-        ? coreReason
-        : baselineImportReason("BASELINE_CONFLICT"),
-    baselineStatus: "BASELINE_CONFLICT",
-  };
-}
-
-export function applyPatientClassificationPreviewState(
-  baselinePreview: {
-    classification: PatientImportClassification;
-    reason: string | null;
-    baselineStatus: PatientImportBaselineStatus;
-  },
-  patientClassification: PatientImportClassificationPreview,
-): {
-  classification: PatientImportClassification;
-  reason: string | null;
-} {
-  if (
-    baselinePreview.classification === "CONFLICT" ||
-    baselinePreview.classification === "DUPLICATE_IN_FILE" ||
-    baselinePreview.classification === "HOSPITAL_MISMATCH"
-  ) {
-    return baselinePreview;
-  }
-
-  if (patientClassification.status === "CLASSIFICATION_DATA_INVALID") {
-    return {
-      ...baselinePreview,
-      classification: "INVALID",
-      reason: classificationImportReason(patientClassification),
-    };
-  }
-
-  if (patientClassification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION") {
-    return {
-      ...baselinePreview,
-      classification: "NEEDS_REVIEW",
-      reason: classificationImportReason(patientClassification),
-    };
-  }
-
-  return baselinePreview;
 }
 
 export function normalizeImportCandidates(
@@ -813,144 +501,64 @@ export function validateRosterImportTarget(
   return parsedScope.data.targetHospitalId;
 }
 
-export function buildEligibleOsmCandidateIndex(
-  candidates: readonly PatientOsmRosterCandidate[],
-): Map<string, PatientOsmRosterCandidate[]> {
-  const candidatesByName = new Map<string, PatientOsmRosterCandidate[]>();
-
-  for (const candidate of candidates) {
-    const normalizedDisplayName = normalizeRosterOsmCaregiverName(candidate.displayName);
-
-    if (!normalizedDisplayName) {
-      continue;
-    }
-
-    const candidatesForName = candidatesByName.get(normalizedDisplayName);
-
-    if (candidatesForName) {
-      candidatesForName.push(candidate);
-    } else {
-      candidatesByName.set(normalizedDisplayName, [candidate]);
-    }
-  }
-
-  return candidatesByName;
-}
-
-export function buildPatientOsmAssignmentPreview(
-  candidate: PatientProvisioningImportCandidate,
-  existingRelationship: PreviewRelationship | undefined,
-  eligibleOsmCandidatesByName: ReadonlyMap<string, readonly PatientOsmRosterCandidate[]>,
-  actor: ActorContext,
-  targetHospitalId: string,
-): PatientOsmRosterAssignmentPreviewInternal {
-  const currentAssignment = existingRelationship?.osmAssignments[0]
-    ? {
-        osmUserId: existingRelationship.osmAssignments[0].osmUserId,
-        displayName: formatPatientOsmDisplayName(
-          existingRelationship.osmAssignments[0].osmUser.person,
-        ),
-      }
-    : null;
-  const normalizedSourceCaregiverName = normalizeRosterOsmCaregiverName(
-    candidate.canonicalRow.caregiverCandidates.osmCaregiverName,
-  );
-
-  return buildRosterOsmAssignmentPreview({
-    sourceCaregiverName: candidate.canonicalRow.caregiverCandidates.osmCaregiverName,
-    sourceDiagnostics: candidate.canonicalRow.fieldAssessments.osmCaregiverName.diagnostics,
-    currentAssignment,
-    candidates: normalizedSourceCaregiverName
-      ? eligibleOsmCandidatesByName.get(normalizedSourceCaregiverName) ?? []
-      : [],
-    actor,
-    targetHospitalId,
-  });
-}
-
 export function composePatientRosterPreviewRow(input: {
   candidate: PatientProvisioningImportCandidate;
   hash: string | undefined;
   duplicateCount: number;
   existing: PreviewPerson | undefined;
-  targetHospitalName: string;
-  eligibleOsmCandidatesByName: ReadonlyMap<string, readonly PatientOsmRosterCandidate[]>;
-  actor: ActorContext;
-  targetHospitalId: string;
   effectiveDate: string | null;
-}): PatientImportPreviewRowInternal {
-  const existingRelationship = input.existing?.patientProfile?.hospitalRelationships[0];
-  const patientOsmAssignment = buildPatientOsmAssignmentPreview(
-    input.candidate,
-    existingRelationship,
-    input.eligibleOsmCandidatesByName,
-    input.actor,
-    input.targetHospitalId,
-  );
-
+}): PatientImportPreviewRow {
   if (!input.candidate.input) {
-    return toPreviewRow(
-      input.candidate,
-      "INVALID",
-      input.candidate.validationMessage,
-      "NOT_APPLICABLE",
-      undefined,
-      patientOsmAssignment,
-    );
-  }
-
-  if (hasHospitalTextMismatch(input.candidate, input.targetHospitalName)) {
-    return toPreviewRow(
-      input.candidate,
-      "HOSPITAL_MISMATCH",
-      "ชื่อโรงพยาบาลในไฟล์ไม่ตรงกับโรงพยาบาลที่เลือก ต้องตรวจสอบก่อนนำเข้า",
-      "NOT_APPLICABLE",
-      undefined,
-      patientOsmAssignment,
-    );
+    return toPreviewRow(input.candidate, "INVALID", input.candidate.validationMessage);
   }
 
   if (input.hash && input.duplicateCount > 1) {
-    return toPreviewRow(
-      input.candidate,
-      "DUPLICATE_IN_FILE",
-      "พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน",
-      "NOT_APPLICABLE",
-      undefined,
-      patientOsmAssignment,
-    );
+    return toPreviewRow(input.candidate, "DUPLICATE_IN_FILE", "พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
   }
 
-  const coreClassification = input.existing
+  const identity = input.existing
     ? classifyExistingPatient(input.existing, input.candidate.input)
     : { classification: "READY" as const, reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
+
+  if (identity.classification !== "READY") {
+    return toPreviewRow(input.candidate, identity.classification, identity.reason);
+  }
+
   const patientClassification = readPatientClassificationImportState(
     input.candidate,
     input.existing?.patientProfile?.patientClassification?.classification ?? null,
   );
   const baselineState = readBaselineImportState(input.candidate, input.effectiveDate);
-  const baselinePreview = applyBaselinePreviewState(
-    coreClassification.classification,
-    coreClassification.reason,
-    baselineState,
-    existingRelationship?.baseline ?? null,
-  );
-  const classificationPreview = applyPatientClassificationPreviewState(
-    baselinePreview,
-    patientClassification,
-  );
-  const osmPreview = applyPatientOsmPreviewState(
-    classificationPreview,
-    patientOsmAssignment,
-  );
+
+  if (
+    baselineState.status === "BASELINE_DATA_INVALID" ||
+    baselineState.status === "BASELINE_DATE_REQUIRED"
+  ) {
+    return toPreviewRow(
+      input.candidate,
+      "INVALID",
+      baselineImportReason(baselineState.status),
+      baselineState.status,
+      patientClassification,
+    );
+  }
+
+  if (patientClassification.status === "CLASSIFICATION_DATA_INVALID") {
+    return toPreviewRow(
+      input.candidate,
+      "INVALID",
+      classificationImportReason(patientClassification),
+      baselineState.status,
+      patientClassification,
+    );
+  }
 
   return toPreviewRow(
     input.candidate,
-    osmPreview.classification,
-    osmPreview.reason,
-    baselinePreview.baselineStatus,
+    "READY",
+    identity.reason,
+    baselineState.status,
     patientClassification,
-    patientOsmAssignment,
   );
 }
 
@@ -962,10 +570,8 @@ export async function preparePatientRosterImportPreview(
   normalizedOptions: {
     effectiveDate: string | null;
     importContractVersion: typeof PATIENT_IMPORT_CONTRACT_VERSION;
-    classificationReconciliationChoices: readonly PatientImportClassificationReconciliationChoice[];
-    osmAssignmentChoices: readonly PatientImportOsmAssignmentChoice[];
   },
-): Promise<PatientImportPreviewInternal> {
+): Promise<PatientImportPreview> {
   try {
     await assertPatientProvisioningActorInDatabase(
       database,
@@ -973,14 +579,6 @@ export async function preparePatientRosterImportPreview(
       targetHospitalId,
       "BULK",
     );
-    const targetHospital = await database.hospital.findUnique({
-      where: { id: targetHospitalId },
-      select: { name: true },
-    });
-
-    if (!targetHospital) {
-      throw new ForbiddenError();
-    }
 
     const hashByRow = new Map<number, string>();
     const counts = new Map<string, number>();
@@ -999,83 +597,12 @@ export async function preparePatientRosterImportPreview(
     const people = hashes.length
       ? await database.person.findMany({
           where: { identityKeyHash: { in: hashes } },
-          select: {
-            id: true,
-            identityKeyHash: true,
-            givenName: true,
-            familyName: true,
-            user: {
-              select: {
-                id: true,
-                status: true,
-                authSubject: true,
-                roles: { select: { role: true } },
-              },
-            },
-            patientProfile: {
-              select: {
-                id: true,
-                patientClassification: {
-                  select: { classification: true },
-                },
-                hospitalRelationships: {
-                  where: { hospitalId: targetHospitalId },
-                  select: {
-                    id: true,
-                    hospitalNumber: true,
-                    baseline: {
-                      select: {
-                        recordedOn: true,
-                        weight: true,
-                        heightCm: true,
-                        waistCircumference: true,
-                        bloodSugarDtx: true,
-                        hba1c: true,
-                      },
-                    },
-                    osmAssignments: {
-                      where: { endedAt: null },
-                      take: 1,
-                      select: {
-                        osmUserId: true,
-                        osmUser: {
-                          select: {
-                            person: {
-                              select: {
-                                givenName: true,
-                                familyName: true,
-                              },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
+          select: buildPreviewPersonSelect(targetHospitalId),
         })
       : [];
     const existingByHash = new Map<string, PreviewPerson>(
       people.map((person) => [person.identityKeyHash, person]),
     );
-
-    const hasOsmSourceAssertion = normalizedCandidates.some((candidate) => {
-      const sourceName = candidate.canonicalRow.caregiverCandidates.osmCaregiverName;
-      const diagnostics = candidate.canonicalRow.fieldAssessments.osmCaregiverName.diagnostics;
-
-      return sourceName !== null || diagnostics.length > 0;
-    });
-    const eligibleOsmCandidates = hasOsmSourceAssertion
-      ? await listEligibleRosterOsmCandidates(database, targetHospitalId)
-      : [];
-    const eligibleOsmCandidatesByName = buildEligibleOsmCandidateIndex(eligibleOsmCandidates);
-    const canManageOsmAssignment = decidePatientOsmAssignmentPolicy({
-      actor,
-      capability: PATIENT_ASSIGN_OSM_CAPABILITY,
-      targetHospitalId,
-    }).allowed;
 
     const rows = normalizedCandidates.map((candidate) => {
       const hash = hashByRow.get(candidate.rowNumber);
@@ -1085,25 +612,9 @@ export async function preparePatientRosterImportPreview(
         hash,
         duplicateCount: hash ? counts.get(hash) ?? 0 : 0,
         existing: hash ? existingByHash.get(hash) : undefined,
-        targetHospitalName: targetHospital.name,
-        eligibleOsmCandidatesByName,
-        actor,
-        targetHospitalId,
         effectiveDate: normalizedOptions.effectiveDate,
       });
     });
-
-    const classificationReconciliations = rows.flatMap((row) =>
-      row.patientClassification.status === "CLASSIFICATION_CHANGE_REQUIRES_CONFIRMATION" &&
-      row.patientClassification.currentClassification &&
-      row.patientClassification.sourceClassification
-        ? [{
-            rowNumber: row.rowNumber,
-            currentClassification: row.patientClassification.currentClassification,
-            sourceClassification: row.patientClassification.sourceClassification,
-          }]
-        : [],
-    );
 
     return {
       targetHospitalId,
@@ -1114,8 +625,6 @@ export async function preparePatientRosterImportPreview(
       ),
       file: normalizedCandidates.find((candidate) => candidate.fileMetadata)?.fileMetadata ?? null,
       rows,
-      classificationReconciliations,
-      canManageOsmAssignment,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -1127,21 +636,13 @@ export async function preparePatientRosterImportPreview(
 }
 
 export const patientRosterImportPreviewInternals = {
-  applyBaselinePreviewState,
-  applyPatientClassificationPreviewState,
-  applyPatientOsmPreviewState,
-  baselineImportMatchesExisting,
   baselineImportReason,
-  buildEligibleOsmCandidateIndex,
   buildBaselineCreateInput,
-  buildPatientOsmAssignmentPreview,
   classifyExistingPatient,
   classificationImportReason,
   composePatientRosterPreviewRow,
-  hasHospitalTextMismatch,
   normalizeImportCandidates,
   normalizeImportOptions,
   readBaselineImportState,
   readPatientClassificationImportState,
-  toPublicPatientOsmAssignmentPreview,
 };

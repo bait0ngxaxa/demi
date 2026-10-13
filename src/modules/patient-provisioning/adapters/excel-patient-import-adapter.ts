@@ -1,7 +1,7 @@
 import "server-only";
 
 import ExcelJS from "exceljs";
-import type { Cell, Worksheet } from "exceljs";
+import type { Cell, CellValue, Worksheet } from "exceljs";
 
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { ValidationError } from "@/shared/errors/application-error";
@@ -14,7 +14,6 @@ import {
 import {
   isPatientImportClassificationField,
   isPatientImportBaselineField,
-  isPatientImportOsmAssignmentField,
   PATIENT_IMPORT_FIELD_KEYS,
 } from "../import/patient-import-contract";
 import type {
@@ -26,25 +25,14 @@ import type {
   PatientImportFieldKey,
   PatientImportFieldStatus,
   PatientImportFileMetadata,
-  ExtendedMeasurementCandidate,
   PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
+import { PATIENT_IMPORT_TEMPLATE_COLUMNS } from "../import/patient-import-template-contract";
 import {
-  createPatientImportFileMetadata,
-  extractPatientImportHeaders,
-  findCanonicalPatientImportHeaderRows,
-  hasPatientIdentityHeaderSignature,
-  MAX_PATIENT_IMPORT_COLUMNS,
-  resolvePatientImportHeaders,
-  validateCanonicalPatientImportTemplate,
-  type PatientImportHeaderResolution,
-} from "../import/patient-import-layouts";
-import {
-  PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT,
-  PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS,
-  PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
-} from "../import/patient-import-template-contract";
-import type { PatientImportHeaderBinding } from "../import/patient-import-header-aliases";
+  PATIENT_IMPORT_COLUMN_BINDINGS,
+  validatePatientImportTemplateWorkbook,
+  type PatientImportTemplateTarget,
+} from "../import/patient-import-template-validation";
 import {
   normalizeDateCell,
   normalizeNationalIdCell,
@@ -54,19 +42,8 @@ import {
   normalizeTextCell,
 } from "../import/patient-import-normalization";
 
-export { MAX_PATIENT_IMPORT_COLUMNS } from "../import/patient-import-layouts";
-export { validateCanonicalPatientImportTemplate } from "../import/patient-import-layouts";
-
 export const MAX_PATIENT_IMPORT_BYTES = 5 * 1024 * 1024;
 export const MAX_PATIENT_IMPORT_ROWS = 500;
-export const MAX_PATIENT_IMPORT_WORKSHEETS_SCANNED = 12;
-export const MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS = PATIENT_IMPORT_TEMPLATE_MAX_HEADER_SCAN_ROWS;
-
-export type PatientImportAdapterMode = "CANONICAL" | "COMPATIBILITY";
-
-export type PatientImportReadOptions = {
-  mode?: PatientImportAdapterMode;
-};
 
 export type PatientImportUpload = {
   name: string;
@@ -74,12 +51,12 @@ export type PatientImportUpload = {
   arrayBuffer(): Promise<ArrayBuffer>;
 };
 
-type SheetInspection = {
-  worksheet: Worksheet;
-  headerRowNumber: number;
-  resolution: PatientImportHeaderResolution;
-  dataRowNumbers: readonly number[];
-  tooManyRows: boolean;
+/** Original cell values of one data row, one entry per template column. */
+export type PatientImportSourceRow = readonly CellValue[];
+
+export type PatientImportFileRead = {
+  candidates: PatientProvisioningImportCandidate[];
+  sourceRows: ReadonlyMap<number, PatientImportSourceRow>;
 };
 
 const CORE_FIELDS = new Set<PatientImportFieldKey>([
@@ -90,19 +67,13 @@ const CORE_FIELDS = new Set<PatientImportFieldKey>([
 ]);
 
 const diagnosticMessages: Readonly<Record<PatientImportDiagnosticCode, string>> = {
-  UNKNOWN_HEADER: "มีหัวตารางที่ระบบยังไม่รู้จัก",
-  AMBIGUOUS_HEADER: "มีหัวตารางซ้ำหรือมีความหมายกำกวม",
-  MISSING_REQUIRED_HEADER: "ไม่พบหัวตารางข้อมูลผู้ป่วยที่จำเป็น",
   INVALID_VALUE: "ค่าบางรายการไม่อยู่ในรูปแบบที่รองรับ",
   LOSSY_EXCEL_VALUE: "ค่าใน Excel อาจสูญเสียข้อมูลจากการจัดรูปแบบ",
   AMBIGUOUS_VALUE: "ค่าบางรายการตีความได้มากกว่าหนึ่งแบบ",
   REQUIREMENT_GATED: "ตรวจพบข้อมูลเพิ่มเติมที่ยังไม่บันทึกในระยะนี้",
-  UNSUPPORTED_REQUIREMENT: "ข้อมูลนี้ยังไม่มีขอบเขตการบันทึกที่ยืนยันแล้ว",
   CLASSIFICATION_DATA_INVALID: "ค่ากลุ่มสถานะผู้ป่วยไม่ใช่ค่าที่รองรับ",
   FORMULA_VALUE: "ไม่รับค่าจากสูตร Excel เป็นข้อมูลอ้างอิงโดยอัตโนมัติ",
   EXCEL_ERROR: "เซลล์ Excel มีค่าผิดพลาด",
-  UNIT_NOT_CONFIRMED: "ยังไม่ยืนยันหน่วยของข้อมูล",
-  DUPLICATE_SOURCE_ROW: "พบข้อมูลซ้ำในไฟล์เดียวกัน",
 };
 
 function createDiagnostic(
@@ -119,7 +90,7 @@ function createDiagnostic(
 }
 
 function normalizeCellText(value: string): string {
-  return value.replace(/[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+/gu, " ").trim();
+  return value.replace(/[\s  -​  　]+/gu, " ").trim();
 }
 
 function cellHasMeaningfulValue(cell: Cell): boolean {
@@ -135,19 +106,15 @@ function cellHasMeaningfulValue(cell: Cell): boolean {
   return cell.type !== ExcelJS.ValueType.Null;
 }
 
-function rowHasPatientCoreSignal(
-  row: ExcelJS.Row,
-  resolution: PatientImportHeaderResolution,
-): boolean {
-  const patientCoreFields: readonly PatientImportFieldKey[] = [
-    "nationalId",
-    "givenName",
-    "familyName",
-    "combinedNameText",
-  ];
+const PATIENT_CORE_SIGNAL_FIELDS: readonly PatientImportFieldKey[] = [
+  "nationalId",
+  "givenName",
+  "familyName",
+];
 
-  return patientCoreFields.some((field) => {
-    const binding = resolution.byField.get(field);
+function rowHasPatientCoreSignal(row: ExcelJS.Row): boolean {
+  return PATIENT_CORE_SIGNAL_FIELDS.some((field) => {
+    const binding = PATIENT_IMPORT_COLUMN_BINDINGS.get(field);
     return binding ? cellHasMeaningfulValue(row.getCell(binding.columnNumber)) : false;
   });
 }
@@ -155,13 +122,12 @@ function rowHasPatientCoreSignal(
 function inspectDataRows(
   worksheet: Worksheet,
   dataStartRowNumber: number,
-  resolution: PatientImportHeaderResolution,
 ): { dataRowNumbers: number[]; tooManyRows: boolean } {
   const dataRowNumbers: number[] = [];
   let tooManyRows = false;
 
   worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber < dataStartRowNumber || !rowHasPatientCoreSignal(row, resolution)) {
+    if (rowNumber < dataStartRowNumber || !rowHasPatientCoreSignal(row)) {
       return;
     }
 
@@ -174,175 +140,6 @@ function inspectDataRows(
   });
 
   return { dataRowNumbers, tooManyRows };
-}
-
-function compatibilityDataStartRowNumber(worksheet: Worksheet, headerRowNumber: number): number {
-  const continuationRowNumber = headerRowNumber + 1;
-
-  for (let columnNumber = 1; columnNumber <= worksheet.actualColumnCount; columnNumber += 1) {
-    const cell = worksheet.getRow(continuationRowNumber).getCell(columnNumber);
-
-    if (!cell.isMerged) {
-      continue;
-    }
-
-    const cellAddress = cell.fullAddress;
-    const masterAddress = cell.master.fullAddress;
-
-    if (
-      cellAddress.row !== masterAddress.row &&
-      masterAddress.row === headerRowNumber
-    ) {
-      return continuationRowNumber + 1;
-    }
-  }
-
-  return continuationRowNumber;
-}
-
-function inspectWorksheet(worksheet: Worksheet): SheetInspection | null {
-  const candidateHeaders: Array<{ rowNumber: number; resolution: PatientImportHeaderResolution }> = [];
-  const maximumHeaderRow = Math.min(
-    MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS,
-    Math.max(worksheet.actualRowCount, worksheet.rowCount),
-  );
-
-  for (let rowNumber = 1; rowNumber <= maximumHeaderRow; rowNumber += 1) {
-    const headers = extractPatientImportHeaders(worksheet, rowNumber);
-
-    if (!headers) {
-      continue;
-    }
-
-    const resolution = resolvePatientImportHeaders(headers);
-
-    if (hasPatientIdentityHeaderSignature(resolution)) {
-      candidateHeaders.push({ rowNumber, resolution });
-    }
-  }
-
-  if (candidateHeaders.length === 0) {
-    return null;
-  }
-
-  if (candidateHeaders.length > 1) {
-    throw new ValidationError("พบหัวตารางผู้ป่วยมากกว่าหนึ่งแถวในแผ่นงานเดียวกัน");
-  }
-
-  const candidate = candidateHeaders[0];
-  const rowInspection = inspectDataRows(
-    worksheet,
-    compatibilityDataStartRowNumber(worksheet, candidate.rowNumber),
-    candidate.resolution,
-  );
-
-  return {
-    worksheet,
-    headerRowNumber: candidate.rowNumber,
-    resolution: candidate.resolution,
-    dataRowNumbers: rowInspection.dataRowNumbers,
-    tooManyRows: rowInspection.tooManyRows,
-  };
-}
-
-function inspectCanonicalWorksheet(worksheet: Worksheet): SheetInspection | null {
-  if (worksheet.actualColumnCount !== PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT) {
-    return null;
-  }
-
-  if (findCanonicalPatientImportHeaderRows(worksheet, MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS).length === 0) {
-    return null;
-  }
-
-  const validation = validateCanonicalPatientImportTemplate(
-    worksheet,
-    MAX_PATIENT_IMPORT_HEADER_SCAN_ROWS,
-  );
-  const rowInspection = inspectDataRows(
-    worksheet,
-    validation.dataStartRowNumber,
-    validation.resolution,
-  );
-
-  return {
-    worksheet,
-    headerRowNumber: validation.headerRowNumber,
-    resolution: validation.resolution,
-    dataRowNumbers: rowInspection.dataRowNumbers,
-    tooManyRows: rowInspection.tooManyRows,
-  };
-}
-
-function selectWorksheet(workbook: ExcelJS.Workbook): SheetInspection {
-  const inspections: SheetInspection[] = [];
-  const worksheets = workbook.worksheets.slice(0, MAX_PATIENT_IMPORT_WORKSHEETS_SCANNED);
-
-  for (const worksheet of worksheets) {
-    const inspection = inspectWorksheet(worksheet);
-
-    if (inspection) {
-      inspections.push(inspection);
-    }
-  }
-
-  if (inspections.length === 0) {
-    throw new ValidationError("ไม่พบแผ่นงานที่มีหัวตารางผู้ป่วยที่รองรับ");
-  }
-
-  const populated = inspections.filter(({ dataRowNumbers }) => dataRowNumbers.length > 0);
-
-  if (populated.length > 1) {
-    throw new ValidationError("พบแผ่นงานผู้ป่วยที่มีข้อมูลมากกว่าหนึ่งแผ่น กรุณาแยกไฟล์ก่อนนำเข้า");
-  }
-
-  if (populated.length === 1) {
-    return populated[0];
-  }
-
-  if (inspections.length === 1) {
-    return inspections[0];
-  }
-
-  throw new ValidationError("พบแผ่นงานผู้ป่วยหลายแผ่นแต่ไม่พบแผ่นที่มีข้อมูลชัดเจน");
-}
-
-function selectCanonicalWorksheet(workbook: ExcelJS.Workbook): SheetInspection {
-  const inspections: SheetInspection[] = [];
-  const worksheets = workbook.worksheets.slice(0, MAX_PATIENT_IMPORT_WORKSHEETS_SCANNED);
-
-  for (const worksheet of worksheets) {
-    if (worksheet.actualColumnCount > MAX_PATIENT_IMPORT_COLUMNS) {
-      throw new ValidationError(
-        `ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_COLUMNS} คอลัมน์`,
-      );
-    }
-
-    const inspection = inspectCanonicalWorksheet(worksheet);
-
-    if (inspection) {
-      inspections.push(inspection);
-    }
-  }
-
-  if (inspections.length === 0) {
-    throw new ValidationError(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);
-  }
-
-  const populated = inspections.filter(({ dataRowNumbers }) => dataRowNumbers.length > 0);
-
-  if (populated.length > 1) {
-    throw new ValidationError("พบแผ่นงานผู้ป่วยที่มีข้อมูลมากกว่าหนึ่งแผ่น กรุณาแยกไฟล์ก่อนนำเข้า");
-  }
-
-  if (populated.length === 1) {
-    return populated[0];
-  }
-
-  if (inspections.length === 1) {
-    return inspections[0];
-  }
-
-  throw new ValidationError("พบแผ่นงานผู้ป่วยหลายแผ่นแต่ไม่พบแผ่นที่มีข้อมูลชัดเจน");
 }
 
 function maskIdentity(value: string | null): string {
@@ -390,9 +187,7 @@ function assessmentStatus(
       ? "PARSED_FOR_INITIAL_BASELINE"
       : isPatientImportClassificationField(field)
         ? "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-        : isPatientImportOsmAssignmentField(field)
-          ? "SUPPORTED_FOR_OSM_ASSIGNMENT"
-          : "PARSED_REQUIREMENT_GATED";
+        : "PARSED_REQUIREMENT_GATED";
 }
 
 function updateFieldAssessment(
@@ -408,9 +203,7 @@ function updateFieldAssessment(
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
     PARSED_FOR_INITIAL_BASELINE: 2,
     SUPPORTED_FOR_PATIENT_CLASSIFICATION: 2,
-    SUPPORTED_FOR_OSM_ASSIGNMENT: 2,
     PARSED_REQUIREMENT_GATED: 1,
-    UNKNOWN_SOURCE_HEADER: 3,
     INVALID: 4,
     AMBIGUOUS: 5,
   };
@@ -448,84 +241,31 @@ function setRequirementDiagnostic(
     !CORE_FIELDS.has(field) &&
     !isPatientImportBaselineField(field) &&
     !isPatientImportClassificationField(field) &&
-    !isPatientImportOsmAssignmentField(field) &&
     value !== null
   ) {
     diagnostics.push(createDiagnostic("REQUIREMENT_GATED", field, sourceHeader));
   }
 }
 
-function createExtendedMeasurementCandidate(
-  row: ExcelJS.Row,
-  binding: PatientImportHeaderBinding,
-): {
-  value: CanonicalPatientImportRow["clinicalCandidates"]["extendedMeasurementSeries"][number];
-  diagnostics: readonly PatientImportDiagnosticCode[];
-} {
-  const normalizedHeader = binding.normalizedHeader.replace(/\s+/gu, "");
-  const observationMatch = /ครั้งที่(\d+)/u.exec(normalizedHeader);
-  const observationNumber = observationMatch ? Number(observationMatch[1]) : null;
-  const cell = row.getCell(binding.columnNumber);
-  const textResult = normalizeTextCell(cell);
-  const numericResult = normalizeNumericCell(cell);
-  const isTextSeries = normalizedHeader.includes("สรุป") || normalizedHeader.includes("ผลสรุป");
-  const diagnostics = isTextSeries ? textResult.diagnostics : numericResult.diagnostics;
-
-  return {
-    value: {
-      sourceHeader: binding.sourceHeader,
-      sourceColumn: binding.columnNumber,
-      observationNumber,
-      serviceVisitDate: null,
-      weight: normalizedHeader.startsWith("น้ำหนัก") ? numericResult.value : null,
-      waistCircumference: normalizedHeader.startsWith("รอบเอว") ? numericResult.value : null,
-      dtxReading: normalizedHeader.startsWith("ค่าdtx") ? numericResult.value : null,
-      summaryText: isTextSeries ? textResult.value : null,
-      diagnostics,
-    },
-    diagnostics,
-  };
-}
-
-function readCanonicalRow(
-  worksheet: Worksheet,
-  rowNumber: number,
-  resolution: PatientImportHeaderResolution,
-  fileMetadata: PatientImportFileMetadata,
-): CanonicalPatientImportRow {
+function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPatientImportRow {
   const row = worksheet.getRow(rowNumber);
   const assessments = createEmptyFieldAssessmentMap();
   const diagnostics: PatientImportDiagnostic[] = [];
-  const bindingsByField = resolution.byField;
-
-  for (const field of resolution.ambiguousFields) {
-    const bindings = resolution.bindings.filter((binding) => binding.field === field);
-
-    for (const binding of bindings) {
-      updateFieldAssessment(assessments, field, binding.sourceHeader, "AMBIGUOUS", ["AMBIGUOUS_HEADER"]);
-      diagnostics.push(createDiagnostic("AMBIGUOUS_HEADER", field, binding.sourceHeader));
-    }
-  }
+  const bindingsByField = PATIENT_IMPORT_COLUMN_BINDINGS;
 
   let nationalId: string | null = null;
   let givenName: string | null = null;
   let familyName: string | null = null;
-  let combinedNameText: string | null = null;
   let hospitalNumber: string | null = null;
   let dateOfBirth: string | null = null;
   let gender: string | null = null;
   let phoneNumber: string | null = null;
   let weight: number | null = null;
   let height: number | null = null;
-  let heightUnit: "cm" | "m" | null = null;
   let waistCircumference: number | null = null;
   let diabetesClassification: CanonicalPatientImportRow["clinicalCandidates"]["diabetesClassification"] = null;
-  let bloodSugar: number | null = null;
   let bloodSugarDtx: number | null = null;
   let hba1c: number | null = null;
-  let hospitalName: string | null = null;
-  let subHospitalName: string | null = null;
-  let organizationCombinedText: string | null = null;
   let houseNumber: string | null = null;
   let villageNumber: string | null = null;
   let villageName: string | null = null;
@@ -538,18 +278,7 @@ function readCanonicalRow(
   let emergencyContactName: string | null = null;
   let emergencyContactPhone: string | null = null;
   let emergencyContactRelationship: string | null = null;
-  let osmCaregiverName: string | null = null;
   let sourceSequenceNumber: string | null = null;
-  let externalPatientId: string | null = null;
-  let ageAtRoster: number | null = null;
-  let addressText: string | null = null;
-  let bloodPressureText: string | null = null;
-  let pulseRate: number | null = null;
-  let bmi: number | null = null;
-  let dtxReading: number | null = null;
-  let riskFactorText: string | null = null;
-  let serviceVisitDate: string | null = null;
-  const extendedMeasurementSeries: ExtendedMeasurementCandidate[] = [];
 
   const parseTextField = (
     field: PatientImportFieldKey,
@@ -623,14 +352,10 @@ function readCanonicalRow(
 
   parseTextField("givenName", (value) => { givenName = value; });
   parseTextField("familyName", (value) => { familyName = value; });
-  parseTextField("combinedNameText", (value) => { combinedNameText = value; });
   parseTextField("hospitalNumber", (value) => { hospitalNumber = value; });
   parseTextField("gender", (value) => { gender = value; });
   parseTextField("phoneNumber", (value) => { phoneNumber = value; });
   parseClassificationField();
-  parseTextField("hospitalName", (value) => { hospitalName = value; });
-  parseTextField("subHospitalName", (value) => { subHospitalName = value; });
-  parseTextField("organizationCombinedText", (value) => { organizationCombinedText = value; });
   parseTextField("houseNumber", (value) => { houseNumber = value; });
   parseTextField("villageNumber", (value) => { villageNumber = value; });
   parseTextField("villageName", (value) => { villageName = value; });
@@ -642,73 +367,37 @@ function readCanonicalRow(
   parseTextField("postalCode", (value) => { postalCode = value; });
   parseTextField("emergencyContactName", (value) => { emergencyContactName = value; });
   parseTextField("emergencyContactRelationship", (value) => { emergencyContactRelationship = value; });
-  parseTextField("osmCaregiverName", (value) => { osmCaregiverName = value; });
   parseTextField("sourceSequenceNumber", (value) => { sourceSequenceNumber = value; });
-  parseTextField("externalPatientId", (value) => { externalPatientId = value; });
-  parseTextField("addressText", (value) => { addressText = value; });
-  parseTextField("bloodPressureText", (value) => { bloodPressureText = value; });
-  parseTextField("riskFactorText", (value) => { riskFactorText = value; });
   parseTextField("emergencyContactPhone", (value) => { emergencyContactPhone = value; });
 
   const dateBinding = bindingsByField.get("dateOfBirth");
   if (dateBinding) {
-    const result = normalizeDateCell(row.getCell(dateBinding.columnNumber), fileMetadata.dateFormat);
+    const result = normalizeDateCell(row.getCell(dateBinding.columnNumber), "DMY");
     dateOfBirth = result.value;
     updateFieldAssessment(assessments, "dateOfBirth", dateBinding.sourceHeader, assessmentStatus("dateOfBirth", result.diagnostics), result.diagnostics);
     addDiagnostics(diagnostics, "dateOfBirth", dateBinding.sourceHeader, result.diagnostics);
     setRequirementDiagnostic(diagnostics, "dateOfBirth", dateBinding.sourceHeader, result.value);
   }
 
-  const visitDateBinding = bindingsByField.get("serviceVisitDate");
-  if (visitDateBinding) {
-    const result = normalizeDateCell(row.getCell(visitDateBinding.columnNumber), fileMetadata.dateFormat);
-    serviceVisitDate = result.value;
-    updateFieldAssessment(assessments, "serviceVisitDate", visitDateBinding.sourceHeader, assessmentStatus("serviceVisitDate", result.diagnostics), result.diagnostics);
-    addDiagnostics(diagnostics, "serviceVisitDate", visitDateBinding.sourceHeader, result.diagnostics);
-    setRequirementDiagnostic(diagnostics, "serviceVisitDate", visitDateBinding.sourceHeader, result.value);
-  }
-
   const numericFields: ReadonlyArray<readonly [PatientImportFieldKey, (value: number | null) => void]> = [
     ["weight", (value) => { weight = value; }],
     ["height", (value) => { height = value; }],
     ["waistCircumference", (value) => { waistCircumference = value; }],
-    ["bloodSugar", (value) => { bloodSugar = value; }],
     ["bloodSugarDtx", (value) => { bloodSugarDtx = value; }],
     ["hba1c", (value) => { hba1c = value; }],
-    ["ageAtRoster", (value) => { ageAtRoster = value; }],
-    ["pulseRate", (value) => { pulseRate = value; }],
-    ["bmi", (value) => { bmi = value; }],
-    ["dtxReading", (value) => { dtxReading = value; }],
   ];
 
   for (const [field, target] of numericFields) {
     parseNumericField(field, target);
   }
 
-  const heightBinding = bindingsByField.get("height");
-  heightUnit = heightBinding?.heightUnit ?? null;
-  if (height !== null && heightBinding && heightUnit !== "cm") {
-    const code = heightUnit === "m" ? "UNSUPPORTED_REQUIREMENT" : "UNIT_NOT_CONFIRMED";
-    const status: PatientImportFieldStatus = heightUnit === "m" ? "INVALID" : "AMBIGUOUS";
-    updateFieldAssessment(assessments, "height", heightBinding.sourceHeader, status, [code]);
-    diagnostics.push(createDiagnostic(code, "height", heightBinding.sourceHeader));
-  }
-
-  for (const binding of resolution.bindings.filter(({ field }) => field === "extendedMeasurementSeries")) {
-    const extended = createExtendedMeasurementCandidate(row, binding);
-    extendedMeasurementSeries.push(extended.value);
-    updateFieldAssessment(assessments, "extendedMeasurementSeries", binding.sourceHeader, assessmentStatus("extendedMeasurementSeries", extended.diagnostics), extended.diagnostics);
-    addDiagnostics(diagnostics, "extendedMeasurementSeries", binding.sourceHeader, extended.diagnostics);
-    setRequirementDiagnostic(diagnostics, "extendedMeasurementSeries", binding.sourceHeader, extended.value.summaryText ?? extended.value.weight ?? extended.value.waistCircumference ?? extended.value.dtxReading);
-  }
-
-  if (givenName === null && bindingsByField.has("givenName")) {
+  if (givenName === null) {
     const sourceHeader = bindingsByField.get("givenName")?.sourceHeader ?? "";
     updateFieldAssessment(assessments, "givenName", sourceHeader, "INVALID", ["INVALID_VALUE"]);
     diagnostics.push(createDiagnostic("INVALID_VALUE", "givenName", sourceHeader));
   }
 
-  if (familyName === null && bindingsByField.has("familyName")) {
+  if (familyName === null) {
     const sourceHeader = bindingsByField.get("familyName")?.sourceHeader ?? "";
     updateFieldAssessment(assessments, "familyName", sourceHeader, "INVALID", ["INVALID_VALUE"]);
     diagnostics.push(createDiagnostic("INVALID_VALUE", "familyName", sourceHeader));
@@ -720,14 +409,7 @@ function readCanonicalRow(
       sourceRowNumber: rowNumber,
       sourceSequenceNumber,
     },
-    identity: {
-      nationalId,
-      externalPatientId,
-      givenName,
-      familyName,
-      combinedNameText,
-      ageAtRoster,
-    },
+    identity: { nationalId, givenName, familyName },
     demographics: { dateOfBirth, gender },
     contact: {
       phoneNumber,
@@ -736,7 +418,6 @@ function readCanonicalRow(
       emergencyContactRelationship,
     },
     address: {
-      addressText,
       houseNumber,
       villageNumber,
       villageName,
@@ -750,27 +431,12 @@ function readCanonicalRow(
     clinicalCandidates: {
       weight,
       height,
-      heightUnit,
       waistCircumference,
       diabetesClassification,
-      bloodSugar,
       bloodSugarDtx,
       hba1c,
-      bloodPressureText,
-      pulseRate,
-      bmi,
-      dtxReading,
-      riskFactorText,
-      serviceVisitDate,
-      extendedMeasurementSeries,
     },
-    organizationCandidates: {
-      hospitalNumber,
-      hospitalName,
-      subHospitalName,
-      organizationCombinedText,
-    },
-    caregiverCandidates: { osmCaregiverName },
+    organizationCandidates: { hospitalNumber },
     fieldAssessments: assessments,
     diagnostics,
   };
@@ -789,9 +455,7 @@ function mapValidationMessage(
   }
 
   if (fields.has("givenName")) {
-    return canonicalRow.identity.combinedNameText
-      ? "พบชื่อรวมในไฟล์ แต่ยังไม่สามารถแยกชื่อและนามสกุลอย่างปลอดภัย"
-      : "กรุณาระบุชื่อ";
+    return "กรุณาระบุชื่อ";
   }
 
   if (fields.has("familyName")) {
@@ -805,28 +469,13 @@ function mapValidationMessage(
   return "ข้อมูลแถวนี้ไม่ถูกต้อง";
 }
 
-function assertRequiredHeaders(resolution: PatientImportHeaderResolution): void {
-  if (!resolution.byField.has("nationalId")) {
-    throw new ValidationError("Excel ต้องมีคอลัมน์เลขบัตรประชาชน");
-  }
-
-  if (
-    !resolution.byField.has("givenName") &&
-    !resolution.byField.has("familyName") &&
-    !resolution.byField.has("combinedNameText")
-  ) {
-    throw new ValidationError("Excel ต้องมีคอลัมน์ชื่อและนามสกุล หรือชื่อรวมที่ผู้ส่งตรวจสอบเอง");
-  }
-}
-
 function buildCandidate(
   worksheet: Worksheet,
   rowNumber: number,
-  resolution: PatientImportHeaderResolution,
   fileMetadata: PatientImportFileMetadata,
   targetHospitalId: string,
 ): PatientProvisioningImportCandidate {
-  const canonicalRow = readCanonicalRow(worksheet, rowNumber, resolution, fileMetadata);
+  const canonicalRow = readCanonicalRow(worksheet, rowNumber);
   const parsedRow = patientProvisionFormSchema.safeParse({
     nationalId: canonicalRow.identity.nationalId ?? "",
     givenName: canonicalRow.identity.givenName ?? "",
@@ -852,12 +501,36 @@ function buildCandidate(
       : null,
     givenName: canonicalRow.identity.givenName ?? "",
     familyName: canonicalRow.identity.familyName ?? "",
-    combinedNameText: canonicalRow.identity.combinedNameText,
     hospitalNumber: canonicalRow.organizationCandidates.hospitalNumber,
     validationMessage: parsedRow.success ? null : mapValidationMessage(parsedRow.error.issues, canonicalRow),
     canonicalRow,
     fileMetadata,
   };
+}
+
+function toSourceCellValue(cell: Cell): CellValue {
+  const value = cell.value;
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (cell.type === ExcelJS.ValueType.Error) {
+    return null;
+  }
+
+  // Formulas, rich text and hyperlinks are exported as their displayed text/result.
+  return cell.type === ExcelJS.ValueType.Formula ? (cell.result as CellValue) ?? null : cell.text;
+}
+
+function readSourceRow(worksheet: Worksheet, rowNumber: number): PatientImportSourceRow {
+  const row = worksheet.getRow(rowNumber);
+
+  return PATIENT_IMPORT_TEMPLATE_COLUMNS.map((_, index) => toSourceCellValue(row.getCell(index + 1)));
 }
 
 async function loadPatientImportWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
@@ -873,12 +546,16 @@ async function loadPatientImportWorkbook(buffer: Buffer): Promise<ExcelJS.Workbo
   return workbook;
 }
 
-export async function readPatientImportCandidates(
+/**
+ * Parses a hospital-bound template v2 workbook. Any contract failure (size,
+ * metadata, hospital, header, row capacity) rejects the whole file before a
+ * single candidate is produced.
+ */
+export async function readPatientImportFile(
   file: PatientImportUpload,
-  targetHospitalId: string,
-  options: PatientImportReadOptions = {},
-): Promise<PatientProvisioningImportCandidate[]> {
-  const parsedScope = patientProvisionScopeSchema.safeParse({ targetHospitalId });
+  target: PatientImportTemplateTarget,
+): Promise<PatientImportFileRead> {
+  const parsedScope = patientProvisionScopeSchema.safeParse({ targetHospitalId: target.hospitalId });
 
   if (!parsedScope.success) {
     throw new ValidationError("โรงพยาบาลที่เลือกไม่ถูกต้อง");
@@ -911,31 +588,45 @@ export async function readPatientImportCandidates(
     throw new ValidationError("ไม่พบแผ่นงานในไฟล์ Excel");
   }
 
-  const selected = options.mode === "COMPATIBILITY"
-    ? selectWorksheet(workbook)
-    : selectCanonicalWorksheet(workbook);
+  const validation = validatePatientImportTemplateWorkbook(workbook, target);
+  const rowInspection = inspectDataRows(validation.worksheet, validation.dataStartRowNumber);
 
-  if (selected.tooManyRows) {
+  if (rowInspection.tooManyRows) {
     throw new ValidationError(`ไฟล์ Excel รองรับผู้ป่วยไม่เกิน ${MAX_PATIENT_IMPORT_ROWS} แถว`);
   }
 
-  assertRequiredHeaders(selected.resolution);
-
-  const fileMetadata = createPatientImportFileMetadata(
-    selected.worksheet.name,
-    selected.headerRowNumber,
-    selected.resolution,
+  const requirementGatedFields = PATIENT_IMPORT_FIELD_KEYS.filter(
+    (field) =>
+      !CORE_FIELDS.has(field) &&
+      !isPatientImportBaselineField(field) &&
+      !isPatientImportClassificationField(field),
   );
+  const fileMetadata: PatientImportFileMetadata = {
+    worksheetName: validation.worksheet.name,
+    headerRowNumber: validation.headerRowNumber,
+    templateVersion: validation.templateVersion,
+    hospitalCode: validation.hospitalCode,
+    requirementGatedFields,
+  };
 
-  return selected.dataRowNumbers.map((rowNumber) =>
-    buildCandidate(
-      selected.worksheet,
-      rowNumber,
-      selected.resolution,
-      fileMetadata,
-      parsedScope.data.targetHospitalId,
+  return {
+    candidates: rowInspection.dataRowNumbers.map((rowNumber) =>
+      buildCandidate(validation.worksheet, rowNumber, fileMetadata, parsedScope.data.targetHospitalId),
     ),
-  );
+    sourceRows: new Map(
+      rowInspection.dataRowNumbers.map((rowNumber) => [
+        rowNumber,
+        readSourceRow(validation.worksheet, rowNumber),
+      ]),
+    ),
+  };
+}
+
+export async function readPatientImportCandidates(
+  file: PatientImportUpload,
+  target: PatientImportTemplateTarget,
+): Promise<PatientProvisioningImportCandidate[]> {
+  return (await readPatientImportFile(file, target)).candidates;
 }
 
 export const patientImportAdapterInternals = {
@@ -944,5 +635,4 @@ export const patientImportAdapterInternals = {
   maskIdentity,
   normalizeCellText,
   readCanonicalRow,
-  resolvePatientImportHeaders,
 };

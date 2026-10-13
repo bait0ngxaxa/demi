@@ -2,7 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PatientProvisioningWorkspace } from "../../../../app/app/patients/provision/patient-provisioning-workspace";
+import {
+  PatientImportUploadGuidance,
+  PatientProvisioningWorkspace,
+} from "../../../../app/app/patients/provision/patient-provisioning-workspace";
 import type { PatientProvisionActionState } from "./action-state";
 
 const mockedUseActionState = vi.hoisted(() => vi.fn());
@@ -223,7 +226,7 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
   });
 
-  it("publishes the canonical Patient import template beside the upload control", () => {
+  it("publishes the hospital-bound template for the selected hospital beside the upload control", () => {
     const scope = {
       hospitalId,
       hospitalCode: "TEST-HOSPITAL",
@@ -238,13 +241,44 @@ describe("PatientProvisioningWorkspace form structure", () => {
       }),
     );
 
-    expect(markup).toContain('href="/templates/demi-patient-import-template-v1.xlsx"');
-    expect(markup).toContain("download=\"DEMI_แบบฟอร์มนำเข้ารายชื่อผู้ป่วย_v1.xlsx\"");
-    expect(markup).toContain("ดาวน์โหลด Template");
+    expect(markup).toContain(
+      `href="/api/v1/hospital/patient-import/template?hospitalId=${hospitalId}"`,
+    );
+    expect(markup).toContain('download="DEMI_patient_import_TEST-HOSPITAL_v2.xlsx"');
+    expect(markup).toContain("ดาวน์โหลด Template ของ โรงพยาบาลทดสอบ");
     expect(markup).toContain("กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
     expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
-    expect(markup).toContain("หากรูปแบบคอลัมน์ถูกแก้ไข ระบบอาจไม่รับไฟล์");
+    expect(markup).toContain("Template ใช้ได้กับโรงพยาบาลนี้เท่านั้น");
+    expect(markup).not.toContain("/templates/demi-patient-import-template");
     expect(markup).not.toContain("PATIENT_IMPORT_TEMPLATE_VERSION");
     expect(markup).not.toContain("contractVersion");
+  });
+
+  it("points the template link at the newly selected hospital", () => {
+    const otherHospitalId = "55555555-5555-4555-8555-555555555555";
+    const scopes = [
+      { hospitalId, hospitalCode: "TEST-A", hospitalName: "โรงพยาบาลเอ", canBulkImport: true },
+      { hospitalId: otherHospitalId, hospitalCode: "TEST-B", hospitalName: "โรงพยาบาลบี", canBulkImport: true },
+    ];
+    const markup = renderToStaticMarkup(
+      createElement(PatientProvisioningWorkspace, {
+        scopes,
+        selectedHospitalId: otherHospitalId,
+        selectedScope: scopes[1],
+      }),
+    );
+
+    expect(markup).toContain(`hospitalId=${otherHospitalId}`);
+    expect(markup).toContain("DEMI_patient_import_TEST-B_v2.xlsx");
+    expect(markup).not.toContain("DEMI_patient_import_TEST-A_v2.xlsx");
+  });
+
+  it("explains that re-import adds new patients only and that OSM is assigned afterwards", () => {
+    const markup = renderToStaticMarkup(createElement(PatientImportUploadGuidance));
+
+    expect(markup).toContain("นำเข้าซ้ำได้");
+    expect(markup).toContain("เพิ่มเฉพาะผู้ป่วยใหม่");
+    expect(markup).toContain("ไม่ถูกนำไปใช้ ให้แก้ไขในระบบ");
+    expect(markup).toContain("การกำหนด อสม. ทำหลังนำเข้า");
   });
 });

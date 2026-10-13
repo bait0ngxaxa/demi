@@ -7,7 +7,6 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "dateOfBirth",
   "givenName",
   "familyName",
-  "combinedNameText",
   "hospitalNumber",
   "gender",
   "phoneNumber",
@@ -15,12 +14,8 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "height",
   "waistCircumference",
   "diabetesClassification",
-  "bloodSugar",
   "bloodSugarDtx",
   "hba1c",
-  "hospitalName",
-  "subHospitalName",
-  "organizationCombinedText",
   "houseNumber",
   "villageNumber",
   "villageName",
@@ -33,24 +28,12 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "emergencyContactName",
   "emergencyContactPhone",
   "emergencyContactRelationship",
-  "osmCaregiverName",
   "sourceSequenceNumber",
-  "externalPatientId",
-  "ageAtRoster",
-  "addressText",
-  "bloodPressureText",
-  "pulseRate",
-  "bmi",
-  "dtxReading",
-  "riskFactorText",
-  "serviceVisitDate",
-  "extendedMeasurementSeries",
 ] as const;
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "phase-16d4-osm-assignment-v2" as const;
-export const PATIENT_OSM_CAREGIVER_NAME_MAX_LENGTH = 255;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "patient-import-v2-hospital-template" as const;
 
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
   "weight",
@@ -74,36 +57,22 @@ export function isPatientImportClassificationField(
   return field === "diabetesClassification";
 }
 
-export function isPatientImportOsmAssignmentField(
-  field: PatientImportFieldKey,
-): field is "osmCaregiverName" {
-  return field === "osmCaregiverName";
-}
-
 export type PatientImportFieldStatus =
   | "NOT_PRESENT"
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
   | "PARSED_FOR_INITIAL_BASELINE"
   | "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-  | "SUPPORTED_FOR_OSM_ASSIGNMENT"
   | "PARSED_REQUIREMENT_GATED"
-  | "UNKNOWN_SOURCE_HEADER"
   | "INVALID"
   | "AMBIGUOUS";
 
 export type PatientImportDiagnosticCode =
-  | "UNKNOWN_HEADER"
-  | "AMBIGUOUS_HEADER"
-  | "MISSING_REQUIRED_HEADER"
   | "INVALID_VALUE"
   | "LOSSY_EXCEL_VALUE"
   | "AMBIGUOUS_VALUE"
   | "REQUIREMENT_GATED"
-  | "UNSUPPORTED_REQUIREMENT"
   | "FORMULA_VALUE"
   | "EXCEL_ERROR"
-  | "UNIT_NOT_CONFIRMED"
-  | "DUPLICATE_SOURCE_ROW"
   | "CLASSIFICATION_DATA_INVALID";
 
 export type PatientImportDiagnostic = {
@@ -124,37 +93,14 @@ export type PatientImportFieldAssessmentMap = {
   [Field in PatientImportFieldKey]: PatientImportFieldAssessment;
 };
 
-export type PatientImportLayoutKey =
-  | "CURRENT_MINIMAL"
-  | "OPERATIONAL_ROSTER"
-  | "EXTENDED_ROSTER"
-  | "COMBINED_NAME_REVIEW"
-  | "UNKNOWN";
-
 export type PatientImportDateFormat = "DMY" | "UNKNOWN";
 
 export type PatientImportFileMetadata = {
   worksheetName: string;
   headerRowNumber: number;
-  layout: PatientImportLayoutKey;
-  dateFormat: PatientImportDateFormat;
-  recognizedHeaders: readonly string[];
+  templateVersion: string;
+  hospitalCode: string;
   requirementGatedFields: readonly PatientImportFieldKey[];
-  unknownHeaders: readonly string[];
-  ambiguousHeaders: readonly string[];
-  diagnostics: readonly PatientImportDiagnostic[];
-};
-
-export type ExtendedMeasurementCandidate = {
-  sourceHeader: string;
-  sourceColumn: number;
-  observationNumber: number | null;
-  serviceVisitDate: string | null;
-  weight: number | null;
-  waistCircumference: number | null;
-  dtxReading: number | null;
-  summaryText: string | null;
-  diagnostics: readonly PatientImportDiagnosticCode[];
 };
 
 export type CanonicalPatientImportRow = {
@@ -165,11 +111,8 @@ export type CanonicalPatientImportRow = {
   };
   identity: {
     nationalId: string | null;
-    externalPatientId: string | null;
     givenName: string | null;
     familyName: string | null;
-    combinedNameText: string | null;
-    ageAtRoster: number | null;
   };
   demographics: {
     dateOfBirth: string | null;
@@ -182,7 +125,6 @@ export type CanonicalPatientImportRow = {
     emergencyContactRelationship: string | null;
   };
   address: {
-    addressText: string | null;
     houseNumber: string | null;
     villageNumber: string | null;
     villageName: string | null;
@@ -196,28 +138,13 @@ export type CanonicalPatientImportRow = {
   clinicalCandidates: {
     weight: number | null;
     height: number | null;
-    heightUnit: "cm" | "m" | null;
     waistCircumference: number | null;
     diabetesClassification: PatientClassificationType | null;
-    bloodSugar: number | null;
     bloodSugarDtx: number | null;
     hba1c: number | null;
-    bloodPressureText: string | null;
-    pulseRate: number | null;
-    bmi: number | null;
-    dtxReading: number | null;
-    riskFactorText: string | null;
-    serviceVisitDate: string | null;
-    extendedMeasurementSeries: readonly ExtendedMeasurementCandidate[];
   };
   organizationCandidates: {
     hospitalNumber: string | null;
-    hospitalName: string | null;
-    subHospitalName: string | null;
-    organizationCombinedText: string | null;
-  };
-  caregiverCandidates: {
-    osmCaregiverName: string | null;
   };
   fieldAssessments: PatientImportFieldAssessmentMap;
   diagnostics: readonly PatientImportDiagnostic[];
@@ -229,7 +156,6 @@ export type PatientProvisioningImportCandidate = {
   input: ProvisionPatientInput | null;
   givenName: string;
   familyName: string;
-  combinedNameText: string | null;
   hospitalNumber: string | null;
   validationMessage: string | null;
   canonicalRow: CanonicalPatientImportRow;

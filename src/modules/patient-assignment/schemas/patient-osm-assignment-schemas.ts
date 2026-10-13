@@ -37,6 +37,30 @@ export const patientOsmCandidateQuerySchema = z
   })
   .strict();
 
+export const PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS = 500;
+
+export const patientOsmBulkAssignmentRequestSchema = z
+  .object({
+    hospitalId: z.uuid(),
+    osmUserId: osmUserIdSchema,
+    patientHospitalRelationshipIds: z
+      .array(patientHospitalRelationshipIdSchema)
+      .min(1)
+      .max(PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS)
+      .refine((ids) => new Set(ids).size === ids.length),
+    submissionNonce: z.uuid(),
+  })
+  .strict();
+
+export const patientOsmBulkAssignmentQuerySchema = z
+  .object({
+    hospitalId: z.uuid(),
+    value: optionalCandidateSearchSchema,
+  })
+  .strict();
+
 export type PatientOsmAssignmentRequest = z.infer<typeof patientOsmAssignmentRequestSchema>;
 export type PatientOsmUnassignmentRequest = z.infer<typeof patientOsmUnassignmentRequestSchema>;
 export type PatientOsmCandidateQuery = z.infer<typeof patientOsmCandidateQuerySchema>;
+export type PatientOsmBulkAssignmentRequest = z.infer<typeof patientOsmBulkAssignmentRequestSchema>;
+export type PatientOsmBulkAssignmentQuery = z.infer<typeof patientOsmBulkAssignmentQuerySchema>;
