@@ -1520,3 +1520,11 @@ workforce flow; `ACTIVE` Users keep multi-role and multi-Hospital reuse with no 
 MEMBER + OSM allowed); a conflicting request is rejected before commit and the first Hospital's
 activation stays usable. Already-stranded cross-Hospital records stay blocked and are identified by the
 read-only query in the remediation handoff. Both gates are SECURITY_GATED, not VERIFIED_COMPLETE.
+
+
+Cross-domain addendum (review 6a68463): Patient ownership is resolved from the Person for every
+`PROVISIONED` User (including a newly created one), and the reverse gate is enforced: Patient
+provisioning and activation reject a `PROVISIONED` User with pending workforce authority (ADMIN role,
+any Hospital/OSM relationship, unfinished `WorkforceActivation`). `ACTIVE` Users keep multi-role reuse
+with no credential change. Mixed legacy identities stay blocked and unmodified. Patient-only activation
+still lacks independent owner proof (SECURITY_GATED).

@@ -567,3 +567,8 @@ The `ff33a38` review follow-up adds two fail-closed rules: workforce activation 
 the first credential of an unactivated PATIENT identity, and a PROVISIONED User holds pending
 workforce state in one Hospital only (rejected before commit; stranded legacy rows are blocked and
 identifiable, never auto-repaired). Both remain SECURITY_GATED pending product/security decisions.
+
+The `6a68463` follow-up makes the credential-ownership gate bidirectional: Workforce provisioning rejects any
+Person that owns the Patient domain (even without a User yet), and Patient provisioning/activation reject
+a `PROVISIONED` User with pending workforce authority. Patient-only activation without independent owner
+proof and cross-domain mixed-identity resolution remain SECURITY_GATED, not VERIFIED_COMPLETE.

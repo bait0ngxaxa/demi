@@ -21,6 +21,7 @@ import {
 } from "@/modules/auth/services/password-auth-provisioning-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce-authority";
 import {
   ApplicationError,
   ConflictError,
@@ -105,12 +106,15 @@ type PatientActivationTargetRecord = {
   patientProfileId: string | null;
   hasPatientRole: boolean;
   hasHospitalRelationship: boolean;
+  hasWorkforceAuthority: boolean;
   givenName: string | null;
   familyName: string | null;
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
 const GENERIC_ACTIVATION_ERROR = "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ";
+const WORKFORCE_AUTHORITY_PENDING_MESSAGE =
+  "บัญชีนี้มีสิทธิ์บุคลากรที่รอเปิดใช้งานอยู่ จึงออกลิงก์เปิดใช้งานผู้ป่วยไม่ได้ ต้องเปิดใช้งานบัญชีให้เสร็จหรือให้ผู้ดูแลระบบตรวจสอบก่อน";
 
 export class PatientActivationReconciliationError extends InfrastructureError {
   readonly requiresReconciliation = true;
@@ -324,6 +328,7 @@ async function findPatientActivationTarget(
     hasPatientRole: user.roles.length === 1,
     hasHospitalRelationship:
       (user.person.patientProfile?.hospitalRelationships.length ?? 0) === 1,
+    hasWorkforceAuthority: await userHasWorkforceAuthority(transaction, user.id),
     givenName: user.person.givenName,
     familyName: user.person.familyName,
   };
@@ -342,6 +347,10 @@ function assertPatientActivationEligibility(
     !target.hasHospitalRelationship
   ) {
     throw new ConflictError("The Patient account is missing required domain state");
+  }
+
+  if (target.status === UserStatus.PROVISIONED && target.hasWorkforceAuthority) {
+    throw new ConflictError(WORKFORCE_AUTHORITY_PENDING_MESSAGE);
   }
 
   if (target.status === UserStatus.ACTIVE && isProviderSubject(target.authSubject ?? "")) {
@@ -1019,7 +1028,8 @@ function assertUsablePatientActivationState(input: {
     target.authSubject !== null ||
     !target.hasPatientRole ||
     !target.patientProfileId ||
-    !target.hasHospitalRelationship
+    !target.hasHospitalRelationship ||
+    target.hasWorkforceAuthority
   ) {
     throw new ConflictError(GENERIC_ACTIVATION_ERROR);
   }
@@ -1092,6 +1102,7 @@ export async function getPatientActivationDetails(
           ({ hospitalId }) => hospitalId === activation.hospitalId,
         ),
       ),
+      hasWorkforceAuthority: await userHasWorkforceAuthority(getDatabase(dependencies), activation.user.id),
       givenName: activation.user.person.givenName,
       familyName: activation.user.person.familyName,
     };
@@ -1171,7 +1182,8 @@ async function claimPatientActivation(
           target.status !== UserStatus.PROVISIONED ||
           !target.hasPatientRole ||
           !target.patientProfileId ||
-          !target.hasHospitalRelationship
+          !target.hasHospitalRelationship ||
+          target.hasWorkforceAuthority
         ) {
           throw new ConflictError(GENERIC_ACTIVATION_ERROR);
         }
@@ -1411,7 +1423,8 @@ async function finalizePatientActivationLocally(
         target.authSubject !== authSubject ||
         !target.hasPatientRole ||
         !target.patientProfileId ||
-        !target.hasHospitalRelationship
+        !target.hasHospitalRelationship ||
+        target.hasWorkforceAuthority
       ) {
         throw new ConflictError("Patient activation state changed before completion");
       }

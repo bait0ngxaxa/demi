@@ -45,3 +45,10 @@ already owns the Patient domain and has not activated it. The workforce activati
 refuses such Users at issuance and at every activation step (see ADR-0008 amendment
 "identity ownership and single-Hospital pending scope"). No recovery or replacement path is added
 and no restriction in this ADR is weakened.
+
+
+Addendum (review `6a68463`): the same rule applies in both directions. Neither a Patient activation token
+nor a workforce activation token, nor staff attestation or the national ID, establishes ownership of a
+global credential for authority the other domain already holds. Patient activation is now refused for
+`PROVISIONED` Users with pending workforce authority. Patient-only activation still has no independent
+owner proof and remains an undecided SECURITY_GATED item. No recovery path is added.

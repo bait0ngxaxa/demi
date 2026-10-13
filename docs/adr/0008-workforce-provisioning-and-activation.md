@@ -408,3 +408,14 @@ Historical decisions above are preserved; these rules are additive.
 Status: SECURITY_GATED pending product/security owners (independent ownership proof for activating
 workforce authority on an unactivated Patient; cross-Hospital first-activation semantics). Neither
 is VERIFIED_COMPLETE.
+
+
+## Amendment — Patient ownership resolved from the Person; bidirectional gate (review `6a68463`)
+
+The Patient-ownership rule above is evaluated for **every** `PROVISIONED` User, including one created
+in the same transaction, from the canonical Person (`PATIENT` role or `PatientProfile`); a Person with a
+`PatientProfile` and no User is therefore rejected before anything is committed. The reverse direction
+is enforced by Patient provisioning and Patient activation (ADR-0004 amendment): they refuse a
+`PROVISIONED` User with pending workforce authority, so neither flow can invalidate or capture the other's
+first credential. See the [remediation handoff](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md) for the
+state table, evidence and open decisions.

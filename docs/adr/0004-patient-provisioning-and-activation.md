@@ -63,3 +63,20 @@ Registration ≠ Account Activation
 - [ADR-0001: Person and User Identity](./0001-person-and-user-identity.md)
 - [ADR-0006: Transactional Business Operations](./0006-transactional-business-operations.md)
 
+
+## Amendment — Patient flows and pending workforce authority (review `6a68463`)
+
+Historical decisions are unchanged. The first credential is global to the User, so Patient provisioning
+and activation must not become a path to establish or invalidate the first credential of workforce
+authority they did not onboard:
+
+- Patient provisioning of a `PROVISIONED` User that holds pending workforce authority (ADMIN role, any
+  Hospital/OSM relationship, or an unfinished `WorkforceActivation`) is rejected before any role,
+  profile, relationship or audit is written (`RECONCILIATION_REQUIRED`, Thai message).
+- Patient activation issuance, details, claim and local finalization reject the same state; authority
+  added during the provider call is rejected at finalization and the new provider identity is compensated.
+- `ACTIVE` mapped Users gain PATIENT authority and profiles with no credential change. A bare OSM/HOSPITAL
+  role without a relationship keeps the prior behavior.
+
+Patient-only activation still relies on the issuer-delivered token and no independent owner proof; that
+remains an open product/security decision (SECURITY_GATED, not VERIFIED_COMPLETE).

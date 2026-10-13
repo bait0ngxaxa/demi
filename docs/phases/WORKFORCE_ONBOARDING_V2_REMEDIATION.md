@@ -341,3 +341,70 @@ made here; relationships are never deleted or activated automatically.
   ESLint on touched files clean. No Prisma schema or migration changed. Full-suite run not repeated
   (change confined to `workforce-service.ts` guards).
 - Not performed: live Supabase calls, production data operations, browser/mobile UAT.
+
+
+## Cross-domain identity hardening (review `6a68463a8cf461bc881b9624fbb2caa2af263562`)
+
+### Defects and root causes
+
+1. **PatientProfile without User.** `createOrReuseWorkforceIdentity` called
+   `assertNoUnactivatedPatientIdentity` only when `reusedExistingUser`. A Person that already owned a
+   `PatientProfile` but had no `User` got a fresh `PROVISIONED` User, a workforce relationship and a
+   token, and provisioning reported success; every later activation step then refused the account
+   (`isInitialWorkforceScopeEligible` rejects `patientProfile`). The check now runs for every
+   `PROVISIONED` User, including one created in the same Serializable transaction, and resolves
+   ownership from the canonical Person (`PATIENT` role **or** `PatientProfile`). A rejection rolls
+   back the User, roles, relationship, token, audit and any Person-name update.
+2. **Patient provisioning after pending workforce provisioning.** `provisionPatientInTransaction`
+   added the `PATIENT` role, `PatientProfile` and relationship to a `PROVISIONED` workforce User and
+   succeeded, silently invalidating the workforce token (reproduced) and making a Patient
+   activation token issuable for the same global account. It now refuses, inside the same
+   transaction, when the reused `PROVISIONED` User has pending workforce authority
+   (`PatientProvisioningConflictError` `RECONCILIATION_REQUIRED`, Thai message). Nothing is revoked,
+   created or audited; the workforce token stays usable. `ACTIVE` workforce Users still gain
+   PATIENT authority and a profile with no credential change.
+3. **Reverse Patient activation boundary (confirmed).** Patient activation verified only
+   PATIENT role/profile/relationship. A `PROVISIONED` User that also had an OSM/Hospital
+   relationship (or ADMIN, or an unfinished workforce activation) could therefore receive its first
+   global credential through a Patient token, which would also authorize the workforce authority.
+   `findPatientActivationTarget`/details now compute `hasWorkforceAuthority` and reject at issuance
+   (Thai conflict), details/preview, claim and local finalization (generic link error). The provider
+   call happens between claim and finalization, so authority added during that window is rejected at
+   finalization and the existing compensation deletes the newly created provider identity.
+
+`hasWorkforceAuthority` (`src/modules/identity/services/workforce-authority.ts`) is true for the ADMIN
+role, any `HospitalMembership`/`OsmHospitalRelationship` row (any status), or any `WorkforceActivation`
+with `usedAt IS NULL` (including claimed/ambiguous operations). A bare OSM/HOSPITAL role without a
+relationship grants no scope and keeps the existing Patient activation behavior (covered by
+`patient-activation.integration.test.ts`). `ACTIVE` Users are never blocked by these gates.
+
+### Credential ownership rules (both directions)
+
+| State | Workforce provision / activate | Patient provision / activate |
+| --- | --- | --- |
+| Fresh Person | allowed | allowed |
+| `PROVISIONED`, Patient-owned (role or profile) | rejected | allowed (Patient-only) |
+| `PROVISIONED`, pending workforce authority | allowed (single Hospital) | rejected (provision and activation) |
+| `ACTIVE` mapped User, any roles | relationships added, no new credential | role/profile added, no new credential |
+| Legacy mixed `PROVISIONED` identity | blocked at every step, data unchanged | blocked at every step, data unchanged |
+
+### Evidence
+
+- Pre-fix run against `6a68463` logic: 11 new PostgreSQL tests failed (two of those eleven failed on
+  fixture mistakes that were corrected; the rest reproduce defects 1-3).
+- Post-fix: `workforce-onboarding-v2` 92/92 (includes concurrency: Workforce vs Patient provisioning
+  of one new Person ends with exactly one Person/User and one domain); `patient-activation` 24/24;
+  `patient-provisioning` 15/15; `workforce` 16/16; roster import suites 33/33; unit suite 2973/2973;
+  full PostgreSQL integration run 796/796 (one earlier full run showed a single non-reproducible
+  failure in `workforce.integration.test.ts` that passed alone twice and in the next full run);
+  `tsc --noEmit` and ESLint clean. No schema or migration change; no live Supabase calls.
+
+### Still SECURITY_GATED / undecided
+
+- Patient activation (Patient-only) relies on an issuer-delivered token with **no** national-ID or
+  other independent owner proof. That pre-existing concern is not resolved here and is not declared
+  secure.
+- Activating workforce authority on an unactivated Patient, cross-Hospital first activation, and
+  independent global recovery proof remain undecided. Mixed legacy identities are blocked, never
+  auto-reconciled; resolution needs the controlled reconciliation procedure above plus an explicit
+  product/security decision.

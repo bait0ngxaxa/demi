@@ -938,7 +938,8 @@ async function createOrReuseWorkforceIdentity(
   assertUserAccountCanReceiveWorkforce(user);
 
   if (user.status === UserStatus.PROVISIONED) {
-    if (reusedExistingUser) await assertNoUnactivatedPatientIdentity(transaction, user.id);
+    // Resolved from the canonical Person, so a newly created User for a Person that already owns a PatientProfile is refused too.
+    await assertNoUnactivatedPatientIdentity(transaction, user.id);
     await assertSingleHospitalPendingScope(transaction, user.id, input.hospitalId);
   }
 
