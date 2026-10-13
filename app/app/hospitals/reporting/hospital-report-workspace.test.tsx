@@ -172,6 +172,7 @@ function render(view: string, items: HospitalReportProgramRow[] = [
 describe("Hospital reporting dashboard presentation", () => {
   it("shows source-backed grains and a separate card for every Program", () => {
     const markup = render("overview");
+    expect(markup).toContain(`href="/app#hospital-workspace-${hospitalId}"`);
     expect(markup).toContain("<h1");
     expect(markup).toContain("Dashboard ภาพรวม");
     expect(markup).toContain("รายงานการจัดบริการ");

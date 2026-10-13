@@ -83,7 +83,7 @@ export function PatientActivationActionsWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
-        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
         description="ออกสิทธิ์เข้าใช้งานเฉพาะผู้ป่วยที่จำเป็นต้องใช้ DEMI โดยผู้ป่วยเป็นผู้ตั้งรหัสผ่านเอง"
         title="เปิดใช้งานบัญชีผู้ป่วย"
       />

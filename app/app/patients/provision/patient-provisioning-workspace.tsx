@@ -1122,7 +1122,7 @@ export function PatientProvisioningWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">เพิ่มผู้ป่วย</StatusBadge>}
-        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "เพิ่ม / นำเข้าผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่ม / นำเข้าผู้ป่วย" }]}
         description="เพิ่มข้อมูลผู้ป่วยเข้าสู่ DEMI โดยไม่สร้างบัญชีซ้ำ และไม่รับรหัสผ่านจากผู้ดำเนินการ"
         title="เพิ่ม / นำเข้าผู้ป่วย"
       />

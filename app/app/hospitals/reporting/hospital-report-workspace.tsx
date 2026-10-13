@@ -593,7 +593,7 @@ export function HospitalReportWorkspace({
         actions={<ExportButton endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
         breadcrumbs={isGlobalAdmin
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
-          : [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานโรงพยาบาล" }]}
+          : [{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
         description={isGlobalAdmin
           ? "Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้"
           : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}

@@ -11,7 +11,7 @@ export function HospitalServiceCatalogWorkspace({
   catalogs: readonly ManagedHospitalServiceCatalog[];
 }): React.JSX.Element {
   return (
-    <div className="max-w-4xl">
+    <div className="min-w-0 max-w-4xl break-words">
       <PageHeader
         breadcrumbs={[{ href: "/app", label: "งาน" }, { label: "บริการที่ผู้ป่วยขอได้" }]}
         description="กำหนดว่าผู้ป่วยส่งคำขอประเภทใดให้โรงพยาบาลของคุณได้ การตั้งค่านี้ไม่สร้าง Program หรือมอบหมาย อสม."
@@ -19,6 +19,7 @@ export function HospitalServiceCatalogWorkspace({
       />
       <Alert className="mt-6" variant="info">
         เฉพาะเจ้าของโรงพยาบาลโดยตรงเท่านั้นที่เปลี่ยนรายการนี้ได้ หมวดบริการเป็นประเภทคำขอ ไม่ใช่การยืนยันว่าเริ่มให้บริการแล้ว
+        <p className="mt-1">หน้านี้รวมโรงพยาบาลที่บัญชีมีสิทธิ์จัดการ แต่ละรายการบันทึกแยกตามโรงพยาบาล ไม่กรองตามโรงพยาบาลที่เปิดก่อนหน้า</p>
       </Alert>
 
       <div className="mt-6 space-y-6">

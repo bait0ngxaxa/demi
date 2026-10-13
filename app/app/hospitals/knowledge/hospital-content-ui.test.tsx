@@ -69,6 +69,7 @@ describe("Hospital Content publisher UI output", () => {
     expect(markup).toContain("ดูรายการถัดไป");
     expect(markup).not.toContain("**ไม่แปล Markdown**");
     expect(markup).not.toContain("https://example.test");
+    expect(markup).toContain(`href="/app#hospital-workspace-${hospital.id}"`);
 
     const multiHospitalMarkup = renderToStaticMarkup(
       <HospitalContentListWorkspace hospitals={[hospital, secondHospital]} page={page} selectedHospitalId={hospital.id} />,
@@ -86,6 +87,15 @@ describe("Hospital Content publisher UI output", () => {
     expect(multiHospitalMarkup).toContain('id="hospital-content-hospital"');
     expect(multiHospitalMarkup).toContain("โรงพยาบาลตัวอย่าง (H001)");
     expect(multiHospitalMarkup).toContain("โรงพยาบาลอีกแห่ง (H002)");
+  });
+
+  it("keeps one create action and exact Hospital return on an empty content page", () => {
+    const markup = renderToStaticMarkup(<HospitalContentListWorkspace hospitals={[hospital, secondHospital]} page={{ hospital: secondHospital, items: [], nextCursor: null }} selectedHospitalId={secondHospital.id} />);
+    expect(markup.match(new RegExp(`href="/app/hospitals/knowledge/new\\?hospitalId=${secondHospital.id}"`, "g"))).toHaveLength(1);
+    expect(markup).toContain(`href="/app#hospital-workspace-${secondHospital.id}"`);
+    expect(markup).toContain("ยังไม่มีข่าวสารและความรู้");
+    expect(markup).toContain("ใช้สิทธิ์เจ้าของโดยตรง");
+    expect(markup).not.toContain('href="/app/patients');
   });
 
   it("waits for account-scoped session recovery before rendering create fields", () => {

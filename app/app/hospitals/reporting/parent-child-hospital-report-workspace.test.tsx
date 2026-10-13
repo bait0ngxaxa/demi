@@ -78,5 +78,7 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).not.toContain("/app/patients/");
     expect(markup).not.toContain("/api/v1/hospital/reporting/export");
     expect(markup).not.toContain("ส่งออก Excel");
+    expect(markup).toContain(`href="/app#hospital-workspace-${parentHospitalId}"`);
+    expect(markup).not.toContain(`href="/app#hospital-workspace-${childHospitalId}"`);
   });
 });

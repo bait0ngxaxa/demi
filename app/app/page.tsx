@@ -53,7 +53,7 @@ function WorkspaceActionList({
               ? buttonClassName({ className: "my-3 w-full flex-col items-start gap-1 whitespace-normal text-left" })
               : "flex min-h-16 flex-col justify-center gap-1 py-4 text-left transition-colors hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"}
             href={action.href}
-            prefetch={action.prefetch}
+            prefetch={action.prefetch ?? false}
           >
             <span className="font-semibold">{action.label}</span>
             <span className={primary && index === 0 ? "text-sm leading-6" : "text-sm leading-6 text-text-muted"}>{action.description}</span>
@@ -80,10 +80,11 @@ function HospitalWorkspaceSection({
   return (
     <Panel aria-labelledby={`hospital-workspace-${workspace.hospitalId}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h3
-            className="text-lg font-semibold tracking-[-0.02em] text-text"
+            className="scroll-mt-24 break-words text-lg font-semibold tracking-[-0.02em] text-text"
             id={`hospital-workspace-${workspace.hospitalId}`}
+            tabIndex={-1}
           >
             {workspace.hospitalName}
           </h3>
@@ -111,12 +112,18 @@ function HospitalWorkspaceSection({
         </Alert>
       ) : workspace.actions.length > 0 ? (
         <div className="mt-5">
-          {operationalActions.length > 0 ? <WorkspaceActionList actions={operationalActions} primary /> : null}
+          {operationalActions.length > 0 ? (
+            <div>
+              <h4 className="mb-3 font-semibold text-text">งานผู้ป่วยในโรงพยาบาลนี้</h4>
+              <WorkspaceActionList actions={operationalActions} primary />
+            </div>
+          ) : null}
           {administrationActions.length > 0 ? (
-            <details className="mt-5">
-              <summary className="min-h-11 cursor-pointer py-3 font-semibold focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">บริหารบุคลากรโรงพยาบาลนี้</summary>
+            <div className="mt-6">
+              <h4 className="font-semibold text-text">บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง</h4>
+              <p className="mb-3 mt-1 text-sm leading-6 text-text-muted">เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้ สมาชิกทั่วไปไม่ได้รับสิทธิ์บริหารจากบทบาทบุคลากร</p>
               <WorkspaceActionList actions={administrationActions} />
-            </details>
+            </div>
           ) : null}
         </div>
       ) : (
@@ -171,6 +178,19 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
         <section aria-labelledby="workspace-heading" className="pt-8">
           <h2 className="text-xl font-semibold tracking-[-0.02em]" id="workspace-heading">เริ่มงานดูแลผู้ป่วย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">เลือกผู้ป่วยจากรายชื่อเพื่อเปิดข้อมูล โปรแกรม และประวัติการดูแล</p>
+          {projection.hospitals.length > 1 ? (
+            <nav aria-label="ไปยังบริบทโรงพยาบาล" className="mt-4">
+              <ul className="flex flex-wrap gap-2">
+                {projection.hospitals.map((workspace) => (
+                  <li key={workspace.hospitalId} className="min-w-0 max-w-full">
+                    <Link className={buttonClassName({ variant: "secondary", className: "max-w-full whitespace-normal text-left" })} href={`#hospital-workspace-${workspace.hospitalId}`} prefetch={false}>
+                      {workspace.hospitalName} · {workspace.hospitalCode}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ) : null}
           <div className="mt-5 space-y-5">
             {projection.assignedPatientsAction ? (
               <Panel aria-labelledby="assigned-heading">
@@ -207,8 +227,8 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
 
       {projection.supportingActions.length > 0 ? (
         <section aria-labelledby="supporting-heading" className="pt-8">
-          <h2 className="text-xl font-semibold text-text" id="supporting-heading">เครื่องมือบริหารและรายงานโรงพยาบาล</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">ใช้ขอบเขตที่บัญชีนี้มีสิทธิ์ เลือกโรงพยาบาลในหน้าปลายทางที่รองรับการเลือก</p>
+          <h2 className="text-xl font-semibold text-text" id="supporting-heading">ตั้งค่าบริการที่ผู้ป่วยขอได้</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">รวมโรงพยาบาลที่คุณมีสิทธิ์เจ้าของโดยตรง หน้าปลายทางแสดงแต่ละโรงพยาบาลแยกกัน ไม่กรองตามโรงพยาบาลที่เปิดก่อนหน้า</p>
           <div className="mt-5"><WorkspaceActionList actions={projection.supportingActions} /></div>
         </section>
       ) : null}

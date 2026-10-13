@@ -71,6 +71,9 @@ describe("application workspace projection", () => {
       `/app/patients?hospitalId=${hospitalId}`,
       `/app/patients/provision?hospitalId=${hospitalId}`,
       `/app/patients/activation?hospitalId=${hospitalId}`,
+      `/app/hospitals/contact?hospitalId=${hospitalId}`,
+      `/app/hospitals/knowledge?hospitalId=${hospitalId}`,
+      `/app/hospitals/reporting?hospitalId=${hospitalId}`,
     ]);
   });
 
@@ -166,7 +169,7 @@ describe("application workspace projection", () => {
     }
     expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/access-requests", "/app/patients/service-requests"]);
     expect(projection.supportingActions.map(({ href }) => href)).toEqual([
-      "/app/patients/service-catalog", "/app/hospitals/contact", "/app/hospitals/knowledge", "/app/hospitals/reporting",
+      "/app/patients/service-catalog",
     ]);
     expect(projection.availableWorkspaces).toEqual(["personal", "work"]);
   });
@@ -195,6 +198,44 @@ describe("application workspace projection", () => {
     expect(projection.hospitals[0]?.actions).toEqual([]);
     expect(projection.requestActions).toEqual([]);
     expect(projection.supportingActions).toEqual([]);
+  });
+
+  it("keeps OWNER of A and MEMBER of B management separate", () => {
+    const secondId = "55555555-5555-4555-8555-555555555555";
+    const projection = projectApplicationWorkspace(actor({
+      roles: [Role.HOSPITAL, Role.OSM, Role.PATIENT],
+      hospitalMemberships: [directMembership(MembershipType.OWNER), { ...directMembership(MembershipType.MEMBER), hospitalId: secondId }],
+      osmHospitalRelationships: [{ hospitalId: secondId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+    }), [workspace(), workspace({ hospitalId: secondId })]);
+    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(4);
+    expect(projection.hospitals[1]?.actions.filter(({ category }) => category === "administration")).toEqual([]);
+    expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${secondId}`);
+    expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
+    expect(projection.hospitals[1]?.contextLabel).toContain("สมาชิกโรงพยาบาล");
+    expect(projection.hospitals[1]?.contextLabel).not.toContain("เจ้าของโรงพยาบาล");
+  });
+
+  it("preserves domain-specific ADMIN + HOSPITAL policies", () => {
+    const projection = projectApplicationWorkspace(actor({ roles: [Role.ADMIN, Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] }), [workspace()]);
+    expect(projection.governanceActions).toHaveLength(3);
+    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(4);
+    // Request and catalog policies explicitly exclude actors holding ADMIN, even with direct membership.
+    expect(projection.requestActions).toEqual([]);
+    expect(projection.supportingActions).toEqual([]);
+  });
+
+  it.each([MembershipStatus.SUSPENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED])("keeps %s memberships visible without operational or management actions", (status) => {
+    const projection = projectApplicationWorkspace(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [{ ...directMembership(MembershipType.OWNER), status }] }), [workspace()]);
+    expect(projection.hospitals[0]?.contextLabel).toContain("สมาชิกไม่พร้อมใช้งาน");
+    expect(projection.hospitals[0]?.actions).toEqual([]);
+    expect(projection.requestActions).toEqual([]);
+    expect(projection.supportingActions).toEqual([]);
+  });
+
+  it("does not project OWNER tools for unrelated Hospital identifiers or ADMIN-only membership data", () => {
+    const scopedActor = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] });
+    expect(projectApplicationWorkspace(scopedActor, [workspace({ hospitalId: "foreign-hospital" })]).hospitals[0]?.actions).toEqual([]);
+    expect(projectApplicationWorkspace({ ...scopedActor, roles: [Role.ADMIN] }, [workspace()]).hospitals[0]?.actions).toEqual([]);
   });
 
 });

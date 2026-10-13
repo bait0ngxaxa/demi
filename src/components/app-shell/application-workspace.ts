@@ -20,6 +20,18 @@ import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
+import {
+  decideHospitalContactPolicy,
+  HOSPITAL_CONTACT_CAPABILITIES,
+} from "@/modules/hospital-contact/policies/hospital-contact-policy";
+import {
+  decideHospitalContentPolicy,
+  HOSPITAL_CONTENT_CAPABILITIES,
+} from "@/modules/hospital-content/policies/hospital-content-policy";
+import {
+  decideHospitalReportPolicy,
+  HOSPITAL_REPORT_CAPABILITIES,
+} from "@/modules/reporting/policies/hospital-report-policy";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationWorkspaceContext } from "./navigation-types";
@@ -189,6 +201,48 @@ function projectHospitalActions(
     });
   }
 
+  if (decideHospitalContactPolicy({
+    actor,
+    capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+    scope: "DIRECT_HOSPITAL_OWNER",
+    hospitalId,
+  }).allowed) {
+    actions.push({
+      href: withHospitalContext("/app/hospitals/contact", hospitalId),
+      label: "ข้อมูลติดต่อโรงพยาบาล",
+      description: "ปรับปรุงที่อยู่และโทรศัพท์ที่โรงพยาบาลนี้ให้ไว้สำหรับผู้ป่วย",
+      category: "administration",
+      prefetch: false,
+    });
+  }
+  if (decideHospitalContentPolicy({
+    actor,
+    capability: HOSPITAL_CONTENT_CAPABILITIES.read,
+    scope: "DIRECT_HOSPITAL_OWNER",
+    hospitalId,
+  }).allowed) {
+    actions.push({
+      href: withHospitalContext("/app/hospitals/knowledge", hospitalId),
+      label: "ข่าวสารและความรู้",
+      description: "สร้างฉบับร่างและจัดการการเผยแพร่เนื้อหาของโรงพยาบาลนี้",
+      category: "administration",
+      prefetch: false,
+    });
+  }
+  if (decideHospitalReportPolicy({
+    actor,
+    capability: HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
+    target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
+  }).allowed) {
+    actions.push({
+      href: withHospitalContext("/app/hospitals/reporting", hospitalId),
+      label: "รายงานโรงพยาบาล",
+      description: "เปิดรายงานโรงพยาบาลนี้ เลือกรายงานลูกข่ายที่มีสิทธิ์ได้ในหน้ารายงาน โดยไม่เพิ่มสิทธิ์ดูแลผู้ป่วยลูกข่าย",
+      category: "administration",
+      prefetch: false,
+    });
+  }
+
   return actions;
 }
 
@@ -207,14 +261,6 @@ export function projectApplicationWorkspace(
       if (!action.category) shared.set(action.href, action);
     }
   }
-  const supportingActions = projectApplicationNavigation(actor)
-    .filter(({ label }) => label === "โรงพยาบาล")
-    .flatMap(({ items }) => items.map((item) => ({
-      href: item.href,
-      label: item.label,
-      description: "เลือกโรงพยาบาลที่มีสิทธิ์ในหน้าปลายทาง",
-      prefetch: item.prefetch,
-    })));
   const hospitals = projected.map((workspace) => ({
     ...workspace,
     contextLabel: workspaceContextLabel(actor, workspace.hospitalId),
@@ -229,7 +275,6 @@ export function projectApplicationWorkspace(
     requestActions: [...shared.values()].filter(({ href }) => href !== "/app/patients/service-catalog"),
     supportingActions: [
       ...[...shared.values()].filter(({ href }) => href === "/app/patients/service-catalog"),
-      ...supportingActions,
     ],
   };
 }

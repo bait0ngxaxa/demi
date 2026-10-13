@@ -89,6 +89,10 @@ describe("application home workspace routing", () => {
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลเดียว");
     expect(html.includes(`/app/workforce?hospitalId=${hospitalId}`)).toBe(type === MembershipType.OWNER);
     expect(html.includes('href="/app/patients/service-catalog"')).toBe(type === MembershipType.OWNER);
+    for (const path of ["contact", "knowledge", "reporting"]) {
+      expect(html.includes(`href="/app/hospitals/${path}?hospitalId=${hospitalId}"`)).toBe(type === MembershipType.OWNER);
+    }
+    expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
     expect(html).not.toMatch(/งานถัดไป|งานค้าง|วันนี้|เปอร์เซ็นต์/);
     expect(html).toContain("focus-visible:ring-focus-ring");
@@ -152,6 +156,14 @@ describe("application home workspace routing", () => {
     expect(html.match(/href="\/app\/patients\/service-catalog"/g)).toHaveLength(1);
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).toContain(`/app/patients?hospitalId=${secondId}`);
+    expect(html).toContain('aria-label="ไปยังบริบทโรงพยาบาล"');
+    expect(html).toContain(`href="#hospital-workspace-${secondId}"`);
+    expect(html).toContain(`/app/hospitals/contact?hospitalId=${secondId}`);
+    expect(html).not.toContain('href="/app/patients/service-catalog?hospitalId=');
+    expect(html).not.toContain('href="/app/patients/access-requests?hospitalId=');
+    expect(html).not.toContain('href="/app/patients/service-requests?hospitalId=');
+    expect(html.indexOf("งานผู้ป่วยในโรงพยาบาลนี้")).toBeLessThan(html.indexOf("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง"));
+    expect(html).not.toContain("บริหารบุคลากรโรงพยาบาลนี้</summary>");
   });
 
 });

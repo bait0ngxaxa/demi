@@ -36,15 +36,15 @@ export function HospitalContentListWorkspace({
   const createHref = `/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
 
   return (
-    <div className="max-w-5xl">
+    <div className="min-w-0 max-w-5xl break-words">
       <PageHeader
         actions={(
-          <Link className={buttonClassName()} href={createHref}>
+          <Link className={buttonClassName()} href={createHref} prefetch={false}>
             สร้างข่าวสารและความรู้
           </Link>
         )}
-        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ข่าวสารและความรู้" }]}
-        description="จัดการข้อมูลที่โรงพยาบาลจัดทำและเผยแพร่"
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "ข่าวสารและความรู้" }]}
+        description="จัดการฉบับร่าง การเผยแพร่ และการเก็บถาวรของโรงพยาบาลที่เลือก ใช้สิทธิ์เจ้าของโดยตรง"
         title="ข่าวสารและความรู้"
       />
 
@@ -87,9 +87,7 @@ export function HospitalContentListWorkspace({
           <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
             สร้างฉบับร่างฉบับแรกเมื่อมีข้อมูลครบ ทั้งหัวข้อ เนื้อหา และหมวดหมู่
           </p>
-          <Link className={`${buttonClassName()} mt-5`} href={createHref}>
-            สร้างฉบับร่าง
-          </Link>
+          <p className="mt-2 text-sm leading-6 text-text-muted">ใช้ “สร้างข่าวสารและความรู้” ด้านบนเพื่อเริ่มฉบับร่างในโรงพยาบาลนี้</p>
         </Panel>
       ) : (
         <Panel aria-labelledby="hospital-content-list-heading" className="mt-6">
@@ -100,6 +98,7 @@ export function HospitalContentListWorkspace({
                 <Link
                   className="block min-w-0 rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
                   href={`/app/hospitals/knowledge/${item.id}`}
+                  prefetch={false}
                 >
                   <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">

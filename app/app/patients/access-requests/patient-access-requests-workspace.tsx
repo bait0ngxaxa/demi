@@ -38,6 +38,8 @@ export function HospitalPatientAccessRequestsWorkspace({
         title="คำขอเปิดใช้งานผู้ป่วย"
       />
 
+      <p className="mt-4 text-sm leading-6 text-text-muted">รวมคำขอจากทุกโรงพยาบาลที่คุณมีสิทธิ์ทบทวนโดยตรง ไม่กรองตามโรงพยาบาลที่เปิดก่อนหน้า การเลือกโรงพยาบาลในแบบค้นหาด้านล่างใช้กับการค้นหานั้นเท่านั้น</p>
+
       <PatientAccessRequestLookup hospitals={hospitals} />
 
       {requests.length === 0 ? (

@@ -27,7 +27,7 @@ export function ParentChildHospitalReportWorkspace({
     <div className="min-w-0 max-w-[1440px]">
       <PageHeader
         breadcrumbs={[
-          { label: "หน้าหลัก", href: "/app" },
+          { label: "งานโรงพยาบาลแม่ข่าย", href: `/app#hospital-workspace-${encodeURIComponent(report.parent.id)}` },
           { label: "รายงานโรงพยาบาล", href: "/app/hospitals/reporting" },
           { label: "รายงาน Child Hospital" },
         ]}

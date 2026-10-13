@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useMemo, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -352,10 +352,10 @@ export function WorkforceWorkspace({
   const anyPending = staffPending || osmPending || remotePending || assistedPending;
 
   return (
-    <div>
+    <div className="min-w-0 break-words">
       <PageHeader
         actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
-        breadcrumbs={[{ label: "บุคลากร" }, { label: "จัดการบุคลากร" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "จัดการบุคลากร" }]}
         description="เพิ่มบุคลากรและ อสม. รวมถึงจัดการบทบาทเจ้าของโรงพยาบาลและสมาชิกในโรงพยาบาลที่คุณดูแล"
         title="จัดการบุคลากรโรงพยาบาล"
       />
@@ -380,16 +380,57 @@ export function WorkforceWorkspace({
             ))}
           </Select>
           <p className="mt-2 text-sm leading-6 text-muted">
-            การดำเนินการจะแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
+            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} · {workforce.hospital.hospitalCode} เท่านั้น ใช้สิทธิ์เจ้าของโรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
         </Panel>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <nav aria-label="ส่วนงานบุคลากรโรงพยาบาล" className="mt-5 flex flex-wrap gap-2">
+          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-roster" prefetch={false}>รายชื่อในโรงพยาบาล</Link>
+          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>แบบฟอร์มเพิ่มบุคลากรและ อสม.</Link>
+        </nav>
+
+        {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
+        {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
+        {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
+
+        <div className="mt-8 grid scroll-mt-24 gap-6 xl:grid-cols-2" id="workforce-roster" tabIndex={-1}>
+          {([
+            ["บุคลากรโรงพยาบาล", staffRows],
+            ["อสม.", osmRows],
+          ] as const).map(([title, rows]) => (
+            <section className="overflow-hidden rounded-panel border border-border bg-surface" key={title}>
+              <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
+                <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
+                <StatusBadge>{rows.length} รายการ</StatusBadge>
+              </div>
+              {rows.length === 0 ? (
+                <p className="px-4 py-10 text-center text-sm leading-6 text-muted sm:px-6">ยังไม่มีรายการในโรงพยาบาลนี้</p>
+              ) : (
+                <ul>
+                  {rows.map((row) => (
+                    <WorkforceRow
+                      assistedAction={assistedAction}
+                      assistedPending={assistedPending}
+                      anyPending={anyPending}
+                      hospitalId={selectedHospitalId}
+                      key={`${row.kind}-${row.id}`}
+                      remoteAction={remoteAction}
+                      remotePending={remotePending}
+                      row={row}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </div>
+
+        <div className="mt-6 grid scroll-mt-24 gap-6 xl:grid-cols-2" id="workforce-provision" tabIndex={-1}>
           <Panel>
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                เลือกวิชาชีพของบุคลากร ระบบจะเพิ่มความสัมพันธ์กับโรงพยาบาลนี้ให้
+                เพิ่มสมาชิกและเลือกวิชาชีพ วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล การเปลี่ยนบทบาทเจ้าของทำในรายละเอียดความสัมพันธ์ตามสิทธิ์
               </p>
             </div>
             <form action={staffAction} className="mt-6 space-y-4">
@@ -458,41 +499,6 @@ export function WorkforceWorkspace({
               </Button>
             </form>
           </Panel>
-        </div>
-
-        {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
-        {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
-
-        <div className="mt-8 grid gap-6 xl:grid-cols-2">
-          {([
-            ["บุคลากรโรงพยาบาล", staffRows],
-            ["อสม.", osmRows],
-          ] as const).map(([title, rows]) => (
-            <section className="overflow-hidden rounded-panel border border-border bg-surface" key={title}>
-              <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
-                <StatusBadge>{rows.length} รายการ</StatusBadge>
-              </div>
-              {rows.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm leading-6 text-muted sm:px-6">ยังไม่มีรายการในโรงพยาบาลนี้</p>
-              ) : (
-                <ul>
-                  {rows.map((row) => (
-                    <WorkforceRow
-                      assistedAction={assistedAction}
-                      assistedPending={assistedPending}
-                      anyPending={anyPending}
-                      hospitalId={selectedHospitalId}
-                      key={`${row.kind}-${row.id}`}
-                      remoteAction={remoteAction}
-                      remotePending={remotePending}
-                      row={row}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
         </div>
       </div>
     </div>

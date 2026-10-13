@@ -182,7 +182,7 @@ export function PatientDirectoryView({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
-        breadcrumbs={[{ label: "ผู้ป่วย" }, { label: "รายชื่อผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedScope.hospitalId)}` }, { label: "รายชื่อผู้ป่วย" }]}
         description="ค้นหาและเปิดดูข้อมูลผู้ป่วยเฉพาะในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง"
         title="รายชื่อผู้ป่วย"
       />
