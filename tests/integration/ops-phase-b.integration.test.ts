@@ -139,6 +139,38 @@ describe("Phase B hospital operations", () => {
     expect(await db.patientAppointmentRescheduleRequest.findUnique({ where: { id: r.requestId } })).toMatchObject({ status: "REJECTED", rejectionReason: "เวลาที่ขอเต็มแล้ว" });
   });
 
+  // Describes current WB-DF-06 behavior only; whether the time must match a preferred option is open as WB-PD-11.
+  it("approval is the staff schedule change itself: any changed time approves, no change or a foreign request never approves", async () => {
+    const f = await fixture();
+    const a = await createAppointment(f.osm, appointmentInput(f.relationshipId, true), dependencies);
+    const preferredDatetimes = ["2026-10-21T10:00:00+07:00", "2026-10-22T09:00:00+07:00"];
+    const request = await submitAppointmentRescheduleRequest(f.osm, { patientHospitalRelationshipId: f.relationshipId, appointmentId: a.appointmentId, expectedUpdatedAt: a.updatedAt.toISOString(), submissionNonce: randomUUID(), preferredDatetimes, reason: "ผู้ป่วยไม่สะดวก" }, dependencies);
+    const b = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
+    const foreign = await submitAppointmentRescheduleRequest(f.patient, { patientHospitalRelationshipId: f.relationshipId, appointmentId: b.appointmentId, expectedUpdatedAt: b.updatedAt.toISOString(), submissionNonce: randomUUID(), preferredDatetimes, reason: "ติดธุระ" }, dependencies);
+    const fields = appointmentInput(f.relationshipId, true); delete fields.submissionNonce;
+    const approval = { ...fields, appointmentId: a.appointmentId, expectedUpdatedAt: a.updatedAt.toISOString(), rescheduleRequestId: request.requestId };
+    const alternative = "2026-10-23T14:00:00+07:00";
+    const unchanged = async (): Promise<void> => {
+      expect((await db.patientAppointment.findUniqueOrThrow({ where: { id: a.appointmentId } })).updatedAt).toEqual(a.updatedAt);
+      expect((await db.patientAppointmentRescheduleRequest.findUniqueOrThrow({ where: { id: request.requestId } })).status).toBe("PENDING");
+    };
+    // The OSM may edit its own home visit, but never decides a request on the Hospital's behalf.
+    await expect(rescheduleAppointment(f.osm, { ...approval, scheduledAt: alternative }, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
+    await unchanged();
+    await expect(rescheduleAppointment(f.staff, approval, dependencies)).rejects.toBeInstanceOf(ConflictError);
+    await unchanged();
+    await expect(rescheduleAppointment(f.staff, { ...approval, scheduledAt: alternative, rescheduleRequestId: foreign.requestId }, dependencies)).rejects.toBeInstanceOf(ConflictError);
+    await unchanged();
+
+    await rescheduleAppointment(f.staff, { ...approval, scheduledAt: alternative }, dependencies);
+    expect((await db.patientAppointment.findUniqueOrThrow({ where: { id: a.appointmentId } })).scheduledAt).toEqual(new Date(alternative));
+    expect(await db.patientAppointmentRescheduleRequest.findUniqueOrThrow({ where: { id: request.requestId } })).toMatchObject({
+      status: "APPROVED", resolvedByUserId: f.staff.userId, preferredDatetimes: preferredDatetimes.map((value) => new Date(value)),
+    });
+    expect(await db.auditEvent.count({ where: { action: "appointment.reschedule_request.approved", resourceId: request.requestId, actorUserId: f.staff.userId } })).toBe(1);
+    expect((await db.patientAppointmentRescheduleRequest.findUniqueOrThrow({ where: { id: foreign.requestId } })).status).toBe("PENDING");
+  });
+
   it("OSM owns only assigned home visits; clinic, other creators and terminal clinical actions are denied", async () => {
     const f = await fixture();
     await expect(createAppointment(f.osm, appointmentInput(f.relationshipId), dependencies)).rejects.toBeInstanceOf(ForbiddenError);
