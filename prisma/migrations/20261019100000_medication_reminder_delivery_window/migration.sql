@@ -1,0 +1,1 @@
+ALTER TYPE "MedicationLineReminderOutcome" ADD VALUE 'DELIVERY_WINDOW_EXPIRED';

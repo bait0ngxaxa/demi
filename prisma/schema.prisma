@@ -156,6 +156,7 @@ enum MedicationLineReminderOutcome {
   AMBIGUOUS_TRANSPORT_FAILURE
   PROCESS_OUTCOME_UNKNOWN
   RETRY_WINDOW_EXPIRED
+  DELIVERY_WINDOW_EXPIRED
 }
 
 enum HospitalOnboardingApplicationStatus {

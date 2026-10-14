@@ -5,14 +5,16 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createPersonalMedication, stopPersonalMedication } from "@/modules/medications/services/personal-medication-service";
 import { setOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
-import { drainMedicationLineReminderOutbox } from "@/modules/medications/services/medication-line-reminder-delivery-service";
+import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryInternals } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { createSupportReport, getOwnerSupportReport, listOwnerSupportReports, SupportReportRateLimitError, updateOwnerSupportReportStatus } from "@/modules/support/services/support-report-service";
 import { updateOwnContactEmail } from "@/modules/account-settings/services/contact-setting-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { ConflictError, ValidationError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
-const reminderNow = new Date("2026-10-14T02:00:00.000Z"); // 09:00 in Asia/Bangkok; the 07:00 occurrence is due.
+const reminderNow = new Date("2026-10-14T00:05:00.000Z"); // 07:05 in Asia/Bangkok; the 07:00 occurrence is due within tolerance.
+const bangkok = (local: string): Date => new Date(`${local}+07:00`);
 const personIds: string[] = [];
 const userIds: string[] = [];
 const profileIds: string[] = [];
@@ -98,7 +100,13 @@ async function createWorkforce(hospitalId: string, role: Role): Promise<ActorCon
   return created.actor;
 }
 
-async function setupReminderSubject(): Promise<{ patient: Awaited<ReturnType<typeof createPatient>>; medicationId: string; lineUserId: string }> {
+async function addMedication(actor: ActorContext, times: string[]): Promise<string> {
+  const medication = await createPersonalMedication(actor, { medicationName: "ชื่อยาที่ห้ามอยู่ในข้อความ", instructionText: null, times }, { database: prisma, now: () => reminderNow });
+  medicationIds.push(medication.id);
+  return medication.id;
+}
+
+async function setupReminderSubject(input: { times?: string[]; optInAt?: Date } = {}): Promise<{ patient: Awaited<ReturnType<typeof createPatient>>; medicationId: string; lineUserId: string }> {
   const owner = await createHospitalOwner();
   const patient = await createPatient(owner.actor, owner.hospitalId);
   const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
@@ -106,10 +114,22 @@ async function setupReminderSubject(): Promise<{ patient: Awaited<ReturnType<typ
     userId: patient.userId, lineUserId, lineSubjectFingerprint: createHash("sha256").update(lineUserId).digest("hex"),
     lineSubjectFingerprintKeyId: "phase-c-integration-v1", reachability: LineReachability.FRIEND, reachabilityObservedAt: reminderNow,
   } });
-  const medication = await createPersonalMedication(patient.actor, { medicationName: "ชื่อยาที่ห้ามอยู่ในข้อความ", instructionText: null, times: ["07:00"] }, { database: prisma, now: () => reminderNow });
-  medicationIds.push(medication.id);
-  await setOwnMedicationLineReminderPreference(patient.actor, true, { database: prisma, now: () => reminderNow });
-  return { patient, medicationId: medication.id, lineUserId };
+  const medicationId = await addMedication(patient.actor, input.times ?? ["07:00"]);
+  const optInAt = input.optInAt ?? reminderNow;
+  await setOwnMedicationLineReminderPreference(patient.actor, true, { database: prisma, now: () => optInAt });
+  return { patient, medicationId, lineUserId };
+}
+
+type PushCall = { lineUserId: string; text: string; retryKey: string };
+function drainAt(now: Date | (() => Date), calls: PushCall[], respond: (call: PushCall) => LinePushResult = () => ({ kind: "ACCEPTED" })) {
+  return drainMedicationLineReminderOutbox({
+    database: prisma, now: typeof now === "function" ? now : () => now, random: () => 0.5, logSummary: () => undefined,
+    push: async (lineUserId, text, retryKey) => { const call = { lineUserId, text, retryKey }; calls.push(call); return respond(call); },
+  });
+}
+
+function reminderRows(ids: string[]) {
+  return prisma.medicationLineReminderNotification.findMany({ where: { personalMedicationId: { in: ids } }, orderBy: [{ localDate: "asc" }, { localTime: "asc" }, { personalMedicationId: "asc" }] });
 }
 
 function barrier(): { entered: Promise<void>; release: () => void; wait: () => Promise<void> } {
@@ -168,6 +188,98 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     const stopped = await drainMedicationLineReminderOutbox({ database: prisma, now: () => reminderNow, push: async () => { calls.push("push"); return { kind: "ACCEPTED" }; }, logSummary: () => undefined });
     expect(stopped.materialized).toBe(0);
     expect(calls).toEqual([]);
+  });
+
+  it("materializes an occurrence only up to its inclusive lateness bound", async () => {
+    const subject = await setupReminderSubject();
+    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, new Date(bangkok("2026-10-14T07:15:00.000").getTime() + 1))).toBe(0);
+    const calls: PushCall[] = [];
+    const onBound = await drainAt(bangkok("2026-10-14T07:15:00.000"), calls);
+    expect(onBound).toMatchObject({ materialized: 1, providerAccepted: 1 });
+    expect(calls).toHaveLength(1);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ dueAt: bangkok("2026-10-14T07:00:00.000"), state: "PROVIDER_ACCEPTED" }]);
+  });
+
+  it("does not catch up earlier same-day occurrences when the worker runs or the patient opts in at 20:00", async () => {
+    const subject = await setupReminderSubject({ times: ["07:00", "12:00", "18:00", "20:00"], optInAt: bangkok("2026-10-14T20:00:00.000") });
+    const calls: PushCall[] = [];
+    expect(await drainAt(bangkok("2026-10-14T20:05:00.000"), calls)).toMatchObject({ materialized: 1, providerAccepted: 1 });
+    expect(await drainAt(bangkok("2026-10-14T20:10:00.000"), calls)).toMatchObject({ materialized: 0, claimed: 0 });
+    expect(calls).toHaveLength(1);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ localTime: new Date("1970-01-01T20:00:00.000Z"), dueAt: bangkok("2026-10-14T20:00:00.000"), state: "PROVIDER_ACCEPTED" }]);
+  });
+
+  it("delivers medications sharing one time exactly once each across overlapping drains", async () => {
+    const subject = await setupReminderSubject();
+    const secondMedicationId = await addMedication(subject.patient.actor, ["07:00"]);
+    const calls: PushCall[] = [];
+    const results = await Promise.all([drainAt(reminderNow, calls), drainAt(reminderNow, calls)]);
+    const rows = await reminderRows([subject.medicationId, secondMedicationId]);
+    expect(results.reduce((sum, { providerAccepted }) => sum + providerAccepted, 0)).toBe(2);
+    expect(rows).toHaveLength(2);
+    expect(rows.every(({ state, attemptCount }) => state === "PROVIDER_ACCEPTED" && attemptCount === 1)).toBe(true);
+    expect(calls.map(({ retryKey }) => retryKey).sort()).toEqual(rows.map(({ retryKey }) => retryKey).sort());
+    expect(calls.every(({ text }) => !text.includes("ชื่อยาที่ห้ามอยู่ในข้อความ"))).toBe(true);
+  });
+
+  it("computes occurrences across the Bangkok midnight and the UTC date boundary", async () => {
+    const morning = await setupReminderSubject({ times: ["06:55"] });
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, providerAccepted: 1 });
+    expect(await reminderRows([morning.medicationId])).toMatchObject([{ localDate: new Date("2026-10-14T00:00:00.000Z"), dueAt: new Date("2026-10-13T23:55:00.000Z") }]);
+    const midnight = await setupReminderSubject({ times: ["00:00", "23:55"] });
+    expect(await drainAt(new Date("2026-10-14T17:05:00.000Z"), calls)).toMatchObject({ materialized: 2, providerAccepted: 2 }); // 00:05 on 15 Oct in Bangkok.
+    expect(await reminderRows([midnight.medicationId])).toMatchObject([
+      { localDate: new Date("2026-10-14T00:00:00.000Z"), localTime: new Date("1970-01-01T23:55:00.000Z"), dueAt: new Date("2026-10-14T16:55:00.000Z") },
+      { localDate: new Date("2026-10-15T00:00:00.000Z"), localTime: new Date("1970-01-01T00:00:00.000Z"), dueAt: new Date("2026-10-14T17:00:00.000Z") },
+    ]);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("suppresses never-attempted occurrences after a prolonged worker outage without contacting LINE", async () => {
+    const subject = await setupReminderSubject();
+    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
+    const calls: PushCall[] = [];
+    expect(await drainAt(bangkok("2026-10-14T13:00:00.000"), calls)).toMatchObject({ materialized: 0, claimed: 0, suppressed: 1 });
+    expect(calls).toEqual([]);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "DELIVERY_WINDOW_EXPIRED", attemptCount: 0, firstAttemptAt: null }]);
+  });
+
+  it("does not start a first attempt that became late while the same batch was running", async () => {
+    const subject = await setupReminderSubject();
+    const secondMedicationId = await addMedication(subject.patient.actor, ["07:00"]);
+    let clock = reminderNow;
+    const calls: PushCall[] = [];
+    const result = await drainAt(() => clock, calls, () => { clock = bangkok("2026-10-14T07:16:00.000"); return { kind: "ACCEPTED" }; });
+    expect(result).toMatchObject({ materialized: 2, claimed: 2, providerAccepted: 1, suppressed: 1 });
+    expect(calls).toHaveLength(1);
+    const rows = await reminderRows([subject.medicationId, secondMedicationId]);
+    expect(rows.map(({ state, safeOutcome }) => `${state}:${safeOutcome}`).sort()).toEqual(["PROVIDER_ACCEPTED:null", "SUPPRESSED:DELIVERY_WINDOW_EXPIRED"]);
+  });
+
+  it("retries an on-time occurrence after the lateness tolerance with the same retry key", async () => {
+    const subject = await setupReminderSubject();
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls, () => ({ kind: "RETRYABLE_HTTP_FAILURE" }))).toMatchObject({ materialized: 1, retryScheduled: 1 });
+    const retried = await drainAt(bangkok("2026-10-14T09:00:00.000"), calls);
+    expect(retried).toMatchObject({ materialized: 0, claimed: 1, providerAccepted: 1, suppressed: 0 });
+    const [row] = await reminderRows([subject.medicationId]);
+    expect(row).toMatchObject({ state: "PROVIDER_ACCEPTED", attemptCount: 2 });
+    expect(calls.map(({ retryKey }) => retryKey)).toEqual([row?.retryKey, row?.retryKey]);
+  });
+
+  it("suppresses materialized occurrences when the medication stops or LINE reminders are disabled before delivery", async () => {
+    const stoppedSubject = await setupReminderSubject();
+    const disabledSubject = await setupReminderSubject();
+    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(2);
+    const medication = await prisma.personalMedication.findUniqueOrThrow({ where: { id: stoppedSubject.medicationId }, select: { updatedAt: true } });
+    await stopPersonalMedication(stoppedSubject.patient.actor, { medicationId: stoppedSubject.medicationId, expectedUpdatedAt: medication.updatedAt.toISOString() }, { database: prisma, now: () => reminderNow });
+    await setOwnMedicationLineReminderPreference(disabledSubject.patient.actor, false, { database: prisma, now: () => reminderNow });
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 2, suppressed: 2, providerAccepted: 0 });
+    expect(calls).toEqual([]);
+    expect(await reminderRows([stoppedSubject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "STALE_SOURCE", attemptCount: 0 }]);
+    expect(await reminderRows([disabledSubject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "OPT_IN_REVOKED", attemptCount: 0 }]);
   });
 
   it("routes reports from patient, OSM and staff to the hospital owner and audits status transitions", async () => {

@@ -6,7 +6,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { resolveEligibleLineRoles } from "@/modules/line/services/line-eligibility-service";
-import { isFreshMedicationReminderFriend, MEDICATION_LINE_REMINDER_BATCH_SIZE, MEDICATION_LINE_REMINDER_LEASE_MS, MEDICATION_LINE_REMINDER_MAX_ATTEMPTS, MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT, MEDICATION_LINE_REMINDER_RETRY_WINDOW_MS, MEDICATION_LINE_REMINDER_TERMINAL_RETENTION_MS, MEDICATION_LINE_REMINDER_TEXT, medicationLineReminderRetryDelayMs } from "../domain/medication-line-reminders";
+import { isFreshMedicationReminderFriend, isMedicationLineReminderOccurrenceExpired, MEDICATION_LINE_REMINDER_BATCH_SIZE, MEDICATION_LINE_REMINDER_LEASE_MS, MEDICATION_LINE_REMINDER_MAX_ATTEMPTS, MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT, MEDICATION_LINE_REMINDER_MAX_LATENESS_MS, MEDICATION_LINE_REMINDER_RETRY_WINDOW_MS, MEDICATION_LINE_REMINDER_TERMINAL_RETENTION_MS, MEDICATION_LINE_REMINDER_TEXT, medicationLineReminderRetryDelayMs } from "../domain/medication-line-reminders";
 import { fromMedicationTimeCarrier } from "../domain/medication-local-time";
 import { createReminderSourceKey, reminderBangkokToUtc } from "../domain/medication-reminder-occurrence";
 import { revalidateOwnPersonalMedicationReminderOccurrence } from "./medication-reminder-occurrence-query-service";
@@ -25,14 +25,23 @@ function nowOf(input: MedicationLineReminderDependencies): Date {
   return now;
 }
 
+function occurrenceDueAt(notification: Pick<Claim, "localDate" | "localTime">): Date | null {
+  try { return new Date(reminderBangkokToUtc(notification.localDate.toISOString().slice(0, 10), occurrenceLocalTime(notification))); } catch { return null; }
+}
+
+function occurrenceLocalTime(notification: Pick<Claim, "localTime">): string {
+  return `${String(notification.localTime.getUTCHours()).padStart(2, "0")}:${String(notification.localTime.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+// Only occurrences due within [now - MAX_LATENESS, now] are materialized; the window may span the Bangkok midnight.
 async function materializeDueOccurrences(database: Database, now: Date): Promise<number> {
+  const earliest = new Date(now.getTime() - MEDICATION_LINE_REMINDER_MAX_LATENESS_MS);
   return database.$executeRaw(Prisma.sql`
     INSERT INTO "MedicationLineReminderNotification" (
       "id", "scheduleId", "personalMedicationId", "localDate", "localTime", "dueAt", "sourceUpdatedAt",
       "recipientUserId", "bindingId", "bindingLifecycleVersion", "preferenceVersion", "state", "createdAt", "updatedAt"
     )
-    SELECT gen_random_uuid(), s."id", m."id", occurrence."localDate", s."localTime",
-      ((occurrence."localDate" + s."localTime") AT TIME ZONE 'Asia/Bangkok'), m."updatedAt",
+    SELECT gen_random_uuid(), s."id", m."id", occurrence."localDate", s."localTime", due."dueAt", m."updatedAt",
       u."id", b."id", b."lifecycleVersion", p."preferenceVersion", 'PENDING'::"MedicationLineReminderState", ${now}, ${now}
     FROM "MedicationSchedule" s
     JOIN "PersonalMedication" m ON m."id" = s."personalMedicationId" AND m."status" = 'ACTIVE'::"PersonalMedicationStatus"
@@ -42,11 +51,12 @@ async function materializeDueOccurrences(database: Database, now: Date): Promise
     JOIN "UserRole" role ON role."userId" = u."id" AND role."role" = 'PATIENT'::"Role"
     JOIN "LineMedicationReminderPreference" p ON p."userId" = u."id" AND p."enabled" = TRUE
     JOIN "LineAccountBinding" b ON b."id" = p."bindingId" AND b."userId" = u."id" AND b."unlinkedAt" IS NULL AND b."lineUserId" IS NOT NULL AND b."lifecycleVersion" = p."bindingLifecycleVersion"
-    CROSS JOIN LATERAL (SELECT timezone('Asia/Bangkok', ${now}::timestamptz)::date AS "localDate", timezone('Asia/Bangkok', ${now}::timestamptz)::time AS "localTime") occurrence
-    WHERE s."localTime" <= occurrence."localTime"
+    CROSS JOIN LATERAL (SELECT DISTINCT timezone('Asia/Bangkok', instant)::date AS "localDate" FROM unnest(ARRAY[${earliest}::timestamptz, ${now}::timestamptz]) AS instant) occurrence
+    CROSS JOIN LATERAL (SELECT ((occurrence."localDate" + s."localTime") AT TIME ZONE 'Asia/Bangkok') AS "dueAt") due
+    WHERE due."dueAt" >= ${earliest}::timestamptz AND due."dueAt" <= ${now}::timestamptz
       AND NOT EXISTS (SELECT 1 FROM "LineAccountBinding" extra WHERE extra."userId" = u."id" AND extra."unlinkedAt" IS NULL AND extra."id" <> b."id")
       AND NOT EXISTS (SELECT 1 FROM "MedicationLineReminderNotification" n WHERE n."scheduleId" = s."id" AND n."localDate" = occurrence."localDate" AND n."localTime" = s."localTime")
-    ORDER BY s."localTime" ASC, s."id" ASC
+    ORDER BY due."dueAt" ASC, s."id" ASC
     LIMIT ${MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT}
     ON CONFLICT ("scheduleId", "localDate", "localTime") DO NOTHING
   `);
@@ -54,6 +64,19 @@ async function materializeDueOccurrences(database: Database, now: Date): Promise
 
 async function closeExhausted(database: Database, now: Date): Promise<number> {
   return database.medicationLineReminderNotification.updateMany({ where: { state: MedicationLineReminderState.CLAIMED, attemptCount: { gte: MEDICATION_LINE_REMINDER_MAX_ATTEMPTS }, leaseExpiresAt: { lte: now } }, data: { state: MedicationLineReminderState.OUTCOME_UNKNOWN, leaseToken: null, leaseExpiresAt: null, safeOutcome: MedicationLineReminderOutcome.PROCESS_OUTCOME_UNKNOWN, terminalAt: now, updatedAt: now } }).then(({ count }) => count);
+}
+
+// Never-attempted rows (e.g. after a worker outage or backlog) are suppressed in bulk so they neither reach LINE
+// late nor consume claim slots ahead of current occurrences. Attempted rows keep the retry-window semantics.
+async function expireLateFirstAttempts(database: Database, now: Date): Promise<number> {
+  const earliest = new Date(now.getTime() - MEDICATION_LINE_REMINDER_MAX_LATENESS_MS);
+  return database.$executeRaw(Prisma.sql`
+    UPDATE "MedicationLineReminderNotification" SET "state" = 'SUPPRESSED'::"MedicationLineReminderState",
+      "safeOutcome" = 'DELIVERY_WINDOW_EXPIRED'::"MedicationLineReminderOutcome", "leaseToken" = NULL, "leaseExpiresAt" = NULL, "terminalAt" = ${now}, "updatedAt" = ${now}
+    WHERE "attemptCount" = 0 AND "firstAttemptAt" IS NULL
+      AND ("state" = 'PENDING'::"MedicationLineReminderState" OR ("state" = 'CLAIMED'::"MedicationLineReminderState" AND "leaseExpiresAt" <= ${now}))
+      AND (("localDate" + "localTime") AT TIME ZONE 'Asia/Bangkok') < ${earliest}::timestamptz
+  `);
 }
 
 async function claim(database: Database, now: Date): Promise<Claim | null> {
@@ -76,6 +99,9 @@ async function claim(database: Database, now: Date): Promise<Claim | null> {
 
 async function eligibility(database: Database, notification: Claim, now: Date): Promise<Eligibility> {
   if (!notification.recipientUserId || !notification.bindingId || notification.bindingLifecycleVersion === null || notification.preferenceVersion === null) return { eligible: false, outcome: MedicationLineReminderOutcome.AUTHORITY_CHANGED };
+  // The dueAt column becomes the next-attempt time after a retry; the occurrence instant comes from its immutable key.
+  const dueAt = occurrenceDueAt(notification);
+  if (!dueAt) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
   type PreliminaryEligibility =
     | { eligible: true; lineUserId: string; actor: ActorContext; localTime: string }
     | { eligible: false; outcome: SafeSuppression };
@@ -84,7 +110,7 @@ async function eligibility(database: Database, notification: Claim, now: Date): 
     if (!schedule || schedule.personalMedication.id !== notification.personalMedicationId || schedule.personalMedication.status !== PersonalMedicationStatus.ACTIVE || schedule.personalMedication.updatedAt.getTime() !== notification.sourceUpdatedAt.getTime()) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
     let localTime: string;
     try { localTime = fromMedicationTimeCarrier(schedule.localTime); } catch { return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE }; }
-    if (localTime !== `${String(notification.localTime.getUTCHours()).padStart(2, "0")}:${String(notification.localTime.getUTCMinutes()).padStart(2, "0")}` || reminderBangkokToUtc(notification.localDate.toISOString().slice(0, 10), localTime) !== notification.dueAt.toISOString()) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
+    if (localTime !== occurrenceLocalTime(notification)) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
     const profile = await transaction.patientProfile.findUnique({ where: { id: schedule.personalMedication.patientProfileId }, select: { personId: true } });
     const person = profile ? await transaction.person.findUnique({
       where: { id: profile.personId },
@@ -122,7 +148,7 @@ async function eligibility(database: Database, notification: Claim, now: Date): 
     personalMedicationId: notification.personalMedicationId,
     localDate,
     localTime: preliminary.localTime,
-    dueAt: notification.dueAt.toISOString(),
+    dueAt: dueAt.toISOString(),
     aggregateVersion: notification.sourceUpdatedAt.toISOString(),
   }, { database });
   if (source.status !== "CURRENT" || source.aggregateVersion !== notification.sourceUpdatedAt.toISOString()) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
@@ -179,7 +205,7 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
   const batchSize = dependencies.batchSize ?? MEDICATION_LINE_REMINDER_BATCH_SIZE;
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MEDICATION_LINE_REMINDER_BATCH_SIZE) throw new RangeError("Medication reminder batch exceeds its bound");
   const materialized = await materializeDueOccurrences(database, nowOf(dependencies));
-  const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: 0, permanentFailure: 0, unknownOutcome: await closeExhausted(database, nowOf(dependencies)) };
+  const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: await expireLateFirstAttempts(database, nowOf(dependencies)), permanentFailure: 0, unknownOutcome: await closeExhausted(database, nowOf(dependencies)) };
   for (let index = 0; index < batchSize; index += 1) {
     const notification = await claim(database, nowOf(dependencies));
     if (!notification) break;
@@ -191,6 +217,14 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
       const settled = await settle(database, notification, { state, outcome: isAmbiguous ? MedicationLineReminderOutcome.AMBIGUOUS_TRANSPORT_FAILURE : MedicationLineReminderOutcome.RETRY_WINDOW_EXPIRED, now: checkedAt, terminal: true });
       if (settled) countOutcome(result, state);
       continue;
+    }
+    if (!notification.firstAttemptAt) {
+      const dueAt = occurrenceDueAt(notification);
+      if (!dueAt || isMedicationLineReminderOccurrenceExpired(dueAt, checkedAt)) {
+        const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: dueAt ? MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED : MedicationLineReminderOutcome.STALE_SOURCE, now: checkedAt, terminal: true });
+        if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+        continue;
+      }
     }
     const current = await eligibility(database, notification, checkedAt);
     if (!current.eligible) {
