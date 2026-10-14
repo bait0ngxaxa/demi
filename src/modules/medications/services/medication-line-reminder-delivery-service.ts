@@ -160,10 +160,26 @@ async function settle(database: Database, notification: Claim, input: { state: M
   return result.count === 1;
 }
 
-async function reserveAttempt(database: Database, notification: Claim, now: Date): Promise<{ attemptCount: number; firstAttemptAt: Date } | null> {
+// A first attempt (never reserved before this claim) must start within the lateness tolerance of the occurrence
+// instant; genuine retries are governed by the retry window instead.
+function firstAttemptDeadlinePassed(notification: Claim, now: Date): boolean {
+  if (notification.firstAttemptAt) return false;
+  const dueAt = occurrenceDueAt(notification);
+  return !dueAt || isMedicationLineReminderOccurrenceExpired(dueAt, now);
+}
+
+async function reserveAttempt(database: Database, notification: Claim, now: Date): Promise<{ attemptCount: number; firstAttemptAt: Date } | "DEADLINE_PASSED" | null> {
+  if (firstAttemptDeadlinePassed(notification, now)) return "DEADLINE_PASSED";
   const firstAttemptAt = notification.firstAttemptAt ?? now;
-  const result = await database.medicationLineReminderNotification.updateMany({ where: { id: notification.id, state: MedicationLineReminderState.CLAIMED, leaseToken: notification.leaseToken, leaseExpiresAt: { gt: now }, attemptCount: notification.attemptCount }, data: { attemptCount: { increment: 1 }, firstAttemptAt, lastAttemptAt: now, leaseExpiresAt: new Date(now.getTime() + MEDICATION_LINE_REMINDER_LEASE_MS), safeOutcome: MedicationLineReminderOutcome.PROCESS_OUTCOME_UNKNOWN, updatedAt: now } });
+  const result = await database.medicationLineReminderNotification.updateMany({ where: { id: notification.id, state: MedicationLineReminderState.CLAIMED, leaseToken: notification.leaseToken, leaseExpiresAt: { gt: now }, attemptCount: notification.attemptCount, firstAttemptAt: notification.firstAttemptAt }, data: { attemptCount: { increment: 1 }, firstAttemptAt, lastAttemptAt: now, leaseExpiresAt: new Date(now.getTime() + MEDICATION_LINE_REMINDER_LEASE_MS), safeOutcome: MedicationLineReminderOutcome.PROCESS_OUTCOME_UNKNOWN, updatedAt: now } });
   return result.count === 1 ? { attemptCount: notification.attemptCount + 1, firstAttemptAt } : null;
+}
+
+// Releases a reserved first attempt whose deadline passed before LINE was invoked, restoring the attempt fields so the
+// row does not record a provider attempt that never happened.
+async function cancelReservedFirstAttempt(database: Database, notification: Claim, now: Date): Promise<boolean> {
+  const result = await database.medicationLineReminderNotification.updateMany({ where: { id: notification.id, state: MedicationLineReminderState.CLAIMED, leaseToken: notification.leaseToken, attemptCount: notification.attemptCount + 1 }, data: { state: MedicationLineReminderState.SUPPRESSED, safeOutcome: MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, attemptCount: notification.attemptCount, firstAttemptAt: notification.firstAttemptAt, lastAttemptAt: notification.lastAttemptAt, leaseToken: null, leaseExpiresAt: null, terminalAt: now, updatedAt: now } });
+  return result.count === 1;
 }
 
 function countOutcome(result: MedicationLineReminderDrainResult, state: MedicationLineReminderState | null): void {
@@ -233,11 +249,21 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
       continue;
     }
     const attempt = await reserveAttempt(database, notification, nowOf(dependencies));
+    if (attempt === "DEADLINE_PASSED") {
+      const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, now: nowOf(dependencies), terminal: true });
+      if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+      continue;
+    }
     if (!attempt) continue;
     const final = await eligibility(database, notification, nowOf(dependencies));
     if (!final.eligible) {
       const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: final.outcome, now: nowOf(dependencies), terminal: true });
       if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+      continue;
+    }
+    const dispatchAt = nowOf(dependencies);
+    if (firstAttemptDeadlinePassed(notification, dispatchAt)) {
+      if (await cancelReservedFirstAttempt(database, notification, dispatchAt)) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
       continue;
     }
     let provider: LinePushResult;

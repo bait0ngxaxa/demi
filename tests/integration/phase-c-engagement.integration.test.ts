@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { HospitalStatus, LineReachability, MembershipStatus, MembershipType, Profession, Role, SupportReportStatus, UserStatus } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createPersonalMedication, stopPersonalMedication } from "@/modules/medications/services/personal-medication-service";
@@ -11,6 +11,13 @@ import { createSupportReport, getOwnerSupportReport, listOwnerSupportReports, Su
 import { updateOwnContactEmail } from "@/modules/account-settings/services/contact-setting-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { ConflictError, ValidationError } from "@/shared/errors/application-error";
+
+// Runs before each delivery-time source revalidation, letting a test advance its clock while one notification is processed.
+const revalidation = vi.hoisted(() => ({ beforeEach: (): void => undefined }));
+vi.mock("@/modules/medications/services/medication-reminder-occurrence-query-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/modules/medications/services/medication-reminder-occurrence-query-service")>();
+  return { ...actual, revalidateOwnPersonalMedicationReminderOccurrence: (...args: Parameters<typeof actual.revalidateOwnPersonalMedicationReminderOccurrence>) => { revalidation.beforeEach(); return actual.revalidateOwnPersonalMedicationReminderOccurrence(...args); } };
+});
 
 const prisma = getPrisma();
 const reminderNow = new Date("2026-10-14T00:05:00.000Z"); // 07:05 in Asia/Bangkok; the 07:00 occurrence is due within tolerance.
@@ -146,7 +153,7 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     if (!url || process.env.DATABASE_URL !== url || process.env.DIRECT_URL !== url || process.env.NODE_ENV === "production" || !["localhost", "127.0.0.1", "::1"].includes(new URL(url).hostname)) throw new Error("Verified local disposable PostgreSQL required");
     await prisma.$connect(); connected = true;
   });
-  afterEach(cleanup);
+  afterEach(async () => { revalidation.beforeEach = () => undefined; await cleanup(); });
   afterAll(async () => { if (connected) { await cleanup(); await prisma.$disconnect(); } });
 
   it("materializes one Bangkok 07:00 occurrence and concurrent drains send one generic LINE message", async () => {
@@ -265,6 +272,33 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(retried).toMatchObject({ materialized: 0, claimed: 1, providerAccepted: 1, suppressed: 0 });
     const [row] = await reminderRows([subject.medicationId]);
     expect(row).toMatchObject({ state: "PROVIDER_ACCEPTED", attemptCount: 2 });
+    expect(calls.map(({ retryKey }) => retryKey)).toEqual([row?.retryKey, row?.retryKey]);
+  });
+
+  it.each([
+    { stage: "eligibility before reservation", advanceOnRevalidation: 1 },
+    { stage: "final eligibility after reservation", advanceOnRevalidation: 2 },
+  ])("suppresses a 07:00 first attempt without calling LINE when 07:15 passes during $stage", async ({ advanceOnRevalidation }) => {
+    const subject = await setupReminderSubject();
+    let clock = reminderNow;
+    let revalidations = 0;
+    revalidation.beforeEach = () => { revalidations += 1; if (revalidations === advanceOnRevalidation) clock = bangkok("2026-10-14T07:15:00.001"); };
+    const calls: PushCall[] = [];
+    expect(await drainAt(() => clock, calls)).toMatchObject({ materialized: 1, claimed: 1, suppressed: 1, providerAccepted: 0 });
+    expect(revalidations).toBe(advanceOnRevalidation);
+    expect(calls).toEqual([]);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "DELIVERY_WINDOW_EXPIRED", attemptCount: 0, firstAttemptAt: null, lastAttemptAt: null, leaseToken: null, terminalAt: bangkok("2026-10-14T07:15:00.001") }]);
+  });
+
+  it("delivers a genuine retry even when the clock advances during its revalidation", async () => {
+    const subject = await setupReminderSubject();
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls, () => ({ kind: "RETRYABLE_HTTP_FAILURE" }))).toMatchObject({ retryScheduled: 1 });
+    let clock = bangkok("2026-10-14T07:20:00.000");
+    revalidation.beforeEach = () => { clock = new Date(clock.getTime() + 5_000); }; // Past 07:15 yet inside the 30-second lease.
+    expect(await drainAt(() => clock, calls)).toMatchObject({ claimed: 1, providerAccepted: 1, suppressed: 0 });
+    const [row] = await reminderRows([subject.medicationId]);
+    expect(row).toMatchObject({ state: "PROVIDER_ACCEPTED", attemptCount: 2, firstAttemptAt: reminderNow });
     expect(calls.map(({ retryKey }) => retryKey)).toEqual([row?.retryKey, row?.retryKey]);
   });
 
