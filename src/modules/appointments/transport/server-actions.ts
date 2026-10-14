@@ -49,6 +49,7 @@ const CREATE_FORM_FIELDS = new Set([
 ]);
 
 const RESCHEDULE_FORM_FIELDS = new Set([
+  "rescheduleRequestId",
   "patientHospitalRelationshipId",
   "appointmentId",
   "expectedUpdatedAt",
@@ -185,6 +186,7 @@ function buildRescheduleInput(formData: FormData): unknown {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     appointmentId: getSingleString(formData, "appointmentId"),
     expectedUpdatedAt: getSingleString(formData, "expectedUpdatedAt"),
+    ...(formData.has("rescheduleRequestId") ? { rescheduleRequestId: getSingleString(formData, "rescheduleRequestId") } : {}),
     scheduledAt: getSingleString(formData, "scheduledAt"),
     type: getSingleString(formData, "type"),
     responsibleUserId: getNullableUuid(formData, "responsibleUserId"),

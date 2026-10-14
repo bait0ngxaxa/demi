@@ -5,6 +5,8 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
+export const APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY = "appointment:request-reschedule" as const;
+export const APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY = "appointment:home-visit-manage" as const;
 export const APPOINTMENT_READ_CAPABILITY = "appointment:read" as const;
 export const APPOINTMENT_MANAGE_CAPABILITY = "appointment:manage" as const;
 export const APPOINTMENT_CREATE_CAPABILITY = "appointment:create" as const;
@@ -13,6 +15,8 @@ export const APPOINTMENT_REQUEST_CANCEL_CAPABILITY = "appointment:request-cancel
 export const APPOINTMENT_RECORD_COORDINATION_CAPABILITY = "appointment:record-coordination" as const;
 
 export type AppointmentCapability =
+  | typeof APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY
+  | typeof APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY
   | typeof APPOINTMENT_READ_CAPABILITY
   | typeof APPOINTMENT_MANAGE_CAPABILITY
   | typeof APPOINTMENT_CREATE_CAPABILITY
@@ -26,6 +30,10 @@ export type AppointmentPolicyTarget = {
   assignedOsmUserId: string | null;
   assignedOsmAssignmentId: string | null;
   patientUserId: string | null;
+  locationType?: string | null;
+  createdByUserId?: string;
+  responsibleUserId?: string | null;
+  operation?: "EDIT" | "CANCEL" | "COMPLETE" | "NO_SHOW";
 };
 
 export type AppointmentPolicyDecision =
@@ -44,7 +52,11 @@ export type AppointmentPolicyDecision =
         | "active_direct_hospital_scope_required"
         | "active_osm_assignment_scope_required"
         | "patient_self_scope_required"
-        | "osm_manage_not_allowed";
+        | "osm_manage_not_allowed"
+        | "osm_home_location_required"
+        | "osm_creator_required"
+        | "osm_responsible_must_be_null"
+        | "osm_terminal_action_not_allowed";
     };
 
 function hasActiveDirectHospitalScope(actor: ActorContext, hospitalId: string): boolean {
@@ -80,6 +92,8 @@ export function decideAppointmentPolicy(input: {
   }
 
   const supportedCapabilities: readonly string[] = [
+    APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY,
+    APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
     APPOINTMENT_READ_CAPABILITY,
     APPOINTMENT_MANAGE_CAPABILITY,
     APPOINTMENT_CREATE_CAPABILITY,
@@ -117,6 +131,16 @@ export function decideAppointmentPolicy(input: {
       : { allowed: false, reason: "active_osm_assignment_scope_required" };
   }
 
+  if (input.capability === APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY) {
+    if (hasDirectHospitalScope) return { allowed: true, reason: "active_direct_hospital_scope" };
+    if (!hasExactOsmScope) return { allowed: false, reason: "active_osm_assignment_scope_required" };
+    if (input.target.locationType !== "HOME_VISIT") return { allowed: false, reason: "osm_home_location_required" };
+    if (input.target.createdByUserId !== input.actor.userId) return { allowed: false, reason: "osm_creator_required" };
+    if (input.target.responsibleUserId != null) return { allowed: false, reason: "osm_responsible_must_be_null" };
+    if (input.target.operation !== "EDIT" && input.target.operation !== "CANCEL") return { allowed: false, reason: "osm_terminal_action_not_allowed" };
+    return { allowed: true, reason: "active_osm_assignment_scope" };
+  }
+
   if (input.capability === APPOINTMENT_MANAGE_CAPABILITY) {
     if (hasDirectHospitalScope) {
       return { allowed: true, reason: "active_direct_hospital_scope" };
@@ -134,13 +158,15 @@ export function decideAppointmentPolicy(input: {
       return { allowed: true, reason: "active_direct_hospital_scope" };
     }
 
-    return hasExactOsmScope
-      ? { allowed: true, reason: "active_osm_assignment_scope" }
-      : { allowed: false, reason: "active_osm_assignment_scope_required" };
+    if (!hasExactOsmScope) return { allowed: false, reason: "active_osm_assignment_scope_required" };
+    if (input.target.locationType !== "HOME_VISIT") return { allowed: false, reason: "osm_home_location_required" };
+    if (input.target.responsibleUserId != null) return { allowed: false, reason: "osm_responsible_must_be_null" };
+    return { allowed: true, reason: "active_osm_assignment_scope" };
   }
 
   if (
     input.capability === APPOINTMENT_ACKNOWLEDGE_CAPABILITY ||
+    input.capability === APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY ||
     input.capability === APPOINTMENT_REQUEST_CANCEL_CAPABILITY
   ) {
     if (hasPatientSelfScope) {

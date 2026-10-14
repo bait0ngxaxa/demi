@@ -39,6 +39,14 @@ import {
   patientProgramIdSchema,
   patientProgramRelationshipIdSchema,
 } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { PROGRAM_ROUND_NUMBERS } from "@/modules/patient-program-rounds/domain/round-catalog";
+import {
+  buildProgramRoundDetail,
+  buildProgramRoundsOverview,
+  loadProgramRoundRecord,
+  type ProgramRoundDetail,
+  type ProgramRoundsOverview,
+} from "@/modules/patient-program-rounds/services/round-query-service";
 import { SCREENING_READ_CAPABILITY } from "@/modules/screening/policies/screening-policy";
 import {
   ApplicationError,
@@ -770,6 +778,79 @@ export async function getOwnPatientProgramDetail(
     }
 
     throw new InfrastructureError("Patient Program history could not be loaded");
+  }
+}
+
+export type PatientSelfProgramRounds = {
+  relationship: PatientSelfRelationshipContext;
+  overview: ProgramRoundsOverview;
+  rounds: readonly ProgramRoundDetail[];
+};
+
+/** Read-only round history for the Patient's own Program; recorder names are not exposed. */
+export async function getOwnPatientProgramRounds(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  programId: unknown,
+  dependencies: PatientSelfCareQueryDependencies = {},
+): Promise<PatientSelfProgramRounds> {
+  const parsedRelationshipId = patientProgramRelationshipIdSchema.safeParse(relationshipId);
+  const parsedProgramId = patientProgramIdSchema.safeParse(programId);
+
+  if (!parsedRelationshipId.success || !parsedProgramId.success) {
+    throw new NotFoundError();
+  }
+
+  const database = getDatabase(dependencies);
+
+  try {
+    const relationship = await resolveAuthorizedRelationship(
+      actor,
+      parsedRelationshipId.data,
+      PATIENT_PROGRAM_READ_CAPABILITY,
+      database,
+    );
+    assertPatientSelfReadPolicy({ actor, capability: GOAL_READ_CAPABILITY });
+    assertPatientSelfReadPolicy({ actor, capability: FOLLOWUP_READ_CAPABILITY });
+
+    const program = await loadProgramRoundRecord(
+      database,
+      parsedProgramId.data.toLowerCase(),
+      relationship.relationshipId,
+    );
+    const withoutRecorder = <T extends { recordedByDisplayName: string | null }>(value: T): T => ({
+      ...value,
+      recordedByDisplayName: null,
+    });
+    const overview = buildProgramRoundsOverview(program);
+
+    return {
+      relationship,
+      overview: {
+        ...overview,
+        rounds: overview.rounds.map(withoutRecorder),
+        after: withoutRecorder(overview.after),
+      },
+      rounds: PROGRAM_ROUND_NUMBERS.map((roundNumber) => {
+        const detail = buildProgramRoundDetail(program, roundNumber, {
+          displayName: "",
+          occupation: null,
+        });
+
+        return {
+          ...detail,
+          vitals: detail.vitals ? withoutRecorder(detail.vitals) : null,
+          activities: detail.activities.map(withoutRecorder),
+          addOptions: detail.addOptions.map(withoutRecorder),
+        };
+      }),
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Patient Program rounds could not be loaded");
   }
 }
 

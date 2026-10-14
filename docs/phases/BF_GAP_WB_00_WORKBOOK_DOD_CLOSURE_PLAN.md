@@ -86,7 +86,7 @@ Decision ใหญ่นอก workbook ที่ควรเสนอ Owner ต
 | A | ลำดับ | ลำดับแถว | ✅ | R24A-D15 (ordering) | — |
 | B–C | ชื่อ, สกุล | Person ผ่าน PatientHospitalRelationship | ✅ | — | — |
 | D | ID | `PatientHospitalRelationship.hospitalNumber` | ✅ | R24A-D04 ยืนยัน identifier | — |
-| E | ระยะเวลาการเจ็บป่วย | ไม่มี | ❌ | CL-05 | S3 |
+| E | ระยะเวลาการเจ็บป่วย | `PatientHospitalHealthHistory.diagnosisYear` → ปี พ.ศ. ปัจจุบันประเทศไทย − ปีวินิจฉัย; ไม่ทราบเป็น missing | ✅ Phase B | WB-DF-11 supersedes CL-05 default | B |
 | F | อสม.ที่ดูแล | `PatientOsmAssignment` ปัจจุบัน (endedAt null) | ⚠️ | BR-08 | S1 |
 | G | วันที่เริ่มโปรแกรม | `PatientProgram.startedAt` | ✅ | BR-01 ยืนยันความหมาย | S1 |
 | H | CVD risk score (Before) | ไม่มี | ❌ | CL-03 | S3 |
@@ -110,7 +110,7 @@ Decision ใหญ่นอก workbook ที่ควรเสนอ Owner ต
 | --- | --- | --- | --- | --- | --- |
 | C3/C4 | จำนวนเคส เบาหวาน / Pre-DM | เหมือน Dashboard | ⚠️ | CL-04 | S3 |
 | A–D | ลำดับ, ชื่อ, สกุล, ID | เหมือน Dashboard | ✅ | R24A-D04 | — |
-| E | ระยะเวลาการเจ็บป่วย | ไม่มี | ❌ | CL-05 | S3 |
+| E | ระยะเวลาการเจ็บป่วย | `PatientHospitalHealthHistory.diagnosisYear` → ปี พ.ศ. ปัจจุบันประเทศไทย − ปีวินิจฉัย; ไม่ทราบเป็น missing | ✅ Phase B | WB-DF-11 supersedes CL-05 default | B |
 | F | อสม.ที่ดูแล | assignment ปัจจุบัน | ⚠️ | BR-08 | S1 |
 | G–H | วันที่เริ่ม/สิ้นสุด | `PatientProgram.startedAt/completedAt` | ✅ | BR-01 | — |
 | I–J | Before DTX, BW | Baseline | ✅ | — | — |
@@ -256,3 +256,7 @@ Product Owner ยืนยันว่ารายการด้านล่า
 1. Owner และ Clinical authority ตอบ decision sheet §5 (ยอมรับ / แก้ไข / เลื่อน) โดยเฉพาะ WB-D01 และ R24A-D11 ซึ่งกำหนดโครงรอบของทั้งรายงาน และ WB-D02/WB-D03 ซึ่งกำหนดผู้ดาวน์โหลดและขอบเขตข้อมูล
 2. เมื่อ BR-01, BR-02, BR-03, BR-08 และ R24A-D11 ผ่าน → เริ่ม **S1**
 3. เมื่อ BR-04..07 ผ่าน → เริ่ม **S2**
+
+### Phase B coverage amendment
+
+WB-DF-11 ปิด source gap ของระยะเวลาการเจ็บป่วย (คอลัมน์ E ทั้งสอง sheet) โดยใช้ปีปัจจุบันประเทศไทย ไม่ใช่วันเริ่ม Program. Golden coverage = SOURCE_READY 96, DECISION_OPEN 2, SOURCE_MISSING 10 คอลัมน์. P-07/CL-05 default นี้ implemented; clinical decisions อื่นและ workbook DoD โดยรวมยังไม่ปิด.

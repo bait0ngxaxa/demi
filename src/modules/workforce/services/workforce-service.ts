@@ -56,6 +56,7 @@ import {
   HOSPITAL_OWNER_CAPABILITIES,
 } from "../policies/hospital-owner-policy";
 import {
+  workforceReleaseSchema,
   hospitalMemberProvisionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
@@ -616,13 +617,8 @@ async function ensureHospitalMembership(
   created: boolean;
   changed: boolean;
 }> {
-  const existing = await transaction.hospitalMembership.findUnique({
-    where: {
-      userId_hospitalId: {
-        userId: input.userId,
-        hospitalId: input.hospitalId,
-      },
-    },
+  const existing = await transaction.hospitalMembership.findFirst({ where: { userId: input.userId,
+        hospitalId: input.hospitalId, status: { not: "ENDED" } },
     select: {
       id: true,
       membershipType: true,
@@ -711,13 +707,8 @@ async function ensureOsmRelationship(
   created: boolean;
   changed: boolean;
 }> {
-  const existing = await transaction.osmHospitalRelationship.findUnique({
-    where: {
-      userId_hospitalId: {
-        userId: input.userId,
-        hospitalId: input.hospitalId,
-      },
-    },
+  const existing = await transaction.osmHospitalRelationship.findFirst({ where: { userId: input.userId,
+        hospitalId: input.hospitalId, status: { not: "ENDED" } },
     select: { id: true, status: true },
   });
 
@@ -768,13 +759,8 @@ async function assertActivationTargetRelationship(
   request: WorkforceActivationRequestInput,
 ): Promise<void> {
   if (request.kind === "OSM") {
-    const relationship = await transaction.osmHospitalRelationship.findUnique({
-      where: {
-        userId_hospitalId: {
-          userId: request.userId,
-          hospitalId: request.targetHospitalId,
-        },
-      },
+    const relationship = await transaction.osmHospitalRelationship.findFirst({ where: { userId: request.userId,
+          hospitalId: request.targetHospitalId, status: { not: "ENDED" } },
       select: { status: true },
     });
 
@@ -785,13 +771,8 @@ async function assertActivationTargetRelationship(
     return;
   }
 
-  const membership = await transaction.hospitalMembership.findUnique({
-    where: {
-      userId_hospitalId: {
-        userId: request.userId,
-        hospitalId: request.targetHospitalId,
-      },
-    },
+  const membership = await transaction.hospitalMembership.findFirst({ where: { userId: request.userId,
+        hospitalId: request.targetHospitalId, status: { not: "ENDED" } },
     select: { membershipType: true, status: true },
   });
 
@@ -1362,7 +1343,7 @@ function toWorkforceDetail(
     profession,
     relationshipStatus,
     accountStatus,
-    activationRequired: accountStatus === UserStatus.PROVISIONED,
+    activationRequired: relationshipStatus !== MembershipStatus.ENDED && accountStatus === UserStatus.PROVISIONED,
     activationExpiresAt: activation?.expiresAt ?? null,
     activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
     currentAssignmentCount: kind === "osm" ? currentAssignmentCount : null,
@@ -1668,7 +1649,7 @@ export async function listWorkforce(
           profession: membership.profession,
           relationshipStatus: membership.status,
           accountStatus: membership.user.status,
-          activationRequired: membership.user.status === UserStatus.PROVISIONED,
+          activationRequired: membership.status !== MembershipStatus.ENDED && membership.user.status === UserStatus.PROVISIONED,
           activationStatus: toActivationStatus(membership.user.status, membership.userId, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
@@ -1688,7 +1669,7 @@ export async function listWorkforce(
           profession: null,
           relationshipStatus: relationship.status,
           accountStatus: relationship.user.status,
-          activationRequired: relationship.user.status === UserStatus.PROVISIONED,
+          activationRequired: relationship.status !== MembershipStatus.ENDED && relationship.user.status === UserStatus.PROVISIONED,
           activationStatus: toActivationStatus(relationship.user.status, relationship.userId, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
@@ -1875,21 +1856,7 @@ async function demoteHospitalOwnerInTransaction(
     MembershipType.OWNER,
   );
 
-  const eligibleOwnerCount = await transaction.hospitalMembership.count({
-    where: {
-      hospitalId: current.hospitalId,
-      membershipType: MembershipType.OWNER,
-      status: MembershipStatus.ACTIVE,
-      user: {
-        status: UserStatus.ACTIVE,
-        roles: { some: { role: Role.HOSPITAL } },
-      },
-    },
-  });
-
-  if (eligibleOwnerCount < 2) {
-    throw new ConflictError("At least one eligible Hospital Owner must remain");
-  }
+  await assertEligibleOwnerRemains(transaction, current.hospitalId);
 
   const updated = await transaction.hospitalMembership.updateMany({
     where: {
@@ -2588,8 +2555,8 @@ async function regenerateActivationInTransaction(
   await assertActivationTargetRelationship(transaction, input.request);
 
   const relationship = input.request.kind === "OSM"
-    ? await transaction.osmHospitalRelationship.findUnique({ where: { userId_hospitalId: { userId: user.id, hospitalId: input.request.targetHospitalId } }, select: { id: true } })
-    : await transaction.hospitalMembership.findUnique({ where: { userId_hospitalId: { userId: user.id, hospitalId: input.request.targetHospitalId } }, select: { id: true } });
+    ? await transaction.osmHospitalRelationship.findFirst({ where: { userId: user.id, hospitalId: input.request.targetHospitalId, status: { not: "ENDED" } }, select: { id: true } })
+    : await transaction.hospitalMembership.findFirst({ where: { userId: user.id, hospitalId: input.request.targetHospitalId, status: { not: "ENDED" } }, select: { id: true } });
   if (!relationship) throw new ConflictError("Activation relationship is unavailable");
   if (!isInitialWorkforceScopeEligible(user, { hospitalId: input.request.targetHospitalId, relationshipId: relationship.id, kind: input.request.kind })) {
     throw new ConflictError("Initial activation scope requires an approved trust decision");
@@ -3832,4 +3799,65 @@ export async function listHospitalOwnersForPasswordReset(
 
     throw new InfrastructureError("Hospital Owners could not be loaded");
   }
+}
+
+async function assertEligibleOwnerRemains(transaction: Prisma.TransactionClient, hospitalId: string): Promise<void> {
+  const eligibleOwnerCount = await transaction.hospitalMembership.count({
+    where: {
+      hospitalId: hospitalId,
+      membershipType: MembershipType.OWNER,
+      status: MembershipStatus.ACTIVE,
+      user: {
+        status: UserStatus.ACTIVE,
+        roles: { some: { role: Role.HOSPITAL } },
+      },
+    },
+  });
+
+  if (eligibleOwnerCount < 2) {
+    throw new ConflictError("At least one eligible Hospital Owner must remain");
+  }
+}
+
+export async function releaseWorkforceRelationship(
+  actor: ActorContext | null | undefined, input: unknown, dependencies: WorkforceServiceDependencies = {},
+): Promise<{ relationshipId: string; hospitalId: string }> {
+  const parsed = workforceReleaseSchema.safeParse(input);
+  if (!actor) throw new ForbiddenError();
+  if (!parsed.success) throw new ValidationError("Workforce release data is invalid");
+  const data = parsed.data;
+  assertActorPolicy(actor, WORKFORCE_CAPABILITIES.release, data.targetHospitalId);
+  try {
+    return await runSerializable(getDatabase(dependencies), async (tx) => {
+      await assertOwnerInDatabase(tx, actor.userId, data.targetHospitalId);
+      const current = data.kind === "osm"
+        ? await tx.osmHospitalRelationship.findFirst({ where: { id: data.relationshipId, hospitalId: data.targetHospitalId }, select: { id: true, userId: true, status: true, updatedAt: true } })
+        : await tx.hospitalMembership.findFirst({ where: { id: data.relationshipId, hospitalId: data.targetHospitalId }, select: { id: true, userId: true, status: true, updatedAt: true, membershipType: true } });
+      if (!current) throw new NotFoundError();
+      if (current.status === MembershipStatus.ENDED || current.updatedAt.getTime() !== new Date(data.expectedUpdatedAt).getTime()) throw new ConflictError("Workforce relationship changed or is permanently ended");
+      if ("membershipType" in current && current.membershipType === MembershipType.OWNER && current.status === MembershipStatus.ACTIVE) {
+        await assertEligibleOwnerRemains(tx, data.targetHospitalId);
+      }
+      const now = getNow(dependencies);
+      const where = { id: current.id, status: current.status, updatedAt: current.updatedAt };
+      const updated = data.kind === "osm"
+        ? await tx.osmHospitalRelationship.updateMany({ where, data: { status: MembershipStatus.ENDED } })
+        : await tx.hospitalMembership.updateMany({ where, data: { status: MembershipStatus.ENDED } });
+      if (updated.count !== 1) throw new ConflictError("Workforce relationship changed");
+      // Patient assignments are supported only by the OSM relationship; ending a staff membership leaves them intact.
+      const ended = data.kind === "osm"
+        ? await tx.patientOsmAssignment.updateMany({
+          where: { osmUserId: current.userId, endedAt: null, patientHospitalRelationship: { hospitalId: data.targetHospitalId } },
+          data: { endedAt: now, endedByUserId: actor.userId },
+        })
+        : { count: 0 };
+      // Tokens are global credential capabilities. Revoke all outstanding workforce tokens of this user.
+      const revoked = await tx.workforceActivation.updateMany({ where: { userId: current.userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
+      await recordAuditEvent({ actorUserId: actor.userId, action: "workforce.permanently_released",
+        resourceType: data.kind === "osm" ? "OsmHospitalRelationship" : "HospitalMembership", resourceId: current.id,
+        metadata: { hospitalId: data.targetHospitalId, targetUserId: current.userId, fromStatus: current.status, toStatus: MembershipStatus.ENDED,
+          endedAssignmentCount: ended.count, revokedActivationCount: revoked.count } }, tx);
+      return { relationshipId: current.id, hospitalId: data.targetHospitalId };
+    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
+  } catch (error: unknown) { throw normalizeDatabaseError(error, "Workforce release could not be completed"); }
 }

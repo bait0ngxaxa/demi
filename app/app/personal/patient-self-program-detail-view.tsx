@@ -86,6 +86,20 @@ export function PatientSelfProgramDetailView({
           </Panel>
         </section>
 
+        <section aria-labelledby="patient-self-program-rounds-heading">
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-rounds-heading">
+            การรับบริการครั้งที่ 1–6
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            ดูประวัติการรับบริการแต่ละครั้งที่บันทึกไว้ (อ่านอย่างเดียว)
+          </p>
+          <p className="mt-3">
+            <Link className={linkClassName} href={`${programHref}/rounds`}>
+              ดูประวัติการรับบริการรายครั้ง
+            </Link>
+          </p>
+        </section>
+
         <section aria-labelledby="patient-self-service-one-heading">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-service-one-heading">
             ความคืบหน้ากิจกรรม Service 1

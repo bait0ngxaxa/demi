@@ -17,14 +17,21 @@ const versionFields = {
   expectedUpdatedAt: z.string().max(MEDICATION_VERSION_RAW_MAX_LENGTH).datetime({ offset: true }),
 };
 
-export const personalMedicationCreateSchema = z.object({ medicationName, instructionText }).strict();
+const medicationTimes = z.array(z.string().length(5).regex(MEDICATION_LOCAL_TIME_PATTERN))
+  .max(MEDICATION_SCHEDULE_MAX_TIMES)
+  .refine((times) => new Set(times).size === times.length, "Duplicate medication clock time")
+  .transform((times) => [...times].sort());
+
+export const personalMedicationCreateSchema = z.object({
+  medicationName,
+  instructionText,
+  times: medicationTimes.default([]),
+}).strict();
 export const personalMedicationUpdateSchema = z.object({ ...versionFields, medicationName, instructionText }).strict();
 export const personalMedicationStopSchema = z.object(versionFields).strict();
 export const personalMedicationScheduleSchema = z.object({
   ...versionFields,
-  times: z.array(z.string().length(5).regex(MEDICATION_LOCAL_TIME_PATTERN)).max(MEDICATION_SCHEDULE_MAX_TIMES)
-    .refine((times) => new Set(times).size === times.length, "Duplicate medication clock time")
-    .transform((times) => [...times].sort()),
+  times: medicationTimes,
 }).strict();
 export const personalMedicationListSchema = z.object({
   status: z.enum(["ACTIVE", "STOPPED"]),

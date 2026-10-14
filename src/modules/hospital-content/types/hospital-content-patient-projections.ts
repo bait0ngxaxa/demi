@@ -7,6 +7,7 @@ export type HospitalContentPatientListItem = {
   title: string;
   category: HospitalContentCategory;
   latestPublishedAt: string;
+  imageIds: string[];
 };
 export type HospitalContentPatientDetail = HospitalContentPatientListItem & {
   body: string;

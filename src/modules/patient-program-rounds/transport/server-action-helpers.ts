@@ -1,0 +1,167 @@
+import { ApplicationError } from "@/shared/errors/application-error";
+
+const VITALS_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "submissionNonce",
+  "serviceDate",
+  "weight",
+  "heightCm",
+  "waistCircumference",
+  "systolicBloodPressure",
+  "diastolicBloodPressure",
+  "bloodSugar",
+]);
+
+const REVIEW_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "submissionNonce",
+  "toolCode",
+]);
+
+function getSingleString(formData: FormData, field: string): string | undefined {
+  const values = formData.getAll(field);
+
+  if (values.length !== 1 || typeof values[0] !== "string") {
+    return undefined;
+  }
+
+  return values[0];
+}
+
+function getRoundNumber(formData: FormData): number | undefined {
+  const value = getSingleString(formData, "roundNumber");
+
+  return value !== undefined && /^\d+$/u.test(value) ? Number(value) : undefined;
+}
+
+function getOptionalNumber(formData: FormData, field: string): number | null | undefined {
+  const values = formData.getAll(field);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  if (values.length !== 1 || typeof values[0] !== "string") {
+    return undefined;
+  }
+
+  const rawValue = values[0].trim();
+
+  if (!rawValue) {
+    return null;
+  }
+
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function hasUnexpectedOrDuplicateFields(formData: FormData, allowed: ReadonlySet<string>): boolean {
+  const seen = new Set<string>();
+
+  for (const key of formData.keys()) {
+    if (key.startsWith("$ACTION_")) {
+      continue;
+    }
+
+    if (!allowed.has(key) || seen.has(key)) {
+      return true;
+    }
+
+    seen.add(key);
+  }
+
+  return false;
+}
+
+export function buildVitalsInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, VITALS_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+    serviceDate: getSingleString(formData, "serviceDate"),
+    weight: getOptionalNumber(formData, "weight"),
+    heightCm: getOptionalNumber(formData, "heightCm"),
+    waistCircumference: getOptionalNumber(formData, "waistCircumference"),
+    systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
+    diastolicBloodPressure: getOptionalNumber(formData, "diastolicBloodPressure"),
+    bloodSugar: getOptionalNumber(formData, "bloodSugar"),
+  } satisfies Record<string, unknown>;
+}
+
+export function buildReviewInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, REVIEW_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+    toolCode: getSingleString(formData, "toolCode"),
+  } satisfies Record<string, unknown>;
+}
+
+export function mapPatientProgramRoundError(error: unknown): {
+  code: "INVALID_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
+  message: string;
+} {
+  if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION") {
+      return {
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบวันที่ (ห้ามเป็นวันในอนาคต) และกรอกค่าอย่างน้อย 1 รายการก่อนบันทึก",
+      };
+    }
+
+    if (error.code === "UNAUTHENTICATED") {
+      return {
+        code: "UNAUTHENTICATED",
+        message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ก่อนบันทึกข้อมูล",
+      };
+    }
+
+    if (error.code === "FORBIDDEN") {
+      return {
+        code: "FORBIDDEN",
+        message: "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลครั้งนี้สำหรับโปรแกรมนี้",
+      };
+    }
+
+    if (error.code === "NOT_FOUND") {
+      return {
+        code: "NOT_FOUND",
+        message: "ไม่พบโปรแกรมในขอบเขตที่บัญชีนี้เข้าถึงได้",
+      };
+    }
+
+    if (error.code === "CONFLICT") {
+      return {
+        code: "CONFLICT",
+        message:
+          "ไม่สามารถบันทึกได้ โปรแกรมอาจจบแล้ว หรือครั้งนี้มีข้อมูลบันทึกไว้แล้ว กรุณาตรวจสอบข้อมูลล่าสุด",
+      };
+    }
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "ระบบไม่พร้อมบันทึกข้อมูลในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
+export const patientProgramRoundTransportInternals = {
+  buildReviewInput,
+  buildVitalsInput,
+  hasUnexpectedOrDuplicateFields,
+  mapPatientProgramRoundError,
+  REVIEW_FORM_FIELDS,
+  VITALS_FORM_FIELDS,
+};

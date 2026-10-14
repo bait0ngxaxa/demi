@@ -2,6 +2,9 @@ import "server-only";
 
 import { Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 
+import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { APPOINTMENT_READ_CAPABILITY } from "@/modules/appointments/policies/appointment-policy";
+import { resolveAppointmentAccessContext } from "@/modules/appointments/services/appointment-access-service";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -28,6 +31,7 @@ import {
 import {
   patientHospitalProfileRelationshipIdSchema,
   patientHospitalProfileUpdateSchema,
+  staffPatientHospitalProfileUpdateSchema,
 } from "../schemas/patient-hospital-profile-schemas";
 
 export type PatientHospitalProfileDatabase = PrismaClient;
@@ -358,3 +362,44 @@ export const patientHospitalProfileInternals = {
   toProfileValues,
   toUpdateManyData,
 };
+
+export async function getStaffPatientHospitalProfile(
+  actor: ActorContext, relationshipId: string, database: PatientHospitalProfileDatabase = getPrisma(),
+): Promise<PatientHospitalProfileRecord> {
+  const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, database);
+  if (!access.scopes.directHospital) throw new ForbiddenError();
+  const record = await database.patientHospitalRelationship.findUnique({ where: { id: relationshipId }, select: patientHospitalProfileSelect });
+  if (!record) throw new NotFoundError();
+  return record;
+}
+
+export async function updateStaffPatientHospitalProfile(
+  actor: ActorContext, relationshipId: string, input: unknown, database: PatientHospitalProfileDatabase = getPrisma(),
+): Promise<{ version: number }> {
+  const parsed = staffPatientHospitalProfileUpdateSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Patient profile data is invalid");
+  try {
+    return await database.$transaction(async (tx) => {
+      const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, tx);
+      if (!access.scopes.directHospital) throw new ForbiddenError();
+      const record = await tx.patientHospitalRelationship.findUnique({ where: { id: relationshipId }, select: patientHospitalProfileSelect });
+      if (!record) throw new NotFoundError();
+      const { expectedVersion, ...patch } = parsed.data;
+      if ((record.hospitalProfile?.version ?? 0) !== expectedVersion) throw new ConflictError("Patient profile changed");
+      if (record.hospitalProfile) {
+        const updated = await tx.patientHospitalProfile.updateMany({ where: { patientHospitalRelationshipId: relationshipId, version: expectedVersion },
+          data: { ...patch, version: { increment: 1 } } });
+        if (updated.count !== 1) throw new ConflictError("Patient profile changed");
+      } else {
+        await tx.patientHospitalProfile.create({ data: { ...toProfileValues(record.patientProfile), ...patch, patientHospitalRelationshipId: relationshipId } });
+      }
+      await recordAuditEvent({ actorUserId: actor.userId, action: "patient.hospital_profile.updated", resourceType: "PatientHospitalRelationship", resourceId: relationshipId,
+        metadata: { hospitalId: access.target.hospitalId, fromVersion: expectedVersion, toVersion: expectedVersion + 1 } }, tx);
+      return { version: expectedVersion + 1 };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error: unknown) {
+    if (error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
+    if (isPrismaCode(error, "P2002") || isPrismaCode(error, "P2034")) throw new ConflictError("Patient profile changed");
+    throw new InfrastructureError("Patient profile could not be updated");
+  }
+}

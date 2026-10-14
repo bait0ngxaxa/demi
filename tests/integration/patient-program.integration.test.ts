@@ -59,6 +59,8 @@ const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientProgramRoundActivity.deleteMany();
+  await prisma.patientProgramRoundVitals.deleteMany();
   await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
   await prisma.patientProgramServiceOneConfidence.deleteMany();
   await prisma.patientProgramServiceOneDreamCard.deleteMany();
@@ -72,6 +74,8 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientAppointment.deleteMany();
   await prisma.patientGoalItem.deleteMany();
   await prisma.patientGoalPlan.deleteMany();
+  // Program-linked screenings reference the Program, so they are removed first.
+  await prisma.screeningAssessment.deleteMany();
   await prisma.patientProgram.deleteMany();
   await prisma.patientBaseline.deleteMany();
   await prisma.screeningAssessment.deleteMany();
@@ -2057,8 +2061,8 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     await prisma.user.update({ where: { id: owner.userId }, data: { status: UserStatus.ACTIVE } });
 
-    const membership = await prisma.hospitalMembership.findUniqueOrThrow({
-      where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
+    const membership = await prisma.hospitalMembership.findFirstOrThrow({
+      where: { userId: owner.userId, hospitalId: hospital.id, status: { not: "ENDED" } },
       select: { id: true },
     });
     await prisma.hospitalMembership.update({

@@ -263,8 +263,7 @@ describe("Hospital hierarchy and Master reconciliation on synthetic PostgreSQL",
     expect(corrected.applied.reparented).toContain(childSource.canonicalCode);
     expect(await prisma.hospital.findUniqueOrThrow({ where: { id: childBefore.id }, select: { id: true, name: true, status: true } }))
       .toEqual({ id: childBefore.id, name: childSource.nameTh, status: HospitalStatus.ACTIVE });
-    expect(await prisma.hospitalMembership.findUnique({
-      where: { userId_hospitalId: { userId: hospitalOwner.userId, hospitalId: childBefore.id } },
+    expect(await prisma.hospitalMembership.findFirst({ where: { userId: hospitalOwner.userId, hospitalId: childBefore.id, status: { not: "ENDED" } },
       select: { status: true },
     })).toEqual({ status: MembershipStatus.ACTIVE });
     expect(await prisma.hospital.findUnique({ where: { id: unexpected.id }, select: { id: true } })).toEqual({ id: unexpected.id });

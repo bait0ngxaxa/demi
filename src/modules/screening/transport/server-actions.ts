@@ -69,6 +69,7 @@ function containsUnexpectedFields(
 ): boolean {
   const allowedFields = new Set([
     "patientHospitalRelationshipId",
+    "patientProgramId",
     "submissionNonce",
     "confidenceScore",
     "confidenceImprovementPlan",
@@ -93,6 +94,7 @@ function buildSubmissionInput(formData: FormData): unknown {
 
   return {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    patientProgramId: getSingleString(formData, "patientProgramId"),
     submissionNonce: getSingleString(formData, "submissionNonce"),
     responses: {
       pam: buildAnswerMap(formData, questionSet, "PAM"),
@@ -148,6 +150,11 @@ function revalidateScreeningPaths(relationshipId: string): void {
   revalidatePath(`/app/patients/${relationshipId}/screenings`);
 }
 
+function revalidateProgramRoundPaths(relationshipId: string, programId: string): void {
+  revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
+  revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+}
+
 export async function submitScreeningAction(
   _previousState: ScreeningActionState,
   formData: FormData,
@@ -168,6 +175,10 @@ export async function submitScreeningAction(
     const input: NormalizedScreeningSubmitRequest = parsed.data;
     const result = await submitScreening(actor, input);
     revalidateScreeningPaths(input.patientHospitalRelationshipId);
+
+    if (input.patientProgramId) {
+      revalidateProgramRoundPaths(input.patientHospitalRelationshipId, input.patientProgramId);
+    }
 
     return {
       status: "SUCCESS",

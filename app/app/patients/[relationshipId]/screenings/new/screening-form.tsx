@@ -27,6 +27,8 @@ type ScreeningFormProps = {
   patient: ScreeningPatientSummary;
   questionSet: ScreeningQuestionSet;
   submissionNonce: string;
+  /** Present when the screening is performed from round 1 of a Program (WB-DF-01). */
+  programId?: string;
 };
 
 const confidenceScores = Array.from({ length: 11 }, (_, index) => index);
@@ -104,6 +106,7 @@ export function ScreeningForm({
   patient,
   questionSet,
   submissionNonce,
+  programId,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending] = useActionState<ScreeningActionState, FormData>(
@@ -117,10 +120,12 @@ export function ScreeningForm({
   useEffect(() => {
     if (state.status === "SUCCESS") {
       router.push(
-        `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`,
+        programId
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1`
+          : `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`,
       );
     }
-  }, [relationshipId, router, state]);
+  }, [programId, relationshipId, router, state]);
 
   const questions = questionSet.questions;
   const pamQuestions = useMemo(
@@ -157,6 +162,7 @@ export function ScreeningForm({
       <form action={action} className="space-y-6 pt-8">
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
+        {programId ? <input name="patientProgramId" type="hidden" value={programId} /> : null}
 
         <Alert variant="info">
           <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>

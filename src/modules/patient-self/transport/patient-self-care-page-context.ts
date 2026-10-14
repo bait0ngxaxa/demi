@@ -17,6 +17,7 @@ import {
   getOwnPatientFollowupDetail,
   getOwnPatientGoalPlanDetail,
   getOwnPatientProgramDetail,
+  getOwnPatientProgramRounds,
   type PatientSelfCareJourneyPageRequests,
   type PatientSelfProgramDetailPageRequests,
 } from "../services/patient-self-care-query-service";
@@ -86,6 +87,15 @@ export async function getPatientSelfProgramDetailPageContext(
 ): Promise<Awaited<ReturnType<typeof getOwnPatientProgramDetail>>> {
   return withPatientSelfPageContext((actor) =>
     getOwnPatientProgramDetail(actor, relationshipId, programId, {}, pageRequests),
+  );
+}
+
+export async function getPatientSelfProgramRoundsPageContext(
+  relationshipId: string,
+  programId: string,
+): Promise<Awaited<ReturnType<typeof getOwnPatientProgramRounds>>> {
+  return withPatientSelfPageContext((actor) =>
+    getOwnPatientProgramRounds(actor, relationshipId, programId),
   );
 }
 

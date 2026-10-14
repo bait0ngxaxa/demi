@@ -33,10 +33,12 @@ const hospitalSelect = { hospitalCode: true, name: true } satisfies Prisma.Hospi
 const listSelect = {
   id: true, title: true, category: true, latestPublishedAt: true, firstPublishedAt: true,
   hospital: { select: hospitalSelect },
+  images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
 } satisfies Prisma.HospitalContentSelect;
 const detailSelect = {
   id: true, title: true, body: true, category: true, sourceText: true, latestPublishedAt: true,
   hospital: { select: hospitalSelect },
+  images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
 } satisfies Prisma.HospitalContentSelect;
 
 function publicationInstant(value: Date | null): string {
@@ -77,7 +79,7 @@ export async function listPatientHospitalContent(
     const rows = await database.hospitalContent.findMany({
       where: {
         ...hospitalContentPatientWhere(actor, self.patientProfileId),
-        ...(category === null ? {} : { category }),
+        ...(category === null ? { category: { not: "NEWS" } } : { category }),
         ...(cursor === null ? {} : { OR: [
           { firstPublishedAt: { lt: new Date(cursor.firstPublishedAt) } },
           { firstPublishedAt: new Date(cursor.firstPublishedAt), id: { lt: cursor.id } },
@@ -97,7 +99,7 @@ export async function listPatientHospitalContent(
       category,
       items: visible.map((row) => ({
         id: row.id, hospital: { hospitalCode: row.hospital.hospitalCode, name: row.hospital.name },
-        title: row.title, category: row.category, latestPublishedAt: publicationInstant(row.latestPublishedAt),
+        title: row.title, category: row.category, latestPublishedAt: publicationInstant(row.latestPublishedAt), imageIds: row.images.map(({ id }) => id),
       })),
       nextCursor,
       emptyState: rows.length === 0 ? await classifyEmpty(actor, category, database) : null,
@@ -130,7 +132,7 @@ export async function getPatientHospitalContent(
     return {
       id: row.id, hospital: { hospitalCode: row.hospital.hospitalCode, name: row.hospital.name },
       title: row.title, body: row.body, category: row.category, sourceText: row.sourceText,
-      latestPublishedAt: publicationInstant(row.latestPublishedAt),
+      latestPublishedAt: publicationInstant(row.latestPublishedAt), imageIds: row.images.map(({ id }) => id),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;

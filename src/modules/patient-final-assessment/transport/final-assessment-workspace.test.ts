@@ -104,6 +104,7 @@ function existingFinal(): NonNullable<PatientFinalAssessmentProjection["finalAss
       systolicBloodPressure: 120,
       diastolicBloodPressure: 80,
       bloodSugar: 95,
+      hba1c: null,
     },
   };
 }

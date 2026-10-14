@@ -7,7 +7,7 @@ import { PatientContentLink } from "./patient-content-link";
 import type { HospitalContentPatientDetail } from "@/modules/hospital-content/types/hospital-content-patient-projections";
 import type { HospitalContentPatientFeedContext } from "@/modules/hospital-content/transport/hospital-content-patient-page-context";
 vi.mock("next/link", () => ({ default: ({ prefetch, onNavigate: _onNavigate, ...props }: { prefetch?: boolean; onNavigate?: unknown }) => { void _onNavigate; return <a data-prefetch={String(prefetch)} {...props} />; } }));
-const content: HospitalContentPatientDetail = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "ข่าวสารภาษาไทย".repeat(15), category: "FOOD", latestPublishedAt: "2026-10-05T12:00:00.000Z", hospital: { name: "โรงพยาบาล ก", hospitalCode: "A001" }, body: "<script>bad</script>\n**plain Markdown**\nบรรทัดที่สอง", sourceText: "https://example.com/" + "long".repeat(100) };
+const content: HospitalContentPatientDetail = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "ข่าวสารภาษาไทย".repeat(15), category: "FOOD", latestPublishedAt: "2026-10-05T12:00:00.000Z", hospital: { name: "โรงพยาบาล ก", hospitalCode: "A001" }, body: "<script>bad</script>\n**plain Markdown**\nบรรทัดที่สอง", sourceText: "https://example.com/" + "long".repeat(100), imageIds: [] };
 function feed(overrides: Partial<Extract<HospitalContentPatientFeedContext, { outcome: "READY" }>["page"]> = {}): string {
   return renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "READY", page: { category: null, items: [content], nextCursor: null, emptyState: null, ...overrides } }} />);
 }
@@ -35,12 +35,17 @@ describe("Patient Content read presentation", () => {
     expect(html).not.toMatch(/name="(?:hospital|search|sort)"/u);
   });
   it.each([
-    ["EMPTY_A", "ยังไม่มีโรงพยาบาลที่พร้อมแสดงข่าวสารและความรู้"],
-    ["EMPTY_B", "ยังไม่มีข่าวสารและความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"],
-    ["EMPTY_C", "ยังไม่มีข่าวสารและความรู้ในหมวดหมู่นี้"],
+    ["EMPTY_A", "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"],
+    ["EMPTY_B", "ยังไม่มีสื่อความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"],
+    ["EMPTY_C", "ยังไม่มีสื่อความรู้ในหมวดหมู่นี้"],
   ] as const)("renders exact %s and no detail link", (emptyState, copy) => {
     const html = feed({ emptyState, items: [] }); expect(html).toContain(copy); expect(html).not.toContain(content.id);
-    if (emptyState === "EMPTY_C") expect(html).toContain("ดูทุกหมวดหมู่");
+    if (emptyState === "EMPTY_C") expect(html).toContain("ดูรายการทั้งหมด");
+  });
+  it("uses News copy separately from the knowledge feed", () => {
+    const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "READY", page: { category: "NEWS", items: [], nextCursor: null, emptyState: "EMPTY_B" } }} kind="NEWS" />);
+    expect(html).toContain("ข่าวสารจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ");
+    expect(html).not.toContain("สื่อความรู้จากโรงพยาบาล");
   });
   it("renders validation separately with a bounded restart", () => {
     const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "VALIDATION" }} />);
@@ -52,8 +57,10 @@ describe("Patient Content read presentation", () => {
     expect(html).toContain("&lt;script&gt;bad&lt;/script&gt;\n**plain Markdown**"); expect(html).not.toContain("<script>"); expect(html).not.toContain("<strong>plain");
     expect(html).toContain(content.sourceText); expect(html).not.toContain('href="https://');
     expect(html).toContain("whitespace-pre-wrap"); expect(html).toContain("overflow-wrap:anywhere");
-    expect(html).toContain("ข่าวสารและความรู้นี้จัดทำโดยโรงพยาบาล"); expect(html).toContain("โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา");
+    expect(html).toContain("สื่อความรู้จากโรงพยาบาล"); expect(html).toContain("โรงพยาบาลผู้เผยแพร่รับผิดชอบความถูกต้องของเนื้อหา");
     expect(html).toContain('data-prefetch="false"');
+    const newsHtml = renderToStaticMarkup(<PatientContentDetail content={{ ...content, category: "NEWS" }} />);
+    expect(newsHtml).toContain("ข่าวสารจากโรงพยาบาล"); expect(newsHtml).toContain('href="/app/personal/news"');
     expect(renderToStaticMarkup(<PatientContentDetail content={{ ...content, sourceText: null }} />)).not.toContain("แหล่งที่มา / เอกสารอ้างอิง");
   });
   it("protected Link disables prefetch and forces an authoritative document GET", () => {

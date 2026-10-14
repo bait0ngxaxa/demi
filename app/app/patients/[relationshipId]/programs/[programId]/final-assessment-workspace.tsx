@@ -32,6 +32,7 @@ const measurementDefinitions: readonly MeasurementDefinition[] = [
   { key: "systolicBloodPressure", label: "ความดันตัวบน", currentLabel: "mmHg" },
   { key: "diastolicBloodPressure", label: "ความดันตัวล่าง", currentLabel: "mmHg" },
   { key: "bloodSugar", label: "น้ำตาลในเลือด / DTX", currentLabel: "DTX / mg%" },
+  { key: "hba1c", label: "HbA1c", currentLabel: "%" },
 ];
 
 const structuralMaximum = 1_000_000;

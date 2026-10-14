@@ -210,6 +210,7 @@ function createDatabase(input: {
       create: vi.fn().mockResolvedValue(input.createResult ?? appointmentRecord()),
       updateMany: vi.fn().mockResolvedValue({ count: input.updateCount ?? 1 }),
     },
+    patientAppointmentRescheduleRequest: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     patientAppointmentCancellationRequest: {
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },

@@ -21,6 +21,7 @@ type AppointmentMutationControlsProps = {
   appointmentId: string;
   expectedUpdatedAt: string;
   canManage: boolean;
+  canComplete?: boolean;
   status: string;
 };
 
@@ -43,6 +44,7 @@ export function AppointmentMutationControls({
   appointmentId,
   expectedUpdatedAt,
   canManage,
+  canComplete = canManage,
   status,
 }: AppointmentMutationControlsProps): React.JSX.Element | null {
   const router = useRouter();
@@ -77,7 +79,7 @@ export function AppointmentMutationControls({
   return (
     <div>
       {status === "SCHEDULED" ? <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        <form action={completeAction}>
+        {canComplete ? <form action={completeAction}>
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -94,16 +96,16 @@ export function AppointmentMutationControls({
           >
             {completePending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าเสร็จสิ้น"}
           </Button>
-        </form>
+        </form> : null}
 
-        <form action={noShowAction}>
+        {canComplete ? <form action={noShowAction}>
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button className="w-full sm:w-auto" disabled={pending} loading={noShowPending} type="submit" variant="secondary">
             {noShowPending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าไม่มาตามนัด"}
           </Button>
-        </form>
+        </form> : null}
 
         <form action={cancelAction}>
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />

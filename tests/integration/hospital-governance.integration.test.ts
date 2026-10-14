@@ -557,12 +557,10 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
       items: expect.any(Array),
     });
 
-    await prisma.hospitalMembership.update({
-      where: { userId_hospitalId: { userId: member.userId, hospitalId: hospitalA.id } },
+    await prisma.hospitalMembership.updateMany({ where: { userId: member.userId, hospitalId: hospitalA.id, status: { not: "ENDED" } },
       data: { status: MembershipStatus.SUSPENDED },
     });
-    await prisma.osmHospitalRelationship.update({
-      where: { userId_hospitalId: { userId: osm.userId, hospitalId: hospitalA.id } },
+    await prisma.osmHospitalRelationship.updateMany({ where: { userId: osm.userId, hospitalId: hospitalA.id, status: { not: "ENDED" } },
       data: { status: MembershipStatus.SUSPENDED },
     });
     await prisma.patientOsmAssignment.updateMany({

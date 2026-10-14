@@ -63,6 +63,9 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
   const programIds = fixture.programIds;
   if (programIds.length > 0) {
     await prisma.patientFollowupActivityProgress.deleteMany({ where: { followup: { patientProgramId: { in: programIds } } } });
+    await prisma.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.screeningAssessment.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneRoutine.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneFloatingChart.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneDreamCard.deleteMany({ where: { patientProgramId: { in: programIds } } });
@@ -372,8 +375,7 @@ function dashboardReadWithMembershipRevocationAfterProgramLoad(
                   const records = await delegate.findMany(...args);
                   if (!revoked) {
                     revoked = true;
-                    await prisma.hospitalMembership.update({
-                      where: { userId_hospitalId: { userId, hospitalId } },
+                    await prisma.hospitalMembership.updateMany({ where: { userId, hospitalId, status: { not: "ENDED" } },
                       data: { status: MembershipStatus.SUSPENDED },
                     });
                   }
@@ -544,8 +546,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     );
     expect(existingProgramReport.patientProgramId).toBe(completedProgram.id);
 
-    await prisma.hospitalMembership.update({
-      where: { userId_hospitalId: { userId: ownerA.userId, hospitalId: hospitalA.id } },
+    await prisma.hospitalMembership.updateMany({ where: { userId: ownerA.userId, hospitalId: hospitalA.id, status: { not: "ENDED" } },
       data: { status: MembershipStatus.SUSPENDED },
     });
     await expect(getHospitalReportingPage(ownerA.actor, {
@@ -627,8 +628,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       { hospitalId: hospital.id },
       { database: dashboardReadWithMembershipRevocationAfterProgramLoad(owner.userId, hospital.id) },
     )).rejects.toBeInstanceOf(NotFoundError);
-    await expect(prisma.hospitalMembership.findUnique({
-      where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
+    await expect(prisma.hospitalMembership.findFirst({ where: { userId: owner.userId, hospitalId: hospital.id, status: { not: "ENDED" } },
       select: { status: true },
     })).resolves.toMatchObject({ status: MembershipStatus.SUSPENDED });
   });
@@ -858,8 +858,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       hospital: { id: child.id, status: HospitalStatus.ACTIVE, parentHospitalId: parentA.id },
     });
     expect(Object.keys(access.hospital).sort()).toEqual(["id", "parentHospitalId", "status"]);
-    expect(await prisma.hospitalMembership.findUnique({
-      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: child.id } },
+    expect(await prisma.hospitalMembership.findFirst({ where: { userId: parentOwner.userId, hospitalId: child.id, status: { not: "ENDED" } },
       select: { id: true },
     })).toBeNull();
 
@@ -890,8 +889,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
 
     await expect(resolveParentChildHospitalReportAccessContext(revokedOwner.actor, parentA.id, child.id))
       .resolves.toMatchObject({ hospital: { id: child.id } });
-    await prisma.hospitalMembership.update({
-      where: { userId_hospitalId: { userId: revokedOwner.userId, hospitalId: parentA.id } },
+    await prisma.hospitalMembership.updateMany({ where: { userId: revokedOwner.userId, hospitalId: parentA.id, status: { not: "ENDED" } },
       data: { status: MembershipStatus.SUSPENDED },
     });
     await expect(resolveParentChildHospitalReportAccessContext(revokedOwner.actor, parentA.id, child.id))
@@ -1039,8 +1037,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       .not.toContain(grandchild.id);
     expect(targets.flatMap(({ children }) => children.map(({ id }) => id)))
       .not.toContain(inactiveChild.id);
-    expect(await prisma.hospitalMembership.findUnique({
-      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: child.id } },
+    expect(await prisma.hospitalMembership.findFirst({ where: { userId: parentOwner.userId, hospitalId: child.id, status: { not: "ENDED" } },
       select: { id: true },
     })).toBeNull();
 
@@ -1175,8 +1172,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       },
     });
 
-    await prisma.hospitalMembership.update({
-      where: { userId_hospitalId: { userId: parentOwner.userId, hospitalId: parentB.id } },
+    await prisma.hospitalMembership.updateMany({ where: { userId: parentOwner.userId, hospitalId: parentB.id, status: { not: "ENDED" } },
       data: { status: MembershipStatus.SUSPENDED },
     });
     await expect(getParentChildHospitalReportingPage(multiParentOwner, {

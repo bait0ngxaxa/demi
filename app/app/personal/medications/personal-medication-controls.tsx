@@ -42,13 +42,30 @@ export function MedicationEditor({ item, coordination }: { item?: PersonalMedica
   const [state, action, pending] = useMedicationAction(item ? updatePersonalMedicationAction : createPersonalMedicationAction, coordination);
   const [name, setName] = useState(item?.medicationName ?? "");
   const [instruction, setInstruction] = useState(item?.instructionText ?? "");
+  const [times, setTimes] = useState<string[]>([]);
+  const [timesError, setTimesError] = useState("");
   const [expectedUpdatedAt] = useState(item?.updatedAt ?? "");
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
   const blocked = coordination?.blocked || pending || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired;
-  return <form action={action} onSubmit={coordination?.onSubmit} className="space-y-4">
+  const addPreset = (time: string): void => {
+    setTimes((current) => current.includes(time) || current.length >= MEDICATION_SCHEDULE_MAX_TIMES
+      ? current
+      : [...current, time].sort());
+    setTimesError("");
+  };
+  return <form action={action} onSubmit={(event) => {
+    if (!item && new Set(times.filter(Boolean)).size !== times.filter(Boolean).length) {
+      event.preventDefault();
+      setTimesError("เวลาแต่ละรายการต้องไม่ซ้ำกัน");
+      return;
+    }
+    setTimesError("");
+    coordination?.onSubmit();
+  }} className="space-y-4">
     {item ? <><input type="hidden" name="medicationId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} /></> : null}
+    {!item ? <input type="hidden" name="times" value={JSON.stringify(times)} /> : null}
     <fieldset disabled={Boolean(blocked)} className="space-y-4">
       <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`${prefix}-name`}>ชื่อยา</label>
         <Input id={`${prefix}-name`} name="medicationName" required maxLength={MEDICATION_NAME_RAW_MAX_LENGTH} value={name} onChange={(event) => setName(event.target.value)} aria-invalid={Boolean(state.fieldErrors?.medicationName)} aria-describedby={`${prefix}-name-help`} />
@@ -56,6 +73,33 @@ export function MedicationEditor({ item, coordination }: { item?: PersonalMedica
       <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`${prefix}-instruction`}>ข้อความประกอบ (ไม่บังคับ)</label>
         <textarea id={`${prefix}-instruction`} name="instructionText" className={`${inputClassName} py-3`} rows={4} maxLength={INSTRUCTION_TEXT_RAW_MAX_LENGTH} value={instruction} onChange={(event) => setInstruction(event.target.value)} aria-invalid={Boolean(state.fieldErrors?.instructionText)} aria-describedby={`${prefix}-instruction-help`} />
         <p id={`${prefix}-instruction-help`} className="text-sm text-text-muted">{state.fieldErrors?.instructionText ?? "ข้อความที่คุณบันทึกเอง ไม่เกิน 2,000 ตัวอักษร"}</p></div>
+      {!item ? <section className="space-y-3 border-t border-border pt-4" aria-labelledby={`${prefix}-times-heading`}>
+        <h3 id={`${prefix}-times-heading`} className="text-lg font-semibold">เวลาที่ต้องการตั้งเตือน</h3>
+        <p className="text-sm leading-6 text-text-muted">เลือกเวลาแนะนำแล้วแก้ไขได้ ระบบจะส่งเตือนทาง LINE เมื่อคุณเปิดการแจ้งเตือนยา เชื่อม LINE และบัญชียังมีสิทธิ์รับข้อความ</p>
+        <div className="flex flex-wrap gap-2" aria-label="เวลาแนะนำ">
+          {[{ label: "เช้า", time: "07:00" }, { label: "กลางวัน", time: "12:00" }, { label: "เย็น", time: "18:00" }, { label: "ก่อนนอน", time: "21:00" }].map(({ label, time }) => (
+            <Button key={time} type="button" variant="secondary" disabled={Boolean(blocked) || times.includes(time) || times.length >= MEDICATION_SCHEDULE_MAX_TIMES} onClick={() => addPreset(time)}>
+              {label} {time}{times.includes(time) ? " · เลือกแล้ว" : ""}
+            </Button>
+          ))}
+        </div>
+        {times.length > 0 ? <ul className="space-y-3" aria-label="เวลาที่เลือก">
+          {times.map((time, index) => <li key={`${time}-${index}`} className="flex flex-wrap items-end gap-3">
+            <label className="min-w-32 flex-1 space-y-1">
+              <span className="block text-sm font-medium">เวลา {index + 1}</span>
+              <Input type="time" step={60} required disabled={Boolean(blocked)} value={time} onChange={(event) => {
+                const next = [...times];
+                next[index] = event.currentTarget.value;
+                setTimes(next);
+                setTimesError("");
+              }} />
+            </label>
+            <Button type="button" variant="secondary" disabled={Boolean(blocked)} aria-label={`ลบเวลา ${index + 1}`} onClick={() => setTimes(times.filter((_, currentIndex) => currentIndex !== index))}>ลบเวลา</Button>
+          </li>)}
+        </ul> : <p className="text-sm text-text-muted">ยังไม่ได้เลือกเวลา คุณเพิ่มหรือจัดการเวลาได้ภายหลัง</p>}
+        {times.length >= MEDICATION_SCHEDULE_MAX_TIMES ? <p className="text-sm text-text-muted">รายการนี้มีจำนวนเวลาถึงขีดจำกัดแล้ว</p> : null}
+        <p aria-live="polite" className="min-h-6 text-sm text-danger">{timesError || state.fieldErrors?.times || ""}</p>
+      </section> : null}
     </fieldset>
     <div ref={feedback} tabIndex={-1}><MedicationFeedback state={state} /></div>
     <Button type="submit" loading={pending} disabled={Boolean(blocked)}>{pending ? "กำลังบันทึก..." : item ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}</Button>
@@ -101,7 +145,7 @@ export function MedicationScheduleEditor({ item, coordination }: { item: Persona
   return <section aria-labelledby={`${prefix}-heading`} className="space-y-4 border-t border-border pt-4">
     <h3 id={`${prefix}-heading`} className="text-xl font-semibold">เวลาที่ต้องการติดตามใน DEMI</h3>
     <p id={`${prefix}-help`} className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p>
-    <p className="text-sm text-text-muted">ส่วนนี้บันทึกเวลาเท่านั้น ยังไม่มีการแจ้งเตือน</p>
+    <p className="text-sm text-text-muted">ระบบจะส่งเตือนทาง LINE เมื่อคุณเปิดการแจ้งเตือนยา เชื่อม LINE และบัญชียังมีสิทธิ์รับข้อความ</p>
     <form action={action} className="space-y-4" onSubmit={(event) => {
       if (blocked) { event.preventDefault(); return; }
       const result = personalMedicationScheduleSchema.safeParse({ medicationId: item.id, expectedUpdatedAt, times });

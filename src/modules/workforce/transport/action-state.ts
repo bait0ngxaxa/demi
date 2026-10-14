@@ -10,7 +10,7 @@ export type WorkforceProvisionResultState = {
   hospitalId: string;
   relationshipId: string;
   accountStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED";
-  relationshipStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED";
+  relationshipStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED" | "ENDED";
   activationRequired: boolean;
   activationToken: string | null;
   activationExpiresAt: string | null;

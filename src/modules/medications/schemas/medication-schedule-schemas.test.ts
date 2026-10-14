@@ -24,6 +24,6 @@ describe("strict daily schedule schema", () => {
   it("retains current version semantics and unrelated Thai text", () => {
     expect(schema.safeParse({ ...version, expectedUpdatedAt: "yesterday", times: [] }).success).toBe(false);
     expect(schema.safeParse({ ...version, medicationId: "bad", times: [] }).success).toBe(false);
-    expect(personalMedicationCreateSchema.parse({ medicationName: "ยาไทย", instructionText: "บันทึกเอง" })).toEqual({ medicationName: "ยาไทย", instructionText: "บันทึกเอง" });
+    expect(personalMedicationCreateSchema.parse({ medicationName: "ยาไทย", instructionText: "บันทึกเอง" })).toEqual({ medicationName: "ยาไทย", instructionText: "บันทึกเอง", times: [] });
   });
 });

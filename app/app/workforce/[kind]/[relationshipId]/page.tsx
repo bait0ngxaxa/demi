@@ -21,6 +21,7 @@ import {
 
 import { WorkforcePasswordResetControl } from "../../workforce-password-reset-control";
 import { OsmRelationshipControls } from "./osm-relationship-controls";
+import { WorkforceReleaseControl } from "./workforce-release-control";
 import { StaffMembershipControls } from "./staff-membership-controls";
 
 export const metadata: Metadata = {
@@ -33,6 +34,8 @@ type WorkforceDetailPageProps = {
 
 function relationshipStatusLabel(status: WorkforceDetail["relationshipStatus"]): string {
   switch (status) {
+    case "ENDED":
+      return "นำออกจากระบบถาวรแล้ว";
     case "ACTIVE":
       return "ความสัมพันธ์ใช้งานอยู่";
     case "SUSPENDED":
@@ -213,7 +216,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           />
         )}
 
-        {detail.viewerScope === "OWNER" ? (
+        {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
           <WorkforcePasswordResetControl
             subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
             targetHospitalId={detail.hospital.id}
@@ -221,6 +224,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           />
         ) : null}
 
+        {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? <WorkforceReleaseControl relationshipId={detail.relationshipId} hospitalId={detail.hospital.id} kind={detail.kind} updatedAt={detail.relationshipUpdatedAt.toISOString()} /> : null}
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           href={`/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`}

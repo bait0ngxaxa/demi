@@ -7,6 +7,7 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 export const WORKFORCE_CAPABILITIES = {
+  release: "workforce:release",
   read: "membership:read",
   create: "membership:create",
   update: "membership:update",

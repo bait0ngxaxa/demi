@@ -57,3 +57,24 @@ export const patientHospitalProfileRelationshipIdSchema = z.uuid();
 export type PatientHospitalProfileUpdateInput = z.infer<
   typeof patientHospitalProfileUpdateSchema
 >;
+
+// Hospital staff own only the hospital-local contact fields, never Person identity.
+export const staffPatientHospitalProfileUpdateSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  phoneNumber: optionalProfileValue(32),
+  addressText: optionalProfileValue(2000),
+  houseNumber: optionalProfileValue(200),
+  villageNumber: optionalProfileValue(200),
+  villageName: optionalProfileValue(200),
+  soi: optionalProfileValue(200),
+  road: optionalProfileValue(200),
+  province: optionalProfileValue(200),
+  district: optionalProfileValue(200),
+  subdistrict: optionalProfileValue(200),
+  postalCode: z.union([z.string().regex(/^\d{5}$/u), z.literal("").transform(() => null), z.null()]).optional(),
+  emergencyContactName: optionalProfileValue(200),
+  emergencyContactPhone: optionalProfileValue(32),
+  emergencyContactRelationship: optionalProfileValue(200),
+  occupation: optionalProfileValue(200),
+  educationLevel: optionalProfileValue(200),
+}).strict();

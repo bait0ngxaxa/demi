@@ -38,7 +38,7 @@ export const workforceListSchema = z
     staffCursor: z.string().max(2048).optional(),
     osmCursor: z.string().max(2048).optional(),
     search: z.string().trim().max(120).optional(),
-    status: z.enum(["PROVISIONED", "INVITED", "ACTIVE", "SUSPENDED"]).optional(),
+    status: z.enum(["PROVISIONED", "INVITED", "ACTIVE", "SUSPENDED", "ENDED"]).optional(),
     pageSize: z.number().int().min(1).max(50).optional(),
   })
   .strict();
@@ -180,3 +180,11 @@ export type WorkforceActivationSlipRequestInput = z.infer<
 export type WorkforceKind = z.infer<typeof workforceKindSchema>;
 export type WorkforceActivationMode = z.infer<typeof workforceActivationModeSchema>;
 export type WorkforceDetailKind = z.infer<typeof workforceDetailKindSchema>;
+
+export const workforceReleaseSchema = z.object({
+  relationshipId: workforceRelationshipIdSchema,
+  targetHospitalId: workforceTargetHospitalIdSchema,
+  expectedUpdatedAt: workforceExpectedUpdatedAtSchema,
+  kind: workforceDetailKindSchema,
+  confirmation: z.literal("นำออกจากระบบ"),
+}).strict();

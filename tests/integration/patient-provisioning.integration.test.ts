@@ -256,8 +256,7 @@ function createDatabaseThatRevokesHospitalBulkScope(
       return async (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>) => {
         if (!revoked) {
           revoked = true;
-          await prisma.hospitalMembership.update({
-            where: { userId_hospitalId: { userId, hospitalId } },
+          await prisma.hospitalMembership.updateMany({ where: { userId, hospitalId, status: { not: "ENDED" } },
             data: { status: MembershipStatus.SUSPENDED },
           });
         }
@@ -661,8 +660,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       importPatientProvisioning(actor, hospital.id, candidates, { database }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(
-      await prisma.osmHospitalRelationship.findUnique({
-        where: { userId_hospitalId: { userId, hospitalId: hospital.id } },
+      await prisma.osmHospitalRelationship.findFirst({ where: { userId, hospitalId: hospital.id, status: { not: "ENDED" } },
         select: { status: true },
       }),
     ).toEqual({ status: MembershipStatus.ACTIVE });

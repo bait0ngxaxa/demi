@@ -23,7 +23,9 @@ describe("Personal medication UI states", () => {
     expect(html).toContain('aria-label="ลำดับหน้า"');
     for (const text of ["ยาของฉัน", "รายการยาที่คุณบันทึก", "ยังไม่มีรายการที่กำลังติดตาม", "ยังไม่มีประวัติหยุดติดตาม", "ชื่อยา", "ข้อความประกอบ", "ไม่ใช่คำแนะนำทางการแพทย์"]) expect(html).toContain(text);
     expect(html).toContain('name="medicationName"'); expect(html).toContain('name="instructionText"'); expect(html).toContain("aria-describedby"); expect(html).toContain("for=");
-    for (const excluded of ["หยุดยาแล้ว", "หยุดรับประทานยา", "แพทย์สั่ง", "ยาที่ได้รับการรับรอง", "รายการยาจากโรงพยาบาล", "ลบรายการ", "เตือน", "เวลาเช้า", "caregiver", "schedule", "doseAmount", "prescriber"]) expect(html).not.toContain(excluded);
+    expect(html).toContain('name="times"');
+    for (const preset of ["เช้า 07:00", "กลางวัน 12:00", "เย็น 18:00", "ก่อนนอน 21:00"]) expect(html).toContain(preset);
+    for (const excluded of ["หยุดยาแล้ว", "หยุดรับประทานยา", "แพทย์สั่ง", "ยาที่ได้รับการรับรอง", "รายการยาจากโรงพยาบาล", "ลบรายการ", "caregiver", "schedule", "doseAmount", "prescriber"]) expect(html).not.toContain(excluded);
   });
   it("renders distinct text statuses, escaped user text and cursor continuation", () => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: item.id }} stopped={{ items: [{ ...item, id: "stopped", status: "STOPPED", stoppedAt: item.updatedAt }], nextCursor: item.id }} selected={null} />);

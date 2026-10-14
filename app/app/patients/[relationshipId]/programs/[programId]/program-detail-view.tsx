@@ -66,6 +66,12 @@ export function PatientProgramDetailView({
         actions={
           <div className="flex flex-wrap items-center justify-end gap-3">
             <Link
+              className={buttonClassName({ variant: "primary" })}
+              href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.programId)}/rounds`}
+            >
+              การจัดบริการครั้งที่ 1–6
+            </Link>
+            <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.programId)}/report`}
             >
@@ -149,7 +155,7 @@ export function PatientProgramDetailView({
           </p>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
-              ["program-service-one", "Service 1 — รู้จักตัวเอง", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
+              ["program-service-one", "Service 1 — กิจกรรมเริ่มต้นของโปรแกรม", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
               ["program-goals", "แผนเป้าหมาย", goalPlanOverview.latest ? "มีแผนเป้าหมาย" : "ยังไม่มีแผนเป้าหมาย"],
               ["program-followups", "การติดตามผล", followupHistory.totalCount > 0 ? "มีบันทึกการติดตามผล" : "ยังไม่มีบันทึกการติดตามผล"],
               ["program-final", "การประเมินสุดท้ายและจบโปรแกรม", finalAssessment.finalAssessment ? "มีบันทึกการประเมินสุดท้าย" : "ยังไม่มีบันทึกการประเมินสุดท้าย"],

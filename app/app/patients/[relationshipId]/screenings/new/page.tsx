@@ -16,7 +16,10 @@ export const metadata: Metadata = {
 
 type NewScreeningPageProps = {
   params: Promise<{ relationshipId: string }>;
+  searchParams: Promise<{ programId?: string | string[] }>;
 };
+
+const PROGRAM_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 async function resolveActor() {
   try {
@@ -36,10 +39,20 @@ async function resolveActor() {
 
 export default async function NewScreeningPage({
   params,
+  searchParams,
 }: NewScreeningPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
   const { relationshipId } = await params;
+  const { programId: requestedProgramId } = await searchParams;
+  const programIdCandidate = Array.isArray(requestedProgramId)
+    ? requestedProgramId[0]
+    : requestedProgramId;
+  // The service re-authorizes the Program; a malformed value is simply ignored here.
+  const programId =
+    programIdCandidate && PROGRAM_ID_PATTERN.test(programIdCandidate)
+      ? programIdCandidate.toLowerCase()
+      : undefined;
   let patient;
 
   try {
@@ -59,6 +72,7 @@ export default async function NewScreeningPage({
   return (
     <ScreeningForm
       patient={patient}
+      programId={programId}
       questionSet={getPrototypeQuestionSet()}
       relationshipId={relationshipId}
       submissionNonce={randomUUID()}

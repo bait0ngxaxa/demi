@@ -29,6 +29,8 @@ const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await prisma.patientProgramRoundActivity.deleteMany();
+  await prisma.patientProgramRoundVitals.deleteMany();
   await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
   await prisma.patientProgramServiceOneConfidence.deleteMany();
   await prisma.patientProgramServiceOneDreamCard.deleteMany();
@@ -42,6 +44,8 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientAppointment.deleteMany();
   await prisma.patientGoalItem.deleteMany();
   await prisma.patientGoalPlan.deleteMany();
+  // Program-linked screenings reference the Program, so they are removed first.
+  await prisma.screeningAssessment.deleteMany();
   await prisma.patientProgram.deleteMany();
   await prisma.patientBaseline.deleteMany();
   await prisma.screeningAssessment.deleteMany();

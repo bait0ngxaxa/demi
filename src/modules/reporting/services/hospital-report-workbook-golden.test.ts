@@ -78,6 +78,27 @@ function rateCell(followup: HospitalReportFollowup): CellValue {
   return followup.achievement === null ? NO_ACHIEVEMENT : followup.achievement.ratePercent / 100;
 }
 
+function roundVitals(
+  serviceDate: string,
+  bloodSugar: number,
+  weight: number,
+): HospitalReportProgramRow["roundVitals"]["round1"] {
+  return {
+    state: "PRESENT",
+    value: {
+      serviceDate,
+      measurements: {
+        bloodSugar: { state: "RECORDED", value: bloodSugar },
+        weight: { state: "RECORDED", value: weight },
+        waistCircumference: { state: "NOT_RECORDED" },
+        systolicBloodPressure: { state: "NOT_RECORDED" },
+        diastolicBloodPressure: { state: "NOT_RECORDED" },
+      },
+      heightCm: { state: "RECORDED", value: 162 },
+    },
+  };
+}
+
 const FOLLOWUPS = Array.from({ length: 5 }, (_, index) => followupAt(index));
 
 function goldenProgram(): HospitalReportProgramRow {
@@ -162,21 +183,28 @@ function goldenProgram(): HospitalReportProgramRow {
           systolicBloodPressure: { state: "RECORDED", value: 126 },
           diastolicBloodPressure: { state: "RECORDED", value: 80 },
         },
+        hba1c: { state: "RECORDED", value: 6.8 },
       },
     },
+    roundVitals: {
+      round1: roundVitals("2026-07-02", 118, 74),
+      round2: roundVitals("2026-07-09", 112, 73),
+    },
+    latestHeightCm: { state: "RECORDED", value: 162 },
+    bmi: {
+      baseline: { state: "RECORDED", value: 28.4 },
+      after: { state: "RECORDED", value: 26.3 },
+    },
+    screening: {
+      state: "PRESENT",
+      value: { submittedAt: "2026-07-02T03:00:00.000Z", pamScore: 15, promsScore: 18 },
+    },
+    illnessDuration: { state: "RECORDED", value: 9 },
     unavailable: {
-      illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
-      baselineBmi: "DERIVATION_UNAPPROVED",
       afterCvdRiskScore: "SOURCE_MISSING",
-      afterHba1c: "SOURCE_MISSING",
-      afterBmi: "DERIVATION_UNAPPROVED",
-      afterHeightCm: "SOURCE_MISSING",
-      beforePamScore: "NOT_PROGRAM_SCOPED",
-      beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -214,7 +242,10 @@ function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
     const field = index % 3;
     if (round <= 2) {
       if (row === 10) return [column, null, "SOURCE_MISSING"];
-      return [column, field === 2 ? DERIVATION_UNAPPROVED : SOURCE_MISSING, "SOURCE_MISSING"];
+      // Phase A: rounds 1-2 DTX/BW come from PatientProgramRoundVitals; the rate stays unapproved.
+      if (field === 2) return [column, DERIVATION_UNAPPROVED, "SOURCE_MISSING"];
+      const vitals = round === 1 ? [118, 74] : [112, 73];
+      return [column, vitals[field] ?? null, "SOURCE_READY"];
     }
     const followup = followups[round - 3];
     if (!followup) {
@@ -232,14 +263,14 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["B", "สมหญิง", "SOURCE_READY"],
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
-  ["E", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["E", 9, "SOURCE_READY"],
   ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", SOURCE_MISSING, "SOURCE_MISSING"],
   ["I", SEMANTICS_UNAPPROVED, "DECISION_OPEN"],
   ["J", 128, "SOURCE_READY"],
   ["K", 74.5, "SOURCE_READY"],
-  ["L", DERIVATION_UNAPPROVED, "SOURCE_MISSING"],
+  ["L", 28.4, "SOURCE_READY"],
   ["M", 162, "SOURCE_READY"],
   ["N", 92, "SOURCE_READY"],
   ["O", 138, "SOURCE_READY"],
@@ -247,10 +278,10 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ...dashboardRoundColumns(9),
   ["AI", dateToken(COMPLETED_AT), "SOURCE_READY"],
   ["AJ", SOURCE_MISSING, "SOURCE_MISSING"],
-  ["AK", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["AK", 6.8, "SOURCE_READY"],
   ["AL", 108, "SOURCE_READY"],
   ["AM", 69, "SOURCE_READY"],
-  ["AN", DERIVATION_UNAPPROVED, "SOURCE_MISSING"],
+  ["AN", 26.3, "SOURCE_READY"],
   ["AO", 86, "SOURCE_READY"],
   ["AP", 126, "SOURCE_READY"],
   ["AQ", 80, "SOURCE_READY"],
@@ -296,14 +327,14 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["B", "สมหญิง", "SOURCE_READY"],
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
-  ["E", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["E", 9, "SOURCE_READY"],
   ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", dateToken(COMPLETED_AT), "SOURCE_READY"],
   ["I", 128, "SOURCE_READY"],
   ["J", 74.5, "SOURCE_READY"],
-  ["K", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
-  ["L", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
+  ["K", 15, "SOURCE_READY"],
+  ["L", 18, "SOURCE_READY"],
   ["M", SEMANTICS_UNAPPROVED, "DECISION_OPEN"],
   ["N", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
   ["O", 108, "SOURCE_READY"],
@@ -414,6 +445,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 85, DECISION_OPEN: 2, SOURCE_MISSING: 21 });
+    }).toEqual({ SOURCE_READY: 96, DECISION_OPEN: 2, SOURCE_MISSING: 10 });
   });
 });

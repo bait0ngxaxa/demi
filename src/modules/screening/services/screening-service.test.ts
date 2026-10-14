@@ -18,6 +18,12 @@ vi.mock("@/modules/audit/services/audit-service", () => ({
   recordAuditEvent: mockedAudit,
 }));
 
+const mockedLockProgram = vi.hoisted(() => vi.fn());
+
+vi.mock("@/modules/patient-program/services/patient-program-lifecycle-service", () => ({
+  lockActivePatientProgram: mockedLockProgram,
+}));
+
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
 const hospitalUserId = "33333333-3333-4333-8333-333333333333";
@@ -123,6 +129,10 @@ function createDatabase(input: {
           ? [{ osmUserId: input.assignedOsmUserId }]
           : [],
       }),
+    },
+    patientProgramRoundActivity: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }),
     },
     screeningAssessment: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
@@ -367,3 +377,105 @@ describe("Screening submission service", () => {
     await expect(submitScreening(osm, validInput({ submissionNonce: "99999999-9999-4999-8999-999999999999" }), { database: unassigned.database })).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
+
+describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
+  const programId = "88888888-8888-4888-8888-888888888888";
+
+  function lockedProgram(overrides: { relationshipId?: string } = {}): Record<string, unknown> {
+    return {
+      access: { patient: { patientHospitalRelationshipId: overrides.relationshipId ?? relationshipId } },
+      program: { id: programId },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedAudit.mockResolvedValue(undefined);
+    mockedLockProgram.mockResolvedValue(lockedProgram());
+  });
+
+  it("links the screening to the Program and ledgers PAM and PROMs in round 1", async () => {
+    const { database, transaction } = createDatabase();
+    // First lookup is the nonce replay check, the second is the one-screening-per-Program check.
+    transaction.screeningAssessment.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    await submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), { database, now: () => now });
+
+    expect(mockedLockProgram).toHaveBeenCalledWith(expect.anything(), hospitalActor(), programId);
+    expect(transaction.screeningAssessment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ patientProgramId: programId }) }),
+    );
+    const ledgerCalls = transaction.patientProgramRoundActivity.create.mock.calls.map(
+      ([arg]) => (arg as { data: Record<string, unknown> }).data,
+    );
+    expect(ledgerCalls.map((data) => data.toolCode)).toEqual(["PAM", "PROMS"]);
+    for (const data of ledgerCalls) {
+      expect(data).toMatchObject({
+        patientProgramId: programId,
+        patientHospitalRelationshipId: relationshipId,
+        roundNumber: 1,
+        source: "PLANNED",
+        mode: "RECORDED",
+        linkedRecordType: "SCREENING_ASSESSMENT",
+        linkedRecordId: screeningId,
+        recordedByUserId: hospitalUserId,
+      });
+    }
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "screening.submitted",
+        metadata: expect.objectContaining({ patientProgramId: programId }) as unknown,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("does not touch the ledger for a screening outside a Program round", async () => {
+    const { database, transaction } = createDatabase();
+
+    await submitScreening(hospitalActor(), validInput(), { database, now: () => now });
+
+    expect(mockedLockProgram).not.toHaveBeenCalled();
+    expect(transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
+    expect(transaction.screeningAssessment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ patientProgramId: null }) }),
+    );
+  });
+
+  it("rejects a second screening for the same Program and a Program of another relationship", async () => {
+    const duplicate = createDatabase();
+    duplicate.transaction.screeningAssessment.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: screeningId });
+    await expect(
+      submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), {
+        database: duplicate.database,
+        now: () => now,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(duplicate.transaction.screeningAssessment.create).not.toHaveBeenCalled();
+
+    mockedLockProgram.mockResolvedValue(
+      lockedProgram({ relationshipId: "99999999-9999-4999-8999-000000000000" }),
+    );
+    const foreign = createDatabase();
+    await expect(
+      submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), {
+        database: foreign.database,
+        now: () => now,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(foreign.transaction.screeningAssessment.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the Program lock denies the actor", async () => {
+    mockedLockProgram.mockRejectedValue(new ForbiddenError());
+    const { database, transaction } = createDatabase();
+
+    await expect(
+      submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), { database, now: () => now }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
+  });
+});
+

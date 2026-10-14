@@ -376,10 +376,11 @@ export function PatientSelfAppointmentHistoryView({
 
 export function PatientSelfAppointmentDetailView({
   detail,
-  cancellationRequestNonce,
+  cancellationRequestNonce, rescheduleRequests,
 }: {
   detail: PatientSelfAppointmentDetail;
   cancellationRequestNonce: string;
+  rescheduleRequests?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = detail.relationship.relationshipId;
   const historyHref = `/app/personal/appointments/${encodeURIComponent(relationshipId)}`;
@@ -477,6 +478,7 @@ export function PatientSelfAppointmentDetailView({
             </div>
           </dl>
         </Panel>
+        {rescheduleRequests}
         <PatientAppointmentInteractionControls
           appointment={detail}
           cancellationRequestNonce={cancellationRequestNonce}

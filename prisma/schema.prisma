@@ -120,6 +120,43 @@ enum HospitalContentCategory {
   FOOD
   EXERCISE
   OTHER
+  NEWS
+}
+
+enum SupportReportCategory {
+  BUG
+  ACCESS
+  CONTENT
+  OTHER
+}
+
+enum SupportReportStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum MedicationLineReminderState {
+  PENDING
+  CLAIMED
+  RETRY_SCHEDULED
+  PROVIDER_ACCEPTED
+  SUPPRESSED
+  PERMANENT_FAILURE
+  OUTCOME_UNKNOWN
+}
+
+enum MedicationLineReminderOutcome {
+  STALE_SOURCE
+  AUTHORITY_CHANGED
+  OPT_IN_REVOKED
+  LINE_INELIGIBLE
+  TRANSIENT_HTTP_FAILURE
+  PERMANENT_HTTP_FAILURE
+  AMBIGUOUS_TRANSPORT_FAILURE
+  PROCESS_OUTCOME_UNKNOWN
+  RETRY_WINDOW_EXPIRED
+  DELIVERY_WINDOW_EXPIRED
 }
 
 enum HospitalOnboardingApplicationStatus {
@@ -145,6 +182,13 @@ enum MembershipStatus {
   INVITED
   ACTIVE
   SUSPENDED
+  ENDED
+}
+
+enum HealthHistoryAnswer {
+  YES
+  NO
+  UNKNOWN
 }
 
 enum PatientClassificationType {
@@ -253,6 +297,39 @@ enum PatientProgramStatus {
   COMPLETED
 }
 
+enum PatientProgramRoundToolCode {
+  PAM
+  PROMS
+  KNOW_SELF
+  FLOATING_CHART
+  CONFIDENCE_RULER
+  LIFE_TABLE
+  ROUTINE
+  DREAM_CARD
+  HEALTH_PLAN_REVIEW
+  HEALTHY_PLAN
+  HEALTH_PATH
+}
+
+enum PatientProgramRoundActivitySource {
+  PLANNED
+  EXTRA
+}
+
+enum PatientProgramRoundActivityMode {
+  RECORDED
+  REVIEWED
+}
+
+enum PatientProgramRoundLinkedRecordType {
+  SCREENING_ASSESSMENT
+  SERVICE_ONE_ROUTINE
+  SERVICE_ONE_FLOATING_CHART
+  SERVICE_ONE_DREAM_CARD
+  SERVICE_ONE_CONFIDENCE
+  GOAL_PLAN
+}
+
 enum PatientServiceCode {
   SCREENING
   FOLLOW_UP
@@ -353,7 +430,9 @@ model User {
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   appointmentAcknowledgementsRecorded PatientAppointmentAcknowledgement[] @relation("AppointmentAcknowledgementRecordedBy")
   appointmentCancellationRequestsSubmitted PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestSubmittedBy")
+  appointmentRescheduleRequestsSubmitted PatientAppointmentRescheduleRequest[] @relation("AppointmentRescheduleRequestSubmittedBy")
   appointmentCancellationRequestsResolved PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestResolvedBy")
+  appointmentRescheduleRequestsResolved PatientAppointmentRescheduleRequest[] @relation("AppointmentRescheduleRequestResolvedBy")
   appointmentCoordinationEventsRecorded PatientAppointmentCoordinationEvent[] @relation("AppointmentCoordinationEventRecordedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
@@ -370,6 +449,8 @@ model User {
   patientAccessRequestsReviewed PatientAccessRequest[] @relation("PatientAccessRequestReviewer")
   patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedUser")
   patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
+  patientProgramRoundActivitiesRecorded PatientProgramRoundActivity[] @relation("PatientProgramRoundActivityRecordedBy")
+  patientProgramRoundVitalsRecorded PatientProgramRoundVitals[] @relation("PatientProgramRoundVitalsRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -380,6 +461,11 @@ model User {
   lineAccountActionIntents LineAccountActionIntent[]
   lineAppointmentNotificationPreference LineAppointmentNotificationPreference?
   appointmentLineNotificationIntents AppointmentLineNotification[] @relation("AppointmentLineNotificationRecipient")
+  contactSetting UserContactSetting?
+  lineMedicationReminderPreference LineMedicationReminderPreference?
+  medicationLineReminderIntents MedicationLineReminderNotification[] @relation("MedicationLineReminderRecipient")
+  supportReports SupportReport[] @relation("SupportReportReporter")
+  supportReportsUpdated SupportReport[] @relation("SupportReportStatusUpdater")
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
 
@@ -418,6 +504,7 @@ model Hospital {
   patientAccessRequests    PatientAccessRequest[]
   contact                  HospitalContact?
   contents                 HospitalContent[]
+  supportReports           SupportReport[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
@@ -450,11 +537,60 @@ model HospitalContent {
   updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
 
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  images   HospitalContentImage[]
 
   @@unique([hospitalId, submissionNonce], map: "HospitalContent_hospital_nonce_key")
   @@index([hospitalId, updatedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_publisher_order_idx")
   @@index([hospitalId, status, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_order_idx")
   @@index([hospitalId, status, category, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_category_order_idx")
+}
+
+model HospitalContentImage {
+  id               String   @id @default(uuid()) @db.Uuid
+  contentId        String   @db.Uuid
+  uploadNonce      String   @db.Uuid
+  storageObjectKey String   @unique @db.VarChar(512)
+  mediaType        String   @db.VarChar(32)
+  byteSize         Int
+  contentSha256    String?  @db.Char(64)
+  sortOrder        Int
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  content HospitalContent @relation(fields: [contentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([contentId, uploadNonce], map: "HospitalContentImage_content_nonce_key")
+  @@unique([contentId, sortOrder], map: "HospitalContentImage_content_order_key")
+  @@index([contentId, sortOrder, id], map: "HospitalContentImage_content_order_idx")
+}
+
+model UserContactSetting {
+  userId    String   @id @db.Uuid
+  email     String?  @db.VarChar(320)
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model SupportReport {
+  id                    String                @id @default(uuid()) @db.Uuid
+  hospitalId            String                @db.Uuid
+  reporterUserId        String                @db.Uuid
+  statusUpdaterUserId   String?               @db.Uuid
+  category              SupportReportCategory
+  message               String                @db.VarChar(1000)
+  status                SupportReportStatus   @default(NEW)
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @db.Timestamptz(3)
+  resolvedAt            DateTime?             @db.Timestamptz(3)
+
+  hospital          Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reporter          User     @relation("SupportReportReporter", fields: [reporterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  statusUpdater     User?    @relation("SupportReportStatusUpdater", fields: [statusUpdaterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([hospitalId, status, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_inbox_order_idx")
+  @@index([reporterUserId, createdAt(sort: Desc)], map: "SupportReport_reporter_order_idx")
 }
 
 model HospitalMembership {
@@ -470,7 +606,7 @@ model HospitalMembership {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, hospitalId])
+  @@index([userId, hospitalId])
   @@index([hospitalId, status])
   @@index([hospitalId, createdAt, id])
 }
@@ -667,6 +803,7 @@ model PatientHospitalRelationship {
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   appointmentGrants CaregiverAppointmentGrant[]
+  healthHistory PatientHospitalHealthHistory?
   hospitalProfile PatientHospitalProfile?
   accountRecoveries AccountRecovery[]
   osmAssignments PatientOsmAssignment[]
@@ -713,6 +850,23 @@ model PatientHospitalProfile {
   updatedAt                     DateTime @updatedAt
 
   relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+}
+
+model PatientHospitalHealthHistory {
+  id String @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String @unique @db.Uuid
+  diabetes HealthHistoryAnswer @default(UNKNOWN)
+  hypertension HealthHistoryAnswer @default(UNKNOWN)
+  otherConditions String? @db.VarChar(1000)
+  familyHypertension HealthHistoryAnswer @default(UNKNOWN)
+  familyDiabetes HealthHistoryAnswer @default(UNKNOWN)
+  familyHeartDisease HealthHistoryAnswer @default(UNKNOWN)
+  familyStroke HealthHistoryAnswer @default(UNKNOWN)
+  diagnosisYear Int?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
 }
 
 model CaregiverInvitation {
@@ -855,6 +1009,8 @@ model ScreeningAssessment {
   id                            String   @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String   @db.Uuid
   conductedByUserId             String   @db.Uuid
+  // Set only when the screening is performed from round 1 of a Program (WB-DF-01); one per Program.
+  patientProgramId              String?  @unique @db.Uuid
   submissionNonce               String   @unique @db.Uuid
   questionSetKey                String   @db.VarChar(64)
   questionSetVersion            String   @db.VarChar(64)
@@ -866,8 +1022,11 @@ model ScreeningAssessment {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   conductedByUser             User                       @relation("ScreeningAssessmentConductedBy", fields: [conductedByUserId], references: [id], onDelete: Restrict)
+  patientProgram              PatientProgram?            @relation("PatientProgramScreening", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   goalPlansSourced             PatientGoalPlan[]          @relation("GoalPlanSourceScreening")
 
+  // Prisma requires the exact composite relation fields to be unique for the one-to-one Program link.
+  @@unique([patientProgramId, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, submittedAt])
   @@index([conductedByUserId, submittedAt])
 }
@@ -945,6 +1104,7 @@ model PatientAppointment {
   createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   osmAssignmentAtCreation     PatientOsmAssignment?      @relation("AppointmentOsmAssignmentAtCreation", fields: [osmAssignmentIdAtCreation], references: [id], onDelete: Restrict)
   acknowledgements            PatientAppointmentAcknowledgement[]
+  rescheduleRequests          PatientAppointmentRescheduleRequest[]
   cancellationRequests        PatientAppointmentCancellationRequest[]
   coordinationEvents          PatientAppointmentCoordinationEvent[]
   lineNotificationIntents     AppointmentLineNotification[]
@@ -986,6 +1146,31 @@ model PatientAppointmentCancellationRequest {
   appointment     PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   submittedByUser User               @relation("AppointmentCancellationRequestSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
   resolvedByUser  User?              @relation("AppointmentCancellationRequestResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([submittedByUserId, submittedAt])
+}
+
+model PatientAppointmentRescheduleRequest {
+  id                         String                                @id @default(uuid()) @db.Uuid
+  appointmentId              String                                @db.Uuid
+  sourceAppointmentUpdatedAt  DateTime                              @db.Timestamptz(3)
+  submittedByUserId           String                                @db.Uuid
+  source                      AppointmentInteractionSource
+  submissionNonce             String                                @unique @db.Uuid
+  status                      AppointmentCancellationRequestStatus @default(PENDING)
+  submittedAt                 DateTime                              @default(now()) @db.Timestamptz(3)
+  resolvedByUserId            String?                               @db.Uuid
+  resolvedAt                  DateTime?                             @db.Timestamptz(3)
+
+  appointment     PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  submittedByUser User               @relation("AppointmentRescheduleRequestSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  resolvedByUser  User?              @relation("AppointmentRescheduleRequestResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  preferredDatetimes DateTime[] @db.Timestamptz(3)
+  reason String @db.VarChar(500)
+  rejectionReason String? @db.VarChar(500)
 
   @@index([appointmentId, submittedAt])
   @@index([status, submittedAt])
@@ -1102,6 +1287,9 @@ model PatientProgram {
   serviceOneDreamCard         PatientProgramServiceOneDreamCard?
   serviceOneConfidence        PatientProgramServiceOneConfidence?
   serviceOneArtifactAssociations PatientProgramServiceOneArtifactAssociation[]
+  screeningAssessment         ScreeningAssessment?        @relation("PatientProgramScreening")
+  roundActivities             PatientProgramRoundActivity[]
+  roundVitals                 PatientProgramRoundVitals[]
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
@@ -1119,6 +1307,7 @@ model PatientFinalAssessment {
   systolicBloodPressure         Float?
   diastolicBloodPressure        Float?
   bloodSugar                    Float?
+  hba1c                         Float?
   // Workbook DoD BR-01: nullable only for assessments recorded before service dates were captured.
   serviceDate                   DateTime? @db.Date
   recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
@@ -1131,6 +1320,55 @@ model PatientFinalAssessment {
   // Prisma requires the exact composite relation fields to be unique; the
   // single-column unique field above is the Program cardinality backstop.
   @@unique([patientProgramId, patientHospitalRelationshipId])
+  @@index([recordedByUserId, recordedAt])
+}
+
+// Phase A (WB-DF-01..03): ledger of whiteboard activities per numbered round of a Program.
+model PatientProgramRoundActivity {
+  id                            String                              @id @default(uuid()) @db.Uuid
+  patientProgramId              String                              @db.Uuid
+  patientHospitalRelationshipId String                              @db.Uuid
+  roundNumber                   Int
+  toolCode                      PatientProgramRoundToolCode
+  source                        PatientProgramRoundActivitySource
+  mode                          PatientProgramRoundActivityMode
+  linkedRecordType              PatientProgramRoundLinkedRecordType?
+  linkedRecordId                String?                             @db.Uuid
+  performedAt                   DateTime                            @db.Timestamptz(3)
+  recordedByUserId              String                              @db.Uuid
+  submissionNonce               String                              @unique @db.Uuid
+  createdAt                     DateTime                            @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  recordedByUser User           @relation("PatientProgramRoundActivityRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber, toolCode])
+  @@index([patientProgramId, roundNumber])
+  @@index([recordedByUserId, performedAt])
+}
+
+// Phase A: vitals for rounds 1-2 only; rounds 3-6 keep using PatientFollowup measurements.
+model PatientProgramRoundVitals {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId              String   @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  roundNumber                   Int
+  serviceDate                   DateTime @db.Date
+  weight                        Float?
+  heightCm                      Float?
+  waistCircumference            Float?
+  systolicBloodPressure         Float?
+  diastolicBloodPressure        Float?
+  bloodSugar                    Float?
+  recordedByUserId              String   @db.Uuid
+  submissionNonce               String   @unique @db.Uuid
+  recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  recordedByUser User           @relation("PatientProgramRoundVitalsRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber])
   @@index([recordedByUserId, recordedAt])
 }
 
@@ -1366,7 +1604,7 @@ model OsmHospitalRelationship {
   user     User     @relation("OsmHospitalRelationships", fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation("OsmHospitalRelationships", fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, hospitalId])
+  @@index([userId, hospitalId])
   @@index([hospitalId, status])
   @@index([hospitalId, createdAt, id])
   @@index([userId, status])
@@ -1479,6 +1717,58 @@ model LineAppointmentNotificationPreference {
   binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
 }
 
+model LineMedicationReminderPreference {
+  userId                  String   @id @db.Uuid
+  bindingId               String   @unique @db.Uuid
+  bindingLifecycleVersion Int
+  preferenceVersion       Int      @default(1)
+  enabled                 Boolean  @default(false)
+  changedAt               DateTime @db.Timestamptz(3)
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model MedicationLineReminderNotification {
+  id                        String                       @id @default(uuid()) @db.Uuid
+  scheduleId                String                       @db.Uuid
+  personalMedicationId      String                       @db.Uuid
+  localDate                 DateTime                     @db.Date
+  localTime                 DateTime                     @db.Time(6)
+  dueAt                     DateTime                     @db.Timestamptz(3)
+  sourceUpdatedAt            DateTime                     @db.Timestamptz(3)
+  recipientUserId            String?                      @db.Uuid
+  bindingId                  String?                      @db.Uuid
+  bindingLifecycleVersion    Int?
+  preferenceVersion          Int?
+  state                      MedicationLineReminderState @default(PENDING)
+  attemptCount               Int                          @default(0)
+  retryKey                   String                       @unique @default(uuid()) @db.Uuid
+  leaseToken                 String?                      @unique @db.Uuid
+  leaseExpiresAt             DateTime?                    @db.Timestamptz(3)
+  firstAttemptAt             DateTime?                    @db.Timestamptz(3)
+  lastAttemptAt              DateTime?                    @db.Timestamptz(3)
+  safeOutcome                MedicationLineReminderOutcome?
+  terminalAt                 DateTime?                    @db.Timestamptz(3)
+  createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                     @updatedAt @db.Timestamptz(3)
+
+  recipient User?              @relation("MedicationLineReminderRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  binding   LineAccountBinding? @relation(fields: [bindingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([scheduleId, localDate, localTime], map: "MedicationLineReminder_schedule_day_time_key")
+  @@index([state, dueAt], map: "MedicationLineReminder_state_due_idx")
+  @@index([state, leaseExpiresAt], map: "MedicationLineReminder_state_lease_idx")
+  @@index([state, terminalAt], map: "MedicationLineReminder_state_terminal_idx")
+}
+
+model MedicationLineReminderWorkerState {
+  id               Int      @id @default(1)
+  lastInvocationAt DateTime @default("1970-01-01T00:00:00.000Z") @db.Timestamptz(3)
+}
+
 model AppointmentLineNotification {
   id                          String                                @id @default(uuid()) @db.Uuid
   appointmentId               String                                @db.Uuid
@@ -1548,6 +1838,8 @@ model LineAccountBinding {
   recoveryIntents LineAccountActionIntent[]
   appointmentNotificationPreference LineAppointmentNotificationPreference?
   appointmentLineNotificationIntents AppointmentLineNotification[]
+  medicationReminderPreference LineMedicationReminderPreference?
+  medicationLineReminderIntents MedicationLineReminderNotification[]
 
   @@index([userId])
   @@index([lineSubjectFingerprint])

@@ -95,12 +95,16 @@ describe("Service 1 workspace presentation", () => {
       createElement(PatientProgramServiceOneWorkspace, { detail: detail() }),
     );
 
-    expect(markup).toContain("Service 1 — รู้จักตัวเอง");
+    expect(markup).toContain("Service 1 — กิจกรรมเริ่มต้นของโปรแกรม");
     expect(markup).toContain("ตารางกิจวัตร");
     expect(markup).toContain("กราฟวัดลอยจม");
     expect(markup).toContain("การ์ดความฝัน");
     expect(markup).toContain("ไม้บรรทัดวัดใจ");
     expect(markup).toContain("0 จาก 4 กิจกรรมถูกบันทึกแล้ว");
+    // ROUTINE and LIFE_TABLE / KNOW_SELF are distinct tools (WB_ROUND_ACTIVITY_CROSSWALK.md).
+    expect(markup).toContain("คนละเครื่องมือกับ “ตารางชีวิตของฉัน”");
+    expect(markup).toContain("ไม่ใช่แบบฟอร์ม “รู้จักตัวเอง” และ “ตารางชีวิตของฉัน”");
+    expect(markup).not.toContain("Service 1 — รู้จักตัวเอง");
     expect(markup).toMatch(/(?:maxLength|maxlength)="2000"/u);
     expect(markup).toContain('value="0"');
     expect(markup).toContain("ไม่ใช่เกณฑ์ผ่าน");

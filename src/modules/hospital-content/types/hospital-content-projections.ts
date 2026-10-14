@@ -29,6 +29,7 @@ export type HospitalContentDetailProjection = {
   firstPublishedAt: string | null;
   latestPublishedAt: string | null;
   expectedUpdatedAt: string;
+  imageIds: string[];
 };
 
 export type HospitalContentListProjection = {

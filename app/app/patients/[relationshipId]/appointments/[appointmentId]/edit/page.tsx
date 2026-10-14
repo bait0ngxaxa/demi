@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getAppointmentRescheduleContext } from "@/modules/appointments/services/appointment-query-service";
+import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
+import { getAppointmentRescheduleContext, type AppointmentRescheduleContext } from "@/modules/appointments/services/appointment-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { AppointmentForm } from "../../new/appointment-form";
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 
 type RescheduleAppointmentPageProps = {
   params: Promise<{ relationshipId: string; appointmentId: string }>;
+  searchParams: Promise<{ requestId?: string }>;
 };
 
 async function resolveActor() {
@@ -33,15 +35,23 @@ async function resolveActor() {
 }
 
 export default async function RescheduleAppointmentPage({
-  params,
+  params, searchParams,
 }: RescheduleAppointmentPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
   const { relationshipId, appointmentId } = await params;
-  let context;
+  let context: AppointmentRescheduleContext;
+  let request;
+  const requestId = (await searchParams).requestId;
 
   try {
     context = await getAppointmentRescheduleContext(actor, relationshipId, appointmentId);
+    if (requestId) {
+      const history = await getAppointmentRescheduleHistory(actor, relationshipId, appointmentId);
+      if (!history.canReview) throw new ForbiddenError();
+      request = history.requests.find((row) => row.id === requestId && row.status === "PENDING" && row.sourceAppointmentUpdatedAt.getTime() === context.appointment.updatedAt.getTime());
+      if (!request) throw new NotFoundError();
+    }
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -62,6 +72,10 @@ export default async function RescheduleAppointmentPage({
 
   return (
     <AppointmentForm
+      rescheduleRequestId={request?.id}
+      reschedulePreferredDates={request?.preferredDatetimes.map((date) => date.toISOString())}
+      rescheduleReason={request?.reason}
+      homeVisitOnly={context.homeVisitOnly}
       appointment={{
         appointmentId: context.appointment.appointmentId,
         durationMinutes: context.appointment.durationMinutes,
@@ -69,7 +83,7 @@ export default async function RescheduleAppointmentPage({
         locationType: context.appointment.locationType,
         note: context.appointment.note,
         responsibleUserId: context.appointment.responsibleUserId,
-        scheduledAt: context.appointment.scheduledAt.toISOString(),
+        scheduledAt: request?.preferredDatetimes[0]?.toISOString() ?? context.appointment.scheduledAt.toISOString(),
         type: context.appointment.type,
         updatedAt: context.appointment.updatedAt.toISOString(),
       }}

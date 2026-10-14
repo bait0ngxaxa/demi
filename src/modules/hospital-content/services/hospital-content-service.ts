@@ -87,6 +87,7 @@ const detailSelect = {
   latestPublishedAt: true,
   updatedAt: true,
   hospital: { select: hospitalProjectionSelect },
+  images: { select: { id: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] },
 } satisfies Prisma.HospitalContentSelect;
 
 const listItemSelect = {
@@ -166,6 +167,7 @@ function toDetailProjection(record: HospitalContentDetailRecord): HospitalConten
     firstPublishedAt: record.firstPublishedAt?.toISOString() ?? null,
     latestPublishedAt: record.latestPublishedAt?.toISOString() ?? null,
     expectedUpdatedAt: record.updatedAt.toISOString(),
+    imageIds: record.images.map(({ id }) => id),
   };
 }
 

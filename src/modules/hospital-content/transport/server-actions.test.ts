@@ -58,6 +58,7 @@ const detail: HospitalContentDetailProjection = {
   firstPublishedAt: null,
   latestPublishedAt: null,
   expectedUpdatedAt: "2026-10-05T12:34:56.789Z",
+  imageIds: [],
 };
 const createInput = {
   hospitalId: hospital.id,

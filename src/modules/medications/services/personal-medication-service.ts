@@ -36,11 +36,21 @@ async function mutate(
       const now = serverNow(dependencies);
       let result: PersonalMedicationDto;
       if (operation === "created" && "medicationName" in fields) {
+        const createInput = personalMedicationCreateSchema.safeParse(input);
+        if (!createInput.success) throw new ValidationError();
         const row = await transaction.personalMedication.create({
           data: { patientProfileId, medicationName: fields.medicationName, instructionText: fields.instructionText,
             status: "ACTIVE", stoppedAt: null, createdAt: now, updatedAt: now },
           select: personalMedicationSelect,
         });
+        if (createInput.data.times.length > 0) {
+          await transaction.medicationSchedule.createMany({
+            data: createInput.data.times.map((localTime) => ({
+              personalMedicationId: row.id,
+              localTime: toMedicationTimeCarrier(localTime),
+            })),
+          });
+        }
         result = toPersonalMedicationDto(row);
       } else if ("medicationId" in fields) {
         const current = await transaction.personalMedication.findFirst({

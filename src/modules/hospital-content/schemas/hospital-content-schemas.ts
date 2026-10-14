@@ -12,7 +12,7 @@ import {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const EXPECTED_UPDATED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const HOSPITAL_CONTENT_CATEGORIES = ["NCD", "FOOD", "EXERCISE", "OTHER"] as const;
+const HOSPITAL_CONTENT_CATEGORIES = ["NCD", "FOOD", "EXERCISE", "OTHER", "NEWS"] as const;
 const PROHIBITED_CODE_POINT_RANGES: readonly (readonly [number, number])[] = [
   [0x034f, 0x034f],
   [0x115f, 0x1160],

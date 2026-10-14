@@ -298,7 +298,7 @@ describe("application navigation projection", () => {
   it("omits unavailable groups instead of rendering them empty", () => {
     const navigation = projectApplicationNavigation(actor());
 
-    expect(navigation).toHaveLength(2);
+    expect(navigation).toHaveLength(3);
     expect(navigation.every((group) => group.items.length > 0)).toBe(true);
     expect(navigation[0].workspace).toBe("personal");
     expect(navigation[0].items.map(({ href }) => href)).toEqual([
@@ -307,11 +307,13 @@ describe("application navigation projection", () => {
       "/app/personal/services",
       "/app/personal/medications",
       "/app/personal/wellness",
+      "/app/personal/news",
       "/app/personal/knowledge",
       "/app/personal/appointments",
       "/app/personal/profile",
     ]);
     expect(navigation[1].items.map(({ href }) => href)).toEqual(["/app/family"]);
+    expect(navigation[2].items.map(({ href }) => href)).toEqual(["/app/settings", "/app/support"]);
   });
 
   it.each([
@@ -341,11 +343,10 @@ describe("application navigation projection", () => {
     ["Hospital and Patient", [Role.HOSPITAL, Role.PATIENT]],
   ] as const)("projects Personal and Work navigation for %s", (_label, roles) => {
     const navigation = projectApplicationNavigation(actor({ roles }));
-    const workspaceItems = navigation
-      .filter(({ workspace }) => workspace === "all")
-      .flatMap(({ items }) => items);
+    const workspaceItems = navigation.find(({ label }) => label === "พื้นที่ใช้งาน")?.items ?? [];
 
     expect(workspaceItems.map(({ href }) => href)).toEqual(["/app/personal", "/app"]);
+    expect(navigation.find(({ label }) => label === "บัญชีและช่วยเหลือ")?.items.map(({ href }) => href)).toEqual(["/app/settings", "/app/support"]);
     expect(navigation.some(({ workspace }) => workspace === "personal")).toBe(true);
     expect(navigation.some(({ workspace }) => workspace === "work")).toBe(true);
     const personalItems = navigation
@@ -407,13 +408,14 @@ describe("application navigation active state", () => {
 });
 
 describe("Patient Content Personal navigation", () => {
-  it("places protected knowledge exactly between Wellness and Appointments", () => {
+  it("keeps the protected News and knowledge feeds separate", () => {
     const personal = projectApplicationNavigation(actor()).find(({ workspace }) => workspace === "personal");
     const items = personal?.items ?? [];
     const index = items.findIndex(({ href }) => href === "/app/personal/knowledge");
     expect(index).toBeGreaterThan(0);
-    expect(items[index - 1]?.label).toBe("สุขภาพ"); expect(items[index + 1]?.label).toBe("นัดหมาย");
-    expect(items[index]).toMatchObject({ label: "ข่าวสารและความรู้", match: "prefix", prefetch: false });
+    expect(items[index - 1]).toMatchObject({ href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false });
+    expect(items[index + 1]?.label).toBe("นัดหมาย");
+    expect(items[index]).toMatchObject({ label: "สื่อความรู้", match: "prefix", prefetch: false });
   });
   it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN])("does not project Patient knowledge for %s-only", (role) => {
     expect(projectApplicationNavigation(actor({ roles: [role] })).flatMap(({ items }) => items).some(({ href }) => href === "/app/personal/knowledge")).toBe(false);
