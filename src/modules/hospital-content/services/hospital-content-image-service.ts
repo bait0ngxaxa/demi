@@ -8,7 +8,7 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { getPatientEvidenceStorage } from "@/modules/patient-evidence/storage/supabase-patient-evidence-storage";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import { NORMALIZED_UPLOAD_MAX_BYTES } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
-import { validatePatientEvidenceFile } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
+import { validatePatientEvidenceFile, type ValidatedPatientEvidenceFile } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { hospitalContentLocatorSchema } from "../schemas/hospital-content-schemas";
 import { HOSPITAL_CONTENT_IMAGE_LIMIT, HOSPITAL_CONTENT_IMAGE_URL_TTL_SECONDS } from "../domain/hospital-content";
@@ -16,6 +16,14 @@ import { HOSPITAL_CONTENT_IMAGE_LIMIT, HOSPITAL_CONTENT_IMAGE_URL_TTL_SECONDS } 
 type Database = PrismaClient;
 function assertOwner(actor: ActorContext | null | undefined): asserts actor is ActorContext {
   if (!actor || !actor.roles.includes(Role.HOSPITAL)) throw new ForbiddenError();
+}
+
+const replayIdentitySelect = { id: true, contentSha256: true, mediaType: true, byteSize: true } as const;
+
+// A nonce replays only the exact stored payload; a row without a fingerprint can never be proven identical.
+function confirmReplay(existing: { id: string; contentSha256: string | null; mediaType: string; byteSize: number }, file: ValidatedPatientEvidenceFile): { imageId: string; replay: true } {
+  if (existing.contentSha256 === null || existing.contentSha256 !== file.contentSha256 || existing.mediaType !== file.mediaType || existing.byteSize !== file.byteSize) throw new ConflictError();
+  return { imageId: existing.id, replay: true };
 }
 
 export async function uploadHospitalContentImage(actor: ActorContext | null | undefined, input: {
@@ -28,9 +36,9 @@ export async function uploadHospitalContentImage(actor: ActorContext | null | un
   const content = await db.hospitalContent.findFirst({ where: { id: parsedContent.data, hospital: { status: HospitalStatus.ACTIVE, memberships: { some: { userId: actor.userId, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE } } } }, select: { id: true, hospitalId: true, status: true } });
   if (!content) throw new NotFoundError();
   if (content.status !== HospitalContentStatus.DRAFT) throw new ConflictError();
-  const replay = await db.hospitalContentImage.findFirst({ where: { contentId: content.id, uploadNonce: input.uploadNonce }, select: { id: true } });
-  if (replay) return { imageId: replay.id, replay: true };
   const file = validatePatientEvidenceFile({ bytes: input.bytes, declaredMediaType: input.declaredMediaType });
+  const replay = await db.hospitalContentImage.findFirst({ where: { contentId: content.id, uploadNonce: input.uploadNonce }, select: replayIdentitySelect });
+  if (replay) return confirmReplay(replay, file);
   const imageId = dependencies.imageIdFactory?.() ?? randomUUID();
   const objectKey = `hospital-content/${content.hospitalId}/${content.id}/${imageId}`;
   const storage = dependencies.storage ?? getPatientEvidenceStorage();
@@ -52,11 +60,11 @@ export async function uploadHospitalContentImage(actor: ActorContext | null | un
       const currentContent = current[0];
       if (!currentContent) throw new ForbiddenError();
       if (currentContent.status !== HospitalContentStatus.DRAFT) throw new ConflictError();
-      const existing = await tx.hospitalContentImage.findFirst({ where: { contentId: content.id, uploadNonce: input.uploadNonce as string }, select: { id: true } });
-      if (existing) return { imageId: existing.id, replay: true };
+      const existing = await tx.hospitalContentImage.findFirst({ where: { contentId: content.id, uploadNonce: input.uploadNonce as string }, select: replayIdentitySelect });
+      if (existing) return confirmReplay(existing, file);
       const count = await tx.hospitalContentImage.count({ where: { contentId: content.id } });
       if (count >= HOSPITAL_CONTENT_IMAGE_LIMIT) throw new ValidationError("Hospital content image limit reached");
-      const image = await tx.hospitalContentImage.create({ data: { id: imageId, contentId: content.id, uploadNonce: input.uploadNonce as string, storageObjectKey: objectKey, mediaType: file.mediaType, byteSize: file.byteSize, sortOrder: count, createdAt: now }, select: { id: true } });
+      const image = await tx.hospitalContentImage.create({ data: { id: imageId, contentId: content.id, uploadNonce: input.uploadNonce as string, storageObjectKey: objectKey, mediaType: file.mediaType, byteSize: file.byteSize, contentSha256: file.contentSha256, sortOrder: count, createdAt: now }, select: { id: true } });
       await recordAuditEvent({ actorUserId: actor.userId, action: "hospital_content.image_added", resourceType: "HospitalContentImage", resourceId: image.id, metadata: { contentId: content.id, hospitalId: content.hospitalId } }, tx);
       return { imageId: image.id, replay: false };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });

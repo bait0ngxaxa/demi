@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { HospitalContentCategory, HospitalContentStatus, HospitalStatus, MembershipType, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getPatientHospitalContent as detail, listPatientHospitalContent as list } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
@@ -8,8 +8,9 @@ import { getHospitalContentImageSignedUrl, uploadHospitalContentImage } from "@/
 import { getHospitalWorkContent, listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { encodeHospitalContentPatientCursor } from "@/modules/hospital-content/services/hospital-content-patient-cursor";
 import { archiveHospitalContent, createHospitalContent, publishHospitalContent, withdrawHospitalContent } from "@/modules/hospital-content/services/hospital-content-service";
+import { PatientEvidenceInputError } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
-import { ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
 const now = new Date("2026-10-05T12:00:00.000Z");
@@ -375,5 +376,140 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     expect(await db.hospitalContent.findMany({ where: { hospitalId: h }, orderBy: { id: "asc" } })).toEqual(before);
     const columns = await db.$queryRaw<Array<{ column_name: string }>>`SELECT column_name FROM information_schema.columns WHERE table_name = 'PatientHospitalRelationship' AND table_schema = 'public'`;
     expect(columns.some((column) => column.column_name === "status")).toBe(false);
+  });
+
+  describe("image upload nonce idempotency", () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const otherPng = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+    type MemoryStorage = PatientEvidenceStorage & { uploaded: string[]; removed: string[] };
+    function memoryStorage(hooks: { afterUpload?: () => Promise<void>; onRemove?: () => Promise<void> } = {}): MemoryStorage {
+      const uploaded: string[] = []; const removed: string[] = [];
+      return {
+        uploaded, removed,
+        uploadObject: async ({ objectKey }) => { uploaded.push(objectKey); await hooks.afterUpload?.(); },
+        createTemporaryAccessUrl: async ({ objectKey }) => `https://private.example/${objectKey}`,
+        removeObject: async ({ objectKey }) => { removed.push(objectKey); await hooks.onRemove?.(); },
+      };
+    }
+    async function draft(publisher: ActorContext, hospitalId: string): Promise<string> {
+      const created = await createHospitalContent(publisher, { hospitalId, submissionNonce: randomUUID(), title: "ภาพประกอบข่าว", body: "รายละเอียดข่าว", category: "NEWS", sourceText: null }, { database: db, now: () => now });
+      if (created.outcome === "UNCONFIRMED") throw new Error("Expected confirmed draft");
+      return created.content.id;
+    }
+    async function setup(): Promise<{ publisher: ActorContext; hospitalId: string; contentId: string }> {
+      const hospitalId = await hospital(); const publisher = await owner(hospitalId);
+      return { publisher, hospitalId, contentId: await draft(publisher, hospitalId) };
+    }
+    function upload(publisher: ActorContext, contentId: string, uploadNonce: string, bytes: Uint8Array, declaredMediaType: string, dependencies: { storage: PatientEvidenceStorage; database?: PrismaClient; imageIdFactory?: () => string }) {
+      return uploadHospitalContentImage(publisher, { contentId, uploadNonce, bytes, declaredMediaType }, { database: db, ...dependencies });
+    }
+    const rows = (contentId: string) => db.hospitalContentImage.findMany({ where: { contentId }, orderBy: { sortOrder: "asc" } });
+
+    it("replays the same nonce and identical image without a second row or object", async () => {
+      const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID();
+      const first = await upload(publisher, contentId, nonce, png, "image/png", { storage });
+      expect(first.replay).toBe(false);
+      expect(await upload(publisher, contentId, nonce, png, "image/png", { storage })).toEqual({ imageId: first.imageId, replay: true });
+      const stored = await rows(contentId);
+      expect(stored).toHaveLength(1); expect(stored[0].contentSha256).toBe(sha256(png));
+      expect(storage.uploaded).toHaveLength(1); expect(storage.removed).toEqual([]);
+    });
+    it("rejects the same nonce with a different image as Conflict and keeps the original", async () => {
+      const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID();
+      await upload(publisher, contentId, nonce, png, "image/png", { storage }); const before = await rows(contentId);
+      await expect(upload(publisher, contentId, nonce, otherPng, "image/png", { storage })).rejects.toBeInstanceOf(ConflictError);
+      expect(await rows(contentId)).toEqual(before); expect(storage.uploaded).toHaveLength(1);
+    });
+    it("rejects the same nonce with a different media type and never replays an invalid payload", async () => {
+      const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID();
+      await upload(publisher, contentId, nonce, png, "image/png", { storage }); const before = await rows(contentId);
+      await expect(upload(publisher, contentId, nonce, jpeg, "image/jpeg", { storage })).rejects.toBeInstanceOf(ConflictError);
+      await expect(upload(publisher, contentId, nonce, png, "image/jpeg", { storage })).rejects.toBeInstanceOf(PatientEvidenceInputError);
+      // Identical bytes still conflict when the persisted media type differs.
+      await db.hospitalContentImage.update({ where: { id: before[0].id }, data: { mediaType: "image/webp" } });
+      await expect(upload(publisher, contentId, nonce, png, "image/png", { storage })).rejects.toBeInstanceOf(ConflictError);
+      expect(storage.uploaded).toHaveLength(1); expect(await rows(contentId)).toHaveLength(1);
+    });
+    it("never treats a historical row without a fingerprint as a replay match", async () => {
+      const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID();
+      const first = await upload(publisher, contentId, nonce, png, "image/png", { storage });
+      await db.hospitalContentImage.update({ where: { id: first.imageId }, data: { contentSha256: null } });
+      await expect(upload(publisher, contentId, nonce, png, "image/png", { storage })).rejects.toBeInstanceOf(ConflictError);
+      expect((await rows(contentId)).map(({ id, contentSha256 }) => ({ id, contentSha256 }))).toEqual([{ id: first.imageId, contentSha256: null }]);
+    });
+    it("scopes a nonce to its content: reuse on another draft is a new upload, not a replay", async () => {
+      const { publisher, hospitalId, contentId } = await setup(); const other = await draft(publisher, hospitalId); const storage = memoryStorage(); const nonce = randomUUID();
+      const first = await upload(publisher, contentId, nonce, png, "image/png", { storage });
+      const second = await upload(publisher, other, nonce, png, "image/png", { storage });
+      expect(second.replay).toBe(false); expect(second.imageId).not.toBe(first.imageId);
+      expect((await rows(contentId)).map(({ id }) => id)).toEqual([first.imageId]);
+      expect((await rows(other)).map(({ id }) => id)).toEqual([second.imageId]);
+    });
+    it("serializes simultaneous identical requests into one image and one replay", async () => {
+      const { publisher, contentId } = await setup(); const nonce = randomUUID();
+      const bothUploaded = deferred(); let arrivals = 0;
+      const storage = memoryStorage({ afterUpload: async () => { arrivals += 1; if (arrivals === 2) bothUploaded.resolve(); await bothUploaded.promise; } });
+      const results = await Promise.all([0, 1].map(() => upload(publisher, contentId, nonce, png, "image/png", { storage })));
+      expect(results.map(({ replay }) => replay).sort()).toEqual([false, true]);
+      expect(new Set(results.map(({ imageId }) => imageId)).size).toBe(1);
+      const stored = await rows(contentId);
+      expect(stored).toHaveLength(1); expect(storage.uploaded).toHaveLength(2);
+      expect(storage.removed).toEqual(storage.uploaded.filter((key) => key !== stored[0].storageObjectKey));
+    });
+    it("lets only one of two simultaneous different payloads win the nonce", async () => {
+      const { publisher, contentId } = await setup(); const nonce = randomUUID(); const payloads = [png, otherPng];
+      const bothUploaded = deferred(); let arrivals = 0;
+      const storage = memoryStorage({ afterUpload: async () => { arrivals += 1; if (arrivals === 2) bothUploaded.resolve(); await bothUploaded.promise; } });
+      const settled = await Promise.allSettled(payloads.map((bytes) => upload(publisher, contentId, nonce, bytes, "image/png", { storage })));
+      const winner = settled.findIndex(({ status }) => status === "fulfilled"); const loser = 1 - winner;
+      expect(winner).toBeGreaterThanOrEqual(0);
+      expect(settled[winner]).toMatchObject({ status: "fulfilled", value: { replay: false } });
+      expect(settled[loser]).toMatchObject({ status: "rejected", reason: expect.any(ConflictError) });
+      const stored = await rows(contentId);
+      expect(stored).toHaveLength(1); expect(stored[0].contentSha256).toBe(sha256(payloads[winner]));
+      expect(storage.removed).toEqual(storage.uploaded.filter((key) => key !== stored[0].storageObjectKey));
+    });
+    it("removes the stored object and burns no nonce when persistence fails after storage succeeds", async () => {
+      const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID(); const audits = await db.auditEvent.count({ where: { actorUserId: publisher.userId } });
+      const failingCommit = new Proxy(db, { get(target, property, receiver) {
+        if (property === "$transaction") return (fn: (tx: Prisma.TransactionClient) => Promise<unknown>, options: { isolationLevel?: Prisma.TransactionIsolationLevel }) => target.$transaction(async (tx) => { await fn(tx); throw new Error("simulated persistence failure"); }, options);
+        const value: unknown = Reflect.get(target, property, receiver); return typeof value === "function" ? value.bind(target) : value;
+      } });
+      await expect(upload(publisher, contentId, nonce, png, "image/png", { storage, database: failingCommit })).rejects.toBeInstanceOf(InfrastructureError);
+      expect(storage.removed).toEqual(storage.uploaded); expect(await rows(contentId)).toEqual([]);
+      expect(await db.auditEvent.count({ where: { actorUserId: publisher.userId } })).toBe(audits);
+      expect((await upload(publisher, contentId, nonce, png, "image/png", { storage })).replay).toBe(false);
+    });
+    it("surfaces the original error and logs no payload data when compensation fails", async () => {
+      const { publisher, contentId } = await setup(); const nonce = randomUUID(); const imageId = randomUUID();
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        // A competing request with a different payload commits the nonce while this request is in storage.
+        const storage = memoryStorage({
+          afterUpload: async () => { await upload(publisher, contentId, nonce, otherPng, "image/png", { storage: memoryStorage() }); },
+          onRemove: async () => { throw new Error("simulated storage outage"); },
+        });
+        await expect(upload(publisher, contentId, nonce, png, "image/png", { storage, imageIdFactory: () => imageId })).rejects.toBeInstanceOf(ConflictError);
+        expect(storage.removed).toEqual(storage.uploaded);
+        expect(errors.mock.calls).toEqual([["hospital_content_image_upload_compensation_failed", { imageId }]]);
+        const stored = await rows(contentId);
+        expect(stored).toHaveLength(1); expect(stored[0].contentSha256).toBe(sha256(otherPng)); expect(stored[0].id).not.toBe(imageId);
+      } finally { errors.mockRestore(); }
+    });
+    it("keeps the five-image limit, owner authority and draft-only rules around replay", async () => {
+      const { publisher, hospitalId, contentId } = await setup(); const storage = memoryStorage(); const nonces = [0, 1, 2, 3, 4].map(() => randomUUID());
+      const member = await owner(hospitalId, [Role.HOSPITAL], MembershipType.MEMBER); const foreignOwner = await owner(await hospital());
+      for (const nonce of nonces) await upload(publisher, contentId, nonce, png, "image/png", { storage });
+      const replayAtLimit = await upload(publisher, contentId, nonces[0], png, "image/png", { storage });
+      expect(replayAtLimit).toEqual({ imageId: (await rows(contentId))[0].id, replay: true });
+      await expect(upload(publisher, contentId, randomUUID(), png, "image/png", { storage })).rejects.toBeInstanceOf(ValidationError);
+      expect(storage.removed).toEqual([storage.uploaded[5]]);
+      for (const outsider of [member, foreignOwner]) await expect(upload(outsider, contentId, nonces[0], png, "image/png", { storage })).rejects.toBeInstanceOf(NotFoundError);
+      await db.hospitalContent.update({ where: { id: contentId }, data: { status: HospitalContentStatus.PUBLISHED, firstPublishedAt: now, latestPublishedAt: now } });
+      await expect(upload(publisher, contentId, nonces[0], png, "image/png", { storage })).rejects.toBeInstanceOf(ConflictError);
+      expect(await rows(contentId)).toHaveLength(5); expect(storage.uploaded).toHaveLength(6);
+    });
   });
 });

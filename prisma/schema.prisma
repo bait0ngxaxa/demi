@@ -552,6 +552,7 @@ model HospitalContentImage {
   storageObjectKey String   @unique @db.VarChar(512)
   mediaType        String   @db.VarChar(32)
   byteSize         Int
+  contentSha256    String?  @db.Char(64)
   sortOrder        Int
   createdAt        DateTime @default(now()) @db.Timestamptz(3)
 
