@@ -201,4 +201,42 @@ describe("six-round navigator views", () => {
     expect(markup).toContain(">บันทึกแล้ว</span>");
     expect(markup).not.toContain("แผนสุขภาพที่มีอยู่ไม่นับเป็นการทำกิจกรรมของครั้งนี้");
   });
+
+  it("shows a recorded Follow-up as a fact, not as a completed plan review", () => {
+    const markup = renderDetail(3, {
+      goalPlans: [
+        {
+          id: "eeeeeeee-eeee-4eee-8eee-000000000001",
+          roundNumber: 1,
+          createdAt: new Date("2026-10-02T03:00:00Z"),
+          templateKey: "demi-goals",
+          templateVersion: "legacy-prototype-v1",
+          createdByUser: recorder,
+          items: [{ activityCode: "stop_sweet", targetDays: 4, targetValue: null, targetUnit: null }],
+        },
+      ],
+      followups: [
+        {
+          id: "dddddddd-dddd-4ddd-8ddd-000000000001",
+          roundNumber: 1,
+          serviceDate: new Date("2026-10-20T00:00:00Z"),
+          recordedAt: new Date("2026-10-20T04:00:00Z"),
+          sourceGoalPlanId: "eeeeeeee-eeee-4eee-8eee-000000000001",
+          weight: 62,
+          createdByUser: recorder,
+          activityProgress: [],
+        },
+      ],
+    });
+
+    expect(markup).toContain("ยังไม่มีบันทึกการทบทวนแผน");
+    expect(markup).toContain("ยังไม่มีบันทึกว่าได้ทบทวนแผนสุขภาพ");
+    expect(markup).toContain("ดูการติดตามผลที่บันทึก");
+    expect(markup).not.toContain(">บันทึกแล้ว</span>");
+    expect(markup).toContain("กิจกรรมในแผนเป้าหมาย");
+    expect(markup).toContain("ยังไม่มีบันทึกความคืบหน้า");
+    expect(markup).not.toContain("รายการที่ต้องติดตามในครั้งนี้");
+    expect(markup).not.toContain("รอติดตาม");
+  });
 });
+

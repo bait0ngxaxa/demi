@@ -23,6 +23,10 @@ export function roundActivityStatusLabel(row: RoundActivityRow): string {
     return "รอการตัดสินใจ";
   }
 
+  if (row.status === "NOT_DONE" && row.followupEvidence) {
+    return "ยังไม่มีบันทึกการทบทวนแผน";
+  }
+
   if (row.status === "NOT_DONE") {
     return "ยังไม่ได้บันทึก";
   }

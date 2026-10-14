@@ -392,7 +392,7 @@ describe("Program six-round navigator (Phase A)", () => {
     const dueBefore = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "3");
     expect(dueBefore.followupId).toBeNull();
     expect(dueBefore.canStartFollowup).toBe(true);
-    expect(dueBefore.dueItems?.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
+    expect(dueBefore.planItems?.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
     expect((await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "4")).canStartFollowup)
       .toBe(false);
 
@@ -431,8 +431,9 @@ describe("Program six-round navigator (Phase A)", () => {
     expect(round3.followupId).toBe(followup.followupId);
     expect(round3.vitals).toMatchObject({ source: "FOLLOWUP", weight: 72, bloodSugar: 105 });
     expect(round3.activities.find((row) => row.toolCode === "HEALTH_PLAN_REVIEW")).toMatchObject({
-      status: "DONE",
+      status: "NOT_DONE",
       linkedRecord: { type: "FOLLOWUP", id: followup.followupId },
+      followupEvidence: { followupId: followup.followupId },
     });
     expect((await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "4")).canStartFollowup)
       .toBe(true);

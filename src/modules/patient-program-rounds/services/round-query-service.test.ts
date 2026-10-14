@@ -312,7 +312,7 @@ describe("round detail read model", () => {
     expect(find(3, "HEALTH_PLAN_REVIEW")?.decisionGated).toBe(false);
   });
 
-  it("limits due items to the source Goal Plan and gates starting a Follow-up on earlier rounds", () => {
+  it("projects plan items (not a due-only list) and gates starting a Follow-up on earlier rounds", () => {
     const record = program({ goalPlans: [goalPlan(1, "eeeeeeee-eeee-4eee-8eee-000000000001")] });
     const round3 = buildProgramRoundDetail(record, 3, patient);
     const round4 = buildProgramRoundDetail(record, 4, patient);
@@ -322,21 +322,90 @@ describe("round detail read model", () => {
       patient,
     );
 
-    expect(round3.dueItems?.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
-    expect(round3.dueItems?.every((item) => item.progressStatus === null)).toBe(true);
+    expect(round3).not.toHaveProperty("dueItems");
+    expect(round3.planItems?.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
+    // Plan presence never implies progress or completion.
+    expect(round3.planItems?.every((item) => item.progressStatus === null && item.achievedDays === null)).toBe(true);
     expect(round3.canStartFollowup).toBe(true);
     expect(round4.canStartFollowup).toBe(false);
-    expect(buildProgramRoundDetail(record, 1, patient).dueItems).toBeNull();
+    expect(buildProgramRoundDetail(record, 1, patient).planItems).toBeNull();
     expect(withFollowup.followupId).toBe("dddddddd-dddd-4ddd-8ddd-000000000001");
     expect(withFollowup.canStartFollowup).toBe(false);
-    expect(withFollowup.dueItems?.find((item) => item.activityCode === "exercise_walk")).toMatchObject({
+    // Completed and incomplete plan items stay distinguishable and are not auto-completed.
+    expect(withFollowup.planItems?.find((item) => item.activityCode === "exercise_walk")).toMatchObject({
       progressStatus: "DONE",
       achievedDays: 3,
     });
-    expect(withFollowup.activities.find((row) => row.toolCode === "HEALTH_PLAN_REVIEW")).toMatchObject({
-      status: "DONE",
-      linkedRecord: { type: "FOLLOWUP" },
+    expect(withFollowup.planItems?.find((item) => item.activityCode === "stop_sweet")).toMatchObject({
+      progressStatus: null,
+      achievedDays: null,
     });
+  });
+
+  it("does not project plan items for a Follow-up without a source Goal Plan", () => {
+    const record = program({
+      goalPlans: [goalPlan(1, "eeeeeeee-eeee-4eee-8eee-000000000001")],
+      followups: [followup(1, { sourceGoalPlanId: null, activityProgress: [] })],
+    });
+
+    expect(buildProgramRoundDetail(record, 3, patient).planItems).toBeNull();
+  });
+
+  it("does not treat an existing Follow-up as Health Plan Review evidence", () => {
+    const review = (record: ProgramRoundRecord) =>
+      buildProgramRoundDetail(record, 3, patient).activities.find((row) => row.toolCode === "HEALTH_PLAN_REVIEW");
+    const plans = [goalPlan(1, "eeeeeeee-eeee-4eee-8eee-000000000001")];
+
+    // Follow-up linked to the plan, with progress (also the shape of historical records).
+    expect(review(program({ goalPlans: plans, followups: [followup(1)] }))).toMatchObject({
+      status: "NOT_DONE",
+      mode: null,
+      performedAt: null,
+      recordedByDisplayName: null,
+      linkedRecord: { type: "FOLLOWUP", id: "dddddddd-dddd-4ddd-8ddd-000000000001" },
+      followupEvidence: { goalPlanLinked: true, progressCount: 1 },
+    });
+    // Follow-up without a source Goal Plan.
+    expect(review(program({ followups: [followup(1, { sourceGoalPlanId: null, activityProgress: [] })] }))).toMatchObject({
+      status: "NOT_DONE",
+      followupEvidence: { goalPlanLinked: false, progressCount: 0 },
+    });
+    // No Follow-up at all.
+    expect(review(program({ goalPlans: plans }))).toMatchObject({ status: "NOT_DONE", followupEvidence: null });
+  });
+
+  it("reports the review as DONE only from an explicit ledger row, and still counts the Follow-up round as recorded", () => {
+    const row = buildProgramRoundDetail(
+      program({
+        followups: [followup(1)],
+        roundActivities: [ledger({ roundNumber: 3, toolCode: "HEALTH_PLAN_REVIEW", mode: "REVIEWED", linkedRecordType: null, linkedRecordId: null })],
+      }),
+      3,
+      patient,
+    ).activities.find((entry) => entry.toolCode === "HEALTH_PLAN_REVIEW");
+
+    expect(row).toMatchObject({ status: "DONE", mode: "REVIEWED", followupEvidence: null });
+    expect(
+      buildProgramRoundsOverview(program({ followups: [followup(1, { weight: null, bloodSugar: null })] })).rounds[2],
+    ).toMatchObject({ status: "RECORDED", activityCount: 0 });
+  });
+
+  it("keeps planned versus extra classification when reading back extra activities next to a Follow-up", () => {
+    const detail = buildProgramRoundDetail(
+      program({
+        followups: [followup(1)],
+        roundActivities: [ledger({ roundNumber: 3, toolCode: "FLOATING_CHART", source: "EXTRA", mode: "REVIEWED", linkedRecordType: "SERVICE_ONE_FLOATING_CHART" })],
+        serviceOneFloatingChart: { id: "bbbbbbbb-bbbb-4bbb-8bbb-000000000001", recordedAt: new Date(), recordedByUser: recorder },
+      }),
+      3,
+      patient,
+    );
+
+    expect(detail.activities.find((row) => row.toolCode === "FLOATING_CHART")).toMatchObject({
+      status: "DONE",
+      source: "EXTRA",
+    });
+    expect(detail.activities.find((row) => row.toolCode === "HEALTH_PLAN_REVIEW")).toMatchObject({ status: "NOT_DONE" });
   });
 });
 

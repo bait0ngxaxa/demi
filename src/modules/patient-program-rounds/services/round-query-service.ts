@@ -96,6 +96,19 @@ export type RoundActivityRow = {
    * it here (U-2/U-4 in WB_ROUND_ACTIVITY_CROSSWALK.md). Never implies DONE.
    */
   decisionGated: boolean;
+  /**
+   * HEALTH_PLAN_REVIEW only: facts about the Follow-up recorded for this round when no explicit
+   * review evidence (ledger row) exists. A Follow-up alone never proves the plan was reviewed.
+   */
+  followupEvidence: RoundFollowupEvidence | null;
+};
+
+export type RoundFollowupEvidence = {
+  followupId: string;
+  /** The Follow-up referenced a Goal Plan (sourceGoalPlanId); historical records may not. */
+  goalPlanLinked: boolean;
+  /** Number of per-activity progress rows saved with the Follow-up. */
+  progressCount: number;
 };
 
 export type RoundVitalsView = {
@@ -112,7 +125,8 @@ export type RoundVitalsView = {
   recordedByDisplayName: string | null;
 };
 
-export type RoundDueItem = {
+/** An activity of the Goal Plan relevant to the round. Not a due-now selection (P-18 is unapproved). */
+export type RoundPlanItem = {
   activityCode: string;
   activityLabel: string;
   targetDays: number;
@@ -147,10 +161,14 @@ export type ProgramRoundDetail = {
   canStartFollowup: boolean;
   activities: readonly RoundActivityRow[];
   addOptions: readonly RoundActivityRow[];
-  /** Rounds 3-6 only: items that need following up in this round. */
-  dueItems: readonly RoundDueItem[] | null;
-  /** The Goal Plan the due items come from. */
-  dueGoalPlanId: string | null;
+  /**
+   * Rounds 3-6 only: every activity of the round's Goal Plan with the progress saved by this round's
+   * Follow-up. The rule that picks which of them are due now is not approved (P-18), so no due-only
+   * list is projected.
+   */
+  planItems: readonly RoundPlanItem[] | null;
+  /** The Goal Plan the plan items come from. */
+  planItemsGoalPlanId: string | null;
 };
 
 type RecorderName = {
@@ -378,6 +396,7 @@ function buildActivityRow(
       !ledger &&
       ((toolCode === "HEALTH_PLAN_REVIEW" && !isFollowupRound(roundNumber)) ||
         (toolCode === "HEALTHY_PLAN" && roundNumber !== GOAL_PLAN_ROUND)),
+    followupEvidence: null as RoundFollowupEvidence | null,
   };
   const result = programResultRecord(program, toolCode);
   const resultExists = result !== null;
@@ -459,21 +478,8 @@ function buildActivityRow(
   }
 
   if (toolCode === "HEALTH_PLAN_REVIEW") {
+    // Only a ledger row is explicit review evidence. An existing Follow-up is reported as a fact, never as DONE.
     const followup = findFollowupForRound(program, roundNumber);
-
-    if (followup) {
-      return {
-        ...base,
-        status: "DONE",
-        mode: "RECORDED",
-        source: roundActivitySourceFor(roundNumber, toolCode),
-        performedAt: followup.recordedAt,
-        recordedByDisplayName: toDisplayName(followup.createdByUser),
-        linkedRecord: { type: "FOLLOWUP", id: followup.id },
-        resultExists: true,
-        canReview: false,
-      };
-    }
 
     return {
       ...base,
@@ -482,9 +488,16 @@ function buildActivityRow(
       source: null,
       performedAt: null,
       recordedByDisplayName: null,
-      linkedRecord: null,
-      resultExists: false,
+      linkedRecord: followup ? { type: "FOLLOWUP", id: followup.id } : null,
+      resultExists: followup !== null,
       canReview: false,
+      followupEvidence: followup
+        ? {
+            followupId: followup.id,
+            goalPlanLinked: followup.sourceGoalPlanId !== null,
+            progressCount: followup.activityProgress.length,
+          }
+        : null,
     };
   }
 
@@ -581,16 +594,16 @@ function buildVitals(program: ProgramRoundRecord, roundNumber: ProgramRoundNumbe
   return null;
 }
 
-function buildDueItems(
+function buildPlanItems(
   program: ProgramRoundRecord,
   roundNumber: ProgramRoundNumber,
-): { items: RoundDueItem[]; goalPlanId: string } | null {
+): { items: RoundPlanItem[]; goalPlanId: string } | null {
   if (!isFollowupRound(roundNumber)) {
     return null;
   }
 
   const followup = findFollowupForRound(program, roundNumber);
-  // Before the Follow-up exists the due plan is the Program's latest Goal Plan.
+  // Before the Follow-up exists the plan shown is the Program's latest Goal Plan.
   const plan = followup
     ? (program.goalPlans.find((candidate) => candidate.id === followup.sourceGoalPlanId) ?? null)
     : (program.goalPlans[program.goalPlans.length - 1] ?? null);
@@ -631,7 +644,8 @@ function buildRoundSummary(program: ProgramRoundRecord, roundNumber: ProgramRoun
   const firstDone = done
     .slice()
     .sort((left, right) => (left.performedAt?.getTime() ?? 0) - (right.performedAt?.getTime() ?? 0))[0];
-  const recorded = vitals !== null || done.length > 0;
+  const recorded =
+    vitals !== null || done.length > 0 || findFollowupForRound(program, roundNumber) !== null;
 
   return {
     roundNumber,
@@ -667,7 +681,7 @@ export function buildProgramRoundDetail(
 ): ProgramRoundDetail {
   const vitals = buildVitals(program, roundNumber);
   const { activities, addOptions } = buildRoundActivities(program, roundNumber);
-  const due = buildDueItems(program, roundNumber);
+  const plan = buildPlanItems(program, roundNumber);
   const followup = findFollowupForRound(program, roundNumber);
 
   return {
@@ -695,8 +709,8 @@ export function buildProgramRoundDetail(
       program.followups.length === toFollowupRoundNumber(roundNumber) - 1,
     activities,
     addOptions,
-    dueItems: due?.items ?? null,
-    dueGoalPlanId: due?.goalPlanId ?? null,
+    planItems: plan?.items ?? null,
+    planItemsGoalPlanId: plan?.goalPlanId ?? null,
   };
 }
 
@@ -833,7 +847,7 @@ export async function getProgramRoundDetail(
 
 export const patientProgramRoundQueryInternals = {
   buildActivityRow,
-  buildDueItems,
+  buildPlanItems,
   buildRoundActivities,
   latestHeightCm,
   parseRoundNumber,

@@ -109,6 +109,26 @@ function ActivityActions({
     );
   }
 
+  if (row.followupEvidence) {
+    const evidence = row.followupEvidence;
+
+    return (
+      <div className="flex flex-col gap-2 sm:items-end">
+        <p className="max-w-sm text-sm text-text-muted sm:text-right">
+          บันทึกการติดตามผลของครั้งนี้แล้ว แต่ยังไม่มีบันทึกว่าได้ทบทวนแผนสุขภาพ
+          {evidence.goalPlanLinked
+            ? ` · ผูกกับแผนเป้าหมาย · บันทึกความคืบหน้า ${evidence.progressCount} รายการ`
+            : " · ไม่ได้ผูกกับแผนเป้าหมาย"}
+        </p>
+        {href ? (
+          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
+            ดูการติดตามผลที่บันทึก
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
   if (row.kind === "FOLLOWUP_REVIEW") {
     return detail.canStartFollowup ? (
       <Link
@@ -269,19 +289,19 @@ export function ProgramRoundDetailView({
           </ul>
         </Panel>
 
-        {detail.dueItems ? (
+        {detail.planItems ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
-              รายการที่ต้องติดตามในครั้งนี้
-            </h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">กิจกรรมในแผนเป้าหมาย</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              กิจกรรมจากแผนเป้าหมายที่ใช้ติดตามในครั้งนี้ รายการอื่นเพิ่มได้จากส่วน &ldquo;การจัดบริการเพิ่ม&rdquo;
+              แสดงทุกกิจกรรมของแผนพร้อมความคืบหน้าที่บันทึกในครั้งนี้ ยังไม่มีเกณฑ์ที่อนุมัติสำหรับคัดเลือก
+              &ldquo;รายการที่ถึงกำหนดติดตาม&rdquo; (รอ Product Owner ตัดสิน) จึงยังไม่แสดงรายการแบบกรอง
+              กิจกรรมอื่นเพิ่มได้จากส่วน &ldquo;การจัดบริการเพิ่ม&rdquo;
             </p>
-            {detail.dueItems.length === 0 ? (
+            {detail.planItems.length === 0 ? (
               <p className="mt-4 text-sm text-text-muted">แผนเป้าหมายนี้ไม่มีกิจกรรม</p>
             ) : (
               <ul className="mt-5 divide-y divide-border">
-                {detail.dueItems.map((item) => (
+                {detail.planItems.map((item) => (
                   <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={item.activityCode}>
                     <div>
                       <p className="font-semibold text-text">{item.activityLabel}</p>
@@ -293,7 +313,7 @@ export function ProgramRoundDetailView({
                     <StatusBadge variant={item.progressStatus === "DONE" ? "success" : "neutral"}>
                       {item.progressStatus
                         ? `${progressStatusLabels[item.progressStatus]}${item.achievedDays !== null ? ` · ${item.achievedDays}/7 วัน` : ""}`
-                        : "รอติดตาม"}
+                        : "ยังไม่มีบันทึกความคืบหน้า"}
                     </StatusBadge>
                   </li>
                 ))}
