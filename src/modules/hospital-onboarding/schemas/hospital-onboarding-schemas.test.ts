@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hospitalOnboardingSubmissionSchema } from "./hospital-onboarding-schemas";
 
@@ -10,6 +10,10 @@ const validInput = {
   password: "correct-horse-battery-staple",
   passwordConfirmation: "correct-horse-battery-staple",
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("hospital onboarding input schema", () => {
   it("normalizes the canonical code and accepts bounded Thai applicant data", () => {
@@ -29,5 +33,24 @@ describe("hospital onboarding input schema", () => {
     { ...validInput, membershipType: "OWNER" },
   ])("rejects invalid or client-authority input", (input) => {
     expect(hospitalOnboardingSubmissionSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("accepts a checksum-invalid synthetic applicant ID in production-mode UAT", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
+
+    expect(
+      hospitalOnboardingSubmissionSchema.safeParse({
+        ...validInput,
+        nationalId: "1111111111111",
+      }).success,
+    ).toBe(true);
+    expect(
+      hospitalOnboardingSubmissionSchema.safeParse({
+        ...validInput,
+        nationalId: "9000000000000",
+      }).success,
+    ).toBe(false);
   });
 });

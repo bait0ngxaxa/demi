@@ -4,26 +4,51 @@ const optionalPersonName = z.string().trim().min(1).max(120).optional();
 
 export const THAI_NATIONAL_IDENTITY_NAMESPACE = "thai-national-id";
 export const TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE = "DEMI_ALLOW_TEST_NATIONAL_IDS";
+export const DEPLOYMENT_STAGE_ENVIRONMENT_VARIABLE = "DEMI_DEPLOYMENT_STAGE";
 
 export type IdentityEnvironment = {
   nodeEnv?: string;
+  deploymentStage?: string;
   allowTestNationalIds?: string;
 };
 
-function isTestEnvironment(nodeEnv: string | undefined): boolean {
-  return nodeEnv === "development" || nodeEnv === "test";
+function readRuntimeIdentityEnvironment(): IdentityEnvironment {
+  if (typeof window !== "undefined") {
+    return {};
+  }
+
+  return {
+    nodeEnv: process.env["NODE_ENV"],
+    deploymentStage: process.env[DEPLOYMENT_STAGE_ENVIRONMENT_VARIABLE],
+    allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
+  };
 }
 
 export function isTestNationalIdBypassEnabled(
-  environment: IdentityEnvironment = {
-    nodeEnv: process.env.NODE_ENV,
-    allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
-  },
+  environment?: IdentityEnvironment,
 ): boolean {
-  return (
-    isTestEnvironment(environment.nodeEnv) &&
-    environment.allowTestNationalIds === "true"
-  );
+  const configuration = environment ?? readRuntimeIdentityEnvironment();
+
+  if (configuration.deploymentStage === "production") {
+    return false;
+  }
+
+  if (configuration.allowTestNationalIds !== "true") {
+    return false;
+  }
+
+  if (configuration.nodeEnv === "production") {
+    return configuration.deploymentStage === "uat";
+  }
+
+  if (
+    configuration.deploymentStage !== undefined &&
+    configuration.deploymentStage !== "development"
+  ) {
+    return false;
+  }
+
+  return configuration.nodeEnv === "development" || configuration.nodeEnv === "test";
 }
 
 function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
@@ -37,10 +62,7 @@ function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
 }
 
 export function createThaiNationalIdSchema(
-  environment: IdentityEnvironment = {
-    nodeEnv: process.env.NODE_ENV,
-    allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
-  },
+  environment?: IdentityEnvironment,
 ): z.ZodType<string> {
   const nationalIdChecks = z
     .string()
@@ -50,12 +72,12 @@ export function createThaiNationalIdSchema(
       "Thai National ID category digit is invalid",
     );
 
-  const validatedNationalId = isTestNationalIdBypassEnabled(environment)
-    ? nationalIdChecks
-    : nationalIdChecks.refine(
-        hasValidThaiNationalIdChecksum,
-        "Thai National ID checksum is invalid",
-      );
+  const validatedNationalId = nationalIdChecks.refine(
+    (nationalId) =>
+      isTestNationalIdBypassEnabled(environment) ||
+      hasValidThaiNationalIdChecksum(nationalId),
+    "Thai National ID checksum is invalid",
+  );
 
   return z.string().max(32).transform((value) => value.trim()).pipe(validatedNationalId);
 }

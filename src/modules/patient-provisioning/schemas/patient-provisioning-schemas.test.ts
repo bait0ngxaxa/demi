@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import {
   EXCEL_MAX_ROW_NUMBER,
   patientImportConfirmSchema,
   patientImportFailedRowsSchema,
+  patientProvisionFormSchema,
   patientImportSourceRowNumberSchema,
 } from "./patient-provisioning-schemas";
 
@@ -16,6 +17,27 @@ const confirmation = {
   previewBinding: "b".repeat(64),
   importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
 };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("patient provisioning form schema", () => {
+  it("accepts a checksum-invalid synthetic patient ID in production-mode UAT", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
+
+    expect(
+      patientProvisionFormSchema.safeParse({
+        nationalId: "1111111111111",
+        givenName: "ตัวอย่าง",
+        familyName: "ผู้ป่วย",
+        targetHospitalId: hospitalId,
+      }).success,
+    ).toBe(true);
+  });
+});
 
 describe("Patient import source row schemas", () => {
   it("accepts worksheet coordinates through the Excel row maximum", () => {

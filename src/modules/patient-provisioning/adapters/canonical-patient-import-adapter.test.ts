@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import type { CellValue } from "exceljs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ValidationError } from "@/shared/errors/application-error";
 
@@ -124,6 +124,10 @@ async function createCanonicalUpload(
   return createUpload(workbook);
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 async function expectTemplateMismatch(upload: PatientImportUpload): Promise<void> {
   await expect(readPatientImportCandidates(upload, hospitalA)).rejects.toSatisfy(
     (error: unknown) => {
@@ -180,6 +184,23 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
       templateVersion: "patient-import-template-v2",
       hospitalCode: hospitalA.hospitalCode,
     });
+  }, 10000);
+
+  it("accepts checksum-invalid synthetic National IDs from Excel in production-mode UAT", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
+
+    const [candidate] = await readPatientImportCandidates(
+      await createCanonicalUpload({
+        ...syntheticPatientValues(),
+        nationalId: "1111111111111",
+      }),
+      hospitalA,
+    );
+
+    expect(candidate?.input?.identity.value).toBe("1111111111111");
+    expect(candidate?.validationMessage).toBeNull();
   }, 10000);
 
   it("carries no hospital or OSM field in the canonical row", async () => {
