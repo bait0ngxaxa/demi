@@ -218,6 +218,39 @@ describe("Phase B hospital operations", () => {
     const endedStaff = await db.hospitalMembership.findUniqueOrThrow({ where: { id: staffRel.id } });
     await expect(restoreHospitalMembership(f.owner, { relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: endedStaff.updatedAt.toISOString() }, dependencies)).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it("dual-role release: STAFF keeps the OSM relationship and its assignments; OSM ends only that hospital's assignments; history is untouched", async () => {
+    const f = await fixture();
+    const other = await fixture();
+    const dual = f.osm.userId;
+    await db.userRole.create({ data: { userId: dual, role: Role.HOSPITAL } });
+    const staffRel = await db.hospitalMembership.create({ data: { userId: dual, hospitalId: f.hospitalId, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
+    const osmRel = await db.osmHospitalRelationship.findFirstOrThrow({ where: { userId: dual, hospitalId: f.hospitalId } });
+    const otherOsmRel = await db.osmHospitalRelationship.create({ data: { userId: dual, hospitalId: other.hospitalId, status: MembershipStatus.ACTIVE } });
+    await assignOsmToPatient(other.owner, { patientHospitalRelationshipId: other.relationshipId, osmUserId: dual });
+    const historicalEndedAt = new Date("2026-01-01T00:00:00Z");
+    const historical = await db.patientOsmAssignment.create({ data: { patientHospitalRelationshipId: f.relationshipId, osmUserId: dual, assignedByUserId: f.owner.userId, createdAt: new Date("2025-12-01T00:00:00Z"), endedAt: historicalEndedAt, endedByUserId: f.owner.userId } });
+    await db.workforceActivation.create({ data: { userId: dual, hospitalId: f.hospitalId, relationshipId: staffRel.id, relationshipKind: "HOSPITAL_MEMBER", tokenHash: randomUUID(), expiresAt: new Date("2027-01-01"), createdByUserId: f.owner.userId } });
+    const active = (hospitalId: string) => db.patientOsmAssignment.count({ where: { osmUserId: dual, endedAt: null, patientHospitalRelationship: { hospitalId } } });
+
+    await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    expect((await db.hospitalMembership.findUniqueOrThrow({ where: { id: staffRel.id } })).status).toBe(MembershipStatus.ENDED);
+    expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: osmRel.id } })).status).toBe(MembershipStatus.ACTIVE);
+    expect(await active(f.hospitalId)).toBe(1);
+    expect(await active(other.hospitalId)).toBe(1);
+    expect(await db.workforceActivation.count({ where: { userId: dual, usedAt: null, revokedAt: null } })).toBe(0);
+    const staffAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "workforce.permanently_released", resourceId: staffRel.id } });
+    expect(staffAudit.metadata).toMatchObject({ endedAssignmentCount: 0 });
+
+    const currentOsmRel = await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: osmRel.id } });
+    await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: osmRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: currentOsmRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    expect(await active(f.hospitalId)).toBe(0);
+    expect(await db.patientOsmAssignment.findFirstOrThrow({ where: { osmUserId: dual, patientHospitalRelationshipId: f.relationshipId, endedAt: now } })).toMatchObject({ endedByUserId: f.owner.userId });
+    expect(await active(other.hospitalId)).toBe(1);
+    expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: otherOsmRel.id } })).status).toBe(MembershipStatus.ACTIVE);
+    expect(await db.patientOsmAssignment.findUniqueOrThrow({ where: { id: historical.id } })).toMatchObject({ endedAt: historicalEndedAt, endedByUserId: f.owner.userId });
+    expect((await db.hospitalMembership.findUniqueOrThrow({ where: { id: staffRel.id } })).status).toBe(MembershipStatus.ENDED);
+  });
   it("two simultaneous requests create exactly one open record and stale approval rolls back", async () => {
     const f = await fixture();
     const a = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);

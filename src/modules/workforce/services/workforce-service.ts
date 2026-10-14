@@ -3844,10 +3844,13 @@ export async function releaseWorkforceRelationship(
         ? await tx.osmHospitalRelationship.updateMany({ where, data: { status: MembershipStatus.ENDED } })
         : await tx.hospitalMembership.updateMany({ where, data: { status: MembershipStatus.ENDED } });
       if (updated.count !== 1) throw new ConflictError("Workforce relationship changed");
-      const ended = await tx.patientOsmAssignment.updateMany({
-        where: { osmUserId: current.userId, endedAt: null, patientHospitalRelationship: { hospitalId: data.targetHospitalId } },
-        data: { endedAt: now, endedByUserId: actor.userId },
-      });
+      // Patient assignments are supported only by the OSM relationship; ending a staff membership leaves them intact.
+      const ended = data.kind === "osm"
+        ? await tx.patientOsmAssignment.updateMany({
+          where: { osmUserId: current.userId, endedAt: null, patientHospitalRelationship: { hospitalId: data.targetHospitalId } },
+          data: { endedAt: now, endedByUserId: actor.userId },
+        })
+        : { count: 0 };
       // Tokens are global credential capabilities. Revoke all outstanding workforce tokens of this user.
       const revoked = await tx.workforceActivation.updateMany({ where: { userId: current.userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
       await recordAuditEvent({ actorUserId: actor.userId, action: "workforce.permanently_released",
