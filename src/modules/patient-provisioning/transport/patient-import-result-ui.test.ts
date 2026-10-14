@@ -1,9 +1,11 @@
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ImportResultActions,
   ImportSummary,
+  PatientImportReviewReminder,
   PreviewFileSummary,
   PreviewTable,
 } from "../../../../app/app/patients/provision/patient-provisioning-workspace";
@@ -139,13 +141,19 @@ describe("import result UI", () => {
 
   function render(resultSummary: PatientImportResultSummary, canAssignOsm: boolean): string {
     return renderToStaticMarkup(
-      createElement(ImportSummary, {
-        summary: resultSummary,
-        preview: preview([]),
-        file,
-        canAssignOsm,
-        onNewImport: vi.fn(),
-      }),
+      createElement(
+        Fragment,
+        null,
+        createElement(ImportSummary, { summary: resultSummary, canAssignOsm }),
+        createElement(ImportResultActions, {
+          summary: resultSummary,
+          preview: preview([]),
+          file,
+          canAssignOsm,
+          onNewImport: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      ),
     );
   }
 
@@ -173,5 +181,58 @@ describe("import result UI", () => {
     expect(markup).not.toContain("ดาวน์โหลดแถวที่ไม่ผ่าน");
     expect(markup).not.toContain("/app/patients/assign-osm");
     expect(markup).toContain("ไม่มีผู้ป่วยใหม่ในไฟล์นี้");
+  });
+});
+
+describe("import review reminder", () => {
+  it("tells the user a checked file is not imported yet and reopens the review", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PatientImportReviewReminder, {
+        executableRowCount: 3,
+        attentionRowCount: 1,
+        baselineDateRequired: false,
+        result: null,
+        onOpen: vi.fn(),
+        onNewImport: vi.fn(),
+      }),
+    );
+
+    expect(markup).toContain("ผู้ป่วยใหม่ 3 รายการ · ต้องแก้ไข 1 รายการ");
+    expect(markup).toContain("ยังไม่ได้นำเข้า");
+    expect(markup).toContain("เปิดหน้าตรวจสอบ");
+    expect(markup).not.toContain("นำเข้าไฟล์ใหม่");
+  });
+
+  it("asks for the baseline date instead of counting rows that cannot be imported yet", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PatientImportReviewReminder, {
+        executableRowCount: 0,
+        attentionRowCount: 0,
+        baselineDateRequired: true,
+        result: null,
+        onOpen: vi.fn(),
+        onNewImport: vi.fn(),
+      }),
+    );
+
+    expect(markup).toContain("ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า");
+  });
+
+  it("keeps a confirmed result reachable after the dialog is closed", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PatientImportReviewReminder, {
+        executableRowCount: 0,
+        attentionRowCount: 0,
+        baselineDateRequired: false,
+        result: { heading: "นำเข้าผู้ป่วยใหม่แล้ว", variant: "success" },
+        onOpen: vi.fn(),
+        onNewImport: vi.fn(),
+      }),
+    );
+
+    expect(markup).toContain("นำเข้าผู้ป่วยใหม่แล้ว");
+    expect(markup).toContain("ดูผลการนำเข้า");
+    expect(markup).toContain("นำเข้าไฟล์ใหม่");
+    expect(markup).not.toContain("ยังไม่ได้นำเข้า");
   });
 });
