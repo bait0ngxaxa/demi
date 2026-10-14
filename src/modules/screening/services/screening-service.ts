@@ -5,7 +5,10 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
+import {
+  roundActivitySourceFor,
+  SERVICE_ONE_HOME_ROUND,
+} from "@/modules/patient-program-rounds/domain/round-catalog";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
@@ -288,7 +291,7 @@ async function submitInTransaction(
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         roundNumber: SERVICE_ONE_HOME_ROUND,
         toolCode,
-        source: "PLANNED",
+        source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, toolCode),
         mode: "RECORDED",
         linkedRecordType: "SCREENING_ASSESSMENT",
         linkedRecordId: assessment.id,

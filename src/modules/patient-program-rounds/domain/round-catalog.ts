@@ -44,11 +44,11 @@ export const ROUND_TOOLS: Readonly<Record<PatientProgramRoundToolCode, RoundTool
   PAM: { code: "PAM", label: "แบบประเมิน PAM", kind: "SCREENING" },
   PROMS: { code: "PROMS", label: "แบบประเมิน PROMs", kind: "SCREENING" },
   KNOW_SELF: { code: "KNOW_SELF", label: "รู้จักตัวเอง", kind: "PENDING_FORM" },
-  FLOATING_CHART: { code: "FLOATING_CHART", label: "กราฟลอยจม", kind: "SERVICE_ONE" },
+  FLOATING_CHART: { code: "FLOATING_CHART", label: "กราฟวัดลอยจม", kind: "SERVICE_ONE" },
   CONFIDENCE_RULER: { code: "CONFIDENCE_RULER", label: "ไม้บรรทัดวัดใจ", kind: "SERVICE_ONE" },
   LIFE_TABLE: { code: "LIFE_TABLE", label: "ตารางชีวิตของฉัน", kind: "PENDING_FORM" },
   ROUTINE: { code: "ROUTINE", label: "ตารางกิจวัตร", kind: "SERVICE_ONE" },
-  DREAM_CARD: { code: "DREAM_CARD", label: "การ์ดความฝัน", kind: "SERVICE_ONE" },
+  DREAM_CARD: { code: "DREAM_CARD", label: "ความฝันของฉัน (การ์ดความฝัน)", kind: "SERVICE_ONE" },
   HEALTH_PLAN_REVIEW: {
     code: "HEALTH_PLAN_REVIEW",
     label: "ทบทวนแผนสุขภาพ",
@@ -59,10 +59,10 @@ export const ROUND_TOOLS: Readonly<Record<PatientProgramRoundToolCode, RoundTool
 };
 
 /**
- * Recommended items per round (WB-DF-02). The whiteboard export that fixes the exact boxes was not
- * readable from the repository, so the sets follow BF-GAP CARE-11/12, WB-DF-01/03 and the WB-PD-01
- * statement that the undefined tools appear in rounds 1, 3, 4 and 6. Adjusting a round is a data
- * change in this table only.
+ * Recommended items per round (WB-DF-02), transcribed from the Product Owner's Canva whiteboard
+ * "ร่าง DEMI App ใหม่" (DAHSvdQ3gvU, OSM flow boxes verified 2026-10-14). Crosswalk, unresolved
+ * distinctions and the decision log: docs/requirements/WB_ROUND_ACTIVITY_CROSSWALK.md.
+ * Ledger `source` is derived from this table on the server (PLANNED when listed, otherwise EXTRA).
  */
 export const ROUND_RECOMMENDED_TOOLS: Readonly<
   Record<ProgramRoundNumber, readonly PatientProgramRoundToolCode[]>
@@ -72,18 +72,30 @@ export const ROUND_RECOMMENDED_TOOLS: Readonly<
     "PAM",
     "PROMS",
     "FLOATING_CHART",
-    "DREAM_CARD",
-    "ROUTINE",
     "CONFIDENCE_RULER",
     "LIFE_TABLE",
     "HEALTH_PATH",
   ],
-  2: ["HEALTHY_PLAN"],
-  3: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD", "FLOATING_CHART", "LIFE_TABLE"],
-  4: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD", "FLOATING_CHART", "HEALTH_PATH"],
-  5: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD", "FLOATING_CHART"],
-  6: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTH_PATH"],
+  2: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "LIFE_TABLE"],
+  3: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD"],
+  4: ["HEALTH_PLAN_REVIEW", "FLOATING_CHART", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTHY_PLAN"],
+  5: ["HEALTH_PLAN_REVIEW", "LIFE_TABLE"],
+  6: ["HEALTH_PATH", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"],
 };
+
+/** Whiteboard round 6 lists "ทบทวนเส้นทางสุขภาพ" (a review); rounds 1 lists the record "เส้นทางสุขภาพ". */
+const ROUND_TOOL_LABEL_OVERRIDES: Readonly<
+  Partial<Record<ProgramRoundNumber, Partial<Record<PatientProgramRoundToolCode, string>>>>
+> = {
+  6: { HEALTH_PATH: "ทบทวนเส้นทางสุขภาพ" },
+};
+
+export function roundToolLabel(
+  roundNumber: ProgramRoundNumber,
+  toolCode: PatientProgramRoundToolCode,
+): string {
+  return ROUND_TOOL_LABEL_OVERRIDES[roundNumber]?.[toolCode] ?? ROUND_TOOLS[toolCode].label;
+}
 
 /** Tools whose single Program-level result can be reviewed read-only in a later round (WB-DF-03). */
 export const REVIEWABLE_TOOL_CODES: readonly PatientProgramRoundToolCode[] = [
@@ -131,6 +143,14 @@ export function isRecommendedTool(
   toolCode: PatientProgramRoundToolCode,
 ): boolean {
   return ROUND_RECOMMENDED_TOOLS[roundNumber].includes(toolCode);
+}
+
+/** Server-derived classification of a ledger entry; never taken from the client. */
+export function roundActivitySourceFor(
+  roundNumber: ProgramRoundNumber,
+  toolCode: PatientProgramRoundToolCode,
+): "PLANNED" | "EXTRA" {
+  return isRecommendedTool(roundNumber, toolCode) ? "PLANNED" : "EXTRA";
 }
 
 export function isReviewableTool(toolCode: PatientProgramRoundToolCode): boolean {

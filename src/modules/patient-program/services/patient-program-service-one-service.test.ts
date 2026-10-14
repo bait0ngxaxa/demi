@@ -199,7 +199,7 @@ describe("Patient Program Service 1 service", () => {
         patientHospitalRelationshipId: relationshipId,
         roundNumber: 1,
         toolCode: "ROUTINE",
-        source: "PLANNED",
+        source: "EXTRA",
         mode: "RECORDED",
         linkedRecordType: "SERVICE_ONE_ROUTINE",
         linkedRecordId: recordId,

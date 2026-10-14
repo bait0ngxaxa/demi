@@ -28,7 +28,10 @@ import {
   type PatientProgramServiceOneFloatingChartRequest,
   type PatientProgramServiceOneRoutineRequest,
 } from "../schemas/patient-program-service-one-schemas";
-import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
+import {
+  roundActivitySourceFor,
+  SERVICE_ONE_HOME_ROUND,
+} from "@/modules/patient-program-rounds/domain/round-catalog";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
 
 import {
@@ -447,7 +450,7 @@ async function linkServiceOneRoundActivity(
     patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
     roundNumber: SERVICE_ONE_HOME_ROUND,
     toolCode: input.toolCode,
-    source: "PLANNED",
+    source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, input.toolCode),
     mode: "RECORDED",
     linkedRecordType: input.linkedRecordType,
     linkedRecordId: input.linkedRecordId,

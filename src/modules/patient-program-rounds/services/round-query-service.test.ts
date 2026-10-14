@@ -250,22 +250,22 @@ describe("round detail read model", () => {
       "HEALTH_PLAN_REVIEW",
       "CONFIDENCE_RULER",
       "DREAM_CARD",
-      "FLOATING_CHART",
-      "LIFE_TABLE",
     ]);
-    expect(detail.activities.find((row) => row.toolCode === "LIFE_TABLE")?.status).toBe("AWAITING_FORM");
     expect(detail.activities.find((row) => row.toolCode === "DREAM_CARD")).toMatchObject({
       status: "NOT_DONE",
       resultExists: true,
       canReview: true,
     });
-    expect(detail.activities.find((row) => row.toolCode === "FLOATING_CHART")).toMatchObject({
+    expect(detail.addOptions.find((row) => row.toolCode === "FLOATING_CHART")).toMatchObject({
+      recommended: false,
       resultExists: false,
       canReview: false,
     });
     expect(detail.addOptions.map((row) => row.toolCode)).toEqual(
-      expect.arrayContaining(["PAM", "PROMS", "ROUTINE", "KNOW_SELF", "HEALTH_PATH", "HEALTHY_PLAN"]),
+      expect.arrayContaining(["PAM", "PROMS", "ROUTINE", "KNOW_SELF", "LIFE_TABLE", "HEALTH_PATH", "HEALTHY_PLAN"]),
     );
+    // Pending forms stay unavailable wherever they appear, never completed.
+    expect(detail.addOptions.find((row) => row.toolCode === "LIFE_TABLE")?.status).toBe("AWAITING_FORM");
     expect(detail.addOptions.some((row) => row.toolCode === "DREAM_CARD")).toBe(false);
   });
 
@@ -279,8 +279,13 @@ describe("round detail read model", () => {
       patient,
     );
 
-    expect(detail.activities.map((row) => row.toolCode)).toEqual(["HEALTHY_PLAN", "DREAM_CARD"]);
-    expect(detail.activities[1]).toMatchObject({
+    expect(detail.activities.map((row) => row.toolCode)).toEqual([
+      "HEALTH_PLAN_REVIEW",
+      "CONFIDENCE_RULER",
+      "LIFE_TABLE",
+      "DREAM_CARD",
+    ]);
+    expect(detail.activities[3]).toMatchObject({
       status: "DONE",
       source: "EXTRA",
       mode: "REVIEWED",

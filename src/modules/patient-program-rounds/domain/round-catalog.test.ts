@@ -11,7 +11,9 @@ import {
   PROGRAM_ROUND_NUMBERS,
   ROUND_RECOMMENDED_TOOLS,
   ROUND_TOOLS,
+  roundActivitySourceFor,
   roundToolCodes,
+  roundToolLabel,
   toFollowupRoundNumber,
   toProgramRoundNumber,
 } from "./round-catalog";
@@ -32,16 +34,34 @@ describe("whiteboard round catalog (WB-DF-01..03, WB-PD-01)", () => {
     expect([1, 2, 3, 4].map(toProgramRoundNumber)).toEqual([3, 4, 5, 6]);
   });
 
-  it("recommends the Service 1 tools and screening in round 1 and the plan in round 2", () => {
-    expect(ROUND_RECOMMENDED_TOOLS[1]).toEqual(
-      expect.arrayContaining(["PAM", "PROMS", "FLOATING_CHART", "DREAM_CARD", "ROUTINE", "CONFIDENCE_RULER"]),
-    );
-    expect(ROUND_RECOMMENDED_TOOLS[2]).toEqual(["HEALTHY_PLAN"]);
-    for (const round of [3, 4, 5, 6] as const) {
-      expect(ROUND_RECOMMENDED_TOOLS[round]).toContain("HEALTH_PLAN_REVIEW");
+  it("recommends exactly the whiteboard boxes of each round", () => {
+    expect(ROUND_RECOMMENDED_TOOLS).toEqual({
+      1: ["KNOW_SELF", "PAM", "PROMS", "FLOATING_CHART", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTH_PATH"],
+      2: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "LIFE_TABLE"],
+      3: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD"],
+      4: ["HEALTH_PLAN_REVIEW", "FLOATING_CHART", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTHY_PLAN"],
+      5: ["HEALTH_PLAN_REVIEW", "LIFE_TABLE"],
+      6: ["HEALTH_PATH", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"],
+    });
+  });
+
+  it("classifies tools outside a round's whiteboard boxes as EXTRA on the server", () => {
+    expect(roundActivitySourceFor(3, "DREAM_CARD")).toBe("PLANNED");
+    expect(roundActivitySourceFor(2, "DREAM_CARD")).toBe("EXTRA");
+    // ตารางกิจวัตร is not on the whiteboard at all; it is never PLANNED.
+    for (const round of PROGRAM_ROUND_NUMBERS) {
+      expect(isRecommendedTool(round, "ROUTINE")).toBe(false);
+      expect(roundActivitySourceFor(round, "ROUTINE")).toBe("EXTRA");
     }
-    expect(isRecommendedTool(3, "DREAM_CARD")).toBe(true);
-    expect(isRecommendedTool(2, "DREAM_CARD")).toBe(false);
+    // The Goal Plan is created in round 2 but the whiteboard lists แผนสุขภาพดีของฉัน in round 4 only.
+    expect(roundActivitySourceFor(2, "HEALTHY_PLAN")).toBe("EXTRA");
+    expect(roundActivitySourceFor(4, "HEALTHY_PLAN")).toBe("PLANNED");
+    expect(roundActivitySourceFor(1, "DREAM_CARD")).toBe("EXTRA");
+  });
+
+  it("labels the round 6 Health Path box as a review", () => {
+    expect(roundToolLabel(1, "HEALTH_PATH")).toBe("เส้นทางสุขภาพ");
+    expect(roundToolLabel(6, "HEALTH_PATH")).toBe("ทบทวนเส้นทางสุขภาพ");
   });
 
   it("marks the undefined tools as pending forms and never reviewable", () => {

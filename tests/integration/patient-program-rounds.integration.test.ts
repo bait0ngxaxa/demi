@@ -282,7 +282,7 @@ describe("Program six-round navigator (Phase A)", () => {
       [1, "FLOATING_CHART", "PLANNED", "RECORDED", "SERVICE_ONE_FLOATING_CHART"],
       [1, "PAM", "PLANNED", "RECORDED", "SCREENING_ASSESSMENT"],
       [1, "PROMS", "PLANNED", "RECORDED", "SCREENING_ASSESSMENT"],
-      [1, "ROUTINE", "PLANNED", "RECORDED", "SERVICE_ONE_ROUTINE"],
+      [1, "ROUTINE", "EXTRA", "RECORDED", "SERVICE_ONE_ROUTINE"],
     ]);
     expect(ledger.every((row) => row.linkedRecordId !== null && row.recordedByUserId === fixture.osm.userId)).toBe(true);
 
@@ -294,7 +294,10 @@ describe("Program six-round navigator (Phase A)", () => {
     expect(round.vitals).toMatchObject({ source: "ROUND_VITALS", weight: 74, heightCm: 162, bmi: 28.2 });
     expect(round.vitalsForm.canRecord).toBe(false);
     expect(round.activities.find((row) => row.toolCode === "PAM")).toMatchObject({ status: "DONE", mode: "RECORDED" });
-    expect(round.activities.find((row) => row.toolCode === "DREAM_CARD")?.status).toBe("NOT_DONE");
+    expect(round.addOptions.find((row) => row.toolCode === "DREAM_CARD")).toMatchObject({
+      status: "NOT_DONE",
+      recommended: false,
+    });
   });
 
   it("records a repeated Service 1 tool in a later round as REVIEWED without a second Service 1 record", async () => {
@@ -437,7 +440,7 @@ describe("Program six-round navigator (Phase A)", () => {
       (await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "2")).activities.find(
         (row) => row.toolCode === "HEALTHY_PLAN",
       ),
-    ).toMatchObject({ status: "DONE", linkedRecord: { type: "GOAL_PLAN" } });
+    ).toMatchObject({ status: "DONE", source: "EXTRA", linkedRecord: { type: "GOAL_PLAN" } });
   });
 
   it("never creates duplicate round-vitals rows under concurrency and is idempotent by nonce", async () => {

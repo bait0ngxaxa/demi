@@ -21,7 +21,7 @@ import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-
 
 import {
   isProgramRoundNumber,
-  isRecommendedTool,
+  roundActivitySourceFor,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
 } from "../domain/round-catalog";
@@ -364,7 +364,7 @@ async function recordReviewInTransaction(
     patientHospitalRelationshipId: relationshipId,
     roundNumber,
     toolCode: input.toolCode,
-    source: isRecommendedTool(roundNumber, input.toolCode) ? "PLANNED" : "EXTRA",
+    source: roundActivitySourceFor(roundNumber, input.toolCode),
     mode: "REVIEWED",
     linkedRecordType,
     linkedRecordId,
