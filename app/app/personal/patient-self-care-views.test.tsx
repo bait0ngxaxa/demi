@@ -306,7 +306,7 @@ describe("Patient Personal care read views", () => {
     expect(detailMarkup).toContain("รับทราบนัดหมาย");
     expect(detailMarkup).toContain("แพทย์ผู้ดูแล");
     expect(detailMarkup).toContain("ขอยกเลิกนัด");
-    expect(detailMarkup).toContain("กรุณาติดต่อโรงพยาบาลโดยตรง");
+    expect(detailMarkup).toContain("ส่งคำขอพร้อมวันเวลาที่สะดวก 1–3 ตัวเลือกและเหตุผล");
     expect(detailMarkup).toContain("ไม่ใช่การยืนยันว่าจะมาตามนัด");
     expect(detailMarkup).not.toMatch(/<button[^>]*>ยืนยันว่าจะมา/);
     for (const withheld of ["ผู้สร้างนัด", "internal note", "responsibleUserId", "createdByUserId", "เบอร์โทร"]) {

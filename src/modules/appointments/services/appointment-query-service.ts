@@ -24,7 +24,9 @@ import {
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
 import {
-  APPOINTMENT_CREATE_CAPABILITY,
+  assertAppointmentPolicy,
+  decideAppointmentPolicy,
+  APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
   APPOINTMENT_MANAGE_CAPABILITY,
   APPOINTMENT_READ_CAPABILITY,
 } from "../policies/appointment-policy";
@@ -91,6 +93,7 @@ export type AppointmentHistory = {
 };
 
 export type AppointmentDetail = {
+  canHospitalManage?: boolean;
   patient: AppointmentPatientSummary;
   canManage: boolean;
   canProxyPatientActions: boolean;
@@ -116,6 +119,7 @@ export type AppointmentDetail = {
 };
 
 export type AppointmentCreateContext = {
+  homeVisitOnly?: boolean;
   patient: AppointmentPatientSummary;
   responsibleMembers: ResponsibleHospitalMember[];
 };
@@ -194,6 +198,7 @@ function appointmentHistorySelect(hospitalId: string) {
 
 function appointmentDetailSelect(hospitalId: string) {
   return {
+  createdByUserId: true,
   id: true,
   responsibleUserId: true,
   type: true,
@@ -368,10 +373,12 @@ function toDetail(
   patient: AppointmentPatientSummary,
   canManage: boolean,
   canProxyPatientActions: boolean,
+  canHospitalManage: boolean = canManage,
 ): AppointmentDetail {
   return {
     patient,
     canManage,
+    canHospitalManage,
     canProxyPatientActions,
     canRecordCoordination: canProxyPatientActions,
     appointmentId: record.id,
@@ -546,7 +553,8 @@ export async function getAppointmentDetail(
       throw new NotFoundError();
     }
 
-    return toDetail(record, access.patient, access.scopes.directHospital, access.scopes.exactOsmAssignment);
+    return toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -566,13 +574,14 @@ export async function getAppointmentCreateContext(
     const access = await resolveAppointmentAccessContext(
       actor,
       relationshipId,
-      APPOINTMENT_CREATE_CAPABILITY,
+      APPOINTMENT_READ_CAPABILITY,
       database,
     );
 
     return {
+      homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
-      responsibleMembers: await getResponsibleMembers(database, access.target.hospitalId),
+      responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -601,7 +610,7 @@ export async function getAppointmentRescheduleContext(
     const access = await resolveAppointmentAccessContext(
       actor,
       parsedRelationshipId.data,
-      APPOINTMENT_MANAGE_CAPABILITY,
+      APPOINTMENT_READ_CAPABILITY,
       database,
     );
     const record = await database.patientAppointment.findFirst({
@@ -616,16 +625,19 @@ export async function getAppointmentRescheduleContext(
       throw new NotFoundError();
     }
 
+    assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+      target: { ...access.target, ...record, operation: "EDIT" } });
     return {
+      homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
-      appointment: toDetail(record, access.patient, true, false),
-      responsibleMembers: await getRescheduleResponsibleMembers(
+      appointment: toDetail(record, access.patient, true, false, access.scopes.directHospital),
+      responsibleMembers: access.scopes.directHospital ? await getRescheduleResponsibleMembers(
         database,
         access.target.hospitalId,
         record.responsibleUserId,
         record.responsibleUser?.person ?? null,
         record.responsibleUser?.memberships[0]?.profession ?? null,
-      ),
+      ) : [],
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -646,11 +658,11 @@ export async function listResponsibleHospitalMembers(
     const access = await resolveAppointmentAccessContext(
       actor,
       relationshipId,
-      APPOINTMENT_CREATE_CAPABILITY,
+      APPOINTMENT_READ_CAPABILITY,
       database,
     );
 
-    return getResponsibleMembers(database, access.target.hospitalId);
+    return access.scopes.directHospital ? getResponsibleMembers(database, access.target.hospitalId) : [];
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

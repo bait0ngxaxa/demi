@@ -3,6 +3,8 @@ import { connection } from "next/server";
 
 import { getPatientSelfCareJourneyPageContext } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
+import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { PatientHealthHistorySection } from "../../../patients/[relationshipId]/patient-health-history-section";
 import { PatientSelfCareJourneyView } from "../../patient-self-care-journey-view";
 
 export const metadata: Metadata = {
@@ -28,5 +30,5 @@ export default async function PatientSelfCareJourneyPage({
     followupPage: Array.isArray(query.followupPage) ? query.followupPage[0] : query.followupPage,
   });
 
-  return <PatientSelfCareJourneyView journey={journey} />;
+  return <PatientSelfCareJourneyView journey={journey} healthHistory={<PatientHealthHistorySection actor={await getProtectedApplicationActor()} relationshipId={relationshipId} />} />;
 }

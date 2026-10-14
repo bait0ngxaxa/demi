@@ -76,6 +76,7 @@ export type AppointmentPatientSummary = {
 };
 
 export type AppointmentAccessContext = {
+  authoritativeActor: ActorContext;
   patient: AppointmentPatientSummary;
   target: AppointmentPolicyTarget;
   scopes: {
@@ -171,6 +172,7 @@ export async function resolveAppointmentAccessContext(
   relationshipId: unknown,
   capability: AppointmentCapability,
   database?: AppointmentAccessDatabase,
+  createFields?: Pick<AppointmentPolicyTarget, "locationType" | "responsibleUserId">,
 ): Promise<AppointmentAccessContext> {
   if (!actor) {
     throw new ForbiddenError();
@@ -198,6 +200,7 @@ export async function resolveAppointmentAccessContext(
 
   const authoritativeActor = await loadAuthoritativeActor(db, actor.userId, record.hospitalId);
   const target: AppointmentPolicyTarget = {
+    ...createFields,
     hospitalId: record.hospitalId,
     hospitalStatus: record.hospital.status,
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
@@ -216,6 +219,7 @@ export async function resolveAppointmentAccessContext(
   }
 
   return {
+    authoritativeActor,
     patient: {
       patientHospitalRelationshipId: record.id,
       displayName: toDisplayName(record.patientProfile.person),

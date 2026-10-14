@@ -1,3 +1,5 @@
+import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
+import { RescheduleRequestSection } from "../reschedule-request-section";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -82,11 +84,12 @@ async function resolveActor() {
 function AppointmentDetailView({
   activeProgram,
   canRecordProgram,
-  detail,
+  detail, rescheduleRequests,
 }: {
   activeProgram: PatientProgramProjection | null;
   canRecordProgram: boolean;
   detail: AppointmentDetail;
+  rescheduleRequests?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
   const locationLabel = detail.locationType
@@ -223,11 +226,12 @@ function AppointmentDetailView({
           </div>
         </Panel>
 
+        {rescheduleRequests}
         <AppointmentInteractionControls
           acknowledgement={detail.currentAcknowledgement}
           cancellationRequestNonce={randomUUID()}
           cancellationRequests={detail.cancellationRequests}
-          canManage={detail.canManage}
+          canManage={detail.canHospitalManage ?? detail.canManage}
           canProxyPatientActions={detail.canProxyPatientActions}
           canRecordCoordination={detail.canRecordCoordination}
           coordinationEvents={detail.coordinationEvents}
@@ -240,7 +244,7 @@ function AppointmentDetailView({
 
         {detail.canManage ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสถานะนัดหมายโดยโรงพยาบาล</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการนัดหมาย</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               การเลื่อนนัดเปลี่ยนกำหนดการ ส่วนการยกเลิก เสร็จสิ้น และไม่มาตามนัดเป็นผลของนัด ไม่สร้างบันทึกการติดตามผลหรือจบโปรแกรมอัตโนมัติ
             </p>
@@ -257,6 +261,7 @@ function AppointmentDetailView({
               <AppointmentMutationControls
                 appointmentId={detail.appointmentId}
                 canManage={detail.canManage}
+                canComplete={detail.canHospitalManage ?? detail.canManage}
                 expectedUpdatedAt={detail.updatedAt.toISOString()}
                 relationshipId={relationshipId}
                 status={detail.status}
@@ -294,12 +299,14 @@ export default async function AppointmentDetailPage({
   const { relationshipId, appointmentId } = await params;
   let detail;
   let programContext;
+  let rescheduleHistory;
   let canRecordProgram = false;
 
   try {
-    [detail, programContext] = await Promise.all([
+    [detail, programContext, rescheduleHistory] = await Promise.all([
       getAppointmentDetail(actor, relationshipId, appointmentId),
       getPatientProgramPageContext(actor, relationshipId),
+      getAppointmentRescheduleHistory(actor, relationshipId, appointmentId),
     ]);
     if (programContext.active) {
       const followupHistory = await getFollowupHistoryForProgram(actor, programContext.active.programId);
@@ -319,6 +326,7 @@ export default async function AppointmentDetailPage({
 
   return (
     <AppointmentDetailView
+      rescheduleRequests={<RescheduleRequestSection history={rescheduleHistory} relationshipId={relationshipId} appointmentId={appointmentId} />}
       activeProgram={programContext.active}
       canRecordProgram={canRecordProgram}
       detail={detail}

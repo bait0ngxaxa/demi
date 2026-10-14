@@ -2061,8 +2061,8 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     await prisma.user.update({ where: { id: owner.userId }, data: { status: UserStatus.ACTIVE } });
 
-    const membership = await prisma.hospitalMembership.findUniqueOrThrow({
-      where: { userId_hospitalId: { userId: owner.userId, hospitalId: hospital.id } },
+    const membership = await prisma.hospitalMembership.findFirstOrThrow({
+      where: { userId: owner.userId, hospitalId: hospital.id, status: { not: "ENDED" } },
       select: { id: true },
     });
     await prisma.hospitalMembership.update({

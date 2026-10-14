@@ -287,8 +287,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       { role: Role.OSM },
     ]);
     expect(await prisma.hospitalMembership.count({ where: { userId: result.userId } })).toBe(0);
-    expect(await prisma.osmHospitalRelationship.findUnique({
-      where: { userId_hospitalId: { userId: result.userId, hospitalId } },
+    expect(await prisma.osmHospitalRelationship.findFirst({ where: { userId: result.userId, hospitalId, status: { not: "ENDED" } },
       select: { status: true },
     })).toEqual({ status: MembershipStatus.PROVISIONED });
   });
@@ -423,8 +422,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       { provisionIdentity: createProvisioner("44444444-4444-4444-8444-444444444444") },
     );
 
-    expect(await prisma.osmHospitalRelationship.findUnique({
-      where: { userId_hospitalId: { userId: result.userId, hospitalId } },
+    expect(await prisma.osmHospitalRelationship.findFirst({ where: { userId: result.userId, hospitalId, status: { not: "ENDED" } },
       select: { status: true },
     })).toEqual({ status: MembershipStatus.ACTIVE });
     expect(await prisma.workforceActivation.count({ where: { userId: result.userId, revokedAt: { not: null } } })).toBe(1);
@@ -513,8 +511,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       prisma.user.findUnique({ where: { id: result.userId }, select: { status: true, authSubject: true } }),
     ).resolves.toEqual({ status: UserStatus.PROVISIONED, authSubject: null });
     await expect(
-      prisma.hospitalMembership.findUnique({
-        where: { userId_hospitalId: { userId: result.userId, hospitalId } },
+      prisma.hospitalMembership.findFirst({ where: { userId: result.userId, hospitalId, status: { not: "ENDED" } },
         select: { status: true },
       }),
     ).resolves.toEqual({ status: MembershipStatus.PROVISIONED });

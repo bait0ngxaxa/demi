@@ -583,14 +583,15 @@ function WorkforceRow({
   const isSuspended =
     row.accountStatus === "SUSPENDED" || row.relationshipStatus === "SUSPENDED";
   const isInvited = row.accountStatus === "INVITED" || row.relationshipStatus === "INVITED";
-  const statusLabel = isActive
+  const isEnded = row.relationshipStatus === "ENDED";
+  const statusLabel = isEnded ? "นำออกจากระบบถาวรแล้ว" : isActive
     ? "พร้อมใช้งาน"
     : isSuspended
       ? "ถูกระงับ"
       : isInvited
         ? "อยู่ระหว่างเชิญ"
         : "รอเปิดใช้งาน";
-  const statusVariant = isActive
+  const statusVariant = isEnded ? "neutral" : isActive
     ? "success"
     : isSuspended
       ? "danger"
@@ -623,7 +624,7 @@ function WorkforceRow({
         ดูรายละเอียดความสัมพันธ์
       </Link>
 
-      {row.activationRequired && row.membershipType !== "OWNER" ? (
+      {!isEnded && row.activationRequired && row.membershipType !== "OWNER" ? (
         <div className="mt-4 flex flex-col gap-3 rounded-control bg-surface-muted px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs leading-5 text-muted">
             <p>{row.activationStatus === "IN_PROGRESS" ? "กำลังเปิดใช้งานหรือรอตรวจสอบผล กรุณาติดต่อผู้ดูแลหากค้างนาน" : "บัญชีและความสัมพันธ์ยังไม่เปิดใช้งาน"}</p>
@@ -786,6 +787,7 @@ export function WorkforceWorkspace({
                 <option value="INVITED">รอตอบรับ</option>
                 <option value="ACTIVE">ใช้งานอยู่</option>
                 <option value="SUSPENDED">ระงับ</option>
+                <option value="ENDED">นำออกจากระบบถาวร</option>
               </Select>
             </label>
             <Button type="submit">ค้นหา</Button>

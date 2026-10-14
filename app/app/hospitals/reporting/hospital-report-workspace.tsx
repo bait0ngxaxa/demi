@@ -356,7 +356,7 @@ function ProgramOverview({
       </div>
 
       <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {unavailableText(program.unavailable.illnessDuration)} · สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก</p>
+        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"} · สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก</p>
         <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
     </Panel>

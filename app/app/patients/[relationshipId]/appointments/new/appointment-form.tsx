@@ -58,6 +58,10 @@ type AppointmentFormValue = {
 };
 
 type CommonProps = {
+  homeVisitOnly?: boolean;
+  rescheduleRequestId?: string;
+  reschedulePreferredDates?: readonly string[];
+  rescheduleReason?: string;
   relationshipId: string;
   patient: PatientContext;
   responsibleMembers: readonly ResponsibleMember[];
@@ -156,7 +160,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
     appointment?.durationMinutes?.toString() ?? String(APPOINTMENT_DEFAULT_DURATION_MINUTES),
   );
   const [locationType, setLocationType] = useState<AppointmentLocationValue | "">(
-    appointment?.locationType ?? "CLINIC",
+    appointment?.locationType ?? (props.homeVisitOnly ? "HOME_VISIT" : "CLINIC"),
   );
   const [locationDetail, setLocationDetail] = useState(appointment?.locationDetail ?? "");
   const [note, setNote] = useState(appointment?.note ?? "");
@@ -201,6 +205,11 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
       />
 
       <form action={formAction} className="space-y-6 pt-8">
+        {props.rescheduleRequestId ? <><input name="rescheduleRequestId" type="hidden" value={props.rescheduleRequestId} /><Alert variant="info">กำลังพิจารณาคำขอเลื่อนนัด คำขอจะปิดเมื่อบันทึกวันเวลาใหม่สำเร็จ
+          <p className="mt-2 break-words">เหตุผล: {props.rescheduleReason}</p>
+          <ul className="mt-2 list-inside list-disc">{props.reschedulePreferredDates?.map((date) => <li key={date}>{new Date(date).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}</li>)}</ul>
+        </Alert></> : null}
+        {props.homeVisitOnly ? <Alert variant="info">อสม. นัดเยี่ยมบ้าน / ชุมชนสำหรับผู้ป่วยที่ได้รับมอบหมายเท่านั้น ไม่ระบุผู้รับผิดชอบคลินิก</Alert> : null}
         <input
           name="patientHospitalRelationshipId"
           type="hidden"
@@ -283,6 +292,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 id="appointment-responsible-user"
                 onChange={(event) => setResponsibleUserId(event.target.value)}
                 value={responsibleUserId}
+                disabled={props.homeVisitOnly}
               >
                 <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
                 {props.responsibleMembers.map((member) => (
@@ -320,7 +330,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 value={locationType}
               >
                 <option value="">ยังไม่ระบุสถานที่</option>
-                {APPOINTMENT_LOCATION_VALUES.map((value) => (
+                {(props.homeVisitOnly ? APPOINTMENT_LOCATION_VALUES.filter((value) => value === "HOME_VISIT") : APPOINTMENT_LOCATION_VALUES).map((value) => (
                   <option key={value} value={value}>
                     {APPOINTMENT_LOCATION_LABELS[value]}
                   </option>

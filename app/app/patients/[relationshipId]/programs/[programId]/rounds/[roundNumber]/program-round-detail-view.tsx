@@ -157,12 +157,13 @@ export function ProgramRoundDetailView({
   detail,
   reviewNonces,
   todayServiceDate,
-  vitalsNonce,
+  vitalsNonce, healthHistory,
 }: {
   detail: ProgramRoundDetail;
   reviewNonces: Record<string, string>;
   todayServiceDate: string;
   vitalsNonce: string;
+  healthHistory?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = detail.patientHospitalRelationshipId;
   const programId = detail.patientProgramId;
@@ -193,6 +194,7 @@ export function ProgramRoundDetailView({
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">สัญญาณชีพและข้อมูลร่างกาย</h2>
+          {healthHistory}
           {vitals ? (
             <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[

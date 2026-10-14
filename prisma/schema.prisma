@@ -145,6 +145,13 @@ enum MembershipStatus {
   INVITED
   ACTIVE
   SUSPENDED
+  ENDED
+}
+
+enum HealthHistoryAnswer {
+  YES
+  NO
+  UNKNOWN
 }
 
 enum PatientClassificationType {
@@ -386,7 +393,9 @@ model User {
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
   appointmentAcknowledgementsRecorded PatientAppointmentAcknowledgement[] @relation("AppointmentAcknowledgementRecordedBy")
   appointmentCancellationRequestsSubmitted PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestSubmittedBy")
+  appointmentRescheduleRequestsSubmitted PatientAppointmentRescheduleRequest[] @relation("AppointmentRescheduleRequestSubmittedBy")
   appointmentCancellationRequestsResolved PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestResolvedBy")
+  appointmentRescheduleRequestsResolved PatientAppointmentRescheduleRequest[] @relation("AppointmentRescheduleRequestResolvedBy")
   appointmentCoordinationEventsRecorded PatientAppointmentCoordinationEvent[] @relation("AppointmentCoordinationEventRecordedBy")
   followupsCreated PatientFollowup[] @relation("PatientFollowupCreatedBy")
   patientProgramsCreated PatientProgram[] @relation("PatientProgramCreatedBy")
@@ -505,7 +514,7 @@ model HospitalMembership {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, hospitalId])
+  @@index([userId, hospitalId])
   @@index([hospitalId, status])
   @@index([hospitalId, createdAt, id])
 }
@@ -702,6 +711,7 @@ model PatientHospitalRelationship {
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   appointmentGrants CaregiverAppointmentGrant[]
+  healthHistory PatientHospitalHealthHistory?
   hospitalProfile PatientHospitalProfile?
   accountRecoveries AccountRecovery[]
   osmAssignments PatientOsmAssignment[]
@@ -748,6 +758,23 @@ model PatientHospitalProfile {
   updatedAt                     DateTime @updatedAt
 
   relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+}
+
+model PatientHospitalHealthHistory {
+  id String @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String @unique @db.Uuid
+  diabetes HealthHistoryAnswer @default(UNKNOWN)
+  hypertension HealthHistoryAnswer @default(UNKNOWN)
+  otherConditions String? @db.VarChar(1000)
+  familyHypertension HealthHistoryAnswer @default(UNKNOWN)
+  familyDiabetes HealthHistoryAnswer @default(UNKNOWN)
+  familyHeartDisease HealthHistoryAnswer @default(UNKNOWN)
+  familyStroke HealthHistoryAnswer @default(UNKNOWN)
+  diagnosisYear Int?
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
 }
 
 model CaregiverInvitation {
@@ -985,6 +1012,7 @@ model PatientAppointment {
   createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   osmAssignmentAtCreation     PatientOsmAssignment?      @relation("AppointmentOsmAssignmentAtCreation", fields: [osmAssignmentIdAtCreation], references: [id], onDelete: Restrict)
   acknowledgements            PatientAppointmentAcknowledgement[]
+  rescheduleRequests          PatientAppointmentRescheduleRequest[]
   cancellationRequests        PatientAppointmentCancellationRequest[]
   coordinationEvents          PatientAppointmentCoordinationEvent[]
   lineNotificationIntents     AppointmentLineNotification[]
@@ -1026,6 +1054,31 @@ model PatientAppointmentCancellationRequest {
   appointment     PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
   submittedByUser User               @relation("AppointmentCancellationRequestSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
   resolvedByUser  User?              @relation("AppointmentCancellationRequestResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([appointmentId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([submittedByUserId, submittedAt])
+}
+
+model PatientAppointmentRescheduleRequest {
+  id                         String                                @id @default(uuid()) @db.Uuid
+  appointmentId              String                                @db.Uuid
+  sourceAppointmentUpdatedAt  DateTime                              @db.Timestamptz(3)
+  submittedByUserId           String                                @db.Uuid
+  source                      AppointmentInteractionSource
+  submissionNonce             String                                @unique @db.Uuid
+  status                      AppointmentCancellationRequestStatus @default(PENDING)
+  submittedAt                 DateTime                              @default(now()) @db.Timestamptz(3)
+  resolvedByUserId            String?                               @db.Uuid
+  resolvedAt                  DateTime?                             @db.Timestamptz(3)
+
+  appointment     PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  submittedByUser User               @relation("AppointmentRescheduleRequestSubmittedBy", fields: [submittedByUserId], references: [id], onDelete: Restrict)
+  resolvedByUser  User?              @relation("AppointmentRescheduleRequestResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+
+  preferredDatetimes DateTime[] @db.Timestamptz(3)
+  reason String @db.VarChar(500)
+  rejectionReason String? @db.VarChar(500)
 
   @@index([appointmentId, submittedAt])
   @@index([status, submittedAt])
@@ -1459,7 +1512,7 @@ model OsmHospitalRelationship {
   user     User     @relation("OsmHospitalRelationships", fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation("OsmHospitalRelationships", fields: [hospitalId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, hospitalId])
+  @@index([userId, hospitalId])
   @@index([hospitalId, status])
   @@index([hospitalId, createdAt, id])
   @@index([userId, status])

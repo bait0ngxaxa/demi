@@ -9,6 +9,7 @@ import { getProgramRoundDetail } from "@/modules/patient-program-rounds/services
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { toServiceDateOnly } from "@/shared/time/service-date";
 
+import { PatientHealthHistorySection } from "../../../../patient-health-history-section";
 import { ProgramRoundDetailView } from "./program-round-detail-view";
 
 export const metadata: Metadata = {
@@ -64,6 +65,7 @@ export default async function ProgramRoundPage({
 
   return (
     <ProgramRoundDetailView
+      healthHistory={<PatientHealthHistorySection actor={actor} relationshipId={relationshipId} />}
       detail={detail}
       reviewNonces={reviewNonces}
       todayServiceDate={toServiceDateOnly(new Date())}

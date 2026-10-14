@@ -133,8 +133,8 @@ export type HospitalReportProgramRow = {
     pamScore: number;
     promsScore: number;
   }>;
+  illnessDuration: HospitalReportFact<number>;
   unavailable: {
-    illnessDuration: HospitalReportUnavailableReason;
     baselineCvdRiskScore: HospitalReportUnavailableReason;
     afterCvdRiskScore: HospitalReportUnavailableReason;
     beforeWeeklyExercise: HospitalReportUnavailableReason;
@@ -200,7 +200,7 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     coverage: "SOURCE_BACKED",
     source: "PatientHospitalRelationship.hospitalNumber",
   },
-  illnessDuration: { coverage: "SOURCE_MISSING", reason: "No illness-onset or duration field exists." },
+  illnessDuration: { coverage: "DERIVED_WB_DF_11", source: "PatientHospitalHealthHistory.diagnosisYear (B.E.); current Bangkok year minus diagnosis year; current hospital-local history" },
   responsibleOsm: {
     coverage: "SOURCE_BACKED_RELATIONSHIP_CURRENT_ONLY",
     source: "PatientOsmAssignment with endedAt null",

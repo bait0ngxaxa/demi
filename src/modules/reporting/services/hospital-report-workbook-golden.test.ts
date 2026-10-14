@@ -199,8 +199,8 @@ function goldenProgram(): HospitalReportProgramRow {
       state: "PRESENT",
       value: { submittedAt: "2026-07-02T03:00:00.000Z", pamScore: 15, promsScore: 18 },
     },
+    illnessDuration: { state: "RECORDED", value: 9 },
     unavailable: {
-      illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
       afterCvdRiskScore: "SOURCE_MISSING",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
@@ -263,7 +263,7 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["B", "สมหญิง", "SOURCE_READY"],
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
-  ["E", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["E", 9, "SOURCE_READY"],
   ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", SOURCE_MISSING, "SOURCE_MISSING"],
@@ -327,7 +327,7 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["B", "สมหญิง", "SOURCE_READY"],
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
-  ["E", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["E", 9, "SOURCE_READY"],
   ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", dateToken(COMPLETED_AT), "SOURCE_READY"],
@@ -445,6 +445,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 94, DECISION_OPEN: 2, SOURCE_MISSING: 12 });
+    }).toEqual({ SOURCE_READY: 96, DECISION_OPEN: 2, SOURCE_MISSING: 10 });
   });
 });

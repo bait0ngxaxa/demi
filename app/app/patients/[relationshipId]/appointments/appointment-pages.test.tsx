@@ -5,7 +5,7 @@ import type { AppointmentDetail } from "@/modules/appointments/services/appointm
 
 const mocks = vi.hoisted(() => ({
   detail: vi.fn(), program: vi.fn(), followups: vi.fn(), actor: vi.fn(),
-  connection: vi.fn(), refresh: vi.fn(),
+  connection: vi.fn(), refresh: vi.fn(), rescheduleHistory: vi.fn(),
 }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("next/navigation", () => ({
@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("@/modules/appointments/services/appointment-query-service", () => ({ getAppointmentDetail: mocks.detail }));
+vi.mock("@/modules/appointments/services/appointment-reschedule-history-service", () => ({ getAppointmentRescheduleHistory: mocks.rescheduleHistory }));
 vi.mock("@/modules/patient-program/services/patient-program-query-service", () => ({ getPatientProgramPageContext: mocks.program }));
 vi.mock("@/modules/followups/services/followup-query-service", () => ({ getFollowupHistoryForProgram: mocks.followups }));
 vi.mock("@/modules/appointments/transport/server-actions", () => ({
@@ -46,6 +47,7 @@ async function render(): Promise<string> {
 }
 beforeEach(() => {
   vi.clearAllMocks(); mocks.actor.mockResolvedValue({ userId: "actor" });
+  mocks.rescheduleHistory.mockResolvedValue({ requests: [], canRequest: false, canReview: true, updatedAt: detail.updatedAt, scheduled: true });
   mocks.detail.mockResolvedValue(detail); mocks.program.mockResolvedValue({ active: null });
 });
 
@@ -59,7 +61,7 @@ describe("Work appointment journey", () => {
     expect(markup).toContain("ห้องตรวจ ก");
     expect(markup).toContain(`href="/app/patients/${relationshipId}/appointments/${appointmentId}/edit"`);
     expect(markup).toContain(`href="/app/patients/${relationshipId}#patient-care"`);
-    expect(markup).toContain("จัดการสถานะนัดหมายโดยโรงพยาบาล");
+    expect(markup).toContain("จัดการนัดหมาย");
     expect(markup).toContain("ไม่สร้างบันทึกการติดตามผลหรือจบโปรแกรมอัตโนมัติ");
     expect([...markup.matchAll(/id="appointment-acknowledgement-heading"/g)]).toHaveLength(1);
     expect(markup).not.toContain("ส่งคำขอยกเลิกแทนผู้ป่วย");
@@ -100,4 +102,28 @@ describe("Work appointment journey", () => {
     mocks.detail.mockRejectedValue(error);
     await expect(render()).rejects.toThrow(error instanceof ForbiddenError ? "REDIRECT:/app" : "NOT_FOUND");
   });
+  it("shows reschedule request history and approves through the linked existing edit", async () => {
+    const requestId = "33333333-3333-4333-8333-333333333333";
+    mocks.rescheduleHistory.mockResolvedValue({ requests: [{ id: requestId, status: "PENDING", source: "PATIENT_SELF", submittedAt: detail.createdAt,
+      preferredDatetimes: [detail.scheduledAt], reason: "ติดธุระ", resolvedAt: null, rejectionReason: null }],
+      canRequest: false, canReview: true, updatedAt: detail.updatedAt, scheduled: true });
+    const markup = await render();
+    expect(markup).toContain("รอพิจารณา");
+    expect(markup).toContain("ติดธุระ");
+    expect(markup).toContain(`/edit?requestId=${requestId}`);
+    expect(markup).toContain("เหตุผลที่ปฏิเสธ");
+  });
+
+  it("lets the OSM manage their home visit without hospital-only status or review actions", async () => {
+    mocks.detail.mockResolvedValue({ ...detail, locationType: "HOME_VISIT", canManage: true, canHospitalManage: false, canProxyPatientActions: true });
+    mocks.rescheduleHistory.mockResolvedValue({ requests: [], canRequest: true, canReview: false, updatedAt: detail.updatedAt, scheduled: true });
+    const markup = await render();
+    expect(markup).toContain("ยกเลิกนัดหมาย");
+    expect(markup).toContain("ขอเลื่อนนัด");
+    expect(markup).toContain(`/appointments/${appointmentId}/edit`);
+    expect(markup).not.toContain("ทำเครื่องหมายว่าเสร็จสิ้น");
+    expect(markup).not.toContain("ทำเครื่องหมายว่าไม่มาตามนัด");
+    expect(markup).not.toContain("อนุมัติโดยแก้ไขวันเวลานัดหมาย");
+  });
+
 });

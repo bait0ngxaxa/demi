@@ -57,6 +57,7 @@ export default async function NewAppointmentPage({
 
   return (
     <AppointmentForm
+      homeVisitOnly={context.homeVisitOnly}
       mode="create"
       patient={context.patient}
       relationshipId={relationshipId}

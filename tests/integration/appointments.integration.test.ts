@@ -573,7 +573,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const osmHistory = await getAppointmentHistory(osm.actor, patient.relationshipId);
     expect(osmHistory.canManage).toBe(false);
     expect(osmHistory.canCreate).toBe(true);
-    const osmCreatedAppointment = await createAppointment(osm.actor, appointmentInput(patient.relationshipId));
+    const osmCreatedAppointment = await createAppointment(osm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT", responsibleUserId: null }));
     expect(await prisma.patientAppointment.findUniqueOrThrow({
       where: { id: osmCreatedAppointment.appointmentId },
       select: { osmAssignmentIdAtCreation: true },
@@ -612,7 +612,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
   it("keeps acknowledgement separate, records exact OSM actions, and atomically reviews cancellation", async () => {
     const hospital = await createHospital("INTERACTIONS");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const clinician = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.NURSE });
     const firstOsm = await createOsmActor(hospital.id);
     const secondOsm = await createOsmActor(hospital.id);
     const admin = await createAdminActor();
@@ -649,7 +648,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const osmAppointment = await createAppointment(
       firstOsm.actor,
       appointmentInput(patient.relationshipId, {
-        responsibleUserId: clinician.userId,
+        responsibleUserId: null,
+        locationType: "HOME_VISIT",
         note: "Work-only appointment note",
       }),
     );
@@ -707,8 +707,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       osmAppointment.appointmentId,
     );
     expect(patientProjection).toMatchObject({
-      responsibleDisplayName: clinician.displayName,
-      responsibleProfession: Profession.NURSE,
+      responsibleDisplayName: null,
+      responsibleProfession: null,
       osmAtCreationDisplayName: firstOsm.displayName,
     });
     const serializedPatientProjection = JSON.stringify(patientProjection);
@@ -786,7 +786,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       where: { patientHospitalRelationshipId: patient.relationshipId, endedAt: null },
       select: { id: true },
     });
-    const secondOsmAppointment = await createAppointment(secondOsm.actor, appointmentInput(patient.relationshipId));
+    const secondOsmAppointment = await createAppointment(secondOsm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT", responsibleUserId: null }));
     expect(await prisma.patientAppointment.findUniqueOrThrow({
       where: { id: secondOsmAppointment.appointmentId },
       select: { osmAssignmentIdAtCreation: true },

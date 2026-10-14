@@ -295,7 +295,7 @@ function programIdentity(program: HospitalReportProgramRow): readonly (string | 
       : program.patient.hospitalNumber.state === "NOT_RECORDED"
         ? "ยังไม่บันทึก"
         : unavailable(program.patient.hospitalNumber.reason),
-    unavailable(program.unavailable.illnessDuration),
+    program.illnessDuration.state === "RECORDED" ? program.illnessDuration.value : "ไม่ทราบปีวินิจฉัย",
     assignmentCell(program),
     toExcelDate(program.lifecycle.startedAt),
   ];

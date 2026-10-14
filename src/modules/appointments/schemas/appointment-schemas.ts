@@ -51,6 +51,7 @@ export const appointmentRescheduleRequestSchema = z
     patientHospitalRelationshipId: appointmentRelationshipIdSchema,
     appointmentId: appointmentIdSchema,
     expectedUpdatedAt: appointmentScheduledAtSchema,
+    rescheduleRequestId: appointmentIdSchema.optional(),
     ...appointmentFieldsSchema,
   })
   .strict();
@@ -104,3 +105,19 @@ export type AppointmentAcknowledgementRequest = z.output<typeof appointmentAckno
 export type AppointmentCancellationRequest = z.output<typeof appointmentCancellationRequestSchema>;
 export type AppointmentCoordinationRequest = z.output<typeof appointmentCoordinationRequestSchema>;
 export type AppointmentCancellationReviewRequest = z.output<typeof appointmentCancellationReviewRequestSchema>;
+
+export const appointmentPatientRescheduleRequestSchema = z.object({
+  patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+  appointmentId: appointmentIdSchema,
+  expectedUpdatedAt: appointmentScheduledAtSchema,
+  submissionNonce: appointmentSubmissionNonceSchema,
+  preferredDatetimes: z.array(appointmentScheduledAtSchema).min(1).max(3).refine((values) => new Set(values.map((value) => new Date(value).getTime())).size === values.length),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
+export const appointmentRescheduleRejectionSchema = z.object({
+  patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+  appointmentId: appointmentIdSchema,
+  requestId: appointmentIdSchema,
+  rejectionReason: z.string().trim().min(1).max(500),
+}).strict();

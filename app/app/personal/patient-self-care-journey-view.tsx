@@ -110,9 +110,10 @@ function HistoryList({ children }: { children: React.ReactNode }): React.JSX.Ele
 }
 
 export function PatientSelfCareJourneyView({
-  journey,
+  journey, healthHistory,
 }: {
   journey: PatientSelfCareJourney;
+  healthHistory?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = journey.relationship.relationshipId;
   const careHref = "/app/personal/care/" + encodeURIComponent(relationshipId);
@@ -146,6 +147,7 @@ export function PatientSelfCareJourneyView({
 
       <div className="space-y-8 pt-6">
         <PatientSelfHospitalContext relationship={journey.relationship} />
+        {healthHistory}
 
         <section aria-labelledby="patient-self-screening-heading">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-screening-heading">

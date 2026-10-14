@@ -1,5 +1,7 @@
 import "server-only";
 
+import { illnessDuration } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
+
 import { Buffer } from "node:buffer";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
@@ -127,6 +129,7 @@ const reportHospitalProgramWhere = (hospitalId: string): Prisma.PatientProgramWh
 
 const reportProgramRelationshipSelect = {
   select: {
+    healthHistory: { select: { diagnosisYear: true } },
     id: true,
     hospitalNumber: true,
     patientProfile: {
@@ -630,8 +633,8 @@ function toHospitalReportProgramRow(
       after: toBmiFact(finalAssessment?.weight ?? null, latestHeightCm),
     },
     screening: toScreeningRecord(record.screeningAssessment),
+    illnessDuration: toFact(illnessDuration(relationship.healthHistory?.diagnosisYear)),
     unavailable: {
-      illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
       afterCvdRiskScore: "SOURCE_MISSING",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",

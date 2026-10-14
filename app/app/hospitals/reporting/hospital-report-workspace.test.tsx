@@ -124,8 +124,8 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
     latestHeightCm: { state: "NOT_RECORDED" },
     bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     screening: { state: "MISSING" },
+    illnessDuration: { state: "NOT_RECORDED" },
     unavailable: {
-      illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
       afterCvdRiskScore: "SOURCE_MISSING",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",

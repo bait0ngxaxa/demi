@@ -83,7 +83,7 @@ describe("Appointment capability-scoped interaction presentation", () => {
     expect(markup).toContain("ขอยกเลิกนัด");
     expect(markup).toContain("ไม่ใช่การยืนยันว่าจะมาตามนัด");
     expect(markup).toContain("การส่งคำขอไม่ได้ยกเลิกนัดทันที");
-    expect(markup).toContain("หากต้องการเลื่อนนัด กรุณาติดต่อโรงพยาบาลโดยตรง");
+    expect(markup).toContain("หากต้องการเลื่อนนัด ส่งคำขอพร้อมวันเวลาที่สะดวก 1–3 ตัวเลือกและเหตุผล แล้วรอเจ้าหน้าที่โรงพยาบาลพิจารณา");
     expect(markup).not.toMatch(/ทำเครื่องหมายว่า|อนุมัติและยกเลิก|\/edit|โทรศัพท์|ส่ง LINE/);
     expect(markup).toContain(`value="${relationshipId}"`);
     expect(markup).toContain(`value="${appointmentId}"`);

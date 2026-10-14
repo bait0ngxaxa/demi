@@ -27,6 +27,10 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
+  assertAppointmentPolicy,
+  APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+  APPOINTMENT_READ_CAPABILITY,
+  APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY,
   APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
   APPOINTMENT_CREATE_CAPABILITY,
   APPOINTMENT_MANAGE_CAPABILITY,
@@ -39,6 +43,8 @@ import {
   type AppointmentLineNotificationRollout,
 } from "../domain/appointment-line-notifications";
 import {
+  appointmentPatientRescheduleRequestSchema,
+  appointmentRescheduleRejectionSchema,
   appointmentCreateRequestSchema,
   appointmentAcknowledgementRequestSchema,
   appointmentCancellationRequestSchema,
@@ -134,6 +140,8 @@ type AppointmentRetryRecord = Prisma.PatientAppointmentGetPayload<{
 }>;
 
 const appointmentCurrentSelect = {
+  createdByUserId: true,
+  locationType: true,
   id: true,
   patientHospitalRelationshipId: true,
   responsibleUserId: true,
@@ -330,6 +338,7 @@ async function createInTransaction(
     input.patientHospitalRelationshipId,
     APPOINTMENT_CREATE_CAPABILITY,
     transaction,
+    { locationType: input.locationType, responsibleUserId: input.responsibleUserId },
   );
   const fields = normalizeAppointmentFields(input);
   const creationRequestHash = createAppointmentRequestHash(
@@ -483,7 +492,7 @@ async function rescheduleInTransaction(
   const access = await resolveAppointmentAccessContext(
     actor,
     input.patientHospitalRelationshipId,
-    APPOINTMENT_MANAGE_CAPABILITY,
+    APPOINTMENT_READ_CAPABILITY,
     transaction,
   );
   const fields = normalizeAppointmentFields(input);
@@ -501,6 +510,13 @@ async function rescheduleInTransaction(
     throw new NotFoundError();
   }
 
+  assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+    target: { ...access.target, ...current, operation: "EDIT" } });
+  if (!access.scopes.directHospital) {
+    assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+      target: { ...access.target, ...current, locationType: fields.locationType, responsibleUserId: fields.responsibleUserId, operation: "EDIT" } });
+  }
+  if (input.rescheduleRequestId && !access.scopes.directHospital) throw new ForbiddenError();
   if (current.status !== AppointmentStatus.SCHEDULED) {
     throw new ConflictError("Only a scheduled Appointment can be rescheduled");
   }
@@ -540,6 +556,7 @@ async function rescheduleInTransaction(
     throw new ConflictError("This Appointment changed before it was rescheduled");
   }
 
+  await resolvePendingRescheduleRequests(transaction, current.id, actor.userId, current.updatedAt, now, input.rescheduleRequestId, fields.scheduledAt.getTime() !== current.scheduledAt.getTime());
   await supersedePendingCancellationRequest(transaction, current.id, actor.userId, now);
 
   const result = await transaction.patientAppointment.findFirst({
@@ -625,7 +642,7 @@ async function terminalTransitionInTransaction(
   const access = await resolveAppointmentAccessContext(
     actor,
     input.patientHospitalRelationshipId,
-    APPOINTMENT_MANAGE_CAPABILITY,
+    APPOINTMENT_READ_CAPABILITY,
     transaction,
   );
   const expectedUpdatedAt = toDate(input.expectedUpdatedAt, "Appointment version");
@@ -641,6 +658,8 @@ async function terminalTransitionInTransaction(
     throw new NotFoundError();
   }
 
+  assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+    target: { ...access.target, ...current, operation: transition.status === AppointmentStatus.CANCELLED ? "CANCEL" : transition.status === AppointmentStatus.COMPLETED ? "COMPLETE" : "NO_SHOW" } });
   if (current.status === transition.status) {
     return toMutationResult(current, access.target.hospitalId);
   }
@@ -675,6 +694,7 @@ async function terminalTransitionInTransaction(
     throw new ConflictError("This Appointment changed before the status update");
   }
 
+  await resolvePendingRescheduleRequests(transaction, current.id, actor.userId, current.updatedAt, now);
   await supersedePendingCancellationRequest(
     transaction,
     current.id,
@@ -1401,3 +1421,95 @@ export const appointmentServiceInternals = {
   runSerializable,
   terminalTransitionInTransaction,
 };
+
+// WB-DF-06: approval is the successful hospital edit, never a separate schedule mutation.
+async function resolvePendingRescheduleRequests(
+  tx: Prisma.TransactionClient, appointmentId: string, actorUserId: string,
+  sourceUpdatedAt: Date, now: Date, approvedRequestId?: string, scheduleChanged = false,
+): Promise<void> {
+  if (approvedRequestId) {
+    const request = await tx.patientAppointmentRescheduleRequest.findFirst({ where: { id: approvedRequestId, appointmentId } });
+    if (!request || request.status !== AppointmentCancellationRequestStatus.PENDING ||
+      request.sourceAppointmentUpdatedAt.getTime() !== sourceUpdatedAt.getTime() || !scheduleChanged) {
+      throw new ConflictError("Reschedule request changed or appointment time was not changed");
+    }
+    const resolved = await tx.patientAppointmentRescheduleRequest.updateMany({
+      where: { id: request.id, status: AppointmentCancellationRequestStatus.PENDING },
+      data: { status: AppointmentCancellationRequestStatus.APPROVED, resolvedByUserId: actorUserId, resolvedAt: now },
+    });
+    if (resolved.count !== 1) throw new ConflictError("Reschedule request changed");
+    await recordAuditEvent({ actorUserId, action: "appointment.reschedule_request.approved", resourceType: "PatientAppointmentRescheduleRequest", resourceId: request.id,
+      metadata: { appointmentId, sourceAppointmentUpdatedAt: sourceUpdatedAt.toISOString() } }, tx);
+  }
+  const superseded = await tx.patientAppointmentRescheduleRequest.updateMany({
+    where: { appointmentId, status: AppointmentCancellationRequestStatus.PENDING },
+    data: { status: AppointmentCancellationRequestStatus.SUPERSEDED, resolvedByUserId: actorUserId, resolvedAt: now },
+  });
+  if (superseded.count) await recordAuditEvent({ actorUserId, action: "appointment.reschedule_request.superseded", resourceType: "PatientAppointment", resourceId: appointmentId,
+    metadata: { appointmentId, count: superseded.count } }, tx);
+}
+
+export type AppointmentRescheduleSubmissionResult = { requestId: string; appointmentId: string; patientHospitalRelationshipId: string };
+
+export async function submitAppointmentRescheduleRequest(
+  actor: ActorContext | null | undefined, input: unknown, dependencies: AppointmentServiceDependencies = {},
+): Promise<AppointmentRescheduleSubmissionResult> {
+  const parsed = appointmentPatientRescheduleRequestSchema.safeParse(input);
+  if (!actor) throw new ForbiddenError();
+  if (!parsed.success) throw new ValidationError("Reschedule request data is invalid");
+  const data = parsed.data;
+  try {
+    return await runSerializable(getDatabase(dependencies), async (tx) => {
+      const access = await resolveAppointmentAccessContext(actor, data.patientHospitalRelationshipId, APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY, tx);
+      const source = access.scopes.patientSelf ? AppointmentInteractionSource.PATIENT_SELF : AppointmentInteractionSource.OSM_PROXY;
+      const appointment = await tx.patientAppointment.findFirst({ where: { id: data.appointmentId, patientHospitalRelationshipId: data.patientHospitalRelationshipId }, select: { id: true, updatedAt: true, status: true } });
+      if (!appointment) throw new NotFoundError();
+      const dates = data.preferredDatetimes.map((value) => new Date(value));
+      const existing = await tx.patientAppointmentRescheduleRequest.findUnique({ where: { submissionNonce: data.submissionNonce } });
+      if (existing) {
+        if (existing.appointmentId !== appointment.id || existing.submittedByUserId !== actor.userId || existing.source !== source ||
+          existing.sourceAppointmentUpdatedAt.getTime() !== new Date(data.expectedUpdatedAt).getTime() || existing.reason !== data.reason ||
+          JSON.stringify(existing.preferredDatetimes.map((value) => value.toISOString())) !== JSON.stringify(dates.map((value) => value.toISOString()))) {
+          throw new ConflictError("Reschedule submission token has already been used");
+        }
+        return { requestId: existing.id, appointmentId: appointment.id, patientHospitalRelationshipId: data.patientHospitalRelationshipId };
+      }
+      const now = getNow(dependencies);
+      if (dates.some((date) => date.getTime() <= now.getTime() || date.getTime() > now.getTime() + 366 * 24 * 60 * 60 * 1000)) throw new ValidationError("Preferred dates must be future dates within 366 days");
+      if (appointment.status !== AppointmentStatus.SCHEDULED || appointment.updatedAt.getTime() !== new Date(data.expectedUpdatedAt).getTime()) throw new ConflictError("Appointment changed");
+      const pending = await tx.patientAppointmentRescheduleRequest.findFirst({ where: { appointmentId: appointment.id, status: AppointmentCancellationRequestStatus.PENDING } });
+      if (pending) throw new ConflictError("An open reschedule request already exists");
+      const request = await tx.patientAppointmentRescheduleRequest.create({ data: {
+        appointmentId: appointment.id, sourceAppointmentUpdatedAt: appointment.updatedAt, submittedByUserId: actor.userId,
+        source, submissionNonce: data.submissionNonce, preferredDatetimes: dates, reason: data.reason, submittedAt: now,
+      } });
+      await recordAuditEvent({ actorUserId: actor.userId, action: "appointment.reschedule_requested", resourceType: "PatientAppointmentRescheduleRequest", resourceId: request.id,
+        metadata: { appointmentId: appointment.id, hospitalId: access.target.hospitalId, source } }, tx);
+      return { requestId: request.id, appointmentId: appointment.id, patientHospitalRelationshipId: data.patientHospitalRelationshipId };
+    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
+  } catch (error: unknown) { throw normalizeDatabaseError(error); }
+}
+
+export async function rejectAppointmentRescheduleRequest(
+  actor: ActorContext | null | undefined, input: unknown, dependencies: AppointmentServiceDependencies = {},
+): Promise<AppointmentRescheduleSubmissionResult> {
+  const parsed = appointmentRescheduleRejectionSchema.safeParse(input);
+  if (!actor) throw new ForbiddenError();
+  if (!parsed.success) throw new ValidationError("Rejection data is invalid");
+  const data = parsed.data;
+  try {
+    return await runSerializable(getDatabase(dependencies), async (tx) => {
+      await resolveAppointmentAccessContext(actor, data.patientHospitalRelationshipId, APPOINTMENT_MANAGE_CAPABILITY, tx);
+      const appointment = await tx.patientAppointment.findFirst({ where: { id: data.appointmentId, patientHospitalRelationshipId: data.patientHospitalRelationshipId }, select: { updatedAt: true, status: true } });
+      const request = await tx.patientAppointmentRescheduleRequest.findFirst({ where: { id: data.requestId, appointmentId: data.appointmentId } });
+      if (!appointment || !request) throw new NotFoundError();
+      if (request.status !== AppointmentCancellationRequestStatus.PENDING || appointment.status !== AppointmentStatus.SCHEDULED || request.sourceAppointmentUpdatedAt.getTime() !== appointment.updatedAt.getTime()) throw new ConflictError("Reschedule request changed");
+      const result = await tx.patientAppointmentRescheduleRequest.updateMany({ where: { id: request.id, status: AppointmentCancellationRequestStatus.PENDING },
+        data: { status: AppointmentCancellationRequestStatus.REJECTED, rejectionReason: data.rejectionReason, resolvedByUserId: actor.userId, resolvedAt: getNow(dependencies) } });
+      if (result.count !== 1) throw new ConflictError("Reschedule request changed");
+      await recordAuditEvent({ actorUserId: actor.userId, action: "appointment.reschedule_request.rejected", resourceType: "PatientAppointmentRescheduleRequest", resourceId: request.id,
+        metadata: { appointmentId: data.appointmentId } }, tx);
+      return { requestId: request.id, appointmentId: data.appointmentId, patientHospitalRelationshipId: data.patientHospitalRelationshipId };
+    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
+  } catch (error: unknown) { throw normalizeDatabaseError(error); }
+}

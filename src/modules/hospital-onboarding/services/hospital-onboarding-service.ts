@@ -562,13 +562,8 @@ export async function approveHospitalOnboarding(
         throw new ConflictError("Applicant account is not ready for activation");
       }
 
-      const existingMembership = await transaction.hospitalMembership.findUnique({
-        where: {
-          userId_hospitalId: {
-            userId: application.applicantUser.id,
-            hospitalId: application.hospital.id,
-          },
-        },
+      const existingMembership = await transaction.hospitalMembership.findFirst({ where: { userId: application.applicantUser.id,
+            hospitalId: application.hospital.id, status: { not: "ENDED" } },
         select: { id: true },
       });
 

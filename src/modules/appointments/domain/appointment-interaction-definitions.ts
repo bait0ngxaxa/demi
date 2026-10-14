@@ -22,7 +22,7 @@ export const APPOINTMENT_INTERACTION_SOURCE_LABELS: Record<
 };
 
 export const APPOINTMENT_RESCHEDULE_GUIDANCE =
-  "หากต้องการเลื่อนนัด กรุณาติดต่อโรงพยาบาลโดยตรง";
+  "หากต้องการเลื่อนนัด ส่งคำขอพร้อมวันเวลาที่สะดวก 1–3 ตัวเลือกและเหตุผล แล้วรอเจ้าหน้าที่โรงพยาบาลพิจารณา";
 
 export const APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE =
   "การรับทราบบันทึกว่าได้รับข้อมูลนัดแล้ว ไม่ใช่การยืนยันว่าจะมาตามนัดหรือเข้ารับบริการแล้ว";

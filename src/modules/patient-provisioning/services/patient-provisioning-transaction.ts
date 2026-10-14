@@ -146,13 +146,8 @@ export async function assertPatientProvisioningActorInDatabase(
     : null;
 
   const osmRelationship = hasOsmRole
-    ? await database.osmHospitalRelationship.findUnique({
-        where: {
-          userId_hospitalId: {
-            userId: actorUserId,
-            hospitalId: targetHospitalId,
-          },
-        },
+    ? await database.osmHospitalRelationship.findFirst({ where: { userId: actorUserId,
+            hospitalId: targetHospitalId, status: { not: "ENDED" } },
         select: { status: true },
       })
     : null;

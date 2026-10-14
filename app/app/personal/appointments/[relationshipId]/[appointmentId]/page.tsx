@@ -1,3 +1,6 @@
+import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
+import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { RescheduleRequestSection } from "../../../../patients/[relationshipId]/appointments/reschedule-request-section";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
@@ -24,8 +27,11 @@ export default async function PatientSelfAppointmentDetailPage({
     appointmentId,
   );
 
+  const rescheduleHistory = await getAppointmentRescheduleHistory(await getProtectedApplicationActor(), relationshipId, appointmentId);
+
   return (
     <PatientSelfAppointmentDetailView
+      rescheduleRequests={<RescheduleRequestSection history={rescheduleHistory} relationshipId={relationshipId} appointmentId={appointmentId} />}
       cancellationRequestNonce={randomUUID()}
       detail={detail}
     />
