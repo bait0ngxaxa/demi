@@ -2,10 +2,12 @@
 
 import { HospitalContentCategory, HospitalContentStatus } from "@prisma/client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -35,6 +37,10 @@ type ContentDraft = {
   category: HospitalContentCategory;
   sourceText: string;
 };
+
+type ContentDetailConfirmationIntent =
+  | { kind: "LEAVE"; href: string }
+  | { kind: "LIFECYCLE"; command: "PUBLISH" | "WITHDRAW" | "ARCHIVE"; description: string };
 
 function toDraft(content: HospitalContentDetailProjection): ContentDraft {
   return {
@@ -79,12 +85,15 @@ export function HospitalContentDetailWorkspace({
 }: {
   content: HospitalContentDetailProjection;
 }): React.JSX.Element {
+  const router = useRouter();
   const [current, setCurrent] = useState<HospitalContentDetailProjection | null>(initialContent);
   const [draft, setDraft] = useState<ContentDraft>(() => toDraft(initialContent));
   const [mutationState, setMutationState] = useState<HospitalContentMutationActionState>({ status: "IDLE" });
   const [readState, setReadState] = useState<HospitalContentReadActionState | null>(null);
   const [reviewCurrent, setReviewCurrent] = useState<HospitalContentDetailProjection | null>(null);
   const [localPreview, setLocalPreview] = useState(false);
+  const [confirmationIntent, setConfirmationIntent] = useState<ContentDetailConfirmationIntent | null>(null);
+  const [navigationBlockedWhilePending, setNavigationBlockedWhilePending] = useState(false);
   const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const [accessRevoked, setAccessRevoked] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -121,15 +130,23 @@ export function HospitalContentDetailWorkspace({
   }, [dirty, reconciliationRequired, isPending]);
 
   function leavePage(event: MouseEvent<HTMLAnchorElement>): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (!dirty && !reconciliationRequired && !isPending) return;
-    if (!window.confirm("มีข้อมูลที่ยังไม่ได้บันทึกหรือตรวจสอบ ต้องการออกจากหน้านี้และทิ้งข้อมูลในหน้านี้หรือไม่")) {
-      event.preventDefault();
+
+    event.preventDefault();
+    if (isPending) {
+      setNavigationBlockedWhilePending(true);
+      return;
     }
+
+    const anchor = event.currentTarget;
+    setConfirmationIntent({ kind: "LEAVE", href: `${anchor.pathname}${anchor.search}${anchor.hash}` });
   }
 
   function handleEdit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (!current || current.status !== HospitalContentStatus.DRAFT || !dirty || isPending || reconciliationRequired || accessRevoked) return;
+    setNavigationBlockedWhilePending(false);
     const savedDraft = draft;
     const expectedUpdatedAt = current.expectedUpdatedAt;
     const generation = ++requestGeneration.current;
@@ -168,7 +185,7 @@ export function HospitalContentDetailWorkspace({
     });
   }
 
-  function runLifecycle(
+  function requestLifecycleConfirmation(
     command: "PUBLISH" | "WITHDRAW" | "ARCHIVE",
     confirmMessage: string,
   ): void {
@@ -179,7 +196,12 @@ export function HospitalContentDetailWorkspace({
     const confirmedMessage = command === "ARCHIVE" && dirty
       ? `${confirmMessage} ข้อมูลที่แก้ไขแต่ยังไม่บันทึกจะไม่ถูกบันทึกและจะถูกทิ้ง`
       : confirmMessage;
-    if (!window.confirm(confirmedMessage)) return;
+    setConfirmationIntent({ kind: "LIFECYCLE", command, description: confirmedMessage });
+  }
+
+  function executeLifecycle(command: "PUBLISH" | "WITHDRAW" | "ARCHIVE"): void {
+    if (!current || isPending || reconciliationRequired || accessRevoked) return;
+    setNavigationBlockedWhilePending(false);
     const contentId = current.id;
     const expectedUpdatedAt = current.expectedUpdatedAt;
     const generation = ++requestGeneration.current;
@@ -200,11 +222,15 @@ export function HospitalContentDetailWorkspace({
           setDraft(toDraft(result.result.content));
           setReconciliationRequired(false);
           setReviewCurrent(null);
+          setConfirmationIntent(null);
         } else if (result.status === "UNCONFIRMED" || (result.status === "ERROR" && result.code === "CONFLICT")) {
           setReconciliationRequired(true);
           setReviewCurrent(null);
         } else if (result.status === "ERROR" && (result.code === "FORBIDDEN" || result.code === "NOT_FOUND")) {
           setAccessRevoked(true);
+          setConfirmationIntent(null);
+        } else {
+          setConfirmationIntent(null);
         }
       } catch {
         if (generation !== requestGeneration.current) return;
@@ -215,8 +241,26 @@ export function HospitalContentDetailWorkspace({
     });
   }
 
+  function confirmPendingIntent(): void {
+    const intent = confirmationIntent;
+    if (!intent || isPending) return;
+
+    if (intent.kind === "LEAVE") {
+      setConfirmationIntent(null);
+      router.push(intent.href);
+      return;
+    }
+
+    executeLifecycle(intent.command);
+  }
+
+  function cancelPendingIntent(): void {
+    setConfirmationIntent(null);
+  }
+
   function loadCurrent(): void {
     if (!current || isPending) return;
+    setNavigationBlockedWhilePending(false);
     const contentId = current.id;
     const generation = ++requestGeneration.current;
     setReadState(null);
@@ -257,6 +301,48 @@ export function HospitalContentDetailWorkspace({
     setReconciliationRequired(false);
   }
 
+  const confirmationTitle = confirmationIntent?.kind === "LEAVE"
+    ? "ออกจากหน้านี้หรือไม่"
+    : confirmationIntent?.command === "PUBLISH"
+      ? "เผยแพร่เนื้อหานี้หรือไม่"
+      : confirmationIntent?.command === "WITHDRAW"
+        ? "ถอนการเผยแพร่หรือไม่"
+        : "เก็บเนื้อหานี้เข้าคลังถาวรหรือไม่";
+  const confirmationDescription = confirmationIntent?.kind === "LEAVE"
+    ? reconciliationRequired
+      ? "มีข้อมูลที่ยังไม่ได้บันทึกหรือผลการดำเนินการที่ต้องตรวจสอบ ระบบจะไม่ส่งคำขอซ้ำให้อัตโนมัติ"
+      : "มีข้อมูลที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้และทิ้งข้อมูลในหน้านี้หรือไม่"
+    : confirmationIntent?.description;
+  const confirmationLabel = confirmationIntent?.kind === "LEAVE"
+    ? "ออกจากหน้านี้"
+    : confirmationIntent?.command === "PUBLISH"
+      ? "เผยแพร่"
+      : confirmationIntent?.command === "WITHDRAW"
+        ? "ถอนการเผยแพร่"
+        : "เก็บถาวร";
+  const confirmationVariant = confirmationIntent?.kind === "LEAVE" || confirmationIntent?.command === "ARCHIVE"
+    ? "destructive"
+    : "default";
+  const confirmationDetails = confirmationIntent?.kind === "LIFECYCLE" && reconciliationRequired ? (
+    <Alert role="alert" variant="warning">
+      {messageForState(mutationState) ?? "ยังยืนยันผลไม่ได้ กรุณาโหลดข้อมูลปัจจุบันก่อนดำเนินการต่อ"}
+    </Alert>
+  ) : null;
+  const confirmationDialog = (
+    <ConfirmDialog
+      confirmDisabled={confirmationIntent?.kind === "LIFECYCLE" && (reconciliationRequired || accessRevoked)}
+      confirmLabel={confirmationLabel}
+      confirmVariant={confirmationVariant}
+      description={confirmationDescription}
+      details={confirmationDetails}
+      onCancel={cancelPendingIntent}
+      onConfirm={confirmPendingIntent}
+      open={confirmationIntent !== null}
+      pending={isPending}
+      title={confirmationTitle}
+    />
+  );
+
   if (accessRevoked || !current) {
     return (
       <div className="max-w-4xl">
@@ -271,6 +357,10 @@ export function HospitalContentDetailWorkspace({
           <p className="mt-1">สิทธิ์หรือรายการอาจเปลี่ยนแปลงแล้ว กรุณาเปิดหน้ารายการเพื่อตรวจสอบอีกครั้ง</p>
         </Alert>
         <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href="/app/hospitals/knowledge" onClick={leavePage}>กลับไปรายการ</Link>
+        {navigationBlockedWhilePending && isPending ? (
+          <Alert className="mt-4" variant="warning">กรุณารอให้ระบบบันทึกหรือตรวจสอบข้อมูลเสร็จก่อนออกจากหน้านี้</Alert>
+        ) : null}
+        {confirmationDialog}
       </div>
     );
   }
@@ -302,6 +392,12 @@ export function HospitalContentDetailWorkspace({
         description="ดูแลเนื้อหาปัจจุบันของโรงพยาบาล"
         title="ข่าวสารและความรู้"
       />
+
+      {navigationBlockedWhilePending && isPending ? (
+        <Alert className="mt-4" variant="warning">
+          กรุณารอให้ระบบบันทึกหรือตรวจสอบข้อมูลเสร็จก่อนออกจากหน้านี้
+        </Alert>
+      ) : null}
 
       <div aria-live="polite" className="sr-only">
         {isPending ? "กำลังบันทึกหรือโหลดข้อมูลปัจจุบัน" : successMessage ?? messageForState(mutationState) ?? ""}
@@ -500,17 +596,39 @@ export function HospitalContentDetailWorkspace({
         {!reconciliationRequired ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
             {current.status === HospitalContentStatus.DRAFT ? (
-              <Button disabled={isPending || dirty} onClick={() => runLifecycle("PUBLISH", "เผยแพร่เนื้อหาฉบับปัจจุบันหรือไม่ ต้องบันทึกและตรวจสอบแบบร่างก่อน") } type="button" variant="primary">เผยแพร่</Button>
+              <Button
+                disabled={isPending || dirty}
+                onClick={() => requestLifecycleConfirmation("PUBLISH", "เผยแพร่เนื้อหาฉบับปัจจุบันหรือไม่ ต้องบันทึกและตรวจสอบแบบร่างก่อน")}
+                type="button"
+                variant="primary"
+              >
+                เผยแพร่
+              </Button>
             ) : null}
             {current.status === HospitalContentStatus.PUBLISHED ? (
-              <Button disabled={isPending} onClick={() => runLifecycle("WITHDRAW", "ถอนการเผยแพร่และเปลี่ยนกลับเป็นฉบับร่างหรือไม่") } type="button" variant="secondary">ถอนการเผยแพร่เพื่อแก้ไข</Button>
+              <Button
+                disabled={isPending}
+                onClick={() => requestLifecycleConfirmation("WITHDRAW", "ถอนการเผยแพร่และเปลี่ยนกลับเป็นฉบับร่างหรือไม่")}
+                type="button"
+                variant="secondary"
+              >
+                ถอนการเผยแพร่เพื่อแก้ไข
+              </Button>
             ) : null}
             {current.status !== HospitalContentStatus.ARCHIVED ? (
-              <Button disabled={isPending} onClick={() => runLifecycle("ARCHIVE", "เก็บเนื้อหานี้เข้าคลังถาวรหรือไม่ หลังจากนั้นจะไม่สามารถแก้ไขหรือคืนสถานะได้") } type="button" variant="danger">เก็บถาวร</Button>
+              <Button
+                disabled={isPending}
+                onClick={() => requestLifecycleConfirmation("ARCHIVE", "เก็บเนื้อหานี้เข้าคลังถาวรหรือไม่ หลังจากนั้นจะไม่สามารถแก้ไขหรือคืนสถานะได้")}
+                type="button"
+                variant="danger"
+              >
+                เก็บถาวร
+              </Button>
             ) : null}
           </div>
         ) : null}
       </div>
+      {confirmationDialog}
     </div>
   );
 }

@@ -37,6 +37,11 @@ const hospital: HospitalContentOwnerHospital = {
   hospitalCode: "H-001",
   name: "โรงพยาบาลทดสอบ",
 };
+const secondHospital: HospitalContentOwnerHospital = {
+  id: "44444444-4444-4444-8444-444444444444",
+  hospitalCode: "H-002",
+  name: "โรงพยาบาลตัวอย่าง",
+};
 const contentId = "22222222-2222-4222-8222-222222222222";
 const expectedUpdatedAt = "2026-10-05T02:03:04.005Z";
 const submissionNonce = "33333333-3333-4333-8333-333333333333";
@@ -73,6 +78,9 @@ let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 let originalActEnvironment: boolean | undefined;
 let originalRandomUUID: PropertyDescriptor | undefined;
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+let originalScrollTo: PropertyDescriptor | undefined;
 
 function field<T extends HTMLElement>(id: string): T {
   const found = container?.querySelector<T>(`#${id}`);
@@ -106,10 +114,10 @@ async function mount(node: React.ReactNode): Promise<void> {
   });
 }
 
-async function mountCreateForm(): Promise<void> {
+async function mountCreateForm(hospitals: readonly HospitalContentOwnerHospital[] = [hospital]): Promise<void> {
   window.sessionStorage.clear();
   await mount(createElement(HospitalContentCreateForm, {
-    hospitals: [hospital],
+    hospitals,
     selectedHospitalId: hospital.id,
     recoveryScope: "event-lifecycle-regression",
   }));
@@ -122,11 +130,46 @@ function dispatchSubmit(): void {
   form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 
+function button(label: string, scope: ParentNode = container as HTMLDivElement): HTMLButtonElement {
+  const found = Array.from(scope.querySelectorAll<HTMLButtonElement>("button"))
+    .find((item) => item.textContent?.includes(label));
+  if (!found) throw new Error(`Missing button ${label}`);
+  return found;
+}
+
+function link(label: string): HTMLAnchorElement {
+  const found = Array.from(container?.querySelectorAll<HTMLAnchorElement>("a") ?? [])
+    .find((item) => item.textContent?.includes(label));
+  if (!found) throw new Error(`Missing link ${label}`);
+  return found;
+}
+
+function clickLink(anchor: HTMLAnchorElement): MouseEvent {
+  const event = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+  act(() => anchor.dispatchEvent(event));
+  return event;
+}
+
 beforeAll(() => {
   const globalWithActFlag = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
   originalActEnvironment = globalWithActFlag.IS_REACT_ACT_ENVIRONMENT;
   globalWithActFlag.IS_REACT_ACT_ENVIRONMENT = true;
   originalRandomUUID = Object.getOwnPropertyDescriptor(window.crypto, "randomUUID");
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.setAttribute("open", ""); },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value(): void {} });
 });
 
 afterAll(() => {
@@ -136,6 +179,12 @@ afterAll(() => {
   } else {
     globalWithActFlag.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
   }
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+  if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
 
 beforeEach(() => {
@@ -215,6 +264,53 @@ describe("Hospital Knowledge create form event lifecycle regression", () => {
       sourceText: "อ้างอิงสำหรับสร้าง",
     });
   });
+
+  it("keeps the create draft when hospital switching is cancelled and follows the selected hospital after approval", async () => {
+    await mountCreateForm([hospital, secondHospital]);
+    setTextValue(field<HTMLInputElement>(createFieldIds.title), "หัวข้อฉบับร่าง");
+
+    const selector = field<HTMLSelectElement>("hospital-content-create-hospital");
+    selector.value = secondHospital.id;
+    act(() => selector.dispatchEvent(new Event("change", { bubbles: true })));
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(container?.querySelector("dialog")?.textContent).toContain(secondHospital.name);
+
+    button("ยกเลิก", container?.querySelector("dialog") as HTMLDialogElement).click();
+    expect(field<HTMLInputElement>(createFieldIds.title).value).toBe("หัวข้อฉบับร่าง");
+    expect(field<HTMLSelectElement>("hospital-content-create-hospital").value).toBe(hospital.id);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    const retrySelector = field<HTMLSelectElement>("hospital-content-create-hospital");
+    retrySelector.value = secondHospital.id;
+    act(() => retrySelector.dispatchEvent(new Event("change", { bubbles: true })));
+    const dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing hospital switch confirmation");
+    await act(async () => {
+      button("เปลี่ยนโรงพยาบาล", dialog).click();
+    });
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(
+      `/app/hospitals/knowledge/new?hospitalId=${secondHospital.id}`,
+    );
+  });
+
+  it("preserves the intended create-page destination until explicit approval", async () => {
+    await mountCreateForm();
+    setTextValue(field<HTMLInputElement>(createFieldIds.title), "หัวข้อฉบับร่าง");
+
+    const event = clickLink(link("กลับไปรายการ"));
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(field<HTMLInputElement>(createFieldIds.title).value).toBe("หัวข้อฉบับร่าง");
+
+    const dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing unsaved draft confirmation");
+    await act(async () => {
+      button("ออกจากหน้านี้", dialog).click();
+    });
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(
+      `/app/hospitals/knowledge?hospitalId=${hospital.id}`,
+    );
+  });
 });
 
 describe("Hospital Knowledge edit form event lifecycle regression", () => {
@@ -270,5 +366,82 @@ describe("Hospital Knowledge edit form event lifecycle regression", () => {
       category,
       sourceText: updated.sourceText,
     });
+  });
+
+  it("keeps the edit draft when leaving is cancelled and follows the original destination after approval", async () => {
+    await mount(createElement(HospitalContentDetailWorkspace, { content: content() }));
+    setTextValue(field<HTMLInputElement>(createFieldIds.title), "หัวข้อแก้ไขที่ยังไม่บันทึก");
+
+    const event = clickLink(link("กลับไปรายการ"));
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.push).not.toHaveBeenCalled();
+    const dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing edit draft confirmation");
+
+    button("ยกเลิก", dialog).click();
+    expect(field<HTMLInputElement>(createFieldIds.title).value).toBe("หัวข้อแก้ไขที่ยังไม่บันทึก");
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    clickLink(link("กลับไปรายการ"));
+    const confirmDialog = container?.querySelector("dialog");
+    if (!confirmDialog) throw new Error("Missing edit draft confirmation");
+    await act(async () => {
+      button("ออกจากหน้านี้", confirmDialog).click();
+    });
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(`/app/hospitals/knowledge?hospitalId=${hospital.id}`);
+  });
+
+  it("does not run a lifecycle mutation until confirmed and keeps an uncertain result open without retry", async () => {
+    await mount(createElement(HospitalContentDetailWorkspace, { content: content() }));
+    act(() => button("เก็บถาวร").click());
+    expect(mocks.archive).not.toHaveBeenCalled();
+    let dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing archive confirmation");
+    button("ยกเลิก", dialog).click();
+    expect(mocks.archive).not.toHaveBeenCalled();
+
+    mocks.archive.mockResolvedValue({ status: "UNCONFIRMED" });
+    act(() => button("เก็บถาวร").click());
+    dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing archive confirmation");
+    await act(async () => {
+      button("เก็บถาวร", dialog).click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.archive).toHaveBeenCalledOnce();
+    expect(container?.querySelector("dialog")).not.toBeNull();
+    expect(container?.textContent).toContain("ยังยืนยันผลไม่ได้");
+    const confirmButton = button("เก็บถาวร", container?.querySelector("dialog") as HTMLDialogElement);
+    expect(confirmButton.disabled).toBe(true);
+  });
+
+  it("blocks navigation while a confirmed lifecycle mutation is pending", async () => {
+    let resolveArchive: ((result: unknown) => void) | null = null;
+    mocks.archive.mockReturnValue(new Promise((resolve) => { resolveArchive = resolve; }));
+    await mount(createElement(HospitalContentDetailWorkspace, {
+      content: content({ status: HospitalContentStatus.PUBLISHED }),
+    }));
+
+    act(() => button("เก็บถาวร").click());
+    const dialog = container?.querySelector("dialog");
+    if (!dialog) throw new Error("Missing archive confirmation");
+    act(() => button("เก็บถาวร", dialog).click());
+    expect(mocks.archive).toHaveBeenCalledOnce();
+
+    const event = clickLink(link("กลับไปรายการ"));
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(container?.textContent).toContain("กรุณารอให้ระบบบันทึกหรือตรวจสอบข้อมูลเสร็จก่อนออกจากหน้านี้");
+
+    await act(async () => {
+      resolveArchive?.({
+        status: "SUCCESS",
+        result: { outcome: "ARCHIVED", content: content({ status: HospitalContentStatus.ARCHIVED }) },
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(container?.querySelector("dialog")).toBeNull();
   });
 });

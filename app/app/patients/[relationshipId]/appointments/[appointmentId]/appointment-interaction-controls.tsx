@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
@@ -253,7 +254,18 @@ export function AppointmentInteractionControls({
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <form action={approvalAction}>
+              <ConfirmableActionForm
+                action={approvalAction}
+                confirmation={{
+                  title: "อนุมัติคำขอยกเลิกนัดหรือไม่",
+                  description: "เมื่ออนุมัติแล้ว ระบบจะยกเลิกนัดหมายนี้ทันที",
+                  confirmLabel: "อนุมัติและยกเลิกนัด",
+                  confirmVariant: "destructive",
+                }}
+                outcome={approvalState.status === "SUCCESS" ? "success" : approvalState.status === "ERROR" ? "error" : "idle"}
+                pending={pending}
+                resultKey={approvalState}
+              >
                 <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
                 <input name="appointmentId" type="hidden" value={appointmentId} />
                 <input name="requestId" type="hidden" value={pendingRequest.requestId} />
@@ -261,16 +273,11 @@ export function AppointmentInteractionControls({
                   className="w-full sm:w-auto"
                   disabled={pending}
                   loading={approvalPending}
-                  onClick={(event) => {
-                    if (!window.confirm("อนุมัติคำขอนี้และยกเลิกนัดหมายหรือไม่")) {
-                      event.preventDefault();
-                    }
-                  }}
                   type="submit"
                 >
                   {approvalPending ? "กำลังยกเลิกนัด..." : "อนุมัติและยกเลิกนัด"}
                 </Button>
-              </form>
+              </ConfirmableActionForm>
               <form action={rejectionAction}>
                 <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
                 <input name="appointmentId" type="hidden" value={appointmentId} />

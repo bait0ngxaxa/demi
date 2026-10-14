@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { APPOINTMENT_STATUS_LABELS } from "@/modules/appointments/domain/appointment-definitions";
 import {
   cancelAppointmentAction,
@@ -79,7 +80,17 @@ export function AppointmentMutationControls({
   return (
     <div>
       {status === "SCHEDULED" ? <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        {canComplete ? <form action={completeAction}>
+        {canComplete ? <ConfirmableActionForm
+          action={completeAction}
+          confirmation={{
+            title: "ทำเครื่องหมายนัดหมายว่าเสร็จสิ้นหรือไม่",
+            description: "ยืนยันการบันทึกผลนัดหมายนี้ว่าเสร็จสิ้น",
+            confirmLabel: "ยืนยันผลนัดหมาย",
+          }}
+          outcome={completeState.status === "SUCCESS" ? "success" : completeState.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={completeState}
+        >
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -87,16 +98,11 @@ export function AppointmentMutationControls({
             className="w-full sm:w-auto"
             disabled={pending}
             loading={completePending}
-            onClick={(event) => {
-              if (!window.confirm("ยืนยันว่าต้องการทำเครื่องหมายนัดหมายนี้ว่าเสร็จสิ้นหรือไม่")) {
-                event.preventDefault();
-              }
-            }}
             type="submit"
           >
             {completePending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าเสร็จสิ้น"}
           </Button>
-        </form> : null}
+        </ConfirmableActionForm> : null}
 
         {canComplete ? <form action={noShowAction}>
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
@@ -107,7 +113,18 @@ export function AppointmentMutationControls({
           </Button>
         </form> : null}
 
-        <form action={cancelAction}>
+        <ConfirmableActionForm
+          action={cancelAction}
+          confirmation={{
+            title: "ยกเลิกนัดหมายนี้หรือไม่",
+            description: "โปรดยืนยันการยกเลิกนัดหมายที่เลือก",
+            confirmLabel: "ยกเลิกนัดหมาย",
+            confirmVariant: "destructive",
+          }}
+          outcome={cancelState.status === "SUCCESS" ? "success" : cancelState.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={cancelState}
+        >
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -115,17 +132,12 @@ export function AppointmentMutationControls({
             className="w-full sm:w-auto"
             disabled={pending}
             loading={cancelPending}
-            onClick={(event) => {
-              if (!window.confirm("ยืนยันว่าต้องการยกเลิกนัดหมายนี้หรือไม่")) {
-                event.preventDefault();
-              }
-            }}
             type="submit"
             variant="danger"
           >
             {cancelPending ? "กำลังยกเลิก..." : "ยกเลิกนัดหมาย"}
           </Button>
-        </form>
+        </ConfirmableActionForm>
       </div> : <p className="text-sm text-text-muted">นัดหมายนี้เป็นประวัติผลนัด ไม่มีการเปลี่ยนสถานะหรือเลื่อนนัด</p>}
       {[cancelState, completeState, noShowState].map((state, index) => state.status === "SUCCESS" ? (
         <Alert className="mt-4" key={index} variant="success">บันทึกสถานะนัดหมายแล้ว: {APPOINTMENT_STATUS_LABELS[state.result.status]}</Alert>

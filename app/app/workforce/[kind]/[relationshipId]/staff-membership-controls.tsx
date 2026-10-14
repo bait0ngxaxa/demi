@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
@@ -183,7 +184,20 @@ export function StaffMembershipControls({
         ) : null}
 
         {actions.suspend ? (
-          <form action={suspendAction} className="mt-6 border-t border-border pt-5">
+          <ConfirmableActionForm
+            action={suspendAction}
+            className="mt-6 border-t border-border pt-5"
+            confirmation={{
+              title: "ระงับความสัมพันธ์บุคลากรนี้หรือไม่",
+              description: "การระงับมีผลเฉพาะความสัมพันธ์กับโรงพยาบาลนี้",
+              details: <p>ความสัมพันธ์กับโรงพยาบาลอื่นและบัญชีผู้ใช้งานจะคงเดิม</p>,
+              confirmLabel: "ระงับความสัมพันธ์",
+              confirmVariant: "destructive",
+            }}
+            outcome={suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+            pending={pending}
+            resultKey={suspendState}
+          >
             <input name="relationshipId" type="hidden" value={relationshipId} />
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -194,18 +208,13 @@ export function StaffMembershipControls({
               className="mt-3"
               disabled={pending}
               loading={suspendPending}
-              onClick={(event) => {
-                if (!window.confirm("ยืนยันการระงับความสัมพันธ์บุคลากรกับโรงพยาบาลนี้หรือไม่")) {
-                  event.preventDefault();
-                }
-              }}
               size="compact"
               type="submit"
               variant="danger"
             >
               {suspendPending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
             </Button>
-          </form>
+          </ConfirmableActionForm>
         ) : null}
 
         {actions.restore ? (

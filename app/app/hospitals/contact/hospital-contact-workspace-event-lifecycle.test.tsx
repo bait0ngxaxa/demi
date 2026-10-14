@@ -27,6 +27,11 @@ const hospital: HospitalContactOwnerHospital = {
   hospitalCode: "H-001",
   name: "โรงพยาบาลทดสอบ",
 };
+const secondHospital: HospitalContactOwnerHospital = {
+  id: "22222222-2222-4222-8222-222222222222",
+  hospitalCode: "H-002",
+  name: "โรงพยาบาลตัวอย่าง 2",
+};
 const updatedAt = "2026-10-05T02:03:04.005Z";
 
 function contact(overrides: Partial<HospitalContactEditorProjection> = {}): HospitalContactEditorProjection {
@@ -42,6 +47,9 @@ function contact(overrides: Partial<HospitalContactEditorProjection> = {}): Hosp
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 let originalActEnvironment: boolean | undefined;
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+let originalScrollTo: PropertyDescriptor | undefined;
 
 function field<T extends HTMLElement>(id: string): T {
   const found = container?.querySelector<T>(`#${id}`);
@@ -63,6 +71,23 @@ beforeAll(() => {
   const globalWithActFlag = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
   originalActEnvironment = globalWithActFlag.IS_REACT_ACT_ENVIRONMENT;
   globalWithActFlag.IS_REACT_ACT_ENVIRONMENT = true;
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value(): void {} });
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.setAttribute("open", "");
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    },
+  });
 });
 
 afterAll(() => {
@@ -71,6 +96,21 @@ afterAll(() => {
     Reflect.deleteProperty(globalWithActFlag, "IS_REACT_ACT_ENVIRONMENT");
   } else {
     globalWithActFlag.IS_REACT_ACT_ENVIRONMENT = originalActEnvironment;
+  }
+  if (originalShowModal) {
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+  } else {
+    Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  }
+  if (originalClose) {
+    Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+  } else {
+    Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+  }
+  if (originalScrollTo) {
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+  } else {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
   }
 });
 
@@ -86,7 +126,7 @@ beforeEach(() => {
   root = createRoot(container);
   act(() => {
     root?.render(createElement(HospitalContactWorkspace, {
-      hospitals: [hospital],
+      hospitals: [hospital, secondHospital],
       selectedHospitalId: hospital.id,
       contact: contact(),
     }));
@@ -147,5 +187,38 @@ describe("Hospital Contact event lifecycle regression", () => {
       addressText: "ที่อยู่สำหรับบันทึก",
       phoneNumber: "02-555-0188",
     });
+  });
+
+  it("keeps an unsaved contact draft on cancel and follows the chosen hospital after approval", () => {
+    setTextValue(field<HTMLTextAreaElement>("hospital-contact-address"), "ที่อยู่ที่ยังไม่บันทึก");
+    const selector = field<HTMLSelectElement>("hospital-contact-hospital");
+    selector.value = secondHospital.id;
+    act(() => selector.dispatchEvent(new Event("change", { bubbles: true })));
+
+    const dialog = container?.querySelector("dialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("โรงพยาบาลตัวอย่าง 2");
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    const cancelButton = Array.from(dialog?.querySelectorAll("button") ?? [])
+      .find((button) => button.textContent?.includes("ยกเลิก"));
+    if (!cancelButton) throw new Error("Missing cancel button");
+    act(() => cancelButton.click());
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(field<HTMLTextAreaElement>("hospital-contact-address").value).toBe("ที่อยู่ที่ยังไม่บันทึก");
+    expect(selector.value).toBe(hospital.id);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    selector.value = secondHospital.id;
+    act(() => selector.dispatchEvent(new Event("change", { bubbles: true })));
+    const confirmButton = Array.from(container?.querySelectorAll<HTMLButtonElement>("dialog button") ?? [])
+      .find((button) => button.textContent?.includes("เปลี่ยนโรงพยาบาล"));
+    if (!confirmButton) throw new Error("Missing confirmation button");
+    act(() => confirmButton.click());
+
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(
+      `/app/hospitals/contact?hospitalId=${secondHospital.id}`,
+    );
+    expect(mocks.push.mock.calls.join(" ")).not.toContain("ที่อยู่ที่ยังไม่บันทึก");
   });
 });

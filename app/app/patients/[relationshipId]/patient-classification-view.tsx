@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -75,21 +76,6 @@ export function PatientClassificationView({
     }
   }, [router, state]);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    const currentClassification = context.current?.classification ?? null;
-
-    if (
-      currentClassification !== null &&
-      selectedClassification !== "" &&
-      selectedClassification !== currentClassification &&
-      !window.confirm(
-        `ยืนยันเปลี่ยนสถานะผู้ป่วยจาก “${getPatientClassificationLabel(currentClassification)}” เป็น “${getPatientClassificationLabel(selectedClassification)}” หรือไม่`,
-      )
-    ) {
-      event.preventDefault();
-    }
-  }
-
   return (
     <section className="mt-6">
       <Panel>
@@ -110,7 +96,23 @@ export function PatientClassificationView({
         </p>
 
         {context.canManage ? (
-          <form action={action} className="mt-5 border-t border-border pt-5" onSubmit={handleSubmit}>
+          <ConfirmableActionForm
+            action={action}
+            className="mt-5 border-t border-border pt-5"
+            confirmation={{
+              title: "ยืนยันการเปลี่ยนสถานะผู้ป่วย",
+              description: context.current && selectedClassification
+                ? `เปลี่ยนจาก “${getPatientClassificationLabel(context.current.classification)}” เป็น “${getPatientClassificationLabel(selectedClassification)}” หรือไม่`
+                : "ยืนยันการบันทึกสถานะผู้ป่วย",
+              confirmLabel: "เปลี่ยนสถานะ",
+            }}
+            outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
+            pending={pending}
+            requiresConfirmation={Boolean(
+              context.current && selectedClassification && selectedClassification !== context.current.classification,
+            )}
+            resultKey={state}
+          >
             <input
               name="patientHospitalRelationshipId"
               type="hidden"
@@ -147,7 +149,7 @@ export function PatientClassificationView({
                   : "บันทึกสถานะ"}
             </Button>
             <ActionFeedback state={state} />
-          </form>
+          </ConfirmableActionForm>
         ) : null}
 
         <div className="mt-6 border-t border-border pt-5">

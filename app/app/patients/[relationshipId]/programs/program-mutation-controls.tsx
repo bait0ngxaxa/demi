@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import {
   completePatientProgramAction,
   openPatientProgramAction,
@@ -85,25 +86,27 @@ export function PatientProgramCompleteControl({
 
   return (
     <div>
-      <form action={action}>
+      <ConfirmableActionForm
+        action={action}
+        confirmation={{
+          title: "จบโปรแกรมนี้หรือไม่",
+          description: "เมื่อจบแล้ว โปรแกรมจะเป็นประวัติอ่านอย่างเดียว และจะไม่สามารถบันทึกกิจกรรมหรือแนบหลักฐาน Service 1 เพิ่มได้",
+          details: <p>การจบโปรแกรมไม่ใช่การตัดสินผลทางคลินิก</p>,
+          confirmLabel: "จบโปรแกรม",
+        }}
+        outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
+        pending={pending}
+        resultKey={state}
+      >
         <input name="patientProgramId" type="hidden" value={programId} />
         <Button
           disabled={pending}
           loading={pending}
-          onClick={(event) => {
-            if (
-              !window.confirm(
-                "ยืนยันการจบโปรแกรมนี้หรือไม่? หลังจากจบแล้ว โปรแกรมจะเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกกิจกรรมหรือแนบหลักฐาน Service 1 เพิ่มได้ และการจบโปรแกรมไม่ใช่การตัดสินผลทางคลินิก",
-              )
-            ) {
-              event.preventDefault();
-            }
-          }}
           type="submit"
         >
           {pending ? "กำลังจบโปรแกรม…" : "จบโปรแกรมและเก็บเป็นประวัติ"}
         </Button>
-      </form>
+      </ConfirmableActionForm>
       <ErrorFeedback state={state} />
     </div>
   );

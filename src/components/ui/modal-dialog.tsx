@@ -19,6 +19,7 @@ export type ModalDialogProps = {
   stepKey?: string;
   /** Called after the dialog has closed and unmounted; use it to move focus back into the page. */
   onClosed?: () => void;
+  size?: "default" | "compact";
   className?: string;
 };
 
@@ -35,11 +36,13 @@ export function ModalDialog({
   dismissible = true,
   stepKey,
   onClosed,
+  size = "default",
   className,
 }: ModalDialogProps): React.JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const dismissibleRef = useRef(dismissible);
   const onRequestCloseRef = useRef(onRequestClose);
   const onClosedRef = useRef(onClosed);
@@ -58,11 +61,18 @@ export function ModalDialog({
       return;
     }
 
+    const activeElement = document.activeElement;
+    previousFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
     const cleanup = setupModalDialogLifecycle({ document, dialog });
     const closedCallbackRef = onClosedRef;
 
     return () => {
       cleanup();
+      const previousFocus = previousFocusRef.current;
+      if (previousFocus?.isConnected && !previousFocus.matches(":disabled")) {
+        previousFocus.focus({ preventScroll: true });
+      }
       closedCallbackRef.current?.();
     };
   }, []);
@@ -91,7 +101,10 @@ export function ModalDialog({
       aria-describedby={description ? descriptionId : undefined}
       aria-labelledby={titleId}
       className={classNames(
-        "m-auto max-h-[calc(100svh-2rem)] w-[min(64rem,calc(100vw-2rem))] max-w-none flex-col overflow-hidden open:flex rounded-dialog border border-border bg-surface p-0 text-text shadow-floating backdrop:bg-brand-deep/45",
+        "m-auto max-h-[calc(100svh-2rem)] max-w-none flex-col overflow-hidden open:flex rounded-dialog border border-border bg-surface p-0 text-text shadow-floating backdrop:bg-brand-deep/45",
+        size === "compact"
+          ? "w-[min(32rem,calc(100vw-2rem))]"
+          : "w-[min(64rem,calc(100vw-2rem))]",
         className,
       )}
       onCancel={(event) => {

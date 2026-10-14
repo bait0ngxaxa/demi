@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseE
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -33,6 +34,12 @@ type CreateDraft = {
 };
 
 type CreateAttemptMarker = { hospitalId: string; submissionNonce: string };
+type CreateConfirmationIntent =
+  | { kind: "EXIT"; href: string }
+  | { kind: "SWITCH_HOSPITAL"; hospitalId: string }
+  | { kind: "RECONCILE_HOSPITAL"; hospitalId: string }
+  | { kind: "OPEN_RECORD"; contentId: string; title: string }
+  | { kind: "DISCARD" };
 
 const emptyDraft: CreateDraft = { title: "", body: "", category: "", sourceText: "" };
 
@@ -84,6 +91,8 @@ export function HospitalContentCreateForm({
   const [recoveryChecked, setRecoveryChecked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const [confirmationIntent, setConfirmationIntent] = useState<CreateConfirmationIntent | null>(null);
+  const [navigationBlockedWhilePending, setNavigationBlockedWhilePending] = useState(false);
   const [isPending, startTransition] = useTransition();
   const nonceRef = useRef<string | null>(null);
   const createInFlight = useRef(false);
@@ -180,36 +189,96 @@ export function HospitalContentCreateForm({
     }
   }
 
-  function confirmDiscard(message: string): boolean {
-    return window.confirm(message);
-  }
-
   function handleExit(event: MouseEvent<HTMLAnchorElement>): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (!dirty && !activeMarker && !isPending) return;
-    if (!confirmDiscard("มีข้อมูลฉบับร่างหรือคำขอที่ยังตรวจสอบไม่เสร็จ ต้องการออกจากหน้านี้และทิ้งข้อมูลในหน้านี้หรือไม่")) {
-      event.preventDefault();
+
+    event.preventDefault();
+    if (isPending) {
+      setNavigationBlockedWhilePending(true);
       return;
     }
-    requestGeneration.current += 1;
-    clearMarker();
+
+    const anchor = event.currentTarget;
+    setConfirmationIntent({ kind: "EXIT", href: `${anchor.pathname}${anchor.search}${anchor.hash}` });
   }
 
-  function switchHospital(nextHospitalId: string, select: HTMLSelectElement): void {
-    if (!nextHospitalId || nextHospitalId === selectedHospitalId || isPending) {
-      select.value = selectedHospitalId;
+  function requestHospitalSwitch(nextHospitalId: string, select?: HTMLSelectElement): void {
+    if (!nextHospitalId || nextHospitalId === selectedHospitalId) {
+      if (select) select.value = selectedHospitalId;
       return;
     }
-    if ((dirty || activeMarker) && !confirmDiscard("มีข้อมูลฉบับร่างหรือคำขอที่ยังตรวจสอบไม่เสร็จ ต้องการเปลี่ยนโรงพยาบาลและทิ้งข้อมูลนี้หรือไม่")) {
-      select.value = selectedHospitalId;
+
+    if (isPending) {
+      if (select) select.value = selectedHospitalId;
+      setNavigationBlockedWhilePending(true);
       return;
     }
+
+    if (activeMarker?.hospitalId === nextHospitalId) {
+      if (dirty) {
+        if (select) select.value = selectedHospitalId;
+        setConfirmationIntent({ kind: "RECONCILE_HOSPITAL", hospitalId: nextHospitalId });
+      } else {
+        router.push(`/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(nextHospitalId)}`);
+      }
+      return;
+    }
+
+    if (dirty || activeMarker) {
+      if (select) select.value = selectedHospitalId;
+      setConfirmationIntent({ kind: "SWITCH_HOSPITAL", hospitalId: nextHospitalId });
+      return;
+    }
+
     requestGeneration.current += 1;
     clearMarker();
     router.push(`/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(nextHospitalId)}`);
   }
 
+  function switchHospital(nextHospitalId: string, select: HTMLSelectElement): void {
+    requestHospitalSwitch(nextHospitalId, select);
+  }
+
+  function openMarkerHospital(): void {
+    if (!activeMarker) return;
+    requestHospitalSwitch(activeMarker.hospitalId);
+  }
+
+  function confirmIntent(): void {
+    const intent = confirmationIntent;
+    if (!intent || isPending) return;
+
+    setConfirmationIntent(null);
+    if (intent.kind === "EXIT") {
+      requestGeneration.current += 1;
+      clearMarker();
+      router.push(intent.href);
+    } else if (intent.kind === "SWITCH_HOSPITAL") {
+      requestGeneration.current += 1;
+      clearMarker();
+      router.push(`/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(intent.hospitalId)}`);
+    } else if (intent.kind === "RECONCILE_HOSPITAL") {
+      router.push(`/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(intent.hospitalId)}`);
+    } else if (intent.kind === "OPEN_RECORD") {
+      requestGeneration.current += 1;
+      clearMarker();
+      router.push(`/app/hospitals/knowledge/${intent.contentId}`);
+    } else {
+      clearMarker();
+      setDraft(emptyDraft);
+      setActionState({ status: "IDLE" });
+      setPreviewOpen(false);
+    }
+  }
+
+  function cancelIntent(): void {
+    setConfirmationIntent(null);
+  }
+
   function reconcileAttempt(): void {
     if (!activeMarker || isPending) return;
+    setNavigationBlockedWhilePending(false);
     const generation = ++requestGeneration.current;
     setReconciliationState(null);
     setRecoveryChecked(false);
@@ -233,6 +302,7 @@ export function HospitalContentCreateForm({
   function submitCreate(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (createInFlight.current || isPending || !recoveryLoaded || storageUnavailable || (activeMarker && (!recoveryChecked || !recoveryHospitalMatches))) return;
+    setNavigationBlockedWhilePending(false);
 
     let fields: Record<string, string>;
     try {
@@ -293,20 +363,58 @@ export function HospitalContentCreateForm({
     });
   }
 
-  function openRecoveredRecord(contentId: string): void {
-    if ((dirty || activeMarker) && !confirmDiscard("การเปิดรายการจะออกจากแบบร่างในหน้านี้ ต้องการดำเนินการต่อหรือไม่")) return;
+  function requestOpenRecoveredRecord(contentId: string, title: string): void {
+    if (isPending) return;
+    if (dirty || activeMarker) {
+      setConfirmationIntent({ kind: "OPEN_RECORD", contentId, title });
+      return;
+    }
     requestGeneration.current += 1;
     clearMarker();
     router.push(`/app/hospitals/knowledge/${contentId}`);
   }
 
-  function discardAttempt(): void {
-    if (!confirmDiscard("ทิ้งรหัสคำขอและข้อมูลฉบับร่างที่อยู่ในหน้านี้หรือไม่")) return;
-    clearMarker();
-    setDraft(emptyDraft);
-    setActionState({ status: "IDLE" });
-    setPreviewOpen(false);
+  function requestDiscardAttempt(): void {
+    if (isPending) return;
+    setConfirmationIntent({ kind: "DISCARD" });
   }
+
+  const confirmationTitle = confirmationIntent?.kind === "EXIT"
+    ? activeMarker ? "ออกจากคำขอที่ยังตรวจสอบไม่เสร็จหรือไม่" : "ออกจากแบบร่างหรือไม่"
+    : confirmationIntent?.kind === "SWITCH_HOSPITAL"
+      ? "เปลี่ยนโรงพยาบาลหรือไม่"
+      : confirmationIntent?.kind === "RECONCILE_HOSPITAL"
+        ? "ไปยังโรงพยาบาลของคำขอหรือไม่"
+        : confirmationIntent?.kind === "OPEN_RECORD"
+          ? "เปิดเนื้อหาที่ตรวจสอบพบหรือไม่"
+          : "ทิ้งแบบร่างและคำขอนี้หรือไม่";
+  const confirmationDescription = confirmationIntent?.kind === "EXIT"
+    ? activeMarker
+      ? "การออกจากหน้านี้จะล้างคำขอและข้อมูลฉบับร่างที่รอตรวจสอบ"
+      : "แบบร่างที่ยังไม่ได้บันทึกจะถูกทิ้งเมื่อออกจากหน้านี้"
+    : confirmationIntent?.kind === "SWITCH_HOSPITAL"
+      ? activeMarker
+        ? "คำขอที่ยังตรวจสอบไม่เสร็จและแบบร่างในหน้านี้จะถูกล้างเมื่อเปลี่ยนโรงพยาบาล"
+        : "แบบร่างที่ยังไม่ได้บันทึกจะถูกทิ้งเมื่อเปลี่ยนโรงพยาบาล"
+      : confirmationIntent?.kind === "RECONCILE_HOSPITAL"
+        ? "แบบร่างที่ยังไม่ได้บันทึกจะถูกทิ้ง แต่ระบบจะเก็บคำขอนี้ไว้ให้ตรวจสอบต่อ"
+        : confirmationIntent?.kind === "OPEN_RECORD"
+          ? "การเปิดรายการจะออกจากแบบร่างในหน้านี้"
+          : "รหัสคำขอและข้อมูลฉบับร่างที่อยู่ในหน้านี้จะถูกล้าง";
+  const confirmationLabel = confirmationIntent?.kind === "SWITCH_HOSPITAL"
+    ? "เปลี่ยนโรงพยาบาล"
+    : confirmationIntent?.kind === "RECONCILE_HOSPITAL"
+      ? "ไปยังโรงพยาบาล"
+      : confirmationIntent?.kind === "OPEN_RECORD"
+        ? "เปิดรายการ"
+        : confirmationIntent?.kind === "DISCARD"
+          ? "ทิ้งแบบร่าง"
+          : "ออกจากหน้านี้";
+  const confirmationDetails = confirmationIntent?.kind === "SWITCH_HOSPITAL" || confirmationIntent?.kind === "RECONCILE_HOSPITAL"
+    ? <p>ปลายทาง: {hospitals.find(({ id }) => id === confirmationIntent.hospitalId)?.name ?? "โรงพยาบาลที่เลือก"}</p>
+    : confirmationIntent?.kind === "OPEN_RECORD"
+      ? <p>รายการ: {confirmationIntent.title}</p>
+      : null;
 
   const replayContent = actionState.status === "SUCCESS" && actionState.result.outcome === "REPLAY"
     ? actionState.result.content
@@ -328,6 +436,12 @@ export function HospitalContentCreateForm({
         description="บันทึกฉบับร่างที่มีข้อมูลครบก่อนตรวจทานและเผยแพร่"
         title="สร้างข่าวสารและความรู้"
       />
+
+      {navigationBlockedWhilePending && isPending ? (
+        <Alert className="mt-4" variant="warning">
+          กรุณารอให้ระบบบันทึกหรือตรวจสอบคำขอเสร็จก่อนเปลี่ยนหน้า
+        </Alert>
+      ) : null}
 
       {hospitals.length > 1 ? (
         <div className="mt-6 max-w-xl">
@@ -366,7 +480,7 @@ export function HospitalContentCreateForm({
         <Alert className="mt-5" variant="warning">
           <p className="font-semibold">รายการนี้ถูกสร้างแล้ว ข้อมูลที่ส่งซ้ำไม่ได้ถูกบันทึก</p>
           <p className="mt-1">เปิดรายการปัจจุบันเพื่อตรวจสอบ รายการอาจถูกแก้ไขหรือเปลี่ยนสถานะไปแล้ว</p>
-          <Button className="mt-4" onClick={() => openRecoveredRecord(actionState.result.content.id)} type="button" variant="secondary">
+          <Button className="mt-4" onClick={() => requestOpenRecoveredRecord(actionState.result.content.id, actionState.result.content.title)} type="button" variant="secondary">
             เปิดรายการที่สร้างไว้
           </Button>
         </Alert>
@@ -391,7 +505,7 @@ export function HospitalContentCreateForm({
           {!recoveryHospitalMatches ? (
             <div className="mt-4">
               <p className="text-sm leading-6 text-text">คำขอนี้ผูกกับโรงพยาบาลอื่น กรุณากลับไปยังโรงพยาบาลของคำขอเดิมก่อนตรวจสอบ</p>
-              <Button className="mt-3" disabled={isPending} onClick={() => router.push(`/app/hospitals/knowledge/new?hospitalId=${encodeURIComponent(activeMarker.hospitalId)}`)} type="button" variant="secondary">
+              <Button className="mt-3" disabled={isPending} onClick={openMarkerHospital} type="button" variant="secondary">
                 ไปยังโรงพยาบาลของคำขอเดิม
               </Button>
             </div>
@@ -400,7 +514,7 @@ export function HospitalContentCreateForm({
               <Button disabled={isPending || !recoveryLoaded} loading={isPending} onClick={reconcileAttempt} type="button" variant="secondary">
                 {isPending ? "กำลังตรวจสอบ..." : "ตรวจสอบสถานะคำขอเดิม"}
               </Button>
-              <Button disabled={isPending} onClick={discardAttempt} type="button" variant="ghost">ทิ้งคำขอนี้</Button>
+              <Button disabled={isPending} onClick={requestDiscardAttempt} type="button" variant="ghost">ทิ้งคำขอนี้</Button>
             </div>
           )}
 
@@ -422,7 +536,7 @@ export function HospitalContentCreateForm({
               <p className="font-semibold text-text">พบรายการปัจจุบันสำหรับรหัสคำขอนี้</p>
               <p className="mt-1 break-words text-text">{reconciledContent.title}</p>
               <p className="mt-1 text-sm text-text-muted">สถานะ: {reconciledContent.status === "DRAFT" ? "ฉบับร่าง" : reconciledContent.status === "PUBLISHED" ? "เผยแพร่แล้ว" : "เก็บถาวร"}</p>
-              <Button className="mt-4" onClick={() => openRecoveredRecord(reconciledContent.id)} type="button" variant="secondary">
+              <Button className="mt-4" onClick={() => requestOpenRecoveredRecord(reconciledContent.id, reconciledContent.title)} type="button" variant="secondary">
                 เปิดรายการปัจจุบันเพื่อตรวจสอบ
               </Button>
               <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลที่ส่งซ้ำอาจไม่ตรงกับรายการปัจจุบัน และไม่ได้ถูกบันทึกจากการตรวจสอบนี้</p>
@@ -573,6 +687,17 @@ export function HospitalContentCreateForm({
       ) : null}
 
       {!recoveryLoaded ? <p aria-live="polite" className="mt-5 text-sm text-text-muted">กำลังตรวจสอบคำขอที่อาจค้างอยู่...</p> : null}
+
+      <ConfirmDialog
+        confirmLabel={confirmationLabel}
+        confirmVariant="destructive"
+        description={confirmationDescription}
+        details={confirmationDetails}
+        onCancel={cancelIntent}
+        onConfirm={confirmIntent}
+        open={confirmationIntent !== null}
+        title={confirmationTitle}
+      />
     </div>
   );
 }

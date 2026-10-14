@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from "reac
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -76,6 +77,7 @@ export function HospitalContactWorkspace({
   const [readState, setReadState] = useState<HospitalContactReadActionState | null>(null);
   const [reviewCurrent, setReviewCurrent] = useState<HospitalContactEditorProjection | null>(null);
   const [previousDraft, setPreviousDraft] = useState<ContactDraft | null>(null);
+  const [pendingHospitalId, setPendingHospitalId] = useState<string | null>(null);
   const [reconciliationRequired, setReconciliationRequired] = useState(false);
   const [accessRevoked, setAccessRevoked] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -107,12 +109,23 @@ export function HospitalContactWorkspace({
       return;
     }
 
-    if (isDirty && !window.confirm("มีแบบร่างที่ยังไม่ได้บันทึก ต้องการเปลี่ยนโรงพยาบาลและทิ้งแบบร่างนี้หรือไม่")) {
+    if (isDirty) {
       select.value = selectedHospitalId;
+      setPendingHospitalId(nextHospitalId);
       return;
     }
 
     router.push(`/app/hospitals/contact?hospitalId=${encodeURIComponent(nextHospitalId)}`);
+  }
+
+  function confirmHospitalSwitch(): void {
+    if (!pendingHospitalId || isPending) {
+      return;
+    }
+
+    const destination = `/app/hospitals/contact?hospitalId=${encodeURIComponent(pendingHospitalId)}`;
+    setPendingHospitalId(null);
+    router.push(destination);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -452,6 +465,18 @@ export function HospitalContactWorkspace({
           <p className="mt-1">ข้อมูลที่กรอกยังอยู่ในแบบร่าง กรุณาลองอีกครั้งภายหลัง</p>
         </Alert>
       ) : null}
+      <ConfirmDialog
+        confirmLabel="เปลี่ยนโรงพยาบาล"
+        confirmVariant="destructive"
+        description="แบบร่างการแก้ไขข้อมูลติดต่อยังไม่ได้บันทึกและจะถูกทิ้งเมื่อเปลี่ยนโรงพยาบาล"
+        details={pendingHospitalId ? (
+          <p>ปลายทาง: {hospitals.find(({ id }) => id === pendingHospitalId)?.name ?? "โรงพยาบาลที่เลือก"}</p>
+        ) : null}
+        onCancel={() => setPendingHospitalId(null)}
+        onConfirm={confirmHospitalSwitch}
+        open={pendingHospitalId !== null}
+        title="เปลี่ยนโรงพยาบาลหรือไม่"
+      />
     </div>
   );
 }

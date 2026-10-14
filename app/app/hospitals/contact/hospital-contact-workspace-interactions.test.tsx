@@ -56,7 +56,6 @@ vi.mock("react", async (importOriginal) => {
 });
 
 const mocks = vi.hoisted(() => ({
-  confirm: vi.fn(),
   read: vi.fn(),
   update: vi.fn(),
 }));
@@ -68,6 +67,7 @@ vi.mock("@/modules/hospital-contact/transport/server-actions", () => ({
 }));
 
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type {
   HospitalContactEditorProjection,
   HospitalContactOwnerHospital,
@@ -78,12 +78,16 @@ import { HospitalContactWorkspace } from "./hospital-contact-workspace";
 type InteractionProps = {
   children?: ReactNode;
   id?: string;
+  open?: boolean;
+  title?: string;
   value?: string;
   disabled?: boolean;
   ref?: { current: { disabled: boolean; focus: () => void } | null };
   onChange?: (event: { currentTarget: { value: string } }) => void;
   onClick?: () => void;
   onSubmit?: (event: { preventDefault: () => void }) => void;
+  onConfirm?: () => void;
+  onCancel?: () => void;
 };
 
 const hospitalA: HospitalContactOwnerHospital = {
@@ -172,6 +176,15 @@ function button(tree: ReactNode, label: string): ReactElement<InteractionProps> 
   return found;
 }
 
+function confirmation(tree: ReactNode): ReactElement<InteractionProps> {
+  const found = elements(tree).find((element) => element.type === ConfirmDialog);
+  if (!found) {
+    throw new Error("Missing hospital switch confirmation");
+  }
+
+  return found;
+}
+
 function submit(tree: ReactNode): ReturnType<typeof vi.fn> {
   const form = elements(tree).find((element) => element.type === "form");
   if (!form?.props.onSubmit) {
@@ -209,28 +222,35 @@ describe("Hospital Contact Owner form interactions", () => {
     harness.push.mockReset();
     harness.effects = [];
     harness.focus.mockReset();
-    mocks.confirm.mockReset().mockReturnValue(false);
     mocks.read.mockReset().mockResolvedValue({ status: "SUCCESS", contact: contact() });
     mocks.update.mockReset().mockResolvedValue(success("NOOP", contact()));
-    vi.stubGlobal("window", { confirm: mocks.confirm });
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("requires dirty-form confirmation before switching and never puts contact values in the URL", () => {
+  it("preserves a dirty form on cancel and follows the selected hospital only after confirmation", () => {
     const address = field(renderWorkspace(), "hospital-contact-address");
     address.props.onChange?.({ currentTarget: { value: "แบบร่างในเครื่อง" } });
 
     const selector = field(renderWorkspace(), "hospital-contact-hospital");
     const selection = { value: hospitalB.id };
     selector.props.onChange?.({ currentTarget: selection });
-    expect(mocks.confirm).toHaveBeenCalledOnce();
     expect(selection.value).toBe(hospitalA.id);
     expect(harness.push).not.toHaveBeenCalled();
 
-    mocks.confirm.mockReturnValue(true);
+    const cancelDialog = confirmation(renderWorkspace());
+    expect(cancelDialog.props.open).toBe(true);
+    cancelDialog.props.onCancel?.();
+    const cancelledTree = renderWorkspace();
+    expect(confirmation(cancelledTree).props.open).toBe(false);
+    expect(field(cancelledTree, "hospital-contact-address").props.value).toBe("แบบร่างในเครื่อง");
+    expect(harness.push).not.toHaveBeenCalled();
+
     selection.value = hospitalB.id;
-    selector.props.onChange?.({ currentTarget: selection });
+    field(cancelledTree, "hospital-contact-hospital").props.onChange?.({ currentTarget: selection });
+    const confirmDialog = confirmation(renderWorkspace());
+    expect(confirmDialog.props.open).toBe(true);
+    confirmDialog.props.onConfirm?.();
     expect(harness.push).toHaveBeenCalledExactlyOnceWith(
       `/app/hospitals/contact?hospitalId=${hospitalB.id}`,
     );

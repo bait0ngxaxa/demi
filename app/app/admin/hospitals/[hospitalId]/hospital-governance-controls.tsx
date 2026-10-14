@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import {
   initialHospitalGovernanceMutationActionState,
@@ -77,14 +78,19 @@ export function HospitalGovernanceControls({
       </p>
 
       {status === "ACTIVE" ? (
-        <form
+        <ConfirmableActionForm
           action={suspendAction}
           className="mt-6 border-t border-border pt-5"
-          onSubmit={(event) => {
-            if (!window.confirm("ยืนยันการระงับโรงพยาบาลนี้หรือไม่ การดำเนินการจะปิดการใช้งานขอบเขตของโรงพยาบาลนี้")) {
-              event.preventDefault();
-            }
+          confirmation={{
+            title: "ระงับโรงพยาบาลนี้หรือไม่",
+            description: "เมื่อบันทึกสำเร็จ ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้",
+            details: <p>ข้อมูลเดิมจะไม่ถูกลบหรือแก้ไข</p>,
+            confirmLabel: "ระงับโรงพยาบาล",
+            confirmVariant: "destructive",
           }}
+          outcome={suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={suspendState}
         >
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -94,7 +100,7 @@ export function HospitalGovernanceControls({
           <Button className="mt-3" disabled={pending} loading={suspendPending} size="compact" type="submit" variant="danger">
             {suspendPending ? "กำลังระงับ..." : "ระงับโรงพยาบาล"}
           </Button>
-        </form>
+        </ConfirmableActionForm>
       ) : (
         <form action={restoreAction} className="mt-6 border-t border-border pt-5">
           <input name="hospitalId" type="hidden" value={hospitalId} />

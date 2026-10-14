@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
@@ -108,7 +109,19 @@ export function HospitalOwnerGovernanceControls({
       ) : null}
 
       {ownerGovernance.canDemote ? (
-        <form action={demoteAction} className="mt-6 border-t border-border pt-5">
+        <ConfirmableActionForm
+          action={demoteAction}
+          className="mt-6 border-t border-border pt-5"
+          confirmation={{
+            title: "เปลี่ยนเจ้าของโรงพยาบาลรายนี้เป็นสมาชิกหรือไม่",
+            description: "ความสัมพันธ์กับโรงพยาบาลนี้จะคงอยู่ แต่สิทธิ์เจ้าของจะถูกนำออก",
+            details: <p>ระบบต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>,
+            confirmLabel: "เปลี่ยนเป็นสมาชิก",
+          }}
+          outcome={demoteState.status === "SUCCESS" ? "success" : demoteState.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={demoteState}
+        >
           <input name="relationshipId" type="hidden" value={relationshipId} />
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -119,18 +132,13 @@ export function HospitalOwnerGovernanceControls({
             className="mt-3"
             disabled={pending}
             loading={demotePending}
-            onClick={(event) => {
-              if (!window.confirm("ยืนยันการเปลี่ยนเจ้าของโรงพยาบาลเป็นสมาชิกหรือไม่")) {
-                event.preventDefault();
-              }
-            }}
             size="compact"
             type="submit"
             variant="secondary"
           >
             {demotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นสมาชิก"}
           </Button>
-        </form>
+        </ConfirmableActionForm>
       ) : null}
 
       {membershipType === "OWNER" && isActiveTarget && !ownerGovernance.canDemote ? (
