@@ -310,6 +310,8 @@ describe("round detail read model", () => {
     });
     expect(find(2, "HEALTHY_PLAN")).toMatchObject({ decisionGated: false, status: "DONE", source: "EXTRA" });
     expect(find(3, "HEALTH_PLAN_REVIEW")?.decisionGated).toBe(false);
+    // Not recommended in round 3: a plain Add option, not "awaiting a decision".
+    expect(find(3, "HEALTHY_PLAN")?.decisionGated).toBe(false);
   });
 
   it("projects plan items (not a due-only list) and gates starting a Follow-up on earlier rounds", () => {

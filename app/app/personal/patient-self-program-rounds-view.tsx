@@ -87,6 +87,15 @@ export function PatientSelfProgramRoundsView({
                 </dl>
               ) : null}
 
+              {round.followupId ? (
+                <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-sm">
+                  <span className="font-medium text-text">มีบันทึกการติดตามผล</span>
+                  <Link className={linkClassName} href={`${careHref}/followups/${encodeURIComponent(round.followupId)}`}>
+                    ดูรายละเอียดการติดตามผล
+                  </Link>
+                </p>
+              ) : null}
+
               {doneActivities.length > 0 ? (
                 <ul className="mt-4 divide-y divide-border border-t border-border">
                   {doneActivities.map((activity) => {

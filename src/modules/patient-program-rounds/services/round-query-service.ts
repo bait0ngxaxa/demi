@@ -392,8 +392,10 @@ function buildActivityRow(
     label: roundToolLabel(roundNumber, toolCode),
     kind: definition.kind,
     recommended,
+    // Only recommended rows are "awaiting a decision"; other tools are plain Add options.
     decisionGated:
       !ledger &&
+      recommended &&
       ((toolCode === "HEALTH_PLAN_REVIEW" && !isFollowupRound(roundNumber)) ||
         (toolCode === "HEALTHY_PLAN" && roundNumber !== GOAL_PLAN_ROUND)),
     followupEvidence: null as RoundFollowupEvidence | null,
