@@ -526,10 +526,12 @@ function FailedRowsDownloadButton({
   file,
   preview,
   failedRowNumbers,
+  importPending = false,
 }: {
   file: File | null;
   preview: PatientImportPreviewBinding;
   failedRowNumbers: readonly number[];
+  importPending?: boolean;
 }): React.JSX.Element {
   const [pending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -549,7 +551,7 @@ function FailedRowsDownloadButton({
   return (
     <div className="space-y-2">
       <Button
-        disabled={pending || !file}
+        disabled={pending || importPending || !file}
         loading={pending}
         onClick={handleDownload}
         size="compact"
@@ -813,7 +815,12 @@ function PatientImportReviewActions({
           <p className="font-semibold text-warning">ไม่มีรายการที่นำเข้าได้จากไฟล์นี้</p>
         )}
         {attentionRowCount > 0 ? (
-          <FailedRowsDownloadButton failedRowNumbers={[]} file={file} preview={preview} />
+          <FailedRowsDownloadButton
+            failedRowNumbers={[]}
+            file={file}
+            importPending={importPending}
+            preview={preview}
+          />
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-3 sm:justify-end">

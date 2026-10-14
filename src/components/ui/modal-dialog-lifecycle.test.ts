@@ -48,6 +48,22 @@ describe("setupModalDialogLifecycle", () => {
     expect(dialog.showModal).not.toHaveBeenCalled();
     expect(dialog.close).not.toHaveBeenCalled();
   });
+
+  it("keeps page scrolling locked until every modal lifecycle has cleaned up", () => {
+    const document = { body: { style: { overflow: "auto" } } };
+    const firstDialog = fakeDialog();
+    const secondDialog = fakeDialog();
+
+    const cleanupFirst = setupModalDialogLifecycle({ document, dialog: firstDialog });
+    const cleanupSecond = setupModalDialogLifecycle({ document, dialog: secondDialog });
+
+    cleanupFirst();
+    cleanupFirst();
+    expect(document.body.style.overflow).toBe("hidden");
+
+    cleanupSecond();
+    expect(document.body.style.overflow).toBe("auto");
+  });
 });
 
 describe("decideModalDialogNativeClose", () => {

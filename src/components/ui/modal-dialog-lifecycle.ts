@@ -13,26 +13,58 @@ type ModalDialogLifecycleOptions = {
   dialog: ModalDialogElement;
 };
 
+type DocumentScrollLock = {
+  activeDialogs: number;
+  previousOverflow: string;
+};
+
+const documentScrollLocks = new WeakMap<ModalDialogDocument, DocumentScrollLock>();
+
+function acquireDocumentScrollLock(document: ModalDialogDocument): () => void {
+  let lock = documentScrollLocks.get(document);
+  if (!lock) {
+    lock = { activeDialogs: 0, previousOverflow: document.body.style.overflow };
+    documentScrollLocks.set(document, lock);
+    document.body.style.overflow = "hidden";
+  }
+  lock.activeDialogs += 1;
+
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+
+    lock.activeDialogs -= 1;
+    if (lock.activeDialogs === 0) {
+      document.body.style.overflow = lock.previousOverflow;
+      documentScrollLocks.delete(document);
+    }
+  };
+}
+
 /**
  * Opens a native modal dialog (top layer, inert background, native focus containment) and locks page
- * scrolling. The returned cleanup closes the dialog and restores the previous body overflow.
+ * scrolling. Scroll locking is shared per document so nested dialogs keep the page locked until the
+ * last dialog closes. The returned cleanup closes the dialog and releases its lock once.
  */
 export function setupModalDialogLifecycle({
   document,
   dialog,
 }: ModalDialogLifecycleOptions): () => void {
-  const previousOverflow = document.body.style.overflow;
-
   if (!dialog.open) {
     dialog.showModal();
   }
-  document.body.style.overflow = "hidden";
+  const releaseScrollLock = acquireDocumentScrollLock(document);
 
   return () => {
-    document.body.style.overflow = previousOverflow;
-
-    if (dialog.open) {
-      dialog.close();
+    try {
+      if (dialog.open) {
+        dialog.close();
+      }
+    } finally {
+      releaseScrollLock();
     }
   };
 }
