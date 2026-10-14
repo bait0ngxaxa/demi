@@ -382,7 +382,10 @@ export function HospitalContentDetailWorkspace({
                 maxLength={1_000}
                 ref={titleRef}
                 value={draft.title}
-                onChange={(event) => setDraft((value) => ({ ...value, title: event.currentTarget.value }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, title: nextValue }));
+                }}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-title-description">หัวข้อหนึ่งบรรทัด ไม่เกิน 200 ตัวอักษรหลังตัดช่องว่างหัวท้าย</p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-title-error">{fieldMessage(mutationState, "title")}</p>
@@ -398,7 +401,10 @@ export function HospitalContentDetailWorkspace({
                 maxLength={24_000}
                 ref={bodyRef}
                 value={draft.body}
-                onChange={(event) => setDraft((value) => ({ ...value, body: event.currentTarget.value }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, body: nextValue }));
+                }}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ระบบคงบรรทัดใหม่และไม่แปล Markdown หรือ HTML</p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-body-error">{fieldMessage(mutationState, "body")}</p>
@@ -413,7 +419,10 @@ export function HospitalContentDetailWorkspace({
                 id="hospital-content-category"
                 ref={categoryRef}
                 value={draft.category}
-                onChange={(event) => setDraft((value) => ({ ...value, category: event.currentTarget.value as HospitalContentCategory }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value as HospitalContentCategory;
+                  setDraft((value) => ({ ...value, category: nextValue }));
+                }}
               >
                 {Object.values(HospitalContentCategory).map((category) => <option key={category} value={category}>{HOSPITAL_CONTENT_CATEGORY_LABELS[category]}</option>)}
               </select>
@@ -431,7 +440,10 @@ export function HospitalContentDetailWorkspace({
                 maxLength={2_000}
                 ref={sourceRef}
                 value={draft.sourceText}
-                onChange={(event) => setDraft((value) => ({ ...value, sourceText: event.currentTarget.value }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, sourceText: nextValue }));
+                }}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ข้อความอ้างอิงหนึ่งรายการ ระบบไม่ตรวจสอบแหล่งที่มาและไม่ทำเป็นลิงก์</p>
               <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-source-error">{fieldMessage(mutationState, "sourceText")}</p>

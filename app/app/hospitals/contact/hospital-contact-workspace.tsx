@@ -394,7 +394,10 @@ export function HospitalContactWorkspace({
                 disabled={isPending || reconciliationRequired}
                 id="hospital-contact-address"
                 ref={addressRef}
-                onChange={(event) => setDraft((value) => ({ ...value, addressText: event.currentTarget.value }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, addressText: nextValue }));
+                }}
                 value={draft.addressText}
               />
               <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-contact-address-description">
@@ -416,7 +419,10 @@ export function HospitalContactWorkspace({
                 disabled={isPending || reconciliationRequired}
                 id="hospital-contact-phone"
                 ref={phoneRef}
-                onChange={(event) => setDraft((value) => ({ ...value, phoneNumber: event.currentTarget.value }))}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setDraft((value) => ({ ...value, phoneNumber: nextValue }));
+                }}
                 type="text"
                 value={draft.phoneNumber}
               />

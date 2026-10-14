@@ -460,7 +460,10 @@ export function HospitalContentCreateForm({
                   ref={titleRef}
                   required
                   value={draft.title}
-                  onChange={(event) => setDraft((current) => ({ ...current, title: event.currentTarget.value }))}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, title: nextValue }));
+                  }}
                 />
                 <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-title-description">หัวข้อหนึ่งบรรทัด ไม่เกิน 200 ตัวอักษรหลังตัดช่องว่างหัวท้าย</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-title-error">{fieldMessage(actionState, "title")}</p>
@@ -479,7 +482,10 @@ export function HospitalContentCreateForm({
                   ref={bodyRef}
                   required
                   value={draft.body}
-                  onChange={(event) => setDraft((current) => ({ ...current, body: event.currentTarget.value }))}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, body: nextValue }));
+                  }}
                 />
                 <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-body-description">ข้อความธรรมดา ระบบคงบรรทัดใหม่และไม่แปล Markdown หรือ HTML</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-body-error">{fieldMessage(actionState, "body")}</p>
@@ -497,7 +503,10 @@ export function HospitalContentCreateForm({
                   ref={categoryRef}
                   required
                   value={draft.category}
-                  onChange={(event) => setDraft((current) => ({ ...current, category: event.currentTarget.value as HospitalContentCategory | "" }))}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value as HospitalContentCategory | "";
+                    setDraft((current) => ({ ...current, category: nextValue }));
+                  }}
                 >
                   <option disabled value="">เลือกหมวดหมู่</option>
                   {Object.values(HospitalContentCategory).map((category) => (
@@ -520,7 +529,10 @@ export function HospitalContentCreateForm({
                   name="sourceText"
                   ref={sourceRef}
                   value={draft.sourceText}
-                  onChange={(event) => setDraft((current) => ({ ...current, sourceText: event.currentTarget.value }))}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setDraft((current) => ({ ...current, sourceText: nextValue }));
+                  }}
                 />
                 <p className="mt-2 text-sm leading-6 text-text-muted" id="hospital-content-source-description">ระบุข้อความอ้างอิงหนึ่งรายการ ระบบจะแสดงเป็นข้อความธรรมดาและไม่ตรวจสอบแหล่งที่มา</p>
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-source-error">{fieldMessage(actionState, "sourceText")}</p>
