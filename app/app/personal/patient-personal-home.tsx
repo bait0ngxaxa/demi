@@ -18,7 +18,8 @@ const supportingActions = [
   { href: "/app/personal/medications", label: "ยาของฉัน", description: "บันทึกรายการยา เวลารายวัน และจัดการรายการส่วนตัวของคุณ" },
   { href: "/app/personal/wellness", label: "บันทึกสุขภาพของฉัน", description: "บันทึกอาหาร การออกกำลังกาย และเป้าหมายน้ำหนักที่คุณตั้งเอง" },
   { href: "/app/personal/profile", label: "ข้อมูลของฉัน", description: "ดูข้อมูลส่วนตัว และแก้ไขข้อมูลที่อนุญาตแยกตามโรงพยาบาล" },
-  { href: "/app/personal/knowledge", label: "ข่าวสารและความรู้", description: "อ่านข่าวสารและความรู้ที่โรงพยาบาลที่เชื่อมกับคุณเผยแพร่" },
+  { href: "/app/personal/news", label: "ข่าวสาร", description: "อ่านประกาศจากโรงพยาบาลที่เชื่อมกับคุณ" },
+  { href: "/app/personal/knowledge", label: "สื่อความรู้", description: "อ่านความรู้เรื่อง NCD อาหาร และการออกกำลังกาย" },
 ] as const;
 
 function getPersistedDisplayName(patient: PatientPersonalHomePageContext): string {

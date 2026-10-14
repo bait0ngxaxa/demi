@@ -120,6 +120,42 @@ enum HospitalContentCategory {
   FOOD
   EXERCISE
   OTHER
+  NEWS
+}
+
+enum SupportReportCategory {
+  BUG
+  ACCESS
+  CONTENT
+  OTHER
+}
+
+enum SupportReportStatus {
+  NEW
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum MedicationLineReminderState {
+  PENDING
+  CLAIMED
+  RETRY_SCHEDULED
+  PROVIDER_ACCEPTED
+  SUPPRESSED
+  PERMANENT_FAILURE
+  OUTCOME_UNKNOWN
+}
+
+enum MedicationLineReminderOutcome {
+  STALE_SOURCE
+  AUTHORITY_CHANGED
+  OPT_IN_REVOKED
+  LINE_INELIGIBLE
+  TRANSIENT_HTTP_FAILURE
+  PERMANENT_HTTP_FAILURE
+  AMBIGUOUS_TRANSPORT_FAILURE
+  PROCESS_OUTCOME_UNKNOWN
+  RETRY_WINDOW_EXPIRED
 }
 
 enum HospitalOnboardingApplicationStatus {
@@ -424,6 +460,11 @@ model User {
   lineAccountActionIntents LineAccountActionIntent[]
   lineAppointmentNotificationPreference LineAppointmentNotificationPreference?
   appointmentLineNotificationIntents AppointmentLineNotification[] @relation("AppointmentLineNotificationRecipient")
+  contactSetting UserContactSetting?
+  lineMedicationReminderPreference LineMedicationReminderPreference?
+  medicationLineReminderIntents MedicationLineReminderNotification[] @relation("MedicationLineReminderRecipient")
+  supportReports SupportReport[] @relation("SupportReportReporter")
+  supportReportsUpdated SupportReport[] @relation("SupportReportStatusUpdater")
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
 
@@ -462,6 +503,7 @@ model Hospital {
   patientAccessRequests    PatientAccessRequest[]
   contact                  HospitalContact?
   contents                 HospitalContent[]
+  supportReports           SupportReport[]
   parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
@@ -494,11 +536,59 @@ model HospitalContent {
   updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
 
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  images   HospitalContentImage[]
 
   @@unique([hospitalId, submissionNonce], map: "HospitalContent_hospital_nonce_key")
   @@index([hospitalId, updatedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_publisher_order_idx")
   @@index([hospitalId, status, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_order_idx")
   @@index([hospitalId, status, category, firstPublishedAt(sort: Desc), id(sort: Desc)], map: "HospitalContent_patient_category_order_idx")
+}
+
+model HospitalContentImage {
+  id               String   @id @default(uuid()) @db.Uuid
+  contentId        String   @db.Uuid
+  uploadNonce      String   @db.Uuid
+  storageObjectKey String   @unique @db.VarChar(512)
+  mediaType        String   @db.VarChar(32)
+  byteSize         Int
+  sortOrder        Int
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  content HospitalContent @relation(fields: [contentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([contentId, uploadNonce], map: "HospitalContentImage_content_nonce_key")
+  @@unique([contentId, sortOrder], map: "HospitalContentImage_content_order_key")
+  @@index([contentId, sortOrder, id], map: "HospitalContentImage_content_order_idx")
+}
+
+model UserContactSetting {
+  userId    String   @id @db.Uuid
+  email     String?  @db.VarChar(320)
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model SupportReport {
+  id                    String                @id @default(uuid()) @db.Uuid
+  hospitalId            String                @db.Uuid
+  reporterUserId        String                @db.Uuid
+  statusUpdaterUserId   String?               @db.Uuid
+  category              SupportReportCategory
+  message               String                @db.VarChar(1000)
+  status                SupportReportStatus   @default(NEW)
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @db.Timestamptz(3)
+  resolvedAt            DateTime?             @db.Timestamptz(3)
+
+  hospital          Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reporter          User     @relation("SupportReportReporter", fields: [reporterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  statusUpdater     User?    @relation("SupportReportStatusUpdater", fields: [statusUpdaterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([hospitalId, status, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_inbox_order_idx")
+  @@index([reporterUserId, createdAt(sort: Desc)], map: "SupportReport_reporter_order_idx")
 }
 
 model HospitalMembership {
@@ -1625,6 +1715,58 @@ model LineAppointmentNotificationPreference {
   binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict)
 }
 
+model LineMedicationReminderPreference {
+  userId                  String   @id @db.Uuid
+  bindingId               String   @unique @db.Uuid
+  bindingLifecycleVersion Int
+  preferenceVersion       Int      @default(1)
+  enabled                 Boolean  @default(false)
+  changedAt               DateTime @db.Timestamptz(3)
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  user    User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  binding LineAccountBinding @relation(fields: [bindingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model MedicationLineReminderNotification {
+  id                        String                       @id @default(uuid()) @db.Uuid
+  scheduleId                String                       @db.Uuid
+  personalMedicationId      String                       @db.Uuid
+  localDate                 DateTime                     @db.Date
+  localTime                 DateTime                     @db.Time(6)
+  dueAt                     DateTime                     @db.Timestamptz(3)
+  sourceUpdatedAt            DateTime                     @db.Timestamptz(3)
+  recipientUserId            String?                      @db.Uuid
+  bindingId                  String?                      @db.Uuid
+  bindingLifecycleVersion    Int?
+  preferenceVersion          Int?
+  state                      MedicationLineReminderState @default(PENDING)
+  attemptCount               Int                          @default(0)
+  retryKey                   String                       @unique @default(uuid()) @db.Uuid
+  leaseToken                 String?                      @unique @db.Uuid
+  leaseExpiresAt             DateTime?                    @db.Timestamptz(3)
+  firstAttemptAt             DateTime?                    @db.Timestamptz(3)
+  lastAttemptAt              DateTime?                    @db.Timestamptz(3)
+  safeOutcome                MedicationLineReminderOutcome?
+  terminalAt                 DateTime?                    @db.Timestamptz(3)
+  createdAt                  DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                     @updatedAt @db.Timestamptz(3)
+
+  recipient User?              @relation("MedicationLineReminderRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  binding   LineAccountBinding? @relation(fields: [bindingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([scheduleId, localDate, localTime], map: "MedicationLineReminder_schedule_day_time_key")
+  @@index([state, dueAt], map: "MedicationLineReminder_state_due_idx")
+  @@index([state, leaseExpiresAt], map: "MedicationLineReminder_state_lease_idx")
+  @@index([state, terminalAt], map: "MedicationLineReminder_state_terminal_idx")
+}
+
+model MedicationLineReminderWorkerState {
+  id               Int      @id @default(1)
+  lastInvocationAt DateTime @default("1970-01-01T00:00:00.000Z") @db.Timestamptz(3)
+}
+
 model AppointmentLineNotification {
   id                          String                                @id @default(uuid()) @db.Uuid
   appointmentId               String                                @db.Uuid
@@ -1694,6 +1836,8 @@ model LineAccountBinding {
   recoveryIntents LineAccountActionIntent[]
   appointmentNotificationPreference LineAppointmentNotificationPreference?
   appointmentLineNotificationIntents AppointmentLineNotification[]
+  medicationReminderPreference LineMedicationReminderPreference?
+  medicationLineReminderIntents MedicationLineReminderNotification[]
 
   @@index([userId])
   @@index([lineSubjectFingerprint])

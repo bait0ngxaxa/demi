@@ -14,25 +14,25 @@ function form(values: Record<string, string>): FormData { const data = new FormD
 const version = { medicationId: item.id, expectedUpdatedAt: item.updatedAt };
 describe("medication actions", () => {
   beforeEach(() => { vi.resetAllMocks(); vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor); for (const operation of [createPersonalMedication, updatePersonalMedication, stopPersonalMedication]) vi.mocked(operation).mockResolvedValue(item); });
-  it.each([[create, createPersonalMedication, { medicationName: "ยา" }], [update, updatePersonalMedication, { ...version, medicationName: "ยา" }], [stop, stopPersonalMedication, version]] as const)("authenticates and refreshes only medication path after commit", async (action, service, input) => {
+  it.each([[create, createPersonalMedication, { medicationName: "ยา", times: "[]" }, { medicationName: "ยา", times: [] }], [update, updatePersonalMedication, { ...version, medicationName: "ยา" }, { ...version, medicationName: "ยา" }], [stop, stopPersonalMedication, version, version]] as const)("authenticates and refreshes only medication path after commit", async (action, service, input, serviceInput) => {
     expect((await action({ status: "IDLE" }, form(input))).status).toBe("SUCCESS");
-    expect(service).toHaveBeenCalledWith(actor, input);
+    expect(service).toHaveBeenCalledWith(actor, serviceInput);
     expect(revalidatePath).toHaveBeenCalledExactlyOnceWith("/app/personal/medications");
   });
   it("rejects unknown owner/system fields and duplicated transport values", async () => {
-    expect((await create({ status: "IDLE" }, form({ medicationName: "ยา", patientProfileId: "foreign" }))).status).toBe("ERROR");
-    const duplicate = form({ medicationName: "ยา" }); duplicate.append("medicationName", "อีกชื่อ");
+    expect((await create({ status: "IDLE" }, form({ medicationName: "ยา", times: "[]", patientProfileId: "foreign" }))).status).toBe("ERROR");
+    const duplicate = form({ medicationName: "ยา", times: "[]" }); duplicate.append("medicationName", "อีกชื่อ");
     expect((await create({ status: "IDLE" }, duplicate)).status).toBe("ERROR");
     expect(createPersonalMedication).not.toHaveBeenCalled();
   });
   it("returns associated bounded field errors without reflecting medication text", async () => {
-    const state = await create({ status: "IDLE" }, form({ medicationName: " ", instructionText: "ลับ".repeat(1000) }));
+    const state = await create({ status: "IDLE" }, form({ medicationName: " ", instructionText: "ลับ".repeat(1000), times: "[]" }));
     expect(state.fieldErrors?.medicationName).toBeTruthy(); expect(state.fieldErrors?.instructionText).toBeTruthy();
     expect(JSON.stringify(state)).not.toContain("ลับ");
   });
   it.each([new ConflictError(), new ForbiddenError(), new NotFoundError(), new ValidationError(), new Error("SQL private")])("maps safe errors and does not revalidate/retry failure", async (error) => {
     vi.mocked(createPersonalMedication).mockRejectedValue(error);
-    const state = await create({ status: "IDLE" }, form({ medicationName: "ยา" }));
+    const state = await create({ status: "IDLE" }, form({ medicationName: "ยา", times: "[]" }));
     expect(state.status).toBe(error instanceof ConflictError ? "CONFLICT" : "ERROR");
     expect(JSON.stringify(state)).not.toContain("SQL private");
     expect(createPersonalMedication).toHaveBeenCalledTimes(1); expect(revalidatePath).not.toHaveBeenCalled();

@@ -4,7 +4,7 @@ import { MEDICATION_NAME_MAX_LENGTH, MEDICATION_NAME_RAW_MAX_LENGTH, INSTRUCTION
 
 describe("personal medication strict normalization", () => {
   it("preserves Thai Unicode case and collapses name whitespace to one line", () => {
-    expect(create.parse({ medicationName: " \tยาไทย\n ABC  💊  ", instructionText: " \nข้อความ  ภายใน\nบรรทัดสอง \n" })).toEqual({ medicationName: "ยาไทย ABC 💊", instructionText: "ข้อความ  ภายใน\nบรรทัดสอง" });
+    expect(create.parse({ medicationName: " \tยาไทย\n ABC  💊  ", instructionText: " \nข้อความ  ภายใน\nบรรทัดสอง \n" })).toEqual({ medicationName: "ยาไทย ABC 💊", instructionText: "ข้อความ  ภายใน\nบรรทัดสอง", times: [] });
   });
   it.each([undefined, null, "", " \n\t "])("normalizes optional instruction %s to null", (instructionText) => {
     expect(create.parse({ medicationName: "ยา", instructionText }).instructionText).toBeNull();

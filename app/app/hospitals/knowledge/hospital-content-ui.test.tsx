@@ -25,6 +25,7 @@ function content(status: HospitalContentStatus): HospitalContentDetailProjection
     firstPublishedAt: status === HospitalContentStatus.DRAFT ? null : "2026-10-01T10:00:00.000Z",
     latestPublishedAt: status === HospitalContentStatus.DRAFT ? null : "2026-10-02T10:00:00.000Z",
     expectedUpdatedAt: "2026-10-05T12:34:56.789Z",
+    imageIds: [],
   };
 }
 

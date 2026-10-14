@@ -9,6 +9,8 @@ export default async function PatientKnowledgePage({ searchParams }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<React.JSX.Element> {
   await connection();
-  const context = await getHospitalContentPatientFeedContext(await searchParams);
+  const params = await searchParams;
+  const safeParams = params.category === "NEWS" ? { ...params, category: undefined, cursor: undefined } : params;
+  const context = await getHospitalContentPatientFeedContext(safeParams);
   return <PatientContentPrivateBoundary key={context.requestId} requestId={context.requestId}><PatientContentFeed context={context} /></PatientContentPrivateBoundary>;
 }

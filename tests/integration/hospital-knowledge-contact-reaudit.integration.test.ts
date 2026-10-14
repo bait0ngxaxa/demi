@@ -264,7 +264,7 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
       "DRAFT", "PUBLISHED", "ARCHIVED",
     ]);
     expect(enumRows.filter(({ type_name }) => type_name === "HospitalContentCategory").map(({ enum_value }) => enum_value)).toEqual([
-      "NCD", "FOOD", "EXERCISE", "OTHER",
+      "NCD", "FOOD", "EXERCISE", "OTHER", "NEWS",
     ]);
 
     const foreignKeys = await database.$queryRaw<Array<{ conname: string; confdeltype: string; confupdtype: string }>>(Prisma.sql`

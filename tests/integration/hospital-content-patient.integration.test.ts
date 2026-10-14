@@ -4,8 +4,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getPatientHospitalContent as detail, listPatientHospitalContent as list } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
+import { getHospitalContentImageSignedUrl, uploadHospitalContentImage } from "@/modules/hospital-content/services/hospital-content-image-service";
+import { getHospitalWorkContent, listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { encodeHospitalContentPatientCursor } from "@/modules/hospital-content/services/hospital-content-patient-cursor";
 import { archiveHospitalContent, createHospitalContent, publishHospitalContent, withdrawHospitalContent } from "@/modules/hospital-content/services/hospital-content-service";
+import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
@@ -48,6 +51,7 @@ async function cleanup(): Promise<void> {
   await db.caregiverRelationship.deleteMany({ where: { caregiverUserId: { in: users } } });
   await db.caregiverInvitation.deleteMany({ where: { caregiverUserId: { in: users } } });
   await db.patientOsmAssignment.deleteMany({ where: { osmUserId: { in: users } } });
+  await db.hospitalContentImage.deleteMany({ where: { content: { hospitalId: { in: hospitals } } } });
   await db.hospitalContent.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalMembership.deleteMany({ where: { userId: { in: users } } });
@@ -118,10 +122,70 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
   it("returns exact approved projections from only the current Patient's own ACTIVE Hospitals", async () => {
     const a = await actor(); const b = await actor(); const h = await hospital(); await relate(a, h); const id = await content(h);
     const page = await list(a, {}, db); expect(page.items.map((row) => row.id)).toEqual([id]);
-    expect(Object.keys(page.items[0]).sort()).toEqual(["category", "hospital", "id", "latestPublishedAt", "title"]);
-    const item = await detail(a, id, db); expect(Object.keys(item).sort()).toEqual(["body", "category", "hospital", "id", "latestPublishedAt", "sourceText", "title"]);
+    expect(Object.keys(page.items[0]).sort()).toEqual(["category", "hospital", "id", "imageIds", "latestPublishedAt", "title"]);
+    const item = await detail(a, id, db); expect(Object.keys(item).sort()).toEqual(["body", "category", "hospital", "id", "imageIds", "latestPublishedAt", "sourceText", "title"]);
     expect(Object.keys(item.hospital).sort()).toEqual(["hospitalCode", "name"]);
     expect((await list(b, {}, db)).items).toEqual([]); await expect(detail(b, id, db)).rejects.toBeInstanceOf(NotFoundError);
+  });
+  it("shares published News with exact-hospital OSMs and staff, and serves up to five private signed images", async () => {
+    const h = await hospital(); const foreign = await hospital();
+    const publisher = await owner(h); const member = await owner(h, [Role.HOSPITAL], MembershipType.MEMBER);
+    const osmBase = await actor([Role.OSM], false);
+    await db.osmHospitalRelationship.create({ data: { userId: osmBase.userId, hospitalId: h, status: "ACTIVE" } });
+    const osm: ActorContext = { ...osmBase, osmHospitalRelationships: [{ hospitalId: h, status: "ACTIVE", hospitalStatus: "ACTIVE" }] };
+    const foreignStaff = await owner(foreign, [Role.HOSPITAL], MembershipType.MEMBER);
+    const publishedNews = await content(h, { category: HospitalContentCategory.NEWS });
+    await content(foreign, { category: HospitalContentCategory.NEWS });
+    expect((await listHospitalWorkContent(member, {}, db)).items.map(({ id }) => id)).toEqual([publishedNews]);
+    expect((await listHospitalWorkContent(osm, {}, db)).items.map(({ id }) => id)).toEqual([publishedNews]);
+    await expect(getHospitalWorkContent(foreignStaff, publishedNews, db)).rejects.toBeInstanceOf(NotFoundError);
+    expect((await getHospitalWorkContent(osm, publishedNews, db)).category).toBe(HospitalContentCategory.NEWS);
+
+    const current = new Date();
+    const draft = await createHospitalContent(publisher, {
+      hospitalId: h, submissionNonce: randomUUID(), title: "ภาพประกอบข่าว", body: "รายละเอียดข่าว", category: "NEWS", sourceText: null,
+    }, { database: db, now: () => current });
+    if (draft.outcome === "UNCONFIRMED") throw new Error("Expected confirmed draft");
+    const uploaded: string[] = []; const removed: string[] = []; const signed: Array<{ objectKey: string; expiresInSeconds: number }> = [];
+    const storage: PatientEvidenceStorage = {
+      uploadObject: async ({ objectKey }) => { uploaded.push(objectKey); },
+      createTemporaryAccessUrl: async (input) => { signed.push(input); return `https://private.example/${input.objectKey}`; },
+      removeObject: async ({ objectKey }) => { removed.push(objectKey); },
+    };
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const images: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const result = await uploadHospitalContentImage(publisher, { contentId: draft.content.id, uploadNonce: randomUUID(), bytes: png, declaredMediaType: "image/png" }, { database: db, storage, now: () => new Date(current.getTime() + index + 1) });
+      images.push(result.imageId);
+    }
+    await expect(uploadHospitalContentImage(publisher, { contentId: draft.content.id, uploadNonce: randomUUID(), bytes: png, declaredMediaType: "image/png" }, { database: db, storage })).rejects.toBeInstanceOf(ValidationError);
+    expect(uploaded).toHaveLength(6); expect(removed).toHaveLength(1);
+    expect(await getHospitalContentImageSignedUrl(publisher, images[0], { database: db, storage })).toContain("hospital-content/");
+    await expect(getHospitalContentImageSignedUrl(osm, images[0], { database: db, storage })).rejects.toBeInstanceOf(NotFoundError);
+    const published = await publishHospitalContent(publisher, { contentId: draft.content.id, expectedUpdatedAt: draft.content.expectedUpdatedAt }, { database: db, now: () => new Date(current.getTime() + 10) });
+    if (published.outcome === "UNCONFIRMED") throw new Error("Expected confirmed publication");
+    expect((await listHospitalWorkContent(osm, {}, db)).items.find(({ id }) => id === draft.content.id)?.imageIds).toEqual(images);
+    expect(await getHospitalContentImageSignedUrl(osm, images[0], { database: db, storage })).toContain(images[0]);
+    expect(signed.every(({ expiresInSeconds }) => expiresInSeconds === 300)).toBe(true);
+  });
+  it("pages all published Work content without crossing an actor or hospital boundary", async () => {
+    const h = await hospital(); const foreign = await hospital();
+    const staff = await owner(h, [Role.HOSPITAL], MembershipType.MEMBER);
+    const otherStaff = await owner(h, [Role.HOSPITAL], MembershipType.MEMBER);
+    const ids: string[] = [];
+    for (let index = 0; index < 27; index += 1) ids.push(await content(h, {
+      id: `bbbbbbbb-bbbb-4bbb-8bbb-${index.toString(16).padStart(12, "0")}`,
+      category: HospitalContentCategory.NEWS,
+      first: new Date(now.getTime() - index * 1_000),
+    }));
+    await content(foreign, { category: HospitalContentCategory.NEWS, first: new Date(now.getTime() + 1_000) });
+    const first = await listHospitalWorkContent(staff, {}, db);
+    expect(first.items).toHaveLength(25); expect(first.nextCursor).toBeTruthy();
+    const second = await listHospitalWorkContent(staff, { cursor: first.nextCursor ?? undefined }, db);
+    expect(second.items).toHaveLength(2); expect(second.nextCursor).toBeNull();
+    expect([...first.items, ...second.items].map(({ id }) => id)).toEqual(ids);
+    await expect(listHospitalWorkContent(staff, { cursor: `${first.nextCursor}x` }, db)).rejects.toBeInstanceOf(ValidationError);
+    await expect(listHospitalWorkContent(otherStaff, { cursor: first.nextCursor ?? "" }, db)).rejects.toBeInstanceOf(ValidationError);
   });
   it.each(["missing-profile", "mismatched-person", "suspended", "provisioned", "removed-role"])("denies persisted SELF %s even with old ActorContext", async (change) => {
     const a = await actor([Role.PATIENT], change !== "missing-profile");

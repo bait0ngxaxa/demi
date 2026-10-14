@@ -5,6 +5,7 @@ export const HOSPITAL_CONTENT_CATEGORY_LABELS: Readonly<Record<HospitalContentCa
   [HospitalContentCategory.FOOD]: "อาหาร",
   [HospitalContentCategory.EXERCISE]: "การออกกำลังกาย",
   [HospitalContentCategory.OTHER]: "อื่น ๆ",
+  [HospitalContentCategory.NEWS]: "ข่าวสาร",
 };
 
 export const HOSPITAL_CONTENT_STATUS_LABELS: Readonly<Record<HospitalContentStatus, string>> = {
@@ -21,6 +22,8 @@ export const HOSPITAL_CONTENT_STATUS_VARIANTS = {
 
 export const HOSPITAL_CONTENT_PAGE_SIZE = 25;
 export const HOSPITAL_CONTENT_CURSOR_LOOKAHEAD = HOSPITAL_CONTENT_PAGE_SIZE + 1;
+export const HOSPITAL_CONTENT_IMAGE_LIMIT = 5;
+export const HOSPITAL_CONTENT_IMAGE_URL_TTL_SECONDS = 300;
 export const HOSPITAL_CONTENT_REQUEST_MAX_BYTES = 131_072;
 export const HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS = 200;
 export const HOSPITAL_CONTENT_BODY_MAX_CODE_UNITS = 20_000;

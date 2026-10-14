@@ -11,7 +11,7 @@ const relationship = vi.fn();
 const many = vi.fn();
 const first = vi.fn();
 const db = { patientProfile: { findFirst: findProfile }, patientHospitalRelationship: { findFirst: relationship }, hospitalContent: { findMany: many, findFirst: first } } as unknown as PrismaClient;
-const row = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "ข่าวสาร", category: "FOOD", latestPublishedAt: new Date("2026-10-05T12:00:00.000Z"), firstPublishedAt: new Date("2026-10-01T12:00:00.000Z"), hospital: { hospitalCode: "A", name: "โรงพยาบาล ก" }, body: "body", sourceText: "source", updatedAt: new Date(), hospitalId: "hidden" };
+const row = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "ข่าวสาร", category: "FOOD", latestPublishedAt: new Date("2026-10-05T12:00:00.000Z"), firstPublishedAt: new Date("2026-10-01T12:00:00.000Z"), hospital: { hospitalCode: "A", name: "โรงพยาบาล ก" }, images: [], body: "body", sourceText: "source", updatedAt: new Date(), hospitalId: "hidden" };
 beforeEach(() => { vi.resetAllMocks(); relationship.mockResolvedValue({ id: "r" }); findProfile.mockResolvedValue({ id: profile }); many.mockResolvedValue([]); first.mockResolvedValue(null); });
 describe("Patient Content query boundaries and classifications", () => {
   it("places the complete current SELF predicate inside every Content query and minimizes projections", async () => {
@@ -20,8 +20,8 @@ describe("Patient Content query boundaries and classifications", () => {
     const detail = await getPatientHospitalContent(actor, row.id, db);
     expect(many.mock.calls[0][0]).toMatchObject({ where: hospitalContentPatientWhere(actor, profile), take: 26, orderBy: [{ firstPublishedAt: "desc" }, { id: "desc" }] });
     expect(first.mock.calls[0][0]).toMatchObject({ where: { ...hospitalContentPatientWhere(actor, profile), id: row.id } });
-    expect(Object.keys(page.items[0]).sort()).toEqual(["category", "hospital", "id", "latestPublishedAt", "title"]);
-    expect(Object.keys(detail).sort()).toEqual(["body", "category", "hospital", "id", "latestPublishedAt", "sourceText", "title"]);
+    expect(Object.keys(page.items[0]).sort()).toEqual(["category", "hospital", "id", "imageIds", "latestPublishedAt", "title"]);
+    expect(Object.keys(detail).sort()).toEqual(["body", "category", "hospital", "id", "imageIds", "latestPublishedAt", "sourceText", "title"]);
     expect(Object.keys(detail.hospital)).toEqual(["hospitalCode", "name"]);
   });
   it("freshly rechecks SELF after an empty query and never maps authority loss to empty", async () => {

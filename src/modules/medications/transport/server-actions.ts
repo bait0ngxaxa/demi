@@ -5,7 +5,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { ApplicationError } from "@/shared/errors/application-error";
 import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication, replacePersonalMedicationSchedules } from "../services/personal-medication-service";
 import { personalMedicationCreateSchema, personalMedicationUpdateSchema, personalMedicationStopSchema, personalMedicationScheduleSchema } from "../schemas/personal-medication-schemas";
-import { parseMedicationScheduleForm } from "./schedule-form";
+import { parseMedicationCreateForm, parseMedicationScheduleForm } from "./schedule-form";
 import type { PersonalMedicationActionState } from "./action-state";
 
 async function performAction(formData: FormData, operation: "create" | "update" | "stop" | "schedule"): Promise<PersonalMedicationActionState> {
@@ -16,7 +16,8 @@ async function performAction(formData: FormData, operation: "create" | "update" 
     if (new Set(entries.map(([key]) => key)).size !== entries.length) {
       return { status: "ERROR", message: "ข้อมูลซ้ำ กรุณาตรวจสอบแบบฟอร์ม" };
     }
-    const input = operation === "schedule" ? parseMedicationScheduleForm(formData) : Object.fromEntries(entries);
+    const input = operation === "create" ? parseMedicationCreateForm(formData)
+      : operation === "schedule" ? parseMedicationScheduleForm(formData) : Object.fromEntries(entries);
     const schema = operation === "create" ? personalMedicationCreateSchema : operation === "update" ? personalMedicationUpdateSchema : operation === "schedule" ? personalMedicationScheduleSchema : personalMedicationStopSchema;
     const parsed = schema.safeParse(input);
     if (!parsed.success) {

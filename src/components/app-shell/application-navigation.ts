@@ -1,6 +1,6 @@
 import "server-only";
 
-import { HospitalStatus, MembershipStatus, Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 
 import {
   decideHospitalOnboardingPolicy,
@@ -194,7 +194,8 @@ export function projectApplicationNavigation(
         { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
         { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
         { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
-        { href: "/app/personal/knowledge", label: "ข่าวสารและความรู้", match: "prefix", prefetch: false },
+        { href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false },
+        { href: "/app/personal/knowledge", label: "สื่อความรู้", match: "prefix", prefetch: false },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
       ],
@@ -228,6 +229,13 @@ export function projectApplicationNavigation(
   }
   if (canManageHospitalContent(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/knowledge", label: "ข่าวสารและความรู้", match: "prefix" as const });
+  }
+  if (actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
+    || actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/content", label: "เนื้อหาสำหรับทีมงาน", match: "prefix" as const });
+  }
+  if (actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ membershipType, status, hospitalStatus }) => membershipType === MembershipType.OWNER && status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/support", label: "กล่องรายงานปัญหา", match: "prefix" as const });
   }
   if (canReadHospitalReports(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" as const });
@@ -350,6 +358,13 @@ export function projectApplicationNavigation(
     label: "ผู้ดูแล",
     items: [{ href: "/app/family", label: "ความสัมพันธ์ผู้ดูแล", match: "prefix" }],
   });
+
+  if (actor.roles.some((role) => role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL)) {
+    groups.push({ label: "บัญชีและช่วยเหลือ", workspace: "all", items: [
+      { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
+      { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
+    ] });
+  }
 
   return groups;
 }
