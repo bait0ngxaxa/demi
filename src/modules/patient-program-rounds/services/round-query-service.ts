@@ -91,6 +91,11 @@ export type RoundActivityRow = {
   resultExists: boolean;
   /** WB-DF-03: the existing result can be reviewed read-only and ledgered in this round. */
   canReview: boolean;
+  /**
+   * True when the whiteboard lists this tool in this round but no approved workflow exists to record
+   * it here (U-2/U-4 in WB_ROUND_ACTIVITY_CROSSWALK.md). Never implies DONE.
+   */
+  decisionGated: boolean;
 };
 
 export type RoundVitalsView = {
@@ -361,15 +366,19 @@ function buildActivityRow(
 ): RoundActivityRow {
   const definition = ROUND_TOOLS[toolCode];
   const recommended = ROUND_RECOMMENDED_TOOLS[roundNumber].includes(toolCode);
+  const ledger = program.roundActivities.find(
+    (entry) => entry.roundNumber === roundNumber && entry.toolCode === toolCode,
+  );
   const base = {
     toolCode,
     label: roundToolLabel(roundNumber, toolCode),
     kind: definition.kind,
     recommended,
+    decisionGated:
+      !ledger &&
+      ((toolCode === "HEALTH_PLAN_REVIEW" && !isFollowupRound(roundNumber)) ||
+        (toolCode === "HEALTHY_PLAN" && roundNumber !== GOAL_PLAN_ROUND)),
   };
-  const ledger = program.roundActivities.find(
-    (entry) => entry.roundNumber === roundNumber && entry.toolCode === toolCode,
-  );
   const result = programResultRecord(program, toolCode);
   const resultExists = result !== null;
 

@@ -19,6 +19,10 @@ export function roundActivityStatusLabel(row: RoundActivityRow): string {
     return ROUND_AWAITING_FORM_LABEL;
   }
 
+  if (row.decisionGated) {
+    return "รอการตัดสินใจ";
+  }
+
   if (row.status === "NOT_DONE") {
     return "ยังไม่ได้บันทึก";
   }

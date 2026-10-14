@@ -147,7 +147,7 @@ export function PatientProgramView({
             </p>
             <ul className="mt-3 grid gap-2 sm:grid-cols-2">
               {[
-                ["program-service-one", "Service 1 — รู้จักตัวเอง"],
+                ["program-service-one", "Service 1 — กิจกรรมเริ่มต้นของโปรแกรม"],
                 ["program-goals", "แผนเป้าหมาย"],
                 ["program-followups", "การติดตามผล"],
                 ["program-final", "การประเมินสุดท้ายและจบโปรแกรม"],

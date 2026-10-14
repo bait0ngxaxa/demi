@@ -62,6 +62,23 @@ function ActivityActions({
     return <p className="text-sm text-text-muted">{ROUND_AWAITING_FORM_LABEL}</p>;
   }
 
+  if (row.decisionGated) {
+    return (
+      <div className="flex flex-col gap-2 sm:items-end">
+        <p className="max-w-sm text-sm text-text-muted sm:text-right">
+          {row.toolCode === "HEALTHY_PLAN"
+            ? "ยังไม่มีขั้นตอนบันทึกกิจกรรมนี้ในครั้งนี้ (รอ Product Owner ตัดสิน) แผนสุขภาพที่มีอยู่ไม่นับเป็นการทำกิจกรรมของครั้งนี้"
+            : "ยังไม่ได้กำหนดขั้นตอนทบทวนแผนสุขภาพของครั้งนี้ (รอ Product Owner ตัดสิน) จึงยังบันทึกไม่ได้"}
+        </p>
+        {row.toolCode === "HEALTHY_PLAN" && href ? (
+          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
+            ดูแผนที่มีอยู่ (สร้างในครั้งที่ 2)
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
   if (row.status === "DONE") {
     return href ? (
       <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>

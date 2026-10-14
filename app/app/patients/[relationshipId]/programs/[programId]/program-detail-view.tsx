@@ -155,7 +155,7 @@ export function PatientProgramDetailView({
           </p>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
-              ["program-service-one", "Service 1 — รู้จักตัวเอง", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
+              ["program-service-one", "Service 1 — กิจกรรมเริ่มต้นของโปรแกรม", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
               ["program-goals", "แผนเป้าหมาย", goalPlanOverview.latest ? "มีแผนเป้าหมาย" : "ยังไม่มีแผนเป้าหมาย"],
               ["program-followups", "การติดตามผล", followupHistory.totalCount > 0 ? "มีบันทึกการติดตามผล" : "ยังไม่มีบันทึกการติดตามผล"],
               ["program-final", "การประเมินสุดท้ายและจบโปรแกรม", finalAssessment.finalAssessment ? "มีบันทึกการประเมินสุดท้าย" : "ยังไม่มีบันทึกการประเมินสุดท้าย"],

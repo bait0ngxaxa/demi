@@ -294,6 +294,24 @@ describe("round detail read model", () => {
     expect(detail.addOptions.some((row) => row.toolCode === "DREAM_CARD")).toBe(false);
   });
 
+  it("flags decision-gated rows without fabricating DONE", () => {
+    const record = program({ goalPlans: [goalPlan(1, "eeeeeeee-eeee-4eee-8eee-000000000001")] });
+    const find = (round: 1 | 2 | 3 | 4, code: string) => {
+      const detail = buildProgramRoundDetail(record, round, patient);
+      return [...detail.activities, ...detail.addOptions].find((row) => row.toolCode === code);
+    };
+
+    expect(find(2, "HEALTH_PLAN_REVIEW")).toMatchObject({ decisionGated: true, status: "NOT_DONE" });
+    expect(find(4, "HEALTHY_PLAN")).toMatchObject({
+      decisionGated: true,
+      status: "NOT_DONE",
+      resultExists: true,
+      source: null,
+    });
+    expect(find(2, "HEALTHY_PLAN")).toMatchObject({ decisionGated: false, status: "DONE", source: "EXTRA" });
+    expect(find(3, "HEALTH_PLAN_REVIEW")?.decisionGated).toBe(false);
+  });
+
   it("limits due items to the source Goal Plan and gates starting a Follow-up on earlier rounds", () => {
     const record = program({ goalPlans: [goalPlan(1, "eeeeeeee-eeee-4eee-8eee-000000000001")] });
     const round3 = buildProgramRoundDetail(record, 3, patient);
