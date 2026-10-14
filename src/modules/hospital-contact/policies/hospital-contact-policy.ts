@@ -16,6 +16,7 @@ export type HospitalContactCapability =
 export const HOSPITAL_CONTACT_READ_SCOPES = [
   "DIRECT_HOSPITAL_OWNER",
   "PATIENT_SELF_RELATIONSHIP",
+  "WORK_HOSPITAL_RELATIONSHIP",
 ] as const;
 
 export type HospitalContactScope = (typeof HOSPITAL_CONTACT_READ_SCOPES)[number];
@@ -31,7 +32,9 @@ export type HospitalContactPolicyDecision = {
     | "direct_active_owner_required"
     | "patient_role_required"
     | "patient_self_scope"
-    | "direct_hospital_owner_scope";
+    | "direct_hospital_owner_scope"
+    | "active_work_hospital_relationship_required"
+    | "work_hospital_relationship_scope";
   scope?: HospitalContactScope;
 };
 
@@ -45,6 +48,29 @@ function hasDirectActiveOwnerScope(actor: ActorContext, hospitalId: string): boo
         membership.hospitalStatus === HospitalStatus.ACTIVE,
     )
   );
+}
+
+function hasActiveWorkHospitalScope(actor: ActorContext, hospitalId?: string): boolean {
+  const hasHospitalMembership =
+    actor.roles.includes(Role.HOSPITAL) &&
+    actor.hospitalMemberships.some(
+      (membership) =>
+        (hospitalId === undefined || membership.hospitalId === hospitalId) &&
+        (membership.membershipType === MembershipType.OWNER ||
+          membership.membershipType === MembershipType.MEMBER) &&
+        membership.status === MembershipStatus.ACTIVE &&
+        membership.hospitalStatus === HospitalStatus.ACTIVE,
+    );
+  const hasOsmRelationship =
+    actor.roles.includes(Role.OSM) &&
+    actor.osmHospitalRelationships.some(
+      (relationship) =>
+        (hospitalId === undefined || relationship.hospitalId === hospitalId) &&
+        relationship.status === MembershipStatus.ACTIVE &&
+        relationship.hospitalStatus === HospitalStatus.ACTIVE,
+    );
+
+  return hasHospitalMembership || hasOsmRelationship;
 }
 
 export function decideHospitalContactPolicy(input: {
@@ -66,7 +92,8 @@ export function decideHospitalContactPolicy(input: {
 
   if (
     input.scope !== "DIRECT_HOSPITAL_OWNER" &&
-    input.scope !== "PATIENT_SELF_RELATIONSHIP"
+    input.scope !== "PATIENT_SELF_RELATIONSHIP" &&
+    input.scope !== "WORK_HOSPITAL_RELATIONSHIP"
   ) {
     return { allowed: false, reason: "invalid_scope" };
   }
@@ -100,15 +127,25 @@ export function decideHospitalContactPolicy(input: {
       : { allowed: false, reason: "direct_active_owner_required" };
   }
 
+  if (scope === "PATIENT_SELF_RELATIONSHIP") {
+    if (input.capability === HOSPITAL_CONTACT_CAPABILITIES.update) {
+      return { allowed: false, reason: "invalid_scope" };
+    }
+
+    if (!input.actor.roles.includes(Role.PATIENT)) {
+      return { allowed: false, reason: "patient_role_required" };
+    }
+
+    return { allowed: true, reason: "patient_self_scope", scope };
+  }
+
   if (input.capability === HOSPITAL_CONTACT_CAPABILITIES.update) {
     return { allowed: false, reason: "invalid_scope" };
   }
 
-  if (!input.actor.roles.includes(Role.PATIENT)) {
-    return { allowed: false, reason: "patient_role_required" };
-  }
-
-  return { allowed: true, reason: "patient_self_scope", scope };
+  return hasActiveWorkHospitalScope(input.actor, input.hospitalId)
+    ? { allowed: true, reason: "work_hospital_relationship_scope", scope }
+    : { allowed: false, reason: "active_work_hospital_relationship_required" };
 }
 
 export function assertHospitalContactPolicy(input: {

@@ -181,4 +181,113 @@ describe("Hospital Contact capabilities and scopes", () => {
       }).allowed,
     ).toBe(false);
   });
+
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])(
+    "allows an active Hospital %s to read work-context contact details",
+    (membershipType) => {
+      const staff = actor({
+        roles: [Role.HOSPITAL],
+        hospitalMemberships: [
+          {
+            hospitalId: hospitalA,
+            membershipType,
+            profession: null,
+            status: MembershipStatus.ACTIVE,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      });
+
+      expect(
+        decideHospitalContactPolicy({
+          actor: staff,
+          capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+          scope: "WORK_HOSPITAL_RELATIONSHIP",
+        }).allowed,
+      ).toBe(true);
+    },
+  );
+
+  it("allows an active OSM relationship to read work-context contact details", () => {
+    const osm = actor({
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [
+        { hospitalId: hospitalA, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+    });
+
+    expect(
+      decideHospitalContactPolicy({
+        actor: osm,
+        capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+        scope: "WORK_HOSPITAL_RELATIONSHIP",
+      }).allowed,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["suspended membership", MembershipStatus.SUSPENDED, HospitalStatus.ACTIVE],
+    ["ended membership", MembershipStatus.ENDED, HospitalStatus.ACTIVE],
+    ["inactive Hospital", MembershipStatus.ACTIVE, HospitalStatus.SUSPENDED],
+  ] as const)("denies work-context contact for an %s", (_label, status, hospitalStatus) => {
+    expect(
+      decideHospitalContactPolicy({
+        actor: actor({
+          roles: [Role.HOSPITAL],
+          hospitalMemberships: [
+            {
+              hospitalId: hospitalA,
+              membershipType: MembershipType.MEMBER,
+              profession: null,
+              status,
+              hospitalStatus,
+            },
+          ],
+        }),
+        capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+        scope: "WORK_HOSPITAL_RELATIONSHIP",
+      }).allowed,
+    ).toBe(false);
+  });
+
+  it.each([Role.HOSPITAL, Role.OSM] as const)(
+    "never allows %s to update through the work-context scope",
+    (role) => {
+      const workActor = actor({
+        roles: [role],
+        hospitalMemberships:
+          role === Role.HOSPITAL
+            ? [
+                {
+                  hospitalId: hospitalA,
+                  membershipType: MembershipType.OWNER,
+                  profession: null,
+                  status: MembershipStatus.ACTIVE,
+                  hospitalStatus: HospitalStatus.ACTIVE,
+                },
+              ]
+            : [],
+        osmHospitalRelationships:
+          role === Role.OSM
+            ? [
+                {
+                  hospitalId: hospitalA,
+                  status: MembershipStatus.ACTIVE,
+                  hospitalStatus: HospitalStatus.ACTIVE,
+                },
+              ]
+            : [],
+      });
+
+      expect(
+        decideHospitalContactPolicy({
+          actor: workActor,
+          capability: HOSPITAL_CONTACT_CAPABILITIES.update,
+          scope: "WORK_HOSPITAL_RELATIONSHIP",
+          hospitalId: hospitalA,
+        }),
+      ).toMatchObject({ allowed: false, reason: "invalid_scope" });
+    },
+  );
 });

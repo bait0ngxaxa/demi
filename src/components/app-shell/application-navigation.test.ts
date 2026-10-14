@@ -69,7 +69,7 @@ describe("application navigation projection", () => {
     }
   });
 
-  it("projects Hospital Contact Work navigation only for a direct active Owner", () => {
+  it("keeps Owner contact management distinct from read-only contact navigation", () => {
     const owner = actor({
       roles: [Role.HOSPITAL],
       hospitalMemberships: [
@@ -96,14 +96,46 @@ describe("application navigation projection", () => {
     });
 
     expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(owner)).toContain("ติดต่อโรงพยาบาลที่เกี่ยวข้อง");
     expect(navigationLabels(owner)).toContain("ข่าวสารและความรู้");
     expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(member)).toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(member)).not.toContain("ข่าวสารและความรู้");
     expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข่าวสารและความรู้");
-    expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
-    expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ข่าวสารและความรู้");
+    const osmLabels = navigationLabels(actor({
+      roles: [Role.OSM],
+      osmHospitalRelationships: [
+        { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+    }));
+    expect(osmLabels).toContain("ติดต่อโรงพยาบาล");
+    expect(osmLabels).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(osmLabels).not.toContain("ข่าวสารและความรู้");
+    expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ติดต่อโรงพยาบาล");
+    expect(navigationLabels(actor())).not.toContain("ติดต่อโรงพยาบาล");
   });
+
+  it.each([MembershipStatus.SUSPENDED, MembershipStatus.ENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED])(
+    "hides work-context Hospital contacts for a %s membership",
+    (status) => {
+      const labels = navigationLabels(actor({
+        roles: [Role.HOSPITAL],
+        hospitalMemberships: [
+          {
+            hospitalId,
+            membershipType: MembershipType.MEMBER,
+            profession: Profession.NURSE,
+            status,
+            hospitalStatus: HospitalStatus.ACTIVE,
+          },
+        ],
+      }));
+
+      expect(labels).not.toContain("ติดต่อโรงพยาบาล");
+    },
+  );
 
   it.each(runtimeEnvironments)("shows Hospital reporting to a direct active Hospital Owner on %s", (_name, environment) => {
     simulateRuntimeEnvironment(environment);

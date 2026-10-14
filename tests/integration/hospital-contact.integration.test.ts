@@ -24,6 +24,7 @@ import {
   readOwnPatientHospitalContact,
   updateHospitalContact,
 } from "@/modules/hospital-contact/services/hospital-contact-service";
+import { listWorkHospitalContacts } from "@/modules/hospital-contact/services/hospital-contact-work-query-service";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -318,6 +319,146 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
   afterAll(async () => {
     await clearDatabase();
     await prisma.$disconnect();
+  });
+
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])(
+    "lists all and only active %s memberships in active Hospitals",
+    async (membershipType) => {
+      const withContact = await createHospital();
+      const withoutContact = await createHospital();
+      const suspended = await createHospital();
+      const ended = await createHospital();
+      const provisioned = await createHospital();
+      const invited = await createHospital();
+      const inactiveHospital = await createHospital({ status: HospitalStatus.SUSPENDED });
+      const unrelatedHospital = await createHospital();
+      const user = await createUser({ roles: [Role.HOSPITAL] });
+
+      await prisma.hospitalMembership.createMany({
+        data: [
+          { hospitalId: withContact.id, status: MembershipStatus.ACTIVE },
+          { hospitalId: withoutContact.id, status: MembershipStatus.ACTIVE },
+          { hospitalId: suspended.id, status: MembershipStatus.SUSPENDED },
+          { hospitalId: ended.id, status: MembershipStatus.ENDED },
+          { hospitalId: provisioned.id, status: MembershipStatus.PROVISIONED },
+          { hospitalId: invited.id, status: MembershipStatus.INVITED },
+          { hospitalId: inactiveHospital.id, status: MembershipStatus.ACTIVE },
+        ].map(({ hospitalId, status }) => ({
+          userId: user.userId,
+          hospitalId,
+          membershipType,
+          status,
+        })),
+      });
+      await createOwner(unrelatedHospital.id, { membershipType });
+      await prisma.hospitalContact.create({
+        data: { hospitalId: withContact.id, addressText: "ถนนสุขภาพ", phoneNumber: "02-123-4567" },
+      });
+
+      const workActor: ActorContext = {
+        ...user.actor,
+        hospitalMemberships: [withContact, withoutContact].map((hospital) => ({
+          hospitalId: hospital.id,
+          membershipType,
+          profession: null,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        })),
+      };
+
+      await expect(listWorkHospitalContacts(workActor, prisma)).resolves.toEqual([
+        {
+          hospital: { hospitalCode: withContact.hospitalCode, name: withContact.name },
+          availability: "AVAILABLE",
+          addressText: "ถนนสุขภาพ",
+          phoneNumber: "02-123-4567",
+        },
+        {
+          hospital: { hospitalCode: withoutContact.hospitalCode, name: withoutContact.name },
+          availability: "UNAVAILABLE",
+          addressText: null,
+          phoneNumber: null,
+        },
+      ]);
+    },
+  );
+
+  it("lists OSM contacts only for active relationships and active Hospitals", async () => {
+    const withContact = await createHospital();
+    const withoutContact = await createHospital();
+    const suspended = await createHospital();
+    const ended = await createHospital();
+    const provisioned = await createHospital();
+    const invited = await createHospital();
+    const inactiveHospital = await createHospital({ status: HospitalStatus.SUSPENDED });
+    const unrelatedHospital = await createHospital();
+    const user = await createUser({ roles: [Role.OSM] });
+
+    await prisma.osmHospitalRelationship.createMany({
+      data: [
+        { hospitalId: withContact.id, status: MembershipStatus.ACTIVE },
+        { hospitalId: withoutContact.id, status: MembershipStatus.ACTIVE },
+        { hospitalId: suspended.id, status: MembershipStatus.SUSPENDED },
+        { hospitalId: ended.id, status: MembershipStatus.ENDED },
+        { hospitalId: provisioned.id, status: MembershipStatus.PROVISIONED },
+        { hospitalId: invited.id, status: MembershipStatus.INVITED },
+        { hospitalId: inactiveHospital.id, status: MembershipStatus.ACTIVE },
+      ].map(({ hospitalId, status }) => ({ userId: user.userId, hospitalId, status })),
+    });
+    const unrelatedOsm = await createUser({ roles: [Role.OSM] });
+    await prisma.osmHospitalRelationship.create({
+      data: { userId: unrelatedOsm.userId, hospitalId: unrelatedHospital.id, status: MembershipStatus.ACTIVE },
+    });
+    await prisma.hospitalContact.create({
+      data: { hospitalId: withContact.id, addressText: null, phoneNumber: "02-765-4321" },
+    });
+
+    const workActor: ActorContext = {
+      ...user.actor,
+      osmHospitalRelationships: [withContact, withoutContact].map((hospital) => ({
+        hospitalId: hospital.id,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      })),
+    };
+
+    await expect(listWorkHospitalContacts(workActor, prisma)).resolves.toEqual([
+      {
+        hospital: { hospitalCode: withContact.hospitalCode, name: withContact.name },
+        availability: "AVAILABLE",
+        addressText: null,
+        phoneNumber: "02-765-4321",
+      },
+      {
+        hospital: { hospitalCode: withoutContact.hospitalCode, name: withoutContact.name },
+        availability: "UNAVAILABLE",
+        addressText: null,
+        phoneNumber: null,
+      },
+    ]);
+  });
+
+  it.each([UserStatus.SUSPENDED, UserStatus.PROVISIONED, UserStatus.INVITED])(
+    "denies a persisted %s User even when its Hospital membership is active",
+    async (userStatus) => {
+      const hospital = await createHospital();
+      const member = await createOwner(hospital.id, {
+        membershipType: MembershipType.MEMBER,
+        userStatus,
+      });
+
+      await expect(listWorkHospitalContacts(member.actor, prisma)).rejects.toBeInstanceOf(ForbiddenError);
+    },
+  );
+
+  it("denies work contacts after the persisted HOSPITAL role has been removed", async () => {
+    const hospital = await createHospital();
+    const member = await createOwner(hospital.id, { membershipType: MembershipType.MEMBER });
+    await prisma.userRole.delete({
+      where: { userId_role: { userId: member.userId, role: Role.HOSPITAL } },
+    });
+
+    await expect(listWorkHospitalContacts(member.actor, prisma)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it("keeps the forward migration additive and free of Contact backfill", () => {

@@ -66,6 +66,14 @@ function canManageHospitalContact(actor: ActorContext): boolean {
   );
 }
 
+function canReadWorkHospitalContacts(actor: ActorContext): boolean {
+  return decideHospitalContactPolicy({
+    actor,
+    capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+    scope: "WORK_HOSPITAL_RELATIONSHIP",
+  }).allowed;
+}
+
 function canManageHospitalContent(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     decideHospitalContentPolicy({
@@ -226,6 +234,13 @@ export function projectApplicationNavigation(
   const hospitalWorkItems = [];
   if (canManageHospitalContact(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/contact", label: "ข้อมูลติดต่อโรงพยาบาล", match: "exact" as const });
+  }
+  if (canReadWorkHospitalContacts(actor)) {
+    hospitalWorkItems.push({
+      href: "/app/hospitals/contacts",
+      label: canManageHospitalContact(actor) ? "ติดต่อโรงพยาบาลที่เกี่ยวข้อง" : "ติดต่อโรงพยาบาล",
+      match: "exact" as const,
+    });
   }
   if (canManageHospitalContent(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/knowledge", label: "ข่าวสารและความรู้", match: "prefix" as const });

@@ -20,6 +20,16 @@ export type PatientHospitalContactProjection = {
   phoneNumber: string | null;
 };
 
+export type HospitalWorkContactProjection = {
+  hospital: {
+    hospitalCode: string;
+    name: string;
+  };
+  availability: "AVAILABLE" | "UNAVAILABLE";
+  addressText: string | null;
+  phoneNumber: string | null;
+};
+
 export type PatientHospitalContactRead =
   | {
       relationshipId: string;
