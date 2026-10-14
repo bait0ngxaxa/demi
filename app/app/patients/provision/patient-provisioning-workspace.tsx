@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LocalNavigation } from "@/components/ui/local-navigation";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -32,6 +33,7 @@ import {
   getPatientImportResultPresentation,
   partitionPatientImportPreviewRows,
   summarizePatientImportPreview,
+  type PatientImportResultPresentation,
 } from "@/modules/patient-provisioning/presentation/patient-import-presentation";
 import type { PatientProvisioningScope } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import {
@@ -70,6 +72,12 @@ type PatientProvisioningWorkspaceProps = {
 };
 
 type ProvisioningMode = "SINGLE" | "EXCEL";
+
+/** Where focus returns when the import review dialog closes. */
+type ImportDialogReturnFocus = "PREVIEW_SUBMIT" | "FILE_INPUT" | "EFFECTIVE_DATE";
+
+const PATIENT_IMPORT_FILE_INPUT_ID = "patient-import-file";
+const PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID = "patient-import-effective-date";
 
 const classificationLabels: Record<PatientImportClassification, string> = {
   READY: "ผู้ป่วยใหม่",
@@ -518,10 +526,12 @@ function FailedRowsDownloadButton({
   file,
   preview,
   failedRowNumbers,
+  importPending = false,
 }: {
   file: File | null;
   preview: PatientImportPreviewBinding;
   failedRowNumbers: readonly number[];
+  importPending?: boolean;
 }): React.JSX.Element {
   const [pending, startTransition] = useTransition();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -541,7 +551,7 @@ function FailedRowsDownloadButton({
   return (
     <div className="space-y-2">
       <Button
-        disabled={pending || !file}
+        disabled={pending || importPending || !file}
         loading={pending}
         onClick={handleDownload}
         size="compact"
@@ -559,27 +569,18 @@ function FailedRowsDownloadButton({
   );
 }
 
+/** Outcome of a confirmed import; rendered in the review dialog body. */
 export function ImportSummary({
   summary,
-  preview,
-  file,
   canAssignOsm,
-  onNewImport,
 }: {
   summary: PatientImportResultSummary;
-  preview: PatientImportPreviewBinding;
-  file: File | null;
   canAssignOsm: boolean;
-  onNewImport: () => void;
 }): React.JSX.Element {
   const attentionRows = summary.rows.filter((row) => isPatientImportAttentionResult(row.result));
-  const failedRowNumbers = summary.rows
-    .filter((row) => row.result === "FAILED")
-    .map((row) => row.rowNumber);
   const {
     detail,
     hasAttentionRows,
-    hasSuccessfulRows,
     heading,
     reviewCount,
     variant,
@@ -587,11 +588,13 @@ export function ImportSummary({
   const recoveryGuidance = getPatientImportRecoveryGuidance(summary);
 
   return (
-    <Alert variant={variant}>
-      <p className="font-semibold">{heading}</p>
-      {detail ? <p className="mt-1 text-muted">{detail}</p> : null}
+    <div className="space-y-5 text-sm leading-6">
+      <Alert variant={variant}>
+        <p className="font-semibold">{heading}</p>
+        {detail ? <p className="mt-1 text-muted">{detail}</p> : null}
+      </Alert>
 
-      <dl className="mt-3 flex flex-wrap divide-y divide-line border-y border-line sm:divide-x sm:divide-y-0">
+      <dl className="flex flex-wrap divide-y divide-line border-y border-line sm:divide-x sm:divide-y-0">
         <div className="min-w-28 flex-1 px-3 py-3 first:pl-0">
           <dt className="text-muted">นำเข้าผู้ป่วยใหม่</dt>
           <dd className="text-lg font-semibold text-success">{summary.imported}</dd>
@@ -611,7 +614,7 @@ export function ImportSummary({
       </dl>
 
       {hasAttentionRows ? (
-        <div className="mt-5 border-t border-border pt-4">
+        <div>
           <h3 className="font-semibold">แถวที่ไม่ผ่าน</h3>
           <div className="mt-3 overflow-x-auto rounded-panel border border-border bg-surface">
             <table className="min-w-[820px] divide-y divide-line text-left text-sm">
@@ -661,11 +664,11 @@ export function ImportSummary({
       ) : null}
 
       {summary.imported > 0 || summary.file?.requirementGatedFields.length ? (
-        <PatientImportSavedFieldsNote className="mt-4 border-t border-border pt-4 text-muted" />
+        <PatientImportSavedFieldsNote className="border-t border-border pt-4 text-muted" />
       ) : null}
 
       {recoveryGuidance.length > 0 ? (
-        <div className="mt-4 border-t border-border pt-4 text-muted">
+        <div className="border-t border-border pt-4 text-muted">
           <p className="font-semibold text-ink">ขั้นตอนถัดไป</p>
           <ul className="mt-2 list-disc space-y-2 pl-5">
             {recoveryGuidance.map((guidance) => (
@@ -679,15 +682,42 @@ export function ImportSummary({
       ) : null}
 
       {summary.imported > 0 ? (
-        <p className="mt-4 border-t border-border pt-4 text-muted">
+        <p className="border-t border-border pt-4 text-muted">
           ผู้ป่วยที่นำเข้าใหม่ยังไม่มี อสม. ผู้รับผิดชอบ{" "}
           {canAssignOsm
             ? "กำหนด อสม. ให้ผู้ป่วยหลายคนได้ในขั้นตอนถัดไป"
             : "เจ้าของโรงพยาบาลเป็นผู้กำหนด อสม. หลังนำเข้า"}
         </p>
       ) : null}
+    </div>
+  );
+}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+/** Next steps after a confirmed import; rendered in the review dialog footer. */
+export function ImportResultActions({
+  summary,
+  preview,
+  file,
+  canAssignOsm,
+  onNewImport,
+  onClose,
+}: {
+  summary: PatientImportResultSummary;
+  preview: PatientImportPreviewBinding;
+  file: File | null;
+  canAssignOsm: boolean;
+  onNewImport: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const { hasAttentionRows, hasSuccessfulRows } = getPatientImportResultPresentation(summary);
+  const failedRowNumbers = summary.rows
+    .filter((row) => row.result === "FAILED")
+    .map((row) => row.rowNumber);
+  const canAssign = summary.imported > 0 && canAssignOsm;
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+      <div className="flex flex-wrap items-center gap-3">
         {hasAttentionRows ? (
           <FailedRowsDownloadButton
             failedRowNumbers={failedRowNumbers}
@@ -695,28 +725,171 @@ export function ImportSummary({
             preview={preview}
           />
         ) : null}
-        {summary.imported > 0 && canAssignOsm ? (
+        <Link
+          className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href={"/app/patients?hospitalId=" + encodeURIComponent(summary.targetHospitalId)}
+        >
+          เปิดรายชื่อผู้ป่วยในโรงพยาบาลนี้
+        </Link>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+        <Button onClick={onClose} size="compact" type="button" variant="ghost">
+          ปิด
+        </Button>
+        <Button
+          onClick={onNewImport}
+          size="compact"
+          type="button"
+          variant={hasSuccessfulRows || canAssign ? "secondary" : "primary"}
+        >
+          นำเข้าไฟล์ใหม่
+        </Button>
+        {canAssign ? (
           <Link
-            className={buttonClassName({ size: "compact", variant: "secondary" })}
+            className={buttonClassName({ size: "compact", variant: "primary" })}
             href={`/app/patients/assign-osm?hospitalId=${encodeURIComponent(summary.targetHospitalId)}`}
           >
             กำหนด อสม.
           </Link>
         ) : null}
-        <Button
-          onClick={onNewImport}
-          size="compact"
-          type="button"
-          variant={hasSuccessfulRows ? "secondary" : "primary"}
-        >
-          นำเข้าไฟล์ใหม่
+      </div>
+    </div>
+  );
+}
+
+/** Which file and hospital the dialog is about, so the reviewer never confirms the wrong batch. */
+function PatientImportDialogContext({
+  fileName,
+  hospitalName,
+}: {
+  fileName: string | null;
+  hospitalName: string;
+}): React.JSX.Element {
+  return (
+    <p className="break-words">
+      <span className="font-semibold text-ink">{hospitalName}</span>
+      {fileName ? <> · ไฟล์ {fileName}</> : null}
+    </p>
+  );
+}
+
+/** Review step footer: the commit action stays visible however long the row list is. */
+function PatientImportReviewActions({
+  preview,
+  file,
+  executableRowCount,
+  attentionRowCount,
+  baselineDateRequired,
+  importPending,
+  onCancel,
+  onConfirm,
+  onEditEffectiveDate,
+  onEditFile,
+}: {
+  preview: PatientImportPreviewBinding;
+  file: File | null;
+  executableRowCount: number;
+  attentionRowCount: number;
+  baselineDateRequired: boolean;
+  importPending: boolean;
+  onCancel: () => void;
+  onConfirm: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onEditEffectiveDate: () => void;
+  onEditFile: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 space-y-2 text-sm leading-6">
+        {baselineDateRequired ? (
+          <p className="font-semibold text-danger">ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า</p>
+        ) : executableRowCount > 0 ? (
+          <p className="font-semibold text-ink">
+            จะนำเข้าผู้ป่วยใหม่ {executableRowCount} จาก {preview.rows.length} รายการ
+            {attentionRowCount > 0 ? (
+              <span className="block font-normal text-muted">
+                รายการที่ต้องแก้ไข {attentionRowCount} รายการจะไม่ถูกบันทึก
+              </span>
+            ) : null}
+          </p>
+        ) : (
+          <p className="font-semibold text-warning">ไม่มีรายการที่นำเข้าได้จากไฟล์นี้</p>
+        )}
+        {attentionRowCount > 0 ? (
+          <FailedRowsDownloadButton
+            failedRowNumbers={[]}
+            file={file}
+            importPending={importPending}
+            preview={preview}
+          />
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+        <Button disabled={importPending} onClick={onCancel} size="compact" type="button" variant="ghost">
+          ยกเลิก
         </Button>
-        <Link
-          className="inline-flex min-h-10 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href={"/app/patients?hospitalId=" + encodeURIComponent(summary.targetHospitalId)}
-        >
-          เปิดรายชื่อผู้ป่วยในโรงพยาบาลนี้
-        </Link>
+        {baselineDateRequired ? (
+          <Button onClick={onEditEffectiveDate} size="compact" type="button">
+            ระบุวันที่ข้อมูลตั้งต้น
+          </Button>
+        ) : executableRowCount > 0 ? (
+          <Button
+            disabled={importPending}
+            loading={importPending}
+            onClick={onConfirm}
+            size="compact"
+            type="button"
+          >
+            {importPending ? "กำลังนำเข้าข้อมูล..." : `ยืนยันนำเข้า ${executableRowCount} รายการ`}
+          </Button>
+        ) : (
+          <Button onClick={onEditFile} size="compact" type="button">
+            เลือกไฟล์ใหม่
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Shown on the page after the review dialog is dismissed, so a checked file or a result is one click away. */
+export function PatientImportReviewReminder({
+  executableRowCount,
+  attentionRowCount,
+  baselineDateRequired,
+  result,
+  onOpen,
+  onNewImport,
+}: {
+  executableRowCount: number;
+  attentionRowCount: number;
+  baselineDateRequired: boolean;
+  result: { heading: string; variant: PatientImportResultPresentation["variant"] } | null;
+  onOpen: () => void;
+  onNewImport: () => void;
+}): React.JSX.Element {
+  const message = result
+    ? result.heading
+    : baselineDateRequired
+      ? "ตรวจสอบไฟล์แล้ว ต้องระบุวันที่ข้อมูลตั้งต้นก่อนยืนยันนำเข้า"
+      : `ตรวจสอบไฟล์แล้ว: ผู้ป่วยใหม่ ${executableRowCount} รายการ · ต้องแก้ไข ${attentionRowCount} รายการ`;
+
+  return (
+    <Alert className="mt-2" variant={result ? result.variant : "neutral"}>
+      <p className="font-semibold">{message}</p>
+      {!result ? (
+        <p className="mt-1 text-muted">
+          ยังไม่ได้นำเข้า กรุณายืนยันในหน้าตรวจสอบ หากเปลี่ยนไฟล์ โรงพยาบาล หรือวันที่ข้อมูลตั้งต้น ต้องตรวจสอบใหม่
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-3">
+        <Button onClick={onOpen} size="compact" type="button" variant="secondary">
+          {result ? "ดูผลการนำเข้า" : "เปิดหน้าตรวจสอบ"}
+        </Button>
+        {result ? (
+          <Button onClick={onNewImport} size="compact" type="button" variant="ghost">
+            นำเข้าไฟล์ใหม่
+          </Button>
+        ) : null}
       </div>
     </Alert>
   );
@@ -746,8 +919,11 @@ export function PatientProvisioningWorkspace({
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
   const [mode, setMode] = useState<ProvisioningMode>("SINGLE");
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const importContextVersion = useRef(0);
   const previousHospitalId = useRef(selectedHospitalId);
+  const previewSubmitRef = useRef<HTMLButtonElement>(null);
+  const dialogReturnFocus = useRef<ImportDialogReturnFocus>("PREVIEW_SUBMIT");
 
   useEffect(() => {
     if (previousHospitalId.current === selectedHospitalId) {
@@ -761,6 +937,7 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setReviewDialogOpen(false);
     setFileInputKey((current) => current + 1);
   }, [selectedHospitalId]);
 
@@ -771,9 +948,6 @@ export function PatientProvisioningWorkspace({
     ? countPatientImportRowsRequiringAttention(previewState.preview)
     : 0;
   const hasImportableRows = importableRowCount > 0;
-  const previewAllRowsAlreadyExist = previewState.status === "SUCCESS" &&
-    previewState.preview.rows.length > 0 &&
-    previewState.preview.rows.every((row) => row.classification === "ALREADY_EXISTS");
 
   const previewIsCurrent =
     selectedFile !== null &&
@@ -782,12 +956,20 @@ export function PatientProvisioningWorkspace({
     previewState.preview.targetHospitalId === selectedHospitalId &&
     previewState.preview.effectiveDate === (effectiveDate.trim() || null);
   const activeMode: ProvisioningMode = selectedScope.canBulkImport ? mode : "SINGLE";
+  const reviewPreview =
+    previewIsCurrent && previewState.status === "SUCCESS" ? previewState.preview : null;
+  const importSummary = importState.status === "SUCCESS" ? importState.summary : null;
+  const importResultPresentation = importSummary
+    ? getPatientImportResultPresentation(importSummary)
+    : null;
+  const showReviewDialog = reviewDialogOpen && reviewPreview !== null;
 
   function invalidateImportPreview(): void {
     importContextVersion.current += 1;
     setPreviewFile(null);
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setReviewDialogOpen(false);
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -810,6 +992,7 @@ export function PatientProvisioningWorkspace({
       return;
     }
 
+    dialogReturnFocus.current = "FILE_INPUT";
     invalidateImportPreview();
     setSelectedFile(null);
     setEffectiveDate("");
@@ -845,6 +1028,7 @@ export function PatientProvisioningWorkspace({
 
       setPreviewState(result);
       setPreviewFile(result.status === "SUCCESS" ? file : null);
+      setReviewDialogOpen(result.status === "SUCCESS");
     });
   }
 
@@ -886,6 +1070,40 @@ export function PatientProvisioningWorkspace({
     });
   }
 
+  function openReviewDialog(): void {
+    if (!reviewPreview || previewPending) {
+      return;
+    }
+
+    dialogReturnFocus.current = "PREVIEW_SUBMIT";
+    setReviewDialogOpen(true);
+  }
+
+  function closeReviewDialog(returnFocus: ImportDialogReturnFocus = "PREVIEW_SUBMIT"): void {
+    if (importPending) {
+      return;
+    }
+
+    dialogReturnFocus.current = returnFocus;
+    setReviewDialogOpen(false);
+  }
+
+  function restoreFocusAfterReviewDialog(): void {
+    const target = dialogReturnFocus.current;
+    dialogReturnFocus.current = "PREVIEW_SUBMIT";
+
+    const element =
+      target === "PREVIEW_SUBMIT"
+        ? previewSubmitRef.current
+        : document.getElementById(
+            target === "FILE_INPUT"
+              ? PATIENT_IMPORT_FILE_INPUT_ID
+              : PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID,
+          );
+
+    element?.focus({ preventScroll: false });
+  }
+
   function changeHospital(hospitalId: string): void {
     if (previewPending || importPending) {
       return;
@@ -897,6 +1115,7 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setReviewDialogOpen(false);
     setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
   }
@@ -1029,13 +1248,13 @@ export function PatientProvisioningWorkspace({
               <form className="mt-6 space-y-4" encType="multipart/form-data" onSubmit={handlePreview}>
                 <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
 
-                <label className="block space-y-2 text-sm font-semibold" htmlFor="patient-import-file">
+                <label className="block space-y-2 text-sm font-semibold" htmlFor={PATIENT_IMPORT_FILE_INPUT_ID}>
                   <span>ไฟล์ Excel (.xlsx)</span>
                   <input
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="block min-h-12 w-full rounded-control border border-border bg-surface px-3 py-3 text-sm font-normal file:mr-3 file:rounded-control file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-strong focus:outline-none focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={previewPending || importPending}
-                    id="patient-import-file"
+                    id={PATIENT_IMPORT_FILE_INPUT_ID}
                     key={fileInputKey}
                     name="file"
                     onChange={handleFileChange}
@@ -1064,13 +1283,13 @@ export function PatientProvisioningWorkspace({
 
                 <label
                   className="block space-y-2 text-sm font-semibold"
-                  htmlFor="patient-import-effective-date"
+                  htmlFor={PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID}
                 >
                   <span>ข้อมูลตั้งต้น ณ วันที่</span>
                   <Input
                     aria-describedby="patient-import-effective-date-help"
                     disabled={previewPending || importPending}
-                    id="patient-import-effective-date"
+                    id={PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID}
                     name="effectiveDate"
                     onChange={(event) => {
                       invalidateImportPreview();
@@ -1119,8 +1338,9 @@ export function PatientProvisioningWorkspace({
                   className="w-full"
                   disabled={previewPending || importPending}
                   loading={previewPending}
+                  ref={previewSubmitRef}
                   type="submit"
-                  variant="secondary"
+                  variant={reviewPreview ? "secondary" : "primary"}
                 >
                   {previewPending ? "กำลังตรวจสอบไฟล์..." : "ตรวจสอบและแสดงตัวอย่าง"}
                 </Button>
@@ -1131,103 +1351,93 @@ export function PatientProvisioningWorkspace({
                   </Alert>
                 ) : null}
 
-                {previewState.status === "SUCCESS" ? (
-                  <div
-                    aria-busy={previewPending || importPending}
-                    className="mt-6 space-y-4"
-                  >
-                    <div>
-                      <h3 className="text-base font-semibold">ตัวอย่างผลตรวจสอบ</h3>
-                      <p className="mt-1 text-sm leading-6 text-muted">
-                        หากเปลี่ยนไฟล์ โรงพยาบาล หรือวันที่ข้อมูลตั้งต้น ต้องตรวจสอบใหม่
-                      </p>
-                    </div>
-
-                    <PreviewFileSummary
-                      attentionRowCount={attentionRowCount}
-                      executableRowCount={importableRowCount}
-                      preview={previewState.preview}
-                    />
-
-                    {importState.status !== "SUCCESS" ? (
-                      <>
-                        <PreviewTable preview={previewState.preview} />
-                        {attentionRowCount > 0 ? (
-                          <FailedRowsDownloadButton
-                            failedRowNumbers={[]}
-                            file={selectedFile}
-                            preview={previewState.preview}
-                          />
-                        ) : null}
-                      </>
-                    ) : null}
-
-                    {importState.status === "ERROR" ? (
-                      <Alert className="mt-2" variant="danger">
-                        {importState.message}
-                      </Alert>
-                    ) : null}
-                    {importState.status === "SUCCESS" ? (
-                      <ImportSummary
-                        canAssignOsm={canAssignOsm}
-                        file={selectedFile}
-                        onNewImport={handleNewImport}
-                        preview={previewState.preview}
-                        summary={importState.summary}
-                      />
-                    ) : null}
-
-                    <div
-                      aria-live="polite"
-                      className="rounded-panel border border-border bg-surface-muted px-4 py-3 text-sm leading-6"
-                    >
-                      {importableRowCount > 0 ? (
-                        <p className="font-semibold text-ink">
-                          พร้อมนำเข้าผู้ป่วยใหม่ {importableRowCount} จาก {previewState.preview.rows.length} รายการ
-                        </p>
-                      ) : previewAllRowsAlreadyExist ? (
-                        <p className="font-semibold text-ink">
-                          ผู้ป่วยทั้งหมดมีอยู่แล้ว ไม่มีผู้ป่วยใหม่ที่ต้องบันทึก
-                        </p>
-                      ) : (
-                        <p className="font-semibold text-warning">
-                          ยังไม่มีรายการที่พร้อมนำเข้า กรุณาตรวจสอบรายการด้านล่าง
-                        </p>
-                      )}
-                      {importableRowCount > 0 && attentionRowCount > 0 ? (
-                        <p className="mt-1 text-muted">
-                          ระบบจะนำเข้าเฉพาะผู้ป่วยใหม่ที่พร้อม ส่วนรายการที่ต้องแก้ไขจะไม่ถูกบันทึก
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <Button
-                      className="w-full"
-                      disabled={
-                        !previewIsCurrent ||
-                        !hasImportableRows ||
-                        previewState.preview.baselineDateRequired ||
-                        importState.status === "SUCCESS" ||
-                        importPending ||
-                        previewPending
-                      }
-                      loading={importPending}
-                      onClick={handleImport}
-                      type="button"
-                    >
-                      {importPending
-                        ? "กำลังนำเข้าข้อมูล..."
-                        : importableRowCount > 0
-                          ? "ยืนยันนำเข้า " + importableRowCount + " รายการ"
-                          : "ยืนยันนำเข้า"}
-                    </Button>
-                  </div>
+                {reviewPreview && !showReviewDialog ? (
+                  <PatientImportReviewReminder
+                    attentionRowCount={attentionRowCount}
+                    baselineDateRequired={reviewPreview.baselineDateRequired}
+                    executableRowCount={importableRowCount}
+                    onNewImport={handleNewImport}
+                    onOpen={openReviewDialog}
+                    result={
+                      importSummary && importResultPresentation
+                        ? {
+                            heading: importResultPresentation.heading,
+                            variant: importResultPresentation.variant,
+                          }
+                        : null
+                    }
+                  />
                 ) : null}
               </form>
             </Panel>
           ) : null}
         </div>
       </div>
+
+      {showReviewDialog && reviewPreview ? (
+        <ModalDialog
+          description={
+            <PatientImportDialogContext
+              fileName={selectedFile?.name ?? null}
+              hospitalName={selectedScope.hospitalName}
+            />
+          }
+          dismissible={!importPending}
+          footer={
+            importSummary ? (
+              <ImportResultActions
+                canAssignOsm={canAssignOsm}
+                file={selectedFile}
+                onClose={() => closeReviewDialog()}
+                onNewImport={handleNewImport}
+                preview={reviewPreview}
+                summary={importSummary}
+              />
+            ) : (
+              <PatientImportReviewActions
+                attentionRowCount={attentionRowCount}
+                baselineDateRequired={reviewPreview.baselineDateRequired}
+                executableRowCount={importableRowCount}
+                file={selectedFile}
+                importPending={importPending}
+                onCancel={() => closeReviewDialog()}
+                onConfirm={handleImport}
+                onEditEffectiveDate={() => closeReviewDialog("EFFECTIVE_DATE")}
+                onEditFile={() => closeReviewDialog("FILE_INPUT")}
+                preview={reviewPreview}
+              />
+            )
+          }
+          onClosed={restoreFocusAfterReviewDialog}
+          onRequestClose={() => closeReviewDialog()}
+          stepKey={importSummary ? "result" : importState.status === "ERROR" ? "review-error" : "review"}
+          title={importSummary ? "ผลการนำเข้าผู้ป่วย" : "ตรวจสอบก่อนนำเข้า"}
+        >
+          {importSummary ? (
+            <ImportSummary canAssignOsm={canAssignOsm} summary={importSummary} />
+          ) : (
+            <div aria-busy={importPending} className="space-y-4">
+              {importState.status === "ERROR" ? (
+                <Alert variant="danger">
+                  <p className="font-semibold">นำเข้าไม่สำเร็จ</p>
+                  <p className="mt-1">{importState.message}</p>
+                </Alert>
+              ) : null}
+              {importPending ? (
+                <Alert variant="info">
+                  กำลังนำเข้าข้อมูล... กรุณารอจนกว่าระบบจะแสดงผล
+                </Alert>
+              ) : null}
+              <PreviewFileSummary
+                attentionRowCount={attentionRowCount}
+                executableRowCount={importableRowCount}
+                preview={reviewPreview}
+              />
+              <PreviewTable preview={reviewPreview} />
+            </div>
+          )}
+        </ModalDialog>
+      ) : null}
     </div>
   );
 }
