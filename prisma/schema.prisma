@@ -253,6 +253,39 @@ enum PatientProgramStatus {
   COMPLETED
 }
 
+enum PatientProgramRoundToolCode {
+  PAM
+  PROMS
+  KNOW_SELF
+  FLOATING_CHART
+  CONFIDENCE_RULER
+  LIFE_TABLE
+  ROUTINE
+  DREAM_CARD
+  HEALTH_PLAN_REVIEW
+  HEALTHY_PLAN
+  HEALTH_PATH
+}
+
+enum PatientProgramRoundActivitySource {
+  PLANNED
+  EXTRA
+}
+
+enum PatientProgramRoundActivityMode {
+  RECORDED
+  REVIEWED
+}
+
+enum PatientProgramRoundLinkedRecordType {
+  SCREENING_ASSESSMENT
+  SERVICE_ONE_ROUTINE
+  SERVICE_ONE_FLOATING_CHART
+  SERVICE_ONE_DREAM_CARD
+  SERVICE_ONE_CONFIDENCE
+  GOAL_PLAN
+}
+
 enum PatientServiceCode {
   SCREENING
   FOLLOW_UP
@@ -370,6 +403,8 @@ model User {
   patientAccessRequestsReviewed PatientAccessRequest[] @relation("PatientAccessRequestReviewer")
   patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedUser")
   patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
+  patientProgramRoundActivitiesRecorded PatientProgramRoundActivity[] @relation("PatientProgramRoundActivityRecordedBy")
+  patientProgramRoundVitalsRecorded PatientProgramRoundVitals[] @relation("PatientProgramRoundVitalsRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -855,6 +890,8 @@ model ScreeningAssessment {
   id                            String   @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String   @db.Uuid
   conductedByUserId             String   @db.Uuid
+  // Set only when the screening is performed from round 1 of a Program (WB-DF-01); one per Program.
+  patientProgramId              String?  @unique @db.Uuid
   submissionNonce               String   @unique @db.Uuid
   questionSetKey                String   @db.VarChar(64)
   questionSetVersion            String   @db.VarChar(64)
@@ -866,8 +903,11 @@ model ScreeningAssessment {
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   conductedByUser             User                       @relation("ScreeningAssessmentConductedBy", fields: [conductedByUserId], references: [id], onDelete: Restrict)
+  patientProgram              PatientProgram?            @relation("PatientProgramScreening", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   goalPlansSourced             PatientGoalPlan[]          @relation("GoalPlanSourceScreening")
 
+  // Prisma requires the exact composite relation fields to be unique for the one-to-one Program link.
+  @@unique([patientProgramId, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, submittedAt])
   @@index([conductedByUserId, submittedAt])
 }
@@ -1102,6 +1142,9 @@ model PatientProgram {
   serviceOneDreamCard         PatientProgramServiceOneDreamCard?
   serviceOneConfidence        PatientProgramServiceOneConfidence?
   serviceOneArtifactAssociations PatientProgramServiceOneArtifactAssociation[]
+  screeningAssessment         ScreeningAssessment?        @relation("PatientProgramScreening")
+  roundActivities             PatientProgramRoundActivity[]
+  roundVitals                 PatientProgramRoundVitals[]
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
@@ -1119,6 +1162,7 @@ model PatientFinalAssessment {
   systolicBloodPressure         Float?
   diastolicBloodPressure        Float?
   bloodSugar                    Float?
+  hba1c                         Float?
   // Workbook DoD BR-01: nullable only for assessments recorded before service dates were captured.
   serviceDate                   DateTime? @db.Date
   recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
@@ -1131,6 +1175,55 @@ model PatientFinalAssessment {
   // Prisma requires the exact composite relation fields to be unique; the
   // single-column unique field above is the Program cardinality backstop.
   @@unique([patientProgramId, patientHospitalRelationshipId])
+  @@index([recordedByUserId, recordedAt])
+}
+
+// Phase A (WB-DF-01..03): ledger of whiteboard activities per numbered round of a Program.
+model PatientProgramRoundActivity {
+  id                            String                              @id @default(uuid()) @db.Uuid
+  patientProgramId              String                              @db.Uuid
+  patientHospitalRelationshipId String                              @db.Uuid
+  roundNumber                   Int
+  toolCode                      PatientProgramRoundToolCode
+  source                        PatientProgramRoundActivitySource
+  mode                          PatientProgramRoundActivityMode
+  linkedRecordType              PatientProgramRoundLinkedRecordType?
+  linkedRecordId                String?                             @db.Uuid
+  performedAt                   DateTime                            @db.Timestamptz(3)
+  recordedByUserId              String                              @db.Uuid
+  submissionNonce               String                              @unique @db.Uuid
+  createdAt                     DateTime                            @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  recordedByUser User           @relation("PatientProgramRoundActivityRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber, toolCode])
+  @@index([patientProgramId, roundNumber])
+  @@index([recordedByUserId, performedAt])
+}
+
+// Phase A: vitals for rounds 1-2 only; rounds 3-6 keep using PatientFollowup measurements.
+model PatientProgramRoundVitals {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId              String   @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  roundNumber                   Int
+  serviceDate                   DateTime @db.Date
+  weight                        Float?
+  heightCm                      Float?
+  waistCircumference            Float?
+  systolicBloodPressure         Float?
+  diastolicBloodPressure        Float?
+  bloodSugar                    Float?
+  recordedByUserId              String   @db.Uuid
+  submissionNonce               String   @unique @db.Uuid
+  recordedAt                    DateTime @default(now()) @db.Timestamptz(3)
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  recordedByUser User           @relation("PatientProgramRoundVitalsRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber])
   @@index([recordedByUserId, recordedAt])
 }
 

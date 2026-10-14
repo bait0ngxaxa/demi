@@ -22,6 +22,7 @@ import {
   getOwnPatientFollowupDetail,
   getOwnPatientGoalPlanDetail,
   getOwnPatientProgramDetail,
+  getOwnPatientProgramRounds,
   patientSelfCareQueryInternals,
   type PatientSelfCareQueryDatabase,
 } from "./patient-self-care-query-service";
@@ -686,6 +687,67 @@ describe("Patient SELF care read projections", () => {
         where: { id: appointmentId, patientHospitalRelationshipId: relationshipId },
       }),
     );
+  });
+
+  it("returns the Patient's own round history read-only without recorder identities", async () => {
+    const database = createDatabase();
+    const recorder = { person: { givenName: "ชื่อเจ้าหน้าที่", familyName: "ต้องไม่รั่ว" } };
+    database.patientProgram.findFirst = vi.fn().mockResolvedValue({
+      id: programId,
+      patientHospitalRelationshipId: relationshipId,
+      status: PatientProgramStatus.ACTIVE,
+      initialBaseline: { heightCm: 165 },
+      roundVitals: [
+        {
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          roundNumber: 1,
+          serviceDate: new Date("2026-08-05T00:00:00.000Z"),
+          weight: 72,
+          heightCm: 165,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: 100,
+          recordedByUser: recorder,
+        },
+      ],
+      roundActivities: [],
+      screeningAssessment: null,
+      serviceOneRoutine: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", recordedAt, recordedByUser: recorder },
+      serviceOneFloatingChart: null,
+      serviceOneDreamCard: null,
+      serviceOneConfidence: null,
+      goalPlans: [],
+      followups: [],
+      finalAssessment: { serviceDate: null, recordedAt, recordedBy: recorder },
+    });
+
+    const result = await getOwnPatientProgramRounds(actor(), relationshipId, programId, { database });
+
+    expect(database.patientProgram.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: programId, patientHospitalRelationshipId: relationshipId } }),
+    );
+    expect(result.rounds).toHaveLength(6);
+    expect(result.overview.rounds[0]).toMatchObject({ status: "RECORDED", hasVitals: true, activityCount: 1 });
+    expect(result.rounds[0]?.vitals).toMatchObject({ weight: 72, bmi: 26.4 });
+    expect(result.overview.after.status).toBe("RECORDED");
+    expect(JSON.stringify(result)).not.toContain("ต้องไม่รั่ว");
+    expect(JSON.stringify(result)).not.toContain("ชื่อเจ้าหน้าที่");
+  });
+
+  it("denies round history for non-Patient actors and for a Program outside the own relationship", async () => {
+    const database = createDatabase();
+    database.patientProgram.findFirst = vi.fn().mockResolvedValue(null);
+
+    await expect(
+      getOwnPatientProgramRounds(actor([Role.OSM]), relationshipId, programId, { database }),
+    ).rejects.toThrow();
+    await expect(
+      getOwnPatientProgramRounds(actor(), relationshipId, programId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      getOwnPatientProgramRounds(actor(), "not-a-uuid", programId, { database }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("keeps the Patient DTOs allowlisted and structurally free of operator/clinical fields", () => {

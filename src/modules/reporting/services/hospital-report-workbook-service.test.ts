@@ -104,19 +104,16 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     },
     followups: { totalCount: followups.length, items: followups, hasMore: false },
     finalAssessment: { state: "MISSING" },
+    roundVitals: { round1: { state: "MISSING" }, round2: { state: "MISSING" } },
+    latestHeightCm: { state: "NOT_RECORDED" },
+    bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
+    screening: { state: "MISSING" },
     unavailable: {
       illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
-      baselineBmi: "DERIVATION_UNAPPROVED",
       afterCvdRiskScore: "SOURCE_MISSING",
-      afterHba1c: "SOURCE_MISSING",
-      afterBmi: "DERIVATION_UNAPPROVED",
-      afterHeightCm: "SOURCE_MISSING",
-      beforePamScore: "NOT_PROGRAM_SCOPED",
-      beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -165,7 +162,8 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("D9").value).toBe("LOCAL-001");
     expect(dashboard.getCell("J9").value).toBe("ยังไม่บันทึก");
     expect(dashboard.getCell("K9").value).toBe(0);
-    expect(dashboard.getCell("Q9").value).toBe("ไม่มีแหล่งข้อมูลในระบบ");
+    // No round vitals recorded for rounds 1-2 in this fixture.
+    expect(dashboard.getCell("Q9").value).toBe("ยังไม่บันทึกสัญญาณชีพครั้งนี้");
     expect(dashboard.getCell("Q10").value).toBeNull();
     expect(dashboard.getCell("W9").value).toBe(1);
     expect(dashboard.getCell("W10").value).toBe(5);

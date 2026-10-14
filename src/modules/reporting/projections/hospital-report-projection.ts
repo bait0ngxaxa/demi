@@ -24,6 +24,14 @@ export type HospitalReportMeasurementSet = {
   diastolicBloodPressure: HospitalReportFact<number>;
 };
 
+/** Phase A (WB-DF-01/05): vitals for Dashboard rounds 1-2 from PatientProgramRoundVitals. */
+export type HospitalReportRoundVitals = HospitalReportRecord<{
+  /** Date-only (YYYY-MM-DD). */
+  serviceDate: string;
+  measurements: HospitalReportMeasurementSet;
+  heightCm: HospitalReportFact<number>;
+}>;
+
 export type HospitalReportGoalPlan = {
   id: string;
   roundNumber: number;
@@ -106,20 +114,31 @@ export type HospitalReportProgramRow = {
     /** Date-only (YYYY-MM-DD); null for assessments recorded before service dates were captured. */
     serviceDate: string | null;
     measurements: HospitalReportMeasurementSet;
+    hba1c: HospitalReportFact<number>;
+  }>;
+  roundVitals: {
+    round1: HospitalReportRoundVitals;
+    round2: HospitalReportRoundVitals;
+  };
+  /** Latest recorded height (round 2, round 1, then Baseline) used for After BMI; not an After measurement. */
+  latestHeightCm: HospitalReportFact<number>;
+  /** WB-DF-04: kg/m^2 values only; Before from the Baseline, After from the Final Assessment weight. */
+  bmi: {
+    baseline: HospitalReportFact<number>;
+    after: HospitalReportFact<number>;
+  };
+  /** PAM/PROMs totals from the screening performed from round 1 of this Program. */
+  screening: HospitalReportRecord<{
+    submittedAt: string;
+    pamScore: number;
+    promsScore: number;
   }>;
   unavailable: {
     illnessDuration: HospitalReportUnavailableReason;
     baselineCvdRiskScore: HospitalReportUnavailableReason;
-    baselineBmi: HospitalReportUnavailableReason;
     afterCvdRiskScore: HospitalReportUnavailableReason;
-    afterHba1c: HospitalReportUnavailableReason;
-    afterBmi: HospitalReportUnavailableReason;
-    afterHeightCm: HospitalReportUnavailableReason;
-    beforePamScore: HospitalReportUnavailableReason;
-    beforePromsScore: HospitalReportUnavailableReason;
     beforeWeeklyExercise: HospitalReportUnavailableReason;
     afterWeeklyExercise: HospitalReportUnavailableReason;
-    serviceRoundMeasurements: HospitalReportUnavailableReason;
     achievementRate: HospitalReportUnavailableReason;
     outcome: HospitalReportUnavailableReason;
   };
@@ -207,12 +226,15 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   cvdRisk: { coverage: "SOURCE_MISSING", reason: "No CVD risk score source exists." },
   bmi: {
-    coverage: "DERIVATION_UNAPPROVED",
-    reason: "No stored BMI and no approved formula or stage pairing exist.",
+    coverage: "DERIVED_WB_DF_04",
+    source: "weight / (latest recorded height)^2 from PatientBaseline, PatientProgramRoundVitals and PatientFinalAssessment",
+    limitation:
+      "Value only (WB-DF-04): no category or interpretation. After uses the latest recorded height because Final Assessment records none.",
   },
   pamProms: {
-    coverage: "NOT_PROGRAM_SCOPED",
-    reason: "Existing Screening scores are not linked to a Program stage.",
+    coverage: "SOURCE_BACKED_PROGRAM_SCOPED",
+    source: "ScreeningAssessment.patientProgramId (screening performed from round 1)",
+    limitation: "Screenings recorded outside a Program round are not linked to a Program stage and are not reported.",
   },
   weeklyExercise: {
     coverage: "NOT_PROGRAM_SCOPED",
@@ -237,13 +259,20 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     coverage: "SOURCE_BACKED",
     source: "PatientFinalAssessment for the exact Program",
   },
-  afterHba1cAndHeight: {
-    coverage: "SOURCE_MISSING",
-    reason: "Final Assessment has no HbA1c or height field.",
+  afterHba1c: {
+    coverage: "SOURCE_BACKED_NEW_RECORDS",
+    source: "PatientFinalAssessment.hba1c",
+    limitation: "Final Assessments recorded before HbA1c was captured show as not recorded.",
+  },
+  afterHeight: {
+    coverage: "SOURCE_BACKED_LATEST_RECORDED",
+    source: "Latest PatientProgramRoundVitals.heightCm (round 2, then round 1), then PatientBaseline.heightCm",
+    limitation: "Final Assessment records no height of its own; this is the latest recorded height.",
   },
   serviceRoundMeasurements: {
-    coverage: "SOURCE_MISSING",
-    reason: "Service 1 and Goal Plan (rounds 1–2) record no DTX or body weight.",
+    coverage: "SOURCE_BACKED_NEW_RECORDS",
+    source: "PatientProgramRoundVitals for rounds 1-2; PatientFollowup measurements for rounds 3-6",
+    limitation: "Programs without round vitals recorded show as not recorded for rounds 1-2.",
   },
   achievement: {
     coverage: "SOURCE_BACKED_NEW_RECORDS",

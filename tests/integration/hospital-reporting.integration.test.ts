@@ -63,6 +63,9 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
   const programIds = fixture.programIds;
   if (programIds.length > 0) {
     await prisma.patientFollowupActivityProgress.deleteMany({ where: { followup: { patientProgramId: { in: programIds } } } });
+    await prisma.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await prisma.screeningAssessment.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneRoutine.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneFloatingChart.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramServiceOneDreamCard.deleteMany({ where: { patientProgramId: { in: programIds } } });

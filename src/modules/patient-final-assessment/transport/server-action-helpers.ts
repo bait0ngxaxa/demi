@@ -9,6 +9,7 @@ const FINAL_ASSESSMENT_FORM_FIELDS = new Set([
   "systolicBloodPressure",
   "diastolicBloodPressure",
   "bloodSugar",
+  "hba1c",
 ]);
 
 function getSingleString(formData: FormData, field: string): string | undefined {
@@ -77,6 +78,7 @@ export function buildCreateInput(formData: FormData): unknown {
     systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
     diastolicBloodPressure: getOptionalNumber(formData, "diastolicBloodPressure"),
     bloodSugar: getOptionalNumber(formData, "bloodSugar"),
+    hba1c: getOptionalNumber(formData, "hba1c"),
   } satisfies Record<string, unknown>;
 }
 

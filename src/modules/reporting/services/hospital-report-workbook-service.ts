@@ -160,6 +160,37 @@ function baselineMeasurementCell(
   return factCell(program.baseline.value.measurements[key]);
 }
 
+const NO_BASELINE_LABEL = "ไม่มี Baseline ที่เชื่อมกับ Program";
+const NO_FINAL_ASSESSMENT_LABEL = "ไม่มี Final Assessment";
+const NO_ROUND_VITALS_LABEL = "ยังไม่บันทึกสัญญาณชีพครั้งนี้";
+const NO_PROGRAM_SCREENING_LABEL = "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1";
+
+// Phase A: Dashboard rounds 1-2 DTX/BW come from PatientProgramRoundVitals (WB-DF-01).
+function roundVitalsCell(
+  record: HospitalReportProgramRow["roundVitals"]["round1"],
+  key: "bloodSugar" | "weight",
+): number | string {
+  return record.state === "MISSING" ? NO_ROUND_VITALS_LABEL : factCell(record.value.measurements[key]);
+}
+
+function baselineBmiCell(program: HospitalReportProgramRow): number | string {
+  return program.baseline.state === "MISSING" ? NO_BASELINE_LABEL : factCell(program.bmi.baseline);
+}
+
+function afterBmiCell(program: HospitalReportProgramRow): number | string {
+  return program.finalAssessment.state === "MISSING" ? NO_FINAL_ASSESSMENT_LABEL : factCell(program.bmi.after);
+}
+
+function afterHba1cCell(program: HospitalReportProgramRow): number | string {
+  return program.finalAssessment.state === "MISSING"
+    ? NO_FINAL_ASSESSMENT_LABEL
+    : factCell(program.finalAssessment.value.hba1c);
+}
+
+function screeningScoreCell(program: HospitalReportProgramRow, key: "pamScore" | "promsScore"): number | string {
+  return program.screening.state === "MISSING" ? NO_PROGRAM_SCREENING_LABEL : program.screening.value[key];
+}
+
 function rowsPerProgram(program: HospitalReportProgramRow, followupsPerRow: number): number {
   return Math.max(1, Math.ceil(program.followups.items.length / followupsPerRow));
 }
@@ -302,16 +333,19 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
       : "ไม่มี Baseline ที่เชื่อมกับ Program";
     row.getCell(10).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(11).value = baselineMeasurementCell(program, "weight");
-    row.getCell(12).value = unavailable(program.unavailable.baselineBmi);
+    row.getCell(12).value = baselineBmiCell(program);
     row.getCell(13).value = program.baseline.state === "PRESENT" ? factCell(program.baseline.value.heightCm) : "ไม่มี Baseline ที่เชื่อมกับ Program";
     row.getCell(14).value = baselineMeasurementCell(program, "waistCircumference");
     row.getCell(15).value = baselineMeasurementCell(program, "systolicBloodPressure");
     row.getCell(16).value = baselineMeasurementCell(program, "diastolicBloodPressure");
 
     if (continuation === 1) {
-      for (const roundColumn of [startColumn, startColumn + 3]) {
-        row.getCell(roundColumn).value = unavailable(program.unavailable.serviceRoundMeasurements);
-        row.getCell(roundColumn + 1).value = unavailable(program.unavailable.serviceRoundMeasurements);
+      for (const [roundColumn, roundVitals] of [
+        [startColumn, program.roundVitals.round1],
+        [startColumn + 3, program.roundVitals.round2],
+      ] as const) {
+        row.getCell(roundColumn).value = roundVitalsCell(roundVitals, "bloodSugar");
+        row.getCell(roundColumn + 1).value = roundVitalsCell(roundVitals, "weight");
         row.getCell(roundColumn + 2).value = unavailable(program.unavailable.achievementRate);
       }
     }
@@ -333,10 +367,10 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
         : "ยังไม่บันทึกวันที่สิ้นสุด";
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 35);
     row.getCell(36).value = unavailable(program.unavailable.afterCvdRiskScore);
-    row.getCell(37).value = unavailable(program.unavailable.afterHba1c);
+    row.getCell(37).value = afterHba1cCell(program);
     row.getCell(38).value = finalMeasurementCell(program, "bloodSugar");
     row.getCell(39).value = finalMeasurementCell(program, "weight");
-    row.getCell(40).value = unavailable(program.unavailable.afterBmi);
+    row.getCell(40).value = afterBmiCell(program);
     row.getCell(41).value = finalMeasurementCell(program, "waistCircumference");
     row.getCell(42).value = finalMeasurementCell(program, "systolicBloodPressure");
     row.getCell(43).value = finalMeasurementCell(program, "diastolicBloodPressure");
@@ -468,8 +502,8 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 8);
     row.getCell(9).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
-    row.getCell(11).value = unavailable(program.unavailable.beforePamScore);
-    row.getCell(12).value = unavailable(program.unavailable.beforePromsScore);
+    row.getCell(11).value = screeningScoreCell(program, "pamScore");
+    row.getCell(12).value = screeningScoreCell(program, "promsScore");
     row.getCell(13).value = program.baseline.state === "PRESENT"
       ? unavailable(program.baseline.value.confidenceScore.state === "UNAVAILABLE" ? program.baseline.value.confidenceScore.reason : "CLINICAL_SEMANTICS_UNAPPROVED")
       : "ไม่มี Baseline ที่เชื่อมกับ Program";

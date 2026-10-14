@@ -195,6 +195,7 @@ describe("Patient Final Assessment service", () => {
         systolicBloodPressure: null,
         diastolicBloodPressure: null,
         bloodSugar: null,
+        hba1c: null,
         serviceDate: new Date("2026-08-21T00:00:00.000Z"),
         recordedAt,
         createdAt: recordedAt,
@@ -217,6 +218,36 @@ describe("Patient Final Assessment service", () => {
     );
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("72.5");
     expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("weight");
+  });
+
+  it("persists the optional After HbA1c without counting it as a standalone measurement", async () => {
+    const { database, transaction } = createDatabase();
+
+    await createPatientFinalAssessment(
+      actor,
+      validInput({ hba1c: 6.8 }),
+      { database, now: () => recordedAt },
+    );
+
+    expect(transaction.patientFinalAssessment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ weight: 72.5, hba1c: 6.8 }),
+      select: expect.anything(),
+    });
+
+    const hba1cOnly = createDatabase();
+    await expect(
+      createPatientFinalAssessment(
+        actor,
+        {
+          patientProgramId: programId,
+          patientHospitalRelationshipId: relationshipId,
+          serviceDate: "2026-08-21",
+          hba1c: 6.8,
+        },
+        { database: hba1cOnly.database, now: () => recordedAt },
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(hba1cOnly.transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
   });
 
   it("requires a service date and rejects one after today in Asia/Bangkok before locking the Program", async () => {

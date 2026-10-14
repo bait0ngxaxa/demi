@@ -16,6 +16,14 @@ const optionalMeasurementSchema = z
   .nullable()
   .optional();
 
+const positiveHba1cSchema = z
+  .number()
+  .finite()
+  .positive()
+  .max(PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX)
+  .nullable()
+  .optional();
+
 const measurementFieldNames = [
   "weight",
   "waistCircumference",
@@ -34,6 +42,8 @@ export const patientFinalAssessmentCreateRequestSchema = z
     systolicBloodPressure: optionalMeasurementSchema,
     diastolicBloodPressure: optionalMeasurementSchema,
     bloodSugar: optionalMeasurementSchema,
+    // After HbA1c (Phase A report gap fill); optional and not counted as a standalone measurement.
+    hba1c: positiveHba1cSchema,
   })
   .strict()
   .superRefine((input, context) => {

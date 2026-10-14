@@ -120,19 +120,16 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
       }],
     },
     finalAssessment: { state: "MISSING" },
+    roundVitals: { round1: { state: "MISSING" }, round2: { state: "MISSING" } },
+    latestHeightCm: { state: "NOT_RECORDED" },
+    bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
+    screening: { state: "MISSING" },
     unavailable: {
       illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
-      baselineBmi: "DERIVATION_UNAPPROVED",
       afterCvdRiskScore: "SOURCE_MISSING",
-      afterHba1c: "SOURCE_MISSING",
-      afterBmi: "DERIVATION_UNAPPROVED",
-      afterHeightCm: "SOURCE_MISSING",
-      beforePamScore: "NOT_PROGRAM_SCOPED",
-      beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -212,7 +209,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ไม่มีบันทึกใน Program นี้");
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
-    expect(markup).toContain("แบบประเมิน PAM / PROMs: ข้อมูลที่มีไม่ได้ผูกกับ Program นี้ /");
+    expect(markup).toContain("แบบประเมิน PAM / PROMs: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
     expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ดูได้ในไฟล์ Excel (แสดงการติดตามไม่ครบในหน้านี้)");
     expect(markup).toContain("ครั้งที่ 1");
     expect(markup).toContain("วันที่ทำได้ / อัตราความสำเร็จ: 2/3 วัน · 67%");

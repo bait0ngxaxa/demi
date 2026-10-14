@@ -107,6 +107,10 @@ function createDatabase(input: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+    patientProgramRoundActivity: {
+      findUnique: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+    };
   };
 } {
   const transaction = {
@@ -140,6 +144,10 @@ function createDatabase(input: {
     patientProgramServiceOneConfidence: {
       findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn(),
+    },
+    patientProgramRoundActivity: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "77777777-7777-4777-8777-777777777777" }),
     },
   };
   const database = {
@@ -184,6 +192,22 @@ describe("Patient Program Service 1 service", () => {
       },
       select: expect.anything(),
     });
+    // WB-DF-01: the new Service 1 record is linked to round 1 in the same transaction.
+    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patientProgramId: programId,
+        patientHospitalRelationshipId: relationshipId,
+        roundNumber: 1,
+        toolCode: "ROUTINE",
+        source: "PLANNED",
+        mode: "RECORDED",
+        linkedRecordType: "SERVICE_ONE_ROUTINE",
+        linkedRecordId: recordId,
+        recordedByUserId: actorUserId,
+        performedAt: recordedAt,
+      }),
+      select: expect.anything(),
+    });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "patient_program.service_one.routine_recorded",
@@ -218,6 +242,7 @@ describe("Patient Program Service 1 service", () => {
     expect(result.operation).toBe("ALREADY_RECORDED");
     expect(result.recordedAt).toBe(recordedAt);
     expect(transaction.patientProgramServiceOneFloatingChart.create).not.toHaveBeenCalled();
+    expect(transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
     expect(mockedAudit).not.toHaveBeenCalled();
   });
 

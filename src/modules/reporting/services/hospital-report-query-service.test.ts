@@ -110,6 +110,8 @@ function programRecord(input: {
   followupCount?: number;
   baseline?: Record<string, unknown> | null;
   finalAssessment?: Record<string, unknown> | null;
+  roundVitals?: Record<string, unknown>[];
+  screeningAssessment?: Record<string, unknown> | null;
   hospitalNumber?: string;
 }): Record<string, unknown> {
   return {
@@ -139,6 +141,8 @@ function programRecord(input: {
     serviceOneDreamCard: null,
     serviceOneConfidence: null,
     finalAssessment: input.finalAssessment ?? null,
+    roundVitals: input.roundVitals ?? [],
+    screeningAssessment: input.screeningAssessment ?? null,
     goalPlans: [],
     followups: Array.from({ length: input.followupCount ?? 0 }, (_, index) => followupRecord(index + 1)),
   };
@@ -230,6 +234,10 @@ describe("Hospital reporting query service", () => {
     expect(result.page.items[1]?.goalPlans).toMatchObject({ totalCount: 0, items: [], hasMore: false });
     expect(result.page.items[1]?.followups).toMatchObject({ totalCount: 0, items: [], hasMore: false });
     expect(result.page.items[0]?.followups.items[0]?.activityProgress[0]?.activityLabel).toBe("เดินออกกำลังกาย");
+    // Programs without round vitals, a program screening or a Final Assessment report them as missing.
+    expect(result.page.items[0]?.roundVitals).toEqual({ round1: { state: "MISSING" }, round2: { state: "MISSING" } });
+    expect(result.page.items[0]?.screening).toEqual({ state: "MISSING" });
+    expect(result.page.items[0]?.bmi).toEqual({ baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } });
     expect(result.page.items[0]?.followups.items[0]).toMatchObject({
       serviceDate: "2026-08-17",
       planAdjusted: false,
@@ -251,6 +259,84 @@ describe("Hospital reporting query service", () => {
     }));
     expect(JSON.stringify(result)).toContain("givenName");
     expect(JSON.stringify(result)).not.toContain("createdBy");
+  });
+
+  it("projects round 1-2 vitals, BMI (value only), After HbA1c and the Program screening scores", async () => {
+    const program = programRecord({
+      id: programA1Id,
+      status: PatientProgramStatus.COMPLETED,
+      baseline: {
+        id: "77777777-7777-4777-8777-777777777777",
+        recordedOn: new Date("2026-08-16T00:00:00.000Z"),
+        weight: 74.5,
+        heightCm: 162,
+        waistCircumference: null,
+        bloodPressureSystolic: null,
+        bloodPressureDiastolic: null,
+        bloodSugarDtx: null,
+      },
+      roundVitals: [
+        {
+          roundNumber: 1,
+          serviceDate: new Date("2026-08-17T00:00:00.000Z"),
+          weight: 74,
+          heightCm: 162,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: 118,
+        },
+        {
+          roundNumber: 2,
+          serviceDate: new Date("2026-08-24T00:00:00.000Z"),
+          weight: 73,
+          heightCm: 163,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: 112,
+        },
+      ],
+      screeningAssessment: {
+        submittedAt: new Date("2026-08-17T03:00:00.000Z"),
+        result: { pamTotal: 15, promsTotal: 18, promsMin: 2, combinedTotal: 33, percentage: 75, level: "L3", zone: "YELLOW" },
+      },
+      finalAssessment: {
+        recordedAt: new Date("2026-09-30T03:00:00.000Z"),
+        serviceDate: new Date("2026-09-29T00:00:00.000Z"),
+        weight: 69,
+        waistCircumference: null,
+        systolicBloodPressure: null,
+        diastolicBloodPressure: null,
+        bloodSugar: null,
+        hba1c: 6.8,
+      },
+    });
+    const database = createDatabase({ programs: [program], relationshipCount: 1 });
+
+    const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database });
+    const row = result.page.items[0];
+
+    expect(row?.roundVitals.round1).toMatchObject({
+      state: "PRESENT",
+      value: {
+        serviceDate: "2026-08-17",
+        measurements: { bloodSugar: { state: "RECORDED", value: 118 }, weight: { state: "RECORDED", value: 74 } },
+      },
+    });
+    expect(row?.roundVitals.round2).toMatchObject({
+      state: "PRESENT",
+      value: { measurements: { bloodSugar: { state: "RECORDED", value: 112 } } },
+    });
+    // WB-DF-04: Before = Baseline weight / Baseline height; After = Final weight / latest recorded height (round 2).
+    expect(row?.bmi.baseline).toEqual({ state: "RECORDED", value: 28.4 });
+    expect(row?.latestHeightCm).toEqual({ state: "RECORDED", value: 163 });
+    expect(row?.bmi.after).toEqual({ state: "RECORDED", value: 26 });
+    expect(row?.finalAssessment).toMatchObject({ state: "PRESENT", value: { hba1c: { state: "RECORDED", value: 6.8 } } });
+    expect(row?.screening).toEqual({
+      state: "PRESENT",
+      value: { submittedAt: "2026-08-17T03:00:00.000Z", pamScore: 15, promsScore: 18 },
+    });
   });
 
   it("reuses the exact-Hospital projection for the separately authorized Global caller", async () => {

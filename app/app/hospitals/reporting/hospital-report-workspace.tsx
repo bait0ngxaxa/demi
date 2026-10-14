@@ -310,12 +310,20 @@ function ProgramOverview({
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
             <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk): {unavailableText(program.unavailable.baselineCvdRiskScore)}</li>
             <li>HbA1c: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.hba1c) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
-            <li>BMI: {unavailableText(program.unavailable.baselineBmi)}</li>
+            <li>BMI (kg/m²): {program.baseline.state === "PRESENT" ? factText(program.bmi.baseline) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
           </ul>
         </section>
 
         <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
           <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่าง Program · การติดตามผล</h4>
+          <ul className="mb-4 space-y-1 text-sm text-text-muted">
+            {([["ครั้งที่ 1", program.roundVitals.round1], ["ครั้งที่ 2", program.roundVitals.round2]] as const).map(([label, vitals]) => (
+              <li key={label}>
+                {label} · DTX: {vitals.state === "PRESENT" ? factText(vitals.value.measurements.bloodSugar) : "ยังไม่บันทึกสัญญาณชีพ"}
+                {" · "}น้ำหนัก: {vitals.state === "PRESENT" ? factText(vitals.value.measurements.weight) : "ยังไม่บันทึกสัญญาณชีพ"}
+              </li>
+            ))}
+          </ul>
           {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : (
             <ol className="space-y-4">
               {program.followups.items.map((followup) => (
@@ -340,9 +348,9 @@ function ProgramOverview({
           ) : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
             <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk): {unavailableText(program.unavailable.afterCvdRiskScore)}</li>
-            <li>HbA1c: {unavailableText(program.unavailable.afterHba1c)}</li>
-            <li>BMI: {unavailableText(program.unavailable.afterBmi)}</li>
-            <li>ส่วนสูง: {unavailableText(program.unavailable.afterHeightCm)}</li>
+            <li>HbA1c: {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.hba1c) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>BMI (kg/m²): {program.finalAssessment.state === "PRESENT" ? factText(program.bmi.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>ส่วนสูงล่าสุดที่บันทึก (ใช้คำนวณ BMI): {factText(program.latestHeightCm)}</li>
           </ul>
         </section>
       </div>
@@ -439,7 +447,7 @@ function ServiceProgram({
           <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
           {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>แบบประเมิน PAM / PROMs: {unavailableText(program.unavailable.beforePamScore)} / {unavailableText(program.unavailable.beforePromsScore)}</li>
+            <li>แบบประเมิน PAM / PROMs: {program.screening.state === "PRESENT" ? `${program.screening.value.pamScore} / ${program.screening.value.promsScore}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
             <li>คะแนนความมั่นใจ: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
             <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.beforeWeeklyExercise)}</li>
           </ul>

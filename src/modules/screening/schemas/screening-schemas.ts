@@ -39,6 +39,8 @@ export type ScreeningResult = z.infer<typeof screeningResultSchema>;
 export const screeningSubmitRequestSchema = z
   .object({
     patientHospitalRelationshipId: screeningRelationshipIdSchema,
+    // Set when the screening is performed from round 1 of a Program (WB-DF-01).
+    patientProgramId: z.string().uuid().optional(),
     submissionNonce: screeningSubmissionNonceSchema,
     responses: screeningResponsesSchema,
   })

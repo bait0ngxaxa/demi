@@ -28,9 +28,13 @@ import {
   type PatientProgramServiceOneFloatingChartRequest,
   type PatientProgramServiceOneRoutineRequest,
 } from "../schemas/patient-program-service-one-schemas";
+import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+
 import {
   lockActivePatientProgram,
   patientProgramLifecycleSelect,
+  type ActivePatientProgramMutationContext,
 } from "./patient-program-lifecycle-service";
 
 export type PatientProgramServiceOneDatabase = PrismaClient;
@@ -420,17 +424,50 @@ async function associateArtifactInTransaction(
   );
 }
 
+/**
+ * WB-DF-01: Service 1 tools are recorded in round 1. The ledger row links the new Service 1 record
+ * to that round in the same transaction; it is not a second result.
+ */
+async function linkServiceOneRoundActivity(
+  transaction: Prisma.TransactionClient,
+  context: ActivePatientProgramMutationContext,
+  input: {
+    toolCode: "ROUTINE" | "FLOATING_CHART" | "DREAM_CARD" | "CONFIDENCE_RULER";
+    linkedRecordType:
+      | "SERVICE_ONE_ROUTINE"
+      | "SERVICE_ONE_FLOATING_CHART"
+      | "SERVICE_ONE_DREAM_CARD"
+      | "SERVICE_ONE_CONFIDENCE";
+    linkedRecordId: string;
+    performedAt: Date;
+  },
+): Promise<void> {
+  await ensureRoundLedgerEntry(transaction, {
+    patientProgramId: context.program.id,
+    patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+    roundNumber: SERVICE_ONE_HOME_ROUND,
+    toolCode: input.toolCode,
+    source: "PLANNED",
+    mode: "RECORDED",
+    linkedRecordType: input.linkedRecordType,
+    linkedRecordId: input.linkedRecordId,
+    recordedByUserId: context.access.actor.userId,
+    performedAt: input.performedAt,
+  });
+}
+
 async function recordRoutineInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   input: PatientProgramServiceOneRoutineRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActivePatientProgram(
+  const context = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
   );
+  const { access, program } = context;
   const existing = await transaction.patientProgramServiceOneRoutine.findUnique({
     where: { patientProgramId: program.id },
     select: routineMutationSelect,
@@ -453,6 +490,13 @@ async function recordRoutineInTransaction(
       recordedAt: now,
     },
     select: routineMutationSelect,
+  });
+
+  await linkServiceOneRoundActivity(transaction, context, {
+    toolCode: "ROUTINE",
+    linkedRecordType: "SERVICE_ONE_ROUTINE",
+    linkedRecordId: record.id,
+    performedAt: now,
   });
 
   await auditRecordedActivity(transaction, {
@@ -481,11 +525,12 @@ async function recordFloatingChartInTransaction(
   input: PatientProgramServiceOneFloatingChartRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActivePatientProgram(
+  const context = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
   );
+  const { access, program } = context;
   const existing = await transaction.patientProgramServiceOneFloatingChart.findUnique({
     where: { patientProgramId: program.id },
     select: floatingChartMutationSelect,
@@ -515,6 +560,13 @@ async function recordFloatingChartInTransaction(
     select: floatingChartMutationSelect,
   });
 
+  await linkServiceOneRoundActivity(transaction, context, {
+    toolCode: "FLOATING_CHART",
+    linkedRecordType: "SERVICE_ONE_FLOATING_CHART",
+    linkedRecordId: record.id,
+    performedAt: now,
+  });
+
   await auditRecordedActivity(transaction, {
     action: "patient_program.service_one.floating_chart_recorded",
     resourceType: "PatientProgramServiceOneFloatingChart",
@@ -541,11 +593,12 @@ async function recordDreamCardInTransaction(
   input: PatientProgramServiceOneDreamCardRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActivePatientProgram(
+  const context = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
   );
+  const { access, program } = context;
   const existing = await transaction.patientProgramServiceOneDreamCard.findUnique({
     where: { patientProgramId: program.id },
     select: dreamCardMutationSelect,
@@ -575,6 +628,13 @@ async function recordDreamCardInTransaction(
     select: dreamCardMutationSelect,
   });
 
+  await linkServiceOneRoundActivity(transaction, context, {
+    toolCode: "DREAM_CARD",
+    linkedRecordType: "SERVICE_ONE_DREAM_CARD",
+    linkedRecordId: record.id,
+    performedAt: now,
+  });
+
   await auditRecordedActivity(transaction, {
     action: "patient_program.service_one.dream_card_recorded",
     resourceType: "PatientProgramServiceOneDreamCard",
@@ -601,11 +661,12 @@ async function recordConfidenceInTransaction(
   input: PatientProgramServiceOneConfidenceRequest,
   now: Date,
 ): Promise<PatientProgramServiceOneMutationResult> {
-  const { access, program } = await lockActivePatientProgram(
+  const context = await lockActivePatientProgram(
     transaction,
     actor,
     input.patientProgramId.toLowerCase(),
   );
+  const { access, program } = context;
   const existing = await transaction.patientProgramServiceOneConfidence.findUnique({
     where: { patientProgramId: program.id },
     select: confidenceMutationSelect,
@@ -634,6 +695,13 @@ async function recordConfidenceInTransaction(
       improvementPlan: input.improvementPlan,
     },
     select: confidenceMutationSelect,
+  });
+
+  await linkServiceOneRoundActivity(transaction, context, {
+    toolCode: "CONFIDENCE_RULER",
+    linkedRecordType: "SERVICE_ONE_CONFIDENCE",
+    linkedRecordId: record.id,
+    performedAt: now,
   });
 
   await auditRecordedActivity(transaction, {

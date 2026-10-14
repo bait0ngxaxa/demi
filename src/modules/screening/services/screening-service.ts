@@ -5,11 +5,15 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
   ConflictError,
   ForbiddenError,
   InfrastructureError,
+  NotFoundError,
   ValidationError,
 } from "@/shared/errors/application-error";
 
@@ -195,6 +199,7 @@ async function submitInTransaction(
       id: true,
       patientHospitalRelationshipId: true,
       conductedByUserId: true,
+      patientProgramId: true,
       questionSetKey: true,
       questionSetVersion: true,
       scoringVersion: true,
@@ -208,6 +213,7 @@ async function submitInTransaction(
     const matchesSameSubmission =
       existing.patientHospitalRelationshipId === input.patientHospitalRelationshipId &&
       existing.conductedByUserId === actor.userId &&
+      (existing.patientProgramId ?? null) === (input.patientProgramId?.toLowerCase() ?? null) &&
       existing.questionSetKey === questionSet.key &&
       existing.questionSetVersion === questionSet.version &&
       existing.scoringVersion === scoringVersion &&
@@ -227,9 +233,36 @@ async function submitInTransaction(
     });
   }
 
+  let programLink: Awaited<ReturnType<typeof lockActivePatientProgram>> | null = null;
+
+  if (input.patientProgramId) {
+    programLink = await lockActivePatientProgram(
+      transaction,
+      actor,
+      input.patientProgramId.toLowerCase(),
+    );
+
+    if (
+      programLink.access.patient.patientHospitalRelationshipId !==
+      access.patient.patientHospitalRelationshipId
+    ) {
+      throw new NotFoundError();
+    }
+
+    const linked = await transaction.screeningAssessment.findUnique({
+      where: { patientProgramId: programLink.program.id },
+      select: { id: true },
+    });
+
+    if (linked) {
+      throw new ConflictError("โปรแกรมนี้มีแบบประเมินที่บันทึกในครั้งที่ 1 แล้ว");
+    }
+  }
+
   const assessment = await transaction.screeningAssessment.create({
     data: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      patientProgramId: programLink?.program.id ?? null,
       conductedByUserId: actor.userId,
       submissionNonce: input.submissionNonce,
       questionSetKey: questionSet.key,
@@ -247,6 +280,24 @@ async function submitInTransaction(
     },
   });
 
+  if (programLink) {
+    // One submission answers both PAM and PROMs, so round 1 records both tools against it.
+    for (const toolCode of ["PAM", "PROMS"] as const) {
+      await ensureRoundLedgerEntry(transaction, {
+        patientProgramId: programLink.program.id,
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        roundNumber: SERVICE_ONE_HOME_ROUND,
+        toolCode,
+        source: "PLANNED",
+        mode: "RECORDED",
+        linkedRecordType: "SCREENING_ASSESSMENT",
+        linkedRecordId: assessment.id,
+        recordedByUserId: actor.userId,
+        performedAt: now,
+      });
+    }
+  }
+
   await recordAuditEvent(
     {
       actorUserId: actor.userId,
@@ -257,6 +308,7 @@ async function submitInTransaction(
         screeningAssessmentId: assessment.id,
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
+        ...(programLink ? { patientProgramId: programLink.program.id } : {}),
         questionSetVersion: questionSet.version,
         scoringVersion,
       },

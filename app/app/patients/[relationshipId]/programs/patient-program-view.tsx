@@ -46,7 +46,7 @@ function ProgramLink({
   return (
     <Link
       className={buttonClassName({ variant: primary ? "primary" : "secondary", size: "compact" })}
-      href={`/app/patients/${encodeURIComponent(program.patientHospitalRelationshipId)}/programs/${encodeURIComponent(program.programId)}`}
+      href={`/app/patients/${encodeURIComponent(program.patientHospitalRelationshipId)}/programs/${encodeURIComponent(program.programId)}/rounds`}
     >
       {children}
     </Link>
@@ -121,7 +121,7 @@ export function PatientProgramView({
                   </div>
                 </dl>
               </div>
-              <ProgramLink primary program={context.active}>เปิดรายละเอียดโปรแกรม</ProgramLink>
+              <ProgramLink primary program={context.active}>เปิดการจัดบริการครั้งที่ 1–6</ProgramLink>
             </div>
           </div>
         ) : (

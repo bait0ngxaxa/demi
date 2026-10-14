@@ -15,6 +15,8 @@ import { z } from "zod";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
+import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
+import { screeningResultSchema } from "@/modules/screening/schemas/screening-schemas";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import {
   ApplicationError,
@@ -230,8 +232,27 @@ const reportProgramFinalSelect = {
     systolicBloodPressure: true,
     diastolicBloodPressure: true,
     bloodSugar: true,
+    hba1c: true,
   },
 } satisfies Prisma.PatientProgramSelect["finalAssessment"];
+
+const reportProgramRoundVitalsSelect = {
+  orderBy: { roundNumber: "asc" },
+  select: {
+    roundNumber: true,
+    serviceDate: true,
+    weight: true,
+    heightCm: true,
+    waistCircumference: true,
+    systolicBloodPressure: true,
+    diastolicBloodPressure: true,
+    bloodSugar: true,
+  },
+} satisfies Prisma.PatientProgramSelect["roundVitals"];
+
+const reportProgramScreeningSelect = {
+  select: { submittedAt: true, result: true },
+} satisfies Prisma.PatientProgramSelect["screeningAssessment"];
 
 const reportProgramBaseSelect = {
   id: true,
@@ -246,6 +267,8 @@ const reportProgramBaseSelect = {
   serviceOneDreamCard: reportProgramServiceOneSelect,
   serviceOneConfidence: reportProgramServiceOneSelect,
   finalAssessment: reportProgramFinalSelect,
+  roundVitals: reportProgramRoundVitalsSelect,
+  screeningAssessment: reportProgramScreeningSelect,
 } satisfies Prisma.PatientProgramSelect;
 
 export const hospitalReportPageProgramSelect = {
@@ -483,6 +506,40 @@ function toFollowup(record: {
   };
 }
 
+type ReportRoundVitalsRecord = HospitalReportProgramRecord["roundVitals"][number];
+
+function toRoundVitals(record: ReportRoundVitalsRecord | undefined): HospitalReportProgramRow["roundVitals"]["round1"] {
+  return toRecord(
+    record
+      ? {
+          serviceDate: record.serviceDate.toISOString().slice(0, 10),
+          measurements: toMeasurementSet(record),
+          heightCm: toFact(record.heightCm),
+        }
+      : null,
+  );
+}
+
+function toBmiFact(weightKg: number | null, heightCm: number | null): HospitalReportFact<number> {
+  return toFact(calculateBodyMassIndex(weightKg, heightCm));
+}
+
+function toScreeningRecord(
+  screening: HospitalReportProgramRecord["screeningAssessment"],
+): HospitalReportProgramRow["screening"] {
+  const result = screening ? screeningResultSchema.safeParse(screening.result) : null;
+
+  return toRecord(
+    screening && result?.success
+      ? {
+          submittedAt: screening.submittedAt.toISOString(),
+          pamScore: result.data.pamTotal,
+          promsScore: result.data.promsTotal,
+        }
+      : null,
+  );
+}
+
 function toServiceOneActivity(record: { recordedAt: Date } | null): HospitalReportProgramRow["serviceOne"]["routine"] {
   return record
     ? { state: "PRESENT", value: { recordedAt: record.recordedAt.toISOString() } }
@@ -497,6 +554,9 @@ function toHospitalReportProgramRow(
   const assignment = relationship.osmAssignments[0];
   const baseline = record.initialBaseline;
   const finalAssessment = record.finalAssessment;
+  const round1 = record.roundVitals.find((vitals) => vitals.roundNumber === 1);
+  const round2 = record.roundVitals.find((vitals) => vitals.roundNumber === 2);
+  const latestHeightCm = round2?.heightCm ?? round1?.heightCm ?? baseline?.heightCm ?? null;
 
   return {
     patientProgramId: record.id,
@@ -559,22 +619,23 @@ function toHospitalReportProgramRow(
             recordedAt: finalAssessment.recordedAt.toISOString(),
             serviceDate: finalAssessment.serviceDate ? finalAssessment.serviceDate.toISOString().slice(0, 10) : null,
             measurements: toMeasurementSet(finalAssessment),
+            hba1c: toFact(finalAssessment.hba1c),
           }
         : null,
     ),
+    roundVitals: { round1: toRoundVitals(round1), round2: toRoundVitals(round2) },
+    latestHeightCm: toFact(latestHeightCm),
+    bmi: {
+      baseline: toBmiFact(baseline?.weight ?? null, baseline?.heightCm ?? null),
+      after: toBmiFact(finalAssessment?.weight ?? null, latestHeightCm),
+    },
+    screening: toScreeningRecord(record.screeningAssessment),
     unavailable: {
       illnessDuration: "SOURCE_MISSING",
       baselineCvdRiskScore: "SOURCE_MISSING",
-      baselineBmi: "DERIVATION_UNAPPROVED",
       afterCvdRiskScore: "SOURCE_MISSING",
-      afterHba1c: "SOURCE_MISSING",
-      afterBmi: "DERIVATION_UNAPPROVED",
-      afterHeightCm: "SOURCE_MISSING",
-      beforePamScore: "NOT_PROGRAM_SCOPED",
-      beforePromsScore: "NOT_PROGRAM_SCOPED",
       beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
       afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      serviceRoundMeasurements: "SOURCE_MISSING",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
