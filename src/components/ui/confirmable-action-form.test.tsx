@@ -23,7 +23,7 @@ function outcomeFor(state: ActionState): ConfirmableActionOutcome {
   return "idle";
 }
 
-function Harness({ runAction }: { runAction: ActionRunner }): React.JSX.Element {
+function Harness({ runAction, withRequiredField = false }: { runAction: ActionRunner; withRequiredField?: boolean }): React.JSX.Element {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     async (_previous, formData) => runAction(formData),
     initialState,
@@ -46,6 +46,12 @@ function Harness({ runAction }: { runAction: ActionRunner }): React.JSX.Element 
         หมายเหตุ
         <input defaultValue="ฉบับร่างที่เก็บไว้" name="note" />
       </label>
+      {withRequiredField ? (
+        <label>
+          ข้อมูลที่จำเป็น
+          <input data-testid="required-field" defaultValue="พร้อมส่ง" name="requiredField" required />
+        </label>
+      ) : null}
       <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
       {state.status === "SUCCESS" ? <Alert role="status">{state.message}</Alert> : null}
       {state.status === "ERROR" ? <Alert role="alert">{state.message}</Alert> : null}
@@ -61,12 +67,12 @@ let originalClose: PropertyDescriptor | undefined;
 let originalRequestSubmit: PropertyDescriptor | undefined;
 let originalScrollTo: PropertyDescriptor | undefined;
 
-function mount(runAction: ActionRunner): void {
+function mount(runAction: ActionRunner, withRequiredField = false): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(createElement(Harness, { runAction }));
+    root?.render(createElement(Harness, { runAction, withRequiredField }));
   });
 }
 
@@ -102,6 +108,22 @@ async function settleAction(): Promise<void> {
   await act(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
+}
+
+function withNativeRequestSubmit(callback: () => void): void {
+  const currentDescriptor = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, "requestSubmit");
+  if (!originalRequestSubmit || typeof originalRequestSubmit.value !== "function") {
+    throw new Error("Missing native requestSubmit implementation");
+  }
+
+  Object.defineProperty(HTMLFormElement.prototype, "requestSubmit", originalRequestSubmit);
+  try {
+    callback();
+  } finally {
+    if (currentDescriptor) {
+      Object.defineProperty(HTMLFormElement.prototype, "requestSubmit", currentDescriptor);
+    }
+  }
 }
 
 beforeAll(() => {
@@ -226,6 +248,68 @@ describe("ConfirmableActionForm", () => {
     });
 
     expect(container?.querySelector("dialog")).toBeNull();
+  });
+
+  it("recovers when native constraint validation rejects confirmation and requires confirmation again", async () => {
+    const runAction = vi.fn<ActionRunner>(async () => ({ status: "SUCCESS", message: "บันทึกแล้ว" }));
+    mount(runAction, true);
+    const submitButton = getButton("[data-testid='submit-action']");
+    const form = submitButton.closest("form");
+    const requiredField = container?.querySelector<HTMLInputElement>("[data-testid='required-field']");
+    if (!form || !requiredField) throw new Error("Missing required-field test controls");
+
+    act(() => {
+      withNativeRequestSubmit(() => form.requestSubmit(submitButton));
+    });
+    const confirmButton = getConfirmationButton();
+    requiredField.value = "";
+
+    act(() => {
+      withNativeRequestSubmit(() => confirmButton.click());
+    });
+
+    expect(runAction).not.toHaveBeenCalled();
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(container?.querySelector("fieldset")?.disabled).toBe(false);
+    expect(requiredField.value).toBe("");
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ตรวจสอบข้อมูล");
+
+    requiredField.value = "ข้อมูลครบถ้วน";
+    submit(submitButton);
+    expect(getConfirmationButton()).not.toBeNull();
+    expect(runAction).not.toHaveBeenCalled();
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledOnce();
+    expect(runAction.mock.calls[0]?.[0].get("requiredField")).toBe("ข้อมูลครบถ้วน");
+  });
+
+  it("recovers when requestSubmit throws and requires confirmation again", async () => {
+    const runAction = vi.fn<ActionRunner>(async () => ({ status: "SUCCESS", message: "บันทึกแล้ว" }));
+    mount(runAction);
+    const submitButton = getButton("[data-testid='submit-action']");
+    submit(submitButton);
+    const requestSubmit = vi.spyOn(HTMLFormElement.prototype, "requestSubmit").mockImplementation(() => {
+      throw new Error("dispatch failed");
+    });
+
+    act(() => getConfirmationButton().click());
+
+    expect(requestSubmit).toHaveBeenCalledOnce();
+    expect(runAction).not.toHaveBeenCalled();
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(container?.querySelector("fieldset")?.disabled).toBe(false);
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ตรวจสอบข้อมูล");
+
+    requestSubmit.mockRestore();
+    submit(submitButton);
+    expect(getConfirmationButton()).not.toBeNull();
+    expect(runAction).not.toHaveBeenCalled();
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledOnce();
   });
 
   it.each([

@@ -28,6 +28,7 @@ type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "child
 };
 
 const unknownOutcomeMessage = "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการซ้ำ";
+const submissionDispatchErrorMessage = "ไม่สามารถส่งแบบฟอร์มได้ กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง";
 
 export function ConfirmableActionForm({
   action,
@@ -49,6 +50,7 @@ export function ConfirmableActionForm({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [awaitingResult, setAwaitingResult] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  const [submissionDispatchError, setSubmissionDispatchError] = useState(false);
 
   useEffect(() => {
     if (!awaitingResult) {
@@ -92,6 +94,8 @@ export function ConfirmableActionForm({
       return;
     }
 
+    setSubmissionDispatchError(false);
+
     if (!requiresConfirmation) {
       return;
     }
@@ -123,10 +127,25 @@ export function ConfirmableActionForm({
     setAwaitingResult(true);
 
     const submitter = submitterRef.current;
-    if (submitter?.form === form) {
-      form.requestSubmit(submitter);
-    } else {
-      form.requestSubmit();
+    try {
+      if (submitter?.form === form) {
+        form.requestSubmit(submitter);
+      } else {
+        form.requestSubmit();
+      }
+    } catch {
+      // A submit event may already have started the action before a host implementation throws.
+      // Keep waiting in that case so the existing outcome reconciliation remains authoritative.
+    }
+
+    if (bypassConfirmationRef.current) {
+      bypassConfirmationRef.current = false;
+      waitingForResultRef.current = false;
+      sawPendingRef.current = false;
+      resultAtSubmitRef.current = null;
+      setAwaitingResult(false);
+      setDialogOpen(false);
+      setSubmissionDispatchError(true);
     }
   }
 
@@ -147,6 +166,11 @@ export function ConfirmableActionForm({
       {unknownOutcome ? (
         <Alert className="mt-4" role="alert" variant="warning">
           {unknownOutcomeMessage}
+        </Alert>
+      ) : null}
+      {submissionDispatchError ? (
+        <Alert className="mt-4" role="alert" variant="warning">
+          {submissionDispatchErrorMessage}
         </Alert>
       ) : null}
       <ConfirmDialog
