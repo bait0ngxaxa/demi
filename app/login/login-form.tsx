@@ -4,6 +4,11 @@ import { useActionState, useEffect, useMemo, useSyncExternalStore } from "react"
 
 import { LoadingSpinner } from "@/components/ui/button";
 import {
+  connectionFailureMessage,
+  submitPreservingInput,
+  withConnectionFailure,
+} from "@/components/ui/mutation-action-state";
+import {
   initialLoginActionState,
   type LoginActionState,
 } from "@/modules/auth/transport/action-state";
@@ -70,7 +75,11 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
     invitationReturnToStore.getServerSnapshot,
   );
   const [state, formAction, pending] = useActionState<LoginActionState, FormData>(
-    loginAction,
+    withConnectionFailure(loginAction, () => ({
+      status: "ERROR",
+      code: "AUTH_INFRASTRUCTURE_FAILURE",
+      message: connectionFailureMessage,
+    })),
     initialLoginActionState,
   );
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -81,7 +90,7 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
   }, [invitationReturnToStore]);
 
   return (
-    <form action={formAction} className="mt-8 space-y-5">
+    <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)}>
       {returnTo ? (
         <input name="returnTo" type="hidden" value={returnTo} />
       ) : null}

@@ -2,7 +2,6 @@
 
 import QRCode from "qrcode";
 import {
-  useActionState,
   useEffect,
   useMemo,
   useState,
@@ -11,6 +10,8 @@ import {
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
 import {
   initialPatientActivationIssueActionState,
@@ -240,7 +241,7 @@ export function PatientActivationHandoff({
   patientAccessRequestId,
   linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     issuePatientActivationAction,
     initialPatientActivationIssueActionState,
   );
@@ -250,6 +251,10 @@ export function PatientActivationHandoff({
     candidate?.activationStatus === "RECONCILIATION_REQUIRED" ||
     result?.outcome === "RECONCILIATION_REQUIRED" ||
     (state.status === "ERROR" && state.code === "RECONCILIATION_REQUIRED");
+
+  if (unknownOutcome) {
+    return <UnknownOutcomeAlert className="mt-4" active={unknownOutcome} />;
+  }
 
   if (patientAccessRequestId) {
     if (reconciliationRequired) {

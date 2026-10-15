@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { connectionFailureMessage, withConnectionFailure } from "@/components/ui/mutation-action-state";
 import {
   initialLogoutActionState,
   type LogoutActionState,
@@ -11,7 +12,7 @@ import { logoutAction } from "@/modules/auth/transport/server-actions";
 
 export function LogoutButton(): React.JSX.Element {
   const [state, formAction, pending] = useActionState<LogoutActionState, FormData>(
-    logoutAction,
+    withConnectionFailure(logoutAction, () => ({ status: "ERROR", message: connectionFailureMessage })),
     initialLogoutActionState,
   );
 

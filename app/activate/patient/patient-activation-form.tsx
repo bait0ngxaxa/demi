@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { LoadingSpinner } from "@/components/ui/button";
+import { Button, LoadingSpinner } from "@/components/ui/button";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   getPatientActivationDetailsAction,
   completePatientActivationAction,
@@ -71,7 +73,9 @@ export function PatientActivationForm(): React.JSX.Element {
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [details, setDetails] = useState<PatientActivationDetailsActionState | null>(null);
   const [detailsToken, setDetailsToken] = useState<string | null>(null);
-  const [state, formAction, pending] = useActionState<
+  const [detailsFailedToken, setDetailsFailedToken] = useState<string | null>(null);
+  const [detailsAttempt, setDetailsAttempt] = useState(0);
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     PatientActivationCompletionActionState,
     FormData
   >(
@@ -90,17 +94,24 @@ export function PatientActivationForm(): React.JSX.Element {
 
     let active = true;
 
-    void getPatientActivationDetailsAction(token).then((result) => {
-      if (active) {
-        setDetails(result);
-        setDetailsToken(token);
-      }
-    });
+    getPatientActivationDetailsAction(token).then(
+      (result) => {
+        if (active) {
+          setDetails(result);
+          setDetailsToken(token);
+        }
+      },
+      () => {
+        if (active) {
+          setDetailsFailedToken(token);
+        }
+      },
+    );
 
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, detailsAttempt]);
 
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors : undefined;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -115,6 +126,26 @@ export function PatientActivationForm(): React.JSX.Element {
   }
 
   const visibleDetails = detailsToken === token ? details : null;
+
+  if (!visibleDetails && detailsFailedToken === token) {
+    return (
+      <div className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950" role="alert">
+        <p className="font-semibold">ตรวจสอบลิงก์เปิดใช้งานไม่สำเร็จ</p>
+        <p className="mt-1">เชื่อมต่อระบบไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
+        <Button
+          className="mt-3"
+          onClick={() => {
+            setDetailsFailedToken(null);
+            setDetailsAttempt((attempt) => attempt + 1);
+          }}
+          size="compact"
+          variant="secondary"
+        >
+          ลองอีกครั้ง
+        </Button>
+      </div>
+    );
+  }
 
   if (!visibleDetails) {
     return (
@@ -217,10 +248,12 @@ export function PatientActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
+      <UnknownOutcomeAlert active={unknownOutcome} />
+
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending}
+        disabled={pending || unknownOutcome}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

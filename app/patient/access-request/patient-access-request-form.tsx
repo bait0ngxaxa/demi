@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialPublicPatientAccessRequestActionState,
 } from "@/modules/patient-access-requests/transport/action-state";
@@ -19,7 +20,7 @@ export function PatientAccessRequestForm({
 }: {
   hospitals: readonly PublicActiveHospital[];
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     submitPublicPatientAccessRequestAction,
     initialPublicPatientAccessRequestActionState,
   );
@@ -44,7 +45,7 @@ export function PatientAccessRequestForm({
         ) : null}
 
         {state.status === "SUCCESS" ? null : hospitals.length > 0 ? (
-          <form action={action} className="mt-6 space-y-5">
+          <form action={action} className="mt-6 space-y-5" onSubmit={submitPreservingInput(action)}>
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-text" htmlFor="patient-access-national-id">
                 เลขบัตรประชาชน
@@ -82,7 +83,9 @@ export function PatientAccessRequestForm({
               </Select>
             </div>
 
-            <Button disabled={pending} loading={pending} type="submit">
+            <UnknownOutcomeAlert active={unknownOutcome} />
+
+            <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
               {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอให้โรงพยาบาลตรวจสอบ"}
             </Button>
           </form>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from
 
 import { Alert } from "./alert";
 import { ConfirmDialog } from "./confirm-dialog";
+import { unknownOutcomeMessage } from "./mutation-action-state";
 
 export type ConfirmableActionOutcome = "idle" | "success" | "error" | "unknown";
 
@@ -27,7 +28,6 @@ type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "child
   requiresConfirmation?: boolean;
 };
 
-const unknownOutcomeMessage = "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการซ้ำ";
 const submissionDispatchErrorMessage = "ไม่สามารถส่งแบบฟอร์มได้ กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง";
 
 export function ConfirmableActionForm({

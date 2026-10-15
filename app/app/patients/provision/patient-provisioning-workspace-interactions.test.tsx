@@ -12,7 +12,10 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn<(href: string) => void>(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ push: mocks.push, refresh: vi.fn() }),
+}));
 vi.mock("@/modules/patient-provisioning/transport/server-actions", () => ({
   confirmPatientImportAction: mocks.confirmImport,
   previewPatientImportAction: mocks.previewImport,
@@ -308,5 +311,53 @@ describe("Patient import review dialog interactions", () => {
     expect(reopenedDialog.textContent).toContain("นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว");
     expect(reopenedDialog.textContent).toContain("สมหญิง");
     expect(document.activeElement).toBe(reopenedDialog.querySelector("h2"));
+  });
+
+  it("keeps an import with a lost response unconfirmed and blocks a second confirmation", async () => {
+    const mounted = await openReviewDialog();
+    mocks.confirmImport.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await act(async () => {
+      button(mounted, "ยืนยันนำเข้า 1 รายการ").click();
+    });
+
+    const dialog = currentDialog(mounted);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog.textContent).not.toContain("นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว");
+    const confirmButton = button(mounted, "ยืนยันนำเข้า 1 รายการ");
+    expect(confirmButton.disabled).toBe(true);
+    await act(async () => {
+      confirmButton.click();
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a retryable preview failure when the preview request cannot reach the server", async () => {
+    mocks.previewImport.mockReset().mockRejectedValue(new TypeError("Failed to fetch"));
+    const mounted = await openReviewDialog();
+
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).toContain("เชื่อมต่อระบบไม่สำเร็จ");
+    expect(button(mounted, "ตรวจสอบและแสดงตัวอย่าง").disabled).toBe(false);
+  });
+
+  it("keeps typed patient details after a rejected single provisioning", async () => {
+    const mounted = container!;
+    mocks.provision.mockResolvedValue({ status: "ERROR", code: "INVALID_INPUT", message: "เลขบัตรประชาชนไม่ถูกต้อง" });
+    const givenName = mounted.querySelector<HTMLInputElement>('input[name="givenName"]')!;
+    const familyName = mounted.querySelector<HTMLInputElement>('input[name="familyName"]')!;
+    const nationalId = mounted.querySelector<HTMLInputElement>('input[name="nationalId"]')!;
+    givenName.value = "สมชาย";
+    familyName.value = "ใจดี";
+    nationalId.value = "1234567890123";
+
+    await act(async () => {
+      button(mounted, "เพิ่มผู้ป่วย").click();
+    });
+
+    expect(mocks.provision).toHaveBeenCalledTimes(1);
+    expect(mounted.textContent).toContain("เลขบัตรประชาชนไม่ถูกต้อง");
+    expect(givenName.value).toBe("สมชาย");
+    expect(nationalId.value).toBe("1234567890123");
   });
 });

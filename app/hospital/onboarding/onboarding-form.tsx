@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useActionState } from "react";
 
 import { LoadingSpinner } from "@/components/ui/button";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialHospitalOnboardingSubmitActionState,
   type HospitalOnboardingSubmitActionState,
@@ -22,7 +23,7 @@ type HospitalOnboardingFormProps = {
 };
 
 export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProps) {
-  const [state, formAction, pending] = useActionState<
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     HospitalOnboardingSubmitActionState,
     FormData
   >(submitHospitalOnboardingAction, initialHospitalOnboardingSubmitActionState);
@@ -66,7 +67,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
   }
 
   return (
-    <form action={formAction} className="space-y-7">
+    <form action={formAction} className="space-y-7" onSubmit={submitPreservingInput(formAction)}>
       <div className="rounded-[12px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         ข้อมูลที่ส่งจะใช้เพื่อจับคู่ตัวตนและตรวจสอบคำขอเท่านั้น
         ผู้ดูแลระบบจะเป็นผู้อนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
@@ -320,10 +321,12 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         ) : null}
       </div>
 
+      <UnknownOutcomeAlert active={unknownOutcome} />
+
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || hospitals.length === 0 || !selectedHospitalCode}
+        disabled={pending || unknownOutcome || hospitals.length === 0 || !selectedHospitalCode}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

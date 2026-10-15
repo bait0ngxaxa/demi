@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 
 import {
   setAppointmentLineNotificationPreferenceAction,
@@ -19,7 +20,7 @@ export function AppointmentNotificationPreference({
 }: {
   initial: AppointmentNotificationPreferenceView;
 }): React.JSX.Element {
-  const [state, formAction, pending] = useActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     setAppointmentLineNotificationPreferenceAction,
     initialState,
   );
@@ -60,11 +61,12 @@ export function AppointmentNotificationPreference({
           {state.enabled ? "เปิดการแจ้งเตือนแล้ว" : "ปิดการแจ้งเตือนแล้ว"}
         </p>
       ) : null}
+      <UnknownOutcomeAlert className="mt-4" active={unknownOutcome} />
       <form action={formAction} className="mt-4">
         <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
         <button
           type="submit"
-          disabled={pending || (!enabled && !canEnable)}
+          disabled={pending || unknownOutcome || (!enabled && !canEnable)}
           className="inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring sm:w-auto"
         >
           {pending ? "กำลังบันทึก…" : enabled ? "ปิดการแจ้งเตือน" : "เปิดการแจ้งเตือน"}

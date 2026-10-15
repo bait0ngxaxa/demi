@@ -2,17 +2,24 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LocalNavigation } from "@/components/ui/local-navigation";
 import { ModalDialog } from "@/components/ui/modal-dialog";
+import {
+  connectionFailureMessage,
+  submitPreservingInput,
+  unknownOutcomeMessage,
+  useMutationActionState,
+} from "@/components/ui/mutation-action-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
   PatientImportClassification,
@@ -781,6 +788,7 @@ function PatientImportReviewActions({
   attentionRowCount,
   baselineDateRequired,
   importPending,
+  importUnknown,
   onCancel,
   onConfirm,
   onEditEffectiveDate,
@@ -792,6 +800,7 @@ function PatientImportReviewActions({
   attentionRowCount: number;
   baselineDateRequired: boolean;
   importPending: boolean;
+  importUnknown: boolean;
   onCancel: () => void;
   onConfirm: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onEditEffectiveDate: () => void;
@@ -833,7 +842,7 @@ function PatientImportReviewActions({
           </Button>
         ) : executableRowCount > 0 ? (
           <Button
-            disabled={importPending}
+            disabled={importPending || importUnknown}
             loading={importPending}
             onClick={onConfirm}
             size="compact"
@@ -902,10 +911,12 @@ export function PatientProvisioningWorkspace({
   canAssignOsm = false,
 }: PatientProvisioningWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [provisionState, provisionAction, provisionPending] = useActionState<
+  const [provisionState, provisionAction, provisionPending, provisionUnknown] = useMutationActionState<
     PatientProvisionActionState,
     FormData
   >(provisionPatientAction, initialPatientProvisionActionState);
+  const provisionFormRef = useRef<HTMLFormElement>(null);
+  const [importUnknown, setImportUnknown] = useState(false);
   const [previewState, setPreviewState] = useState<PatientImportPreviewActionState>(
     initialPatientImportPreviewActionState,
   );
@@ -924,6 +935,12 @@ export function PatientProvisioningWorkspace({
   const previousHospitalId = useRef(selectedHospitalId);
   const previewSubmitRef = useRef<HTMLButtonElement>(null);
   const dialogReturnFocus = useRef<ImportDialogReturnFocus>("PREVIEW_SUBMIT");
+
+  useEffect(() => {
+    if (provisionState.status === "SUCCESS") {
+      provisionFormRef.current?.reset();
+    }
+  }, [provisionState]);
 
   useEffect(() => {
     if (previousHospitalId.current === selectedHospitalId) {
@@ -969,6 +986,7 @@ export function PatientProvisioningWorkspace({
     setPreviewFile(null);
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setImportUnknown(false);
     setReviewDialogOpen(false);
   }
 
@@ -1018,9 +1036,14 @@ export function PatientProvisioningWorkspace({
     const targetHospitalId = selectedHospitalId;
 
     startPreviewTransition(async () => {
-      const result = await previewPatientImportAction(
-        createPatientImportFormData(file, targetHospitalId, effectiveDate),
-      );
+      let result: PatientImportPreviewActionState;
+      try {
+        result = await previewPatientImportAction(
+          createPatientImportFormData(file, targetHospitalId, effectiveDate),
+        );
+      } catch {
+        result = { status: "ERROR", code: "UNAVAILABLE", message: connectionFailureMessage };
+      }
 
       if (requestVersion !== importContextVersion.current) {
         return;
@@ -1040,7 +1063,8 @@ export function PatientProvisioningWorkspace({
       previewState.status !== "SUCCESS" ||
       !selectedFile ||
       !hasImportableRows ||
-      importState.status === "SUCCESS"
+      importState.status === "SUCCESS" ||
+      importUnknown
     ) {
       return;
     }
@@ -1050,17 +1074,25 @@ export function PatientProvisioningWorkspace({
     const preview = previewState.preview;
 
     startImportTransition(async () => {
-      const result = await confirmPatientImportAction(
-        createPatientImportConfirmFormData(
-          file,
-          selectedHospitalId,
-          preview.targetHospitalId,
-          preview.fileFingerprint,
-          preview.previewBinding,
-          preview.effectiveDate,
-          preview.importContractVersion,
-        ),
-      );
+      let result: PatientImportActionState;
+      try {
+        result = await confirmPatientImportAction(
+          createPatientImportConfirmFormData(
+            file,
+            selectedHospitalId,
+            preview.targetHospitalId,
+            preview.fileFingerprint,
+            preview.previewBinding,
+            preview.effectiveDate,
+            preview.importContractVersion,
+          ),
+        );
+      } catch {
+        if (requestVersion === importContextVersion.current) {
+          setImportUnknown(true);
+        }
+        return;
+      }
 
       if (requestVersion !== importContextVersion.current) {
         return;
@@ -1115,6 +1147,7 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
+    setImportUnknown(false);
     setReviewDialogOpen(false);
     setFileInputKey((current) => current + 1);
     router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
@@ -1202,7 +1235,12 @@ export function PatientProvisioningWorkspace({
                 ใช้ข้อมูลขั้นต่ำเพื่อสร้างข้อมูลผู้ป่วยและความสัมพันธ์กับโรงพยาบาลนี้
               </p>
             </div>
-            <form action={provisionAction} className="mt-6 space-y-4">
+            <form
+              action={provisionAction}
+              className="mt-6 space-y-4"
+              onSubmit={submitPreservingInput(provisionAction)}
+              ref={provisionFormRef}
+            >
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
@@ -1227,7 +1265,8 @@ export function PatientProvisioningWorkspace({
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
               {provisionState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionState.message}</Alert> : null}
-              <Button className="w-full" disabled={provisionPending} loading={provisionPending} type="submit">
+              <UnknownOutcomeAlert className="mt-2" active={provisionUnknown} />
+              <Button className="w-full" disabled={provisionPending || provisionUnknown} loading={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
               </Button>
             </form>
@@ -1400,6 +1439,7 @@ export function PatientProvisioningWorkspace({
                 executableRowCount={importableRowCount}
                 file={selectedFile}
                 importPending={importPending}
+                importUnknown={importUnknown}
                 onCancel={() => closeReviewDialog()}
                 onConfirm={handleImport}
                 onEditEffectiveDate={() => closeReviewDialog("EFFECTIVE_DATE")}
@@ -1421,6 +1461,14 @@ export function PatientProvisioningWorkspace({
                 <Alert variant="danger">
                   <p className="font-semibold">นำเข้าไม่สำเร็จ</p>
                   <p className="mt-1">{importState.message}</p>
+                </Alert>
+              ) : null}
+              {importUnknown ? (
+                <Alert role="alert" variant="warning">
+                  <p className="font-semibold">{unknownOutcomeMessage}</p>
+                  <p className="mt-1">
+                    ปิดหน้าต่างนี้แล้วตรวจสอบไฟล์อีกครั้ง ระบบจะแสดงรายการที่บันทึกไปแล้วก่อนให้ยืนยันนำเข้าใหม่
+                  </p>
                 </Alert>
               ) : null}
               {importPending ? (

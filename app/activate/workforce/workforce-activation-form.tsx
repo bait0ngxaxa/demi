@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { LoadingSpinner } from "@/components/ui/button";
+import { Button, LoadingSpinner } from "@/components/ui/button";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialWorkforceCompletionActionState,
   type WorkforceActivationPreviewState,
@@ -63,8 +65,10 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [preview, setPreview] = useState<WorkforceActivationPreviewState | null>(null);
+  const [previewFailedToken, setPreviewFailedToken] = useState<string | null>(null);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
-  const [state, formAction, pending] = useActionState<
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     WorkforceCompletionActionState,
     FormData
   >(
@@ -83,16 +87,23 @@ export function WorkforceActivationForm(): React.JSX.Element {
 
     let active = true;
 
-    void previewWorkforceActivationAction(token).then((result) => {
-      if (active) {
-        setPreview(result);
-      }
-    });
+    previewWorkforceActivationAction(token).then(
+      (result) => {
+        if (active) {
+          setPreview(result);
+        }
+      },
+      () => {
+        if (active) {
+          setPreviewFailedToken(token);
+        }
+      },
+    );
 
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, previewAttempt]);
 
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors : undefined;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -102,6 +113,26 @@ export function WorkforceActivationForm(): React.JSX.Element {
       <div className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
         <p className="font-semibold">ไม่พบลิงก์เปิดใช้งาน</p>
         <p className="mt-1">ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
+      </div>
+    );
+  }
+
+  if (!preview && previewFailedToken === token) {
+    return (
+      <div className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950" role="alert">
+        <p className="font-semibold">ตรวจสอบลิงก์ไม่สำเร็จ</p>
+        <p className="mt-1">เชื่อมต่อระบบไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง</p>
+        <Button
+          className="mt-3"
+          onClick={() => {
+            setPreviewFailedToken(null);
+            setPreviewAttempt((attempt) => attempt + 1);
+          }}
+          size="compact"
+          variant="secondary"
+        >
+          ลองอีกครั้ง
+        </Button>
       </div>
     );
   }
@@ -128,7 +159,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-5">
+    <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)}>
       <div className="rounded-[14px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         <p>
           {purpose === "RESET" ? "รีเซ็ตรหัสผ่านของ" : "เปิดใช้งานบัญชีของ"}{" "}
@@ -223,10 +254,12 @@ export function WorkforceActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
+      <UnknownOutcomeAlert active={unknownOutcome} />
+
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending}
+        disabled={pending || unknownOutcome}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

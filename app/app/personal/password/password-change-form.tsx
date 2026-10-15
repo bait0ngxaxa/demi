@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
-
+import { Button } from "@/components/ui/button";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { changeAuthenticatedPasswordAction } from "@/modules/account-security/transport/server-actions";
 import {
   initialPasswordChangeActionState,
@@ -9,7 +10,7 @@ import {
 } from "@/modules/account-security/transport/action-state";
 
 export function PasswordChangeForm(): React.JSX.Element {
-  const [state, formAction, pending] = useActionState<PasswordChangeActionState, FormData>(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<PasswordChangeActionState, FormData>(
     changeAuthenticatedPasswordAction,
     initialPasswordChangeActionState,
   );
@@ -76,13 +77,11 @@ export function PasswordChangeForm(): React.JSX.Element {
         </p>
       ) : null}
 
-      <button
-        className="inline-flex min-h-11 w-full items-center justify-center rounded-control bg-action-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 sm:w-fit"
-        disabled={pending}
-        type="submit"
-      >
+      <UnknownOutcomeAlert active={unknownOutcome} />
+
+      <Button className="w-full sm:w-fit" disabled={unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังเปลี่ยนรหัสผ่าน…" : "เปลี่ยนรหัสผ่าน"}
-      </button>
+      </Button>
     </form>
   );
 }

@@ -4,9 +4,15 @@ import { act, createElement, useActionState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 import { Alert } from "./alert";
 import { Button } from "./button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "./confirmable-action-form";
+import { useMutationActionState } from "./mutation-action-state";
 
 type ActionState =
   | { status: "IDLE" }
@@ -55,6 +61,25 @@ function Harness({ runAction, withRequiredField = false }: { runAction: ActionRu
       <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
       {state.status === "SUCCESS" ? <Alert role="status">{state.message}</Alert> : null}
       {state.status === "ERROR" ? <Alert role="alert">{state.message}</Alert> : null}
+    </ConfirmableActionForm>
+  );
+}
+
+function GuardedHarness({ runAction }: { runAction: ActionRunner }): React.JSX.Element {
+  const [state, action, pending, unknownOutcome] = useMutationActionState<ActionState, FormData>(
+    async (_previous, formData) => runAction(formData),
+    initialState,
+  );
+
+  return (
+    <ConfirmableActionForm
+      action={action}
+      confirmation={{ title: "ยืนยันการเปลี่ยนแปลง", confirmLabel: "ยืนยันรายการ" }}
+      outcome={unknownOutcome ? "unknown" : outcomeFor(state)}
+      pending={pending}
+      resultKey={state}
+    >
+      <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
     </ConfirmableActionForm>
   );
 }
@@ -339,6 +364,26 @@ describe("ConfirmableActionForm", () => {
     expect(container?.querySelector("dialog")).not.toBeNull();
     expect(getConfirmationButton().disabled).toBe(true);
     expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
+  });
+
+  it("treats a request that fails before the server answers as an uncertain outcome", async () => {
+    const runAction = vi.fn<ActionRunner>(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(createElement(GuardedHarness, { runAction }));
+    });
+    submit(getButton("[data-testid='submit-action']"));
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledOnce();
+    expect(getConfirmationButton().disabled).toBe(true);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
   });
 });

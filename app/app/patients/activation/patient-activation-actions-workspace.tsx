@@ -6,6 +6,11 @@ import { useActionState, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  connectionFailureMessage,
+  submitPreservingInput,
+  withConnectionFailure,
+} from "@/components/ui/mutation-action-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -68,7 +73,11 @@ export function PatientActivationActionsWorkspace({
 }: PatientActivationActionsWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [lookupState, lookupAction, lookupPending] = useActionState(
-    findPatientActivationCandidatesAction,
+    withConnectionFailure(findPatientActivationCandidatesAction, (): PatientActivationLookupActionState => ({
+      status: "ERROR",
+      code: "UNAVAILABLE",
+      message: connectionFailureMessage,
+    })),
     initialPatientActivationLookupActionState,
   );
   const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
@@ -129,6 +138,7 @@ export function PatientActivationActionsWorkspace({
             <form
               action={lookupAction}
               className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end"
+              onSubmit={submitPreservingInput(lookupAction)}
             >
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <label className="block space-y-2 text-sm font-semibold">
