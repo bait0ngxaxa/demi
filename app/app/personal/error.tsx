@@ -4,12 +4,12 @@ import Link from "next/link";
 
 type PatientSelfErrorProps = {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 };
 
-export default function PatientSelfError({ reset }: PatientSelfErrorProps): React.JSX.Element {
+export default function PatientSelfError({ retry }: PatientSelfErrorProps): React.JSX.Element {
   return (
-    <main className="flex min-h-96 items-center justify-center px-4 py-12 text-text">
+    <div className="flex min-h-96 items-center justify-center px-4 py-12 text-text">
       <div className="w-full max-w-lg text-center">
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">
           ยังไม่สามารถแสดงข้อมูลได้
@@ -20,7 +20,7 @@ export default function PatientSelfError({ reset }: PatientSelfErrorProps): Reac
         <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
           <button
             className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            onClick={reset}
+            onClick={retry}
             type="button"
           >
             ลองอีกครั้ง
@@ -33,6 +33,6 @@ export default function PatientSelfError({ reset }: PatientSelfErrorProps): Reac
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

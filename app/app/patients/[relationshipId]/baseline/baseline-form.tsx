@@ -406,16 +406,19 @@ export function PatientBaselineForm({
           </p>
           <ActionFeedback state={state} />
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          {state.status === "SUCCESS" ? (
+            <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
+          ) : null}
           {confirmationRequested ? (
             <Alert className="mt-5" variant="warning">
               <p className="font-semibold">ยืนยันการบันทึกข้อมูลตั้งต้น</p>
               <p className="mt-1">ตรวจสอบข้อมูลครบแล้วหรือยัง? การบันทึกครั้งนี้จะสร้างข้อมูลอ้างอิงเริ่มต้นแบบอ่านอย่างเดียว</p>
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
+                <Button disabled={pending || unknownOutcome || state.status === "SUCCESS"} loading={pending} type="submit">
                   {pending ? "กำลังบันทึก…" : "ยืนยันบันทึกข้อมูลตั้งต้น"}
                 </Button>
                 <Button
-                  disabled={pending || unknownOutcome}
+                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                   onClick={() => setConfirmationRequested(false)}
                   type="button"
                   variant="secondary"
@@ -426,7 +429,7 @@ export function PatientBaselineForm({
             </Alert>
           ) : (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
+              <Button disabled={pending || unknownOutcome || state.status === "SUCCESS"} loading={pending} type="submit">
                 ตรวจสอบข้อมูลก่อนบันทึก
               </Button>
               <Link

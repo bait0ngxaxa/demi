@@ -2,7 +2,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { NavigationList } from "./navigation-list";
 vi.mock("next/navigation", () => ({ usePathname: () => "/app/personal/knowledge" }));
-vi.mock("next/link", () => ({ default: ({ prefetch, onNavigate, ...props }: { prefetch?: boolean; onNavigate?: () => void }) => <a data-prefetch={String(prefetch)} data-on-navigate={Boolean(onNavigate)} {...props} /> }));
+const linkStatus = vi.hoisted(() => ({ pending: false }));
+vi.mock("next/link", () => ({
+  default: ({ prefetch, onNavigate, ...props }: { prefetch?: boolean; onNavigate?: () => void }) => <a data-prefetch={String(prefetch)} data-on-navigate={Boolean(onNavigate)} {...props} />,
+  useLinkStatus: () => linkStatus,
+}));
 describe("navigation protected prefetch projection", () => {
   it("passes false only for the requested private destination; existing defaults remain", () => {
     const html = renderToStaticMarkup(<NavigationList groups={[{ label: "ส่วนตัว", workspace: "personal", items: [
@@ -26,5 +30,20 @@ describe("navigation protected prefetch projection", () => {
     expect(html.match(/aria-current="location"/g)).toHaveLength(1);
     expect(html).not.toContain("จัดการบุคลากร");
     expect(html).toContain('data-on-navigate="true"');
+  });
+
+  it("announces a pending navigation on the clicked link only while it is pending", () => {
+    const groups = [{ label: "ส่วนตัว", workspace: "personal" as const, items: [
+      { href: "/app/personal/knowledge", label: "ข่าวสาร", match: "prefix" as const, prefetch: false },
+    ] }];
+    expect(renderToStaticMarkup(<NavigationList groups={groups} />)).not.toContain("กำลังเปิดหน้า");
+    linkStatus.pending = true;
+    try {
+      const html = renderToStaticMarkup(<NavigationList groups={groups} />);
+      expect(html).toContain('<span class="sr-only">กำลังเปิดหน้า</span>');
+      expect(html).toContain('aria-hidden="true"');
+    } finally {
+      linkStatus.pending = false;
+    }
   });
 });

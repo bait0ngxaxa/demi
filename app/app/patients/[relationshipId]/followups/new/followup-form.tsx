@@ -410,7 +410,7 @@ export function FollowupForm({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             วันที่พบหรือติดตามผู้ป่วยจริง ใช้เป็นวันที่ติดตามในรายงาน เลือกย้อนหลังได้แต่เลือกวันในอนาคตไม่ได้
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-service-date">
               <span>วันที่ให้บริการ</span>
               <input
@@ -432,7 +432,7 @@ export function FollowupForm({
             เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนเป้าหมายย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน
             ระบบจะไม่แนบรายการล่าสุดให้โดยอัตโนมัติ
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-appointment">
               <span>นัดหมายที่อ้างอิง</span>
               <Select
@@ -487,7 +487,7 @@ export function FollowupForm({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             กรอกเท่าที่มี ระบบจะเก็บค่าที่บันทึกไว้และไม่คำนวณผลทางการแพทย์อัตโนมัติ
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-weight">
               <span>น้ำหนัก (kg)</span>
               <input
@@ -572,7 +572,7 @@ export function FollowupForm({
               {selectedGoalPlan.items.map((activity) => (
                 <ProgressEditor
                   activity={activity}
-                  disabled={pending || unknownOutcome}
+                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                   draft={progress[activity.activityCode] ?? { status: "", achievedDays: "", note: "" }}
                   key={activity.activityCode}
                   onChange={(draft) =>
@@ -590,7 +590,7 @@ export function FollowupForm({
             ต้องเลือกทั้งสองข้อ ข้อมูลนี้ใช้ในรายงานการจัดบริการ
           </p>
           <div className="mt-6 grid gap-6 sm:grid-cols-2">
-            <fieldset className="space-y-3" disabled={pending || unknownOutcome}>
+            <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
               <legend className="text-sm font-semibold text-text">ปรับแผนใหม่ในรอบนี้หรือไม่</legend>
               {PLAN_ADJUSTED_CHOICES.map(([value, label]) => (
                 <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
@@ -614,7 +614,7 @@ export function FollowupForm({
                 </p>
               ) : null}
             </fieldset>
-            <fieldset className="space-y-3" disabled={pending || unknownOutcome}>
+            <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
               <legend className="text-sm font-semibold text-text">มีอุปสรรคในรอบนี้หรือไม่</legend>
               {OBSTACLE_CHOICES.map(([value, label]) => (
                 <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
@@ -652,7 +652,7 @@ export function FollowupForm({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-confidence-score">
               <span>คะแนนความมั่นใจ (0–10)</span>
               <input
@@ -730,8 +730,11 @@ export function FollowupForm({
           </dl>
           <ActionFeedback state={state} />
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          {state.status === "SUCCESS" ? (
+            <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
+          ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS"} loading={pending} type="submit">
               {pending ? "กำลังบันทึก…" : "บันทึกการติดตามผล"}
             </Button>
             <Link

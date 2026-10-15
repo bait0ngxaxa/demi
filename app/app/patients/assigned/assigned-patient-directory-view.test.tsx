@@ -77,7 +77,8 @@ describe("assigned patient operational directory", () => {
   it("preserves exact HN, classification and lookup mode in pagination", () => {
     const html = render({ ...result, lookupType: "HOSPITAL_NUMBER", value: "HN-001", classificationFilter: "RISK", page: 2, hasPreviousPage: true });
     expect(html).toContain('action="/app/patients/assigned"');
-    expect(html).toContain('method="get"');
+    // next/form submits as a GET navigation; HTML forms without a method default to GET.
+    expect(html).not.toMatch(/method="post"/iu);
     expect(html).toContain('name="classification"');
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;classification=RISK"');
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=3&amp;classification=RISK"');

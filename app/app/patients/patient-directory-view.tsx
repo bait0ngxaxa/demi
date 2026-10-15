@@ -1,12 +1,13 @@
+import Form from "next/form";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
@@ -196,10 +197,10 @@ export function PatientDirectoryView({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text-muted">โรงพยาบาลที่ดำเนินการ</p>
               {scopes.length > 1 ? (
-                <form className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+                <Form action="" className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:min-w-80">
                     <span className="sr-only">เลือกโรงพยาบาล</span>
-                    <Select defaultValue={selectedScope.hospitalId} name="hospitalId">
+                    <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
                       {scopes.map((scope) => (
                         <option key={scope.hospitalId} value={scope.hospitalId}>
                           {scope.hospitalName}
@@ -207,10 +208,10 @@ export function PatientDirectoryView({
                       ))}
                     </Select>
                   </label>
-                  <Button size="compact" type="submit" variant="secondary">
+                  <PendingSubmitButton size="compact" variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">
                     เลือกโรงพยาบาล
-                  </Button>
-                </form>
+                  </PendingSubmitButton>
+                </Form>
               ) : (
                 <p className="mt-2 text-lg font-semibold text-brand-strong">
                   {selectedScope.hospitalName}
@@ -238,11 +239,11 @@ export function PatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวภายในโรงพยาบาลที่เลือก
           </p>
-          <form className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] @5xl/workspace:items-end" method="get">
+          <Form action="" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] @5xl/workspace:items-end">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
-              <Select defaultValue={lookupType} name="lookupType">
+              <Select defaultValue={lookupType} key={lookupType} name="lookupType">
                 <option value="NAME">ชื่อผู้ป่วย</option>
                 <option value="HOSPITAL_NUMBER">HN</option>
               </Select>
@@ -251,6 +252,7 @@ export function PatientDirectoryView({
               <span>{lookupLabel}</span>
               <Input
                 defaultValue={value}
+                key={value}
                 maxLength={maxLength}
                 name="value"
                 placeholder={lookupType === "HOSPITAL_NUMBER" ? "เช่น HN-001" : "เช่น สมชาย"}
@@ -259,14 +261,14 @@ export function PatientDirectoryView({
             </label>
             <label className="block space-y-2 text-sm font-semibold">
               <span>สถานะผู้ป่วย</span>
-              <Select defaultValue={classificationFilter} name="classification">
+              <Select defaultValue={classificationFilter} key={classificationFilter} name="classification">
                 <option value="ALL">ทั้งหมด</option>
                 <option value="RISK">กลุ่มเสี่ยง</option>
                 <option value="DIABETES">เบาหวาน</option>
               </Select>
             </label>
-            <Button type="submit">ค้นหา</Button>
-          </form>
+            <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
+          </Form>
           <p className="mt-3 text-xs leading-5 text-text-subtle">
             พิมพ์ชื่อบางส่วนได้ ส่วน HN ต้องตรงกับข้อมูลในโรงพยาบาลที่เลือก
           </p>

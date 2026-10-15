@@ -1,5 +1,6 @@
 "use client";
 
+import Form from "next/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
   PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,
@@ -310,10 +312,10 @@ export function PatientOsmBulkAssignmentWorkspace({
         <Panel>
           <p className="text-sm font-semibold text-text-muted">โรงพยาบาลที่ดำเนินการ</p>
           {scopes.length > 1 ? (
-            <form className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+            <Form action="" className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:min-w-80">
                 <span className="sr-only">เลือกโรงพยาบาล</span>
-                <Select defaultValue={selectedScope.hospitalId} name="hospitalId">
+                <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
                   {scopes.map((scope) => (
                     <option key={scope.hospitalId} value={scope.hospitalId}>
                       {scope.hospitalName}
@@ -321,10 +323,10 @@ export function PatientOsmBulkAssignmentWorkspace({
                   ))}
                 </Select>
               </label>
-              <Button size="compact" type="submit" variant="secondary">
+              <PendingSubmitButton size="compact" variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">
                 เลือกโรงพยาบาล
-              </Button>
-            </form>
+              </PendingSubmitButton>
+            </Form>
           ) : (
             <p className="mt-2 text-lg font-semibold text-brand-strong">{selectedScope.hospitalName}</p>
           )}
@@ -359,22 +361,23 @@ export function PatientOsmBulkAssignmentWorkspace({
                   ? ` · แสดง ${patients.length} คนแรก (เลือกได้ไม่เกิน ${PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS} คนต่อครั้ง)`
                   : ""}
               </p>
-              <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+              <Form action="" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
                 <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
                 <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
                   <span>ค้นหาชื่อผู้ป่วย</span>
                   <Input
                     defaultValue={search}
                     disabled={confirming}
+                    key={search}
                     maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
                     name="value"
                     type="search"
                   />
                 </label>
-                <Button disabled={confirming} size="compact" type="submit" variant="secondary">
+                <PendingSubmitButton disabled={confirming} size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">
                   ค้นหา
-                </Button>
-              </form>
+                </PendingSubmitButton>
+              </Form>
 
               {patients.length === 0 ? (
                 <p className="mt-5 rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">

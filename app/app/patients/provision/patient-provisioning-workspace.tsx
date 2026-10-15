@@ -929,6 +929,7 @@ export function PatientProvisioningWorkspace({
   const [fileInputKey, setFileInputKey] = useState(0);
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
+  const [hospitalSwitching, startHospitalSwitch] = useTransition();
   const [mode, setMode] = useState<ProvisioningMode>("SINGLE");
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const importContextVersion = useRef(0);
@@ -1137,7 +1138,7 @@ export function PatientProvisioningWorkspace({
   }
 
   function changeHospital(hospitalId: string): void {
-    if (previewPending || importPending) {
+    if (previewPending || importPending || hospitalSwitching) {
       return;
     }
 
@@ -1150,7 +1151,9 @@ export function PatientProvisioningWorkspace({
     setImportUnknown(false);
     setReviewDialogOpen(false);
     setFileInputKey((current) => current + 1);
-    router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
+    startHospitalSwitch(() => {
+      router.push(`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`);
+    });
   }
 
   return (
@@ -1171,7 +1174,7 @@ export function PatientProvisioningWorkspace({
               </label>
               <Select
                 className="mt-2 max-w-xl"
-                disabled={previewPending || importPending}
+                disabled={previewPending || importPending || hospitalSwitching}
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -1182,6 +1185,7 @@ export function PatientProvisioningWorkspace({
                   </option>
                 ))}
               </Select>
+              {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
             </>
           ) : (
             <div>

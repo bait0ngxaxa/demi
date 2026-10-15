@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 
 export default function FamilyManagementError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }): React.JSX.Element {
   useEffect(() => {
     void error;
@@ -21,7 +21,7 @@ export default function FamilyManagementError({
       <Alert variant="danger">
         <p className="font-semibold">ไม่สามารถโหลดข้อมูลความสัมพันธ์ผู้ดูแลได้</p>
         <p className="mt-1">กรุณาลองอีกครั้ง หากยังพบปัญหาให้กลับมาใหม่ภายหลัง</p>
-        <Button className="mt-4" onClick={reset} size="compact" type="button" variant="secondary">
+        <Button className="mt-4" onClick={retry} size="compact" type="button" variant="secondary">
           ลองอีกครั้ง
         </Button>
       </Alert>

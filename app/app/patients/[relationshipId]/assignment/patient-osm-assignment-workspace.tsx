@@ -1,5 +1,6 @@
 "use client";
 
+import Form from "next/form";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { PatientDirectoryItem } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import {
@@ -180,21 +182,22 @@ export function PatientOsmAssignmentWorkspace({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             แสดงเฉพาะบัญชี อสม. ที่เปิดใช้งานและมีความสัมพันธ์กับโรงพยาบาลนี้
           </p>
-          <form className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+          <Form action="" className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
               <span>ค้นหาชื่อ อสม.</span>
               <Input
                 defaultValue={candidateSearch}
+                key={candidateSearch}
                 maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
                 name="value"
                 placeholder="เช่น สมใจ"
                 type="search"
               />
             </label>
-            <Button size="compact" type="submit" variant="secondary">
+            <PendingSubmitButton size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">
               ค้นหา อสม.
-            </Button>
-          </form>
+            </PendingSubmitButton>
+          </Form>
           {candidateError ? (
             <Alert className="mt-4" variant="danger">
               {candidateError}

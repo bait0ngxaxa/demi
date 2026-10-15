@@ -77,7 +77,8 @@ describe("Hospital Content publisher UI output", () => {
     );
     const selectorForm = multiHospitalMarkup.match(/<form\b[^>]*>[\s\S]*?<\/form>/u)?.[0] ?? "";
     expect(selectorForm).toContain('action="/app/hospitals/knowledge"');
-    expect(selectorForm).toContain('method="get"');
+    // next/form submits as a GET navigation; HTML forms without a method default to GET.
+    expect(selectorForm).not.toMatch(/method="post"/iu);
     expect(selectorForm).toContain('name="hospitalId"');
     expect(selectorForm).toContain('type="submit"');
     expect(selectorForm).toContain("เปลี่ยนโรงพยาบาล");

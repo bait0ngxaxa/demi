@@ -1,9 +1,11 @@
+import Form from "next/form";
 import Link from "next/link";
 
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   HOSPITAL_CONTENT_CATEGORY_LABELS,
   HOSPITAL_CONTENT_STATUS_LABELS,
@@ -49,7 +51,7 @@ export function HospitalContentListWorkspace({
       />
 
       {hospitals.length > 1 ? (
-        <form action="/app/hospitals/knowledge" className="mt-6 max-w-xl" method="get">
+        <Form action="/app/hospitals/knowledge" className="mt-6 max-w-xl">
           <label className="type-label mb-2 block text-text" htmlFor="hospital-content-hospital">
             เลือกโรงพยาบาล
           </label>
@@ -58,6 +60,7 @@ export function HospitalContentListWorkspace({
             id="hospital-content-hospital"
             name="hospitalId"
             defaultValue={selectedHospitalId}
+            key={selectedHospitalId}
           >
             {hospitals.map((hospital) => (
               <option key={hospital.id} value={hospital.id}>
@@ -65,10 +68,10 @@ export function HospitalContentListWorkspace({
               </option>
             ))}
           </select>
-          <button className={`${buttonClassName({ variant: "secondary" })} mt-3`} type="submit">
+          <PendingSubmitButton className="mt-3" pendingLabel="กำลังเปลี่ยนโรงพยาบาล..." variant="secondary">
             เปลี่ยนโรงพยาบาล
-          </button>
-        </form>
+          </PendingSubmitButton>
+        </Form>
       ) : null}
 
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

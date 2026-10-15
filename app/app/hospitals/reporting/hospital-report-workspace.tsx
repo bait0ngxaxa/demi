@@ -1,5 +1,6 @@
 "use client";
 
+import Form from "next/form";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -9,6 +10,7 @@ import { LocalNavigation } from "@/components/ui/local-navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type {
   HospitalReportFact,
   HospitalReportFollowup,
@@ -516,10 +518,12 @@ function ExportButton({
 }): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
   async function download(): Promise<void> {
     setLoading(true);
     setMessage(null);
+    setFailed(false);
     try {
       const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}`, {
         method: "GET",
@@ -537,6 +541,7 @@ function ExportButton({
           // Use the safe local message when the response body is not JSON.
         }
         setMessage(errorMessage);
+        setFailed(true);
         return;
       }
 
@@ -554,6 +559,7 @@ function ExportButton({
       setMessage("สร้างไฟล์ Excel สำเร็จแล้ว");
     } catch {
       setMessage("เชื่อมต่อเพื่อส่งออกรายงานไม่ได้ กรุณาตรวจสอบเครือข่ายแล้วลองอีกครั้ง");
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -564,7 +570,11 @@ function ExportButton({
       <Button onClick={() => void download()} loading={loading} type="button">
         {loading ? "กำลังสร้างไฟล์ Excel" : "ส่งออก Excel"}
       </Button>
-      {message ? <p aria-live="polite" className="max-w-sm text-sm text-text-muted" role="status">{message}</p> : null}
+      {message ? (
+        <p className={`max-w-sm text-sm ${failed ? "text-danger" : "text-text-muted"}`} role={failed ? "alert" : "status"}>
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -621,16 +631,16 @@ export function HospitalReportWorkspace({
 
       {isGlobalAdmin ? (
         hospitals.length > 1 ? (
-          <form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
+          <Form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1">
               <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง</label>
-              <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" name="hospitalId">
+              <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" key={selectedHospitalId} name="hospitalId">
                 {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
               </select>
               <input name="view" type="hidden" value={view} />
             </div>
-            <Button type="submit" variant="secondary">เปลี่ยนโรงพยาบาล</Button>
-          </form>
+            <PendingSubmitButton variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">เปลี่ยนโรงพยาบาล</PendingSubmitButton>
+          </Form>
         ) : null
       ) : (
         <HospitalReportTargetSelector

@@ -1,9 +1,10 @@
 "use client";
 
+import Form from "next/form";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   initialWorkforceActivationActionState,
   initialWorkforceBulkActionState,
@@ -684,6 +686,7 @@ export function WorkforceWorkspace({
   workforce,
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
+  const [hospitalSwitching, startHospitalSwitch] = useTransition();
   const [staffState, staffAction, staffPending, staffUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
@@ -768,8 +771,12 @@ export function WorkforceWorkspace({
           <Select
             className="mt-2 max-w-xl"
             id="targetHospitalId"
+            disabled={hospitalSwitching}
             onChange={(event) => {
-              router.push(`/app/workforce?hospitalId=${encodeURIComponent(event.target.value)}`);
+              const hospitalId = event.target.value;
+              startHospitalSwitch(() => {
+                router.push(`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`);
+              });
             }}
             value={selectedHospitalId}
           >
@@ -779,6 +786,7 @@ export function WorkforceWorkspace({
               </option>
             ))}
           </Select>
+          {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
             รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} · {workforce.hospital.hospitalCode} เท่านั้น ใช้สิทธิ์{isOwner ? "เจ้าของ" : "สมาชิก"}โรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
@@ -795,7 +803,7 @@ export function WorkforceWorkspace({
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
 
         <Panel className="mt-6">
-          <form action="/app/workforce" method="get" className="flex flex-wrap items-end gap-3">
+          <Form action="/app/workforce" className="flex flex-wrap items-end gap-3">
             <input name="hospitalId" type="hidden" value={selectedHospitalId} />
             <label className="min-w-0 flex-1 space-y-2 text-sm font-semibold">
               <span>ค้นหาชื่อหรือนามสกุล</span>
@@ -812,8 +820,8 @@ export function WorkforceWorkspace({
                 <option value="ENDED">นำออกจากระบบถาวร</option>
               </Select>
             </label>
-            <Button type="submit">ค้นหา</Button>
-          </form>
+            <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
+          </Form>
           <p className="mt-3 text-sm text-muted">แสดงครั้งละไม่เกิน {pageInfo.pageSize} รายการต่อประเภท รวมรายการรอเปิดใช้งานเฉพาะหน้านี้</p>
         </Panel>
 

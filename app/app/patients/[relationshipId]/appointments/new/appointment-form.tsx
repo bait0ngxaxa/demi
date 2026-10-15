@@ -255,7 +255,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">รายละเอียดนัดหมาย</h2>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="appointment-scheduled-at">
               <span>วันและเวลานัดหมาย</span>
               <input
@@ -378,8 +378,11 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
           </p>
           <ActionFeedback state={state} />
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          {state.status === "SUCCESS" ? (
+            <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
+          ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || !scheduledAtLocal} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !scheduledAtLocal} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : props.mode === "create" ? "บันทึกนัดหมาย" : "บันทึกการเลื่อนนัดหมาย"}
             </Button>
             <Link

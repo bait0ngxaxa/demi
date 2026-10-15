@@ -1,4 +1,5 @@
-import { Button } from "@/components/ui/button";
+import Form from "next/form";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
@@ -27,7 +28,7 @@ export function HospitalReportTargetSelector({
   const directlyOwnedIds = new Set(hospitals.map(({ id }) => id));
 
   return (
-    <form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end" method="get">
+    <Form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end">
       <div className="min-w-0 flex-1">
         <label className="type-label mb-2 block text-text" htmlFor="hospital-report-target">
           เลือกโรงพยาบาลสำหรับรายงาน
@@ -35,6 +36,7 @@ export function HospitalReportTargetSelector({
         <select
           className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           defaultValue={selectionValue(selection)}
+          key={selectionValue(selection)}
           aria-describedby="hospital-report-target-help"
           id="hospital-report-target"
           name="target"
@@ -65,7 +67,7 @@ export function HospitalReportTargetSelector({
           รายงานจะแสดงเฉพาะโรงพยาบาลที่เลือก การเลือกโรงพยาบาลอื่นจะเริ่มมุมมองรายงานของแห่งนั้น
         </p>
       </div>
-      <Button type="submit" variant="secondary">เปิดรายงาน</Button>
-    </form>
+      <PendingSubmitButton variant="secondary" pendingLabel="กำลังเปิดรายงาน...">เปิดรายงาน</PendingSubmitButton>
+    </Form>
   );
 }

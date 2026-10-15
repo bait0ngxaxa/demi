@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -81,9 +81,12 @@ export function PatientActivationActionsWorkspace({
     initialPatientActivationLookupActionState,
   );
   const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
+  const [hospitalSwitching, startHospitalSwitch] = useTransition();
 
   function changeHospital(hospitalId: string): void {
-    router.push(`/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}`);
+    startHospitalSwitch(() => {
+      router.push(`/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}`);
+    });
   }
 
   const errorMessage = mapLookupError(lookupState);
@@ -103,18 +106,22 @@ export function PatientActivationActionsWorkspace({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-muted">โรงพยาบาลที่ดำเนินการ</p>
               {scopes.length > 1 ? (
-                <Select
-                  aria-label="โรงพยาบาลที่ดำเนินการ"
-                  className="mt-2 max-w-xl"
-                  onChange={(event) => changeHospital(event.target.value)}
-                  value={selectedHospitalId}
-                >
-                  {scopes.map((scope) => (
-                    <option key={scope.hospitalId} value={scope.hospitalId}>
-                      {scope.hospitalName} · {scope.hospitalCode}
-                    </option>
-                  ))}
-                </Select>
+                <>
+                  <Select
+                    aria-label="โรงพยาบาลที่ดำเนินการ"
+                    className="mt-2 max-w-xl"
+                    disabled={hospitalSwitching || lookupPending}
+                    onChange={(event) => changeHospital(event.target.value)}
+                    value={selectedHospitalId}
+                  >
+                    {scopes.map((scope) => (
+                      <option key={scope.hospitalId} value={scope.hospitalId}>
+                        {scope.hospitalName} · {scope.hospitalCode}
+                      </option>
+                    ))}
+                  </Select>
+                  {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
+                </>
               ) : (
                 <p className="mt-2 text-lg font-semibold text-brand-strong">
                   {selectedScope.hospitalName} · {selectedScope.hospitalCode}

@@ -201,7 +201,7 @@ export function ScreeningForm({
           <div className="mt-6 space-y-6">
             {pamQuestions.map((question) => (
               <QuestionGroup
-                disabled={pending || unknownOutcome}
+                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                 key={question.key}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
@@ -224,7 +224,7 @@ export function ScreeningForm({
           <div className="mt-6 space-y-6">
             {promsQuestions.map((question) => (
               <QuestionGroup
-                disabled={pending || unknownOutcome}
+                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                 key={question.key}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
@@ -243,7 +243,7 @@ export function ScreeningForm({
             <label className="block space-y-2 text-sm font-semibold">
               <span>ความมั่นใจในการดูแลสุขภาพ (0–10)</span>
               <Select
-                disabled={pending || unknownOutcome}
+                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                 name="confidenceScore"
                 onChange={(event) => setConfidenceScore(event.target.value)}
                 required
@@ -263,7 +263,7 @@ export function ScreeningForm({
               <span>แผนพัฒนาความมั่นใจ (ไม่บังคับ)</span>
               <textarea
                 className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending || unknownOutcome}
+                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
                 maxLength={1000}
                 name="confidenceImprovementPlan"
                 onChange={(event) => setConfidencePlan(event.target.value)}
@@ -303,8 +303,11 @@ export function ScreeningForm({
           </p>
           <ActionFeedback state={state} />
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          {state.status === "SUCCESS" ? (
+            <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
+          ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || !formComplete} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !formComplete} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแบบประเมิน"}
             </Button>
             <Link

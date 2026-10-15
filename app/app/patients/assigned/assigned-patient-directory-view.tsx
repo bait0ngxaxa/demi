@@ -1,12 +1,14 @@
+import Form from "next/form";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
-import { buttonClassName, Button } from "@/components/ui/button";
+import { buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
@@ -163,10 +165,10 @@ export function AssignedPatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
           </p>
-          <form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end" method="get">
+          <Form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end">
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
-              <Select defaultValue={lookupType} name="lookupType">
+              <Select defaultValue={lookupType} key={lookupType} name="lookupType">
                 <option value="NAME">ชื่อผู้ป่วย</option>
                 <option value="HOSPITAL_NUMBER">HN</option>
               </Select>
@@ -175,6 +177,7 @@ export function AssignedPatientDirectoryView({
               <span>{lookupLabel}</span>
               <Input
                 defaultValue={value}
+                key={value}
                 maxLength={maxLength}
                 name="value"
                 placeholder={lookupType === "HOSPITAL_NUMBER" ? "เช่น HN-001" : "เช่น สมชาย"}
@@ -183,21 +186,21 @@ export function AssignedPatientDirectoryView({
             </label>
             <label className="block space-y-2 text-sm font-semibold">
               <span>สถานะผู้ป่วย</span>
-              <Select defaultValue={classificationFilter} name="classification">
+              <Select defaultValue={classificationFilter} key={classificationFilter} name="classification">
                 <option value="ALL">ทั้งหมด</option>
                 <option value="RISK">กลุ่มเสี่ยง</option>
                 <option value="DIABETES">เบาหวาน</option>
               </Select>
             </label>
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap @5xl/workspace:col-span-3">
-              <Button type="submit">ค้นหา</Button>
+              <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
               {hasFilters || errorMessage ? (
                 <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/patients/assigned">
                   ล้างการค้นหาและตัวกรอง
                 </Link>
               ) : null}
             </div>
-          </form>
+          </Form>
           <p className="mt-3 text-xs leading-5 text-text-subtle">
             แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้
           </p>

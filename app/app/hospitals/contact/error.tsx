@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 
 export default function HospitalContactError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }): React.JSX.Element {
   useEffect(() => {
     void error;
@@ -23,7 +23,7 @@ export default function HospitalContactError({
         <p className="font-semibold">โหลดข้อมูลติดต่อไม่สำเร็จ</p>
         <p className="mt-1">ข้อมูลยังไม่พร้อมแสดง กรุณาลองโหลดอีกครั้ง</p>
       </Alert>
-      <Button className="mt-5" onClick={reset} type="button" variant="secondary">
+      <Button className="mt-5" onClick={retry} type="button" variant="secondary">
         ลองโหลดอีกครั้ง
       </Button>
     </div>

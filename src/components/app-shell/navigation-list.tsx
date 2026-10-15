@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
+import { LoadingSpinner } from "@/components/ui/button";
 import { classNames } from "@/components/ui/class-names";
 
 import {
@@ -96,7 +97,8 @@ export function NavigationList({
                       prefetch={item.prefetch}
                       onNavigate={onNavigate}
                     >
-                      {item.label}
+                      <span className="min-w-0 flex-1">{item.label}</span>
+                      <NavigationPendingHint />
                     </Link>
                   </li>
                 );
@@ -106,5 +108,21 @@ export function NavigationList({
         );
       })}
     </div>
+  );
+}
+
+/** Navigation links are not prefetched, so the destination's loading UI cannot appear until the server answers. */
+function NavigationPendingHint(): React.JSX.Element | null {
+  const { pending } = useLinkStatus();
+
+  if (!pending) {
+    return null;
+  }
+
+  return (
+    <>
+      <LoadingSpinner className="ml-2 shrink-0" />
+      <span className="sr-only">กำลังเปิดหน้า</span>
+    </>
   );
 }

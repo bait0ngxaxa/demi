@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
-export default function HospitalContentError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }): React.JSX.Element {
+export default function HospitalContentError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }): React.JSX.Element {
   useEffect(() => { void error; }, [error]);
   return (
     <div className="max-w-5xl">
@@ -14,7 +14,7 @@ export default function HospitalContentError({ error, reset }: { error: Error & 
         <p className="font-semibold">โหลดรายการไม่สำเร็จ</p>
         <p className="mt-1">ระบบยังยืนยันรายการปัจจุบันไม่ได้ กรุณาลองโหลดอีกครั้ง</p>
       </Alert>
-      <Button className="mt-5" onClick={reset} type="button" variant="secondary">ลองโหลดอีกครั้ง</Button>
+      <Button className="mt-5" onClick={retry} type="button" variant="secondary">ลองโหลดอีกครั้ง</Button>
     </div>
   );
 }
