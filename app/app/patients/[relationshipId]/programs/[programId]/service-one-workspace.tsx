@@ -438,7 +438,7 @@ function RoutineCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneRoutineAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -462,7 +462,7 @@ function RoutineCard({
         <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
       )}
       <ActionFeedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <EvidenceAttachmentControl
         activityKey="ROUTINE"
         canManage={canManage}
@@ -488,7 +488,7 @@ function FloatingChartCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneFloatingChartAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -531,7 +531,7 @@ function FloatingChartCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <EvidenceAttachmentControl
         activityKey="FLOATING_CHART"
         canManage={canManage}
@@ -557,7 +557,7 @@ function DreamCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneDreamCardAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -600,7 +600,7 @@ function DreamCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <EvidenceAttachmentControl
         activityKey="DREAM_CARD"
         canManage={canManage}
@@ -624,7 +624,7 @@ function ConfidenceCard({
   programId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneConfidenceAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -686,7 +686,7 @@ function ConfidenceCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
     </ActivityCard>
   );
 }

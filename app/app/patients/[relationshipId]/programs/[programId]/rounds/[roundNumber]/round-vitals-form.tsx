@@ -65,7 +65,7 @@ export function RoundVitalsForm({
   todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     recordPatientProgramRoundVitalsAction,
     initialPatientProgramRoundActionState,
   );
@@ -179,7 +179,7 @@ export function RoundVitalsForm({
         </Alert>
       ) : null}
 
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <div className="mt-6">
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังบันทึก…" : "บันทึกสัญญาณชีพ"}

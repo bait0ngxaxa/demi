@@ -57,7 +57,7 @@ export function HospitalServiceOfferingControl({
       {state.status === "ERROR" ? (
         <Alert className="basis-full" variant="danger">{state.message}</Alert>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="basis-full" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="basis-full" recovery={{ kind: "reload" }} />
     </div>
   );
 }

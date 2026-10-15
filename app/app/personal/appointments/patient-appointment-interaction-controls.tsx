@@ -59,11 +59,11 @@ export function PatientAppointmentInteractionControls({
   hospitalStatus,
 }: PatientAppointmentInteractionControlsProps): React.JSX.Element {
   const router = useRouter();
-  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown] = useMutationActionState<
+  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown, resendAcknowledgement] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(acknowledgeOwnPatientAppointmentAction, initialAppointmentInteractionActionState);
-  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown] = useMutationActionState<
+  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown, resendCancellation] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(requestOwnPatientAppointmentCancellationAction, initialAppointmentInteractionActionState);
@@ -115,7 +115,7 @@ export function PatientAppointmentInteractionControls({
           <Alert variant="success">บันทึกการรับทราบนัดหมายแล้ว</Alert>
         ) : null}
         <ActionError state={acknowledgementState} />
-        <UnknownOutcomeAlert active={acknowledgementUnknown} />
+        <UnknownOutcomeAlert active={acknowledgementUnknown} recovery={{ kind: "resend", onResend: resendAcknowledgement, resending: acknowledgementPending }} />
       </section>
 
       <section aria-labelledby="patient-appointment-cancellation-heading" className="mt-7 space-y-4">
@@ -155,7 +155,7 @@ export function PatientAppointmentInteractionControls({
           <Alert variant="success">ส่งคำขอไปยังโรงพยาบาลแล้ว นัดหมายยังไม่ถูกยกเลิก</Alert>
         ) : null}
         <ActionError state={cancellationState} />
-        <UnknownOutcomeAlert active={cancellationUnknown} />
+        <UnknownOutcomeAlert active={cancellationUnknown} recovery={{ kind: "resend", onResend: resendCancellation, resending: cancellationPending }} />
 
         {appointment.cancellationRequests.length > 0 ? (
           <div>

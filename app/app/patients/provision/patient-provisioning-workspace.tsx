@@ -911,7 +911,7 @@ export function PatientProvisioningWorkspace({
   canAssignOsm = false,
 }: PatientProvisioningWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [provisionState, provisionAction, provisionPending, provisionUnknown] = useMutationActionState<
+  const [provisionState, provisionAction, provisionPending, provisionUnknown, resendProvision] = useMutationActionState<
     PatientProvisionActionState,
     FormData
   >(provisionPatientAction, initialPatientProvisionActionState);
@@ -1269,7 +1269,7 @@ export function PatientProvisioningWorkspace({
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
               {provisionState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionState.message}</Alert> : null}
-              <UnknownOutcomeAlert className="mt-2" active={provisionUnknown} />
+              <UnknownOutcomeAlert active={provisionUnknown} className="mt-2" recovery={{ kind: "resend", onResend: resendProvision, resending: provisionPending }} />
               <Button className="w-full" disabled={provisionPending || provisionUnknown} loading={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
               </Button>

@@ -60,7 +60,7 @@ export function PatientBaselineForm({
   relationshipId,
 }: PatientBaselineFormProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientBaselineActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientBaselineActionState, FormData>(
     createPatientBaselineAction,
     initialPatientBaselineActionState,
   );
@@ -405,7 +405,7 @@ export function PatientBaselineForm({
             เมื่อบันทึกแล้ว ข้อมูลตั้งต้นจะเป็นข้อมูลอ่านอย่างเดียว ไม่มีการแก้ไข ลบ หรือแทนที่รายการเดิม
           </p>
           <ActionFeedback state={state} />
-          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}

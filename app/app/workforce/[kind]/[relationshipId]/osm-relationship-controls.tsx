@@ -167,7 +167,7 @@ export function OsmRelationshipControls({
         การดำเนินการมีผลเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ บัญชีผู้ใช้งาน บทบาท และข้อมูลผู้ป่วยจะไม่ถูกเปลี่ยน
       </p>
 
-      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" />
+      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" recovery={{ kind: "reload" }} />
       {actions.suspend ? (
         <ConfirmableActionForm
           action={suspendAction}

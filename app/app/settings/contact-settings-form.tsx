@@ -38,7 +38,7 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
     <p className="mt-2 text-sm font-medium text-text" aria-live="polite">สถานะ: {enabled ? "เปิด" : "ปิด"}</p>
     {!canEnable && !enabled ? <p className="mt-2 text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้ <a className="font-medium text-brand-strong underline underline-offset-4" href="/line/account">จัดการบัญชี LINE</a></p> : null}
     {message ? <Alert className="mt-3" variant="warning">{message}</Alert> : null}
-    <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" />
+    <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />
     <Button className="mt-3" disabled={pending || unknownOutcome || (!enabled && !canEnable)} loading={pending} onClick={toggle} type="button" variant="secondary">{enabled ? "ปิดการแจ้งเตือนยา" : "เปิดการแจ้งเตือนยา"}</Button>
   </section>;
 }
@@ -79,7 +79,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
           <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
         </div>
         {message ? <Alert variant={message.variant}>{message.text}</Alert> : null}
-        <UnknownOutcomeAlert active={unknownOutcome} />
+        <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
       </form>
     </section>

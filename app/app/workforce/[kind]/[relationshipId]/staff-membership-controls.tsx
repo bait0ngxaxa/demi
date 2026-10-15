@@ -162,7 +162,7 @@ export function StaffMembershipControls({
           การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
         </p>
 
-        <UnknownOutcomeAlert active={professionUnknown || restoreUnknown} className="mt-4" />
+        <UnknownOutcomeAlert active={professionUnknown || restoreUnknown} className="mt-4" recovery={{ kind: "reload" }} />
         {actions.updateProfession ? (
           <form action={professionAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <input name="relationshipId" type="hidden" value={relationshipId} />

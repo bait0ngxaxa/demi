@@ -82,7 +82,7 @@ export function AppointmentMutationControls({
 
   return (
     <div>
-      <UnknownOutcomeAlert active={noShowUnknown} className="mb-4" />
+      <UnknownOutcomeAlert active={noShowUnknown} className="mb-4" recovery={{ kind: "reload" }} />
       {status === "SCHEDULED" ? <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         {canComplete ? <ConfirmableActionForm
           action={completeAction}

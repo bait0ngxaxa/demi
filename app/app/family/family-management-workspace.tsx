@@ -52,7 +52,7 @@ function PaginationLink({ href }: { href: string }): React.JSX.Element {
 }
 
 function CreateCaregiverInvitationForm(): React.JSX.Element {
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
+  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(
     createCaregiverInvitationAction,
     initialCreateCaregiverInvitationActionState,
   );
@@ -112,7 +112,7 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
           />
         </div>
         {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
-        <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+        <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังสร้างคำเชิญ..." : "สร้างลิงก์คำเชิญ"}
         </Button>
@@ -182,7 +182,7 @@ function RevokePendingInvitation({
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -209,7 +209,7 @@ function RevokeRelationship({
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -259,7 +259,7 @@ function WithdrawCaregiverRelationship({
         </div>
       )}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }

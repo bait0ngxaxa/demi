@@ -18,7 +18,8 @@ import type {
 
 type NavigationListProps = {
   groups: readonly ApplicationNavigationGroup[];
-  onNavigate?: () => void;
+  /** Called for client-side navigations only; may cancel the link navigation to perform it itself. */
+  onNavigate?: (event: { preventDefault: () => void }, href: string) => void;
   tone?: "desktop" | "mobile";
 };
 
@@ -95,7 +96,7 @@ export function NavigationList({
                       )}
                       href={item.href}
                       prefetch={item.prefetch}
-                      onNavigate={onNavigate}
+                      onNavigate={onNavigate ? (event) => onNavigate(event, item.href) : undefined}
                     >
                       <span className="min-w-0 flex-1">{item.label}</span>
                       <NavigationPendingHint />

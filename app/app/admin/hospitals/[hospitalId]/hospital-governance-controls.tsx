@@ -80,7 +80,7 @@ export function HospitalGovernanceControls({
         การเปลี่ยนสถานะมีผลทันทีเมื่อบันทึกสำเร็จ และมีผลเฉพาะโรงพยาบาลนี้
       </p>
 
-      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" />
+      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" recovery={{ kind: "reload" }} />
       {status === "ACTIVE" ? (
         <ConfirmableActionForm
           action={suspendAction}

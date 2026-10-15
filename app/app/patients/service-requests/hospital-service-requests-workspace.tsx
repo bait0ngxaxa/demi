@@ -80,7 +80,7 @@ export function HospitalPatientServiceRequestsWorkspace({
             {state.conflict ? <p>รายการด้านล่างอ่านสถานะล่าสุดจากระบบแล้ว หากคำขอไม่อยู่ในกลุ่มเดิม ให้เลือกดูอีกกลุ่ม</p> : null}
           </Alert>
         ) : null}
-        <UnknownOutcomeAlert active={!pending && unknownOutcome} />
+        <UnknownOutcomeAlert active={!pending && unknownOutcome} recovery={{ kind: "reload" }} />
       </div>
       {invalidQuery ? <Alert className="mt-4" variant="warning">รูปแบบกลุ่มหรือหน้ารายการไม่ถูกต้อง แสดงคำขอรอตรวจสอบหน้าแรกแทน</Alert> : null}
 

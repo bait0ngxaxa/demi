@@ -145,11 +145,11 @@ function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX
 export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element {
   const router = useRouter();
   const appointment = props.mode === "reschedule" ? props.appointment : null;
-  const [createState, createAction, createPending, createUnknown] = useMutationActionState<
+  const [createState, createAction, createPending, createUnknown, resendCreate] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(createAppointmentAction, initialAppointmentActionState);
-  const [rescheduleState, rescheduleAction, reschedulePending, rescheduleUnknown] = useMutationActionState<
+  const [rescheduleState, rescheduleAction, reschedulePending, rescheduleUnknown, resendReschedule] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(rescheduleAppointmentAction, initialAppointmentActionState);
@@ -169,6 +169,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   const state = props.mode === "create" ? createState : rescheduleState;
   const pending = props.mode === "create" ? createPending : reschedulePending;
   const unknownOutcome = props.mode === "create" ? createUnknown : rescheduleUnknown;
+  const resendUnconfirmed = props.mode === "create" ? resendCreate : resendReschedule;
   const formAction = props.mode === "create" ? createAction : rescheduleAction;
   const detailHref = appointment
     ? `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments/${encodeURIComponent(appointment.appointmentId)}`
@@ -377,7 +378,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             นัดหมายนี้จะผูกกับผู้ป่วยและผู้รับผิดชอบในโรงพยาบาลที่เลือก
           </p>
           <ActionFeedback state={state} />
-          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}

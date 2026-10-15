@@ -687,19 +687,19 @@ export function WorkforceWorkspace({
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
-  const [staffState, staffAction, staffPending, staffUnknown] = useMutationActionState<
+  const [staffState, staffAction, staffPending, staffUnknown, resendStaff] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionHospitalMemberAction, initialWorkforceProvisionActionState);
-  const [osmState, osmAction, osmPending, osmUnknown] = useMutationActionState<
+  const [osmState, osmAction, osmPending, osmUnknown, resendOsm] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionOsmAction, initialWorkforceProvisionActionState);
-  const [remoteState, remoteAction, remotePending, remoteUnknown] = useMutationActionState<
+  const [remoteState, remoteAction, remotePending, remoteUnknown, resendRemote] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(regenerateWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [assistedState, assistedAction, assistedPending, assistedUnknown] = useMutationActionState<
+  const [assistedState, assistedAction, assistedPending, assistedUnknown, resendAssisted] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(startAssistedWorkforceActivationAction, initialWorkforceActivationActionState);
@@ -797,7 +797,8 @@ export function WorkforceWorkspace({
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
         </nav>
 
-        <UnknownOutcomeAlert active={remoteUnknown || assistedUnknown} className="mt-6" />
+        <UnknownOutcomeAlert active={remoteUnknown} className="mt-6" recovery={{ kind: "resend", onResend: resendRemote, resending: remotePending }} />
+        <UnknownOutcomeAlert active={assistedUnknown} className="mt-6" recovery={{ kind: "resend", onResend: resendAssisted, resending: assistedPending }} />
         {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
         {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
@@ -910,7 +911,7 @@ export function WorkforceWorkspace({
               </label>
               {staffState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{staffState.message}</Alert> : null}
               {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
-              <UnknownOutcomeAlert active={staffUnknown} />
+              <UnknownOutcomeAlert active={staffUnknown} recovery={{ kind: "resend", onResend: resendStaff, resending: staffPending }} />
               <Button className="w-full" disabled={actionsBlocked} loading={staffPending} type="submit">
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
               </Button>
@@ -946,7 +947,7 @@ export function WorkforceWorkspace({
               </div>
               {osmState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{osmState.message}</Alert> : null}
               {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
-              <UnknownOutcomeAlert active={osmUnknown} />
+              <UnknownOutcomeAlert active={osmUnknown} recovery={{ kind: "resend", onResend: resendOsm, resending: osmPending }} />
               <Button className="w-full" disabled={actionsBlocked} loading={osmPending} type="submit">
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
               </Button>

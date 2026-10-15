@@ -151,7 +151,7 @@ function ProfileEditorForm({
         </p>
       ) : null}
 
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "reload" }} />
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <Button className="w-full sm:w-auto" disabled={unknownOutcome} loading={pending} type="submit">

@@ -20,7 +20,7 @@ function Feedback({ state }: { state: FamilyMutationActionState }): React.JSX.El
 }
 
 function ProposeForm({ relationships, hospitals }: { relationships: readonly FamilyRelationshipManagementItem[]; hospitals: NonNullable<AppointmentGrantManagement["patient"]>["hospitals"] }): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   const active = relationships.filter((row) => row.status === "ACTIVE");
   if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีความสัมพันธ์ผู้ดูแลที่ใช้งานอยู่และหน่วยบริการของคุณที่พร้อมใช้งาน จึงจะเสนอสิทธิ์ได้</p>;
   return <form action={action} className="mt-4 space-y-4">
@@ -36,7 +36,7 @@ function ProposeForm({ relationships, hospitals }: { relationships: readonly Fam
       </Select></div>
     <Button disabled={pending || unknownOutcome} loading={pending} type="submit">{pending ? "กำลังเสนอสิทธิ์..." : "เสนอสิทธิ์ดูนัดหมาย"}</Button>
     <Feedback state={state} />
-    <UnknownOutcomeAlert active={unknownOutcome} />
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
   </form>;
 }
 
@@ -59,7 +59,7 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
     </form> : null}
     {perspective === "caregiver" && grant.status === "ACTIVE" ? <Link prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/family/grants/${grant.grantId}/appointments`}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
     <Feedback state={state} />
-    <UnknownOutcomeAlert active={unknownOutcome} />
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
   </li>;
 }
 

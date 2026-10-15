@@ -29,7 +29,7 @@ export function RoundReviewButton({
   toolCode: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     recordPatientProgramRoundReviewAction,
     initialPatientProgramRoundActionState,
   );
@@ -54,7 +54,7 @@ export function RoundReviewButton({
         <Alert variant={state.code === "CONFLICT" ? "warning" : "danger"}>{state.message}</Alert>
       ) : null}
       {state.status === "SUCCESS" ? <Alert variant="success">บันทึกการทบทวนแล้ว</Alert> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
     </form>
   );
 }

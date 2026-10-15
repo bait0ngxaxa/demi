@@ -6,7 +6,7 @@ import { AppShell } from "./app-shell";
 import { ProtectedApplicationShellSkeleton } from "./app-shell-skeleton";
 import { PageHeader } from "../ui/page-header";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/app" }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("./logout-button", () => ({ LogoutButton: () => <button>ออกจากระบบ</button> }));
 
 function source(path: string): string {

@@ -68,7 +68,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const [previewFailedToken, setPreviewFailedToken] = useState<string | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
+  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     WorkforceCompletionActionState,
     FormData
   >(
@@ -254,7 +254,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
 
       <button
         aria-busy={pending || undefined}

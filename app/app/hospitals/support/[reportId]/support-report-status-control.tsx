@@ -26,5 +26,5 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
       else if (result.status === "ERROR") setError(result.message);
     });
   }
-  return <div className="mt-5 space-y-3">{error ? <Alert variant="warning">{error}</Alert> : null}<UnknownOutcomeAlert active={unknownOutcome} /><Button disabled={pending || unknownOutcome} loading={pending} onClick={update} type="button">{nextStatus === "ACKNOWLEDGED" ? "รับทราบรายงาน" : "ทำเครื่องหมายว่าแก้ไขแล้ว"}</Button></div>;
+  return <div className="mt-5 space-y-3">{error ? <Alert variant="warning">{error}</Alert> : null}<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} /><Button disabled={pending || unknownOutcome} loading={pending} onClick={update} type="button">{nextStatus === "ACKNOWLEDGED" ? "รับทราบรายงาน" : "ทำเครื่องหมายว่าแก้ไขแล้ว"}</Button></div>;
 }

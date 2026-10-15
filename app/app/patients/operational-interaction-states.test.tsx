@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   noShow: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   profile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   refresh: vi.fn(),
+  review: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   vitals: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
@@ -22,7 +23,7 @@ vi.mock("@/modules/patient-hospital-profile/transport/hospital-patient-edit-acti
   saveStaffPatientHospitalProfileAction: (_relationshipId: string, ...args: unknown[]) => mocks.profile(...args),
 }));
 vi.mock("@/modules/patient-program-rounds/transport/server-actions", () => ({
-  recordPatientProgramRoundReviewAction: vi.fn(),
+  recordPatientProgramRoundReviewAction: mocks.review,
   recordPatientProgramRoundVitalsAction: mocks.vitals,
 }));
 vi.mock("@/modules/appointments/transport/server-actions", () => ({
@@ -33,6 +34,7 @@ vi.mock("@/modules/appointments/transport/server-actions", () => ({
 
 import { HospitalPatientEditForm } from "./[relationshipId]/hospital-patient-edit-form";
 import { AppointmentMutationControls } from "./[relationshipId]/appointments/[appointmentId]/appointment-mutation-controls";
+import { RoundReviewButton } from "./[relationshipId]/programs/[programId]/rounds/[roundNumber]/round-review-button";
 import { RoundVitalsForm } from "./[relationshipId]/programs/[programId]/rounds/[roundNumber]/round-vitals-form";
 
 let container: HTMLDivElement;
@@ -168,5 +170,42 @@ describe("Appointment management controls", () => {
       expect(button.disabled).toBe(true);
     }
     expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("Program round review with a lost response", () => {
+  it("confirms a review that was saved on the server by resending the same submission nonce, creating no second record", async () => {
+    const saved = new Set<string>();
+    mocks.review.mockImplementation(async (_state: unknown, formData: unknown) => {
+      const nonce = String((formData as FormData).get("submissionNonce"));
+      const replay = saved.has(nonce);
+      saved.add(nonce);
+      if (!replay) throw new TypeError("Failed to fetch");
+      return { status: "SUCCESS", operation: "ALREADY_RECORDED" };
+    });
+    render(
+      createElement(RoundReviewButton, {
+        label: "บันทึกการทบทวน",
+        patientHospitalRelationshipId: "relationship-1",
+        patientProgramId: "program-1",
+        roundNumber: 2,
+        submissionNonce: "review-nonce-1",
+        toolCode: "PAM",
+      }),
+    );
+
+    await click(buttonByText("บันทึกการทบทวน"));
+
+    expect(saved.size).toBe(1);
+    expect(buttonByText("บันทึกการทบทวน").disabled).toBe(true);
+    expect(mocks.review).toHaveBeenCalledTimes(1);
+
+    await click(buttonByText("ตรวจสอบผลด้วยคำขอเดิม"));
+
+    expect(mocks.review).toHaveBeenCalledTimes(2);
+    expect((mocks.review.mock.calls[1]?.[1] as FormData).get("submissionNonce")).toBe("review-nonce-1");
+    expect(saved.size).toBe(1);
+    expect(container.textContent).toContain("บันทึกการทบทวนแล้ว");
+    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
   });
 });

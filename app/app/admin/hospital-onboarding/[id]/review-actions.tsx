@@ -42,7 +42,7 @@ export function ReviewActions({ applicationId }: ReviewActionsProps): React.JSX.
         การอนุมัติจะเปิดใช้งานโรงพยาบาล บัญชีผู้สมัคร และสิทธิ์เจ้าของโรงพยาบาลพร้อมกัน
       </p>
 
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "reload" }} />
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <form action={approveFormAction} className="sm:flex-1">

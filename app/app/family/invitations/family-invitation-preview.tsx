@@ -99,11 +99,11 @@ export function FamilyInvitationPreview(): React.JSX.Element {
   const [preview, setPreview] = useState(initialCaregiverInvitationPreviewActionState);
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewAttempt, setPreviewAttempt] = useState(0);
-  const [acceptance, acceptAction, accepting, acceptingUnknown] = useMutationActionState(
+  const [acceptance, acceptAction, accepting, acceptingUnknown, resendAcceptance] = useMutationActionState(
     acceptCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
-  const [rejection, rejectAction, rejecting, rejectingUnknown] = useMutationActionState(
+  const [rejection, rejectAction, rejecting, rejectingUnknown, resendRejection] = useMutationActionState(
     rejectCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
@@ -226,7 +226,8 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           ) : null}
           {acceptance.status === "ERROR" ? <Alert className="mt-5" variant="danger">{acceptance.message}</Alert> : null}
           {rejection.status === "ERROR" ? <Alert className="mt-5" variant="danger">{rejection.message}</Alert> : null}
-          <UnknownOutcomeAlert active={acceptingUnknown || rejectingUnknown} className="mt-5" />
+          <UnknownOutcomeAlert active={acceptingUnknown} className="mt-5" recovery={{ kind: "resend", onResend: resendAcceptance, resending: accepting }} />
+          <UnknownOutcomeAlert active={rejectingUnknown} className="mt-5" recovery={{ kind: "resend", onResend: resendRejection, resending: rejecting }} />
 
           {preview.invitation.invitationStatus === "PENDING" && !hasCompletedResponse ? (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">

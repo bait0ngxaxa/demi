@@ -94,7 +94,7 @@ export function PatientAccessRequestReviewControls({
       {state.status === "ERROR" ? (
         <Alert variant="danger">{state.message}</Alert>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -132,7 +132,7 @@ export function HospitalPatientAccessRequestWithdrawalControl({
       {state.status === "ERROR" ? (
         <Alert className="mt-3" variant="danger">{state.message}</Alert>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     </div>
   );
 }

@@ -100,7 +100,7 @@ export function PatientServiceRequestForm({
         </Alert>
       ) : null}
       {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "review", label: "ตรวจสอบรายการคำขอล่าสุด" }} />
 
       <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอเพิ่มบริการ"}
@@ -140,7 +140,7 @@ export function WithdrawPatientServiceRequestButton({
       {state.status === "ERROR" ? (
         <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }

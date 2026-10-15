@@ -99,7 +99,7 @@ function FinalAssessmentForm({
   todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     PatientFinalAssessmentActionState,
     FormData
   >(createPatientFinalAssessmentAction, initialPatientFinalAssessmentActionState);
@@ -199,7 +199,7 @@ function FinalAssessmentForm({
         {pending ? <Alert className="mt-5" variant="info">กำลังบันทึก Final Assessment…</Alert> : null}
         <ActionFeedback state={state} />
 
-        <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+        <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
         <div className="mt-6">
           <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึก Final Assessment"}

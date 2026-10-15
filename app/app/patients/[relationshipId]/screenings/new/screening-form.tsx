@@ -111,7 +111,7 @@ export function ScreeningForm({
   programId,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<ScreeningActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<ScreeningActionState, FormData>(
     submitScreeningAction,
     initialScreeningActionState,
   );
@@ -302,7 +302,7 @@ export function ScreeningForm({
             ผลลัพธ์จะคำนวณจากคำตอบที่ส่งเมื่อบันทึกแบบประเมิน
           </p>
           <ActionFeedback state={state} />
-          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}

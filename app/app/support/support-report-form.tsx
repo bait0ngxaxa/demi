@@ -40,7 +40,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
     <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-message">รายละเอียดปัญหา</label><textarea className="min-h-40 w-full rounded-control border border-border-strong bg-surface px-4 py-3 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="support-message" maxLength={1_000} onChange={(event) => setMessage(event.currentTarget.value)} required value={message} /><p className="mt-1 text-right text-sm text-text-muted">{message.length}/1,000</p></div>
     <Alert variant="warning">โปรดอย่าระบุข้อมูลสุขภาพ ชื่อผู้ป่วย เลขประจำตัว หรือข้อมูลส่วนบุคคลที่ละเอียดอ่อนในรายงานนี้</Alert>
     {feedback ? <Alert variant={feedback.variant}>{feedback.text}</Alert> : null}
-    <UnknownOutcomeAlert active={unknownOutcome} />
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "note", note: "รายงานปัญหาไม่มีรหัสป้องกันการส่งซ้ำ หากส่งใหม่อาจเกิดรายงานซ้ำ หากต้องการส่งอีกครั้งให้เปิดหน้านี้ใหม่" }} />
     <Button disabled={pending || unknownOutcome || hospitals.length === 0} loading={pending} type="submit">ส่งรายงานปัญหา</Button>
   </form>;
 }

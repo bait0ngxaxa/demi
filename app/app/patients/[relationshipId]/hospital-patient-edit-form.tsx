@@ -40,7 +40,7 @@ export function HospitalPatientEditForm({ relationshipId, version, health, value
       </> : null}
     </div>
     {state.message ? <p role={state.status === "ERROR" ? "alert" : "status"} className="text-sm text-text">{state.message}</p> : null}
-    <UnknownOutcomeAlert active={unknownOutcome} />
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     <Button disabled={unknownOutcome} loading={pending} type="submit">
       {pending ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
     </Button>

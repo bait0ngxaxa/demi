@@ -241,7 +241,7 @@ export function PatientOsmBulkAssignmentWorkspace({
   errorMessage,
 }: PatientOsmBulkAssignmentWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientOsmBulkAssignmentActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientOsmBulkAssignmentActionState, FormData>(
     bulkAssignOsmToPatientsAction,
     initialPatientOsmBulkAssignmentActionState,
   );
@@ -487,7 +487,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                     <p className="mt-1">{state.message}</p>
                   </Alert>
                 ) : null}
-                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
+                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
               </Panel>
             ) : null}
           </>

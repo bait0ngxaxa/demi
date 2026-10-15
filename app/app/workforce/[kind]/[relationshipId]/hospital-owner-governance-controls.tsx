@@ -97,7 +97,7 @@ export function HospitalOwnerGovernanceControls({
         การเปลี่ยนแปลงนี้มีผลเฉพาะบทบาทในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี ข้อมูลเข้าสู่ระบบ หรือความสัมพันธ์อื่น
       </p>
 
-      <UnknownOutcomeAlert active={promoteUnknown} className="mt-4" />
+      <UnknownOutcomeAlert active={promoteUnknown} className="mt-4" recovery={{ kind: "reload" }} />
       {ownerGovernance.canPromote ? (
         <form action={promoteAction} className="mt-6 border-t border-border pt-5">
           <input name="relationshipId" type="hidden" value={relationshipId} />

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, LoadingSpinner } from "@/components/ui/button";
 
 import {
   DESKTOP_NAV_MEDIA_QUERY,
@@ -16,7 +17,10 @@ type MobileNavigationProps = {
 };
 
 export function MobileNavigation({ navigation }: MobileNavigationProps): React.JSX.Element {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  // The drawer (and its links) unmount on navigation, so the pending state lives here instead.
+  const [navigating, startNavigation] = useTransition();
   const panelRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -91,10 +95,11 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
   }, [open]);
 
   return (
-    <div className="lg:hidden">
+    <div className="flex items-center lg:hidden">
       <Button
         aria-controls="mobile-application-navigation"
         aria-expanded={open}
+        aria-busy={navigating || undefined}
         aria-label="เปิดเมนูหลัก"
         className="size-11 p-0"
         onClick={() => setOpen(true)}
@@ -106,6 +111,10 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
           <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
         </svg>
       </Button>
+      {navigating ? <LoadingSpinner className="ml-1 text-brand-strong" /> : null}
+      <span className="sr-only" role="status">
+        {navigating ? "กำลังเปิดหน้า" : ""}
+      </span>
       {open ? (
         <dialog
           aria-label="เมนูหลัก"
@@ -145,9 +154,13 @@ export function MobileNavigation({ navigation }: MobileNavigationProps): React.J
             <nav aria-label="เมนูหลักบนมือถือ" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6">
               <NavigationList
                 groups={navigation}
-                onNavigate={() => {
+                onNavigate={(event, href) => {
+                  event.preventDefault();
                   skipFocusRestoreRef.current = true;
                   setOpen(false);
+                  startNavigation(() => {
+                    router.push(href);
+                  });
                 }}
                 tone="mobile"
               />

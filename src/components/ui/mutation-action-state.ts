@@ -1,8 +1,9 @@
 "use client";
 
 import { unstable_rethrow } from "next/navigation";
-import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useRef, useState, type FormEvent } from "react";
 
+/** For updates and terminal transitions whose current state is shown on the page after a reload. */
 export const unknownOutcomeMessage =
   "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการซ้ำ";
 
@@ -14,25 +15,46 @@ export const connectionFailureMessage = "เชื่อมต่อระบบ
  * an unknown outcome instead of unmounting the page into an error boundary. The flag
  * stays set until a later dispatch is confirmed or the page is reloaded.
  * Next.js navigation signals (redirect, notFound) are rethrown unchanged.
+ *
+ * `resendUnconfirmed` dispatches the exact payload of the unconfirmed request again, so its
+ * submission identity (nonce, expected version, natural key) is unchanged. It is only offered
+ * where the server deduplicates that identity; it never runs on its own.
  */
 export function useMutationActionState<State, Payload>(
   action: (state: Awaited<State>, payload: Payload) => State | Promise<State>,
   initialState: Awaited<State>,
-): [state: Awaited<State>, dispatch: (payload: Payload) => void, pending: boolean, unknownOutcome: boolean] {
+): [
+  state: Awaited<State>,
+  dispatch: (payload: Payload) => void,
+  pending: boolean,
+  unknownOutcome: boolean,
+  resendUnconfirmed: () => void,
+] {
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  const unconfirmedPayload = useRef<{ payload: Payload } | null>(null);
   const [state, dispatch, pending] = useActionState<State, Payload>(async (previous, payload): Promise<Awaited<State>> => {
     try {
       const next = await action(previous, payload);
+      unconfirmedPayload.current = null;
       setUnknownOutcome(false);
       return next;
     } catch (error) {
       unstable_rethrow(error);
+      unconfirmedPayload.current = { payload };
       setUnknownOutcome(true);
       return previous;
     }
   }, initialState);
 
-  return [state, dispatch, pending, unknownOutcome];
+  function resendUnconfirmed(): void {
+    const unconfirmed = unconfirmedPayload.current;
+    if (!unconfirmed || pending) {
+      return;
+    }
+    startTransition(() => dispatch(unconfirmed.payload));
+  }
+
+  return [state, dispatch, pending, unknownOutcome, resendUnconfirmed];
 }
 
 /**

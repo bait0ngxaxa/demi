@@ -20,7 +20,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
       <label htmlFor="release-confirmation" className="block text-sm font-semibold text-text">พิมพ์ “นำออกจากระบบ” เพื่อยืนยัน</label>
       <input id="release-confirmation" name="confirmation" required disabled={pending || unknownOutcome || state.success} className="min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" />
       {state.message ? <p role={state.success ? "status" : "alert"} className="text-sm text-text">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
       <Button disabled={unknownOutcome || state.success} loading={pending} type="submit" variant="danger">{pending ? "กำลังนำออก…" : "ยืนยันนำออกจากระบบถาวร"}</Button>
     </form>
   </details>;

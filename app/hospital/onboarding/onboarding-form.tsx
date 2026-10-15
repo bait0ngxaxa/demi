@@ -23,7 +23,7 @@ type HospitalOnboardingFormProps = {
 };
 
 export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProps) {
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
+  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     HospitalOnboardingSubmitActionState,
     FormData
   >(submitHospitalOnboardingAction, initialHospitalOnboardingSubmitActionState);
@@ -321,7 +321,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         ) : null}
       </div>
 
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
 
       <button
         aria-busy={pending || undefined}

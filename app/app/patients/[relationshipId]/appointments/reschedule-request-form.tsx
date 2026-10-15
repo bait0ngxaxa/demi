@@ -10,7 +10,7 @@ import { submitRescheduleRequestAction, rejectRescheduleRequestAction, type Resc
 export function RescheduleRequestForm({ relationshipId, appointmentId, expectedUpdatedAt, nonce, requestId }: {
   relationshipId: string; appointmentId: string; expectedUpdatedAt?: string; nonce?: string; requestId?: string;
 }): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState<RescheduleRequestActionState, FormData>(requestId ? rejectRescheduleRequestAction : submitRescheduleRequestAction, { status: "IDLE", message: "" });
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<RescheduleRequestActionState, FormData>(requestId ? rejectRescheduleRequestAction : submitRescheduleRequestAction, { status: "IDLE", message: "" });
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.status === "SUCCESS") formRef.current?.reset();
@@ -32,7 +32,7 @@ export function RescheduleRequestForm({ relationshipId, appointmentId, expectedU
     <div><label htmlFor={`${prefix}-reason`} className="text-sm font-semibold text-text">{requestId ? "เหตุผลที่ปฏิเสธ" : "เหตุผลที่ขอเลื่อนนัด"}</label>
       <textarea id={`${prefix}-reason`} name={requestId ? "rejectionReason" : "reason"} maxLength={500} required disabled={pending || unknownOutcome} className={control} /></div>
     {state.message ? <p role={state.status === "ERROR" ? "alert" : "status"} className="text-sm text-text">{state.message}</p> : null}
-    <UnknownOutcomeAlert active={unknownOutcome} />
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
     <Button disabled={unknownOutcome} loading={pending} type="submit">{pending ? "กำลังส่ง…" : requestId ? "ปฏิเสธคำขอ" : "ส่งคำขอเลื่อนนัด"}</Button>
   </form>;
 }

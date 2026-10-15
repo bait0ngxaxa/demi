@@ -39,7 +39,7 @@ export function PatientProgramOpenControl({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramActionState, FormData>(
     openPatientProgramAction,
     initialPatientProgramActionState,
   );
@@ -62,7 +62,7 @@ export function PatientProgramOpenControl({
         </Button>
       </form>
       <ErrorFeedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
     </div>
   );
 }

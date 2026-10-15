@@ -20,7 +20,7 @@ export function PatientAccessRequestForm({
 }: {
   hospitals: readonly PublicActiveHospital[];
 }): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(
     submitPublicPatientAccessRequestAction,
     initialPublicPatientAccessRequestActionState,
   );
@@ -83,7 +83,7 @@ export function PatientAccessRequestForm({
               </Select>
             </div>
 
-            <UnknownOutcomeAlert active={unknownOutcome} />
+            <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
 
             <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
               {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอให้โรงพยาบาลตรวจสอบ"}

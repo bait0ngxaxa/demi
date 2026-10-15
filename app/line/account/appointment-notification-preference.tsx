@@ -61,7 +61,7 @@ export function AppointmentNotificationPreference({
           {state.enabled ? "เปิดการแจ้งเตือนแล้ว" : "ปิดการแจ้งเตือนแล้ว"}
         </p>
       ) : null}
-      <UnknownOutcomeAlert className="mt-4" active={unknownOutcome} />
+      <UnknownOutcomeAlert className="mt-4" active={unknownOutcome} recovery={{ kind: "reload" }} />
       <form action={formAction} className="mt-4">
         <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
         <button

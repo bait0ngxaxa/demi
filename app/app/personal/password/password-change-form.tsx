@@ -77,7 +77,7 @@ export function PasswordChangeForm(): React.JSX.Element {
         </p>
       ) : null}
 
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "note", note: "ออกจากระบบแล้วเข้าสู่ระบบด้วยรหัสผ่านใหม่เพื่อตรวจสอบ หากเข้าไม่ได้ให้ใช้รหัสผ่านเดิม" }} />
 
       <Button className="w-full sm:w-fit" disabled={unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังเปลี่ยนรหัสผ่าน…" : "เปลี่ยนรหัสผ่าน"}

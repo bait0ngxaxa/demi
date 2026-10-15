@@ -174,7 +174,7 @@ export function PatientOsmAssignmentWorkspace({
           )}
 
           <AssignmentFeedback assignState={assignState} unassignState={unassignState} />
-          <UnknownOutcomeAlert active={assignUnknown || unassignUnknown} className="mt-5" />
+          <UnknownOutcomeAlert active={assignUnknown || unassignUnknown} className="mt-5" recovery={{ kind: "reload" }} />
         </Panel>
 
         <Panel>

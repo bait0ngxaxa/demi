@@ -241,7 +241,7 @@ export function PatientActivationHandoff({
   patientAccessRequestId,
   linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(
     issuePatientActivationAction,
     initialPatientActivationIssueActionState,
   );
@@ -253,7 +253,7 @@ export function PatientActivationHandoff({
     (state.status === "ERROR" && state.code === "RECONCILIATION_REQUIRED");
 
   if (unknownOutcome) {
-    return <UnknownOutcomeAlert className="mt-4" active={unknownOutcome} />;
+    return <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />;
   }
 
   if (patientAccessRequestId) {

@@ -89,15 +89,15 @@ export function AppointmentInteractionControls({
   coordinationSubmissionNonce,
 }: AppointmentInteractionControlsProps): React.JSX.Element | null {
   const router = useRouter();
-  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown] = useMutationActionState<
+  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown, resendAcknowledgement] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(acknowledgeAppointmentOnBehalfOfPatientAction, initialAppointmentInteractionActionState);
-  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown] = useMutationActionState<
+  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown, resendCancellation] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(requestAppointmentCancellationOnBehalfOfPatientAction, initialAppointmentInteractionActionState);
-  const [coordinationState, coordinationAction, coordinationPending, coordinationUnknown] = useMutationActionState<
+  const [coordinationState, coordinationAction, coordinationPending, coordinationUnknown, resendCoordination] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(recordAppointmentCoordinationAction, initialAppointmentInteractionActionState);
@@ -105,7 +105,7 @@ export function AppointmentInteractionControls({
     AppointmentInteractionActionState,
     FormData
   >(approveAppointmentCancellationRequestAction, initialAppointmentInteractionActionState);
-  const [rejectionState, rejectionAction, rejectionPending, rejectionUnknown] = useMutationActionState<
+  const [rejectionState, rejectionAction, rejectionPending, rejectionUnknown, resendRejection] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(rejectAppointmentCancellationRequestAction, initialAppointmentInteractionActionState);
@@ -140,7 +140,10 @@ export function AppointmentInteractionControls({
   return (
     <Panel>
       <div className="space-y-6">
-        <UnknownOutcomeAlert active={acknowledgementUnknown || cancellationUnknown || coordinationUnknown || rejectionUnknown} />
+        <UnknownOutcomeAlert active={acknowledgementUnknown} recovery={{ kind: "resend", onResend: resendAcknowledgement, resending: acknowledgementPending }} />
+        <UnknownOutcomeAlert active={cancellationUnknown} recovery={{ kind: "resend", onResend: resendCancellation, resending: cancellationPending }} />
+        <UnknownOutcomeAlert active={coordinationUnknown} recovery={{ kind: "resend", onResend: resendCoordination, resending: coordinationPending }} />
+        <UnknownOutcomeAlert active={rejectionUnknown} recovery={{ kind: "resend", onResend: resendRejection, resending: rejectionPending }} />
         <section aria-labelledby="appointment-acknowledgement-heading">
           <h2 className="text-lg font-semibold" id="appointment-acknowledgement-heading">การรับทราบนัดหมาย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>

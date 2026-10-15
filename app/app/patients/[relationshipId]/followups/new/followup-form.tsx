@@ -246,7 +246,7 @@ export function FollowupForm({
   const programId = scope.kind === "program" ? scope.patientProgramId : null;
   const createAction =
     scope.kind === "program" ? createFollowupForProgramAction : createFollowupAction;
-  const [state, action, pending, unknownOutcome] = useMutationActionState<FollowupActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<FollowupActionState, FormData>(
     createAction,
     initialFollowupActionState,
   );
@@ -729,7 +729,7 @@ export function FollowupForm({
             </div>
           </dl>
           <ActionFeedback state={state} />
-          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}

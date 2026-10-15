@@ -75,7 +75,7 @@ export function PatientActivationForm(): React.JSX.Element {
   const [detailsToken, setDetailsToken] = useState<string | null>(null);
   const [detailsFailedToken, setDetailsFailedToken] = useState<string | null>(null);
   const [detailsAttempt, setDetailsAttempt] = useState(0);
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
+  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     PatientActivationCompletionActionState,
     FormData
   >(
@@ -248,7 +248,7 @@ export function PatientActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
-      <UnknownOutcomeAlert active={unknownOutcome} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
 
       <button
         aria-busy={pending || undefined}

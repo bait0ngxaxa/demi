@@ -24,7 +24,7 @@ No schema, migration, capability, authorization, Server Action contract, import 
 ## Interaction state contract implemented
 
 - `useMutationActionState` (`src/components/ui/mutation-action-state.ts`): same tuple as `useActionState` plus `unknownOutcome`. A thrown dispatch keeps the previous state, sets the flag, and never retries. Navigation signals are rethrown. The flag clears on a later confirmed result.
-- `UnknownOutcomeAlert`: inline warning with the existing UXH-A message and a "โหลดข้อมูลล่าสุด" reload. Reload is the reconciliation step because it re-reads persisted state and discards stale nonces and client state. Forms using `ConfirmableActionForm` pass `outcome="unknown"` and keep UXH-A's own unknown handling, without a duplicate alert.
+- `UnknownOutcomeAlert`: inline warning that requires an explicit recovery contract per workflow (see "UXH-B.4 recovery contracts" below). Forms using `ConfirmableActionForm` pass `outcome="unknown"` and keep UXH-A's own unknown handling, without a duplicate alert; all of those are update or terminal transitions.
 - `withConnectionFailure`: for retry-safe actions (sign-in, sign-out, lookups), a thrown request becomes an ordinary retryable error.
 - `submitPreservingInput`: dispatches from `onSubmit` so a rejected submission keeps typed values. The `action` prop stays for pre-hydration submissions. Forms that relied on React's reset now reset explicitly after a confirmed success.
 - `PendingSubmitButton`: `useFormStatus` plus the existing `Button loading` for `next/form` search and filter forms.
@@ -90,16 +90,30 @@ Already correct (**AC**, untouched): wellness meal/exercise/weight goal and medi
 | 10 GET search/filter forms (patient directory ×2, assigned directory, workforce, bulk assign ×2, OSM assignment, reporting ×2, knowledge Hospital selector) | Full-document reload, no in-app pending, double-submit possible | **F** `next/form` client navigation (GET semantics kept) + `PendingSubmitButton`; previous results stay visible while loading |
 | Filters after client-side "clear" / Hospital change | Uncontrolled fields kept stale values (page not remounted) | **F** fields keyed to URL state (existing workforce convention) |
 | Post-save navigation in screening, baseline, Goal Plan, follow-up, appointment | Between success and `router.push`, no success shown and the submit button re-enabled | **F** success status "บันทึกแล้ว กำลังเปิดรายการที่บันทึก..." and inputs locked until navigation |
-| Sidebar / mobile nav (`prefetch={false}` items) | No feedback until the server answered | **F** `useLinkStatus` spinner + sr-only "กำลังเปิดหน้า" on the clicked link |
+| Sidebar (`prefetch={false}` items) | No feedback until the server answered | **F** `useLinkStatus` spinner + sr-only "กำลังเปิดหน้า" on the clicked link |
+| Mobile drawer navigation | The drawer (and its links) unmounted on navigation, discarding the link status | **F** (UXH-B.4) `MobileNavigation` performs the navigation in its own transition (`router.push`); a spinner beside the menu trigger, `aria-busy` on the trigger, and a persistent `role="status"` region show "กำลังเปิดหน้า" until the destination renders or fails |
 | Report XLSX export | Pending, disabled, no fake download | **AC**; **F** failure now `role="alert"` and danger-coloured instead of a muted status |
 | Template download, activation slips (native) | Browser-managed | **NA** |
 | `loading.tsx` coverage | Every `/app` page has its own or an ancestor skeleton; only `app/app/layout.tsx` awaits data, inside `Suspense` | **AC** |
 | `not-found.tsx` (3) | Safe copy with a scoped back link | **AC** |
 
+## UXH-B.4 recovery contracts (post-review)
+
+The review found that reloading after a lost response regenerates server-rendered submission nonces (for example Screening and Appointment). A later attempt would therefore be a new request that could legitimately create a second record. Reload is no longer presented as verification for creates. Each unknown-outcome site now declares one contract:
+
+| Contract | Behaviour | Why it is safe | Workflows |
+| --- | --- | --- | --- |
+| **resend** | "ตรวจสอบผลด้วยคำขอเดิม" re-sends the exact captured payload (same nonce, expected version, or natural key) only when the user clicks. Fields stay locked. The page warns before unload while the outcome is unconfirmed. | Verified in the services: a nonce replay with an identical payload returns the original record (`ConflictError` if the payload differs); unique keys or state checks return `ALREADY_*` or a conflict. The server action still re-runs actor, relationship and Hospital authorization. | Nonce: Screening, Appointment create, Follow-up, Goal Plan, round vitals, round review, reschedule request, patient/staff cancellation request, coordination, OSM bulk assignment. Natural key or state: Appointment reschedule and acknowledgement, baseline, Final Assessment, Program open, Service 1 records (`ALREADY_RECORDED`), single Patient provisioning (`ALREADY_PROVISIONED`), public access request (returns the existing request), Hospital onboarding application, caregiver invitation (pending invitation → conflict), appointment-grant proposal, invitation accept/reject, workforce staff/OSM provisioning, Patient/Workforce activation completion (single-use token). Link issue, link reissue and assisted activation also use resend, but each resend is a new issue under the same policy. The UI shows the newly issued link and does not present it as the unconfirmed one; no account or relationship is created twice. |
+| **reload** | "โหลดข้อมูลล่าสุด" re-reads the page. The copy asks the user to load the latest data before repeating; it does not claim which request changed the state. | Update or terminal transitions guarded by an expected version or state. The page shows the entity's current state, and a repeat after reload uses the fresh version. | Patient profile/health-history edit, patient profile editor, Hospital governance restore, owner promote, staff profession/restore, OSM restore, workforce release, no-show, OSM assign/unassign, access-request review/withdraw, Hospital service-request review, service catalog, LINE appointment notifications, caregiver invitation/relationship revoke and withdraw, grant accept/revoke, onboarding review, support status, contact email, medication reminders; plus every `ConfirmableActionForm` site (Program complete, classification, appointment cancel/complete, cancellation approval, suspend/demote) |
+| **review** | States that re-sending may create a duplicate. "ตรวจสอบรายการคำขอล่าสุด" reloads the page that lists the persisted requests. | No deduplication key exists, so the user decides after seeing the list. | Patient service request create |
+| **note** | Explains how to check outside the form. No in-page action is offered. | No safe in-page verification exists. | Password change (sign in with the new password); support report create (no deduplication key, so re-sending may duplicate) |
+
+Unchanged: Excel import confirmation already recovers by re-checking the file, because the stateless preview reports already-imported rows. Workforce bulk add keeps its keyed retry.
+
 ## Separate decisions / not done
 
 - **SD-1** The root `app/error.tsx` copy says access could not be verified. It is accurate for shell/actor failures, which are the only errors that now reach it inside `/app`. Rewording for public pages is UXH-C copy work.
-- **SD-2** Reload is the only generic reconciliation for unknown outcomes. Per-flow "check whether it was saved" reads would need product decisions per workflow.
+- **SD-2** Support reports and patient service requests have no server-side deduplication key. Their recovery is limited to the contracts below (a note, or a review of the persisted list). Adding an idempotency key is a contract change for a later decision.
 - **SD-3** Patient knowledge feed category buttons remain native GET submissions (full reload, low risk). They were not converted.
 
 ## Verification executed
@@ -114,6 +128,9 @@ Already correct (**AC**, untouched): wellness meal/exercise/weight goal and medi
 | `npm test` (full unit suite, once, after the code stabilized) | 353 files / 3164 tests passed |
 | Integration (PostgreSQL) suite | Not run: no transport, contract, or persistence code changed |
 | Production build | Not run |
+| UXH-B.4 focused tests | `mutation-action-state.test.tsx` (lost response then resend with the same nonce: one record; resend sends the original payload; unload warning only while unconfirmed; a reloaded page is a new identity; reload/review/note contracts), `operational-interaction-states.test.tsx` (round review lost response then resend: one record), `mobile-navigation.test.tsx` (status persists after the drawer closes, clears on render and on failure, focus moves to main) — passed |
+| UXH-B.4 full unit suite (once) | 354 files / 3176 tests passed. Only the new mobile test file changed afterwards (lint fix); it was re-run and passed. |
+| UXH-B.4 lint / typecheck | 0 errors (2 pre-existing `no-img-element` warnings); typecheck passed |
 
 ## Browser testing limitations (UXH-D handoff)
 
@@ -123,6 +140,8 @@ No real-browser session was run in UXH-B. jsdom tests cover pending, unknown, pr
 2. Rapid double clicks on every primary submit.
 3. Patient directory search, then "ล้างการค้นหา", then a Hospital change → filters match the URL, and previous results stay until new ones arrive.
 4. Non-prefetched sidebar items on slow 3G → per-link spinner, no global block.
+   Mobile: follow a drawer link on slow 3G → the drawer closes, a spinner shows beside the menu button and a screen reader announces "กำลังเปิดหน้า", and both clear when the page renders.
+7. Create with the response dropped after commit (DevTools offline right after the request leaves) → "ตรวจสอบผลด้วยคำขอเดิม" shows the saved record and no duplicate; a reload attempt shows the browser's leave-page warning.
 5. A server render failure on a patient subpage → `app/app/error.tsx` keeps the shell; "ลองโหลดอีกครั้ง" recovers once the server is healthy.
 6. Excel import with the connection dropped during confirmation → unconfirmed dialog, then re-check shows `ALREADY_EXISTS` rows.
 

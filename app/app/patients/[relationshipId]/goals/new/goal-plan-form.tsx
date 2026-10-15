@@ -243,7 +243,7 @@ export function GoalPlanForm({
   const programId = scope.kind === "program" ? scope.patientProgramId : null;
   const submitAction =
     scope.kind === "program" ? submitGoalPlanForProgramAction : submitGoalPlanAction;
-  const [state, action, pending, unknownOutcome] = useMutationActionState<GoalPlanActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<GoalPlanActionState, FormData>(
     submitAction,
     initialGoalPlanActionState,
   );
@@ -573,7 +573,7 @@ export function GoalPlanForm({
             ตรวจสอบข้อมูลให้เรียบร้อยก่อนส่ง ระบบจะบันทึกเป็นรอบใหม่โดยไม่แก้ไขประวัติเดิม
           </p>
           <ActionFeedback state={state} />
-          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}
