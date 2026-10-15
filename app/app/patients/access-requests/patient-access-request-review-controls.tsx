@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialPatientAccessRequestReviewActionState,
 } from "@/modules/patient-access-requests/transport/action-state";
@@ -19,7 +19,7 @@ export function PatientAccessRequestReviewControls({
 }: {
   requestId: string;
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     reviewPatientAccessRequestAction,
     initialPatientAccessRequestReviewActionState,
   );
@@ -45,7 +45,7 @@ export function PatientAccessRequestReviewControls({
           </label>
           <Input
             autoComplete="off"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             id="verified-national-id"
             inputMode="numeric"
             maxLength={13}
@@ -64,7 +64,7 @@ export function PatientAccessRequestReviewControls({
         <label className="flex min-h-11 items-start gap-3 text-sm leading-6 text-text">
           <input
             className="mt-1 h-4 w-4 shrink-0 accent-action-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             name="identityVerified"
             required
             type="checkbox"
@@ -73,7 +73,7 @@ export function PatientAccessRequestReviewControls({
           <span>ข้าพเจ้าได้ตรวจยืนยันตัวตนกับผู้ยื่นคำขอโดยตรงแล้ว</span>
         </label>
 
-        <Button disabled={pending} loading={pending} type="submit">
+        <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังตรวจสอบและอนุมัติ..." : "ยืนยันตัวตนและอนุมัติคำขอ"}
         </Button>
       </form>
@@ -85,7 +85,7 @@ export function PatientAccessRequestReviewControls({
         <form action={action} className="mt-3">
           <input name="requestId" type="hidden" value={requestId} />
           <input name="decision" type="hidden" value="REJECT" />
-          <Button disabled={pending} variant="danger" type="submit">
+          <Button disabled={pending || unknownOutcome} variant="danger" type="submit">
             ไม่อนุมัติคำขอ
           </Button>
         </form>
@@ -94,6 +94,7 @@ export function PatientAccessRequestReviewControls({
       {state.status === "ERROR" ? (
         <Alert variant="danger">{state.message}</Alert>
       ) : null}
+      <UnknownOutcomeAlert active={unknownOutcome} />
     </div>
   );
 }
@@ -105,7 +106,7 @@ export function HospitalPatientAccessRequestWithdrawalControl({
   requestId: string;
   allowed: boolean;
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     withdrawPatientAccessRequestByHospitalAction,
     initialPatientAccessRequestWithdrawalActionState,
   );
@@ -121,7 +122,7 @@ export function HospitalPatientAccessRequestWithdrawalControl({
       </p>
       <form action={action} className="mt-3">
         <input name="requestId" type="hidden" value={requestId} />
-        <Button disabled={pending} loading={pending} size="compact" variant="secondary" type="submit">
+        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" variant="secondary" type="submit">
           {pending ? "กำลังบันทึก..." : "บันทึกว่าผู้ป่วยขอถอนคำขอ"}
         </Button>
       </form>
@@ -131,6 +132,7 @@ export function HospitalPatientAccessRequestWithdrawalControl({
       {state.status === "ERROR" ? (
         <Alert className="mt-3" variant="danger">{state.message}</Alert>
       ) : null}
+      <UnknownOutcomeAlert active={unknownOutcome} />
     </div>
   );
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
   initialWorkforceOsmRelationshipMutationActionState,
@@ -123,15 +125,16 @@ export function OsmRelationshipControls({
   targetHospitalId,
 }: OsmRelationshipControlsProps): React.JSX.Element {
   const router = useRouter();
-  const [suspendState, suspendAction, suspendPending] = useActionState<
+  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
     WorkforceOsmRelationshipMutationActionState,
     FormData
   >(suspendOsmRelationshipAction, initialWorkforceOsmRelationshipMutationActionState);
-  const [restoreState, restoreAction, restorePending] = useActionState<
+  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
     WorkforceOsmRelationshipMutationActionState,
     FormData
   >(restoreOsmRelationshipAction, initialWorkforceOsmRelationshipMutationActionState);
   const pending = suspendPending || restorePending;
+  const unknownOutcome = suspendUnknown || restoreUnknown;
 
   useEffect(() => {
     if (suspendState.status === "SUCCESS" || restoreState.status === "SUCCESS") {
@@ -164,6 +167,7 @@ export function OsmRelationshipControls({
         การดำเนินการมีผลเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ บัญชีผู้ใช้งาน บทบาท และข้อมูลผู้ป่วยจะไม่ถูกเปลี่ยน
       </p>
 
+      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" />
       {actions.suspend ? (
         <ConfirmableActionForm
           action={suspendAction}
@@ -175,7 +179,7 @@ export function OsmRelationshipControls({
             confirmLabel: "ระงับความสัมพันธ์",
             confirmVariant: "destructive",
           }}
-          outcome={suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+          outcome={suspendUnknown ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
           pending={pending}
           resultKey={suspendState}
         >
@@ -187,7 +191,7 @@ export function OsmRelationshipControls({
           </p>
           <Button
             className="mt-3"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             loading={suspendPending}
             size="compact"
             type="submit"
@@ -206,7 +210,7 @@ export function OsmRelationshipControls({
           <p className="text-sm leading-6 text-text-muted">
             คืนสถานะเฉพาะความสัมพันธ์นี้ โดยไม่สร้างหรือคืนการมอบหมายผู้ป่วยเดิม
           </p>
-            <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
+            <Button className="mt-3" disabled={pending || unknownOutcome} loading={restorePending} size="compact" type="submit">
             {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์ อสม."}
           </Button>
         </form>

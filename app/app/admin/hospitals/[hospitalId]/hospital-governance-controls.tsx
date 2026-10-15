@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialHospitalGovernanceMutationActionState,
   type HospitalGovernanceMutationActionState,
@@ -52,15 +54,16 @@ export function HospitalGovernanceControls({
   status,
 }: HospitalGovernanceControlsProps): React.JSX.Element {
   const router = useRouter();
-  const [suspendState, suspendAction, suspendPending] = useActionState<
+  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
     HospitalGovernanceMutationActionState,
     FormData
   >(suspendHospitalAction, initialHospitalGovernanceMutationActionState);
-  const [restoreState, restoreAction, restorePending] = useActionState<
+  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
     HospitalGovernanceMutationActionState,
     FormData
   >(restoreHospitalAction, initialHospitalGovernanceMutationActionState);
   const pending = suspendPending || restorePending;
+  const unknownOutcome = suspendUnknown || restoreUnknown;
 
   useEffect(() => {
     if (suspendState.status === "SUCCESS" || restoreState.status === "SUCCESS") {
@@ -77,6 +80,7 @@ export function HospitalGovernanceControls({
         การเปลี่ยนสถานะมีผลทันทีเมื่อบันทึกสำเร็จ และมีผลเฉพาะโรงพยาบาลนี้
       </p>
 
+      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" />
       {status === "ACTIVE" ? (
         <ConfirmableActionForm
           action={suspendAction}
@@ -88,7 +92,7 @@ export function HospitalGovernanceControls({
             confirmLabel: "ระงับโรงพยาบาล",
             confirmVariant: "destructive",
           }}
-          outcome={suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+          outcome={suspendUnknown ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
           pending={pending}
           resultKey={suspendState}
         >
@@ -97,7 +101,7 @@ export function HospitalGovernanceControls({
           <p className="text-sm leading-6 text-text-muted">
             เมื่อระงับโรงพยาบาล ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้ ข้อมูลเดิมจะไม่ถูกลบหรือปรับแก้
           </p>
-          <Button className="mt-3" disabled={pending} loading={suspendPending} size="compact" type="submit" variant="danger">
+          <Button className="mt-3" disabled={pending || unknownOutcome} loading={suspendPending} size="compact" type="submit" variant="danger">
             {suspendPending ? "กำลังระงับ..." : "ระงับโรงพยาบาล"}
           </Button>
         </ConfirmableActionForm>
@@ -108,7 +112,7 @@ export function HospitalGovernanceControls({
           <p className="text-sm leading-6 text-text-muted">
             คืนสถานะโรงพยาบาลเพื่อให้กลับมาดำเนินงานได้ หากส่วนงานใดยังไม่พร้อม ส่วนนั้นจะยังใช้งานไม่ได้
           </p>
-          <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
+          <Button className="mt-3" disabled={pending || unknownOutcome} loading={restorePending} size="compact" type="submit">
             {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะโรงพยาบาล"}
           </Button>
         </form>

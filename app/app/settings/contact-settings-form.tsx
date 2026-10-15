@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { OwnContactSetting } from "@/modules/account-settings/services/contact-setting-service";
 import type { OwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
 import type { OwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
@@ -16,10 +17,17 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
   const [canEnable] = useState(initial.canEnable);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
   function toggle(): void {
     setMessage(null);
     startTransition(async () => {
-      const result = await setMedicationLineRemindersAction(!enabled);
+      let result: Awaited<ReturnType<typeof setMedicationLineRemindersAction>>;
+      try {
+        result = await setMedicationLineRemindersAction(!enabled);
+      } catch {
+        setUnknownOutcome(true);
+        return;
+      }
       if (result.status === "SUCCESS") setEnabled(result.enabled);
       else setMessage(result.message);
     });
@@ -30,7 +38,8 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
     <p className="mt-2 text-sm font-medium text-text" aria-live="polite">สถานะ: {enabled ? "เปิด" : "ปิด"}</p>
     {!canEnable && !enabled ? <p className="mt-2 text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้ <a className="font-medium text-brand-strong underline underline-offset-4" href="/line/account">จัดการบัญชี LINE</a></p> : null}
     {message ? <Alert className="mt-3" variant="warning">{message}</Alert> : null}
-    <Button className="mt-3" disabled={pending || (!enabled && !canEnable)} loading={pending} onClick={toggle} type="button" variant="secondary">{enabled ? "ปิดการแจ้งเตือนยา" : "เปิดการแจ้งเตือนยา"}</Button>
+    <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" />
+    <Button className="mt-3" disabled={pending || unknownOutcome || (!enabled && !canEnable)} loading={pending} onClick={toggle} type="button" variant="secondary">{enabled ? "ปิดการแจ้งเตือนยา" : "เปิดการแจ้งเตือนยา"}</Button>
   </section>;
 }
 
@@ -39,12 +48,19 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
   const [version, setVersion] = useState(initial.version);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ variant: "success" | "warning"; text: string } | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
 
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     setMessage(null);
     startTransition(async () => {
-      const result = await saveOwnContactEmailAction({ email, expectedVersion: version });
+      let result: Awaited<ReturnType<typeof saveOwnContactEmailAction>>;
+      try {
+        result = await saveOwnContactEmailAction({ email, expectedVersion: version });
+      } catch {
+        setUnknownOutcome(true);
+        return;
+      }
       if (result.status === "SUCCESS") {
         setEmail(result.email ?? "");
         setVersion(result.version);
@@ -63,7 +79,8 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
           <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
         </div>
         {message ? <Alert variant={message.variant}>{message.text}</Alert> : null}
-        <Button disabled={pending} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
+        <UnknownOutcomeAlert active={unknownOutcome} />
+        <Button disabled={pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
       </form>
     </section>
     {patient ? <section aria-labelledby="notification-settings-heading" className="border-t border-border pt-6">

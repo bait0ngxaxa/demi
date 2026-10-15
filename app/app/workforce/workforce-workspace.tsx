@@ -3,7 +3,7 @@
 import Link from "next/link";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialWorkforceActivationActionState,
   initialWorkforceBulkActionState,
@@ -409,6 +411,7 @@ function BulkAddPanel({
   action,
   pending,
   anyPending,
+  unknownOutcome,
 }: {
   hospitalId: string;
   serverTime: number;
@@ -417,6 +420,7 @@ function BulkAddPanel({
   action: (formData: FormData) => void;
   pending: boolean;
   anyPending: boolean;
+  unknownOutcome: boolean;
 }): React.JSX.Element {
   const [kind, setKind] = useState<WorkforceKind>(canAddStaff ? "HOSPITAL_MEMBER" : "OSM");
   const [rowCount, setRowCount] = useState(INITIAL_BULK_ROWS);
@@ -552,6 +556,11 @@ function BulkAddPanel({
             หากแก้ข้อมูล ให้เริ่มรายการใหม่ ผลสำเร็จของรายการเดิมยังคงอยู่ รหัสรายการใช้ได้ 30 วัน
             หากโหลดหน้าใหม่ ให้กรอกข้อมูลเดิมอีกครั้ง รหัสรายการเดิมจะยังอยู่ในแท็บนี้เมื่อเบราว์เซอร์รองรับ
           </p>
+          {unknownOutcome && !pending ? (
+            <Alert role="alert" variant="warning">
+              ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณากด “บันทึกทั้งหมด” อีกครั้งโดยไม่แก้ข้อมูล เพื่อรับผลของรายการเดิม
+            </Alert>
+          ) : null}
           <Button disabled={anyPending} onClick={startNewSubmission} type="button" variant="secondary">เริ่มรายการใหม่หลังแก้ข้อมูล</Button>
           <Button className="w-full" disabled={anyPending || !submissionId} loading={pending} type="submit">
             {pending ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
@@ -675,23 +684,23 @@ export function WorkforceWorkspace({
   workforce,
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [staffState, staffAction, staffPending] = useActionState<
+  const [staffState, staffAction, staffPending, staffUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionHospitalMemberAction, initialWorkforceProvisionActionState);
-  const [osmState, osmAction, osmPending] = useActionState<
+  const [osmState, osmAction, osmPending, osmUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionOsmAction, initialWorkforceProvisionActionState);
-  const [remoteState, remoteAction, remotePending] = useActionState<
+  const [remoteState, remoteAction, remotePending, remoteUnknown] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(regenerateWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [assistedState, assistedAction, assistedPending] = useActionState<
+  const [assistedState, assistedAction, assistedPending, assistedUnknown] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(startAssistedWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [bulkState, bulkAction, bulkPending] = useActionState<WorkforceBulkActionState, FormData>(
+  const [bulkState, bulkAction, bulkPending, bulkUnknown] = useMutationActionState<WorkforceBulkActionState, FormData>(
     provisionWorkforceBulkAction,
     initialWorkforceBulkActionState,
   );
@@ -723,6 +732,18 @@ export function WorkforceWorkspace({
   const remoteResult = remoteState.status === "SUCCESS" ? remoteState.result : null;
   const anyPending =
     staffPending || osmPending || remotePending || assistedPending || bulkPending;
+  // Bulk submissions are keyed and safe to resend, so only the other actions block on an unconfirmed outcome.
+  const actionsBlocked = anyPending || staffUnknown || osmUnknown || remoteUnknown || assistedUnknown;
+  const staffFormRef = useRef<HTMLFormElement>(null);
+  const osmFormRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (staffState.status === "SUCCESS") staffFormRef.current?.reset();
+  }, [staffState]);
+
+  useEffect(() => {
+    if (osmState.status === "SUCCESS") osmFormRef.current?.reset();
+  }, [osmState]);
 
   return (
     <div className="content-workspace break-words">
@@ -768,6 +789,7 @@ export function WorkforceWorkspace({
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
         </nav>
 
+        <UnknownOutcomeAlert active={remoteUnknown || assistedUnknown} className="mt-6" />
         {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
         {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
@@ -796,7 +818,7 @@ export function WorkforceWorkspace({
         </Panel>
 
         <PendingActivationSection
-          anyPending={anyPending}
+          anyPending={actionsBlocked}
           hospitalId={selectedHospitalId}
           remoteAction={remoteAction}
           remotePending={remotePending}
@@ -824,7 +846,7 @@ export function WorkforceWorkspace({
                     <WorkforceRow
                       assistedAction={assistedAction}
                       assistedPending={assistedPending}
-                      anyPending={anyPending}
+                      anyPending={actionsBlocked}
                       hospitalId={selectedHospitalId}
                       key={`${row.kind}-${row.id}`}
                       remoteAction={remoteAction}
@@ -853,7 +875,7 @@ export function WorkforceWorkspace({
                 เพิ่มสมาชิกและเลือกวิชาชีพ วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล การเปลี่ยนบทบาทเจ้าของทำในรายละเอียดความสัมพันธ์ตามสิทธิ์
               </p>
             </div>
-            <form action={staffAction} className="mt-6 space-y-4">
+            <form action={staffAction} className="mt-6 space-y-4" onSubmit={submitPreservingInput(staffAction)} ref={staffFormRef}>
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
@@ -880,7 +902,8 @@ export function WorkforceWorkspace({
               </label>
               {staffState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{staffState.message}</Alert> : null}
               {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
-              <Button className="w-full" disabled={anyPending} loading={staffPending} type="submit">
+              <UnknownOutcomeAlert active={staffUnknown} />
+              <Button className="w-full" disabled={actionsBlocked} loading={staffPending} type="submit">
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
               </Button>
             </form>
@@ -894,7 +917,7 @@ export function WorkforceWorkspace({
                 สร้างเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ ยังไม่มีการกำหนดพื้นที่หรือผู้ป่วย
               </p>
             </div>
-            <form action={osmAction} className="mt-6 space-y-4">
+            <form action={osmAction} className="mt-6 space-y-4" onSubmit={submitPreservingInput(osmAction)} ref={osmFormRef}>
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
@@ -915,7 +938,8 @@ export function WorkforceWorkspace({
               </div>
               {osmState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{osmState.message}</Alert> : null}
               {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
-              <Button className="w-full" disabled={anyPending} loading={osmPending} type="submit">
+              <UnknownOutcomeAlert active={osmUnknown} />
+              <Button className="w-full" disabled={actionsBlocked} loading={osmPending} type="submit">
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
               </Button>
             </form>
@@ -925,11 +949,12 @@ export function WorkforceWorkspace({
         <BulkAddPanel
           action={bulkAction}
           serverTime={pageInfo.serverTime}
-          anyPending={anyPending}
+          anyPending={actionsBlocked}
           canAddStaff={isOwner}
           hospitalId={selectedHospitalId}
           pending={bulkPending}
           state={bulkState}
+          unknownOutcome={bulkUnknown}
         />
       </div>
     </div>

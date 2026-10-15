@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Profession } from "@prisma/client";
 
@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   APPOINTMENT_DEFAULT_DURATION_MINUTES,
   APPOINTMENT_LOCATION_LABELS,
@@ -143,11 +145,11 @@ function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX
 export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element {
   const router = useRouter();
   const appointment = props.mode === "reschedule" ? props.appointment : null;
-  const [createState, createAction, createPending] = useActionState<
+  const [createState, createAction, createPending, createUnknown] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(createAppointmentAction, initialAppointmentActionState);
-  const [rescheduleState, rescheduleAction, reschedulePending] = useActionState<
+  const [rescheduleState, rescheduleAction, reschedulePending, rescheduleUnknown] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(rescheduleAppointmentAction, initialAppointmentActionState);
@@ -166,6 +168,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   const [note, setNote] = useState(appointment?.note ?? "");
   const state = props.mode === "create" ? createState : rescheduleState;
   const pending = props.mode === "create" ? createPending : reschedulePending;
+  const unknownOutcome = props.mode === "create" ? createUnknown : rescheduleUnknown;
   const formAction = props.mode === "create" ? createAction : rescheduleAction;
   const detailHref = appointment
     ? `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments/${encodeURIComponent(appointment.appointmentId)}`
@@ -252,7 +255,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">รายละเอียดนัดหมาย</h2>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
             <label className={labelClassName} htmlFor="appointment-scheduled-at">
               <span>วันและเวลานัดหมาย</span>
               <input
@@ -374,8 +377,9 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             นัดหมายนี้จะผูกกับผู้ป่วยและผู้รับผิดชอบในโรงพยาบาลที่เลือก
           </p>
           <ActionFeedback state={state} />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !scheduledAtLocal} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || !scheduledAtLocal} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : props.mode === "create" ? "บันทึกนัดหมาย" : "บันทึกการเลื่อนนัดหมาย"}
             </Button>
             <Link

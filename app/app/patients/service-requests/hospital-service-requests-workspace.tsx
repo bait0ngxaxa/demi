@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { HospitalPatientServiceRequestPage } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import {
   formatPatientServiceRequestDate,
@@ -30,7 +32,7 @@ export function HospitalPatientServiceRequestsWorkspace({
   invalidQuery?: boolean;
 }): React.JSX.Element {
   // Keep feedback above the list: a successful transition removes the card from its group.
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     reviewPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
   );
@@ -78,6 +80,7 @@ export function HospitalPatientServiceRequestsWorkspace({
             {state.conflict ? <p>รายการด้านล่างอ่านสถานะล่าสุดจากระบบแล้ว หากคำขอไม่อยู่ในกลุ่มเดิม ให้เลือกดูอีกกลุ่ม</p> : null}
           </Alert>
         ) : null}
+        <UnknownOutcomeAlert active={!pending && unknownOutcome} />
       </div>
       {invalidQuery ? <Alert className="mt-4" variant="warning">รูปแบบกลุ่มหรือหน้ารายการไม่ถูกต้อง แสดงคำขอรอตรวจสอบหน้าแรกแทน</Alert> : null}
 
@@ -139,7 +142,7 @@ export function HospitalPatientServiceRequestsWorkspace({
                     <p className="mt-1 max-w-prose text-sm leading-6 text-text-muted">เลือกทำงานต่อในรายละเอียดผู้ป่วยตามสิทธิ์ปัจจุบัน การเปิดหน้านี้ไม่ได้ยืนยันว่าบันทึกการดูแลเกิดจากคำขอนี้</p>
                   </div>
                 ) : null}
-                <HospitalPatientServiceRequestReviewControls action={action} pending={pending} requestId={request.requestId} status={request.status} />
+                <HospitalPatientServiceRequestReviewControls action={action} blocked={unknownOutcome} pending={pending} requestId={request.requestId} status={request.status} />
                 {request.status === "STARTED" || request.status === "REJECTED" || request.status === "WITHDRAWN" ? (
                   <p className="mt-4 text-sm text-text-muted">ประวัติคำขอ · อ่านอย่างเดียว</p>
                 ) : null}

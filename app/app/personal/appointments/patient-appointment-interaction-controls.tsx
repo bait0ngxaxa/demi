@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
   APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
@@ -57,11 +59,11 @@ export function PatientAppointmentInteractionControls({
   hospitalStatus,
 }: PatientAppointmentInteractionControlsProps): React.JSX.Element {
   const router = useRouter();
-  const [acknowledgementState, acknowledgeAction, acknowledgementPending] = useActionState<
+  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(acknowledgeOwnPatientAppointmentAction, initialAppointmentInteractionActionState);
-  const [cancellationState, cancellationAction, cancellationPending] = useActionState<
+  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(requestOwnPatientAppointmentCancellationAction, initialAppointmentInteractionActionState);
@@ -75,6 +77,7 @@ export function PatientAppointmentInteractionControls({
   const isScheduled = appointment.status === "SCHEDULED";
   const canSubmitPatientInteraction = isScheduled && hospitalStatus === "ACTIVE";
   const pending = acknowledgementPending || cancellationPending;
+  const unknownOutcome = acknowledgementUnknown || cancellationUnknown;
   const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
 
   return (
@@ -101,7 +104,7 @@ export function PatientAppointmentInteractionControls({
             <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
             <input name="appointmentId" type="hidden" value={appointment.appointmentId} />
             <input name="expectedUpdatedAt" type="hidden" value={appointment.updatedAt.toISOString()} />
-            <Button className="w-full sm:w-auto" disabled={pending} loading={acknowledgementPending} type="submit">
+            <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={acknowledgementPending} type="submit">
               {acknowledgementPending ? "กำลังบันทึก..." : "รับทราบนัดหมาย"}
             </Button>
           </form>
@@ -112,6 +115,7 @@ export function PatientAppointmentInteractionControls({
           <Alert variant="success">บันทึกการรับทราบนัดหมายแล้ว</Alert>
         ) : null}
         <ActionError state={acknowledgementState} />
+        <UnknownOutcomeAlert active={acknowledgementUnknown} />
       </section>
 
       <section aria-labelledby="patient-appointment-cancellation-heading" className="mt-7 space-y-4">
@@ -136,7 +140,7 @@ export function PatientAppointmentInteractionControls({
             <input name="submissionNonce" type="hidden" value={cancellationRequestNonce} />
             <Button
               className="w-full sm:w-auto"
-              disabled={pending}
+              disabled={pending || unknownOutcome}
               loading={cancellationPending}
               type="submit"
               variant="secondary"
@@ -151,6 +155,7 @@ export function PatientAppointmentInteractionControls({
           <Alert variant="success">ส่งคำขอไปยังโรงพยาบาลแล้ว นัดหมายยังไม่ถูกยกเลิก</Alert>
         ) : null}
         <ActionError state={cancellationState} />
+        <UnknownOutcomeAlert active={cancellationUnknown} />
 
         {appointment.cancellationRequests.length > 0 ? (
           <div>

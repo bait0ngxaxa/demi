@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useEffect, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientServiceCode, PatientServiceRequestStatus } from "@prisma/client";
 import {
   formatPatientServiceRequestDate,
@@ -40,19 +42,26 @@ export function PatientServiceRequestForm({
   offerings: readonly PatientServiceOfferingOption[];
   osmChoices: readonly PatientOsmOption[];
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     createPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
   );
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.status === "SUCCESS") {
+      formRef.current?.reset();
+    }
+  }, [state]);
 
   return (
-    <form action={action} className="mt-5 space-y-4">
+    <form action={action} className="mt-5 space-y-4" onSubmit={submitPreservingInput(action)} ref={formRef}>
       <input name="relationshipId" type="hidden" value={relationshipId} />
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-text" htmlFor={`service-${relationshipId}`}>
           บริการที่ต้องการ
         </label>
-        <Select defaultValue="" disabled={pending} id={`service-${relationshipId}`} name="offeringId" required>
+        <Select defaultValue="" disabled={pending || unknownOutcome} id={`service-${relationshipId}`} name="offeringId" required>
           <option disabled value="">เลือกบริการ</option>
           {offerings.map((offering) => (
             <option key={offering.offeringId} value={offering.offeringId}>
@@ -68,7 +77,7 @@ export function PatientServiceRequestForm({
         </label>
         <Select
           defaultValue=""
-          disabled={pending}
+          disabled={pending || unknownOutcome}
           id={`preferred-osm-${relationshipId}`}
           name="preferredOsmRelationshipId"
         >
@@ -91,8 +100,9 @@ export function PatientServiceRequestForm({
         </Alert>
       ) : null}
       {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} />
 
-      <Button disabled={pending} loading={pending} type="submit">
+      <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอเพิ่มบริการ"}
       </Button>
     </form>
@@ -106,7 +116,7 @@ export function WithdrawPatientServiceRequestButton({
   requestId: string;
   status: PatientServiceRequestStatus;
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     withdrawOwnPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
   );
@@ -120,7 +130,7 @@ export function WithdrawPatientServiceRequestButton({
     <div className="mt-3">
       <form action={action}>
         <input name="requestId" type="hidden" value={requestId} />
-        <Button disabled={pending} loading={pending} size="compact" variant="secondary" type="submit">
+        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" variant="secondary" type="submit">
           {pending ? "กำลังถอนคำขอ..." : "ถอนคำขอ"}
         </Button>
       </form>
@@ -130,6 +140,7 @@ export function WithdrawPatientServiceRequestButton({
       {state.status === "ERROR" ? (
         <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p>
       ) : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
     </div>
   );
 }

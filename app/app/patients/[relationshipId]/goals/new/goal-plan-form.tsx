@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type {
   GoalActivityCategory,
   GoalActivityDefinition,
@@ -241,7 +243,7 @@ export function GoalPlanForm({
   const programId = scope.kind === "program" ? scope.patientProgramId : null;
   const submitAction =
     scope.kind === "program" ? submitGoalPlanForProgramAction : submitGoalPlanAction;
-  const [state, action, pending] = useActionState<GoalPlanActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<GoalPlanActionState, FormData>(
     submitAction,
     initialGoalPlanActionState,
   );
@@ -422,7 +424,7 @@ export function GoalPlanForm({
         ) : null}
 
         <Panel>
-          <fieldset disabled={pending}>
+          <fieldset disabled={pending || unknownOutcome}>
             <legend className="text-xl font-semibold tracking-[-0.02em]">เป้าหมายหลัก</legend>
             <p className="mt-2 text-sm leading-6 text-text-muted">เลือกเป้าหมายหลักหนึ่งรายการสำหรับแผนเป้าหมายรอบนี้</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -453,7 +455,7 @@ export function GoalPlanForm({
               <span>หมายเหตุเป้าหมายหลัก (ไม่บังคับ)</span>
               <textarea
                 className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 maxLength={1000}
                 name="primaryGoalNote"
                 onChange={(event) => setPrimaryGoalNote(event.target.value)}
@@ -465,7 +467,7 @@ export function GoalPlanForm({
               <span>หมายเหตุรายสัปดาห์ (ไม่บังคับ)</span>
               <textarea
                 className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 maxLength={2000}
                 name="weeklyNote"
                 onChange={(event) => setWeeklyNote(event.target.value)}
@@ -487,7 +489,7 @@ export function GoalPlanForm({
 
           <div className="mt-6 space-y-6">
             {itemsByCategory.map(({ category, activities }) => (
-              <fieldset className="border-t border-border pt-5 first:border-t-0 first:pt-0" disabled={pending} key={category}>
+              <fieldset className="border-t border-border pt-5 first:border-t-0 first:pt-0" disabled={pending || unknownOutcome} key={category}>
                 <legend className="text-base font-semibold text-text">{categoryLabels[category]}</legend>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {activities.map((activity) => (
@@ -527,7 +529,7 @@ export function GoalPlanForm({
                   return (
                     <ActivityEditor
                       activity={activity}
-                      disabled={pending}
+                      disabled={pending || unknownOutcome}
                       item={item}
                       key={item.activityCode}
                       onChange={(next) =>
@@ -571,8 +573,9 @@ export function GoalPlanForm({
             ตรวจสอบข้อมูลให้เรียบร้อยก่อนส่ง ระบบจะบันทึกเป็นรอบใหม่โดยไม่แก้ไขประวัติเดิม
           </p>
           <ActionFeedback state={state} />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !formComplete} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || !formComplete} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแผนเป้าหมาย"}
             </Button>
             <Link

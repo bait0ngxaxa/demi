@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientDirectoryItem } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import {
@@ -101,11 +103,11 @@ export function PatientOsmAssignmentWorkspace({
   candidateError,
 }: PatientOsmAssignmentWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [assignState, assignAction, assignPending] = useActionState<
+  const [assignState, assignAction, assignPending, assignUnknown] = useMutationActionState<
     PatientOsmAssignmentActionState,
     FormData
   >(assignOsmToPatientAction, initialPatientOsmAssignmentActionState);
-  const [unassignState, unassignAction, unassignPending] = useActionState<
+  const [unassignState, unassignAction, unassignPending, unassignUnknown] = useMutationActionState<
     PatientOsmAssignmentActionState,
     FormData
   >(unassignOsmFromPatientAction, initialPatientOsmAssignmentActionState);
@@ -116,7 +118,7 @@ export function PatientOsmAssignmentWorkspace({
     }
   }, [assignState, router, unassignState]);
 
-  const busy = assignPending || unassignPending;
+  const busy = assignPending || unassignPending || assignUnknown || unassignUnknown;
 
   return (
     <div className="max-w-4xl">
@@ -170,6 +172,7 @@ export function PatientOsmAssignmentWorkspace({
           )}
 
           <AssignmentFeedback assignState={assignState} unassignState={unassignState} />
+          <UnknownOutcomeAlert active={assignUnknown || unassignUnknown} className="mt-5" />
         </Panel>
 
         <Panel>

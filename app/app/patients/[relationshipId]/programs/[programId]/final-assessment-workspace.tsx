@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientFinalAssessmentProjection } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import {
   createPatientFinalAssessmentAction,
@@ -97,10 +99,18 @@ function FinalAssessmentForm({
   todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<
+  const [state, action, pending, unknownOutcome] = useMutationActionState<
     PatientFinalAssessmentActionState,
     FormData
   >(createPatientFinalAssessmentAction, initialPatientFinalAssessmentActionState);
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.status === "SUCCESS") {
+      formRef.current?.reset();
+    }
+  }, [state]);
 
   useEffect(() => {
     if (
@@ -127,7 +137,7 @@ function FinalAssessmentForm({
         หน่วยที่แสดงเป็นป้ายกำกับปัจจุบันของต้นแบบเท่านั้น
       </Alert>
 
-      <form action={action} className="mt-6">
+      <form action={action} className="mt-6" onSubmit={submitPreservingInput(action)} ref={formRef}>
         <input
           name="patientHospitalRelationshipId"
           type="hidden"
@@ -135,7 +145,7 @@ function FinalAssessmentForm({
         />
         <input name="patientProgramId" type="hidden" value={patientProgramId} />
 
-        <fieldset disabled={pending}>
+        <fieldset disabled={pending || unknownOutcome}>
           <label className="block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor="final-assessment-service-date">
             <span>วันที่ประเมิน</span>
             <input
@@ -154,7 +164,7 @@ function FinalAssessmentForm({
           </label>
         </fieldset>
 
-        <fieldset className="mt-6" disabled={pending}>
+        <fieldset className="mt-6" disabled={pending || unknownOutcome}>
           <legend className="text-sm font-semibold text-text">ค่าที่ต้องการบันทึก</legend>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
             {measurementDefinitions.map((measurement) => {
@@ -189,8 +199,9 @@ function FinalAssessmentForm({
         {pending ? <Alert className="mt-5" variant="info">กำลังบันทึก Final Assessment…</Alert> : null}
         <ActionFeedback state={state} />
 
+        <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
         <div className="mt-6">
-          <Button disabled={pending} loading={pending} type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึก Final Assessment"}
           </Button>
         </div>

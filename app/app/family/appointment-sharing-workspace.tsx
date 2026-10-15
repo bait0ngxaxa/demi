@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXT } from "@/modules/family/domain/appointment-grant-contract";
 import { formatFamilyManagementDate, formatFamilyParticipantName } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import type { AppointmentGrantManagement, AppointmentGrantManagementItem } from "@/modules/family/services/appointment-grant-management-query-service";
@@ -19,7 +20,7 @@ function Feedback({ state }: { state: FamilyMutationActionState }): React.JSX.El
 }
 
 function ProposeForm({ relationships, hospitals }: { relationships: readonly FamilyRelationshipManagementItem[]; hospitals: NonNullable<AppointmentGrantManagement["patient"]>["hospitals"] }): React.JSX.Element {
-  const [state, action, pending] = useActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
+  const [state, action, pending, unknownOutcome] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   const active = relationships.filter((row) => row.status === "ACTIVE");
   if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีความสัมพันธ์ผู้ดูแลที่ใช้งานอยู่และหน่วยบริการของคุณที่พร้อมใช้งาน จึงจะเสนอสิทธิ์ได้</p>;
   return <form action={action} className="mt-4 space-y-4">
@@ -33,13 +34,14 @@ function ProposeForm({ relationships, hospitals }: { relationships: readonly Fam
         <option value="" disabled>เลือกหนึ่งหน่วยบริการ</option>
         {hospitals.map((row) => <option key={row.relationshipId} value={row.relationshipId}>{row.hospitalName}</option>)}
       </Select></div>
-    <Button disabled={pending} loading={pending} type="submit">{pending ? "กำลังเสนอสิทธิ์..." : "เสนอสิทธิ์ดูนัดหมาย"}</Button>
+    <Button disabled={pending || unknownOutcome} loading={pending} type="submit">{pending ? "กำลังเสนอสิทธิ์..." : "เสนอสิทธิ์ดูนัดหมาย"}</Button>
     <Feedback state={state} />
+    <UnknownOutcomeAlert active={unknownOutcome} />
   </form>;
 }
 
 function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementItem; perspective: "patient" | "caregiver" }): React.JSX.Element {
-  const [state, action, pending] = useActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
+  const [state, action, pending, unknownOutcome] = useMutationActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
   const label = grant.status === "PENDING" ? "รอผู้ดูแลยอมรับ" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "ยกเลิกสิทธิ์แล้ว";
   return <li className="space-y-3 py-5 first:pt-0">
     <p className="break-words font-semibold text-text">{formatFamilyParticipantName(grant.participant, perspective === "patient" ? "ไม่ระบุชื่อผู้ดูแล" : "ไม่ระบุชื่อผู้ป่วย")}</p>
@@ -51,12 +53,13 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
     {perspective === "caregiver" && grant.status === "PENDING" ? <p className="type-readable text-sm leading-7 text-text-muted">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXT}</p> : null}
     {grant.status !== "REVOKED" && (perspective === "patient" || grant.status === "PENDING") ? <form action={action}>
       <input type="hidden" name="grantId" value={grant.grantId} />
-      <Button type="submit" disabled={pending} loading={pending} variant={perspective === "patient" ? "danger" : "primary"} aria-label={`${perspective === "patient" ? "ยกเลิกสิทธิ์ดูนัดหมาย" : "ยอมรับสิทธิ์ดูนัดหมาย"}: ${formatFamilyParticipantName(grant.participant, "ไม่ระบุชื่อ")} ${grant.hospitalName}`}>
+      <Button type="submit" disabled={pending || unknownOutcome} loading={pending} variant={perspective === "patient" ? "danger" : "primary"} aria-label={`${perspective === "patient" ? "ยกเลิกสิทธิ์ดูนัดหมาย" : "ยอมรับสิทธิ์ดูนัดหมาย"}: ${formatFamilyParticipantName(grant.participant, "ไม่ระบุชื่อ")} ${grant.hospitalName}`}>
         {pending ? "กำลังบันทึก..." : perspective === "caregiver" ? "ยอมรับสิทธิ์ดูนัดหมาย" : grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย"}
       </Button>
     </form> : null}
     {perspective === "caregiver" && grant.status === "ACTIVE" ? <Link prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/family/grants/${grant.grantId}/appointments`}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
     <Feedback state={state} />
+    <UnknownOutcomeAlert active={unknownOutcome} />
   </li>;
 }
 

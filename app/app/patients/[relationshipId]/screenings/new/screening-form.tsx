@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { ScreeningQuestion, ScreeningQuestionSet } from "@/modules/screening/domain/question-sets";
 import {
   initialScreeningActionState,
@@ -109,7 +111,7 @@ export function ScreeningForm({
   programId,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<ScreeningActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<ScreeningActionState, FormData>(
     submitScreeningAction,
     initialScreeningActionState,
   );
@@ -199,7 +201,7 @@ export function ScreeningForm({
           <div className="mt-6 space-y-6">
             {pamQuestions.map((question) => (
               <QuestionGroup
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 key={question.key}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
@@ -222,7 +224,7 @@ export function ScreeningForm({
           <div className="mt-6 space-y-6">
             {promsQuestions.map((question) => (
               <QuestionGroup
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 key={question.key}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
@@ -241,7 +243,7 @@ export function ScreeningForm({
             <label className="block space-y-2 text-sm font-semibold">
               <span>ความมั่นใจในการดูแลสุขภาพ (0–10)</span>
               <Select
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 name="confidenceScore"
                 onChange={(event) => setConfidenceScore(event.target.value)}
                 required
@@ -261,7 +263,7 @@ export function ScreeningForm({
               <span>แผนพัฒนาความมั่นใจ (ไม่บังคับ)</span>
               <textarea
                 className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 maxLength={1000}
                 name="confidenceImprovementPlan"
                 onChange={(event) => setConfidencePlan(event.target.value)}
@@ -300,8 +302,9 @@ export function ScreeningForm({
             ผลลัพธ์จะคำนวณจากคำตอบที่ส่งเมื่อบันทึกแบบประเมิน
           </p>
           <ActionFeedback state={state} />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || !formComplete} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || !formComplete} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแบบประเมิน"}
             </Button>
             <Link

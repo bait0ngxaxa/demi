@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -10,6 +10,8 @@ import { Input, inputClassName } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientBaselinePatientSummary } from "@/modules/patient-baseline/services/patient-baseline-access-service";
 import {
   initialPatientBaselineActionState,
@@ -58,7 +60,7 @@ export function PatientBaselineForm({
   relationshipId,
 }: PatientBaselineFormProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientBaselineActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientBaselineActionState, FormData>(
     createPatientBaselineAction,
     initialPatientBaselineActionState,
   );
@@ -403,16 +405,17 @@ export function PatientBaselineForm({
             เมื่อบันทึกแล้ว ข้อมูลตั้งต้นจะเป็นข้อมูลอ่านอย่างเดียว ไม่มีการแก้ไข ลบ หรือแทนที่รายการเดิม
           </p>
           <ActionFeedback state={state} />
+          <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
           {confirmationRequested ? (
             <Alert className="mt-5" variant="warning">
               <p className="font-semibold">ยืนยันการบันทึกข้อมูลตั้งต้น</p>
               <p className="mt-1">ตรวจสอบข้อมูลครบแล้วหรือยัง? การบันทึกครั้งนี้จะสร้างข้อมูลอ้างอิงเริ่มต้นแบบอ่านอย่างเดียว</p>
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                <Button disabled={pending} loading={pending} type="submit">
+                <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
                   {pending ? "กำลังบันทึก…" : "ยืนยันบันทึกข้อมูลตั้งต้น"}
                 </Button>
                 <Button
-                  disabled={pending}
+                  disabled={pending || unknownOutcome}
                   onClick={() => setConfirmationRequested(false)}
                   type="button"
                   variant="secondary"
@@ -423,7 +426,7 @@ export function PatientBaselineForm({
             </Alert>
           ) : (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Button disabled={pending} loading={pending} type="submit">
+              <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
                 ตรวจสอบข้อมูลก่อนบันทึก
               </Button>
               <Link

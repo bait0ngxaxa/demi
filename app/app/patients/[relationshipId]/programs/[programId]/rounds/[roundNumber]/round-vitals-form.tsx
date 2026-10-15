@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
 import {
   initialPatientProgramRoundActionState,
@@ -63,13 +65,21 @@ export function RoundVitalsForm({
   todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     recordPatientProgramRoundVitalsAction,
     initialPatientProgramRoundActionState,
   );
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState(latestHeightCm === null ? "" : String(latestHeightCm));
   const bmi = calculateBodyMassIndex(parseOptionalNumber(weight), parseOptionalNumber(height));
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (state.status === "SUCCESS") {
+      formRef.current?.reset();
+    }
+  }, [state]);
 
   useEffect(() => {
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
@@ -78,13 +88,13 @@ export function RoundVitalsForm({
   }, [router, state]);
 
   return (
-    <form action={action}>
+    <form action={action} onSubmit={submitPreservingInput(action)} ref={formRef}>
       <input name="patientHospitalRelationshipId" type="hidden" value={patientHospitalRelationshipId} />
       <input name="patientProgramId" type="hidden" value={patientProgramId} />
       <input name="roundNumber" type="hidden" value={roundNumber} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
 
-      <fieldset disabled={pending}>
+      <fieldset disabled={pending || unknownOutcome}>
         <dl className="grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="text-sm font-semibold text-text-muted">ชื่อ-สกุล</dt>
@@ -169,8 +179,9 @@ export function RoundVitalsForm({
         </Alert>
       ) : null}
 
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
       <div className="mt-6">
-        <Button disabled={pending} loading={pending} type="submit">
+        <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังบันทึก…" : "บันทึกสัญญาณชีพ"}
         </Button>
       </div>

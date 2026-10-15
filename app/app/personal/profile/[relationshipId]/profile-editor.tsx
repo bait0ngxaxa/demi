@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
 
 import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/ui/button";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientHospitalProfileDetail } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import {
   initialPatientHospitalProfileUpdateActionState,
@@ -37,7 +39,7 @@ function ProfileEditorForm({
   profile: PatientHospitalProfileDetail;
 }): React.JSX.Element {
   const action = updateOwnPatientHospitalProfileAction.bind(null, profile.relationshipId);
-  const [state, formAction, pending] = useActionState<
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     PatientHospitalProfileUpdateActionState,
     FormData
   >(action, initialPatientHospitalProfileUpdateActionState);
@@ -81,7 +83,7 @@ function ProfileEditorForm({
   ];
 
   return (
-    <form action={formAction} className="mt-7">
+    <form action={formAction} className="mt-7" onSubmit={submitPreservingInput(formAction)}>
       <input name="expectedVersion" type="hidden" value={profile.version} />
       <div className="grid min-w-0 gap-x-6 gap-y-5 sm:grid-cols-2">
         {fields.map((field) => (
@@ -149,14 +151,12 @@ function ProfileEditorForm({
         </p>
       ) : null}
 
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" />
+
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <button
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-control bg-action-primary px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
-          disabled={pending}
-          type="submit"
-        >
+        <Button className="w-full sm:w-auto" disabled={unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลสำหรับโรงพยาบาลนี้"}
-        </button>
+        </Button>
         <Link
           className="inline-flex min-h-11 w-full items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 sm:w-auto"
           href="/app/personal/profile"

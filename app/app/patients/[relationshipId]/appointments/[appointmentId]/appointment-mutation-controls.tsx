@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { APPOINTMENT_STATUS_LABELS } from "@/modules/appointments/domain/appointment-definitions";
 import {
   cancelAppointmentAction,
@@ -49,19 +51,20 @@ export function AppointmentMutationControls({
   status,
 }: AppointmentMutationControlsProps): React.JSX.Element | null {
   const router = useRouter();
-  const [cancelState, cancelAction, cancelPending] = useActionState<
+  const [cancelState, cancelAction, cancelPending, cancelUnknown] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(cancelAppointmentAction, initialAppointmentActionState);
-  const [completeState, completeAction, completePending] = useActionState<
+  const [completeState, completeAction, completePending, completeUnknown] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(completeAppointmentAction, initialAppointmentActionState);
-  const [noShowState, noShowAction, noShowPending] = useActionState<
+  const [noShowState, noShowAction, noShowPending, noShowUnknown] = useMutationActionState<
     AppointmentActionState,
     FormData
   >(markAppointmentNoShowAction, initialAppointmentActionState);
   const pending = cancelPending || completePending || noShowPending;
+  const unknownOutcome = cancelUnknown || completeUnknown || noShowUnknown;
 
   useEffect(() => {
     if (
@@ -79,6 +82,7 @@ export function AppointmentMutationControls({
 
   return (
     <div>
+      <UnknownOutcomeAlert active={noShowUnknown} className="mb-4" />
       {status === "SCHEDULED" ? <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         {canComplete ? <ConfirmableActionForm
           action={completeAction}
@@ -87,7 +91,7 @@ export function AppointmentMutationControls({
             description: "ยืนยันการบันทึกผลนัดหมายนี้ว่าเสร็จสิ้น",
             confirmLabel: "ยืนยันผลนัดหมาย",
           }}
-          outcome={completeState.status === "SUCCESS" ? "success" : completeState.status === "ERROR" ? "error" : "idle"}
+          outcome={completeUnknown ? "unknown" : completeState.status === "SUCCESS" ? "success" : completeState.status === "ERROR" ? "error" : "idle"}
           pending={pending}
           resultKey={completeState}
         >
@@ -96,7 +100,7 @@ export function AppointmentMutationControls({
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
             className="w-full sm:w-auto"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             loading={completePending}
             type="submit"
           >
@@ -108,7 +112,7 @@ export function AppointmentMutationControls({
           <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
           <input name="appointmentId" type="hidden" value={appointmentId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-          <Button className="w-full sm:w-auto" disabled={pending} loading={noShowPending} type="submit" variant="secondary">
+          <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={noShowPending} type="submit" variant="secondary">
             {noShowPending ? "กำลังบันทึก..." : "ทำเครื่องหมายว่าไม่มาตามนัด"}
           </Button>
         </form> : null}
@@ -121,7 +125,7 @@ export function AppointmentMutationControls({
             confirmLabel: "ยกเลิกนัดหมาย",
             confirmVariant: "destructive",
           }}
-          outcome={cancelState.status === "SUCCESS" ? "success" : cancelState.status === "ERROR" ? "error" : "idle"}
+          outcome={cancelUnknown ? "unknown" : cancelState.status === "SUCCESS" ? "success" : cancelState.status === "ERROR" ? "error" : "idle"}
           pending={pending}
           resultKey={cancelState}
         >
@@ -130,7 +134,7 @@ export function AppointmentMutationControls({
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <Button
             className="w-full sm:w-auto"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             loading={cancelPending}
             type="submit"
             variant="danger"

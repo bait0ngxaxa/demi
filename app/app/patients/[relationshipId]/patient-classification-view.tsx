@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -9,6 +9,7 @@ import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { getPatientClassificationLabel, patientClassificationSourceLabels } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 import {
@@ -62,7 +63,7 @@ export function PatientClassificationView({
   context,
 }: PatientClassificationViewProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientClassificationActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientClassificationActionState, FormData>(
     setPatientClassificationAction,
     initialPatientClassificationActionState,
   );
@@ -106,7 +107,7 @@ export function PatientClassificationView({
                 : "ยืนยันการบันทึกสถานะผู้ป่วย",
               confirmLabel: "เปลี่ยนสถานะ",
             }}
-            outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
+            outcome={unknownOutcome ? "unknown" : state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
             pending={pending}
             requiresConfirmation={Boolean(
               context.current && selectedClassification && selectedClassification !== context.current.classification,

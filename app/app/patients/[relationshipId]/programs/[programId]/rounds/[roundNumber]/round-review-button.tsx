@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   initialPatientProgramRoundActionState,
   type PatientProgramRoundActionState,
@@ -27,7 +29,7 @@ export function RoundReviewButton({
   toolCode: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     recordPatientProgramRoundReviewAction,
     initialPatientProgramRoundActionState,
   );
@@ -45,13 +47,14 @@ export function RoundReviewButton({
       <input name="roundNumber" type="hidden" value={roundNumber} />
       <input name="toolCode" type="hidden" value={toolCode} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
-      <Button disabled={pending} loading={pending} size="compact" type="submit" variant="secondary">
+      <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
         {pending ? "กำลังบันทึก…" : label}
       </Button>
       {state.status === "ERROR" ? (
         <Alert variant={state.code === "CONFLICT" ? "warning" : "danger"}>{state.message}</Alert>
       ) : null}
       {state.status === "SUCCESS" ? <Alert variant="success">บันทึกการทบทวนแล้ว</Alert> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} />
     </form>
   );
 }

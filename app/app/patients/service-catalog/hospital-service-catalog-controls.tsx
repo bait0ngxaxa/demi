@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientServiceCode } from "@prisma/client";
 import { patientServiceLabel } from "@/modules/patient-service-requests/presentation/patient-service-request-presentation";
 import {
@@ -21,7 +21,7 @@ export function HospitalServiceOfferingControl({
   code: PatientServiceCode;
   enabled: boolean;
 }): React.JSX.Element {
-  const [state, action, pending] = useActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     setHospitalServiceOfferingAction,
     initialPatientServiceMutationActionState,
   );
@@ -46,7 +46,7 @@ export function HospitalServiceOfferingControl({
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="code" type="hidden" value={code} />
           <input name="enabled" type="hidden" value={String(!enabled)} />
-          <Button disabled={pending} loading={pending} size="compact" variant="secondary" type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" variant="secondary" type="submit">
             {pending ? "กำลังบันทึก..." : enabled ? "ปิดรับคำขอ" : "เปิดรับคำขอ"}
           </Button>
         </form>
@@ -57,6 +57,7 @@ export function HospitalServiceOfferingControl({
       {state.status === "ERROR" ? (
         <Alert className="basis-full" variant="danger">{state.message}</Alert>
       ) : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="basis-full" />
     </div>
   );
 }

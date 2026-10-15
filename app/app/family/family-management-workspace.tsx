@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type {
   FamilyInvitationManagementItem,
   FamilyManagementOverview,
@@ -50,7 +52,7 @@ function PaginationLink({ href }: { href: string }): React.JSX.Element {
 }
 
 function CreateCaregiverInvitationForm(): React.JSX.Element {
-  const [state, formAction, pending] = useActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     createCaregiverInvitationAction,
     initialCreateCaregiverInvitationActionState,
   );
@@ -87,7 +89,10 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
         action={formAction}
         className="mt-5 space-y-4"
         key={state.status === "SUCCESS" ? `issued-${state.expiresAt}` : "new-invitation"}
-        onSubmit={() => setCopyStatus("")}
+        onSubmit={(event) => {
+          setCopyStatus("");
+          submitPreservingInput(formAction)(event);
+        }}
       >
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-national-id">
@@ -96,7 +101,7 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
           <input
             autoComplete="off"
             className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             id="caregiver-national-id"
             inputMode="numeric"
             maxLength={13}
@@ -107,7 +112,8 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
           />
         </div>
         {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
-        <Button disabled={pending} loading={pending} type="submit">
+        <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
+        <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังสร้างคำเชิญ..." : "สร้างลิงก์คำเชิญ"}
         </Button>
       </form>
@@ -159,7 +165,7 @@ function RevokePendingInvitation({
 }: {
   invitation: FamilyInvitationManagementItem;
 }): React.JSX.Element {
-  const [state, formAction, pending] = useActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     revokePendingCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
@@ -169,13 +175,14 @@ function RevokePendingInvitation({
       {invitation.status === "PENDING" ? (
         <form action={formAction}>
           <input name="invitationId" type="hidden" value={invitation.invitationId} />
-          <Button aria-label={`ยกเลิกคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยกเลิกคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยกเลิก..." : "ยกเลิกคำเชิญ"}
           </Button>
         </form>
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
     </div>
   );
 }
@@ -185,7 +192,7 @@ function RevokeRelationship({
 }: {
   relationship: FamilyRelationshipManagementItem;
 }): React.JSX.Element {
-  const [state, formAction, pending] = useActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     revokeCaregiverRelationshipAction,
     initialFamilyMutationActionState,
   );
@@ -195,13 +202,14 @@ function RevokeRelationship({
       {relationship.status === "ACTIVE" ? (
         <form action={formAction}>
           <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยุติ..." : "ยุติความสัมพันธ์ผู้ดูแล"}
           </Button>
         </form>
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
     </div>
   );
 }
@@ -211,7 +219,7 @@ function WithdrawCaregiverRelationship({
 }: {
   relationship: FamilyRelationshipManagementItem;
 }): React.JSX.Element {
-  const [state, formAction, pending] = useActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     withdrawOwnCaregiverRelationshipAction,
     initialFamilyMutationActionState,
   );
@@ -240,17 +248,18 @@ function WithdrawCaregiverRelationship({
           <div className="flex flex-wrap gap-2">
             <form action={formAction}>
               <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-              <Button disabled={pending} loading={pending} size="compact" type="submit" variant="danger">
+              <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
                 {pending ? "กำลังยุติ..." : "ยืนยันหยุดการเป็นผู้ดูแล"}
               </Button>
             </form>
-            <Button disabled={pending} onClick={() => setConfirming(false)} size="compact" type="button" variant="secondary">
+            <Button disabled={pending || unknownOutcome} onClick={() => setConfirming(false)} size="compact" type="button" variant="secondary">
               กลับ
             </Button>
           </div>
         </div>
       )}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" />
     </div>
   );
 }

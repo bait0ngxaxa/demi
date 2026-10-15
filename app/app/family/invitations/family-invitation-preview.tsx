@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { connectionFailureMessage, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   caregiverInvitationStatusLabel,
   caregiverInvitationStatusVariant,
@@ -95,11 +97,13 @@ export function FamilyInvitationPreview(): React.JSX.Element {
   );
   const token = tokenSnapshot.status === "READY" ? tokenSnapshot.token : null;
   const [preview, setPreview] = useState(initialCaregiverInvitationPreviewActionState);
-  const [acceptance, acceptAction, accepting] = useActionState(
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+  const [acceptance, acceptAction, accepting, acceptingUnknown] = useMutationActionState(
     acceptCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
-  const [rejection, rejectAction, rejecting] = useActionState(
+  const [rejection, rejectAction, rejecting, rejectingUnknown] = useMutationActionState(
     rejectCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
@@ -114,16 +118,23 @@ export function FamilyInvitationPreview(): React.JSX.Element {
     }
 
     let active = true;
-    void previewCaregiverInvitationAction(tokenSnapshot.token).then((result) => {
-      if (active) {
-        setPreview(result);
-      }
-    });
+    previewCaregiverInvitationAction(tokenSnapshot.token).then(
+      (result) => {
+        if (active) {
+          setPreview(result);
+        }
+      },
+      () => {
+        if (active) {
+          setPreviewFailed(true);
+        }
+      },
+    );
 
     return () => {
       active = false;
     };
-  }, [tokenSnapshot]);
+  }, [tokenSnapshot, previewAttempt]);
 
   const hasCompletedResponse = acceptance.status === "SUCCESS" || rejection.status === "SUCCESS";
 
@@ -135,7 +146,23 @@ export function FamilyInvitationPreview(): React.JSX.Element {
         title="คำเชิญผู้ดูแล"
       />
 
-      {tokenSnapshot.status === "LOADING" || (tokenSnapshot.status === "READY" && preview.status === "LOADING") ? (
+      {previewFailed ? (
+        <Alert className="mt-6" role="alert" variant="danger">
+          <p className="font-semibold">ตรวจสอบคำเชิญไม่สำเร็จ</p>
+          <p className="mt-1">{connectionFailureMessage}</p>
+          <Button
+            className="mt-3"
+            onClick={() => {
+              setPreviewFailed(false);
+              setPreviewAttempt((attempt) => attempt + 1);
+            }}
+            size="compact"
+            variant="secondary"
+          >
+            ลองอีกครั้ง
+          </Button>
+        </Alert>
+      ) : tokenSnapshot.status === "LOADING" || (tokenSnapshot.status === "READY" && preview.status === "LOADING") ? (
         <Panel className="mt-6" aria-busy="true">
           <p className="text-sm text-text-muted" role="status">กำลังตรวจสอบคำเชิญ...</p>
         </Panel>
@@ -199,18 +226,19 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           ) : null}
           {acceptance.status === "ERROR" ? <Alert className="mt-5" variant="danger">{acceptance.message}</Alert> : null}
           {rejection.status === "ERROR" ? <Alert className="mt-5" variant="danger">{rejection.message}</Alert> : null}
+          <UnknownOutcomeAlert active={acceptingUnknown || rejectingUnknown} className="mt-5" />
 
           {preview.invitation.invitationStatus === "PENDING" && !hasCompletedResponse ? (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <form action={acceptAction}>
                 <input name="token" type="hidden" value={token ?? ""} />
-                <Button disabled={accepting || rejecting} loading={accepting} type="submit">
+                <Button disabled={accepting || rejecting || acceptingUnknown || rejectingUnknown} loading={accepting} type="submit">
                   {accepting ? "กำลังยอมรับ..." : "ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"}
                 </Button>
               </form>
               <form action={rejectAction}>
                 <input name="token" type="hidden" value={token ?? ""} />
-                <Button disabled={accepting || rejecting} loading={rejecting} type="submit" variant="secondary">
+                <Button disabled={accepting || rejecting || acceptingUnknown || rejectingUnknown} loading={rejecting} type="submit" variant="secondary">
                   {rejecting ? "กำลังปฏิเสธ..." : "ปฏิเสธคำเชิญ"}
                 </Button>
               </form>

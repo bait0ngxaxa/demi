@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { createSupportReportAction } from "@/modules/support/transport/server-actions";
 
 type HospitalOption = { id: string; name: string; hospitalCode: string };
@@ -13,12 +14,19 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ variant: "success" | "warning"; text: string } | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState(false);
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     setFeedback(null);
     startTransition(async () => {
-      const result = await createSupportReportAction({ hospitalId, category, message });
+      let result: Awaited<ReturnType<typeof createSupportReportAction>>;
+      try {
+        result = await createSupportReportAction({ hospitalId, category, message });
+      } catch {
+        setUnknownOutcome(true);
+        return;
+      }
       if (result.status === "SUCCESS") {
         setMessage("");
         setFeedback({ variant: "success", text: "ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ" });
@@ -32,6 +40,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
     <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-message">รายละเอียดปัญหา</label><textarea className="min-h-40 w-full rounded-control border border-border-strong bg-surface px-4 py-3 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="support-message" maxLength={1_000} onChange={(event) => setMessage(event.currentTarget.value)} required value={message} /><p className="mt-1 text-right text-sm text-text-muted">{message.length}/1,000</p></div>
     <Alert variant="warning">โปรดอย่าระบุข้อมูลสุขภาพ ชื่อผู้ป่วย เลขประจำตัว หรือข้อมูลส่วนบุคคลที่ละเอียดอ่อนในรายงานนี้</Alert>
     {feedback ? <Alert variant={feedback.variant}>{feedback.text}</Alert> : null}
-    <Button disabled={pending || hospitals.length === 0} loading={pending} type="submit">ส่งรายงานปัญหา</Button>
+    <UnknownOutcomeAlert active={unknownOutcome} />
+    <Button disabled={pending || unknownOutcome || hospitals.length === 0} loading={pending} type="submit">ส่งรายงานปัญหา</Button>
   </form>;
 }

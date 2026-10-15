@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
   initialWorkforceMembershipMutationActionState,
@@ -76,19 +78,20 @@ export function StaffMembershipControls({
   targetHospitalId,
 }: StaffMembershipControlsProps): React.JSX.Element {
   const router = useRouter();
-  const [professionState, professionAction, professionPending] = useActionState<
+  const [professionState, professionAction, professionPending, professionUnknown] = useMutationActionState<
     WorkforceMembershipMutationActionState,
     FormData
   >(updateHospitalMembershipProfessionAction, initialWorkforceMembershipMutationActionState);
-  const [suspendState, suspendAction, suspendPending] = useActionState<
+  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
     WorkforceMembershipMutationActionState,
     FormData
   >(suspendHospitalMembershipAction, initialWorkforceMembershipMutationActionState);
-  const [restoreState, restoreAction, restorePending] = useActionState<
+  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
     WorkforceMembershipMutationActionState,
     FormData
   >(restoreHospitalMembershipAction, initialWorkforceMembershipMutationActionState);
   const pending = professionPending || suspendPending || restorePending;
+  const unknownOutcome = professionUnknown || suspendUnknown || restoreUnknown;
 
   const ownerControls = (
     <HospitalOwnerGovernanceControls
@@ -159,6 +162,7 @@ export function StaffMembershipControls({
           การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
         </p>
 
+        <UnknownOutcomeAlert active={professionUnknown || restoreUnknown} className="mt-4" />
         {actions.updateProfession ? (
           <form action={professionAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <input name="relationshipId" type="hidden" value={relationshipId} />
@@ -177,7 +181,7 @@ export function StaffMembershipControls({
                 ))}
               </Select>
             </label>
-            <Button disabled={pending} loading={professionPending} size="compact" type="submit">
+            <Button disabled={pending || unknownOutcome} loading={professionPending} size="compact" type="submit">
               {professionPending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
             </Button>
           </form>
@@ -194,7 +198,7 @@ export function StaffMembershipControls({
               confirmLabel: "ระงับความสัมพันธ์",
               confirmVariant: "destructive",
             }}
-            outcome={suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+            outcome={suspendUnknown ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
             pending={pending}
             resultKey={suspendState}
           >
@@ -206,7 +210,7 @@ export function StaffMembershipControls({
             </p>
             <Button
               className="mt-3"
-              disabled={pending}
+              disabled={pending || unknownOutcome}
               loading={suspendPending}
               size="compact"
               type="submit"
@@ -225,7 +229,7 @@ export function StaffMembershipControls({
             <p className="text-sm leading-6 text-text-muted">
               คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีต้องพร้อมใช้งานอยู่แล้ว
             </p>
-            <Button className="mt-3" disabled={pending} loading={restorePending} size="compact" type="submit">
+            <Button className="mt-3" disabled={pending || unknownOutcome} loading={restorePending} size="compact" type="submit">
               {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
             </Button>
           </form>

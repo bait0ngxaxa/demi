@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { getEvidenceImageOptimizationErrorMessage } from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
 import { replacePatientEvidenceFile } from "@/modules/patient-evidence/client/patient-evidence-upload-payload";
 import { PATIENT_EVIDENCE_FILE_ACCEPT } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
@@ -436,7 +438,7 @@ function RoutineCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneRoutineAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -450,9 +452,9 @@ function RoutineCard({
   return (
     <ActivityCard activity={activity} description="บันทึกตารางกิจวัตรของผู้ป่วยในรอบนี้ (คนละเครื่องมือกับ “ตารางชีวิตของฉัน”)" id="ROUTINE" title="ตารางกิจวัตร">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5" action={action}>
+        <form className="mt-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
-          <Button disabled={pending} loading={pending} size="compact" type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
         </form>
@@ -460,6 +462,7 @@ function RoutineCard({
         <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
       )}
       <ActionFeedback state={state} />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
       <EvidenceAttachmentControl
         activityKey="ROUTINE"
         canManage={canManage}
@@ -485,7 +488,7 @@ function FloatingChartCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneFloatingChartAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -499,13 +502,13 @@ function FloatingChartCard({
   return (
     <ActivityCard activity={activity} description="บันทึกกราฟวัดลอยจมพร้อมสรุปสั้น ๆ ได้ถ้าจำเป็น" id="FLOATING_CHART" title="กราฟวัดลอยจม">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5 space-y-4" action={action}>
+        <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-floating-summary">
             <span>สรุป (ไม่บังคับ)</span>
             <textarea
               className={`${inputClassName} min-h-28 py-3`}
-              disabled={pending}
+              disabled={pending || unknownOutcome}
               id="service-one-floating-summary"
               maxLength={2000}
               name="summary"
@@ -514,7 +517,7 @@ function FloatingChartCard({
             />
             <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
           </label>
-          <Button disabled={pending} loading={pending} size="compact" type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
         </form>
@@ -528,6 +531,7 @@ function FloatingChartCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
       <EvidenceAttachmentControl
         activityKey="FLOATING_CHART"
         canManage={canManage}
@@ -553,7 +557,7 @@ function DreamCard({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneDreamCardAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -567,13 +571,13 @@ function DreamCard({
   return (
     <ActivityCard activity={activity} description="บันทึกการ์ดความฝันพร้อมคำอธิบายสั้น ๆ ได้ถ้าจำเป็น" id="DREAM_CARD" title="การ์ดความฝัน">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5 space-y-4" action={action}>
+        <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-dream-description">
             <span>คำอธิบาย (ไม่บังคับ)</span>
             <textarea
               className={`${inputClassName} min-h-28 py-3`}
-              disabled={pending}
+              disabled={pending || unknownOutcome}
               id="service-one-dream-description"
               maxLength={2000}
               name="description"
@@ -582,7 +586,7 @@ function DreamCard({
             />
             <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
           </label>
-          <Button disabled={pending} loading={pending} size="compact" type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
         </form>
@@ -596,6 +600,7 @@ function DreamCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
       <EvidenceAttachmentControl
         activityKey="DREAM_CARD"
         canManage={canManage}
@@ -619,7 +624,7 @@ function ConfidenceCard({
   programId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramServiceOneActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneConfidenceAction,
     initialPatientProgramServiceOneActionState,
   );
@@ -633,7 +638,7 @@ function ConfidenceCard({
   return (
     <ActivityCard activity={activity} description="บันทึกคะแนนความมั่นใจ/การสะท้อนตนเองแบบชั่วคราวในช่วง 0–10" id="CONFIDENCE" title="ไม้บรรทัดวัดใจ">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5 space-y-5" action={action}>
+        <form className="mt-5 space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <fieldset>
             <legend className="text-sm font-semibold text-text">เลือกคะแนนสะท้อนความมั่นใจ 0–10</legend>
@@ -652,7 +657,7 @@ function ConfidenceCard({
             <span>การสะท้อนผลหรือแผนพัฒนา (ไม่บังคับ)</span>
             <textarea
               className={`${inputClassName} min-h-28 py-3`}
-              disabled={pending}
+              disabled={pending || unknownOutcome}
               id="service-one-confidence-plan"
               maxLength={2000}
               name="improvementPlan"
@@ -661,7 +666,7 @@ function ConfidenceCard({
             />
             <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
           </label>
-          <Button disabled={pending} loading={pending} size="compact" type="submit">
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
         </form>
@@ -681,6 +686,7 @@ function ConfidenceCard({
         </div>
       ) : null}
       <ActionFeedback state={state} />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
     </ActivityCard>
   );
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
   demoteHospitalOwnerAction,
@@ -61,15 +63,16 @@ export function HospitalOwnerGovernanceControls({
   targetHospitalId,
 }: HospitalOwnerGovernanceControlsProps): React.JSX.Element | null {
   const router = useRouter();
-  const [promoteState, promoteAction, promotePending] = useActionState(
+  const [promoteState, promoteAction, promotePending, promoteUnknown] = useMutationActionState(
     promoteHospitalOwnerAction,
     initialWorkforceOwnerGovernanceMutationActionState,
   );
-  const [demoteState, demoteAction, demotePending] = useActionState(
+  const [demoteState, demoteAction, demotePending, demoteUnknown] = useMutationActionState(
     demoteHospitalOwnerAction,
     initialWorkforceOwnerGovernanceMutationActionState,
   );
   const pending = promotePending || demotePending;
+  const unknownOutcome = promoteUnknown || demoteUnknown;
   const isActiveTarget =
     accountStatus === "ACTIVE" && relationshipStatus === "ACTIVE";
 
@@ -94,6 +97,7 @@ export function HospitalOwnerGovernanceControls({
         การเปลี่ยนแปลงนี้มีผลเฉพาะบทบาทในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี ข้อมูลเข้าสู่ระบบ หรือความสัมพันธ์อื่น
       </p>
 
+      <UnknownOutcomeAlert active={promoteUnknown} className="mt-4" />
       {ownerGovernance.canPromote ? (
         <form action={promoteAction} className="mt-6 border-t border-border pt-5">
           <input name="relationshipId" type="hidden" value={relationshipId} />
@@ -102,7 +106,7 @@ export function HospitalOwnerGovernanceControls({
           <p className="text-sm leading-6 text-text-muted">
             เปลี่ยนสมาชิกที่พร้อมใช้งานรายนี้เป็นเจ้าของโรงพยาบาลนี้
           </p>
-          <Button className="mt-3" disabled={pending} loading={promotePending} size="compact" type="submit">
+          <Button className="mt-3" disabled={pending || unknownOutcome} loading={promotePending} size="compact" type="submit">
             {promotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นเจ้าของโรงพยาบาล"}
           </Button>
         </form>
@@ -118,7 +122,7 @@ export function HospitalOwnerGovernanceControls({
             details: <p>ระบบต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>,
             confirmLabel: "เปลี่ยนเป็นสมาชิก",
           }}
-          outcome={demoteState.status === "SUCCESS" ? "success" : demoteState.status === "ERROR" ? "error" : "idle"}
+          outcome={demoteUnknown ? "unknown" : demoteState.status === "SUCCESS" ? "success" : demoteState.status === "ERROR" ? "error" : "idle"}
           pending={pending}
           resultKey={demoteState}
         >
@@ -130,7 +134,7 @@ export function HospitalOwnerGovernanceControls({
           </p>
           <Button
             className="mt-3"
-            disabled={pending}
+            disabled={pending || unknownOutcome}
             loading={demotePending}
             size="compact"
             type="submit"

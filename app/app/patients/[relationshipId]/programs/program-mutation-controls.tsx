@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   completePatientProgramAction,
   openPatientProgramAction,
@@ -37,7 +39,7 @@ export function PatientProgramOpenControl({
   relationshipId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramActionState, FormData>(
     openPatientProgramAction,
     initialPatientProgramActionState,
   );
@@ -55,11 +57,12 @@ export function PatientProgramOpenControl({
     <div>
       <form action={action}>
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
-        <Button disabled={pending} loading={pending} size="compact" type="submit">
+        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
           {pending ? "กำลังเปิดโปรแกรม…" : "เปิดโปรแกรม"}
         </Button>
       </form>
       <ErrorFeedback state={state} />
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" />
     </div>
   );
 }
@@ -70,7 +73,7 @@ export function PatientProgramCompleteControl({
   programId: string;
 }): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientProgramActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientProgramActionState, FormData>(
     completePatientProgramAction,
     initialPatientProgramActionState,
   );
@@ -94,7 +97,7 @@ export function PatientProgramCompleteControl({
           details: <p>การจบโปรแกรมไม่ใช่การตัดสินผลทางคลินิก</p>,
           confirmLabel: "จบโปรแกรม",
         }}
-        outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
+        outcome={unknownOutcome ? "unknown" : state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
         pending={pending}
         resultKey={state}
       >

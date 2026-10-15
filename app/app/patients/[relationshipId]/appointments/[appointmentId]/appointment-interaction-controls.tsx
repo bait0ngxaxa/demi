@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
   APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
@@ -87,23 +89,23 @@ export function AppointmentInteractionControls({
   coordinationSubmissionNonce,
 }: AppointmentInteractionControlsProps): React.JSX.Element | null {
   const router = useRouter();
-  const [acknowledgementState, acknowledgeAction, acknowledgementPending] = useActionState<
+  const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(acknowledgeAppointmentOnBehalfOfPatientAction, initialAppointmentInteractionActionState);
-  const [cancellationState, cancellationAction, cancellationPending] = useActionState<
+  const [cancellationState, cancellationAction, cancellationPending, cancellationUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(requestAppointmentCancellationOnBehalfOfPatientAction, initialAppointmentInteractionActionState);
-  const [coordinationState, coordinationAction, coordinationPending] = useActionState<
+  const [coordinationState, coordinationAction, coordinationPending, coordinationUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(recordAppointmentCoordinationAction, initialAppointmentInteractionActionState);
-  const [approvalState, approvalAction, approvalPending] = useActionState<
+  const [approvalState, approvalAction, approvalPending, approvalUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(approveAppointmentCancellationRequestAction, initialAppointmentInteractionActionState);
-  const [rejectionState, rejectionAction, rejectionPending] = useActionState<
+  const [rejectionState, rejectionAction, rejectionPending, rejectionUnknown] = useMutationActionState<
     AppointmentInteractionActionState,
     FormData
   >(rejectAppointmentCancellationRequestAction, initialAppointmentInteractionActionState);
@@ -129,6 +131,7 @@ export function AppointmentInteractionControls({
 
   const isScheduled = status === "SCHEDULED";
   const pending = acknowledgementPending || cancellationPending || coordinationPending || approvalPending || rejectionPending;
+  const unknownOutcome = acknowledgementUnknown || cancellationUnknown || coordinationUnknown || approvalUnknown || rejectionUnknown;
   const pendingRequest = cancellationRequests.find((request) => request.status === "PENDING");
   const reviewWasSuperseded =
     (approvalState.status === "SUCCESS" && approvalState.operation === "CANCELLATION_SUPERSEDED") ||
@@ -137,6 +140,7 @@ export function AppointmentInteractionControls({
   return (
     <Panel>
       <div className="space-y-6">
+        <UnknownOutcomeAlert active={acknowledgementUnknown || cancellationUnknown || coordinationUnknown || rejectionUnknown} />
         <section aria-labelledby="appointment-acknowledgement-heading">
           <h2 className="text-lg font-semibold" id="appointment-acknowledgement-heading">การรับทราบนัดหมาย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
@@ -162,7 +166,7 @@ export function AppointmentInteractionControls({
                 <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
                 <input name="appointmentId" type="hidden" value={appointmentId} />
                 <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-                <Button className="w-full sm:w-auto" disabled={pending} loading={acknowledgementPending} type="submit">
+                <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={acknowledgementPending} type="submit">
                   {acknowledgementPending ? "กำลังบันทึก..." : "บันทึกว่าผู้ป่วยรับทราบนัดหมายแล้ว"}
                 </Button>
               </form>
@@ -187,7 +191,7 @@ export function AppointmentInteractionControls({
                 <input name="submissionNonce" type="hidden" value={cancellationRequestNonce} />
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={pending}
+                  disabled={pending || unknownOutcome}
                   loading={cancellationPending}
                   type="submit"
                   variant="secondary"
@@ -221,7 +225,7 @@ export function AppointmentInteractionControls({
               <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
               <input name="appointmentId" type="hidden" value={appointmentId} />
               <input name="submissionNonce" type="hidden" value={coordinationSubmissionNonce} />
-              <Button className="w-full sm:w-auto" disabled={pending} loading={coordinationPending} type="submit" variant="secondary">
+              <Button className="w-full sm:w-auto" disabled={pending || unknownOutcome} loading={coordinationPending} type="submit" variant="secondary">
                 {coordinationPending ? "กำลังบันทึก..." : "บันทึกว่าประสานงานแล้ว"}
               </Button>
             </form>
@@ -262,7 +266,7 @@ export function AppointmentInteractionControls({
                   confirmLabel: "อนุมัติและยกเลิกนัด",
                   confirmVariant: "destructive",
                 }}
-                outcome={approvalState.status === "SUCCESS" ? "success" : approvalState.status === "ERROR" ? "error" : "idle"}
+                outcome={approvalUnknown ? "unknown" : approvalState.status === "SUCCESS" ? "success" : approvalState.status === "ERROR" ? "error" : "idle"}
                 pending={pending}
                 resultKey={approvalState}
               >
@@ -271,7 +275,7 @@ export function AppointmentInteractionControls({
                 <input name="requestId" type="hidden" value={pendingRequest.requestId} />
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={pending}
+                  disabled={pending || unknownOutcome}
                   loading={approvalPending}
                   type="submit"
                 >
@@ -284,7 +288,7 @@ export function AppointmentInteractionControls({
                 <input name="requestId" type="hidden" value={pendingRequest.requestId} />
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={pending}
+                  disabled={pending || unknownOutcome}
                   loading={rejectionPending}
                   type="submit"
                   variant="secondary"

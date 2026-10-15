@@ -8,11 +8,14 @@ export function HospitalPatientServiceRequestReviewControls({
   status,
   action,
   pending,
+  blocked = false,
 }: {
   requestId: string;
   status: HospitalPatientServiceRequestView["status"];
   action: (formData: FormData) => void;
   pending: boolean;
+  /** Set while an earlier review has an unconfirmed outcome. */
+  blocked?: boolean;
 }): React.JSX.Element | null {
   if (status !== "PENDING" && status !== "APPROVED") {
     return null;
@@ -29,15 +32,15 @@ export function HospitalPatientServiceRequestReviewControls({
         <input name="requestId" type="hidden" value={requestId} />
         {status === "PENDING" ? (
           <>
-            <Button disabled={pending} name="decision" size="compact" type="submit" value="APPROVE">
+            <Button disabled={pending || blocked} name="decision" size="compact" type="submit" value="APPROVE">
               อนุมัติคำขอ
             </Button>
-            <Button disabled={pending} name="decision" size="compact" type="submit" value="REJECT" variant="secondary">
+            <Button disabled={pending || blocked} name="decision" size="compact" type="submit" value="REJECT" variant="secondary">
               ไม่อนุมัติคำขอ
             </Button>
           </>
         ) : (
-          <Button disabled={pending} name="decision" size="compact" type="submit" value="START">
+          <Button disabled={pending || blocked} name="decision" size="compact" type="submit" value="START">
             ยืนยันว่าเริ่มให้บริการแล้ว
           </Button>
         )}

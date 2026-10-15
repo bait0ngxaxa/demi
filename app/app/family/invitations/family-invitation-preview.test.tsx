@@ -11,7 +11,8 @@ const harness = vi.hoisted(() => ({
 }));
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
-  useState: () => [harness.preview, vi.fn()],
+  // Only the preview state is driven by the harness; flags and counters keep their initial values.
+  useState: (initial: unknown) => [typeof initial === "object" ? harness.preview : initial, vi.fn()],
   useEffect: (effect: () => unknown) => { harness.effects.push(effect); },
   useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => {
     harness.getSnapshot = getSnapshot;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
   PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,
@@ -237,7 +239,7 @@ export function PatientOsmBulkAssignmentWorkspace({
   errorMessage,
 }: PatientOsmBulkAssignmentWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending] = useActionState<PatientOsmBulkAssignmentActionState, FormData>(
+  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientOsmBulkAssignmentActionState, FormData>(
     bulkAssignOsmToPatientsAction,
     initialPatientOsmBulkAssignmentActionState,
   );
@@ -469,7 +471,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                       value={patient.patientHospitalRelationshipId}
                     />
                   ))}
-                  <Button disabled={pending} loading={pending} type="submit">
+                  <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
                     {pending ? "กำลังบันทึก..." : "ยืนยันมอบหมาย"}
                   </Button>
                   <Button disabled={pending} onClick={editSelection} type="button" variant="secondary">
@@ -482,6 +484,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                     <p className="mt-1">{state.message}</p>
                   </Alert>
                 ) : null}
+                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" />
               </Panel>
             ) : null}
           </>
