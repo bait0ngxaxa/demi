@@ -48,6 +48,7 @@ const unavailableLabels = {
   CLINICAL_SEMANTICS_UNAPPROVED: "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง",
   NOT_PROGRAM_SCOPED: "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้",
   DERIVATION_UNAPPROVED: "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง",
+  DISCLOSURE_UNAPPROVED: "ยังไม่พร้อมใช้งาน: รอฐานความยินยอมการเปิดเผยข้อมูล",
 } as const;
 
 const progressStatusLabels = {
@@ -205,8 +206,9 @@ const NO_EXERCISE_RECORD_LABEL = "ไม่มีบันทึก";
 
 // D9: Patient self-reported minutes per week; After needs the Final Assessment service date.
 function weeklyExerciseCell(program: HospitalReportProgramRow, stage: "before" | "after"): number | string {
-  if (stage === "after" && program.finalAssessment.state === "MISSING") return NO_FINAL_ASSESSMENT_LABEL;
   const fact = program.weeklyExercise[stage];
+  if (fact.state === "UNAVAILABLE") return unavailable(fact.reason);
+  if (stage === "after" && program.finalAssessment.state === "MISSING") return NO_FINAL_ASSESSMENT_LABEL;
   return fact.state === "RECORDED" ? fact.value : NO_EXERCISE_RECORD_LABEL;
 }
 

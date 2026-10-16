@@ -27,7 +27,14 @@ const SEMANTICS_UNAPPROVED = "ยังไม่พร้อมใช้งา�
 const NOT_PROGRAM_SCOPED = "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้";
 const DERIVATION_UNAPPROVED = "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง";
 const NO_MORE_FOLLOWUPS = "ไม่มี Follow-up ในช่องที่เหลือ";
-const UNAVAILABLE_LABELS = new Set([SOURCE_MISSING, SEMANTICS_UNAPPROVED, NOT_PROGRAM_SCOPED, DERIVATION_UNAPPROVED]);
+const DISCLOSURE_UNAPPROVED = "ยังไม่พร้อมใช้งาน: รอฐานความยินยอมการเปิดเผยข้อมูล";
+const UNAVAILABLE_LABELS = new Set([
+  SOURCE_MISSING,
+  SEMANTICS_UNAPPROVED,
+  NOT_PROGRAM_SCOPED,
+  DERIVATION_UNAPPROVED,
+  DISCLOSURE_UNAPPROVED,
+]);
 
 const programId = "33333333-3333-4333-8333-333333333333";
 const STARTED_AT = "2026-07-01T03:00:00.000Z";
@@ -446,6 +453,22 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     expect(normalizedCell(service, "A1")).not.toContain("GOLD-01");
   });
 
+  it("labels the self-reported exercise columns as gated while disclosure is unapproved (WB-PD-06)", async () => {
+    const gated: HospitalReportProgramRow["weeklyExercise"]["before"] = { state: "UNAVAILABLE", reason: "DISCLOSURE_UNAPPROVED" };
+    const dataset = goldenDataset();
+    const generated = await loadWorkbook(
+      await generateHospitalReportWorkbook(
+        { ...dataset, programs: dataset.programs.map((program) => ({ ...program, weeklyExercise: { before: gated, after: gated } })) },
+        new Date("2026-10-12T03:00:00.000Z"),
+      ),
+    );
+    const gatedService = sheetOrThrow(generated, "รายงานการจัดบริการ");
+
+    expect(normalizedCell(gatedService, "N9")).toBe(DISCLOSURE_UNAPPROVED);
+    expect(normalizedCell(gatedService, "Q9")).toBe(DISCLOSURE_UNAPPROVED);
+  });
+
+  // Coverage of the capability with the D9 disclosure gate open; N/Q are gated by default (WB-PD-06).
   it("reports the current DoD coverage of the customer columns", () => {
     const count = (status: DodStatus): number =>
       [...DASHBOARD_ROW_9, ...SERVICE_ROW_9].filter(([, , columnStatus]) => columnStatus === status).length;

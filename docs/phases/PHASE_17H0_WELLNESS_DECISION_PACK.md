@@ -351,7 +351,7 @@ Phase 17A บันทึกว่า customer whiteboard flow มาจาก�
 
 ตัวเลือก: A excluded from existing reporting; B Hospital dashboard; C Program report/outcome; D adherence score; E population analytics; F other
 
-**Superseded บางส่วน (2026-10-16, customer decision D9 / WB-DF-16):** ค่าเฉลี่ยนาทีออกกำลังกาย/สัปดาห์ที่ผู้ป่วยบันทึกเอง (28 วันก่อนวันเริ่ม Program / ก่อน Final Assessment) แสดงในรายงานโรงพยาบาลได้ เฉพาะค่ารวมนี้; รายการบันทึกยังเป็น SELF only (Q56 คงเดิม) — ดู [WB_ALIGNMENT_DECISIONS.md](../requirements/WB_ALIGNMENT_DECISIONS.md) §จ.
+**Superseded บางส่วน (2026-10-16, customer decision D9 / WB-DF-16):** ค่าเฉลี่ยนาทีออกกำลังกาย/สัปดาห์ที่ผู้ป่วยบันทึกเอง (28 วันก่อนวันเริ่ม Program / ก่อน Final Assessment) แสดงในรายงานโรงพยาบาลได้ เฉพาะค่ารวมนี้; รายการบันทึกยังเป็น SELF only (Q56 คงเดิม); การอ่านจริงปิดด้วย disclosure gate เป็นค่าเริ่มต้นจนกว่า WB-PD-06 อนุมัติ — ดู [WB_ALIGNMENT_DECISIONS.md](../requirements/WB_ALIGNMENT_DECISIONS.md) §จ.
 
 **RECOMMENDATION — NOT OWNER APPROVED: A.** ไม่ feed personal records เข้า existing report projections/dashboard/cohort หรือ clinical outcome/adherence score Self list/history เป็น journal query ไม่ใช่ authorization ให้ analytics; future projection ต้องอนุมัติ source/meaning/visibility ใหม่
 

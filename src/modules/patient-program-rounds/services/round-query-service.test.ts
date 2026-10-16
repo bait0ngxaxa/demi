@@ -363,12 +363,21 @@ describe("round detail read model", () => {
     // Adjusted from the round 3 Follow-up (Follow-up 1): before round 4, so not counted.
     expect(row([goalPlan(1, firstPlanId), goalPlan(2, adjustedPlanId, { sourceFollowup: { roundNumber: 1 } })], 4))
       .toMatchObject({ status: "NOT_DONE", linkedRecord: { type: "GOAL_PLAN", id: adjustedPlanId } });
-    // Adjusted from the round 4 Follow-up (Follow-up 2) or a later one.
-    for (const followupRoundNumber of [2, 3]) {
-      expect(
-        row([goalPlan(1, firstPlanId), goalPlan(2, adjustedPlanId, { sourceFollowup: { roundNumber: followupRoundNumber } })], 4),
-      ).toMatchObject({ status: "DONE", source: "PLANNED", linkedRecord: { type: "GOAL_PLAN", id: adjustedPlanId } });
-    }
+    // Adjusted from round 4's own Follow-up (Follow-up 2).
+    expect(row([goalPlan(1, firstPlanId), goalPlan(2, adjustedPlanId, { sourceFollowup: { roundNumber: 2 } })], 4))
+      .toMatchObject({ status: "DONE", source: "PLANNED", linkedRecord: { type: "GOAL_PLAN", id: adjustedPlanId }, laterAdjustedPlan: null });
+    // Adjusted only in round 5 (Follow-up 3): round 4's history stays not done; the later plan is current information.
+    expect(row([goalPlan(1, firstPlanId), goalPlan(2, adjustedPlanId, { sourceFollowup: { roundNumber: 3 } })], 4))
+      .toMatchObject({
+        status: "NOT_DONE",
+        source: null,
+        performedAt: null,
+        linkedRecord: { type: "GOAL_PLAN", id: adjustedPlanId },
+        laterAdjustedPlan: { goalPlanId: adjustedPlanId, adjustedInRound: 5 },
+      });
+    // Round 2 never reports a later adjustment.
+    expect(row([goalPlan(1, firstPlanId), goalPlan(2, adjustedPlanId, { sourceFollowup: { roundNumber: 3 } })], 2))
+      .toMatchObject({ status: "DONE", linkedRecord: { type: "GOAL_PLAN", id: firstPlanId }, laterAdjustedPlan: null });
   });
 
   it("gates starting a Follow-up on earlier rounds and projects no plan follow-up outside rounds 3-6", () => {
@@ -559,7 +568,12 @@ describe("round queries authorize through the Program read policy", () => {
   function databaseWith(record: ProgramRoundRecord | null): PatientProgramRoundQueryDatabase {
     return {
       patientProgram: { findFirst: vi.fn().mockResolvedValue(record) },
-      patientHospitalProfile: { findUnique: vi.fn().mockResolvedValue({ occupation: "เกษตรกร" }) },
+      patientHospitalRelationship: {
+        findUnique: vi.fn().mockResolvedValue({
+          hospitalProfile: { occupation: "เกษตรกร" },
+          patientProfile: { dateOfBirth: new Date("1960-10-16T00:00:00.000Z") },
+        }),
+      },
     } as unknown as PatientProgramRoundQueryDatabase;
   }
 
@@ -573,6 +587,8 @@ describe("round queries authorize through the Program read policy", () => {
     await expect(getProgramRoundDetail(actor, relationshipId, programId, "1", { database })).resolves.toMatchObject({
       roundNumber: 1,
       occupation: "เกษตรกร",
+      // D10: read with the occupation in one query; the view renders the age.
+      patientDateOfBirth: new Date("1960-10-16T00:00:00.000Z"),
     });
     expect(
       (database as unknown as { patientProgram: { findFirst: ReturnType<typeof vi.fn> } }).patientProgram.findFirst,

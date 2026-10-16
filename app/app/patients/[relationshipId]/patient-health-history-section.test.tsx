@@ -4,7 +4,11 @@ import { HealthHistoryAnswer, Role } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 const getInformation = vi.hoisted(() => vi.fn());
-vi.mock("@/modules/patient-hospital-profile/services/patient-health-history-service", () => ({ getPatientHealthInformation: getInformation }));
+const getHistory = vi.hoisted(() => vi.fn());
+vi.mock("@/modules/patient-hospital-profile/services/patient-health-history-service", () => ({
+  getPatientHealthInformation: getInformation,
+  getPatientHealthHistory: getHistory,
+}));
 
 import { PatientHealthHistorySection } from "./patient-health-history-section";
 
@@ -37,5 +41,14 @@ describe("Hospital health readback", () => {
     expect(markup).toContain("โรงพยาบาลยังไม่ได้บันทึกประวัติสุขภาพ");
     expect(markup).not.toContain("ไม่มีโรค");
     expect(markup).toContain("อายุ</span> 66 ปี");
+  });
+
+  it("does not read or show the age where the page shows it in the vitals header (D10)", async () => {
+    getInformation.mockClear();
+    getHistory.mockResolvedValue(null);
+    const markup = renderToStaticMarkup(await PatientHealthHistorySection({ actor, relationshipId: "relationship", showAge: false }));
+    expect(getHistory).toHaveBeenCalledWith(actor, "relationship");
+    expect(getInformation).not.toHaveBeenCalled();
+    expect(markup).not.toContain("อายุ");
   });
 });

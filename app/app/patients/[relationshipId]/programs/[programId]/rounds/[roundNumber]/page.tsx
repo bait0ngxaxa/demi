@@ -65,7 +65,7 @@ export default async function ProgramRoundPage({
 
   return (
     <ProgramRoundDetailView
-      healthHistory={<PatientHealthHistorySection actor={actor} relationshipId={relationshipId} />}
+      healthHistory={<PatientHealthHistorySection actor={actor} relationshipId={relationshipId} showAge={false} />}
       detail={detail}
       reviewNonces={reviewNonces}
       todayServiceDate={toServiceDateOnly(new Date())}

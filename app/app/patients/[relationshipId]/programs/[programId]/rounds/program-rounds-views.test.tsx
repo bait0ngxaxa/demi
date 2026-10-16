@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildProgramRoundDetail, buildProgramRoundsOverview, type ProgramRoundRecord } from "@/modules/patient-program-rounds/services/round-query-service";
+import { ageInFullYears } from "@/shared/time/age";
 
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
@@ -42,8 +43,12 @@ function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
   } as unknown as ProgramRoundRecord;
 }
 
-function renderDetail(roundNumber: 1 | 2 | 3 | 4, overrides: Record<string, unknown> = {}): string {
-  const detail = buildProgramRoundDetail(record(overrides), roundNumber, patient);
+function renderDetail(
+  roundNumber: 1 | 2 | 3 | 4,
+  overrides: Record<string, unknown> = {},
+  dateOfBirth: Date | null = null,
+): string {
+  const detail = buildProgramRoundDetail(record(overrides), roundNumber, { ...patient, dateOfBirth });
   const reviewNonces = Object.fromEntries(
     [...detail.activities, ...detail.addOptions].map((row) => [row.toolCode, "44444444-4444-4444-8444-444444444444"]),
   );
@@ -111,6 +116,16 @@ describe("six-round navigator views", () => {
     expect(markup).toContain("การจัดบริการเพิ่ม");
   });
 
+  it("shows the age in the vitals header and hides it without a birth date (D10)", () => {
+    const dateOfBirth = new Date("1950-01-01T00:00:00.000Z");
+    const withBirthDate = renderDetail(3, {}, dateOfBirth);
+
+    expect(withBirthDate).toMatch(
+      new RegExp(`สมชาย ผู้ป่วย · อายุ <span[^>]*>${ageInFullYears(dateOfBirth, new Date())} ปี</span>`, "u"),
+    );
+    expect(renderDetail(3)).not.toContain("อายุ");
+  });
+
   it("offers a read-only review for an existing Service 1 result in a later round and Add for the rest", () => {
     const markup = renderDetail(3);
 
@@ -160,7 +175,7 @@ describe("six-round navigator views", () => {
     expect(markup).not.toContain(">บันทึกแล้ว</span>");
   });
 
-  it("shows round 4 แผนสุขภาพดีของฉัน as pending until a plan is adjusted from round 4 onwards (D4)", () => {
+  it("shows round 4 แผนสุขภาพดีของฉัน as pending until round 4 itself adjusts the plan (D4)", () => {
     const plan = (id: string, roundNumber: number, sourceFollowup: { roundNumber: number } | null) => ({
       id,
       roundNumber,
@@ -174,7 +189,7 @@ describe("six-round navigator views", () => {
     const pending = renderDetail(4, { goalPlans: [plan("77777777-7777-4777-8777-777777777777", 1, null)] });
 
     expect(pending).toContain("แผนสุขภาพดีของฉัน");
-    expect(pending).toContain("บันทึกได้เมื่อการติดตามผลครั้งที่ 4 ขึ้นไปเลือก");
+    expect(pending).toContain("บันทึกได้เมื่อการติดตามผลครั้งที่ 4 เลือก “ปรับแผน”");
     expect(pending).toContain("ดูแผนปัจจุบัน");
     expect(pending).toContain("/goals/77777777-7777-4777-8777-777777777777");
     expect(pending).not.toContain("รอการตัดสินใจ");
@@ -189,6 +204,18 @@ describe("six-round navigator views", () => {
 
     expect(adjusted).toContain(">บันทึกแล้ว</span>");
     expect(adjusted).toContain("/goals/88888888-8888-4888-8888-888888888888");
+
+    // A plan adjusted in round 5 is current information on round 4, not a performed round 4 activity.
+    const later = renderDetail(4, {
+      goalPlans: [
+        plan("77777777-7777-4777-8777-777777777777", 1, null),
+        plan("88888888-8888-4888-8888-888888888888", 2, { roundNumber: 3 }),
+      ],
+    });
+
+    expect(later).toContain("ไม่ได้ปรับแผนในครั้งนี้ · มีแผนฉบับปรับในครั้งที่ 5");
+    expect(later).toContain("/goals/88888888-8888-4888-8888-888888888888");
+    expect(later).not.toContain(">บันทึกแล้ว</span>");
   });
 
   it("keeps the real round 2 Goal Plan creation as a recorded result with its normal link", () => {

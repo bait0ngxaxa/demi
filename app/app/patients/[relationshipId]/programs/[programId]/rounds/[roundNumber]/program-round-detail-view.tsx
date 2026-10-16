@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ADJUSTED_PLAN_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { ageInFullYears } from "@/shared/time/age";
 import {
   buildPatientRoundsPath,
   buildRoundToolHref,
@@ -144,7 +145,9 @@ function ActivityActions({
     return (
       <div className="flex flex-col gap-2 sm:items-end">
         <p className="max-w-sm text-sm text-text-muted sm:text-right">
-          บันทึกได้เมื่อการติดตามผลครั้งที่ {ADJUSTED_PLAN_ROUND} ขึ้นไปเลือก &ldquo;ปรับแผน&rdquo; และสร้างแผนฉบับปรับแล้ว
+          {row.laterAdjustedPlan
+            ? `ไม่ได้ปรับแผนในครั้งนี้ · มีแผนฉบับปรับในครั้งที่ ${row.laterAdjustedPlan.adjustedInRound} (ข้อมูลปัจจุบัน ไม่นับเป็นกิจกรรมของครั้งนี้)`
+            : `บันทึกได้เมื่อการติดตามผลครั้งที่ ${ADJUSTED_PLAN_ROUND} เลือก “ปรับแผน” และสร้างแผนฉบับปรับแล้ว`}
         </p>
         {href ? (
           <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
@@ -232,6 +235,7 @@ export function ProgramRoundDetailView({
   const programId = detail.patientProgramId;
   const roundsPath = buildPatientRoundsPath(relationshipId, programId);
   const vitals = detail.vitals;
+  const age = detail.patientDateOfBirth ? ageInFullYears(detail.patientDateOfBirth, new Date()) : null;
 
   return (
     <div>
@@ -257,6 +261,11 @@ export function ProgramRoundDetailView({
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">สัญญาณชีพและข้อมูลร่างกาย</h2>
+          {age !== null ? (
+            <p className="mt-2 text-sm text-text-muted">
+              {detail.patientDisplayName} · อายุ <span className="font-semibold text-text">{age} ปี</span>
+            </p>
+          ) : null}
           {healthHistory}
           {vitals ? (
             <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

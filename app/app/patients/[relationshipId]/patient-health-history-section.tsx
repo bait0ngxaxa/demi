@@ -1,10 +1,13 @@
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { getPatientHealthInformation } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
+import { getPatientHealthHistory, getPatientHealthInformation } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import { HEALTH_HISTORY_FIELDS } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 import { ageInFullYears } from "@/shared/time/age";
 
-export async function PatientHealthHistorySection({ actor, relationshipId }: { actor: ActorContext; relationshipId: string }): Promise<React.JSX.Element> {
-  const { history, dateOfBirth } = await getPatientHealthInformation(actor, relationshipId);
+/** `showAge` is false where the page already shows the age elsewhere (round vitals header, D10). */
+export async function PatientHealthHistorySection({ actor, relationshipId, showAge = true }: { actor: ActorContext; relationshipId: string; showAge?: boolean }): Promise<React.JSX.Element> {
+  const { history, dateOfBirth } = showAge
+    ? await getPatientHealthInformation(actor, relationshipId)
+    : { history: await getPatientHealthHistory(actor, relationshipId), dateOfBirth: null };
   const age = dateOfBirth ? ageInFullYears(dateOfBirth, new Date()) : null;
   const labels = { YES: "มี", NO: "ไม่มี", UNKNOWN: "ไม่ทราบ" };
   return <section className="mt-6 border-t border-border pt-5" aria-label="ประวัติสุขภาพ">

@@ -99,6 +99,14 @@ export type RoundActivityRow = {
    * (D5: linked to a Goal Plan and the "ปรับแผน" answer recorded).
    */
   followupEvidence: RoundFollowupEvidence | null;
+  /** HEALTHY_PLAN in round 4 only, while not done: a plan adjusted in a later round (current information). */
+  laterAdjustedPlan: RoundLaterAdjustedPlan | null;
+};
+
+export type RoundLaterAdjustedPlan = {
+  goalPlanId: string;
+  /** Program round whose Follow-up produced the adjusted plan (5 or later). */
+  adjustedInRound: number;
 };
 
 export type RoundFollowupEvidence = {
@@ -157,6 +165,8 @@ export type ProgramRoundDetail = {
   title: string;
   patientDisplayName: string;
   occupation: string | null;
+  /** D10: shown as age in full years in the vitals header; null hides it. */
+  patientDateOfBirth: Date | null;
   vitals: RoundVitalsView | null;
   vitalsForm: {
     /** Rounds 1-2 only, while the Program is active and nothing was recorded yet. */
@@ -387,8 +397,8 @@ function findFollowupForRound(program: ProgramRoundRecord, roundNumber: number) 
 }
 
 /**
- * D4: round 2 is the Program's first Goal Plan; round 4 ("แผนสุขภาพดีของฉัน") is the first plan adjusted
- * from a Follow-up in round 4 or later. Other rounds have no Goal Plan activity of their own.
+ * D4: round 2 is the Program's first Goal Plan; round 4 ("แผนสุขภาพดีของฉัน") is a plan adjusted from
+ * round 4's own Follow-up. A plan adjusted in a later round is not evidence for round 4's history.
  */
 function roundGoalPlan(program: ProgramRoundRecord, roundNumber: ProgramRoundNumber) {
   if (roundNumber === GOAL_PLAN_ROUND) {
@@ -398,14 +408,32 @@ function roundGoalPlan(program: ProgramRoundRecord, roundNumber: ProgramRoundNum
   if (roundNumber === ADJUSTED_PLAN_ROUND) {
     return (
       program.goalPlans.find(
-        (plan) =>
-          plan.sourceFollowup !== null &&
-          plan.sourceFollowup.roundNumber >= toFollowupRoundNumber(ADJUSTED_PLAN_ROUND),
+        (plan) => plan.sourceFollowup?.roundNumber === toFollowupRoundNumber(ADJUSTED_PLAN_ROUND),
       ) ?? null
     );
   }
 
   return null;
+}
+
+/** Round 4 only: the first plan adjusted after round 4, shown as current information, never as DONE. */
+function laterAdjustedPlan(
+  program: ProgramRoundRecord,
+  roundNumber: ProgramRoundNumber,
+): RoundLaterAdjustedPlan | null {
+  if (roundNumber !== ADJUSTED_PLAN_ROUND) {
+    return null;
+  }
+
+  const plan = program.goalPlans.find(
+    (candidate) =>
+      candidate.sourceFollowup !== null &&
+      candidate.sourceFollowup.roundNumber > toFollowupRoundNumber(ADJUSTED_PLAN_ROUND),
+  );
+
+  return plan?.sourceFollowup
+    ? { goalPlanId: plan.id, adjustedInRound: toProgramRoundNumber(plan.sourceFollowup.roundNumber) }
+    : null;
 }
 
 function buildActivityRow(
@@ -424,6 +452,7 @@ function buildActivityRow(
     kind: definition.kind,
     recommended,
     followupEvidence: null as RoundFollowupEvidence | null,
+    laterAdjustedPlan: null as RoundLaterAdjustedPlan | null,
   };
   const result = programResultRecord(program, toolCode);
   const resultExists = result !== null;
@@ -504,6 +533,7 @@ function buildActivityRow(
       linkedRecord: currentPlan ? { type: "GOAL_PLAN", id: currentPlan.id } : null,
       resultExists: currentPlan !== null,
       canReview: false,
+      laterAdjustedPlan: laterAdjustedPlan(program, roundNumber),
     };
   }
 
@@ -760,10 +790,16 @@ export function buildProgramRoundsOverview(program: ProgramRoundRecord): Program
   };
 }
 
+export type RoundPatientContext = {
+  displayName: string;
+  occupation: string | null;
+  dateOfBirth?: Date | null;
+};
+
 export function buildProgramRoundDetail(
   program: ProgramRoundRecord,
   roundNumber: ProgramRoundNumber,
-  patient: { displayName: string; occupation: string | null },
+  patient: RoundPatientContext,
 ): ProgramRoundDetail {
   const vitals = buildVitals(program, roundNumber);
   const { activities, addOptions } = buildRoundActivities(program, roundNumber);
@@ -777,6 +813,7 @@ export function buildProgramRoundDetail(
     title: roundTitle(roundNumber),
     patientDisplayName: patient.displayName,
     occupation: patient.occupation,
+    patientDateOfBirth: patient.dateOfBirth ?? null,
     vitals,
     vitalsForm: {
       canRecord:
@@ -849,7 +886,7 @@ export async function loadProgramRoundDetail(
   relationshipId: string,
   programId: string,
   roundNumber: ProgramRoundNumber,
-  patient: { displayName: string; occupation: string | null },
+  patient: RoundPatientContext,
 ): Promise<ProgramRoundDetail> {
   return buildProgramRoundDetail(
     await loadProgramRoundRecord(database, programId, relationshipId),
@@ -908,9 +945,12 @@ export async function getProgramRoundDetail(
       PATIENT_PROGRAM_READ_CAPABILITY,
       database,
     );
-    const profile = await database.patientHospitalProfile.findUnique({
-      where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
-      select: { occupation: true },
+    const relationship = await database.patientHospitalRelationship.findUnique({
+      where: { id: access.patient.patientHospitalRelationshipId },
+      select: {
+        hospitalProfile: { select: { occupation: true } },
+        patientProfile: { select: { dateOfBirth: true } },
+      },
     });
 
     return await loadProgramRoundDetail(
@@ -918,7 +958,11 @@ export async function getProgramRoundDetail(
       access.patient.patientHospitalRelationshipId,
       normalizedProgramId,
       parsedRound,
-      { displayName: access.patient.displayName, occupation: profile?.occupation ?? null },
+      {
+        displayName: access.patient.displayName,
+        occupation: relationship?.hospitalProfile?.occupation ?? null,
+        dateOfBirth: relationship?.patientProfile.dateOfBirth ?? null,
+      },
     );
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

@@ -47,11 +47,13 @@ function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof H
     case "CLINICAL_SEMANTICS_UNAPPROVED": return "มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง";
     case "NOT_PROGRAM_SCOPED": return "ข้อมูลที่มีไม่ได้ผูกกับ Program นี้";
     case "DERIVATION_UNAPPROVED": return "ยังไม่มีสูตรคำนวณที่ได้รับรอง";
+    case "DISCLOSURE_UNAPPROVED": return "ยังไม่เปิดใช้: รอฐานความยินยอมการเปิดเผยข้อมูล";
   }
 }
 
 // D9: Patient self-reported; "ไม่มีบันทึก" when no entry with a duration falls in the 28-day window.
 function weeklyExerciseText(fact: HospitalReportFact<number>): string {
+  if (fact.state === "UNAVAILABLE") return unavailableText(fact.reason);
   return fact.state === "RECORDED" ? `${fact.value.toLocaleString("th-TH")} นาที (ผู้ป่วยบันทึกเอง)` : "ไม่มีบันทึก";
 }
 
@@ -454,7 +456,7 @@ function ServiceProgram({
           <h4 className="mb-3 mt-6 font-semibold text-text">หลัง Program · ข้อมูลการประเมิน</h4>
           {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" || program.weeklyExercise.after.state === "UNAVAILABLE" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
             <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {achievementOver70Text(program)}</li>
           </ul>
         </section>
