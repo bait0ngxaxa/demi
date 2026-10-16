@@ -11,7 +11,12 @@ export type HospitalMasterRecord = {
   id: string;
   hospitalCode: string;
   name: string;
-  parentHospitalCode: string | null;
+  parentHospitalId: string | null;
+  parentHospital: {
+    id: string;
+    name: string;
+    parentHospitalId: string | null;
+  } | null;
 };
 
 export type HospitalMasterDatabase = Pick<PrismaClient, "hospital"> | Prisma.TransactionClient;
@@ -20,8 +25,9 @@ const hospitalMasterSelect = {
   id: true,
   hospitalCode: true,
   name: true,
+  parentHospitalId: true,
   parentHospital: {
-    select: { hospitalCode: true },
+    select: { id: true, name: true, parentHospitalId: true },
   },
 } satisfies Prisma.HospitalSelect;
 
@@ -32,7 +38,14 @@ function toHospitalMasterRecord(
     id: hospital.id,
     hospitalCode: hospital.hospitalCode,
     name: hospital.name,
-    parentHospitalCode: hospital.parentHospital?.hospitalCode ?? null,
+    parentHospitalId: hospital.parentHospitalId,
+    parentHospital: hospital.parentHospital
+      ? {
+          id: hospital.parentHospital.id,
+          name: hospital.parentHospital.name,
+          parentHospitalId: hospital.parentHospital.parentHospitalId,
+        }
+      : null,
   };
 }
 
@@ -42,7 +55,7 @@ export async function listAvailableHospitalMaster(
   try {
     const hospitals = await database.hospital.findMany({
       where: { status: HospitalStatus.PENDING_VERIFICATION },
-      orderBy: [{ name: "asc" }, { hospitalCode: "asc" }],
+      orderBy: [{ name: "asc" }, { id: "asc" }],
       select: hospitalMasterSelect,
     });
 

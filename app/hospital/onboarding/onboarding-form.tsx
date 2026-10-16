@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LoadingSpinner } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
@@ -11,16 +11,19 @@ import {
 } from "@/modules/hospital-onboarding/transport/action-state";
 import { submitHospitalOnboardingAction } from "@/modules/hospital-onboarding/transport/server-actions";
 
-type HospitalOption = {
-  id: string;
-  hospitalCode: string;
-  name: string;
-  parentHospitalCode: string | null;
-};
+import {
+  getVerifiedParentHospital,
+  groupOnboardingHospitals,
+  type OnboardingHospitalOption,
+} from "./hospital-groups";
 
 type HospitalOnboardingFormProps = {
-  hospitals: readonly HospitalOption[];
+  hospitals: readonly OnboardingHospitalOption[];
 };
+
+function normalizeSearchValue(value: string): string {
+  return value.normalize("NFC").toLocaleLowerCase("th-TH").trim();
+}
 
 export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProps) {
   const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
@@ -28,23 +31,71 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     FormData
   >(submitHospitalOnboardingAction, initialHospitalOnboardingSubmitActionState);
   const [hospitalQuery, setHospitalQuery] = useState("");
-  const [selectedHospitalCode, setSelectedHospitalCode] = useState("");
-  const selectedHospital = hospitals.find(
-    (hospital) => hospital.hospitalCode === selectedHospitalCode,
+  const [selectedHospitalId, setSelectedHospitalId] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const changeHospitalButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
+  const selectionGroups = useMemo(() => groupOnboardingHospitals(hospitals), [hospitals]);
+  const selectedHospital = hospitals.find((hospital) => hospital.id === selectedHospitalId);
+  const selectedHospitalParent = selectedHospital
+    ? getVerifiedParentHospital(selectedHospital)
+    : null;
+  const selectedHospitalIsNetworkParent = selectionGroups.networks.some(
+    ({ eligibleParent }) => eligibleParent?.id === selectedHospital?.id,
   );
-  const filteredHospitals = useMemo(() => {
-    const normalizedQuery = hospitalQuery.trim().toLocaleLowerCase("th-TH");
+  const selectedHospitalContext = selectedHospitalParent
+    ? `โรงพยาบาลในเครือ ${selectedHospitalParent.name}`
+    : selectedHospitalIsNetworkParent
+      ? "โรงพยาบาลแม่ข่าย"
+      : null;
+  const selectedHospitalStatus = selectedHospital
+    ? `เลือกแล้ว: ${selectedHospital.name}${selectedHospitalContext ? ` ${selectedHospitalContext}` : ""}`
+    : "กรุณาเลือกโรงพยาบาลจากรายการ";
+  const visibleSelectionGroups = useMemo(() => {
+    const normalizedQuery = normalizeSearchValue(hospitalQuery);
+    if (!normalizedQuery) return selectionGroups;
 
-    if (!normalizedQuery) {
-      return hospitals;
-    }
+    const matches = (value: string): boolean =>
+      normalizeSearchValue(value).includes(normalizedQuery);
+    const networks = selectionGroups.networks.flatMap((group) => {
+      const parentMatches = matches(group.parent.name);
+      const children = parentMatches
+        ? group.children
+        : group.children.filter((hospital) => matches(hospital.name));
 
-    return hospitals.filter((hospital) =>
-      hospital.name.toLocaleLowerCase("th-TH").includes(normalizedQuery),
+      if (!parentMatches && children.length === 0) return [];
+
+      return [{
+        ...group,
+        eligibleParent: parentMatches ? group.eligibleParent : null,
+        children,
+      }];
+    });
+    const otherHospitals = selectionGroups.otherHospitals.filter((hospital) =>
+      matches(hospital.name),
     );
-  }, [hospitalQuery, hospitals]);
+
+    return { networks, otherHospitals };
+  }, [hospitalQuery, selectionGroups]);
+  const hasVisibleHospitals =
+    visibleSelectionGroups.networks.length > 0 ||
+    visibleSelectionGroups.otherHospitals.length > 0;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors ?? {} : {};
+
+  function selectHospital(hospitalId: string): void {
+    focusAfterSelectionRef.current = "change";
+    setSelectedHospitalId(hospitalId);
+    setHospitalQuery("");
+  }
+
+  useEffect(() => {
+    const focusTarget = focusAfterSelectionRef.current;
+    focusAfterSelectionRef.current = null;
+
+    if (focusTarget === "change") changeHospitalButtonRef.current?.focus();
+    if (focusTarget === "search") searchInputRef.current?.focus();
+  }, [selectedHospitalId]);
 
   if (state.status === "SUCCESS") {
     return (
@@ -73,23 +124,29 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         ผู้ดูแลระบบจะเป็นผู้อนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
       </div>
 
-      <fieldset className="space-y-4">
+      <fieldset
+        aria-describedby={fieldErrors.hospitalCode ? "hospitalCode-error" : undefined}
+        className="space-y-4"
+      >
         <legend className="text-lg font-semibold tracking-[-0.02em]">เลือกโรงพยาบาล</legend>
         {selectedHospital ? (
-          <div
-            aria-label="โรงพยาบาลที่เลือก"
-            className="flex items-start justify-between gap-4 rounded-[12px] border border-brand bg-brand-soft p-4"
-            role="status"
-          >
+          <div className="flex items-start justify-between gap-4 rounded-[12px] border border-brand bg-brand-soft p-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-strong">เลือกแล้ว</p>
-              <p className="mt-1 font-semibold text-ink">{selectedHospital.name}</p>
+              <p className="mt-1 break-words font-semibold text-ink">{selectedHospital.name}</p>
+              {selectedHospitalContext ? (
+                <p className="mt-1 break-words text-sm leading-6 text-muted">
+                  {selectedHospitalContext}
+                </p>
+              ) : null}
             </div>
             <button
               className="min-h-11 shrink-0 rounded-[12px] border border-line bg-white px-3 text-sm font-semibold text-ink transition-[border-color,color,background-color] hover:border-brand hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
               disabled={pending}
+              ref={changeHospitalButtonRef}
               onClick={() => {
-                setSelectedHospitalCode("");
+                focusAfterSelectionRef.current = "search";
+                setSelectedHospitalId("");
                 setHospitalQuery("");
               }}
               type="button"
@@ -101,7 +158,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
           <>
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
-                ค้นหาชื่อโรงพยาบาล
+                ค้นหาชื่อโรงพยาบาลหรือโรงพยาบาลแม่ข่าย
               </label>
               <input
                 autoComplete="off"
@@ -110,6 +167,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
                 id="hospitalSearch"
                 onChange={(event) => setHospitalQuery(event.target.value)}
                 placeholder="เช่น โรงพยาบาลแก่งคอย"
+                ref={searchInputRef}
                 type="search"
                 value={hospitalQuery}
               />
@@ -118,41 +176,110 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             <div
               aria-label="รายการโรงพยาบาลที่เลือกได้"
               aria-describedby={fieldErrors.hospitalCode ? "hospitalCode-error" : undefined}
-              aria-invalid={fieldErrors.hospitalCode ? true : undefined}
-              className="max-h-64 space-y-2 overflow-y-auto rounded-[12px] border border-line bg-canvas p-2"
-              role="listbox"
+              className="max-h-80 min-w-0 space-y-3 overflow-y-auto rounded-[12px] border border-line bg-canvas p-2 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              role="region"
+              tabIndex={0}
             >
               {hospitals.length === 0 ? (
                 <p className="px-3 py-4 text-sm leading-6 text-muted">
                   ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้
                 </p>
-              ) : filteredHospitals.length === 0 ? (
-                <p className="px-3 py-4 text-sm leading-6 text-muted">ไม่พบโรงพยาบาลที่ค้นหา</p>
+              ) : !hasVisibleHospitals ? (
+                <p className="px-3 py-4 text-sm leading-6 text-muted">
+                  ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา
+                </p>
               ) : (
-                filteredHospitals.map((hospital) => (
-                  <button
-                    aria-selected={false}
-                    className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-                    disabled={pending}
-                    key={hospital.id}
-                    onClick={() => {
-                      setSelectedHospitalCode(hospital.hospitalCode);
-                      setHospitalQuery("");
-                    }}
-                    role="option"
-                    type="button"
-                  >
-                    <span className="block font-semibold text-ink">{hospital.name}</span>
-                  </button>
-                ))
+                <>
+                  {visibleSelectionGroups.networks.map((group) => {
+                    const headingId = `hospital-network-${group.parent.id}`;
+                    const eligibleParent = group.eligibleParent;
+
+                    return (
+                      <section
+                        aria-labelledby={headingId}
+                        className="min-w-0 rounded-[10px] bg-white/60 p-2"
+                        key={group.parent.id}
+                      >
+                        <h3
+                          className="break-words px-2 py-2 text-sm font-semibold text-ink"
+                          id={headingId}
+                        >
+                          เครือข่าย: {group.parent.name}
+                        </h3>
+                        <ul className="space-y-2">
+                          {eligibleParent ? (
+                            <li>
+                              <button
+                                aria-label={`เลือกโรงพยาบาลแม่ข่าย ${eligibleParent.name}`}
+                                className="w-full rounded-[10px] border border-transparent bg-white px-3 py-3 text-left transition-[border-color,background-color] hover:border-line focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+                                disabled={pending}
+                                onClick={() => selectHospital(eligibleParent.id)}
+                                type="button"
+                              >
+                                <span className="mb-1 block text-xs font-medium text-muted">
+                                  โรงพยาบาลแม่ข่าย
+                                </span>
+                                <span className="block break-words font-semibold text-ink">
+                                  {eligibleParent.name}
+                                </span>
+                              </button>
+                            </li>
+                          ) : null}
+                          {group.children.map((hospital) => (
+                            <li key={hospital.id}>
+                              <button
+                                aria-label={`เลือกโรงพยาบาล ${hospital.name} ในเครือ ${group.parent.name}`}
+                                className="w-full rounded-[10px] border border-transparent bg-white px-3 py-3 text-left transition-[border-color,background-color] hover:border-line focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+                                disabled={pending}
+                                onClick={() => selectHospital(hospital.id)}
+                                type="button"
+                              >
+                                <span className="block break-words font-semibold text-ink">
+                                  {hospital.name}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  })}
+                  {visibleSelectionGroups.otherHospitals.length > 0 ? (
+                    <section aria-labelledby="other-hospitals-heading" className="min-w-0">
+                      <h3
+                        className="break-words px-3 py-2 text-sm font-semibold text-ink"
+                        id="other-hospitals-heading"
+                      >
+                        โรงพยาบาลอื่น
+                      </h3>
+                      <ul className="space-y-2">
+                        {visibleSelectionGroups.otherHospitals.map((hospital) => (
+                          <li key={hospital.id}>
+                            <button
+                              aria-label={`เลือกโรงพยาบาล ${hospital.name}`}
+                              className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+                              disabled={pending}
+                              onClick={() => selectHospital(hospital.id)}
+                              type="button"
+                            >
+                              <span className="block break-words font-semibold text-ink">
+                                {hospital.name}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : null}
+                </>
               )}
             </div>
           </>
         )}
 
-        <input name="hospitalCode" type="hidden" value={selectedHospitalCode} />
-        <p className="min-h-6 text-sm leading-6 text-muted" aria-live="polite">
-          {selectedHospital ? `เลือกแล้ว: ${selectedHospital.name}` : "กรุณาเลือกโรงพยาบาลจากรายการ"}
+        <input name="hospitalCode" type="hidden" value={selectedHospital?.hospitalCode ?? ""} />
+        <p className="min-h-6 text-sm leading-6 text-muted" aria-live="polite" role="status">
+          {selectedHospitalStatus}
         </p>
         {fieldErrors.hospitalCode ? (
           <p className="text-sm leading-6 text-danger" id="hospitalCode-error" role="alert">
@@ -314,7 +441,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || unknownOutcome || hospitals.length === 0 || !selectedHospitalCode}
+        disabled={pending || unknownOutcome || hospitals.length === 0 || !selectedHospital}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}
