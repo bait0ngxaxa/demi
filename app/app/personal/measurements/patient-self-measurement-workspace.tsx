@@ -37,7 +37,7 @@ const NUMBER_FIELDS = [
 
 function CreateForm({ nonce, defaultMeasuredAt }: { nonce: string; defaultMeasuredAt: string }): React.JSX.Element {
   const prefix = useId();
-  const [state, action, pending, unknownOutcome] = useMutationActionState(createOwnPatientSelfMeasurementAction, idle);
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(createOwnPatientSelfMeasurementAction, idle);
   return (
     <form action={action} className="space-y-4" onSubmit={submitPreservingInput(action)}>
       <input name="submissionNonce" type="hidden" value={nonce} />
@@ -67,7 +67,7 @@ function CreateForm({ nonce, defaultMeasuredAt }: { nonce: string; defaultMeasur
       <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
       {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
       {state.status === "SUCCESS" ? <Alert variant="success">{state.message}</Alert> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <Button disabled={unknownOutcome} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </form>
   );

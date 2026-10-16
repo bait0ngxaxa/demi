@@ -297,6 +297,47 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     expect(await db.auditEvent.count({ where: { resourceId: created.item.measurementId, action: { in: ["patient_self_measurement.created", "patient_self_measurement.deleted"] } } })).toBe(2);
   });
 
+  it("E5: replays a committed measurement after its response is lost without creating a duplicate", async () => {
+    const f = await fixture();
+    const nonce = randomUUID();
+    const input = {
+      submissionNonce: nonce,
+      measuredAt: now.toISOString(),
+      weight: null,
+      systolicBloodPressure: null,
+      diastolicBloodPressure: null,
+      bloodSugar: 110,
+      bloodSugarUnit: "mg/dL",
+      note: null,
+    };
+    let loseResponse = true;
+
+    async function submit(): Promise<Awaited<ReturnType<typeof createOwnPatientSelfMeasurement>>> {
+      const result = await createOwnPatientSelfMeasurement(f.patient, input, dependencies);
+      if (loseResponse) {
+        loseResponse = false;
+        throw new TypeError("Simulated lost response");
+      }
+      return result;
+    }
+
+    await expect(submit()).rejects.toThrow("Simulated lost response");
+    const profile = await db.patientProfile.findUniqueOrThrow({
+      where: { personId: f.patient.personId },
+      select: { id: true },
+    });
+    const measurementWhere = { patientProfileId: profile.id, submissionNonce: nonce };
+    expect(await db.patientSelfMeasurement.count({ where: measurementWhere })).toBe(1);
+
+    const replay = await submit();
+    expect(replay.outcome).toBe("REPLAY");
+    expect(replay.item.bloodSugar).toBe(110);
+    expect(await db.patientSelfMeasurement.count({ where: measurementWhere })).toBe(1);
+    expect(await db.auditEvent.count({
+      where: { action: "patient_self_measurement.created", resourceId: replay.item.measurementId },
+    })).toBe(1);
+  });
+
   it("E5: requires mg/dL as the blood sugar input unit", async () => {
     const f = await fixture();
     const input = {
