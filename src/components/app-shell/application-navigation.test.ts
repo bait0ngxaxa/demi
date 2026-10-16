@@ -199,7 +199,7 @@ describe("application navigation projection", () => {
         .flatMap((group) => group.items)
         .find(({ href }) => href === "/app/family");
 
-      expect(familyItem?.label).toBe("ความสัมพันธ์ผู้ดูแล");
+      expect(familyItem?.label).toBe("ญาติและผู้ดูแล");
     }
   });
 
@@ -219,10 +219,10 @@ describe("application navigation projection", () => {
       }),
     );
 
-    expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
+    expect(labels).toContain("เพิ่มหรือนำเข้าผู้ป่วย");
     expect(labels).toContain("เปิดใช้งานบัญชีผู้ป่วย");
     expect(labels).toContain("รายชื่อผู้ป่วย");
-    expect(labels).toContain("คำขอเปิดใช้งานผู้ป่วย");
+    expect(labels).toContain("คำขอใช้บัญชีผู้ป่วย");
     expect(labels).toContain("คำขอบริการผู้ป่วย");
     expect(labels).not.toContain("บริการที่ผู้ป่วยขอได้");
     // ADR-0008 amendment (D1): a direct MEMBER reaches workforce for OSM only.
@@ -298,7 +298,7 @@ describe("application navigation projection", () => {
       }),
     );
 
-    expect(labels).toContain("เพิ่ม / นำเข้าผู้ป่วย");
+    expect(labels).toContain("เพิ่มหรือนำเข้าผู้ป่วย");
     expect(labels).not.toContain("รายชื่อผู้ป่วย");
     expect(labels).toContain("ผู้ป่วยที่รับผิดชอบ");
     expect(labels).not.toContain("เปิดใช้งานบัญชีผู้ป่วย");

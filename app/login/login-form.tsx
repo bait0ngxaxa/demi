@@ -99,14 +99,14 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
           className="rounded-[14px] bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
           role="status"
         >
-          บัญชีที่ยืนยันตัวตนอยู่ยังไม่สามารถเข้าใช้งาน DEMI ได้
+          บัญชีนี้ยังเข้าใช้งาน DEMI ไม่ได้
           กรุณาใช้บัญชีที่ได้รับการเปิดใช้งาน หรือติดต่อผู้ดูแลระบบ
         </div>
       ) : null}
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
-          เลขบัตรประชาชน / ตัวระบุผู้ดูแลระบบ
+          เลขบัตรประชาชน หรือรหัสผู้ดูแลระบบ
         </label>
         <input
           aria-describedby={errorMessage ? "login-error" : undefined}
@@ -118,7 +118,7 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
           inputMode="text"
           maxLength={32}
           name="nationalId"
-          placeholder="เลขบัตรประชาชน หรือรหัสผู้ดูแลระบบ"
+          placeholder="กรอกเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบ"
           required
           spellCheck={false}
           type="text"
@@ -157,7 +157,7 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}
-        {pending ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
+        {pending ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
       </button>
     </form>
   );

@@ -101,8 +101,8 @@ describe("account security form presentation", () => {
   it("blocks legacy recovery links without requesting a password", () => {
     const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm));
 
-    expect(markup).toContain("การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน");
-    expect(markup).toContain("ลิงก์กู้คืนเดิม");
+    expect(markup).toContain("ยังไม่สามารถกู้คืนรหัสผ่านได้");
+    expect(markup).toContain("ลิงก์กู้คืนที่มีอยู่ใช้เปลี่ยนรหัสผ่านไม่ได้");
     expect(markup).not.toContain("<form");
     expect(markup).not.toContain('name="newPassword"');
     expect(markup).not.toContain("providerAlias");

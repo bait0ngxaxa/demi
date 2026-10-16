@@ -8,7 +8,7 @@ import { listPublicActiveHospitals } from "@/modules/patient-access-requests/ser
 import { PatientAccessRequestForm } from "./patient-access-request-form";
 
 export const metadata: Metadata = {
-  title: "ขอเปิดใช้งานสำหรับผู้ป่วย",
+  title: "ขอใช้บัญชี DEMI",
 };
 
 export default async function PatientAccessRequestPage(): Promise<React.JSX.Element> {
@@ -26,8 +26,8 @@ export default async function PatientAccessRequestPage(): Promise<React.JSX.Elem
         </Link>
         <div className="mt-8">
           <PageHeader
-            description="ช่องทางส่งคำขอเข้าใช้งานสำหรับผู้ป่วย โดยโรงพยาบาลจะตรวจสอบก่อนเปิดใช้งานบัญชี"
-            title="ขอเปิดใช้งานสำหรับผู้ป่วย"
+            description="ส่งคำขอให้โรงพยาบาลตรวจสอบก่อนดำเนินการเพิ่มข้อมูลผู้ป่วยและเปิดใช้งานบัญชี"
+            title="ขอใช้บัญชี DEMI"
           />
         </div>
         <div className="mt-6">

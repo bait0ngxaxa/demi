@@ -29,8 +29,8 @@ export default async function PatientPasswordPage(): Promise<React.JSX.Element> 
       />
       <Panel className="mt-6">
         <p className="break-words text-sm leading-6 text-text-muted">
-          บัญชี DEMI หนึ่งบัญชีใช้ร่วมกันในทุกบทบาทและทุกโรงพยาบาลที่เชื่อมต่อ
-          การเปลี่ยนรหัสผ่านที่นี่จึงเปลี่ยนข้อมูลเข้าสู่ระบบของบัญชีเดียวกัน
+          บัญชี DEMI เดียวกันใช้กับทุกบทบาทและโรงพยาบาลที่คุณสังกัด
+          การเปลี่ยนรหัสผ่านจึงมีผลกับการเข้าสู่ระบบด้วยบัญชีนี้ทั้งหมด
         </p>
         <PasswordChangeForm />
         <Link

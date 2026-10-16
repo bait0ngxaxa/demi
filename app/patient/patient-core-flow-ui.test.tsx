@@ -47,7 +47,7 @@ describe("Patient core flow presentation", () => {
       }),
     );
 
-    expect(markup).toContain("โรงพยาบาลจะตรวจสอบตัวตน");
+    expect(markup).toContain("โรงพยาบาลจะตรวจสอบข้อมูลและยืนยันตัวตนกับผู้ยื่นโดยตรง");
     expect(markup).toContain("การทราบเลขบัตรไม่ใช่หลักฐานยืนยันตัวตน");
     expect(markup).toContain('name="nationalId"');
     expect(markup).toContain('href="/login"');

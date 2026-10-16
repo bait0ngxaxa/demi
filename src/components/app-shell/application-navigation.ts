@@ -284,7 +284,7 @@ export function projectApplicationNavigation(
   if (canProvisionPatients(actor)) {
     patientItems.push({
       href: "/app/patients/provision",
-      label: "เพิ่ม / นำเข้าผู้ป่วย",
+      label: "เพิ่มหรือนำเข้าผู้ป่วย",
       match: "prefix" as const,
     });
   }
@@ -300,7 +300,7 @@ export function projectApplicationNavigation(
   if (canReviewPatientRequests(actor)) {
     patientItems.push({
       href: "/app/patients/access-requests",
-      label: "คำขอเปิดใช้งานผู้ป่วย",
+      label: "คำขอใช้บัญชีผู้ป่วย",
       match: "prefix" as const,
     });
   }
@@ -370,8 +370,8 @@ export function projectApplicationNavigation(
   }
 
   groups.push({
-    label: "ผู้ดูแล",
-    items: [{ href: "/app/family", label: "ความสัมพันธ์ผู้ดูแล", match: "prefix" }],
+    label: "ครอบครัว",
+    items: [{ href: "/app/family", label: "ญาติและผู้ดูแล", match: "prefix" }],
   });
 
   if (actor.roles.some((role) => role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL)) {

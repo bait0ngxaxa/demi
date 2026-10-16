@@ -51,7 +51,7 @@ export default async function LoginPage({
             เข้าถึงงานที่ได้รับอนุญาตอย่างมั่นใจ
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-brand-pale sm:text-lg sm:leading-8">
-            DEMI ตรวจสอบทั้งตัวตนจากผู้ให้บริการและสิทธิ์ของบัญชีในระบบ
+            DEMI ตรวจสอบบัญชีและสิทธิ์เข้าใช้งาน
             ก่อนเปิดพื้นที่ทำงานทุกครั้ง
           </p>
         </div>
@@ -65,43 +65,42 @@ export default async function LoginPage({
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em] text-ink">เข้าสู่ระบบ DEMI</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ใช้เลขบัตรประชาชน หรือตัวระบุผู้ดูแลระบบ และรหัสผ่านของบัญชีที่ได้รับการเปิดใช้งาน
+            ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบแทนเลขบัตรประชาชน
           </p>
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
 
           <p className="mt-4 text-sm leading-6 text-muted">
-            ลืมรหัสผ่าน? โปรดติดต่อโรงพยาบาลที่ดูแล โรงพยาบาลจะตรวจสอบตัวตนก่อนออกลิงก์กู้คืนบัญชีให้คุณ
+            ลืมรหัสผ่าน? ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
           </p>
 
           <section aria-labelledby="patient-access-request-heading" className="mt-7 border-t border-line pt-6">
             <h3 className="text-base font-semibold text-ink" id="patient-access-request-heading">
-              สำหรับผู้ป่วยที่ยังไม่มีบัญชีเข้าใช้งาน
+              สำหรับผู้ป่วยที่ยังไม่มีบัญชี DEMI
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted">
-              ส่งคำขอให้โรงพยาบาลตรวจสอบก่อนเปิดใช้งาน ไม่ใช่การสร้างบัญชีทันที
+              ส่งคำขอให้โรงพยาบาลตรวจสอบก่อน การส่งคำขอยังไม่สร้างหรือเปิดใช้งานบัญชี
             </p>
             <Link
               className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-[12px] border border-line-strong bg-white px-4 py-2 text-center text-sm font-semibold text-ink transition-colors hover:border-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
               href="/patient/access-request"
             >
-              ขอเปิดใช้งานสำหรับผู้ป่วย
+              ส่งคำขอใช้บัญชี DEMI
             </Link>
           </section>
 
           <p className="mt-6 border-t border-line pt-6 text-center text-sm leading-6 text-muted">
-            ต้องการลงทะเบียนโรงพยาบาล?{" "}
+            ต้องการใช้ DEMI ในนามโรงพยาบาล?{" "}
             <Link
               className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
               href="/hospital/onboarding"
             >
-              ส่งคำขอลงทะเบียนโรงพยาบาล
+              ขอใช้งาน DEMI สำหรับโรงพยาบาล
             </Link>
           </p>
 
           <p className="mt-8 text-sm leading-6 text-muted">
-            การเข้าสู่ระบบสำเร็จไม่ได้หมายถึงได้รับสิทธิ์ใช้งานโดยอัตโนมัติ
-            DEMI จะตรวจสอบสถานะบัญชีและบทบาทจากระบบอีกครั้ง
+            การเข้าสู่ระบบไม่ได้เปิดให้ใช้ทุกส่วน ระบบจะแสดงเฉพาะงานที่บัญชีของคุณเข้าใช้ได้
           </p>
         </div>
       </section>

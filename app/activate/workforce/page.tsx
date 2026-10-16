@@ -33,7 +33,7 @@ export default async function WorkforceActivationPage() {
             เปิดใช้งานบัญชี DEMI ครั้งแรก
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-brand-pale sm:text-lg sm:leading-8">
-            ยืนยันตัวตนด้วยเลขบัตรประชาชน แล้วตั้งรหัสผ่านของคุณเองเพื่อเริ่มใช้งานหรือกู้คืนบัญชีที่โรงพยาบาลจัดเตรียมไว้ให้
+            กรอกเลขบัตรประชาชนและตั้งรหัสผ่านของคุณเอง เพื่อเปิดใช้งานบัญชีที่โรงพยาบาลจัดเตรียมไว้ให้
           </p>
         </div>
         <p className="relative mt-12 max-w-md text-sm leading-6 text-brand-pale/80">
@@ -45,7 +45,7 @@ export default async function WorkforceActivationPage() {
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em]">เปิดใช้งานครั้งแรก</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ตรวจสอบชื่อที่แสดง กรอกเลขบัตรประชาชน และตั้งรหัสผ่านที่คุณเป็นเจ้าของเอง แล้วเข้าสู่ระบบผ่านหน้าเข้าสู่ระบบของ DEMI
+            กรอกเลขบัตรประชาชนและตั้งรหัสผ่านของคุณเอง เมื่อเสร็จแล้วให้เข้าสู่ระบบ DEMI
           </p>
           <WorkforceActivationForm />
         </div>

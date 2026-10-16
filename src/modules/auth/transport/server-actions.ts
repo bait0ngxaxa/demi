@@ -28,7 +28,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบตัวระบุเข้าสู่ระบบและรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบและรหัสผ่าน",
     };
   }
 
@@ -40,7 +40,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "AUTH_INFRASTRUCTURE_FAILURE",
-      message: "ระบบยืนยันตัวตนไม่พร้อมใช้งาน กรุณาลองใหม่อีกครั้ง",
+      message: "ขณะนี้เข้าสู่ระบบไม่ได้ กรุณาลองอีกครั้ง",
     };
   }
 
@@ -48,7 +48,7 @@ export async function loginAction(
     return {
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
-      message: "ตัวระบุเข้าสู่ระบบหรือรหัสผ่านไม่ถูกต้อง",
+      message: "ข้อมูลเข้าสู่ระบบไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง",
     };
   }
 

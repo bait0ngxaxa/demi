@@ -50,10 +50,10 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     return (
       <div className="space-y-6" role="status">
         <div className="rounded-[12px] bg-success-soft px-4 py-4 text-success">
-          <p className="font-semibold">ส่งคำขอเรียบร้อยแล้ว</p>
+          <p className="font-semibold">ส่งคำขอแล้ว</p>
           <p className="mt-2 text-sm leading-6">
-            DEMI ได้สร้างบัญชีผู้สมัครและส่งคำขอให้ผู้ดูแลระบบตรวจสอบแล้ว
-            คุณจะยังไม่สามารถเข้าสู่พื้นที่ทำงานได้จนกว่าคำขอจะได้รับการอนุมัติ
+            DEMI สร้างบัญชีผู้สมัครและส่งคำขอให้ตรวจสอบแล้ว
+            คุณจะเข้าใช้งานได้หลังจากคำขอได้รับอนุมัติ
           </p>
         </div>
         <a
@@ -330,7 +330,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}
-        {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอลงทะเบียน"}
+        {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอใช้งาน DEMI"}
       </button>
     </form>
   );

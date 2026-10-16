@@ -7,7 +7,7 @@ import { listAvailableHospitalMaster } from "@/modules/hospital-onboarding/servi
 import { HospitalOnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
-  title: "ลงทะเบียนโรงพยาบาล",
+  title: "ขอใช้งาน DEMI สำหรับโรงพยาบาล",
 };
 
 export default async function HospitalOnboardingPage() {
@@ -33,18 +33,17 @@ export default async function HospitalOnboardingPage() {
           </div>
 
           <div className="relative mt-14 max-w-xl lg:my-auto lg:py-16">
-            <p className="text-sm font-semibold text-brand-bright">ลงทะเบียนโรงพยาบาล</p>
+            <p className="text-sm font-semibold text-brand-bright">ขอใช้งาน DEMI สำหรับโรงพยาบาล</p>
             <h1 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">
-              เริ่มต้นพื้นที่ทำงานของโรงพยาบาลคุณ
+              ส่งคำขอใช้งาน DEMI สำหรับโรงพยาบาล
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-brand-pale sm:text-lg sm:leading-8">
-              เลือกโรงพยาบาลจากรายการที่ DEMI รับรอง แล้วส่งข้อมูลให้ผู้ดูแลระบบตรวจสอบ
-              ก่อนเปิดใช้งานบัญชีและสิทธิ์ของโรงพยาบาล
+              เลือกโรงพยาบาลจากรายชื่อในระบบ แล้วส่งข้อมูลให้ตรวจสอบ
             </p>
           </div>
 
           <p className="relative mt-12 max-w-md text-sm leading-6 text-brand-pale/80">
-            บัญชีผู้สมัครจะอยู่ระหว่างการตรวจสอบจนกว่าจะได้รับการอนุมัติ
+            บัญชีจะเข้าใช้งานได้เมื่อคำขอได้รับอนุมัติ
           </p>
         </section>
 
@@ -52,9 +51,9 @@ export default async function HospitalOnboardingPage() {
           <div className="mx-auto w-full max-w-2xl">
             <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-2">
               <div>
-                <h2 className="text-3xl font-semibold tracking-[-0.03em]">ลงทะเบียนโรงพยาบาล</h2>
+                <h2 className="text-3xl font-semibold tracking-[-0.03em]">ขอใช้งาน DEMI สำหรับโรงพยาบาล</h2>
                 <p className="mt-3 max-w-xl text-base leading-7 text-muted">
-                  กรอกข้อมูลผู้สมัครและสร้างรหัสผ่านที่คุณเป็นเจ้าของเอง
+                  กรอกข้อมูลผู้สมัครและตั้งรหัสผ่านของคุณเอง
                 </p>
               </div>
               <Link

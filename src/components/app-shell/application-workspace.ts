@@ -148,7 +148,7 @@ function projectHospitalActions(
   ) {
     actions.push({
       href: withHospitalContext("/app/patients/provision", hospitalId),
-      label: hasDirectHospitalProvisioningScope(actor, hospitalId) ? "เพิ่ม / นำเข้าผู้ป่วย" : "เพิ่มผู้ป่วย",
+      label: hasDirectHospitalProvisioningScope(actor, hospitalId) ? "เพิ่มหรือนำเข้าผู้ป่วย" : "เพิ่มผู้ป่วย",
       description: "เพิ่มผู้ป่วยในโรงพยาบาลนี้ตามสิทธิ์ปัจจุบัน",
       category: "patient",
     });
@@ -172,7 +172,7 @@ function projectHospitalActions(
   ) {
     actions.push({
       href: "/app/patients/access-requests",
-      label: "คำขอเปิดใช้งานผู้ป่วย",
+      label: "คำขอใช้บัญชีผู้ป่วย",
       description: "ตรวจสอบตัวตนและดำเนินคำขอจากโรงพยาบาลที่บัญชีนี้มีสิทธิ์",
     });
   }
