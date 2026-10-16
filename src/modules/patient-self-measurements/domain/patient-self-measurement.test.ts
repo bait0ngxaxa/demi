@@ -25,7 +25,7 @@ describe("E5 patient self-measurement rules", () => {
   it("requires at least one value within the PatientFollowup range", () => {
     const base = { submissionNonce: "11111111-1111-4111-8111-111111111111", measuredAt: "2026-10-16T10:00:00+07:00", weight: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null, note: "" };
     expect(patientSelfMeasurementCreateSchema.safeParse(base).success).toBe(false);
-    expect(patientSelfMeasurementCreateSchema.safeParse({ ...base, bloodSugar: 110 }).success).toBe(true);
+    expect(patientSelfMeasurementCreateSchema.safeParse({ ...base, bloodSugar: 110, bloodSugarUnit: "mg/dL" }).success).toBe(true);
     expect(patientSelfMeasurementCreateSchema.safeParse({ ...base, weight: -1 }).success).toBe(false);
     expect(patientSelfMeasurementCreateSchema.safeParse({ ...base, weight: 1_000_001 }).success).toBe(false);
     expect(patientSelfMeasurementCreateSchema.safeParse({ ...base, weight: 60, roundNumber: 1 }).success).toBe(false);
