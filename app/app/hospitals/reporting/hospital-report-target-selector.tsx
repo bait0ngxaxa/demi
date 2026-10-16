@@ -49,10 +49,10 @@ export function HospitalReportTargetSelector({
             ))}
           </optgroup>
           {parentGroups.map((group) => (
-            <optgroup key={group.parent.id} label={`Child Hospital · ${group.parent.name}`}>
+            <optgroup key={group.parent.id} label={`โรงพยาบาลลูกข่าย · ${group.parent.name}`}>
               {group.children.length === 0 ? (
                 <option disabled value="">
-                  ยังไม่มี Child Hospital ที่พร้อมให้เลือกรายงาน
+                  ยังไม่มีโรงพยาบาลลูกข่ายที่พร้อมให้เลือกรายงาน
                 </option>
               ) : group.children.map((child) => (
                 <option key={`${group.parent.id}:${child.id}`} value={`PARENT_CHILD:${group.parent.id}:${child.id}`}>

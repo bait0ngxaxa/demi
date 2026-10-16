@@ -68,13 +68,13 @@ describe("Global Admin reporting workspace", () => {
   it("shows database-backed organization counts and complete grouped Hospital choices", () => {
     const markup = render();
 
-    expect(markup).toContain("จำนวนต่อไปนี้มาจาก Hospital ที่บันทึกอยู่จริง");
+    expect(markup).toContain("จำนวนนี้นับโรงพยาบาลที่มีข้อมูลในระบบ");
     expect(markup).toContain("โรงพยาบาลทั้งหมด");
     expect(markup).toContain("โรงพยาบาลแม่ข่าย");
     expect(markup).toContain("โรงพยาบาลลูกข่าย");
     expect(markup).toContain("ค้นหาชื่อหรือรหัสโรงพยาบาล");
     expect(markup).toContain("สถานะโรงพยาบาล");
-    expect(markup).toContain("Patient/Program จะแสดงเฉพาะ Hospital นั้น ไม่รวมข้อมูลจากแม่ข่ายหรือลูกข่าย");
+    expect(markup).toContain("ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและ Program จำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย");
     expect(markup).not.toContain("เปิดใช้เฉพาะ ADMIN");
     expect(markup).not.toContain("สภาพแวดล้อม demo");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
@@ -83,8 +83,8 @@ describe("Global Admin reporting workspace", () => {
     expect(markup).toContain(`/app/admin/reporting?hospitalId=${parentId}`);
     expect(markup).toContain(`/app/admin/reporting?hospitalId=${childId}`);
     expect(markup).toContain("พบ 3 แห่ง จากทั้งหมด 3 แห่ง");
-    expect(markup).toContain("Master ทั้ง 78 แห่งถูกนำเข้าแล้ว");
-    expect(markup).not.toContain("จำนวนผู้ป่วย");
+    expect(markup).toContain("รายชื่ออ้างอิง 78 แห่งไม่ได้หมายความว่าทุกแห่งมีข้อมูลในระบบ");
+    expect(markup).toContain("ไม่ใช่จำนวนผู้ป่วย");
   });
 
   it("keeps pending Hospitals visible but presents no patient report as zero", () => {
@@ -100,7 +100,8 @@ describe("Global Admin reporting workspace", () => {
     };
     const markup = render({ selectedHospital, selectedHierarchy });
 
-    expect(markup).toContain("รายงาน Patient/Program ยังไม่พร้อมใช้งาน");
+    expect(markup).toContain("รายงานผู้ป่วยและ Program ยังไม่พร้อมใช้งาน");
+    expect(markup).not.toMatch(/Patient\/Program|Hospital ที่|Master ทั้ง/u);
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
     expect(markup).not.toContain("Program ทั้งหมด");
     expect(markup).not.toContain("relationship");

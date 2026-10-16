@@ -29,9 +29,9 @@ export function ParentChildHospitalReportWorkspace({
         breadcrumbs={[
           { label: "งานโรงพยาบาลแม่ข่าย", href: `/app#hospital-workspace-${encodeURIComponent(report.parent.id)}` },
           { label: "รายงานโรงพยาบาล", href: "/app/hospitals/reporting" },
-          { label: "รายงาน Child Hospital" },
+          { label: "รายงานโรงพยาบาลลูกข่าย" },
         ]}
-        description="เลือกดูรายงานของ Child Hospital ภายในเครือข่ายได้ทีละแห่ง"
+        description="เลือกโรงพยาบาลลูกข่ายในเครือข่ายเพื่อดูรายงานได้ครั้งละ 1 แห่ง"
         title="รายงานโรงพยาบาล"
       />
 
@@ -52,7 +52,7 @@ export function ParentChildHospitalReportWorkspace({
               โรงพยาบาลแม่ข่าย: {report.parent.name}
             </p>
           </div>
-          <StatusBadge variant="info">รายงาน Child Hospital ผ่านสิทธิ์เจ้าของโรงพยาบาลแม่ข่าย</StatusBadge>
+          <StatusBadge variant="info">รายงานโรงพยาบาลลูกข่ายผ่านสิทธิ์เจ้าของโรงพยาบาลแม่ข่าย</StatusBadge>
         </div>
 
         <Alert className="mt-5" variant="info">

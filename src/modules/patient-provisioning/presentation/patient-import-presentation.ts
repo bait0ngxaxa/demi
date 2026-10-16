@@ -103,9 +103,9 @@ export function getPatientImportResultPresentation(
   const heading = allIdempotent
     ? "ไม่มีผู้ป่วยใหม่ในไฟล์นี้"
     : hasAttentionRows && hasSuccessfulRows
-      ? "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว และยังมีบางรายการที่ต้องแก้ไข"
+      ? "นำเข้าผู้ป่วยใหม่แล้ว และยังมีบางรายการที่ต้องแก้ไข"
       : !hasAttentionRows && summary.imported > 0
-        ? "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว"
+        ? "นำเข้าผู้ป่วยใหม่แล้ว"
         : "ยังไม่มีรายการที่บันทึกได้";
   const detail = allIdempotent
     ? "ผู้ป่วยที่มีอยู่แล้วไม่ถูกสร้างซ้ำและไม่ถูกเปลี่ยนแปลง"
@@ -133,7 +133,7 @@ const patientImportRecoveryGuidanceByAction: Record<
   DATA_REVIEW: {
     kind: "DATA_REVIEW",
     message:
-      "ดาวน์โหลดแถวที่ไม่ผ่าน แก้ไขตามเหตุผลที่ระบุ แล้วนำเข้าไฟล์นั้นอีกครั้ง",
+      "ดาวน์โหลดแถวที่ต้องแก้ไข ตรวจสอบตามเหตุผลที่ระบุ แล้วนำเข้าไฟล์อีกครั้ง",
     detail: "ไม่ต้องลบคอลัมน์ “เหตุผล” ระบบจะไม่นำคอลัมน์นี้ไปใช้",
   },
   RETRY_FAILED: {

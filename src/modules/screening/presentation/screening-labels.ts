@@ -13,6 +13,6 @@ export const SCREENING_ZONE_LABELS: Record<ScreeningZone, string> = {
   GREEN: "โซนสีเขียว",
 };
 
-export const SCREENING_PROTOTYPE_NOTICE_TITLE = "ต้นแบบเพื่อเก็บ Requirement";
+export const SCREENING_PROTOTYPE_NOTICE_TITLE = "แบบประเมินนี้ยังอยู่ระหว่างยืนยันข้อกำหนด";
 export const SCREENING_PROTOTYPE_NOTICE_BODY =
-  "ข้อคำถามและเกณฑ์การประเมินในหน้านี้เป็นต้นแบบอ้างอิงรูปแบบจากระบบ DEMI เดิม และยังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย";
+  "คำถามและเกณฑ์ประเมินในหน้านี้อ้างอิงรูปแบบจากระบบ DEMI เดิม และยังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย";

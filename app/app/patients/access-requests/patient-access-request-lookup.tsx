@@ -46,7 +46,7 @@ export function PatientAccessRequestLookup({ hospitals }: {
       <div aria-live="polite">
         {state.status === "ERROR" ? <Alert className="mt-4" variant="danger">{state.message}</Alert> : null}
         {state.status === "SUCCESS" ? <Alert className="mt-4" variant="info">
-          พบคำขอที่กำลังดำเนินการ กรุณาเปิดรายละเอียดเพื่อตรวจสอบตัวตนและดำเนินการต่อ
+          พบคำขอแล้ว เปิดรายละเอียดเพื่อตรวจสอบสถานะและดำเนินการต่อ
           <Link className="mt-2 flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/patients/access-requests/${encodeURIComponent(state.requestId)}`}>เปิดคำขอที่พบ</Link>
         </Alert> : null}
       </div>

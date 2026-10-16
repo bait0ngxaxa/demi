@@ -330,7 +330,7 @@ export function GlobalAdminReportingWorkspace({
     <div className="min-w-0">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ" }, { label: "รายงานระบบ" }]}
-        description="ดูโครงสร้างหน่วยบริการแบบอ่านอย่างเดียว และรายงาน Hospital ที่เลือก โดย Patient/Program จะแสดงเฉพาะ Hospital นั้น ไม่รวมข้อมูลจากแม่ข่ายหรือลูกข่าย"
+        description="ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและ Program จำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย"
         title="รายงานสำหรับผู้ดูแลระบบ"
       />
 
@@ -339,7 +339,7 @@ export function GlobalAdminReportingWorkspace({
           โครงสร้างองค์กรในระบบ
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-          จำนวนต่อไปนี้มาจาก Hospital ที่บันทึกอยู่จริง ไม่ใช่จำนวน Patient หรือผลรวมทางคลินิก และไม่สมมติว่า Master ทั้ง 78 แห่งถูกนำเข้าแล้ว
+          จำนวนนี้นับโรงพยาบาลที่มีข้อมูลในระบบ ไม่ใช่จำนวนผู้ป่วยหรือยอดทางคลินิก รายชื่ออ้างอิง 78 แห่งไม่ได้หมายความว่าทุกแห่งมีข้อมูลในระบบ
         </p>
         <Panel className="mt-4 p-4 sm:p-5">
           <dl className="grid min-w-0 grid-cols-2 gap-x-6 sm:grid-cols-3 xl:grid-cols-6">
@@ -365,7 +365,7 @@ export function GlobalAdminReportingWorkspace({
           </p>
           {selectedHospital.status !== "ACTIVE" ? (
             <Alert className="mt-4" variant={selectedHospital.status === "SUSPENDED" ? "warning" : "info"}>
-              <p className="font-semibold">รายงาน Patient/Program ยังไม่พร้อมใช้งาน</p>
+              <p className="font-semibold">รายงานผู้ป่วยและ Program ยังไม่พร้อมใช้งาน</p>
               <p className="mt-1 text-sm leading-6">
                 สถานะปัจจุบัน: {statusLabel(selectedHospital.status)} ไม่มีการโหลดหรือแสดงค่ารายงานเป็นศูนย์
               </p>

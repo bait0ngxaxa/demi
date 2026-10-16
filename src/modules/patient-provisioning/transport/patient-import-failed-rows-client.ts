@@ -5,7 +5,7 @@ export type PatientImportFailedRowsDownloadResult =
   | { status: "SUCCESS" }
   | { status: "ERROR"; message: string };
 
-const FALLBACK_MESSAGE = "ดาวน์โหลดแถวที่ไม่ผ่านไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+const FALLBACK_MESSAGE = "ดาวน์โหลดแถวที่ต้องแก้ไขไม่สำเร็จ กรุณาลองอีกครั้ง";
 
 export function createPatientImportFailedRowsFormData(input: {
   file: File;

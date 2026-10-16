@@ -196,7 +196,7 @@ describe("patient import presentation helpers", () => {
     );
 
     expect(guidance.map(({ kind }) => kind)).toEqual(["DATA_REVIEW", "RETRY_FAILED"]);
-    expect(guidance[0]?.message).toContain("ดาวน์โหลดแถวที่ไม่ผ่าน");
+    expect(guidance[0]?.message).toContain("ดาวน์โหลดแถวที่ต้องแก้ไข");
     expect(guidance[0]?.detail).toContain("เหตุผล");
   });
 
@@ -219,7 +219,7 @@ describe("patient import presentation helpers", () => {
     }));
     expect(mixed).toMatchObject({
       variant: "warning",
-      heading: "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว และยังมีบางรายการที่ต้องแก้ไข",
+      heading: "นำเข้าผู้ป่วยใหม่แล้ว และยังมีบางรายการที่ต้องแก้ไข",
       hasSuccessfulRows: true,
       hasAttentionRows: true,
       reviewCount: 1,
@@ -243,7 +243,7 @@ describe("patient import presentation helpers", () => {
     }));
     expect(clean).toMatchObject({
       variant: "success",
-      heading: "นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว",
+      heading: "นำเข้าผู้ป่วยใหม่แล้ว",
       detail: null,
       hasAttentionRows: false,
     });

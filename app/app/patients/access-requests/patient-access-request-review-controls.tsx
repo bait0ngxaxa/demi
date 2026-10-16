@@ -26,7 +26,7 @@ export function PatientAccessRequestReviewControls({
   if (state.status === "SUCCESS") {
     const message =
       state.requestStatus === "COMPLETED"
-        ? "ยืนยันตัวตนแล้ว และพบว่าผู้ป่วยมีบัญชีที่เปิดใช้งานอยู่ ระบบไม่ได้ออก activation"
+        ? "ยืนยันตัวตนแล้ว และพบว่าผู้ป่วยมีบัญชีที่เปิดใช้งานอยู่ ระบบไม่ได้ออกลิงก์เปิดใช้งาน"
         : state.requestStatus === "REJECTED"
           ? "บันทึกผลไม่อนุมัติคำขอแล้ว"
           : "ยืนยันตัวตนและอนุมัติคำขอแล้ว ตรวจสอบขั้นตอนถัดไปด้านล่าง";
@@ -74,7 +74,7 @@ export function PatientAccessRequestReviewControls({
         </label>
 
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-          {pending ? "กำลังตรวจสอบและอนุมัติ..." : "ยืนยันตัวตนและอนุมัติคำขอ"}
+          {pending ? "กำลังตรวจสอบตัวตนและอนุมัติคำขอ..." : "ยืนยันตัวตนและอนุมัติคำขอ"}
         </Button>
       </form>
 
@@ -118,7 +118,7 @@ export function HospitalPatientAccessRequestWithdrawalControl({
   return (
     <div className="mt-5 border-t border-border pt-5">
       <p className="text-sm leading-6 text-text-muted">
-        หากผู้ยื่นคำขอติดต่อโรงพยาบาลเพื่อยกเลิก สามารถบันทึกการถอนคำขอได้ก่อนออก activation
+        หากผู้ยื่นคำขอติดต่อโรงพยาบาลเพื่อยกเลิก สามารถบันทึกการถอนคำขอได้ก่อนออกลิงก์เปิดใช้งาน
       </p>
       <form action={action} className="mt-3">
         <input name="requestId" type="hidden" value={requestId} />

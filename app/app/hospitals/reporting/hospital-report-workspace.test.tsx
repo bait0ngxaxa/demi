@@ -171,7 +171,8 @@ describe("Hospital reporting dashboard presentation", () => {
     const markup = render("overview");
     expect(markup).toContain(`href="/app#hospital-workspace-${hospitalId}"`);
     expect(markup).toContain("<h1");
-    expect(markup).toContain("Dashboard ภาพรวม");
+    expect(markup).toContain("ภาพรวม");
+    expect(markup).not.toContain("Dashboard");
     expect(markup).toContain("รายงานการจัดบริการ");
     expect(markup).toContain("ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล");
     expect(markup).toContain("ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program");
@@ -230,11 +231,14 @@ describe("Hospital reporting dashboard presentation", () => {
       audience: "GLOBAL_ADMIN",
     }));
 
-    expect(markup).toContain("Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้");
+    expect(markup).toContain("ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น");
     expect(markup).toContain("ส่งออก Excel");
     expect(markup).not.toContain("/app/patients/");
-    expect(markup).toContain("การเปิดรายละเอียด Program ใช้สิทธิ์ Hospital แยกต่างหาก");
-    expect(markup).toContain("รายงานนี้ใช้ข้อมูลของ Hospital ที่เลือกเท่านั้น");
+    expect(markup).toContain("การดูรายละเอียด Program ต้องมีสิทธิ์ในโรงพยาบาลโดยตรง");
+    expect(markup).toContain("รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
+    expect(markup).not.toContain("exact-Hospital");
+    expect(markup).not.toContain("Platform ADMIN");
   });
 
   it("does not create a fake Program row when only a relationship without a Program exists", () => {

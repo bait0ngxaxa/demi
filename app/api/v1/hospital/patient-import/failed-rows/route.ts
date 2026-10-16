@@ -48,7 +48,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (!parsed.success || !(file instanceof File)) {
-      throw new ValidationError("ข้อมูลคำขอดาวน์โหลดแถวที่ไม่ผ่านไม่ถูกต้อง");
+      throw new ValidationError("ข้อมูลสำหรับดาวน์โหลดแถวที่ต้องแก้ไขไม่ถูกต้อง");
     }
 
     return patientImportDownloadResponse(

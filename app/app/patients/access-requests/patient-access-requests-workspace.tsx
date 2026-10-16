@@ -33,9 +33,9 @@ export function HospitalPatientAccessRequestsWorkspace({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        breadcrumbs={[{ href: "/app", label: "งาน" }, { label: "คำขอเปิดใช้งานผู้ป่วย" }]}
-        description="ตรวจสอบคำขอในโรงพยาบาลที่คุณเป็นสมาชิกโดยตรง ก่อนใช้ workflow provision และ activation ที่มีอยู่"
-        title="คำขอเปิดใช้งานผู้ป่วย"
+        breadcrumbs={[{ href: "/app", label: "งาน" }, { label: "คำขอใช้บัญชีผู้ป่วย" }]}
+        description="ตรวจสอบคำขอและยืนยันตัวตนกับผู้ยื่นโดยตรง ก่อนเพิ่มข้อมูลผู้ป่วยหรือเปิดใช้งานบัญชี"
+        title="คำขอใช้บัญชีผู้ป่วย"
       />
 
       <p className="mt-4 text-sm leading-6 text-text-muted">รวมคำขอจากทุกโรงพยาบาลที่คุณมีสิทธิ์ทบทวนโดยตรง ไม่กรองตามโรงพยาบาลที่เปิดก่อนหน้า การเลือกโรงพยาบาลในแบบค้นหาด้านล่างใช้กับการค้นหานั้นเท่านั้น</p>
@@ -78,7 +78,7 @@ export function HospitalPatientAccessRequestsWorkspace({
                 className="mt-4 inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                 href={`/app/patients/access-requests/${encodeURIComponent(request.requestId)}`}
               >
-                เปิดรายละเอียดและดำเนินการ
+                เปิดรายละเอียดคำขอ
               </Link>
             </Panel>
           ))}

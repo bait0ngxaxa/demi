@@ -9,7 +9,7 @@ import { appointmentGrantManagementSchema } from "@/modules/family/schemas/appoi
 import { AppointmentSharingWorkspace } from "./appointment-sharing-workspace";
 
 export const metadata: Metadata = {
-  title: "ความสัมพันธ์ผู้ดูแล",
+  title: "ครอบครัวและผู้ดูแล",
 };
 
 export default async function FamilyManagementPage({

@@ -96,7 +96,7 @@ export function PatientActivationActionsWorkspace({
       <PageHeader
         actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
-        description="ออกสิทธิ์เข้าใช้งานเฉพาะผู้ป่วยที่จำเป็นต้องใช้ DEMI โดยผู้ป่วยเป็นผู้ตั้งรหัสผ่านเอง"
+        description="ค้นหาผู้ป่วยในโรงพยาบาลนี้ แล้วออกลิงก์ให้ผู้ป่วยเปิดใช้งานบัญชีและตั้งรหัสผ่านเอง"
         title="เปิดใช้งานบัญชีผู้ป่วย"
       />
 
@@ -157,7 +157,7 @@ export function PatientActivationActionsWorkspace({
                 >
                   <option value="NAME">ชื่อผู้ป่วย</option>
                   <option value="NATIONAL_ID">เลขบัตรประชาชน</option>
-                  <option value="HOSPITAL_NUMBER">HN</option>
+                  <option value="HOSPITAL_NUMBER">HN ของผู้ป่วย</option>
                 </Select>
               </label>
                 <label className="block space-y-2 text-sm font-semibold">
@@ -166,7 +166,7 @@ export function PatientActivationActionsWorkspace({
                     ? "ชื่อผู้ป่วย"
                     : lookupType === "NATIONAL_ID"
                       ? "เลขบัตรประชาชน"
-                      : "HN"}
+                      : "HN ของผู้ป่วย"}
                 </span>
                 <Input
                   aria-describedby="patient-activation-lookup-help"
@@ -239,7 +239,7 @@ export function PatientActivationActionsWorkspace({
                         </h3>
                         <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm leading-6 text-muted sm:grid-cols-2">
                           <div>
-                            <dt className="inline">HN: </dt>
+                            <dt className="inline">HN ของโรงพยาบาล: </dt>
                             <dd className="inline font-semibold text-ink">
                               {candidate.hospitalNumber ?? "ไม่ระบุ"}
                             </dd>

@@ -155,7 +155,7 @@ describe("PatientProvisioningWorkspace form structure", () => {
       }),
     );
 
-    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว");
+    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
     expect(markup).toContain("ยังไม่มีสิทธิ์ดำเนินการต่อ");
     expect(markup).not.toContain('href="/app/patients/44444444-4444-4444-8444-444444444444"');
     expect(markup).not.toContain('href="/app/patients/activation');
@@ -224,7 +224,7 @@ describe("PatientProvisioningWorkspace form structure", () => {
       }),
     );
 
-    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว");
+    expect(markup).toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
     expect(markup).not.toContain("อยู่ในสถานะรอเปิดใช้งาน");
     expect(markup).not.toContain("จัดการการเปิดใช้งานบัญชีผู้ป่วย");
     expect(markup).not.toContain('href="/app/patients/activation');
@@ -250,10 +250,10 @@ describe("PatientProvisioningWorkspace form structure", () => {
       `href="/api/v1/hospital/patient-import/template?hospitalId=${hospitalId}"`,
     );
     expect(markup).toContain('download="DEMI_patient_import_TEST-HOSPITAL_v2.xlsx"');
-    expect(markup).toContain("ดาวน์โหลด Template ของ โรงพยาบาลทดสอบ");
-    expect(markup).toContain("กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
+    expect(markup).toContain("ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ โรงพยาบาลทดสอบ");
+    expect(markup).toContain("ใช้ไฟล์ตัวอย่าง Excel ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
     expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
-    expect(markup).toContain("Template ใช้ได้กับโรงพยาบาลนี้เท่านั้น");
+    expect(markup).toContain("ไฟล์นี้ใช้ได้กับโรงพยาบาลนี้เท่านั้น");
     expect(markup).not.toContain("/templates/demi-patient-import-template");
     expect(markup).not.toContain("PATIENT_IMPORT_TEMPLATE_VERSION");
     expect(markup).not.toContain("contractVersion");

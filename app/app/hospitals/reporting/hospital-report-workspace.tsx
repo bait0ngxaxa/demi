@@ -29,7 +29,7 @@ import { HospitalReportTargetSelector } from "./hospital-report-target-selector"
 type ReportView = "overview" | "service";
 
 const REPORT_VIEWS: readonly { label: string; value: ReportView }[] = [
-  { label: "Dashboard ภาพรวม", value: "overview" },
+  { label: "ภาพรวม", value: "overview" },
   { label: "รายงานการจัดบริการ", value: "service" },
 ];
 
@@ -200,7 +200,7 @@ function HospitalReportingHierarchy({
             <dd className="mt-1 text-sm leading-6 text-text-muted">แสดงความสัมพันธ์แม่ข่ายและลูกข่ายโดยตรงแบบอ่านอย่างเดียว</dd>
           </div>
           <div className="border-t border-border py-3">
-            <dt className="font-semibold text-text">Dashboard ผลรวมเครือข่าย</dt>
+            <dt className="font-semibold text-text">ภาพรวมเครือข่าย</dt>
             <dd className="mt-1 text-sm leading-6 text-text-muted">ยังไม่เปิดใช้งาน ระหว่างรอกติกาคุ้มครองข้อมูล เงื่อนไขผู้มีสิทธิ์ และการตีความข้อมูลย้อนหลัง</dd>
           </div>
           <div className="border-t border-border py-3">
@@ -274,7 +274,7 @@ function ProgramDetailAccess({
     </Link>
   ) : (
     <p className="text-right text-xs leading-5 text-text-muted">
-      การเปิดรายละเอียด Program ใช้สิทธิ์ Hospital แยกต่างหาก
+      การดูรายละเอียด Program ต้องมีสิทธิ์ในโรงพยาบาลโดยตรง
     </p>
   );
 }
@@ -613,7 +613,7 @@ export function HospitalReportWorkspace({
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
           : [{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
         description={isGlobalAdmin
-          ? "Platform ADMIN → โรงพยาบาลที่เลือก → รายงาน Patient/Program เฉพาะโรงพยาบาลนี้"
+          ? "ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น"
           : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
         title="รายงานโรงพยาบาล"
       />
@@ -621,7 +621,7 @@ export function HospitalReportWorkspace({
       {isGlobalAdmin ? (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-3xl text-sm leading-6 text-text-muted">
-            รายงานนี้ใช้ข้อมูลของ Hospital ที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
+            รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
           </p>
           <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
             กลับไปภาพรวมและเลือกโรงพยาบาล
@@ -662,7 +662,7 @@ export function HospitalReportWorkspace({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
-            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงาน exact-Hospital ของหน่วยนี้" : "การเข้าถึง: เจ้าของโรงพยาบาลนี้โดยตรง"}</p>
+            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงานเฉพาะโรงพยาบาลที่เลือก" : "เจ้าของโรงพยาบาลนี้เข้าถึงได้โดยตรง"}</p>
           </div>
         </div>
 
@@ -697,7 +697,7 @@ export function HospitalReportWorkspace({
       <section aria-labelledby={view === "overview" ? "overview-heading" : "service-heading"} className="mt-5">
         <div className="mb-4">
           <h2 className="text-2xl font-semibold text-text" id={view === "overview" ? "overview-heading" : "service-heading"}>
-            {view === "overview" ? "Dashboard ภาพรวม" : "รายงานการจัดบริการ"}
+            {view === "overview" ? "ภาพรวม" : "รายงานการจัดบริการ"}
           </h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
             {view === "overview"

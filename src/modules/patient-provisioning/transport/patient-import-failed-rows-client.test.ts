@@ -89,7 +89,7 @@ describe("failed-rows download client", () => {
 
     expect(await downloadPatientImportFailedRows({ file, preview, failedRowNumbers: [] })).toMatchObject({
       status: "ERROR",
-      message: expect.stringContaining("ดาวน์โหลดแถวที่ไม่ผ่านไม่สำเร็จ"),
+      message: expect.stringContaining("ดาวน์โหลดแถวที่ต้องแก้ไขไม่สำเร็จ"),
     });
   });
 });

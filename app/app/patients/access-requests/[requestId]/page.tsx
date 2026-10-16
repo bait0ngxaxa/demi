@@ -17,7 +17,7 @@ import {
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const metadata: Metadata = {
-  title: "ตรวจสอบคำขอเปิดใช้งานผู้ป่วย",
+  title: "ตรวจสอบคำขอใช้บัญชีผู้ป่วย",
 };
 
 type PatientAccessRequestDetailPageProps = {
@@ -79,11 +79,11 @@ export default async function PatientAccessRequestDetailPage({
         <PageHeader
           breadcrumbs={[
             { href: "/app", label: "งาน" },
-            { href: "/app/patients/access-requests", label: "คำขอเปิดใช้งานผู้ป่วย" },
+            { href: "/app/patients/access-requests", label: "คำขอใช้บัญชีผู้ป่วย" },
             { label: "รายละเอียดคำขอ" },
           ]}
-          description="National ID ในคำขอเป็นข้อมูลอ้างอิงเท่านั้น โรงพยาบาลต้องตรวจยืนยันตัวตนโดยตรงก่อนอนุมัติ"
-          title="ตรวจสอบคำขอเปิดใช้งานผู้ป่วย"
+          description="เลขบัตรประชาชนในคำขอเป็นข้อมูลอ้างอิงเท่านั้น โรงพยาบาลต้องยืนยันตัวตนกับผู้ยื่นโดยตรงก่อนอนุมัติ"
+          title="ตรวจสอบคำขอใช้บัญชีผู้ป่วย"
         />
 
         <Panel className="mt-6">
@@ -131,15 +131,15 @@ export default async function PatientAccessRequestDetailPage({
 
           {request.status === "ACTIVATION_ISSUED" ? (
             <Alert className="mt-5" variant="info">
-              <p className="font-semibold">ส่งลิงก์เปิดใช้งานให้ผู้ป่วยแล้ว</p>
+              <p className="font-semibold">ออกลิงก์เปิดใช้งานแล้ว</p>
               <p className="mt-1 leading-6">
-                ผู้ป่วยเป็นผู้ตั้งรหัสผ่านเอง หากต้องออกลิงก์ใหม่ ให้ใช้ workflow เปิดใช้งานเดิมของโรงพยาบาล
+                ผู้ป่วยตั้งรหัสผ่านเองได้เมื่อเปิดลิงก์ที่ออกไว้ ลิงก์นี้แสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ ให้ค้นหาผู้ป่วยที่หน้าเปิดใช้งานบัญชี การออกใหม่จะยกเลิกลิงก์เดิมที่ยังใช้ได้
               </p>
               <Link
                 className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4"
                 href={`/app/patients/activation?hospitalId=${encodeURIComponent(request.hospitalId)}`}
               >
-                ไปยัง workflow เปิดใช้งานบัญชีผู้ป่วย
+                ไปที่หน้าเปิดใช้งานบัญชีผู้ป่วย
               </Link>
             </Alert>
           ) : null}
@@ -148,7 +148,7 @@ export default async function PatientAccessRequestDetailPage({
             <Alert className="mt-5" variant="success">
               <p className="font-semibold">ผู้ป่วยมีบัญชีที่เปิดใช้งานอยู่แล้ว</p>
               <p className="mt-1 leading-6">
-                ระบบไม่ได้สร้างบัญชี ออก activation หรือเปลี่ยนรหัสผ่าน ให้ผู้ป่วยเข้าสู่ระบบตามปกติ หากลืมรหัสผ่านให้ใช้ช่องทางช่วยเหลือจากโรงพยาบาล
+                ระบบไม่ได้สร้างบัญชี ออกลิงก์เปิดใช้งาน หรือเปลี่ยนรหัสผ่าน ผู้ป่วยเข้าสู่ระบบได้ตามปกติ หากลืมรหัสผ่าน ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
               </p>
               <Link
                 className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4"
@@ -197,7 +197,7 @@ function ApprovedRequestNextStep({
     return (
       <div className="mt-5 border-t border-border pt-5">
         <Alert variant="success">
-          พบ Patient ที่ผ่านการ provision แล้วในโรงพยาบาลนี้ สามารถใช้ activation เดิมเพื่อให้ผู้ป่วยตั้งรหัสผ่านเอง
+          พบข้อมูลผู้ป่วยที่เพิ่มไว้ในโรงพยาบาลนี้แล้ว สามารถเปิดใช้งานบัญชีต่อได้จากคำขอนี้ โดยผู้ป่วยจะตั้งรหัสผ่านเอง
         </Alert>
         <PatientActivationHandoff
           linkedOutcome="READY_FOR_ACTIVATION"
@@ -227,18 +227,18 @@ function ApprovedRequestNextStep({
     <div className="mt-5 border-t border-border pt-5">
       <Alert variant="warning">
         <p className="font-semibold">
-          {noPerson ? "ยังไม่พบข้อมูล Patient ที่ provision แล้ว" : "ต้องตรวจสอบหรือ provision ข้อมูล Patient ก่อน"}
+          {noPerson ? "ยังไม่พบข้อมูลผู้ป่วยที่เพิ่มไว้ในโรงพยาบาลนี้" : "ข้อมูลผู้ป่วยยังไม่พร้อมเปิดใช้งานบัญชี"}
         </p>
         <p className="mt-1 leading-6">
-          {patientName ? `พบข้อมูลของ ${patientName} แต่ยังขาดสถานะที่จำเป็น` : "คำขอนี้ไม่สร้าง Person หรือบัญชีผู้ใช้โดยอัตโนมัติ"}
-          {" "}ใช้ workflow provision เดิม แล้วกลับมาดำเนินการ activation ต่อจากคำขอนี้
+          {patientName ? `พบข้อมูลของ ${patientName} แล้ว แต่ยังเปิดใช้งานบัญชีไม่ได้` : "คำขอนี้ยังไม่มีข้อมูลผู้ป่วยในโรงพยาบาล"}
+          {" "}ตรวจสอบหรือเพิ่มข้อมูลผู้ป่วยในโรงพยาบาลนี้ แล้วกลับมาเปิดใช้งานบัญชีจากคำขอนี้
         </p>
       </Alert>
       <Link
         className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4"
         href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}
       >
-        ไปยัง workflow เพิ่ม / นำเข้าผู้ป่วย
+        ไปหน้าเพิ่มหรือนำเข้าผู้ป่วย
       </Link>
     </div>
   );

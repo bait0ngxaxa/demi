@@ -23,7 +23,7 @@ export const MAX_PATIENT_IMPORT_RESOURCE_DIMENSION_AREA = 65_536;
 export const MAX_PATIENT_IMPORT_RESOURCE_XML_DEPTH = 64;
 
 export const PATIENT_IMPORT_XLSX_RESOURCE_LIMIT_MESSAGE =
-  "ไฟล์ Excel มีโครงสร้างภายในเกินขนาดที่ระบบรองรับ กรุณาใช้ Template ของระบบและตรวจสอบไฟล์อีกครั้ง";
+  "ไฟล์ Excel มีข้อมูลภายในมากกว่าที่ระบบรองรับ กรุณาใช้ไฟล์ตัวอย่าง Excel ของระบบแล้วลองอีกครั้ง";
 export const PATIENT_IMPORT_XLSX_MALFORMED_MESSAGE =
   "ไฟล์ Excel ไม่ถูกต้องหรือไม่สามารถอ่านได้";
 

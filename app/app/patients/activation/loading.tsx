@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PatientActivationWorkspaceLoading(): React.JSX.Element {
   return (
-    <LoadingRegion className="w-full" label="กำลังโหลดพื้นที่เปิดใช้งานบัญชีผู้ป่วย...">
+    <LoadingRegion className="w-full" label="กำลังโหลดหน้าเปิดใช้งานบัญชีผู้ป่วย...">
       <PageHeaderSkeleton />
       <div className="space-y-6 pt-8">
         <PanelSkeleton rows={2} />

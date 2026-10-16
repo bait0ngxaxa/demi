@@ -8,7 +8,7 @@ export default function HospitalPatientAccessRequestsLoading(): React.JSX.Elemen
       <Panel>
         <div className="h-20 rounded-control bg-surface-muted" />
       </Panel>
-      <span className="sr-only">กำลังโหลดคำขอเปิดใช้งานผู้ป่วย</span>
+      <span className="sr-only">กำลังโหลดคำขอใช้บัญชีผู้ป่วย</span>
     </div>
   );
 }

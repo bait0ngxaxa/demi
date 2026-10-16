@@ -13,13 +13,13 @@ export const PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS = 500 as const;
 export const PATIENT_IMPORT_TEMPLATE_DATA_END_ROW =
   PATIENT_IMPORT_TEMPLATE_DATA_START_ROW + PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS - 1;
 export const PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE =
-  "รูปแบบไฟล์ไม่ตรงกับ Template รายชื่อผู้ป่วยของระบบ กรุณาดาวน์โหลด Template ล่าสุดและกรอกข้อมูลใหม่";
+  "รูปแบบไฟล์ไม่ตรงกับไฟล์ตัวอย่าง Excel ของระบบ กรุณาดาวน์โหลดไฟล์ตัวอย่างล่าสุดแล้วกรอกข้อมูลใหม่";
 
 export function createPatientImportTemplateHospitalMismatchMessage(hospital: {
   hospitalName: string;
   hospitalCode: string;
 }): string {
-  return `ไฟล์นี้ไม่ได้จัดทำสำหรับ ${hospital.hospitalName} (${hospital.hospitalCode}) กรุณาดาวน์โหลด Template ของโรงพยาบาลที่เลือกแล้วกรอกข้อมูลใหม่`;
+  return `ไฟล์นี้ไม่ได้จัดทำสำหรับ ${hospital.hospitalName} (${hospital.hospitalCode}) กรุณาดาวน์โหลดไฟล์ตัวอย่าง Excel ของโรงพยาบาลที่เลือกแล้วกรอกข้อมูลใหม่`;
 }
 
 export const PATIENT_IMPORT_FAILED_ROWS_DOWNLOAD_PATH =

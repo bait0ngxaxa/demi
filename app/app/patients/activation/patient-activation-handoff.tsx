@@ -284,9 +284,9 @@ export function PatientActivationHandoff({
       return (
         <Alert className="mt-4" variant="success">
           <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
-          <p className="mt-1">ไม่มีการออก activation หรือเปลี่ยนรหัสผ่าน</p>
+          <p className="mt-1">ไม่ได้ออกลิงก์เปิดใช้งานหรือเปลี่ยนรหัสผ่าน</p>
           <p className="mt-1">
-            ให้ผู้ป่วยเข้าสู่ระบบตามปกติ หากลืมรหัสผ่านให้ใช้ช่องทางช่วยเหลือจากโรงพยาบาล
+            ผู้ป่วยเข้าสู่ระบบได้ตามปกติ หากลืมรหัสผ่าน ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
           </p>
         </Alert>
       );
@@ -324,11 +324,11 @@ export function PatientActivationHandoff({
         {linkedOutcome === "ALREADY_ACTIVE" ? (
           <Alert variant="info">
             <p className="font-semibold">พบว่าบัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
-            <p className="mt-1">ยืนยันผลนี้เพื่อปิดคำขอ ระบบจะไม่ออก activation และไม่เปลี่ยนรหัสผ่าน</p>
+            <p className="mt-1">ยืนยันผลนี้เพื่อปิดคำขอ ระบบจะไม่ออกลิงก์เปิดใช้งานหรือเปลี่ยนรหัสผ่าน</p>
           </Alert>
         ) : (
           <p className="text-sm leading-6 text-text-muted">
-            ใช้การเปิดใช้งานครั้งเดียวที่มีอยู่ ผู้ป่วยจะตั้งรหัสผ่านด้วยตนเอง
+            เปิดใช้งานบัญชีผู้ป่วยจากคำขอนี้ ผู้ป่วยจะตั้งรหัสผ่านด้วยตนเอง
           </p>
         )}
         <LinkedIssueForm

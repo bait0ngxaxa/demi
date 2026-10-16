@@ -179,7 +179,7 @@ export function FamilyInvitationPreview(): React.JSX.Element {
   return (
     <div className="max-w-3xl">
       <PageHeader
-        breadcrumbs={[{ label: "ความสัมพันธ์ผู้ดูแล", href: "/app/family" }, { label: "คำเชิญ" }]}
+        breadcrumbs={[{ label: "ครอบครัวและผู้ดูแล", href: "/app/family" }, { label: "คำเชิญ" }]}
         description="ตรวจสอบคำเชิญสำหรับบัญชีที่เข้าสู่ระบบ และเลือกตอบรับหรือปฏิเสธด้วยตนเอง"
         title="คำเชิญผู้ดูแล"
       />
@@ -217,7 +217,7 @@ export function FamilyInvitationPreview(): React.JSX.Element {
             className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
             href="/app/family"
           >
-            กลับไปหน้าความสัมพันธ์ผู้ดูแล
+            กลับไปหน้าครอบครัวและผู้ดูแล
           </Link>
         </Alert>
       ) : null}

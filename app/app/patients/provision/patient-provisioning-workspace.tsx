@@ -277,7 +277,7 @@ function ProvisionResult({
 
   return (
     <Alert className="mt-4" variant="success">
-      <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยเรียบร้อยแล้ว</p>
+      <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยแล้ว</p>
       <p className="mt-1 text-muted">{accountMessage}</p>
       <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
       <ProvisionContinuation result={state.result} />
@@ -565,7 +565,7 @@ function FailedRowsDownloadButton({
         type="button"
         variant="secondary"
       >
-        {pending ? "กำลังสร้างไฟล์..." : "ดาวน์โหลดแถวที่ไม่ผ่าน"}
+        {pending ? "กำลังสร้างไฟล์..." : "ดาวน์โหลดแถวที่ต้องแก้ไข"}
       </Button>
       {errorMessage ? (
         <p aria-live="polite" className="text-sm text-danger">
@@ -1160,9 +1160,9 @@ export function PatientProvisioningWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">เพิ่มผู้ป่วย</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่ม / นำเข้าผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่มหรือนำเข้าผู้ป่วย" }]}
         description="เพิ่มข้อมูลผู้ป่วยเข้าสู่ DEMI โดยไม่สร้างบัญชีซ้ำ และไม่รับรหัสผ่านจากผู้ดำเนินการ"
-        title="เพิ่ม / นำเข้าผู้ป่วย"
+        title="เพิ่มหรือนำเข้าผู้ป่วย"
       />
 
       <div className="pt-8">
@@ -1204,18 +1204,18 @@ export function PatientProvisioningWorkspace({
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2 text-sm leading-6">
               <p className="font-semibold text-ink">
-                กรุณาใช้ Template ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย
+                ใช้ไฟล์ตัวอย่าง Excel ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย
               </p>
               <a
                 className={buttonClassName({ size: "compact", variant: "secondary" })}
                 download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
                 href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
               >
-                ดาวน์โหลด Template ของ {selectedScope.hospitalName}
+                ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
               </a>
               <p className="text-xs text-muted">รองรับสูงสุด 500 รายการต่อไฟล์</p>
               <p className="text-xs text-muted">
-                Template ใช้ได้กับโรงพยาบาลนี้เท่านั้น หากแก้ไขหัวตารางหรือเพิ่มคอลัมน์ ระบบจะไม่รับไฟล์
+                ไฟล์นี้ใช้ได้กับโรงพยาบาลนี้เท่านั้น หากแก้ไขหัวตารางหรือเพิ่มคอลัมน์ ระบบจะไม่รับไฟล์
               </p>
             </div>
             <LocalNavigation
@@ -1236,7 +1236,7 @@ export function PatientProvisioningWorkspace({
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มผู้ป่วยรายบุคคล</h2>
               <p className="mt-2 text-sm leading-6 text-muted">
-                ใช้ข้อมูลขั้นต่ำเพื่อสร้างข้อมูลผู้ป่วยและความสัมพันธ์กับโรงพยาบาลนี้
+                ใช้กรอกข้อมูลที่จำเป็นเพื่อเพิ่มผู้ป่วยในโรงพยาบาลนี้
               </p>
             </div>
             <form
@@ -1264,7 +1264,7 @@ export function PatientProvisioningWorkspace({
                 {fieldError(provisionState, "nationalId") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "nationalId")}</span> : null}
               </label>
               <label className="block space-y-2 text-sm font-semibold">
-                <span>HN <span className="font-normal text-muted">(ไม่บังคับ)</span></span>
+                <span>HN ของโรงพยาบาลนี้ <span className="font-normal text-muted">(ไม่บังคับ)</span></span>
                 <Input aria-invalid={Boolean(fieldError(provisionState, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
                 {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
               </label>
@@ -1360,7 +1360,7 @@ export function PatientProvisioningWorkspace({
                     <p>{previewState.message}</p>
                     {previewState.message === PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE ? (
                       <p className="mt-1">
-                        กรุณาดาวน์โหลด Template ล่าสุดแล้วกรอกข้อมูลใหม่
+                        กรุณาดาวน์โหลดไฟล์ตัวอย่าง Excel ล่าสุดแล้วกรอกข้อมูลใหม่
                       </p>
                     ) : null}
                     <a
@@ -1372,7 +1372,7 @@ export function PatientProvisioningWorkspace({
                       download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
                       href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
                     >
-                      ดาวน์โหลด Template ของ {selectedScope.hospitalName}
+                      ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
                     </a>
                   </Alert>
                 ) : null}

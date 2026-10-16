@@ -109,7 +109,7 @@ export async function createPatientImportFailedRowsDownload(
   }
 
   if (failedRows.length === 0) {
-    throw new ValidationError("ไม่มีแถวที่ไม่ผ่านให้ดาวน์โหลด");
+    throw new ValidationError("ไม่มีแถวที่ต้องแก้ไขให้ดาวน์โหลด");
   }
 
   const workbook = await createPatientImportFailedRowsWorkbook(target, failedRows);

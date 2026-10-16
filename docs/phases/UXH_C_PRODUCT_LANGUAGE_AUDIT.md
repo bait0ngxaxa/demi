@@ -1,15 +1,15 @@
 # UXH-C Product Language Audit
 
-สถานะเอกสาร: ดำเนินการตาม UXH-C.1; จะเติมผลตรวจ workflow ใน C.2 และ QA ข้ามระบบใน C.3
+สถานะเอกสาร: UXH-C.1 เสร็จแล้ว; C.2 ตรวจและปรับถ้อยคำ workflow รายบทบาทแล้ว; C.3 และการตรวจภาพจริงยังดำเนินต่อ
 จุดเริ่มต้น: d73c64d69a0a4acac5796b47d8adabcd1160264f
 
 ## 1. ขอบเขตและหลักตัดสิน
 
 งานนี้ปรับเฉพาะข้อความที่ผู้ใช้เห็น โดยยึดลำดับแหล่งข้อมูลใน [docs/CONTEXT.md](../CONTEXT.md): ทิศทาง Product Owner ล่าสุด, Accepted ADR, เอกสารผลิตภัณฑ์ปัจจุบัน แล้วจึงตรวจทานกับการทำงานจริงและเอกสารระยะก่อนหน้า
 
-C.1 ครอบคลุมหน้าเข้าสู่ระบบและกู้คืนบัญชี, การขอใช้ DEMI สำหรับโรงพยาบาล, การขอใช้บัญชี DEMI สำหรับผู้ป่วย, การเปิดใช้งานบัญชีบุคลากร, การเปลี่ยนรหัสผ่าน และชื่อใน navigation/workspace หลัก การตรวจงานผู้ป่วยและงานดูแลรายบทบาทยังทำต่อใน C.2/C.3
+C.1 ครอบคลุมหน้าเข้าสู่ระบบและกู้คืนบัญชี, การขอใช้ DEMI สำหรับโรงพยาบาล, การขอใช้บัญชี DEMI สำหรับผู้ป่วย, การเปิดใช้งานบัญชีบุคลากร, การเปลี่ยนรหัสผ่าน และชื่อใน navigation/workspace หลัก C.2 ตรวจ workflow ผู้ป่วย การดูแล ครอบครัว/ผู้ดูแล บุคลากร และรายงานโรงพยาบาล/ผู้ดูแลระบบ; C.3 จะตรวจความสม่ำเสมอและ accessibility ข้ามระบบ
 
-## 2. หน้าที่และส่วนประกอบที่ตรวจใน C.1
+## 2. หน้าที่และส่วนประกอบที่ตรวจ
 
 - app/login/ — หน้าเข้าสู่ระบบ ลิงก์คำขอของผู้ป่วยและโรงพยาบาล สถานะเข้าใช้ไม่ได้ และคำแนะนำเมื่อลืมรหัสผ่าน
 - app/recover/, app/app/personal/password/ — ข้อจำกัดการกู้คืนและผลของการเปลี่ยนรหัสผ่าน
@@ -18,10 +18,17 @@ C.1 ครอบคลุมหน้าเข้าสู่ระบบแล�
 - app/activate/workforce/ — คำแนะนำเปิดใช้งานครั้งแรก
 - src/components/app-shell/ — ชื่อกลุ่มนำทาง รายการผู้ป่วย และข้อความ workspace
 - src/modules/auth/transport/server-actions.ts — ข้อความผิดพลาดการเข้าสู่ระบบที่ส่งถึงผู้ใช้
+- app/app/patients/access-requests/, activation/, provision/ — การตรวจคำขอผู้ป่วย เพิ่มข้อมูล และลิงก์เปิดใช้งาน
+- app/app/patients/ และ app/app/personal/ — รายชื่อผู้ป่วย การคัดกรอง/ข้อมูลตั้งต้น/Program/ติดตามผล นัดหมาย และบริการตนเอง; คงคำถามและศัพท์คลินิกที่ไม่มีข้อยุติ
+- app/app/family/ — คำเชิญ ความสัมพันธ์ผู้ดูแล การยุติความสัมพันธ์ และสิทธิ์ดูนัดหมายแยกต่างหาก
+- app/app/workforce/, app/activate/workforce/ — การเพิ่มบุคลากร/อสม. การเปิดใช้งาน สถานะความสัมพันธ์ และการนำออก
+- app/app/hospitals/knowledge/, reporting/, support/ — วงจรเนื้อหา รายงานตามขอบเขต และการรับทราบรายงานปัญหา
+- app/app/admin/reporting/, hospital-onboarding/ — รายงานโรงพยาบาลที่เลือกและการตรวจคำขอขึ้นทะเบียน
+- app/api/v1/hospital/patient-import/failed-rows/route.ts — ข้อความผิดพลาดสำหรับดาวน์โหลดแถวที่ต้องแก้ไข
 
 ## 3. กลุ่มผู้ใช้ที่ครอบคลุม
 
-C.1 ตรวจภาษาสาธารณะของผู้ป่วยและผู้สมัครโรงพยาบาล, ภาษาสำหรับบุคลากรที่เปิดใช้งานครั้งแรก และชื่อ navigation ที่แสดงตามบทบาทผู้ป่วย อสม. บุคลากรโรงพยาบาล และผู้ดูแลระบบ DEMI การตรวจ workflow เต็มของแต่ละบทบาทยังไม่เสร็จ ณ C.1
+C.1 ตรวจภาษาสาธารณะของผู้ป่วยและผู้สมัครโรงพยาบาล, ภาษาสำหรับบุคลากรที่เปิดใช้งานครั้งแรก และ navigation ตามบทบาท C.2 ตรวจการเพิ่ม/เปิดใช้งานผู้ป่วย, งานดูแลและบันทึกบริการ, ความสัมพันธ์และการแชร์นัดหมายในครอบครัว, การจัดการบุคลากร/อสม., การเผยแพร่เนื้อหา, รายงาน และการตรวจคำขอโรงพยาบาล ครอบคลุมผู้ป่วย, อสม., สมาชิก/เจ้าของโรงพยาบาล, ญาติ/ผู้ดูแล และผู้ดูแลระบบ โดยคงอำนาจตาม role และขอบเขตโรงพยาบาลเดิม
 
 ## 4. อภิธานศัพท์
 
@@ -29,6 +36,8 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 |---|---|---|---|---|
 | Patient | บุคคลและบัญชีผู้ใช้เป็นคนละสถานะ | ผู้ป่วย | หน้าผู้ป่วยและการดูแล | PRODUCT.md; ADR-0001, ADR-0004 |
 | Hospital | หน่วยบริการในระบบ | โรงพยาบาล | ทุกบทบาท | ADR-0003; PRODUCT.md |
+| HN | เลขประจำตัวผู้ป่วยภายในโรงพยาบาลนั้น | HN ของผู้ป่วย / HN ของโรงพยาบาลนี้ เมื่อจำเป็นต้องบอกขอบเขต | ค้นหา/ระบุผู้ป่วย | patient-directory and import contracts |
+| Parent / Child Hospital | ความสัมพันธ์หน่วยบริการแม่ข่ายและหน่วยบริการใต้สังกัดโดยตรง | โรงพยาบาลแม่ข่าย / โรงพยาบาลลูกข่าย | รายงานและโครงสร้างโรงพยาบาล | PRODUCT.md; reporting requirements |
 | Hospital OWNER / MEMBER | บทบาทสมาชิกโรงพยาบาลที่มีอำนาจต่างกัน | OWNER DECISION REQUIRED — อย่าเพิ่งกำหนดชื่อไทยกลางที่อาจสื่อถึงเจ้าของกิจการหรืออำนาจเกินจริง | Workforce / สิทธิ์โรงพยาบาล | ADR-0003; ADR-0008 |
 | OSM | อาสาสมัครสาธารณสุขประจำหมู่บ้าน | อสม. | งานภาคสนามและการมอบหมาย | PRODUCT.md; docs/CONTEXT.md |
 | Caregiver | ผู้เกี่ยวข้องที่ผู้ป่วยเชิญ | ญาติหรือผู้ดูแล | ครอบครัว; คำเชิญไม่ให้สิทธิ์ดูข้อมูลเอง | ADR-0001; family flow |
@@ -41,9 +50,11 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 | Goal Plan | แผนและกิจกรรมตาม workflow | OWNER DECISION REQUIRED — canonical source ไม่อนุมัติให้เรียก “แผนสุขภาพ” โดยอัตโนมัติ | Goals / activity | canonical requirements |
 | Appointment / Follow-up | นัดหมาย / การติดตาม | นัดหมาย / ติดตามผล | Patient / Hospital / caregiver | PRODUCT.md; workflow requirements |
 | Service 1 / Service 2 | ชื่อบริการตามกระบวนการที่แยกกัน | คง Service 1 / Service 2 จนมีชื่อทางการ; OWNER DECISION REQUIRED สำหรับคำไทยของ Service 2 | Care journey | canonical requirements |
-| Program | การลงทะเบียนและติดตามตามโปรแกรม | โปรแกรม | Patient service workflow | PRODUCT.md; service requirements |
+| Program | การลงทะเบียนและติดตามตามรายการบริการที่กำหนด | Program (คงชื่อที่ใช้ในเอกสารผลิตภัณฑ์และรายงาน) | Patient service workflow / reporting | PRODUCT.md; service requirements |
 | Hospital reporting | รายงานภายใต้ขอบเขตที่อนุญาต | รายงานโรงพยาบาล; ระบุข้อมูลและขอบเขตตามหน้าจริง | Hospital / Platform Admin | reporting requirements |
 | Import / Export | อ่านไฟล์นำเข้า / นำข้อมูลออก | นำเข้าจาก Excel / ดาวน์โหลดรายงาน ตามการกระทำจริง | Roster / reporting | import and reporting contracts |
+| Patient access request | คำขอสาธารณะเพื่อให้โรงพยาบาลตรวจสอบและดำเนินการตามขั้นตอน | คำขอใช้บัญชีผู้ป่วย | ผู้ป่วย / โรงพยาบาล | AUTH-04; ADR-0004 |
+| Issued activation link | ลิงก์ครั้งเดียวสำหรับผู้ป่วยตั้งรหัสผ่าน | ออกลิงก์เปิดใช้งานแล้ว (ไม่เท่ากับส่งถึงหรือเปิดใช้งานแล้ว) | Patient activation | ADR-0004; Patient Activation contract |
 | Pending / review / approved / rejected | สถานะคนละขั้นตอน | รอตรวจสอบ / กำลังตรวจสอบ / อนุมัติคำขอแล้ว / ไม่อนุมัติคำขอ ตามบริบท | Onboarding / request review | PRODUCT.md; canonical business flows |
 
 คำในอภิธานศัพท์ที่ต้องรอคำตัดสินจะไม่ถูกแทนด้วยคำไทยที่คาดเดา และข้อความทางคลินิกจะไม่ถูกเขียนใหม่จากความต้องการด้านสำนวนเพียงอย่างเดียว
@@ -59,6 +70,12 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 | เปิดใช้งานบุคลากร | “เริ่มใช้งานหรือกู้คืนบัญชี” | เปิดใช้งานครั้งแรกด้วยลิงก์และตั้งรหัสผ่านเอง | การเปิดใช้งานครั้งแรกไม่ใช่การกู้คืนบัญชี | ADR-0008 (amended); ADR-0012 | สูง | CHANGED |
 | Navigation | “เพิ่ม / นำเข้า”, กลุ่ม “ผู้ดูแล” สำหรับครอบครัว | “เพิ่มหรือนำเข้า”; “ครอบครัว / ญาติและผู้ดูแล” | ชื่อรายการตรงกับการกระทำและไม่ชนกับผู้ดูแลระบบ | PRODUCT.md; shared navigation | ต่ำ | CHANGED |
 | เปลี่ยนรหัสผ่าน | ข้อความเรื่องบทบาทและโรงพยาบาลซ้ำซ้อน | ระบุว่าบัญชีเดียวกันใช้กับโรงพยาบาลที่สังกัดและผลมีต่อบัญชีนี้ทั้งหมด | คงผลกระทบจริงของการเปลี่ยนรหัสผ่านให้เข้าใจง่าย | account-security flow | กลาง | CHANGED |
+| คำขอใช้บัญชีผู้ป่วย | ชื่อหน้าสื่อว่าเป็นคำขอ “เปิดใช้งาน” และคำค้นใช้ศัพท์ National ID / workflow | “คำขอใช้บัญชีผู้ป่วย”, “เลขบัตรประชาชน”; แยกอนุมัติคำขอ ออกลิงก์ และเปิดใช้งานบัญชี | ผู้ยื่นส่งคำขอได้ แต่โรงพยาบาลต้องตรวจตัวตน เพิ่มข้อมูล และออกลิงก์ตามลำดับ; การออกลิงก์ไม่ได้ยืนยันว่าผู้ป่วยเปิดใช้งานแล้ว | AUTH-04; ADR-0004; ADR-0012; Patient Activation contract | สูง | CHANGED |
+| การเพิ่ม/นำเข้าผู้ป่วย | “Template”, “แถวที่ไม่ผ่าน”, และผลสำเร็จที่ยาวเกินจำเป็น | “ไฟล์ตัวอย่าง Excel”, “แถวที่ต้องแก้ไข”, “เพิ่มข้อมูลผู้ป่วยแล้ว” | คงความต่างระหว่าง preview กับ import, รายการที่มีอยู่แล้วกับข้อผิดพลาด และผลนำเข้าบางส่วน | Patient import contract | สูง | CHANGED |
+| แบบคัดกรอง | “ต้นแบบเพื่อเก็บ Requirement” | “แบบประเมินนี้ยังอยู่ระหว่างยืนยันข้อกำหนด” พร้อมบอกว่ายังไม่ใช่ข้อกำหนดทางคลินิกฉบับสุดท้าย | ลดศัพท์ภายในโดยคงข้อจำกัดทางคลินิกไว้ครบ ไม่กล่าวอ้างว่ารับรองแล้ว | PRODUCT.md; screening requirements | สูง | CHANGED |
+| รายงานโรงพยาบาล / ผู้ดูแลระบบ | “Platform ADMIN”, “Patient/Program”, “exact-Hospital”, “Child Hospital”, “Dashboard” | อธิบายข้อมูลผู้ป่วยและ Program ของโรงพยาบาลที่เลือก; ใช้ “โรงพยาบาลลูกข่าย” และ “ภาพรวม” | คงรายงานเฉพาะโรงพยาบาลที่เลือก, สิทธิ์ดูรายละเอียด Program แยกกัน และข้อจำกัดผลรวมเครือข่าย | PRODUCT.md; Reporting Access Canonical; ADR-0003 | สูง | CHANGED |
+| ครอบครัวและผู้ดูแล | ชื่อหน้า “ความสัมพันธ์ผู้ดูแล” ไม่สอดคล้องกับกลุ่ม navigation | “ครอบครัวและผู้ดูแล” ในชื่อหน้าและ breadcrumb | ผู้ใช้เข้าใจส่วนงานได้โดยไม่ขยายสิทธิ์; การเชื่อมความสัมพันธ์ยังไม่เปิดข้อมูลสุขภาพ | family flow; appointment grant contract | สูง | CHANGED |
+| Workforce, appointment และ content lifecycle | ป้ายระงับบัญชีกับระงับความสัมพันธ์, ลิงก์ครั้งเดียว, การถอน/เก็บถาวร, คำขอยกเลิกนัด | คงคำแยกตามผลจริงและคำเตือนผลกระทบที่มีอยู่ | แยกบัญชีกับความสัมพันธ์, ระงับชั่วคราวกับนำออกถาวร, คำขอยกเลิกกับยกเลิกนัด และร่าง/เผยแพร่/ถอน/เก็บถาวร | ADR-0008; workforce/content/appointment contracts | สูง | ALREADY CORRECT |
 
 ## 6. ความหมายและอำนาจที่คงไว้
 
@@ -66,16 +83,23 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 - คงข้อจำกัดบัญชีผู้ป่วย: ส่งคำขอแล้วไม่เท่ากับสร้างบัญชี อนุมัติ หรือเปิดใช้งาน
 - คงการแสดงข้อผิดพลาดเข้าสู่ระบบแบบทั่วไปเพื่อไม่เปิดเผยว่าบัญชีมีอยู่หรือไม่
 - คงขอบเขตบัญชีเดียวกันเมื่อผู้ใช้เปลี่ยนรหัสผ่าน
+- คงขอบเขต Hospital ของแต่ละรายงาน, สิทธิ์แยกสำหรับเปิดรายละเอียด Program, และการไม่แสดงข้อมูล/ตัวชี้วัดที่ยังไม่มีแหล่งหรือการตีความที่อนุมัติ
+- คงการแชร์นัดหมายแบบอ่านอย่างเดียวเป็นสิทธิ์แยกจากคำเชิญ/ความสัมพันธ์ผู้ดูแล และคงการยกเลิกสิทธิ์ตามผู้มีอำนาจเดิม
+- ไม่เปลี่ยนคำถาม คะแนน การจัดกลุ่มทางคลินิก หรือสถานะงานบริการ
 
 ## 7. ข้อความที่ตั้งใจคงไว้
 
-| ตำแหน่ง | ข้อความ / ประเด็น | เหตุผล | แหล่งอ้างอิง | สถานะ |
+| ตำแหน่ง | ข้อความ / ประเด็น | เหตุผล | แหล่งอ้างอิง | ความเสี่ยง | สถานะ |
 |---|---|---|---|---|
-| shared unknown-outcome alert และหน้าที่ใช้ alert | ผลยังไม่ยืนยัน; ให้แยกโหลดสถานะ ตรวจสอบ และส่งซ้ำตามสัญญาของแต่ละ action | เป็นสัญญากู้คืน UXH-B ห้ามแปลความเป็น “ล้มเหลว” หรือสั่ง retry เพิ่ม | docs/phases/UXH_B_INTERACTION_STATE_AUDIT.md | PRESERVED FOR SAFETY |
-| แบบคำขอผู้ป่วย / การตรวจสอบ | เลขบัตรเป็นข้อมูลอ้างอิง ไม่ใช่หลักฐานยืนยันตัวตน; ตรวจยืนยันกับผู้ยื่นโดยตรง | ข้อจำกัดความเป็นส่วนตัวและการยืนยันตัวตน | AUTH-04; ADR-0012 | PRESERVED FOR SAFETY |
-| การออกลิงก์เปิดใช้งาน | ลิงก์เดิมแสดงซ้ำไม่ได้; การออกใหม่ยกเลิกลิงก์เดิม | credential เป็นความลับและใช้ครั้งเดียว | ADR-0004; ADR-0008; UXH-B | PRESERVED FOR SAFETY |
-| src/modules/screening/presentation/screening-labels.ts | ประกาศว่าข้อกำหนดแบบสอบถาม/การให้คะแนนยังอยู่ระหว่างยืนยัน | เป็นข้อจำกัดทางคลินิกที่ยังไม่อนุมัติขั้นสุดท้าย | Clinical requirements; UXH-B | PRESERVED FOR SAFETY |
-| คำอธิบายข้อมูลระบุตัวตนในแบบสมัครโรงพยาบาล | เก็บไว้ตามข้อความเดิม | ข้อความเกี่ยวกับการใช้ข้อมูลส่วนบุคคลมีผลทางความเป็นส่วนตัว/กฎหมาย | PRODUCT.md; onboarding contract | PRESERVED FOR SAFETY |
+| shared unknown-outcome alert และหน้าที่ใช้ alert | ผลยังไม่ยืนยัน; ให้แยกโหลดสถานะ ตรวจสอบ และส่งซ้ำตามสัญญาของแต่ละ action | เป็นสัญญากู้คืน UXH-B ห้ามแปลความเป็น “ล้มเหลว” หรือสั่ง retry เพิ่ม | docs/phases/UXH_B_INTERACTION_STATE_AUDIT.md | สูง | PRESERVED FOR SAFETY |
+| แบบคำขอผู้ป่วย / การตรวจสอบ | เลขบัตรเป็นข้อมูลอ้างอิง ไม่ใช่หลักฐานยืนยันตัวตน; ตรวจยืนยันกับผู้ยื่นโดยตรง | ข้อจำกัดความเป็นส่วนตัวและการยืนยันตัวตน | AUTH-04; ADR-0012 | สูง | PRESERVED FOR SAFETY |
+| การออกลิงก์เปิดใช้งาน | ลิงก์เดิมแสดงซ้ำไม่ได้; การออกใหม่ยกเลิกลิงก์เดิม | credential เป็นความลับและใช้ครั้งเดียว | ADR-0004; ADR-0008; UXH-B | สูง | PRESERVED FOR SAFETY |
+| คำเชิญผู้ดูแล / สิทธิ์ดูนัดหมาย | การตอบรับคำเชิญไม่เปิดข้อมูลสุขภาพ; สิทธิ์ดูนัดหมายต้องเสนอและยอมรับแยก และอ่านได้ตามขอบเขตที่ผู้ป่วยอนุญาต | รักษาความเข้าใจเรื่องการยินยอมและขอบเขตข้อมูล | family flow; appointment grant contract | สูง | PRESERVED FOR SAFETY |
+| คำขอยกเลิกนัดของผู้ป่วย | ส่งคำขอแล้วนัดหมายยังไม่ถูกยกเลิก | การยกเลิกต้องผ่านการดำเนินการของโรงพยาบาล | appointment interaction contract | สูง | PRESERVED FOR SAFETY |
+| การระงับและนำบุคลากรออก | การระงับความสัมพันธ์ต่างจากบัญชีถูกระงับ; “นำออกจากระบบถาวร” ย้อนกลับไม่ได้ | ป้องกันความเข้าใจผิดเรื่องผลต่อบัญชี/โรงพยาบาลอื่นและประวัติ | ADR-0008; workforce contract | สูง | PRESERVED FOR SAFETY |
+| รายงานที่ไม่มีแหล่งข้อมูลหรือสูตรที่อนุมัติ | ระบุว่าไม่มีข้อมูล, ยังสรุปไม่ได้, หรือยังไม่ได้รับอนุญาตตามสาเหตุ | ป้องกันการแสดงค่าศูนย์หรือข้อสรุปทางคลินิกที่ไม่มีหลักฐาน | Reporting Access Canonical; PRODUCT.md | สูง | PRESERVED FOR SAFETY |
+| src/modules/screening/presentation/screening-labels.ts | ประกาศว่าข้อกำหนดแบบสอบถาม/การให้คะแนนยังอยู่ระหว่างยืนยัน | เป็นข้อจำกัดทางคลินิกที่ยังไม่อนุมัติขั้นสุดท้าย | Clinical requirements; UXH-B | สูง | PRESERVED FOR SAFETY |
+| คำอธิบายข้อมูลระบุตัวตนในแบบสมัครโรงพยาบาล | เก็บไว้ตามข้อความเดิม | ข้อความเกี่ยวกับการใช้ข้อมูลส่วนบุคคลมีผลทางความเป็นส่วนตัว/กฎหมาย | PRODUCT.md; onboarding contract | สูง | PRESERVED FOR SAFETY |
 
 ## 8. คำที่ต้องให้เจ้าของผลิตภัณฑ์ตัดสิน
 
@@ -88,6 +112,8 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 ## 9. การตรวจและผลการทดสอบ
 
 C.1: npm run test -- app/activate/activation-interactions.test.tsx app/login/login-page.test.tsx app/hospital/onboarding/onboarding-page.test.tsx app/patient/patient-core-flow-ui.test.tsx app/patient/access-request/patient-access-request-form.test.tsx src/components/app-shell/application-navigation.test.ts src/modules/account-security/transport/account-security-forms.test.tsx src/modules/auth/transport/server-actions.test.ts — ผ่าน 8 ไฟล์ 68 tests. Lint และ typecheck จะรันหลังข้อความทุกระยะคงที่; ผลตรวจ C.2/C.3 จะเพิ่มเมื่อจบแต่ละระยะ
+
+C.2: `npm run test -- app/app/patients/access-requests/patient-access-request-detail-copy.test.tsx app/app/patients/activation/patient-activation-interactions.test.tsx app/app/patients/provision/patient-provisioning-workspace-interactions.test.tsx src/modules/patient-provisioning/presentation/patient-import-presentation.test.ts src/modules/patient-provisioning/transport/patient-import-failed-rows-client.test.ts src/modules/patient-provisioning/transport/patient-import-result-ui.test.ts src/modules/patient-provisioning/transport/patient-provisioning-workspace.test.ts app/app/family/family-pages.test.tsx app/app/family/invitations/family-invitation-preview.test.tsx app/app/family/family-management-recovery.test.tsx app/app/hospitals/reporting/hospital-report-workspace.test.tsx app/app/hospitals/reporting/parent-child-hospital-report-workspace.test.tsx app/app/admin/reporting/global-admin-reporting-workspace.test.tsx app/patient/patient-core-flow-ui.test.tsx src/modules/screening/presentation` — ตรวจผ่านรวม 14 ไฟล์ 70 tests ในชุด C.2 และการทดสอบย่อยที่ตามมา. Lint/typecheck และ C.3 ยังไม่รัน
 
 ## 10. สิ่งที่ส่งต่อให้ UXH-D
 

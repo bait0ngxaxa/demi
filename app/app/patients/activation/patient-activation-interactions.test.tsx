@@ -110,8 +110,24 @@ describe("Patient activation search and link issuance", () => {
     });
 
     const article = container.querySelector("article")!;
-    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ระบบอาจออกลิงก์แล้ว");
+    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
     expect(article.querySelector("form")).toBeNull();
     expect(mocks.issue).toHaveBeenCalledTimes(1);
+  });
+
+  it("labels an issued link without implying that the patient activated the account", async () => {
+    mocks.find.mockResolvedValue({
+      status: "SUCCESS",
+      candidates: [{ ...candidate, activationStatus: "ISSUED" }],
+    });
+
+    await search("สมชาย");
+
+    const article = container.querySelector("article")!;
+    expect(article.textContent).toContain("ออกลิงก์แล้ว");
+    expect(article.textContent).not.toContain("เปิดใช้งานแล้ว");
+    expect(article.textContent).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
+    expect(article.textContent).toContain("ระบบจะยกเลิกลิงก์เดิมทันที");
   });
 });

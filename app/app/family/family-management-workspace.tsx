@@ -428,8 +428,8 @@ export function FamilyManagementWorkspace({
   return (
     <div className="max-w-4xl">
       <PageHeader
-        description="จัดการคำเชิญและสถานะความสัมพันธ์ผู้ดูแล โดยข้อมูลส่วนนี้ไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพของผู้ป่วย"
-        title="ความสัมพันธ์ผู้ดูแล"
+        description="จัดการคำเชิญและความสัมพันธ์ระหว่างผู้ป่วยกับผู้ดูแล การเชื่อมความสัมพันธ์ไม่ทำให้เข้าถึงข้อมูลสุขภาพของผู้ป่วย"
+        title="ครอบครัวและผู้ดูแล"
       />
       <Alert className="mt-6" variant="info">
         <p className="font-semibold">การเชื่อมนี้ยังไม่ให้สิทธิ์เข้าถึงข้อมูลผู้ป่วย</p>

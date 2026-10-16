@@ -160,7 +160,7 @@ describe("import result UI", () => {
   it("offers the failed-rows download and the bulk OSM assignment to an owner", () => {
     const markup = render(mixed, true);
 
-    expect(markup).toContain("ดาวน์โหลดแถวที่ไม่ผ่าน");
+    expect(markup).toContain("ดาวน์โหลดแถวที่ต้องแก้ไข");
     expect(markup).toContain(`href="/app/patients/assign-osm?hospitalId=${hospitalId}"`);
     expect(markup).toContain("กำหนด อสม.");
     expect(markup).toContain("เลขบัตรประชาชนไม่ถูกต้อง");
@@ -172,13 +172,13 @@ describe("import result UI", () => {
 
     expect(markup).not.toContain("/app/patients/assign-osm");
     expect(markup).toContain("เจ้าของโรงพยาบาลเป็นผู้กำหนด อสม. หลังนำเข้า");
-    expect(markup).toContain("ดาวน์โหลดแถวที่ไม่ผ่าน");
+    expect(markup).toContain("ดาวน์โหลดแถวที่ต้องแก้ไข");
   });
 
   it("offers neither download nor OSM link when nothing was imported and nothing failed", () => {
     const markup = render(summary([resultRow(3, "ALREADY_EXISTS"), resultRow(4, "ALREADY_EXISTS")]), true);
 
-    expect(markup).not.toContain("ดาวน์โหลดแถวที่ไม่ผ่าน");
+    expect(markup).not.toContain("ดาวน์โหลดแถวที่ต้องแก้ไข");
     expect(markup).not.toContain("/app/patients/assign-osm");
     expect(markup).toContain("ไม่มีผู้ป่วยใหม่ในไฟล์นี้");
   });

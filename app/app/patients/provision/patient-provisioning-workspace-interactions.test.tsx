@@ -271,7 +271,7 @@ describe("Patient import review dialog interactions", () => {
       button(mounted, "ยืนยันนำเข้า 1 รายการ").click();
     });
 
-    const downloadButton = button(mounted, "ดาวน์โหลดแถวที่ไม่ผ่าน");
+    const downloadButton = button(mounted, "ดาวน์โหลดแถวที่ต้องแก้ไข");
     expect(downloadButton.disabled).toBe(true);
     await act(async () => {
       downloadButton.click();
@@ -293,7 +293,7 @@ describe("Patient import review dialog interactions", () => {
 
     const resultDialog = currentDialog(mounted);
     expect(resultDialog.querySelector("h2")?.textContent).toBe("ผลการนำเข้าผู้ป่วย");
-    expect(resultDialog.textContent).toContain("นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว");
+    expect(resultDialog.textContent).toContain("นำเข้าผู้ป่วยใหม่แล้ว");
     expect(resultDialog.textContent).toContain("สมหญิง");
     expect(document.activeElement).toBe(resultDialog.querySelector("h2"));
 
@@ -308,7 +308,7 @@ describe("Patient import review dialog interactions", () => {
     });
     const reopenedDialog = currentDialog(mounted);
     expect(reopenedDialog.querySelector("h2")?.textContent).toBe("ผลการนำเข้าผู้ป่วย");
-    expect(reopenedDialog.textContent).toContain("นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว");
+    expect(reopenedDialog.textContent).toContain("นำเข้าผู้ป่วยใหม่แล้ว");
     expect(reopenedDialog.textContent).toContain("สมหญิง");
     expect(document.activeElement).toBe(reopenedDialog.querySelector("h2"));
   });
@@ -323,7 +323,7 @@ describe("Patient import review dialog interactions", () => {
 
     const dialog = currentDialog(mounted);
     expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-    expect(dialog.textContent).not.toContain("นำเข้าผู้ป่วยใหม่เรียบร้อยแล้ว");
+    expect(dialog.textContent).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
     const confirmButton = button(mounted, "ยืนยันนำเข้า 1 รายการ");
     expect(confirmButton.disabled).toBe(true);
     await act(async () => {

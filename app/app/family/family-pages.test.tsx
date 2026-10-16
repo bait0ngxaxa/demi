@@ -35,9 +35,11 @@ describe("Family relationship management pages", () => {
 
     expect(markup).toContain("ผู้ที่ดูแลคุณ");
     expect(markup).toContain("ผู้ที่คุณดูแล");
+    expect(markup).toContain("ครอบครัวและผู้ดูแล");
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแล");
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้");
     expect(markup).toContain("ไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพ");
+    expect(markup).toContain("การเชื่อมความสัมพันธ์ไม่ทำให้เข้าถึงข้อมูลสุขภาพของผู้ป่วย");
   });
 
   it("shows bounded caregiver identity beside Patient management actions", () => {
@@ -125,6 +127,7 @@ describe("Family relationship management pages", () => {
     const markup = renderToStaticMarkup(<FamilyInvitationPreview />);
 
     expect(markup).toContain("กำลังตรวจสอบคำเชิญ");
+    expect(markup).toContain("ครอบครัวและผู้ดูแล");
     expect(markup).not.toContain("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล");
     expect(markup).not.toContain("ปฏิเสธคำเชิญ");
   });

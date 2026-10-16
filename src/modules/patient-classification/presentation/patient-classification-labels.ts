@@ -9,7 +9,7 @@ export const patientClassificationLabels: Record<PatientClassificationType, stri
 };
 
 export const patientClassificationSourceLabels: Record<PatientClassificationSource, string> = {
-  ROSTER_IMPORT: "นำเข้าจาก roster",
+  ROSTER_IMPORT: "นำเข้าจาก Excel",
   MANUAL: "แก้ไขในระบบ",
 };
 
