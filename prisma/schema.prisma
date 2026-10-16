@@ -434,6 +434,7 @@ model User {
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
+  patientHospitalRelationshipsEnded PatientHospitalRelationship[] @relation("PatientHospitalRelationshipsEnded")
   screeningAssessmentsConducted ScreeningAssessment[] @relation("ScreeningAssessmentConductedBy")
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
@@ -835,11 +836,16 @@ model PatientHospitalRelationship {
   patientProfileId String   @db.Uuid
   hospitalId       String   @db.Uuid
   hospitalNumber   String?  @db.VarChar(64)
+  /// Phase F (ก-18): care with this Hospital ended; terminal, history retained. See activePatientHospitalRelationshipWhere.
+  endedAt          DateTime?
+  endedByUserId    String?  @db.Uuid
+  endReason        String?  @db.VarChar(500)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Cascade)
   hospital       Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  endedByUser    User?          @relation("PatientHospitalRelationshipsEnded", fields: [endedByUserId], references: [id], onDelete: Restrict)
   appointmentGrants CaregiverAppointmentGrant[]
   healthHistory PatientHospitalHealthHistory?
   hospitalProfile PatientHospitalProfile?
@@ -861,6 +867,7 @@ model PatientHospitalRelationship {
   @@unique([id, patientProfileId])
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
+  @@index([endedByUserId])
 }
 
 model PatientHospitalProfile {

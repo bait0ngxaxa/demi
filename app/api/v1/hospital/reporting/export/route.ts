@@ -40,17 +40,20 @@ function safeFilenamePart(value: string): string {
 
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const queryEntries = [...url.searchParams.entries()];
+  const queryKeys = [...url.searchParams.keys()];
   if (
-    queryEntries.length !== 1 ||
-    queryEntries[0]?.[0] !== "hospitalId" ||
-    url.searchParams.getAll("hospitalId").length !== 1
+    url.searchParams.getAll("hospitalId").length !== 1 ||
+    url.searchParams.getAll("cohort").length > 1 ||
+    queryKeys.some((key) => key !== "hospitalId" && key !== "cohort")
   ) {
     return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
+  // Phase F: optional cohort=INCLUDE_ENDED ("รวมผู้ที่สิ้นสุดการดูแล"); omitted means the ACTIVE cohort.
+  const cohort = url.searchParams.get("cohort");
   const parsed = hospitalReportExportRequestSchema.safeParse({
     hospitalId: url.searchParams.get("hospitalId"),
+    ...(cohort === null ? {} : { cohort }),
   });
   if (!parsed.success) {
     return NextResponse.json({ error: "ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง" }, { status: 400, headers: NO_STORE_HEADERS });

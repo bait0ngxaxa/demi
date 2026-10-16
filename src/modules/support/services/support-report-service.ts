@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { HospitalStatus, MembershipStatus, MembershipType, Prisma, Role, SupportReportCategory, SupportReportStatus, UserStatus, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { supportReportCreateSchema, supportReportInboxQuerySchema, supportReportLocatorSchema, supportReportStatusSchema } from "../schemas/support-report-schemas";
@@ -25,6 +26,7 @@ function activeRoleScope(actor: ActorContext): Prisma.HospitalWhereInput[] {
     const patientScope: Prisma.HospitalWhereInput = {
       patientRelationships: {
         some: {
+          ...activePatientHospitalRelationshipWhere,
           patientProfile: {
             is: {
               person: {

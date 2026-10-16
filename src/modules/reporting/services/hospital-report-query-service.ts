@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
 import { screeningResultSchema } from "@/modules/screening/schemas/screening-schemas";
@@ -49,6 +50,7 @@ import {
   hospitalReportExportRequestSchema,
   hospitalReportPageRequestSchema,
   parentChildHospitalReportRequestSchema,
+  type HospitalReportCohort,
 } from "../schemas/hospital-report-schemas";
 import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
 import {
@@ -123,8 +125,20 @@ const cursorPayloadSchema = z
   })
   .strict();
 
-const reportHospitalProgramWhere = (hospitalId: string): Prisma.PatientProgramWhereInput => ({
-  patientHospitalRelationship: { is: { hospitalId } },
+/** Phase F: the ACTIVE cohort (default) excludes relationships whose care ended; INCLUDE_ENDED keeps their history. */
+const reportRelationshipWhere = (
+  hospitalId: string,
+  cohort: HospitalReportCohort,
+): Prisma.PatientHospitalRelationshipWhereInput => ({
+  hospitalId,
+  ...(cohort === "ACTIVE" ? activePatientHospitalRelationshipWhere : {}),
+});
+
+const reportHospitalProgramWhere = (
+  hospitalId: string,
+  cohort: HospitalReportCohort = "ACTIVE",
+): Prisma.PatientProgramWhereInput => ({
+  patientHospitalRelationship: { is: reportRelationshipWhere(hospitalId, cohort) },
   status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
 });
 
@@ -801,15 +815,17 @@ async function countProgramRelatedRows(
 async function loadSummary(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
+  cohort: HospitalReportCohort = "ACTIVE",
 ): Promise<HospitalReportingSummary> {
+  const relationshipWhere = reportRelationshipWhere(hospitalId, cohort);
   const [relationshipCount, relationshipsWithoutProgram, programGroups] = await Promise.all([
-    database.patientHospitalRelationship.count({ where: { hospitalId } }),
+    database.patientHospitalRelationship.count({ where: relationshipWhere }),
     database.patientHospitalRelationship.count({
-      where: { hospitalId, programs: { none: {} } },
+      where: { ...relationshipWhere, programs: { none: {} } },
     }),
     database.patientProgram.groupBy({
       by: ["status"],
-      where: reportHospitalProgramWhere(hospitalId),
+      where: reportHospitalProgramWhere(hospitalId, cohort),
       _count: { _all: true },
     }),
   ]);
@@ -965,6 +981,9 @@ async function loadHospitalReportingPage(
   }
 
   const pageSize = request.pageSize ?? HOSPITAL_REPORT_DEFAULT_PAGE_SIZE;
+  // Phase F: the cohort is a filter, not an authority dimension, so it travels with the request rather than the
+  // signed cursor (whose actor/Hospital/page-size/operation binding is unchanged); the keyset fits both cohorts.
+  const cohort = request.cohort ?? "ACTIVE";
   const cursor = decodeCursor(request.cursor, {
     actorId: access.actor.userId,
     hospitalId: access.hospital.id,
@@ -972,7 +991,7 @@ async function loadHospitalReportingPage(
     operation: access.operation,
   });
   const where: Prisma.PatientProgramWhereInput = {
-    ...reportHospitalProgramWhere(access.hospital.id),
+    ...reportHospitalProgramWhere(access.hospital.id, cohort),
     ...reportCursorWhere(cursor),
   };
   const [records, summary] = await Promise.all([
@@ -982,7 +1001,7 @@ async function loadHospitalReportingPage(
       take: pageSize + 1,
       select: hospitalReportPageProgramSelect,
     }),
-    loadSummary(database, access.hospital.id),
+    loadSummary(database, access.hospital.id, cohort),
   ]);
   const hasMore = records.length > pageSize;
   const pageRecords = hasMore ? records.slice(0, pageSize) : records;
@@ -1009,6 +1028,7 @@ async function loadHospitalReportingPage(
       hospitalCode: access.hospital.hospitalCode,
       name: access.hospital.name,
     },
+    cohort,
     counts: summary,
     page: {
       items,
@@ -1199,8 +1219,9 @@ function assertExportBounds(input: {
 async function countExportSourceRows(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
+  cohort: HospitalReportCohort = "ACTIVE",
 ): Promise<{ programs: number; followups: number; goalPlans: number; activityProgress: number; goalItems: number }> {
-  const programWhere = reportHospitalProgramWhere(hospitalId);
+  const programWhere = reportHospitalProgramWhere(hospitalId, cohort);
   const followupWhere: Prisma.PatientFollowupWhereInput = {
     patientProgram: { is: programWhere },
   };
@@ -1222,6 +1243,7 @@ async function countExportSourceRows(
 async function loadHospitalReportingDataset(
   actor: ActorContext | null | undefined,
   hospitalId: string,
+  cohort: HospitalReportCohort,
   database: HospitalReportQueryDatabase,
   operation: ReportScopeOperation,
 ): Promise<HospitalReportingDataset> {
@@ -1232,17 +1254,17 @@ async function loadHospitalReportingDataset(
     "export",
     database,
   );
-  const bounds = await countExportSourceRows(database, access.hospital.id);
+  const bounds = await countExportSourceRows(database, access.hospital.id, cohort);
   assertExportBounds(bounds);
 
   const [programRecords, counts] = await Promise.all([
     database.patientProgram.findMany({
-      where: reportHospitalProgramWhere(access.hospital.id),
+      where: reportHospitalProgramWhere(access.hospital.id, cohort),
       orderBy: [{ startedAt: "desc" }, { id: "desc" }],
       take: HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS + 1,
       select: hospitalReportExportProgramSelect,
     }),
-    loadSummary(database, access.hospital.id),
+    loadSummary(database, access.hospital.id, cohort),
   ]);
 
   if (programRecords.length > HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS) {
@@ -1269,6 +1291,7 @@ async function loadHospitalReportingDataset(
       hospitalCode: access.hospital.hospitalCode,
       name: access.hospital.name,
     },
+    cohort,
     counts,
     programs,
   };
@@ -1286,7 +1309,7 @@ async function getHospitalReportingDatasetForOperation(
   try {
     const database = dependencies.database ?? getPrisma();
     const dataset = await runConsistentRead(database, (transaction) =>
-      loadHospitalReportingDataset(actor, parsed.data.hospitalId, transaction, operation),
+      loadHospitalReportingDataset(actor, parsed.data.hospitalId, parsed.data.cohort ?? "ACTIVE", transaction, operation),
     );
     if (operation === "GLOBAL_ADMIN") {
       await resolveAuthorizedHospitalReportScope(

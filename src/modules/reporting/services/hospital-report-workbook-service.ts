@@ -735,6 +735,9 @@ export async function generateHospitalReportWorkbook(
     "ระหว่างโปรแกรม ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; Service 1 และ Goal Plan ยังไม่มีการบันทึกค่าวัดในระบบ",
     "แถวต่อเนื่องใช้เก็บ Follow-up ทุกครั้ง; ช่องคะแนนความสำเร็จและข้อมูลทางคลินิกที่ยังไม่มีแหล่งหรือสูตรรับรองแสดงสถานะที่ตรงไปตรงมา",
     "CVD risk score (%) เจ้าหน้าที่กรอกเองที่ Baseline (Before) และ Final Assessment (After) ไม่ได้คำนวณ; HbA1c หน่วย %",
+    dataset.cohort === "INCLUDE_ENDED"
+      ? "ชุดข้อมูลนี้รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว (ประวัติก่อนสิ้นสุดการดูแล)"
+      : "ชุดข้อมูลนี้ไม่รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว",
   ]);
   const detailStartRow = appendNotes(serviceSheet, DATA_START_ROW + serviceRowCount, [
     "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
@@ -775,6 +778,7 @@ export async function exportHospitalReportingWorkbook(
       generatedAt: generatedAt.toISOString(),
       outcome: "prepared",
       programCount: dataset.programs.length,
+      cohort: dataset.cohort,
     },
   });
 

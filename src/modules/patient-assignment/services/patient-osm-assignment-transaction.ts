@@ -10,6 +10,7 @@ import {
 } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
 import {
@@ -84,6 +85,7 @@ async function resolvePatientHospitalRelationship(
   const relationship = await transaction.patientHospitalRelationship.findFirst({
     where: {
       id: relationshipId,
+      ...activePatientHospitalRelationshipWhere,
       hospital: { status: HospitalStatus.ACTIVE },
       patientProfile: {
         person: {

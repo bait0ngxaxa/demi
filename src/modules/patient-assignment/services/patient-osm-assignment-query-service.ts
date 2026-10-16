@@ -12,6 +12,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   assertPatientOsmAssignmentPolicy,
   decidePatientOsmAssignmentPolicy,
@@ -162,6 +163,7 @@ function buildPatientRelationshipForOwner(
 ): Prisma.PatientHospitalRelationshipWhereInput {
   return {
     id: relationshipId,
+    ...activePatientHospitalRelationshipWhere,
     hospital: buildOwnerHospitalWhere(actorUserId),
     patientProfile: {
       person: {
@@ -430,6 +432,7 @@ export async function getPatientOsmBulkAssignmentView(
 
     const patientWhere: Prisma.PatientHospitalRelationshipWhereInput = {
       hospitalId: hospital.id,
+      ...activePatientHospitalRelationshipWhere,
       patientProfile: {
         person: {
           user: { roles: { some: { role: Role.PATIENT } } },

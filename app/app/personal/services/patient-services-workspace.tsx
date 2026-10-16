@@ -40,8 +40,10 @@ export function PatientServicesWorkspace({
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-text-muted">โรงพยาบาลที่เชื่อมกับบัญชีผู้ป่วยของคุณ</p>
                 </div>
-                <StatusBadge variant={relationship.hospitalActive ? "success" : "neutral"}>
-                  {relationship.hospitalActive ? "รับคำขอได้เมื่อมีบริการเปิด" : "โรงพยาบาลยังไม่พร้อมรับคำขอ"}
+                <StatusBadge variant={relationship.hospitalActive && !relationship.careEnded ? "success" : "neutral"}>
+                  {relationship.careEnded
+                    ? "สิ้นสุดการดูแลแล้ว"
+                    : relationship.hospitalActive ? "รับคำขอได้เมื่อมีบริการเปิด" : "โรงพยาบาลยังไม่พร้อมรับคำขอ"}
                 </StatusBadge>
               </div>
 
@@ -49,7 +51,7 @@ export function PatientServicesWorkspace({
                 <h3 className="text-base font-semibold text-text" id={`${sectionId}-offerings`}>
                   ขอเพิ่มบริการ
                 </h3>
-                {relationship.hospitalActive && relationship.offerings.length > 0 ? (
+                {relationship.hospitalActive && !relationship.careEnded && relationship.offerings.length > 0 ? (
                   <>
                     <p className="mt-1 text-sm leading-6 text-text-muted">
                       เลือกบริการที่เปิดรับคำขอ การส่งคำขอยังไม่ใช่การลงทะเบียนใน Program
@@ -61,10 +63,12 @@ export function PatientServicesWorkspace({
                     />
                   </>
                 ) : (
-                  <Alert className="mt-4" variant={relationship.hospitalActive ? "neutral" : "warning"}>
-                    {relationship.hospitalActive
-                      ? "ขณะนี้โรงพยาบาลยังไม่ได้เปิดบริการสำหรับยื่นคำขอ"
-                      : "ขณะนี้ยังส่งคำขอเพิ่มบริการที่โรงพยาบาลนี้ไม่ได้"}
+                  <Alert className="mt-4" variant={relationship.hospitalActive || relationship.careEnded ? "neutral" : "warning"}>
+                    {relationship.careEnded
+                      ? "โรงพยาบาลสิ้นสุดการดูแลแล้ว จึงส่งคำขอใหม่ที่โรงพยาบาลนี้ไม่ได้ ประวัติคำขอยังดูได้ด้านล่าง"
+                      : relationship.hospitalActive
+                        ? "ขณะนี้โรงพยาบาลยังไม่ได้เปิดบริการสำหรับยื่นคำขอ"
+                        : "ขณะนี้ยังส่งคำขอเพิ่มบริการที่โรงพยาบาลนี้ไม่ได้"}
                   </Alert>
                 )}
               </section>

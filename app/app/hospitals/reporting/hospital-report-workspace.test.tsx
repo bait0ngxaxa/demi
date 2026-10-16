@@ -133,6 +133,7 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
 function page(items: HospitalReportProgramRow[], total = items.length): HospitalReportingPageProjection {
   return {
     hospital: { id: hospitalId, hospitalCode: "DEMO-01", name: "โรงพยาบาลทดสอบ" },
+    cohort: "ACTIVE",
     counts: {
       patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 2 },
       relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },

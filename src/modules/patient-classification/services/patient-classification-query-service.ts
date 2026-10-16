@@ -12,6 +12,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   ForbiddenError,
   InfrastructureError,
@@ -216,6 +217,7 @@ function buildClassificationCountWhere(
   classification?: PatientClassificationType,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   return {
+    ...activePatientHospitalRelationshipWhere,
     hospitalId,
     hospital: buildAuthorizedHospitalWhere(actorUserId, hospitalId),
     patientProfile: {

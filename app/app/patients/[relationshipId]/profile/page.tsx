@@ -10,6 +10,7 @@ import { patientHealthHistorySchema } from "@/modules/patient-hospital-profile/s
 import { getPatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
+import { PatientCareEndForm } from "../../patient-care-end-form";
 import { PatientNameCorrectionForm } from "../../patient-name-correction-form";
 import { HospitalPatientEditForm } from "../hospital-patient-edit-form";
 
@@ -44,5 +45,8 @@ export default async function HospitalPatientProfilePage({ params }: { params: P
       <Panel><h2 className="mb-5 text-lg font-semibold text-text">ประวัติสุขภาพ</h2>
         <HospitalPatientEditForm relationshipId={relationshipId} version={health?.version ?? 0} health values={health ? Object.fromEntries(Object.entries(health).filter((entry): entry is [string, string | number | null] => (entry[0] in patientHealthHistorySchema.shape) && (entry[1] === null || typeof entry[1] === "string" || typeof entry[1] === "number"))) : {}} />
       </Panel>
+      {isHospitalOwner ? <Panel><h2 className="text-lg font-semibold text-text">สิ้นสุดการดูแลผู้ป่วย</h2>
+        <div className="mt-4"><PatientCareEndForm hospitalName={record.hospital.name} relationshipId={relationshipId} /></div>
+      </Panel> : null}
     </div>;
 }

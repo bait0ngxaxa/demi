@@ -5,6 +5,13 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientSelfRelationshipContext } from "@/modules/patient-self/services/patient-self-query-service";
 
+/** Phase F (ก-18): the Hospital ended this Patient's care; history stays readable, nothing new can be sent. */
+export const PATIENT_CARE_ENDED_LABEL = "สิ้นสุดการดูแลแล้ว";
+
+export function PatientCareEndedBadge({ careEndedAt }: { careEndedAt: Date | null }): React.JSX.Element | null {
+  return careEndedAt ? <StatusBadge variant="warning">{PATIENT_CARE_ENDED_LABEL}</StatusBadge> : null;
+}
+
 export function formatPatientDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
@@ -103,10 +110,18 @@ export function PatientSelfHospitalContext({
             </div>
           </dl>
         </div>
-        <StatusBadge variant="neutral">
-          สถานะโรงพยาบาล: {hospitalStatusLabel[relationship.hospitalStatus]}
-        </StatusBadge>
+        <div className="flex flex-wrap gap-2">
+          <StatusBadge variant="neutral">
+            สถานะโรงพยาบาล: {hospitalStatusLabel[relationship.hospitalStatus]}
+          </StatusBadge>
+          <PatientCareEndedBadge careEndedAt={relationship.careEndedAt} />
+        </div>
       </div>
+      {relationship.careEndedAt ? (
+        <p className="mt-3 text-sm leading-6 text-text-muted">
+          โรงพยาบาลนี้สิ้นสุดการดูแลแล้วเมื่อ {formatPatientDateOnly(relationship.careEndedAt)} ดูประวัติเดิมได้อย่างเดียว
+        </p>
+      ) : null}
     </Panel>
   );
 }

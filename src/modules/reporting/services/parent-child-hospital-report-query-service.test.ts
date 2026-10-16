@@ -141,14 +141,14 @@ describe("Parent-to-Child Hospital report query", () => {
     });
     expect(findMembership).toHaveBeenCalledTimes(2);
     expect(findHospital).toHaveBeenCalledOnce();
-    expect(relationshipCount).toHaveBeenNthCalledWith(1, { where: { hospitalId: childHospitalId } });
+    expect(relationshipCount).toHaveBeenNthCalledWith(1, { where: { hospitalId: childHospitalId, endedAt: null } });
     expect(relationshipCount).toHaveBeenNthCalledWith(2, {
-      where: { hospitalId: childHospitalId, programs: { none: {} } },
+      where: { hospitalId: childHospitalId, endedAt: null, programs: { none: {} } },
     });
     expect(programGroupBy).toHaveBeenCalledWith({
       by: ["status"],
       where: {
-        patientHospitalRelationship: { is: { hospitalId: childHospitalId } },
+        patientHospitalRelationship: { is: { hospitalId: childHospitalId, endedAt: null } },
         status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
       },
       _count: { _all: true },
@@ -157,7 +157,7 @@ describe("Parent-to-Child Hospital report query", () => {
       where: {
         patientProgram: {
           is: {
-            patientHospitalRelationship: { is: { hospitalId: childHospitalId } },
+            patientHospitalRelationship: { is: { hospitalId: childHospitalId, endedAt: null } },
             status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
           },
         },

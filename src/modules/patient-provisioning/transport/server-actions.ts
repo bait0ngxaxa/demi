@@ -84,6 +84,13 @@ function mapPatientError(error: unknown): {
       };
     }
 
+    if (error.kind === "ENDED_RELATIONSHIP") {
+      return {
+        code: "CONFLICT",
+        message: "ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว ระบบไม่เปิดการดูแลเดิมกลับมาเอง กรุณาติดต่อผู้ดูแลระบบ",
+      };
+    }
+
     if (error.kind === "RELATIONSHIP_CONFLICT") {
       return {
         code: "CONFLICT",

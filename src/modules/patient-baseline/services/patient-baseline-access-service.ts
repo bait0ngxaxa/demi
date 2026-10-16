@@ -18,6 +18,7 @@ import {
   buildAuthorizedHospitalWhere,
   buildOsmAssignedPatientRelationshipWhere,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
@@ -134,6 +135,7 @@ function buildAuthorizedPatientBaselineRelationshipWhere(
 
   return {
     id: relationshipId,
+    ...activePatientHospitalRelationshipWhere,
     OR: accessPredicates,
   };
 }

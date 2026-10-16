@@ -40,8 +40,20 @@ describe("Hospital report export endpoint", () => {
     expect(mockedExport).toHaveBeenCalledWith(actor, { hospitalId });
   });
 
-  it("rejects malformed or extra query parameters before accessing report data", async () => {
-    const response = await GET(new Request(`https://demi.example.test/api/v1/hospital/reporting/export?hospitalId=${hospitalId}&hospitalId=${hospitalId}`));
+  it("passes the opt-in cohort that includes ended care relationships (Phase F)", async () => {
+    const response = await GET(new Request(`https://demi.example.test/api/v1/hospital/reporting/export?hospitalId=${hospitalId}&cohort=INCLUDE_ENDED`));
+
+    expect(response.status).toBe(200);
+    expect(mockedExport).toHaveBeenCalledWith(actor, { hospitalId, cohort: "INCLUDE_ENDED" });
+  });
+
+  it.each([
+    `hospitalId=${hospitalId}&hospitalId=${hospitalId}`,
+    `hospitalId=${hospitalId}&cohort=ALL`,
+    `hospitalId=${hospitalId}&cohort=INCLUDE_ENDED&cohort=ACTIVE`,
+    `hospitalId=${hospitalId}&extra=1`,
+  ])("rejects malformed or extra query parameters before accessing report data (%s)", async (query) => {
+    const response = await GET(new Request(`https://demi.example.test/api/v1/hospital/reporting/export?${query}`));
     expect(response.status).toBe(400);
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(mockedGetActor).not.toHaveBeenCalled();

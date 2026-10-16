@@ -33,6 +33,8 @@ export type PatientSelfRelationshipNavigation = {
   hospitalName: string;
   hospitalNumber: string | null;
   hospitalStatus: HospitalStatus;
+  /** Phase F: care with this Hospital ended ("สิ้นสุดการดูแลแล้ว"); the Patient keeps read-only history. */
+  careEndedAt: Date | null;
 };
 
 /** Internal server context. The relationship ID is only a locator; ownership is rechecked per request. */
@@ -41,6 +43,7 @@ export type PatientSelfRelationshipContext = PatientSelfRelationshipNavigation;
 const patientSelfRelationshipNavigationSelect = {
   id: true,
   hospitalNumber: true,
+  endedAt: true,
   hospital: {
     select: {
       hospitalCode: true,
@@ -115,6 +118,7 @@ function toRelationshipNavigation(
     hospitalName: record.hospital.name,
     hospitalNumber: record.hospitalNumber,
     hospitalStatus: record.hospital.status,
+    careEndedAt: record.endedAt,
   };
 }
 

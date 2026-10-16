@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 
+import { isPatientHospitalRelationshipEnded } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
+
 import {
   projectAppointmentContactPhones,
   type AppointmentContactAudience,
@@ -10,7 +12,8 @@ import {
 
 /**
  * E4: loads the phones for an already-authorized appointment read. The Patient phone is only read for the
- * assigned OSM / Hospital staff audience; it follows the effective hospital-local profile rule.
+ * assigned OSM / Hospital staff audience; it follows the effective hospital-local profile rule. Phase F: an
+ * ended relationship (Patient history only) shows no Hospital phone.
  */
 export async function loadAppointmentContactPhones(
   database: PrismaClient | Prisma.TransactionClient,
@@ -19,7 +22,7 @@ export async function loadAppointmentContactPhones(
 ): Promise<AppointmentContactPhones> {
   const relationship = await database.patientHospitalRelationship.findUnique({
     where: { id: patientHospitalRelationshipId },
-    select: { hospital: { select: { contact: { select: { phoneNumber: true } } } } },
+    select: { endedAt: true, hospital: { select: { contact: { select: { phoneNumber: true } } } } },
   });
   const patient = audience === "ASSIGNED_OSM_OR_HOSPITAL_STAFF"
     ? await database.patientHospitalRelationship.findUnique({
@@ -32,7 +35,9 @@ export async function loadAppointmentContactPhones(
     : null;
 
   return projectAppointmentContactPhones({
-    hospitalPhone: relationship?.hospital.contact?.phoneNumber ?? null,
+    hospitalPhone: relationship && !isPatientHospitalRelationshipEnded(relationship)
+      ? relationship.hospital.contact?.phoneNumber ?? null
+      : null,
     patientPhone: patient
       ? patient.hospitalProfile
         ? patient.hospitalProfile.phoneNumber

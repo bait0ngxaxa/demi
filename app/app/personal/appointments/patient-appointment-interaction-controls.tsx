@@ -30,6 +30,7 @@ type PatientAppointmentInteractionControlsProps = {
   appointment: PatientSelfAppointmentItem;
   cancellationRequestNonce: string;
   hospitalStatus: PatientSelfAppointmentDetail["relationship"]["hospitalStatus"];
+  careEnded: boolean;
 };
 
 function formatInteractionTime(value: Date): string {
@@ -57,6 +58,7 @@ export function PatientAppointmentInteractionControls({
   appointment,
   cancellationRequestNonce,
   hospitalStatus,
+  careEnded,
 }: PatientAppointmentInteractionControlsProps): React.JSX.Element {
   const router = useRouter();
   const [acknowledgementState, acknowledgeAction, acknowledgementPending, acknowledgementUnknown, resendAcknowledgement] = useMutationActionState<
@@ -75,14 +77,16 @@ export function PatientAppointmentInteractionControls({
   }, [acknowledgementState, cancellationState, router]);
 
   const isScheduled = appointment.status === "SCHEDULED";
-  const canSubmitPatientInteraction = isScheduled && hospitalStatus === "ACTIVE";
+  const canSubmitPatientInteraction = isScheduled && hospitalStatus === "ACTIVE" && !careEnded;
   const pending = acknowledgementPending || cancellationPending;
   const unknownOutcome = acknowledgementUnknown || cancellationUnknown;
   const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
 
   return (
     <Panel>
-      {hospitalStatus !== "ACTIVE" ? (
+      {careEnded ? (
+        <Alert className="mb-5" variant="info">โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว อ่านข้อมูลนัดหมายเดิมได้ แต่รับทราบหรือส่งคำขอยกเลิกไม่ได้</Alert>
+      ) : hospitalStatus !== "ACTIVE" ? (
         <Alert className="mb-5" variant="info">อ่านข้อมูลนัดหมายเดิมได้ แต่ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้ในขณะที่โรงพยาบาลไม่อยู่ในสถานะเปิดใช้งาน</Alert>
       ) : null}
       <section aria-labelledby="patient-appointment-response-heading" className="space-y-5">

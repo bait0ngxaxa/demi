@@ -7,6 +7,8 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PatientSelfRelationshipNavigation } from "@/modules/patient-self/services/patient-self-query-service";
 
+import { PatientCareEndedBadge } from "./patient-self-care-presentation";
+
 const hospitalStatusLabels: Record<HospitalStatus, string> = {
   [HospitalStatus.ACTIVE]: "ใช้งาน",
   [HospitalStatus.SUSPENDED]: "ถูกระงับการใช้งาน",
@@ -45,9 +47,12 @@ export function PatientSelfRelationshipNavigation({
                   รหัสผู้ป่วยที่โรงพยาบาล: {relationship.hospitalNumber ?? "ยังไม่ได้บันทึก"}
                 </p>
               </div>
-              <StatusBadge variant="neutral">
-                สถานะโรงพยาบาล: {hospitalStatusLabels[relationship.hospitalStatus]}
-              </StatusBadge>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge variant="neutral">
+                  สถานะโรงพยาบาล: {hospitalStatusLabels[relationship.hospitalStatus]}
+                </StatusBadge>
+                <PatientCareEndedBadge careEndedAt={relationship.careEndedAt} />
+              </div>
             </div>
             <nav aria-label={`ข้อมูลของฉันที่ ${relationship.hospitalName}`} className="mt-5">
               <Link

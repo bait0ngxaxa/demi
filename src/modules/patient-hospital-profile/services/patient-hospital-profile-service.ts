@@ -7,6 +7,7 @@ import { APPOINTMENT_READ_CAPABILITY } from "@/modules/appointments/policies/app
 import { resolveAppointmentAccessContext } from "@/modules/appointments/services/appointment-access-service";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   ConflictError,
   ForbiddenError,
@@ -171,8 +172,9 @@ export async function getOwnPatientHospitalProfile(
   }
 
   try {
+    // Phase F: the hospital-local profile is an editing surface, not care history; closed once care ended.
     const relationship = await database.patientHospitalRelationship.findFirst({
-      where: ownRelationshipWhere(actor, parsedRelationshipId.data.toLowerCase()),
+      where: { ...ownRelationshipWhere(actor, parsedRelationshipId.data.toLowerCase()), ...activePatientHospitalRelationshipWhere },
       select: patientHospitalProfileSelect,
     });
 
@@ -253,7 +255,7 @@ export async function updateOwnPatientHospitalProfile(
     return await database.$transaction(
       async (transaction) => {
         const relationship = await transaction.patientHospitalRelationship.findFirst({
-          where: ownRelationshipWhere(actor, normalizedRelationshipId),
+          where: { ...ownRelationshipWhere(actor, normalizedRelationshipId), ...activePatientHospitalRelationshipWhere },
           select: {
             id: true,
             hospitalProfile: {

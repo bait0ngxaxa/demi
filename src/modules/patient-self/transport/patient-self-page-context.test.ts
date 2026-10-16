@@ -97,6 +97,7 @@ describe("Patient self page context", () => {
           hospitalName: "โรงพยาบาล ก",
           hospitalNumber: null,
           hospitalStatus: HospitalStatus.ACTIVE,
+          careEndedAt: null,
         },
         {
           relationshipId: "55555555-5555-4555-8555-555555555555",
@@ -104,6 +105,7 @@ describe("Patient self page context", () => {
           hospitalName: "โรงพยาบาล ข",
           hospitalNumber: null,
           hospitalStatus: HospitalStatus.SUSPENDED,
+          careEndedAt: null,
         },
       ],
     };

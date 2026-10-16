@@ -6,6 +6,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
 import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { FAMILY_APPOINTMENT_PAGE_SIZE, FAMILY_APPOINTMENT_READ_CONTRACT } from "../domain/appointment-grant-contract";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor } from "../policies/caregiver-relationship-policy";
 import { appointmentGrantManagementSchema } from "../schemas/appointment-grant-schemas";
@@ -13,7 +14,7 @@ import { rethrowAppointmentGrantError, type AppointmentGrantDependencies } from 
 
 const nameSelect = { givenName: true, familyName: true } satisfies Prisma.PersonSelect;
 const lifecycleSelect = { id: true, status: true, proposedAt: true, acceptedAt: true, revokedAt: true,
-  patientHospitalRelationship: { select: { hospital: { select: { name: true } } } },
+  patientHospitalRelationship: { select: { endedAt: true, hospital: { select: { name: true } } } },
 } satisfies Prisma.CaregiverAppointmentGrantSelect;
 const patientSelect = { ...lifecycleSelect, caregiverUser: { select: { person: { select: nameSelect } } } } satisfies Prisma.CaregiverAppointmentGrantSelect;
 const caregiverSelect = { ...lifecycleSelect, patientProfile: { select: { person: { select: nameSelect } } } } satisfies Prisma.CaregiverAppointmentGrantSelect;
@@ -22,6 +23,8 @@ export type AppointmentGrantManagementItem = {
   grantId: string; status: "PENDING" | "ACTIVE" | "REVOKED";
   proposedAt: Date; acceptedAt: Date | null; revokedAt: Date | null;
   participant: { givenName: string | null; familyName: string | null }; hospitalName: string;
+  /** Phase F, Patient's own rows only: care with this Hospital ended, so the grant gives no caregiver access. */
+  careEnded?: boolean;
 };
 export type AppointmentGrantManagement = {
   patient: { grants: AppointmentGrantManagementItem[]; nextCursor: string | null;
@@ -63,13 +66,14 @@ export async function getAppointmentGrantManagement(
         select: caregiverSelect, take: FAMILY_APPOINTMENT_PAGE_SIZE + 1, orderBy: { id: "asc" },
       }),
       isPatient ? db.patientHospitalRelationship.findMany({
-        where: { patientProfile: { is: { personId: actor.personId } }, hospital: { is: { status: "ACTIVE" } },
+        where: { patientProfile: { is: { personId: actor.personId } }, ...activePatientHospitalRelationshipWhere, hospital: { is: { status: "ACTIVE" } },
           ...(parsed.data.hospitalsCursor ? { id: { gt: parsed.data.hospitalsCursor } } : {}) },
         select: { id: true, hospital: { select: { name: true } } }, take: FAMILY_APPOINTMENT_PAGE_SIZE + 1, orderBy: { id: "asc" },
       }) : Promise.resolve([]),
     ]);
     return {
-      patient: isPatient ? { grants: patientRows.slice(0, FAMILY_APPOINTMENT_PAGE_SIZE).map((row) => item(row, row.caregiverUser.person)),
+      patient: isPatient ? { grants: patientRows.slice(0, FAMILY_APPOINTMENT_PAGE_SIZE).map((row) => ({
+        ...item(row, row.caregiverUser.person), careEnded: row.patientHospitalRelationship.endedAt !== null })),
         nextCursor: nextCursor(patientRows), hospitals: hospitals.slice(0, FAMILY_APPOINTMENT_PAGE_SIZE).map((row) => ({ relationshipId: row.id, hospitalName: row.hospital.name })),
         nextHospitalsCursor: nextCursor(hospitals) } : null,
       caregiver: { grants: caregiverRows.slice(0, FAMILY_APPOINTMENT_PAGE_SIZE).map((row) => item(row, row.patientProfile.person)), nextCursor: nextCursor(caregiverRows) },

@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { HospitalStatus, Prisma, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvents } from "@/modules/audit/services/audit-service";
 import {
   ConflictError,
@@ -130,6 +131,7 @@ export async function assignOsmToPatientsInTransaction(
   const relationships = await transaction.patientHospitalRelationship.findMany({
     where: {
       id: { in: input.patientHospitalRelationshipIds },
+      ...activePatientHospitalRelationshipWhere,
       hospital: { status: HospitalStatus.ACTIVE },
       patientProfile: { person: { user: { roles: { some: { role: Role.PATIENT } } } } },
     },

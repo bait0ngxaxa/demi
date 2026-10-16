@@ -14,6 +14,7 @@ import type { PatientClassificationType } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { patientHospitalAddressSelect } from "@/modules/patient-hospital-profile/domain/patient-hospital-address";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   resolveEffectivePatientHospitalProfile,
 } from "@/modules/patient-hospital-profile/domain/patient-hospital-profile-values";
@@ -264,6 +265,7 @@ function buildPatientRelationshipWhere(
   };
 
   return {
+    ...activePatientHospitalRelationshipWhere,
     hospitalId: input.targetHospitalId,
     hospital: buildAuthorizedHospitalWhere(actorUserId),
     patientProfile: {
@@ -288,6 +290,7 @@ export function buildOsmAssignedPatientRelationshipWhere(
   };
 
   return {
+    ...activePatientHospitalRelationshipWhere,
     patientProfile: {
       person: personWhere,
       ...(input?.classification && input.classification !== "ALL"
@@ -493,7 +496,7 @@ export async function getPatientDirectoryDetail(
   const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
 
   if (actor.roles.includes(Role.HOSPITAL)) {
-    accessPredicates.push({ hospital: buildAuthorizedHospitalWhere(actor.userId) });
+    accessPredicates.push({ ...activePatientHospitalRelationshipWhere, hospital: buildAuthorizedHospitalWhere(actor.userId) });
   }
 
   if (actor.roles.includes(Role.OSM)) {

@@ -21,6 +21,7 @@ import type {
 import {
   hospitalReportPageRequestSchema,
   parseHospitalReportTargetSelection,
+  type HospitalReportCohort,
   type HospitalReportTargetSelection,
 } from "../schemas/hospital-report-schemas";
 import {
@@ -99,6 +100,7 @@ export async function getHospitalReportPageContext(
   cursor: string | undefined,
   pageSize: number | undefined,
   requestedTarget?: string,
+  cohort?: HospitalReportCohort,
 ): Promise<HospitalReportPageContext> {
   const actor = await resolveActor();
   let hospitals: HospitalReportingHospital[];
@@ -139,6 +141,7 @@ export async function getHospitalReportPageContext(
       hospitalId: selection.hospitalId,
       cursor,
       pageSize,
+      cohort,
     });
     if (!parsedRequest.success) notFound();
     const directHospital = hospitals.find(({ id }) => id === parsedRequest.data.hospitalId);

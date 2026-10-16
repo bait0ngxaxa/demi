@@ -73,6 +73,7 @@ type PatientHospitalContactReadRow = {
   hospitalCode: string;
   hospitalName: string;
   hospitalStatus: HospitalStatus;
+  careEnded: boolean;
   addressText: string | null;
   phoneNumber: string | null;
 };
@@ -633,10 +634,12 @@ function toPatientContactRead(input: {
   hospitalCode: string;
   hospitalName: string;
   hospitalStatus: HospitalStatus;
+  careEnded: boolean;
   addressText: string | null;
   phoneNumber: string | null;
 }): PatientHospitalContactRead {
-  if (input.hospitalStatus !== HospitalStatus.ACTIVE) {
+  // Phase F: no contact is shown for a Hospital whose care with the Patient ended.
+  if (input.hospitalStatus !== HospitalStatus.ACTIVE || input.careEnded) {
     return { relationshipId: input.relationshipId, availability: "UNAVAILABLE" };
   }
 
@@ -668,6 +671,8 @@ function patientHospitalContactReadQuery(
       hospital."hospitalCode" AS "hospitalCode",
       hospital."name" AS "hospitalName",
       hospital."status" AS "hospitalStatus",
+      -- Phase F: raw-SQL form of activePatientHospitalRelationshipWhere (ended relationship = no contact).
+      patient_relationship."endedAt" IS NOT NULL AS "careEnded",
       contact."addressText" AS "addressText",
       contact."phoneNumber" AS "phoneNumber"
     FROM "User" AS actor_user

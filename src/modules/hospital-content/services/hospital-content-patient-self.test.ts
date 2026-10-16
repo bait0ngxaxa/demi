@@ -17,6 +17,7 @@ describe("Patient Content persisted SELF statements", () => {
     expect(profile).toHaveBeenCalledExactlyOnceWith({ where: { person: { is: person } }, select: { id: true } });
     expect(relationship).toHaveBeenCalledExactlyOnceWith({ where: {
       patientProfileId: "profile", patientProfile: { is: { id: "profile", person: { is: person } } },
+      endedAt: null,
       hospital: { is: { status: "ACTIVE" } },
     }, select: { id: true } });
   });

@@ -64,6 +64,7 @@ describe("Patient core flow presentation", () => {
             relationshipId,
             hospitalName: "โรงพยาบาลทดสอบ",
             hospitalActive: true,
+            careEnded: false,
             offerings: [{ offeringId, code: "SCREENING" as const }],
             osmChoices: [{ relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล" }],
             requests: [

@@ -91,6 +91,7 @@ const hierarchy: HospitalHierarchyContext = {
 };
 const page: HospitalReportingPageProjection = {
   hospital: { id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name },
+  cohort: "ACTIVE",
   counts: {
     patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },
     relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },

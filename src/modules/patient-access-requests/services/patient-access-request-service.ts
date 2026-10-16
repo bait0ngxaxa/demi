@@ -20,6 +20,10 @@ import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/ide
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { isProviderSubject } from "@/modules/patient-activation/services/patient-activation-service";
 import {
+  isPatientHospitalRelationshipEnded,
+  PatientHospitalRelationshipEndedError,
+} from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
+import {
   ConflictError,
   ForbiddenError,
   InfrastructureError,
@@ -58,6 +62,12 @@ export type PatientIdentityReconciliation =
       kind: "PROVISIONING_REQUIRED";
       displayName: string | null;
       personId: string | null;
+    }
+  | {
+      /** Phase F: care with this Hospital ended; never reactivated here, a platform ADMIN decides. */
+      kind: "ENDED_RELATIONSHIP";
+      displayName: string | null;
+      personId: string;
     }
   | {
       kind: "READY_FOR_ACTIVATION";
@@ -223,7 +233,7 @@ async function reconcilePatientIdentity(
         select: {
           hospitalRelationships: {
             where: { hospitalId },
-            select: { id: true, hospital: { select: { status: true } } },
+            select: { id: true, endedAt: true, hospital: { select: { status: true } } },
           },
         },
       },
@@ -239,6 +249,10 @@ async function reconcilePatientIdentity(
   const patientProfile = identity.patientProfile;
   const relationship = patientProfile?.hospitalRelationships[0];
   const hasPatientRole = user?.roles.some(({ role }) => role === Role.PATIENT) ?? false;
+  if (relationship && isPatientHospitalRelationshipEnded(relationship)) {
+    return { kind: "ENDED_RELATIONSHIP", displayName: name, personId: identity.id };
+  }
+
   const hasExactActiveRelationship =
     relationship?.hospital.status === HospitalStatus.ACTIVE;
 
@@ -563,7 +577,7 @@ export async function getHospitalPatientAccessRequestDetail(
       patientName =
         reconciliation.kind === "NOT_PROVISIONED"
           ? patientName
-          : reconciliation.kind === "PROVISIONING_REQUIRED"
+          : reconciliation.kind === "PROVISIONING_REQUIRED" || reconciliation.kind === "ENDED_RELATIONSHIP"
             ? reconciliation.displayName
           : reconciliation.displayName;
     } else {
@@ -677,6 +691,9 @@ export async function reviewPatientAccessRequest(
           request.identityKeyHash,
           request.hospitalId,
         );
+        if (reconciliation.kind === "ENDED_RELATIONSHIP") {
+          throw new PatientHospitalRelationshipEndedError();
+        }
         const isAlreadyActive = reconciliation.kind === "ALREADY_ACTIVE";
         const nextStatus = isAlreadyActive
           ? PatientAccessRequestStatus.COMPLETED

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { PatientHospitalRelationshipEndedError } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -82,6 +83,13 @@ function mapHospitalReviewError(error: unknown): PatientAccessRequestReviewActio
 
     if (error.code === "NOT_FOUND") {
       return { status: "ERROR", message: "ไม่พบคำขอที่ต้องการตรวจสอบ" };
+    }
+
+    if (error instanceof PatientHospitalRelationshipEndedError) {
+      return {
+        status: "ERROR",
+        message: "ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว กรุณาติดต่อผู้ดูแลระบบ",
+      };
     }
 
     if (error.code === "CONFLICT") {

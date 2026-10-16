@@ -78,5 +78,13 @@ authority they did not onboard:
 - `ACTIVE` mapped Users gain PATIENT authority and profiles with no credential change. A bare OSM/HOSPITAL
   role without a relationship keeps the prior behavior.
 
+## Amendment — Ended care relationship (Phase F, ก-18)
+
+Provisioning, roster import, patient access requests and activation never reactivate a relationship whose care
+ended: provisioning raises `ENDED_RELATIONSHIP`, import classifies the row as a conflict with that reason, access
+request reconciliation reports `ENDED_RELATIONSHIP` and refuses approval, and activation lookup, issuance and claim
+require a non-ended relationship. Ending revokes that Hospital's unclaimed activation. A platform-ADMIN re-admission
+path is a pending decision (see [WB_ALIGNMENT_DECISIONS.md §ช](../requirements/WB_ALIGNMENT_DECISIONS.md) item 7).
+
 Patient-only activation still relies on the issuer-delivered token and no independent owner proof; that
 remains an open product/security decision (SECURITY_GATED, not VERIFIED_COMPLETE).

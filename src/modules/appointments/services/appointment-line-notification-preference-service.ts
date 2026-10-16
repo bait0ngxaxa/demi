@@ -12,6 +12,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { appointmentGrantCaregiverWhere } from "@/modules/family/policies/appointment-grant-policy";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
@@ -60,7 +61,7 @@ async function loadCurrentNotificationUser(
   const [patientRelationship, osmRelationship, caregiverGrant] = await Promise.all([
     roles.has(Role.PATIENT)
       ? database.patientHospitalRelationship.findFirst({
-          where: { patientProfile: { personId: actor.personId }, hospital: { status: HospitalStatus.ACTIVE } },
+          where: { patientProfile: { personId: actor.personId }, ...activePatientHospitalRelationshipWhere, hospital: { status: HospitalStatus.ACTIVE } },
           select: { id: true },
         })
       : null,

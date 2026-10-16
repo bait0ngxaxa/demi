@@ -40,6 +40,7 @@ import {
   patientRosterImportInternals,
   previewPatientRosterImport,
 } from "./patient-roster-import-service";
+import { PATIENT_IMPORT_ENDED_RELATIONSHIP_REASON } from "./patient-roster-import-preview";
 import {
   isPatientImportAttentionResult,
   type PatientImportPreviewRow,
@@ -177,7 +178,7 @@ function existingPerson(overrides: {
   nationalId?: string;
   givenName?: string | null;
   familyName?: string | null;
-  relationship?: { hospitalNumber: string | null } | null;
+  relationship?: { hospitalNumber: string | null; endedAt?: Date | null } | null;
   roles?: readonly Role[];
   userStatus?: UserStatus;
   authSubject?: string | null;
@@ -209,7 +210,11 @@ function existingPerson(overrides: {
       hospitalRelationships:
         overrides.relationship === null
           ? []
-          : [{ id: "relationship-1", hospitalNumber: overrides.relationship?.hospitalNumber ?? null }],
+          : [{
+              id: "relationship-1",
+              hospitalNumber: overrides.relationship?.hospitalNumber ?? null,
+              endedAt: overrides.relationship?.endedAt ?? null,
+            }],
     },
   };
 }
@@ -401,6 +406,16 @@ describe("Patient roster import: existing patients are an identity check only", 
     expect(
       compose(createCandidate(), existingPerson({ relationship: { hospitalNumber: null } })).classification,
     ).toBe("ALREADY_EXISTS");
+  });
+
+  it("classifies a national ID whose care with this Hospital ended (ENDED_RELATIONSHIP) instead of reactivating it", () => {
+    const row = compose(
+      createCandidate(),
+      existingPerson({ relationship: { hospitalNumber: null, endedAt: new Date("2026-10-01T00:00:00.000Z") } }),
+    );
+
+    expect(row.classification).toBe("CONFLICT");
+    expect(row.reason).toBe(PATIENT_IMPORT_ENDED_RELATIONSHIP_REASON);
   });
 
   it.each([

@@ -137,7 +137,7 @@ function createDatabase() {
   const database = {
     person: { findFirst: vi.fn().mockResolvedValue(ownRelationshipRecord()) },
     patientHospitalRelationship: {
-      findUnique: vi.fn().mockResolvedValue({ hospital: { contact: { phoneNumber: "02-000-0000" } } }),
+      findUnique: vi.fn().mockResolvedValue({ endedAt: null, hospital: { contact: { phoneNumber: "02-000-0000" } } }),
     },
     screeningAssessment: {
       findMany: vi.fn().mockResolvedValue([{ submittedAt: recordedAt, result: { pamTotal: 20 } }]),

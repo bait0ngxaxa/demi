@@ -20,6 +20,7 @@ import {
   type ProvisionPasswordAuthIdentityResult,
 } from "@/modules/auth/services/password-auth-provisioning-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce-authority";
 import {
@@ -306,7 +307,7 @@ async function findPatientActivationTarget(
             select: {
               id: true,
               hospitalRelationships: {
-                where: { hospitalId },
+                where: { hospitalId, ...activePatientHospitalRelationshipWhere },
                 select: { id: true },
               },
             },
@@ -899,7 +900,7 @@ export async function issuePatientActivation(
               patientProfile: {
                 select: {
                   hospitalRelationships: {
-                    where: { hospitalId: accessRequest.hospitalId },
+                    where: { hospitalId: accessRequest.hospitalId, ...activePatientHospitalRelationshipWhere },
                     select: { id: true },
                   },
                 },
@@ -1076,6 +1077,7 @@ export async function getPatientActivationDetails(
                   select: {
                     id: true,
                     hospitalRelationships: {
+                      where: activePatientHospitalRelationshipWhere,
                       select: { hospitalId: true },
                     },
                   },

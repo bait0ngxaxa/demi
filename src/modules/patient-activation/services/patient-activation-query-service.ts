@@ -12,6 +12,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   hashIdentityReference,
 } from "@/modules/identity/services/identity-service";
@@ -328,7 +329,7 @@ export async function findPatientActivationCandidates(
 
   try {
     const relationships = await db.patientHospitalRelationship.findMany({
-      where: relationshipWhere,
+      where: { ...relationshipWhere, ...activePatientHospitalRelationshipWhere },
       take: PATIENT_ACTIVATION_LOOKUP_LIMIT + 1,
       select: {
         hospitalNumber: true,

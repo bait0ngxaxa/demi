@@ -485,6 +485,7 @@ export function PatientSelfAppointmentDetailView({
           appointment={detail}
           cancellationRequestNonce={cancellationRequestNonce}
           hospitalStatus={detail.relationship.hospitalStatus}
+          careEnded={detail.relationship.careEndedAt !== null}
           relationshipId={relationshipId}
         />
         <nav aria-label="กลับจากรายละเอียดนัดหมาย" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">

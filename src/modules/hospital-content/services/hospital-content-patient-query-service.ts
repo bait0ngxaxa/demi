@@ -3,6 +3,7 @@ import "server-only";
 import { HospitalContentStatus, HospitalStatus, Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ApplicationError, ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 import { HOSPITAL_CONTENT_CURSOR_LOOKAHEAD, HOSPITAL_CONTENT_PAGE_SIZE } from "../domain/hospital-content";
 import { assertHospitalContentPolicy, HOSPITAL_CONTENT_CAPABILITIES } from "../policies/hospital-content-policy";
@@ -19,7 +20,9 @@ export function hospitalContentPatientWhere(actor: ActorContext, patientProfileI
     latestPublishedAt: { not: null },
     hospital: { is: {
       status: HospitalStatus.ACTIVE,
+      // Phase F: content of a Hospital whose care has ended is not shown (history only).
       patientRelationships: { some: {
+        ...activePatientHospitalRelationshipWhere,
         patientProfile: { is: {
           id: patientProfileId,
           person: { is: hospitalContentPatientPersonWhere(actor) },

@@ -213,6 +213,7 @@ function goldenProgram(): HospitalReportProgramRow {
 function goldenDataset(): HospitalReportingDataset {
   return {
     hospital: { id: "11111111-1111-4111-8111-111111111111", hospitalCode: "GOLD-01", name: "รพ.สต. ทดสอบ" },
+    cohort: "ACTIVE",
     counts: {
       patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
       relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },

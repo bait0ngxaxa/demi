@@ -8,6 +8,7 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { FAMILY_APPOINTMENT_READ_CONTRACT } from "../domain/appointment-grant-contract";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import { appointmentGrantIdSchema, proposeAppointmentGrantSchema } from "../schemas/appointment-grant-schemas";
@@ -64,7 +65,7 @@ export async function proposeAppointmentGrant(
         }, select: { id: true, caregiverUserId: true, caregiverUser: { select: { personId: true } }, sourceInvitation: { select: { caregiverPersonId: true } } },
       });
       const phr = await transaction.patientHospitalRelationship.findFirst({
-        where: { id: parsed.data.patientHospitalRelationshipId, patientProfileId: patient.id, hospital: { is: { status: "ACTIVE" } } },
+        where: { id: parsed.data.patientHospitalRelationshipId, patientProfileId: patient.id, ...activePatientHospitalRelationshipWhere, hospital: { is: { status: "ACTIVE" } } },
         select: { id: true },
       });
       if (!parent || !phr || parent.caregiverUser.personId !== parent.sourceInvitation.caregiverPersonId) throw new NotFoundError();

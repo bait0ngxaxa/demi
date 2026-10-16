@@ -15,6 +15,10 @@ import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  activePatientHospitalRelationshipWhere,
+  isPatientHospitalRelationshipEnded,
+} from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
+import {
   ApplicationError,
   ConflictError,
   ForbiddenError,
@@ -69,14 +73,14 @@ function isActivePlatformAdmin(
   return actor.roles.includes(Role.ADMIN) && Boolean(persisted?.roles.some(({ role }) => role === Role.ADMIN));
 }
 
-/** Every Hospital this Person relates to: Patient relationships plus non-ENDED staff and OSM relationships. */
+/** Every Hospital this Person relates to: non-ended Patient relationships plus non-ENDED staff and OSM relationships. */
 async function personHospitalIds(
   transaction: Prisma.TransactionClient,
   patientProfileId: string,
   userId: string | null,
 ): Promise<string[]> {
   const [patientRelationships, memberships, osmRelationships] = await Promise.all([
-    transaction.patientHospitalRelationship.findMany({ where: { patientProfileId }, select: { hospitalId: true } }),
+    transaction.patientHospitalRelationship.findMany({ where: { patientProfileId, ...activePatientHospitalRelationshipWhere }, select: { hospitalId: true } }),
     userId
       ? transaction.hospitalMembership.findMany({ where: { userId, status: { not: MembershipStatus.ENDED } }, select: { hospitalId: true } })
       : Promise.resolve([]),
@@ -108,6 +112,7 @@ export async function correctPatientName(
         where: { id: parsedRelationshipId.data },
         select: {
           hospitalId: true,
+          endedAt: true,
           hospital: { select: { status: true } },
           patientProfile: {
             select: {
@@ -126,6 +131,8 @@ export async function correctPatientName(
           actor.roles.includes(Role.HOSPITAL) &&
           persistedActor.roles.some(({ role }) => role === Role.HOSPITAL) &&
           relationship.hospital.status === HospitalStatus.ACTIVE &&
+          // Phase F: an OWNER does no work through an ended relationship; the ADMIN path remains.
+          !isPatientHospitalRelationshipEnded(relationship) &&
           persistedActor.memberships.some(({ hospitalId }) => hospitalId === relationship.hospitalId),
         patientHospitalId: relationship.hospitalId,
         personHospitalIds: await personHospitalIds(transaction, relationship.patientProfile.id, person.user?.id ?? null),

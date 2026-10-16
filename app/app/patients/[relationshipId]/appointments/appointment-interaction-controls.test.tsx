@@ -59,8 +59,8 @@ const request: ComponentProps<typeof AppointmentInteractionControls>["cancellati
   requestId: "33333333-3333-4333-8333-333333333333", source: "PATIENT_SELF", status: "PENDING",
   submittedAt: updatedAt, resolvedAt: null, submittedByDisplayName: "ผู้ป่วยทดสอบ", resolvedByDisplayName: null,
 };
-function patient(appointment: PatientSelfAppointmentItem = self, hospitalStatus: ComponentProps<typeof PatientAppointmentInteractionControls>["hospitalStatus"] = "ACTIVE"): string {
-  return renderToStaticMarkup(<PatientAppointmentInteractionControls relationshipId={relationshipId} appointment={appointment} cancellationRequestNonce="nonce" hospitalStatus={hospitalStatus} />);
+function patient(appointment: PatientSelfAppointmentItem = self, hospitalStatus: ComponentProps<typeof PatientAppointmentInteractionControls>["hospitalStatus"] = "ACTIVE", careEnded = false): string {
+  return renderToStaticMarkup(<PatientAppointmentInteractionControls relationshipId={relationshipId} appointment={appointment} cancellationRequestNonce="nonce" hospitalStatus={hospitalStatus} careEnded={careEnded} />);
 }
 function workInteractions(overrides: Partial<typeof work> = {}): string {
   return renderToStaticMarkup(<AppointmentInteractionControls {...work} {...overrides} />);
@@ -95,6 +95,13 @@ describe("Appointment capability-scoped interaction presentation", () => {
     expect(buttons(markup)).toHaveLength(0);
     expect(markup).toContain("อ่านข้อมูลนัดหมายเดิมได้");
     expect(markup).toContain("ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้");
+  });
+
+  it("retains SELF readback but no submits once the Hospital ended care (Phase F)", () => {
+    const markup = patient(self, "ACTIVE", true);
+    expect(buttons(markup)).toHaveLength(0);
+    expect(markup).toContain("สิ้นสุดการดูแลแล้ว");
+    expect(markup).toContain("รับทราบหรือส่งคำขอยกเลิกไม่ได้");
   });
 
   it("keeps proxy/coordination separate and denies direct management to OSM", () => {

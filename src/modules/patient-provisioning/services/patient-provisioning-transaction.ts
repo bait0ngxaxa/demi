@@ -46,7 +46,9 @@ export type PatientProvisioningResult = {
 export type PatientProvisioningConflictKind =
   | "IDENTITY_CONFLICT"
   | "RELATIONSHIP_CONFLICT"
-  | "RECONCILIATION_REQUIRED";
+  | "RECONCILIATION_REQUIRED"
+  /** Phase F: care with this Hospital ended; never reactivated, a platform ADMIN decides. */
+  | "ENDED_RELATIONSHIP";
 
 export class PatientProvisioningConflictError extends ConflictError {
   readonly kind: PatientProvisioningConflictKind;
@@ -322,10 +324,17 @@ export async function provisionPatientInTransaction(
         hospitalId: input.targetHospitalId,
       },
     },
-    select: { id: true, hospitalNumber: true },
+    select: { id: true, hospitalNumber: true, endedAt: true },
   });
 
   if (relationship) {
+    if (relationship.endedAt !== null) {
+      throw new PatientProvisioningConflictError(
+        "ENDED_RELATIONSHIP",
+        "The Patient's care relationship with this Hospital has ended",
+      );
+    }
+
     if (
       input.hospitalNumber &&
       relationship.hospitalNumber &&
@@ -341,7 +350,7 @@ export async function provisionPatientInTransaction(
       relationship = await transaction.patientHospitalRelationship.update({
         where: { id: relationship.id },
         data: { hospitalNumber: input.hospitalNumber },
-        select: { id: true, hospitalNumber: true },
+        select: { id: true, hospitalNumber: true, endedAt: true },
       });
       changed = true;
     }
@@ -352,7 +361,7 @@ export async function provisionPatientInTransaction(
         hospitalId: input.targetHospitalId,
         hospitalNumber: input.hospitalNumber,
       },
-      select: { id: true, hospitalNumber: true },
+      select: { id: true, hospitalNumber: true, endedAt: true },
     });
     changed = true;
   }

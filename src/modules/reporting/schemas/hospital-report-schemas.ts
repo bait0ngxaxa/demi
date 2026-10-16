@@ -36,16 +36,24 @@ export const parentChildHospitalReportRequestSchema = z
 
 const cursorSchema = z.string().trim().min(1).max(512).optional();
 
+/**
+ * Phase F (ก-18): the default cohort excludes Patients whose care with the Hospital ended; the OWNER may opt in to
+ * "รวมผู้ที่สิ้นสุดการดูแล" so Programs completed before the end stay reportable. Omitted means ACTIVE.
+ */
+export const hospitalReportCohortSchema = z.enum(["ACTIVE", "INCLUDE_ENDED"]);
+export type HospitalReportCohort = z.infer<typeof hospitalReportCohortSchema>;
+
 export const hospitalReportPageRequestSchema = z
   .object({
     hospitalId: hospitalReportHospitalIdSchema,
     cursor: cursorSchema,
     pageSize: z.coerce.number().int().min(1).max(50).optional(),
+    cohort: hospitalReportCohortSchema.optional(),
   })
   .strict();
 
 export const hospitalReportExportRequestSchema = z
-  .object({ hospitalId: hospitalReportHospitalIdSchema })
+  .object({ hospitalId: hospitalReportHospitalIdSchema, cohort: hospitalReportCohortSchema.optional() })
   .strict();
 
 export type HospitalReportPageRequest = z.infer<typeof hospitalReportPageRequestSchema>;

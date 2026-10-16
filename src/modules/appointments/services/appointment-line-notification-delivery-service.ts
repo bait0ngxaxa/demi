@@ -17,6 +17,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { isPatientHospitalRelationshipEnded } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 
 import {
   APPOINTMENT_LINE_NOTIFICATION_BATCH_SIZE,
@@ -172,6 +173,7 @@ async function currentEligibility(
         patientHospitalRelationship: {
           select: {
             id: true,
+            endedAt: true,
             hospital: { select: { status: true } },
             patientProfile: {
               select: {
@@ -205,7 +207,8 @@ async function currentEligibility(
 
     const relationship = appointment.patientHospitalRelationship;
     const patientUser = relationship.patientProfile.person.user;
-    if (relationship.hospital.status !== HospitalStatus.ACTIVE) {
+    // Phase F: nothing is sent for a relationship whose care has ended.
+    if (relationship.hospital.status !== HospitalStatus.ACTIVE || isPatientHospitalRelationshipEnded(relationship)) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 

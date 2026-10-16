@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type {
   ActorContext,
   ActorHospitalMembership,
@@ -181,7 +182,7 @@ export async function resolvePatientClassificationAccessContext(
 
   const db = getDatabase(database);
   const record = await db.patientHospitalRelationship.findUnique({
-    where: { id: parsedRelationshipId.data.toLowerCase() },
+    where: { id: parsedRelationshipId.data.toLowerCase(), ...activePatientHospitalRelationshipWhere },
     select: patientClassificationRelationshipAccessSelect,
   });
 

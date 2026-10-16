@@ -15,6 +15,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
   ConflictError,
@@ -55,6 +56,8 @@ export type PatientServiceRelationshipView = {
   relationshipId: string;
   hospitalName: string;
   hospitalActive: boolean;
+  /** Phase F: care with this Hospital ended; request history only, no new requests. */
+  careEnded: boolean;
   offerings: readonly { offeringId: string; code: PatientServiceCode }[];
   osmChoices: readonly { relationshipId: string; displayName: string }[];
   requests: readonly PatientServiceRequestStatusView[];
@@ -211,6 +214,7 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
   return {
     id: true,
     hospitalId: true,
+    endedAt: true,
     hospital: {
       select: {
         id: true,
@@ -296,7 +300,9 @@ export async function listOwnPatientServiceRequests(
 
     return relationships.map((relationship) => {
       const hospitalActive = relationship.hospital.status === HospitalStatus.ACTIVE;
-      const osmChoices = hospitalActive
+      const careEnded = relationship.endedAt !== null;
+      const acceptsRequests = hospitalActive && !careEnded;
+      const osmChoices = acceptsRequests
         ? relationship.hospital.osmHospitalRelationships.map(({ id, user: osm }) => ({
             relationshipId: id,
             displayName: fullName(osm.person.givenName, osm.person.familyName),
@@ -307,7 +313,8 @@ export async function listOwnPatientServiceRequests(
         relationshipId: relationship.id,
         hospitalName: relationship.hospital.name,
         hospitalActive,
-        offerings: hospitalActive
+        careEnded,
+        offerings: acceptsRequests
           ? relationship.hospital.serviceOfferings.map(({ id, code }) => ({
               offeringId: id,
               code,
@@ -358,6 +365,7 @@ export async function createPatientServiceRequest(
         const relationship = await transaction.patientHospitalRelationship.findFirst({
           where: {
             id: parsed.data.relationshipId,
+            ...activePatientHospitalRelationshipWhere,
             patientProfile: { personId: patient.personId },
           },
           select: {
@@ -455,7 +463,7 @@ export async function withdrawOwnPatientServiceRequest(
           where: {
             id: parsed.data.requestId,
             requestedByUserId: actor.userId,
-            relationship: { patientProfile: { personId: patient.personId } },
+            relationship: { ...activePatientHospitalRelationshipWhere, patientProfile: { personId: patient.personId } },
           },
           select: { id: true, status: true },
         });
@@ -517,7 +525,7 @@ export async function reviewPatientServiceRequest(
       getDatabase(dependencies),
       async (transaction) => {
         const request = await transaction.patientServiceRequest.findUnique({
-          where: { id: parsed.data.requestId },
+          where: { id: parsed.data.requestId, relationship: { is: activePatientHospitalRelationshipWhere } },
           select: {
             id: true,
             hospitalId: true,
@@ -641,6 +649,7 @@ export async function listHospitalPatientServiceRequests(
     const requests = await database.patientServiceRequest.findMany({
       where: {
         hospitalId: { in: hospitalIds },
+        relationship: { is: activePatientHospitalRelationshipWhere },
         status: group === "HISTORY"
           ? { in: [PatientServiceRequestStatus.STARTED, PatientServiceRequestStatus.REJECTED, PatientServiceRequestStatus.WITHDRAWN] }
           : group,

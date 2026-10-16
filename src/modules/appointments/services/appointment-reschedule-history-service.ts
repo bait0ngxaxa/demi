@@ -24,7 +24,7 @@ export async function getAppointmentRescheduleHistory(actor: ActorContext, relat
   } catch (error: unknown) {
     if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error;
     const relationship = await resolveOwnPatientRelationshipContext(actor, relationshipId, { database: db });
-    canRequest = relationship.hospitalStatus === HospitalStatus.ACTIVE;
+    canRequest = relationship.hospitalStatus === HospitalStatus.ACTIVE && relationship.careEndedAt === null;
   }
   const appointment = await db.patientAppointment.findFirst({ where: { id: appointmentId, patientHospitalRelationshipId: relationshipId }, select: { updatedAt: true, status: true } });
   if (!appointment) throw new NotFoundError();

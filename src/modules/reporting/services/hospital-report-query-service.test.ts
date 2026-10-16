@@ -256,7 +256,7 @@ describe("Hospital reporting query service", () => {
     });
     expect(database.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
+        patientHospitalRelationship: { is: { hospitalId: hospitalAId, endedAt: null } },
         status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
       }),
       orderBy: [{ startedAt: "desc" }, { id: "desc" }],
@@ -472,7 +472,7 @@ describe("Hospital reporting query service", () => {
     expect(result.page.items.map(({ patientProgramId }) => patientProgramId)).toEqual([programA1Id]);
     expect(database.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
+        patientHospitalRelationship: { is: { hospitalId: hospitalAId, endedAt: null } },
         status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
       }),
     }));
@@ -570,7 +570,7 @@ describe("Hospital reporting query service", () => {
     expect(secondPage.page.items.map(({ patientProgramId }) => patientProgramId)).toEqual([programA3Id]);
     expect(secondDatabase.patientProgram.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        patientHospitalRelationship: { is: { hospitalId: hospitalAId } },
+        patientHospitalRelationship: { is: { hospitalId: hospitalAId, endedAt: null } },
         OR: [
           { startedAt: { lt: startedAt } },
           { startedAt, id: { lt: programA1Id } },

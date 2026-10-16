@@ -6,6 +6,8 @@ import { buttonClassName } from "@/components/ui/button";
 import type { PatientSelfContactAvailability } from "@/modules/patient-self/transport/patient-self-page-context";
 import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
 
+import { PATIENT_CARE_ENDED_LABEL } from "./patient-self-care-presentation";
+
 type PatientSelfHospitalRelationship = PatientSelfContext["hospitalRelationships"][number] & {
   hospitalContact?: PatientSelfContactAvailability;
 };
@@ -54,6 +56,7 @@ export function PatientSelfRelationshipList({
                   <dt className="text-text-muted">สถานะโรงพยาบาล</dt>
                   <dd className="mt-0.5 break-words font-medium text-text">
                     {hospitalStatusLabels[relationship.hospitalStatus]}
+                    {relationship.careEndedAt ? ` · ${PATIENT_CARE_ENDED_LABEL}` : null}
                   </dd>
                 </div>
               </dl>
@@ -63,7 +66,11 @@ export function PatientSelfRelationshipList({
                   className="mt-5 min-w-0 border-t border-border pt-4"
                 >
                   <h4 className="break-words font-semibold text-text">ข้อมูลติดต่อโรงพยาบาล</h4>
-                  {relationship.hospitalStatus !== HospitalStatus.ACTIVE ? (
+                  {relationship.careEndedAt ? (
+                    <p className="mt-2 break-words text-sm leading-6 text-text-muted">
+                      โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว จึงไม่แสดงข้อมูลติดต่อ
+                    </p>
+                  ) : relationship.hospitalStatus !== HospitalStatus.ACTIVE ? (
                     <p className="mt-2 break-words text-sm leading-6 text-text-muted">
                       ยังไม่แสดงข้อมูลติดต่อสำหรับโรงพยาบาลนี้
                     </p>
@@ -109,14 +116,16 @@ export function PatientSelfRelationshipList({
                     <span className="sr-only"> · {relationship.hospitalName}</span>
                   </Link>
                 ) : null}
-                <Link
-                  className={buttonClassName({ variant: showCareLink ? "secondary" : "primary", className: "w-full max-w-full break-words text-center sm:w-auto" })}
-                  href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}
-                  prefetch={false}
-                >
-                  ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
-                  <span className="sr-only"> · {relationship.hospitalName}</span>
-                </Link>
+                {relationship.careEndedAt ? null : (
+                  <Link
+                    className={buttonClassName({ variant: showCareLink ? "secondary" : "primary", className: "w-full max-w-full break-words text-center sm:w-auto" })}
+                    href={`/app/personal/profile/${encodeURIComponent(relationship.relationshipId)}`}
+                    prefetch={false}
+                  >
+                    ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
+                    <span className="sr-only"> · {relationship.hospitalName}</span>
+                  </Link>
+                )}
               </nav>
             </li>
           ))}

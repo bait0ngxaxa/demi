@@ -75,6 +75,7 @@ export type PreviewPerson = {
     hospitalRelationships: {
       id: string;
       hospitalNumber: string | null;
+      endedAt: Date | null;
     }[];
   } | null;
 };
@@ -140,6 +141,7 @@ export function buildPreviewPersonSelect(targetHospitalId: string) {
           select: {
             id: true,
             hospitalNumber: true,
+            endedAt: true,
           },
         },
       },
@@ -329,6 +331,10 @@ function hasNameConflict(
   );
 }
 
+/** ENDED_RELATIONSHIP: shown for a national ID whose care with this Hospital has ended. */
+export const PATIENT_IMPORT_ENDED_RELATIONSHIP_REASON =
+  "ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว ระบบไม่เปิดการดูแลเดิมกลับมาเอง กรุณาติดต่อผู้ดูแลระบบ";
+
 /**
  * Identity check for a person that already exists. A patient that already has a
  * relationship with the target Hospital is `ALREADY_EXISTS` or `CONFLICT` and
@@ -361,6 +367,14 @@ export function classifyExistingPatient(
 
   if (!relationship) {
     return { classification: "READY", reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
+  }
+
+  // Phase F: an ended care relationship is never reactivated by import; a platform ADMIN decides.
+  if (relationship.endedAt !== null) {
+    return {
+      classification: "CONFLICT",
+      reason: PATIENT_IMPORT_ENDED_RELATIONSHIP_REASON,
+    };
   }
 
   if (

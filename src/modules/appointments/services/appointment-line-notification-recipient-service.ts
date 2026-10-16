@@ -12,6 +12,7 @@ import {
 
 import { FAMILY_APPOINTMENT_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
 import { appointmentGrantCaregiverWhere } from "@/modules/family/policies/appointment-grant-policy";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 
 /**
  * Customer decision E6 (ก-24): appointment notification recipients are the Patient, the currently assigned OSM
@@ -32,7 +33,7 @@ export async function currentAssignedOsmRecipient(
   patientHospitalRelationshipId: string,
 ): Promise<string | null> {
   const relationship = await transaction.patientHospitalRelationship.findUnique({
-    where: { id: patientHospitalRelationshipId },
+    where: { id: patientHospitalRelationshipId, ...activePatientHospitalRelationshipWhere },
     select: {
       hospitalId: true,
       hospital: { select: { status: true } },

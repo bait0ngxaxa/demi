@@ -19,7 +19,7 @@ import type {
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
 import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
-import type { HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
+import type { HospitalReportCohort, HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
@@ -510,9 +510,11 @@ function ServiceProgram({
 export function ExportButton({
   hospitalId,
   endpoint,
+  cohort = "ACTIVE",
 }: {
   hospitalId: string;
   endpoint: string;
+  cohort?: HospitalReportCohort;
 }): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -523,7 +525,8 @@ export function ExportButton({
     setMessage(null);
     setFailed(false);
     try {
-      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}`, {
+      const cohortQuery = cohort === "INCLUDE_ENDED" ? "&cohort=INCLUDE_ENDED" : "";
+      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}${cohortQuery}`, {
         method: "GET",
         cache: "no-store",
         credentials: "same-origin",
@@ -599,14 +602,17 @@ export function HospitalReportWorkspace({
   const [view, setView] = useState<ReportView>(initialView === "service" ? "service" : "overview");
   const isGlobalAdmin = audience === "GLOBAL_ADMIN";
   const routeBase = isGlobalAdmin ? "/app/admin/reporting" : "/app/hospitals/reporting";
-  const baseHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+  const includesEnded = page.cohort === "INCLUDE_ENDED";
+  const hospitalHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
+  // In-report links (pagination, views) keep the selected cohort.
+  const baseHref = includesEnded ? `${hospitalHref}&cohort=INCLUDE_ENDED` : hospitalHref;
   const allowProgramDetail = !isGlobalAdmin;
   const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
   return (
     <div className="content-workspace">
       <PageHeader
-        actions={<ExportButton endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
+        actions={<ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
         breadcrumbs={isGlobalAdmin
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
           : [{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
@@ -663,6 +669,28 @@ export function HospitalReportWorkspace({
             <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงานเฉพาะโรงพยาบาลที่เลือก" : "เจ้าของโรงพยาบาลนี้เข้าถึงได้โดยตรง"}</p>
           </div>
         </div>
+
+        {isGlobalAdmin ? null : (
+          <div className="mt-4 flex min-w-0 flex-col gap-3 rounded-panel border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="min-w-0">
+              <p className="font-semibold text-text">
+                {includesEnded ? "รวมผู้ที่สิ้นสุดการดูแลแล้ว" : "เฉพาะผู้ที่ยังอยู่ในการดูแล"}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                {includesEnded
+                  ? "ตัวเลขและรายการรวมประวัติของผู้ป่วยที่โรงพยาบาลสิ้นสุดการดูแลแล้ว ไฟล์ Excel ที่ส่งออกใช้ชุดข้อมูลเดียวกัน"
+                  : "ผู้ป่วยที่โรงพยาบาลสิ้นสุดการดูแลแล้วไม่ถูกนับในรายงานนี้"}
+              </p>
+            </div>
+            <Link
+              className={buttonClassName({ variant: "secondary", size: "compact", className: "shrink-0" })}
+              href={`${includesEnded ? hospitalHref : `${hospitalHref}&cohort=INCLUDE_ENDED`}&view=${view}`}
+              prefetch={false}
+            >
+              {includesEnded ? "แสดงเฉพาะผู้ที่ยังอยู่ในการดูแล" : "รวมผู้ที่สิ้นสุดการดูแล"}
+            </Link>
+          </div>
+        )}
 
         <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
           <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">

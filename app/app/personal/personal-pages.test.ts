@@ -32,6 +32,7 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ก",
       hospitalNumber: "HN-001",
       hospitalStatus: HospitalStatus.ACTIVE,
+      careEndedAt: null,
       hospitalContact: {
         status: "AVAILABLE" as const,
         contact: {
@@ -58,6 +59,7 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ข",
       hospitalNumber: null,
       hospitalStatus: HospitalStatus.SUSPENDED,
+      careEndedAt: null,
       hospitalContact: { status: "UNAVAILABLE" as const },
       profile: {
         gender: "ชาย",
@@ -77,6 +79,7 @@ const completeContext = {
       hospitalName: "โรงพยาบาล ค",
       hospitalNumber: "HN-003",
       hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+      careEndedAt: null,
       hospitalContact: { status: "UNAVAILABLE" as const },
       profile: {
         gender: "ชาย",

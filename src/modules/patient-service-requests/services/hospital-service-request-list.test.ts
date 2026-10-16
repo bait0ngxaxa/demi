@@ -38,7 +38,7 @@ describe("bounded Hospital request list", () => {
     expect(page).toEqual({ requests: [], group: "PENDING", after: undefined, nextCursor: null });
     expect(mocks.requests).toHaveBeenCalledOnce();
     expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({
-      where: { hospitalId: { in: [hospitalA, hospitalB] }, status: "PENDING" },
+      where: { hospitalId: { in: [hospitalA, hospitalB] }, relationship: { is: { endedAt: null } }, status: "PENDING" },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 21,
     }));
     expect(mocks.memberships).toHaveBeenCalledWith({
@@ -54,7 +54,7 @@ describe("bounded Hospital request list", () => {
     ["HISTORY", { in: ["STARTED", "REJECTED", "WITHDRAWN"] }],
   ] as const)("queries only persisted statuses for %s", async (group, status) => {
     await listHospitalPatientServiceRequests(actor, {}, { group });
-    expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({ where: { hospitalId: { in: [hospitalA, hospitalB] }, status } }));
+    expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({ where: { hospitalId: { in: [hospitalA, hospitalB] }, relationship: { is: { endedAt: null } }, status } }));
   });
 
   it.each([0, 19, 20, 21])("uses lookahead for %i rows and never treats page size as total", async (size) => {
@@ -69,7 +69,7 @@ describe("bounded Hospital request list", () => {
     const after = { createdAt: createdAt.toISOString(), requestId };
     await listHospitalPatientServiceRequests(actor, {}, { group: "HISTORY", after });
     expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({ where: {
-      hospitalId: { in: [hospitalA, hospitalB] }, status: { in: ["STARTED", "REJECTED", "WITHDRAWN"] },
+      hospitalId: { in: [hospitalA, hospitalB] }, relationship: { is: { endedAt: null } }, status: { in: ["STARTED", "REJECTED", "WITHDRAWN"] },
       OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: requestId } }],
     } }));
     expect(mocks.requests).toHaveBeenCalledOnce();

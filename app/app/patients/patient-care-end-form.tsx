@@ -1,0 +1,60 @@
+"use client";
+
+import { useId } from "react";
+
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { PATIENT_HOSPITAL_RELATIONSHIP_END_REASON_MAX_LENGTH } from "@/modules/patient-hospital-relationship/schemas/patient-hospital-relationship-end-schemas";
+import {
+  endPatientHospitalRelationshipAction,
+  type PatientHospitalRelationshipEndActionState,
+} from "@/modules/patient-hospital-relationship/transport/server-actions";
+
+/** Phase F (ก-18) "ลบผู้ใช้งานทั่วไป": the OWNER ends care with this Hospital; the server re-checks OWNER authority. */
+export function PatientCareEndForm({ relationshipId, hospitalName }: {
+  relationshipId: string;
+  hospitalName: string;
+}): React.JSX.Element {
+  const id = useId();
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<PatientHospitalRelationshipEndActionState, FormData>(
+    endPatientHospitalRelationshipAction.bind(null, relationshipId),
+    { status: "IDLE", message: "" },
+  );
+
+  return <form action={formAction} className="space-y-4" onSubmit={submitPreservingInput(formAction)}>
+    <div className="space-y-2 text-sm leading-6 text-text-muted">
+      <p>ผู้ป่วยจะไม่อยู่ในการดูแลของ{hospitalName}อีกต่อไป เจ้าหน้าที่และ อสม. ของโรงพยาบาลนี้จะเปิดดูหรือบันทึกข้อมูลผู้ป่วยรายนี้ไม่ได้ ผู้ดูแลในครอบครัวจะไม่เห็นนัดหมายของโรงพยาบาลนี้ และระบบจะหยุดส่งแจ้งเตือนทาง LINE ของโรงพยาบาลนี้</p>
+      <p>นัดหมายที่ยังไม่ถึงกำหนดจะถูกยกเลิก การมอบหมาย อสม. คำขอที่ค้างอยู่ และการเปิดใช้งานบัญชีที่ยังไม่เสร็จของโรงพยาบาลนี้จะสิ้นสุด</p>
+      <p>ระบบไม่ลบข้อมูล: ประวัติ Program การติดตาม นัดหมาย หลักฐาน และบันทึกการใช้งานยังเก็บไว้ ผู้ป่วยยังดูประวัติเดิมได้ และการดูแลที่โรงพยาบาลอื่นไม่เปลี่ยนแปลง การสิ้นสุดการดูแลย้อนกลับไม่ได้ หากต้องรับกลับเข้าดูแล ต้องติดต่อผู้ดูแลระบบ</p>
+    </div>
+    <div>
+      <label htmlFor={`${id}-reason`} className="text-sm font-semibold text-text">เหตุผลที่สิ้นสุดการดูแล</label>
+      <textarea
+        className="mt-2 min-h-24 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        disabled={pending || unknownOutcome}
+        id={`${id}-reason`}
+        maxLength={PATIENT_HOSPITAL_RELATIONSHIP_END_REASON_MAX_LENGTH}
+        name="endReason"
+        required
+      />
+    </div>
+    <label className="flex min-h-11 items-start gap-3 text-sm leading-6 text-text">
+      <input
+        className="mt-1 h-4 w-4 shrink-0 accent-action-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        disabled={pending || unknownOutcome}
+        name="confirmRetention"
+        required
+        type="checkbox"
+        value="true"
+      />
+      <span>ข้าพเจ้าเข้าใจว่าการสิ้นสุดการดูแลย้อนกลับไม่ได้ และประวัติการดูแลยังถูกเก็บไว้</span>
+    </label>
+    {state.status === "ERROR" ? <Alert role="alert" variant="warning">{state.message}</Alert> : null}
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
+    <Button disabled={unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
+      {pending ? "กำลังบันทึก…" : "สิ้นสุดการดูแลผู้ป่วยรายนี้"}
+    </Button>
+  </form>;
+}

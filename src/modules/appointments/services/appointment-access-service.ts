@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type {
   ActorContext,
   ActorHospitalMembership,
@@ -186,7 +187,9 @@ export async function resolveAppointmentAccessContext(
 
   const db = getDatabase(database);
   const record = await db.patientHospitalRelationship.findUnique({
-    where: { id: parsedRelationshipId.data },
+    // Phase F: an ended relationship fails closed for every caller here (staff, OSM and Patient interactions);
+    // the Patient's read-only history is served by the patient-self services.
+    where: { id: parsedRelationshipId.data, ...activePatientHospitalRelationshipWhere },
     select: appointmentRelationshipAccessSelect,
   });
 

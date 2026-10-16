@@ -2,6 +2,7 @@ import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@pris
 
 import type { FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import type { GoalActivityCategory } from "@/modules/goals/domain/goal-templates";
+import type { HospitalReportCohort } from "@/modules/reporting/schemas/hospital-report-schemas";
 
 export type HospitalReportUnavailableReason =
   | "SOURCE_MISSING"
@@ -158,6 +159,8 @@ export type HospitalReportProgramRow = {
 
 export type HospitalReportingPageProjection = {
   hospital: { id: string; hospitalCode: string; name: string };
+  /** Phase F: whether Patients whose care ended are part of this report. */
+  cohort: HospitalReportCohort;
   counts: HospitalReportingSummary;
   page: {
     items: readonly HospitalReportProgramRow[];

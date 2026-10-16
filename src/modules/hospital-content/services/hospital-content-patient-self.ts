@@ -2,6 +2,7 @@ import "server-only";
 
 import { HospitalStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 export function hospitalContentPatientPersonWhere(actor: ActorContext): Prisma.PersonWhereInput {
@@ -37,6 +38,7 @@ export async function resolveHospitalContentPatientSelf(
           id: profile.id,
           person: { is: hospitalContentPatientPersonWhere(actor) },
         } },
+        ...activePatientHospitalRelationshipWhere,
         hospital: { is: { status: HospitalStatus.ACTIVE } },
       },
       select: { id: true },

@@ -116,6 +116,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
 function dataset(): HospitalReportingDataset {
   return {
     hospital: { id: hospitalId, hospitalCode: "DEMO-A", name: "โรงพยาบาลทดสอบ" },
+    cohort: "ACTIVE",
     counts: {
       patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
       relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },

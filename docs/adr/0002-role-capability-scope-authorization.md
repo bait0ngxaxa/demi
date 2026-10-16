@@ -71,6 +71,16 @@ DENIED
 - วิธีเลือก active hospital context สำหรับ User ที่มีหลาย membership
 - Policy ใดต้องพิจารณา record status, assignment หรือ clinical workflow state เพิ่มเติม
 
+## Amendment — Patient-Hospital relationship lifecycle (Phase F, ก-18)
+
+Historical decisions are unchanged. A `PatientHospitalRelationship` may end (`endedAt`, terminal). Scope resolved
+through an ended relationship fails closed for every WORK capability (Hospital staff, OSM, caregiver grants, LINE
+delivery, default report cohort): resolvers filter with the single shared predicate
+`activePatientHospitalRelationshipWhere` (raw SQL uses the equivalent `"endedAt" IS NULL`) rather than ad-hoc
+filters. The Patient's own SELF scope keeps read-only access to history through that relationship; no SELF write
+is accepted for it. The report cohort including ended relationships is an explicit OWNER opt-in filter, not an
+authority dimension. See [WB_ALIGNMENT_DECISIONS.md §ช](../requirements/WB_ALIGNMENT_DECISIONS.md).
+
 ## References
 
 - [Architecture Baseline: Core Architecture Principles](../architecture/DEMI_ARCHITECTURE_BASELINE.md#2-core-architecture-principles)

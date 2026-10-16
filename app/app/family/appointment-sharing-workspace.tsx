@@ -42,11 +42,13 @@ function ProposeForm({ relationships, hospitals }: { relationships: readonly Fam
 
 function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementItem; perspective: "patient" | "caregiver" }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
-  const label = grant.status === "PENDING" ? "รอผู้ดูแลยอมรับ" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "ยกเลิกสิทธิ์แล้ว";
+  const careEnded = grant.careEnded === true && grant.status !== "REVOKED";
+  const label = careEnded ? "สิ้นสุดการดูแลแล้ว" : grant.status === "PENDING" ? "รอผู้ดูแลยอมรับ" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "ยกเลิกสิทธิ์แล้ว";
   return <li className="space-y-3 py-5 first:pt-0">
     <p className="break-words font-semibold text-text">{formatFamilyParticipantName(grant.participant, perspective === "patient" ? "ไม่ระบุชื่อผู้ดูแล" : "ไม่ระบุชื่อผู้ป่วย")}</p>
     <p className="break-words text-sm text-text">{grant.hospitalName}</p>
-    <StatusBadge variant={grant.status === "ACTIVE" ? "success" : grant.status === "PENDING" ? "warning" : "neutral"}>{label}</StatusBadge>
+    <StatusBadge variant={careEnded ? "neutral" : grant.status === "ACTIVE" ? "success" : grant.status === "PENDING" ? "warning" : "neutral"}>{label}</StatusBadge>
+    {careEnded ? <p className="type-readable text-sm leading-7 text-text-muted">โรงพยาบาลสิ้นสุดการดูแลแล้ว ผู้ดูแลจึงไม่เห็นนัดหมายของโรงพยาบาลนี้</p> : null}
     <p className="text-sm text-text-muted">เสนอเมื่อ {formatFamilyManagementDate(grant.proposedAt)}</p>
     {grant.acceptedAt ? <p className="text-sm text-text-muted">ยอมรับเมื่อ {formatFamilyManagementDate(grant.acceptedAt)}</p> : null}
     {grant.revokedAt ? <p className="text-sm text-text-muted">ยกเลิกเมื่อ {formatFamilyManagementDate(grant.revokedAt)}</p> : null}

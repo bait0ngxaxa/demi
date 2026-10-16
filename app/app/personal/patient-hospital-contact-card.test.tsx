@@ -17,6 +17,7 @@ function relationship(overrides: Partial<Relationship> = {}): Relationship {
     hospitalName,
     hospitalNumber: null,
     hospitalStatus: HospitalStatus.ACTIVE,
+    careEndedAt: null,
     hospitalContact: {
       status: "AVAILABLE",
       contact: {

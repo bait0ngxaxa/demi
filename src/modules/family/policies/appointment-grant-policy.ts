@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, Role } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { FAMILY_APPOINTMENT_READ_CONTRACT } from "../domain/appointment-grant-contract";
 
 export function appointmentGrantOwnerWhere(actor: ActorContext): Prisma.CaregiverAppointmentGrantWhereInput {
@@ -14,7 +15,10 @@ export function appointmentGrantOwnerWhere(actor: ActorContext): Prisma.Caregive
   };
 }
 
-/** Purpose-specific current authority. No role/membership fallback. Exact pairs are also DB-bound. */
+/**
+ * Purpose-specific current authority. No role/membership fallback. Exact pairs are also DB-bound. Phase F: a grant
+ * through an ended Patient-Hospital relationship gives no caregiver authority (the grant row itself is retained).
+ */
 export function appointmentGrantCaregiverWhere(
   actor: ActorContext,
   status: "PENDING" | "ACTIVE",
@@ -35,6 +39,6 @@ export function appointmentGrantCaregiverWhere(
         acceptanceContractVersion: "family-delegation-v1",
       } },
     } },
-    patientHospitalRelationship: { is: { hospital: { is: { status: "ACTIVE" } } } },
+    patientHospitalRelationship: { is: { ...activePatientHospitalRelationshipWhere, hospital: { is: { status: "ACTIVE" } } } },
   };
 }

@@ -40,6 +40,7 @@ const ownRelationship = {
   hospitalName: "โรงพยาบาล ก",
   hospitalNumber: "HN-001",
   hospitalStatus: HospitalStatus.SUSPENDED,
+  careEndedAt: null,
 };
 
 const anotherRelationship = {
@@ -48,6 +49,7 @@ const anotherRelationship = {
   hospitalName: "โรงพยาบาล ข",
   hospitalNumber: null,
   hospitalStatus: HospitalStatus.ACTIVE,
+  careEndedAt: null,
 };
 
 const startedAt = new Date("2026-01-03T00:00:00.000Z");

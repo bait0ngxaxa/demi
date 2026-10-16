@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { HospitalContentStatus, HospitalStatus, MembershipStatus, MembershipType, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { getPatientEvidenceStorage } from "@/modules/patient-evidence/storage/supabase-patient-evidence-storage";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
@@ -89,7 +90,7 @@ export async function getHospitalContentImageSignedUrl(actor: ActorContext | nul
   if (!hospital) throw new NotFoundError();
   let allowed = false;
   if (content.status === HospitalContentStatus.PUBLISHED) {
-    if (actor.roles.includes(Role.PATIENT)) allowed = Boolean(await db.patientHospitalRelationship.findFirst({ where: { hospitalId: content.hospitalId, patientProfile: { person: { id: actor.personId, user: { id: actor.userId, status: UserStatus.ACTIVE, roles: { some: { role: Role.PATIENT } } } } } }, select: { id: true } }));
+    if (actor.roles.includes(Role.PATIENT)) allowed = Boolean(await db.patientHospitalRelationship.findFirst({ where: { hospitalId: content.hospitalId, ...activePatientHospitalRelationshipWhere, patientProfile: { person: { id: actor.personId, user: { id: actor.userId, status: UserStatus.ACTIVE, roles: { some: { role: Role.PATIENT } } } } } }, select: { id: true } }));
     if (!allowed && actor.roles.includes(Role.HOSPITAL)) allowed = Boolean(await db.hospitalMembership.findFirst({ where: { hospitalId: content.hospitalId, userId: actor.userId, status: MembershipStatus.ACTIVE, user: { personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } }, select: { id: true } }));
     if (!allowed && actor.roles.includes(Role.OSM)) allowed = Boolean(await db.osmHospitalRelationship.findFirst({ where: { hospitalId: content.hospitalId, userId: actor.userId, status: MembershipStatus.ACTIVE, user: { personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: Role.OSM } } } }, select: { id: true } }));
   } else if (content.status === HospitalContentStatus.DRAFT && actor.roles.includes(Role.HOSPITAL)) {

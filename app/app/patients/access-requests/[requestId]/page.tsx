@@ -218,6 +218,19 @@ function ApprovedRequestNextStep({
     );
   }
 
+  if (reconciliation?.kind === "ENDED_RELATIONSHIP") {
+    return (
+      <div className="mt-5 border-t border-border pt-5">
+        <Alert variant="warning">
+          <p className="font-semibold">ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว</p>
+          <p className="mt-1 leading-6">
+            ระบบไม่เปิดการดูแลเดิมกลับมาเอง หากต้องรับกลับเข้าดูแล กรุณาติดต่อผู้ดูแลระบบ
+          </p>
+        </Alert>
+      </div>
+    );
+  }
+
   const noPerson = reconciliation?.kind === "NOT_PROVISIONED";
   const patientName = reconciliation?.kind === "PROVISIONING_REQUIRED"
     ? reconciliation.displayName
