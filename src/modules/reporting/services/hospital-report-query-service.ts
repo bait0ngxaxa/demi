@@ -15,7 +15,6 @@ import {
 import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { isSelfReportedExerciseReportEnabled } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
@@ -614,18 +613,12 @@ function averageWeeklyExerciseFact(
  * D9 (WB-DF-16): Before/After average self-reported exercise minutes per week per Program. Reads only
  * the date and duration of entries inside each Program's windows; Patient journal text is never read.
  * Entries belong to the Patient profile, not a Hospital, so every related Hospital gets the same value.
- * While the disclosure gate is off (WB-PD-06) no entry is read.
+ * Disclosure basis: Patient consent confirmed by the Product Owner on 2026-10-16 (WB_ALIGNMENT_DECISIONS §จ).
  */
 async function loadWeeklyExerciseFacts(
   database: HospitalReportQueryDatabase,
   records: readonly (HospitalReportProgramRecord | HospitalReportExportProgramRecord)[],
-  enabled: boolean = isSelfReportedExerciseReportEnabled(),
 ): Promise<Map<string, HospitalReportProgramRow["weeklyExercise"]>> {
-  if (!enabled) {
-    const gated: HospitalReportFact<number> = { state: "UNAVAILABLE", reason: "DISCLOSURE_UNAPPROVED" };
-    return new Map(records.map((record) => [record.id, { before: gated, after: gated }]));
-  }
-
   const windowsByProgram = new Map(records.map((record) => [record.id, programWeeklyExerciseWindows(record)]));
   const windows = [...windowsByProgram.values()].flatMap(({ before, after }) => (after ? [before, after] : [before]));
   const entriesById = new Map<string, ExerciseMinutesEntry>();

@@ -565,9 +565,7 @@ describe("Program six-round navigator (Phase A)", () => {
       hba1c: 6.8,
       cvdRiskScore: 9.8,
     });
-    // D9: self-reported exercise in the 28 days before the Program start and before the Final service date
-    // (disclosure gate opened for this test; it is off by default until WB-PD-06).
-    process.env.DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED = "true";
+    // D9: self-reported exercise in the 28 days before the Program start and before the Final service date.
     const { patientProfileId } = await prisma.patientHospitalRelationship.findUniqueOrThrow({
       where: { id: fixture.relationshipId },
       select: { patientProfileId: true },
@@ -608,10 +606,6 @@ describe("Program six-round navigator (Phase A)", () => {
       before: { state: "RECORDED", value: 10 },
       after: { state: "RECORDED", value: 30 },
     });
-    delete process.env.DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED;
-    const gated = (await getHospitalReportingDatasetForExport(fixture.owner.actor, { hospitalId: fixture.hospitalId }))
-      .programs.find((program) => program.patientProgramId === fixture.programId);
-    expect(gated?.weeklyExercise.before).toEqual({ state: "UNAVAILABLE", reason: "DISCLOSURE_UNAPPROVED" });
 
     // D7: the 0-100 range is also a database CHECK.
     await expect(

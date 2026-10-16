@@ -10,17 +10,6 @@ export function isFamilyDelegatedAppointmentReadEnabled(): boolean {
   return parsed.success && parsed.data === "true";
 }
 
-/**
- * Disclosure gate for D9 (WB-DF-16): Patient self-reported exercise minutes in Hospital reports.
- * Off until the consent/legal basis (WB-PD-06) is approved; absent or invalid values deny.
- */
-export function isSelfReportedExerciseReportEnabled(): boolean {
-  const parsed = z.enum(["true", "false"]).optional().safeParse(
-    process.env.DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED,
-  );
-  return parsed.success && parsed.data === "true";
-}
-
 const postgresUrlSchema = z
   .url()
   .refine((value) => value.startsWith("postgres://") || value.startsWith("postgresql://"), {

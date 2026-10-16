@@ -366,21 +366,6 @@ describe("Hospital reporting query service", () => {
     });
   });
 
-  it("does not read self-reported exercise while the disclosure gate is off (WB-PD-06)", async () => {
-    for (const value of [undefined, "false", "yes"]) {
-      vi.stubEnv("DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED", value);
-      const database = createDatabase({ programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })] });
-
-      const row = (await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database })).page.items[0];
-
-      expect(row?.weeklyExercise).toEqual({
-        before: { state: "UNAVAILABLE", reason: "DISCLOSURE_UNAPPROVED" },
-        after: { state: "UNAVAILABLE", reason: "DISCLOSURE_UNAPPROVED" },
-      });
-      expect(database.personalExerciseEntry.findMany).not.toHaveBeenCalled();
-    }
-  });
-
   it("gives every Hospital related to the same Patient the same profile-level aggregate (D9)", async () => {
     const otherRelationshipId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const hospitalA = programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE });
@@ -404,7 +389,6 @@ describe("Hospital reporting query service", () => {
     const facts = await hospitalReportQueryInternals.loadWeeklyExerciseFacts(
       database,
       [hospitalA, hospitalB] as unknown as Parameters<typeof hospitalReportQueryInternals.loadWeeklyExerciseFacts>[1],
-      true,
     );
 
     expect(facts.get(programA1Id)?.before).toEqual({ state: "RECORDED", value: 20 });
@@ -412,7 +396,6 @@ describe("Hospital reporting query service", () => {
   });
 
   it("averages self-reported exercise minutes per week over the 28 Bangkok days before start and Final (D9)", async () => {
-    vi.stubEnv("DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED", "true");
     const entry = (id: string, occurredOn: string, durationMinutes: number | null) => ({
       id,
       patientProfileId,

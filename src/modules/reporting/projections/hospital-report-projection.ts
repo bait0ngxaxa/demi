@@ -7,9 +7,7 @@ export type HospitalReportUnavailableReason =
   | "SOURCE_MISSING"
   | "CLINICAL_SEMANTICS_UNAPPROVED"
   | "NOT_PROGRAM_SCOPED"
-  | "DERIVATION_UNAPPROVED"
-  /** Source and derivation exist, but disclosure to the Hospital is not yet approved (WB-PD-06). */
-  | "DISCLOSURE_UNAPPROVED";
+  | "DERIVATION_UNAPPROVED";
 
 export type HospitalReportFact<T> =
   | { state: "RECORDED"; value: T }
@@ -146,7 +144,7 @@ export type HospitalReportProgramRow = {
    * D9: self-reported PersonalExerciseEntry.durationMinutes, average minutes per week over the 28
    * Bangkok days before the Program start date (before) and before the Final Assessment service date
    * (after). NOT_RECORDED when no entry with a duration falls in the window or there is no Final
-   * Assessment. UNAVAILABLE (DISCLOSURE_UNAPPROVED) while the disclosure gate is off.
+   * Assessment.
    */
   weeklyExercise: {
     before: HospitalReportFact<number>;
@@ -260,7 +258,7 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     source:
       "PersonalExerciseEntry.durationMinutes of the Patient profile: minutes in the 28 Asia/Bangkok days before the Program start date (Before) or the Final Assessment service date (After), divided by 4",
     limitation:
-      "Self-reported by the Patient (ผู้ป่วยบันทึกเอง), not a clinical measurement; entries without a duration are not counted. Supersedes Wellness Q79 for this aggregate only (D9, WB-DF-16). Disclosure gate DEMI_REPORT_SELF_REPORTED_EXERCISE_ENABLED is off by default until WB-PD-06; the entries belong to the Patient profile, so every Hospital related to the Patient gets the same aggregate.",
+      "Self-reported by the Patient (ผู้ป่วยบันทึกเอง), not a clinical measurement; entries without a duration are not counted. Supersedes Wellness Q79 for this aggregate only (D9, WB-DF-16). Disclosure basis: Patient consent confirmed by the Product Owner 2026-10-16; the entries belong to the Patient profile, so every Hospital related to the Patient gets the same aggregate.",
   },
   serviceOne: {
     coverage: "SOURCE_BACKED_RECORD_PRESENCE",
