@@ -34,7 +34,7 @@ function bangkokDateTime(value: string): string {
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApplicationError) {
-    if (error.code === "VALIDATION") return "กรุณาตรวจสอบค่าที่บันทึกและวันเวลา (ไม่เป็นอนาคตและไม่เกิน 1 ปีย้อนหลัง)";
+    if (error.code === "VALIDATION") return "กรุณาตรวจสอบค่าที่บันทึกและวันเวลา หากบันทึกน้ำตาลให้ใช้หน่วย mg/dL (ไม่เป็นอนาคตและไม่เกิน 1 ปีย้อนหลัง)";
     if (error.code === "FORBIDDEN") return "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้";
     if (error.code === "NOT_FOUND") return "ไม่พบรายการนี้";
     if (error.code === "CONFLICT") return "รายการนี้ลบไม่ได้แล้ว (ลบได้ภายใน 24 ชั่วโมงหลังบันทึก)";
@@ -48,6 +48,7 @@ export async function createOwnPatientSelfMeasurementAction(
 ): Promise<PatientSelfMeasurementActionState> {
   try {
     const actor = await getProtectedApplicationActor();
+    const bloodSugarUnit = formString(formData, "bloodSugarUnit");
     const result = await createOwnPatientSelfMeasurement(actor, {
       submissionNonce: formString(formData, "submissionNonce"),
       measuredAt: bangkokDateTime(formString(formData, "measuredAt")),
@@ -55,6 +56,7 @@ export async function createOwnPatientSelfMeasurementAction(
       systolicBloodPressure: formNumber(formData, "systolicBloodPressure"),
       diastolicBloodPressure: formNumber(formData, "diastolicBloodPressure"),
       bloodSugar: formNumber(formData, "bloodSugar"),
+      ...(bloodSugarUnit ? { bloodSugarUnit } : {}),
       note: formString(formData, "note"),
     });
     revalidatePath("/app/personal/measurements");

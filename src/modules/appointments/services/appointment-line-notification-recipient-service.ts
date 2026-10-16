@@ -59,10 +59,10 @@ export async function currentAssignedOsmRecipient(
   return osm?.id ?? null;
 }
 
-/** Whether this exact grant is still an ACTIVE appointment grant of this caregiver for this relationship. */
-export async function isActiveCaregiverAppointmentGrant(
+/** Whether this caregiver has an ACTIVE appointment grant for this relationship. */
+async function hasActiveCaregiverAppointmentGrantFor(
   transaction: Transaction,
-  input: { grantId: string; caregiverUserId: string; patientHospitalRelationshipId: string },
+  input: { grantId?: string; caregiverUserId: string; patientHospitalRelationshipId: string },
 ): Promise<boolean> {
   const caregiver = await transaction.user.findUnique({
     where: { id: input.caregiverUserId },
@@ -72,7 +72,10 @@ export async function isActiveCaregiverAppointmentGrant(
   const grant = await transaction.caregiverAppointmentGrant.findFirst({
     where: {
       AND: [
-        { id: input.grantId, patientHospitalRelationshipId: input.patientHospitalRelationshipId },
+        {
+          ...(input.grantId ? { id: input.grantId } : {}),
+          patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+        },
         appointmentGrantCaregiverWhere(
           { userId: caregiver.id, personId: caregiver.personId, roles: [], hospitalMemberships: [], osmHospitalRelationships: [] },
           "ACTIVE",
@@ -82,6 +85,22 @@ export async function isActiveCaregiverAppointmentGrant(
     select: { id: true },
   });
   return grant !== null;
+}
+
+/** Whether this exact grant is still an ACTIVE appointment grant of this caregiver for this relationship. */
+export async function isActiveCaregiverAppointmentGrant(
+  transaction: Transaction,
+  input: { grantId: string; caregiverUserId: string; patientHospitalRelationshipId: string },
+): Promise<boolean> {
+  return hasActiveCaregiverAppointmentGrantFor(transaction, input);
+}
+
+/** Whether any current grant gives this caregiver appointment access to the relationship. */
+export async function hasActiveCaregiverAppointmentGrant(
+  transaction: Transaction,
+  input: { caregiverUserId: string; patientHospitalRelationshipId: string },
+): Promise<boolean> {
+  return hasActiveCaregiverAppointmentGrantFor(transaction, input);
 }
 
 async function activeCaregiverRecipients(

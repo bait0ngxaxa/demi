@@ -19,6 +19,10 @@ import { openPatientProgram } from "@/modules/patient-program/services/patient-p
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
+  PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE,
+  PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE,
+} from "@/modules/patient-self-measurements/domain/patient-self-measurement";
+import {
   createOwnPatientSelfMeasurement,
   deleteOwnPatientSelfMeasurement,
   listOwnPatientSelfMeasurements,
@@ -85,8 +89,8 @@ async function fixture() {
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
-async function caregiverWithGrant(f: Fixture): Promise<{ caregiver: ActorContext; grantId: string }> {
-  const caregiver = await account([]);
+async function caregiverWithGrant(f: Fixture, existingCaregiver?: ActorContext): Promise<{ caregiver: ActorContext; grantId: string }> {
+  const caregiver = existingCaregiver ?? await account([]);
   const profile = await db.patientProfile.findUniqueOrThrow({ where: { personId: f.patient.personId }, select: { id: true } });
   const invitation = await db.caregiverInvitation.create({ data: {
     patientProfileId: profile.id, caregiverUserId: caregiver.userId, caregiverPersonId: caregiver.personId,
@@ -273,12 +277,12 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await expect(createOwnPatientSelfMeasurement(f.patient, { ...input, submissionNonce: randomUUID(), measuredAt: "2026-10-15T10:00:00+07:00" }, dependencies)).rejects.toMatchObject({ code: "VALIDATION" });
     await expect(createOwnPatientSelfMeasurement(f.owner, { ...input, submissionNonce: randomUUID() }, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
 
-    expect(await listOwnPatientSelfMeasurements(f.patient, dependencies)).toEqual([expect.objectContaining({ measurementId: created.item.measurementId, weight: 77.7, canDelete: true })]);
-    expect(await listPatientSelfMeasurementsForCareTeam(f.osm, f.relationshipId, dependencies)).toEqual([expect.objectContaining({ weight: 77.7 })]);
-    expect(await listPatientSelfMeasurementsForCareTeam(f.member, f.relationshipId, dependencies)).toHaveLength(1);
+    expect((await listOwnPatientSelfMeasurements(f.patient, {}, dependencies)).items).toEqual([expect.objectContaining({ measurementId: created.item.measurementId, weight: 77.7, canDelete: true })]);
+    expect((await listPatientSelfMeasurementsForCareTeam(f.osm, f.relationshipId, {}, dependencies)).items).toEqual([expect.objectContaining({ weight: 77.7 })]);
+    expect((await listPatientSelfMeasurementsForCareTeam(f.member, f.relationshipId, {}, dependencies)).items).toHaveLength(1);
     const otherHospital = await fixture();
-    await expect(listPatientSelfMeasurementsForCareTeam(otherHospital.owner, f.relationshipId, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(listPatientSelfMeasurementsForCareTeam(f.patient, f.relationshipId, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listPatientSelfMeasurementsForCareTeam(otherHospital.owner, f.relationshipId, {}, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listPatientSelfMeasurementsForCareTeam(f.patient, f.relationshipId, {}, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
 
     await openPatientProgram(f.owner, { patientHospitalRelationshipId: f.relationshipId }, dependencies);
     expect(await db.patientProgramRoundVitals.count({ where: { patientProgram: { patientHospitalRelationshipId: f.relationshipId } } })).toBe(0);
@@ -288,9 +292,79 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     const later = { database: db, now: () => new Date(now.getTime() + 25 * 3_600_000) };
     await expect(deleteOwnPatientSelfMeasurement(f.patient, created.item.measurementId, later)).rejects.toBeInstanceOf(ConflictError);
     await deleteOwnPatientSelfMeasurement(f.patient, created.item.measurementId, { database: db, now: () => new Date(now.getTime() + 3_600_000) });
-    expect(await listPatientSelfMeasurementsForCareTeam(f.osm, f.relationshipId, dependencies)).toEqual([]);
+    expect((await listPatientSelfMeasurementsForCareTeam(f.osm, f.relationshipId, {}, dependencies)).items).toEqual([]);
     expect(await db.patientSelfMeasurement.findUniqueOrThrow({ where: { id: created.item.measurementId } })).toMatchObject({ deletedByUserId: f.patient.userId });
     expect(await db.auditEvent.count({ where: { resourceId: created.item.measurementId, action: { in: ["patient_self_measurement.created", "patient_self_measurement.deleted"] } } })).toBe(2);
+  });
+
+  it("E5: requires mg/dL as the blood sugar input unit", async () => {
+    const f = await fixture();
+    const input = {
+      submissionNonce: randomUUID(),
+      measuredAt: now.toISOString(),
+      weight: null,
+      systolicBloodPressure: null,
+      diastolicBloodPressure: null,
+      bloodSugar: 95,
+      note: null,
+    };
+
+    await expect(createOwnPatientSelfMeasurement(f.patient, input, dependencies)).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(createOwnPatientSelfMeasurement(f.patient, { ...input, bloodSugarUnit: "mmol/L" }, dependencies))
+      .rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(createOwnPatientSelfMeasurement(f.patient, { ...input, bloodSugarUnit: "mg/dL" }, dependencies))
+      .resolves.toMatchObject({ outcome: "CREATED", item: { bloodSugar: 95 } });
+  });
+
+  it("E5: loads older self-measurement history for the Patient and care team with cursors", async () => {
+    const f = await fixture();
+    const profile = await db.patientProfile.findUniqueOrThrow({
+      where: { personId: f.patient.personId },
+      select: { id: true },
+    });
+    const count = PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE + 2;
+    await db.patientSelfMeasurement.createMany({
+      data: Array.from({ length: count }, (_, index) => ({
+        patientProfileId: profile.id,
+        submissionNonce: randomUUID(),
+        measuredAt: new Date(now.getTime() - index * 60_000),
+        weight: 50 + index,
+        createdAt: now,
+      })),
+    });
+
+    const ownFirst = await listOwnPatientSelfMeasurements(f.patient, {}, dependencies);
+    expect(ownFirst.items).toHaveLength(PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE);
+    expect(ownFirst.nextCursor).toBeTruthy();
+    if (!ownFirst.nextCursor) throw new Error("Expected an older Patient history page");
+    const ownOlder = await listOwnPatientSelfMeasurements(f.patient, { cursor: ownFirst.nextCursor }, dependencies);
+    expect(ownOlder.items).toHaveLength(2);
+    expect(ownOlder.nextCursor).toBeNull();
+    const ownIds = [...ownFirst.items, ...ownOlder.items].map(({ measurementId }) => measurementId);
+    expect(new Set(ownIds).size).toBe(count);
+
+    const teamIds: string[] = [];
+    let cursor: string | undefined;
+    let nextCursor: string | null = null;
+    for (let pageNumber = 0; pageNumber < 3; pageNumber += 1) {
+      const page = await listPatientSelfMeasurementsForCareTeam(
+        f.osm,
+        f.relationshipId,
+        cursor ? { cursor } : {},
+        dependencies,
+      );
+      expect(page.items.length).toBeLessThanOrEqual(PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE);
+      teamIds.push(...page.items.map(({ measurementId }) => measurementId));
+      nextCursor = page.nextCursor;
+      if (pageNumber < 2) {
+        expect(nextCursor).toBeTruthy();
+        if (!nextCursor) throw new Error("Expected another care team history page");
+        cursor = nextCursor;
+      }
+    }
+    expect(teamIds).toHaveLength(count);
+    expect(new Set(teamIds).size).toBe(count);
+    expect(nextCursor).toBeNull();
   });
 
   it("E6: one message per eligible recipient per event, even under concurrent drains", async () => {
@@ -311,6 +385,49 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await drainAppointmentLineNotificationOutbox(drainDeps);
     expect(pushed.sort()).toEqual([...lineIds].sort());
     expect(await db.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId, state: "PROVIDER_ACCEPTED" } })).toBe(3);
+  });
+
+  it("E6: delivers once when the OSM assignment ends but the same User's caregiver grant remains active", async () => {
+    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
+    const f = await fixture();
+    const { grantId } = await caregiverWithGrant(f, f.osm);
+    const patientLine = await bindLine(f.patient);
+    const sharedLine = await bindLine(f.osm);
+    const rollout = { enabled: true, generation: randomUUID() };
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), {
+      ...dependencies,
+      appointmentLineNotificationRollout: rollout,
+    });
+
+    const sharedRecipientRows = await db.appointmentLineNotification.findMany({
+      where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
+      select: { recipientKind: true, recipientGrantId: true, state: true },
+    });
+    expect(sharedRecipientRows).toEqual([{ recipientKind: "OSM", recipientGrantId: null, state: "PENDING" }]);
+
+    await db.patientOsmAssignment.updateMany({
+      where: { patientHospitalRelationshipId: f.relationshipId, endedAt: null },
+      data: { endedAt: now, endedByUserId: f.owner.userId },
+    });
+    expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: grantId }, select: { status: true, revokedAt: true } }))
+      .toEqual({ status: "ACTIVE", revokedAt: null });
+
+    const pushed: string[] = [];
+    await drainAppointmentLineNotificationOutbox({
+      database: db,
+      now: () => now,
+      rollout: () => rollout,
+      familyAppointmentReadEnabled: () => true,
+      logSummary: () => undefined,
+      push: async (lineUserId: string) => { pushed.push(lineUserId); return { kind: "ACCEPTED" as const }; },
+    });
+
+    expect(pushed.sort()).toEqual([patientLine, sharedLine].sort());
+    expect(await db.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId } })).toBe(1);
+    expect(await db.appointmentLineNotification.findFirstOrThrow({
+      where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
+      select: { state: true, safeOutcome: true },
+    })).toEqual({ state: "PROVIDER_ACCEPTED", safeOutcome: "ACCEPTED" });
   });
 
   it("E6: an unassigned OSM, a revoked grant and an opted-out user get nothing", async () => {

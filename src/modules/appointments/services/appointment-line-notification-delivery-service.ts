@@ -33,7 +33,7 @@ import {
 } from "../domain/appointment-line-notifications";
 import {
   currentAssignedOsmRecipient,
-  isActiveCaregiverAppointmentGrant,
+  hasActiveCaregiverAppointmentGrant,
 } from "./appointment-line-notification-recipient-service";
 
 type DeliveryDatabase = PrismaClient;
@@ -209,22 +209,26 @@ async function currentEligibility(
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
-    // E6: re-resolve each recipient's authority at send time (current OSM assignment, ACTIVE grant).
-    const recipientStillAuthorized =
-      notification.recipientKind === AppointmentLineNotificationRecipientKind.PATIENT
-        ? Boolean(
-            patientUser && patientUser.id === recipientUserId &&
-            patientUser.status === UserStatus.ACTIVE &&
-            patientUser.roles.some(({ role }) => role === Role.PATIENT),
-          )
-        : notification.recipientKind === AppointmentLineNotificationRecipientKind.OSM
-          ? await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId
-          : familyAppointmentReadEnabled && notification.recipientGrantId !== null &&
-            await isActiveCaregiverAppointmentGrant(transaction, {
-              grantId: notification.recipientGrantId,
-              caregiverUserId: recipientUserId,
-              patientHospitalRelationshipId: relationship.id,
-            });
+    // E6: a row is deduplicated by User, so OSM and caregiver eligibility must be re-resolved with OR semantics.
+    let recipientStillAuthorized = false;
+    if (notification.recipientKind === AppointmentLineNotificationRecipientKind.PATIENT) {
+      recipientStillAuthorized = Boolean(
+        patientUser && patientUser.id === recipientUserId &&
+        patientUser.status === UserStatus.ACTIVE &&
+        patientUser.roles.some(({ role }) => role === Role.PATIENT),
+      );
+    } else if (
+      notification.recipientKind === AppointmentLineNotificationRecipientKind.OSM ||
+      notification.recipientKind === AppointmentLineNotificationRecipientKind.CAREGIVER
+    ) {
+      recipientStillAuthorized = await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId;
+      if (!recipientStillAuthorized && familyAppointmentReadEnabled) {
+        recipientStillAuthorized = await hasActiveCaregiverAppointmentGrant(transaction, {
+          caregiverUserId: recipientUserId,
+          patientHospitalRelationshipId: relationship.id,
+        });
+      }
+    }
     if (!recipientStillAuthorized) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }

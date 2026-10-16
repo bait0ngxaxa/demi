@@ -9,6 +9,7 @@ import { resolveAppointmentAccessContext } from "@/modules/appointments/services
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { resolvePersonalExerciseOwner } from "@/modules/exercises/services/personal-exercise-access-service";
+import { assertPersonalExerciseSelf } from "@/modules/exercises/policies/personal-exercise-policy";
 import {
   ApplicationError,
   ConflictError,
@@ -19,21 +20,25 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
-  PATIENT_SELF_MEASUREMENT_CARE_TEAM_LIST_LIMIT,
+  PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE,
   PATIENT_SELF_MEASUREMENT_DELETE_WINDOW_MS,
-  PATIENT_SELF_MEASUREMENT_OWN_LIST_LIMIT,
+  PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE,
   canDeletePatientSelfMeasurement,
   isAcceptablePatientSelfMeasurementTime,
   type PatientSelfMeasurementDto,
+  type PatientSelfMeasurementPage,
 } from "../domain/patient-self-measurement";
 import {
   patientSelfMeasurementCreateSchema,
   patientSelfMeasurementIdSchema,
+  patientSelfMeasurementListSchema,
 } from "../schemas/patient-self-measurement-schemas";
+import { decodePatientSelfMeasurementCursor, encodePatientSelfMeasurementCursor } from "./patient-self-measurement-cursor";
 
 type Dependencies = { database?: PrismaClient; now?: () => Date };
 
 export type OwnPatientSelfMeasurement = PatientSelfMeasurementDto & { canDelete: boolean };
+export type OwnPatientSelfMeasurementPage = { items: OwnPatientSelfMeasurement[]; nextCursor: string | null };
 
 const measurementSelect = {
   id: true,
@@ -126,19 +131,52 @@ export async function createOwnPatientSelfMeasurement(
 
 export async function listOwnPatientSelfMeasurements(
   actor: ActorContext | null | undefined,
+  input: unknown = {},
   deps: Dependencies = {},
-): Promise<OwnPatientSelfMeasurement[]> {
+): Promise<OwnPatientSelfMeasurementPage> {
   const database = deps.database ?? getPrisma();
   try {
+    assertPersonalExerciseSelf(actor);
     const patientProfileId = await resolvePersonalExerciseOwner(actor, database);
+    const parsedInput = patientSelfMeasurementListSchema.safeParse(input);
+    if (!parsedInput.success) throw new ValidationError("Self measurement list input is invalid");
     const now = serverNow(deps);
+    const cursor = parsedInput.data.cursor
+      ? decodePatientSelfMeasurementCursor(actor, "OWN", patientProfileId, parsedInput.data.cursor)
+      : null;
+    const measuredAt = cursor ? new Date(cursor.measuredAt) : null;
     const rows = await database.patientSelfMeasurement.findMany({
-      where: { patientProfileId, deletedAt: null },
+      where: {
+        patientProfileId,
+        deletedAt: null,
+        ...(cursor && measuredAt ? {
+          OR: [
+            { measuredAt: { lt: measuredAt } },
+            { measuredAt, id: { lt: cursor.measurementId } },
+          ],
+        } : {}),
+      },
       orderBy: [{ measuredAt: "desc" }, { id: "desc" }],
-      take: PATIENT_SELF_MEASUREMENT_OWN_LIST_LIMIT,
+      take: PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE + 1,
       select: measurementSelect,
     });
-    return rows.map((row) => ({ ...toDto(row), canDelete: canDeletePatientSelfMeasurement(row.createdAt, now) }));
+    const items = rows.slice(0, PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE).map((row) => ({
+      ...toDto(row),
+      canDelete: canDeletePatientSelfMeasurement(row.createdAt, now),
+    }));
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE && last
+        ? encodePatientSelfMeasurementCursor(actor, {
+            version: 1,
+            scope: "OWN",
+            scopeId: patientProfileId,
+            measurementId: last.measurementId,
+            measuredAt: last.measuredAt.toISOString(),
+          })
+        : null,
+    };
   } catch (error: unknown) {
     throw normalizeError(error, "Self measurements could not be loaded");
   }
@@ -193,23 +231,50 @@ export async function deleteOwnPatientSelfMeasurement(
 export async function listPatientSelfMeasurementsForCareTeam(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
+  input: unknown = {},
   deps: Dependencies = {},
-): Promise<PatientSelfMeasurementDto[]> {
+): Promise<PatientSelfMeasurementPage> {
   const database = deps.database ?? getPrisma();
   try {
     const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, database);
     if (!access.scopes.exactOsmAssignment && !access.scopes.directHospital) throw new ForbiddenError();
+    const parsedInput = patientSelfMeasurementListSchema.safeParse(input);
+    if (!parsedInput.success) throw new ValidationError("Self measurement list input is invalid");
+    const scopeId = access.patient.patientHospitalRelationshipId;
+    const cursor = parsedInput.data.cursor
+      ? decodePatientSelfMeasurementCursor(access.authoritativeActor, "CARE_TEAM", scopeId, parsedInput.data.cursor)
+      : null;
+    const measuredAt = cursor ? new Date(cursor.measuredAt) : null;
 
     const rows = await database.patientSelfMeasurement.findMany({
       where: {
         deletedAt: null,
         patientProfile: { hospitalRelationships: { some: { id: access.patient.patientHospitalRelationshipId } } },
+        ...(cursor && measuredAt ? {
+          OR: [
+            { measuredAt: { lt: measuredAt } },
+            { measuredAt, id: { lt: cursor.measurementId } },
+          ],
+        } : {}),
       },
       orderBy: [{ measuredAt: "desc" }, { id: "desc" }],
-      take: PATIENT_SELF_MEASUREMENT_CARE_TEAM_LIST_LIMIT,
+      take: PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE + 1,
       select: measurementSelect,
     });
-    return rows.map(toDto);
+    const items = rows.slice(0, PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE).map(toDto);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE && last
+        ? encodePatientSelfMeasurementCursor(access.authoritativeActor, {
+            version: 1,
+            scope: "CARE_TEAM",
+            scopeId,
+            measurementId: last.measurementId,
+            measuredAt: last.measuredAt.toISOString(),
+          })
+        : null,
+    };
   } catch (error: unknown) {
     throw normalizeError(error, "Self measurements could not be loaded");
   }

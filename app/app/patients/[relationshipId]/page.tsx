@@ -35,6 +35,7 @@ export const metadata: Metadata = {
 
 type PatientDetailPageProps = {
   params: Promise<{ relationshipId: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
 async function resolveActor(): Promise<ActorContext> {
@@ -55,10 +56,17 @@ async function resolveActor(): Promise<ActorContext> {
 
 export default async function PatientDetailPage({
   params,
+  searchParams,
 }: PatientDetailPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
   const { relationshipId } = await params;
+  const query = searchParams ? await searchParams : {};
+  const selfMeasurementCursor = typeof query.selfMeasurementCursor === "string"
+    ? query.selfMeasurementCursor
+    : query.selfMeasurementCursor === undefined
+      ? undefined
+      : "";
   let patient;
 
   try {
@@ -271,7 +279,7 @@ export default async function PatientDetailPage({
           <h2 className="text-2xl font-semibold text-text" id="patient-history-heading">ข้อมูลประกอบและประวัติ</h2>
           <PatientProfileView profile={patient.profile} profileSource={patient.profileSource} />
           <PatientHealthHistorySection actor={actor} relationshipId={relationshipId} />
-          <PatientSelfMeasurementSection actor={actor} relationshipId={relationshipId} />
+          <PatientSelfMeasurementSection actor={actor} cursor={selfMeasurementCursor} relationshipId={relationshipId} />
           {hasHospitalDirectoryAccess ? <Link className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline" href={`/app/patients/${relationshipId}/profile`}>แก้ไขข้อมูลสำหรับโรงพยาบาลและประวัติสุขภาพ</Link> : null}
 
           <section className="mt-6">

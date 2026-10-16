@@ -1,4 +1,7 @@
-import type { PatientSelfMeasurementDto } from "@/modules/patient-self-measurements/domain/patient-self-measurement";
+import {
+  PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
+  type PatientSelfMeasurementDto,
+} from "@/modules/patient-self-measurements/domain/patient-self-measurement";
 
 const formatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
 
@@ -6,7 +9,7 @@ const formatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeSt
 export function PatientSelfMeasurementValues({ item }: { item: PatientSelfMeasurementDto }): React.JSX.Element {
   const values = [
     item.weight === null ? null : `น้ำหนัก ${item.weight} กก.`,
-    item.bloodSugar === null ? null : `น้ำตาล ${item.bloodSugar} mg/dL`,
+    item.bloodSugar === null ? null : `น้ำตาล ${item.bloodSugar} ${PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT}`,
     item.systolicBloodPressure === null && item.diastolicBloodPressure === null
       ? null
       : `ความดัน ${item.systolicBloodPressure ?? "-"}/${item.diastolicBloodPressure ?? "-"} mmHg`,

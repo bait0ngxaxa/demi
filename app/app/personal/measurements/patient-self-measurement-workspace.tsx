@@ -1,9 +1,10 @@
 "use client";
 
 import { useId } from "react";
+import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
@@ -11,7 +12,11 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { PATIENT_SELF_MEASUREMENT_LABEL } from "@/modules/patient-self-measurements/domain/patient-self-measurement";
+import {
+  PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
+  PATIENT_SELF_MEASUREMENT_LABEL,
+  PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE,
+} from "@/modules/patient-self-measurements/domain/patient-self-measurement";
 import type { OwnPatientSelfMeasurement } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import {
   createOwnPatientSelfMeasurementAction,
@@ -25,7 +30,7 @@ const idle: PatientSelfMeasurementActionState = { status: "IDLE" };
 
 const NUMBER_FIELDS = [
   { name: "weight", label: "น้ำหนัก (กก.)", step: "0.1" },
-  { name: "bloodSugar", label: "ระดับน้ำตาลในเลือด (mg/dL)", step: "1" },
+  { name: "bloodSugar", label: `ระดับน้ำตาลในเลือด (${PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT})`, step: "1" },
   { name: "systolicBloodPressure", label: "ความดันตัวบน (mmHg)", step: "1" },
   { name: "diastolicBloodPressure", label: "ความดันตัวล่าง (mmHg)", step: "1" },
 ] as const;
@@ -36,6 +41,7 @@ function CreateForm({ nonce, defaultMeasuredAt }: { nonce: string; defaultMeasur
   return (
     <form action={action} className="space-y-4" onSubmit={submitPreservingInput(action)}>
       <input name="submissionNonce" type="hidden" value={nonce} />
+      <input name="bloodSugarUnit" type="hidden" value={PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT} />
       <fieldset className="space-y-4" disabled={pending || unknownOutcome}>
         <div className="space-y-2">
           <label className="block text-sm font-medium" htmlFor={`${prefix}-time`}>วันและเวลาที่วัด</label>
@@ -47,6 +53,9 @@ function CreateForm({ nonce, defaultMeasuredAt }: { nonce: string; defaultMeasur
             <div className="space-y-2" key={field.name}>
               <label className="block text-sm font-medium" htmlFor={`${prefix}-${field.name}`}>{field.label}</label>
               <Input id={`${prefix}-${field.name}`} inputMode="decimal" max={1000000} min={0} name={field.name} step={field.step} type="number" />
+              {field.name === "bloodSugar" ? (
+                <p className="text-sm text-text-muted">กรอกเฉพาะค่าที่แสดงเป็น mg/dL หากเครื่องแสดง mmol/L อย่ากรอกค่านั้นตรง ๆ; สอบถามเจ้าหน้าที่หากไม่แน่ใจ</p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -85,10 +94,12 @@ function DeleteForm({ measurementId }: { measurementId: string }): React.JSX.Ele
   );
 }
 
-export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredAt }: {
+export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredAt, nextCursor, hasCursor }: {
   items: readonly OwnPatientSelfMeasurement[];
   nonce: string;
   defaultMeasuredAt: string;
+  nextCursor: string | null;
+  hasCursor: boolean;
 }): React.JSX.Element {
   return (
     <div className="min-w-0 max-w-3xl space-y-6">
@@ -102,7 +113,8 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
         <CreateForm defaultMeasuredAt={defaultMeasuredAt} key={nonce} nonce={nonce} />
       </Panel>
       <Panel>
-        <h2 className="text-lg font-semibold">รายการที่บันทึกไว้</h2>
+        <h2 className="text-lg font-semibold" id="measurement-history">รายการที่บันทึกไว้</h2>
+        <p className="mt-1 text-sm text-text-muted">แสดงสูงสุด {PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE} รายการต่อหน้า</p>
         {items.length === 0 ? (
           <p className="mt-3 text-sm text-text-muted">ยังไม่มีรายการที่บันทึกเอง</p>
         ) : (
@@ -118,6 +130,25 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
             ))}
           </ul>
         )}
+        {hasCursor || nextCursor ? (
+          <nav aria-label="หน้าในประวัติการวัดด้วยตนเอง" className="mt-5 flex flex-wrap gap-3">
+            {hasCursor ? (
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/personal/measurements#measurement-history">
+                กลับไปรายการล่าสุด
+              </Link>
+            ) : null}
+            {nextCursor ? (
+              <Link
+                className={buttonClassName({ variant: "secondary", size: "compact" })}
+                href={`/app/personal/measurements?cursor=${encodeURIComponent(nextCursor)}#measurement-history`}
+                prefetch={false}
+                rel="next"
+              >
+                ดูรายการเก่ากว่า
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </Panel>
     </div>
   );
