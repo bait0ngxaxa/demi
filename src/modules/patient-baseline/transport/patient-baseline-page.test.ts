@@ -49,6 +49,7 @@ const baseline = {
     bloodPressureDiastolic: null,
     bloodSugarDtx: null,
     hba1c: null,
+    cvdRiskScore: null,
   },
   adaptation: { summary: null, obstacles: null, opportunities: null },
   confidence: { score: null, improvementPlan: null },

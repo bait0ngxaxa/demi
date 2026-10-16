@@ -35,6 +35,7 @@ import { provisionPatient } from "@/modules/patient-provisioning/services/patien
 import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import { submitScreening } from "@/modules/screening/services/screening-service";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { toServiceDateOnly } from "@/shared/time/service-date";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -64,6 +65,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
+  await prisma.personalExerciseEntry.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
   await prisma.osmHospitalRelationship.deleteMany();
@@ -262,10 +264,18 @@ describe("Program six-round navigator (Phase A)", () => {
 
     const emptyRound = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "1");
     expect(emptyRound.vitalsForm).toMatchObject({ canRecord: true, heightEditable: true, latestHeightCm: null });
-    expect(emptyRound.activities.map((row) => row.toolCode)).toEqual(
-      expect.arrayContaining(["PAM", "FLOATING_CHART", "KNOW_SELF"]),
-    );
-    expect(emptyRound.activities.find((row) => row.toolCode === "KNOW_SELF")?.status).toBe("AWAITING_FORM");
+    expect(emptyRound.title).toBe("ครั้งที่ 1 · รู้จักตัวเอง");
+    expect(emptyRound.activities.map((row) => row.toolCode)).toEqual([
+      "PAM",
+      "PROMS",
+      "FLOATING_CHART",
+      "DREAM_CARD",
+      "ROUTINE",
+      "CONFIDENCE_RULER",
+      "HEALTH_PATH",
+    ]);
+    expect(emptyRound.activities.find((row) => row.toolCode === "HEALTH_PATH")?.status).toBe("AWAITING_FORM");
+    expect(emptyRound.addOptions.some((row) => row.toolCode === "KNOW_SELF" || row.toolCode === "LIFE_TABLE")).toBe(false);
 
     await recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(fixture.programId));
     await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, fixture.programId));
@@ -282,7 +292,7 @@ describe("Program six-round navigator (Phase A)", () => {
       [1, "FLOATING_CHART", "PLANNED", "RECORDED", "SERVICE_ONE_FLOATING_CHART"],
       [1, "PAM", "PLANNED", "RECORDED", "SCREENING_ASSESSMENT"],
       [1, "PROMS", "PLANNED", "RECORDED", "SCREENING_ASSESSMENT"],
-      [1, "ROUTINE", "EXTRA", "RECORDED", "SERVICE_ONE_ROUTINE"],
+      [1, "ROUTINE", "PLANNED", "RECORDED", "SERVICE_ONE_ROUTINE"],
     ]);
     expect(ledger.every((row) => row.linkedRecordId !== null && row.recordedByUserId === fixture.osm.userId)).toBe(true);
 
@@ -294,9 +304,9 @@ describe("Program six-round navigator (Phase A)", () => {
     expect(round.vitals).toMatchObject({ source: "ROUND_VITALS", weight: 74, heightCm: 162, bmi: 28.2 });
     expect(round.vitalsForm.canRecord).toBe(false);
     expect(round.activities.find((row) => row.toolCode === "PAM")).toMatchObject({ status: "DONE", mode: "RECORDED" });
-    expect(round.addOptions.find((row) => row.toolCode === "DREAM_CARD")).toMatchObject({
+    expect(round.activities.find((row) => row.toolCode === "DREAM_CARD")).toMatchObject({
       status: "NOT_DONE",
-      recommended: false,
+      recommended: true,
     });
   });
 
@@ -392,7 +402,8 @@ describe("Program six-round navigator (Phase A)", () => {
     const dueBefore = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "3");
     expect(dueBefore.followupId).toBeNull();
     expect(dueBefore.canStartFollowup).toBe(true);
-    expect(dueBefore.planItems?.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
+    expect(dueBefore.planFollowUp?.dueItems.map((item) => item.activityCode)).toEqual(["stop_sweet", "exercise_walk"]);
+    expect(dueBefore.planFollowUp?.metItems).toEqual([]);
     expect((await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "4")).canStartFollowup)
       .toBe(false);
 
@@ -433,7 +444,8 @@ describe("Program six-round navigator (Phase A)", () => {
     expect(round3.activities.find((row) => row.toolCode === "HEALTH_PLAN_REVIEW")).toMatchObject({
       status: "NOT_DONE",
       linkedRecord: { type: "FOLLOWUP", id: followup.followupId },
-      followupEvidence: { followupId: followup.followupId },
+      // D5: the Follow-up answered planAdjusted but was not linked to the Goal Plan.
+      followupEvidence: { followupId: followup.followupId, goalPlanLinked: false, planAdjustedAnswered: true },
     });
     expect((await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "4")).canStartFollowup)
       .toBe(true);
@@ -441,7 +453,7 @@ describe("Program six-round navigator (Phase A)", () => {
       (await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "2")).activities.find(
         (row) => row.toolCode === "HEALTHY_PLAN",
       ),
-    ).toMatchObject({ status: "DONE", source: "EXTRA", linkedRecord: { type: "GOAL_PLAN" } });
+    ).toMatchObject({ status: "DONE", source: "PLANNED", linkedRecord: { type: "GOAL_PLAN" } });
   });
 
   it("never creates duplicate round-vitals rows under concurrency and is idempotent by nonce", async () => {
@@ -551,6 +563,22 @@ describe("Program six-round navigator (Phase A)", () => {
       weight: 69,
       bloodSugar: 100,
       hba1c: 6.8,
+      cvdRiskScore: 9.8,
+    });
+    // D9: self-reported exercise in the 28 days before the Program start and before the Final service date.
+    const { patientProfileId } = await prisma.patientHospitalRelationship.findUniqueOrThrow({
+      where: { id: fixture.relationshipId },
+      select: { patientProfileId: true },
+    });
+    const programStart = (await prisma.patientProgram.findUniqueOrThrow({ where: { id: fixture.programId } })).startedAt;
+    const beforeStart = new Date(`${toServiceDateOnly(programStart)}T00:00:00.000Z`);
+    beforeStart.setUTCDate(beforeStart.getUTCDate() - 5);
+    await prisma.personalExerciseEntry.createMany({
+      data: [
+        { patientProfileId, activityName: "เดิน", occurredOn: beforeStart, durationMinutes: 40 },
+        { patientProfileId, activityName: "เดิน", occurredOn: new Date("2026-08-01T00:00:00.000Z"), durationMinutes: 120 },
+        { patientProfileId, activityName: "เดิน", occurredOn: new Date("2026-08-21T00:00:00.000Z"), durationMinutes: 500 },
+      ],
     });
 
     const dataset = await getHospitalReportingDatasetForExport(fixture.owner.actor, { hospitalId: fixture.hospitalId });
@@ -568,8 +596,21 @@ describe("Program six-round navigator (Phase A)", () => {
     // No Baseline in this fixture, so only the After BMI is derivable.
     expect(row?.bmi.baseline).toEqual({ state: "NOT_RECORDED" });
     expect(row?.bmi.after).toEqual({ state: "RECORDED", value: 26 });
-    expect(row?.finalAssessment).toMatchObject({ state: "PRESENT", value: { hba1c: { state: "RECORDED", value: 6.8 } } });
+    expect(row?.finalAssessment).toMatchObject({
+      state: "PRESENT",
+      value: { hba1c: { state: "RECORDED", value: 6.8 }, cvdRiskScore: { state: "RECORDED", value: 9.8 } },
+    });
     expect(row?.screening).toMatchObject({ state: "PRESENT", value: { pamScore: expect.any(Number) as unknown } });
+    // The service date itself (2026-08-21) is outside the After window.
+    expect(row?.weeklyExercise).toEqual({
+      before: { state: "RECORDED", value: 10 },
+      after: { state: "RECORDED", value: 30 },
+    });
+
+    // D7: the 0-100 range is also a database CHECK.
+    await expect(
+      prisma.patientFinalAssessment.update({ where: { patientProgramId: fixture.programId }, data: { cvdRiskScore: 100.1 } }),
+    ).rejects.toThrow();
   });
 
   it("enforces round shape in the database", async () => {

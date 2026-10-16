@@ -162,6 +162,10 @@ export function PatientBaselineView({
                 label: "HbA1c (%)",
                 value: displayMeasurement(baseline.measurements.hba1c, "%"),
               },
+              {
+                label: "CVD risk score (%)",
+                value: displayMeasurement(baseline.measurements.cvdRiskScore, "%"),
+              },
             ]}
             title="ข้อมูลสุขภาพตั้งต้น"
           />

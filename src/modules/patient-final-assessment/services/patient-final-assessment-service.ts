@@ -65,6 +65,7 @@ type NormalizedPatientFinalAssessmentRequest = {
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
   hba1c: number | null;
+  cvdRiskScore: number | null;
 };
 
 function getDatabase(
@@ -147,6 +148,7 @@ function normalizeInput(
     diastolicBloodPressure: input.diastolicBloodPressure ?? null,
     bloodSugar: input.bloodSugar ?? null,
     hba1c: input.hba1c ?? null,
+    cvdRiskScore: input.cvdRiskScore ?? null,
   };
 }
 
@@ -210,6 +212,7 @@ async function createInTransaction(
       diastolicBloodPressure: normalized.diastolicBloodPressure,
       bloodSugar: normalized.bloodSugar,
       hba1c: normalized.hba1c,
+      cvdRiskScore: normalized.cvdRiskScore,
       serviceDate: serviceDateToUtcDate(normalized.serviceDate),
       recordedAt: now,
       createdAt: now,

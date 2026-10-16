@@ -41,12 +41,6 @@ function factText<T extends number | string>(fact: HospitalReportFact<T>): strin
   return "ยังไม่พร้อมใช้งาน";
 }
 
-function factStatus<T extends number | string>(fact: HospitalReportFact<T>): string {
-  if (fact.state === "RECORDED") return "มีข้อมูลบันทึก";
-  if (fact.state === "NOT_RECORDED") return "ยังไม่บันทึก";
-  return unavailableText(fact.reason);
-}
-
 function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof HospitalReportProgramRow["unavailable"]]): string {
   switch (reason) {
     case "SOURCE_MISSING": return "ไม่มีแหล่งข้อมูลในระบบ";
@@ -54,6 +48,11 @@ function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof H
     case "NOT_PROGRAM_SCOPED": return "ข้อมูลที่มีไม่ได้ผูกกับ Program นี้";
     case "DERIVATION_UNAPPROVED": return "ยังไม่มีสูตรคำนวณที่ได้รับรอง";
   }
+}
+
+// D9: Patient self-reported; "ไม่มีบันทึก" when no entry with a duration falls in the 28-day window.
+function weeklyExerciseText(fact: HospitalReportFact<number>): string {
+  return fact.state === "RECORDED" ? `${fact.value.toLocaleString("th-TH")} นาที (ผู้ป่วยบันทึกเอง)` : "ไม่มีบันทึก";
 }
 
 function recordText<T>(record: { state: "PRESENT"; value: T } | { state: "MISSING" }): string {
@@ -309,8 +308,8 @@ function ProgramOverview({
             </>
           ) : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
-            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk): {unavailableText(program.unavailable.baselineCvdRiskScore)}</li>
-            <li>HbA1c: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.hba1c) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
+            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.cvdRiskScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
+            <li>HbA1c (%): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.hba1c) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
             <li>BMI (kg/m²): {program.baseline.state === "PRESENT" ? factText(program.bmi.baseline) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
           </ul>
         </section>
@@ -348,8 +347,8 @@ function ProgramOverview({
             </>
           ) : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
-            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk): {unavailableText(program.unavailable.afterCvdRiskScore)}</li>
-            <li>HbA1c: {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.hba1c) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.cvdRiskScore) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>HbA1c (%): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.hba1c) : "ไม่มีการประเมินหลังจบ Program"}</li>
             <li>BMI (kg/m²): {program.finalAssessment.state === "PRESENT" ? factText(program.bmi.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
             <li>ส่วนสูงล่าสุดที่บันทึก (ใช้คำนวณ BMI): {factText(program.latestHeightCm)}</li>
           </ul>
@@ -449,13 +448,13 @@ function ServiceProgram({
           {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>แบบประเมิน PAM / PROMs: {program.screening.state === "PRESENT" ? `${program.screening.value.pamScore} / ${program.screening.value.promsScore}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
-            <li>คะแนนความมั่นใจ: {program.baseline.state === "PRESENT" ? factStatus(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
-            <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.beforeWeeklyExercise)}</li>
+            <li>ไม้บรรทัดวัดใจ (0–10): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {weeklyExerciseText(program.weeklyExercise.before)}</li>
           </ul>
           <h4 className="mb-3 mt-6 font-semibold text-text">หลัง Program · ข้อมูลการประเมิน</h4>
           {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>เวลาออกกำลังกายต่อสัปดาห์: {unavailableText(program.unavailable.afterWeeklyExercise)}</li>
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
             <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {achievementOver70Text(program)}</li>
           </ul>
         </section>

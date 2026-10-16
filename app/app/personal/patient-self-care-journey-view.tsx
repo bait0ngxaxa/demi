@@ -60,10 +60,13 @@ function ProgramHistoryItem({
   );
 }
 
+/** D4: plans are listed newest first, so the first plan of the first page is the current one. */
 function GoalPlanHistoryItem({
+  current,
   item,
   relationshipId,
 }: {
+  current: boolean;
   item: PatientSelfGoalPlanHistoryItem;
   relationshipId: string;
 }): React.JSX.Element {
@@ -71,9 +74,12 @@ function GoalPlanHistoryItem({
 
   return (
     <li className="min-w-0 py-4 first:pt-0 last:pb-0">
-      <Link className={`${linkClassName} break-words`} href={href}>
-        แผนเป้าหมาย รอบที่ {item.roundNumber}
-      </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link className={`${linkClassName} break-words`} href={href}>
+          แผนเป้าหมาย รอบที่ {item.roundNumber}
+        </Link>
+        <StatusBadge variant={current ? "info" : "neutral"}>{current ? "แผนปัจจุบัน" : "ฉบับก่อนหน้า"}</StatusBadge>
+      </div>
       <p className="mt-1 break-words text-sm leading-6 text-text">
         เป้าหมายหลัก: {item.primaryGoalLabel}
       </p>
@@ -252,16 +258,24 @@ export function PatientSelfCareJourneyView({
 
         <section aria-labelledby="patient-self-goals-heading">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-goals-heading">
-            แผนเป้าหมาย
+            แผนสุขภาพ
           </h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">
+            แผนล่าสุดคือแผนที่ใช้อยู่ตอนนี้ แผนก่อนหน้าเก็บไว้ให้ดูย้อนหลัง ทุกฉบับดูได้อย่างเดียว
+          </p>
           {journey.goalPlans.length > 0 ? (
             <HistoryList>
-              {journey.goalPlans.map((item) => (
-                <GoalPlanHistoryItem item={item} key={item.goalPlanId} relationshipId={relationshipId} />
+              {journey.goalPlans.map((item, index) => (
+                <GoalPlanHistoryItem
+                  current={journey.historyPages.goalPlans.page === 1 && index === 0}
+                  item={item}
+                  key={item.goalPlanId}
+                  relationshipId={relationshipId}
+                />
               ))}
             </HistoryList>
           ) : (
-            <PatientSelfEmptyState title="ยังไม่มีแผนเป้าหมาย" />
+            <PatientSelfEmptyState title="ยังไม่มีแผนสุขภาพ" />
           )}
           {journey.historyPages.goalPlans.hasMore ? (
             <PatientSelfHistoryMoreLink

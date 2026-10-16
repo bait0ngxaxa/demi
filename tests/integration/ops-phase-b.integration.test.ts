@@ -7,7 +7,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
-import { getPatientHealthHistory, updatePatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
+import { getPatientHealthHistory, getPatientHealthInformation, updatePatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { createAppointment, rescheduleAppointment, cancelAppointment, completeAppointment, submitAppointmentRescheduleRequest, rejectAppointmentRescheduleRequest } from "@/modules/appointments/services/appointment-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
@@ -18,7 +18,7 @@ import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/
 import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import { getAppointmentDetail } from "@/modules/appointments/services/appointment-query-service";
 import { provisionOsm, releaseWorkforceRelationship, restoreOsmRelationship, restoreHospitalMembership } from "@/modules/workforce/services/workforce-service";
-import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
 const now = new Date("2026-10-14T05:00:00Z");
@@ -99,6 +99,11 @@ describe("Phase B hospital operations", () => {
     const other = await fixture();
     await expect(updateStaffPatientHospitalProfile(other.owner, f.relationshipId, { expectedVersion: 1, occupation: "ทดสอบ" }, db)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(updatePatientHealthHistory(other.staff, f.relationshipId, input, db)).rejects.toBeInstanceOf(ForbiddenError);
+    // D10: the birth date for the age display is read under the same authority as the health history.
+    expect(await getPatientHealthInformation(f.patient, f.relationshipId, db)).toMatchObject({ history: { diabetes: "YES" } });
+    await expect(getPatientHealthInformation(other.staff, f.relationshipId, db)).rejects.toSatisfy(
+      (error) => error instanceof ForbiddenError || error instanceof NotFoundError,
+    );
     expect(await db.auditEvent.count({ where: { action: "patient.health_history.updated" } })).toBeGreaterThan(0);
     await openPatientProgram(f.owner, { patientHospitalRelationshipId: f.relationshipId }, dependencies);
     const report = await getHospitalReportingDatasetForExport(f.owner, { hospitalId: f.hospitalId }, { database: db });

@@ -9,6 +9,7 @@ import {
   isReviewableTool,
   isRoundVitalsRound,
   PROGRAM_ROUND_NUMBERS,
+  RETIRED_TOOL_CODES,
   ROUND_RECOMMENDED_TOOLS,
   ROUND_TOOLS,
   roundActivitySourceFor,
@@ -18,7 +19,7 @@ import {
   toProgramRoundNumber,
 } from "./round-catalog";
 
-describe("whiteboard round catalog (WB-DF-01..03, WB-PD-01)", () => {
+describe("whiteboard round catalog (WB-DF-01..03, customer decisions D1-D4)", () => {
   it("defines six rounds and vitals storage only for rounds 1-2", () => {
     expect(PROGRAM_ROUND_NUMBERS).toEqual([1, 2, 3, 4, 5, 6]);
     expect([1, 2, 3, 4, 5, 6].filter(isRoundVitalsRound)).toEqual([1, 2]);
@@ -34,39 +35,59 @@ describe("whiteboard round catalog (WB-DF-01..03, WB-PD-01)", () => {
     expect([1, 2, 3, 4].map(toProgramRoundNumber)).toEqual([3, 4, 5, 6]);
   });
 
-  it("recommends exactly the whiteboard boxes of each round", () => {
+  it("recommends the whiteboard boxes of each round as resolved by customer decisions D1-D4", () => {
     expect(ROUND_RECOMMENDED_TOOLS).toEqual({
-      1: ["KNOW_SELF", "PAM", "PROMS", "FLOATING_CHART", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTH_PATH"],
-      2: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "LIFE_TABLE"],
+      1: ["PAM", "PROMS", "FLOATING_CHART", "DREAM_CARD", "ROUTINE", "CONFIDENCE_RULER", "HEALTH_PATH"],
+      2: ["HEALTHY_PLAN", "CONFIDENCE_RULER", "ROUTINE"],
       3: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD"],
-      4: ["HEALTH_PLAN_REVIEW", "FLOATING_CHART", "CONFIDENCE_RULER", "LIFE_TABLE", "HEALTHY_PLAN"],
-      5: ["HEALTH_PLAN_REVIEW", "LIFE_TABLE"],
+      4: ["HEALTH_PLAN_REVIEW", "FLOATING_CHART", "CONFIDENCE_RULER", "ROUTINE", "HEALTHY_PLAN"],
+      5: ["HEALTH_PLAN_REVIEW", "ROUTINE"],
       6: ["HEALTH_PATH", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"],
     });
   });
 
-  it("classifies tools outside a round's whiteboard boxes as EXTRA on the server", () => {
-    expect(roundActivitySourceFor(3, "DREAM_CARD")).toBe("PLANNED");
-    expect(roundActivitySourceFor(2, "DREAM_CARD")).toBe("EXTRA");
-    // ตารางกิจวัตร is not on the whiteboard at all; it is never PLANNED.
+  it("never lists the retired KNOW_SELF / LIFE_TABLE tools (D1/D2)", () => {
+    expect(RETIRED_TOOL_CODES).toEqual(["KNOW_SELF", "LIFE_TABLE"]);
     for (const round of PROGRAM_ROUND_NUMBERS) {
-      expect(isRecommendedTool(round, "ROUTINE")).toBe(false);
-      expect(roundActivitySourceFor(round, "ROUTINE")).toBe("EXTRA");
+      for (const code of RETIRED_TOOL_CODES) {
+        expect(isRecommendedTool(round, code)).toBe(false);
+      }
     }
-    // The Goal Plan is created in round 2 but the whiteboard lists แผนสุขภาพดีของฉัน in round 4 only.
-    expect(roundActivitySourceFor(2, "HEALTHY_PLAN")).toBe("EXTRA");
-    expect(roundActivitySourceFor(4, "HEALTHY_PLAN")).toBe("PLANNED");
-    expect(roundActivitySourceFor(1, "DREAM_CARD")).toBe("EXTRA");
   });
 
-  it("labels the round 6 Health Path box as a review", () => {
+  it("classifies tools outside a round's boxes as EXTRA on the server", () => {
+    // D2/D3: the routine and the dream card are recorded in round 1 and reviewed later.
+    expect(roundActivitySourceFor(1, "ROUTINE")).toBe("PLANNED");
+    expect(roundActivitySourceFor(1, "DREAM_CARD")).toBe("PLANNED");
+    expect([2, 4, 5].map((round) => roundActivitySourceFor(round as 2 | 4 | 5, "ROUTINE"))).toEqual([
+      "PLANNED",
+      "PLANNED",
+      "PLANNED",
+    ]);
+    expect(roundActivitySourceFor(3, "ROUTINE")).toBe("EXTRA");
+    expect(roundActivitySourceFor(3, "DREAM_CARD")).toBe("PLANNED");
+    expect(roundActivitySourceFor(2, "DREAM_CARD")).toBe("EXTRA");
+    // D4: the Goal Plan is created in round 2 and adjusted in round 4.
+    expect(roundActivitySourceFor(2, "HEALTHY_PLAN")).toBe("PLANNED");
+    expect(roundActivitySourceFor(4, "HEALTHY_PLAN")).toBe("PLANNED");
+    expect(roundActivitySourceFor(2, "HEALTH_PLAN_REVIEW")).toBe("EXTRA");
+  });
+
+  it("uses the whiteboard wording per round", () => {
+    expect(roundToolLabel(1, "ROUTINE")).toBe("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(roundToolLabel(4, "ROUTINE")).toBe("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(roundToolLabel(1, "DREAM_CARD")).toBe("การ์ดความฝัน");
+    expect(roundToolLabel(3, "DREAM_CARD")).toBe("ความฝันของฉัน (การ์ดความฝัน)");
+    expect(roundToolLabel(2, "HEALTHY_PLAN")).toBe("ทำแผนสุขภาพ");
+    expect(roundToolLabel(4, "HEALTHY_PLAN")).toBe("แผนสุขภาพดีของฉัน");
     expect(roundToolLabel(1, "HEALTH_PATH")).toBe("เส้นทางสุขภาพ");
     expect(roundToolLabel(6, "HEALTH_PATH")).toBe("ทบทวนเส้นทางสุขภาพ");
   });
 
-  it("marks the undefined tools as pending forms and never reviewable", () => {
-    for (const code of ["KNOW_SELF", "LIFE_TABLE", "HEALTH_PATH"] as const) {
-      expect(ROUND_TOOLS[code].kind).toBe("PENDING_FORM");
+  it("keeps the Health Path as a pending form that is never reviewable", () => {
+    expect(ROUND_TOOLS.HEALTH_PATH.kind).toBe("PENDING_FORM");
+    expect(isReviewableTool("HEALTH_PATH")).toBe(false);
+    for (const code of RETIRED_TOOL_CODES) {
       expect(isReviewableTool(code)).toBe(false);
     }
   });

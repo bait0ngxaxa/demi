@@ -105,6 +105,7 @@ function existingFinal(): NonNullable<PatientFinalAssessmentProjection["finalAss
       diastolicBloodPressure: 80,
       bloodSugar: 95,
       hba1c: null,
+      cvdRiskScore: null,
     },
   };
 }

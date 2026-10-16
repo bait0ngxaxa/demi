@@ -38,6 +38,7 @@ const programA3Id = "88888888-8888-4888-8888-000000000003";
 const actorBUserId = "99999999-9999-4999-8999-999999999999";
 const hospitalBId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const startedAt = new Date("2026-08-17T05:00:00.000Z");
+const patientProfileId = "99999999-9999-4999-8999-999999999999";
 const cursorSecret = "synthetic-hospital-reporting-cursor-secret";
 
 const actor: ActorContext = {
@@ -123,6 +124,7 @@ function programRecord(input: {
     patientHospitalRelationship: {
       id: relationshipId,
       hospitalNumber: input.hospitalNumber ?? "HOSP-A-01",
+      patientProfileId,
       patientProfile: { person: { givenName: "สมชาย", familyName: "ใจดี" } },
       osmAssignments: [],
     },
@@ -135,6 +137,9 @@ function programRecord(input: {
       bloodPressureSystolic: 120,
       bloodPressureDiastolic: null,
       bloodSugarDtx: null,
+      hba1c: null,
+      confidenceScore: null,
+      cvdRiskScore: null,
     } : input.baseline,
     serviceOneRoutine: null,
     serviceOneFloatingChart: null,
@@ -154,11 +159,13 @@ function createDatabase(input: {
   relationshipsWithoutProgram?: number;
   followupCount?: number;
   goalPlanCount?: number;
+  exerciseEntries?: Record<string, unknown>[];
 } = {}): PrismaClient & {
   patientProgram: { findMany: ReturnType<typeof vi.fn>; groupBy: ReturnType<typeof vi.fn> };
   patientHospitalRelationship: { count: ReturnType<typeof vi.fn> };
   patientGoalPlan: { groupBy: ReturnType<typeof vi.fn> };
   patientFollowup: { groupBy: ReturnType<typeof vi.fn> };
+  personalExerciseEntry: { findMany: ReturnType<typeof vi.fn> };
 } {
   const database = {
     patientProgram: {
@@ -182,6 +189,9 @@ function createDatabase(input: {
       groupBy: vi.fn().mockResolvedValue(
         input.followupCount ? [{ patientProgramId: programA1Id, _count: { _all: input.followupCount } }] : [],
       ),
+    },
+    personalExerciseEntry: {
+      findMany: vi.fn().mockResolvedValue(input.exerciseEntries ?? []),
     },
   };
   return database as unknown as PrismaClient & typeof database;
@@ -274,6 +284,9 @@ describe("Hospital reporting query service", () => {
         bloodPressureSystolic: null,
         bloodPressureDiastolic: null,
         bloodSugarDtx: null,
+        hba1c: 7.2,
+        confidenceScore: 6,
+        cvdRiskScore: 12.5,
       },
       roundVitals: [
         {
@@ -310,6 +323,7 @@ describe("Hospital reporting query service", () => {
         diastolicBloodPressure: null,
         bloodSugar: null,
         hba1c: 6.8,
+        cvdRiskScore: 9.8,
       },
     });
     const database = createDatabase({ programs: [program], relationshipCount: 1 });
@@ -332,11 +346,87 @@ describe("Hospital reporting query service", () => {
     expect(row?.bmi.baseline).toEqual({ state: "RECORDED", value: 28.4 });
     expect(row?.latestHeightCm).toEqual({ state: "RECORDED", value: 163 });
     expect(row?.bmi.after).toEqual({ state: "RECORDED", value: 26 });
-    expect(row?.finalAssessment).toMatchObject({ state: "PRESENT", value: { hba1c: { state: "RECORDED", value: 6.8 } } });
+    expect(row?.finalAssessment).toMatchObject({
+      state: "PRESENT",
+      value: { hba1c: { state: "RECORDED", value: 6.8 }, cvdRiskScore: { state: "RECORDED", value: 9.8 } },
+    });
+    // D7/D8: Baseline HbA1c (%), confidence ruler (0-10) and CVD risk (%) are reported as recorded.
+    expect(row?.baseline).toMatchObject({
+      state: "PRESENT",
+      value: {
+        hba1c: { state: "RECORDED", value: 7.2 },
+        confidenceScore: { state: "RECORDED", value: 6 },
+        cvdRiskScore: { state: "RECORDED", value: 12.5 },
+      },
+    });
+    expect(row?.unavailable).toEqual({ achievementRate: "DERIVATION_UNAPPROVED", outcome: "SOURCE_MISSING" });
     expect(row?.screening).toEqual({
       state: "PRESENT",
       value: { submittedAt: "2026-08-17T03:00:00.000Z", pamScore: 15, promsScore: 18 },
     });
+  });
+
+  it("averages self-reported exercise minutes per week over the 28 Bangkok days before start and Final (D9)", async () => {
+    const entry = (id: string, occurredOn: string, durationMinutes: number | null) => ({
+      id,
+      patientProfileId,
+      occurredOn: new Date(`${occurredOn}T00:00:00.000Z`),
+      durationMinutes,
+    });
+    const program = programRecord({
+      id: programA1Id,
+      status: PatientProgramStatus.COMPLETED,
+      finalAssessment: {
+        recordedAt: new Date("2026-09-30T03:00:00.000Z"),
+        serviceDate: new Date("2026-09-29T00:00:00.000Z"),
+        weight: 69,
+        waistCircumference: null,
+        systolicBloodPressure: null,
+        diastolicBloodPressure: null,
+        bloodSugar: null,
+        hba1c: null,
+        cvdRiskScore: null,
+      },
+    });
+    const database = createDatabase({
+      programs: [program],
+      relationshipCount: 1,
+      exerciseEntries: [
+        // Program starts 2026-08-17 (Bangkok): Before window is 2026-07-20 .. 2026-08-16.
+        entry("e1", "2026-07-19", 500),
+        entry("e2", "2026-07-20", 60),
+        entry("e3", "2026-08-16", 90),
+        entry("e4", "2026-08-17", 500),
+        entry("e5", "2026-08-01", null),
+      ],
+    });
+
+    const row = (await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database })).page.items[0];
+
+    expect(row?.weeklyExercise).toEqual({
+      before: { state: "RECORDED", value: 37.5 },
+      // Final service date 2026-09-29: After window 2026-09-01 .. 2026-09-28 has no entries.
+      after: { state: "NOT_RECORDED" },
+    });
+    expect(database.personalExerciseEntry.findMany).toHaveBeenCalledWith({
+      where: {
+        durationMinutes: { not: null },
+        OR: [
+          { patientProfileId, occurredOn: { gte: new Date("2026-07-20T00:00:00.000Z"), lte: new Date("2026-08-16T00:00:00.000Z") } },
+          { patientProfileId, occurredOn: { gte: new Date("2026-09-01T00:00:00.000Z"), lte: new Date("2026-09-28T00:00:00.000Z") } },
+        ],
+      },
+      select: { id: true, patientProfileId: true, occurredOn: true, durationMinutes: true },
+    });
+
+    // Without a Final Assessment only the Before window is read and After is not recorded.
+    const active = createDatabase({
+      programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })],
+      exerciseEntries: [entry("e2", "2026-07-20", 60)],
+    });
+    const activeRow = (await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database: active })).page.items[0];
+    expect(activeRow?.weeklyExercise).toEqual({ before: { state: "RECORDED", value: 15 }, after: { state: "NOT_RECORDED" } });
+    expect(active.personalExerciseEntry.findMany.mock.calls[0]?.[0].where.OR).toHaveLength(1);
   });
 
   it("reuses the exact-Hospital projection for the separately authorized Global caller", async () => {

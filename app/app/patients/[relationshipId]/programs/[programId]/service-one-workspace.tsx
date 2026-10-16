@@ -450,7 +450,7 @@ function RoutineCard({
   }, [router, state]);
 
   return (
-    <ActivityCard activity={activity} description="บันทึกตารางกิจวัตรของผู้ป่วยในรอบนี้ (คนละเครื่องมือกับ “ตารางชีวิตของฉัน”)" id="ROUTINE" title="ตารางกิจวัตร">
+    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉัน (ตารางกิจวัตร) ของผู้ป่วยในครั้งที่ 1 แล้วทบทวนในครั้งต่อไป" id="ROUTINE" title="ตารางชีวิตของฉัน (ตารางกิจวัตร)">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
@@ -714,7 +714,7 @@ export function PatientProgramServiceOneWorkspace({
             Service 1 — กิจกรรมเริ่มต้นของโปรแกรม
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            บันทึกกิจกรรมแยกกันได้ตามความพร้อมของงานในโปรแกรมนี้ ภาพรวมด้านล่างเป็นความคืบหน้าเชิงโครงสร้าง ไม่ใช่เกณฑ์ผ่านหรือผลลัพธ์ทางคลินิก ส่วนนี้ไม่ใช่แบบฟอร์ม “รู้จักตัวเอง” และ “ตารางชีวิตของฉัน” ซึ่งยังรอแบบฟอร์มจากหน่วยงาน
+            บันทึกกิจกรรมแยกกันได้ตามความพร้อมของงานในโปรแกรมนี้ ภาพรวมด้านล่างเป็นความคืบหน้าเชิงโครงสร้าง ไม่ใช่เกณฑ์ผ่านหรือผลลัพธ์ทางคลินิก กิจกรรมในส่วนนี้นับเป็นครั้งที่ 1 · รู้จักตัวเอง
           </p>
         </div>
         <StatusBadge variant="neutral">

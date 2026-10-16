@@ -101,9 +101,9 @@ describe("Service 1 workspace presentation", () => {
     expect(markup).toContain("การ์ดความฝัน");
     expect(markup).toContain("ไม้บรรทัดวัดใจ");
     expect(markup).toContain("0 จาก 4 กิจกรรมถูกบันทึกแล้ว");
-    // ROUTINE and LIFE_TABLE / KNOW_SELF are distinct tools (WB_ROUND_ACTIVITY_CROSSWALK.md).
-    expect(markup).toContain("คนละเครื่องมือกับ “ตารางชีวิตของฉัน”");
-    expect(markup).toContain("ไม่ใช่แบบฟอร์ม “รู้จักตัวเอง” และ “ตารางชีวิตของฉัน”");
+    // D1/D2: ROUTINE is the whiteboard's ตารางชีวิตของฉัน; รู้จักตัวเอง is the name of round 1.
+    expect(markup).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(markup).toContain("นับเป็นครั้งที่ 1 · รู้จักตัวเอง");
     expect(markup).not.toContain("Service 1 — รู้จักตัวเอง");
     expect(markup).toMatch(/(?:maxLength|maxlength)="2000"/u);
     expect(markup).toContain('value="0"');

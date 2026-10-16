@@ -12,9 +12,7 @@ import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, N
 
 import { patientHealthHistorySchema } from "../schemas/patient-health-history-schemas";
 
-export async function getPatientHealthHistory(
-  actor: ActorContext, relationshipId: string, database: PrismaClient = getPrisma(),
-): Promise<PatientHospitalHealthHistory | null> {
+async function authorizeHealthRead(actor: ActorContext, relationshipId: string, database: PrismaClient): Promise<void> {
   // The patient SELF path and the care path re-read current authority from the database.
   try {
     await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, database);
@@ -22,7 +20,27 @@ export async function getPatientHealthHistory(
     if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error;
     await resolveOwnPatientRelationshipContext(actor, relationshipId, { database });
   }
+}
+
+export async function getPatientHealthHistory(
+  actor: ActorContext, relationshipId: string, database: PrismaClient = getPrisma(),
+): Promise<PatientHospitalHealthHistory | null> {
+  await authorizeHealthRead(actor, relationshipId, database);
   return database.patientHospitalHealthHistory.findUnique({ where: { patientHospitalRelationshipId: relationshipId } });
+}
+
+/** Health history plus the patient's birth date for the age shown with it (D10). */
+export async function getPatientHealthInformation(
+  actor: ActorContext, relationshipId: string, database: PrismaClient = getPrisma(),
+): Promise<{ history: PatientHospitalHealthHistory | null; dateOfBirth: Date | null }> {
+  await authorizeHealthRead(actor, relationshipId, database);
+  const [history, relationship] = await Promise.all([
+    database.patientHospitalHealthHistory.findUnique({ where: { patientHospitalRelationshipId: relationshipId } }),
+    database.patientHospitalRelationship.findUnique({
+      where: { id: relationshipId }, select: { patientProfile: { select: { dateOfBirth: true } } },
+    }),
+  ]);
+  return { history, dateOfBirth: relationship?.patientProfile.dateOfBirth ?? null };
 }
 
 export async function updatePatientHealthHistory(

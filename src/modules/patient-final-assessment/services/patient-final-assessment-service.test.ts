@@ -196,6 +196,7 @@ describe("Patient Final Assessment service", () => {
         diastolicBloodPressure: null,
         bloodSugar: null,
         hba1c: null,
+        cvdRiskScore: null,
         serviceDate: new Date("2026-08-21T00:00:00.000Z"),
         recordedAt,
         createdAt: recordedAt,
@@ -248,6 +249,34 @@ describe("Patient Final Assessment service", () => {
       ),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(hba1cOnly.transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
+  });
+
+  it("persists the optional After CVD risk score without counting it as a standalone measurement (D7)", async () => {
+    const { database, transaction } = createDatabase();
+
+    await createPatientFinalAssessment(actor, validInput({ cvdRiskScore: 8.4 }), { database, now: () => recordedAt });
+
+    expect(transaction.patientFinalAssessment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ weight: 72.5, cvdRiskScore: 8.4 }),
+      select: expect.anything(),
+    });
+
+    for (const input of [
+      validInput({ cvdRiskScore: 100.5 }),
+      validInput({ cvdRiskScore: 8.45 }),
+      {
+        patientProgramId: programId,
+        patientHospitalRelationshipId: relationshipId,
+        serviceDate: "2026-08-21",
+        cvdRiskScore: 8.4,
+      },
+    ]) {
+      const rejected = createDatabase();
+      await expect(
+        createPatientFinalAssessment(actor, input, { database: rejected.database, now: () => recordedAt }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(rejected.transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
+    }
   });
 
   it("requires a service date and rejects one after today in Asia/Bangkok before locking the Program", async () => {

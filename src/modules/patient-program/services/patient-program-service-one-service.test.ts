@@ -199,7 +199,8 @@ describe("Patient Program Service 1 service", () => {
         patientHospitalRelationshipId: relationshipId,
         roundNumber: 1,
         toolCode: "ROUTINE",
-        source: "EXTRA",
+        // D2: ROUTINE is the whiteboard's round 1 "ตารางชีวิตของฉัน".
+        source: "PLANNED",
         mode: "RECORDED",
         linkedRecordType: "SERVICE_ONE_ROUTINE",
         linkedRecordId: recordId,

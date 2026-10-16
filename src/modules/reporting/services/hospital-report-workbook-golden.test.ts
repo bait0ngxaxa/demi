@@ -132,8 +132,9 @@ function goldenProgram(): HospitalReportProgramRow {
           diastolicBloodPressure: { state: "RECORDED", value: 88 },
         },
         heightCm: { state: "RECORDED", value: 162 },
-        hba1c: { state: "UNAVAILABLE", reason: "CLINICAL_SEMANTICS_UNAPPROVED" },
-        confidenceScore: { state: "UNAVAILABLE", reason: "CLINICAL_SEMANTICS_UNAPPROVED" },
+        hba1c: { state: "RECORDED", value: 7.4 },
+        confidenceScore: { state: "RECORDED", value: 6 },
+        cvdRiskScore: { state: "RECORDED", value: 12.5 },
       },
     },
     serviceOne: {
@@ -184,6 +185,7 @@ function goldenProgram(): HospitalReportProgramRow {
           diastolicBloodPressure: { state: "RECORDED", value: 80 },
         },
         hba1c: { state: "RECORDED", value: 6.8 },
+        cvdRiskScore: { state: "RECORDED", value: 9.8 },
       },
     },
     roundVitals: {
@@ -200,11 +202,8 @@ function goldenProgram(): HospitalReportProgramRow {
       value: { submittedAt: "2026-07-02T03:00:00.000Z", pamScore: 15, promsScore: 18 },
     },
     illnessDuration: { state: "RECORDED", value: 9 },
+    weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "RECORDED", value: 150 } },
     unavailable: {
-      baselineCvdRiskScore: "SOURCE_MISSING",
-      afterCvdRiskScore: "SOURCE_MISSING",
-      beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -266,8 +265,9 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["E", 9, "SOURCE_READY"],
   ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
-  ["H", SOURCE_MISSING, "SOURCE_MISSING"],
-  ["I", SEMANTICS_UNAPPROVED, "DECISION_OPEN"],
+  // D7/D8: staff-entered CVD risk % and HbA1c %.
+  ["H", 12.5, "SOURCE_READY"],
+  ["I", 7.4, "SOURCE_READY"],
   ["J", 128, "SOURCE_READY"],
   ["K", 74.5, "SOURCE_READY"],
   ["L", 28.4, "SOURCE_READY"],
@@ -277,7 +277,7 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["P", 88, "SOURCE_READY"],
   ...dashboardRoundColumns(9),
   ["AI", dateToken(COMPLETED_AT), "SOURCE_READY"],
-  ["AJ", SOURCE_MISSING, "SOURCE_MISSING"],
+  ["AJ", 9.8, "SOURCE_READY"],
   ["AK", 6.8, "SOURCE_READY"],
   ["AL", 108, "SOURCE_READY"],
   ["AM", 69, "SOURCE_READY"],
@@ -335,11 +335,12 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["J", 74.5, "SOURCE_READY"],
   ["K", 15, "SOURCE_READY"],
   ["L", 18, "SOURCE_READY"],
-  ["M", SEMANTICS_UNAPPROVED, "DECISION_OPEN"],
-  ["N", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
+  // D8: confidence ruler 0-10; D9: self-reported exercise minutes per week.
+  ["M", 6, "SOURCE_READY"],
+  ["N", 37.5, "SOURCE_READY"],
   ["O", 108, "SOURCE_READY"],
   ["P", 69, "SOURCE_READY"],
-  ["Q", NOT_PROGRAM_SCOPED, "SOURCE_MISSING"],
+  ["Q", 150, "SOURCE_READY"],
   ["R", 2, "SOURCE_READY"],
   ["S", "ทำ", "SOURCE_READY"],
   ["T", null, "SOURCE_READY"],
@@ -452,6 +453,6 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 96, DECISION_OPEN: 2, SOURCE_MISSING: 10 });
+    }).toEqual({ SOURCE_READY: 102, DECISION_OPEN: 0, SOURCE_MISSING: 6 });
   });
 });

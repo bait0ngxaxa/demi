@@ -5,6 +5,7 @@ import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ADJUSTED_PLAN_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
 import {
   buildPatientRoundsPath,
   buildRoundToolHref,
@@ -17,6 +18,7 @@ import {
 import type {
   ProgramRoundDetail,
   RoundActivityRow,
+  RoundPlanItem,
 } from "@/modules/patient-program-rounds/services/round-query-service";
 
 import { RoundReviewButton } from "./round-review-button";
@@ -28,6 +30,29 @@ const progressStatusLabels = {
   NOT_DONE: "ยังทำไม่ได้",
   NOT_APPLICABLE: "ไม่เกี่ยวข้อง",
 } as const;
+
+function PlanItemList({ items }: { items: readonly RoundPlanItem[] }): React.JSX.Element {
+  return (
+    <ul className="mt-4 divide-y divide-border">
+      {items.map((item) => (
+        <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={item.activityCode}>
+          <div>
+            <p className="font-semibold text-text">{item.activityLabel}</p>
+            <p className="text-xs text-text-subtle">
+              เป้าหมาย {item.targetDays} วัน/สัปดาห์
+              {item.targetValue !== null ? ` · ${item.targetValue} ${item.targetUnit ?? ""}` : ""}
+            </p>
+          </div>
+          <StatusBadge variant={item.progressStatus === "DONE" ? "success" : "neutral"}>
+            {item.progressStatus && item.achievedDays !== null
+              ? `${progressStatusLabels[item.progressStatus]} · ${item.achievedDays}/7 วัน · ครั้งที่ ${item.progressRound}`
+              : "ยังไม่มีบันทึกความคืบหน้า"}
+          </StatusBadge>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function MetaLine({ row }: { row: RoundActivityRow }): React.JSX.Element | null {
   if (row.status !== "DONE") {
@@ -60,23 +85,6 @@ function ActivityActions({
 
   if (row.status === "AWAITING_FORM") {
     return <p className="text-sm text-text-muted">{ROUND_AWAITING_FORM_LABEL}</p>;
-  }
-
-  if (row.decisionGated) {
-    return (
-      <div className="flex flex-col gap-2 sm:items-end">
-        <p className="max-w-sm text-sm text-text-muted sm:text-right">
-          {row.toolCode === "HEALTHY_PLAN"
-            ? "ยังไม่มีขั้นตอนบันทึกกิจกรรมนี้ในครั้งนี้ (รอ Product Owner ตัดสิน) แผนสุขภาพที่มีอยู่ไม่นับเป็นการทำกิจกรรมของครั้งนี้"
-            : "ยังไม่ได้กำหนดขั้นตอนทบทวนแผนสุขภาพของครั้งนี้ (รอ Product Owner ตัดสิน) จึงยังบันทึกไม่ได้"}
-        </p>
-        {row.toolCode === "HEALTHY_PLAN" && href ? (
-          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
-            ดูแผนที่มีอยู่ (สร้างในครั้งที่ 2)
-          </Link>
-        ) : null}
-      </div>
-    );
   }
 
   if (row.status === "DONE") {
@@ -115,14 +123,32 @@ function ActivityActions({
     return (
       <div className="flex flex-col gap-2 sm:items-end">
         <p className="max-w-sm text-sm text-text-muted sm:text-right">
-          บันทึกการติดตามผลของครั้งนี้แล้ว แต่ยังไม่มีบันทึกว่าได้ทบทวนแผนสุขภาพ
-          {evidence.goalPlanLinked
-            ? ` · ผูกกับแผนเป้าหมาย · บันทึกความคืบหน้า ${evidence.progressCount} รายการ`
-            : " · ไม่ได้ผูกกับแผนเป้าหมาย"}
+          บันทึกการติดตามผลของครั้งนี้แล้ว แต่ยังไม่นับเป็นการทบทวนแผนสุขภาพ เพราะ
+          {[
+            evidence.goalPlanLinked ? null : "ไม่ได้ผูกกับแผนเป้าหมาย",
+            evidence.planAdjustedAnswered ? null : "ไม่ได้ตอบว่าปรับแผนหรือไม่",
+          ]
+            .filter(Boolean)
+            .join(" และ")}
         </p>
         {href ? (
           <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
             ดูการติดตามผลที่บันทึก
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (row.kind === "GOAL_PLAN" && detail.roundNumber === ADJUSTED_PLAN_ROUND) {
+    return (
+      <div className="flex flex-col gap-2 sm:items-end">
+        <p className="max-w-sm text-sm text-text-muted sm:text-right">
+          บันทึกได้เมื่อการติดตามผลครั้งที่ {ADJUSTED_PLAN_ROUND} ขึ้นไปเลือก &ldquo;ปรับแผน&rdquo; และสร้างแผนฉบับปรับแล้ว
+        </p>
+        {href ? (
+          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={href}>
+            ดูแผนปัจจุบัน
           </Link>
         ) : null}
       </div>
@@ -278,10 +304,21 @@ export function ProgramRoundDetailView({
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">รายการแนะนำของครั้งนี้</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
+            {detail.roundNumber >= 3 ? "รายการที่ต้องติดตามในครั้งนี้" : "รายการแนะนำของครั้งนี้"}
+          </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            เป็นรายการแนะนำ ไม่บังคับทำครบ ครั้งนี้นับว่าบันทึกแล้วเมื่อมีสัญญาณชีพหรือกิจกรรมอย่างน้อย 1 รายการ
+            {detail.roundNumber >= 3
+              ? "กิจกรรมในแผนที่ยังไม่ถึงเป้าหมาย (หรือยังไม่มีบันทึกความคืบหน้า) และรายการของครั้งนี้ ไม่บังคับทำครบ ครั้งนี้นับว่าบันทึกแล้วเมื่อมีสัญญาณชีพหรือกิจกรรมอย่างน้อย 1 รายการ"
+              : "เป็นรายการแนะนำ ไม่บังคับทำครบ ครั้งนี้นับว่าบันทึกแล้วเมื่อมีสัญญาณชีพหรือกิจกรรมอย่างน้อย 1 รายการ"}
           </p>
+          {detail.planFollowUp && detail.planFollowUp.dueItems.length > 0 ? (
+            <>
+              <h3 className="mt-5 text-base font-semibold text-text">กิจกรรมในแผนที่ยังไม่ถึงเป้าหมาย</h3>
+              <PlanItemList items={detail.planFollowUp.dueItems} />
+              <h3 className="mt-6 text-base font-semibold text-text">รายการของครั้งนี้</h3>
+            </>
+          ) : null}
           <ul className="mt-5 divide-y divide-border">
             {detail.activities.map((row) => (
               <ActivityItem detail={detail} key={row.toolCode} nonce={reviewNonces[row.toolCode] ?? ""} row={row} />
@@ -289,36 +326,13 @@ export function ProgramRoundDetailView({
           </ul>
         </Panel>
 
-        {detail.planItems ? (
+        {detail.planFollowUp && detail.planFollowUp.metItems.length > 0 ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">กิจกรรมในแผนเป้าหมาย</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ทำได้ตามเป้าแล้ว</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              แสดงทุกกิจกรรมของแผนพร้อมความคืบหน้าที่บันทึกในครั้งนี้ ยังไม่มีเกณฑ์ที่อนุมัติสำหรับคัดเลือก
-              &ldquo;รายการที่ถึงกำหนดติดตาม&rdquo; (รอ Product Owner ตัดสิน) จึงยังไม่แสดงรายการแบบกรอง
-              กิจกรรมอื่นเพิ่มได้จากส่วน &ldquo;การจัดบริการเพิ่ม&rdquo;
+              กิจกรรมในแผนที่บันทึกล่าสุดว่าทำได้ถึงจำนวนวันเป้าหมายแล้ว
             </p>
-            {detail.planItems.length === 0 ? (
-              <p className="mt-4 text-sm text-text-muted">แผนเป้าหมายนี้ไม่มีกิจกรรม</p>
-            ) : (
-              <ul className="mt-5 divide-y divide-border">
-                {detail.planItems.map((item) => (
-                  <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={item.activityCode}>
-                    <div>
-                      <p className="font-semibold text-text">{item.activityLabel}</p>
-                      <p className="text-xs text-text-subtle">
-                        เป้าหมาย {item.targetDays} วัน/สัปดาห์
-                        {item.targetValue !== null ? ` · ${item.targetValue} ${item.targetUnit ?? ""}` : ""}
-                      </p>
-                    </div>
-                    <StatusBadge variant={item.progressStatus === "DONE" ? "success" : "neutral"}>
-                      {item.progressStatus
-                        ? `${progressStatusLabels[item.progressStatus]}${item.achievedDays !== null ? ` · ${item.achievedDays}/7 วัน` : ""}`
-                        : "ยังไม่มีบันทึกความคืบหน้า"}
-                    </StatusBadge>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <PlanItemList items={detail.planFollowUp.metItems} />
           </Panel>
         ) : null}
 

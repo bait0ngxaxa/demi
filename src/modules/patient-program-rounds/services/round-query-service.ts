@@ -24,6 +24,7 @@ import {
 
 import { calculateBodyMassIndex } from "../domain/body-mass-index";
 import {
+  ADJUSTED_PLAN_ROUND,
   FIRST_FOLLOWUP_ROUND,
   GOAL_PLAN_ROUND,
   isFollowupRound,
@@ -31,12 +32,14 @@ import {
   isReviewableTool,
   isRoundVitalsRound,
   PROGRAM_ROUND_NUMBERS,
+  RETIRED_TOOL_CODES,
   ROUND_RECOMMENDED_TOOLS,
   roundActivitySourceFor,
   roundToolLabel,
   ROUND_TOOLS,
   SERVICE_ONE_HOME_ROUND,
   toFollowupRoundNumber,
+  toProgramRoundNumber,
   type ProgramRoundNumber,
   type RoundToolKind,
 } from "../domain/round-catalog";
@@ -92,13 +95,8 @@ export type RoundActivityRow = {
   /** WB-DF-03: the existing result can be reviewed read-only and ledgered in this round. */
   canReview: boolean;
   /**
-   * True when the whiteboard lists this tool in this round but no approved workflow exists to record
-   * it here (U-2/U-4 in WB_ROUND_ACTIVITY_CROSSWALK.md). Never implies DONE.
-   */
-  decisionGated: boolean;
-  /**
-   * HEALTH_PLAN_REVIEW only: facts about the Follow-up recorded for this round when no explicit
-   * review evidence (ledger row) exists. A Follow-up alone never proves the plan was reviewed.
+   * HEALTH_PLAN_REVIEW only: facts about the round's Follow-up when it does not meet the review rule
+   * (D5: linked to a Goal Plan and the "ปรับแผน" answer recorded).
    */
   followupEvidence: RoundFollowupEvidence | null;
 };
@@ -107,6 +105,8 @@ export type RoundFollowupEvidence = {
   followupId: string;
   /** The Follow-up referenced a Goal Plan (sourceGoalPlanId); historical records may not. */
   goalPlanLinked: boolean;
+  /** The Follow-up recorded the planAdjusted answer (true or false); historical records may not. */
+  planAdjustedAnswered: boolean;
   /** Number of per-activity progress rows saved with the Follow-up. */
   progressCount: number;
 };
@@ -125,7 +125,7 @@ export type RoundVitalsView = {
   recordedByDisplayName: string | null;
 };
 
-/** An activity of the Goal Plan relevant to the round. Not a due-now selection (P-18 is unapproved). */
+/** An activity of the round's source Goal Plan with its latest recorded progress up to this round. */
 export type RoundPlanItem = {
   activityCode: string;
   activityLabel: string;
@@ -134,6 +134,19 @@ export type RoundPlanItem = {
   targetUnit: string | null;
   progressStatus: "DONE" | "PARTIAL" | "NOT_DONE" | "NOT_APPLICABLE" | null;
   achievedDays: number | null;
+  /** Program round (3-6) whose Follow-up recorded the progress shown; null when none was recorded. */
+  progressRound: number | null;
+};
+
+/**
+ * D6: the plan part of "รายการที่ต้องติดตามในครั้งนั้น". Due = latest recorded achievedDays below the
+ * target, or no progress recorded yet; met items are listed separately. The round's whiteboard items
+ * (`activities`) complete the due list.
+ */
+export type RoundPlanFollowUp = {
+  goalPlanId: string;
+  dueItems: readonly RoundPlanItem[];
+  metItems: readonly RoundPlanItem[];
 };
 
 export type ProgramRoundDetail = {
@@ -161,14 +174,8 @@ export type ProgramRoundDetail = {
   canStartFollowup: boolean;
   activities: readonly RoundActivityRow[];
   addOptions: readonly RoundActivityRow[];
-  /**
-   * Rounds 3-6 only: every activity of the round's Goal Plan with the progress saved by this round's
-   * Follow-up. The rule that picks which of them are due now is not approved (P-18), so no due-only
-   * list is projected.
-   */
-  planItems: readonly RoundPlanItem[] | null;
-  /** The Goal Plan the plan items come from. */
-  planItemsGoalPlanId: string | null;
+  /** Rounds 3-6 only, when the round has a source Goal Plan (D6). */
+  planFollowUp: RoundPlanFollowUp | null;
 };
 
 type RecorderName = {
@@ -229,6 +236,7 @@ const programRoundSelect = {
       createdAt: true,
       templateKey: true,
       templateVersion: true,
+      sourceFollowup: { select: { roundNumber: true } },
       createdByUser: recorderSelect,
       items: {
         orderBy: { sortOrder: "asc" },
@@ -250,6 +258,7 @@ const programRoundSelect = {
       serviceDate: true,
       recordedAt: true,
       sourceGoalPlanId: true,
+      planAdjusted: true,
       weight: true,
       waistCircumference: true,
       systolicBloodPressure: true,
@@ -291,7 +300,7 @@ function toDisplayName(user: RecorderName): string | null {
 
 function roundTitle(roundNumber: ProgramRoundNumber): string {
   if (roundNumber === SERVICE_ONE_HOME_ROUND) {
-    return "ครั้งที่ 1 · Service 1 และแบบประเมิน";
+    return "ครั้งที่ 1 · รู้จักตัวเอง";
   }
 
   if (roundNumber === GOAL_PLAN_ROUND) {
@@ -377,6 +386,28 @@ function findFollowupForRound(program: ProgramRoundRecord, roundNumber: number) 
     : null;
 }
 
+/**
+ * D4: round 2 is the Program's first Goal Plan; round 4 ("แผนสุขภาพดีของฉัน") is the first plan adjusted
+ * from a Follow-up in round 4 or later. Other rounds have no Goal Plan activity of their own.
+ */
+function roundGoalPlan(program: ProgramRoundRecord, roundNumber: ProgramRoundNumber) {
+  if (roundNumber === GOAL_PLAN_ROUND) {
+    return program.goalPlans[0] ?? null;
+  }
+
+  if (roundNumber === ADJUSTED_PLAN_ROUND) {
+    return (
+      program.goalPlans.find(
+        (plan) =>
+          plan.sourceFollowup !== null &&
+          plan.sourceFollowup.roundNumber >= toFollowupRoundNumber(ADJUSTED_PLAN_ROUND),
+      ) ?? null
+    );
+  }
+
+  return null;
+}
+
 function buildActivityRow(
   program: ProgramRoundRecord,
   roundNumber: ProgramRoundNumber,
@@ -392,12 +423,6 @@ function buildActivityRow(
     label: roundToolLabel(roundNumber, toolCode),
     kind: definition.kind,
     recommended,
-    // Only recommended rows are "awaiting a decision"; other tools are plain Add options.
-    decisionGated:
-      !ledger &&
-      recommended &&
-      ((toolCode === "HEALTH_PLAN_REVIEW" && !isFollowupRound(roundNumber)) ||
-        (toolCode === "HEALTHY_PLAN" && roundNumber !== GOAL_PLAN_ROUND)),
     followupEvidence: null as RoundFollowupEvidence | null,
   };
   const result = programResultRecord(program, toolCode);
@@ -450,21 +475,24 @@ function buildActivityRow(
   }
 
   if (toolCode === "HEALTHY_PLAN") {
-    const firstPlan = program.goalPlans[0] ?? null;
+    // D4: derived from the Goal Plan records, never written to the ledger.
+    const plan = roundGoalPlan(program, roundNumber);
 
-    if (firstPlan && roundNumber === GOAL_PLAN_ROUND) {
+    if (plan) {
       return {
         ...base,
         status: "DONE",
         mode: "RECORDED",
         source: roundActivitySourceFor(roundNumber, toolCode),
-        performedAt: firstPlan.createdAt,
-        recordedByDisplayName: toDisplayName(firstPlan.createdByUser),
-        linkedRecord: { type: "GOAL_PLAN", id: firstPlan.id },
+        performedAt: plan.createdAt,
+        recordedByDisplayName: toDisplayName(plan.createdByUser),
+        linkedRecord: { type: "GOAL_PLAN", id: plan.id },
         resultExists: true,
         canReview: false,
       };
     }
+
+    const currentPlan = program.goalPlans[program.goalPlans.length - 1] ?? null;
 
     return {
       ...base,
@@ -473,15 +501,30 @@ function buildActivityRow(
       source: null,
       performedAt: null,
       recordedByDisplayName: null,
-      linkedRecord: firstPlan ? { type: "GOAL_PLAN", id: firstPlan.id } : null,
-      resultExists: firstPlan !== null,
+      linkedRecord: currentPlan ? { type: "GOAL_PLAN", id: currentPlan.id } : null,
+      resultExists: currentPlan !== null,
       canReview: false,
     };
   }
 
   if (toolCode === "HEALTH_PLAN_REVIEW") {
-    // Only a ledger row is explicit review evidence. An existing Follow-up is reported as a fact, never as DONE.
+    // D5: derived from the round's Follow-up facts (no ledger backfill): reviewed when the Follow-up
+    // was linked to a Goal Plan and recorded the "ปรับแผน" answer (true or false).
     const followup = findFollowupForRound(program, roundNumber);
+
+    if (followup && followup.sourceGoalPlanId !== null && typeof followup.planAdjusted === "boolean") {
+      return {
+        ...base,
+        status: "DONE",
+        mode: "REVIEWED",
+        source: roundActivitySourceFor(roundNumber, toolCode),
+        performedAt: followup.serviceDate ?? followup.recordedAt,
+        recordedByDisplayName: toDisplayName(followup.createdByUser),
+        linkedRecord: { type: "FOLLOWUP", id: followup.id },
+        resultExists: true,
+        canReview: false,
+      };
+    }
 
     return {
       ...base,
@@ -497,6 +540,7 @@ function buildActivityRow(
         ? {
             followupId: followup.id,
             goalPlanLinked: followup.sourceGoalPlanId !== null,
+            planAdjustedAnswered: typeof followup.planAdjusted === "boolean",
             progressCount: followup.activityProgress.length,
           }
         : null,
@@ -525,7 +569,7 @@ function buildRoundActivities(
   const addOptions: RoundActivityRow[] = [];
 
   for (const toolCode of Object.keys(ROUND_TOOLS) as PatientProgramRoundToolCode[]) {
-    if (recommended.includes(toolCode)) {
+    if (recommended.includes(toolCode) || RETIRED_TOOL_CODES.includes(toolCode)) {
       continue;
     }
 
@@ -596,16 +640,51 @@ function buildVitals(program: ProgramRoundRecord, roundNumber: ProgramRoundNumbe
   return null;
 }
 
-function buildPlanItems(
+/**
+ * Latest recorded progress per activity of `goalPlanId`, from the Follow-ups that used that plan up to
+ * and including this round. Progress without achieved days counts as not recorded.
+ */
+function latestPlanProgress(
+  program: ProgramRoundRecord,
+  goalPlanId: string,
+  roundNumber: ProgramRoundNumber,
+) {
+  const latest = new Map<
+    string,
+    { status: RoundPlanItem["progressStatus"]; achievedDays: number; followupRoundNumber: number }
+  >();
+
+  for (const followup of program.followups) {
+    if (followup.sourceGoalPlanId !== goalPlanId || followup.roundNumber > toFollowupRoundNumber(roundNumber)) {
+      continue;
+    }
+
+    for (const progress of followup.activityProgress) {
+      const current = latest.get(progress.goalActivityCode);
+
+      if (progress.achievedDays !== null && (!current || current.followupRoundNumber < followup.roundNumber)) {
+        latest.set(progress.goalActivityCode, {
+          status: progress.status,
+          achievedDays: progress.achievedDays,
+          followupRoundNumber: followup.roundNumber,
+        });
+      }
+    }
+  }
+
+  return latest;
+}
+
+function buildPlanFollowUp(
   program: ProgramRoundRecord,
   roundNumber: ProgramRoundNumber,
-): { items: RoundPlanItem[]; goalPlanId: string } | null {
+): RoundPlanFollowUp | null {
   if (!isFollowupRound(roundNumber)) {
     return null;
   }
 
   const followup = findFollowupForRound(program, roundNumber);
-  // Before the Follow-up exists the plan shown is the Program's latest Goal Plan.
+  // Before the Follow-up exists the source plan is the Program's latest Goal Plan.
   const plan = followup
     ? (program.goalPlans.find((candidate) => candidate.id === followup.sourceGoalPlanId) ?? null)
     : (program.goalPlans[program.goalPlans.length - 1] ?? null);
@@ -615,28 +694,33 @@ function buildPlanItems(
   }
 
   const template = getGoalTemplate(plan.templateKey, plan.templateVersion);
-  const progressByCode = new Map(
-    (followup?.activityProgress ?? []).map((progress) => [progress.goalActivityCode, progress]),
-  );
+  const progressByCode = latestPlanProgress(program, plan.id, roundNumber);
+  const dueItems: RoundPlanItem[] = [];
+  const metItems: RoundPlanItem[] = [];
 
-  return {
-    goalPlanId: plan.id,
-    items: plan.items.map((item) => {
-      const progress = progressByCode.get(item.activityCode);
+  for (const item of plan.items) {
+    const progress = progressByCode.get(item.activityCode);
+    const planItem: RoundPlanItem = {
+      activityCode: item.activityCode,
+      activityLabel:
+        template?.activities.find((activity) => activity.code === item.activityCode)?.label ??
+        item.activityCode,
+      targetDays: item.targetDays,
+      targetValue: item.targetValue,
+      targetUnit: item.targetUnit,
+      progressStatus: progress?.status ?? null,
+      achievedDays: progress?.achievedDays ?? null,
+      progressRound: progress ? toProgramRoundNumber(progress.followupRoundNumber) : null,
+    };
 
-      return {
-        activityCode: item.activityCode,
-        activityLabel:
-          template?.activities.find((activity) => activity.code === item.activityCode)?.label ??
-          item.activityCode,
-        targetDays: item.targetDays,
-        targetValue: item.targetValue,
-        targetUnit: item.targetUnit,
-        progressStatus: progress?.status ?? null,
-        achievedDays: progress?.achievedDays ?? null,
-      };
-    }),
-  };
+    if (progress && progress.achievedDays >= item.targetDays) {
+      metItems.push(planItem);
+    } else {
+      dueItems.push(planItem);
+    }
+  }
+
+  return { goalPlanId: plan.id, dueItems, metItems };
 }
 
 function buildRoundSummary(program: ProgramRoundRecord, roundNumber: ProgramRoundNumber): RoundSummary {
@@ -683,7 +767,6 @@ export function buildProgramRoundDetail(
 ): ProgramRoundDetail {
   const vitals = buildVitals(program, roundNumber);
   const { activities, addOptions } = buildRoundActivities(program, roundNumber);
-  const plan = buildPlanItems(program, roundNumber);
   const followup = findFollowupForRound(program, roundNumber);
 
   return {
@@ -711,8 +794,7 @@ export function buildProgramRoundDetail(
       program.followups.length === toFollowupRoundNumber(roundNumber) - 1,
     activities,
     addOptions,
-    planItems: plan?.items ?? null,
-    planItemsGoalPlanId: plan?.goalPlanId ?? null,
+    planFollowUp: buildPlanFollowUp(program, roundNumber),
   };
 }
 
@@ -849,7 +931,7 @@ export async function getProgramRoundDetail(
 
 export const patientProgramRoundQueryInternals = {
   buildActivityRow,
-  buildPlanItems,
+  buildPlanFollowUp,
   buildRoundActivities,
   latestHeightCm,
   parseRoundNumber,

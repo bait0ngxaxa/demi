@@ -1,12 +1,15 @@
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { getPatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
+import { getPatientHealthInformation } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import { HEALTH_HISTORY_FIELDS } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
+import { ageInFullYears } from "@/shared/time/age";
 
 export async function PatientHealthHistorySection({ actor, relationshipId }: { actor: ActorContext; relationshipId: string }): Promise<React.JSX.Element> {
-  const history = await getPatientHealthHistory(actor, relationshipId);
+  const { history, dateOfBirth } = await getPatientHealthInformation(actor, relationshipId);
+  const age = dateOfBirth ? ageInFullYears(dateOfBirth, new Date()) : null;
   const labels = { YES: "มี", NO: "ไม่มี", UNKNOWN: "ไม่ทราบ" };
   return <section className="mt-6 border-t border-border pt-5" aria-label="ประวัติสุขภาพ">
     <h2 className="text-lg font-semibold text-text">ข้อมูลสุขภาพ</h2>
+    {age !== null ? <p className="mt-2 text-text"><span className="text-sm text-text-muted">อายุ</span> {age} ปี</p> : null}
     {!history ? <p className="mt-2 text-text-muted">โรงพยาบาลยังไม่ได้บันทึกประวัติสุขภาพ</p> : <>
       <dl className="mt-3 grid gap-3 sm:grid-cols-2">
         {Object.entries(HEALTH_HISTORY_FIELDS).map(([key, label]) => <div key={key}><dt className="text-sm text-text-muted">{label}</dt><dd className="text-text">{labels[history[key as keyof typeof HEALTH_HISTORY_FIELDS]]}</dd></div>)}

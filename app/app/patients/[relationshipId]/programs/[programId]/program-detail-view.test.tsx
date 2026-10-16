@@ -93,7 +93,7 @@ describe("Patient care journey and Program workspace", () => {
       followupHistory: { ...history, totalCount: 1 },
       finalAssessment: { ...finalAssessment, finalAssessment: {
         id: "final-record", recordedBy: detail.createdBy, serviceDate: now, recordedAt: now, createdAt: now,
-        measurements: { weight: 70, waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null, hba1c: null },
+        measurements: { weight: 70, waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null, hba1c: null, cvdRiskScore: null },
       } },
     });
     expect(html).toContain("มีบันทึกกิจกรรม");

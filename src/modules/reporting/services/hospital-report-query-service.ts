@@ -20,6 +20,7 @@ import { computeFollowupAchievement } from "@/modules/followups/domain/followup-
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
 import { screeningResultSchema } from "@/modules/screening/schemas/screening-schemas";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
+import { serviceDateToUtcDate, toServiceDateOnly } from "@/shared/time/service-date";
 import {
   ApplicationError,
   ForbiddenError,
@@ -132,6 +133,7 @@ const reportProgramRelationshipSelect = {
     healthHistory: { select: { diagnosisYear: true } },
     id: true,
     hospitalNumber: true,
+    patientProfileId: true,
     patientProfile: {
       select: {
         person: { select: { givenName: true, familyName: true } },
@@ -171,6 +173,9 @@ const reportProgramBaselineSelect = {
     bloodPressureSystolic: true,
     bloodPressureDiastolic: true,
     bloodSugarDtx: true,
+    hba1c: true,
+    confidenceScore: true,
+    cvdRiskScore: true,
   },
 } satisfies Prisma.PatientProgramSelect["initialBaseline"];
 
@@ -236,6 +241,7 @@ const reportProgramFinalSelect = {
     diastolicBloodPressure: true,
     bloodSugar: true,
     hba1c: true,
+    cvdRiskScore: true,
   },
 } satisfies Prisma.PatientProgramSelect["finalAssessment"];
 
@@ -549,9 +555,114 @@ function toServiceOneActivity(record: { recordedAt: Date } | null): HospitalRepo
     : { state: "MISSING" };
 }
 
+/** D9: the self-reported exercise average looks back 28 days (4 weeks) before the window end date. */
+const WEEKLY_EXERCISE_WINDOW_DAYS = 28;
+const WEEKLY_EXERCISE_WINDOW_WEEKS = WEEKLY_EXERCISE_WINDOW_DAYS / 7;
+const WEEKLY_EXERCISE_QUERY_CHUNK = 200;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type WeeklyExerciseWindow = { patientProfileId: string; from: Date; to: Date };
+type ExerciseMinutesEntry = { id: string; patientProfileId: string; occurredOn: Date; durationMinutes: number | null };
+
+/** The 28 calendar days before `endDate` (YYYY-MM-DD), excluding `endDate`, as DATE bounds. */
+function weeklyExerciseWindow(patientProfileId: string, endDate: string): WeeklyExerciseWindow {
+  const end = serviceDateToUtcDate(endDate).getTime();
+
+  return {
+    patientProfileId,
+    from: new Date(end - WEEKLY_EXERCISE_WINDOW_DAYS * DAY_MS),
+    to: new Date(end - DAY_MS),
+  };
+}
+
+function programWeeklyExerciseWindows(
+  record: HospitalReportProgramRecord | HospitalReportExportProgramRecord,
+): { before: WeeklyExerciseWindow; after: WeeklyExerciseWindow | null } {
+  const profileId = record.patientHospitalRelationship.patientProfileId;
+  const final = record.finalAssessment;
+  const afterEnd = final
+    ? (final.serviceDate ? final.serviceDate.toISOString().slice(0, 10) : toServiceDateOnly(final.recordedAt))
+    : null;
+
+  return {
+    before: weeklyExerciseWindow(profileId, toServiceDateOnly(record.startedAt)),
+    after: afterEnd ? weeklyExerciseWindow(profileId, afterEnd) : null,
+  };
+}
+
+function averageWeeklyExerciseFact(
+  entries: readonly ExerciseMinutesEntry[],
+  window: WeeklyExerciseWindow | null,
+): HospitalReportFact<number> {
+  if (!window) return { state: "NOT_RECORDED" };
+
+  let total = 0;
+  let counted = 0;
+  for (const entry of entries) {
+    if (entry.durationMinutes === null || entry.occurredOn < window.from || entry.occurredOn > window.to) continue;
+    total += entry.durationMinutes;
+    counted += 1;
+  }
+
+  return counted === 0
+    ? { state: "NOT_RECORDED" }
+    : { state: "RECORDED", value: Math.round((total / WEEKLY_EXERCISE_WINDOW_WEEKS) * 10) / 10 };
+}
+
+/**
+ * D9 (WB-DF-16): Before/After average self-reported exercise minutes per week per Program. Reads only
+ * the date and duration of entries inside each Program's windows; Patient journal text is never read.
+ */
+async function loadWeeklyExerciseFacts(
+  database: HospitalReportQueryDatabase,
+  records: readonly (HospitalReportProgramRecord | HospitalReportExportProgramRecord)[],
+): Promise<Map<string, HospitalReportProgramRow["weeklyExercise"]>> {
+  const windowsByProgram = new Map(records.map((record) => [record.id, programWeeklyExerciseWindows(record)]));
+  const windows = [...windowsByProgram.values()].flatMap(({ before, after }) => (after ? [before, after] : [before]));
+  const entriesById = new Map<string, ExerciseMinutesEntry>();
+
+  for (let index = 0; index < windows.length; index += WEEKLY_EXERCISE_QUERY_CHUNK) {
+    const chunk = windows.slice(index, index + WEEKLY_EXERCISE_QUERY_CHUNK);
+    const entries = await database.personalExerciseEntry.findMany({
+      where: {
+        durationMinutes: { not: null },
+        OR: chunk.map((window) => ({
+          patientProfileId: window.patientProfileId,
+          occurredOn: { gte: window.from, lte: window.to },
+        })),
+      },
+      select: { id: true, patientProfileId: true, occurredOn: true, durationMinutes: true },
+    });
+    for (const entry of entries) entriesById.set(entry.id, entry);
+  }
+
+  const entriesByProfile = new Map<string, ExerciseMinutesEntry[]>();
+  for (const entry of entriesById.values()) {
+    const list = entriesByProfile.get(entry.patientProfileId) ?? [];
+    list.push(entry);
+    entriesByProfile.set(entry.patientProfileId, list);
+  }
+
+  return new Map(
+    records.map((record) => {
+      const programWindows = windowsByProgram.get(record.id)!;
+      const entries = entriesByProfile.get(record.patientHospitalRelationship.patientProfileId) ?? [];
+
+      return [
+        record.id,
+        {
+          before: averageWeeklyExerciseFact(entries, programWindows.before),
+          after: averageWeeklyExerciseFact(entries, programWindows.after),
+        },
+      ];
+    }),
+  );
+}
+
 function toHospitalReportProgramRow(
   record: HospitalReportProgramRecord | HospitalReportExportProgramRecord,
   counts: { goalPlans: number; followups: number },
+  weeklyExercise: HospitalReportProgramRow["weeklyExercise"],
 ): HospitalReportProgramRow {
   const relationship = record.patientHospitalRelationship;
   const assignment = relationship.osmAssignments[0];
@@ -595,8 +706,9 @@ function toHospitalReportProgramRow(
               diastolicBloodPressure: baseline.bloodPressureDiastolic,
             }),
             heightCm: toFact(baseline.heightCm),
-            hba1c: toUnavailable("CLINICAL_SEMANTICS_UNAPPROVED"),
-            confidenceScore: toUnavailable("CLINICAL_SEMANTICS_UNAPPROVED"),
+            hba1c: toFact(baseline.hba1c),
+            confidenceScore: toFact(baseline.confidenceScore),
+            cvdRiskScore: toFact(baseline.cvdRiskScore),
           }
         : null,
     ),
@@ -623,6 +735,7 @@ function toHospitalReportProgramRow(
             serviceDate: finalAssessment.serviceDate ? finalAssessment.serviceDate.toISOString().slice(0, 10) : null,
             measurements: toMeasurementSet(finalAssessment),
             hba1c: toFact(finalAssessment.hba1c),
+            cvdRiskScore: toFact(finalAssessment.cvdRiskScore),
           }
         : null,
     ),
@@ -634,11 +747,8 @@ function toHospitalReportProgramRow(
     },
     screening: toScreeningRecord(record.screeningAssessment),
     illnessDuration: toFact(illnessDuration(relationship.healthHistory?.diagnosisYear)),
+    weeklyExercise,
     unavailable: {
-      baselineCvdRiskScore: "SOURCE_MISSING",
-      afterCvdRiskScore: "SOURCE_MISSING",
-      beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -874,13 +984,20 @@ async function loadHospitalReportingPage(
   ]);
   const hasMore = records.length > pageSize;
   const pageRecords = hasMore ? records.slice(0, pageSize) : records;
-  const childCounts = await countProgramRelatedRows(
-    database,
-    access.hospital.id,
-    pageRecords.map((record) => record.id),
-  );
+  const [childCounts, weeklyExercise] = await Promise.all([
+    countProgramRelatedRows(
+      database,
+      access.hospital.id,
+      pageRecords.map((record) => record.id),
+    ),
+    loadWeeklyExerciseFacts(database, pageRecords),
+  ]);
   const items = pageRecords.map((record) =>
-    toHospitalReportProgramRow(record, childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 }),
+    toHospitalReportProgramRow(
+      record,
+      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 },
+      weeklyExercise.get(record.id)!,
+    ),
   );
   const lastRecord = pageRecords.at(-1);
 
@@ -1135,8 +1252,13 @@ async function loadHospitalReportingDataset(
   const childCounts = new Map(
     programRecords.map((record) => [record.id, { goalPlans: record.goalPlans.length, followups: record.followups.length }]),
   );
+  const weeklyExercise = await loadWeeklyExerciseFacts(database, programRecords);
   const programs = programRecords.map((record) =>
-    toHospitalReportProgramRow(record, childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 }),
+    toHospitalReportProgramRow(
+      record,
+      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 },
+      weeklyExercise.get(record.id)!,
+    ),
   );
 
   return {
@@ -1209,7 +1331,10 @@ export const hospitalReportQueryInternals = {
   reportCursorWhere,
   reportHospitalProgramWhere,
   toFact,
+  averageWeeklyExerciseFact,
+  loadWeeklyExerciseFacts,
   toHospitalReportProgramRow,
+  weeklyExerciseWindow,
   toMeasurementSet,
   toUnavailable,
   hospitalReportPageProgramSelect,

@@ -26,6 +26,9 @@ type MeasurementDefinition = {
   key: MeasurementKey;
   label: string;
   currentLabel: string;
+  /** Input bounds; structural only unless the field has an approved range. */
+  max?: number;
+  step?: number;
 };
 
 const measurementDefinitions: readonly MeasurementDefinition[] = [
@@ -35,6 +38,8 @@ const measurementDefinitions: readonly MeasurementDefinition[] = [
   { key: "diastolicBloodPressure", label: "ความดันตัวล่าง", currentLabel: "mmHg" },
   { key: "bloodSugar", label: "น้ำตาลในเลือด / DTX", currentLabel: "DTX / mg%" },
   { key: "hba1c", label: "HbA1c", currentLabel: "%" },
+  // D7: staff-entered percentage 0-100, one decimal.
+  { key: "cvdRiskScore", label: "CVD risk score", currentLabel: "%", max: 100, step: 0.1 },
 ];
 
 const structuralMaximum = 1_000_000;
@@ -181,10 +186,10 @@ function FinalAssessmentForm({
                     className={inputClassName}
                     id={inputId}
                     inputMode="decimal"
-                    max={structuralMaximum}
+                    max={measurement.max ?? structuralMaximum}
                     min="0"
                     name={measurement.key}
-                    step="any"
+                    step={measurement.step ?? "any"}
                     type="number"
                   />
                   <span className="block text-xs font-normal leading-5 text-text-subtle" id={`${inputId}-help`}>

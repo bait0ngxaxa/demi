@@ -72,6 +72,7 @@ export function PatientBaselineForm({
   const [bloodPressureDiastolic, setBloodPressureDiastolic] = useState("");
   const [bloodSugarDtx, setBloodSugarDtx] = useState("");
   const [hba1c, setHba1c] = useState("");
+  const [cvdRiskScore, setCvdRiskScore] = useState("");
   const [adaptationSummary, setAdaptationSummary] = useState("");
   const [adaptationObstacles, setAdaptationObstacles] = useState("");
   const [adaptationOpportunities, setAdaptationOpportunities] = useState("");
@@ -279,6 +280,22 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={hba1c}
+              />
+            </label>
+            <label className={labelClassName} htmlFor="baseline-cvd-risk-score">
+              <span>CVD risk score (%)</span>
+              <Input
+                id="baseline-cvd-risk-score"
+                inputMode="decimal"
+                max={100}
+                min={0}
+                name="cvdRiskScore"
+                onChange={(event) => setCvdRiskScore(event.target.value)}
+                placeholder="ไม่บังคับ · 0–100 ทศนิยม 1 ตำแหน่ง"
+                readOnly={pending}
+                step={0.1}
+                type="number"
+                value={cvdRiskScore}
               />
             </label>
           </div>

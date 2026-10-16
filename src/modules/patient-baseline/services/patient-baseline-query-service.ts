@@ -44,6 +44,7 @@ export type PatientBaselineProjection = {
     bloodPressureDiastolic: number | null;
     bloodSugarDtx: number | null;
     hba1c: number | null;
+    cvdRiskScore: number | null;
   };
   adaptation: {
     summary: string | null;
@@ -92,6 +93,7 @@ export const patientBaselineSelect = {
   bloodPressureDiastolic: true,
   bloodSugarDtx: true,
   hba1c: true,
+  cvdRiskScore: true,
   adaptationSummary: true,
   adaptationObstacles: true,
   adaptationOpportunities: true,
@@ -146,6 +148,7 @@ function toProjection(record: PatientBaselineRecord): PatientBaselineProjection 
       bloodPressureDiastolic: record.bloodPressureDiastolic,
       bloodSugarDtx: record.bloodSugarDtx,
       hba1c: record.hba1c,
+      cvdRiskScore: record.cvdRiskScore,
     },
     adaptation: {
       summary: record.adaptationSummary,

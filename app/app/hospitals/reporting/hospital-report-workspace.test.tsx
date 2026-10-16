@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PatientProgramStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
-import type { HospitalReportFact, HospitalReportProgramRow, HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
+import type { HospitalReportProgramRow, HospitalReportingPageProjection } from "@/modules/reporting/projections/hospital-report-projection";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 
@@ -36,10 +36,6 @@ const hierarchy: HospitalHierarchyContext = {
   issues: [],
 };
 
-function unavailable<T>(reason: "SOURCE_MISSING" | "CLINICAL_SEMANTICS_UNAPPROVED" = "SOURCE_MISSING"): HospitalReportFact<T> {
-  return { state: "UNAVAILABLE", reason };
-}
-
 function program(id: string, status: PatientProgramStatus): HospitalReportProgramRow {
   return {
     patientProgramId: id,
@@ -70,8 +66,9 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
           diastolicBloodPressure: { state: "NOT_RECORDED" },
         },
         heightCm: { state: "NOT_RECORDED" },
-        hba1c: unavailable<number>("CLINICAL_SEMANTICS_UNAPPROVED"),
-        confidenceScore: unavailable<number>("CLINICAL_SEMANTICS_UNAPPROVED"),
+        hba1c: { state: "NOT_RECORDED" },
+        confidenceScore: { state: "RECORDED", value: 6 },
+        cvdRiskScore: { state: "RECORDED", value: 12.5 },
       },
     },
     serviceOne: {
@@ -125,11 +122,8 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
     bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     screening: { state: "MISSING" },
     illnessDuration: { state: "NOT_RECORDED" },
+    weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "NOT_RECORDED" } },
     unavailable: {
-      baselineCvdRiskScore: "SOURCE_MISSING",
-      afterCvdRiskScore: "SOURCE_MISSING",
-      beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -188,7 +182,9 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
     expect(markup).toContain("รายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
     expect(markup).toContain("ยังไม่ได้รับอนุญาต");
-    expect(markup).toContain("HbA1c: มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง");
+    // D7/D8: staff-entered CVD % and HbA1c %.
+    expect(markup).toContain("ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): 12.5");
+    expect(markup).toContain("HbA1c (%): ยังไม่บันทึก");
     expect(markup).toContain("0 กก.");
     expect(markup.match(/รหัสผู้ป่วยในโรงพยาบาล/gu)).toHaveLength(2);
     expect(markup).not.toContain("Program ID:");
@@ -211,6 +207,10 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
     expect(markup).toContain("แบบประเมิน PAM / PROMs: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
+    // D8/D9: confidence ruler 0-10 and self-reported exercise (no Final Assessment for After).
+    expect(markup).toContain("ไม้บรรทัดวัดใจ (0–10): 6");
+    expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: 37.5 นาที (ผู้ป่วยบันทึกเอง)");
+    expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: ไม่มีการประเมินหลังจบ Program");
     expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ดูได้ในไฟล์ Excel (แสดงการติดตามไม่ครบในหน้านี้)");
     expect(markup).toContain("ครั้งที่ 1");
     expect(markup).toContain("วันที่ทำได้ / อัตราความสำเร็จ: 2/3 วัน · 67%");

@@ -231,6 +231,33 @@ describe("Patient Personal care read views", () => {
     expect(markup).toContain("break-words");
   });
 
+  it("lists the current health plan and previous versions read-only (D4)", () => {
+    const previous = { ...journey.goalPlans[0]!, goalPlanId: "44444444-4444-4444-8444-444444444445", roundNumber: 6 };
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView journey={{ ...journey, goalPlans: [journey.goalPlans[0]!, previous] }} />,
+    );
+
+    expect(markup).toContain("แผนสุขภาพ");
+    expect(markup.indexOf("แผนเป้าหมาย รอบที่ 7")).toBeLessThan(markup.indexOf("แผนปัจจุบัน"));
+    expect(markup.indexOf("แผนปัจจุบัน")).toBeLessThan(markup.indexOf("แผนเป้าหมาย รอบที่ 6"));
+    expect(markup.match(/แผนปัจจุบัน/gu)).toHaveLength(1);
+    expect(markup).toContain("ฉบับก่อนหน้า");
+    expect(markup).toContain("/goal-plans/44444444-4444-4444-8444-444444444445");
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain("<button");
+
+    // Later history pages only hold previous versions.
+    const page2 = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{ ...journey, goalPlans: [previous], historyPages: { ...journey.historyPages, goalPlans: { page: 2, hasMore: false } } }}
+      />,
+    );
+    expect(page2).not.toContain("แผนปัจจุบัน");
+    expect(page2).toContain("ฉบับก่อนหน้า");
+
+    expect(renderToStaticMarkup(<PatientSelfGoalPlanDetailView detail={goalPlanDetail} />)).not.toContain("<form");
+  });
+
   it("presents Program and Final records as workflow facts without an outcome judgment", () => {
     const markup = renderToStaticMarkup(
       <PatientSelfProgramDetailView detail={programDetail} relationshipId={ownRelationship.relationshipId} />,
@@ -435,7 +462,7 @@ describe("Patient Personal care read views", () => {
       "ยังไม่มีข้อมูลการคัดกรอง",
       "ยังไม่มีข้อมูลเริ่มต้น",
       "ยังไม่มีโปรแกรมการดูแล",
-      "ยังไม่มีแผนเป้าหมาย",
+      "ยังไม่มีแผนสุขภาพ",
       "ยังไม่มีข้อมูลติดตาม",
     ]) {
       expect(journeyMarkup).toContain(emptyState);

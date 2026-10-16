@@ -22,6 +22,7 @@ export type PatientFinalAssessmentMeasurements = {
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
   hba1c: number | null;
+  cvdRiskScore: number | null;
 };
 
 export type PatientFinalAssessmentProjection = {
@@ -55,6 +56,7 @@ const patientFinalAssessmentSelect = {
   diastolicBloodPressure: true,
   bloodSugar: true,
   hba1c: true,
+  cvdRiskScore: true,
   recordedBy: {
     select: {
       id: true,
@@ -128,6 +130,7 @@ function toProjection(
             diastolicBloodPressure: finalAssessment.diastolicBloodPressure,
             bloodSugar: finalAssessment.bloodSugar,
             hba1c: finalAssessment.hba1c,
+            cvdRiskScore: finalAssessment.cvdRiskScore,
           },
         }
       : null,

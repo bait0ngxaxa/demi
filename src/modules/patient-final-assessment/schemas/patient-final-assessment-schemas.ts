@@ -4,6 +4,7 @@ import {
   patientProgramIdSchema,
   patientProgramRelationshipIdSchema,
 } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { cvdRiskScoreSchema } from "@/shared/clinical/cvd-risk-score";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
 export const PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX = 1_000_000;
@@ -44,6 +45,8 @@ export const patientFinalAssessmentCreateRequestSchema = z
     bloodSugar: optionalMeasurementSchema,
     // After HbA1c (Phase A report gap fill); optional and not counted as a standalone measurement.
     hba1c: positiveHba1cSchema,
+    // D7 After CVD risk score; optional and not counted as a standalone measurement.
+    cvdRiskScore: cvdRiskScoreSchema,
   })
   .strict()
   .superRefine((input, context) => {

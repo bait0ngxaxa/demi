@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { cvdRiskScoreSchema } from "@/shared/clinical/cvd-risk-score";
+
 export const PATIENT_BASELINE_TEXT_MAX_LENGTH = 2_000;
 export const PATIENT_BASELINE_STRUCTURAL_NUMBER_MAX = 1_000_000;
 
@@ -46,6 +48,7 @@ export const patientBaselineCreateRequestSchema = z
     bloodPressureDiastolic: optionalMeasurementSchema,
     bloodSugarDtx: optionalMeasurementSchema,
     hba1c: optionalMeasurementSchema,
+    cvdRiskScore: cvdRiskScoreSchema,
     adaptationSummary: optionalTextSchema,
     adaptationObstacles: optionalTextSchema,
     adaptationOpportunities: optionalTextSchema,

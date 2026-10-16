@@ -233,6 +233,32 @@ describe("Patient Baseline service", () => {
     expect(transaction).not.toHaveProperty("patientFollowup");
   });
 
+  it("persists the optional Before CVD risk score and rejects values outside 0-100 or with two decimals (D7)", async () => {
+    const { database, transaction } = createDatabase();
+
+    await createPatientBaseline(hospitalActor, validInput({ cvdRiskScore: 12.5 }), { database, now: () => now });
+
+    expect(transaction.patientBaseline.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ cvdRiskScore: 12.5 }),
+      select: expect.anything(),
+    });
+
+    const absent = createDatabase();
+    await createPatientBaseline(hospitalActor, validInput(), { database: absent.database, now: () => now });
+    expect(absent.transaction.patientBaseline.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ cvdRiskScore: null }),
+      select: expect.anything(),
+    });
+
+    for (const cvdRiskScore of [100.1, -1, 12.34]) {
+      const rejected = createDatabase();
+      await expect(
+        createPatientBaseline(hospitalActor, validInput({ cvdRiskScore }), { database: rejected.database }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(rejected.transaction.patientBaseline.create).not.toHaveBeenCalled();
+    }
+  });
+
   it("runs the composable Baseline operation on the supplied transaction without nesting", async () => {
     const { database, transaction } = createDatabase();
     const suppliedTransaction = transaction as unknown as Prisma.TransactionClient;

@@ -104,7 +104,8 @@ describe("six-round navigator views", () => {
     expect(markup).toContain('value="160"');
     expect(markup).not.toContain("readOnly");
     expect(markup).toContain("BMI (kg/m²)");
-    expect(markup).toContain("รู้จักตัวเอง");
+    expect(markup).toContain("ครั้งที่ 1 · รู้จักตัวเอง");
+    expect(markup).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
     expect(markup).toContain("รอแบบฟอร์มจากหน่วยงาน");
     expect(markup).toContain("/screenings/new?programId=" + programId);
     expect(markup).toContain("การจัดบริการเพิ่ม");
@@ -117,7 +118,7 @@ describe("six-round navigator views", () => {
     expect(markup).toContain("ดูผลเดิม (อ่านอย่างเดียว)");
     expect(markup).toContain('name="toolCode"');
     expect(markup).toContain('value="DREAM_CARD"');
-    expect(markup).toContain("รายการแนะนำของครั้งนี้");
+    expect(markup).toContain("รายการที่ต้องติดตามในครั้งนี้");
     // Round 3 vitals come with the Follow-up, so no vitals form and height is display-only.
     expect(markup).not.toContain('name="weight"');
     expect(markup).toContain("ส่วนสูงล่าสุด 160 cm (แสดงอย่างเดียว)");
@@ -148,39 +149,46 @@ describe("six-round navigator views", () => {
     expect(completed).not.toContain("บันทึกว่าได้ทบทวนในครั้งนี้");
   });
 
-  it("does not offer a Follow-up action for the round 2 plan review and marks it decision-gated", () => {
+  it("shows the round 2 plan item as creating the Goal Plan, never as a decision-gated review (D4/D5)", () => {
     const markup = renderDetail(2);
 
-    expect(markup).toContain("ทบทวนแผนสุขภาพ");
-    expect(markup).toContain("รอการตัดสินใจ");
-    expect(markup).toContain("ยังไม่ได้กำหนดขั้นตอนทบทวนแผนสุขภาพของครั้งนี้");
-    expect(markup).not.toContain("บันทึกได้ในครั้งที่ 3–6");
+    expect(markup).toContain("ทำแผนสุขภาพ");
+    expect(markup).toContain(`/programs/${programId}/goals/new`);
+    expect(markup).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(markup).not.toContain("รอการตัดสินใจ");
     expect(markup).not.toContain("/followups/new");
     expect(markup).not.toContain(">บันทึกแล้ว</span>");
   });
 
-  it("shows an existing plan in round 4 as a read-only link, not a performed round 4 activity", () => {
-    const markup = renderDetail(4, {
+  it("shows round 4 แผนสุขภาพดีของฉัน as pending until a plan is adjusted from round 4 onwards (D4)", () => {
+    const plan = (id: string, roundNumber: number, sourceFollowup: { roundNumber: number } | null) => ({
+      id,
+      roundNumber,
+      createdAt: new Date("2026-10-02T03:00:00Z"),
+      templateKey: "demi-goals",
+      templateVersion: "legacy-prototype-v1",
+      sourceFollowup,
+      createdByUser: recorder,
+      items: [],
+    });
+    const pending = renderDetail(4, { goalPlans: [plan("77777777-7777-4777-8777-777777777777", 1, null)] });
+
+    expect(pending).toContain("แผนสุขภาพดีของฉัน");
+    expect(pending).toContain("บันทึกได้เมื่อการติดตามผลครั้งที่ 4 ขึ้นไปเลือก");
+    expect(pending).toContain("ดูแผนปัจจุบัน");
+    expect(pending).toContain("/goals/77777777-7777-4777-8777-777777777777");
+    expect(pending).not.toContain("รอการตัดสินใจ");
+    expect(pending).not.toContain(">บันทึกแล้ว</span>");
+
+    const adjusted = renderDetail(4, {
       goalPlans: [
-        {
-          id: "77777777-7777-4777-8777-777777777777",
-          roundNumber: 1,
-          createdAt: new Date("2026-10-02T03:00:00Z"),
-          templateKey: "demi-goals",
-          templateVersion: "legacy-prototype-v1",
-          createdByUser: recorder,
-          items: [],
-        },
+        plan("77777777-7777-4777-8777-777777777777", 1, null),
+        plan("88888888-8888-4888-8888-888888888888", 2, { roundNumber: 2 }),
       ],
     });
 
-    expect(markup).toContain("แผนสุขภาพดีของฉัน");
-    expect(markup).toContain("ดูแผนที่มีอยู่ (สร้างในครั้งที่ 2)");
-    expect(markup).toContain("/goals/77777777-7777-4777-8777-777777777777");
-    expect(markup).toContain("แผนสุขภาพที่มีอยู่ไม่นับเป็นการทำกิจกรรมของครั้งนี้");
-    expect(markup).toContain("รอการตัดสินใจ");
-    expect(markup).not.toContain(">บันทึกแล้ว</span>");
-    expect(markup).not.toContain(">ทบทวนแล้ว</span>");
+    expect(adjusted).toContain(">บันทึกแล้ว</span>");
+    expect(adjusted).toContain("/goals/88888888-8888-4888-8888-888888888888");
   });
 
   it("keeps the real round 2 Goal Plan creation as a recorded result with its normal link", () => {
@@ -192,6 +200,7 @@ describe("six-round navigator views", () => {
           createdAt: new Date("2026-10-02T03:00:00Z"),
           templateKey: "demi-goals",
           templateVersion: "legacy-prototype-v1",
+          sourceFollowup: null,
           createdByUser: recorder,
           items: [],
         },
@@ -199,44 +208,59 @@ describe("six-round navigator views", () => {
     });
 
     expect(markup).toContain(">บันทึกแล้ว</span>");
-    expect(markup).not.toContain("แผนสุขภาพที่มีอยู่ไม่นับเป็นการทำกิจกรรมของครั้งนี้");
+    expect(markup).toContain("/goals/77777777-7777-4777-8777-777777777777");
   });
 
-  it("shows a recorded Follow-up as a fact, not as a completed plan review", () => {
-    const markup = renderDetail(3, {
-      goalPlans: [
-        {
-          id: "eeeeeeee-eeee-4eee-8eee-000000000001",
-          roundNumber: 1,
-          createdAt: new Date("2026-10-02T03:00:00Z"),
-          templateKey: "demi-goals",
-          templateVersion: "legacy-prototype-v1",
-          createdByUser: recorder,
-          items: [{ activityCode: "stop_sweet", targetDays: 4, targetValue: null, targetUnit: null }],
-        },
+  it("shows the due list and the review rule from the round's Follow-up facts (D5/D6)", () => {
+    const plan = {
+      id: "eeeeeeee-eeee-4eee-8eee-000000000001",
+      roundNumber: 1,
+      createdAt: new Date("2026-10-02T03:00:00Z"),
+      templateKey: "demi-goals",
+      templateVersion: "legacy-prototype-v1",
+      sourceFollowup: null,
+      createdByUser: recorder,
+      items: [
+        { activityCode: "stop_sweet", targetDays: 4, targetValue: null, targetUnit: null },
+        { activityCode: "exercise_walk", targetDays: 3, targetValue: 15, targetUnit: "minutes" },
       ],
+    };
+    const followup = (overrides: Record<string, unknown>) => ({
+      id: "dddddddd-dddd-4ddd-8ddd-000000000001",
+      roundNumber: 1,
+      serviceDate: new Date("2026-10-20T00:00:00Z"),
+      recordedAt: new Date("2026-10-20T04:00:00Z"),
+      sourceGoalPlanId: plan.id,
+      planAdjusted: null,
+      weight: 62,
+      createdByUser: recorder,
+      activityProgress: [],
+      ...overrides,
+    });
+    const unanswered = renderDetail(3, { goalPlans: [plan], followups: [followup({})] });
+
+    expect(unanswered).toContain("ยังไม่มีบันทึกการทบทวนแผน");
+    expect(unanswered).toContain("ยังไม่นับเป็นการทบทวนแผนสุขภาพ เพราะไม่ได้ตอบว่าปรับแผนหรือไม่");
+    expect(unanswered).toContain("ดูการติดตามผลที่บันทึก");
+    expect(unanswered).toContain("รายการที่ต้องติดตามในครั้งนี้");
+    expect(unanswered).toContain("กิจกรรมในแผนที่ยังไม่ถึงเป้าหมาย");
+    expect(unanswered).toContain("ยังไม่มีบันทึกความคืบหน้า");
+    expect(unanswered).not.toContain("ทำได้ตามเป้าแล้ว");
+
+    const reviewed = renderDetail(3, {
+      goalPlans: [plan],
       followups: [
-        {
-          id: "dddddddd-dddd-4ddd-8ddd-000000000001",
-          roundNumber: 1,
-          serviceDate: new Date("2026-10-20T00:00:00Z"),
-          recordedAt: new Date("2026-10-20T04:00:00Z"),
-          sourceGoalPlanId: "eeeeeeee-eeee-4eee-8eee-000000000001",
-          weight: 62,
-          createdByUser: recorder,
-          activityProgress: [],
-        },
+        followup({
+          planAdjusted: false,
+          activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 }],
+        }),
       ],
     });
 
-    expect(markup).toContain("ยังไม่มีบันทึกการทบทวนแผน");
-    expect(markup).toContain("ยังไม่มีบันทึกว่าได้ทบทวนแผนสุขภาพ");
-    expect(markup).toContain("ดูการติดตามผลที่บันทึก");
-    expect(markup).not.toContain(">บันทึกแล้ว</span>");
-    expect(markup).toContain("กิจกรรมในแผนเป้าหมาย");
-    expect(markup).toContain("ยังไม่มีบันทึกความคืบหน้า");
-    expect(markup).not.toContain("รายการที่ต้องติดตามในครั้งนี้");
-    expect(markup).not.toContain("รอติดตาม");
+    expect(reviewed).toContain(">ทบทวนแล้ว</span>");
+    expect(reviewed).toContain("ทำได้ตามเป้าแล้ว");
+    expect(reviewed).toContain("ทำได้ · 3/7 วัน · ครั้งที่ 3");
+    expect(reviewed).not.toContain("ยังไม่นับเป็นการทบทวนแผนสุขภาพ");
   });
 });
 

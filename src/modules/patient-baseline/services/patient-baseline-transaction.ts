@@ -46,6 +46,7 @@ type NormalizedPatientBaselineRequest = {
   bloodPressureDiastolic: number | null;
   bloodSugarDtx: number | null;
   hba1c: number | null;
+  cvdRiskScore: number | null;
   adaptationSummary: string | null;
   adaptationObstacles: string | null;
   adaptationOpportunities: string | null;
@@ -71,6 +72,7 @@ function normalizeInput(input: PatientBaselineCreateRequest): NormalizedPatientB
     bloodPressureDiastolic: input.bloodPressureDiastolic ?? null,
     bloodSugarDtx: input.bloodSugarDtx ?? null,
     hba1c: input.hba1c ?? null,
+    cvdRiskScore: input.cvdRiskScore ?? null,
     adaptationSummary: nullableText(input.adaptationSummary),
     adaptationObstacles: nullableText(input.adaptationObstacles),
     adaptationOpportunities: nullableText(input.adaptationOpportunities),
@@ -133,6 +135,7 @@ export async function createPatientBaselineInTransaction(
       bloodPressureDiastolic: normalized.bloodPressureDiastolic,
       bloodSugarDtx: normalized.bloodSugarDtx,
       hba1c: normalized.hba1c,
+      cvdRiskScore: normalized.cvdRiskScore,
       adaptationSummary: normalized.adaptationSummary,
       adaptationObstacles: normalized.adaptationObstacles,
       adaptationOpportunities: normalized.adaptationOpportunities,

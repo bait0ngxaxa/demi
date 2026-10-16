@@ -3,7 +3,6 @@ import { PatientProgramStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import type {
-  HospitalReportFact,
   HospitalReportProgramRow,
   HospitalReportingDataset,
 } from "../projections/hospital-report-projection";
@@ -13,10 +12,6 @@ const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
 const activeProgramId = "33333333-3333-4333-8333-333333333333";
 const completedProgramId = "44444444-4444-4444-8444-444444444444";
-
-function unavailable<T>(reason: "SOURCE_MISSING" | "CLINICAL_SEMANTICS_UNAPPROVED" | "NOT_PROGRAM_SCOPED" | "DERIVATION_UNAPPROVED"): HospitalReportFact<T> {
-  return { state: "UNAVAILABLE", reason };
-}
 
 function program(input: { id: string; status: PatientProgramStatus; followups?: number }): HospitalReportProgramRow {
   const followups = Array.from({ length: input.followups ?? 0 }, (_, index) => ({
@@ -74,8 +69,9 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
           diastolicBloodPressure: { state: "NOT_RECORDED" },
         },
         heightCm: { state: "RECORDED", value: 0 },
-        hba1c: unavailable("CLINICAL_SEMANTICS_UNAPPROVED"),
-        confidenceScore: unavailable("CLINICAL_SEMANTICS_UNAPPROVED"),
+        hba1c: { state: "RECORDED", value: 7.1 },
+        confidenceScore: { state: "RECORDED", value: 6 },
+        cvdRiskScore: { state: "NOT_RECORDED" },
       },
     },
     serviceOne: {
@@ -109,11 +105,8 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     screening: { state: "MISSING" },
     illnessDuration: { state: "NOT_RECORDED" },
+    weeklyExercise: { before: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     unavailable: {
-      baselineCvdRiskScore: "SOURCE_MISSING",
-      afterCvdRiskScore: "SOURCE_MISSING",
-      beforeWeeklyExercise: "NOT_PROGRAM_SCOPED",
-      afterWeeklyExercise: "NOT_PROGRAM_SCOPED",
       achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
@@ -173,7 +166,10 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("AS11").value).toBe(completedProgramId);
     expect(dashboard.getCell("AI9").value).toBe("ยังดำเนิน Program");
     expect(dashboard.getCell("AI11").value).toBeInstanceOf(Date);
-    expect(dashboard.getCell("H9").value).toContain("ไม่มีแหล่งข้อมูล");
+    // D7/D8: CVD not recorded on this Baseline; HbA1c is approved and reported as recorded.
+    expect(dashboard.getCell("H9").value).toBe("ยังไม่บันทึก");
+    expect(dashboard.getCell("I9").value).toBe(7.1);
+    expect(dashboard.getCell("AJ9").value).toBe("ไม่มี Final Assessment");
     expect(dashboard.getCell("W11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
 
     expect(service.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
@@ -190,6 +186,10 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("AH10").value).toBeInstanceOf(Date);
     expect(service.getCell("AH11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
     expect(service.getCell("BN9").value).toBe(PatientProgramStatus.ACTIVE);
+    // D8/D9: confidence ruler 0-10 from the Baseline; self-reported exercise with no entries.
+    expect(service.getCell("M9").value).toBe(6);
+    expect(service.getCell("N9").value).toBe("ไม่มีบันทึก");
+    expect(service.getCell("Q9").value).toBe("ไม่มี Final Assessment");
 
     const progressRows: number[] = [];
     for (let rowNumber = 1; rowNumber <= service.rowCount; rowNumber += 1) {
@@ -201,6 +201,7 @@ describe("Hospital reporting customer workbook export", () => {
 
     const serialized = JSON.stringify({ dashboard: dashboard.getSheetValues(), service: service.getSheetValues() });
     expect(serialized).toContain("ไม่มีแหล่งข้อมูลในระบบ");
+    expect(serialized).toContain("ผู้ป่วยบันทึกเอง");
     expect(serialized).toContain("เป้าหมายกิจกรรม");
     const serviceText = service.getSheetValues().flat(2).filter((value): value is string => typeof value === "string").join(" ");
     expect(serviceText).toContain("generatedAt");

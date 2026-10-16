@@ -100,6 +100,7 @@ describe("Patient Final Assessment Server Action", () => {
       diastolicBloodPressure: 80,
       bloodSugar: 95,
       hba1c: null,
+      cvdRiskScore: null,
     });
     expect(mockedCreate.mock.calls[0]?.[1]).not.toHaveProperty("recordedByUserId");
     expect(mockedCreate.mock.calls[0]?.[1]).not.toHaveProperty("recordedAt");

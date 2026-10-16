@@ -187,6 +187,29 @@ function afterHba1cCell(program: HospitalReportProgramRow): number | string {
     : factCell(program.finalAssessment.value.hba1c);
 }
 
+// D7/D8: staff-entered Baseline facts (HbA1c %, confidence ruler 0-10, CVD risk %).
+function baselineFactCell(
+  program: HospitalReportProgramRow,
+  key: "hba1c" | "confidenceScore" | "cvdRiskScore",
+): number | string {
+  return program.baseline.state === "MISSING" ? NO_BASELINE_LABEL : factCell(program.baseline.value[key]);
+}
+
+function afterCvdRiskCell(program: HospitalReportProgramRow): number | string {
+  return program.finalAssessment.state === "MISSING"
+    ? NO_FINAL_ASSESSMENT_LABEL
+    : factCell(program.finalAssessment.value.cvdRiskScore);
+}
+
+const NO_EXERCISE_RECORD_LABEL = "ไม่มีบันทึก";
+
+// D9: Patient self-reported minutes per week; After needs the Final Assessment service date.
+function weeklyExerciseCell(program: HospitalReportProgramRow, stage: "before" | "after"): number | string {
+  if (stage === "after" && program.finalAssessment.state === "MISSING") return NO_FINAL_ASSESSMENT_LABEL;
+  const fact = program.weeklyExercise[stage];
+  return fact.state === "RECORDED" ? fact.value : NO_EXERCISE_RECORD_LABEL;
+}
+
 function screeningScoreCell(program: HospitalReportProgramRow, key: "pamScore" | "promsScore"): number | string {
   return program.screening.state === "MISSING" ? NO_PROGRAM_SCREENING_LABEL : program.screening.value[key];
 }
@@ -327,10 +350,8 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(6).value = identity[5];
     row.getCell(7).value = identity[6];
     setExcelDate(row, 7);
-    row.getCell(8).value = unavailable(program.unavailable.baselineCvdRiskScore);
-    row.getCell(9).value = program.baseline.state === "PRESENT"
-      ? unavailable(program.baseline.value.hba1c.state === "UNAVAILABLE" ? program.baseline.value.hba1c.reason : "SOURCE_MISSING")
-      : "ไม่มี Baseline ที่เชื่อมกับ Program";
+    row.getCell(8).value = baselineFactCell(program, "cvdRiskScore");
+    row.getCell(9).value = baselineFactCell(program, "hba1c");
     row.getCell(10).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(11).value = baselineMeasurementCell(program, "weight");
     row.getCell(12).value = baselineBmiCell(program);
@@ -366,7 +387,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
         ? "ยังดำเนิน Program"
         : "ยังไม่บันทึกวันที่สิ้นสุด";
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 35);
-    row.getCell(36).value = unavailable(program.unavailable.afterCvdRiskScore);
+    row.getCell(36).value = afterCvdRiskCell(program);
     row.getCell(37).value = afterHba1cCell(program);
     row.getCell(38).value = finalMeasurementCell(program, "bloodSugar");
     row.getCell(39).value = finalMeasurementCell(program, "weight");
@@ -504,13 +525,11 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
     row.getCell(11).value = screeningScoreCell(program, "pamScore");
     row.getCell(12).value = screeningScoreCell(program, "promsScore");
-    row.getCell(13).value = program.baseline.state === "PRESENT"
-      ? unavailable(program.baseline.value.confidenceScore.state === "UNAVAILABLE" ? program.baseline.value.confidenceScore.reason : "CLINICAL_SEMANTICS_UNAPPROVED")
-      : "ไม่มี Baseline ที่เชื่อมกับ Program";
-    row.getCell(14).value = unavailable(program.unavailable.beforeWeeklyExercise);
+    row.getCell(13).value = baselineFactCell(program, "confidenceScore");
+    row.getCell(14).value = weeklyExerciseCell(program, "before");
     row.getCell(15).value = finalMeasurementCell(program, "bloodSugar");
     row.getCell(16).value = finalMeasurementCell(program, "weight");
-    row.getCell(17).value = unavailable(program.unavailable.afterWeeklyExercise);
+    row.getCell(17).value = weeklyExerciseCell(program, "after");
     row.getCell(18).value = achievementOver70Cell(program);
     if (continuation === 1) {
       // Owner decision BR-02: "ทำ" means the Service 1 activity has a record in DEMI.
@@ -715,6 +734,7 @@ export async function generateHospitalReportWorkbook(
     "ผู้ดูแลที่แสดงเป็นการมอบหมายปัจจุบันของ relationship ณ เวลาที่อ่านข้อมูล ไม่ใช่ผู้ให้บริการย้อนหลังของ Program",
     "ระหว่างโปรแกรม ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; Service 1 และ Goal Plan ยังไม่มีการบันทึกค่าวัดในระบบ",
     "แถวต่อเนื่องใช้เก็บ Follow-up ทุกครั้ง; ช่องคะแนนความสำเร็จและข้อมูลทางคลินิกที่ยังไม่มีแหล่งหรือสูตรรับรองแสดงสถานะที่ตรงไปตรงมา",
+    "CVD risk score (%) เจ้าหน้าที่กรอกเองที่ Baseline (Before) และ Final Assessment (After) ไม่ได้คำนวณ; HbA1c หน่วย %",
   ]);
   const detailStartRow = appendNotes(serviceSheet, DATA_START_ROW + serviceRowCount, [
     "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
@@ -723,6 +743,8 @@ export async function generateHospitalReportWorkbook(
     "วันที่ติดตาม = วันที่ให้บริการ (รายการก่อนมีช่องนี้ใช้วันที่บันทึก); จำนวนวันที่ทำได้ = ผลรวมวันที่ทำได้ใน 7 วันก่อนวันให้บริการ; อัตราความสำเร็จ = จำนวนวันที่ทำได้ ÷ วันเป้าหมายของแผนที่อ้างอิง ไม่นับกิจกรรมที่ไม่เกี่ยวข้อง; >70% นับเฉพาะการติดตามที่คำนวณได้",
     "ผลลัพธ์ที่ได้ ยังรอรายการคำจาก Owner; ปรับแผนและอุปสรรคมาจากคำตอบในแบบบันทึกการติดตาม (รายการก่อนมีช่องนี้แสดง ไม่ได้บันทึก)",
     "Program COMPLETED เป็นสถานะ lifecycle ไม่ได้ยืนยันผลลัพธ์ทางคลินิก; generatedAt เป็นเวลาสร้างไฟล์ ไม่ใช่ dataAsOf",
+    "ไม้บรรทัดวัดใจ = คะแนน 0–10 จาก Baseline",
+    "เวลาออกกำลังกาย/สัปดาห์ (ผู้ป่วยบันทึกเอง) = นาทีที่ผู้ป่วยบันทึกในบันทึกการออกกำลังกายช่วง 28 วันก่อนวันเริ่ม Program (Before) หรือก่อนวันประเมินหลังจบ (After) ÷ 4; ไม่นับรายการที่ไม่ระบุเวลา; ไม่มีรายการในช่วง = ไม่มีบันทึก",
   ]);
   appendDetailTable(serviceSheet, detailStartRow, goalAndProgressDetailRows(dataset.programs));
 

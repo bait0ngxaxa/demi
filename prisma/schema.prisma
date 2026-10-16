@@ -1249,6 +1249,8 @@ model PatientBaseline {
   bloodPressureDiastolic        Float?
   bloodSugarDtx                 Float?
   hba1c                         Float?
+  // D7 (WB-DF-17): staff-entered CVD risk score %, 0-100 (DB CHECK), one decimal (validated in the service).
+  cvdRiskScore                  Float?
   adaptationSummary             String?  @db.VarChar(2000)
   adaptationObstacles           String?  @db.VarChar(2000)
   adaptationOpportunities       String?  @db.VarChar(2000)
@@ -1308,6 +1310,8 @@ model PatientFinalAssessment {
   diastolicBloodPressure        Float?
   bloodSugar                    Float?
   hba1c                         Float?
+  // D7 (WB-DF-17): staff-entered CVD risk score %, 0-100 (DB CHECK), one decimal (validated in the service).
+  cvdRiskScore                  Float?
   // Workbook DoD BR-01: nullable only for assessments recorded before service dates were captured.
   serviceDate                   DateTime? @db.Date
   recordedAt                    DateTime @default(now()) @db.Timestamptz(3)

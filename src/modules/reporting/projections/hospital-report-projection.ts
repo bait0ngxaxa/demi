@@ -90,8 +90,12 @@ export type HospitalReportProgramRow = {
     recordedOn: string;
     measurements: HospitalReportMeasurementSet;
     heightCm: HospitalReportFact<number>;
+    /** D8: unit approved as %. */
     hba1c: HospitalReportFact<number>;
+    /** D8: confidence ruler approved as a 0-10 score. */
     confidenceScore: HospitalReportFact<number>;
+    /** D7: staff-entered CVD risk score %, Before. */
+    cvdRiskScore: HospitalReportFact<number>;
   }>;
   serviceOne: {
     routine: HospitalReportServiceOneActivity;
@@ -115,6 +119,8 @@ export type HospitalReportProgramRow = {
     serviceDate: string | null;
     measurements: HospitalReportMeasurementSet;
     hba1c: HospitalReportFact<number>;
+    /** D7: staff-entered CVD risk score %, After. */
+    cvdRiskScore: HospitalReportFact<number>;
   }>;
   roundVitals: {
     round1: HospitalReportRoundVitals;
@@ -134,11 +140,17 @@ export type HospitalReportProgramRow = {
     promsScore: number;
   }>;
   illnessDuration: HospitalReportFact<number>;
+  /**
+   * D9: self-reported PersonalExerciseEntry.durationMinutes, average minutes per week over the 28
+   * Bangkok days before the Program start date (before) and before the Final Assessment service date
+   * (after). NOT_RECORDED when no entry with a duration falls in the window or there is no Final
+   * Assessment.
+   */
+  weeklyExercise: {
+    before: HospitalReportFact<number>;
+    after: HospitalReportFact<number>;
+  };
   unavailable: {
-    baselineCvdRiskScore: HospitalReportUnavailableReason;
-    afterCvdRiskScore: HospitalReportUnavailableReason;
-    beforeWeeklyExercise: HospitalReportUnavailableReason;
-    afterWeeklyExercise: HospitalReportUnavailableReason;
     achievementRate: HospitalReportUnavailableReason;
     outcome: HospitalReportUnavailableReason;
   };
@@ -215,16 +227,21 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     source: "PatientBaseline.heightCm",
   },
   baselineHba1c: {
-    coverage: "SOURCE_EXISTS_SEMANTICS_UNAPPROVED",
+    coverage: "SOURCE_BACKED_APPROVED_D8",
     source: "PatientBaseline.hba1c",
-    limitation: "Measurement context and unit are not approved for reporting.",
+    limitation: "Unit approved as % (customer decision D8).",
   },
   baselineConfidence: {
-    coverage: "SOURCE_EXISTS_SEMANTICS_UNAPPROVED",
+    coverage: "SOURCE_BACKED_APPROVED_D8",
     source: "PatientBaseline.confidenceScore",
-    limitation: "Scale and stage are not approved for workbook equivalence.",
+    limitation: "Confidence ruler approved as a 0-10 score (customer decision D8).",
   },
-  cvdRisk: { coverage: "SOURCE_MISSING", reason: "No CVD risk score source exists." },
+  cvdRisk: {
+    coverage: "SOURCE_BACKED_NEW_RECORDS",
+    source: "PatientBaseline.cvdRiskScore (Before) and PatientFinalAssessment.cvdRiskScore (After)",
+    limitation:
+      "Staff-entered % 0-100, one decimal, optional; no calculation (D7, WB-DF-17). Records made before the field existed show as not recorded.",
+  },
   bmi: {
     coverage: "DERIVED_WB_DF_04",
     source: "weight / (latest recorded height)^2 from PatientBaseline, PatientProgramRoundVitals and PatientFinalAssessment",
@@ -237,8 +254,11 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     limitation: "Screenings recorded outside a Program round are not linked to a Program stage and are not reported.",
   },
   weeklyExercise: {
-    coverage: "NOT_PROGRAM_SCOPED",
-    reason: "PersonalExerciseEntry is self-reported and has no Program link.",
+    coverage: "DERIVED_D9_SELF_REPORTED",
+    source:
+      "PersonalExerciseEntry.durationMinutes of the Patient profile: minutes in the 28 Asia/Bangkok days before the Program start date (Before) or the Final Assessment service date (After), divided by 4",
+    limitation:
+      "Self-reported by the Patient (ผู้ป่วยบันทึกเอง), not a clinical measurement; entries without a duration are not counted. Supersedes Wellness Q79 for this aggregate only (D9, WB-DF-16).",
   },
   serviceOne: {
     coverage: "SOURCE_BACKED_RECORD_PRESENCE",
