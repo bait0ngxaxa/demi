@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const mockedResolveAccess = vi.hoisted(() => vi.fn());
 const mockedResolveGlobalAccess = vi.hoisted(() => vi.fn());
@@ -227,6 +227,7 @@ describe("Hospital reporting query service", () => {
 
     const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database });
 
+    expect(result.cohort).toBe("ACTIVE");
     expect(result.page.items.map((item) => item.patientProgramId)).toEqual([programA1Id, programA2Id]);
     expect(result.page.items[0]?.patientHospitalRelationshipId).toBe(relationshipId);
     expect(result.page.items[1]?.patientHospitalRelationshipId).toBe(relationshipId);
@@ -269,6 +270,26 @@ describe("Hospital reporting query service", () => {
     }));
     expect(JSON.stringify(result)).toContain("givenName");
     expect(JSON.stringify(result)).not.toContain("createdBy");
+  });
+
+  it("rejects an unsupported cohort before querying report data", async () => {
+    const database = createDatabase();
+    const invalidRequest: unknown = { hospitalId: hospitalAId, cohort: "ALL" };
+
+    await expect(getHospitalReportingPage(actor, invalidRequest, { database })).rejects.toBeInstanceOf(NotFoundError);
+    expect(mockedResolveAccess).not.toHaveBeenCalled();
+    expect(database.patientProgram.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not grant ended-cohort access through the Global ADMIN report path", async () => {
+    const database = createDatabase();
+
+    await expect(getGlobalAdminHospitalReportingPage(globalActor, {
+      hospitalId: hospitalAId,
+      cohort: "INCLUDE_ENDED",
+    }, { database })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mockedResolveGlobalAccess).not.toHaveBeenCalled();
+    expect(database.patientProgram.findMany).not.toHaveBeenCalled();
   });
 
   it("projects round 1-2 vitals, BMI (value only), After HbA1c and the Program screening scores", async () => {

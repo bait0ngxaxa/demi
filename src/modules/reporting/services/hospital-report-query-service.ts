@@ -934,8 +934,10 @@ async function resolveAuthorizedHospitalReportScope(
   operation: ReportScopeOperation,
   purpose: "page" | "export",
   database: HospitalReportQueryDatabase,
+  cohort: HospitalReportCohort = "ACTIVE",
 ): Promise<AuthorizedHospitalReportScope> {
   if (operation === "GLOBAL_ADMIN") {
+    if (cohort === "INCLUDE_ENDED") throw new ForbiddenError();
     const access = await resolveGlobalReportingAccessContext(
       actor,
       purpose === "export"
@@ -955,6 +957,7 @@ async function resolveAuthorizedHospitalReportScope(
       ? HOSPITAL_REPORT_CAPABILITIES.export
       : HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
     database,
+    cohort,
   );
   return { actor: access.actor, hospital: access.hospital, operation };
 }
@@ -971,6 +974,7 @@ async function loadHospitalReportingPage(
     operation,
     "page",
     database,
+    request.cohort ?? "ACTIVE",
   );
   if (operation === "HOSPITAL_OWNER") {
     assertHospitalReportPolicy({
@@ -1063,6 +1067,7 @@ async function getHospitalReportingPageForOperation(
       operation,
       "page",
       database,
+      parsed.data.cohort ?? "ACTIVE",
     );
     return projection;
   } catch (error: unknown) {
@@ -1253,6 +1258,7 @@ async function loadHospitalReportingDataset(
     operation,
     "export",
     database,
+    cohort,
   );
   const bounds = await countExportSourceRows(database, access.hospital.id, cohort);
   assertExportBounds(bounds);
@@ -1318,6 +1324,7 @@ async function getHospitalReportingDatasetForOperation(
         operation,
         "export",
         database,
+        parsed.data.cohort ?? "ACTIVE",
       );
     }
     return dataset;

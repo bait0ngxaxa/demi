@@ -2,6 +2,7 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError } from "@/shared/errors/application-error";
+import type { HospitalReportCohort } from "../schemas/hospital-report-schemas";
 
 export const HOSPITAL_REPORT_CAPABILITIES = {
   dashboardRead: "hospital:report:dashboard:read",
@@ -38,6 +39,7 @@ export function decideHospitalReportPolicy(input: {
   actor: ActorContext | null | undefined;
   capability: unknown;
   target: HospitalReportPolicyTarget;
+  cohort?: HospitalReportCohort;
 }): HospitalReportPolicyDecision {
   if (!input.actor) {
     return { allowed: false, reason: "missing_actor" };
@@ -74,6 +76,9 @@ export function decideHospitalReportPolicy(input: {
           candidate.membershipType === MembershipType.MEMBER && candidate.reportExportGranted === true,
       )
     : undefined;
+  if (input.cohort === "INCLUDE_ENDED" && !ownerMembership) {
+    return { allowed: false, reason: "active_direct_owner_required" };
+  }
   const membership = ownerMembership ?? exportGrantMembership;
 
   if (!membership) {

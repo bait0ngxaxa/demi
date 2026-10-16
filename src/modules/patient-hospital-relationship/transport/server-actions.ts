@@ -6,9 +6,26 @@ import { redirect } from "next/navigation";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
-import { endPatientHospitalRelationship } from "../services/patient-hospital-relationship-end-service";
+import {
+  endPatientHospitalRelationship,
+  getPatientHospitalRelationshipEndStatus,
+  type PatientHospitalRelationshipEndStatus,
+} from "../services/patient-hospital-relationship-end-service";
 
 export type PatientHospitalRelationshipEndActionState = { status: "IDLE" | "ERROR"; message: string };
+export type PatientHospitalRelationshipEndVerification = PatientHospitalRelationshipEndStatus | "UNRESOLVED";
+
+/** Phase F recovery: read the relationship lifecycle without replaying the end operation or exposing patient data. */
+export async function verifyPatientHospitalRelationshipEndAction(
+  relationshipId: string,
+): Promise<PatientHospitalRelationshipEndVerification> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    return await getPatientHospitalRelationshipEndStatus(actor, relationshipId);
+  } catch {
+    return "UNRESOLVED";
+  }
+}
 
 /** Phase F (ก-18): OWNER ends this Patient's care with the Hospital; on success the Patient leaves the work lists. */
 export async function endPatientHospitalRelationshipAction(

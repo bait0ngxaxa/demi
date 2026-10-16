@@ -30,7 +30,10 @@ import {
   activePatientHospitalRelationshipWhere,
   isPatientHospitalRelationshipEnded,
 } from "../domain/patient-hospital-relationship-lifecycle";
-import { patientHospitalRelationshipEndSchema } from "../schemas/patient-hospital-relationship-end-schemas";
+import {
+  patientHospitalRelationshipEndSchema,
+  patientHospitalRelationshipIdSchema,
+} from "../schemas/patient-hospital-relationship-end-schemas";
 
 export type PatientHospitalRelationshipEndDependencies = {
   database?: PrismaClient;
@@ -47,6 +50,8 @@ export type PatientHospitalRelationshipEndResult = {
   serviceRequestsClosed: number;
   activationsRevoked: number;
 };
+
+export type PatientHospitalRelationshipEndStatus = "ACTIVE" | "ENDED";
 
 /** Same database proof as other OWNER actions: an ACTIVE HOSPITAL User owning the exact ACTIVE Hospital. */
 async function isActiveOwnerOfHospital(
@@ -73,6 +78,34 @@ async function isActiveOwnerOfHospital(
     select: { id: true },
   });
   return owner !== null;
+}
+
+/** Returns only the current lifecycle state to the persisted OWNER of this exact ACTIVE Hospital. */
+export async function getPatientHospitalRelationshipEndStatus(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientHospitalRelationshipEndDependencies = {},
+): Promise<PatientHospitalRelationshipEndStatus> {
+  if (!actor) throw new ForbiddenError();
+  const parsedRelationshipId = patientHospitalRelationshipIdSchema.safeParse(relationshipId);
+  if (!parsedRelationshipId.success) throw new NotFoundError();
+
+  try {
+    return await (dependencies.database ?? getPrisma()).$transaction(async (transaction) => {
+      const relationship = await transaction.patientHospitalRelationship.findUnique({
+        where: { id: parsedRelationshipId.data },
+        select: { hospitalId: true, endedAt: true },
+      });
+      if (!relationship || !(await isActiveOwnerOfHospital(transaction, actor, relationship.hospitalId))) {
+        throw new NotFoundError();
+      }
+
+      return relationship.endedAt === null ? "ACTIVE" : "ENDED";
+    });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Patient care relationship status could not be verified");
+  }
 }
 
 /**

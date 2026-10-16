@@ -37,7 +37,10 @@ import { resolvePatientEvidenceAccessContext } from "@/modules/patient-evidence/
 import { correctPatientName } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 import { getStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
+import {
+  endPatientHospitalRelationship,
+  getPatientHospitalRelationshipEndStatus,
+} from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
 import { resolvePatientProgramAccessContext } from "@/modules/patient-program/services/patient-program-access-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { PatientProvisioningConflictError } from "@/modules/patient-provisioning/services/patient-provisioning-transaction";
@@ -47,6 +50,7 @@ import { resolveOwnPatientContext } from "@/modules/patient-self/services/patien
 import { createPatientServiceRequest, listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { getHospitalReportingPage } from "@/modules/reporting/services/hospital-report-query-service";
 import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
+import { setHospitalMembershipReportExportGrant } from "@/modules/workforce/services/workforce-service";
 import { resolveScreeningAccessContext } from "@/modules/screening/services/screening-access-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -188,8 +192,10 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     await expect(endPatientHospitalRelationship(f.owner, { ...endInput(f.relationshipId), confirmRetention: false }, dependencies)).rejects.toBeInstanceOf(ValidationError);
     await expect(endPatientHospitalRelationship(f.owner, { ...endInput(f.relationshipId), endReason: "  " }, dependencies)).rejects.toBeInstanceOf(ValidationError);
     expect(await db.patientHospitalRelationship.count({ where: { id: f.relationshipId, ...activePatientHospitalRelationshipWhere } })).toBe(1);
+    await expect(getPatientHospitalRelationshipEndStatus(f.owner, f.relationshipId, dependencies)).resolves.toBe("ACTIVE");
 
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
+    await expect(getPatientHospitalRelationshipEndStatus(f.owner, f.relationshipId, dependencies)).resolves.toBe("ENDED");
     expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId } }))
       .toMatchObject({ endedAt: now, endedByUserId: f.owner.userId, endReason: "ย้ายไปรับการดูแลที่อื่น" });
     await expect(endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies)).rejects.toBeInstanceOf(ConflictError);
@@ -200,13 +206,85 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     expect(JSON.stringify(audit.metadata)).not.toContain("ย้ายไป");
   });
 
+  it("verifies only the exact Hospital OWNER's current relationship status", async () => {
+    const f = await fixture();
+
+    await expect(getPatientHospitalRelationshipEndStatus(f.owner, f.relationshipId, dependencies)).resolves.toBe("ACTIVE");
+    await expect(getPatientHospitalRelationshipEndStatus(f.member, f.relationshipId, dependencies)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(getPatientHospitalRelationshipEndStatus(f.otherOwner, f.relationshipId, dependencies)).rejects.toBeInstanceOf(NotFoundError);
+
+    await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
+    await expect(getPatientHospitalRelationshipEndStatus(f.owner, f.relationshipId, dependencies)).resolves.toBe("ENDED");
+
+    await db.hospitalMembership.updateMany({
+      where: { userId: f.owner.userId, hospitalId: f.hospitalId },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(getPatientHospitalRelationshipEndStatus(f.owner, f.relationshipId, dependencies)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("the database refuses to reopen or rewrite an ended relationship and keeps the end fields consistent", async () => {
     const f = await fixture();
     await expect(db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { endedAt: now } })).rejects.toThrow();
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
     await expect(db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { endedAt: null, endedByUserId: null, endReason: null } })).rejects.toThrow();
     await expect(db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { endReason: "อื่น ๆ" } })).rejects.toThrow();
+    const reassignment = await provision(f.otherOwner, f.otherHospitalId, randomUUID());
+    const replacementProfile = await db.patientProfile.findUniqueOrThrow({ where: { personId: reassignment.personId }, select: { id: true } });
+    const replacementHospitalId = await hospital();
+    await expect(db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { patientProfileId: replacementProfile.id } })).rejects.toThrow();
+    await expect(db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { hospitalId: replacementHospitalId } })).rejects.toThrow();
     await db.patientHospitalRelationship.update({ where: { id: f.relationshipId }, data: { hospitalNumber: "HN-AFTER-END" } });
+  });
+
+  it("the database rejects NULL reasons, blank reasons, and every partial ended-state combination", async () => {
+    const f = await fixture();
+    const patientProfile = await db.patientProfile.findUniqueOrThrow({ where: { personId: f.patient.personId }, select: { id: true } });
+    const invalidStates = [
+      { endedAt: now, endedByUserId: f.owner.userId, endReason: null },
+      { endedAt: now, endedByUserId: f.owner.userId, endReason: "   " },
+      { endedAt: now, endedByUserId: f.owner.userId, endReason: "\t\r\n" },
+      { endedAt: now, endedByUserId: null, endReason: "ย้าย" },
+      { endedAt: null, endedByUserId: f.owner.userId, endReason: "ย้าย" },
+      { endedAt: now, endedByUserId: null, endReason: null },
+      { endedAt: null, endedByUserId: f.owner.userId, endReason: null },
+      { endedAt: null, endedByUserId: null, endReason: "ย้าย" },
+    ];
+
+    for (const invalidState of invalidStates) {
+      const hospitalId = await hospital();
+      const relationship = await db.patientHospitalRelationship.create({ data: { patientProfileId: patientProfile.id, hospitalId } });
+      await expect(
+        db.patientHospitalRelationship.update({ where: { id: relationship.id }, data: invalidState }),
+      ).rejects.toThrow();
+    }
+  });
+
+  it("prevents report export grants from including ended relationships while keeping ACTIVE exports consistent", async () => {
+    const f = await fixture();
+    const program = await openPatientProgram(f.owner, { patientHospitalRelationshipId: f.relationshipId }, dependencies);
+    await db.patientProgram.update({ where: { id: program.patientProgramId }, data: { status: "COMPLETED", completedAt: now } });
+    await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
+    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getHospitalReportingPage(f.otherOwner, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }, { database: db }))
+      .rejects.toBeInstanceOf(NotFoundError);
+
+    const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId, hospitalId: f.hospitalId } });
+    await setHospitalMembershipReportExportGrant(f.owner, {
+      relationshipId: membership.id,
+      targetHospitalId: f.hospitalId,
+      expectedUpdatedAt: membership.updatedAt.toISOString(),
+      granted: true,
+    });
+
+    const exported = await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId });
+    expect(exported.buffer.byteLength).toBeGreaterThan(0);
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).metadata)
+      .toMatchObject({ accessBasis: "MEMBER_EXPORT_GRANT", cohort: "ACTIVE", programCount: 0 });
+
+    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    expect(await db.auditEvent.count({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).toBe(1);
   });
 
   it("ends the OSM assignment, cancels only future appointments, closes open requests and revokes this Hospital's pending activation", async () => {

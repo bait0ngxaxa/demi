@@ -146,6 +146,14 @@ describe("Hospital reporting access service", () => {
       ).resolves.toMatchObject({ hospital, accessBasis: "MEMBER_EXPORT_GRANT" });
     });
 
+    it("denies a granted ACTIVE MEMBER the INCLUDE_ENDED cohort", async () => {
+      const { database: db } = database(grantedRow);
+
+      await expect(
+        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db, "INCLUDE_ENDED"),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
     it("uses the database grant, not a stale session flag", async () => {
       const { database: db } = database(ungrantedRow);
       const staleSessionActor: ActorContext = {
@@ -186,6 +194,9 @@ describe("Hospital reporting access service", () => {
       await expect(
         resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
       ).resolves.toMatchObject({ accessBasis: "OWNER" });
+      await expect(
+        resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db, "INCLUDE_ENDED"),
+      ).resolves.toMatchObject({ accessBasis: "OWNER" });
     });
 
     it("lists only ACTIVE MEMBER memberships holding the grant", async () => {
@@ -213,6 +224,15 @@ describe("Hospital reporting access service", () => {
       resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not accept an OWNER membership from another Hospital", async () => {
+    const otherHospitalId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const { database: db } = database(null);
+
+    await expect(
+      resolveHospitalReportingAccessContext(actor, otherHospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db, "INCLUDE_ENDED"),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("does not let an ADMIN-only ActorContext use a Hospital Owner membership snapshot", async () => {

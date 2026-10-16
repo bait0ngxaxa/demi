@@ -23,7 +23,7 @@ import {
   decideHospitalReportPolicy,
   type HospitalReportCapability,
 } from "../policies/hospital-report-policy";
-import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
+import { hospitalReportHospitalIdSchema, type HospitalReportCohort } from "../schemas/hospital-report-schemas";
 
 export type HospitalReportAccessDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -95,6 +95,7 @@ export async function resolveHospitalReportingAccessContext(
   hospitalId: unknown,
   capability: HospitalReportCapability,
   database?: HospitalReportAccessDatabase,
+  cohort: HospitalReportCohort = "ACTIVE",
 ): Promise<HospitalReportingAccessContext> {
   validateActor(actor);
 
@@ -143,6 +144,7 @@ export async function resolveHospitalReportingAccessContext(
     const decision = decideHospitalReportPolicy({
       actor: authoritativeActor,
       capability,
+      cohort,
       target: {
         hospitalId: membership.hospital.id,
         hospitalStatus: membership.hospital.status,

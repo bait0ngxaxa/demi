@@ -47,6 +47,17 @@ describe("Hospital report export endpoint", () => {
     expect(mockedExport).toHaveBeenCalledWith(actor, { hospitalId, cohort: "INCLUDE_ENDED" });
   });
 
+  it("returns 403 when the service denies a MEMBER's INCLUDE_ENDED export", async () => {
+    mockedExport.mockRejectedValue(new ForbiddenError());
+
+    const response = await GET(new Request(`https://demi.example.test/api/v1/hospital/reporting/export?hospitalId=${hospitalId}&cohort=INCLUDE_ENDED`));
+    const payload: unknown = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(JSON.stringify(payload)).not.toContain("xlsx");
+    expect(mockedExport).toHaveBeenCalledWith(actor, { hospitalId, cohort: "INCLUDE_ENDED" });
+  });
+
   it.each([
     `hospitalId=${hospitalId}&hospitalId=${hospitalId}`,
     `hospitalId=${hospitalId}&cohort=ALL`,
