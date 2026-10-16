@@ -46,7 +46,7 @@ export default async function HospitalPatientProfilePage({ params }: { params: P
         <HospitalPatientEditForm relationshipId={relationshipId} version={health?.version ?? 0} health values={health ? Object.fromEntries(Object.entries(health).filter((entry): entry is [string, string | number | null] => (entry[0] in patientHealthHistorySchema.shape) && (entry[1] === null || typeof entry[1] === "string" || typeof entry[1] === "number"))) : {}} />
       </Panel>
       {isHospitalOwner ? <Panel><h2 className="text-lg font-semibold text-text">สิ้นสุดการดูแลผู้ป่วย</h2>
-        <div className="mt-4"><PatientCareEndForm hospitalName={record.hospital.name} relationshipId={relationshipId} /></div>
+        <div className="mt-4"><PatientCareEndForm hospitalId={record.hospital.id} hospitalName={record.hospital.name} relationshipId={relationshipId} /></div>
       </Panel> : null}
     </div>;
 }
