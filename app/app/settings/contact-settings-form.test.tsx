@@ -134,7 +134,6 @@ describe("ContactSettingsForm email notifications", () => {
     ["VALIDATION", "none"],
     ["CONFLICT", "warning"],
     ["FORBIDDEN", "error"],
-    ["UNAVAILABLE", "error"],
   ] as const)("maps confirmed %s results to %s toast feedback", async (code, expectedToast) => {
     mocks.save.mockResolvedValue({ status: "ERROR", code, message: "ตรวจสอบข้อมูลและโหลดการตั้งค่าล่าสุด" });
     mount();
@@ -152,6 +151,29 @@ describe("ContactSettingsForm email notifications", () => {
     expect(mocks.notify.error.mock.calls.flat().join(" ")).not.toContain("private@example.test");
   });
 
+  it.each([
+    ["UNAVAILABLE", { status: "ERROR", code: "UNAVAILABLE", message: "บันทึกข้อมูลติดต่อไม่สำเร็จ กรุณาลองใหม่" }],
+    ["IDLE", { status: "IDLE" }],
+  ] as const)("keeps %s unconfirmed without changing the email/version or inviting a retry", async (_name, result) => {
+    mocks.save.mockResolvedValue(result);
+    mount();
+    changeEmail("private@example.test");
+
+    await submit();
+
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    expect(query<HTMLInputElement>("#contact-email").value).toBe("private@example.test");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการบันทึกไม่ได้");
+    expect(container.textContent).not.toContain("บันทึกข้อมูลติดต่อไม่สำเร็จ");
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
+    expect(mocks.notify.success).not.toHaveBeenCalled();
+    expect(mocks.notify.error).not.toHaveBeenCalled();
+    expect(mocks.notify.warning).not.toHaveBeenCalled();
+
+    await submit();
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a thrown request unconfirmed without toast, state sync, or automatic retry", async () => {
     mocks.save.mockRejectedValue(new TypeError("raw internal error"));
     mount();
@@ -161,7 +183,7 @@ describe("ContactSettingsForm email notifications", () => {
 
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(query<HTMLInputElement>("#contact-email").value).toBe("private@example.test");
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการบันทึกไม่ได้");
     expect(mocks.notify.success).not.toHaveBeenCalled();
     expect(mocks.notify.error).not.toHaveBeenCalled();
     expect(mocks.notify.warning).not.toHaveBeenCalled();

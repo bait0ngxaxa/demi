@@ -1,7 +1,26 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useSyncExternalStore } from "react";
 import { Toaster } from "sonner";
+
+const mobileViewportQuery = "(max-width: 600px)";
+
+function subscribeToMobileViewport(onChange: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const mediaQuery = window.matchMedia(mobileViewportQuery);
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function getMobileViewportSnapshot(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia(mobileViewportQuery).matches;
+}
+
+function getServerMobileViewportSnapshot(): boolean {
+  return false;
+}
 
 const demiToastTokens = {
   "--normal-bg": "var(--surface)",
@@ -22,6 +41,12 @@ const demiToastTokens = {
 } as CSSProperties;
 
 export function AppToaster(): React.JSX.Element {
+  const isMobile = useSyncExternalStore(
+    subscribeToMobileViewport,
+    getMobileViewportSnapshot,
+    getServerMobileViewportSnapshot,
+  );
+
   return (
     <Toaster
       className="demi-toaster"
@@ -29,12 +54,11 @@ export function AppToaster(): React.JSX.Element {
       containerAriaLabel="การแจ้งเตือน"
       offset={{ top: "calc(var(--app-header-height) + 1rem)", right: "1rem" }}
       mobileOffset={{
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem + env(keyboard-inset-height, 0px))",
+        bottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem)",
         left: "1rem",
         right: "1rem",
-        top: "1rem",
       }}
-      position="top-right"
+      position={isMobile ? "bottom-center" : "top-right"}
       richColors
       style={demiToastTokens}
       theme="light"

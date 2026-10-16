@@ -82,12 +82,16 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
         setMessage({ variant: "success", text: "บันทึกอีเมลติดต่อแล้ว" });
         notify.success("บันทึกอีเมลแล้ว");
       } else if (result.status === "ERROR") {
+        if (result.code === "UNAVAILABLE") {
+          setUnknownOutcome(true);
+          return;
+        }
         inFlightRef.current = false;
         setMessage({ variant: "warning", text: result.message });
         if (result.code === "CONFLICT") notify.warning("ข้อมูลเปลี่ยนแปลงแล้ว โปรดโหลดข้อมูลล่าสุด");
-        else if (result.code === "FORBIDDEN" || result.code === "UNAVAILABLE") notify.error("บันทึกอีเมลไม่สำเร็จ");
+        else if (result.code === "FORBIDDEN") notify.error("บัญชีนี้ไม่มีสิทธิ์แก้ไขการตั้งค่า");
       } else {
-        inFlightRef.current = false;
+        setUnknownOutcome(true);
       }
     });
   }
@@ -102,7 +106,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
           <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
         </div>
         {message ? <Alert variant={message.variant}>{message.text}</Alert> : null}
-        <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
+        <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload", label: "โหลดและตรวจสอบข้อมูลล่าสุด", message: "ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบก่อนบันทึกอีกครั้ง" }} />
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
       </form>
     </section>

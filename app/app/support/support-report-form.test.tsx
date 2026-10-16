@@ -28,6 +28,7 @@ import { SupportReportForm } from "./support-report-form";
 
 let container: HTMLDivElement;
 let root: Root;
+let rootUnmounted: boolean;
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,11 +38,12 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
+  rootUnmounted = false;
   vi.clearAllMocks();
 });
 
 afterEach(() => {
-  act(() => root.unmount());
+  if (!rootUnmounted) act(() => root.unmount());
   container.remove();
 });
 
@@ -64,11 +66,23 @@ function statusTextContaining(text: string): string | null {
     .find((element) => element.textContent?.includes(text))?.textContent ?? null;
 }
 
+function alertTextContaining(text: string): string | null {
+  return Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
+    .find((element) => element.textContent?.includes(text))?.textContent ?? null;
+}
+
 function changeMessage(value: string): void {
   const textarea = query<HTMLTextAreaElement>("#support-message");
   const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
   valueSetter?.call(textarea, value);
   act(() => textarea.dispatchEvent(new Event("input", { bubbles: true })));
+}
+
+function changeHospital(value: string): void {
+  const select = query<HTMLSelectElement>("#support-hospital");
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+  valueSetter?.call(select, value);
+  act(() => select.dispatchEvent(new Event("change", { bubbles: true })));
 }
 
 function dispatchSubmit(): void {
@@ -131,7 +145,7 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
   });
 
-  it("suppresses a stale toast after the selected hospital context changes", async () => {
+  it("locks Hospital selection during a pending request and preserves a newer draft", async () => {
     let resolveAction: ((result: SupportResult) => void) | undefined;
     mocks.create.mockImplementation(() => new Promise((resolve) => {
       resolveAction = resolve;
@@ -146,11 +160,68 @@ describe("SupportReportForm notifications", () => {
       dispatchSubmit();
     });
     expect(mocks.create).toHaveBeenCalledWith({ hospitalId: "hospital-1", category: "BUG", message: "รายงานของโรงพยาบาลหนึ่ง" });
+    expect(query<HTMLSelectElement>("#support-hospital").disabled).toBe(true);
 
-    const hospitalSelect = query<HTMLSelectElement>("#support-hospital");
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
-    valueSetter?.call(hospitalSelect, "hospital-2");
-    act(() => hospitalSelect.dispatchEvent(new Event("change", { bubbles: true })));
+    changeHospital("hospital-2");
+    changeMessage("ร่างใหม่ที่ยังไม่ได้ส่ง");
+
+    await act(async () => {
+      resolveAction?.({ status: "SUCCESS", reportId: "report-1" });
+      await Promise.resolve();
+    });
+
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.create).toHaveBeenCalledWith({ hospitalId: "hospital-1", category: "BUG", message: "รายงานของโรงพยาบาลหนึ่ง" });
+    expect(query<HTMLTextAreaElement>("#support-message").value).toBe("ร่างใหม่ที่ยังไม่ได้ส่ง");
+    expect(query<HTMLSelectElement>("#support-hospital").value).toBe("hospital-1");
+    expect(statusTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(mocks.notify.success).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a confirmed result after authoritative Hospital context replacement without clearing the draft", async () => {
+    let resolveAction: ((result: SupportResult) => void) | undefined;
+    mocks.create.mockImplementation(() => new Promise((resolve) => {
+      resolveAction = resolve;
+    }));
+    mount([
+      { id: "hospital-1", name: "โรงพยาบาลหนึ่ง", hospitalCode: "TEST-001" },
+      { id: "hospital-2", name: "โรงพยาบาลสอง", hospitalCode: "TEST-002" },
+    ]);
+    changeMessage("รายงานของโรงพยาบาลหนึ่ง");
+
+    await act(async () => {
+      dispatchSubmit();
+    });
+    act(() => root.render(createElement(SupportReportForm, {
+      hospitals: [{ id: "hospital-2", name: "โรงพยาบาลสอง", hospitalCode: "TEST-002" }],
+    })));
+
+    await act(async () => {
+      resolveAction?.({ status: "SUCCESS", reportId: "report-1" });
+      await Promise.resolve();
+    });
+
+    expect(query<HTMLInputElement>('input[name="hospitalId"]').value).toBe("hospital-2");
+    expect(query<HTMLTextAreaElement>("#support-message").value).toBe("รายงานของโรงพยาบาลหนึ่ง");
+    expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
+    expect(mocks.notify.success).not.toHaveBeenCalled();
+  });
+
+  it("does not apply a resolved result after the form unmounts", async () => {
+    let resolveAction: ((result: SupportResult) => void) | undefined;
+    mocks.create.mockImplementation(() => new Promise((resolve) => {
+      resolveAction = resolve;
+    }));
+    mount();
+    changeMessage("รายงานก่อนออกจากหน้า");
+
+    await act(async () => {
+      dispatchSubmit();
+    });
+    act(() => {
+      root.unmount();
+      rootUnmounted = true;
+    });
 
     await act(async () => {
       resolveAction?.({ status: "SUCCESS", reportId: "report-1" });
@@ -158,6 +229,7 @@ describe("SupportReportForm notifications", () => {
     });
 
     expect(mocks.notify.success).not.toHaveBeenCalled();
+    expect(container.textContent).toBe("");
   });
 
   it.each([
@@ -165,7 +237,6 @@ describe("SupportReportForm notifications", () => {
     ["RATE_LIMIT", "warning"],
     ["CONFLICT", "warning"],
     ["FORBIDDEN", "error"],
-    ["UNAVAILABLE", "error"],
   ] as const)("maps confirmed %s results to %s toast feedback", async (code, expectedToast) => {
     mocks.create.mockResolvedValue({ status: "ERROR", code, message: "รายละเอียดจาก Server Action" });
     mount();
@@ -183,6 +254,26 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.notify.error.mock.calls.flat().join(" ")).not.toContain("ข้อมูลที่ผู้ใช้กรอก");
   });
 
+  it("treats UNAVAILABLE as unconfirmed and prevents another potentially duplicate report", async () => {
+    mocks.create.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่ภายหลัง" });
+    mount();
+    changeMessage("รายงานที่อาจบันทึกแล้ว");
+
+    await submit();
+
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(query<HTMLTextAreaElement>("#support-message").value).toBe("รายงานที่อาจบันทึกแล้ว");
+    expect(alertTextContaining("ยังยืนยันผลการส่งรายงาน")).toContain("ยังยืนยันผลการส่งรายงาน");
+    expect(container.textContent).not.toContain("ส่งรายงานไม่สำเร็จ");
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
+    expect(mocks.notify.success).not.toHaveBeenCalled();
+    expect(mocks.notify.error).not.toHaveBeenCalled();
+    expect(mocks.notify.warning).not.toHaveBeenCalled();
+
+    await submit();
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps an unconfirmed result in the recovery alert without claiming success or failure", async () => {
     mocks.create.mockRejectedValue(new TypeError("raw internal error"));
     mount();
@@ -191,7 +282,7 @@ describe("SupportReportForm notifications", () => {
     await submit();
 
     expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันไม่ได้ว่าบันทึกแล้วหรือไม่");
+    expect(alertTextContaining("ระบบยังยืนยันผลการส่งรายงาน")).toContain("ระบบยังยืนยันผลการส่งรายงาน");
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("รายงานที่ยังไม่ทราบผล");
     expect(mocks.notify.success).not.toHaveBeenCalled();
     expect(mocks.notify.error).not.toHaveBeenCalled();
