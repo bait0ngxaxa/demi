@@ -175,6 +175,9 @@ export function LineAccountScreen({
 }: LineAccountScreenProps): React.JSX.Element {
   const busy = view === "BUSY";
   const linked = accountStatus === "LINKED" || (accountStatus === "INELIGIBLE" && canUnlink);
+  const busyMessage = linked
+    ? "กำลังยกเลิกการเชื่อมต่อ LINE..."
+    : "กำลังเชื่อมบัญชี LINE...";
   const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED";
   const notFriend = accountStatus === "LINKED" && initial.reachability === "NOT_FRIEND";
   const hasFriendshipAction = notFriend && (
@@ -435,7 +438,7 @@ export function LineAccountScreen({
                 </div>
               ) : null}
 
-              {busy ? <p className="mt-5 text-sm text-muted" role="status">กำลังดำเนินการ…</p> : null}
+              {busy ? <p className="mt-5 text-sm text-muted" role="status">{busyMessage}</p> : null}
               {view === "FAILURE" ? (
                 <div className="mt-5 space-y-3">
                   <p className="rounded-control bg-danger-soft px-4 py-3 text-sm text-danger" role="alert">{message || safeFailure}</p>

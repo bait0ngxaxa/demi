@@ -41,6 +41,7 @@ type ContentDraft = {
 type ContentDetailConfirmationIntent =
   | { kind: "LEAVE"; href: string }
   | { kind: "LIFECYCLE"; command: "PUBLISH" | "WITHDRAW" | "ARCHIVE"; description: string };
+type ContentPendingAction = "SAVE_DRAFT" | "LOAD_CURRENT" | "PUBLISH" | "WITHDRAW" | "ARCHIVE";
 
 function toDraft(content: HospitalContentDetailProjection): ContentDraft {
   return {
@@ -90,6 +91,7 @@ export function HospitalContentDetailWorkspace({
   const [draft, setDraft] = useState<ContentDraft>(() => toDraft(initialContent));
   const [mutationState, setMutationState] = useState<HospitalContentMutationActionState>({ status: "IDLE" });
   const [readState, setReadState] = useState<HospitalContentReadActionState | null>(null);
+  const [pendingAction, setPendingAction] = useState<ContentPendingAction | null>(null);
   const [reviewCurrent, setReviewCurrent] = useState<HospitalContentDetailProjection | null>(null);
   const [localPreview, setLocalPreview] = useState(false);
   const [confirmationIntent, setConfirmationIntent] = useState<ContentDetailConfirmationIntent | null>(null);
@@ -152,6 +154,7 @@ export function HospitalContentDetailWorkspace({
     const generation = ++requestGeneration.current;
     setMutationState({ status: "IDLE" });
     setReadState(null);
+    setPendingAction("SAVE_DRAFT");
     startTransition(async () => {
       try {
         const result = await editHospitalContentDraftAction({
@@ -181,6 +184,8 @@ export function HospitalContentDetailWorkspace({
         setMutationState({ status: "UNCONFIRMED" });
         setReconciliationRequired(true);
         setReviewCurrent(null);
+      } finally {
+        if (generation === requestGeneration.current) setPendingAction(null);
       }
     });
   }
@@ -207,6 +212,7 @@ export function HospitalContentDetailWorkspace({
     const generation = ++requestGeneration.current;
     setMutationState({ status: "IDLE" });
     setReadState(null);
+    setPendingAction(command);
     startTransition(async () => {
       try {
         const input = { contentId, expectedUpdatedAt };
@@ -237,6 +243,8 @@ export function HospitalContentDetailWorkspace({
         setMutationState({ status: "UNCONFIRMED" });
         setReconciliationRequired(true);
         setReviewCurrent(null);
+      } finally {
+        if (generation === requestGeneration.current) setPendingAction(null);
       }
     });
   }
@@ -265,6 +273,7 @@ export function HospitalContentDetailWorkspace({
     const generation = ++requestGeneration.current;
     setReadState(null);
     setReviewCurrent(null);
+    setPendingAction("LOAD_CURRENT");
     startTransition(async () => {
       try {
         const result = await readHospitalContentCurrentAction(contentId);
@@ -277,6 +286,8 @@ export function HospitalContentDetailWorkspace({
         }
       } catch {
         if (generation === requestGeneration.current) setReadState({ status: "UNAVAILABLE" });
+      } finally {
+        if (generation === requestGeneration.current) setPendingAction(null);
       }
     });
   }
@@ -323,6 +334,17 @@ export function HospitalContentDetailWorkspace({
   const confirmationVariant = confirmationIntent?.kind === "LEAVE" || confirmationIntent?.command === "ARCHIVE"
     ? "destructive"
     : "default";
+  const pendingAnnouncement = pendingAction === "SAVE_DRAFT"
+    ? "กำลังบันทึกฉบับร่าง..."
+    : pendingAction === "LOAD_CURRENT"
+      ? "กำลังโหลดข้อมูลปัจจุบัน..."
+      : pendingAction === "PUBLISH"
+        ? "กำลังเผยแพร่เนื้อหา..."
+        : pendingAction === "WITHDRAW"
+          ? "กำลังถอนการเผยแพร่..."
+          : pendingAction === "ARCHIVE"
+            ? "กำลังเก็บเนื้อหาเข้าคลังถาวร..."
+            : null;
   const confirmationDetails = confirmationIntent?.kind === "LIFECYCLE" && reconciliationRequired ? (
     <Alert role="alert" variant="warning">
       {messageForState(mutationState) ?? "ยังยืนยันผลไม่ได้ กรุณาโหลดข้อมูลปัจจุบันก่อนดำเนินการต่อ"}
@@ -400,7 +422,7 @@ export function HospitalContentDetailWorkspace({
       ) : null}
 
       <div aria-live="polite" className="sr-only">
-        {isPending ? "กำลังบันทึกหรือโหลดข้อมูลปัจจุบัน" : successMessage ?? messageForState(mutationState) ?? ""}
+        {isPending ? pendingAnnouncement ?? "กำลังดำเนินการกับเนื้อหา..." : successMessage ?? messageForState(mutationState) ?? ""}
       </div>
 
       {successMessage ? <Alert className="mt-5" variant="success">{successMessage}</Alert> : null}

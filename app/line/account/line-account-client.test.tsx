@@ -63,6 +63,20 @@ function renderScreen(
 }
 
 describe("LINE account user experience", () => {
+  it("announces whether an account is being linked or unlinked", () => {
+    const unlinkedMarkup = renderScreen(
+      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
+      { view: "BUSY" },
+    );
+    const linkedMarkup = renderScreen(
+      { ...emptyStatus, status: "LINKED", canUnlink: true },
+      { view: "BUSY" },
+    );
+
+    expect(unlinkedMarkup).toContain("กำลังเชื่อมบัญชี LINE...");
+    expect(linkedMarkup).toContain("กำลังยกเลิกการเชื่อมต่อ LINE...");
+  });
+
   it("creates the allowlisted DEMI return target from the unauthenticated account page", () => {
     const markup = renderToStaticMarkup(
       <LineAccountClient

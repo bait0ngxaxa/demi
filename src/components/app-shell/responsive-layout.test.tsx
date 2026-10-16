@@ -37,6 +37,7 @@ describe("responsive shell contract", () => {
   it("keeps collapsed navigation inert and the restore control outside it", () => {
     const sidebar = source("src/components/app-shell/app-sidebar.tsx");
     expect(sidebar).toContain("inert={expanded ? undefined : true}");
+    expect(sidebar).toContain("ระบบบริการสุขภาพ");
     expect(sidebar.indexOf("<DesktopSidebarToggle")).toBeLessThan(sidebar.indexOf("<nav"));
     expect(sidebar).toContain("motion-reduce:transition-none");
     expect(sidebar).toContain("useSyncExternalStore");

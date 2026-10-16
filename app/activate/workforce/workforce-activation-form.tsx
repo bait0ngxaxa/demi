@@ -277,7 +277,9 @@ export function WorkforceActivationForm(): React.JSX.Element {
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}
         {pending
-          ? "กำลังดำเนินการ..."
+          ? purpose === "RESET"
+            ? "กำลังตั้งรหัสผ่าน..."
+            : "กำลังเปิดใช้งานบัญชี..."
           : purpose === "RESET"
             ? "ตั้งรหัสผ่านใหม่"
             : "เปิดใช้งานบัญชี"}

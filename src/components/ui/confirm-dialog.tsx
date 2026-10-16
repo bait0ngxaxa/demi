@@ -27,7 +27,7 @@ export function ConfirmDialog({
   details,
   confirmLabel = "ยืนยัน",
   cancelLabel = "ยกเลิก",
-  pendingLabel = "กำลังดำเนินการ...",
+  pendingLabel = confirmLabel,
   confirmVariant = "default",
   pending = false,
   confirmDisabled = false,

@@ -1,13 +1,13 @@
 # UXH-C Product Language Audit
 
-สถานะเอกสาร: UXH-C.1 เสร็จแล้ว; C.2 ตรวจและปรับถ้อยคำ workflow รายบทบาทแล้ว; C.3 และการตรวจภาพจริงยังดำเนินต่อ
+สถานะเอกสาร: UXH-C.1, C.2 และ C.3 เสร็จแล้ว; ตรวจภาพจริงบน browser ที่มุมมองเดสก์ท็อปและมือถือแล้ว
 จุดเริ่มต้น: d73c64d69a0a4acac5796b47d8adabcd1160264f
 
 ## 1. ขอบเขตและหลักตัดสิน
 
 งานนี้ปรับเฉพาะข้อความที่ผู้ใช้เห็น โดยยึดลำดับแหล่งข้อมูลใน [docs/CONTEXT.md](../CONTEXT.md): ทิศทาง Product Owner ล่าสุด, Accepted ADR, เอกสารผลิตภัณฑ์ปัจจุบัน แล้วจึงตรวจทานกับการทำงานจริงและเอกสารระยะก่อนหน้า
 
-C.1 ครอบคลุมหน้าเข้าสู่ระบบและกู้คืนบัญชี, การขอใช้ DEMI สำหรับโรงพยาบาล, การขอใช้บัญชี DEMI สำหรับผู้ป่วย, การเปิดใช้งานบัญชีบุคลากร, การเปลี่ยนรหัสผ่าน และชื่อใน navigation/workspace หลัก C.2 ตรวจ workflow ผู้ป่วย การดูแล ครอบครัว/ผู้ดูแล บุคลากร และรายงานโรงพยาบาล/ผู้ดูแลระบบ; C.3 จะตรวจความสม่ำเสมอและ accessibility ข้ามระบบ
+C.1 ครอบคลุมหน้าเข้าสู่ระบบและกู้คืนบัญชี, การขอใช้ DEMI สำหรับโรงพยาบาล, การขอใช้บัญชี DEMI สำหรับผู้ป่วย, การเปิดใช้งานบัญชีบุคลากร, การเปลี่ยนรหัสผ่าน และชื่อใน navigation/workspace หลัก C.2 ตรวจ workflow ผู้ป่วย การดูแล ครอบครัว/ผู้ดูแล บุคลากร และรายงานโรงพยาบาล/ผู้ดูแลระบบ C.3 ตรวจความสม่ำเสมอของ action, สถานะระหว่างทำงาน, ข้อความประกาศสำหรับ screen reader และ empty/error/success states ในส่วนที่เกี่ยวข้อง
 
 ## 2. หน้าที่และส่วนประกอบที่ตรวจ
 
@@ -16,6 +16,8 @@ C.1 ครอบคลุมหน้าเข้าสู่ระบบแล�
 - app/patient/access-request/ — แบบคำขอและผลตอบกลับ
 - app/hospital/onboarding/ — คำขอใช้งานสำหรับโรงพยาบาลและสถานะรออนุมัติ
 - app/activate/workforce/ — คำแนะนำเปิดใช้งานครั้งแรก
+- app/line/account/ — การเชื่อมและยกเลิกการเชื่อมบัญชี LINE
+- src/components/ui/confirm-dialog.tsx, confirmable-action-form.tsx — ปุ่มยืนยันและสถานะรอผลของ dialog ที่ใช้ร่วมกัน
 - src/components/app-shell/ — ชื่อกลุ่มนำทาง รายการผู้ป่วย และข้อความ workspace
 - src/modules/auth/transport/server-actions.ts — ข้อความผิดพลาดการเข้าสู่ระบบที่ส่งถึงผู้ใช้
 - app/app/patients/access-requests/, activation/, provision/ — การตรวจคำขอผู้ป่วย เพิ่มข้อมูล และลิงก์เปิดใช้งาน
@@ -28,7 +30,7 @@ C.1 ครอบคลุมหน้าเข้าสู่ระบบแล�
 
 ## 3. กลุ่มผู้ใช้ที่ครอบคลุม
 
-C.1 ตรวจภาษาสาธารณะของผู้ป่วยและผู้สมัครโรงพยาบาล, ภาษาสำหรับบุคลากรที่เปิดใช้งานครั้งแรก และ navigation ตามบทบาท C.2 ตรวจการเพิ่ม/เปิดใช้งานผู้ป่วย, งานดูแลและบันทึกบริการ, ความสัมพันธ์และการแชร์นัดหมายในครอบครัว, การจัดการบุคลากร/อสม., การเผยแพร่เนื้อหา, รายงาน และการตรวจคำขอโรงพยาบาล ครอบคลุมผู้ป่วย, อสม., สมาชิก/เจ้าของโรงพยาบาล, ญาติ/ผู้ดูแล และผู้ดูแลระบบ โดยคงอำนาจตาม role และขอบเขตโรงพยาบาลเดิม
+C.1 ตรวจภาษาสาธารณะของผู้ป่วยและผู้สมัครโรงพยาบาล, ภาษาสำหรับบุคลากรที่เปิดใช้งานครั้งแรก และ navigation ตามบทบาท C.2 ตรวจการเพิ่ม/เปิดใช้งานผู้ป่วย, งานดูแลและบันทึกบริการ, ความสัมพันธ์และการแชร์นัดหมายในครอบครัว, การจัดการบุคลากร/อสม., การเผยแพร่เนื้อหา, รายงาน และการตรวจคำขอโรงพยาบาล C.3 ตรวจ dialog กลาง, LINE, การบันทึก/โหลด/เผยแพร่เนื้อหา และสถานะระหว่างทำงาน ครอบคลุมผู้ป่วย, อสม., สมาชิก/เจ้าของโรงพยาบาล, ญาติ/ผู้ดูแล และผู้ดูแลระบบ โดยคงอำนาจตาม role และขอบเขตโรงพยาบาลเดิม
 
 ## 4. อภิธานศัพท์
 
@@ -76,6 +78,19 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 | รายงานโรงพยาบาล / ผู้ดูแลระบบ | “Platform ADMIN”, “Patient/Program”, “exact-Hospital”, “Child Hospital”, “Dashboard” | อธิบายข้อมูลผู้ป่วยและ Program ของโรงพยาบาลที่เลือก; ใช้ “โรงพยาบาลลูกข่าย” และ “ภาพรวม” | คงรายงานเฉพาะโรงพยาบาลที่เลือก, สิทธิ์ดูรายละเอียด Program แยกกัน และข้อจำกัดผลรวมเครือข่าย | PRODUCT.md; Reporting Access Canonical; ADR-0003 | สูง | CHANGED |
 | ครอบครัวและผู้ดูแล | ชื่อหน้า “ความสัมพันธ์ผู้ดูแล” ไม่สอดคล้องกับกลุ่ม navigation | “ครอบครัวและผู้ดูแล” ในชื่อหน้าและ breadcrumb | ผู้ใช้เข้าใจส่วนงานได้โดยไม่ขยายสิทธิ์; การเชื่อมความสัมพันธ์ยังไม่เปิดข้อมูลสุขภาพ | family flow; appointment grant contract | สูง | CHANGED |
 | Workforce, appointment และ content lifecycle | ป้ายระงับบัญชีกับระงับความสัมพันธ์, ลิงก์ครั้งเดียว, การถอน/เก็บถาวร, คำขอยกเลิกนัด | คงคำแยกตามผลจริงและคำเตือนผลกระทบที่มีอยู่ | แยกบัญชีกับความสัมพันธ์, ระงับชั่วคราวกับนำออกถาวร, คำขอยกเลิกกับยกเลิกนัด และร่าง/เผยแพร่/ถอน/เก็บถาวร | ADR-0008; workforce/content/appointment contracts | สูง | ALREADY CORRECT |
+| Patient care journey | คำที่ใช้อยู่ในส่วนข้อมูลตั้งต้น การจัดกลุ่ม Goal Plan และ Service 2 | คงชื่อที่มีอยู่พร้อมข้อจำกัดทางคลินิก; ยังไม่เปลี่ยน Baseline, Classification, Goal Plan หรือ Service 2 เป็นคำไทยที่ไม่ได้อนุมัติ | ชื่อบางคำยังไม่มีข้อสรุปจากเจ้าของผลิตภัณฑ์; ห้ามสื่อเป็นการวินิจฉัยหรือการรับรอง | PRODUCT.md; canonical clinical and service requirements | สูง | OWNER DECISION REQUIRED |
+| Patient self-service | คำขอนัด/บริการ, ข้อมูลยาและบันทึกสุขภาพที่ผู้ป่วยกรอก, ความชอบ และการตั้งค่าบัญชี | คงคำที่แยกคำขอจากบริการที่อนุมัติ และข้อมูลที่ผู้ป่วยบันทึกจากค่าที่ผู้เชี่ยวชาญตรวจยืนยัน | ไม่สื่อว่าคำขอได้รับอนุมัติหรือค่าที่บันทึกเองเป็นผลตรวจยืนยัน; ไม่เพิ่มคำแนะนำทางคลินิก | PRODUCT.md; patient self-service flows | กลาง | ALREADY CORRECT |
+| คำขอบริการและการเริ่มให้บริการ | “ประเภทคำขอ” อาจเข้าใจว่าเป็นบริการที่เริ่มแล้ว | คงข้อความ “หมวดบริการเป็นประเภทคำขอ ไม่ใช่การยืนยันว่าเริ่มให้บริการแล้ว” | แยกคำขอออกจากการให้บริการที่เกิดขึ้นจริง | patient service request contract | สูง | ALREADY CORRECT |
+| การมอบหมายผู้ป่วยให้ อสม. | ผู้ป่วยที่ได้รับมอบหมาย / ความสัมพันธ์กับโรงพยาบาล / กิจกรรมที่เสร็จแล้ว | คงคำแยกตามความสัมพันธ์ งานที่มอบหมาย และกิจกรรมที่บันทึกเสร็จ | ไม่เปลี่ยนการมอบหมายเป็นสิทธิ์โรงพยาบาลหรือการให้บริการเสร็จแล้ว | OSM assignment and activity contracts | สูง | ALREADY CORRECT |
+| Onboarding, contact, support และ governance ของโรงพยาบาล | คำขออยู่ระหว่างตรวจสอบ / สถานะโรงพยาบาล / รับรายงานปัญหา | คงสถานะตรวจสอบและการรับรายงานตามผลที่เกิดจริง | การรับคำขอไม่เท่ากับอนุมัติ และรับรายงานปัญหาไม่เท่ากับแก้ไขแล้ว | PRODUCT.md; hospital onboarding, governance and support flows | กลาง | ALREADY CORRECT |
+| ปุ่มยืนยันใน dialog กลาง | ระหว่างรอผลใช้ “กำลังดำเนินการ...” ไม่ว่าปุ่มจะทำอะไร | คงชื่อ action ของปุ่มยืนยันขณะรอผล พร้อมสถานะ busy ของปุ่ม | ช่วยให้ผู้ใช้และ screen reader ทราบว่าระบบกำลังทำ action ใด โดยไม่กล่าวว่าเสร็จแล้ว | UXH-A confirmation contract; ConfirmDialog | ต่ำ | CHANGED |
+| เปิดใช้งานบุคลากร / ตั้งรหัสผ่านใหม่ | ทั้งสอง action แสดง “กำลังดำเนินการ...” | แสดง “กำลังเปิดใช้งานบัญชี...” หรือ “กำลังตั้งรหัสผ่าน...” ตามวัตถุประสงค์ของลิงก์ | แยกการเปิดบัญชีครั้งแรกจากการตั้งรหัสผ่านใหม่ | ADR-0008; workforce activation contract | กลาง | CHANGED |
+| เชื่อมบัญชี LINE | สถานะอ่านหน้าจอ “กำลังดำเนินการ…” ทั้งตอนเชื่อมและยกเลิกการเชื่อม | “กำลังเชื่อมบัญชี LINE...” / “กำลังยกเลิกการเชื่อมต่อ LINE...” ตามสถานะบัญชี | บอก action ที่รอผลโดยไม่สื่อว่าการเชื่อมหรือยกเลิกสำเร็จแล้ว | LINE account lifecycle | ต่ำ | CHANGED |
+| จัดการข่าวสารและความรู้ | live region รวม “กำลังบันทึกหรือโหลดข้อมูลปัจจุบัน” แม้กำลังเผยแพร่ ถอน หรือเก็บถาวร | ประกาศบันทึกฉบับร่าง โหลดข้อมูลปัจจุบัน เผยแพร่ ถอน หรือเก็บถาวรตาม action | screen reader ได้รับชื่อสถานะตรงกับ action; การจัดการสถานะเนื้อหาไม่ถูกสื่อเป็นการอ่านหรือบันทึกอย่างอื่น | Hospital Content lifecycle contract; UXH-A | กลาง | CHANGED |
+| โหลดหน้าเพิ่มผู้ป่วย | “กำลังโหลดพื้นที่เพิ่มผู้ป่วย...” | “กำลังโหลดหน้าเพิ่มผู้ป่วย...” | แก้คำที่สื่อถึงพื้นที่แทนหน้าจอ | Patient provisioning route | ต่ำ | CHANGED |
+| ชื่อระบบใน sidebar | “ระบบงานบริการสุขภาพ” ถูกตัดเหลือ “ระบบงานบริการสุข...” ในแถบคงที่ | “ระบบบริการสุขภาพ” | สั้นลงให้เห็นครบในพื้นที่แบรนด์ที่มีอยู่ โดยไม่เปลี่ยน layout | DEMI application shell | ต่ำ | CHANGED |
+| ค้นหา, โหลด, บันทึก, ส่งคำขอ, และยืนยันผลในหน้าที่ตรวจ | ข้อความระหว่างทำงานระบุการค้นหา/บันทึก/ส่ง/ตรวจตาม action; การแจ้งผลสำเร็จอยู่หลังผลยืนยัน | คงข้อความที่ตรง action และผลจริง | ไม่แก้ข้อความที่ระบุขั้นตอนและผลถูกต้องอยู่แล้ว | Corresponding workflow contracts; UXH-B | ต่ำ | ALREADY CORRECT |
+| Empty/error states และข้อความที่อาจเปิดเผยข้อมูล | ข้อความทั่วไปบางกรณีไม่ระบุว่ารายการไม่มีอยู่หรือผู้ใช้ไม่มีสิทธิ์ | คงข้อความรวมที่ไม่เปิดเผยการมีอยู่ของข้อมูล; แยกผลล้มเหลว ผลยังไม่ยืนยัน และไม่มีผลค้นหาในจุดที่ทำได้ | รักษาความเป็นส่วนตัวและการแยกผลของ workflow | Authorization contracts; UXH-B | สูง | PRESERVED FOR SAFETY |
 
 ## 6. ความหมายและอำนาจที่คงไว้
 
@@ -86,6 +101,7 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 - คงขอบเขต Hospital ของแต่ละรายงาน, สิทธิ์แยกสำหรับเปิดรายละเอียด Program, และการไม่แสดงข้อมูล/ตัวชี้วัดที่ยังไม่มีแหล่งหรือการตีความที่อนุมัติ
 - คงการแชร์นัดหมายแบบอ่านอย่างเดียวเป็นสิทธิ์แยกจากคำเชิญ/ความสัมพันธ์ผู้ดูแล และคงการยกเลิกสิทธิ์ตามผู้มีอำนาจเดิม
 - ไม่เปลี่ยนคำถาม คะแนน การจัดกลุ่มทางคลินิก หรือสถานะงานบริการ
+- ข้อความที่เปลี่ยนใน C.3 เป็นป้ายแสดงผล/announcement เท่านั้น; ไม่เปลี่ยน transition, action signature หรือผลตอบกลับ
 
 ## 7. ข้อความที่ตั้งใจคงไว้
 
@@ -111,9 +127,11 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 
 ## 9. การตรวจและผลการทดสอบ
 
-C.1: npm run test -- app/activate/activation-interactions.test.tsx app/login/login-page.test.tsx app/hospital/onboarding/onboarding-page.test.tsx app/patient/patient-core-flow-ui.test.tsx app/patient/access-request/patient-access-request-form.test.tsx src/components/app-shell/application-navigation.test.ts src/modules/account-security/transport/account-security-forms.test.tsx src/modules/auth/transport/server-actions.test.ts — ผ่าน 8 ไฟล์ 68 tests. Lint และ typecheck จะรันหลังข้อความทุกระยะคงที่; ผลตรวจ C.2/C.3 จะเพิ่มเมื่อจบแต่ละระยะ
+C.1: npm run test -- app/activate/activation-interactions.test.tsx app/login/login-page.test.tsx app/hospital/onboarding/onboarding-page.test.tsx app/patient/patient-core-flow-ui.test.tsx app/patient/access-request/patient-access-request-form.test.tsx src/components/app-shell/application-navigation.test.ts src/modules/account-security/transport/account-security-forms.test.tsx src/modules/auth/transport/server-actions.test.ts — ผ่าน 8 ไฟล์ 68 tests.
 
-C.2: `npm run test -- app/app/patients/access-requests/patient-access-request-detail-copy.test.tsx app/app/patients/activation/patient-activation-interactions.test.tsx app/app/patients/provision/patient-provisioning-workspace-interactions.test.tsx src/modules/patient-provisioning/presentation/patient-import-presentation.test.ts src/modules/patient-provisioning/transport/patient-import-failed-rows-client.test.ts src/modules/patient-provisioning/transport/patient-import-result-ui.test.ts src/modules/patient-provisioning/transport/patient-provisioning-workspace.test.ts app/app/family/family-pages.test.tsx app/app/family/invitations/family-invitation-preview.test.tsx app/app/family/family-management-recovery.test.tsx app/app/hospitals/reporting/hospital-report-workspace.test.tsx app/app/hospitals/reporting/parent-child-hospital-report-workspace.test.tsx app/app/admin/reporting/global-admin-reporting-workspace.test.tsx app/patient/patient-core-flow-ui.test.tsx src/modules/screening/presentation` — ตรวจผ่านรวม 14 ไฟล์ 70 tests ในชุด C.2 และการทดสอบย่อยที่ตามมา. Lint/typecheck และ C.3 ยังไม่รัน
+C.2 — npm run test -- app/app/patients/access-requests/patient-access-request-detail-copy.test.tsx app/app/patients/activation/patient-activation-interactions.test.tsx app/app/patients/provision/patient-provisioning-workspace-interactions.test.tsx src/modules/patient-provisioning/presentation/patient-import-presentation.test.ts src/modules/patient-provisioning/transport/patient-import-failed-rows-client.test.ts src/modules/patient-provisioning/transport/patient-import-result-ui.test.ts src/modules/patient-provisioning/transport/patient-provisioning-workspace.test.ts app/app/family/family-pages.test.tsx app/app/family/invitations/family-invitation-preview.test.tsx app/app/family/family-management-recovery.test.tsx app/app/hospitals/reporting/hospital-report-workspace.test.tsx app/app/hospitals/reporting/parent-child-hospital-report-workspace.test.tsx app/app/admin/reporting/global-admin-reporting-workspace.test.tsx app/patient/patient-core-flow-ui.test.tsx src/modules/screening/presentation — ผ่าน 14 ไฟล์ 70 tests
+
+C.3 — npm run test -- app/activate/activation-interactions.test.tsx app/line/account/line-account-client.test.tsx src/components/ui/confirm-dialog.test.tsx app/app/hospitals/knowledge/hospital-content-ui.test.tsx src/components/app-shell/responsive-layout.test.tsx — ผ่าน 5 ไฟล์ 47 tests. npm run lint ผ่านโดยไม่มี error และมี 3 warnings; สอง warning อยู่ในไฟล์รูปภาพเดิมที่ไม่ได้แก้ ส่วน warning import ที่ไม่ได้ใช้ใน test C.2 ถูกลบแล้วและ npx eslint เฉพาะไฟล์ผ่าน. npm run typecheck ผ่าน
 
 ## 10. สิ่งที่ส่งต่อให้ UXH-D
 
@@ -122,4 +140,6 @@ C.2: `npm run test -- app/app/patients/access-requests/patient-access-request-de
 - ยืนยันว่าข้อความลิงก์เปิดใช้งานที่ออกแล้วไม่ทำให้ผู้ใช้เข้าใจว่า DEMI ส่งถึงผู้รับแล้ว และการออกใหม่ยกเลิกลิงก์เดิม
 - ตรวจกรณีเครือข่ายขาดระหว่างส่งคำขอ และยืนยันว่าข้อความยังคงแยกผลไม่ทราบจากผลล้มเหลว
 - ตรวจข้อความที่มีคำตัดสินเจ้าของผลิตภัณฑ์เมื่อได้ข้อกำหนดใหม่ โดยไม่ใช้ผล UAT แทนการอนุมัติทางคลินิก/กฎหมาย
-- การตรวจ UI ด้วย browser จะบันทึกภายหลังเมื่อมี browser/server ที่เข้าถึงได้; ณ ตอนเขียน C.1 ยังไม่ได้ตรวจภาพจริง
+- ตรวจจริงด้วย Chrome ที่เดสก์ท็อปและ viewport 390 × 844 พิกเซล: ชื่อ navigation และชื่อระบบแสดงครบ; หน้าหลัก/การ์ดขึ้นบรรทัดได้และไม่พบ horizontal overflow; ชื่อเมนูใน drawer มือถืออ่านได้ครบ
+- UXH-D ยังควรตรวจหน้าของ role อื่น, ข้อความยาวใน workflow และการประกาศสถานะด้วย screen reader บนอุปกรณ์จริง
+- หน้า role-protected อื่น ๆ ส่งต่อ UXH-D ให้ทดสอบด้วยบัญชีแต่ละบทบาทและข้อมูลที่ได้รับอนุญาต

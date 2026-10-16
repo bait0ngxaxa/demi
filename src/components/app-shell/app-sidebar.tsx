@@ -115,7 +115,7 @@ export function AppSidebar({ navigation }: AppSidebarProps): React.JSX.Element {
           )}
         >
           <p className="text-2xl font-bold tracking-[-0.03em]">DEMI</p>
-          <p className="mt-1 truncate text-sm text-white/65">ระบบงานบริการสุขภาพ</p>
+          <p className="mt-1 truncate text-sm text-white/65">ระบบบริการสุขภาพ</p>
         </div>
         <p
           aria-hidden={expanded ? true : undefined}

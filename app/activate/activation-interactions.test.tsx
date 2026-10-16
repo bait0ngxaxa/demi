@@ -140,6 +140,39 @@ describe("Patient activation form", () => {
     expect(mocks.completePatient).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { purpose: "ACTIVATION" as const, label: "เปิดใช้งานบัญชี", pendingLabel: "กำลังเปิดใช้งานบัญชี..." },
+    { purpose: "RESET" as const, label: "ตั้งรหัสผ่านใหม่", pendingLabel: "กำลังตั้งรหัสผ่าน..." },
+  ])("shows the matching pending action for $purpose", async ({ purpose, label, pendingLabel }) => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส*** ใจ***", purpose });
+    let finishCompletion: (() => void) | null = null;
+    mocks.completeWorkforce.mockImplementation(
+      () => new Promise((resolve) => {
+        finishCompletion = () => resolve({ status: "SUCCESS" });
+      }),
+    );
+
+    await act(async () => {
+      root.render(createElement(WorkforceActivationForm));
+      await Promise.resolve();
+    });
+    container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
+    container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
+    container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
+
+    await act(async () => {
+      buttonByText(label).click();
+      await Promise.resolve();
+    });
+
+    expect(buttonByText(pendingLabel).disabled).toBe(true);
+
+    await act(async () => {
+      finishCompletion?.();
+    });
+  });
+
   it("checks a one-time workforce activation through account sign-in guidance, not token replay", async () => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
     mocks.previewWorkforce.mockResolvedValue({

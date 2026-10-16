@@ -146,7 +146,7 @@ describe("ConfirmDialog", () => {
     const onConfirm = vi.fn();
     mount(onConfirm, true);
     const dialog = openDialog();
-    const confirmButton = findButton("กำลังดำเนินการ...");
+    const confirmButton = findButton("ระงับรายการ");
 
     expect(confirmButton.disabled).toBe(true);
     expect(confirmButton.getAttribute("aria-busy")).toBe("true");
