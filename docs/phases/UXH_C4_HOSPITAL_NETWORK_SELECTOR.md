@@ -44,6 +44,14 @@
 - **OWNER DECISION REQUIRED:** หากมีโรงพยาบาลชื่อซ้ำภายในกลุ่มเดียวกัน (รวม “โรงพยาบาลอื่น”) ผู้ใช้ยังแยกตัวเลือกจากชื่อที่แสดงไม่ได้ ระบบคง identity และปุ่มของแต่ละรายการไว้แยกกัน แต่ไม่สร้างป้ายรหัสหรือคำอธิบายใหม่โดยไม่มีคำที่อนุมัติ
 - ความสัมพันธ์ที่ขาดหรือไม่สอดคล้องจะแสดงในกลุ่ม “โรงพยาบาลอื่น” โดยไม่บอกสาเหตุทางเทคนิค ให้ UXH-D ยืนยันกับผู้ใช้ว่าการจัดกลุ่มแบบกลางนี้เข้าใจได้
 
+## UXH-C.4.1 — การแก้ไขหลังทบทวน
+
+- ยืนยันรูปแบบกับ [RPT-24A §6.2–6.3](./PHASE_17_RPT24A_CUSTOMER_WORKBOOK_DECISION_PACK.md) และ [RPT-24 §3.1](./PHASE_17_RPT24_ON_DEMAND_ASOF_EXCEL_EXPORT_CONTRACT.md): ข้อมูลระบุตัวโรงพยาบาลใน workbook ใช้ `Hospital.name`; ไม่มีข้อกำหนดให้แสดง `hospitalCode` จึงไม่มีข้อขัดแย้งกับสัญญา workbook ที่ยอมรับแล้ว การแก้ครั้งนี้ไม่ย้ายเซลล์ ไม่เปลี่ยน worksheet, คอลัมน์, header rows, metric, permission หรือความหมายข้อมูล
+- ชีต “ข้อมูลโรงพยาบาล” และหัวกระดาษ/ตัวอย่างก่อนพิมพ์ของไฟล์นำเข้าแสดงชื่อโรงพยาบาลโดยไม่แสดงรหัส ส่วน `hospitalCode` ยังคงอยู่ในชีต `_demi_meta` ที่เป็น `veryHidden` พร้อมการตรวจรุ่น `patient-import-template-v2`, การตรวจ schema และการผูกไฟล์กับโรงพยาบาลเดิม
+- ชื่อไฟล์ตัวอย่างและไฟล์แถวที่ต้องแก้ประกอบด้วยชื่อโรงพยาบาลที่ผ่านการกรองอักขระ, รุ่น `v2` และนามสกุล `.xlsx` เดิม ชื่อเป็นข้อความสำหรับแสดงผลเท่านั้น; การกำหนดสิทธิ์และการผูกไฟล์ยังใช้ Hospital ID/code ภายในตามเดิม การตอบกลับแนบชื่อ UTF-8 พร้อมชื่อสำรอง ASCII สำหรับ client รุ่นเก่า
+- **OWNER DECISION REQUIRED:** โรงพยาบาลชื่อซ้ำยังได้ชื่อไฟล์และข้อความชื่อใน workbook เหมือนกัน ไม่มีตัวระบุที่อนุมัติให้แสดงเพื่อแยกกรณีนี้ จึงไม่เติมรหัสหรือ identifier ภายในให้ผู้ใช้เห็น
+- ข้อกำหนดเครือข่ายและการเลือก onboarding จาก UXH-C.4 ไม่เปลี่ยน
+
 ## การตรวจสอบ
 
 - Vitest เฉพาะ onboarding, projection, schema/action, hierarchy, mutation recovery และหน้า Admin hierarchy: **10 ไฟล์, 52 tests ผ่าน**
@@ -53,6 +61,14 @@
 - Chrome บนหน้า onboarding จริง: ตรวจหน้า desktop 1536px และ mobile 390×844px; ค้นหาด้วยชื่อแม่ข่าย/ลูกข่าย และเลือกด้วย Enter โดยไม่ส่งฟอร์ม; ไม่พบ document overflow หรือปุ่มล้นแนวนอนใน mobile selector
 - ไม่ได้ทดสอบด้วยโปรแกรมอ่านหน้าจอจริง และไม่ได้ส่งคำขอ onboarding จาก browser
 - ไม่รัน build หรือ full test suite; ไม่มีการเปลี่ยน module boundary
+
+### ผลทดสอบหลัง UXH-C.4.1
+
+- ก่อนแก้ รัน `patient-import-downloads.test.ts` แล้วพบ assertion เก่าที่คาดว่าชื่อไฟล์มีรหัส 2 จุด; หลังแก้รัน targeted 7 ไฟล์ รวม **42 tests ผ่าน** ครอบคลุม import template/download, Hospital reporting workbook และ golden contract, กับ onboarding selector
+- `npm run typecheck`: **ผ่าน**
+- ESLint แบบ scoped: **ผ่าน** (`npx eslint --max-warnings=0` บนไฟล์ TS/TSX ที่เปลี่ยน)
+- Impeccable detector: **ไม่พบข้อสังเกต** (`[]`)
+- ไม่ได้เปิดไฟล์ผลลัพธ์ใน Excel/LibreOffice หรือทำ browser visual verification รอบนี้; การตรวจ workbook ทำผ่าน ExcelJS write/read round trip และ golden contract tests
 
 ## ส่งต่อ UXH-D
 

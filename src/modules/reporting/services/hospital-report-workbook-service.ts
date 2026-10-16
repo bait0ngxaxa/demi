@@ -267,7 +267,7 @@ function clearReportBody(sheet: ExcelJS.Worksheet): void {
 }
 
 function setHeaderFacts(sheet: ExcelJS.Worksheet, dataset: HospitalReportingDataset): void {
-  const hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)} (${dataset.hospital.hospitalCode})`;
+  const hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)}`;
   sheet.getCell("A1").value = sheet.name === SERVICE_SHEET_NAME
     ? `Service Process record · ${hospitalLabel}`
     : hospitalLabel;

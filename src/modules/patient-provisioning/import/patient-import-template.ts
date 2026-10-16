@@ -119,10 +119,10 @@ function buildDataSheet(
       topLeftCell: "A3",
       activeCell: "A3",
     }],
-    // Printed pages and print preview carry the hospital identity; the header
-    // rows stay exactly where the parser expects them.
+    // Printed pages and print preview carry the Hospital name; the header rows
+    // stay exactly where the parser expects them.
     headerFooter: {
-      oddHeader: `&L&"-,Bold" ${escapeHeaderFooterText(hospital.hospitalName)} (${escapeHeaderFooterText(hospital.hospitalCode)})`,
+      oddHeader: `&L&"-,Bold" ${escapeHeaderFooterText(hospital.hospitalName)}`,
     },
   });
   worksheet.properties.defaultRowHeight = 20;
@@ -197,7 +197,6 @@ async function buildInfoSheet(
 
   const rows: ReadonlyArray<readonly [string, string]> = [
     ["โรงพยาบาล", hospital.hospitalName],
-    ["รหัสโรงพยาบาล", hospital.hospitalCode],
     ["เวอร์ชัน Template", PATIENT_IMPORT_TEMPLATE_VERSION],
     ["การใช้งาน", "ไฟล์นี้ใช้นำเข้าผู้ป่วยของโรงพยาบาลนี้เท่านั้น ห้ามแก้ไขหัวตาราง"],
     ["การนำเข้าซ้ำ", "เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิมได้ ระบบนำเข้าเฉพาะผู้ป่วยใหม่"],

@@ -11,12 +11,21 @@ import { PatientImportPreviewBindingError } from "./patient-import-file-binding"
 const XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const NO_STORE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
 
+function contentDispositionForFilename(filename: string): string {
+  const fallbackFilename = filename.replace(/[^A-Za-z0-9._-]/gu, "_").replace(/_+/gu, "_");
+  const encodedFilename = encodeURIComponent(filename).replace(/[!'()*]/gu, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+  return `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodedFilename}`;
+}
+
 export function patientImportDownloadResponse(download: PatientImportDownload): Response {
   return new Response(new Uint8Array(download.buffer), {
     status: 200,
     headers: {
       ...NO_STORE_HEADERS,
-      "Content-Disposition": `attachment; filename="${download.filename}"`,
+      "Content-Disposition": contentDispositionForFilename(download.filename),
       "Content-Length": String(download.buffer.byteLength),
       "Content-Type": XLSX_CONTENT_TYPE,
     },

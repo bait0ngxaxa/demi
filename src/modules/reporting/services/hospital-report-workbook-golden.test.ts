@@ -438,6 +438,13 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     expect(headerValues(service, [5, 6, 7, 8], 65)).toEqual(headerValues(templateService, [5, 6, 7, 8], 65));
   });
 
+  it("identifies the Hospital by name only in both worksheet headers", () => {
+    expect(normalizedCell(dashboard, "A1")).toBe("โรงพยาบาล: รพ.สต. ทดสอบ");
+    expect(normalizedCell(service, "A1")).toBe("Service Process record · โรงพยาบาล: รพ.สต. ทดสอบ");
+    expect(normalizedCell(dashboard, "A1")).not.toContain("GOLD-01");
+    expect(normalizedCell(service, "A1")).not.toContain("GOLD-01");
+  });
+
   it("reports the current DoD coverage of the customer columns", () => {
     const count = (status: DodStatus): number =>
       [...DASHBOARD_ROW_9, ...SERVICE_ROW_9].filter(([, , columnStatus]) => columnStatus === status).length;

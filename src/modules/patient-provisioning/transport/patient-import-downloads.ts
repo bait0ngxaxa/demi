@@ -42,7 +42,7 @@ export async function createPatientImportTemplateDownload(
   const workbook = await createPatientImportTemplateWorkbook(target);
 
   return {
-    filename: createPatientImportTemplateFilename(),
+    filename: createPatientImportTemplateFilename(target.hospitalName),
     buffer: await writePatientImportWorkbookBuffer(workbook),
   };
 }
@@ -115,7 +115,7 @@ export async function createPatientImportFailedRowsDownload(
   const workbook = await createPatientImportFailedRowsWorkbook(target, failedRows);
 
   return {
-    filename: createPatientImportFailedRowsFilename(),
+    filename: createPatientImportFailedRowsFilename(target.hospitalName),
     buffer: await writePatientImportWorkbookBuffer(workbook),
   };
 }

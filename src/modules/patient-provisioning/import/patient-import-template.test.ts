@@ -172,25 +172,45 @@ describe("Hospital-bound patient import template v2", () => {
     ]);
   });
 
-  it("shows the hospital name and code read-only without touching the header rows", async () => {
+  it("keeps the Hospital name in visible and printed copy without showing its code", async () => {
     const workbook = await roundTrip(await createPatientImportTemplateWorkbook(hospital));
     const info = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_INFO_SHEET_NAME);
     const patientSheet = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
 
     expect(sheetProtectionOf(info)).toMatchObject({ sheet: true });
+    expect(info?.getCell("A1").text).toBe("โรงพยาบาล");
     expect(info?.getCell("B1").text).toBe(hospital.hospitalName);
-    expect(info?.getCell("B2").text).toBe(hospital.hospitalCode);
+    expect(info?.getCell("A2").text).toBe("เวอร์ชัน Template");
+    expect(info?.getCell("B2").text).toBe(PATIENT_IMPORT_TEMPLATE_VERSION);
     expect(patientSheet?.headerFooter.oddHeader).toContain(hospital.hospitalName);
-    expect(patientSheet?.headerFooter.oddHeader).toContain(hospital.hospitalCode);
+    expect(patientSheet?.headerFooter.oddHeader).not.toContain(hospital.hospitalCode);
+    let visibleCopy = "";
+    for (const sheet of workbook.worksheets.filter(({ state }) => state === "visible")) {
+      sheet.eachRow((row) => row.eachCell((cell) => { visibleCopy += `${cell.text}\n`; }));
+    }
+    expect(visibleCopy).not.toContain(hospital.hospitalCode);
+    const metadata = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME);
+    expect(metadata?.state).toBe("veryHidden");
+    expect(metadata?.getCell("B2").text).toBe(hospital.hospitalCode);
     // The fixed header-row contract still holds: rows 1-2 are headers, data starts at row 3.
     expect(headerValues(patientSheet as ExcelJS.Worksheet, 1)).toEqual(
       PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ header }) => header),
     );
   });
 
-  it("uses hospital-code-free download filenames while preserving Hospital binding", () => {
-    expect(createPatientImportTemplateFilename()).toBe("DEMI_patient_import_v2.xlsx");
-    expect(createPatientImportFailedRowsFilename()).toBe("DEMI_patient_import_v2_failed_rows.xlsx");
+  it("uses safe Hospital-name download filenames while preserving the version and binding path", () => {
+    expect(createPatientImportTemplateFilename(hospital.hospitalName)).toBe(
+      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2.xlsx",
+    );
+    expect(createPatientImportFailedRowsFilename(hospital.hospitalName)).toBe(
+      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2_failed_rows.xlsx",
+    );
+    expect(createPatientImportTemplateFilename("โรงพยาบาล/ศูนย์:* ทดสอบ")).toBe(
+      "DEMI_โรงพยาบาล_ศูนย์_ ทดสอบ_patient_import_v2.xlsx",
+    );
+    expect(createPatientImportTemplateFilename(hospital.hospitalName)).not.toBe(
+      createPatientImportTemplateFilename("โรงพยาบาลสังเคราะห์บี"),
+    );
     expect(createPatientImportTemplateDownloadPath("11111111-1111-4111-8111-111111111111")).toBe(
       "/api/v1/hospital/patient-import/template?hospitalId=11111111-1111-4111-8111-111111111111",
     );

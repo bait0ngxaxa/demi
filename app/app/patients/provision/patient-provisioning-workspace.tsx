@@ -1208,7 +1208,7 @@ export function PatientProvisioningWorkspace({
               </p>
               <a
                 className={buttonClassName({ size: "compact", variant: "secondary" })}
-                download={createPatientImportTemplateFilename()}
+                download={createPatientImportTemplateFilename(selectedScope.hospitalName)}
                 href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
               >
                 ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
@@ -1369,7 +1369,7 @@ export function PatientProvisioningWorkspace({
                         size: "compact",
                         variant: "secondary",
                       })}
-                      download={createPatientImportTemplateFilename()}
+                      download={createPatientImportTemplateFilename(selectedScope.hospitalName)}
                       href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
                     >
                       ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}

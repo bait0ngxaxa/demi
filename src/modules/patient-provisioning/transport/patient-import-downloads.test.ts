@@ -21,6 +21,7 @@ import {
   createPatientImportPreviewBinding,
   hashPatientImportFile,
 } from "./patient-import-file-binding";
+import { patientImportDownloadResponse } from "./patient-import-download-responses";
 import {
   createPatientImportFailedRowsDownload,
   createPatientImportTemplateDownload,
@@ -152,8 +153,19 @@ describe("patient import template download", () => {
     const workbook = await loadWorkbook(download.buffer);
 
     expect(mockedResolveTarget).toHaveBeenCalledWith(actor, hospitalId);
-    expect(download.filename).toBe("DEMI_patient_import_SYN-A_v2.xlsx");
+    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2.xlsx");
     expect(workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME)?.getCell("B2").text).toBe("SYN-A");
+  });
+
+  it("uses a UTF-8 Hospital-name filename with a safe ASCII fallback", async () => {
+    const download = await createPatientImportTemplateDownload(actor, hospitalId);
+    const response = patientImportDownloadResponse(download);
+    const contentDisposition = response.headers.get("Content-Disposition");
+    const encodedFilename = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/u)?.[1];
+
+    expect(contentDisposition).toContain('filename="DEMI_patient_import_v2.xlsx"');
+    expect(decodeURIComponent(encodedFilename ?? "")).toBe(download.filename);
+    expect(contentDisposition).not.toContain("SYN-A");
   });
 
   it("generates nothing for an out-of-scope hospital", async () => {
@@ -187,7 +199,7 @@ describe("patient import failed-rows download", () => {
     const workbook = await loadWorkbook(download.buffer);
     const worksheet = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
 
-    expect(download.filename).toBe("DEMI_patient_import_SYN-A_v2_failed_rows.xlsx");
+    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2_failed_rows.xlsx");
     expect(worksheet?.getCell("AA1").text).toBe("เหตุผล");
     expect(worksheet?.getCell("AA3").text).toBe("เลขบัตรประชาชนไม่ถูกต้อง");
     expect(worksheet?.getCell("AA4").text).toBe("HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน");

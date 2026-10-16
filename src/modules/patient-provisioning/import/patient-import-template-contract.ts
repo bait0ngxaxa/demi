@@ -28,15 +28,31 @@ export function createPatientImportTemplateDownloadPath(hospitalId: string): str
   return `/api/v1/hospital/patient-import/template?hospitalId=${encodeURIComponent(hospitalId)}`;
 }
 
-export function createPatientImportTemplateFilename(): string {
-  return "DEMI_patient_import_v2.xlsx";
+function safeHospitalFilenameSegment(hospitalName: string): string {
+  const safeName = Array.from(
+    hospitalName
+      .normalize("NFC")
+      .replace(/[^\p{L}\p{M}\p{N}._ -]/gu, "_")
+      .replace(/\s+/gu, " ")
+      .replace(/_+/gu, "_"),
+  )
+    .slice(0, 80)
+    .join("")
+    .replace(/\p{M}+$/gu, "")
+    .replace(/^[ ._-]+|[ ._-]+$/gu, "");
+
+  return safeName || "โรงพยาบาล";
+}
+
+export function createPatientImportTemplateFilename(hospitalName: string): string {
+  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v2.xlsx`;
 }
 
 export const PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER = "เหตุผล" as const;
 export const PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX = "failed_rows" as const;
 
-export function createPatientImportFailedRowsFilename(): string {
-  return `DEMI_patient_import_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
+export function createPatientImportFailedRowsFilename(hospitalName: string): string {
+  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
 }
 
 export const PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES = ["กลุ่มเสี่ยง", "เบาหวาน"] as const;

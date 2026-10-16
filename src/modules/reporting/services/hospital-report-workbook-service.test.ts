@@ -155,6 +155,7 @@ describe("Hospital reporting customer workbook export", () => {
     if (!dashboard || !service) throw new Error("Expected report sheets to exist");
 
     expect(dashboard.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
+    expect(dashboard.getCell("A1").value).not.toContain("DEMO-A");
     expect(dashboard.getCell("B2").value).toBe(1);
     expect(dashboard.getCell("D2").value).toContain("นิยาม");
     expect(dashboard.getCell("B9").value).toBe("สมชาย");
@@ -176,6 +177,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("W11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
 
     expect(service.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
+    expect(service.getCell("A1").value).not.toContain("DEMO-A");
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
     expect(service.getCell("S8").value).toBe("ทำ");
