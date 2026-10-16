@@ -25,6 +25,7 @@ import {
 } from "../services/workforce-service";
 import {
   initialWorkforceCompletionActionState,
+  initialWorkforceActivationActionState,
   initialWorkforceMembershipMutationActionState,
   initialWorkforceOwnerGovernanceMutationActionState,
   initialWorkforceProvisionActionState,
@@ -36,6 +37,7 @@ import {
   previewWorkforceActivationAction,
   provisionHospitalMemberAction,
   provisionWorkforceBulkAction,
+  regenerateWorkforceActivationAction,
   startAssistedWorkforceActivationAction,
   promoteHospitalOwnerAction,
   restoreHospitalMembershipAction,
@@ -301,6 +303,78 @@ describe("workforce Server Actions", () => {
     expect(JSON.stringify(result)).toContain("เป็นอิสระจากผู้ดูแล");
     expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
     expect(mockedRevokeIssuedWorkforceActivation).not.toHaveBeenCalled();
+  });
+
+  it("issues a replacement link only after the protected activation action resolves its actor", async () => {
+    const actor = { userId: "owner-1" } as never;
+    mockedGetProtectedApplicationActor.mockResolvedValue(actor);
+    mockedRegenerateWorkforceActivation.mockResolvedValue({
+      activationId: "activation-2",
+      userId: "33333333-3333-4333-8333-333333333333",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      activationToken: "new-one-time-token",
+      activationExpiresAt: new Date("2026-10-17T00:00:00.000Z"),
+      activationMode: "REMOTE",
+    });
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "OSM");
+
+    const result = await regenerateWorkforceActivationAction(
+      initialWorkforceActivationActionState,
+      formData,
+    );
+
+    expect(mockedGetProtectedApplicationActor).toHaveBeenCalledOnce();
+    expect(mockedRegenerateWorkforceActivation).toHaveBeenCalledWith(actor, {
+      userId: "33333333-3333-4333-8333-333333333333",
+      targetHospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      mode: "REMOTE",
+    });
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { activationToken: "new-one-time-token", activationMode: "REMOTE" },
+    });
+  });
+
+  it("starts assisted activation through the protected action and signs out only after issuing", async () => {
+    const actor = { userId: "owner-1" } as never;
+    mockedGetProtectedApplicationActor.mockResolvedValue(actor);
+    mockedRegenerateWorkforceActivation.mockResolvedValue({
+      activationId: "activation-assisted",
+      userId: "33333333-3333-4333-8333-333333333333",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      activationToken: "assisted-one-time-token",
+      activationExpiresAt: new Date("2026-10-17T00:00:00.000Z"),
+      activationMode: "ASSISTED",
+    });
+    mockedSignOutCurrentSession.mockResolvedValue(undefined);
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "OSM");
+
+    const result = await startAssistedWorkforceActivationAction(
+      initialWorkforceActivationActionState,
+      formData,
+    );
+
+    expect(mockedGetProtectedApplicationActor).toHaveBeenCalledOnce();
+    expect(mockedRegenerateWorkforceActivation).toHaveBeenCalledWith(actor, {
+      userId: "33333333-3333-4333-8333-333333333333",
+      targetHospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      mode: "ASSISTED",
+    });
+    expect(mockedSignOutCurrentSession).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      status: "SUCCESS",
+      result: { activationToken: "assisted-one-time-token", activationMode: "ASSISTED" },
+    });
   });
 
   it("compensates a failed assisted activation handoff with the internal revoke of its own token", async () => {

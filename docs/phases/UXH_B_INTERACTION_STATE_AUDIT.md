@@ -110,6 +110,30 @@ The review found that reloading after a lost response regenerates server-rendere
 
 Unchanged: Excel import confirmation already recovers by re-checking the file, because the stateless preview reports already-imported rows. Workforce bulk add keeps its keyed retry.
 
+## UXH-B.5 one-time credential recovery correction
+
+This section supersedes the UXH-B.4 resend classification for caregiver invitations, single Workforce staff/OSM provisioning, activation completion, and activation-link issue/reissue. The keyed Workforce bulk operation remains replay-safe because it stores row outcomes and does not issue plaintext credentials. A one-time plaintext credential is returned only by its successful issuing response. A replay may confirm that an account or relationship exists, but it cannot recover the original secret. Issuing another link creates a replacement and may revoke the prior link, so recovery must not present that operation as checking the first result.
+
+| Operation | Classification | Recovery after an unknown response | Replacement behavior |
+| --- | --- | --- | --- |
+| Caregiver invitation creation | Existing pending invitation detected; plaintext link unavailable | Reload `/app/family` and inspect the existing invitation list. If the pending invitation is the intended pair, revoke it through the authorized row action before explicitly creating another. Conflict copy gives the same review guidance. | The create flow never replays automatically, stores plaintext, or reveals a prior token. The existing one-invitation-per-pair constraint remains authoritative. |
+| Patient activation link issue/reissue | Existing status is queryable; plaintext link unavailable | Reload the activation status view and search again. If a replacement is still needed, explicitly choose “ออกลิงก์ใหม่”. | The service revokes the current usable Patient link before issuing a replacement. The UI states that consequence. |
+| Workforce staff/OSM provisioning | Existing account and relationship may be detected; replay has no original activation token | Reload the Workforce roster. If the person is pending, explicitly use the roster activation action. | Provisioning replay does not create a second account or relationship and does not return the old plaintext token. A separate authorized activation action creates a replacement. |
+| Workforce bulk provisioning | Idempotent replay returns the saved row outcomes; no plaintext activation credential is issued | Keep the same-key resend to recover row outcomes. Use the roster to decide whether a pending person needs a link. | Bulk provisioning intentionally drops plaintext tokens. Link issue remains a separate authorized action that explicitly replaces the prior usable link. |
+| Workforce remote regeneration and activation slips | Explicit replacement of the current link | After an unknown action response, reload the roster status. A slip response failure links to the roster and does not recommend retrying. | The remote action and slip action revoke the previous usable link. Their action labels and nearby copy say they issue a new link. |
+| Assisted Workforce activation | Explicit replacement followed by issuer sign-out | Do not replay from the alert. If signed out, sign back in with an authorized account, inspect roster status, and decide whether a replacement is needed. | Starting assistance issues a new link and revokes the prior usable link before signing out the issuer. |
+| Patient/Workforce activation completion | Non-recoverable by replay after the single-use credential is consumed | If the new password works, sign in with it. If it does not, use the existing issuer flow to request a new link. The alert does not resend the credential. | No completion retry is presented as confirmation. Existing claim, single-use, and reconciliation rules remain unchanged. |
+| Caregiver invitation accept/reject | Result is read from the existing invitation status query | Re-query status with the in-memory invitation token; do not replay the consumed invitation action. If status is still pending, the user can explicitly choose whether to answer. | No replacement credential is issued by accept/reject. |
+
+The status queries and authorized mutation actions are reused. No plaintext-token storage, schema, permissions, or credential rules were added. Replay-safe nonce recovery remains unchanged for Screening, Appointment, Goal Plan, and other operations whose services return the original result for an identical request identity.
+
+### UXH-B.5 verification
+
+- Focused tests: 10 files / 82 tests passed, covering lost responses, pending invitation conflicts, absent plaintext recovery, no duplicate create, explicit authorized replacements, and user guidance.
+- `npm run lint`: passed with 0 errors and 2 existing `no-img-element` warnings in untouched Hospital content files.
+- `npm run typecheck`: passed.
+- The full test suite was not run; the focused coverage was sufficient for these scoped interaction and service contracts.
+
 ## Separate decisions / not done
 
 - **SD-1** The root `app/error.tsx` copy says access could not be verified. It is accurate for shell/actor failures, which are the only errors that now reach it inside `/app`. Rewording for public pages is UXH-C copy work.

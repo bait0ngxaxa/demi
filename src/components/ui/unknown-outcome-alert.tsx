@@ -14,15 +14,18 @@ import { unknownOutcomeMessage } from "./mutation-action-state";
  *   page warns before unloading.
  * - `reload`: an update or terminal transition whose current persisted state is shown on the
  *   page; reloading reads that state, it does not prove which request changed it.
+ * - `verify`: the page queries current state with an in-memory identifier without replaying
+ *   the mutation, so it warns before unloading while that identifier is needed.
  * - `review`: a create without server-side deduplication; the user checks the persisted list
  *   before deciding to send a new request.
  * - `note`: no in-page verification exists; the note says how to check.
  */
 export type UnknownOutcomeRecovery =
   | { kind: "resend"; onResend: () => void; resending: boolean }
-  | { kind: "reload" }
+  | { kind: "reload"; message?: string; label?: string }
+  | { kind: "verify"; label: string; message: string; onVerify: () => void; verifying: boolean }
   | { kind: "review"; label: string }
-  | { kind: "note"; note: string };
+  | { kind: "note"; message?: string; note: string };
 
 const resendMessage =
   "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณากด “ตรวจสอบผลด้วยคำขอเดิม” ระบบจะส่งข้อมูลชุดเดิมอีกครั้งเพื่อยืนยันผล หากบันทึกไปแล้วจะไม่ถูกบันทึกซ้ำ ไม่ควรโหลดหน้าใหม่ก่อนตรวจสอบ";
@@ -39,7 +42,7 @@ export function UnknownOutcomeAlert({
   className?: string;
   recovery: UnknownOutcomeRecovery;
 }): React.JSX.Element | null {
-  const guardsUnload = active && recovery.kind === "resend";
+  const guardsUnload = active && (recovery.kind === "resend" || recovery.kind === "verify");
 
   useEffect(() => {
     if (!guardsUnload) {
@@ -79,17 +82,39 @@ export function UnknownOutcomeAlert({
   if (recovery.kind === "note") {
     return (
       <Alert className={className} role="alert" variant="warning">
-        <p>{noteMessage}</p>
+        <p>{recovery.message ?? noteMessage}</p>
         <p className="mt-1">{recovery.note}</p>
+      </Alert>
+    );
+  }
+
+  if (recovery.kind === "verify") {
+    return (
+      <Alert className={className} role="alert" variant="warning">
+        <p>{recovery.message}</p>
+        <Button
+          className="mt-3"
+          loading={recovery.verifying}
+          onClick={recovery.onVerify}
+          size="compact"
+          type="button"
+          variant="secondary"
+        >
+          {recovery.verifying ? "กำลังตรวจสอบสถานะ..." : recovery.label}
+        </Button>
       </Alert>
     );
   }
 
   return (
     <Alert className={className} role="alert" variant="warning">
-      <p>{recovery.kind === "review" ? reviewMessage : unknownOutcomeMessage}</p>
+      <p>
+        {recovery.kind === "review"
+          ? reviewMessage
+          : recovery.message ?? unknownOutcomeMessage}
+      </p>
       <Button className="mt-3" onClick={() => window.location.reload()} size="compact" type="button" variant="secondary">
-        {recovery.kind === "review" ? recovery.label : "โหลดข้อมูลล่าสุด"}
+        {recovery.kind === "review" ? recovery.label : recovery.label ?? "โหลดข้อมูลล่าสุด"}
       </Button>
     </Alert>
   );

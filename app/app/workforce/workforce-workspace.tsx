@@ -126,22 +126,34 @@ function ProvisionResult({ result }: { result: WorkforceProvisionResultState }):
 
   return (
     <div>
-      <ActivationPresentation token={activationToken} expiresAt={result.activationExpiresAt} />
+      <ActivationPresentation
+        token={activationToken}
+        expiresAt={result.activationExpiresAt}
+        title="สร้างบุคลากรแล้ว · รอเปิดใช้งาน"
+      />
       <ProvisionContinuation result={result} />
     </div>
   );
 }
 
 function ActivationResult({ result }: { result: WorkforceActivationResultState }): React.JSX.Element {
-  return <ActivationPresentation token={result.activationToken} expiresAt={result.activationExpiresAt} />;
+  return (
+    <ActivationPresentation
+      token={result.activationToken}
+      expiresAt={result.activationExpiresAt}
+      title="ออกลิงก์เปิดใช้งานใหม่แล้ว"
+    />
+  );
 }
 
 function ActivationPresentation({
   token,
   expiresAt,
+  title,
 }: {
   token: string;
   expiresAt: string | null;
+  title: string;
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -182,7 +194,7 @@ function ActivationPresentation({
 
   return (
     <Alert variant="info">
-      <p className="font-semibold">สร้างบุคลากรแล้ว · รอเปิดใช้งาน</p>
+      <p className="font-semibold">{title}</p>
       <p className="mt-1 text-muted">ส่งลิงก์นี้ให้ผู้ใช้งานตั้งรหัสผ่านของตนเอง</p>
       <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="flex h-52 w-52 max-w-full shrink-0 items-center justify-center rounded-control bg-surface p-2">
@@ -288,7 +300,7 @@ function PendingActivationGroup({
               size="compact"
               type="submit"
             >
-              พิมพ์ใบเปิดใช้งาน ({selected.size})
+              ออกลิงก์ใหม่และพิมพ์ใบ ({selected.size})
             </Button>
           </form>
         </div>
@@ -644,6 +656,7 @@ function WorkforceRow({
                 ? `ลิงก์ล่าสุดหมดอายุ ${formatDate(row.activationExpiresAt)}`
                 : "ยังไม่มีลิงก์ที่พร้อมใช้งาน"}
             </p>
+            <p>ลิงก์เดิมแสดงซ้ำไม่ได้ การออกลิงก์ใหม่หรือเริ่มแบบช่วยเหลือจะยกเลิกลิงก์เดิมที่ยังใช้ได้</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <form action={remoteAction}>
@@ -687,19 +700,19 @@ export function WorkforceWorkspace({
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
-  const [staffState, staffAction, staffPending, staffUnknown, resendStaff] = useMutationActionState<
+  const [staffState, staffAction, staffPending, staffUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionHospitalMemberAction, initialWorkforceProvisionActionState);
-  const [osmState, osmAction, osmPending, osmUnknown, resendOsm] = useMutationActionState<
+  const [osmState, osmAction, osmPending, osmUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
   >(provisionOsmAction, initialWorkforceProvisionActionState);
-  const [remoteState, remoteAction, remotePending, remoteUnknown, resendRemote] = useMutationActionState<
+  const [remoteState, remoteAction, remotePending, remoteUnknown] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(regenerateWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [assistedState, assistedAction, assistedPending, assistedUnknown, resendAssisted] = useMutationActionState<
+  const [assistedState, assistedAction, assistedPending, assistedUnknown] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
   >(startAssistedWorkforceActivationAction, initialWorkforceActivationActionState);
@@ -797,8 +810,26 @@ export function WorkforceWorkspace({
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
         </nav>
 
-        <UnknownOutcomeAlert active={remoteUnknown} className="mt-6" recovery={{ kind: "resend", onResend: resendRemote, resending: remotePending }} />
-        <UnknownOutcomeAlert active={assistedUnknown} className="mt-6" recovery={{ kind: "resend", onResend: resendAssisted, resending: assistedPending }} />
+        <UnknownOutcomeAlert
+          active={remoteUnknown}
+          className="mt-6"
+          recovery={{
+            kind: "reload",
+            label: "โหลดสถานะบุคลากรล่าสุด",
+            message:
+              "ระบบอาจออกลิงก์ใหม่แล้ว แต่ลิงก์นั้นแสดงซ้ำไม่ได้ โหลดสถานะล่าสุดก่อน หากต้องการลิงก์ทดแทน ให้เลือกออกลิงก์ใหม่จากรายชื่อด้วยตนเอง ซึ่งจะยกเลิกลิงก์เดิมที่ยังใช้ได้",
+          }}
+        />
+        <UnknownOutcomeAlert
+          active={assistedUnknown}
+          className="mt-6"
+          recovery={{
+            kind: "note",
+            message: "ระบบยังยืนยันผลการเปิดใช้งานแบบช่วยเหลือไม่ได้",
+            note:
+              "ลิงก์ที่ออกแล้วแสดงซ้ำไม่ได้ และการเริ่มใหม่จะยกเลิกลิงก์เดิม หากถูกออกจากระบบ ให้เข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์ แล้วตรวจสอบรายชื่อก่อนตัดสินใจออกลิงก์ทดแทน",
+          }}
+        />
         {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
         {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
         {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
@@ -911,7 +942,15 @@ export function WorkforceWorkspace({
               </label>
               {staffState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{staffState.message}</Alert> : null}
               {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
-              <UnknownOutcomeAlert active={staffUnknown} recovery={{ kind: "resend", onResend: resendStaff, resending: staffPending }} />
+              <UnknownOutcomeAlert
+                active={staffUnknown}
+                recovery={{
+                  kind: "reload",
+                  label: "ตรวจสอบรายชื่อบุคลากร",
+                  message:
+                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
+                }}
+              />
               <Button className="w-full" disabled={actionsBlocked} loading={staffPending} type="submit">
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
               </Button>
@@ -947,7 +986,15 @@ export function WorkforceWorkspace({
               </div>
               {osmState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{osmState.message}</Alert> : null}
               {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
-              <UnknownOutcomeAlert active={osmUnknown} recovery={{ kind: "resend", onResend: resendOsm, resending: osmPending }} />
+              <UnknownOutcomeAlert
+                active={osmUnknown}
+                recovery={{
+                  kind: "reload",
+                  label: "ตรวจสอบรายชื่อ อสม.",
+                  message:
+                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
+                }}
+              />
               <Button className="w-full" disabled={actionsBlocked} loading={osmPending} type="submit">
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
               </Button>

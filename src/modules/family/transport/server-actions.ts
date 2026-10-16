@@ -83,7 +83,11 @@ export async function createCaregiverInvitationAction(
       error instanceof ApplicationError &&
       (error.code === "CONFLICT" || error.code === "NOT_FOUND")
     ) {
-      return { status: "ERROR", message: "ไม่สามารถสร้างคำเชิญสำหรับข้อมูลนี้ได้" };
+      return {
+        status: "ERROR",
+        message:
+          "ไม่สามารถสร้างคำเชิญได้ กรุณาตรวจสอบรายการคำเชิญที่รอตอบรับ หากพบคำเชิญเดิม ให้ยกเลิกก่อนสร้างใหม่",
+      };
     }
     if (error instanceof ApplicationError && error.code === "VALIDATION") {
       return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนให้ถูกต้อง" };

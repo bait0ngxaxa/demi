@@ -7,6 +7,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 const mocks = vi.hoisted(() => ({
   completePatient: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   details: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  completeWorkforce: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  previewWorkforce: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   login: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
@@ -19,9 +21,14 @@ vi.mock("@/modules/patient-activation/transport/server-actions", () => ({
   getPatientActivationDetailsAction: mocks.details,
 }));
 vi.mock("@/modules/auth/transport/server-actions", () => ({ loginAction: mocks.login }));
+vi.mock("@/modules/workforce/transport/server-actions", () => ({
+  completeWorkforceActivationAction: mocks.completeWorkforce,
+  previewWorkforceActivationAction: mocks.previewWorkforce,
+}));
 
 import { LoginForm } from "../login/login-form";
 import { PatientActivationForm } from "./patient/patient-activation-form";
+import { WorkforceActivationForm } from "./workforce/workforce-activation-form";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -124,8 +131,42 @@ describe("Patient activation form", () => {
       buttonByText("เปิดใช้งานบัญชี").click();
     });
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("หากตั้งรหัสผ่านสำเร็จ");
+    expect(container.querySelector('[role="alert"] button')).toBeNull();
     expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
     expect(mocks.completePatient).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks a one-time workforce activation through account sign-in guidance, not token replay", async () => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({
+      status: "SUCCESS",
+      maskedName: "ส*** ใจ***",
+      purpose: "ACTIVATION",
+    });
+    mocks.completeWorkforce.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await act(async () => {
+      root.render(createElement(WorkforceActivationForm));
+    });
+    container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
+    container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
+    container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
+
+    await act(async () => buttonByText("เปิดใช้งานบัญชี").click());
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+    );
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "เข้าสู่ระบบด้วยรหัสผ่านใหม่",
+    );
+    expect(container.querySelector('[role="alert"] button')).toBeNull();
+    expect(container.textContent).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
+    expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);
   });
 });

@@ -222,6 +222,9 @@ function ActivationPresentation({
               userId={result.userId}
             />
           </div>
+          <p className="mt-3 text-xs leading-5 text-muted">
+            การออกลิงก์ใหม่จะยกเลิกลิงก์นี้ทันที
+          </p>
           {copyError ? (
             <p className="mt-2 text-xs leading-5 text-danger" role="alert">
               คัดลอกลิงก์อัตโนมัติไม่สำเร็จ กรุณาเลือกและคัดลอกลิงก์ด้วยตนเอง
@@ -241,7 +244,7 @@ export function PatientActivationHandoff({
   patientAccessRequestId,
   linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
-  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(
+  const [state, action, pending, unknownOutcome] = useMutationActionState(
     issuePatientActivationAction,
     initialPatientActivationIssueActionState,
   );
@@ -253,7 +256,18 @@ export function PatientActivationHandoff({
     (state.status === "ERROR" && state.code === "RECONCILIATION_REQUIRED");
 
   if (unknownOutcome) {
-    return <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />;
+    return (
+      <UnknownOutcomeAlert
+        active={unknownOutcome}
+        className="mt-4"
+        recovery={{
+          kind: "reload",
+          label: "โหลดสถานะล่าสุด",
+          message:
+            "ระบบอาจออกลิงก์แล้ว แต่ลิงก์เดิมแสดงซ้ำไม่ได้ โหลดสถานะล่าสุดก่อน หากต้องการลิงก์ทดแทน ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่ด้วยตนเอง การออกใหม่จะยกเลิกลิงก์เดิมที่ยังใช้ได้",
+        }}
+      />
+    );
   }
 
   if (patientAccessRequestId) {
@@ -286,7 +300,7 @@ export function PatientActivationHandoff({
       return (
         <Alert className="mt-4" variant="warning">
           <p className="font-semibold">มีลิงก์เปิดใช้งานที่ยังใช้ได้แล้ว</p>
-          <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ให้ยกเลิกลิงก์เดิมก่อน</p>
+          <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ การออกลิงก์ทดแทนจะยกเลิกลิงก์เดิมทันที</p>
           <p className="mt-1 text-xs leading-5">ลิงก์เดิมหมดอายุ: {formatDate(result.activationExpiresAt)}</p>
           <IssueForm
             action={action}
@@ -369,7 +383,7 @@ export function PatientActivationHandoff({
     return (
       <Alert className="mt-4" variant="warning">
         <p className="font-semibold">มีลิงก์เปิดใช้งานที่ยังใช้ได้แล้ว</p>
-        <p className="mt-1">ลิงก์เดิมไม่สามารถแสดงซ้ำได้ หากต้องการลิงก์ใหม่ให้ยกเลิกลิงก์เดิม</p>
+        <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ การออกลิงก์ทดแทนจะยกเลิกลิงก์เดิมทันที</p>
         <p className="mt-1 text-xs leading-5">ลิงก์เดิมหมดอายุ: {formatDate(result.activationExpiresAt)}</p>
         <IssueForm
           action={action}
@@ -395,7 +409,7 @@ export function PatientActivationHandoff({
       </p>
       <p className="mt-1 text-sm leading-6 text-muted">
         {candidate.activationStatus === "ISSUED"
-          ? "ลิงก์เดิมไม่สามารถเปิดดูซ้ำได้ หากต้องการส่งลิงก์อีกครั้งให้เลือกออกลิงก์ใหม่"
+          ? "ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการส่งลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่ ระบบจะยกเลิกลิงก์เดิมทันที"
           : "ออกลิงก์ครั้งเดียวให้ผู้ป่วยตั้งรหัสผ่านด้วยตนเอง โรงพยาบาลจะไม่เห็นรหัสผ่าน"}
       </p>
       {candidate.activationExpiresAt ? (

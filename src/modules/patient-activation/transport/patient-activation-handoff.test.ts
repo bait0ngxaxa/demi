@@ -7,17 +7,20 @@ import type { PatientActivationCandidateState } from "./action-state";
 
 import { PatientActivationHandoff } from "../../../../app/app/patients/activation/patient-activation-handoff";
 
-const mockedUseActionState = vi.hoisted(() => vi.fn());
+const mockedUseMutationActionState = vi.hoisted(() => vi.fn());
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
 
   return {
     ...actual,
-    useActionState: mockedUseActionState,
     useSyncExternalStore: () => "https://demi.test",
   };
 });
+
+vi.mock("@/components/ui/mutation-action-state", () => ({
+  useMutationActionState: mockedUseMutationActionState,
+}));
 
 vi.mock("@/modules/patient-activation/transport/server-actions", () => ({
   issuePatientActivationAction: vi.fn(),
@@ -43,7 +46,13 @@ function render(candidate: PatientActivationCandidateState): string {
 
 describe("Patient activation handoff presentation", () => {
   beforeEach(() => {
-    mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
+    mockedUseMutationActionState.mockReturnValue([
+      { status: "IDLE" },
+      vi.fn(),
+      false,
+      false,
+      vi.fn(),
+    ]);
   });
 
   it("shows one explicit issue form for a Patient without an activation", () => {
@@ -60,8 +69,10 @@ describe("Patient activation handoff presentation", () => {
       activationExpiresAt: "2026-08-16T12:00:00.000Z",
     });
 
-    expect(markup).toContain("ลิงก์เดิมไม่สามารถเปิดดูซ้ำได้");
+    expect(markup).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
     expect(markup).toContain("ออกลิงก์ใหม่");
+    expect(markup).toContain("ยกเลิกลิงก์เดิมทันที");
+    expect(markup).toContain('name="reissue" value="true"');
     expect(markup).not.toContain("patient-activation-token");
     expect((markup.match(/<form\b/gu) ?? []).length).toBe(1);
   });
@@ -93,7 +104,7 @@ describe("Patient activation handoff presentation", () => {
   });
 
   it("uses the newly issued token for the fragment link presentation", () => {
-    mockedUseActionState.mockReturnValue([
+    mockedUseMutationActionState.mockReturnValue([
       {
         status: "SUCCESS",
         result: {
@@ -114,5 +125,23 @@ describe("Patient activation handoff presentation", () => {
     expect(markup).toContain("https://demi.test/activate/patient#raw-token-is-ephemeral");
     expect(markup).not.toContain("/activate/patient/raw-token-is-ephemeral");
     expect((markup.match(/<form\b/gu) ?? []).length).toBe(1);
+  });
+
+  it("does not replay an unconfirmed one-time link issue and explains how to check status", () => {
+    mockedUseMutationActionState.mockReturnValue([
+      { status: "IDLE" },
+      vi.fn(),
+      false,
+      true,
+      vi.fn(),
+    ]);
+
+    const markup = render(baseCandidate);
+
+    expect(markup).toContain("ระบบอาจออกลิงก์แล้ว");
+    expect(markup).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
+    expect(markup).toContain("โหลดสถานะล่าสุด");
+    expect(markup).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(markup).not.toContain("<form");
   });
 });

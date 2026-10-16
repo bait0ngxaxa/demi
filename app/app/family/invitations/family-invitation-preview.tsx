@@ -98,12 +98,13 @@ export function FamilyInvitationPreview(): React.JSX.Element {
   const token = tokenSnapshot.status === "READY" ? tokenSnapshot.token : null;
   const [preview, setPreview] = useState(initialCaregiverInvitationPreviewActionState);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [previewAttempt, setPreviewAttempt] = useState(0);
-  const [acceptance, acceptAction, accepting, acceptingUnknown, resendAcceptance] = useMutationActionState(
+  const [statusCheckPending, setStatusCheckPending] = useState(false);
+  const [statusVerifiedAfterUnknown, setStatusVerifiedAfterUnknown] = useState(false);
+  const [acceptance, acceptAction, accepting, acceptingUnknown] = useMutationActionState(
     acceptCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
-  const [rejection, rejectAction, rejecting, rejectingUnknown, resendRejection] = useMutationActionState(
+  const [rejection, rejectAction, rejecting, rejectingUnknown] = useMutationActionState(
     rejectCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
@@ -134,9 +135,46 @@ export function FamilyInvitationPreview(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [tokenSnapshot, previewAttempt]);
+  }, [tokenSnapshot]);
 
   const hasCompletedResponse = acceptance.status === "SUCCESS" || rejection.status === "SUCCESS";
+  const canRetryAfterStatusCheck =
+    statusVerifiedAfterUnknown &&
+    preview.status === "READY" &&
+    preview.invitation.invitationStatus === "PENDING";
+
+  async function verifyInvitationStatus(): Promise<void> {
+    if (!token || statusCheckPending) {
+      return;
+    }
+
+    setStatusCheckPending(true);
+    setPreviewFailed(false);
+    try {
+      const nextPreview = await previewCaregiverInvitationAction(token);
+      setPreview(nextPreview);
+      setStatusVerifiedAfterUnknown(
+        (acceptingUnknown || rejectingUnknown) && nextPreview.status === "READY",
+      );
+      if (nextPreview.status === "ERROR") {
+        setPreviewFailed(true);
+      }
+    } catch {
+      setPreviewFailed(true);
+    } finally {
+      setStatusCheckPending(false);
+    }
+  }
+
+  function submitAcceptance(formData: FormData): void {
+    setStatusVerifiedAfterUnknown(false);
+    acceptAction(formData);
+  }
+
+  function submitRejection(formData: FormData): void {
+    setStatusVerifiedAfterUnknown(false);
+    rejectAction(formData);
+  }
 
   return (
     <div className="max-w-3xl">
@@ -152,14 +190,12 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           <p className="mt-1">{connectionFailureMessage}</p>
           <Button
             className="mt-3"
-            onClick={() => {
-              setPreviewFailed(false);
-              setPreviewAttempt((attempt) => attempt + 1);
-            }}
+            loading={statusCheckPending}
+            onClick={() => void verifyInvitationStatus()}
             size="compact"
             variant="secondary"
           >
-            ลองอีกครั้ง
+            {statusCheckPending ? "กำลังตรวจสอบสถานะ..." : "ลองอีกครั้ง"}
           </Button>
         </Alert>
       ) : tokenSnapshot.status === "LOADING" || (tokenSnapshot.status === "READY" && preview.status === "LOADING") ? (
@@ -226,20 +262,45 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           ) : null}
           {acceptance.status === "ERROR" ? <Alert className="mt-5" variant="danger">{acceptance.message}</Alert> : null}
           {rejection.status === "ERROR" ? <Alert className="mt-5" variant="danger">{rejection.message}</Alert> : null}
-          <UnknownOutcomeAlert active={acceptingUnknown} className="mt-5" recovery={{ kind: "resend", onResend: resendAcceptance, resending: accepting }} />
-          <UnknownOutcomeAlert active={rejectingUnknown} className="mt-5" recovery={{ kind: "resend", onResend: resendRejection, resending: rejecting }} />
+          {canRetryAfterStatusCheck ? (
+            <Alert className="mt-5" role="status" variant="info">
+              ตรวจสอบแล้วว่าคำเชิญยังรอตอบรับ หากยังต้องการ ให้เลือกตอบรับหรือปฏิเสธด้วยตนเอง
+            </Alert>
+          ) : null}
+          <UnknownOutcomeAlert
+            active={acceptingUnknown && !statusVerifiedAfterUnknown}
+            className="mt-5"
+            recovery={{
+              kind: "verify",
+              label: "ตรวจสอบสถานะคำเชิญ",
+              message: "ระบบอาจบันทึกคำตอบแล้ว ตรวจสอบสถานะปัจจุบันก่อน คำเชิญที่ตอบแล้วจะใช้ซ้ำไม่ได้",
+              onVerify: () => void verifyInvitationStatus(),
+              verifying: statusCheckPending,
+            }}
+          />
+          <UnknownOutcomeAlert
+            active={rejectingUnknown && !statusVerifiedAfterUnknown}
+            className="mt-5"
+            recovery={{
+              kind: "verify",
+              label: "ตรวจสอบสถานะคำเชิญ",
+              message: "ระบบอาจบันทึกคำตอบแล้ว ตรวจสอบสถานะปัจจุบันก่อน คำเชิญที่ตอบแล้วจะใช้ซ้ำไม่ได้",
+              onVerify: () => void verifyInvitationStatus(),
+              verifying: statusCheckPending,
+            }}
+          />
 
           {preview.invitation.invitationStatus === "PENDING" && !hasCompletedResponse ? (
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <form action={acceptAction}>
+              <form action={submitAcceptance}>
                 <input name="token" type="hidden" value={token ?? ""} />
-                <Button disabled={accepting || rejecting || acceptingUnknown || rejectingUnknown} loading={accepting} type="submit">
+                <Button disabled={accepting || rejecting || ((acceptingUnknown || rejectingUnknown) && !canRetryAfterStatusCheck)} loading={accepting} type="submit">
                   {accepting ? "กำลังยอมรับ..." : "ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"}
                 </Button>
               </form>
-              <form action={rejectAction}>
+              <form action={submitRejection}>
                 <input name="token" type="hidden" value={token ?? ""} />
-                <Button disabled={accepting || rejecting || acceptingUnknown || rejectingUnknown} loading={rejecting} type="submit" variant="secondary">
+                <Button disabled={accepting || rejecting || ((acceptingUnknown || rejectingUnknown) && !canRetryAfterStatusCheck)} loading={rejecting} type="submit" variant="secondary">
                   {rejecting ? "กำลังปฏิเสธ..." : "ปฏิเสธคำเชิญ"}
                 </Button>
               </form>

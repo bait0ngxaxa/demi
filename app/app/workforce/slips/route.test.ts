@@ -83,6 +83,22 @@ describe("activation slips route", () => {
     expect(html).not.toContain(secretToken);
   });
 
+  it("directs users to status review when link issuance succeeds but the printable response fails", async () => {
+    const qr = vi.spyOn(QRCode, "toDataURL").mockRejectedValueOnce(new Error("QR generation failed"));
+
+    const response = await POST(slipRequest());
+    const html = await response.text();
+
+    qr.mockRestore();
+    expect(response.status).toBe(503);
+    expect(mockedIssueSlips).toHaveBeenCalledOnce();
+    expect(html).toContain("อาจออกลิงก์ใหม่แล้ว แต่แสดงใบไม่สำเร็จ");
+    expect(html).toContain("ลิงก์ที่ออกแล้วแสดงซ้ำไม่ได้");
+    expect(html).toContain(`/app/workforce?hospitalId=${hospitalId}#workforce-pending`);
+    expect(html).not.toContain("ลองใหม่อีกครั้ง");
+    expect(html).not.toContain(secretToken);
+  });
+
   it("rejects cross-site and origin-less requests before any service call", async () => {
     const crossSite = await POST(slipRequest(undefined, { "sec-fetch-site": "cross-site" }));
     const wrongOrigin = await POST(slipRequest(undefined, { origin: "https://evil.example" }));

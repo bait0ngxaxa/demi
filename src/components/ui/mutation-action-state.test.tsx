@@ -250,6 +250,21 @@ describe("UnknownOutcomeAlert recovery contracts", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("supports specific recovery guidance while reloading current state instead of replaying", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    renderAlert({
+      kind: "reload",
+      label: "ตรวจสอบสถานะล่าสุด",
+      message: "ลิงก์เดิมแสดงซ้ำไม่ได้ ตรวจสอบสถานะก่อนออกลิงก์ใหม่",
+    });
+
+    expect(query('[role="alert"]').textContent).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
+    expect(query('[role="alert"] button').textContent).toBe("ตรวจสอบสถานะล่าสุด");
+    act(() => query<HTMLButtonElement>('[role="alert"] button').click());
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it("states the duplicate risk for creates without server deduplication", () => {
     renderAlert({ kind: "review", label: "ตรวจสอบรายการคำขอล่าสุด" });
 

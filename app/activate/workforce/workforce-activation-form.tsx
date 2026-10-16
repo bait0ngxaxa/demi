@@ -68,7 +68,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const [previewFailedToken, setPreviewFailedToken] = useState<string | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
-  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     WorkforceCompletionActionState,
     FormData
   >(
@@ -254,7 +254,20 @@ export function WorkforceActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+      <UnknownOutcomeAlert
+        active={unknownOutcome}
+        recovery={{
+          kind: "note",
+          message:
+            purpose === "RESET"
+              ? "ระบบยังยืนยันไม่ได้ว่าการเปลี่ยนรหัสผ่านสำเร็จหรือไม่"
+              : "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+          note:
+            purpose === "RESET"
+              ? "ลิงก์ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์รีเซ็ตใหม่"
+              : "ลิงก์ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์เปิดใช้งานใหม่",
+        }}
+      />
 
       <button
         aria-busy={pending || undefined}

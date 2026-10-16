@@ -75,7 +75,7 @@ export function PatientActivationForm(): React.JSX.Element {
   const [detailsToken, setDetailsToken] = useState<string | null>(null);
   const [detailsFailedToken, setDetailsFailedToken] = useState<string | null>(null);
   const [detailsAttempt, setDetailsAttempt] = useState(0);
-  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     PatientActivationCompletionActionState,
     FormData
   >(
@@ -248,7 +248,15 @@ export function PatientActivationForm(): React.JSX.Element {
         ) : null}
       </div>
 
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+      <UnknownOutcomeAlert
+        active={unknownOutcome}
+        recovery={{
+          kind: "note",
+          message: "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+          note:
+            "ลิงก์นี้ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
+        }}
+      />
 
       <button
         aria-busy={pending || undefined}

@@ -32,6 +32,7 @@ import {
   acceptCaregiverInvitationAction,
   createCaregiverInvitationAction,
   previewCaregiverInvitationAction,
+  revokePendingCaregiverInvitationAction,
 } from "./server-actions";
 import {
   initialCaregiverInvitationPreviewActionState,
@@ -72,7 +73,8 @@ describe("Family Server Actions", () => {
 
     expect(result).toEqual({
       status: "ERROR",
-      message: "ไม่สามารถสร้างคำเชิญสำหรับข้อมูลนี้ได้",
+      message:
+        "ไม่สามารถสร้างคำเชิญได้ กรุณาตรวจสอบรายการคำเชิญที่รอตอบรับ หากพบคำเชิญเดิม ให้ยกเลิกก่อนสร้างใหม่",
     });
     expect(JSON.stringify(result)).not.toContain(nationalId);
     expect(JSON.stringify(result)).not.toContain("recipient state is private");
@@ -126,6 +128,22 @@ describe("Family Server Actions", () => {
 
     expect(result).toEqual({ status: "ERROR", message: "บัญชีนี้ไม่ใช่ผู้รับคำเชิญนี้" });
     expect(JSON.stringify(result)).not.toContain(token);
+  });
+
+  it("rechecks the authenticated actor before explicitly revoking a pending invitation", async () => {
+    const formData = createFormData({ invitationId: "33333333-3333-4333-8333-333333333333" });
+
+    const result = await revokePendingCaregiverInvitationAction(
+      initialFamilyMutationActionState,
+      formData,
+    );
+
+    expect(result).toEqual({ status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว" });
+    expect(mocks.getActor).toHaveBeenCalledOnce();
+    expect(mocks.revokeInvitation).toHaveBeenCalledWith(
+      actor,
+      "33333333-3333-4333-8333-333333333333",
+    );
   });
 });
 

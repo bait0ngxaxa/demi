@@ -30,8 +30,8 @@ const responseHeaders = {
   "X-Robots-Tag": "noindex, nofollow",
 } as const;
 
-function htmlError(message: string, status: number): Response {
-  return new Response(renderActivationSlipsError(message), { status, headers: responseHeaders });
+function htmlError(message: string, status: number, managementHref?: string): Response {
+  return new Response(renderActivationSlipsError(message, managementHref), { status, headers: responseHeaders });
 }
 
 // Route handlers have no built-in CSRF protection, unlike server actions.
@@ -128,7 +128,11 @@ export async function POST(request: Request): Promise<Response> {
       return htmlError("ข้อมูลที่ส่งมาไม่ถูกต้อง", 400);
     }
 
-    // A failure after issuing may have created credentials nobody saw; they simply expire.
-    return htmlError("ระบบไม่พร้อมออกใบเปิดใช้งานในขณะนี้ กรุณาลองใหม่อีกครั้ง", 503);
+    // Credential issuance may have committed before the printable response failed.
+    return htmlError(
+      "ระบบอาจออกลิงก์ใหม่แล้ว แต่แสดงใบไม่สำเร็จ ลิงก์ที่ออกแล้วแสดงซ้ำไม่ได้ กรุณาตรวจสอบสถานะก่อนออกลิงก์ใหม่อีกครั้ง",
+      503,
+      `/app/workforce?hospitalId=${encodeURIComponent(parsed.data.targetHospitalId)}#workforce-pending`,
+    );
   }
 }

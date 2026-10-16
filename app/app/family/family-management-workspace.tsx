@@ -52,7 +52,7 @@ function PaginationLink({ href }: { href: string }): React.JSX.Element {
 }
 
 function CreateCaregiverInvitationForm(): React.JSX.Element {
-  const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     createCaregiverInvitationAction,
     initialCreateCaregiverInvitationActionState,
   );
@@ -112,7 +112,16 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
           />
         </div>
         {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
-        <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+        <UnknownOutcomeAlert
+          active={unknownOutcome}
+          className="mt-2"
+          recovery={{
+            kind: "reload",
+            label: "ตรวจสอบคำเชิญล่าสุด",
+            message:
+              "ระบบอาจสร้างคำเชิญแล้ว แต่ลิงก์เดิมแสดงซ้ำไม่ได้ โหลดรายการคำเชิญล่าสุดด้านล่าง หากพบคำเชิญที่รอตอบรับของคู่เดิม ให้ยกเลิกก่อนแล้วจึงสร้างใหม่",
+          }}
+        />
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังสร้างคำเชิญ..." : "สร้างลิงก์คำเชิญ"}
         </Button>
