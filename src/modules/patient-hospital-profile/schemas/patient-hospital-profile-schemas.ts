@@ -78,3 +78,21 @@ export const staffPatientHospitalProfileUpdateSchema = z.object({
   occupation: optionalProfileValue(200),
   educationLevel: optionalProfileValue(200),
 }).strict();
+
+const personNameSchema = z.string().trim().min(1).max(120);
+
+/** Customer decision E3 (ก-19): Person name correction with Person.version optimistic concurrency. */
+export const patientNameCorrectionSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema.pipe(z.number().int().min(1)),
+    givenName: personNameSchema,
+    familyName: personNameSchema,
+  })
+  .strict();
+
+export const patientNameCorrectionLookupSchema = z
+  .object({
+    hospitalId: z.string().uuid(),
+    hospitalNumber: z.string().trim().min(1).max(64),
+  })
+  .strict();

@@ -23,6 +23,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PatientHealthHistorySection } from "./patient-health-history-section";
+import { PatientSelfMeasurementSection } from "./patient-self-measurement-section";
 import { PatientProfileView } from "./patient-profile-view";
 import { PatientAccountRecoveryPanel } from "./account-recovery-panel";
 import { PatientClassificationView } from "./patient-classification-view";
@@ -270,6 +271,7 @@ export default async function PatientDetailPage({
           <h2 className="text-2xl font-semibold text-text" id="patient-history-heading">ข้อมูลประกอบและประวัติ</h2>
           <PatientProfileView profile={patient.profile} profileSource={patient.profileSource} />
           <PatientHealthHistorySection actor={actor} relationshipId={relationshipId} />
+          <PatientSelfMeasurementSection actor={actor} relationshipId={relationshipId} />
           {hasHospitalDirectoryAccess ? <Link className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline" href={`/app/patients/${relationshipId}/profile`}>แก้ไขข้อมูลสำหรับโรงพยาบาลและประวัติสุขภาพ</Link> : null}
 
           <section className="mt-6">

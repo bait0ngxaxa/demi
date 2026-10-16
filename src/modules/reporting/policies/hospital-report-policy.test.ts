@@ -107,3 +107,42 @@ describe("Hospital reporting policy", () => {
     expect(decide(null)).toEqual({ allowed: false, reason: "missing_actor" });
   });
 });
+
+describe("E1 MEMBER report export grant", () => {
+  function grantedMember(overrides: { status?: MembershipStatus; granted?: boolean; hospitalStatus?: HospitalStatus } = {}): ActorContext {
+    const actor = hospitalOwnerActor({
+      membershipType: MembershipType.MEMBER,
+      membershipStatus: overrides.status ?? MembershipStatus.ACTIVE,
+      hospitalStatus: overrides.hospitalStatus ?? HospitalStatus.ACTIVE,
+    });
+    return {
+      ...actor,
+      hospitalMemberships: actor.hospitalMemberships.map((membership) => ({
+        ...membership,
+        reportExportGranted: overrides.granted ?? true,
+      })),
+    };
+  }
+
+  it("allows export only", () => {
+    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
+      allowed: true,
+      reason: "active_member_report_export_grant",
+    });
+    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.dashboardRead).allowed).toBe(false);
+    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.rowRead).allowed).toBe(false);
+  });
+
+  it.each([MembershipStatus.SUSPENDED, MembershipStatus.ENDED, MembershipStatus.PROVISIONED])(
+    "denies a %s membership even with the grant",
+    (status) => {
+      expect(decide(grantedMember({ status }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+    },
+  );
+
+  it("denies without the grant, for another Hospital, or for an inactive Hospital", () => {
+    expect(decide(grantedMember({ granted: false }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export, hospitalBId).allowed).toBe(false);
+    expect(decide(grantedMember({ hospitalStatus: HospitalStatus.SUSPENDED }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+  });
+});

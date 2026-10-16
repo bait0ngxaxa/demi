@@ -14,6 +14,7 @@ import {
   HOSPITAL_REPORT_CAPABILITIES,
 } from "../policies/hospital-report-policy";
 import {
+  listHospitalReportExportGrantHospitals,
   listHospitalReportingHospitals,
   resolveHospitalReportingAccessContext,
   type HospitalReportAccessDatabase,
@@ -58,7 +59,16 @@ function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>
   }
 }
 
-function database(membership: { hospital: typeof hospital } | null = { hospital }) {
+type MembershipRow = {
+  hospital: typeof hospital;
+  membershipType?: MembershipType;
+  profession?: null;
+  reportExportGrantedAt?: Date | null;
+};
+
+const ownerRow: MembershipRow = { hospital, membershipType: MembershipType.OWNER, profession: null, reportExportGrantedAt: null };
+
+function database(membership: MembershipRow | null = ownerRow) {
   const findFirst = vi.fn().mockResolvedValue(membership);
   const findMany = vi.fn().mockResolvedValue(membership ? [{ hospital: membership.hospital }] : []);
   return {
@@ -101,7 +111,6 @@ describe("Hospital reporting access service", () => {
       where: {
         userId: actorUserId,
         hospitalId,
-        membershipType: MembershipType.OWNER,
         status: MembershipStatus.ACTIVE,
         user: {
           is: {
@@ -112,10 +121,85 @@ describe("Hospital reporting access service", () => {
         hospital: { is: { status: HospitalStatus.ACTIVE } },
       },
       select: {
+        membershipType: true,
+        profession: true,
+        reportExportGrantedAt: true,
         hospital: {
           select: { id: true, hospitalCode: true, name: true, status: true },
         },
       },
+    });
+  });
+
+  describe("E1 report export grant for MEMBER staff", () => {
+    const memberActor: ActorContext = {
+      ...actor,
+      hospitalMemberships: [{ ...actor.hospitalMemberships[0]!, membershipType: MembershipType.MEMBER }],
+    };
+    const grantedRow: MembershipRow = { hospital, membershipType: MembershipType.MEMBER, profession: null, reportExportGrantedAt: new Date("2026-10-16T00:00:00.000Z") };
+    const ungrantedRow: MembershipRow = { ...grantedRow, reportExportGrantedAt: null };
+
+    it("allows a granted ACTIVE MEMBER to export, recording the access basis", async () => {
+      const { database: db } = database(grantedRow);
+      await expect(
+        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).resolves.toMatchObject({ hospital, accessBasis: "MEMBER_EXPORT_GRANT" });
+    });
+
+    it("uses the database grant, not a stale session flag", async () => {
+      const { database: db } = database(ungrantedRow);
+      const staleSessionActor: ActorContext = {
+        ...memberActor,
+        hospitalMemberships: [{ ...memberActor.hospitalMemberships[0]!, reportExportGranted: true }],
+      };
+      await expect(
+        resolveHospitalReportingAccessContext(staleSessionActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it("refuses a MEMBER export without the grant with 403 semantics", async () => {
+      const { database: db } = database(ungrantedRow);
+      await expect(
+        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it.each([HOSPITAL_REPORT_CAPABILITIES.dashboardRead, HOSPITAL_REPORT_CAPABILITIES.rowRead])(
+      "keeps %s hidden from a granted MEMBER",
+      async (capability) => {
+        const { database: db } = database(grantedRow);
+        await expect(
+          resolveHospitalReportingAccessContext(memberActor, hospitalId, capability, db),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      },
+    );
+
+    it("loses the grant effect when the membership is no longer ACTIVE (query returns nothing)", async () => {
+      const { database: db } = database(null);
+      await expect(
+        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("leaves OWNER export unchanged", async () => {
+      const { database: db } = database();
+      await expect(
+        resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).resolves.toMatchObject({ accessBasis: "OWNER" });
+    });
+
+    it("lists only ACTIVE MEMBER memberships holding the grant", async () => {
+      const { database: db, findMany } = database(grantedRow);
+      await expect(listHospitalReportExportGrantHospitals(memberActor, db)).resolves.toEqual([hospital]);
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          userId: actorUserId,
+          membershipType: MembershipType.MEMBER,
+          status: MembershipStatus.ACTIVE,
+          reportExportGrantedAt: { not: null },
+          hospital: { is: { status: HospitalStatus.ACTIVE } },
+        }),
+      }));
     });
   });
 

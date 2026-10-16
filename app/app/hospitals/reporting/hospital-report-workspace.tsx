@@ -507,7 +507,7 @@ function ServiceProgram({
   );
 }
 
-function ExportButton({
+export function ExportButton({
   hospitalId,
   endpoint,
 }: {

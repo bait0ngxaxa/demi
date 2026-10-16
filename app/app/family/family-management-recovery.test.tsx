@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   revokeInvitation: vi.fn<(_previous: unknown, formData: FormData) => Promise<unknown>>(),
   revokeRelationship: vi.fn<(_previous: unknown, formData: FormData) => Promise<unknown>>(),
   withdrawRelationship: vi.fn<(_previous: unknown, formData: FormData) => Promise<unknown>>(),
+  reissueInvitation: vi.fn<(_previous: unknown, formData: FormData) => Promise<unknown>>(),
 }));
 
 vi.mock("@/modules/family/transport/server-actions", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/modules/family/transport/server-actions", () => ({
   revokePendingCaregiverInvitationAction: mocks.revokeInvitation,
   revokeCaregiverRelationshipAction: mocks.revokeRelationship,
   withdrawOwnCaregiverRelationshipAction: mocks.withdrawRelationship,
+  reissueCaregiverInvitationLinkAction: mocks.reissueInvitation,
 }));
 
 import type { FamilyManagementOverview } from "@/modules/family/services/caregiver-relationship-query-service";
@@ -56,6 +58,7 @@ beforeEach(() => {
   mocks.revokeInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว" });
   mocks.revokeRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยุติความสัมพันธ์ผู้ดูแลแล้ว" });
   mocks.withdrawRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" });
+  mocks.reissueInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", token: "b".repeat(43), expiresAt: "2026-10-17T00:00:00.000Z" });
 
   container = document.createElement("div");
   document.body.append(container);
@@ -127,5 +130,62 @@ describe("Caregiver invitation lost-response recovery", () => {
     expect(container.textContent).toContain("ผู้ดูแล ทดสอบ");
     expect(container.querySelector('input[name="invitationId"]')?.getAttribute("value")).toBe("invitation-1");
     expect(buttonByText("ยกเลิกคำเชิญ")).toBeDefined();
+    expect(buttonByText("แสดงคิวอาร์โค้ด")).toBeDefined();
   });
+
+  it("shows a pending invitation as a QR of its reissued acceptance link and expiry (E2)", async () => {
+    const overview: FamilyManagementOverview = {
+      ...emptyOverview,
+      patient: {
+        invitations: [
+          {
+            invitationId: "invitation-1",
+            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ" },
+            status: CaregiverInvitationStatus.PENDING,
+            issuedAt: new Date("2026-10-16T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-17T00:00:00.000Z"),
+          },
+        ],
+        relationships: [],
+        nextInvitationsCursor: null,
+        nextRelationshipsCursor: null,
+      },
+    };
+
+    act(() => root.render(createElement(FamilyManagementWorkspace, { overview })));
+    expect(container.textContent).toContain("ลิงก์หรือ QR ที่เคยส่งไปจะใช้ไม่ได้อีก");
+    await act(async () => buttonByText("แสดงคิวอาร์โค้ด").click());
+
+    expect(mocks.reissueInvitation).toHaveBeenCalledOnce();
+    expect(mocks.reissueInvitation.mock.calls[0]?.[1].get("invitationId")).toBe("invitation-1");
+    const link = Array.from(container.querySelectorAll<HTMLInputElement>("input[readonly]")).map((input) => input.value);
+    expect(link).toEqual([`${window.location.origin}/app/family/invitations#${"b".repeat(43)}`]);
+    expect(container.textContent).toContain("คิวอาร์โค้ดคำเชิญ");
+    expect(container.textContent).toContain("ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว");
+    expect(buttonByText("สร้างคิวอาร์โค้ดใหม่")).toBeDefined();
+  });
+
+  it.each([CaregiverInvitationStatus.ACCEPTED, CaregiverInvitationStatus.EXPIRED, CaregiverInvitationStatus.REVOKED])(
+    "offers no QR for a %s invitation",
+    (status) => {
+      const overview: FamilyManagementOverview = {
+        ...emptyOverview,
+        patient: {
+          invitations: [{
+            invitationId: "invitation-1",
+            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ" },
+            status,
+            issuedAt: new Date("2026-10-16T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-17T00:00:00.000Z"),
+          }],
+          relationships: [],
+          nextInvitationsCursor: null,
+          nextRelationshipsCursor: null,
+        },
+      };
+
+      act(() => root.render(createElement(FamilyManagementWorkspace, { overview })));
+      expect(container.textContent).not.toContain("แสดงคิวอาร์โค้ด");
+    },
+  );
 });

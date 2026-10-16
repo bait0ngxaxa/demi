@@ -36,6 +36,8 @@ import {
   type AppointmentAccessDatabase,
   type AppointmentPatientSummary,
 } from "./appointment-access-service";
+import { loadAppointmentContactPhones } from "./appointment-contact-phone-service";
+import type { AppointmentContactPhones } from "../domain/appointment-contact-phones";
 
 export type AppointmentQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -525,7 +527,7 @@ export async function getAppointmentDetail(
   relationshipId: unknown,
   appointmentId: unknown,
   dependencies: AppointmentQueryDependencies = {},
-): Promise<AppointmentDetail> {
+): Promise<AppointmentDetail & { contactPhones: AppointmentContactPhones }> {
   const parsedRelationshipId = appointmentRelationshipIdSchema.safeParse(relationshipId);
   const parsedAppointmentId = appointmentIdSchema.safeParse(appointmentId);
 
@@ -553,8 +555,14 @@ export async function getAppointmentDetail(
       throw new NotFoundError();
     }
 
-    return toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital);
+    const contactPhones = await loadAppointmentContactPhones(
+      database,
+      access.patient.patientHospitalRelationshipId,
+      access.scopes.exactOsmAssignment || access.scopes.directHospital ? "ASSIGNED_OSM_OR_HOSPITAL_STAFF" : "PATIENT_SELF",
+    );
+
+    return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital), contactPhones };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

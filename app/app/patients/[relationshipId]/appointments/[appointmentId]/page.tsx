@@ -32,6 +32,8 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
 import { AppointmentInteractionControls } from "./appointment-interaction-controls";
+import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
+import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
 
 export const metadata: Metadata = {
   title: "รายละเอียดนัดหมาย",
@@ -88,7 +90,7 @@ function AppointmentDetailView({
 }: {
   activeProgram: PatientProgramProjection | null;
   canRecordProgram: boolean;
-  detail: AppointmentDetail;
+  detail: AppointmentDetail & { contactPhones: AppointmentContactPhones };
   rescheduleRequests?: React.ReactNode;
 }): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
@@ -207,6 +209,10 @@ function AppointmentDetailView({
                 {detail.createdByDisplayName}
               </dd>
             </div>
+            <AppointmentContactPhoneEntries
+              contactPhones={detail.contactPhones}
+              showPatientPhone={detail.canProxyPatientActions || Boolean(detail.canHospitalManage)}
+            />
           </dl>
 
           {detail.locationDetail ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -25,6 +25,7 @@ import {
 } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import {
   createCaregiverInvitationAction,
+  reissueCaregiverInvitationLinkAction,
   revokeCaregiverRelationshipAction,
   revokePendingCaregiverInvitationAction,
   withdrawOwnCaregiverRelationshipAction,
@@ -51,18 +52,22 @@ function PaginationLink({ href }: { href: string }): React.JSX.Element {
   );
 }
 
-function CreateCaregiverInvitationForm(): React.JSX.Element {
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
-    createCaregiverInvitationAction,
-    initialCreateCaregiverInvitationActionState,
-  );
+function InvitationLinkHandoff({
+  token,
+  expiresAt,
+  title,
+  description,
+}: {
+  token: string;
+  expiresAt: string;
+  title: string;
+  description: string;
+}): React.JSX.Element {
   const origin = useSyncExternalStore(noSubscription, getBrowserOrigin, getServerOrigin);
   const [copyStatus, setCopyStatus] = useState("");
+  const linkInputId = useId();
 
-  const invitationLink =
-    state.status === "SUCCESS" && origin
-      ? `${origin}/app/family/invitations#${encodeURIComponent(state.token)}`
-      : "";
+  const invitationLink = origin ? `${origin}/app/family/invitations#${encodeURIComponent(token)}` : "";
 
   async function copyInvitationLink(): Promise<void> {
     if (!invitationLink || !navigator.clipboard?.writeText) {
@@ -79,6 +84,53 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
   }
 
   return (
+    <Alert className="mt-5" variant="success">
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1">
+        {description}หมดอายุ {formatFamilyManagementDate(expiresAt)}
+        กรุณาส่งให้ผู้รับที่ตั้งใจเชื่อมเท่านั้น
+      </p>
+      {invitationLink ? (
+        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+          <FamilyInvitationQr invitationLink={invitationLink} />
+          <div className="min-w-0 flex-1 space-y-3">
+            <label className="block text-sm font-semibold" htmlFor={linkInputId}>
+              ลิงก์คำเชิญ
+            </label>
+            <input
+              autoComplete="off"
+              className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              id={linkInputId}
+              readOnly
+              spellCheck={false}
+              type="text"
+              value={invitationLink}
+            />
+            <Button onClick={copyInvitationLink} type="button" variant="secondary">
+              คัดลอกลิงก์
+            </Button>
+            {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
+            <p className="text-sm leading-6">
+              QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
+              ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
+              แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-2" role="status">กำลังเตรียมลิงก์คำเชิญ...</p>
+      )}
+    </Alert>
+  );
+}
+
+function CreateCaregiverInvitationForm(): React.JSX.Element {
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
+    createCaregiverInvitationAction,
+    initialCreateCaregiverInvitationActionState,
+  );
+
+  return (
     <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text">เพิ่มผู้ดูแล</h3>
       <p className="type-readable mt-2 text-sm leading-6 text-text-muted">
@@ -89,10 +141,7 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
         action={formAction}
         className="mt-5 space-y-4"
         key={state.status === "SUCCESS" ? `issued-${state.expiresAt}` : "new-invitation"}
-        onSubmit={(event) => {
-          setCopyStatus("");
-          submitPreservingInput(formAction)(event);
-        }}
+        onSubmit={submitPreservingInput(formAction)}
       >
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-national-id">
@@ -127,43 +176,13 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
         </Button>
       </form>
       {state.status === "SUCCESS" ? (
-        <Alert className="mt-5" variant="success">
-          <p className="font-semibold">สร้างคำเชิญแล้ว</p>
-          <p className="mt-1">
-            QR และลิงก์นี้แสดงครั้งเดียวและหมดอายุ {formatFamilyManagementDate(state.expiresAt)}
-            กรุณาส่งให้ผู้รับที่ตั้งใจเชื่อมเท่านั้น
-          </p>
-          {invitationLink ? (
-            <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-              <FamilyInvitationQr invitationLink={invitationLink} />
-              <div className="min-w-0 flex-1 space-y-3">
-                <label className="block text-sm font-semibold" htmlFor="caregiver-invitation-link">
-                  ลิงก์คำเชิญ
-                </label>
-                <input
-                  autoComplete="off"
-                  className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                  id="caregiver-invitation-link"
-                  readOnly
-                  spellCheck={false}
-                  type="text"
-                  value={invitationLink}
-                />
-                <Button onClick={copyInvitationLink} type="button" variant="secondary">
-                  คัดลอกลิงก์
-                </Button>
-                {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
-                <p className="text-sm leading-6">
-                  QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
-                  ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
-                  แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-2" role="status">กำลังเตรียมลิงก์คำเชิญ...</p>
-          )}
-        </Alert>
+        <InvitationLinkHandoff
+          description="QR และลิงก์นี้แสดงครั้งเดียวและ"
+          expiresAt={state.expiresAt}
+          key={state.token}
+          title="สร้างคำเชิญแล้ว"
+          token={state.token}
+        />
       ) : null}
     </Panel>
   );
@@ -190,6 +209,44 @@ function RevokePendingInvitation({
         </form>
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
+      {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
+    </div>
+  );
+}
+
+function ShowPendingInvitationQr({
+  invitation,
+}: {
+  invitation: FamilyInvitationManagementItem;
+}): React.JSX.Element | null {
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
+    reissueCaregiverInvitationLinkAction,
+    initialCreateCaregiverInvitationActionState,
+  );
+
+  if (invitation.status !== "PENDING") return null;
+
+  return (
+    <div className="mt-3">
+      <form action={formAction}>
+        <input name="invitationId" type="hidden" value={invitation.invitationId} />
+        <Button aria-label={`แสดงคิวอาร์โค้ดคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
+          {pending ? "กำลังสร้างคิวอาร์โค้ด..." : state.status === "SUCCESS" ? "สร้างคิวอาร์โค้ดใหม่" : "แสดงคิวอาร์โค้ด"}
+        </Button>
+      </form>
+      <p className="mt-2 text-sm leading-6 text-text-muted">
+        ใช้เมื่อพบผู้รับต่อหน้า ระบบจะสร้างลิงก์ใหม่ให้คำเชิญเดิม ลิงก์หรือ QR ที่เคยส่งไปจะใช้ไม่ได้อีก
+      </p>
+      {state.status === "SUCCESS" ? (
+        <InvitationLinkHandoff
+          description="ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว QR และลิงก์นี้"
+          expiresAt={state.expiresAt}
+          key={state.token}
+          title="คิวอาร์โค้ดคำเชิญ"
+          token={state.token}
+        />
+      ) : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
@@ -299,7 +356,10 @@ function PatientPerspective({
                     <p className="mt-2 text-sm text-text-muted">สร้างเมื่อ {formatFamilyManagementDate(invitation.issuedAt)}</p>
                     <p className="mt-1 text-sm text-text-muted">หมดอายุ {formatFamilyManagementDate(invitation.expiresAt)}</p>
                   </div>
-                  <RevokePendingInvitation invitation={invitation} />
+                  <div className="sm:max-w-md">
+                    <ShowPendingInvitationQr invitation={invitation} />
+                    <RevokePendingInvitation invitation={invitation} />
+                  </div>
                 </li>
               ))}
             </ul>

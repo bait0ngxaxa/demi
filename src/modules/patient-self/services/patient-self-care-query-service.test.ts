@@ -136,6 +136,9 @@ function followupHistoryRecord(overrides: Record<string, unknown> = {}): Record<
 function createDatabase() {
   const database = {
     person: { findFirst: vi.fn().mockResolvedValue(ownRelationshipRecord()) },
+    patientHospitalRelationship: {
+      findUnique: vi.fn().mockResolvedValue({ hospital: { contact: { phoneNumber: "02-000-0000" } } }),
+    },
     screeningAssessment: {
       findMany: vi.fn().mockResolvedValue([{ submittedAt: recordedAt, result: { pamTotal: 20 } }]),
     },
@@ -585,6 +588,9 @@ describe("Patient SELF care read projections", () => {
       }],
     });
     expect(JSON.stringify(detail)).not.toMatch(/responsibleUser|createdBy|internal note/);
+    // E4: the Patient's own view gets the Hospital phone; the Patient phone is never read for it.
+    expect(detail.contactPhones).toEqual({ hospitalPhone: "02-000-0000", patientPhone: null });
+    expect(database.patientHospitalRelationship.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it("bounds appointment history and reads older pages on request", async () => {

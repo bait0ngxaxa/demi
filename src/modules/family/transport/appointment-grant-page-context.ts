@@ -5,7 +5,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { getAppointmentGrantManagement, type AppointmentGrantManagement } from "../services/appointment-grant-management-query-service";
 import { getFamilyManagementOverview, type FamilyManagementOverview } from "../services/caregiver-relationship-query-service";
-import { getDelegatedAppointment, listDelegatedAppointments, type DelegatedAppointment, type DelegatedAppointmentPage } from "../services/delegated-appointment-query-service";
+import { getDelegatedAppointment, listDelegatedAppointments, type DelegatedAppointmentDetail, type DelegatedAppointmentPage } from "../services/delegated-appointment-query-service";
 
 function handleReadError(error: unknown): never {
   if (error instanceof UnauthenticatedError) redirect("/login");
@@ -34,7 +34,7 @@ export async function getDelegatedAppointmentsPageContext(input: unknown): Promi
   catch (error: unknown) { handleReadError(error); }
 }
 
-export async function getDelegatedAppointmentPageContext(grantId: unknown, appointmentId: unknown): Promise<DelegatedAppointment> {
+export async function getDelegatedAppointmentPageContext(grantId: unknown, appointmentId: unknown): Promise<DelegatedAppointmentDetail> {
   try { return await getDelegatedAppointment(await getProtectedApplicationActor(), grantId, appointmentId); }
   catch (error: unknown) { handleReadError(error); }
 }

@@ -23,6 +23,7 @@ import { WorkforcePasswordResetControl } from "../../workforce-password-reset-co
 import { OsmRelationshipControls } from "./osm-relationship-controls";
 import { WorkforceReleaseControl } from "./workforce-release-control";
 import { StaffMembershipControls } from "./staff-membership-controls";
+import { ReportExportGrantControl } from "./report-export-grant-control";
 
 export const metadata: Metadata = {
   title: "รายละเอียดความสัมพันธ์บุคลากร",
@@ -214,6 +215,15 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             targetHospitalId={detail.hospital.id}
           />
         )}
+
+        {detail.viewerScope === "OWNER" && detail.reportExportGrant && detail.relationshipStatus !== "ENDED" ? (
+          <ReportExportGrantControl
+            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
+            grant={detail.reportExportGrant}
+            relationshipId={detail.relationshipId}
+            targetHospitalId={detail.hospital.id}
+          />
+        ) : null}
 
         {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
           <WorkforcePasswordResetControl

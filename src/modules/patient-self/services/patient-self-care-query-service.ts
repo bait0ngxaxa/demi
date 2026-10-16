@@ -1,4 +1,6 @@
 import "server-only";
+import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
+import { loadAppointmentContactPhones } from "@/modules/appointments/services/appointment-contact-phone-service";
 
 import {
   AppointmentCancellationRequestStatus,
@@ -231,6 +233,7 @@ export type PatientSelfAppointmentHistory = {
 
 export type PatientSelfAppointmentDetail = PatientSelfAppointmentItem & {
   relationship: PatientSelfRelationshipContext;
+  contactPhones: AppointmentContactPhones;
 };
 
 const screeningPatientSelect = {
@@ -1164,6 +1167,7 @@ export async function getOwnPatientAppointmentDetail(
     return {
       ...toAppointmentItem(record),
       relationship,
+      contactPhones: await loadAppointmentContactPhones(database, relationship.relationshipId, "PATIENT_SELF"),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

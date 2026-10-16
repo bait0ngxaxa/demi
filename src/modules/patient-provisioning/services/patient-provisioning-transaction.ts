@@ -229,7 +229,8 @@ async function resolvePatientPerson(
 
   const updated = await transaction.person.update({
     where: { id: resolved.id },
-    data,
+    // E3: name corrections use Person.version; filling a missing name is also a name change.
+    data: { ...data, version: { increment: 1 } },
     select: { id: true, givenName: true, familyName: true },
   });
 

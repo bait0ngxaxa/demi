@@ -339,6 +339,7 @@ describe("application navigation projection", () => {
       "/app/personal/services",
       "/app/personal/medications",
       "/app/personal/wellness",
+      "/app/personal/measurements",
       "/app/personal/news",
       "/app/personal/knowledge",
       "/app/personal/appointments",

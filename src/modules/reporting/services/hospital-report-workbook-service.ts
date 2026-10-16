@@ -771,6 +771,7 @@ export async function exportHospitalReportingWorkbook(
     resourceId: access.hospital.id,
     metadata: {
       capability: "hospital:report:export",
+      accessBasis: access.accessBasis,
       generatedAt: generatedAt.toISOString(),
       outcome: "prepared",
       programCount: dataset.programs.length,

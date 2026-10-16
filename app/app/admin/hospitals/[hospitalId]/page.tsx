@@ -20,8 +20,16 @@ import {
   ForbiddenError,
   NotFoundError,
   UnauthenticatedError,
+  ValidationError,
 } from "@/shared/errors/application-error";
+import { Button } from "@/components/ui/button";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  findPatientsForNameCorrection,
+  type PatientNameCorrectionTarget,
+} from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 
+import { PatientNameCorrectionForm } from "../../../patients/patient-name-correction-form";
 import { WorkforcePasswordResetControl } from "../../../workforce/workforce-password-reset-control";
 import {
   listHospitalOwnersForPasswordReset,
@@ -36,7 +44,70 @@ export const metadata: Metadata = {
 
 type HospitalGovernanceDetailPageProps = {
   params: Promise<{ hospitalId: string }>;
+  searchParams: Promise<{ hn?: string | string[] }>;
 };
+
+/** Customer decision E3 (ก-19): ADMIN corrects a Patient name reported by the OWNER (Hospital + HN). */
+async function PatientNameCorrectionSection({
+  actor,
+  hospitalId,
+  hospitalNumber,
+}: {
+  actor: ActorContext;
+  hospitalId: string;
+  hospitalNumber: string | undefined;
+}): Promise<React.JSX.Element> {
+  let matches: PatientNameCorrectionTarget[] | null = null;
+  let lookupError: string | null = null;
+  if (hospitalNumber !== undefined) {
+    try {
+      matches = await findPatientsForNameCorrection(actor, { hospitalId, hospitalNumber });
+    } catch (error: unknown) {
+      if (!(error instanceof ValidationError)) throw error;
+      lookupError = "กรุณากรอก HN ให้ถูกต้อง";
+    }
+  }
+
+  return (
+    <section aria-labelledby="patient-name-correction-heading">
+      <Panel>
+        <h2 className="text-xl font-semibold tracking-[-0.02em]" id="patient-name-correction-heading">
+          แก้ไขชื่อ-สกุลผู้ป่วย
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-text-muted">
+          ใช้เมื่อเจ้าของโรงพยาบาลแจ้งว่าผู้ป่วยเชื่อมกับหลายโรงพยาบาล ชื่อ-สกุลที่แก้จะแสดงในทุกโรงพยาบาลที่ผู้ป่วยเชื่อมอยู่
+        </p>
+        <form className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+          <div className="min-w-0 flex-1">
+            <label className="text-sm font-semibold text-text" htmlFor="patient-name-correction-hn">HN ของผู้ป่วยในโรงพยาบาลนี้</label>
+            <input
+              className="mt-2 min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              defaultValue={hospitalNumber ?? ""}
+              id="patient-name-correction-hn"
+              maxLength={64}
+              name="hn"
+              required
+            />
+          </div>
+          <Button size="compact" type="submit" variant="secondary">ค้นหา</Button>
+        </form>
+        {lookupError ? <Alert className="mt-4" role="alert" variant="warning">{lookupError}</Alert> : null}
+        {matches?.length === 0 ? <p className="mt-4 text-sm text-text-muted">ไม่พบผู้ป่วยที่มี HN นี้ในโรงพยาบาลนี้</p> : null}
+        {matches?.map((match) => (
+          <div className="mt-6 border-t border-border pt-5" key={match.relationshipId}>
+            <p className="mb-4 text-sm text-text-muted">HN {match.hospitalNumber} · ชื่อปัจจุบัน {match.givenName} {match.familyName}</p>
+            <PatientNameCorrectionForm
+              familyName={match.familyName}
+              givenName={match.givenName}
+              relationshipId={match.relationshipId}
+              version={match.version}
+            />
+          </div>
+        ))}
+      </Panel>
+    </section>
+  );
+}
 
 function statusLabel(status: HospitalStatus): string {
   switch (status) {
@@ -125,10 +196,13 @@ function GovernanceMetadata({
 
 export default async function HospitalGovernanceDetailPage({
   params,
+  searchParams,
 }: HospitalGovernanceDetailPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await requirePlatformAdmin();
   const { hospitalId } = await params;
+  const { hn } = await searchParams;
+  if (Array.isArray(hn)) notFound();
   let hospital: HospitalGovernanceProjection;
   let owners: WorkforceHospitalOwnerForReset[] = [];
 
@@ -152,7 +226,7 @@ export default async function HospitalGovernanceDetailPage({
           { href: "/app/admin/hospitals", label: "การกำกับดูแลโรงพยาบาล" },
           { label: "รายละเอียดโรงพยาบาล" },
         ]}
-        description="ใช้สำหรับตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล ไม่รวมการจัดการบัญชีหรือข้อมูลผู้ป่วย"
+        description="ใช้สำหรับตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล และแก้ชื่อ-สกุลผู้ป่วยตามที่เจ้าของโรงพยาบาลแจ้ง ไม่รวมการจัดการบัญชีหรือข้อมูลผู้ป่วยอื่น"
         title={hospital.name}
       />
 
@@ -205,6 +279,8 @@ export default async function HospitalGovernanceDetailPage({
             )}
           </section>
         ) : null}
+
+        <PatientNameCorrectionSection actor={actor} hospitalId={hospital.id} hospitalNumber={hn} />
       </div>
     </div>
   );

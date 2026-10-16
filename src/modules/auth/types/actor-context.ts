@@ -12,6 +12,8 @@ export type ActorHospitalMembership = {
   profession: Profession | null;
   status: MembershipStatus;
   hospitalStatus: HospitalStatus;
+  /** E1: OWNER-granted report export; absent means not granted. */
+  reportExportGranted?: boolean;
 };
 
 export type ActorOsmHospitalRelationship = {

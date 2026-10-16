@@ -572,6 +572,102 @@ export async function revokePendingCaregiverInvitation(
   }
 }
 
+export type ReissuedCaregiverInvitationLink = {
+  invitationId: string;
+  plaintextToken: string;
+  expiresAt: Date;
+};
+
+/**
+ * Customer decision E2 (ก-17): only the token hash is stored, so showing a pending invitation as a QR
+ * rotates its secret. Recipient, expiry and acceptance rules stay unchanged; the previous link stops working.
+ */
+export async function reissueCaregiverInvitationLink(
+  actor: ActorContext | null | undefined,
+  invitationId: unknown,
+  dependencies: CaregiverRelationshipServiceDependencies = {},
+): Promise<ReissuedCaregiverInvitationLink> {
+  assertFamilyPatientSelf(actor);
+
+  const parsedInvitationId = caregiverInvitationIdSchema.safeParse({ invitationId });
+  if (!parsedInvitationId.success) {
+    throw new ValidationError();
+  }
+
+  const credential = (dependencies.generateCredential ?? generateCaregiverInvitationCredential)();
+
+  try {
+    const outcome = await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
+      const patient = await assertPatientSelf(transaction, actor);
+      const invitation = await transaction.caregiverInvitation.findFirst({
+        where: {
+          id: parsedInvitationId.data.invitationId,
+          patientProfileId: patient.patientProfileId,
+          issuedByUserId: actor.userId,
+        },
+        select: { id: true, status: true },
+      });
+
+      if (!invitation) {
+        throw new NotFoundError();
+      }
+
+      if (invitation.status !== CaregiverInvitationStatus.PENDING) {
+        throw new ConflictError("The caregiver invitation is no longer pending");
+      }
+
+      const reissued = await transaction.$queryRaw<Array<{ id: string; expiresAt: Date }>>(Prisma.sql`
+        UPDATE "CaregiverInvitation"
+        SET "tokenHash" = ${credential.tokenHash},
+            "updatedAt" = clock_timestamp()
+        WHERE "id" = ${invitation.id}::uuid
+          AND "patientProfileId" = ${patient.patientProfileId}::uuid
+          AND "issuedByUserId" = ${actor.userId}::uuid
+          AND "status" = 'PENDING'
+          AND "expiresAt" > clock_timestamp()
+        RETURNING "id", "expiresAt"
+      `);
+      const row = reissued[0];
+
+      if (!row) {
+        if (await expireInvitationIfDue(transaction, actor.userId, invitation.id)) {
+          return { kind: "EXPIRED" as const };
+        }
+
+        throw new ConflictError("The caregiver invitation changed concurrently");
+      }
+
+      await recordAuditEvent(
+        {
+          actorUserId: actor.userId,
+          action: "caregiver_invitation.link_reissued",
+          resourceType: "caregiver_invitation",
+          resourceId: row.id,
+          metadata: {
+            status: CaregiverInvitationStatus.PENDING,
+            expiresAt: row.expiresAt.toISOString(),
+          },
+        },
+        transaction,
+      );
+
+      return { kind: "REISSUED" as const, invitationId: row.id, expiresAt: row.expiresAt };
+    });
+
+    if (outcome.kind === "EXPIRED") {
+      throw new ConflictError("The caregiver invitation has expired");
+    }
+
+    return {
+      invitationId: outcome.invitationId,
+      plaintextToken: credential.plaintextToken,
+      expiresAt: outcome.expiresAt,
+    };
+  } catch (error: unknown) {
+    rethrowServiceError(error, "Caregiver invitation link could not be reissued");
+  }
+}
+
 export async function acceptCaregiverInvitation(
   actor: ActorContext | null | undefined,
   plaintextToken: unknown,

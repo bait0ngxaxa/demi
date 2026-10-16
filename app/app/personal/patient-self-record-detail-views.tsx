@@ -41,6 +41,7 @@ import {
   patientSelfHistoryPageHref,
 } from "./patient-self-care-presentation";
 import { PatientAppointmentInteractionControls } from "./appointments/patient-appointment-interaction-controls";
+import { AppointmentContactPhoneEntries } from "../appointment-contact-phones";
 
 const linkClassName =
   "inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2";
@@ -445,6 +446,7 @@ export function PatientSelfAppointmentDetailView({
                 </dd>
               </div>
             ) : null}
+            <AppointmentContactPhoneEntries contactPhones={detail.contactPhones} showPatientPhone={false} />
           </dl>
           {detail.status !== "SCHEDULED" ? (
             <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">

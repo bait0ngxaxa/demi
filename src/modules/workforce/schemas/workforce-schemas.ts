@@ -67,6 +67,13 @@ export const hospitalMembershipTransitionSchema = z
   .object(hospitalMembershipLifecycleFields)
   .strict();
 
+export const hospitalMembershipReportExportGrantSchema = z
+  .object({
+    ...hospitalMembershipLifecycleFields,
+    granted: z.boolean(),
+  })
+  .strict();
+
 export const hospitalOwnerGovernanceMutationSchema = z
   .object({
     relationshipId: workforceRelationshipIdSchema,
@@ -159,6 +166,9 @@ export type HospitalMembershipProfessionUpdateInput = z.infer<
 >;
 export type HospitalMembershipTransitionInput = z.infer<
   typeof hospitalMembershipTransitionSchema
+>;
+export type HospitalMembershipReportExportGrantInput = z.infer<
+  typeof hospitalMembershipReportExportGrantSchema
 >;
 export type HospitalOwnerGovernanceMutationInput = z.infer<
   typeof hospitalOwnerGovernanceMutationSchema

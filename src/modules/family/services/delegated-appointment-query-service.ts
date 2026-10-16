@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
+import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
+import { loadAppointmentContactPhones } from "@/modules/appointments/services/appointment-contact-phone-service";
 import { FAMILY_APPOINTMENT_PAGE_SIZE, FAMILY_APPOINTMENT_WINDOW_MS } from "../domain/appointment-grant-contract";
 import { appointmentGrantCaregiverWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor } from "../policies/caregiver-relationship-policy";
@@ -23,6 +25,8 @@ export const delegatedAppointmentSelect = {
 type AppointmentRecord = Prisma.PatientAppointmentGetPayload<{ select: typeof delegatedAppointmentSelect }>;
 export type DelegatedAppointment = Omit<AppointmentRecord, "id"> & { appointmentId: string; hospitalName: string };
 export type DelegatedAppointmentPage = { appointments: DelegatedAppointment[]; nextCursor: string | null };
+/** E4: a caregiver detail adds the Hospital phone only; the Patient phone is never projected. */
+export type DelegatedAppointmentDetail = DelegatedAppointment & { contactPhones: AppointmentContactPhones };
 
 function toAppointment(record: AppointmentRecord, hospitalName: string): DelegatedAppointment {
   return { appointmentId: record.id, hospitalName, type: record.type, scheduledAt: record.scheduledAt,
@@ -74,7 +78,7 @@ export async function listDelegatedAppointments(
 
 export async function getDelegatedAppointment(
   actor: ActorContext | null | undefined, grantId: unknown, appointmentId: unknown, dependencies: AppointmentGrantDependencies = {},
-): Promise<DelegatedAppointment> {
+): Promise<DelegatedAppointmentDetail> {
   assertAppointmentGrantEnabled(dependencies);
   assertFamilyAuthenticatedActor(actor);
   const grant = appointmentGrantIdSchema.safeParse(grantId);
@@ -85,14 +89,17 @@ export async function getDelegatedAppointment(
     return await (dependencies.database ?? getPrisma()).$transaction(async (transaction) => {
       const scope = await transaction.caregiverAppointmentGrant.findFirst({
         where: { id: grant.data, ...appointmentGrantCaregiverWhere(actor, "ACTIVE") },
-        select: { patientHospitalRelationship: { select: { hospital: { select: { name: true } } } } },
+        select: { patientHospitalRelationshipId: true, patientHospitalRelationship: { select: { hospital: { select: { name: true } } } } },
       });
       if (!scope) throw new NotFoundError();
       const row = await transaction.patientAppointment.findFirst({
         where: { AND: [appointmentWhere(actor, grant.data, now), { id: appointment.data }] }, select: delegatedAppointmentSelect,
       });
       if (!row) throw new NotFoundError();
-      return toAppointment(row, scope.patientHospitalRelationship.hospital.name);
+      return {
+        ...toAppointment(row, scope.patientHospitalRelationship.hospital.name),
+        contactPhones: await loadAppointmentContactPhones(transaction, scope.patientHospitalRelationshipId, "CAREGIVER_GRANT"),
+      };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   } catch (error: unknown) { rethrowAppointmentGrantError(error); }
 }

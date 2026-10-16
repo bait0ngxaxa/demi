@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   AppointmentLineNotificationOutcome,
+  AppointmentLineNotificationRecipientKind,
   AppointmentLineNotificationState,
   HospitalStatus,
   Prisma,
@@ -14,6 +15,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 
 import {
@@ -29,6 +31,10 @@ import {
   isInsideLineRetryKeyWindow,
   type AppointmentLineNotificationRollout,
 } from "../domain/appointment-line-notifications";
+import {
+  currentAssignedOsmRecipient,
+  isActiveCaregiverAppointmentGrant,
+} from "./appointment-line-notification-recipient-service";
 
 type DeliveryDatabase = PrismaClient;
 type Claim = AppointmentLineNotification;
@@ -58,6 +64,7 @@ export type AppointmentLineNotificationDeliveryDependencies = {
   rollout?: () => AppointmentLineNotificationRollout;
   push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>;
   random?: () => number;
+  familyAppointmentReadEnabled?: () => boolean;
   batchSize?: number;
   logSummary?: (result: AppointmentLineNotificationDrainResult) => void;
 };
@@ -144,6 +151,7 @@ async function currentEligibility(
   database: DeliveryDatabase,
   notification: Claim,
   now: Date,
+  familyAppointmentReadEnabled: boolean,
 ): Promise<CurrentEligibility> {
   if (
     !notification.recipientUserId || !notification.bindingId ||
@@ -151,6 +159,7 @@ async function currentEligibility(
   ) {
     return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
   }
+  const recipientUserId = notification.recipientUserId;
 
   return database.$transaction(async (transaction) => {
     const appointment = await transaction.patientAppointment.findUnique({
@@ -196,18 +205,33 @@ async function currentEligibility(
 
     const relationship = appointment.patientHospitalRelationship;
     const patientUser = relationship.patientProfile.person.user;
-    if (
-      relationship.hospital.status !== HospitalStatus.ACTIVE ||
-      !patientUser || patientUser.id !== notification.recipientUserId ||
-      patientUser.status !== UserStatus.ACTIVE ||
-      !patientUser.roles.some(({ role }) => role === Role.PATIENT)
-    ) {
+    if (relationship.hospital.status !== HospitalStatus.ACTIVE) {
+      return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+    }
+
+    // E6: re-resolve each recipient's authority at send time (current OSM assignment, ACTIVE grant).
+    const recipientStillAuthorized =
+      notification.recipientKind === AppointmentLineNotificationRecipientKind.PATIENT
+        ? Boolean(
+            patientUser && patientUser.id === recipientUserId &&
+            patientUser.status === UserStatus.ACTIVE &&
+            patientUser.roles.some(({ role }) => role === Role.PATIENT),
+          )
+        : notification.recipientKind === AppointmentLineNotificationRecipientKind.OSM
+          ? await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId
+          : familyAppointmentReadEnabled && notification.recipientGrantId !== null &&
+            await isActiveCaregiverAppointmentGrant(transaction, {
+              grantId: notification.recipientGrantId,
+              caregiverUserId: recipientUserId,
+              patientHospitalRelationshipId: relationship.id,
+            });
+    if (!recipientStillAuthorized) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
     const [bindings, preference] = await Promise.all([
       transaction.lineAccountBinding.findMany({
-        where: { userId: notification.recipientUserId, unlinkedAt: null },
+        where: { userId: recipientUserId, unlinkedAt: null },
         orderBy: { id: "asc" },
         take: 2,
         select: {
@@ -219,7 +243,7 @@ async function currentEligibility(
         },
       }),
       transaction.lineAppointmentNotificationPreference.findUnique({
-        where: { userId: notification.recipientUserId },
+        where: { userId: recipientUserId },
         select: {
           enabled: true,
           bindingId: true,
@@ -465,7 +489,8 @@ export async function drainAppointmentLineNotificationOutbox(
       continue;
     }
 
-    const eligibility = await currentEligibility(database, notification, checkedAt);
+    const familyAppointmentReadEnabled = (dependencies.familyAppointmentReadEnabled ?? isFamilyDelegatedAppointmentReadEnabled)();
+    const eligibility = await currentEligibility(database, notification, checkedAt, familyAppointmentReadEnabled);
     if (!eligibility.eligible) {
       const settled = await settleClaim(database, notification, {
         state: AppointmentLineNotificationState.SUPPRESSED,
@@ -491,7 +516,7 @@ export async function drainAppointmentLineNotificationOutbox(
     const attempt = await reserveProviderAttempt(database, notification, nowOf(dependencies));
     if (!attempt) continue;
 
-    const finalEligibility = await currentEligibility(database, notification, nowOf(dependencies));
+    const finalEligibility = await currentEligibility(database, notification, nowOf(dependencies), familyAppointmentReadEnabled);
     if (!finalEligibility.eligible) {
       const settled = await settleClaim(database, notification, {
         state: AppointmentLineNotificationState.SUPPRESSED,

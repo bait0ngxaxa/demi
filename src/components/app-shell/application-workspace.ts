@@ -245,6 +245,18 @@ function projectHospitalActions(
       category: "administration",
       prefetch: false,
     });
+  } else if (decideHospitalReportPolicy({
+    actor,
+    capability: HOSPITAL_REPORT_CAPABILITIES.export,
+    target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
+  }).allowed) {
+    actions.push({
+      href: "/app/hospitals/reporting/export",
+      label: "ส่งออกรายงาน",
+      description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาลตามสิทธิ์ที่เจ้าของโรงพยาบาลให้ไว้",
+      category: "administration",
+      prefetch: false,
+    });
   }
 
   return actions;

@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   HospitalStatus,
+  MembershipStatus,
   Prisma,
   Role,
   UserStatus,
@@ -9,6 +10,8 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
+import { appointmentGrantCaregiverWhere } from "@/modules/family/policies/appointment-grant-policy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
@@ -25,13 +28,18 @@ function databaseOf(database?: PreferenceDatabase): PreferenceDatabase {
   return database ?? getPrisma();
 }
 
-function assertPatientSelfRole(actor: ActorContext | null | undefined): asserts actor is ActorContext {
-  if (!actor || !actor.userId || !actor.personId || !actor.roles.includes(Role.PATIENT)) {
+function assertAuthenticatedActor(actor: ActorContext | null | undefined): asserts actor is ActorContext {
+  if (!actor || !actor.userId || !actor.personId) {
     throw new ForbiddenError();
   }
 }
 
-async function loadCurrentPatientUser(
+/**
+ * One opt-in per account (E6, ก-24): an ACTIVE User who may receive appointment notifications as the Patient,
+ * as an OSM of an ACTIVE Hospital, or as a caregiver with an ACTIVE appointment grant. Recipient authority for
+ * each event is still checked at source and at send time.
+ */
+async function loadCurrentNotificationUser(
   actor: ActorContext,
   database: PreferenceTransaction | PreferenceDatabase,
 ): Promise<{ id: string; personId: string } | null> {
@@ -44,21 +52,32 @@ async function loadCurrentPatientUser(
       roles: { select: { role: true } },
     },
   });
-  if (
-    !user || user.status !== UserStatus.ACTIVE || user.personId !== actor.personId ||
-    !user.roles.some(({ role }) => role === Role.PATIENT)
-  ) {
+  if (!user || user.status !== UserStatus.ACTIVE || user.personId !== actor.personId) {
     return null;
   }
 
-  const activeRelationship = await database.patientHospitalRelationship.findFirst({
-    where: {
-      patientProfile: { personId: actor.personId },
-      hospital: { status: HospitalStatus.ACTIVE },
-    },
-    select: { id: true },
-  });
-  return activeRelationship ? { id: user.id, personId: user.personId } : null;
+  const roles = new Set(user.roles.map(({ role }) => role));
+  const [patientRelationship, osmRelationship, caregiverGrant] = await Promise.all([
+    roles.has(Role.PATIENT)
+      ? database.patientHospitalRelationship.findFirst({
+          where: { patientProfile: { personId: actor.personId }, hospital: { status: HospitalStatus.ACTIVE } },
+          select: { id: true },
+        })
+      : null,
+    roles.has(Role.OSM)
+      ? database.osmHospitalRelationship.findFirst({
+          where: { userId: user.id, status: MembershipStatus.ACTIVE, hospital: { status: HospitalStatus.ACTIVE } },
+          select: { id: true },
+        })
+      : null,
+    isFamilyDelegatedAppointmentReadEnabled()
+      ? database.caregiverAppointmentGrant.findFirst({
+          where: appointmentGrantCaregiverWhere(actor, "ACTIVE"),
+          select: { id: true },
+        })
+      : null,
+  ]);
+  return patientRelationship || osmRelationship || caregiverGrant ? { id: user.id, personId: user.personId } : null;
 }
 
 async function currentBinding(
@@ -93,9 +112,9 @@ export async function getOwnAppointmentLineNotificationPreference(
   actor: ActorContext | null | undefined,
   database?: PreferenceDatabase,
 ): Promise<OwnAppointmentLineNotificationPreference | null> {
-  assertPatientSelfRole(actor);
+  assertAuthenticatedActor(actor);
   const db = databaseOf(database);
-  const user = await loadCurrentPatientUser(actor, db);
+  const user = await loadCurrentNotificationUser(actor, db);
   if (!user) return null;
 
   const [bindings, preference] = await Promise.all([
@@ -133,7 +152,7 @@ export async function setOwnAppointmentLineNotificationPreference(
   enabled: boolean,
   input: { database?: PreferenceDatabase; now?: () => Date } = {},
 ): Promise<OwnAppointmentLineNotificationPreference> {
-  assertPatientSelfRole(actor);
+  assertAuthenticatedActor(actor);
   const db = databaseOf(input.database);
   const now = new Date((input.now?.() ?? new Date()).getTime());
   if (Number.isNaN(now.getTime())) throw new InfrastructureError("Preference time could not be resolved");
@@ -143,7 +162,7 @@ export async function setOwnAppointmentLineNotificationPreference(
     try {
       return await db.$transaction(async (transaction) => {
         await lockPatientAndBinding(transaction, actor.userId, null);
-        const currentUser = await loadCurrentPatientUser(actor, transaction);
+        const currentUser = await loadCurrentNotificationUser(actor, transaction);
         if (!currentUser) throw new ForbiddenError();
 
         const bindings = await currentBinding(actor.userId, transaction);

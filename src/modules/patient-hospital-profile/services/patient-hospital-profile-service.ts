@@ -51,7 +51,7 @@ export type PatientHospitalProfileDetail = {
 
 export const patientHospitalProfileSelect = {
   id: true,
-  hospital: { select: { name: true } },
+  hospital: { select: { id: true, name: true } },
   hospitalProfile: {
     select: {
       ...patientHospitalAddressSelect,
@@ -79,6 +79,7 @@ export const patientHospitalProfileSelect = {
         select: {
           givenName: true,
           familyName: true,
+          version: true,
         },
       },
     },

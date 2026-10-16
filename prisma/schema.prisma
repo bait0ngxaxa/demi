@@ -257,6 +257,12 @@ enum AppointmentLineNotificationEventKind {
   CANCELLED
 }
 
+enum AppointmentLineNotificationRecipientKind {
+  PATIENT
+  OSM
+  CAREGIVER
+}
+
 enum AppointmentLineNotificationState {
   PENDING
   CLAIMED
@@ -383,6 +389,8 @@ model Person {
   identityKeyHash String   @unique @db.VarChar(64)
   givenName       String?  @db.VarChar(120)
   familyName      String?  @db.VarChar(120)
+  // Customer decision E3 (ก-19): optimistic-concurrency version for name correction.
+  version         Int      @default(1)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -404,6 +412,8 @@ model User {
   person      Person               @relation(fields: [personId], references: [id], onDelete: Restrict)
   roles       UserRole[]
   memberships HospitalMembership[]
+  reportExportGrantsIssued HospitalMembership[] @relation("HospitalMembershipReportExportGrantedBy")
+  patientSelfMeasurementsDeleted PatientSelfMeasurement[] @relation("PatientSelfMeasurementDeletedBy")
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
   workforceActivations WorkforceActivation[] @relation("WorkforceActivationTarget")
   workforceActivationsCreated WorkforceActivation[] @relation("WorkforceActivationCreator")
@@ -600,11 +610,15 @@ model HospitalMembership {
   membershipType MembershipType
   profession     Profession?
   status         MembershipStatus @default(PROVISIONED)
+  // Customer decision E1 (ก-15): OWNER-granted report export for a MEMBER; both set or both null (SQL CHECK).
+  reportExportGrantedAt       DateTime? @db.Timestamptz(3)
+  reportExportGrantedByUserId String?   @db.Uuid
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  reportExportGrantedByUser User? @relation("HospitalMembershipReportExportGrantedBy", fields: [reportExportGrantedByUserId], references: [id], onDelete: Restrict)
 
   @@index([userId, hospitalId])
   @@index([hospitalId, status])
@@ -639,8 +653,32 @@ model PatientProfile {
   personalExerciseCreateReceipts PersonalExerciseCreateReceipt[]
   personalWeightGoal PersonalWeightGoal?
   personalWeightGoalCreateReceipts PersonalWeightGoalCreateReceipt[]
+  selfMeasurements PatientSelfMeasurement[]
 
   @@unique([id, personId])
+}
+
+// Customer decision E5 (ก-22): Patient-recorded measurements ("ผู้ป่วยบันทึกเอง"). Never a service round,
+// never round vitals and never a report source. Value ranges match PatientFollowup; SQL CHECKs in the migration.
+model PatientSelfMeasurement {
+  id                     String    @id @default(uuid()) @db.Uuid
+  patientProfileId       String    @db.Uuid
+  submissionNonce        String    @db.Uuid
+  measuredAt             DateTime  @db.Timestamptz(3)
+  weight                 Float?
+  systolicBloodPressure  Float?
+  diastolicBloodPressure Float?
+  bloodSugar             Float?
+  note                   String?   @db.VarChar(1000)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(3)
+  deletedAt              DateTime? @db.Timestamptz(3)
+  deletedByUserId        String?   @db.Uuid
+
+  patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  deletedByUser  User?          @relation("PatientSelfMeasurementDeletedBy", fields: [deletedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([patientProfileId, submissionNonce])
+  @@index([patientProfileId, measuredAt(sort: Desc), id(sort: Desc)], map: "PatientSelfMeasurement_history_order_idx")
 }
 
 enum PersonalMedicationStatus {
@@ -944,6 +982,7 @@ model CaregiverAppointmentGrant {
   revokedAt DateTime? @db.Timestamptz(3)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  appointmentLineNotifications AppointmentLineNotification[]
 
   caregiverRelationship CaregiverRelationship @relation(fields: [caregiverRelationshipId, patientProfileId, caregiverUserId], references: [id, patientProfileId, caregiverUserId], onDelete: Restrict, onUpdate: Restrict)
   patientProfile PatientProfile @relation(fields: [patientProfileId, patientPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
@@ -1779,7 +1818,10 @@ model AppointmentLineNotification {
   patientHospitalRelationshipId String                              @db.Uuid
   sourceUpdatedAt              DateTime                              @db.Timestamptz(3)
   eventKind                    AppointmentLineNotificationEventKind
+  // Customer decision E6 (ก-24): one row per (event, recipient); PATIENT uniqueness is a partial SQL index.
+  recipientKind                AppointmentLineNotificationRecipientKind @default(PATIENT)
   recipientUserId              String?                               @db.Uuid
+  recipientGrantId             String?                               @db.Uuid
   bindingId                    String?                               @db.Uuid
   bindingLifecycleVersion      Int?
   preferenceVersion            Int?
@@ -1800,8 +1842,10 @@ model AppointmentLineNotification {
   appointment               PatientAppointment         @relation(fields: [appointmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
   recipient                 User?                      @relation("AppointmentLineNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   binding                   LineAccountBinding?        @relation(fields: [bindingId], references: [id], onDelete: Restrict)
+  recipientGrant            CaregiverAppointmentGrant? @relation(fields: [recipientGrantId], references: [id], onDelete: Restrict)
 
-  @@unique([appointmentId, sourceUpdatedAt])
+  @@unique([appointmentId, sourceUpdatedAt, recipientUserId])
+  @@index([recipientGrantId])
   @@index([state, dueAt])
   @@index([state, leaseExpiresAt])
   @@index([state, terminalAt])

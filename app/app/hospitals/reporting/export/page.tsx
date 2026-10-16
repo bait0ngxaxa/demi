@@ -1,0 +1,53 @@
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
+
+import { PageHeader } from "@/components/ui/page-header";
+import { Panel } from "@/components/ui/panel";
+import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { listHospitalReportExportGrantHospitals } from "@/modules/reporting/services/hospital-report-access-service";
+import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+import { ExportButton } from "../hospital-report-workspace";
+
+export const metadata: Metadata = { title: "ส่งออกรายงานโรงพยาบาล" };
+
+/** Customer decision E1 (ก-15): export-only entry for MEMBER staff holding an OWNER grant. */
+export default async function HospitalReportExportPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<React.JSX.Element> {
+  await connection();
+  if (Object.keys(await searchParams).length > 0) notFound();
+
+  let hospitals: Awaited<ReturnType<typeof listHospitalReportExportGrantHospitals>>;
+  try {
+    hospitals = await listHospitalReportExportGrantHospitals(await getProtectedApplicationActor());
+  } catch (error: unknown) {
+    if (error instanceof UnauthenticatedError) redirect("/login");
+    if (error instanceof ForbiddenError) redirect("/app");
+    throw error;
+  }
+
+  if (hospitals.length === 0) redirect("/app");
+
+  return (
+    <div className="min-w-0 max-w-3xl space-y-6">
+      <PageHeader
+        title="ส่งออกรายงานโรงพยาบาล"
+        description="เจ้าของโรงพยาบาลให้สิทธิ์คุณดาวน์โหลดไฟล์รายงาน (Excel) ทุกการส่งออกถูกบันทึกไว้ กรุณาใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล"
+      />
+      <ul className="space-y-4">
+        {hospitals.map((hospital) => (
+          <li key={hospital.id}>
+            <Panel className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="min-w-0 break-words font-semibold text-text">{hospital.name}</p>
+              <ExportButton endpoint="/api/v1/hospital/reporting/export" hospitalId={hospital.id} />
+            </Panel>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

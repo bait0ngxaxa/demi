@@ -98,6 +98,20 @@ function canReadHospitalReports(actor: ActorContext): boolean {
   );
 }
 
+// E1: export-only entry for a MEMBER holding an OWNER grant (OWNERs export from the report page).
+function canOnlyExportHospitalReports(actor: ActorContext): boolean {
+  return !canReadHospitalReports(actor) && actor.hospitalMemberships.some((membership) =>
+    decideHospitalReportPolicy({
+      actor,
+      capability: HOSPITAL_REPORT_CAPABILITIES.export,
+      target: {
+        hospitalId: membership.hospitalId,
+        hospitalStatus: membership.hospitalStatus,
+      },
+    }).allowed,
+  );
+}
+
 function canProvisionPatients(actor: ActorContext): boolean {
   return (
     actor.hospitalMemberships.some(({ hospitalId }) =>
@@ -202,6 +216,7 @@ export function projectApplicationNavigation(
         { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
         { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
         { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
+        { href: "/app/personal/measurements", label: "ตัวฉันในตอนนี้", match: "prefix" },
         { href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false },
         { href: "/app/personal/knowledge", label: "สื่อความรู้", match: "prefix", prefetch: false },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
@@ -254,6 +269,8 @@ export function projectApplicationNavigation(
   }
   if (canReadHospitalReports(actor)) {
     hospitalWorkItems.push({ href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" as const });
+  } else if (canOnlyExportHospitalReports(actor)) {
+    hospitalWorkItems.push({ href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" as const });
   }
   if (hospitalWorkItems.length > 0) {
     groups.push({

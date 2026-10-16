@@ -1,8 +1,9 @@
 import { APPOINTMENT_LOCATION_LABELS, APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS } from "@/modules/appointments/domain/appointment-definitions";
-import type { DelegatedAppointment } from "@/modules/family/services/delegated-appointment-query-service";
+import type { DelegatedAppointment, DelegatedAppointmentDetail } from "@/modules/family/services/delegated-appointment-query-service";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
 
-export function AppointmentFields({ appointment }: { appointment: DelegatedAppointment }): React.JSX.Element {
+export function AppointmentFields({ appointment }: { appointment: DelegatedAppointment | DelegatedAppointmentDetail }): React.JSX.Element {
   const fields = [
     ["หน่วยบริการ", appointment.hospitalName],
     ["ประเภทนัด", APPOINTMENT_TYPE_LABELS[appointment.type]],
@@ -13,5 +14,6 @@ export function AppointmentFields({ appointment }: { appointment: DelegatedAppoi
   return <dl className="grid gap-4 sm:grid-cols-2">
     {fields.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-sm text-text-muted">{label}</dt><dd className="mt-1 break-words font-semibold text-text">{value}</dd></div>)}
     <div><dt className="text-sm text-text-muted">สถานะนัด</dt><dd className="mt-1"><StatusBadge variant={appointment.status === "CANCELLED" ? "neutral" : "info"}>{APPOINTMENT_STATUS_LABELS[appointment.status]}</StatusBadge></dd></div>
+    {"contactPhones" in appointment ? <AppointmentContactPhoneEntries contactPhones={appointment.contactPhones} showPatientPhone={false} /> : null}
   </dl>;
 }

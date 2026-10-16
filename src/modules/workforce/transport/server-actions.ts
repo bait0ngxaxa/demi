@@ -10,6 +10,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 import {
   hospitalMemberProvisionSchema,
   hospitalMembershipProfessionUpdateSchema,
+  hospitalMembershipReportExportGrantSchema,
   hospitalMembershipTransitionSchema,
   hospitalOwnerGovernanceMutationSchema,
   osmRelationshipTransitionSchema,
@@ -28,6 +29,7 @@ import {
   previewWorkforceActivation,
   promoteHospitalOwner,
   provisionHospitalMember,
+  setHospitalMembershipReportExportGrant,
   provisionOsm,
   provisionWorkforceBulk,
   regenerateWorkforceActivation,
@@ -51,6 +53,7 @@ import type {
   WorkforceOsmRelationshipMutationActionState,
   WorkforceOsmRelationshipMutationResultState,
   WorkforceOwnerGovernanceMutationActionState,
+  WorkforceReportExportGrantActionState,
   WorkforceOwnerGovernanceMutationResultState,
   WorkforceProvisionActionState,
   WorkforceProvisionResultState,
@@ -430,6 +433,34 @@ export async function restoreHospitalMembershipAction(
     const result = await restoreHospitalMembership(actor, parsed.data);
     revalidateWorkforceMembership(result.relationshipId);
     return { status: "SUCCESS", result: toMembershipMutationResultState(result) };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export async function setHospitalMembershipReportExportGrantAction(
+  _previousState: WorkforceReportExportGrantActionState,
+  formData: FormData,
+): Promise<WorkforceReportExportGrantActionState> {
+  const granted = getString(formData, "granted");
+  const parsed = hospitalMembershipReportExportGrantSchema.safeParse({
+    ...getMembershipMutationInput(formData),
+    granted: granted === "true" ? true : granted === "false" ? false : granted,
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลสิทธิ์ส่งออกรายงานไม่ถูกต้อง กรุณาโหลดหน้าใหม่",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await setHospitalMembershipReportExportGrant(actor, parsed.data);
+    revalidateWorkforceMembership(result.relationshipId);
+    return { status: "SUCCESS", granted: result.granted };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapWorkforceError(error) };
   }

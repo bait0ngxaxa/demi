@@ -10,6 +10,8 @@ export const HOSPITAL_OWNER_CAPABILITIES = {
   readGovernance: "hospital-owner:read-governance",
   promote: "hospital-owner:promote",
   demote: "hospital-owner:demote",
+  // Customer decision E1 (ก-15): OWNER grants/revokes report export for a MEMBER.
+  reportExportGrant: "hospital-owner:report-export-grant",
 } as const;
 
 export type HospitalOwnerCapability =

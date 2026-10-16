@@ -160,6 +160,7 @@ const followupDetail: PatientSelfFollowupDetail = {
   ],
 };
 
+const contactPhones = { hospitalPhone: "021234567", patientPhone: null };
 const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   appointmentId: "66666666-6666-4666-8666-666666666666",
   type: AppointmentType.CONSULTATION,
@@ -322,7 +323,7 @@ describe("Patient Personal care read views", () => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
-        detail={{ ...appointment, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
+        detail={{ ...appointment, contactPhones, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
       />,
     );
 
@@ -348,7 +349,7 @@ describe("Patient Personal care read views", () => {
   });
 
   it.each([AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW])("keeps %s factual and separate from Program/Follow-up evidence", (status) => {
-    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, relationship: anotherRelationship, status }} />);
+    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, contactPhones, relationship: anotherRelationship, status }} />);
     expect(markup).not.toContain("<button");
     expect(markup).toContain("เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่");
     if (status === AppointmentStatus.COMPLETED) expect(markup).toContain("สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว");
@@ -370,6 +371,7 @@ describe("Patient Personal care read views", () => {
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
         detail={{
+          contactPhones,
           ...appointment,
           responsibleDisplayName: "Responsible Person",
           responsibleProfession: profession,
@@ -393,6 +395,7 @@ describe("Patient Personal care read views", () => {
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
         detail={{
+          contactPhones,
           ...appointment,
           responsibleDisplayName: null,
           responsibleProfession: null,

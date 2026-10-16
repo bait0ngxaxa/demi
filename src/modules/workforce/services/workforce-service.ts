@@ -68,12 +68,14 @@ import {
   workforcePasswordResetRequestSchema,
   workforceDetailRequestSchema,
   hospitalMembershipProfessionUpdateSchema,
+  hospitalMembershipReportExportGrantSchema,
   hospitalMembershipTransitionSchema,
   hospitalOwnerGovernanceMutationSchema,
   osmRelationshipTransitionSchema,
   workforceListSchema,
   type HospitalMemberProvisionInput,
   type HospitalMembershipProfessionUpdateInput,
+  type HospitalMembershipReportExportGrantInput,
   type HospitalMembershipTransitionInput,
   type HospitalOwnerGovernanceMutationInput,
   type OsmRelationshipTransitionInput,
@@ -208,6 +210,8 @@ export type WorkforceDetail = {
     canPromote: boolean;
     canDemote: boolean;
   };
+  /** E1: staff MEMBER only; null for OWNER and OSM relationships. */
+  reportExportGrant: { granted: boolean; canGrant: boolean; canRevoke: boolean } | null;
   viewerScope: WorkforceViewerScope;
   actions: {
     updateProfession: boolean;
@@ -229,6 +233,13 @@ export type WorkforceOsmRelationshipMutationResult = {
   relationshipId: string;
   hospitalId: string;
   relationshipStatus: MembershipStatus;
+  updatedAt: Date;
+};
+
+export type WorkforceReportExportGrantMutationResult = {
+  relationshipId: string;
+  hospitalId: string;
+  granted: boolean;
   updatedAt: Date;
 };
 
@@ -294,6 +305,7 @@ const workforceMembershipDetailSelect = {
   membershipType: true,
   profession: true,
   status: true,
+  reportExportGrantedAt: true,
   updatedAt: true,
   hospital: {
     select: {
@@ -1309,6 +1321,26 @@ function toWorkforceLifecycleBlockReason(input: {
   return null;
 }
 
+function toReportExportGrantDetail(
+  kind: WorkforceDetailKind,
+  record: WorkforceMembershipDetailRecord | WorkforceOsmDetailRecord,
+  viewerScope: WorkforceViewerScope,
+): WorkforceDetail["reportExportGrant"] {
+  if (kind !== "staff") return null;
+  const membership = record as WorkforceMembershipDetailRecord;
+  if (membership.membershipType !== MembershipType.MEMBER) return null;
+
+  const granted = membership.reportExportGrantedAt !== null;
+  const isOwnerViewer = viewerScope === "OWNER" && membership.hospital.status === HospitalStatus.ACTIVE;
+  return {
+    granted,
+    canGrant:
+      isOwnerViewer && !granted &&
+      membership.status === MembershipStatus.ACTIVE && membership.user.status === UserStatus.ACTIVE,
+    canRevoke: isOwnerViewer && granted,
+  };
+}
+
 function toWorkforceDetail(
   kind: WorkforceDetailKind,
   record: WorkforceMembershipDetailRecord | WorkforceOsmDetailRecord,
@@ -1356,6 +1388,7 @@ function toWorkforceDetail(
       currentAssignmentCount,
     }),
     relationshipUpdatedAt: record.updatedAt,
+    reportExportGrant: toReportExportGrantDetail(kind, record, viewer.scope),
     viewerScope: viewer.scope,
     ownerGovernance: {
       canPromote:
@@ -1809,7 +1842,12 @@ async function promoteHospitalOwnerInTransaction(
       status: MembershipStatus.ACTIVE,
       updatedAt: current.updatedAt,
     },
-    data: { membershipType: MembershipType.OWNER },
+    // An OWNER exports by role; the SQL CHECK keeps export grants MEMBER-only.
+    data: {
+      membershipType: MembershipType.OWNER,
+      reportExportGrantedAt: null,
+      reportExportGrantedByUserId: null,
+    },
   });
 
   if (updated.count !== 1) {
@@ -1971,6 +2009,136 @@ export async function demoteHospitalOwner(
     demoteHospitalOwnerInTransaction,
     dependencies,
   );
+}
+
+async function setReportExportGrantInTransaction(
+  transaction: Prisma.TransactionClient,
+  input: HospitalMembershipReportExportGrantInput,
+  actorUserId: string,
+): Promise<WorkforceReportExportGrantMutationResult> {
+  const membership = await transaction.hospitalMembership.findFirst({
+    where: { id: input.relationshipId, hospitalId: input.targetHospitalId },
+    select: {
+      id: true,
+      userId: true,
+      hospitalId: true,
+      membershipType: true,
+      status: true,
+      reportExportGrantedAt: true,
+      updatedAt: true,
+      user: { select: { status: true } },
+    },
+  });
+
+  if (!membership) {
+    throw new NotFoundError("The Hospital membership was not found");
+  }
+
+  if (membership.membershipType !== MembershipType.MEMBER) {
+    throw new ConflictError("Only a MEMBER can hold a report export grant");
+  }
+
+  if (membership.updatedAt.getTime() !== parseExpectedMembershipUpdatedAt(input.expectedUpdatedAt).getTime()) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  if ((membership.reportExportGrantedAt !== null) === input.granted) {
+    throw new ConflictError("The report export grant is already in the requested state");
+  }
+
+  if (
+    input.granted &&
+    (membership.status !== MembershipStatus.ACTIVE || membership.user.status !== UserStatus.ACTIVE)
+  ) {
+    throw new ConflictError("A report export grant requires an active membership and account");
+  }
+
+  const updated = await transaction.hospitalMembership.updateMany({
+    where: {
+      id: membership.id,
+      hospitalId: membership.hospitalId,
+      membershipType: MembershipType.MEMBER,
+      updatedAt: membership.updatedAt,
+      reportExportGrantedAt: input.granted ? null : { not: null },
+      ...(input.granted ? { status: MembershipStatus.ACTIVE } : {}),
+    },
+    data: input.granted
+      ? { reportExportGrantedAt: new Date(), reportExportGrantedByUserId: actorUserId }
+      : { reportExportGrantedAt: null, reportExportGrantedByUserId: null },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError("The Hospital membership changed before this operation");
+  }
+
+  const result = await transaction.hospitalMembership.findUnique({
+    where: { id: membership.id },
+    select: { id: true, hospitalId: true, reportExportGrantedAt: true, updatedAt: true },
+  });
+
+  if (!result) {
+    throw new InfrastructureError("The updated Hospital membership could not be read");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId,
+      action: input.granted
+        ? "hospital_membership.report_export_granted"
+        : "hospital_membership.report_export_revoked",
+      resourceType: "HospitalMembership",
+      resourceId: result.id,
+      metadata: {
+        hospitalId: result.hospitalId,
+        targetUserId: membership.userId,
+        membershipStatus: membership.status,
+      },
+    },
+    transaction,
+  );
+
+  return {
+    relationshipId: result.id,
+    hospitalId: result.hospitalId,
+    granted: result.reportExportGrantedAt !== null,
+    updatedAt: result.updatedAt,
+  };
+}
+
+/** Customer decision E1 (ก-15): the Hospital OWNER grants or revokes report export for a MEMBER. */
+export async function setHospitalMembershipReportExportGrant(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceReportExportGrantMutationResult> {
+  const parsed = hospitalMembershipReportExportGrantSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Report export grant data is invalid");
+  }
+
+  assertHospitalOwnerPolicy({
+    actor,
+    capability: HOSPITAL_OWNER_CAPABILITIES.reportExportGrant,
+    targetHospitalId: parsed.data.targetHospitalId,
+  });
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
+        return setReportExportGrantInTransaction(transaction, parsed.data, actor.userId);
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Report export grant could not be changed");
+  }
 }
 
 type StaffMembershipMutationTarget = {

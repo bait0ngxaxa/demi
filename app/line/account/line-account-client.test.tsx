@@ -134,7 +134,7 @@ describe("LINE account user experience", () => {
     });
 
     expect(markup).toContain("การแจ้งเตือนนัดหมายทาง LINE");
-    expect(markup).toContain("ใช้สำหรับแจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณเท่านั้น");
+    expect(markup).toContain("ใช้สำหรับแจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัดเท่านั้น ข้อความไม่มีรายละเอียดสุขภาพ");
     expect(markup).toContain("สถานะ: ปิด");
     expect(markup).toContain("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
     expect(markup).toContain(">เปิดการแจ้งเตือน</button>");

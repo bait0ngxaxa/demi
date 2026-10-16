@@ -10,6 +10,7 @@ import {
   createCaregiverInvitation,
   previewCaregiverInvitation,
   rejectCaregiverInvitation,
+  reissueCaregiverInvitationLink,
   revokeCaregiverRelationship,
   revokePendingCaregiverInvitation,
   withdrawOwnCaregiverRelationship,
@@ -31,7 +32,7 @@ function formString(formData: FormData, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function safeMutationError(error: unknown): FamilyMutationActionState {
+function safeMutationError(error: unknown): { status: "ERROR"; message: string } {
   if (error instanceof ApplicationError) {
     if (error.code === "FORBIDDEN") {
       return { status: "ERROR", message: "บัญชีนี้ไม่มีสิทธิ์ดำเนินการกับรายการนี้" };
@@ -196,6 +197,31 @@ export async function revokePendingCaregiverInvitationAction(
     await revokePendingCaregiverInvitation(actor, parsed.data.invitationId);
     revalidatePath("/app/family");
     return { status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว" };
+  } catch (error: unknown) {
+    return safeMutationError(error);
+  }
+}
+
+// Next.js answers Server Actions with Cache-Control: no-cache, no-store; the new link is never persisted.
+export async function reissueCaregiverInvitationLinkAction(
+  _previousState: CreateCaregiverInvitationActionState,
+  formData: FormData,
+): Promise<CreateCaregiverInvitationActionState> {
+  const parsed = caregiverInvitationIdSchema.safeParse({
+    invitationId: formString(formData, "invitationId"),
+  });
+  if (!parsed.success) {
+    return { status: "ERROR", message: "ไม่พบคำเชิญที่ต้องการแสดงคิวอาร์โค้ด" };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const reissued = await reissueCaregiverInvitationLink(actor, parsed.data.invitationId);
+    return {
+      status: "SUCCESS",
+      token: reissued.plaintextToken,
+      expiresAt: reissued.expiresAt.toISOString(),
+    };
   } catch (error: unknown) {
     return safeMutationError(error);
   }

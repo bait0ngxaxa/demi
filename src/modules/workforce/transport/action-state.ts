@@ -158,6 +158,19 @@ export type WorkforceOsmRelationshipMutationActionState =
     }
   | { status: "SUCCESS"; result: WorkforceOsmRelationshipMutationResultState };
 
+export type WorkforceReportExportGrantActionState =
+  | { status: "IDLE" }
+  | {
+      status: "ERROR";
+      code: WorkforceErrorCode;
+      message: string;
+    }
+  | { status: "SUCCESS"; granted: boolean };
+
+export const initialWorkforceReportExportGrantActionState: WorkforceReportExportGrantActionState = {
+  status: "IDLE",
+};
+
 export type WorkforceOwnerGovernanceMutationActionState =
   | { status: "IDLE" }
   | {

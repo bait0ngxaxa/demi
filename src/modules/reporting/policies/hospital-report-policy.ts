@@ -18,7 +18,7 @@ export type HospitalReportPolicyTarget = {
 };
 
 export type HospitalReportPolicyDecision =
-  | { allowed: true; reason: "active_direct_hospital_owner" }
+  | { allowed: true; reason: "active_direct_hospital_owner" | "active_member_report_export_grant" }
   | {
       allowed: false;
       reason:
@@ -59,12 +59,22 @@ export function decideHospitalReportPolicy(input: {
   }
 
   const requestedHospitalId = input.target.hospitalId.toLowerCase();
-  const membership = input.actor.hospitalMemberships.find(
+  const activeMemberships = input.actor.hospitalMemberships.filter(
     (candidate) =>
       candidate.hospitalId.toLowerCase() === requestedHospitalId &&
-      candidate.membershipType === MembershipType.OWNER &&
       candidate.status === MembershipStatus.ACTIVE,
   );
+  const ownerMembership = activeMemberships.find(
+    (candidate) => candidate.membershipType === MembershipType.OWNER,
+  );
+  // Customer decision E1 (ก-15): an OWNER-granted MEMBER may export, but not read the dashboard.
+  const exportGrantMembership = input.capability === HOSPITAL_REPORT_CAPABILITIES.export
+    ? activeMemberships.find(
+        (candidate) =>
+          candidate.membershipType === MembershipType.MEMBER && candidate.reportExportGranted === true,
+      )
+    : undefined;
+  const membership = ownerMembership ?? exportGrantMembership;
 
   if (!membership) {
     return { allowed: false, reason: "active_direct_owner_required" };
@@ -77,7 +87,10 @@ export function decideHospitalReportPolicy(input: {
     return { allowed: false, reason: "inactive_target_hospital" };
   }
 
-  return { allowed: true, reason: "active_direct_hospital_owner" };
+  return {
+    allowed: true,
+    reason: ownerMembership ? "active_direct_hospital_owner" : "active_member_report_export_grant",
+  };
 }
 
 export function assertHospitalReportPolicy(input: {
