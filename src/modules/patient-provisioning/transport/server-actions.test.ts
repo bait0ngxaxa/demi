@@ -340,6 +340,7 @@ describe("patient import Server Actions", () => {
 
     expect(result).toEqual({ status: "ERROR", code: "INVALID_INPUT", message });
     expect(message).toContain(target.hospitalName);
+    expect(message).not.toContain(target.hospitalCode);
     expect(mockedPreviewProvisioning).not.toHaveBeenCalled();
     expect(mockedImportProvisioning).not.toHaveBeenCalled();
   });

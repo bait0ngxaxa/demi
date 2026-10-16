@@ -795,13 +795,13 @@ export function WorkforceWorkspace({
           >
             {hospitals.map((hospital) => (
               <option key={hospital.id} value={hospital.id}>
-                {hospital.name} · {hospital.hospitalCode}
+                {hospital.name}
               </option>
             ))}
           </Select>
           {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} · {workforce.hospital.hospitalCode} เท่านั้น ใช้สิทธิ์{isOwner ? "เจ้าของ" : "สมาชิก"}โรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
+            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น ใช้สิทธิ์{isOwner ? "เจ้าของ" : "สมาชิก"}โรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
         </Panel>
 

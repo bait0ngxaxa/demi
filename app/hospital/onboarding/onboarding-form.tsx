@@ -40,7 +40,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     }
 
     return hospitals.filter((hospital) =>
-      `${hospital.name} ${hospital.hospitalCode}`.toLocaleLowerCase("th-TH").includes(normalizedQuery),
+      hospital.name.toLocaleLowerCase("th-TH").includes(normalizedQuery),
     );
   }, [hospitalQuery, hospitals]);
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
@@ -84,12 +84,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             <div className="min-w-0">
               <p className="text-xs font-semibold text-brand-strong">เลือกแล้ว</p>
               <p className="mt-1 font-semibold text-ink">{selectedHospital.name}</p>
-              <p className="mt-1 text-sm text-brand-deep">
-                รหัส {selectedHospital.hospitalCode}
-                {selectedHospital.parentHospitalCode
-                  ? ` · หน่วยบริการในเครือ ${selectedHospital.parentHospitalCode}`
-                  : ""}
-              </p>
             </div>
             <button
               className="min-h-11 shrink-0 rounded-[12px] border border-line bg-white px-3 text-sm font-semibold text-ink transition-[border-color,color,background-color] hover:border-brand hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
@@ -107,7 +101,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
           <>
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
-                ค้นหาจากชื่อหรือรหัสโรงพยาบาล
+                ค้นหาชื่อโรงพยาบาล
               </label>
               <input
                 autoComplete="off"
@@ -115,7 +109,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
                 disabled={pending || hospitals.length === 0}
                 id="hospitalSearch"
                 onChange={(event) => setHospitalQuery(event.target.value)}
-                placeholder="เช่น โรงพยาบาลแก่งคอย หรือ KANG"
+                placeholder="เช่น โรงพยาบาลแก่งคอย"
                 type="search"
                 value={hospitalQuery}
               />
@@ -149,12 +143,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
                     type="button"
                   >
                     <span className="block font-semibold text-ink">{hospital.name}</span>
-                    <span className="mt-1 block text-sm text-muted">
-                      รหัส {hospital.hospitalCode}
-                      {hospital.parentHospitalCode
-                        ? ` · หน่วยบริการในเครือ ${hospital.parentHospitalCode}`
-                        : ""}
-                    </span>
                   </button>
                 ))
               )}

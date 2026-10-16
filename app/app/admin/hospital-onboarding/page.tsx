@@ -82,7 +82,7 @@ export default async function HospitalOnboardingReviewPage(): Promise<React.JSX.
                           {applicantName || "ผู้สมัครไม่ระบุชื่อ"}
                         </p>
                         <p className="mt-1 text-sm leading-6 text-muted">
-                          {application.hospitalName} · รหัส {application.hospitalCode}
+                          {application.hospitalName}
                         </p>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-muted">

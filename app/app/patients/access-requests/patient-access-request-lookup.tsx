@@ -34,7 +34,7 @@ export function PatientAccessRequestLookup({ hospitals }: {
           <label className="block text-sm font-semibold text-text" htmlFor="lookup-hospital">โรงพยาบาลที่ค้นหา</label>
           <Select id="lookup-hospital" name="hospitalId" required disabled={pending} defaultValue={hospitals.length === 1 ? hospitals[0].id : ""}>
             <option value="" disabled>เลือกโรงพยาบาล</option>
-            {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
+            {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
           </Select>
         </div>
         <div className="space-y-2">

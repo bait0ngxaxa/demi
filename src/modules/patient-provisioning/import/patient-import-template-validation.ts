@@ -142,7 +142,6 @@ export function assertPatientImportTemplateMetadata(
     throw new ValidationError(
       createPatientImportTemplateHospitalMismatchMessage({
         hospitalName: target.hospitalName,
-        hospitalCode: target.hospitalCode,
       }),
     );
   }

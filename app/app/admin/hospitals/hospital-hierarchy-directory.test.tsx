@@ -56,6 +56,8 @@ describe("Platform Admin Hospital hierarchy directory", () => {
       expect(markup).toContain(`โรงพยาบาลลูกข่ายโดยตรง ${group.directChildren.length.toLocaleString("th-TH")} แห่ง`);
     }
     expect(markup.match(/href="\/app\/admin\/hospitals\//gu)).toHaveLength(78);
+    const visibleText = markup.replace(/<[^>]*>/gu, "");
+    for (const record of records) expect(visibleText).not.toContain(record.hospitalCode);
   });
 
   it("keeps orphaned facilities visible in a diagnostic section with their status", () => {

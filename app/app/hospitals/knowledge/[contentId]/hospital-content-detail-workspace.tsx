@@ -474,7 +474,6 @@ export function HospitalContentDetailWorkspace({
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold text-text" id="hospital-content-detail-heading">{current.hospital.name}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {current.hospital.hospitalCode}</p>
           </div>
           <StatusBadge variant={HOSPITAL_CONTENT_STATUS_VARIANTS[current.status]}>{HOSPITAL_CONTENT_STATUS_LABELS[current.status]}</StatusBadge>
         </div>

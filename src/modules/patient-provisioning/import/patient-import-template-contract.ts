@@ -17,9 +17,8 @@ export const PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE =
 
 export function createPatientImportTemplateHospitalMismatchMessage(hospital: {
   hospitalName: string;
-  hospitalCode: string;
 }): string {
-  return `ไฟล์นี้ไม่ได้จัดทำสำหรับ ${hospital.hospitalName} (${hospital.hospitalCode}) กรุณาดาวน์โหลดไฟล์ตัวอย่าง Excel ของโรงพยาบาลที่เลือกแล้วกรอกข้อมูลใหม่`;
+  return `ไฟล์นี้ไม่ได้จัดทำสำหรับ ${hospital.hospitalName} กรุณาดาวน์โหลดไฟล์ตัวอย่าง Excel ของโรงพยาบาลที่เลือกแล้วกรอกข้อมูลใหม่`;
 }
 
 export const PATIENT_IMPORT_FAILED_ROWS_DOWNLOAD_PATH =
@@ -29,17 +28,15 @@ export function createPatientImportTemplateDownloadPath(hospitalId: string): str
   return `/api/v1/hospital/patient-import/template?hospitalId=${encodeURIComponent(hospitalId)}`;
 }
 
-export function createPatientImportTemplateFilename(hospitalCode: string): string {
-  const safeCode = hospitalCode.replace(/[^A-Za-z0-9_-]/gu, "_");
-  return `DEMI_patient_import_${safeCode}_v2.xlsx`;
+export function createPatientImportTemplateFilename(): string {
+  return "DEMI_patient_import_v2.xlsx";
 }
 
 export const PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER = "เหตุผล" as const;
 export const PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX = "failed_rows" as const;
 
-export function createPatientImportFailedRowsFilename(hospitalCode: string): string {
-  const safeCode = hospitalCode.replace(/[^A-Za-z0-9_-]/gu, "_");
-  return `DEMI_patient_import_${safeCode}_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
+export function createPatientImportFailedRowsFilename(): string {
+  return `DEMI_patient_import_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
 }
 
 export const PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES = ["กลุ่มเสี่ยง", "เบาหวาน"] as const;

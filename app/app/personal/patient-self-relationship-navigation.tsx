@@ -42,9 +42,6 @@ export function PatientSelfRelationshipNavigation({
                   {relationship.hospitalName}
                 </h2>
                 <p className="mt-1 break-words text-sm text-text-muted">
-                  รหัสโรงพยาบาล: {relationship.hospitalCode}
-                </p>
-                <p className="mt-1 break-words text-sm text-text-muted">
                   รหัสผู้ป่วยที่โรงพยาบาล: {relationship.hospitalNumber ?? "ยังไม่ได้บันทึก"}
                 </p>
               </div>
@@ -59,7 +56,7 @@ export function PatientSelfRelationshipNavigation({
                 prefetch={false}
               >
                 {area === "care" ? "ดูข้อมูลการดูแล" : "ดูนัดหมาย"}
-                <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+                <span className="sr-only"> · {relationship.hospitalName}</span>
               </Link>
             </nav>
           </Panel>

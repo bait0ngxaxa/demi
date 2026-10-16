@@ -159,7 +159,7 @@ describe("Patient Personal pages", () => {
     const markup = renderToStaticMarkup(await PersonalHomePage());
     for (const relationship of relationships) {
       expect(markup).toContain(relationship.hospitalName);
-      expect(markup).toContain(relationship.hospitalCode);
+      expect(markup).not.toContain(relationship.hospitalCode);
       expect(markup).toContain(`href="/app/personal/care/${relationship.relationshipId}"`);
       expect(markup).toContain(`href="/app/personal/profile/${relationship.relationshipId}"`);
     }

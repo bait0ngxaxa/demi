@@ -1181,7 +1181,7 @@ export function PatientProvisioningWorkspace({
               >
                 {scopes.map((scope) => (
                   <option key={scope.hospitalId} value={scope.hospitalId}>
-                    {scope.hospitalName} · {scope.hospitalCode}
+                    {scope.hospitalName}
                   </option>
                 ))}
               </Select>
@@ -1191,7 +1191,7 @@ export function PatientProvisioningWorkspace({
             <div>
               <p className="text-sm font-semibold text-ink">โรงพยาบาลที่ดำเนินการ</p>
               <p className="mt-2 text-base font-semibold text-brand-strong">
-                {selectedScope.hospitalName} · {selectedScope.hospitalCode}
+                {selectedScope.hospitalName}
               </p>
             </div>
           )}
@@ -1208,7 +1208,7 @@ export function PatientProvisioningWorkspace({
               </p>
               <a
                 className={buttonClassName({ size: "compact", variant: "secondary" })}
-                download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
+                download={createPatientImportTemplateFilename()}
                 href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
               >
                 ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}
@@ -1369,7 +1369,7 @@ export function PatientProvisioningWorkspace({
                         size: "compact",
                         variant: "secondary",
                       })}
-                      download={createPatientImportTemplateFilename(selectedScope.hospitalCode)}
+                      download={createPatientImportTemplateFilename()}
                       href={createPatientImportTemplateDownloadPath(selectedHospitalId)}
                     >
                       ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ {selectedScope.hospitalName}

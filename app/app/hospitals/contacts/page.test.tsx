@@ -34,7 +34,7 @@ describe("read-only Hospital work contacts page", () => {
     const html = renderToStaticMarkup(await Page());
 
     expect(html).toContain("โรงพยาบาล ก");
-    expect(html).toContain("H-001");
+    expect(html).not.toContain("H-001");
     expect(html).toContain("ถนนสุขภาพ");
     expect(html).toContain('href="tel:02-123-4567"');
     expect(html).toContain("โรงพยาบาล ข");

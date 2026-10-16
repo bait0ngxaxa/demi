@@ -88,7 +88,6 @@ function HospitalWorkspaceSection({
           >
             {workspace.hospitalName}
           </h3>
-          <p className="mt-1 text-sm text-text-muted">รหัส {workspace.hospitalCode}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">{workspace.contextLabel}</p>
         </div>
         <StatusBadge
@@ -192,7 +191,7 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
                 {projection.hospitals.map((workspace) => (
                   <li key={workspace.hospitalId} className="min-w-0 max-w-full">
                     <Link className={buttonClassName({ variant: "secondary", className: "max-w-full whitespace-normal text-left" })} href={`#hospital-workspace-${workspace.hospitalId}`} prefetch={false}>
-                      {workspace.hospitalName} · {workspace.hospitalCode}
+                      {workspace.hospitalName}
                     </Link>
                   </li>
                 ))}

@@ -278,8 +278,10 @@ describe("Hospital reporting dashboard presentation", () => {
     };
     const markup = render("overview", [], 0, childHierarchy);
 
-    expect(markup).toContain("รพ.สต.ทดสอบ (DEMO-CHILD)");
-    expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ (DEMO-PARENT)");
+    expect(markup).toContain("รพ.สต.ทดสอบ");
+    expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
+    expect(markup).not.toContain("DEMO-CHILD");
+    expect(markup).not.toContain("DEMO-PARENT");
     expect(markup).not.toContain("โรงพยาบาลลูกข่ายที่ใช้งาน");
     expect(markup).not.toContain("หน่วยบริการในเครือโดยตรง");
     expect(markup).toContain("ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");

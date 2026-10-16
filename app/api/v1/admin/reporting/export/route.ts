@@ -40,10 +40,6 @@ function errorResponse(error: unknown): NextResponse {
   return NextResponse.json({ error: "ระบบส่งออกรายงานไม่พร้อมใช้งาน กรุณาลองอีกครั้ง" }, { status: 503, headers: NO_STORE_HEADERS });
 }
 
-function safeFilenamePart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "hospital";
-}
-
 async function recordDeniedAttempt(
   actor: ActorContext | undefined,
   hospitalId: string | undefined,
@@ -86,7 +82,7 @@ export async function GET(request: Request): Promise<Response> {
     actor = await getProtectedApplicationActor();
     exportServiceStarted = true;
     const exported = await exportGlobalAdminHospitalReportingWorkbook(actor, parsed.data);
-    const filename = `demi-hospital-report-${safeFilenamePart(exported.hospitalCode)}-${exported.generatedAt.toISOString().slice(0, 10)}.xlsx`;
+    const filename = `demi-hospital-report-${exported.generatedAt.toISOString().slice(0, 10)}.xlsx`;
 
     return new Response(new Uint8Array(exported.buffer), {
       status: 200,

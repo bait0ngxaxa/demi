@@ -35,7 +35,7 @@ describe("Patient Hospital Contact relationship card", () => {
 
     expect(html).toContain("ยังไม่มีข้อมูลติดต่อ");
     expect(html).toContain(hospitalName);
-    expect(html).toContain("H-001");
+    expect(html).not.toContain("H-001");
   });
 
   it("renders full or partial Contact as wrapped plain text without tel-link conversion", () => {

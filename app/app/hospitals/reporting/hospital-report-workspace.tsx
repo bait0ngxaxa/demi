@@ -119,7 +119,7 @@ function HospitalReportingHierarchy({
               โครงสร้างโรงพยาบาล
             </h2>
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-              โรงพยาบาลที่เลือก: {hospital.name} ({hospital.hospitalCode})
+              โรงพยาบาลที่เลือก: {hospital.name}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -145,7 +145,6 @@ function HospitalReportingHierarchy({
                   <li className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={child.id}>
                     <div className="min-w-0">
                       <p className="break-words font-medium text-text">{child.name}</p>
-                      <p className="text-sm text-text-muted">รหัส {child.hospitalCode}</p>
                     </div>
                     <StatusBadge variant={hierarchyStatusVariant(child.status)}>
                       {hierarchyStatusLabel(child.status)}
@@ -161,7 +160,7 @@ function HospitalReportingHierarchy({
             {hierarchy.parentHospital ? (
               <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="break-words font-medium text-text">
-                  {hierarchy.parentHospital.name} ({hierarchy.parentHospital.hospitalCode})
+                  {hierarchy.parentHospital.name}
                 </p>
                 <StatusBadge variant={hierarchyStatusVariant(hierarchy.parentHospital.status)}>
                   {hierarchyStatusLabel(hierarchy.parentHospital.status)}
@@ -635,7 +634,7 @@ export function HospitalReportWorkspace({
             <div className="min-w-0 flex-1">
               <label className="type-label mb-2 block text-text" htmlFor="hospital-report-hospital">เลือกโรงพยาบาลสำหรับรายงานเฉพาะแห่ง</label>
               <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" defaultValue={selectedHospitalId} id="hospital-report-hospital" key={selectedHospitalId} name="hospitalId">
-                {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
+                {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
               </select>
               <input name="view" type="hidden" value={view} />
             </div>
@@ -658,7 +657,7 @@ export function HospitalReportWorkspace({
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {page.hospital.hospitalCode} · {hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}</p>
+            <p className="mt-1 break-words text-sm text-text-muted">{hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>

@@ -116,7 +116,7 @@ export function PatientActivationActionsWorkspace({
                   >
                     {scopes.map((scope) => (
                       <option key={scope.hospitalId} value={scope.hospitalId}>
-                        {scope.hospitalName} · {scope.hospitalCode}
+                        {scope.hospitalName}
                       </option>
                     ))}
                   </Select>
@@ -124,7 +124,7 @@ export function PatientActivationActionsWorkspace({
                 </>
               ) : (
                 <p className="mt-2 text-lg font-semibold text-brand-strong">
-                  {selectedScope.hospitalName} · {selectedScope.hospitalCode}
+                  {selectedScope.hospitalName}
                 </p>
               )}
             </div>

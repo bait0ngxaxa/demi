@@ -102,7 +102,7 @@ export function HospitalPatientServiceRequestsWorkspace({
                     <h3 className="text-lg font-semibold tracking-[-0.02em] text-text" id={`service-request-${request.requestId}`}>
                       {request.patientName}
                     </h3>
-                    <p className="mt-1 text-sm leading-6 text-text-muted">ผู้ป่วยของ {request.hospitalName} · {request.hospitalCode}</p>
+                    <p className="mt-1 text-sm leading-6 text-text-muted">ผู้ป่วยของ {request.hospitalName}</p>
                   </div>
                   <StatusBadge variant={request.status === "STARTED" ? "neutral" : patientServiceRequestStatusVariant(request.status)}>
                     {patientServiceRequestStatusLabel(request.status)}
@@ -137,7 +137,7 @@ export function HospitalPatientServiceRequestsWorkspace({
                       prefetch={false}
                     >
                       เปิดงานดูแลผู้ป่วย
-                      <span className="sr-only"> {request.patientName} · {request.hospitalName} · {request.hospitalCode}</span>
+                      <span className="sr-only"> {request.patientName} · {request.hospitalName}</span>
                     </Link>
                     <p className="mt-1 max-w-prose text-sm leading-6 text-text-muted">เลือกทำงานต่อในรายละเอียดผู้ป่วยตามสิทธิ์ปัจจุบัน การเปิดหน้านี้ไม่ได้ยืนยันว่าบันทึกการดูแลเกิดจากคำขอนี้</p>
                   </div>

@@ -64,7 +64,7 @@ export function HospitalContentListWorkspace({
           >
             {hospitals.map((hospital) => (
               <option key={hospital.id} value={hospital.id}>
-                {hospital.name} ({hospital.hospitalCode})
+                {hospital.name}
               </option>
             ))}
           </select>
@@ -77,7 +77,6 @@ export function HospitalContentListWorkspace({
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="break-words text-xl font-semibold text-text">{page.hospital.name}</h2>
-          <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {page.hospital.hospitalCode}</p>
         </div>
         <Link className={buttonClassName({ variant: "secondary" })} href={listHref}>
           โหลดรายการล่าสุด

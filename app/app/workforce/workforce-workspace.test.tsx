@@ -36,7 +36,8 @@ describe("Hospital workforce operational continuity", () => {
     expect(html.indexOf(row.displayName)).toBeLessThan(html.indexOf("เพิ่มบุคลากรโรงพยาบาล</h2>"));
     expect(html).toContain(`href="/app#hospital-workspace-${second.id}"`);
     expect(html).toContain(`value="${second.id}" selected=""`);
-    expect(html).toContain("โรงพยาบาล ข · H-002 เท่านั้น");
+    expect(html).toContain("รายชื่อและการดำเนินการเป็นของ โรงพยาบาล ข เท่านั้น");
+    expect(html).not.toContain("H-002");
     expect(html).toContain("ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ");
     expect(html).toContain("วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล");
     expect(html).toContain(`href="/app/workforce/staff/${row.id}"`);
@@ -131,7 +132,7 @@ describe("Hospital workforce operational continuity", () => {
     expect(html).toContain('method="post"');
     expect(html).toMatch(/<input[^>]*type="checkbox"[^>]*value="pending-user"/);
     expect(html).toMatch(/<input[^>]*form="slip-form-OSM"[^>]*name="userId"/);
-    expect(html).toContain("พิมพ์ใบเปิดใช้งาน (0)");
+    expect(html).toContain("ออกลิงก์ใหม่และพิมพ์ใบ (0)");
   });
 
   it("offers the multi-row add with the staff option only for an OWNER", () => {

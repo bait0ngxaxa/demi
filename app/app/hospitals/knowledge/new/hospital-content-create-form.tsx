@@ -453,7 +453,7 @@ export function HospitalContentCreateForm({
             value={selectedHospitalId}
             onChange={(event) => switchHospital(event.currentTarget.value, event.currentTarget)}
           >
-            {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name} ({hospital.hospitalCode})</option>)}
+            {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
           </select>
         </div>
       ) : null}
@@ -461,7 +461,6 @@ export function HospitalContentCreateForm({
       {selectedHospital ? (
         <div className="mt-5 min-w-0">
           <h2 className="break-words text-lg font-semibold text-text">{selectedHospital.name}</h2>
-          <p className="mt-1 break-words text-sm text-text-muted">รหัสโรงพยาบาล {selectedHospital.hospitalCode}</p>
         </div>
       ) : null}
 

@@ -26,7 +26,6 @@ export default async function HospitalWorkContactsPage(): Promise<React.JSX.Elem
           {contacts.map((contact) => (
             <li className="min-w-0 py-5 first:pt-0" key={contact.hospital.hospitalCode}>
               <h2 className="break-words text-lg font-semibold text-text">{contact.hospital.name}</h2>
-              <p className="mt-1 text-sm text-text-muted">รหัสโรงพยาบาล {contact.hospital.hospitalCode}</p>
 
               {contact.availability === "UNAVAILABLE" ? (
                 <p className="mt-4 text-text-muted">ยังไม่ได้ระบุข้อมูลติดต่อ</p>

@@ -92,7 +92,6 @@ export default async function HospitalOnboardingDetailPage({
             <div>
               <dt className="text-sm font-semibold text-muted">โรงพยาบาล</dt>
               <dd className="mt-2 text-lg font-semibold">{application.hospitalName}</dd>
-              <dd className="mt-1 text-sm text-muted">รหัส {application.hospitalCode}</dd>
             </div>
             <div>
               <dt className="text-sm font-semibold text-muted">ผู้สมัคร</dt>

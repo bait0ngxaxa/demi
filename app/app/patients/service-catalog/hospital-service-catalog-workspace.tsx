@@ -29,7 +29,6 @@ export function HospitalServiceCatalogWorkspace({
               <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id={`service-catalog-hospital-${index}`}>
                 {catalog.hospitalName}
               </h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">รหัสโรงพยาบาล {catalog.hospitalCode}</p>
             </div>
 
             <div className="mt-5 border-y border-border">

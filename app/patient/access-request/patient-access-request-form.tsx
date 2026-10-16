@@ -77,7 +77,7 @@ export function PatientAccessRequestForm({
                 <option disabled value="">เลือกโรงพยาบาล</option>
                 {hospitals.map((hospital) => (
                   <option key={hospital.id} value={hospital.id}>
-                    {hospital.name} ({hospital.hospitalCode})
+                    {hospital.name}
                   </option>
                 ))}
               </Select>

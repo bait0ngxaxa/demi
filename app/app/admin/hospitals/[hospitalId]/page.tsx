@@ -103,10 +103,6 @@ function GovernanceMetadata({
           <dd className="mt-1 font-semibold text-text">{hospital.name}</dd>
         </div>
         <div>
-          <dt className="text-sm text-text-muted">รหัสโรงพยาบาล</dt>
-          <dd className="mt-1 font-semibold text-text">{hospital.hospitalCode}</dd>
-        </div>
-        <div>
           <dt className="text-sm text-text-muted">สถานะวงจรชีวิต</dt>
           <dd className="mt-1 font-semibold text-text">{statusLabel(hospital.status)}</dd>
         </div>

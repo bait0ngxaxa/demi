@@ -188,12 +188,9 @@ describe("Hospital-bound patient import template v2", () => {
     );
   });
 
-  it("names the download after the hospital code", () => {
-    expect(createPatientImportTemplateFilename("SYN-A")).toBe("DEMI_patient_import_SYN-A_v2.xlsx");
-    expect(createPatientImportTemplateFilename("a/b c")).toBe("DEMI_patient_import_a_b_c_v2.xlsx");
-    expect(createPatientImportFailedRowsFilename("SYN-A")).toBe(
-      "DEMI_patient_import_SYN-A_v2_failed_rows.xlsx",
-    );
+  it("uses hospital-code-free download filenames while preserving Hospital binding", () => {
+    expect(createPatientImportTemplateFilename()).toBe("DEMI_patient_import_v2.xlsx");
+    expect(createPatientImportFailedRowsFilename()).toBe("DEMI_patient_import_v2_failed_rows.xlsx");
     expect(createPatientImportTemplateDownloadPath("11111111-1111-4111-8111-111111111111")).toBe(
       "/api/v1/hospital/patient-import/template?hospitalId=11111111-1111-4111-8111-111111111111",
     );

@@ -141,7 +141,6 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             <div>
               <dt className="text-sm text-text-muted">โรงพยาบาล</dt>
               <dd className="mt-1 font-semibold text-text">{detail.hospital.name}</dd>
-              <dd className="text-sm text-text-muted">รหัส {detail.hospital.hospitalCode}</dd>
             </div>
             <div>
               <dt className="text-sm text-text-muted">สถานะโรงพยาบาล</dt>

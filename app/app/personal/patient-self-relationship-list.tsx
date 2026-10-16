@@ -45,10 +45,6 @@ export function PatientSelfRelationshipList({
               </p>
               <dl className="mt-2 grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                 <div className="min-w-0">
-                  <dt className="text-text-muted">รหัสโรงพยาบาล</dt>
-                  <dd className="mt-0.5 break-words font-medium text-text">{relationship.hospitalCode}</dd>
-                </div>
-                <div className="min-w-0">
                   <dt className="text-text-muted">รหัสผู้ป่วยที่โรงพยาบาล</dt>
                   <dd className="mt-0.5 break-words font-medium text-text">
                     {relationship.hospitalNumber ?? "ยังไม่ได้บันทึก"}
@@ -110,7 +106,7 @@ export function PatientSelfRelationshipList({
                     prefetch={false}
                   >
                     ข้อมูลการดูแลของโรงพยาบาลนี้
-                    <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+                    <span className="sr-only"> · {relationship.hospitalName}</span>
                   </Link>
                 ) : null}
                 <Link
@@ -119,7 +115,7 @@ export function PatientSelfRelationshipList({
                   prefetch={false}
                 >
                   ดูและแก้ไขข้อมูลสำหรับโรงพยาบาลนี้
-                  <span className="sr-only"> · {relationship.hospitalName} · {relationship.hospitalCode}</span>
+                  <span className="sr-only"> · {relationship.hospitalName}</span>
                 </Link>
               </nav>
             </li>

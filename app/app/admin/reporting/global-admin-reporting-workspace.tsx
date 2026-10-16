@@ -57,7 +57,7 @@ function matchesHospital(
 ): boolean {
   if (statusFilter !== "ALL" && hospital.status !== statusFilter) return false;
   if (!query) return true;
-  return normalizeSearch(`${hospital.name} ${hospital.hospitalCode}`).includes(query);
+  return normalizeSearch(hospital.name).includes(query);
 }
 
 function HospitalAction({
@@ -91,7 +91,6 @@ function HospitalIdentity({
     <div className="min-w-0">
       <p className="text-xs font-medium text-text-muted">{label}</p>
       <p className="mt-1 break-words font-semibold text-text">{hospital.name}</p>
-      <p className="mt-1 break-words text-sm text-text-muted">รหัส {hospital.hospitalCode}</p>
     </div>
   );
 }
@@ -111,7 +110,7 @@ function DirectoryUnitRow({
         <HospitalIdentity hospital={hospital} label="โรงพยาบาลลูกข่าย / รพ.สต. / หน่วยบริการในเครือ" />
         {parentHospital ? (
           <p className="mt-1 break-words text-sm text-text-muted">
-            แม่ข่าย {parentHospital.name} ({parentHospital.hospitalCode})
+            แม่ข่าย {parentHospital.name}
           </p>
         ) : null}
       </div>
@@ -160,9 +159,9 @@ function GlobalHospitalDirectory({
 
   const visibleDiagnostics = useMemo(() => directory.hierarchy.diagnostics.filter(({ hospital, parentHospital }) => {
     const hospitalMatches = matchesHospital(hospital, query, statusFilter);
-    const parentMatchesSearch = Boolean(query && parentHospital && normalizeSearch(
-      `${parentHospital.name} ${parentHospital.hospitalCode}`,
-    ).includes(query));
+    const parentMatchesSearch = Boolean(
+      query && parentHospital && normalizeSearch(parentHospital.name).includes(query),
+    );
     return hospitalMatches || parentMatchesSearch && statusFilter === "ALL";
   }), [directory.hierarchy.diagnostics, query, statusFilter]);
 
@@ -189,7 +188,7 @@ function GlobalHospitalDirectory({
 
       <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_15rem]">
         <div className="min-w-0">
-          <label className="type-label mb-2 block text-text" htmlFor="global-hospital-search">ค้นหาชื่อหรือรหัสโรงพยาบาล</label>
+          <label className="type-label mb-2 block text-text" htmlFor="global-hospital-search">ค้นหาชื่อโรงพยาบาล</label>
           <input
             autoComplete="off"
             className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -289,7 +288,7 @@ function GlobalHospitalDirectory({
                   <HospitalIdentity hospital={hospital} label="โครงสร้างต้องตรวจสอบ" />
                   <p className="mt-1 break-words text-sm text-text-muted">
                     {parentHospital
-                      ? `แม่ข่ายที่อ้างอิง ${parentHospital.name} (${parentHospital.hospitalCode})`
+                      ? `แม่ข่ายที่อ้างอิง ${parentHospital.name}`
                       : "ไม่พบโรงพยาบาลแม่ข่าย"}
                   </p>
                   <ul className="mt-2 space-y-1 text-sm leading-6 text-danger-strong">
@@ -361,7 +360,7 @@ export function GlobalAdminReportingWorkspace({
             {selectedHospital.name}
           </h2>
           <p className="mt-1 break-words text-sm text-text-muted">
-            รหัส {selectedHospital.hospitalCode} · {hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}
+            {hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}
           </p>
           {selectedHospital.status !== "ACTIVE" ? (
             <Alert className="mt-4" variant={selectedHospital.status === "SUSPENDED" ? "warning" : "info"}>

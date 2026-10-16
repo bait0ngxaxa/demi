@@ -263,7 +263,7 @@ export function HospitalContactWorkspace({
           >
             {hospitals.map((hospital) => (
               <option key={hospital.id} value={hospital.id}>
-                {hospital.name} ({hospital.hospitalCode})
+                {hospital.name}
               </option>
             ))}
           </select>
@@ -387,7 +387,6 @@ export function HospitalContactWorkspace({
                 {current.hospital.name}
               </h2>
               <p className="mt-1 break-words text-sm text-text-muted">
-                รหัสโรงพยาบาล {current.hospital.hospitalCode}
               </p>
             </div>
             <StatusBadge variant={status.variant}>{status.label}</StatusBadge>

@@ -268,7 +268,7 @@ describe("Strict hospital-bound patient import parser (template v2)", () => {
       expect(rejection).toBeInstanceOf(ValidationError);
       const message = (rejection as ValidationError).message;
       expect(message).toContain(hospitalA.hospitalName);
-      expect(message).toContain(hospitalA.hospitalCode);
+      expect(message).not.toContain(hospitalA.hospitalCode);
       expect(message).not.toContain(hospitalB.hospitalName);
       expect(message).not.toContain(hospitalB.hospitalCode);
       expect(message).not.toBe(PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE);

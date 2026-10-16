@@ -43,7 +43,7 @@ describe("Hospital Contact Owner interface", () => {
     );
 
     expect(html).toContain("โรงพยาบาล ก");
-    expect(html).toContain("H-001");
+    expect(html).not.toContain("H-001");
     expect(html).toContain("ข้อมูลติดต่อที่โรงพยาบาลให้ไว้");
     expect(html).toContain('for="hospital-contact-address"');
     expect(html).toContain('for="hospital-contact-phone"');

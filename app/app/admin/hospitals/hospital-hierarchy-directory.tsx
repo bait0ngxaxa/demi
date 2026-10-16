@@ -76,7 +76,7 @@ function SubordinateRow({
           {hospital.name}
         </Link>
         <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-          รหัส {hospital.hospitalCode} · โรงพยาบาลแม่ข่าย {mainHospital.name} ({mainHospital.hospitalCode})
+          โรงพยาบาลแม่ข่าย {mainHospital.name}
         </p>
         <p className="text-xs leading-5 text-text-muted">รพ.สต. / หน่วยบริการในเครือ</p>
       </div>
@@ -129,7 +129,7 @@ export function HospitalHierarchyDirectory({
                       {mainHospital.name}
                     </h3>
                     <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                      โรงพยาบาลแม่ข่าย · รหัส {mainHospital.hospitalCode}
+                      โรงพยาบาลแม่ข่าย
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -184,9 +184,8 @@ export function HospitalHierarchyDirectory({
                     {hospital.name}
                   </Link>
                   <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                    รหัส {hospital.hospitalCode}
                     {parentHospital
-                      ? ` · แม่ข่ายที่อ้างอิง ${parentHospital.name} (${parentHospital.hospitalCode})`
+                      ? ` · แม่ข่ายที่อ้างอิง ${parentHospital.name}`
                       : " · ไม่พบโรงพยาบาลแม่ข่าย"}
                   </p>
                   <ul className="mt-1 space-y-1 text-sm leading-6 text-danger-strong">
