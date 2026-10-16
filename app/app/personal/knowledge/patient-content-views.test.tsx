@@ -15,7 +15,7 @@ describe("Patient Content read presentation", () => {
   it("renders minimal cards with attribution and Bangkok latest time but no body/source", () => {
     const html = feed();
     expect(html).toContain("<h1"); expect(html).toContain("<h2");
-    expect(html).toContain(content.title); expect(html).toContain("โรงพยาบาล ก"); expect(html).toContain("A001");
+    expect(html).toContain(content.title); expect(html).toContain("โรงพยาบาล ก");
     expect(html).toContain("เผยแพร่ล่าสุด"); expect(html).toContain("19:00");
     expect(html).not.toContain("plain Markdown"); expect(html).not.toContain("https://example.com");
     expect(html).not.toMatch(/firstPublishedAt|updatedAt|author|reviewer/u);

@@ -46,7 +46,9 @@ describe("Global Admin report export endpoint", () => {
     expect(response.headers.get("Content-Type")).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     expect(response.headers.get("Cache-Control")).toContain("private");
     expect(response.headers.get("Cache-Control")).toContain("no-store");
-    expect(response.headers.get("Content-Disposition")).toContain("DEMO-A");
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="demi-hospital-report-2026-10-11.xlsx"',
+    );
     expect(response.headers.get("X-Report-Generated-At")).toBe(generatedAt.toISOString());
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array(Buffer.from("synthetic-xlsx-bytes")));
     expect(mockedExport).toHaveBeenCalledWith(actor, { hospitalId });

@@ -249,7 +249,7 @@ describe("PatientProvisioningWorkspace form structure", () => {
     expect(markup).toContain(
       `href="/api/v1/hospital/patient-import/template?hospitalId=${hospitalId}"`,
     );
-    expect(markup).toContain('download="DEMI_patient_import_TEST-HOSPITAL_v2.xlsx"');
+    expect(markup).toContain('download="DEMI_โรงพยาบาลทดสอบ_patient_import_v2.xlsx"');
     expect(markup).toContain("ดาวน์โหลดไฟล์ตัวอย่าง Excel ของ โรงพยาบาลทดสอบ");
     expect(markup).toContain("ใช้ไฟล์ตัวอย่าง Excel ของระบบสำหรับนำเข้ารายชื่อผู้ป่วย");
     expect(markup).toContain("รองรับสูงสุด 500 รายการต่อไฟล์");
@@ -274,8 +274,8 @@ describe("PatientProvisioningWorkspace form structure", () => {
     );
 
     expect(markup).toContain(`hospitalId=${otherHospitalId}`);
-    expect(markup).toContain("DEMI_patient_import_TEST-B_v2.xlsx");
-    expect(markup).not.toContain("DEMI_patient_import_TEST-A_v2.xlsx");
+    expect(markup).toContain("DEMI_โรงพยาบาลบี_patient_import_v2.xlsx");
+    expect(markup).not.toContain("DEMI_โรงพยาบาลเอ_patient_import_v2.xlsx");
   });
 
   it("explains that re-import adds new patients only and that OSM is assigned afterwards", () => {

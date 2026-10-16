@@ -185,14 +185,13 @@ describe("Patient XLSX resource preflight", () => {
     const buffer = await workbookBuffer(await createPatientImportTemplateWorkbook(templateHospital));
     const summary = await preflightPatientImportXlsx(buffer);
 
+    expect(summary.declaredTotalUncompressedBytes).toBe(summary.actualTotalUncompressedBytes);
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
       zipEntries: 18,
-      declaredTotalUncompressedBytes: 298_550,
-      actualTotalUncompressedBytes: 298_550,
       worksheetPartCount: 3,
-      worksheetCellElements: 13066,
-      worksheetRowElements: 509,
+      worksheetCellElements: 13064,
+      worksheetRowElements: 508,
       maxRowCoordinate: 502,
       maxColumnCoordinate: 26,
       mergeDeclarations: 25,
@@ -219,14 +218,13 @@ describe("Patient XLSX resource preflight", () => {
     const buffer = await workbookBuffer(workbook);
     const summary = await preflightPatientImportXlsx(buffer);
 
+    expect(summary.declaredTotalUncompressedBytes).toBe(summary.actualTotalUncompressedBytes);
     expect(summary).toMatchObject({
       compressedBytes: buffer.byteLength,
       zipEntries: 18,
-      declaredTotalUncompressedBytes: 960_872,
-      actualTotalUncompressedBytes: 960_872,
       worksheetPartCount: 3,
-      worksheetCellElements: 13066,
-      worksheetRowElements: 509,
+      worksheetCellElements: 13064,
+      worksheetRowElements: 508,
       maxRowCoordinate: 502,
       maxColumnCoordinate: 26,
       mergeDeclarations: 25,

@@ -87,8 +87,8 @@ describe("Hospital Content publisher UI output", () => {
     expect(selectorForm).not.toMatch(/name="cursor"/u);
     expect(selectorForm).not.toContain('type="hidden"');
     expect(multiHospitalMarkup).toContain('id="hospital-content-hospital"');
-    expect(multiHospitalMarkup).toContain("โรงพยาบาลตัวอย่าง (H001)");
-    expect(multiHospitalMarkup).toContain("โรงพยาบาลอีกแห่ง (H002)");
+    expect(multiHospitalMarkup).toContain("โรงพยาบาลตัวอย่าง");
+    expect(multiHospitalMarkup).toContain("โรงพยาบาลอีกแห่ง");
   });
 
   it("keeps one create action and exact Hospital return on an empty content page", () => {

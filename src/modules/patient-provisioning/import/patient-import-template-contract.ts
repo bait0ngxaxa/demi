@@ -29,17 +29,29 @@ export function createPatientImportTemplateDownloadPath(hospitalId: string): str
 }
 
 function safeHospitalFilenameSegment(hospitalName: string): string {
-  const safeName = Array.from(
-    hospitalName
-      .normalize("NFC")
-      .replace(/[^\p{L}\p{M}\p{N}._ -]/gu, "_")
-      .replace(/\s+/gu, " ")
-      .replace(/_+/gu, "_"),
-  )
-    .slice(0, 80)
-    .join("")
-    .replace(/\p{M}+$/gu, "")
-    .replace(/^[ ._-]+|[ ._-]+$/gu, "");
+  const normalizedName = hospitalName
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{M}\p{N}._ -]/gu, "_")
+    .replace(/\s+/gu, " ")
+    .replace(/_+/gu, "_");
+  const characters = Array.from(normalizedName);
+  const truncatedCharacters = characters.slice(0, 80);
+
+  if (
+    characters.length > truncatedCharacters.length &&
+    /\p{M}/u.test(characters[truncatedCharacters.length] ?? "")
+  ) {
+    while (
+      truncatedCharacters.length > 0 &&
+      /\p{M}/u.test(truncatedCharacters[truncatedCharacters.length - 1] ?? "")
+    ) {
+      truncatedCharacters.pop();
+    }
+
+    truncatedCharacters.pop();
+  }
+
+  const safeName = truncatedCharacters.join("").replace(/^[ ._-]+|[ ._-]+$/gu, "");
 
   return safeName || "โรงพยาบาล";
 }

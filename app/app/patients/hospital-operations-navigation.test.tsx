@@ -31,7 +31,7 @@ describe("Hospital patient operations navigation", () => {
     expect(html).toContain(`href="/app#hospital-workspace-${scope.hospitalId}"`);
     expect(html).toContain(`href="/app/patients?hospitalId=${scope.hospitalId}"`);
     expect(html).toContain(`name="targetHospitalId" value="${scope.hospitalId}"`);
-    expect(html).toContain("ผู้ป่วยเป็นผู้ตั้งรหัสผ่านเอง");
+    expect(html).toContain("ตั้งรหัสผ่านเอง");
   });
 
   it("shows catalog Hospitals separately and describes its actor-wide scope", () => {

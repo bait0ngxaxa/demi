@@ -208,6 +208,12 @@ describe("Hospital-bound patient import template v2", () => {
     expect(createPatientImportTemplateFilename("โรงพยาบาล/ศูนย์:* ทดสอบ")).toBe(
       "DEMI_โรงพยาบาล_ศูนย์_ ทดสอบ_patient_import_v2.xlsx",
     );
+    expect(createPatientImportTemplateFilename("โรงพยาบาลบี")).toBe(
+      "DEMI_โรงพยาบาลบี_patient_import_v2.xlsx",
+    );
+    expect(createPatientImportTemplateFilename(`${"A".repeat(79)}บี`)).toBe(
+      `DEMI_${"A".repeat(79)}_patient_import_v2.xlsx`,
+    );
     expect(createPatientImportTemplateFilename(hospital.hospitalName)).not.toBe(
       createPatientImportTemplateFilename("โรงพยาบาลสังเคราะห์บี"),
     );

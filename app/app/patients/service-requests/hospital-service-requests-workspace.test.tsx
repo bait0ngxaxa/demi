@@ -81,8 +81,6 @@ describe("Hospital request review workspace", () => {
     const markup = render([{ ...request, status: "STARTED" }, other], { group: "HISTORY" });
     expect(markup).toContain(request.hospitalName);
     expect(markup).toContain(other.hospitalName);
-    expect(markup).toContain("H-A");
-    expect(markup).toContain("H-B");
     for (const row of [request, other]) {
       expect(markup).toContain(`href="/app/patients/${row.relationshipId}#patient-care"`);
       expect(markup).toContain(`id="service-request-${row.requestId}"`);
