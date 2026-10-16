@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { OwnContactSetting } from "@/modules/account-settings/services/contact-setting-service";
 import type { OwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
@@ -49,23 +50,45 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ variant: "success" | "warning"; text: string } | null>(null);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
+  const inFlightRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (inFlightRef.current || unknownOutcome) return;
+    inFlightRef.current = true;
     setMessage(null);
     startTransition(async () => {
       let result: Awaited<ReturnType<typeof saveOwnContactEmailAction>>;
       try {
         result = await saveOwnContactEmailAction({ email, expectedVersion: version });
       } catch {
-        setUnknownOutcome(true);
+        if (mountedRef.current) setUnknownOutcome(true);
         return;
       }
+      if (!mountedRef.current) return;
+
       if (result.status === "SUCCESS") {
+        inFlightRef.current = false;
         setEmail(result.email ?? "");
         setVersion(result.version);
         setMessage({ variant: "success", text: "บันทึกอีเมลติดต่อแล้ว" });
-      } else if (result.status === "ERROR") setMessage({ variant: "warning", text: result.message });
+        notify.success("บันทึกอีเมลแล้ว");
+      } else if (result.status === "ERROR") {
+        inFlightRef.current = false;
+        setMessage({ variant: "warning", text: result.message });
+        if (result.code === "CONFLICT") notify.warning("ข้อมูลเปลี่ยนแปลงแล้ว โปรดโหลดข้อมูลล่าสุด");
+        else if (result.code === "FORBIDDEN" || result.code === "UNAVAILABLE") notify.error("บันทึกอีเมลไม่สำเร็จ");
+      } else {
+        inFlightRef.current = false;
+      }
     });
   }
 

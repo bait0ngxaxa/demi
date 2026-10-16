@@ -227,6 +227,10 @@ Form controls ใช้ corner 12px (`control`), panel ใช้ 14px (`panel`) 
 - **Alert:** panel-like bounded message สำหรับ result, warning, error, reconciliation และ info พร้อมข้อความที่อธิบายความหมาย
 - Status color ต้องมีข้อความหรือ label เสมอ ไม่ใช้สีเพียงอย่างเดียว
 
+### Toast
+
+Toast เป็น feedback ชั่วคราวสำหรับสรุปผลของ operation ที่ยืนยันแล้ว และใช้คู่กับ Alert เพื่อให้ Alert คงรายละเอียด validation, conflict และ recovery ไว้ในหน้า ใช้ข้อความภาษาไทยสั้น ๆ กับ semantic status icon/token; ห้ามใส่ข้อมูลส่วนบุคคลหรือรายละเอียดทางคลินิกใน Toast และผลที่ยังไม่ยืนยันห้ามแสดง success/error toast
+
 ### Navigation
 
 - **Desktop:** sidebar สี navigation-background กว้าง 17rem มี group label, nested domain item และ active item ใช้ navigation-active

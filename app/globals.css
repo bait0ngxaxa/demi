@@ -249,3 +249,30 @@ b {
   background: var(--brand-soft);
   color: var(--ink);
 }
+
+.demi-toaster [data-sonner-toast]:focus-visible,
+.demi-toaster [data-sonner-toast] [data-close-button]:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+@media (max-width: 600px) {
+  .demi-toaster[data-y-position="top"] {
+    top: auto;
+    bottom: var(--mobile-offset-bottom);
+  }
+
+  .demi-toaster[data-x-position="right"] {
+    left: var(--mobile-offset-left);
+    right: var(--mobile-offset-right);
+    width: calc(100vw - var(--mobile-offset-left) - var(--mobile-offset-right));
+  }
+
+  .demi-toaster[data-x-position="right"] [data-sonner-toast] {
+    left: 0;
+    right: 0;
+    width: min(28rem, calc(100vw - var(--mobile-offset-left) - var(--mobile-offset-right)));
+    margin-inline: auto;
+  }
+}
