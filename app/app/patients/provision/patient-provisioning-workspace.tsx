@@ -276,25 +276,50 @@ const importSummaryCountByResult = {
   FAILED: "failed",
 } as const satisfies Record<PatientImportRowResult["result"], keyof PatientImportResultSummary>;
 
-/** True when the summary belongs to the submitted Hospital and preview, and its counts match its rows. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
+}
+
+/**
+ * True when the summary belongs to the submitted Hospital and preview, and its counts match its
+ * rows. The response shape is checked at runtime first, so a contract regression stays unconfirmed
+ * instead of throwing.
+ */
 function isConsistentImportSummary(
-  summary: PatientImportResultSummary,
+  summary: unknown,
   submittedHospitalId: string,
   previewRowCount: number,
-): boolean {
+): summary is PatientImportResultSummary {
   if (
+    !isRecord(summary) ||
     summary.targetHospitalId !== submittedHospitalId ||
     !Array.isArray(summary.rows) ||
-    summary.rows.length !== previewRowCount ||
-    summary.rows.some((row) => !Object.hasOwn(importSummaryCountByResult, row.result)) ||
-    summary.baselineCreated > summary.imported ||
-    summary.classificationCreated > summary.imported
+    summary.rows.length !== previewRowCount
   ) {
     return false;
   }
 
-  return Object.entries(importSummaryCountByResult).every(
-    ([result, count]) => summary.rows.filter((row) => row.result === result).length === summary[count],
+  const rows: unknown[] = summary.rows;
+  const results = rows.map((row) => (isRecord(row) ? row.result : undefined));
+  const counts = [...Object.values(importSummaryCountByResult), "baselineCreated", "classificationCreated"] as const;
+  if (
+    !results.every((result) => typeof result === "string" && Object.hasOwn(importSummaryCountByResult, result)) ||
+    !counts.every((count) => isCount(summary[count]))
+  ) {
+    return false;
+  }
+
+  const imported = summary.imported as number;
+  return (
+    (summary.baselineCreated as number) <= imported &&
+    (summary.classificationCreated as number) <= imported &&
+    Object.entries(importSummaryCountByResult).every(
+      ([result, count]) => results.filter((rowResult) => rowResult === result).length === summary[count],
+    )
   );
 }
 
@@ -1223,6 +1248,11 @@ export function PatientProvisioningWorkspace({
   const showReviewDialog = reviewDialogOpen && reviewPreview !== null;
 
   const importConfirmRefused = importState.status === "ERROR" && importState.code === "FORBIDDEN";
+  /**
+   * A confirmation `INVALID_INPUT` (stale preview binding, template or baseline-date validation) is
+   * raised before any row is written and repeats for the same payload, so only a fresh preview helps.
+   */
+  const importConfirmRejected = importState.status === "ERROR" && importState.code === "INVALID_INPUT";
   const importLocked = importPending || importUnconfirmed;
 
   function recordImportUnconfirmed(unconfirmed: boolean): void {
@@ -1345,7 +1375,8 @@ export function PatientProvisioningWorkspace({
       !selectedFile ||
       !hasImportableRows ||
       importState.status === "SUCCESS" ||
-      importConfirmRefused
+      importConfirmRefused ||
+      importConfirmRejected
     ) {
       return;
     }
@@ -1771,7 +1802,7 @@ export function PatientProvisioningWorkspace({
                 executableRowCount={importableRowCount}
                 file={selectedFile}
                 importPending={importPending}
-                confirmBlocked={importUnconfirmed || importConfirmRefused}
+                confirmBlocked={importUnconfirmed || importConfirmRefused || importConfirmRejected}
                 onCancel={() => closeReviewDialog()}
                 onConfirm={handleImport}
                 onEditEffectiveDate={() => closeReviewDialog("EFFECTIVE_DATE")}
@@ -1800,6 +1831,7 @@ export function PatientProvisioningWorkspace({
                 <Alert variant="danger">
                   <p className="font-semibold">นำเข้าไม่สำเร็จ</p>
                   <p className="mt-1">{importState.message}</p>
+                  <p className="mt-1">ปิดหน้าต่างนี้แล้วตรวจสอบไฟล์อีกครั้งก่อนยืนยันนำเข้า</p>
                 </Alert>
               ) : null}
               {importUnconfirmed ? (

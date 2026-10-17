@@ -36,6 +36,7 @@ The Toast is decided inside the confirmation handler from the settled response. 
 
 A `SUCCESS` is accepted only if its summary is consistent with the submission:
 
+- the summary is an object, every row is an object with a known `result`, and every count is a non-negative integer (checked at runtime, so a malformed response such as `summary: null` or a `null` row stays unconfirmed instead of throwing);
 - `targetHospitalId` equals the submitted Hospital;
 - the row count equals the preview row count (same bound file);
 - every row has a known result, and each count (`imported`, `alreadyExists`, `duplicateInFile`, `invalid`, `conflict`, `failed`) equals the number of rows with that result;
@@ -61,10 +62,12 @@ Toast text is static Thai. It never contains names, national IDs, HN, row number
 
 | Result | Toast | Inline UI |
 | --- | --- | --- |
-| `ERROR` + `INVALID_INPUT` | None | Existing "นำเข้าไม่สำเร็จ" with the server message; file, preview and table kept. Raised before any row is written. |
+| `ERROR` + `INVALID_INPUT` | None | Existing "นำเข้าไม่สำเร็จ" with the server message and "ปิดหน้าต่างนี้แล้วตรวจสอบไฟล์อีกครั้งก่อนยืนยันนำเข้า"; file, preview and table kept. Confirm is disabled until a fresh preview; no other lock. |
 | `ERROR` + `FORBIDDEN` | `notify.error("ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้")` | Heading "ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้" with a note that some rows may have been saved if access changed during the import. Confirm is disabled until a fresh preview. |
 | `ERROR` + `UNAVAILABLE`, thrown, `IDLE`, inconsistent or other-Hospital `SUCCESS` | None | Unconfirmed recovery (section 5) |
 | Settles after unmount or remount | None | Discarded |
+
+Why `INVALID_INPUT` blocks re-confirmation without entering recovery: every `INVALID_INPUT` the confirmation can return (form parsing, stale or mismatched preview binding, template validation of the same file, baseline date still required) is raised before the row loop and repeats for the same payload. Re-sending the old binding cannot succeed, but nothing may have been saved, so file, date, mode and Hospital stay unlocked. The binding case is not singled out by matching the server's Thai message, which would couple the client to copy.
 
 Why `FORBIDDEN` is not shown as "นำเข้าไม่สำเร็จ": `importPatientRoster` rethrows `ForbiddenError` from inside the row loop (`patient-roster-import-service.ts`). Rows committed earlier remain, for example when access is revoked or the session expires mid-import. The previous "นำเข้าไม่สำเร็จ" heading could therefore be false.
 
@@ -85,7 +88,7 @@ Rows are committed one by one, and `confirmPatientImportAction` maps any later e
 
 ## 6. Duplicate-submit prevention
 
-`handleImport` acquires `importInFlightRef` synchronously before `startImportTransition`. The ref is released in `finally` when the Server Action settles, so a second click in the same event turn never reaches the Server Action. A pending, unconfirmed (ref), already successful or `FORBIDDEN` confirmation cannot be confirmed again. "นำเข้าไฟล์ใหม่" still resets everything for a legitimate new import, except while a request is in flight or unconfirmed. Preview and failed-row download are not blocked by the guard.
+`handleImport` acquires `importInFlightRef` synchronously before `startImportTransition`. The ref is released in `finally` when the Server Action settles, so a second click in the same event turn never reaches the Server Action. A pending, unconfirmed (ref), already successful, `FORBIDDEN` or `INVALID_INPUT` confirmation cannot be confirmed again with the same preview. "นำเข้าไฟล์ใหม่" still resets everything for a legitimate new import, except while a request is in flight or unconfirmed. Preview and failed-row download are not blocked by the guard.
 
 ## 7. Hospital, file and preview context
 
@@ -105,20 +108,20 @@ Tests added (deferred promises for races; Workspace keyed by Hospital as in `pag
 
 Preview: success opens dialog without Toast; `INVALID_INPUT` inline; `FORBIDDEN` error Toast; returned `UNAVAILABLE` and thrown request without Toast; effective-date change invalidates the checked preview; preview settling after Hospital remount discarded.
 
-Confirmation: table-driven classification for all new, new plus attention, only existing, no new with attention, and existing mixed with attention (exact Toast or none, heading, imported count); `FAILED` rows and baseline/classification counts excluded from imported count, failed-row download receives only failed rows, Patient list link present; `FORBIDDEN` Toast with non-definitive inline copy and blocked re-confirm; `INVALID_INPUT` inline with file and table kept; four inconsistent summaries (counts, other Hospital, row count, baseline) treated as unconfirmed.
+Confirmation: table-driven classification for all new, new plus attention, only existing, no new with attention, and existing mixed with attention (exact Toast or none, heading, imported count); `FAILED` rows and baseline/classification counts excluded from imported count, failed-row download receives only failed rows, Patient list link present; `FORBIDDEN` Toast with non-definitive inline copy and blocked re-confirm; `INVALID_INPUT` inline with file and table kept, re-confirm blocked until a fresh preview whose new binding is then sent; eight inconsistent or malformed summaries (counts, other Hospital, row count, baseline, `null` summary, `null` row, row without result, non-numeric count) treated as unconfirmed without throwing.
 
 Unconfirmed: returned `UNAVAILABLE`, thrown, returned `IDLE` (no Toast, no failure text, confirm blocked, one call); full recovery: locks on file, date, clear, mode and Hospital; failed re-preview keeps the warning; successful re-preview of the same file shows the recheck note and unlocks; the new confirmation uses the fresh binding and gets its own Toast.
 
 Concurrency: rapid double click sends one request; late response after Hospital remount discarded; after unmount suppressed; no replay after rerender or result reopen; explicit "นำเข้าไฟล์ใหม่" import gets its own Toast.
 
-The double-click guard, the unconfirmed classification of `UNAVAILABLE`, the recovery locks and the summary consistency check were each verified to fail their tests when removed.
+The double-click guard, the unconfirmed classification of `UNAVAILABLE`, the recovery locks and the summary consistency check were each verified to fail their tests when removed. The `null` summary, `null` row and `INVALID_INPUT` re-confirm tests fail against the first C.2 commit (`17629b4`).
 
 ```text
 npx vitest run app/app/patients/provision src/modules/patient-provisioning/presentation src/modules/patient-provisioning/transport/patient-provisioning-workspace.test.ts src/modules/patient-provisioning/transport/server-actions.test.ts src/components/ui/mutation-action-state.test.tsx app/app/hospitals/reporting
-  Passed: 7 files, 104 tests (includes all Phase C.1 tests)
+  Passed: 7 files, 108 tests (includes all Phase C.1 tests)
 
 npx vitest run app/app/patients/provision src/modules/patient-provisioning
-  Passed: 17 files, 274 tests
+  Passed: 17 files, 278 tests
 
 npm run typecheck
   Passed

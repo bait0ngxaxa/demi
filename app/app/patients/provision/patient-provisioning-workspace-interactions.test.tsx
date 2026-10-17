@@ -1114,6 +1114,25 @@ describe("Excel Patient import confirmation Toast feedback", () => {
     expect(dialog.textContent).toContain("กรุณาตรวจสอบใหม่ก่อนยืนยันนำเข้า");
     expect(dialog.textContent).toContain("patients.xlsx");
     expect(dialog.querySelector("table")).not.toBeNull();
+    expect(dialog.textContent).not.toContain(unconfirmedText);
+    expect(confirmButton(mounted).disabled).toBe(true);
+    await act(async () => {
+      confirmButton(mounted).click();
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(false);
+
+    await act(async () => {
+      button(mounted, "ยกเลิก").click();
+    });
+    mocks.previewImport.mockResolvedValueOnce({ status: "SUCCESS", preview: importPreview(["READY", "INVALID"], "fresh-binding") });
+    mocks.confirmImport.mockResolvedValue(importResult(["IMPORTED", "INVALID"]));
+    await submitPreview(mounted);
+    expect(confirmButton(mounted).disabled).toBe(false);
+    await confirmImport(mounted);
+
+    expect(confirmCall(1).get("previewBinding")).toBe("fresh-binding");
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -1121,6 +1140,20 @@ describe("Excel Patient import confirmation Toast feedback", () => {
     ["a summary for another Hospital", importResult(["IMPORTED", "INVALID"], { targetHospitalId: otherHospitalId })],
     ["rows that do not match the preview", importResult(["IMPORTED"])],
     ["baseline records beyond the imported Patients", importResult(["IMPORTED", "INVALID"], { baselineCreated: 2 })],
+    ["a null summary", { status: "SUCCESS", summary: null }],
+    ["a null row", (() => {
+      const response = importResult(["IMPORTED", "INVALID"]);
+      return response.status === "SUCCESS"
+        ? { ...response, summary: { ...response.summary, rows: [response.summary.rows[0], null] } }
+        : response;
+    })()],
+    ["a row without a result", (() => {
+      const response = importResult(["IMPORTED", "INVALID"]);
+      return response.status === "SUCCESS"
+        ? { ...response, summary: { ...response.summary, rows: [response.summary.rows[0], {}] } }
+        : response;
+    })()],
+    ["a non-numeric count", importResult(["IMPORTED", "INVALID"], { failed: Number.NaN })],
   ] as const)("treats a success with %s as unconfirmed without a Toast", async (_label, response) => {
     mocks.confirmImport.mockResolvedValue(response);
     const mounted = await openReviewDialog();
