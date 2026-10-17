@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
@@ -17,6 +17,10 @@ import type {
   HospitalOnboardingFieldErrors,
   HospitalOnboardingReviewActionState,
   HospitalOnboardingSubmitActionState,
+} from "./action-state";
+import {
+  HOSPITAL_ONBOARDING_REVIEW_RESPONSE_MODE_CLIENT,
+  HOSPITAL_ONBOARDING_REVIEW_RESPONSE_MODE_FIELD,
 } from "./action-state";
 
 function getSubmissionFieldErrors(
@@ -75,6 +79,7 @@ function mapReviewError(error: unknown): HospitalOnboardingReviewActionState {
   if (error instanceof ApplicationError && error.code === "CONFLICT") {
     return {
       status: "ERROR",
+      code: "CONFLICT",
       message: "คำขอนี้ถูกดำเนินการไปแล้วหรือไม่อยู่ในสถานะที่ดำเนินการได้",
     };
   }
@@ -82,6 +87,7 @@ function mapReviewError(error: unknown): HospitalOnboardingReviewActionState {
   if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
     return {
       status: "ERROR",
+      code: "FORBIDDEN",
       message: "บัญชีนี้ไม่มีสิทธิ์ดำเนินการตรวจสอบคำขอ",
     };
   }
@@ -89,14 +95,36 @@ function mapReviewError(error: unknown): HospitalOnboardingReviewActionState {
   if (error instanceof ApplicationError && error.code === "NOT_FOUND") {
     return {
       status: "ERROR",
+      code: "NOT_FOUND",
       message: "ไม่พบคำขอที่ต้องการตรวจสอบ",
+    };
+  }
+
+  if (error instanceof ApplicationError && error.code === "VALIDATION") {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบเหตุผลที่ปฏิเสธให้ถูกต้อง",
     };
   }
 
   return {
     status: "ERROR",
-    message: "ระบบไม่สามารถบันทึกผลการตรวจสอบได้ กรุณาลองใหม่อีกครั้ง",
+    code: "UNAVAILABLE",
+    message: "ระบบยังยืนยันผลการตรวจสอบคำขอไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนดำเนินการต่อ",
   };
+}
+
+function isEnhancedClientResponse(formData: FormData): boolean {
+  return formData.get(HOSPITAL_ONBOARDING_REVIEW_RESPONSE_MODE_FIELD) ===
+    HOSPITAL_ONBOARDING_REVIEW_RESPONSE_MODE_CLIENT;
+}
+
+function getSuccessfulReviewResult(
+  formData: FormData,
+  decision: "APPROVED" | "REJECTED",
+): HospitalOnboardingReviewActionState | null {
+  return isEnhancedClientResponse(formData) ? { status: "SUCCESS", decision } : null;
 }
 
 export async function submitHospitalOnboardingAction(
@@ -140,10 +168,9 @@ async function resolveReviewActor() {
 export async function approveHospitalOnboardingAction(
   applicationId: string,
   _previousState: HospitalOnboardingReviewActionState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<HospitalOnboardingReviewActionState> {
   void _previousState;
-  void _formData;
   let actor;
 
   try {
@@ -151,11 +178,17 @@ export async function approveHospitalOnboardingAction(
     assertHospitalOnboardingCapability(actor, HOSPITAL_ONBOARDING_CAPABILITIES.approve);
     await approveHospitalOnboarding({ applicationId, reviewerUserId: actor.userId });
   } catch (error: unknown) {
+    unstable_rethrow(error);
     return mapReviewError(error);
   }
 
   revalidatePath("/app/admin/hospital-onboarding");
   revalidatePath(`/app/admin/hospital-onboarding/${applicationId}`);
+  const result = getSuccessfulReviewResult(formData, "APPROVED");
+  if (result) {
+    return result;
+  }
+
   redirect(`/app/admin/hospital-onboarding/${applicationId}`);
 }
 
@@ -175,10 +208,16 @@ export async function rejectHospitalOnboardingAction(
       rejectionReason: formData.get("rejectionReason")?.toString(),
     });
   } catch (error: unknown) {
+    unstable_rethrow(error);
     return mapReviewError(error);
   }
 
   revalidatePath("/app/admin/hospital-onboarding");
   revalidatePath(`/app/admin/hospital-onboarding/${applicationId}`);
+  const result = getSuccessfulReviewResult(formData, "REJECTED");
+  if (result) {
+    return result;
+  }
+
   redirect(`/app/admin/hospital-onboarding/${applicationId}`);
 }
