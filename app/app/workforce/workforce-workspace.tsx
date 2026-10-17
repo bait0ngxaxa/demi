@@ -4,7 +4,16 @@ import Form from "next/form";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -16,6 +25,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { notify } from "@/components/ui/notify";
 import {
   initialWorkforceActivationActionState,
   initialWorkforceBulkActionState,
@@ -52,6 +62,32 @@ type WorkforceWorkspaceProps = {
   selectedHospitalId: string;
   workforce: WorkforceListResult;
 };
+
+type SingleProvisionKind = "HOSPITAL_MEMBER" | "OSM";
+
+type ProvisionSubmission = {
+  id: number;
+  kind: SingleProvisionKind;
+  hospitalId: string;
+  status: "PENDING" | "SUCCESS" | "ERROR" | "UNCONFIRMED" | "STALE";
+  state?: WorkforceProvisionActionState;
+};
+
+type ProvisionServerAction = (
+  previousState: WorkforceProvisionActionState,
+  formData: FormData,
+) => Promise<WorkforceProvisionActionState>;
+
+function isSameProvisionDraft(
+  form: HTMLFormElement,
+  submitted: FormData,
+  isHospitalMember: boolean,
+): boolean {
+  const current = new FormData(form);
+  const fields = ["targetHospitalId", "givenName", "familyName", "nationalId"];
+  if (isHospitalMember) fields.push("profession");
+  return fields.every((field) => current.get(field) === submitted.get(field));
+}
 
 function buildActivationUrl(token: string): string {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
@@ -107,12 +143,14 @@ function ProvisionContinuation({
 
 function ProvisionResult({ result }: { result: WorkforceProvisionResultState }): React.JSX.Element {
   const activationToken = result.activationToken;
+  const identityLabel = result.kind === "OSM" ? " อสม." : "บุคลากร";
+  const readyTitle = result.idempotent ? `ข้อมูล${identityLabel}พร้อมแล้ว` : "เพิ่มสิทธิ์เรียบร้อยแล้ว";
 
   if (!activationToken) {
     return (
       <div>
         <Alert variant="success">
-          <p className="font-semibold">เพิ่มสิทธิ์เรียบร้อยแล้ว</p>
+          <p className="font-semibold">{readyTitle}</p>
           <p className="mt-1 text-muted">
             {result.accountStatus === "ACTIVE"
               ? "ผู้ใช้นี้มีบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว ไม่ต้องเปิดใช้งานบัญชีอีกครั้ง"
@@ -129,7 +167,11 @@ function ProvisionResult({ result }: { result: WorkforceProvisionResultState }):
       <ActivationPresentation
         token={activationToken}
         expiresAt={result.activationExpiresAt}
-        title="สร้างบุคลากรแล้ว · รอเปิดใช้งาน"
+        title={
+          result.idempotent
+            ? `ข้อมูล${identityLabel}พร้อมแล้ว · รอเปิดใช้งาน`
+            : "สร้างบุคลากรแล้ว · รอเปิดใช้งาน"
+        }
       />
       <ProvisionContinuation result={result} />
     </div>
@@ -700,14 +742,163 @@ export function WorkforceWorkspace({
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
-  const [staffState, staffAction, staffPending, staffUnknown] = useMutationActionState<
+  const activeHospitalIdRef = useRef(selectedHospitalId);
+  useLayoutEffect(() => {
+    activeHospitalIdRef.current = selectedHospitalId;
+  }, [selectedHospitalId]);
+  const mountedRef = useRef(false);
+  const provisionSubmissionIdRef = useRef(0);
+  const provisionInFlightRef = useRef<ProvisionSubmission | null>(null);
+  const staffProvisionRef = useRef<ProvisionSubmission | null>(null);
+  const osmProvisionRef = useRef<ProvisionSubmission | null>(null);
+  const staffFormRef = useRef<HTMLFormElement>(null);
+  const osmFormRef = useRef<HTMLFormElement>(null);
+  const [staffProvision, setStaffProvision] = useState<ProvisionSubmission | null>(null);
+  const [osmProvision, setOsmProvision] = useState<ProvisionSubmission | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const updateProvision = useCallback((kind: SingleProvisionKind, next: ProvisionSubmission | null): void => {
+    if (kind === "HOSPITAL_MEMBER") {
+      staffProvisionRef.current = next;
+      setStaffProvision(next);
+      return;
+    }
+
+    osmProvisionRef.current = next;
+    setOsmProvision(next);
+  }, []);
+
+  const handleProvisionResponse = useCallback((
+    submission: ProvisionSubmission,
+    result: WorkforceProvisionActionState,
+    formData: FormData,
+  ): void => {
+    const currentSubmission =
+      submission.kind === "HOSPITAL_MEMBER" ? staffProvisionRef.current : osmProvisionRef.current;
+    const inFlight = provisionInFlightRef.current;
+
+    if (
+      !mountedRef.current ||
+      currentSubmission?.id !== submission.id ||
+      inFlight?.id !== submission.id ||
+      inFlight.status !== "PENDING"
+    ) {
+      return;
+    }
+
+    const resultMatchesSubmission =
+      result.status === "SUCCESS" &&
+      result.result.kind === submission.kind &&
+      result.result.hospitalId === submission.hospitalId;
+    const unconfirmed =
+      result.status === "IDLE" ||
+      (result.status === "ERROR" && result.code === "UNAVAILABLE") ||
+      (result.status === "SUCCESS" && !resultMatchesSubmission);
+    const contextMatches = activeHospitalIdRef.current === submission.hospitalId;
+
+    if (!contextMatches) {
+      const staleResult: ProvisionSubmission = {
+        ...submission,
+        status: unconfirmed ? "UNCONFIRMED" : resultMatchesSubmission ? "SUCCESS" : "STALE",
+        ...(resultMatchesSubmission ? { state: result } : {}),
+      };
+      updateProvision(submission.kind, staleResult);
+      provisionInFlightRef.current = staleResult;
+      return;
+    }
+
+    if (unconfirmed) {
+      const unconfirmedSubmission: ProvisionSubmission = {
+        ...submission,
+        status: "UNCONFIRMED",
+      };
+      updateProvision(submission.kind, unconfirmedSubmission);
+      provisionInFlightRef.current = unconfirmedSubmission;
+      return;
+    }
+
+    if (result.status === "SUCCESS" && resultMatchesSubmission) {
+      if (submission.kind === "HOSPITAL_MEMBER") {
+        notify.success("บันทึกข้อมูลบุคลากรโรงพยาบาลแล้ว");
+        if (staffFormRef.current && isSameProvisionDraft(staffFormRef.current, formData, true)) {
+          staffFormRef.current.reset();
+        }
+      } else {
+        notify.success("บันทึกข้อมูล อสม. แล้ว");
+        if (osmFormRef.current && isSameProvisionDraft(osmFormRef.current, formData, false)) {
+          osmFormRef.current.reset();
+        }
+      }
+
+      const successfulSubmission: ProvisionSubmission = {
+        ...submission,
+        status: "SUCCESS",
+        state: result,
+      };
+      updateProvision(submission.kind, successfulSubmission);
+      provisionInFlightRef.current = successfulSubmission;
+      return;
+    }
+
+    if (result.status !== "ERROR") {
+      return;
+    }
+
+    if (result.code === "CONFLICT") {
+      notify.warning(
+        submission.kind === "HOSPITAL_MEMBER"
+          ? "ไม่สามารถเพิ่มบุคลากรได้ กรุณาตรวจสอบรายการล่าสุด"
+          : "ไม่สามารถเพิ่ม อสม. ได้ กรุณาตรวจสอบรายการล่าสุด",
+      );
+    } else if (result.code === "FORBIDDEN") {
+      notify.error(
+        submission.kind === "HOSPITAL_MEMBER"
+          ? "ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้"
+          : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้",
+      );
+    }
+
+    const failedSubmission: ProvisionSubmission = {
+      ...submission,
+      status: "ERROR",
+      state: result,
+    };
+    updateProvision(submission.kind, failedSubmission);
+    provisionInFlightRef.current = failedSubmission;
+  }, [updateProvision]);
+
+  const staffProvisionAction = useCallback<ProvisionServerAction>(async (previousState, formData) => {
+    const submission = provisionInFlightRef.current;
+    const result = await provisionHospitalMemberAction(previousState, formData);
+    if (submission?.kind === "HOSPITAL_MEMBER") {
+      handleProvisionResponse(submission, result, formData);
+    }
+    return result;
+  }, [handleProvisionResponse]);
+
+  const osmProvisionAction = useCallback<ProvisionServerAction>(async (previousState, formData) => {
+    const submission = provisionInFlightRef.current;
+    const result = await provisionOsmAction(previousState, formData);
+    if (submission?.kind === "OSM") {
+      handleProvisionResponse(submission, result, formData);
+    }
+    return result;
+  }, [handleProvisionResponse]);
+
+  const [, staffAction, staffPending, staffUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
-  >(provisionHospitalMemberAction, initialWorkforceProvisionActionState);
-  const [osmState, osmAction, osmPending, osmUnknown] = useMutationActionState<
+  >(staffProvisionAction, initialWorkforceProvisionActionState);
+  const [, osmAction, osmPending, osmUnknown] = useMutationActionState<
     WorkforceProvisionActionState,
     FormData
-  >(provisionOsmAction, initialWorkforceProvisionActionState);
+  >(osmProvisionAction, initialWorkforceProvisionActionState);
   const [remoteState, remoteAction, remotePending, remoteUnknown] = useMutationActionState<
     WorkforceActivationActionState,
     FormData
@@ -720,6 +911,29 @@ export function WorkforceWorkspace({
     provisionWorkforceBulkAction,
     initialWorkforceBulkActionState,
   );
+
+  useEffect(() => {
+    const markThrownOutcome = (
+      kind: SingleProvisionKind,
+      unknownOutcome: boolean,
+      current: ProvisionSubmission | null,
+    ): void => {
+      if (!unknownOutcome || current?.status !== "PENDING") return;
+
+      const operationRef = kind === "HOSPITAL_MEMBER" ? staffProvisionRef : osmProvisionRef;
+      if (operationRef.current?.id !== current.id) return;
+
+      const unresolved: ProvisionSubmission = { ...current, status: "UNCONFIRMED" };
+      updateProvision(kind, unresolved);
+      if (provisionInFlightRef.current?.id === current.id) {
+        provisionInFlightRef.current = unresolved;
+      }
+    };
+
+    markThrownOutcome("HOSPITAL_MEMBER", staffUnknown, staffProvision);
+    markThrownOutcome("OSM", osmUnknown, osmProvision);
+  }, [osmProvision, osmUnknown, staffProvision, staffUnknown, updateProvision]);
+
   const isOwner = workforce.viewerScope === "OWNER";
   const pageInfo = workforce.pageInfo;
   function directoryHref(kind: "HOSPITAL_MEMBER" | "OSM"): string {
@@ -743,23 +957,100 @@ export function WorkforceWorkspace({
 
   const staffRows = workforce.rows.filter((row) => row.kind === "HOSPITAL_MEMBER");
   const osmRows = workforce.rows.filter((row) => row.kind === "OSM");
-  const staffResult = staffState.status === "SUCCESS" ? staffState.result : null;
-  const osmResult = osmState.status === "SUCCESS" ? osmState.result : null;
   const remoteResult = remoteState.status === "SUCCESS" ? remoteState.result : null;
-  const anyPending =
-    staffPending || osmPending || remotePending || assistedPending || bulkPending;
-  // Bulk submissions are keyed and safe to resend, so only the other actions block on an unconfirmed outcome.
-  const actionsBlocked = anyPending || staffUnknown || osmUnknown || remoteUnknown || assistedUnknown;
-  const staffFormRef = useRef<HTMLFormElement>(null);
-  const osmFormRef = useRef<HTMLFormElement>(null);
+  const currentStaffProvision =
+    staffProvision?.hospitalId === selectedHospitalId ? staffProvision : null;
+  const currentOsmProvision = osmProvision?.hospitalId === selectedHospitalId ? osmProvision : null;
+  const staffResult =
+    currentStaffProvision?.status === "SUCCESS" && currentStaffProvision.state?.status === "SUCCESS"
+      ? currentStaffProvision.state.result
+      : null;
+  const osmResult =
+    currentOsmProvision?.status === "SUCCESS" && currentOsmProvision.state?.status === "SUCCESS"
+      ? currentOsmProvision.state.result
+      : null;
+  const staffError =
+    currentStaffProvision?.status === "ERROR" && currentStaffProvision.state?.status === "ERROR"
+      ? currentStaffProvision.state
+      : null;
+  const osmError =
+    currentOsmProvision?.status === "ERROR" && currentOsmProvision.state?.status === "ERROR"
+      ? currentOsmProvision.state
+      : null;
+  const staffUnknownHospitalId = staffUnknown
+    ? staffProvision?.hospitalId ?? selectedHospitalId
+    : staffProvision?.status === "UNCONFIRMED"
+      ? staffProvision.hospitalId
+      : null;
+  const osmUnknownHospitalId = osmUnknown
+    ? osmProvision?.hospitalId ?? selectedHospitalId
+    : osmProvision?.status === "UNCONFIRMED"
+      ? osmProvision.hospitalId
+      : null;
+  const staffUnknownForCurrentHospital = staffUnknownHospitalId === selectedHospitalId;
+  const osmUnknownForCurrentHospital = osmUnknownHospitalId === selectedHospitalId;
+  const singleProvisionPending =
+    staffPending ||
+    osmPending ||
+    staffProvision?.status === "PENDING" ||
+    osmProvision?.status === "PENDING";
+  // Preserve the existing cross-workflow lock while a request or an unknown outcome is active.
+  const actionsBlocked =
+    singleProvisionPending ||
+    remotePending ||
+    assistedPending ||
+    bulkPending ||
+    staffUnknownHospitalId !== null ||
+    osmUnknownHospitalId !== null ||
+    remoteUnknown ||
+    assistedUnknown;
 
-  useEffect(() => {
-    if (staffState.status === "SUCCESS") staffFormRef.current?.reset();
-  }, [staffState]);
+  function dispatchProvision(
+    kind: SingleProvisionKind,
+    formData: FormData,
+    dispatch: (payload: FormData) => void,
+  ): void {
+    const previous = provisionInFlightRef.current;
+    if (
+      actionsBlocked ||
+      (previous?.status !== undefined &&
+        (previous.status === "PENDING" || previous.status === "UNCONFIRMED"))
+    ) {
+      return;
+    }
 
-  useEffect(() => {
-    if (osmState.status === "SUCCESS") osmFormRef.current?.reset();
-  }, [osmState]);
+    const targetHospitalId = formData.get("targetHospitalId");
+    const submission: ProvisionSubmission = {
+      id: provisionSubmissionIdRef.current + 1,
+      kind,
+      hospitalId:
+        typeof targetHospitalId === "string" && targetHospitalId.length > 0
+          ? targetHospitalId
+          : activeHospitalIdRef.current,
+      status: "PENDING",
+    };
+    provisionSubmissionIdRef.current = submission.id;
+    provisionInFlightRef.current = submission;
+    updateProvision(kind, submission);
+    dispatch(formData);
+  }
+
+  function submitStaffProvision(event: FormEvent<HTMLFormElement>): void {
+    submitPreservingInput((formData) =>
+      dispatchProvision("HOSPITAL_MEMBER", formData, staffAction),
+    )(event);
+  }
+
+  function submitOsmProvision(event: FormEvent<HTMLFormElement>): void {
+    submitPreservingInput((formData) => dispatchProvision("OSM", formData, osmAction))(event);
+  }
+  const staleUnknownProvisions = [
+    { kind: "HOSPITAL_MEMBER" as const, hospitalId: staffUnknownHospitalId },
+    { kind: "OSM" as const, hospitalId: osmUnknownHospitalId },
+  ].filter(
+    (item): item is { kind: SingleProvisionKind; hospitalId: string } =>
+      item.hospitalId !== null && item.hospitalId !== selectedHospitalId,
+  );
 
   return (
     <div className="content-workspace break-words">
@@ -784,9 +1075,10 @@ export function WorkforceWorkspace({
           <Select
             className="mt-2 max-w-xl"
             id="targetHospitalId"
-            disabled={hospitalSwitching}
+            disabled={hospitalSwitching || singleProvisionPending}
             onChange={(event) => {
               const hospitalId = event.target.value;
+              if (provisionInFlightRef.current?.status === "PENDING") return;
               startHospitalSwitch(() => {
                 router.push(`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`);
               });
@@ -809,6 +1101,31 @@ export function WorkforceWorkspace({
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-roster" prefetch={false}>รายชื่อในโรงพยาบาล</Link>
           <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
         </nav>
+
+        {staleUnknownProvisions.map(({ kind, hospitalId }) => {
+          const previousHospitalName = hospitals.find((hospital) => hospital.id === hospitalId)?.name;
+          return (
+            <div className="mt-6" key={`${kind}-${hospitalId}`}>
+              <UnknownOutcomeAlert
+                active
+                recovery={{
+                  kind: "note",
+                  message: `ผลการเพิ่มข้อมูล${kind === "OSM" ? " อสม." : "บุคลากร"}ของ${previousHospitalName ?? "โรงพยาบาลเดิม"}ยังยืนยันไม่ได้`,
+                  note:
+                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ กรุณากลับไปตรวจสอบรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
+                }}
+              />
+              <p className="mt-3 text-sm">
+                <Link
+                  className="font-semibold underline underline-offset-4"
+                  href={`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`}
+                >
+                  กลับไปตรวจสอบรายชื่อโรงพยาบาลเดิม
+                </Link>
+              </p>
+            </div>
+          );
+        })}
 
         <UnknownOutcomeAlert
           active={remoteUnknown}
@@ -915,7 +1232,7 @@ export function WorkforceWorkspace({
                 เพิ่มสมาชิกและเลือกวิชาชีพ วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล การเปลี่ยนบทบาทเจ้าของทำในรายละเอียดความสัมพันธ์ตามสิทธิ์
               </p>
             </div>
-            <form action={staffAction} className="mt-6 space-y-4" onSubmit={submitPreservingInput(staffAction)} ref={staffFormRef}>
+            <form action={staffAction} className="mt-6 space-y-4" onSubmit={submitStaffProvision} ref={staffFormRef}>
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
@@ -940,10 +1257,10 @@ export function WorkforceWorkspace({
                   ))}
                 </Select>
               </label>
-              {staffState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{staffState.message}</Alert> : null}
-              {staffState.status === "SUCCESS" ? <ProvisionResult result={staffResult!} /> : null}
+              {staffError ? <Alert className="mt-2" variant="danger">{staffError.message}</Alert> : null}
+              {staffResult ? <ProvisionResult result={staffResult} /> : null}
               <UnknownOutcomeAlert
-                active={staffUnknown}
+                active={staffUnknownForCurrentHospital}
                 recovery={{
                   kind: "reload",
                   label: "ตรวจสอบรายชื่อบุคลากร",
@@ -965,7 +1282,7 @@ export function WorkforceWorkspace({
                 สร้างเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ ยังไม่มีการกำหนดพื้นที่หรือผู้ป่วย
               </p>
             </div>
-            <form action={osmAction} className="mt-6 space-y-4" onSubmit={submitPreservingInput(osmAction)} ref={osmFormRef}>
+            <form action={osmAction} className="mt-6 space-y-4" onSubmit={submitOsmProvision} ref={osmFormRef}>
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
@@ -984,10 +1301,10 @@ export function WorkforceWorkspace({
               <div className="min-h-12 rounded-control border border-dashed border-border bg-surface-muted px-4 py-3 text-sm leading-6 text-text-muted">
                 ระบบจะกำหนดบทบาท อสม. และสถานะความสัมพันธ์ให้ตามขั้นตอนนี้
               </div>
-              {osmState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{osmState.message}</Alert> : null}
-              {osmState.status === "SUCCESS" ? <ProvisionResult result={osmResult!} /> : null}
+              {osmError ? <Alert className="mt-2" variant="danger">{osmError.message}</Alert> : null}
+              {osmResult ? <ProvisionResult result={osmResult} /> : null}
               <UnknownOutcomeAlert
-                active={osmUnknown}
+                active={osmUnknownForCurrentHospital}
                 recovery={{
                   kind: "reload",
                   label: "ตรวจสอบรายชื่อ อสม.",

@@ -73,7 +73,7 @@ describe("Hospital workforce operational continuity", () => {
     expect(buttons.filter((button) => button.includes('disabled=""'))).toHaveLength(5);
   });
 
-  it("keeps success continuation bound to the persisted result Hospital and relationship", () => {
+  it("does not render a retained success result without its local submission context", () => {
     const state: WorkforceProvisionActionState = { status: "SUCCESS", result: {
       kind: "HOSPITAL_MEMBER", userId: "new-user", hospitalId: second.id, relationshipId: "persisted-membership",
       accountStatus: "ACTIVE", relationshipStatus: "ACTIVE", activationRequired: false, activationToken: null,
@@ -81,16 +81,15 @@ describe("Hospital workforce operational continuity", () => {
     } };
     hooks.actionState.mockReturnValueOnce([state, vi.fn(), false]);
     const html = render();
-    expect(html).toContain("เพิ่มสิทธิ์เรียบร้อยแล้ว");
-    expect(html).toContain('href="/app/workforce/staff/persisted-membership"');
-    expect(html).toContain(`href="/app/patients?hospitalId=${second.id}"`);
-    expect(html).not.toContain("สร้างผู้ป่วยแล้ว");
+    expect(html).not.toContain("เพิ่มสิทธิ์เรียบร้อยแล้ว");
+    expect(html).not.toContain('href="/app/workforce/staff/persisted-membership"');
+    expect(html).not.toContain(`href="/app/patients?hospitalId=${second.id}"`);
   });
 
-  it("preserves safe conflict feedback without a false success", () => {
+  it("does not render an error result without its local submission context", () => {
     hooks.actionState.mockReturnValueOnce([{ status: "ERROR", code: "CONFLICT", message: "ข้อมูลเปลี่ยนแปลง กรุณาตรวจสอบอีกครั้ง" }, vi.fn(), false]);
     const html = render();
-    expect(html).toContain("ข้อมูลเปลี่ยนแปลง กรุณาตรวจสอบอีกครั้ง");
+    expect(html).not.toContain("ข้อมูลเปลี่ยนแปลง กรุณาตรวจสอบอีกครั้ง");
     expect(html).not.toContain("เพิ่มสิทธิ์เรียบร้อยแล้ว");
   });
 
