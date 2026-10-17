@@ -793,3 +793,537 @@ describe("Single Patient provisioning Toast feedback", () => {
     expect(allNotifications()).toBe(0);
   });
 });
+
+type ImportRowResult = PatientImportResultSummary["rows"][number]["result"];
+
+function importPreview(
+  classifications: readonly PatientImportPreviewRow["classification"][],
+  binding = "preview-binding",
+): PatientImportPreviewBinding {
+  return {
+    ...preview,
+    rows: classifications.map((classification, index) => previewRow(index + 2, classification)),
+    previewBinding: binding,
+  };
+}
+
+/** A summary whose counts are derived from its rows, as the import service builds it. */
+function importResult(
+  results: readonly ImportRowResult[],
+  overrides: Partial<PatientImportResultSummary> = {},
+): PatientImportActionState {
+  const rows = results.map((result, index) => ({
+    ...previewRow(index + 2, result === "IMPORTED" || result === "FAILED" ? "READY" : result),
+    result,
+  }));
+  const count = (result: ImportRowResult) => rows.filter((row) => row.result === result).length;
+
+  return {
+    status: "SUCCESS",
+    summary: {
+      targetHospitalId: hospitalId,
+      imported: count("IMPORTED"),
+      alreadyExists: count("ALREADY_EXISTS"),
+      duplicateInFile: count("DUPLICATE_IN_FILE"),
+      invalid: count("INVALID"),
+      conflict: count("CONFLICT"),
+      failed: count("FAILED"),
+      baselineCreated: 0,
+      classificationCreated: 0,
+      rows,
+      file: null,
+      ...overrides,
+    },
+  };
+}
+
+function confirmButton(mounted: HTMLElement): HTMLButtonElement {
+  const found = Array.from(currentDialog(mounted).querySelectorAll("button")).find((candidate) =>
+    candidate.textContent?.startsWith("ยืนยันนำเข้า"),
+  );
+  if (!(found instanceof HTMLButtonElement)) {
+    throw new Error("Missing import confirmation button");
+  }
+  return found;
+}
+
+async function confirmImport(mounted: HTMLElement): Promise<void> {
+  await act(async () => {
+    confirmButton(mounted).click();
+  });
+}
+
+/** The value shown under a summary label such as "นำเข้าผู้ป่วยใหม่". */
+function summaryCount(mounted: HTMLElement, label: string): string | null {
+  const term = Array.from(currentDialog(mounted).querySelectorAll("dt")).find(
+    (candidate) => candidate.textContent === label,
+  );
+  return term?.nextElementSibling?.textContent ?? null;
+}
+
+function effectiveDateInput(mounted: HTMLElement): HTMLInputElement {
+  const found = mounted.querySelector<HTMLInputElement>("#patient-import-effective-date");
+  if (!found) {
+    throw new Error("Missing effective date input");
+  }
+  return found;
+}
+
+function setInputValue(input: HTMLInputElement, value: string): void {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function submitPreview(mounted: HTMLElement): Promise<void> {
+  await act(async () => {
+    const form = mounted.querySelector<HTMLFormElement>('form[enctype="multipart/form-data"]');
+    if (!form) {
+      throw new Error("Missing patient import preview form");
+    }
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+}
+
+function confirmCall(index: number): FormData {
+  const formData = mocks.confirmImport.mock.calls[index]?.[0];
+  if (!(formData instanceof FormData)) {
+    throw new Error(`Missing import confirmation call ${index}`);
+  }
+  return formData;
+}
+
+const importFailureHeading = "นำเข้าไม่สำเร็จ";
+const importForbiddenToast = "ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้";
+
+describe("Excel Patient import preview feedback", () => {
+  it("opens the review dialog for a preview without a Toast", async () => {
+    const mounted = await openReviewDialog();
+
+    expect(currentDialog(mounted).querySelector("h2")?.textContent).toBe("ตรวจสอบก่อนนำเข้า");
+    expect(allNotifications()).toBe(0);
+    expect(mocks.confirmImport).not.toHaveBeenCalled();
+  });
+
+  it("keeps preview validation inline without a Toast", async () => {
+    mocks.previewImport.mockReset().mockResolvedValue({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ไฟล์ไม่ตรงกับไฟล์ตัวอย่างของโรงพยาบาลนี้",
+    });
+    const mounted = await openReviewDialog();
+
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).toContain("ไฟล์ไม่ตรงกับไฟล์ตัวอย่างของโรงพยาบาลนี้");
+    expect(mounted.textContent).toContain("patients.xlsx");
+    expect(allNotifications()).toBe(0);
+  });
+
+  it("maps a confirmed preview FORBIDDEN to its static error Toast and keeps the inline message", async () => {
+    mocks.previewImport.mockReset().mockResolvedValue({
+      status: "ERROR",
+      code: "FORBIDDEN",
+      message: "บัญชีนี้ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้",
+    });
+    const mounted = await openReviewDialog();
+
+    expect(mocks.notifyError).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyError).toHaveBeenCalledWith("ไม่มีสิทธิ์ตรวจสอบไฟล์ผู้ป่วยของโรงพยาบาลนี้");
+    expect(allNotifications()).toBe(1);
+    expect(mounted.textContent).toContain("บัญชีนี้ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้");
+    expect(mounted.querySelector("dialog")).toBeNull();
+  });
+
+  it.each([
+    ["returned UNAVAILABLE", () => mocks.previewImport.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้ กรุณาลองใหม่อีกครั้ง" })],
+    ["thrown request", () => mocks.previewImport.mockRejectedValue(new TypeError("Failed to fetch"))],
+  ] as const)("keeps a %s preview retryable without a Toast", async (_label, arrange) => {
+    mocks.previewImport.mockReset();
+    arrange();
+    const mounted = await openReviewDialog();
+
+    expect(allNotifications()).toBe(0);
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).toContain("patients.xlsx");
+    expect(button(mounted, "ตรวจสอบและแสดงตัวอย่าง").disabled).toBe(false);
+  });
+
+  it("invalidates a checked preview when the effective date changes, without a Toast", async () => {
+    const mounted = await openReviewDialog();
+    await act(async () => {
+      button(mounted, "ยกเลิก").click();
+    });
+    expect(button(mounted, "เปิดหน้าตรวจสอบ")).toBeDefined();
+
+    act(() => setInputValue(effectiveDateInput(mounted), "2026-01-15"));
+
+    expect(effectiveDateInput(mounted).value).toBe("2026-01-15");
+    expect(mounted.textContent).not.toContain("เปิดหน้าตรวจสอบ");
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).toContain("patients.xlsx");
+    expect(allNotifications()).toBe(0);
+  });
+
+  it("discards a preview that settles after the Hospital key remounts the Workspace", async () => {
+    renderWorkspace(hospitalId);
+    const pending = deferred<unknown>();
+    mocks.previewImport.mockReset().mockReturnValue(pending.promise);
+    const mounted = await openReviewDialog();
+
+    renderWorkspace(otherHospitalId);
+    await act(async () => {
+      pending.resolve({ status: "ERROR", code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์" });
+      await pending.promise;
+    });
+
+    expect(allNotifications()).toBe(0);
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).not.toContain("บัญชีนี้ไม่มีสิทธิ์");
+  });
+});
+
+describe("Excel Patient import confirmation Toast feedback", () => {
+  it.each([
+    {
+      name: "all new rows imported",
+      preview: ["READY", "READY"],
+      results: ["IMPORTED", "IMPORTED"],
+      level: "success",
+      toast: "นำเข้าข้อมูลผู้ป่วยแล้ว",
+      heading: "นำเข้าผู้ป่วยใหม่แล้ว",
+      imported: "2",
+    },
+    {
+      name: "new rows imported with attention rows",
+      preview: ["READY", "INVALID"],
+      results: ["IMPORTED", "INVALID"],
+      level: "warning",
+      toast: "นำเข้าได้บางรายการ กรุณาตรวจสอบผลรายแถว",
+      heading: "นำเข้าผู้ป่วยใหม่แล้ว และยังมีบางรายการที่ต้องแก้ไข",
+      imported: "1",
+    },
+    {
+      name: "only existing Patients",
+      preview: ["READY", "ALREADY_EXISTS"],
+      results: ["ALREADY_EXISTS", "ALREADY_EXISTS"],
+      level: null,
+      toast: null,
+      heading: "ไม่มีผู้ป่วยใหม่ในไฟล์นี้",
+      imported: "0",
+    },
+    {
+      name: "no new rows with attention rows",
+      preview: ["READY", "INVALID"],
+      results: ["FAILED", "INVALID"],
+      level: "warning",
+      toast: "ยังไม่มีผู้ป่วยใหม่ที่นำเข้าได้ กรุณาตรวจสอบผลรายแถว",
+      heading: "ยังไม่มีรายการที่บันทึกได้",
+      imported: "0",
+    },
+    {
+      name: "existing Patients mixed with attention rows",
+      preview: ["READY", "READY"],
+      results: ["ALREADY_EXISTS", "FAILED"],
+      level: "warning",
+      toast: "ยังไม่มีผู้ป่วยใหม่ที่นำเข้าได้ กรุณาตรวจสอบผลรายแถว",
+      heading: "ยังไม่มีรายการที่บันทึกได้",
+      imported: "0",
+    },
+  ] as const)("classifies $name from the final rows", async (scenario) => {
+    mocks.previewImport.mockReset().mockResolvedValue({ status: "SUCCESS", preview: importPreview(scenario.preview) });
+    mocks.confirmImport.mockResolvedValue(importResult(scenario.results));
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    const dialog = currentDialog(mounted);
+    expect(dialog.querySelector("h2")?.textContent).toBe("ผลการนำเข้าผู้ป่วย");
+    expect(dialog.textContent).toContain(scenario.heading);
+    expect(summaryCount(mounted, "นำเข้าผู้ป่วยใหม่")).toBe(scenario.imported);
+    if (scenario.imported === "0") {
+      expect(dialog.textContent).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
+    }
+    if (scenario.level === null) {
+      expect(allNotifications()).toBe(0);
+    } else {
+      const channel = scenario.level === "success" ? mocks.notifySuccess : mocks.notifyWarning;
+      expect(channel).toHaveBeenCalledTimes(1);
+      expect(channel).toHaveBeenCalledWith(scenario.toast);
+      expect(allNotifications()).toBe(1);
+    }
+  });
+
+  it("counts neither FAILED rows nor baseline and classification records as imported Patients", async () => {
+    mocks.previewImport.mockReset().mockResolvedValue({ status: "SUCCESS", preview: importPreview(["READY", "READY"]) });
+    mocks.confirmImport.mockResolvedValue(
+      importResult(["IMPORTED", "FAILED"], { baselineCreated: 1, classificationCreated: 1 }),
+    );
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    expect(summaryCount(mounted, "นำเข้าผู้ป่วยใหม่")).toBe("1");
+    expect(summaryCount(mounted, "บันทึกไม่สำเร็จ")).toBe("1");
+    expect(mocks.notifyWarning).toHaveBeenCalledWith("นำเข้าได้บางรายการ กรุณาตรวจสอบผลรายแถว");
+    expect(mocks.notifySuccess).not.toHaveBeenCalled();
+    expect(currentDialog(mounted).textContent).toContain("สมหญิง");
+
+    await act(async () => {
+      button(mounted, "ดาวน์โหลดแถวที่ต้องแก้ไข").click();
+    });
+    expect(mocks.downloadFailedRows).toHaveBeenCalledWith(expect.objectContaining({ failedRowNumbers: [3] }));
+    expect(currentDialog(mounted).querySelector('a[href^="/app/patients?hospitalId="]')).not.toBeNull();
+  });
+
+  it("maps a confirmed import FORBIDDEN to its error Toast without claiming nothing was saved", async () => {
+    mocks.confirmImport.mockResolvedValue({
+      status: "ERROR",
+      code: "FORBIDDEN",
+      message: "บัญชีนี้ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้",
+    });
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    expect(mocks.notifyError).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyError).toHaveBeenCalledWith(importForbiddenToast);
+    expect(allNotifications()).toBe(1);
+    const dialog = currentDialog(mounted);
+    expect(dialog.textContent).toContain(importForbiddenToast);
+    expect(dialog.textContent).toContain("บางรายการอาจถูกบันทึกไปแล้ว");
+    expect(dialog.textContent).not.toContain(importFailureHeading);
+    expect(confirmButton(mounted).disabled).toBe(true);
+    await act(async () => {
+      confirmButton(mounted).click();
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a confirmation INVALID_INPUT inline with the file and preview retained", async () => {
+    mocks.confirmImport.mockResolvedValue({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ไฟล์ โรงพยาบาล วันที่ข้อมูลตั้งต้น หรือรูปแบบนำเข้าเปลี่ยนแปลงแล้ว กรุณาตรวจสอบใหม่ก่อนยืนยันนำเข้า",
+    });
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    expect(allNotifications()).toBe(0);
+    const dialog = currentDialog(mounted);
+    expect(dialog.textContent).toContain(importFailureHeading);
+    expect(dialog.textContent).toContain("กรุณาตรวจสอบใหม่ก่อนยืนยันนำเข้า");
+    expect(dialog.textContent).toContain("patients.xlsx");
+    expect(dialog.querySelector("table")).not.toBeNull();
+  });
+
+  it.each([
+    ["counts that disagree with the rows", importResult(["IMPORTED", "INVALID"], { imported: 2 })],
+    ["a summary for another Hospital", importResult(["IMPORTED", "INVALID"], { targetHospitalId: otherHospitalId })],
+    ["rows that do not match the preview", importResult(["IMPORTED"])],
+    ["baseline records beyond the imported Patients", importResult(["IMPORTED", "INVALID"], { baselineCreated: 2 })],
+  ] as const)("treats a success with %s as unconfirmed without a Toast", async (_label, response) => {
+    mocks.confirmImport.mockResolvedValue(response);
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    expect(allNotifications()).toBe(0);
+    const dialog = currentDialog(mounted);
+    expect(dialog.querySelector("h2")?.textContent).toBe("ตรวจสอบก่อนนำเข้า");
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
+    expect(confirmButton(mounted).disabled).toBe(true);
+  });
+});
+
+describe("Excel Patient import unconfirmed outcome", () => {
+  it.each([
+    ["returned UNAVAILABLE", () => mocks.confirmImport.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้ กรุณาลองใหม่อีกครั้ง" })],
+    ["thrown request", () => mocks.confirmImport.mockRejectedValue(new TypeError("Failed to fetch"))],
+    ["returned IDLE", () => mocks.confirmImport.mockResolvedValue({ status: "IDLE" })],
+  ] as const)("keeps a %s unconfirmed without a Toast or a failure claim", async (_label, arrange) => {
+    arrange();
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+
+    expect(allNotifications()).toBe(0);
+    const dialog = currentDialog(mounted);
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
+    expect(dialog.textContent).toContain("บางรายการอาจถูกบันทึกไปแล้ว");
+    expect(dialog.textContent).not.toContain(importFailureHeading);
+    expect(dialog.textContent).not.toContain("ระบบไม่พร้อมดำเนินการในขณะนี้");
+    expect(dialog.textContent).toContain("patients.xlsx");
+    expect(confirmButton(mounted).disabled).toBe(true);
+    await act(async () => {
+      confirmButton(mounted).click();
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks file, date, mode and Hospital until a fresh preview of the same file, then allows a new confirmation", async () => {
+    renderWorkspace(hospitalId);
+    mocks.confirmImport.mockResolvedValueOnce({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" });
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+    await act(async () => {
+      button(mounted, "ยกเลิก").click();
+    });
+
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).toContain(unconfirmedText);
+    expect(mounted.textContent).toContain("บางรายการอาจถูกบันทึกไปแล้ว");
+    expect(mounted.textContent).not.toContain("ปิดหน้าต่างนี้");
+    expect(mounted.textContent).not.toContain("ยังไม่ได้นำเข้า");
+    expect(mounted.querySelector<HTMLInputElement>("#patient-import-file")?.disabled).toBe(true);
+    expect(effectiveDateInput(mounted).disabled).toBe(true);
+    expect(button(mounted, "ล้างไฟล์").disabled).toBe(true);
+    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(true);
+    const selector = mounted.querySelector<HTMLSelectElement>("#targetHospitalId")!;
+    expect(selector.disabled).toBe(true);
+    await act(async () => {
+      selector.value = otherHospitalId;
+      selector.dispatchEvent(new Event("change", { bubbles: true }));
+      button(mounted, "เพิ่มรายบุคคล").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mounted.textContent).toContain("patients.xlsx");
+
+    mocks.previewImport.mockResolvedValueOnce({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" });
+    await submitPreview(mounted);
+    expect(mounted.textContent).toContain(unconfirmedText);
+    expect(effectiveDateInput(mounted).disabled).toBe(true);
+
+    mocks.previewImport.mockResolvedValueOnce({
+      status: "SUCCESS",
+      preview: importPreview(["ALREADY_EXISTS", "READY"], "fresh-binding"),
+    });
+    await submitPreview(mounted);
+
+    const recheckDialog = currentDialog(mounted);
+    expect(recheckDialog.textContent).toContain("ไฟล์นี้อาจถูกนำเข้าไปแล้วบางส่วนจากคำขอก่อนหน้า");
+    expect(recheckDialog.textContent).not.toContain(unconfirmedText);
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+    const recheckRequest = mocks.previewImport.mock.calls.at(-1)?.[0];
+    expect(recheckRequest).toBeInstanceOf(FormData);
+    for (const field of ["targetHospitalId", "effectiveDate"]) {
+      expect((recheckRequest as FormData).get(field)).toBe(confirmCall(0).get(field));
+    }
+    expect(((recheckRequest as FormData).get("file") as File).name).toBe((confirmCall(0).get("file") as File).name);
+    // The fresh preview resolved the unconfirmed state, so the switches are released.
+    expect(selector.disabled).toBe(false);
+
+    mocks.confirmImport.mockResolvedValueOnce(importResult(["ALREADY_EXISTS", "IMPORTED"]));
+    await confirmImport(mounted);
+
+    expect(confirmCall(1).get("previewBinding")).toBe("fresh-binding");
+    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
+    expect(mocks.notifySuccess).toHaveBeenCalledWith("นำเข้าข้อมูลผู้ป่วยแล้ว");
+    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(false);
+    expect(selector.disabled).toBe(false);
+  });
+});
+
+describe("Excel Patient import concurrency and context", () => {
+  it("sends one confirmation for a rapid double click", async () => {
+    const pending = deferred<PatientImportActionState>();
+    mocks.confirmImport.mockReturnValue(pending.promise);
+    const mounted = await openReviewDialog();
+    const confirm = confirmButton(mounted);
+
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(true);
+
+    await act(async () => {
+      pending.resolve(importResult(["IMPORTED", "INVALID"]));
+      await pending.promise;
+    });
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a confirmation that settles after the Hospital key remounts the Workspace", async () => {
+    renderWorkspace(hospitalId);
+    const pending = deferred<PatientImportActionState>();
+    mocks.confirmImport.mockReturnValue(pending.promise);
+    const mounted = await openReviewDialog();
+
+    act(() => {
+      confirmButton(mounted).click();
+    });
+    renderWorkspace(otherHospitalId);
+    await act(async () => {
+      pending.resolve(importResult(["IMPORTED", "INVALID"]));
+      await pending.promise;
+    });
+
+    expect(allNotifications()).toBe(0);
+    expect(mounted.querySelector("dialog")).toBeNull();
+    renderWorkspace(hospitalId);
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
+    expect(allNotifications()).toBe(0);
+  });
+
+  it("suppresses feedback for a confirmation that settles after unmount", async () => {
+    const pending = deferred<PatientImportActionState>();
+    mocks.confirmImport.mockReturnValue(pending.promise);
+    const mounted = await openReviewDialog();
+
+    act(() => {
+      confirmButton(mounted).click();
+    });
+    act(() => root?.unmount());
+    root = null;
+
+    await act(async () => {
+      pending.resolve(importResult(["IMPORTED", "INVALID"]));
+      await pending.promise;
+    });
+    expect(allNotifications()).toBe(0);
+  });
+
+  it("does not replay a Toast on rerender or result reopen, and gives a new explicit import its own Toast", async () => {
+    mocks.confirmImport.mockResolvedValue(importResult(["IMPORTED", "INVALID"]));
+    const mounted = await openReviewDialog();
+
+    await confirmImport(mounted);
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      root?.render(
+        createElement(PatientProvisioningWorkspace, {
+          key: hospitalId,
+          scopes: [scope],
+          selectedHospitalId: hospitalId,
+          selectedScope: scope,
+        }),
+      );
+    });
+    await act(async () => {
+      button(mounted, "ปิด").click();
+    });
+    await act(async () => {
+      button(mounted, "ดูผลการนำเข้า").click();
+    });
+    expect(currentDialog(mounted).querySelector("h2")?.textContent).toBe("ผลการนำเข้าผู้ป่วย");
+    expect(allNotifications()).toBe(1);
+
+    await act(async () => {
+      button(mounted, "นำเข้าไฟล์ใหม่").click();
+    });
+    expect(mounted.querySelector("dialog")).toBeNull();
+    expect(mounted.textContent).not.toContain("patients.xlsx");
+
+    mocks.confirmImport.mockResolvedValue(importResult(["IMPORTED", "INVALID"]));
+    await openReviewDialog();
+    await confirmImport(mounted);
+
+    expect(mocks.confirmImport).toHaveBeenCalledTimes(2);
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(2);
+  });
+});

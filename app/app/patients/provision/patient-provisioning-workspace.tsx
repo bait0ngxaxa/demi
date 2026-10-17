@@ -81,6 +81,10 @@ type PatientProvisioningWorkspaceProps = {
 
 type ProvisioningMode = "SINGLE" | "EXCEL";
 
+const importUnconfirmedGuidance =
+  "กด “ตรวจสอบและแสดงตัวอย่าง” กับไฟล์เดิมอีกครั้ง ระบบจะแสดงรายการที่บันทึกไปแล้วเป็น “มีอยู่แล้ว” ก่อนให้ยืนยันนำเข้าใหม่";
+const importForbiddenHeading = "ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้";
+
 /** Where focus returns when the import review dialog closes. */
 type ImportDialogReturnFocus = "PREVIEW_SUBMIT" | "FILE_INPUT" | "EFFECTIVE_DATE";
 
@@ -261,6 +265,70 @@ function createPatientImportConfirmFormData(
   formData.set("previewBinding", previewBinding);
   formData.set("importContractVersion", importContractVersion);
   return formData;
+}
+
+const importSummaryCountByResult = {
+  IMPORTED: "imported",
+  ALREADY_EXISTS: "alreadyExists",
+  DUPLICATE_IN_FILE: "duplicateInFile",
+  INVALID: "invalid",
+  CONFLICT: "conflict",
+  FAILED: "failed",
+} as const satisfies Record<PatientImportRowResult["result"], keyof PatientImportResultSummary>;
+
+/** True when the summary belongs to the submitted Hospital and preview, and its counts match its rows. */
+function isConsistentImportSummary(
+  summary: PatientImportResultSummary,
+  submittedHospitalId: string,
+  previewRowCount: number,
+): boolean {
+  if (
+    summary.targetHospitalId !== submittedHospitalId ||
+    !Array.isArray(summary.rows) ||
+    summary.rows.length !== previewRowCount ||
+    summary.rows.some((row) => !Object.hasOwn(importSummaryCountByResult, row.result)) ||
+    summary.baselineCreated > summary.imported ||
+    summary.classificationCreated > summary.imported
+  ) {
+    return false;
+  }
+
+  return Object.entries(importSummaryCountByResult).every(
+    ([result, count]) => summary.rows.filter((row) => row.result === result).length === summary[count],
+  );
+}
+
+/**
+ * What a settled import confirmation proves. Rows are committed one by one, so `UNAVAILABLE`, a
+ * returned `IDLE`, a thrown request (`null`) and a summary that does not match the submission may
+ * follow saved rows and stay unconfirmed. `FORBIDDEN` can also be raised after earlier rows were saved.
+ */
+function classifyImportResult(
+  result: PatientImportActionState | null,
+  submittedHospitalId: string,
+  previewRowCount: number,
+): "IMPORTED" | "PARTIAL" | "NOT_IMPORTED" | "NO_CHANGE" | "FORBIDDEN" | "REJECTED" | "UNCONFIRMED" {
+  if (result?.status === "ERROR") {
+    return result.code === "FORBIDDEN"
+      ? "FORBIDDEN"
+      : result.code === "INVALID_INPUT"
+        ? "REJECTED"
+        : "UNCONFIRMED";
+  }
+
+  if (
+    result?.status !== "SUCCESS" ||
+    !isConsistentImportSummary(result.summary, submittedHospitalId, previewRowCount)
+  ) {
+    return "UNCONFIRMED";
+  }
+
+  const { hasAttentionRows } = getPatientImportResultPresentation(result.summary);
+  if (result.summary.imported > 0) {
+    return hasAttentionRows ? "PARTIAL" : "IMPORTED";
+  }
+
+  return hasAttentionRows ? "NOT_IMPORTED" : "NO_CHANGE";
 }
 
 function ProvisionContinuation({
@@ -838,7 +906,7 @@ function PatientImportReviewActions({
   attentionRowCount,
   baselineDateRequired,
   importPending,
-  importUnknown,
+  confirmBlocked,
   onCancel,
   onConfirm,
   onEditEffectiveDate,
@@ -850,7 +918,8 @@ function PatientImportReviewActions({
   attentionRowCount: number;
   baselineDateRequired: boolean;
   importPending: boolean;
-  importUnknown: boolean;
+  /** The last confirmation is unconfirmed or was refused; only a fresh preview unblocks it. */
+  confirmBlocked: boolean;
   onCancel: () => void;
   onConfirm: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onEditEffectiveDate: () => void;
@@ -892,7 +961,7 @@ function PatientImportReviewActions({
           </Button>
         ) : executableRowCount > 0 ? (
           <Button
-            disabled={importPending || importUnknown}
+            disabled={importPending || confirmBlocked}
             loading={importPending}
             onClick={onConfirm}
             size="compact"
@@ -1074,7 +1143,15 @@ export function PatientProvisioningWorkspace({
   const provisionUnconfirmed = unconfirmedProvision?.hospitalId === selectedHospitalId;
   /** A Hospital or mode switch would hide the recovery alert or remount it away. */
   const provisionLocked = provisionPending || unconfirmedProvision !== null;
-  const [importUnknown, setImportUnknown] = useState(false);
+  const importInFlightRef = useRef(false);
+  /**
+   * Rows may have been saved by an unconfirmed confirmation. File, date, mode and Hospital stay
+   * locked until a fresh preview of the same file shows what is now in the Hospital.
+   */
+  const importUnconfirmedRef = useRef(false);
+  const [importUnconfirmed, setImportUnconfirmed] = useState(false);
+  /** The current preview was taken to recover from an unconfirmed confirmation. */
+  const [importRecheck, setImportRecheck] = useState(false);
   const [previewState, setPreviewState] = useState<PatientImportPreviewActionState>(
     initialPatientImportPreviewActionState,
   );
@@ -1145,22 +1222,43 @@ export function PatientProvisioningWorkspace({
     : null;
   const showReviewDialog = reviewDialogOpen && reviewPreview !== null;
 
+  const importConfirmRefused = importState.status === "ERROR" && importState.code === "FORBIDDEN";
+  const importLocked = importPending || importUnconfirmed;
+
+  function recordImportUnconfirmed(unconfirmed: boolean): void {
+    importUnconfirmedRef.current = unconfirmed;
+    setImportUnconfirmed(unconfirmed);
+  }
+
   function invalidateImportPreview(): void {
     importContextVersion.current += 1;
     setPreviewFile(null);
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
-    setImportUnknown(false);
+    setImportRecheck(false);
     setReviewDialogOpen(false);
   }
 
+  function changeEffectiveDate(value: string): void {
+    if (importUnconfirmedRef.current) {
+      return;
+    }
+
+    invalidateImportPreview();
+    setEffectiveDate(value);
+  }
+
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    if (importUnconfirmedRef.current) {
+      return;
+    }
+
     invalidateImportPreview();
     setSelectedFile(event.currentTarget.files?.[0] ?? null);
   }
 
   function clearSelectedFile(): void {
-    if (previewPending || importPending) {
+    if (previewPending || importPending || importUnconfirmedRef.current) {
       return;
     }
 
@@ -1170,7 +1268,7 @@ export function PatientProvisioningWorkspace({
   }
 
   function handleNewImport(): void {
-    if (importPending) {
+    if (importInFlightRef.current || importUnconfirmedRef.current) {
       return;
     }
 
@@ -1209,41 +1307,62 @@ export function PatientProvisioningWorkspace({
         result = { status: "ERROR", code: "UNAVAILABLE", message: connectionFailureMessage };
       }
 
-      if (requestVersion !== importContextVersion.current) {
+      if (!mountedRef.current || requestVersion !== importContextVersion.current) {
         return;
       }
 
       setPreviewState(result);
       setPreviewFile(result.status === "SUCCESS" ? file : null);
       setReviewDialogOpen(result.status === "SUCCESS");
+      if (result.status === "SUCCESS" && importUnconfirmedRef.current) {
+        // The file, date and Hospital were locked, so this preview reflects the rows already saved.
+        recordImportUnconfirmed(false);
+        setImportRecheck(true);
+      }
+      if (
+        result.status === "ERROR" &&
+        result.code === "FORBIDDEN" &&
+        activeHospitalIdRef.current === targetHospitalId
+      ) {
+        notify.error("ไม่มีสิทธิ์ตรวจสอบไฟล์ผู้ป่วยของโรงพยาบาลนี้");
+      }
     });
   }
 
+  /**
+   * Confirms the current preview once. The single-flight lock is taken synchronously, so a second
+   * click in the same turn never reaches the Server Action. The Toast is decided here from the
+   * settled response, never from retained state, and only for the context that was submitted.
+   */
   function handleImport(event: React.MouseEvent<HTMLButtonElement>): void {
     event.preventDefault();
 
     if (
+      importInFlightRef.current ||
+      importUnconfirmedRef.current ||
       !previewIsCurrent ||
       previewState.status !== "SUCCESS" ||
       !selectedFile ||
       !hasImportableRows ||
       importState.status === "SUCCESS" ||
-      importUnknown
+      importConfirmRefused
     ) {
       return;
     }
 
+    importInFlightRef.current = true;
     const requestVersion = importContextVersion.current;
+    const targetHospitalId = selectedHospitalId;
     const file = selectedFile;
     const preview = previewState.preview;
 
     startImportTransition(async () => {
-      let result: PatientImportActionState;
+      let result: PatientImportActionState | null = null;
       try {
         result = await confirmPatientImportAction(
           createPatientImportConfirmFormData(
             file,
-            selectedHospitalId,
+            targetHospitalId,
             preview.targetHospitalId,
             preview.fileFingerprint,
             preview.previewBinding,
@@ -1252,17 +1371,36 @@ export function PatientProvisioningWorkspace({
           ),
         );
       } catch {
-        if (requestVersion === importContextVersion.current) {
-          setImportUnknown(true);
-        }
+        result = null;
+      } finally {
+        importInFlightRef.current = false;
+      }
+
+      if (!mountedRef.current || requestVersion !== importContextVersion.current) {
         return;
       }
 
-      if (requestVersion !== importContextVersion.current) {
+      const verdict = classifyImportResult(result, targetHospitalId, preview.rows.length);
+      if (verdict === "UNCONFIRMED" || result === null) {
+        setImportRecheck(false);
+        recordImportUnconfirmed(true);
         return;
       }
 
       setImportState(result);
+      if (activeHospitalIdRef.current !== targetHospitalId) {
+        return;
+      }
+
+      if (verdict === "IMPORTED") {
+        notify.success("นำเข้าข้อมูลผู้ป่วยแล้ว");
+      } else if (verdict === "PARTIAL") {
+        notify.warning("นำเข้าได้บางรายการ กรุณาตรวจสอบผลรายแถว");
+      } else if (verdict === "NOT_IMPORTED") {
+        notify.warning("ยังไม่มีผู้ป่วยใหม่ที่นำเข้าได้ กรุณาตรวจสอบผลรายแถว");
+      } else if (verdict === "FORBIDDEN") {
+        notify.error("ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้");
+      }
     });
   }
 
@@ -1301,7 +1439,12 @@ export function PatientProvisioningWorkspace({
   }
 
   function changeMode(nextMode: ProvisioningMode): void {
-    if (provisionInFlightRef.current || unconfirmedProvisionRef.current !== null) {
+    if (
+      provisionInFlightRef.current ||
+      unconfirmedProvisionRef.current !== null ||
+      importInFlightRef.current ||
+      importUnconfirmedRef.current
+    ) {
       return;
     }
 
@@ -1314,7 +1457,9 @@ export function PatientProvisioningWorkspace({
       importPending ||
       hospitalSwitching ||
       provisionInFlightRef.current ||
-      unconfirmedProvisionRef.current !== null
+      unconfirmedProvisionRef.current !== null ||
+      importInFlightRef.current ||
+      importUnconfirmedRef.current
     ) {
       return;
     }
@@ -1325,7 +1470,6 @@ export function PatientProvisioningWorkspace({
     setEffectiveDate("");
     setPreviewState(initialPatientImportPreviewActionState);
     setImportState(initialPatientImportActionState);
-    setImportUnknown(false);
     setReviewDialogOpen(false);
     setFileInputKey((current) => current + 1);
     startHospitalSwitch(() => {
@@ -1351,7 +1495,7 @@ export function PatientProvisioningWorkspace({
               </label>
               <Select
                 className="mt-2 max-w-xl"
-                disabled={previewPending || importPending || hospitalSwitching || provisionLocked}
+                disabled={previewPending || importLocked || hospitalSwitching || provisionLocked}
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -1401,7 +1545,7 @@ export function PatientProvisioningWorkspace({
                 { label: "เพิ่มรายบุคคล", value: "SINGLE" },
                 { label: "นำเข้าจาก Excel", value: "EXCEL" },
               ]}
-              disabled={provisionLocked}
+              disabled={provisionLocked || importLocked}
               onChange={changeMode}
               value={activeMode}
             />
@@ -1474,7 +1618,7 @@ export function PatientProvisioningWorkspace({
                   <input
                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="block min-h-12 w-full rounded-control border border-border bg-surface px-3 py-3 text-sm font-normal file:mr-3 file:rounded-control file:border-0 file:bg-brand-soft file:px-3 file:py-2 file:font-semibold file:text-brand-strong focus:outline-none focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={previewPending || importPending}
+                    disabled={previewPending || importLocked}
                     id={PATIENT_IMPORT_FILE_INPUT_ID}
                     key={fileInputKey}
                     name="file"
@@ -1491,7 +1635,7 @@ export function PatientProvisioningWorkspace({
                       · {formatFileSize(selectedFile.size)}
                     </p>
                     <Button
-                      disabled={previewPending || importPending}
+                      disabled={previewPending || importLocked}
                       onClick={clearSelectedFile}
                       size="compact"
                       type="button"
@@ -1509,13 +1653,10 @@ export function PatientProvisioningWorkspace({
                   <span>ข้อมูลตั้งต้น ณ วันที่</span>
                   <Input
                     aria-describedby="patient-import-effective-date-help"
-                    disabled={previewPending || importPending}
+                    disabled={previewPending || importLocked}
                     id={PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID}
                     name="effectiveDate"
-                    onChange={(event) => {
-                      invalidateImportPreview();
-                      setEffectiveDate(event.target.value);
-                    }}
+                    onChange={(event) => changeEffectiveDate(event.target.value)}
                     type="date"
                     value={effectiveDate}
                   />
@@ -1572,7 +1713,14 @@ export function PatientProvisioningWorkspace({
                   </Alert>
                 ) : null}
 
-                {reviewPreview && !showReviewDialog ? (
+                {importUnconfirmed && !showReviewDialog ? (
+                  <Alert className="mt-2" variant="warning">
+                    <p className="font-semibold">{unknownOutcomeMessage}</p>
+                    <p className="mt-1">บางรายการอาจถูกบันทึกไปแล้ว {importUnconfirmedGuidance}</p>
+                  </Alert>
+                ) : null}
+
+                {reviewPreview && !showReviewDialog && !importUnconfirmed ? (
                   <PatientImportReviewReminder
                     attentionRowCount={attentionRowCount}
                     baselineDateRequired={reviewPreview.baselineDateRequired}
@@ -1585,7 +1733,9 @@ export function PatientProvisioningWorkspace({
                             heading: importResultPresentation.heading,
                             variant: importResultPresentation.variant,
                           }
-                        : null
+                        : importConfirmRefused
+                          ? { heading: importForbiddenHeading, variant: "danger" }
+                          : null
                     }
                   />
                 ) : null}
@@ -1621,7 +1771,7 @@ export function PatientProvisioningWorkspace({
                 executableRowCount={importableRowCount}
                 file={selectedFile}
                 importPending={importPending}
-                importUnknown={importUnknown}
+                confirmBlocked={importUnconfirmed || importConfirmRefused}
                 onCancel={() => closeReviewDialog()}
                 onConfirm={handleImport}
                 onEditEffectiveDate={() => closeReviewDialog("EFFECTIVE_DATE")}
@@ -1639,18 +1789,28 @@ export function PatientProvisioningWorkspace({
             <ImportSummary canAssignOsm={canAssignOsm} summary={importSummary} />
           ) : (
             <div aria-busy={importPending} className="space-y-4">
-              {importState.status === "ERROR" ? (
+              {importConfirmRefused ? (
+                <Alert variant="danger">
+                  <p className="font-semibold">{importForbiddenHeading}</p>
+                  <p className="mt-1">
+                    หากสิทธิ์ถูกเปลี่ยนระหว่างนำเข้า บางรายการอาจถูกบันทึกไปแล้ว กรุณาตรวจสอบรายชื่อผู้ป่วยในโรงพยาบาลนี้ก่อนนำเข้าอีกครั้ง
+                  </p>
+                </Alert>
+              ) : importState.status === "ERROR" ? (
                 <Alert variant="danger">
                   <p className="font-semibold">นำเข้าไม่สำเร็จ</p>
                   <p className="mt-1">{importState.message}</p>
                 </Alert>
               ) : null}
-              {importUnknown ? (
+              {importUnconfirmed ? (
                 <Alert role="alert" variant="warning">
                   <p className="font-semibold">{unknownOutcomeMessage}</p>
-                  <p className="mt-1">
-                    ปิดหน้าต่างนี้แล้วตรวจสอบไฟล์อีกครั้ง ระบบจะแสดงรายการที่บันทึกไปแล้วก่อนให้ยืนยันนำเข้าใหม่
-                  </p>
+                  <p className="mt-1">บางรายการอาจถูกบันทึกไปแล้ว ปิดหน้าต่างนี้แล้ว{importUnconfirmedGuidance}</p>
+                </Alert>
+              ) : null}
+              {importRecheck ? (
+                <Alert variant="info">
+                  ไฟล์นี้อาจถูกนำเข้าไปแล้วบางส่วนจากคำขอก่อนหน้า รายการที่บันทึกไปแล้วแสดงเป็น “มีอยู่แล้ว” กรุณาตรวจสอบผลรายแถวก่อนยืนยันนำเข้า
                 </Alert>
               ) : null}
               {importPending ? (

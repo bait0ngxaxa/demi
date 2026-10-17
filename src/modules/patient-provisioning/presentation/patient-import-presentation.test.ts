@@ -225,6 +225,20 @@ describe("patient import presentation helpers", () => {
       reviewCount: 1,
     });
 
+    const existingWithAttention = getPatientImportResultPresentation(createResultSummary({
+      alreadyExists: 1,
+      failed: 1,
+      rows: [createResultRow("ALREADY_EXISTS"), createResultRow("FAILED")],
+    }));
+    expect(existingWithAttention).toMatchObject({
+      variant: "warning",
+      heading: "ยังไม่มีรายการที่บันทึกได้",
+      detail: "ผู้ป่วยที่มีอยู่แล้วไม่ถูกเปลี่ยนแปลง รายการที่ต้องแก้ไขยังไม่ถูกบันทึก",
+      hasAttentionRows: true,
+      allIdempotent: false,
+    });
+    expect(existingWithAttention.heading).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
+
     const allBlocked = getPatientImportResultPresentation(createResultSummary({
       invalid: 1,
       rows: [createResultRow("INVALID")],

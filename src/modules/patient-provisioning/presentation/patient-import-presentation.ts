@@ -100,20 +100,23 @@ export function getPatientImportResultPresentation(
     : hasSuccessfulRows
       ? "success"
       : "neutral";
+  // Only IMPORTED rows are new patients; ALREADY_EXISTS rows were left untouched.
   const heading = allIdempotent
     ? "ไม่มีผู้ป่วยใหม่ในไฟล์นี้"
-    : hasAttentionRows && hasSuccessfulRows
+    : hasAttentionRows && summary.imported > 0
       ? "นำเข้าผู้ป่วยใหม่แล้ว และยังมีบางรายการที่ต้องแก้ไข"
       : !hasAttentionRows && summary.imported > 0
         ? "นำเข้าผู้ป่วยใหม่แล้ว"
         : "ยังไม่มีรายการที่บันทึกได้";
   const detail = allIdempotent
     ? "ผู้ป่วยที่มีอยู่แล้วไม่ถูกสร้างซ้ำและไม่ถูกเปลี่ยนแปลง"
-    : hasAttentionRows && hasSuccessfulRows
+    : hasAttentionRows && summary.imported > 0
       ? "ระบบบันทึกเฉพาะผู้ป่วยใหม่ที่พร้อมแล้ว รายการที่ต้องแก้ไขยังไม่ถูกบันทึก"
-      : hasAttentionRows
-        ? "รายการที่ต้องแก้ไขยังไม่ถูกบันทึก"
-        : null;
+      : hasAttentionRows && summary.alreadyExists > 0
+        ? "ผู้ป่วยที่มีอยู่แล้วไม่ถูกเปลี่ยนแปลง รายการที่ต้องแก้ไขยังไม่ถูกบันทึก"
+        : hasAttentionRows
+          ? "รายการที่ต้องแก้ไขยังไม่ถูกบันทึก"
+          : null;
 
   return {
     variant,
