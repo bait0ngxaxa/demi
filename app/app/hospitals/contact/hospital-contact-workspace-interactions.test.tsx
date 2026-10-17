@@ -353,14 +353,15 @@ describe("Hospital Contact Owner form interactions", () => {
     expect(harness.focus).not.toHaveBeenCalled();
   });
 
-  it("announces an unavailable mutation once and retains its draft", async () => {
+  it("reconciles an unavailable mutation like an unconfirmed one, retains its draft and claims no failure", async () => {
     mocks.update.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "ไม่สามารถบันทึกได้" });
     field(renderWorkspace(), "hospital-contact-address").props.onChange?.({ currentTarget: { value: "แบบร่างที่เก็บไว้" } });
     submit(renderWorkspace());
     await finishTransition();
     const html = markup();
-    expect(html.match(/role="alert"/g)).toHaveLength(1);
-    expect(html).toContain("บันทึกข้อมูลติดต่อไม่สำเร็จ");
+    expect(html).toContain("ยังยืนยันผลการบันทึกไม่ได้");
+    expect(html).toContain("ตรวจสอบข้อมูลล่าสุดก่อนบันทึกอีกครั้ง");
+    expect(html).not.toContain("บันทึกข้อมูลติดต่อไม่สำเร็จ");
     expect(html).toContain("แบบร่างที่เก็บไว้");
   });
 

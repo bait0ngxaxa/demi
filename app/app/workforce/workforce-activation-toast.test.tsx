@@ -6,6 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  staffAction: vi.fn(),
+  osmAction: vi.fn(),
   remoteAction: vi.fn(),
   assistedAction: vi.fn(),
   success: vi.fn(),
@@ -22,15 +24,18 @@ vi.mock("@/components/ui/notify", () => ({
   notify: { success: mocks.success, warning: mocks.warning, error: mocks.error, info: mocks.info },
 }));
 vi.mock("@/modules/workforce/transport/server-actions", () => ({
-  provisionHospitalMemberAction: vi.fn(),
-  provisionOsmAction: vi.fn(),
+  provisionHospitalMemberAction: mocks.staffAction,
+  provisionOsmAction: mocks.osmAction,
   provisionWorkforceBulkAction: vi.fn(),
   regenerateWorkforceActivationAction: mocks.remoteAction,
   startAssistedWorkforceActivationAction: mocks.assistedAction,
 }));
 
 import type { WorkforceListRow } from "@/modules/workforce/services/workforce-service";
-import type { WorkforceActivationActionState } from "@/modules/workforce/transport/action-state";
+import type {
+  WorkforceActivationActionState,
+  WorkforceProvisionActionState,
+} from "@/modules/workforce/transport/action-state";
 import { WorkforceWorkspace } from "./workforce-workspace";
 
 const hospitalA = {
@@ -107,6 +112,8 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mocks.staffAction.mockReset();
+  mocks.osmAction.mockReset();
   mocks.remoteAction.mockReset().mockResolvedValue(activationResult());
   mocks.assistedAction.mockReset().mockResolvedValue(activationResult());
   mocks.success.mockReset();
@@ -445,6 +452,61 @@ describe("Workforce remote activation issuance Toasts", () => {
     expect(toastCalls()).toHaveLength(0);
     root = createRoot(container);
   });
+});
+
+describe("Workforce remote regeneration guards undelivered provisioning credentials", () => {
+  const provisioned = (kind: "HOSPITAL_MEMBER" | "OSM"): WorkforceProvisionActionState => ({
+    status: "SUCCESS",
+    result: {
+      kind,
+      userId: USER_ONE,
+      hospitalId: hospitalA.id,
+      relationshipId: `relationship-${USER_ONE}`,
+      accountStatus: "PROVISIONED",
+      relationshipStatus: "PROVISIONED",
+      activationRequired: true,
+      activationToken: "mock-provisioned-token",
+      activationExpiresAt: "2026-10-20T03:00:00.000Z",
+      activationMode: "REMOTE",
+      reusedExistingUser: false,
+      idempotent: false,
+    },
+  });
+
+  async function provision(kind: "HOSPITAL_MEMBER" | "OSM"): Promise<void> {
+    const form = Array.from(container.querySelectorAll("form")).find((candidate) => {
+      if (!candidate.querySelector('[name="givenName"]') || candidate.querySelector('[name="submissionId"]')) return false;
+      return kind === "HOSPITAL_MEMBER"
+        ? Boolean(candidate.querySelector('[name="profession"]'))
+        : !candidate.querySelector('[name="profession"]');
+    });
+    if (!form) throw new Error(`Missing ${kind} form`);
+    await act(async () => submit(form));
+  }
+
+  it.each(["HOSPITAL_MEMBER", "OSM"] as const)(
+    "refuses a remote regeneration while a %s link from provisioning is unacknowledged, then allows it after acknowledgment",
+    async (kind) => {
+      (kind === "HOSPITAL_MEMBER" ? mocks.staffAction : mocks.osmAction).mockResolvedValueOnce(provisioned(kind));
+      renderWorkspace();
+      await provision(kind);
+      expect(container.textContent).toContain("mock-provisioned-token");
+
+      expect(activationForm(USER_ONE, "ออกลิงก์ใหม่").querySelector("button")?.disabled).toBe(true);
+      await act(async () => submit(activationForm(USER_ONE, "ออกลิงก์ใหม่")));
+      expect(mocks.remoteAction).not.toHaveBeenCalled();
+      expect(toastCalls()).toHaveLength(1);
+      expect(container.textContent).toContain("mock-provisioned-token");
+
+      const acknowledge = acknowledgeButton();
+      if (!acknowledge) throw new Error("Missing acknowledgment button");
+      await act(async () => acknowledge.click());
+      await act(async () => submit(activationForm(USER_ONE, "ออกลิงก์ใหม่")));
+
+      expect(mocks.remoteAction).toHaveBeenCalledOnce();
+      expect(mocks.success).toHaveBeenLastCalledWith("ออกลิงก์เปิดใช้งานใหม่แล้ว");
+    },
+  );
 });
 
 describe("Workforce assisted activation handoff", () => {

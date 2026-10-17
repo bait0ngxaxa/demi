@@ -238,11 +238,15 @@ describe("Hospital Contact Toasts", () => {
     expect(mocks.update).toHaveBeenCalledOnce();
   });
 
-  it("keeps a returned UNAVAILABLE without a Toast and with the draft intact", async () => {
+  it("reconciles a returned UNAVAILABLE like UNCONFIRMED: no Toast, draft kept, saving locked until the latest data is loaded", async () => {
     mocks.update.mockResolvedValueOnce({
       status: "ERROR",
       code: "UNAVAILABLE",
       message: "ระบบไม่พร้อมบันทึกข้อมูลติดต่อ กรุณาลองใหม่ภายหลัง",
+    });
+    mocks.read.mockResolvedValueOnce({
+      status: "SUCCESS",
+      contact: contact({ addressText: ADDRESS, phoneNumber: PHONE, expectedUpdatedAt: "2026-10-03T00:00:00.000Z" }),
     });
     render();
     await fillDraft();
@@ -250,9 +254,23 @@ describe("Hospital Contact Toasts", () => {
     await act(async () => submit());
 
     expect(toastCalls()).toHaveLength(0);
-    expect(container.textContent).toContain("ข้อมูลที่กรอกยังอยู่ในแบบร่าง");
-    expect(container.querySelector<HTMLTextAreaElement>("#hospital-contact-address")?.value).toBe(ADDRESS);
+    expect(container.textContent).toContain("ยังยืนยันผลการบันทึกไม่ได้");
+    expect(container.textContent).toContain("ตรวจสอบข้อมูลล่าสุดก่อนบันทึกอีกครั้ง");
+    expect(container.textContent).not.toContain("บันทึกข้อมูลติดต่อไม่สำเร็จ");
+    expect(container.textContent).not.toContain("ระบบไม่พร้อมบันทึกข้อมูลติดต่อ");
+    expect(container.textContent).toContain("แบบร่างเดิมที่ยังไม่ได้ยืนยัน");
+    expect(container.textContent).toContain(ADDRESS);
+    expect(container.querySelector("form")).toBeNull();
     expect(mocks.update).toHaveBeenCalledOnce();
+
+    const load = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("โหลดข้อมูลปัจจุบัน"),
+    );
+    if (!load) throw new Error("Missing reconciliation button");
+    await act(async () => load.click());
+    await settle();
+    expect(mocks.read).toHaveBeenCalledOnce();
+    expect(toastCalls()).toHaveLength(0);
   });
 
   it("treats a thrown request as unconfirmed with no Toast and no automatic retry", async () => {

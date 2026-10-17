@@ -14,7 +14,9 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [unknownOutcome, setUnknownOutcome] = useState(false);
+  // The report whose request could not be confirmed; another report's control must not inherit the lock.
+  const [unknownReportId, setUnknownReportId] = useState<string | null>(null);
+  const unknownOutcome = unknownReportId === reportId;
   // The version the confirmed transition started from; the control stays locked until the refreshed page replaces it.
   const [confirmedFrom, setConfirmedFrom] = useState<{ updatedAt: string; status: SupportReportStatus } | null>(null);
   const mountedRef = useRef(false);
@@ -52,7 +54,7 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
         result = await updateSupportReportStatusAction({ reportId, expectedUpdatedAt: updatedAt, status: targetStatus });
       } catch {
         // The request may have been applied; stay locked and ask the user to reload and review.
-        if (mountedRef.current) setUnknownOutcome(true);
+        if (mountedRef.current) markUnknown(submitted.reportId);
         return;
       }
       if (!mountedRef.current) return;
@@ -74,8 +76,14 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
         return;
       }
       // UNAVAILABLE, an unexpected IDLE, or a success for another report proves nothing about this transition.
-      setUnknownOutcome(true);
+      markUnknown(submitted.reportId);
     });
+  }
+
+  function markUnknown(submittedReportId: string): void {
+    setUnknownReportId(submittedReportId);
+    // A report that is no longer displayed has nothing to reload; do not keep the new report locked.
+    if (reportIdRef.current !== submittedReportId) inFlightRef.current = false;
   }
   return <div className="mt-5 space-y-3">{error ? <Alert variant="warning">{error}</Alert> : null}<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} /><Button disabled={pending || unknownOutcome || awaitingRefresh} loading={pending} onClick={update} type="button">{targetStatus === "ACKNOWLEDGED" ? "รับทราบรายงาน" : "ทำเครื่องหมายว่าแก้ไขแล้ว"}</Button></div>;
 }

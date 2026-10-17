@@ -45,7 +45,7 @@ Remote regeneration:
 | `INVALID_INPUT` | inline only |
 | Returned `UNAVAILABLE`, `IDLE`, mismatched success, thrown | no Toast; reload-and-review guidance; roster locked; nothing is retried or regenerated |
 
-Credential preservation (same rule as B.3.1): the confirmed result is kept per Hospital in component memory, not in retained action state, so a later error or unknown outcome no longer erases it. While the link has not been acknowledged as handed over, no further remote regeneration can start (button disabled and checked synchronously at dispatch). The existing copy states the old link cannot be shown again; no copy claims the previous link is still valid.
+Credential preservation (same rule as B.3.1): the confirmed result is kept per Hospital in component memory, not in retained action state, so a later error or unknown outcome no longer erases it. While any issued link in the Hospital (remote, Staff or OSM provisioning) has not been acknowledged as handed over, no remote regeneration can start (button disabled and checked synchronously at dispatch), because a new link can revoke the earlier one. The existing copy states the old link cannot be shown again; no copy claims the previous link is still valid.
 
 Assisted handoff decision: **no success Toast.** The flow issues a credential, signs the issuer out and navigates to the activation page; a Toast would be discarded with the page and would imply progress the target user has not made. The navigation is the feedback. A small inline status (`ออกลิงก์เปิดใช้งานแล้ว กำลังส่งต่ออุปกรณ์ให้ผู้ใช้งาน`) is shown, every roster action is locked once the handoff is confirmed, and the `window.location.replace` runs once per confirmed submission from the submission record rather than from retained state. The credential appears only in that navigation URL fragment.
 
@@ -87,7 +87,8 @@ Hospital Contact keeps its draft, `expectedUpdatedAt`, reconciliation and access
 | `NOOP` | none; the inline explanation stays |
 | `CONFLICT` | warning `ข้อมูลติดต่อเปลี่ยนแปลงแล้ว กรุณาตรวจสอบข้อมูลล่าสุด` (draft kept, reconciliation required) |
 | `FORBIDDEN` | error `ไม่มีสิทธิ์แก้ไขข้อมูลติดต่อโรงพยาบาล` |
-| `VALIDATION`, `UNAVAILABLE`, `UNCONFIRMED`, thrown | none |
+| `VALIDATION` | none; inline only |
+| `UNAVAILABLE`, `UNCONFIRMED`, thrown | none; reconciliation flow (draft kept as the previous draft, saving locked, current data must be loaded first) |
 
 A success counts only when the returned Hospital equals the displayed one. The read-only "load current contact" lookup emits nothing.
 
@@ -139,8 +140,8 @@ Previously a network failure was labelled as an image-preparation failure; that 
 | Remote activation | no Toast; reload-and-review alert; roster locked; no regeneration |
 | Assisted activation | no Toast; existing specific message and note; no navigation; roster locked |
 | Membership/OSM/owner/grant/release | no Toast; `UnknownOutcomeAlert` (reload); that control is locked until reload; release can never be resubmitted |
-| Hospital Contact | no Toast; draft kept; reconciliation required for `UNCONFIRMED`/thrown; no resubmission |
-| Support | no Toast; reload alert; button locked |
+| Hospital Contact | no Toast; draft kept; reconciliation required for `UNAVAILABLE`/`UNCONFIRMED`/thrown (the old "save failed, try again" copy was removed); no resubmission |
+| Support | no Toast; reload alert; button locked; the unknown state belongs to the report it was submitted for and never locks another report |
 | Content create/edit/lifecycle | no Toast; existing reconciliation flows; no retry |
 | Images | no Toast unless some images were confirmed (then the partial warning); never retried |
 
@@ -208,7 +209,6 @@ Pre-existing tests for the touched areas (workforce workspace/recovery/provision
 - Permanent release: if the framework applied the post-release page update before the awaited Server Action continuation ran, the control would already be unmounted and the Toast suppressed by the unmount guard. The inline result and the ended-relationship status still appear. This ordering could not be proven without a browser.
 - Remote activation credentials are in memory only; a reload or navigation discards an unacknowledged link (same boundary as B.3.1). A new regeneration is required in that case.
 - Image uploads send a fresh per-file nonce on every attempt, so repeating an upload after an uncertain result can store a duplicate; the new message tells the user to check the image list first.
-- Hospital Contact still shows its pre-existing inline copy for a returned `UNAVAILABLE` ("บันทึกข้อมูลติดต่อไม่สำเร็จ"); no Toast is emitted for it, as specified.
 - Content create `CONFLICT`/`FORBIDDEN` have no Toast because the specification does not define one.
 - Assisted handoff is blocked while any issued link is unacknowledged. This is stricter than before and may require an extra acknowledgment click.
 
@@ -229,3 +229,9 @@ Patient management (Phase C), clinical/care workflows (Phase D), LINE/LIFF, publ
 - [x] Disabled password reset remains disabled.
 - [x] Typecheck passes; lint has no errors; affected tests pass.
 - [ ] Browser smoke test (not performed; see section 12).
+
+## Post-review corrections
+
+- B-01: Hospital Contact `UNAVAILABLE` now enters the same reconciliation flow as `UNCONFIRMED`.
+- B-02: remote regeneration is refused while any Staff, OSM or remote link is unacknowledged (assisted handoff keeps its stricter guard).
+- B-03: the Support unknown-outcome state is bound to its report id.

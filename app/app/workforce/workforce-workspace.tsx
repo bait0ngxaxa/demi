@@ -1131,8 +1131,8 @@ export function WorkforceWorkspace({
         rememberConfirmedActivation(submissionId, state.result);
       }
     },
-    // A new link may not replace one that has not been handed over, and no request runs while another is open.
-    isBlocked: () => actionsBlockedRef.current || hasUndeliveredActivation(activeHospitalIdRef.current),
+    // A new link may revoke one that has not been handed over (Staff, OSM or remote), and no request runs while another is open.
+    isBlocked: () => actionsBlockedRef.current || hasUndeliveredCredential(activeHospitalIdRef.current),
   });
   const {
     state: assistedState,
@@ -1285,12 +1285,10 @@ export function WorkforceWorkspace({
     actionsBlockedRef.current = actionsBlocked;
   }, [actionsBlocked]);
   const remoteCredentialNeedsDelivery = Boolean(remoteConfirmed && !remoteConfirmed.credentialDelivered);
-  const remoteBlocked = actionsBlocked || remoteCredentialNeedsDelivery;
-  const assistedBlocked =
-    actionsBlocked ||
-    remoteCredentialNeedsDelivery ||
-    staffCredentialNeedsDelivery ||
-    osmCredentialNeedsDelivery;
+  const anyCredentialNeedsDelivery =
+    remoteCredentialNeedsDelivery || staffCredentialNeedsDelivery || osmCredentialNeedsDelivery;
+  const remoteBlocked = actionsBlocked || anyCredentialNeedsDelivery;
+  const assistedBlocked = actionsBlocked || anyCredentialNeedsDelivery;
 
   function dispatchProvision(
     kind: SingleProvisionKind,
@@ -1452,7 +1450,7 @@ export function WorkforceWorkspace({
             ) : (
               <div className="mt-4 border-t border-border pt-4">
                 <p className="text-sm leading-6 text-text">
-                  โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนออกลิงก์ใหม่ให้รายอื่น ลิงก์เดิมแสดงซ้ำไม่ได้
+                  โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนออกลิงก์ใหม่ ลิงก์เดิมแสดงซ้ำไม่ได้
                 </p>
                 <Button
                   className="mt-3"

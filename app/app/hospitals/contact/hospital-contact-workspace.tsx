@@ -170,6 +170,12 @@ export function HospitalContactWorkspace({
           setPreviousDraft(draft);
           setReviewCurrent(null);
           setReconciliationRequired(true);
+        } else if (result.status === "ERROR" && result.code === "UNAVAILABLE") {
+          // UNAVAILABLE can follow a committed write, so it is reconciled like UNCONFIRMED, never retried.
+          setPreviousDraft(draft);
+          setReviewCurrent(null);
+          setReconciliationRequired(true);
+          setMutationState({ status: "UNCONFIRMED" });
         } else if (result.status === "ERROR" && result.code === "CONFLICT") {
           setPreviousDraft(draft);
           setReviewCurrent(null);
@@ -496,12 +502,6 @@ export function HospitalContactWorkspace({
         </Panel>
       ) : null}
 
-      {mutationState.status === "ERROR" && mutationState.code === "UNAVAILABLE" ? (
-        <Alert className="mt-4" variant="danger">
-          <p className="font-semibold">บันทึกข้อมูลติดต่อไม่สำเร็จ</p>
-          <p className="mt-1">ข้อมูลที่กรอกยังอยู่ในแบบร่าง กรุณาลองอีกครั้งภายหลัง</p>
-        </Alert>
-      ) : null}
       <ConfirmDialog
         confirmLabel="เปลี่ยนโรงพยาบาล"
         confirmVariant="destructive"
