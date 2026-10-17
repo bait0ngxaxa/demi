@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { PATIENT_HOSPITAL_RELATIONSHIP_END_REASON_MAX_LENGTH } from "@/modules/patient-hospital-relationship/schemas/patient-hospital-relationship-end-schemas";
 import {
@@ -15,6 +16,9 @@ import {
   type PatientHospitalRelationshipEndVerification,
 } from "@/modules/patient-hospital-relationship/transport/server-actions";
 
+/** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
+class UnconfirmedCareEnd extends Error {}
+
 /** Phase F (ก-18) "ลบผู้ใช้งานทั่วไป": the OWNER ends care with this Hospital; the server re-checks OWNER authority. */
 export function PatientCareEndForm({ relationshipId, hospitalId, hospitalName }: {
   relationshipId: string;
@@ -22,9 +26,56 @@ export function PatientCareEndForm({ relationshipId, hospitalId, hospitalName }:
   hospitalName: string;
 }): React.JSX.Element {
   const id = useId();
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<PatientHospitalRelationshipEndActionState, FormData>(
-    endPatientHospitalRelationshipAction.bind(null, relationshipId),
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Success redirects to the Patient list (the action rejects with a Next.js redirect, which
+  // the hook rethrows), so there is no success Toast; the Patient leaving the list confirms it.
+  // Only a try/finally here: nothing may swallow that redirect. An end request is never
+  // re-sent automatically; an unconfirmed one is checked with the read-only verification.
+  const endAndClassify = async (
+    previous: PatientHospitalRelationshipEndActionState,
+    formData: FormData,
+  ): Promise<PatientHospitalRelationshipEndActionState> => {
+    try {
+      const result = await endPatientHospitalRelationshipAction(relationshipId, previous, formData);
+
+      if (result.status === "IDLE" || result.code === "UNAVAILABLE") {
+        throw new UnconfirmedCareEnd();
+      }
+      if (mounted.current) {
+        if (result.code === "CONFLICT") {
+          notify.warning("สถานะผู้ป่วยเปลี่ยนแปลงแล้ว กรุณาโหลดหน้าใหม่");
+        } else if (result.code === "FORBIDDEN") {
+          notify.error("เฉพาะเจ้าของโรงพยาบาลที่สิ้นสุดการดูแลผู้ป่วยได้");
+        }
+      }
+      return result;
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
+  const [state, dispatchEnd, pending, unknownOutcome] = useMutationActionState<PatientHospitalRelationshipEndActionState, FormData>(
+    endAndClassify,
     { status: "IDLE", message: "" },
+  );
+  const formAction = useCallback(
+    (formData: FormData): void => {
+      if (inFlight.current) {
+        return;
+      }
+      inFlight.current = true;
+      dispatchEnd(formData);
+    },
+    [dispatchEnd],
   );
   const [verification, setVerification] = useState<PatientHospitalRelationshipEndVerification | null>(null);
   const [verifying, setVerifying] = useState(false);

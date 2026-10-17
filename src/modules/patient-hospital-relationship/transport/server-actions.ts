@@ -12,7 +12,17 @@ import {
   type PatientHospitalRelationshipEndStatus,
 } from "../services/patient-hospital-relationship-end-service";
 
-export type PatientHospitalRelationshipEndActionState = { status: "IDLE" | "ERROR"; message: string };
+/**
+ * `code` classifies an ERROR so the UI never compares message text. UNAVAILABLE covers every
+ * unexpected failure and is not proof that the end did not commit. Success never returns:
+ * it redirects to the Patient list.
+ */
+export type PatientHospitalRelationshipEndErrorCode = "INVALID_INPUT" | "CONFLICT" | "FORBIDDEN" | "UNAVAILABLE";
+export type PatientHospitalRelationshipEndActionState = {
+  status: "IDLE" | "ERROR";
+  message: string;
+  code?: PatientHospitalRelationshipEndErrorCode;
+};
 export type PatientHospitalRelationshipEndVerification = PatientHospitalRelationshipEndStatus | "UNRESOLVED";
 
 /** Phase F recovery: read the relationship lifecycle without replaying the end operation or exposing patient data. */
@@ -43,16 +53,13 @@ export async function endPatientHospitalRelationshipAction(
     });
     hospitalId = result.hospitalId;
   } catch (error: unknown) {
-    return {
-      status: "ERROR",
-      message: error instanceof ValidationError
-        ? "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร) และยืนยันว่าเข้าใจผลของการสิ้นสุดการดูแล"
-        : error instanceof ConflictError
-          ? "สถานะผู้ป่วยเปลี่ยนแปลงแล้วหรือสิ้นสุดการดูแลไปแล้ว กรุณาโหลดหน้าใหม่"
-          : error instanceof ForbiddenError || error instanceof NotFoundError
-            ? "เฉพาะเจ้าของโรงพยาบาลนี้ที่สิ้นสุดการดูแลผู้ป่วยได้"
-            : "บันทึกไม่ได้ กรุณาลองใหม่อีกครั้ง",
-    };
+    return error instanceof ValidationError
+      ? { status: "ERROR", code: "INVALID_INPUT", message: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร) และยืนยันว่าเข้าใจผลของการสิ้นสุดการดูแล" }
+      : error instanceof ConflictError
+        ? { status: "ERROR", code: "CONFLICT", message: "สถานะผู้ป่วยเปลี่ยนแปลงแล้วหรือสิ้นสุดการดูแลไปแล้ว กรุณาโหลดหน้าใหม่" }
+        : error instanceof ForbiddenError || error instanceof NotFoundError
+          ? { status: "ERROR", code: "FORBIDDEN", message: "เฉพาะเจ้าของโรงพยาบาลนี้ที่สิ้นสุดการดูแลผู้ป่วยได้" }
+          : { status: "ERROR", code: "UNAVAILABLE", message: "บันทึกไม่ได้ กรุณาลองใหม่อีกครั้ง" };
   }
 
   revalidatePath("/app/patients", "layout");

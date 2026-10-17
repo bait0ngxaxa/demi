@@ -2,7 +2,7 @@
 
 import Form from "next/form";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -13,6 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { PatientDirectoryItem } from "@/modules/patient-directory/services/patient-directory-query-service";
@@ -26,6 +27,15 @@ import {
   type PatientOsmAssignmentActionState,
 } from "@/modules/patient-assignment/transport/action-state";
 import type { PatientOsmCandidate } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
+
+/** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
+class UnconfirmedAssignment extends Error {}
+
+const assignmentToasts = {
+  ASSIGNED: "มอบหมาย อสม. แล้ว",
+  REASSIGNED: "เปลี่ยน อสม. ผู้รับผิดชอบแล้ว",
+  UNASSIGNED: "ยกเลิกการมอบหมาย อสม. แล้ว",
+} as const;
 
 type PatientOsmAssignmentSummary = {
   assignmentId: string;
@@ -105,20 +115,84 @@ export function PatientOsmAssignmentWorkspace({
   candidateError,
 }: PatientOsmAssignmentWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [assignState, assignAction, assignPending, assignUnknown] = useMutationActionState<
-    PatientOsmAssignmentActionState,
-    FormData
-  >(assignOsmToPatientAction, initialPatientOsmAssignmentActionState);
-  const [unassignState, unassignAction, unassignPending, unassignUnknown] = useMutationActionState<
-    PatientOsmAssignmentActionState,
-    FormData
-  >(unassignOsmFromPatientAction, initialPatientOsmAssignmentActionState);
+  const activeRelationshipId = useRef(relationshipId);
+  const mounted = useRef(true);
+  // One lock for assign and unassign: they change the same assignment and must never race.
+  const inFlight = useRef(false);
 
   useEffect(() => {
-    if (assignState.status === "SUCCESS" || unassignState.status === "SUCCESS") {
-      router.refresh();
+    activeRelationshipId.current = relationshipId;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, [relationshipId]);
+
+  // Results are classified and announced here, once per awaited submission, from the
+  // operation the service reports rather than from the button that was pressed.
+  const runAssignment = (
+    action: (state: PatientOsmAssignmentActionState, formData: FormData) => Promise<PatientOsmAssignmentActionState>,
+    allowed: readonly string[],
+  ) => async (
+    previous: PatientOsmAssignmentActionState,
+    formData: FormData,
+  ): Promise<PatientOsmAssignmentActionState> => {
+    const submittedRelationshipId = formData.get("patientHospitalRelationshipId");
+    const submittedOsmUserId = formData.get("osmUserId");
+    try {
+      const result = await action(previous, formData);
+
+      if (result.status === "IDLE" || (result.status === "ERROR" && result.code === "UNAVAILABLE")) {
+        throw new UnconfirmedAssignment();
+      }
+      if (
+        result.status === "SUCCESS" &&
+        (!allowed.includes(result.result.operation) ||
+          result.result.patientHospitalRelationshipId !== submittedRelationshipId ||
+          (submittedOsmUserId !== null && result.result.operation !== "NOOP" && result.result.osmUserId !== submittedOsmUserId))
+      ) {
+        throw new UnconfirmedAssignment();
+      }
+
+      if (!mounted.current || activeRelationshipId.current !== submittedRelationshipId) {
+        return result;
+      }
+      if (result.status === "SUCCESS") {
+        if (result.result.operation !== "NOOP") {
+          notify.success(assignmentToasts[result.result.operation]);
+        }
+        router.refresh();
+      } else if (result.code === "CONFLICT") {
+        notify.warning("ข้อมูลการมอบหมายเปลี่ยนแปลง กรุณาตรวจสอบข้อมูลล่าสุด");
+        router.refresh();
+      } else if (result.code === "FORBIDDEN") {
+        notify.error("ไม่มีสิทธิ์จัดการการมอบหมายผู้ป่วย");
+      }
+      return result;
+    } finally {
+      inFlight.current = false;
     }
-  }, [assignState, router, unassignState]);
+  };
+
+  const [assignState, dispatchAssign, assignPending, assignUnknown] = useMutationActionState<
+    PatientOsmAssignmentActionState,
+    FormData
+  >(runAssignment(assignOsmToPatientAction, ["ASSIGNED", "REASSIGNED", "NOOP"]), initialPatientOsmAssignmentActionState);
+  const [unassignState, dispatchUnassign, unassignPending, unassignUnknown] = useMutationActionState<
+    PatientOsmAssignmentActionState,
+    FormData
+  >(runAssignment(unassignOsmFromPatientAction, ["UNASSIGNED", "NOOP"]), initialPatientOsmAssignmentActionState);
+  function guarded(dispatch: (formData: FormData) => void): (formData: FormData) => void {
+    return (formData) => {
+      if (inFlight.current) {
+        return;
+      }
+      inFlight.current = true;
+      dispatch(formData);
+    };
+  }
+  const assignAction = guarded(dispatchAssign);
+  const unassignAction = guarded(dispatchUnassign);
 
   const busy = assignPending || unassignPending || assignUnknown || unassignUnknown;
 

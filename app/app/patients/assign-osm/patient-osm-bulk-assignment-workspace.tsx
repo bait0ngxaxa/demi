@@ -3,7 +3,7 @@
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
@@ -44,6 +45,9 @@ import {
 } from "./osm-candidate-paging";
 
 const OSM_SEARCH_DEBOUNCE_MS = 300;
+
+/** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
+class UnconfirmedBulkAssignment extends Error {}
 
 type OsmSearchPickerProps = {
   hospitalId: string;
@@ -241,10 +245,79 @@ export function PatientOsmBulkAssignmentWorkspace({
   errorMessage,
 }: PatientOsmBulkAssignmentWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientOsmBulkAssignmentActionState, FormData>(
-    bulkAssignOsmToPatientsAction,
+  const activeHospitalId = useRef(selectedScope.hospitalId);
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    activeHospitalId.current = selectedScope.hospitalId;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, [selectedScope.hospitalId]);
+
+  // The payload of an unconfirmed request, including its submissionNonce, is kept by the hook
+  // and re-sent unchanged; nothing here generates a new nonce.
+  const assignAndNotify = async (
+    previous: PatientOsmBulkAssignmentActionState,
+    formData: FormData,
+  ): Promise<PatientOsmBulkAssignmentActionState> => {
+    const submittedHospitalId = formData.get("hospitalId");
+    try {
+      const result = await bulkAssignOsmToPatientsAction(previous, formData);
+
+      if (result.status === "IDLE" || (result.status === "ERROR" && result.code === "UNAVAILABLE")) {
+        throw new UnconfirmedBulkAssignment();
+      }
+      if (
+        result.status === "SUCCESS" &&
+        ((result.result.operation !== "ASSIGNED" && result.result.operation !== "REPLAYED") ||
+          result.result.hospitalId !== submittedHospitalId ||
+          result.result.osmUserId !== formData.get("osmUserId") ||
+          result.result.assignedCount !== formData.getAll("patientHospitalRelationshipId").length)
+      ) {
+        throw new UnconfirmedBulkAssignment();
+      }
+
+      if (!mounted.current || activeHospitalId.current !== submittedHospitalId) {
+        return result;
+      }
+      if (result.status === "SUCCESS") {
+        // REPLAYED means the first request already applied; the inline result explains it.
+        if (result.result.operation === "ASSIGNED") {
+          notify.success("มอบหมาย อสม. ให้ผู้ป่วยแล้ว");
+        }
+        router.refresh();
+      } else if (result.code === "CONFLICT") {
+        notify.warning("ไม่สามารถมอบหมายได้ ระบบไม่บันทึกรายการใด กรุณาตรวจสอบข้อมูลล่าสุด");
+      } else if (result.code === "FORBIDDEN") {
+        notify.error("ไม่มีสิทธิ์มอบหมาย อสม. ในโรงพยาบาลนี้");
+      }
+      return result;
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
+  const [state, dispatchAssign, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientOsmBulkAssignmentActionState, FormData>(
+    assignAndNotify,
     initialPatientOsmBulkAssignmentActionState,
   );
+  function action(formData: FormData): void {
+    if (inFlight.current) {
+      return;
+    }
+    inFlight.current = true;
+    dispatchAssign(formData);
+  }
+  function resend(): void {
+    if (inFlight.current) {
+      return;
+    }
+    inFlight.current = true;
+    resendUnconfirmed();
+  }
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedOsm, setSelectedOsm] = useState<PatientOsmCandidate | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -255,12 +328,6 @@ export function PatientOsmBulkAssignmentWorkspace({
   const selectedPatients = patients.filter((patient) =>
     selectedIds.has(patient.patientHospitalRelationshipId),
   );
-
-  useEffect(() => {
-    if (state.status === "SUCCESS") {
-      router.refresh();
-    }
-  }, [router, state]);
 
   function toggleAll(checked: boolean): void {
     setSelectedIds(
@@ -289,7 +356,8 @@ export function PatientOsmBulkAssignmentWorkspace({
   }
 
   function editSelection(): void {
-    if (!pending) {
+    // Going back would drop the unconfirmed request's recovery and its nonce.
+    if (!pending && !unknownOutcome) {
       setConfirming(false);
     }
   }
@@ -315,7 +383,7 @@ export function PatientOsmBulkAssignmentWorkspace({
             <Form action="" className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:min-w-80">
                 <span className="sr-only">เลือกโรงพยาบาล</span>
-                <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
+                <Select defaultValue={selectedScope.hospitalId} disabled={pending || unknownOutcome} key={selectedScope.hospitalId} name="hospitalId">
                   {scopes.map((scope) => (
                     <option key={scope.hospitalId} value={scope.hospitalId}>
                       {scope.hospitalName}
@@ -323,7 +391,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                   ))}
                 </Select>
               </label>
-              <PendingSubmitButton size="compact" variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">
+              <PendingSubmitButton disabled={pending || unknownOutcome} size="compact" variant="secondary" pendingLabel="กำลังเปลี่ยนโรงพยาบาล...">
                 เลือกโรงพยาบาล
               </PendingSubmitButton>
             </Form>
@@ -477,7 +545,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                   <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
                     {pending ? "กำลังบันทึก..." : "ยืนยันมอบหมาย"}
                   </Button>
-                  <Button disabled={pending} onClick={editSelection} type="button" variant="secondary">
+                  <Button disabled={pending || unknownOutcome} onClick={editSelection} type="button" variant="secondary">
                     กลับไปแก้ไข
                   </Button>
                 </form>
@@ -487,7 +555,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                     <p className="mt-1">{state.message}</p>
                   </Alert>
                 ) : null}
-                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resend, resending: pending }} />
               </Panel>
             ) : null}
           </>
