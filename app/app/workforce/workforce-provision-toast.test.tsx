@@ -61,6 +61,7 @@ const rows: WorkforceListRow[] = [];
 function resultFor(
   kind: "HOSPITAL_MEMBER" | "OSM",
   hospitalId = hospitalA.id,
+  activationToken = "mock-one-time-activation-token",
 ): WorkforceProvisionActionState {
   const result: WorkforceProvisionResultState = {
     kind,
@@ -70,7 +71,7 @@ function resultFor(
     accountStatus: "PROVISIONED",
     relationshipStatus: "PROVISIONED",
     activationRequired: true,
-    activationToken: "mock-one-time-activation-token",
+    activationToken,
     activationExpiresAt: "2026-10-18T12:00:00.000Z",
     activationMode: "REMOTE",
     reusedExistingUser: false,
@@ -209,6 +210,7 @@ describe("Workforce single-record provisioning Toasts", () => {
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกข้อมูลบุคลากรโรงพยาบาลแล้ว");
     expect(container.textContent).toContain("สร้างบุคลากรแล้ว · รอเปิดใช้งาน");
     expect(container.textContent).toContain("mock-one-time-activation-token");
+    expect(container.textContent).toContain("ก่อนเพิ่มรายการชนิดเดียวกันครั้งถัดไปหรือออกจากหน้านี้");
     expect(JSON.stringify(toastCalls())).not.toContain("mock-one-time-activation-token");
     expect(JSON.stringify(toastCalls())).not.toContain("private-user-id");
     expect(JSON.stringify(toastCalls())).not.toContain("private-relationship-id");
@@ -271,6 +273,112 @@ describe("Workforce single-record provisioning Toasts", () => {
     expect(mocks.success).toHaveBeenNthCalledWith(1, "บันทึกข้อมูลบุคลากรโรงพยาบาลแล้ว");
     expect(mocks.success).toHaveBeenNthCalledWith(2, "บันทึกข้อมูล อสม. แล้ว");
     expect(container.textContent).toContain("mock-one-time-activation-token");
+  });
+
+  it("keeps an undelivered Staff credential visible and blocks a same-Hospital Staff submission until acknowledged", async () => {
+    renderWorkspace();
+    const staffForm = provisionForm("HOSPITAL_MEMBER");
+    fillForm(staffForm, "HOSPITAL_MEMBER");
+    await act(async () => submit(staffForm));
+
+    const nextStaffSubmit = staffForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!nextStaffSubmit) throw new Error("Missing Staff submit button");
+    expect(nextStaffSubmit.disabled).toBe(true);
+    await act(async () => submit(staffForm));
+    expect(mocks.staffAction).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("mock-one-time-activation-token");
+
+    const acknowledgeButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว"),
+    );
+    if (!acknowledgeButton) throw new Error("Missing Staff credential acknowledgment button");
+    await act(async () => acknowledgeButton.click());
+
+    mocks.staffAction.mockResolvedValueOnce({
+      status: "ERROR",
+      code: "UNAVAILABLE",
+      message: "ข้อความโครงสร้างพื้นฐาน",
+    });
+    expect(nextStaffSubmit.disabled).toBe(false);
+    await act(async () => submit(staffForm));
+
+    expect(mocks.staffAction).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain("บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว");
+    expect(container.textContent).toContain("mock-one-time-activation-token");
+    expect(mocks.success).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an undelivered OSM credential visible and blocks a same-Hospital OSM submission", async () => {
+    renderWorkspace();
+    const osmForm = provisionForm("OSM");
+    fillForm(osmForm, "OSM");
+    await act(async () => submit(osmForm));
+
+    const nextOsmSubmit = osmForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if (!nextOsmSubmit) throw new Error("Missing OSM submit button");
+    expect(nextOsmSubmit.disabled).toBe(true);
+    await act(async () => submit(osmForm));
+
+    expect(mocks.osmAction).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("mock-one-time-activation-token");
+    expect(container.textContent).toContain("ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว");
+  });
+
+  it.each(["HOSPITAL_MEMBER", "OSM"] as const)(
+    "allows a new %s result to replace the previous one only after delivery acknowledgment",
+    async (kind) => {
+      const action = kind === "HOSPITAL_MEMBER" ? mocks.staffAction : mocks.osmAction;
+      action
+        .mockResolvedValueOnce(resultFor(kind, hospitalA.id, "previous-activation-token"))
+        .mockResolvedValueOnce(resultFor(kind, hospitalA.id, "next-activation-token"));
+      renderWorkspace();
+      const form = provisionForm(kind);
+      fillForm(form, kind);
+      await act(async () => submit(form));
+
+      expect(container.textContent).toContain("previous-activation-token");
+      await act(async () => submit(form));
+      expect(action).toHaveBeenCalledOnce();
+
+      const acknowledgeButton = Array.from(container.querySelectorAll("button")).find((button) =>
+        button.textContent?.includes("ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว"),
+      );
+      if (!acknowledgeButton) throw new Error("Missing credential acknowledgment button");
+      await act(async () => acknowledgeButton.click());
+
+      fillForm(form, kind);
+      await act(async () => submit(form));
+
+      expect(action).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain("next-activation-token");
+      expect(container.textContent).not.toContain("previous-activation-token");
+    },
+  );
+
+  it("retains each Hospital's Staff credential across Hospital context changes", async () => {
+    mocks.staffAction
+      .mockResolvedValueOnce(resultFor("HOSPITAL_MEMBER", hospitalA.id, "hospital-a-activation-token"))
+      .mockResolvedValueOnce(resultFor("HOSPITAL_MEMBER", hospitalB.id, "hospital-b-activation-token"));
+    renderWorkspace(hospitalA.id);
+    const staffFormA = provisionForm("HOSPITAL_MEMBER");
+    fillForm(staffFormA, "HOSPITAL_MEMBER");
+    await act(async () => submit(staffFormA));
+    expect(container.textContent).toContain("hospital-a-activation-token");
+
+    renderWorkspace(hospitalB.id);
+    const staffFormB = provisionForm("HOSPITAL_MEMBER");
+    fillForm(staffFormB, "HOSPITAL_MEMBER");
+    await act(async () => submit(staffFormB));
+    expect(container.textContent).toContain("hospital-b-activation-token");
+    expect(container.textContent).not.toContain("hospital-a-activation-token");
+
+    renderWorkspace(hospitalA.id);
+    expect(container.textContent).toContain("hospital-a-activation-token");
+    expect(container.textContent).not.toContain("hospital-b-activation-token");
+    const staffSubmitA = provisionForm("HOSPITAL_MEMBER").querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    );
+    expect(staffSubmitA?.disabled).toBe(true);
   });
 
   it("keeps an idempotent result copy from claiming that a new account or relationship was created", async () => {

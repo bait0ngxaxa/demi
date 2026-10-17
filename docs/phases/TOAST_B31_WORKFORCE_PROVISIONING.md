@@ -34,7 +34,11 @@ When the selected Hospital changes outside the guarded selector, responses for t
 
 The one-time token, activation URL, and QR payload remain exclusively in the existing `ProvisionResult` and `ActivationPresentation`. Toasts receive only fixed messages; they contain no token, URL, QR data, names, national IDs, email, account or relationship identifiers, Hospital identifiers, or exception text.
 
-The existing `submitPreservingInput` form convention is retained. Success resets a form only if its current values still match the submitted values; an edited draft is preserved. Confirmed errors, unknown outcomes, and stale context responses do not reset the form. The success result remains available after a successful reset.
+Confirmed provisioning results are stored separately from the current submission/error state in Component memory, keyed by provisioning kind and Hospital. Switching the selected Hospital therefore shows only that Hospital's result, and returning to another Hospital restores its still-mounted in-memory credential instead of replacing it with a different Hospital's result.
+
+When a confirmed result includes an activation token, the same-kind form for that Hospital stays disabled until the Admin confirms that the link was copied or delivered. The same check runs synchronously at dispatch, so submitting the form directly cannot bypass the disabled button. After acknowledgment, another same-kind submission may start; the previous credential stays visible while it is pending or unconfirmed and is replaced only by another matching authoritative success. Results without an activation token do not require this acknowledgment. Credentials are not written to localStorage, sessionStorage, Toasts, logs, or analytics.
+
+The existing `submitPreservingInput` form convention is retained. Success resets a form only if its current values still match the submitted values; an edited draft is preserved. Confirmed errors, unknown outcomes, and stale context responses do not reset the form. A same-kind `UNAVAILABLE` or thrown request does not clear the previous credential or automatically retry the provisioning request.
 
 ## Verification
 
@@ -47,6 +51,30 @@ npm run test -- 'app/app/workforce/workforce-provision-toast.test.tsx' 'app/app/
 
 The new component tests cover confirmed Staff/OSM success, delayed success, activation token privacy, idempotent result copy, conflict/forbidden/validation mapping, returned `UNAVAILABLE`, thrown requests, returned `IDLE`, rerender deduplication, form reset/preservation, rapid duplicate submissions, cross-form locking, context changes, stale unknown recovery, and unmount.
 
+Credential-preservation regression tests additionally verify Staff and OSM same-Hospital replacement is blocked until acknowledgment, the prior Staff credential remains available after an acknowledged later submission returns `UNAVAILABLE`, and credentials for two Hospitals remain isolated when switching context.
+
+Follow-up verification for Finding B31-01:
+
+```text
+npm run test -- 'app/app/workforce/workforce-provision-toast.test.tsx' 'app/app/workforce/workforce-recovery.test.tsx' 'app/app/workforce/workforce-workspace.test.tsx' 'src/modules/workforce/transport/server-actions.test.ts'
+  Passed: 4 files, 66 tests
+
+npm run test -- 'app/app/workforce/workforce-provision-toast.test.tsx'
+  Passed: 1 file, 32 tests, including the final credential acknowledgment assertions
+
+npm run typecheck
+  Passed
+
+npx eslint app/app/workforce/workforce-workspace.tsx app/app/workforce/workforce-provision-toast.test.tsx
+  Passed
+
+npm run lint
+  Passed with 0 errors and 2 existing <img> optimization warnings in Hospital content components
+
+git diff --check
+  Passed
+```
+
 Local Next.js 16.3.0 Forms and Server Actions guides were inspected. They document action return values with `useActionState`, progressive form actions, and the re-rendered Server Component payload returned with immediate `revalidatePath`. The existing form `action` and `submitPreservingInput` arrangement was preserved. No browser test with JavaScript disabled was run.
 
 `npm run typecheck`, `npm run lint`, and focused ESLint for the changed UI/tests passed. Full lint reported two existing `<img>` optimization warnings in the Hospital content image components; the changed Workforce files had no lint warnings. The Impeccable detector reported no findings.
@@ -54,5 +82,6 @@ Local Next.js 16.3.0 Forms and Server Actions guides were inspected. They docume
 ## Remaining limitations and Phase B.3.2 handoff
 
 - No real-browser test was run for a submission before hydration. The native form action wiring and Server Action contract were not changed.
+- Unacknowledged credentials live only as long as this mounted Component. A page reload or navigation that unmounts the Workspace discards them; this preserves the one-time credential's in-memory-only boundary.
 - The recovery path depends on the user reviewing the latest authorized Workforce roster; it does not prove which request created an existing relationship.
 - Keep future notifications tied to a confirmed, submission-scoped result. Inspect credential recovery and idempotency guarantees before offering any retry, and preserve the same Hospital-context and one-time-credential boundaries.

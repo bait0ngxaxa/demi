@@ -73,10 +73,20 @@ type ProvisionSubmission = {
   state?: WorkforceProvisionActionState;
 };
 
+type ConfirmedProvisionResult = {
+  submissionId: number;
+  result: WorkforceProvisionResultState;
+  credentialDelivered: boolean;
+};
+
 type ProvisionServerAction = (
   previousState: WorkforceProvisionActionState,
   formData: FormData,
 ) => Promise<WorkforceProvisionActionState>;
+
+function provisionResultKey(kind: SingleProvisionKind, hospitalId: string): string {
+  return JSON.stringify([kind, hospitalId]);
+}
 
 function isSameProvisionDraft(
   form: HTMLFormElement,
@@ -141,7 +151,15 @@ function ProvisionContinuation({
   );
 }
 
-function ProvisionResult({ result }: { result: WorkforceProvisionResultState }): React.JSX.Element {
+function ProvisionResult({
+  result,
+  credentialDelivered,
+  onCredentialDelivered,
+}: {
+  result: WorkforceProvisionResultState;
+  credentialDelivered: boolean;
+  onCredentialDelivered: () => void;
+}): React.JSX.Element {
   const activationToken = result.activationToken;
   const identityLabel = result.kind === "OSM" ? " อสม." : "บุคลากร";
   const readyTitle = result.idempotent ? `ข้อมูล${identityLabel}พร้อมแล้ว` : "เพิ่มสิทธิ์เรียบร้อยแล้ว";
@@ -173,6 +191,26 @@ function ProvisionResult({ result }: { result: WorkforceProvisionResultState }):
             : "สร้างบุคลากรแล้ว · รอเปิดใช้งาน"
         }
       />
+      {credentialDelivered ? (
+        <p className="mt-3 text-sm text-muted">
+          ยืนยันการจัดการลิงก์แล้ว สามารถเพิ่มรายการประเภทเดียวกันได้
+        </p>
+      ) : (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="text-sm leading-6 text-text">
+            โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนเพิ่มรายการชนิดเดียวกันครั้งถัดไปหรือออกจากหน้านี้
+          </p>
+          <Button
+            className="mt-3"
+            onClick={onCredentialDelivered}
+            size="compact"
+            type="button"
+            variant="secondary"
+          >
+            ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว
+          </Button>
+        </div>
+      )}
       <ProvisionContinuation result={result} />
     </div>
   );
@@ -755,6 +793,10 @@ export function WorkforceWorkspace({
   const osmFormRef = useRef<HTMLFormElement>(null);
   const [staffProvision, setStaffProvision] = useState<ProvisionSubmission | null>(null);
   const [osmProvision, setOsmProvision] = useState<ProvisionSubmission | null>(null);
+  const [confirmedProvisionResults, setConfirmedProvisionResults] = useState<
+    Map<string, ConfirmedProvisionResult>
+  >(() => new Map());
+  const confirmedProvisionResultsRef = useRef(confirmedProvisionResults);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -772,6 +814,49 @@ export function WorkforceWorkspace({
 
     osmProvisionRef.current = next;
     setOsmProvision(next);
+  }, []);
+
+  const rememberConfirmedProvisionResult = useCallback((
+    submission: ProvisionSubmission,
+    result: WorkforceProvisionResultState,
+  ): void => {
+    const scopeKey = provisionResultKey(submission.kind, submission.hospitalId);
+    const next = new Map(confirmedProvisionResultsRef.current);
+    next.set(scopeKey, {
+      submissionId: submission.id,
+      result,
+      credentialDelivered: false,
+    });
+    confirmedProvisionResultsRef.current = next;
+    setConfirmedProvisionResults(next);
+  }, []);
+
+  const markCredentialDelivered = useCallback((
+    kind: SingleProvisionKind,
+    hospitalId: string,
+    submissionId: number,
+  ): void => {
+    const scopeKey = provisionResultKey(kind, hospitalId);
+    const current = confirmedProvisionResultsRef.current.get(scopeKey);
+    if (
+      !current ||
+      current.submissionId !== submissionId ||
+      !current.result.activationToken ||
+      current.credentialDelivered
+    ) {
+      return;
+    }
+
+    const next = new Map(confirmedProvisionResultsRef.current);
+    next.set(scopeKey, { ...current, credentialDelivered: true });
+    confirmedProvisionResultsRef.current = next;
+    setConfirmedProvisionResults(next);
+  }, []);
+
+  const needsCredentialDelivery = useCallback((kind: SingleProvisionKind, hospitalId: string): boolean => {
+    const scopeKey = provisionResultKey(kind, hospitalId);
+    const current = confirmedProvisionResultsRef.current.get(scopeKey);
+    return Boolean(current?.result.activationToken && !current.credentialDelivered);
   }, []);
 
   const handleProvisionResponse = useCallback((
@@ -802,11 +887,14 @@ export function WorkforceWorkspace({
       (result.status === "SUCCESS" && !resultMatchesSubmission);
     const contextMatches = activeHospitalIdRef.current === submission.hospitalId;
 
+    if (resultMatchesSubmission) {
+      rememberConfirmedProvisionResult(submission, result.result);
+    }
+
     if (!contextMatches) {
       const staleResult: ProvisionSubmission = {
         ...submission,
         status: unconfirmed ? "UNCONFIRMED" : resultMatchesSubmission ? "SUCCESS" : "STALE",
-        ...(resultMatchesSubmission ? { state: result } : {}),
       };
       updateProvision(submission.kind, staleResult);
       provisionInFlightRef.current = staleResult;
@@ -836,11 +924,7 @@ export function WorkforceWorkspace({
         }
       }
 
-      const successfulSubmission: ProvisionSubmission = {
-        ...submission,
-        status: "SUCCESS",
-        state: result,
-      };
+      const successfulSubmission: ProvisionSubmission = { ...submission, status: "SUCCESS" };
       updateProvision(submission.kind, successfulSubmission);
       provisionInFlightRef.current = successfulSubmission;
       return;
@@ -871,7 +955,7 @@ export function WorkforceWorkspace({
     };
     updateProvision(submission.kind, failedSubmission);
     provisionInFlightRef.current = failedSubmission;
-  }, [updateProvision]);
+  }, [rememberConfirmedProvisionResult, updateProvision]);
 
   const staffProvisionAction = useCallback<ProvisionServerAction>(async (previousState, formData) => {
     const submission = provisionInFlightRef.current;
@@ -961,14 +1045,20 @@ export function WorkforceWorkspace({
   const currentStaffProvision =
     staffProvision?.hospitalId === selectedHospitalId ? staffProvision : null;
   const currentOsmProvision = osmProvision?.hospitalId === selectedHospitalId ? osmProvision : null;
+  const staffConfirmedResult = confirmedProvisionResults.get(
+    provisionResultKey("HOSPITAL_MEMBER", selectedHospitalId),
+  );
+  const osmConfirmedResult = confirmedProvisionResults.get(provisionResultKey("OSM", selectedHospitalId));
   const staffResult =
-    currentStaffProvision?.status === "SUCCESS" && currentStaffProvision.state?.status === "SUCCESS"
-      ? currentStaffProvision.state.result
-      : null;
+    staffConfirmedResult?.result ?? null;
   const osmResult =
-    currentOsmProvision?.status === "SUCCESS" && currentOsmProvision.state?.status === "SUCCESS"
-      ? currentOsmProvision.state.result
-      : null;
+    osmConfirmedResult?.result ?? null;
+  const staffCredentialNeedsDelivery = Boolean(
+    staffConfirmedResult?.result.activationToken && !staffConfirmedResult.credentialDelivered,
+  );
+  const osmCredentialNeedsDelivery = Boolean(
+    osmConfirmedResult?.result.activationToken && !osmConfirmedResult.credentialDelivered,
+  );
   const staffError =
     currentStaffProvision?.status === "ERROR" && currentStaffProvision.state?.status === "ERROR"
       ? currentStaffProvision.state
@@ -1020,13 +1110,16 @@ export function WorkforceWorkspace({
     }
 
     const targetHospitalId = formData.get("targetHospitalId");
+    const hospitalId =
+      typeof targetHospitalId === "string" && targetHospitalId.length > 0
+        ? targetHospitalId
+        : activeHospitalIdRef.current;
+    if (needsCredentialDelivery(kind, hospitalId)) return;
+
     const submission: ProvisionSubmission = {
       id: provisionSubmissionIdRef.current + 1,
       kind,
-      hospitalId:
-        typeof targetHospitalId === "string" && targetHospitalId.length > 0
-          ? targetHospitalId
-          : activeHospitalIdRef.current,
+      hospitalId,
       status: "PENDING",
     };
     provisionSubmissionIdRef.current = submission.id;
@@ -1258,7 +1351,19 @@ export function WorkforceWorkspace({
                 </Select>
               </label>
               {staffError ? <Alert className="mt-2" variant="danger">{staffError.message}</Alert> : null}
-              {staffResult ? <ProvisionResult result={staffResult} /> : null}
+              {staffResult && staffConfirmedResult ? (
+                <ProvisionResult
+                  credentialDelivered={staffConfirmedResult.credentialDelivered}
+                  onCredentialDelivered={() =>
+                    markCredentialDelivered(
+                      "HOSPITAL_MEMBER",
+                      selectedHospitalId,
+                      staffConfirmedResult.submissionId,
+                    )
+                  }
+                  result={staffResult}
+                />
+              ) : null}
               <UnknownOutcomeAlert
                 active={staffUnknownForCurrentHospital}
                 recovery={{
@@ -1268,7 +1373,12 @@ export function WorkforceWorkspace({
                     "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
                 }}
               />
-              <Button className="w-full" disabled={actionsBlocked} loading={staffPending} type="submit">
+              <Button
+                className="w-full"
+                disabled={actionsBlocked || staffCredentialNeedsDelivery}
+                loading={staffPending}
+                type="submit"
+              >
                 {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
               </Button>
             </form>
@@ -1302,7 +1412,15 @@ export function WorkforceWorkspace({
                 ระบบจะกำหนดบทบาท อสม. และสถานะความสัมพันธ์ให้ตามขั้นตอนนี้
               </div>
               {osmError ? <Alert className="mt-2" variant="danger">{osmError.message}</Alert> : null}
-              {osmResult ? <ProvisionResult result={osmResult} /> : null}
+              {osmResult && osmConfirmedResult ? (
+                <ProvisionResult
+                  credentialDelivered={osmConfirmedResult.credentialDelivered}
+                  onCredentialDelivered={() =>
+                    markCredentialDelivered("OSM", selectedHospitalId, osmConfirmedResult.submissionId)
+                  }
+                  result={osmResult}
+                />
+              ) : null}
               <UnknownOutcomeAlert
                 active={osmUnknownForCurrentHospital}
                 recovery={{
@@ -1312,7 +1430,12 @@ export function WorkforceWorkspace({
                     "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
                 }}
               />
-              <Button className="w-full" disabled={actionsBlocked} loading={osmPending} type="submit">
+              <Button
+                className="w-full"
+                disabled={actionsBlocked || osmCredentialNeedsDelivery}
+                loading={osmPending}
+                type="submit"
+              >
                 {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
               </Button>
             </form>
