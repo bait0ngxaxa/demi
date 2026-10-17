@@ -10,6 +10,7 @@ type LocalNavigationProps<TValue extends string> = {
   items: readonly LocalNavigationItem<TValue>[];
   value: TValue;
   onChange: (value: TValue) => void;
+  disabled?: boolean;
 };
 
 export function LocalNavigation<TValue extends string>({
@@ -17,6 +18,7 @@ export function LocalNavigation<TValue extends string>({
   items,
   value,
   onChange,
+  disabled = false,
 }: LocalNavigationProps<TValue>): React.JSX.Element {
   return (
     <div aria-label={ariaLabel} className="flex w-fit gap-1 rounded-panel bg-surface-muted p-1" role="group">
@@ -31,7 +33,9 @@ export function LocalNavigation<TValue extends string>({
               selected
                 ? "bg-surface text-brand-strong shadow-surface"
                 : "text-text-muted hover:bg-surface/70 hover:text-text",
+              "disabled:cursor-not-allowed disabled:text-text-subtle disabled:hover:bg-transparent",
             )}
+            disabled={disabled}
             key={item.value}
             onClick={() => onChange(item.value)}
             type="button"

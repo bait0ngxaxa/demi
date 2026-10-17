@@ -965,20 +965,18 @@ export function PatientProvisioningWorkspace({
   const mountedRef = useRef(false);
   const activeHospitalIdRef = useRef(selectedHospitalId);
   const provisionInFlightRef = useRef(false);
-  /** Each Hospital's unconfirmed request payload; it is only re-sent unchanged, by the user. */
-  const unconfirmedProvisionsRef = useRef<ReadonlyMap<string, FormData>>(new Map());
-  const [unconfirmedProvisions, setUnconfirmedProvisions] = useState<ReadonlyMap<string, FormData>>(() => new Map());
+  /**
+   * The unconfirmed request; it is only re-sent unchanged, by the user. The page keys this
+   * component by Hospital, so a remount would discard it: Hospital and mode switches stay
+   * locked until it is resolved.
+   */
+  const unconfirmedProvisionRef = useRef<ProvisionSubmission | null>(null);
+  const [unconfirmedProvision, setUnconfirmedProvision] = useState<ProvisionSubmission | null>(null);
   const [provisionErrorHospitalId, setProvisionErrorHospitalId] = useState<string | null>(null);
 
-  const recordUnconfirmedProvision = useCallback((hospitalId: string, formData: FormData | null): void => {
-    const next = new Map(unconfirmedProvisionsRef.current);
-    if (formData) {
-      next.set(hospitalId, formData);
-    } else {
-      next.delete(hospitalId);
-    }
-    unconfirmedProvisionsRef.current = next;
-    setUnconfirmedProvisions(next);
+  const recordUnconfirmedProvision = useCallback((submission: ProvisionSubmission | null): void => {
+    unconfirmedProvisionRef.current = submission;
+    setUnconfirmedProvision(submission);
   }, []);
 
   /**
@@ -1002,7 +1000,7 @@ export function PatientProvisioningWorkspace({
     const verdict = classifyProvisionResult(result, submission.hospitalId);
     if (verdict === "UNCONFIRMED" || result === null) {
       if (mountedRef.current) {
-        recordUnconfirmedProvision(submission.hospitalId, submission.formData);
+        recordUnconfirmedProvision(submission);
       }
       return initialPatientProvisionActionState;
     }
@@ -1011,7 +1009,7 @@ export function PatientProvisioningWorkspace({
       return result;
     }
 
-    recordUnconfirmedProvision(submission.hospitalId, null);
+    recordUnconfirmedProvision(null);
     if (result.status === "ERROR") {
       setProvisionErrorHospitalId(submission.hospitalId);
     }
@@ -1039,26 +1037,30 @@ export function PatientProvisioningWorkspace({
     ProvisionSubmission
   >(runProvision, initialPatientProvisionActionState);
 
-  /** Acquires the single-flight lock synchronously, so a rapid second submit never reaches the Server Action. */
-  const sendProvision = useCallback((formData: FormData, resend: boolean): void => {
-    const hospitalId = provisionFormValue(formData, "targetHospitalId");
-    const unconfirmed = unconfirmedProvisionsRef.current.has(hospitalId);
-    if (provisionInFlightRef.current || unconfirmed !== resend) {
+  /**
+   * Acquires the single-flight lock synchronously, so a rapid second submit never reaches the
+   * Server Action. While a request is unconfirmed, only that exact submission may be re-sent.
+   */
+  const sendProvision = useCallback((submission: ProvisionSubmission, resend: boolean): void => {
+    const unconfirmed = unconfirmedProvisionRef.current;
+    if (provisionInFlightRef.current || (resend ? unconfirmed !== submission : unconfirmed !== null)) {
       return;
     }
 
     provisionInFlightRef.current = true;
-    dispatchProvision({ hospitalId, formData });
+    dispatchProvision(submission);
   }, [dispatchProvision]);
 
-  const submitProvision = useCallback((formData: FormData): void => sendProvision(formData, false), [sendProvision]);
+  const submitProvision = useCallback((formData: FormData): void => {
+    sendProvision({ hospitalId: provisionFormValue(formData, "targetHospitalId"), formData }, false);
+  }, [sendProvision]);
 
   function handleProvisionSubmit(event: React.FormEvent<HTMLFormElement>): void {
     submitPreservingInput(submitProvision)(event);
   }
 
   function resendProvision(): void {
-    const unconfirmed = unconfirmedProvisionsRef.current.get(selectedHospitalId);
+    const unconfirmed = unconfirmedProvisionRef.current;
     if (unconfirmed) {
       startTransition(() => sendProvision(unconfirmed, true));
     }
@@ -1069,7 +1071,9 @@ export function PatientProvisioningWorkspace({
     (provisionState.status === "ERROR" && provisionErrorHospitalId === selectedHospitalId)
       ? provisionState
       : initialPatientProvisionActionState;
-  const provisionUnconfirmed = unconfirmedProvisions.has(selectedHospitalId);
+  const provisionUnconfirmed = unconfirmedProvision?.hospitalId === selectedHospitalId;
+  /** A Hospital or mode switch would hide the recovery alert or remount it away. */
+  const provisionLocked = provisionPending || unconfirmedProvision !== null;
   const [importUnknown, setImportUnknown] = useState(false);
   const [previewState, setPreviewState] = useState<PatientImportPreviewActionState>(
     initialPatientImportPreviewActionState,
@@ -1296,8 +1300,22 @@ export function PatientProvisioningWorkspace({
     element?.focus({ preventScroll: false });
   }
 
+  function changeMode(nextMode: ProvisioningMode): void {
+    if (provisionInFlightRef.current || unconfirmedProvisionRef.current !== null) {
+      return;
+    }
+
+    setMode(nextMode);
+  }
+
   function changeHospital(hospitalId: string): void {
-    if (previewPending || importPending || hospitalSwitching || provisionInFlightRef.current) {
+    if (
+      previewPending ||
+      importPending ||
+      hospitalSwitching ||
+      provisionInFlightRef.current ||
+      unconfirmedProvisionRef.current !== null
+    ) {
       return;
     }
 
@@ -1333,7 +1351,7 @@ export function PatientProvisioningWorkspace({
               </label>
               <Select
                 className="mt-2 max-w-xl"
-                disabled={previewPending || importPending || hospitalSwitching || provisionPending}
+                disabled={previewPending || importPending || hospitalSwitching || provisionLocked}
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -1383,7 +1401,8 @@ export function PatientProvisioningWorkspace({
                 { label: "เพิ่มรายบุคคล", value: "SINGLE" },
                 { label: "นำเข้าจาก Excel", value: "EXCEL" },
               ]}
-              onChange={setMode}
+              disabled={provisionLocked}
+              onChange={changeMode}
               value={activeMode}
             />
           </div>
