@@ -332,4 +332,128 @@ describe("Patient activation search and link issuance", () => {
       expect(mocks.notifyError).not.toHaveBeenCalled();
     });
   });
+  describe("handoff protection", () => {
+    const token = "one-time-secret-token";
+    const issuedResponse = {
+      status: "SUCCESS",
+      result: {
+        outcome: "ISSUED",
+        userId: "user-1",
+        patientProfileId: "profile-1",
+        hospitalId: "hospital-1",
+        activationToken: token,
+        activationExpiresAt: "2026-10-20T00:00:00.000Z",
+      },
+    };
+
+    async function issueFor(): Promise<void> {
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [candidate] });
+      await search("สมชาย");
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>("article form button[type=submit]")!.click();
+      });
+    }
+
+    it("blocks a new search while the issued link is unhandled, and releases it after handoff", async () => {
+      mocks.issue.mockResolvedValue(issuedResponse);
+      await issueFor();
+      mocks.find.mockClear();
+
+      expect(buttonByText("ค้นหา").disabled).toBe(true);
+      searchInput().value = "คนอื่น";
+      await act(async () => {
+        container.querySelector("form")!.requestSubmit();
+      });
+      expect(mocks.find).not.toHaveBeenCalled();
+      expect(container.textContent).toContain(token);
+
+      await act(async () => {
+        buttonByText("ส่งต่อลิงก์เรียบร้อยแล้ว").click();
+      });
+      expect(container.textContent).not.toContain(token);
+      expect(buttonByText("ค้นหา").disabled).toBe(false);
+
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [] });
+      await search("คนอื่น");
+      expect(mocks.find).toHaveBeenCalledTimes(1);
+    });
+
+    it("blocks searching while an issue request is still unresolved", async () => {
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [candidate] });
+      await search("สมชาย");
+      mocks.find.mockClear();
+      let resolveIssue: (value: unknown) => void = () => undefined;
+      mocks.issue.mockReturnValue(new Promise((done) => { resolveIssue = done; }));
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>("article form button[type=submit]")!.click();
+      });
+
+      expect(buttonByText("ค้นหา").disabled).toBe(true);
+      await act(async () => {
+        container.querySelector("form")!.requestSubmit();
+      });
+      expect(mocks.find).not.toHaveBeenCalled();
+      await act(async () => {
+        resolveIssue({ status: "ERROR", code: "INVALID_INPUT", message: "x" });
+      });
+    });
+
+    it("keeps the search locked after an unconfirmed issue until the page is reloaded", async () => {
+      mocks.issue.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "x" });
+      await issueFor();
+
+      expect(buttonByText("ค้นหา").disabled).toBe(true);
+    });
+
+    it("asks before an in-app link is followed while a link is unhandled", async () => {
+      mocks.issue.mockResolvedValue(issuedResponse);
+      await issueFor();
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      const link = container.querySelector<HTMLAnchorElement>("a[href]")!;
+      const stayed = new MouseEvent("click", { bubbles: true, cancelable: true });
+      link.dispatchEvent(stayed);
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(stayed.defaultPrevented).toBe(true);
+
+      confirm.mockReturnValue(true);
+      let preventedByGuard: boolean | null = null;
+      const record = (event: Event): void => {
+        preventedByGuard = event.defaultPrevented;
+        event.preventDefault(); // keep jsdom from attempting a real navigation
+      };
+      window.addEventListener("click", record);
+      link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      window.removeEventListener("click", record);
+      expect(preventedByGuard).toBe(false);
+      confirm.mockRestore();
+    });
+
+    it("does not intercept links when nothing is waiting", async () => {
+      const confirm = vi.spyOn(window, "confirm");
+      const link = container.querySelector<HTMLAnchorElement>("a[href]")!;
+      const stop = (event: Event): void => event.preventDefault(); // no real jsdom navigation
+      window.addEventListener("click", stop);
+      link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      window.removeEventListener("click", stop);
+      expect(confirm).not.toHaveBeenCalled();
+      confirm.mockRestore();
+    });
+
+    it("gives no lookup FORBIDDEN Toast after the workspace unmounted", async () => {
+      let resolveFind: (value: unknown) => void = () => undefined;
+      mocks.find.mockReturnValue(new Promise((done) => { resolveFind = done; }));
+      await act(async () => {
+        searchInput().value = "สมชาย";
+        buttonByText("ค้นหา").click();
+      });
+
+      act(() => root.unmount());
+      root = createRoot(container);
+      await act(async () => {
+        resolveFind({ status: "ERROR", code: "FORBIDDEN", message: "ไม่มีสิทธิ์" });
+      });
+
+      expect(mocks.notifyError).not.toHaveBeenCalled();
+    });
+  });
 });

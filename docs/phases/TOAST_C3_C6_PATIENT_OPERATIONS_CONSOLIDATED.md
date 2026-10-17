@@ -44,6 +44,8 @@ Patient-side completion (`/activate/patient`):
 - **Intentionally Toast-free.** Success is `redirect("/login?activated=1")`; the login screen is the confirmation. The Server Action contract, one-time token consumption and redirect are untouched; the action is not converted to a SUCCESS return.
 - The only change: a returned `UNAVAILABLE`/`IDLE` is now reported through the same unconfirmed path as a lost request ("ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่ … เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ติดต่อโรงพยาบาล") and the submit stays disabled; it no longer claims failure and invites retry. `INVALID_INPUT` (field errors) and `CONFLICT` (invalid/expired link) stay inline. No password or token reaches a Toast.
 
+Handoff protection (review fix): each `PatientActivationHandoff` reports whether it holds an unhandled link or an unresolved/unconfirmed issue request. While any does, the workspace disables the search button and refuses a search submit (so results cannot replace the candidate and unmount the handoff), disables the Hospital selector, and asks `window.confirm` before an in-app link click; reload/close is guarded by `beforeunload`. A link is released only by the explicit "ส่งต่อลิงก์เรียบร้อยแล้ว" button, which drops the token from the screen. An unconfirmed request keeps the lock until reload. Nothing is stored in the browser. The lookup FORBIDDEN Toast is gated on the workspace still being mounted for the submitted Hospital.
+
 Credential rules: the token lives only in the `PatientActivationHandoff` instance that received it. A Toast never hides or clears it; no global/local storage; the URL is only in the existing handoff UI. While a token is on screen the page now asks before unload (`beforeunload`), because it cannot be displayed again. Replacing a link still needs an explicit click; the unconfirmed state offers no reissue.
 
 ## 3. C.4 Profile / classification outcome matrix
@@ -185,7 +187,7 @@ New tests: `patient-activation-interactions.test.tsx` (issuance/lookup feedback)
 ## 12. Remaining non-blocking limitations
 
 - No browser/E2E run; behavior rests on jsdom component tests and Server Action contract tests. The redirect rethrow is tested with a real Next.js redirect error, not through a live Server Action.
-- Browser Back/Forward or in-app links away from an unresolved page drop in-memory recovery state without warning (C.1/C.2/bulk unchanged). A Hospital switch on the activation page can discard an on-screen activation link; only reload/close is guarded. The link can be replaced explicitly, which invalidates the old one.
+- Browser Back/Forward away from an unresolved page cannot be intercepted and drops in-memory recovery state (C.1/C.2/bulk unchanged).
 - After an unconfirmed reissue the previous on-screen link is hidden by the recovery message, because the replacement may already have invalidated it.
 - Single assignment still shows an earlier assign error ahead of a later unassign success inline (pre-existing display precedence); Toasts are correct.
 - A `REPLAYED` bulk answer after a lost first response gives no Toast by design; the inline text explains it.

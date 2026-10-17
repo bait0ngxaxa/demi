@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,22 @@ const activationStatusLabels: Record<string, string> = {
   RECONCILIATION_REQUIRED: "ต้องตรวจสอบข้อมูล",
 };
 
+/** Which Hospital the mounted workspace shows, so a late lookup answer can be recognised as stale. */
+function createFeedbackScope() {
+  let hospitalId: string | null = null;
+  return {
+    enter(next: string): void {
+      hospitalId = next;
+    },
+    leave(): void {
+      hospitalId = null;
+    },
+    isCurrent(candidate: string): boolean {
+      return hospitalId === candidate;
+    },
+  };
+}
+
 type PatientActivationLookupType = "NAME" | "NATIONAL_ID" | "HOSPITAL_NUMBER";
 
 function parseLookupType(value: string): PatientActivationLookupType {
@@ -61,18 +77,6 @@ function parseLookupType(value: string): PatientActivationLookupType {
   }
 
   return "NAME";
-}
-
-// Lookup is read-only: ordinary results stay inline, only a confirmed access denial is summarized.
-async function findCandidatesAndNotify(
-  previous: PatientActivationLookupActionState,
-  formData: FormData,
-): Promise<PatientActivationLookupActionState> {
-  const result = await findPatientActivationCandidatesAction(previous, formData);
-  if (result.status === "ERROR" && result.code === "FORBIDDEN") {
-    notify.error("ไม่มีสิทธิ์ค้นหาผู้ป่วยเพื่อเปิดใช้งานบัญชี");
-  }
-  return result;
 }
 
 function mapLookupError(state: PatientActivationLookupActionState): string | null {
@@ -85,6 +89,31 @@ export function PatientActivationActionsWorkspace({
   selectedScope,
 }: PatientActivationActionsWorkspaceProps): React.JSX.Element {
   const router = useRouter();
+  const [feedbackScope] = useState(createFeedbackScope);
+  useEffect(() => {
+    feedbackScope.enter(selectedHospitalId);
+    return () => feedbackScope.leave();
+  }, [feedbackScope, selectedHospitalId]);
+
+  // Lookup is read-only: ordinary results stay inline, only a confirmed access denial is
+  // summarized, and only for the Hospital still on screen.
+  async function findCandidatesAndNotify(
+    previous: PatientActivationLookupActionState,
+    formData: FormData,
+  ): Promise<PatientActivationLookupActionState> {
+    const submittedHospitalId = formData.get("targetHospitalId");
+    const result = await findPatientActivationCandidatesAction(previous, formData);
+    if (
+      result.status === "ERROR" &&
+      result.code === "FORBIDDEN" &&
+      typeof submittedHospitalId === "string" &&
+      feedbackScope.isCurrent(submittedHospitalId)
+    ) {
+      notify.error("ไม่มีสิทธิ์ค้นหาผู้ป่วยเพื่อเปิดใช้งานบัญชี");
+    }
+    return result;
+  }
+
   const [lookupState, lookupAction, lookupPending] = useActionState(
     withConnectionFailure(findCandidatesAndNotify, (): PatientActivationLookupActionState => ({
       status: "ERROR",
@@ -96,13 +125,62 @@ export function PatientActivationActionsWorkspace({
   const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
 
+  // Candidates (and the one-time links issued for them) live only in this page. Replacing the
+  // results, switching Hospital or following an in-app link would drop an unhandled link or an
+  // unresolved issue request, so those are blocked until each handoff is resolved. Nothing is
+  // stored in the browser.
+  const [guardedHandoffs, setGuardedHandoffs] = useState<ReadonlySet<string>>(new Set());
+  const handoffsBusy = guardedHandoffs.size > 0;
+  const setHandoffGuard = useCallback((key: string, active: boolean): void => {
+    setGuardedHandoffs((current) => {
+      if (current.has(key) === active) {
+        return current;
+      }
+      const next = new Set(current);
+      if (active) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!handoffsBusy) {
+      return;
+    }
+
+    function confirmLeave(event: MouseEvent): void {
+      const anchor = (event.target as Element | null)?.closest("a[href]");
+      if (!anchor || anchor.getAttribute("target") === "_blank") {
+        return;
+      }
+      if (!window.confirm("ลิงก์เปิดใช้งานที่ยังไม่ได้ส่งต่อจะหายไปและแสดงซ้ำไม่ได้ ต้องการออกจากหน้านี้หรือไม่")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    document.addEventListener("click", confirmLeave, true);
+    return () => document.removeEventListener("click", confirmLeave, true);
+  }, [handoffsBusy]);
+
   function changeHospital(hospitalId: string): void {
+    if (handoffsBusy) {
+      return;
+    }
     startHospitalSwitch(() => {
       router.push(`/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}`);
     });
   }
 
   const errorMessage = mapLookupError(lookupState);
+  function searchAction(formData: FormData): void {
+    if (!handoffsBusy) {
+      lookupAction(formData);
+    }
+  }
 
   return (
     <div>
@@ -123,7 +201,7 @@ export function PatientActivationActionsWorkspace({
                   <Select
                     aria-label="โรงพยาบาลที่ดำเนินการ"
                     className="mt-2 max-w-xl"
-                    disabled={hospitalSwitching || lookupPending}
+                    disabled={hospitalSwitching || lookupPending || handoffsBusy}
                     onChange={(event) => changeHospital(event.target.value)}
                     value={selectedHospitalId}
                   >
@@ -156,9 +234,9 @@ export function PatientActivationActionsWorkspace({
                   : "ใช้ HN ของผู้ป่วยในโรงพยาบาลนี้แบบตรงตัว"}
             </p>
             <form
-              action={lookupAction}
+              action={searchAction}
               className="mt-5 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)_auto] lg:items-end"
-              onSubmit={submitPreservingInput(lookupAction)}
+              onSubmit={submitPreservingInput(searchAction)}
             >
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <label className="block space-y-2 text-sm font-semibold">
@@ -203,10 +281,15 @@ export function PatientActivationActionsWorkspace({
                   type="text"
                 />
               </label>
-              <Button disabled={lookupPending} loading={lookupPending} type="submit">
+              <Button disabled={lookupPending || handoffsBusy} loading={lookupPending} type="submit">
                 {lookupPending ? "กำลังค้นหา..." : "ค้นหา"}
               </Button>
             </form>
+            {handoffsBusy ? (
+              <p className="mt-3 text-sm leading-6 text-text-muted" role="status">
+                ค้นหาใหม่หรือเปลี่ยนโรงพยาบาลไม่ได้จนกว่าจะส่งต่อลิงก์หรือยืนยันผลการออกลิงก์ให้เสร็จ
+              </p>
+            ) : null}
             {lookupPending ? (
               <p className="mt-4 text-sm text-muted" role="status">
                 กำลังค้นหาผู้ป่วย...
@@ -272,7 +355,10 @@ export function PatientActivationActionsWorkspace({
                         </dl>
                       </div>
                     </div>
-                    <PatientActivationHandoff candidate={candidate} />
+                    <PatientActivationHandoff
+                      candidate={candidate}
+                      onGuardChange={(active) => setHandoffGuard(`${candidate.userId}-${candidate.hospitalId}`, active)}
+                    />
                   </article>
                 ))}
               </div>

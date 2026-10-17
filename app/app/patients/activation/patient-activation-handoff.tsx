@@ -23,6 +23,8 @@ import {
 import { issuePatientActivationAction } from "@/modules/patient-activation/transport/server-actions";
 
 type PatientActivationHandoffProps = {
+  /** Reports whether this handoff holds an unhandled one-time link or an unresolved request. */
+  onGuardChange?: (active: boolean) => void;
   candidate?: PatientActivationCandidateState;
   patientAccessRequestId?: string;
   linkedOutcome?: "READY_FOR_ACTIVATION" | "ALREADY_ACTIVE";
@@ -120,7 +122,9 @@ function ActivationPresentation({
   result,
   action,
   pending,
+  onHandled,
 }: {
+  onHandled: () => void;
   result: Extract<
     Awaited<ReturnType<typeof issuePatientActivationAction>>,
     { status: "SUCCESS" }
@@ -240,6 +244,9 @@ function ActivationPresentation({
             >
               {copied ? "คัดลอกแล้ว" : "คัดลอกลิงก์"}
             </Button>
+            <Button disabled={pending} onClick={onHandled} size="compact" type="button" variant="secondary">
+              ส่งต่อลิงก์เรียบร้อยแล้ว
+            </Button>
             <IssueForm
               action={action}
               hospitalId={result.hospitalId}
@@ -267,6 +274,7 @@ function ActivationPresentation({
 }
 
 export function PatientActivationHandoff({
+  onGuardChange,
   candidate,
   patientAccessRequestId,
   linkedOutcome,
@@ -348,6 +356,31 @@ export function PatientActivationHandoff({
     [dispatchIssue],
   );
   const result = state.status === "SUCCESS" ? state.result : null;
+  const [handledResult, setHandledResult] = useState<object | null>(null);
+  const tokenAwaitingHandoff =
+    result?.outcome === "ISSUED" && Boolean(result.activationToken) && handledResult !== result;
+  const guardActive = pending || unknownOutcome || tokenAwaitingHandoff;
+  const guardCallback = useRef(onGuardChange);
+  useEffect(() => {
+    guardCallback.current = onGuardChange;
+  });
+  useEffect(() => {
+    guardCallback.current?.(guardActive);
+    return () => guardCallback.current?.(false);
+  }, [guardActive]);
+
+  // Once the operator confirms the link was passed on, the token is dropped from the screen.
+  function issuedLink(issued: NonNullable<typeof result>): React.JSX.Element {
+    if (handledResult === issued) {
+      return (
+        <Alert className="mt-4" variant="success">
+          <p className="font-semibold">บันทึกว่าส่งต่อลิงก์แล้ว</p>
+          <p className="mt-1 text-muted">ลิงก์เดิมแสดงซ้ำไม่ได้ หากต้องการลิงก์ใหม่ ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่</p>
+        </Alert>
+      );
+    }
+    return <ActivationPresentation action={action} onHandled={() => setHandledResult(issued)} pending={pending} result={issued} />;
+  }
   const errorMessage = state.status === "ERROR" ? state.message : null;
   const reconciliationRequired =
     candidate?.activationStatus === "RECONCILIATION_REQUIRED" ||
@@ -392,7 +425,7 @@ export function PatientActivationHandoff({
     }
 
     if (result?.outcome === "ISSUED" && result.activationToken) {
-      return <ActivationPresentation action={action} pending={pending} result={result} />;
+      return issuedLink(result);
     }
 
     if (result?.outcome === "ALREADY_ISSUED") {
@@ -475,7 +508,7 @@ export function PatientActivationHandoff({
   }
 
   if (result?.outcome === "ISSUED" && result.activationToken) {
-    return <ActivationPresentation action={action} pending={pending} result={result} />;
+    return issuedLink(result);
   }
 
   if (result?.outcome === "ALREADY_ISSUED") {
