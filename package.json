@@ -12,6 +12,8 @@
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "db:seed": "node scripts/seed-hospital-master.mjs",
     "prisma:generate": "prisma generate",
+    "line:rich-menu:assets": "jiti scripts/generate-line-rich-menu-assets.ts",
+    "line:rich-menu:previews": "jiti scripts/generate-line-rich-menu-previews.ts",
     "line:rich-menu:reconcile": "node scripts/line-rich-menu-reconcile.mjs",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrations:check": "node scripts/check-migration-order.mjs",
@@ -61,6 +63,7 @@
     "jiti": "^2.7.0",
     "jsdom": "^26.1.0",
     "prisma": "^6.19.2",
+    "sharp": "0.35.3",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"

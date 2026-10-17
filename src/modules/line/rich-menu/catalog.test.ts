@@ -115,12 +115,18 @@ describe("DEMI shared Rich Menu catalog", () => {
     }
   });
 
-  it("keeps Patient presentation hit areas non-overlapping", () => {
-    for (const menu of LINE_RICH_MENU_CATALOG.filter((entry) =>
-      entry.actions.some((action) => action.type === "postback"),
-    )) {
+  it("keeps every menu's tappable areas non-overlapping and integral", () => {
+    for (const menu of LINE_RICH_MENU_CATALOG) {
       const bounds = getLineMenuAreaBounds(menu);
       for (const [firstIndex, first] of bounds.entries()) {
+        expect(Number.isInteger(first.x)).toBe(true);
+        expect(Number.isInteger(first.y)).toBe(true);
+        expect(Number.isInteger(first.width)).toBe(true);
+        expect(Number.isInteger(first.height)).toBe(true);
+        expect(first.x).toBeGreaterThanOrEqual(0);
+        expect(first.y).toBeGreaterThanOrEqual(0);
+        expect(first.x + first.width).toBeLessThanOrEqual(2500);
+        expect(first.y + first.height).toBeLessThanOrEqual(1686);
         for (const second of bounds.slice(firstIndex + 1)) {
           const overlaps = first.x < second.x + second.width &&
             first.x + first.width > second.x &&
