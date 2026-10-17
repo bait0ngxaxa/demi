@@ -36,7 +36,7 @@ The Toast is decided inside the confirmation handler from the settled response. 
 
 A `SUCCESS` is accepted only if its summary is consistent with the submission:
 
-- the summary is an object, every row is an object with a known `result`, and every count is a non-negative integer (checked at runtime, so a malformed response such as `summary: null` or a `null` row stays unconfirmed instead of throwing);
+- the summary is an object; every row is an object with a known `result` and every field the result dialog and presentation helpers read (`rowNumber`, `identityDisplay`, names, `hospitalNumber`, `classification`, `baselineStatus`, `reason`, `patientClassification.status`); `file` is `null` or has a `requirementGatedFields` array; and every count is a non-negative integer. This is checked at runtime, so a malformed response (`summary: null`, a `null` row, a row with only a `result`, a file without its fields) stays unconfirmed instead of throwing during classification or rendering. Row fields the dialog never reads (`diagnosticCodes`, `requirementGatedFields`) are not checked;
 - `targetHospitalId` equals the submitted Hospital;
 - the row count equals the preview row count (same bound file);
 - every row has a known result, and each count (`imported`, `alreadyExists`, `duplicateInFile`, `invalid`, `conflict`, `failed`) equals the number of rows with that result;
@@ -108,7 +108,7 @@ Tests added (deferred promises for races; Workspace keyed by Hospital as in `pag
 
 Preview: success opens dialog without Toast; `INVALID_INPUT` inline; `FORBIDDEN` error Toast; returned `UNAVAILABLE` and thrown request without Toast; effective-date change invalidates the checked preview; preview settling after Hospital remount discarded.
 
-Confirmation: table-driven classification for all new, new plus attention, only existing, no new with attention, and existing mixed with attention (exact Toast or none, heading, imported count); `FAILED` rows and baseline/classification counts excluded from imported count, failed-row download receives only failed rows, Patient list link present; `FORBIDDEN` Toast with non-definitive inline copy and blocked re-confirm; `INVALID_INPUT` inline with file and table kept, re-confirm blocked until a fresh preview whose new binding is then sent; eight inconsistent or malformed summaries (counts, other Hospital, row count, baseline, `null` summary, `null` row, row without result, non-numeric count) treated as unconfirmed without throwing.
+Confirmation: table-driven classification for all new, new plus attention, only existing, no new with attention, and existing mixed with attention (exact Toast or none, heading, imported count); `FAILED` rows and baseline/classification counts excluded from imported count, failed-row download receives only failed rows, Patient list link present; `FORBIDDEN` Toast with non-definitive inline copy and blocked re-confirm; `INVALID_INPUT` inline with file and table kept, re-confirm blocked until a fresh preview whose new binding is then sent; eleven inconsistent or malformed summaries (counts, other Hospital, row count, baseline, `null` summary, `null` row, row without result, non-numeric count, row without `patientClassification`, row with only a `result`, file without `requirementGatedFields`) treated as unconfirmed without throwing.
 
 Unconfirmed: returned `UNAVAILABLE`, thrown, returned `IDLE` (no Toast, no failure text, confirm blocked, one call); full recovery: locks on file, date, clear, mode and Hospital; failed re-preview keeps the warning; successful re-preview of the same file shows the recheck note and unlocks; the new confirmation uses the fresh binding and gets its own Toast.
 
@@ -118,10 +118,10 @@ The double-click guard, the unconfirmed classification of `UNAVAILABLE`, the rec
 
 ```text
 npx vitest run app/app/patients/provision src/modules/patient-provisioning/presentation src/modules/patient-provisioning/transport/patient-provisioning-workspace.test.ts src/modules/patient-provisioning/transport/server-actions.test.ts src/components/ui/mutation-action-state.test.tsx app/app/hospitals/reporting
-  Passed: 7 files, 108 tests (includes all Phase C.1 tests)
+  Passed: 7 files, 111 tests (includes all Phase C.1 tests)
 
 npx vitest run app/app/patients/provision src/modules/patient-provisioning
-  Passed: 17 files, 278 tests
+  Passed: 17 files, 281 tests
 
 npm run typecheck
   Passed

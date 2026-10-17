@@ -1154,6 +1154,25 @@ describe("Excel Patient import confirmation Toast feedback", () => {
         : response;
     })()],
     ["a non-numeric count", importResult(["IMPORTED", "INVALID"], { failed: Number.NaN })],
+    ["a row without its Patient classification", (() => {
+      const response = importResult(["IMPORTED", "INVALID"]);
+      return response.status === "SUCCESS"
+        ? {
+            ...response,
+            summary: {
+              ...response.summary,
+              rows: [response.summary.rows[0], { ...response.summary.rows[1], patientClassification: undefined }],
+            },
+          }
+        : response;
+    })()],
+    ["a row with only a result", (() => {
+      const response = importResult(["IMPORTED", "INVALID"]);
+      return response.status === "SUCCESS"
+        ? { ...response, summary: { ...response.summary, rows: [response.summary.rows[0], { result: "INVALID" }] } }
+        : response;
+    })()],
+    ["a file without its gated fields", importResult(["IMPORTED", "INVALID"], { file: {} as PatientImportResultSummary["file"] })],
   ] as const)("treats a success with %s as unconfirmed without a Toast", async (_label, response) => {
     mocks.confirmImport.mockResolvedValue(response);
     const mounted = await openReviewDialog();

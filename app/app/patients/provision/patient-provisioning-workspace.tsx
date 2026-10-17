@@ -284,10 +284,34 @@ function isCount(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
 }
 
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+/** Every row field that `ImportSummary`, `ImportResultActions` and the presentation helpers read. */
+function isRenderableImportRow(row: unknown): boolean {
+  return (
+    isRecord(row) &&
+    typeof row.result === "string" &&
+    Object.hasOwn(importSummaryCountByResult, row.result) &&
+    Number.isInteger(row.rowNumber) &&
+    typeof row.identityDisplay === "string" &&
+    typeof row.givenName === "string" &&
+    typeof row.familyName === "string" &&
+    isNullableString(row.hospitalNumber) &&
+    typeof row.classification === "string" &&
+    typeof row.baselineStatus === "string" &&
+    isNullableString(row.reason) &&
+    isRecord(row.patientClassification) &&
+    typeof row.patientClassification.status === "string"
+  );
+}
+
 /**
- * True when the summary belongs to the submitted Hospital and preview, and its counts match its
- * rows. The response shape is checked at runtime first, so a contract regression stays unconfirmed
- * instead of throwing.
+ * True when the summary belongs to the submitted Hospital and preview, its counts match its rows,
+ * and every field the result dialog reads has the expected runtime shape, so a contract regression
+ * stays unconfirmed instead of throwing during classification or rendering. Row fields the dialog
+ * never reads (`diagnosticCodes`, `requirementGatedFields`) are not checked.
  */
 function isConsistentImportSummary(
   summary: unknown,
@@ -304,14 +328,17 @@ function isConsistentImportSummary(
   }
 
   const rows: unknown[] = summary.rows;
-  const results = rows.map((row) => (isRecord(row) ? row.result : undefined));
   const counts = [...Object.values(importSummaryCountByResult), "baselineCreated", "classificationCreated"] as const;
+  const file = summary.file;
   if (
-    !results.every((result) => typeof result === "string" && Object.hasOwn(importSummaryCountByResult, result)) ||
-    !counts.every((count) => isCount(summary[count]))
+    !rows.every(isRenderableImportRow) ||
+    !counts.every((count) => isCount(summary[count])) ||
+    !(file === null || file === undefined || (isRecord(file) && Array.isArray(file.requirementGatedFields)))
   ) {
     return false;
   }
+
+  const results = rows.map((row) => (row as Record<string, unknown>).result);
 
   const imported = summary.imported as number;
   return (
