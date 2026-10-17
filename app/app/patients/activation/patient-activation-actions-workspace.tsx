@@ -11,6 +11,7 @@ import {
   submitPreservingInput,
   withConnectionFailure,
 } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -62,6 +63,18 @@ function parseLookupType(value: string): PatientActivationLookupType {
   return "NAME";
 }
 
+// Lookup is read-only: ordinary results stay inline, only a confirmed access denial is summarized.
+async function findCandidatesAndNotify(
+  previous: PatientActivationLookupActionState,
+  formData: FormData,
+): Promise<PatientActivationLookupActionState> {
+  const result = await findPatientActivationCandidatesAction(previous, formData);
+  if (result.status === "ERROR" && result.code === "FORBIDDEN") {
+    notify.error("ไม่มีสิทธิ์ค้นหาผู้ป่วยเพื่อเปิดใช้งานบัญชี");
+  }
+  return result;
+}
+
 function mapLookupError(state: PatientActivationLookupActionState): string | null {
   return state.status === "ERROR" ? state.message : null;
 }
@@ -73,7 +86,7 @@ export function PatientActivationActionsWorkspace({
 }: PatientActivationActionsWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [lookupState, lookupAction, lookupPending] = useActionState(
-    withConnectionFailure(findPatientActivationCandidatesAction, (): PatientActivationLookupActionState => ({
+    withConnectionFailure(findCandidatesAndNotify, (): PatientActivationLookupActionState => ({
       status: "ERROR",
       code: "UNAVAILABLE",
       message: connectionFailureMessage,

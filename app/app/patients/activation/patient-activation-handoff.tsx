@@ -2,8 +2,10 @@
 
 import QRCode from "qrcode";
 import {
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -11,10 +13,12 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
 import {
   initialPatientActivationIssueActionState,
+  type PatientActivationIssueActionState,
 } from "@/modules/patient-activation/transport/action-state";
 import { issuePatientActivationAction } from "@/modules/patient-activation/transport/server-actions";
 
@@ -23,6 +27,14 @@ type PatientActivationHandoffProps = {
   patientAccessRequestId?: string;
   linkedOutcome?: "READY_FOR_ACTIVATION" | "ALREADY_ACTIVE";
 };
+
+/** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
+class UnconfirmedIssueOutcome extends Error {}
+
+function formString(formData: FormData, field: string): string {
+  const value = formData.get(field);
+  return typeof value === "string" ? value : "";
+}
 
 function buildActivationUrl(origin: string, token: string): string {
   return `${origin}/activate/patient#${encodeURIComponent(token)}`;
@@ -244,9 +256,81 @@ export function PatientActivationHandoff({
   patientAccessRequestId,
   linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState(
-    issuePatientActivationAction,
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+  const issueAndNotify = useCallback(
+    async (
+      previous: PatientActivationIssueActionState,
+      formData: FormData,
+    ): Promise<PatientActivationIssueActionState> => {
+      try {
+        const result = await issuePatientActivationAction(previous, formData);
+        const feedback = mounted.current;
+
+        if (result.status === "IDLE") {
+          throw new UnconfirmedIssueOutcome();
+        }
+
+        if (result.status === "ERROR") {
+          if (result.code === "UNAVAILABLE") {
+            throw new UnconfirmedIssueOutcome();
+          }
+          if (feedback && result.code === "CONFLICT") {
+            notify.warning("ไม่สามารถออกลิงก์ได้ กรุณาตรวจสอบสถานะผู้ป่วย");
+          } else if (feedback && result.code === "FORBIDDEN") {
+            notify.error("ไม่มีสิทธิ์ออกลิงก์เปิดใช้งานในโรงพยาบาลนี้");
+          }
+          return result;
+        }
+
+        const submittedUserId = formString(formData, "userId");
+        const submittedHospitalId = formString(formData, "targetHospitalId");
+        if (
+          submittedUserId &&
+          (result.result.userId !== submittedUserId ||
+            result.result.hospitalId !== submittedHospitalId)
+        ) {
+          throw new UnconfirmedIssueOutcome();
+        }
+
+        if (result.result.outcome === "ISSUED") {
+          // The one-time token is only shown inline; without it nothing can be handed over.
+          if (!result.result.activationToken) {
+            throw new UnconfirmedIssueOutcome();
+          }
+          if (feedback) {
+            notify.success("ออกลิงก์เปิดใช้งานแล้ว");
+          }
+        }
+
+        return result;
+      } finally {
+        inFlight.current = false;
+      }
+    },
+    [],
+  );
+  const [state, dispatchIssue, pending, unknownOutcome] = useMutationActionState(
+    issueAndNotify,
     initialPatientActivationIssueActionState,
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  // Reissue invalidates the previous link, so a second submit must never reach the server
+  // while one request is unresolved, even before React re-renders the pending state.
+  const action = useCallback(
+    (formData: FormData): void => {
+      if (inFlight.current) {
+        return;
+      }
+      inFlight.current = true;
+      dispatchIssue(formData);
+    },
+    [dispatchIssue],
   );
   const result = state.status === "SUCCESS" ? state.result : null;
   const errorMessage = state.status === "ERROR" ? state.message : null;

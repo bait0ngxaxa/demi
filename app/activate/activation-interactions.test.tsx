@@ -10,6 +10,18 @@ const mocks = vi.hoisted(() => ({
   completeWorkforce: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   previewWorkforce: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   login: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  notifyError: vi.fn<(message: string) => void>(),
+  notifySuccess: vi.fn<(message: string) => void>(),
+  notifyWarning: vi.fn<(message: string) => void>(),
+}));
+
+vi.mock("@/components/ui/notify", () => ({
+  notify: {
+    error: mocks.notifyError,
+    info: vi.fn(),
+    success: mocks.notifySuccess,
+    warning: mocks.notifyWarning,
+  },
 }));
 
 vi.mock("next/navigation", async (importOriginal) => ({
@@ -138,6 +150,75 @@ describe("Patient activation form", () => {
     expect(container.querySelector('[role="alert"] button')).toBeNull();
     expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
     expect(mocks.completePatient).toHaveBeenCalledTimes(1);
+  });
+
+  describe("completion results", () => {
+    async function submitActivation(): Promise<void> {
+      window.history.replaceState(null, "", "/activate/patient#token-1");
+      mocks.details.mockResolvedValue({
+        status: "AVAILABLE",
+        displayName: "สมหญิง ใจดี",
+        hospitalName: "โรงพยาบาลทดสอบ",
+        activationExpiresAt: "2026-10-16T00:00:00.000Z",
+      });
+      await act(async () => {
+        root.render(createElement(PatientActivationForm));
+      });
+      container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
+      container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
+      await act(async () => {
+        buttonByText("เปิดใช้งานบัญชี").click();
+      });
+    }
+
+    it("treats a returned UNAVAILABLE as unconfirmed instead of a failure to retry", async () => {
+      mocks.completePatient.mockResolvedValue({
+        status: "ERROR",
+        code: "UNAVAILABLE",
+        message: "ระบบยังไม่สามารถเปิดใช้งานบัญชีได้ กรุณาลองใหม่หรือติดต่อโรงพยาบาล",
+      });
+
+      await submitActivation();
+
+      const alert = container.querySelector('[role="alert"]')?.textContent;
+      expect(alert).toContain("ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่");
+      expect(container.textContent).not.toContain("กรุณาลองใหม่หรือติดต่อโรงพยาบาล");
+      expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
+      expect(mocks.completePatient).toHaveBeenCalledTimes(1);
+      expect(mocks.notifyError).not.toHaveBeenCalled();
+      expect(mocks.notifySuccess).not.toHaveBeenCalled();
+    });
+
+    it("keeps invalid passwords inline and editable without a Toast", async () => {
+      mocks.completePatient.mockResolvedValue({
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง",
+        fieldErrors: { password: "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร" },
+      });
+
+      await submitActivation();
+
+      expect(container.querySelector("#patient-password-error")?.textContent).toContain("12–128");
+      expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(false);
+      expect(mocks.notifyError).not.toHaveBeenCalled();
+      expect(mocks.notifySuccess).not.toHaveBeenCalled();
+      expect(mocks.notifyWarning).not.toHaveBeenCalled();
+    });
+
+    it("keeps an invalid or expired link inline without a Toast", async () => {
+      mocks.completePatient.mockResolvedValue({
+        status: "ERROR",
+        code: "CONFLICT",
+        message: "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ",
+      });
+
+      await submitActivation();
+
+      expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
+      expect(mocks.notifyError).not.toHaveBeenCalled();
+      expect(mocks.notifyWarning).not.toHaveBeenCalled();
+    });
   });
 
   it.each([

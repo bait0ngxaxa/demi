@@ -61,6 +61,25 @@ function createActivationTokenStore(): ActivationTokenStore {
   };
 }
 
+/**
+ * Success is a redirect to the sign-in page (no Toast: the destination confirms it).
+ * A returned UNAVAILABLE may follow a committed activation, so it is reported through the
+ * same unconfirmed-outcome path as a lost request instead of as a failure to retry.
+ */
+async function completeActivation(
+  token: string,
+  previous: PatientActivationCompletionActionState,
+  formData: FormData,
+): Promise<PatientActivationCompletionActionState> {
+  const result = await completePatientActivationAction(token, previous, formData);
+
+  if (result.status === "IDLE" || (result.status === "ERROR" && result.code === "UNAVAILABLE")) {
+    throw new Error("Activation outcome unconfirmed");
+  }
+
+  return result;
+}
+
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
@@ -79,7 +98,7 @@ export function PatientActivationForm(): React.JSX.Element {
     PatientActivationCompletionActionState,
     FormData
   >(
-    completePatientActivationAction.bind(null, token ?? ""),
+    completeActivation.bind(null, token ?? ""),
     initialPatientActivationCompletionActionState,
   );
 
