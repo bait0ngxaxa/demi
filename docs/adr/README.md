@@ -51,3 +51,4 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 ไม่ต้องสร้าง ADR สำหรับ implementation detail ปกติ การตั้งชื่อภายใน หรือ choice ที่เปลี่ยนได้ง่ายและไม่กระทบ boundary
 
 - [ADR-0012 — Global credential recovery proof](./0012-global-credential-recovery-proof.md): security restriction superseding assisted-recovery ownership assumptions; independent proof remains pending.
+- [ADR-0013 — Responsibility areas as direct Child Hospitals](./0013-responsibility-areas.md): accepted 2026-10-17 (จ-1..จ-5); area = active direct Child, Parent OWNER nine-value summary view/export (RPT-32) only.

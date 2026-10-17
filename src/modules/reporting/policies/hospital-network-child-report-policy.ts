@@ -3,8 +3,11 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hospitalReportHospitalIdSchema } from "@/modules/reporting/schemas/hospital-report-schemas";
 
+// ADR-0013 (RPT-32): export is a distinct capability for the same nine-value summary; it is never derived from
+// `reportExportGrantedAt` (ก-15), so a Parent MEMBER with an export grant still fails the OWNER check below.
 export const HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES = {
   read: "hospital-network:child-report:read",
+  export: "hospital-network:child-report:export",
 } as const;
 
 export type HospitalNetworkChildReportCapability =

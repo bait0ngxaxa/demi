@@ -511,10 +511,15 @@ export function ExportButton({
   hospitalId,
   endpoint,
   cohort = "ACTIVE",
+  parentHospitalId,
+  accessibleLabel,
 }: {
   hospitalId: string;
   endpoint: string;
   cohort?: HospitalReportCohort;
+  /** ADR-0013 RPT-32: the Parent locator for the Parent-to-Child summary export; re-authorized on the server. */
+  parentHospitalId?: string;
+  accessibleLabel?: string;
 }): React.JSX.Element {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -526,7 +531,8 @@ export function ExportButton({
     setFailed(false);
     try {
       const cohortQuery = cohort === "INCLUDE_ENDED" ? "&cohort=INCLUDE_ENDED" : "";
-      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}${cohortQuery}`, {
+      const parentQuery = parentHospitalId ? `&parentHospitalId=${encodeURIComponent(parentHospitalId)}` : "";
+      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}${cohortQuery}${parentQuery}`, {
         method: "GET",
         cache: "no-store",
         credentials: "same-origin",
@@ -568,7 +574,7 @@ export function ExportButton({
 
   return (
     <div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
-      <Button onClick={() => void download()} loading={loading} type="button">
+      <Button aria-label={accessibleLabel} onClick={() => void download()} loading={loading} type="button">
         {loading ? "กำลังสร้างไฟล์ Excel" : "ส่งออก Excel"}
       </Button>
       {message ? (

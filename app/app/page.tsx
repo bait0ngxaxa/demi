@@ -185,17 +185,26 @@ export default async function ApplicationPage(): Promise<React.JSX.Element> {
         <section aria-labelledby="workspace-heading" className="pt-8">
           <h2 className="text-xl font-semibold tracking-[-0.02em]" id="workspace-heading">เริ่มงานดูแลผู้ป่วย</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">เลือกผู้ป่วยจากรายชื่อเพื่อเปิดข้อมูล โปรแกรม และประวัติการดูแล</p>
-          {projection.hospitals.length > 1 ? (
-            <nav aria-label="ไปยังบริบทโรงพยาบาล" className="mt-4">
-              <ul className="flex flex-wrap gap-2">
-                {projection.hospitals.map((workspace) => (
-                  <li key={workspace.hospitalId} className="min-w-0 max-w-full">
-                    <Link className={buttonClassName({ variant: "secondary", className: "max-w-full whitespace-normal text-left" })} href={`#hospital-workspace-${workspace.hospitalId}`} prefetch={false}>
-                      {workspace.hospitalName}
-                    </Link>
-                  </li>
+          {projection.areaGroups.flatMap(({ hospitals }) => hospitals).length > 1 ? (
+            <nav aria-labelledby="work-area-heading" className="mt-4">
+              <h3 className="type-label text-text" id="work-area-heading">เขตความรับผิดชอบ</h3>
+              <p className="mt-1 text-sm leading-6 text-text-muted">แสดงเฉพาะโรงพยาบาลที่คุณเป็นบุคลากรหรือ อสม. โดยตรง จัดตามเครือข่าย</p>
+              <div className="mt-3 space-y-3">
+                {projection.areaGroups.map((group) => (
+                  <div className="min-w-0" key={group.network.hospitalId}>
+                    <p className="break-words text-sm font-semibold text-text-muted" id={`work-area-network-${group.network.hospitalId}`}>{`เครือข่าย ${group.network.name}`}</p>
+                    <ul aria-labelledby={`work-area-network-${group.network.hospitalId}`} className="mt-2 flex flex-wrap gap-2">
+                      {group.hospitals.map((workspace) => (
+                        <li key={workspace.hospitalId} className="min-w-0 max-w-full">
+                          <Link className={buttonClassName({ variant: "secondary", className: "max-w-full whitespace-normal text-left" })} href={`#hospital-workspace-${workspace.hospitalId}`} prefetch={false}>
+                            {workspace.hospitalName}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </nav>
           ) : null}
           <div className="mt-5 grid min-w-0 gap-5 grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))]">

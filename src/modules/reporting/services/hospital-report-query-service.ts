@@ -34,6 +34,10 @@ import {
   assertHospitalReportPolicy,
 } from "../policies/hospital-report-policy";
 import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
+import {
+  HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES,
+  type HospitalNetworkChildReportCapability,
+} from "../policies/hospital-network-child-report-policy";
 import type {
   HospitalReportFact,
   HospitalReportFollowup,
@@ -1098,6 +1102,51 @@ export async function getGlobalAdminHospitalReportingPage(
   return getHospitalReportingPageForOperation(actor, input, dependencies, "GLOBAL_ADMIN");
 }
 
+async function loadParentChildHospitalReportingProjection(
+  actor: ActorContext | null | undefined,
+  request: ReturnType<typeof parentChildHospitalReportRequestSchema.parse>,
+  transaction: Prisma.TransactionClient,
+  capability: HospitalNetworkChildReportCapability,
+): Promise<ParentChildHospitalReportingProjection> {
+  const access = await resolveParentChildHospitalReportAccessContext(
+    actor,
+    request.parentHospitalId,
+    request.hospitalId,
+    transaction,
+    capability,
+  );
+  const target = await transaction.hospital.findFirst({
+    where: {
+      id: access.hospital.id,
+      status: HospitalStatus.ACTIVE,
+      parentHospitalId: access.parentHospitalId,
+      parentHospital: {
+        is: {
+          id: access.parentHospitalId,
+          status: HospitalStatus.ACTIVE,
+          parentHospitalId: null,
+        },
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      parentHospital: { select: { id: true, name: true } },
+    },
+  });
+  if (!target?.parentHospital) throw new NotFoundError();
+
+  const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, target.id);
+
+  return {
+    operation: "PARENT_CHILD_REPORT",
+    access: "PARENT_OWNER",
+    parent: target.parentHospital,
+    hospital: { id: target.id, name: target.name },
+    content: projectParentChildHospitalReportingContent(source),
+  } satisfies ParentChildHospitalReportingProjection;
+}
+
 /**
  * Resolve one exact Child target and return only its approved Hospital-level summary fields.
  */
@@ -1112,44 +1161,14 @@ export async function getParentChildHospitalReportingPage(
   const database = dependencies.database ?? getPrisma();
   let projection: ParentChildHospitalReportingProjection;
   try {
-    projection = await runConsistentRead(database, async (transaction) => {
-      const access = await resolveParentChildHospitalReportAccessContext(
+    projection = await runConsistentRead(database, (transaction) =>
+      loadParentChildHospitalReportingProjection(
         actor,
-        parsed.data.parentHospitalId,
-        parsed.data.hospitalId,
+        parsed.data,
         transaction,
-      );
-      const target = await transaction.hospital.findFirst({
-        where: {
-          id: access.hospital.id,
-          status: HospitalStatus.ACTIVE,
-          parentHospitalId: access.parentHospitalId,
-          parentHospital: {
-            is: {
-              id: access.parentHospitalId,
-              status: HospitalStatus.ACTIVE,
-              parentHospitalId: null,
-            },
-          },
-        },
-        select: {
-          id: true,
-          name: true,
-          parentHospital: { select: { id: true, name: true } },
-        },
-      });
-      if (!target?.parentHospital) throw new NotFoundError();
-
-      const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, target.id);
-
-      return {
-        operation: "PARENT_CHILD_REPORT",
-        access: "PARENT_OWNER",
-        parent: target.parentHospital,
-        hospital: { id: target.id, name: target.name },
-        content: projectParentChildHospitalReportingContent(source),
-      } satisfies ParentChildHospitalReportingProjection;
-    });
+        HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read,
+      ),
+    );
 
     await resolveParentChildHospitalReportAccessContext(
       actor,
@@ -1193,6 +1212,39 @@ export async function getParentChildHospitalReportingPage(
   }
 
   return projection;
+}
+
+/**
+ * ADR-0013 RPT-32: load the same exact-Child nine-value summary under the distinct export capability. The caller
+ * builds the workbook, re-checks authority and audits; ended Patient relationships are excluded (no cohort option).
+ */
+export async function getParentChildHospitalReportingSummaryForExport(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<ParentChildHospitalReportingProjection> {
+  const parsed = parentChildHospitalReportRequestSchema.safeParse(input);
+  if (!parsed.success) throw new NotFoundError();
+
+  try {
+    return await runConsistentRead(dependencies.database ?? getPrisma(), (transaction) =>
+      loadParentChildHospitalReportingProjection(
+        actor,
+        parsed.data,
+        transaction,
+        HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.export,
+      ),
+    );
+  } catch (error: unknown) {
+    if (
+      error instanceof ForbiddenError ||
+      error instanceof NotFoundError ||
+      error instanceof InfrastructureError
+    ) {
+      throw error;
+    }
+    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+  }
 }
 
 function assertExportBounds(input: {

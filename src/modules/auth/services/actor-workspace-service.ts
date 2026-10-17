@@ -11,6 +11,10 @@ export type ActorHospitalWorkspace = {
   hospitalCode: string;
   hospitalName: string;
   hospitalStatus: HospitalStatus;
+  /** Grouping label only (ADR-0013 §2): the current Parent, or the Hospital itself when it has none. Grants nothing. */
+  network: { hospitalId: string; name: string };
+  /** Only gates the Parent area entry; the area page re-resolves Parent OWNER authority and each Child server-side. */
+  hasActiveDirectChildren: boolean;
 };
 
 export async function listActorHospitalWorkspaces(
@@ -36,6 +40,8 @@ export async function listActorHospitalWorkspaces(
         hospitalCode: true,
         name: true,
         status: true,
+        parentHospital: { select: { id: true, name: true } },
+        _count: { select: { childHospitals: { where: { status: HospitalStatus.ACTIVE } } } },
       },
     });
 
@@ -44,6 +50,10 @@ export async function listActorHospitalWorkspaces(
       hospitalCode: hospital.hospitalCode,
       hospitalName: hospital.name,
       hospitalStatus: hospital.status,
+      network: hospital.parentHospital
+        ? { hospitalId: hospital.parentHospital.id, name: hospital.parentHospital.name }
+        : { hospitalId: hospital.id, name: hospital.name },
+      hasActiveDirectChildren: hospital.parentHospital === null && hospital._count.childHospitals > 0,
     }));
   } catch {
     throw new InfrastructureError("Actor Hospital workspace could not be loaded");
