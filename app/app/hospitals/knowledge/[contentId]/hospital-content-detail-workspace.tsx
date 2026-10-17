@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseE
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -81,6 +82,31 @@ function fieldMessage(state: HospitalContentMutationActionState, field: Hospital
   return state.status === "ERROR" ? state.fieldErrors?.[field] ?? "" : "";
 }
 
+type ContentMutationCommand = "SAVE_DRAFT" | "PUBLISH" | "WITHDRAW" | "ARCHIVE";
+
+/** A success is announced only when its outcome is the one this command asked for, for this content. */
+function contentNotice(
+  command: ContentMutationCommand,
+  contentId: string,
+  result: HospitalContentMutationActionState,
+): { level: "success" | "warning" | "error"; message: string } | null {
+  if (result.status === "SUCCESS") {
+    if (result.result.content.id !== contentId) return null;
+    if (command === "SAVE_DRAFT" && result.result.outcome === "UPDATED") return { level: "success", message: "บันทึกฉบับร่างแล้ว" };
+    if (command === "PUBLISH" && result.result.outcome === "PUBLISHED") return { level: "success", message: "เผยแพร่เนื้อหาแล้ว" };
+    if (command === "WITHDRAW" && result.result.outcome === "WITHDRAWN") return { level: "success", message: "ถอนการเผยแพร่เนื้อหาแล้ว" };
+    if (command === "ARCHIVE" && result.result.outcome === "ARCHIVED") return { level: "success", message: "เก็บเนื้อหาเข้าคลังแล้ว" };
+    return null;
+  }
+  if (result.status === "ERROR" && result.code === "CONFLICT") {
+    return { level: "warning", message: "เนื้อหาเปลี่ยนแปลงแล้ว กรุณาตรวจสอบฉบับล่าสุด" };
+  }
+  if (result.status === "ERROR" && result.code === "FORBIDDEN") {
+    return { level: "error", message: "ไม่มีสิทธิ์จัดการเนื้อหาของโรงพยาบาลนี้" };
+  }
+  return null;
+}
+
 export function HospitalContentDetailWorkspace({
   content: initialContent,
 }: {
@@ -100,12 +126,26 @@ export function HospitalContentDetailWorkspace({
   const [accessRevoked, setAccessRevoked] = useState(false);
   const [isPending, startTransition] = useTransition();
   const requestGeneration = useRef(0);
+  const mountedRef = useRef(false);
+  const mutationInFlightRef = useRef(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const categoryRef = useRef<HTMLSelectElement>(null);
   const sourceRef = useRef<HTMLInputElement>(null);
 
   const dirty = current !== null && !valuesMatchDraft(current, draft);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  function announce(command: ContentMutationCommand, contentId: string, result: HospitalContentMutationActionState): void {
+    const notice = mountedRef.current ? contentNotice(command, contentId, result) : null;
+    if (notice) notify[notice.level](notice.message);
+  }
 
   useEffect(() => {
     if (isPending || mutationState.status !== "ERROR" || mutationState.code !== "VALIDATION") return;
@@ -147,10 +187,12 @@ export function HospitalContentDetailWorkspace({
 
   function handleEdit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!current || current.status !== HospitalContentStatus.DRAFT || !dirty || isPending || reconciliationRequired || accessRevoked) return;
+    if (!current || current.status !== HospitalContentStatus.DRAFT || !dirty || isPending || reconciliationRequired || accessRevoked || mutationInFlightRef.current) return;
     setNavigationBlockedWhilePending(false);
+    mutationInFlightRef.current = true;
     const savedDraft = draft;
     const expectedUpdatedAt = current.expectedUpdatedAt;
+    const contentId = current.id;
     const generation = ++requestGeneration.current;
     setMutationState({ status: "IDLE" });
     setReadState(null);
@@ -158,7 +200,7 @@ export function HospitalContentDetailWorkspace({
     startTransition(async () => {
       try {
         const result = await editHospitalContentDraftAction({
-          contentId: current.id,
+          contentId,
           expectedUpdatedAt,
           title: savedDraft.title,
           body: savedDraft.body,
@@ -179,12 +221,14 @@ export function HospitalContentDetailWorkspace({
         } else if (result.status === "ERROR" && (result.code === "FORBIDDEN" || result.code === "NOT_FOUND")) {
           setAccessRevoked(true);
         }
+        announce("SAVE_DRAFT", contentId, result);
       } catch {
         if (generation !== requestGeneration.current) return;
         setMutationState({ status: "UNCONFIRMED" });
         setReconciliationRequired(true);
         setReviewCurrent(null);
       } finally {
+        mutationInFlightRef.current = false;
         if (generation === requestGeneration.current) setPendingAction(null);
       }
     });
@@ -205,8 +249,9 @@ export function HospitalContentDetailWorkspace({
   }
 
   function executeLifecycle(command: "PUBLISH" | "WITHDRAW" | "ARCHIVE"): void {
-    if (!current || isPending || reconciliationRequired || accessRevoked) return;
+    if (!current || isPending || reconciliationRequired || accessRevoked || mutationInFlightRef.current) return;
     setNavigationBlockedWhilePending(false);
+    mutationInFlightRef.current = true;
     const contentId = current.id;
     const expectedUpdatedAt = current.expectedUpdatedAt;
     const generation = ++requestGeneration.current;
@@ -238,12 +283,14 @@ export function HospitalContentDetailWorkspace({
         } else {
           setConfirmationIntent(null);
         }
+        announce(command, contentId, result);
       } catch {
         if (generation !== requestGeneration.current) return;
         setMutationState({ status: "UNCONFIRMED" });
         setReconciliationRequired(true);
         setReviewCurrent(null);
       } finally {
+        mutationInFlightRef.current = false;
         if (generation === requestGeneration.current) setPendingAction(null);
       }
     });

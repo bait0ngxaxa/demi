@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
@@ -19,6 +15,41 @@ import {
   suspendOsmRelationshipAction,
 } from "@/modules/workforce/transport/server-actions";
 
+import {
+  classifyWorkforceState,
+  formString,
+  ScopedMutationFeedback,
+  standardNotice,
+  useScopedMutation,
+  useScopedMutationSession,
+  workforceStateMessage,
+} from "../../scoped-mutation";
+
+const osmRefusals = {
+  conflict: "ไม่สามารถเปลี่ยนความสัมพันธ์ อสม. ได้ กรุณาตรวจสอบสถานะล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการความสัมพันธ์ อสม. นี้",
+};
+const suspendNotice = standardNotice({ success: "ระงับความสัมพันธ์ อสม. แล้ว", ...osmRefusals });
+const restoreNotice = standardNotice({ success: "คืนสถานะความสัมพันธ์ อสม. แล้ว", ...osmRefusals });
+
+/** A success counts only for this relationship and only when it carries the status the submission asked for. */
+function osmConfirms(
+  state: WorkforceOsmRelationshipMutationActionState,
+  formData: FormData,
+  status: "ACTIVE" | "SUSPENDED",
+): boolean {
+  return (
+    state.status === "SUCCESS" &&
+    state.result.relationshipId === formString(formData, "relationshipId") &&
+    state.result.hospitalId === formString(formData, "targetHospitalId") &&
+    state.result.relationshipStatus === status
+  );
+}
+
+function osmUpdatedAt(state: WorkforceOsmRelationshipMutationActionState): string | null {
+  return state.status === "SUCCESS" ? state.result.updatedAt : null;
+}
+
 type OsmRelationshipControlsProps = {
   accountStatus: WorkforceDetail["accountStatus"];
   actions: WorkforceDetail["actions"];
@@ -29,30 +60,6 @@ type OsmRelationshipControlsProps = {
   relationshipStatus: WorkforceDetail["relationshipStatus"];
   targetHospitalId: string;
 };
-
-function Feedback({
-  states,
-}: {
-  states: readonly WorkforceOsmRelationshipMutationActionState[];
-}): React.JSX.Element | null {
-  const errorState = states.find((state) => state.status === "ERROR");
-
-  if (errorState && errorState.status === "ERROR") {
-    return (
-      <Alert className="mt-4" role="alert" variant={errorState.code === "CONFLICT" ? "warning" : "danger"}>
-        {errorState.message}
-      </Alert>
-    );
-  }
-
-  const successState = states.find((state) => state.status === "SUCCESS");
-
-  return successState ? (
-    <Alert className="mt-4" variant="success">
-      บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว
-    </Alert>
-  ) : null;
-}
 
 function BlockedReason({
   accountStatus,
@@ -124,23 +131,41 @@ export function OsmRelationshipControls({
   relationshipStatus,
   targetHospitalId,
 }: OsmRelationshipControlsProps): React.JSX.Element {
-  const router = useRouter();
-  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
-    WorkforceOsmRelationshipMutationActionState,
-    FormData
-  >(suspendOsmRelationshipAction, initialWorkforceOsmRelationshipMutationActionState);
-  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
-    WorkforceOsmRelationshipMutationActionState,
-    FormData
-  >(restoreOsmRelationshipAction, initialWorkforceOsmRelationshipMutationActionState);
-  const pending = suspendPending || restorePending;
-  const unknownOutcome = suspendUnknown || restoreUnknown;
-
-  useEffect(() => {
-    if (suspendState.status === "SUCCESS" || restoreState.status === "SUCCESS") {
-      router.refresh();
-    }
-  }, [restoreState, router, suspendState]);
+  const session = useScopedMutationSession<WorkforceOsmRelationshipMutationActionState>({
+    scope: relationshipId,
+    snapshot: expectedUpdatedAt,
+    refreshOnSuccess: true,
+  });
+  const suspend = useScopedMutation(session, {
+    kind: "suspend",
+    action: suspendOsmRelationshipAction,
+    initialState: initialWorkforceOsmRelationshipMutationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, osmConfirms(state, formData, "SUSPENDED")),
+    notice: suspendNotice,
+    message: workforceStateMessage,
+    resultSnapshot: osmUpdatedAt,
+  });
+  const restore = useScopedMutation(session, {
+    kind: "restore",
+    action: restoreOsmRelationshipAction,
+    initialState: initialWorkforceOsmRelationshipMutationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, osmConfirms(state, formData, "ACTIVE")),
+    notice: restoreNotice,
+    message: workforceStateMessage,
+    resultSnapshot: osmUpdatedAt,
+  });
+  const pending = suspend.pending || restore.pending;
+  const locked = pending || session.locked;
+  const latest = session.latest;
+  const latestSuspend = latest?.kind === "suspend" && latest.scope === relationshipId ? latest : null;
+  const suspendOutcome =
+    !latestSuspend || latestSuspend.status === "PENDING"
+      ? "idle"
+      : latestSuspend.status === "UNCONFIRMED"
+        ? "unknown"
+        : latestSuspend.status === "SUCCESS"
+          ? "success"
+          : "error";
 
   if (
     !actions.suspend &&
@@ -155,7 +180,7 @@ export function OsmRelationshipControls({
           lifecycleBlockReason={lifecycleBlockReason}
           relationshipStatus={relationshipStatus}
         />
-        <Feedback states={[suspendState, restoreState]} />
+        <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว"} />
       </div>
     );
   }
@@ -167,10 +192,14 @@ export function OsmRelationshipControls({
         การดำเนินการมีผลเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ บัญชีผู้ใช้งาน บทบาท และข้อมูลผู้ป่วยจะไม่ถูกเปลี่ยน
       </p>
 
-      <UnknownOutcomeAlert active={restoreUnknown} className="mt-4" recovery={{ kind: "reload" }} />
+      <UnknownOutcomeAlert
+        active={session.unconfirmed && latest?.kind !== "suspend"}
+        className="mt-4"
+        recovery={{ kind: "reload" }}
+      />
       {actions.suspend ? (
         <ConfirmableActionForm
-          action={suspendAction}
+          action={suspend.action}
           className="mt-6 border-t border-border pt-5"
           confirmation={{
             title: "ระงับความสัมพันธ์ อสม. นี้หรือไม่",
@@ -179,9 +208,9 @@ export function OsmRelationshipControls({
             confirmLabel: "ระงับความสัมพันธ์",
             confirmVariant: "destructive",
           }}
-          outcome={suspendUnknown ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+          outcome={suspendOutcome}
           pending={pending}
-          resultKey={suspendState}
+          resultKey={latestSuspend}
         >
           <input name="relationshipId" type="hidden" value={relationshipId} />
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
@@ -191,32 +220,32 @@ export function OsmRelationshipControls({
           </p>
           <Button
             className="mt-3"
-            disabled={pending || unknownOutcome}
-            loading={suspendPending}
+            disabled={locked}
+            loading={suspend.pending}
             size="compact"
             type="submit"
             variant="danger"
           >
-            {suspendPending ? "กำลังระงับ..." : "ระงับความสัมพันธ์ อสม."}
+            {suspend.pending ? "กำลังระงับ..." : "ระงับความสัมพันธ์ อสม."}
           </Button>
         </ConfirmableActionForm>
       ) : null}
 
       {actions.restore ? (
-        <form action={restoreAction} className="mt-5 border-t border-border pt-5">
+        <form action={restore.action} className="mt-5 border-t border-border pt-5">
           <input name="relationshipId" type="hidden" value={relationshipId} />
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
             คืนสถานะเฉพาะความสัมพันธ์นี้ โดยไม่สร้างหรือคืนการมอบหมายผู้ป่วยเดิม
           </p>
-            <Button className="mt-3" disabled={pending || unknownOutcome} loading={restorePending} size="compact" type="submit">
-            {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์ อสม."}
+          <Button className="mt-3" disabled={locked} loading={restore.pending} size="compact" type="submit">
+            {restore.pending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์ อสม."}
           </Button>
         </form>
       ) : null}
 
-      <Feedback states={[suspendState, restoreState]} />
+      <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว"} />
     </Panel>
   );
 }

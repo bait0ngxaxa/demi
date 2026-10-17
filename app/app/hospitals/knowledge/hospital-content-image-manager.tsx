@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { notify } from "@/components/ui/notify";
 import { optimizeEvidenceImage, getEvidenceImageOptimizationErrorMessage } from "@/modules/patient-evidence/client/patient-evidence-image-optimizer";
 import { HOSPITAL_CONTENT_IMAGE_LIMIT } from "@/modules/hospital-content/domain/hospital-content";
 
@@ -10,40 +11,87 @@ function isImageIdResult(value: unknown): value is { imageId: string } {
   return typeof value === "object" && value !== null && "imageId" in value && typeof value.imageId === "string";
 }
 
+/** The request may have been stored even though no usable answer arrived (lost connection, server error). */
+class UploadOutcomeUnknownError extends Error {}
+
+const uploadOutcomeUnknownMessage =
+  "ระบบยังยืนยันผลการอัปโหลดรูปไม่ได้ รูปที่ยืนยันแล้วยังอยู่ในรายการ กรุณาตรวจสอบรายการภาพก่อนอัปโหลดซ้ำ";
+
 export function HospitalContentImageManager({ contentId, imageIds }: { contentId: string; imageIds: readonly string[] }): React.JSX.Element {
   const [images, setImages] = useState<string[]>([...imageIds]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(false);
+  const uploadingRef = useRef(false);
+  const contentIdRef = useRef(contentId);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    contentIdRef.current = contentId;
+  }, [contentId]);
 
   async function handleFiles(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const files = Array.from(event.currentTarget.files ?? []);
     event.currentTarget.value = "";
     setError(null);
     setMessage(null);
-    if (files.length === 0) return;
+    if (files.length === 0 || uploadingRef.current) return;
     if (files.length > HOSPITAL_CONTENT_IMAGE_LIMIT - images.length) {
       setError(`เพิ่มได้อีกไม่เกิน ${HOSPITAL_CONTENT_IMAGE_LIMIT - images.length} รูป`);
       return;
     }
+    uploadingRef.current = true;
     setBusy(true);
+    const submittedContentId = contentId;
     const added: string[] = [];
+    // Images are stored one request at a time, so a failure part-way leaves the earlier ones saved.
+    const announce = (notice: () => void): void => {
+      if (mountedRef.current && contentIdRef.current === submittedContentId) notice();
+    };
     try {
       for (const file of files) {
         const optimized = await optimizeEvidenceImage(file);
         const body = new FormData();
         body.append("file", optimized, optimized.name);
         body.append("caption", crypto.randomUUID());
-        const response = await fetch(`/api/hospital-content/${contentId}/images`, { method: "POST", body, cache: "no-store" });
+        let response: Response;
+        try {
+          response = await fetch(`/api/hospital-content/${submittedContentId}/images`, { method: "POST", body, cache: "no-store" });
+        } catch {
+          throw new UploadOutcomeUnknownError();
+        }
         const result: unknown = await response.json().catch(() => null);
-        if (!response.ok || !isImageIdResult(result)) throw new Error("อัปโหลดไม่สำเร็จ กรุณาตรวจสอบสิทธิ์หรือโหลดหน้าใหม่");
-        added.push(result.imageId);
-        setImages((current) => current.includes(result.imageId) ? current : [...current, result.imageId]);
+        if (response.ok && isImageIdResult(result)) {
+          added.push(result.imageId);
+          setImages((current) => current.includes(result.imageId) ? current : [...current, result.imageId]);
+          continue;
+        }
+        if (response.ok || response.status >= 500) throw new UploadOutcomeUnknownError();
+        throw new Error("อัปโหลดไม่สำเร็จ กรุณาตรวจสอบสิทธิ์หรือโหลดหน้าใหม่");
       }
       setMessage(`เพิ่มรูปแล้ว ${added.length} รูป`);
+      announce(() => notify.success("เพิ่มภาพประกอบแล้ว"));
     } catch (caught: unknown) {
-      setError(caught instanceof Error && caught.message.startsWith("อัปโหลด") ? caught.message : getEvidenceImageOptimizationErrorMessage(caught));
+      setError(
+        caught instanceof UploadOutcomeUnknownError
+          ? uploadOutcomeUnknownMessage
+          : caught instanceof Error && caught.message.startsWith("อัปโหลด")
+            ? caught.message
+            : getEvidenceImageOptimizationErrorMessage(caught),
+      );
+      if (added.length > 0) {
+        setMessage(`เพิ่มรูปแล้ว ${added.length} รูป`);
+        announce(() => notify.warning("อัปโหลดได้บางรูป กรุณาตรวจสอบรายการภาพ"));
+      }
     } finally {
+      uploadingRef.current = false;
       setBusy(false);
     }
   }

@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
@@ -19,6 +15,41 @@ import {
   type WorkforceOwnerGovernanceMutationActionState,
 } from "@/modules/workforce/transport/action-state";
 
+import {
+  classifyWorkforceState,
+  formString,
+  ScopedMutationFeedback,
+  standardNotice,
+  useScopedMutation,
+  useScopedMutationSession,
+  workforceStateMessage,
+} from "../../scoped-mutation";
+
+const ownerRefusals = {
+  conflict: "สิทธิ์เจ้าของเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการสิทธิ์เจ้าของโรงพยาบาล",
+};
+const promoteNotice = standardNotice({ success: "กำหนดสิทธิ์เจ้าของโรงพยาบาลแล้ว", ...ownerRefusals });
+const demoteNotice = standardNotice({ success: "เปลี่ยนสิทธิ์เจ้าของโรงพยาบาลแล้ว", ...ownerRefusals });
+
+/** A success counts only for this relationship and only when it carries the membership type that was requested. */
+function ownerConfirms(
+  state: WorkforceOwnerGovernanceMutationActionState,
+  formData: FormData,
+  membershipType: "OWNER" | "MEMBER",
+): boolean {
+  return (
+    state.status === "SUCCESS" &&
+    state.result.relationshipId === formString(formData, "relationshipId") &&
+    state.result.hospitalId === formString(formData, "targetHospitalId") &&
+    state.result.membershipType === membershipType
+  );
+}
+
+function ownerUpdatedAt(state: WorkforceOwnerGovernanceMutationActionState): string | null {
+  return state.status === "SUCCESS" ? state.result.updatedAt : null;
+}
+
 type HospitalOwnerGovernanceControlsProps = {
   accountStatus: WorkforceDetail["accountStatus"];
   expectedUpdatedAt: string;
@@ -29,30 +60,6 @@ type HospitalOwnerGovernanceControlsProps = {
   targetHospitalId: string;
 };
 
-function Feedback({
-  states,
-}: {
-  states: readonly WorkforceOwnerGovernanceMutationActionState[];
-}): React.JSX.Element | null {
-  const errorState = states.find((state) => state.status === "ERROR");
-
-  if (errorState && errorState.status === "ERROR") {
-    return (
-      <Alert className="mt-4" role="alert" variant={errorState.code === "CONFLICT" ? "warning" : "danger"}>
-        {errorState.message}
-      </Alert>
-    );
-  }
-
-  const successState = states.find((state) => state.status === "SUCCESS");
-
-  return successState ? (
-    <Alert className="mt-4" variant="success">
-      บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว
-    </Alert>
-  ) : null;
-}
-
 export function HospitalOwnerGovernanceControls({
   accountStatus,
   expectedUpdatedAt,
@@ -62,25 +69,43 @@ export function HospitalOwnerGovernanceControls({
   relationshipStatus,
   targetHospitalId,
 }: HospitalOwnerGovernanceControlsProps): React.JSX.Element | null {
-  const router = useRouter();
-  const [promoteState, promoteAction, promotePending, promoteUnknown] = useMutationActionState(
-    promoteHospitalOwnerAction,
-    initialWorkforceOwnerGovernanceMutationActionState,
-  );
-  const [demoteState, demoteAction, demotePending, demoteUnknown] = useMutationActionState(
-    demoteHospitalOwnerAction,
-    initialWorkforceOwnerGovernanceMutationActionState,
-  );
-  const pending = promotePending || demotePending;
-  const unknownOutcome = promoteUnknown || demoteUnknown;
+  const session = useScopedMutationSession<WorkforceOwnerGovernanceMutationActionState>({
+    scope: relationshipId,
+    snapshot: expectedUpdatedAt,
+    refreshOnSuccess: true,
+  });
+  const promote = useScopedMutation(session, {
+    kind: "promote",
+    action: promoteHospitalOwnerAction,
+    initialState: initialWorkforceOwnerGovernanceMutationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, ownerConfirms(state, formData, "OWNER")),
+    notice: promoteNotice,
+    message: workforceStateMessage,
+    resultSnapshot: ownerUpdatedAt,
+  });
+  const demote = useScopedMutation(session, {
+    kind: "demote",
+    action: demoteHospitalOwnerAction,
+    initialState: initialWorkforceOwnerGovernanceMutationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, ownerConfirms(state, formData, "MEMBER")),
+    notice: demoteNotice,
+    message: workforceStateMessage,
+    resultSnapshot: ownerUpdatedAt,
+  });
+  const pending = promote.pending || demote.pending;
+  const locked = pending || session.locked;
+  const latest = session.latest;
+  const latestDemote = latest?.kind === "demote" && latest.scope === relationshipId ? latest : null;
+  const demoteOutcome =
+    !latestDemote || latestDemote.status === "PENDING"
+      ? "idle"
+      : latestDemote.status === "UNCONFIRMED"
+        ? "unknown"
+        : latestDemote.status === "SUCCESS"
+          ? "success"
+          : "error";
   const isActiveTarget =
     accountStatus === "ACTIVE" && relationshipStatus === "ACTIVE";
-
-  useEffect(() => {
-    if (promoteState.status === "SUCCESS" || demoteState.status === "SUCCESS") {
-      router.refresh();
-    }
-  }, [demoteState, promoteState, router]);
 
   if (membershipType !== "MEMBER" && membershipType !== "OWNER") {
     return null;
@@ -97,24 +122,28 @@ export function HospitalOwnerGovernanceControls({
         การเปลี่ยนแปลงนี้มีผลเฉพาะบทบาทในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี ข้อมูลเข้าสู่ระบบ หรือความสัมพันธ์อื่น
       </p>
 
-      <UnknownOutcomeAlert active={promoteUnknown} className="mt-4" recovery={{ kind: "reload" }} />
+      <UnknownOutcomeAlert
+        active={session.unconfirmed && latest?.kind !== "demote"}
+        className="mt-4"
+        recovery={{ kind: "reload" }}
+      />
       {ownerGovernance.canPromote ? (
-        <form action={promoteAction} className="mt-6 border-t border-border pt-5">
+        <form action={promote.action} className="mt-6 border-t border-border pt-5">
           <input name="relationshipId" type="hidden" value={relationshipId} />
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
             เปลี่ยนสมาชิกที่พร้อมใช้งานรายนี้เป็นเจ้าของโรงพยาบาลนี้
           </p>
-          <Button className="mt-3" disabled={pending || unknownOutcome} loading={promotePending} size="compact" type="submit">
-            {promotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นเจ้าของโรงพยาบาล"}
+          <Button className="mt-3" disabled={locked} loading={promote.pending} size="compact" type="submit">
+            {promote.pending ? "กำลังบันทึก..." : "เปลี่ยนเป็นเจ้าของโรงพยาบาล"}
           </Button>
         </form>
       ) : null}
 
       {ownerGovernance.canDemote ? (
         <ConfirmableActionForm
-          action={demoteAction}
+          action={demote.action}
           className="mt-6 border-t border-border pt-5"
           confirmation={{
             title: "เปลี่ยนเจ้าของโรงพยาบาลรายนี้เป็นสมาชิกหรือไม่",
@@ -122,9 +151,9 @@ export function HospitalOwnerGovernanceControls({
             details: <p>ระบบต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>,
             confirmLabel: "เปลี่ยนเป็นสมาชิก",
           }}
-          outcome={demoteUnknown ? "unknown" : demoteState.status === "SUCCESS" ? "success" : demoteState.status === "ERROR" ? "error" : "idle"}
+          outcome={demoteOutcome}
           pending={pending}
-          resultKey={demoteState}
+          resultKey={latestDemote}
         >
           <input name="relationshipId" type="hidden" value={relationshipId} />
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
@@ -134,13 +163,13 @@ export function HospitalOwnerGovernanceControls({
           </p>
           <Button
             className="mt-3"
-            disabled={pending || unknownOutcome}
-            loading={demotePending}
+            disabled={locked}
+            loading={demote.pending}
             size="compact"
             type="submit"
             variant="secondary"
           >
-            {demotePending ? "กำลังบันทึก..." : "เปลี่ยนเป็นสมาชิก"}
+            {demote.pending ? "กำลังบันทึก..." : "เปลี่ยนเป็นสมาชิก"}
           </Button>
         </ConfirmableActionForm>
       ) : null}
@@ -152,7 +181,7 @@ export function HospitalOwnerGovernanceControls({
         </Alert>
       ) : null}
 
-      <Feedback states={[promoteState, demoteState]} />
+      <ScopedMutationFeedback session={session} success={() => "บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว"} />
     </Panel>
   );
 }

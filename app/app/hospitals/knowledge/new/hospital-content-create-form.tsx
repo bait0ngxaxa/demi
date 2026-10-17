@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent, type MouseE
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import {
@@ -96,11 +97,19 @@ export function HospitalContentCreateForm({
   const [isPending, startTransition] = useTransition();
   const nonceRef = useRef<string | null>(null);
   const createInFlight = useRef(false);
+  const mountedRef = useRef(false);
   const requestGeneration = useRef(0);
   const titleRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const categoryRef = useRef<HTMLSelectElement>(null);
   const sourceRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let parsed: CreateAttemptMarker | null = null;
@@ -343,6 +352,10 @@ export function HospitalContentCreateForm({
           setRecoveryChecked(false);
         } else if (result.status === "SUCCESS" && result.result.outcome === "CREATED") {
           clearMarker();
+          // Only a newly created draft is announced; a REPLAY keeps its own Alert and link.
+          if (mountedRef.current && result.result.content.hospital.id === selectedHospitalId) {
+            notify.success("สร้างฉบับร่างแล้ว");
+          }
           router.push(`/app/hospitals/knowledge/${result.result.content.id}`);
         } else if (result.status === "SUCCESS" && result.result.outcome === "REPLAY") {
           removeStoredMarker();

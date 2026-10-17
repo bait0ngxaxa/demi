@@ -1,17 +1,51 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import { setHospitalMembershipReportExportGrantAction } from "@/modules/workforce/transport/server-actions";
-import { initialWorkforceReportExportGrantActionState } from "@/modules/workforce/transport/action-state";
+import {
+  initialWorkforceReportExportGrantActionState,
+  type WorkforceReportExportGrantActionState,
+} from "@/modules/workforce/transport/action-state";
+
+import {
+  classifyWorkforceState,
+  formString,
+  ScopedMutationFeedback,
+  useScopedMutation,
+  useScopedMutationSession,
+  workforceStateMessage,
+  type MutationNotice,
+  type MutationVerdict,
+} from "../../scoped-mutation";
+
+/** The returned `granted` must be the state this submission asked for, not a stale or opposite grant. */
+function grantConfirms(state: WorkforceReportExportGrantActionState, formData: FormData): boolean {
+  return state.status === "SUCCESS" && state.granted === (formString(formData, "granted") === "true");
+}
+
+function grantNotice(
+  verdict: MutationVerdict,
+  state: WorkforceReportExportGrantActionState,
+): MutationNotice | null {
+  if (verdict === "SUCCESS" && state.status === "SUCCESS") {
+    return {
+      level: "success",
+      message: state.granted ? "ให้สิทธิ์ส่งออกรายงานแล้ว" : "ยกเลิกสิทธิ์ส่งออกรายงานแล้ว",
+    };
+  }
+
+  if (verdict === "CONFLICT") {
+    return { level: "warning", message: "สถานะสิทธิ์ส่งออกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด" };
+  }
+
+  return verdict === "FORBIDDEN"
+    ? { level: "error", message: "ไม่มีสิทธิ์จัดการสิทธิ์ส่งออกรายงาน" }
+    : null;
+}
 
 /** Customer decision E1 (ก-15): the OWNER grants or revokes report export for this MEMBER. */
 export function ReportExportGrantControl({
@@ -25,16 +59,22 @@ export function ReportExportGrantControl({
   relationshipId: string;
   targetHospitalId: string;
 }): React.JSX.Element {
-  const router = useRouter();
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
-    setHospitalMembershipReportExportGrantAction,
-    initialWorkforceReportExportGrantActionState,
-  );
-
-  useEffect(() => {
-    if (state.status === "SUCCESS") router.refresh();
-  }, [router, state]);
-
+  const session = useScopedMutationSession<WorkforceReportExportGrantActionState>({
+    scope: relationshipId,
+    // The status badge is the authoritative state; the form unlocks once the refreshed grant reflects the result.
+    snapshot: String(grant.granted),
+    refreshOnSuccess: true,
+  });
+  const { action: formAction, pending } = useScopedMutation(session, {
+    kind: "grant",
+    action: setHospitalMembershipReportExportGrantAction,
+    initialState: initialWorkforceReportExportGrantActionState,
+    classify: (state, formData) => classifyWorkforceState(state, grantConfirms(state, formData)),
+    notice: grantNotice,
+    message: workforceStateMessage,
+    resultSnapshot: (state) => (state.status === "SUCCESS" ? String(state.granted) : null),
+  });
+  const locked = pending || session.locked;
   const canChange = grant.granted ? grant.canRevoke : grant.canGrant;
 
   return (
@@ -56,7 +96,7 @@ export function ReportExportGrantControl({
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <input name="granted" type="hidden" value={grant.granted ? "false" : "true"} />
           <Button
-            disabled={pending || unknownOutcome}
+            disabled={locked}
             loading={pending}
             size="compact"
             type="submit"
@@ -70,17 +110,15 @@ export function ReportExportGrantControl({
           ให้สิทธิ์ได้เมื่อบัญชีและความสัมพันธ์กับโรงพยาบาลนี้พร้อมใช้งาน
         </p>
       )}
-      {state.status === "ERROR" ? (
-        <Alert className="mt-4" role="alert" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-          {state.message}
-        </Alert>
-      ) : null}
-      {state.status === "SUCCESS" ? (
-        <Alert className="mt-4" variant="success">
-          {state.granted ? "ให้สิทธิ์ส่งออกรายงานแล้ว" : "ยกเลิกสิทธิ์ส่งออกรายงานแล้ว มีผลตั้งแต่คำขอถัดไป"}
-        </Alert>
-      ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "reload" }} />
+      <ScopedMutationFeedback
+        session={session}
+        success={(submission) =>
+          submission.state?.status === "SUCCESS" && submission.state.granted
+            ? "ให้สิทธิ์ส่งออกรายงานแล้ว"
+            : "ยกเลิกสิทธิ์ส่งออกรายงานแล้ว มีผลตั้งแต่คำขอถัดไป"
+        }
+      />
+      <UnknownOutcomeAlert active={session.unconfirmed} className="mt-4" recovery={{ kind: "reload" }} />
     </Panel>
   );
 }

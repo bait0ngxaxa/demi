@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, useTransition, type FormEvent } from "reac
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -83,6 +84,15 @@ export function HospitalContactWorkspace({
   const [isPending, startTransition] = useTransition();
   const addressRef = useRef<HTMLTextAreaElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isPending || mutationState.status !== "ERROR" || mutationState.code !== "VALIDATION") {
@@ -131,10 +141,11 @@ export function HospitalContactWorkspace({
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    if (accessRevoked || reconciliationRequired || isPending) {
+    if (accessRevoked || reconciliationRequired || isPending || submitInFlightRef.current) {
       return;
     }
 
+    submitInFlightRef.current = true;
     setMutationState({ status: "IDLE" });
     setReadState(null);
 
@@ -175,13 +186,40 @@ export function HospitalContactWorkspace({
           setPreviousDraft(null);
           setReviewCurrent(null);
         }
+
+        announceMutation(result);
       } catch {
         setPreviousDraft(draft);
         setReviewCurrent(null);
         setReconciliationRequired(true);
         setMutationState({ status: "UNCONFIRMED" });
+      } finally {
+        submitInFlightRef.current = false;
       }
     });
+  }
+
+  /** Static summaries only; the contact details stay in the form and the existing Alerts. */
+  function announceMutation(result: HospitalContactMutationActionState): void {
+    if (!mountedRef.current) {
+      return;
+    }
+
+    if (result.status === "SUCCESS") {
+      if (result.result.contact.hospital.id !== selectedHospitalId) {
+        return;
+      }
+
+      if (result.result.outcome === "CREATED") {
+        notify.success("บันทึกข้อมูลติดต่อโรงพยาบาลแล้ว");
+      } else if (result.result.outcome === "UPDATED") {
+        notify.success("ปรับปรุงข้อมูลติดต่อโรงพยาบาลแล้ว");
+      }
+    } else if (result.status === "ERROR" && result.code === "CONFLICT") {
+      notify.warning("ข้อมูลติดต่อเปลี่ยนแปลงแล้ว กรุณาตรวจสอบข้อมูลล่าสุด");
+    } else if (result.status === "ERROR" && result.code === "FORBIDDEN") {
+      notify.error("ไม่มีสิทธิ์แก้ไขข้อมูลติดต่อโรงพยาบาล");
+    }
   }
 
   function loadCurrentContact(): void {

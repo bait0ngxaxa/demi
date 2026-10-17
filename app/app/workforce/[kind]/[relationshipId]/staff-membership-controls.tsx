@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
@@ -21,6 +17,15 @@ import {
   updateHospitalMembershipProfessionAction,
 } from "@/modules/workforce/transport/server-actions";
 
+import {
+  classifyWorkforceState,
+  formString,
+  ScopedMutationFeedback,
+  standardNotice,
+  useScopedMutation,
+  useScopedMutationSession,
+  workforceStateMessage,
+} from "../../scoped-mutation";
 import { HospitalOwnerGovernanceControls } from "./hospital-owner-governance-controls";
 
 const professionLabels = {
@@ -29,6 +34,34 @@ const professionLabels = {
   COORDINATOR: "ผู้ประสานงาน",
   OTHER: "อื่น ๆ",
 } as const;
+
+const membershipRefusals = {
+  conflict: "สถานะสมาชิกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการสมาชิกโรงพยาบาลนี้",
+};
+const professionNotice = standardNotice({ success: "บันทึกวิชาชีพแล้ว", ...membershipRefusals });
+const suspendNotice = standardNotice({ success: "ระงับสมาชิกโรงพยาบาลแล้ว", ...membershipRefusals });
+const restoreNotice = standardNotice({ success: "คืนสถานะสมาชิกโรงพยาบาลแล้ว", ...membershipRefusals });
+
+type MembershipResult = Extract<WorkforceMembershipMutationActionState, { status: "SUCCESS" }>["result"];
+
+/** A success counts only for this relationship and only when it carries the state the submission asked for. */
+function membershipConfirms(
+  state: WorkforceMembershipMutationActionState,
+  formData: FormData,
+  expected: (result: MembershipResult) => boolean,
+): boolean {
+  return (
+    state.status === "SUCCESS" &&
+    state.result.relationshipId === formString(formData, "relationshipId") &&
+    state.result.hospitalId === formString(formData, "targetHospitalId") &&
+    expected(state.result)
+  );
+}
+
+function membershipUpdatedAt(state: WorkforceMembershipMutationActionState): string | null {
+  return state.status === "SUCCESS" ? state.result.updatedAt : null;
+}
 
 type StaffMembershipControlsProps = {
   accountStatus: WorkforceDetail["accountStatus"];
@@ -42,30 +75,6 @@ type StaffMembershipControlsProps = {
   targetHospitalId: string;
 };
 
-function Feedback({
-  states,
-}: {
-  states: readonly WorkforceMembershipMutationActionState[];
-}): React.JSX.Element | null {
-  const errorState = states.find((state) => state.status === "ERROR");
-
-  if (errorState && errorState.status === "ERROR") {
-    return (
-      <Alert className="mt-4" variant={errorState.code === "CONFLICT" ? "warning" : "danger"}>
-        {errorState.message}
-      </Alert>
-    );
-  }
-
-  const successState = states.find((state) => state.status === "SUCCESS");
-
-  return successState ? (
-    <Alert className="mt-4" variant="success">
-      บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว
-    </Alert>
-  ) : null;
-}
-
 export function StaffMembershipControls({
   accountStatus,
   actions,
@@ -77,21 +86,62 @@ export function StaffMembershipControls({
   relationshipStatus,
   targetHospitalId,
 }: StaffMembershipControlsProps): React.JSX.Element {
-  const router = useRouter();
-  const [professionState, professionAction, professionPending, professionUnknown] = useMutationActionState<
-    WorkforceMembershipMutationActionState,
-    FormData
-  >(updateHospitalMembershipProfessionAction, initialWorkforceMembershipMutationActionState);
-  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
-    WorkforceMembershipMutationActionState,
-    FormData
-  >(suspendHospitalMembershipAction, initialWorkforceMembershipMutationActionState);
-  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
-    WorkforceMembershipMutationActionState,
-    FormData
-  >(restoreHospitalMembershipAction, initialWorkforceMembershipMutationActionState);
-  const pending = professionPending || suspendPending || restorePending;
-  const unknownOutcome = professionUnknown || suspendUnknown || restoreUnknown;
+  const session = useScopedMutationSession<WorkforceMembershipMutationActionState>({
+    scope: relationshipId,
+    snapshot: expectedUpdatedAt,
+    refreshOnSuccess: true,
+  });
+  const updateProfession = useScopedMutation(session, {
+    kind: "profession",
+    action: updateHospitalMembershipProfessionAction,
+    initialState: initialWorkforceMembershipMutationActionState,
+    classify: (state, formData) =>
+      classifyWorkforceState(
+        state,
+        membershipConfirms(state, formData, (result) => result.profession === formString(formData, "profession")),
+      ),
+    notice: professionNotice,
+    message: workforceStateMessage,
+    resultSnapshot: membershipUpdatedAt,
+  });
+  const suspend = useScopedMutation(session, {
+    kind: "suspend",
+    action: suspendHospitalMembershipAction,
+    initialState: initialWorkforceMembershipMutationActionState,
+    classify: (state, formData) =>
+      classifyWorkforceState(
+        state,
+        membershipConfirms(state, formData, (result) => result.membershipStatus === "SUSPENDED"),
+      ),
+    notice: suspendNotice,
+    message: workforceStateMessage,
+    resultSnapshot: membershipUpdatedAt,
+  });
+  const restore = useScopedMutation(session, {
+    kind: "restore",
+    action: restoreHospitalMembershipAction,
+    initialState: initialWorkforceMembershipMutationActionState,
+    classify: (state, formData) =>
+      classifyWorkforceState(
+        state,
+        membershipConfirms(state, formData, (result) => result.membershipStatus === "ACTIVE"),
+      ),
+    notice: restoreNotice,
+    message: workforceStateMessage,
+    resultSnapshot: membershipUpdatedAt,
+  });
+  const pending = updateProfession.pending || suspend.pending || restore.pending;
+  const locked = pending || session.locked;
+  const latest = session.latest;
+  const latestSuspend = latest?.kind === "suspend" && latest.scope === relationshipId ? latest : null;
+  const suspendOutcome =
+    !latestSuspend || latestSuspend.status === "PENDING"
+      ? "idle"
+      : latestSuspend.status === "UNCONFIRMED"
+        ? "unknown"
+        : latestSuspend.status === "SUCCESS"
+          ? "success"
+          : "error";
 
   const ownerControls = (
     <HospitalOwnerGovernanceControls
@@ -104,16 +154,6 @@ export function StaffMembershipControls({
       targetHospitalId={targetHospitalId}
     />
   );
-
-  useEffect(() => {
-    if (
-      professionState.status === "SUCCESS" ||
-      suspendState.status === "SUCCESS" ||
-      restoreState.status === "SUCCESS"
-    ) {
-      router.refresh();
-    }
-  }, [professionState, restoreState, router, suspendState]);
 
   if (membershipType === "OWNER") {
     return (
@@ -162,9 +202,13 @@ export function StaffMembershipControls({
           การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
         </p>
 
-        <UnknownOutcomeAlert active={professionUnknown || restoreUnknown} className="mt-4" recovery={{ kind: "reload" }} />
+        <UnknownOutcomeAlert
+          active={session.unconfirmed && latest?.kind !== "suspend"}
+          className="mt-4"
+          recovery={{ kind: "reload" }}
+        />
         {actions.updateProfession ? (
-          <form action={professionAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <form action={updateProfession.action} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <input name="relationshipId" type="hidden" value={relationshipId} />
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -181,15 +225,15 @@ export function StaffMembershipControls({
                 ))}
               </Select>
             </label>
-            <Button disabled={pending || unknownOutcome} loading={professionPending} size="compact" type="submit">
-              {professionPending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
+            <Button disabled={locked} loading={updateProfession.pending} size="compact" type="submit">
+              {updateProfession.pending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
             </Button>
           </form>
         ) : null}
 
         {actions.suspend ? (
           <ConfirmableActionForm
-            action={suspendAction}
+            action={suspend.action}
             className="mt-6 border-t border-border pt-5"
             confirmation={{
               title: "ระงับความสัมพันธ์บุคลากรนี้หรือไม่",
@@ -198,9 +242,9 @@ export function StaffMembershipControls({
               confirmLabel: "ระงับความสัมพันธ์",
               confirmVariant: "destructive",
             }}
-            outcome={suspendUnknown ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+            outcome={suspendOutcome}
             pending={pending}
-            resultKey={suspendState}
+            resultKey={latestSuspend}
           >
             <input name="relationshipId" type="hidden" value={relationshipId} />
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
@@ -210,32 +254,32 @@ export function StaffMembershipControls({
             </p>
             <Button
               className="mt-3"
-              disabled={pending || unknownOutcome}
-              loading={suspendPending}
+              disabled={locked}
+              loading={suspend.pending}
               size="compact"
               type="submit"
               variant="danger"
             >
-              {suspendPending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
+              {suspend.pending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
             </Button>
           </ConfirmableActionForm>
         ) : null}
 
         {actions.restore ? (
-          <form action={restoreAction} className="mt-5 border-t border-border pt-5">
+          <form action={restore.action} className="mt-5 border-t border-border pt-5">
             <input name="relationshipId" type="hidden" value={relationshipId} />
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
             <p className="text-sm leading-6 text-text-muted">
               คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีต้องพร้อมใช้งานอยู่แล้ว
             </p>
-            <Button className="mt-3" disabled={pending || unknownOutcome} loading={restorePending} size="compact" type="submit">
-              {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
+            <Button className="mt-3" disabled={locked} loading={restore.pending} size="compact" type="submit">
+              {restore.pending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
             </Button>
           </form>
         ) : null}
 
-        <Feedback states={[professionState, suspendState, restoreState]} />
+        <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว"} />
 
         {relationshipStatus === "SUSPENDED" && !actions.restore ? (
           <p className="mt-4 text-sm leading-6 text-text-muted">สถานะนี้ไม่พร้อมให้คืนสถานะจากหน้าปัจจุบัน</p>

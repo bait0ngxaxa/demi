@@ -27,6 +27,15 @@ import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { notify } from "@/components/ui/notify";
 import {
+  classifyWorkforceState,
+  formString,
+  standardNotice,
+  useScopedMutation,
+  useScopedMutationSession,
+  type MutationNotice,
+  type MutationVerdict,
+} from "./scoped-mutation";
+import {
   initialWorkforceActivationActionState,
   initialWorkforceBulkActionState,
   initialWorkforceProvisionActionState,
@@ -76,6 +85,12 @@ type ProvisionSubmission = {
 type ConfirmedProvisionResult = {
   submissionId: number;
   result: WorkforceProvisionResultState;
+  credentialDelivered: boolean;
+};
+
+type ConfirmedActivationResult = {
+  submissionId: number;
+  result: WorkforceActivationResultState;
   credentialDelivered: boolean;
 };
 
@@ -317,6 +332,62 @@ const bulkReasonLabels = {
   UNAVAILABLE: "ระบบไม่พร้อม ลองใหม่ได้",
 } as const;
 
+/** A confirmed bulk result is per row, not all-or-nothing, so the Toast follows the row outcomes. */
+function bulkRequestMatches(state: WorkforceBulkActionState, formData: FormData): boolean {
+  return (
+    state.status === "SUCCESS" &&
+    state.result.rows.length > 0 &&
+    state.result.hospitalId === formString(formData, "targetHospitalId") &&
+    state.result.kind === formString(formData, "kind")
+  );
+}
+
+function bulkNotice(
+  verdict: MutationVerdict,
+  state: WorkforceBulkActionState,
+  formData: FormData,
+): MutationNotice | null {
+  const isStaff = formString(formData, "kind") !== "OSM";
+
+  if (verdict === "SUCCESS" && state.status === "SUCCESS") {
+    const invalid = state.result.rows.filter((row) => row.status === "invalid").length;
+
+    if (invalid === 0) {
+      return { level: "success", message: isStaff ? "บันทึกรายการบุคลากรแล้ว" : "บันทึกรายการ อสม. แล้ว" };
+    }
+
+    return {
+      level: "warning",
+      message:
+        invalid === state.result.rows.length
+          ? "ไม่มีรายการที่บันทึกสำเร็จ กรุณาตรวจสอบข้อมูลรายแถว"
+          : "บันทึกได้บางรายการ กรุณาตรวจสอบผลรายแถว",
+    };
+  }
+
+  if (verdict === "CONFLICT") {
+    return { level: "warning", message: "ไม่สามารถบันทึกรายการได้ กรุณาตรวจสอบรายการล่าสุด" };
+  }
+
+  if (verdict === "FORBIDDEN") {
+    return {
+      level: "error",
+      message: isStaff ? "ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้" : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้",
+    };
+  }
+
+  return null;
+}
+
+function activationRequestMatches(state: WorkforceActivationActionState, formData: FormData): boolean {
+  return (
+    state.status === "SUCCESS" &&
+    state.result.userId === formString(formData, "userId") &&
+    state.result.hospitalId === formString(formData, "targetHospitalId") &&
+    state.result.kind === formString(formData, "kind")
+  );
+}
+
 function PendingActivationGroup({
   title,
   kind,
@@ -324,6 +395,7 @@ function PendingActivationGroup({
   hospitalId,
   remoteAction,
   remotePending,
+  remoteBlocked,
   anyPending,
 }: {
   title: string;
@@ -332,6 +404,7 @@ function PendingActivationGroup({
   hospitalId: string;
   remoteAction: (formData: FormData) => void;
   remotePending: boolean;
+  remoteBlocked: boolean;
   anyPending: boolean;
 }): React.JSX.Element {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -426,7 +499,7 @@ function PendingActivationGroup({
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
               <Button
-                disabled={anyPending}
+                disabled={remoteBlocked}
                 loading={remotePending}
                 size="compact"
                 type="submit"
@@ -447,12 +520,14 @@ function PendingActivationSection({
   hospitalId,
   remoteAction,
   remotePending,
+  remoteBlocked,
   anyPending,
 }: {
   rows: WorkforceListRow[];
   hospitalId: string;
   remoteAction: (formData: FormData) => void;
   remotePending: boolean;
+  remoteBlocked: boolean;
   anyPending: boolean;
 }): React.JSX.Element | null {
   const pending = rows.filter(
@@ -486,6 +561,7 @@ function PendingActivationSection({
               key={`${kind}:${groupRows.map((row) => row.id).join(",")}`}
               kind={kind}
               remoteAction={remoteAction}
+              remoteBlocked={remoteBlocked}
               remotePending={remotePending}
               rows={groupRows}
               title={title}
@@ -506,6 +582,7 @@ function BulkAddPanel({
   pending,
   anyPending,
   unknownOutcome,
+  outcomeHospitalId,
 }: {
   hospitalId: string;
   serverTime: number;
@@ -515,6 +592,8 @@ function BulkAddPanel({
   pending: boolean;
   anyPending: boolean;
   unknownOutcome: boolean;
+  /** Hospital the retained outcome was submitted for; a different Hospital must not show it. */
+  outcomeHospitalId: string | null;
 }): React.JSX.Element {
   const [kind, setKind] = useState<WorkforceKind>(canAddStaff ? "HOSPITAL_MEMBER" : "OSM");
   const [rowCount, setRowCount] = useState(INITIAL_BULK_ROWS);
@@ -547,8 +626,12 @@ function BulkAddPanel({
     setSubmissionId(key);
     setShowOutcome(false);
   }
-  const duplicateRows = new Set(showOutcome && state.status === "ERROR" ? (state.duplicateRowNumbers ?? []) : []);
-  const result = showOutcome && state.status === "SUCCESS" ? state.result : null;
+  const outcomeVisible = showOutcome && (outcomeHospitalId === null || outcomeHospitalId === hospitalId);
+  const duplicateRows = new Set(outcomeVisible && state.status === "ERROR" ? (state.duplicateRowNumbers ?? []) : []);
+  const result =
+    outcomeVisible && state.status === "SUCCESS" && state.result.hospitalId === hospitalId && state.result.kind === kind
+      ? state.result
+      : null;
   const counts = {
     created: result?.rows.filter(({ status }) => status === "created").length ?? 0,
     existing: result?.rows.filter(({ status }) => status === "existing").length ?? 0,
@@ -625,7 +708,7 @@ function BulkAddPanel({
               เพิ่มแถว
             </Button>
           ) : null}
-          {showOutcome && state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
+          {outcomeVisible && state.status === "ERROR" && state.code !== "UNAVAILABLE" ? <Alert variant="danger">{state.message}</Alert> : null}
           {result ? (
             <Alert variant={counts.invalid > 0 ? "warning" : "success"}>
               <p className="font-semibold">
@@ -670,17 +753,19 @@ function WorkforceRow({
   hospitalId,
   remoteAction,
   remotePending,
+  remoteBlocked,
   assistedAction,
   assistedPending,
-  anyPending,
+  assistedBlocked,
 }: {
   row: WorkforceListRow;
   hospitalId: string;
   remoteAction: (formData: FormData) => void;
   remotePending: boolean;
+  remoteBlocked: boolean;
   assistedAction: (formData: FormData) => void;
   assistedPending: boolean;
-  anyPending: boolean;
+  assistedBlocked: boolean;
 }): React.JSX.Element {
   const isActive = row.accountStatus === "ACTIVE" && row.relationshipStatus === "ACTIVE";
   const isSuspended =
@@ -744,7 +829,7 @@ function WorkforceRow({
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
               <Button
-                disabled={anyPending || row.activationStatus === "IN_PROGRESS"}
+                disabled={remoteBlocked || row.activationStatus === "IN_PROGRESS"}
                 loading={remotePending}
                 size="compact"
                 type="submit"
@@ -758,7 +843,7 @@ function WorkforceRow({
               <input name="targetHospitalId" type="hidden" value={hospitalId} />
               <input name="kind" type="hidden" value={row.kind} />
               <Button
-                disabled={anyPending || row.activationStatus === "IN_PROGRESS"}
+                disabled={assistedBlocked || row.activationStatus === "IN_PROGRESS"}
                 loading={assistedPending}
                 size="compact"
                 type="submit"
@@ -797,6 +882,12 @@ export function WorkforceWorkspace({
     Map<string, ConfirmedProvisionResult>
   >(() => new Map());
   const confirmedProvisionResultsRef = useRef(confirmedProvisionResults);
+  const [confirmedActivations, setConfirmedActivations] = useState<Map<string, ConfirmedActivationResult>>(
+    () => new Map(),
+  );
+  const confirmedActivationsRef = useRef(confirmedActivations);
+  const actionsBlockedRef = useRef(false);
+  const handoffRef = useRef<number | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -983,18 +1074,106 @@ export function WorkforceWorkspace({
     WorkforceProvisionActionState,
     FormData
   >(osmProvisionAction, initialWorkforceProvisionActionState);
-  const [remoteState, remoteAction, remotePending, remoteUnknown] = useMutationActionState<
-    WorkforceActivationActionState,
-    FormData
-  >(regenerateWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [assistedState, assistedAction, assistedPending, assistedUnknown] = useMutationActionState<
-    WorkforceActivationActionState,
-    FormData
-  >(startAssistedWorkforceActivationAction, initialWorkforceActivationActionState);
-  const [bulkState, bulkAction, bulkPending, bulkUnknown] = useMutationActionState<WorkforceBulkActionState, FormData>(
-    provisionWorkforceBulkAction,
-    initialWorkforceBulkActionState,
-  );
+  // Remote and assisted issuance share one session so only one credential request can run at a time.
+  const activationSession = useScopedMutationSession<WorkforceActivationActionState>({ scope: selectedHospitalId });
+  const bulkSession = useScopedMutationSession<WorkforceBulkActionState>({
+    scope: selectedHospitalId,
+    lockOnUnconfirmed: false,
+  });
+
+  const rememberConfirmedActivation = useCallback((submissionId: number, result: WorkforceActivationResultState): void => {
+    const next = new Map(confirmedActivationsRef.current);
+    next.set(result.hospitalId, { submissionId, result, credentialDelivered: false });
+    confirmedActivationsRef.current = next;
+    setConfirmedActivations(next);
+  }, []);
+
+  const markActivationDelivered = useCallback((hospitalId: string, submissionId: number): void => {
+    const current = confirmedActivationsRef.current.get(hospitalId);
+    if (!current || current.submissionId !== submissionId || current.credentialDelivered) {
+      return;
+    }
+
+    const next = new Map(confirmedActivationsRef.current);
+    next.set(hospitalId, { ...current, credentialDelivered: true });
+    confirmedActivationsRef.current = next;
+    setConfirmedActivations(next);
+  }, []);
+
+  const hasUndeliveredActivation = useCallback((hospitalId: string): boolean => {
+    const current = confirmedActivationsRef.current.get(hospitalId);
+    return Boolean(current && !current.credentialDelivered);
+  }, []);
+
+  const hasUndeliveredCredential = useCallback((hospitalId: string): boolean => (
+    hasUndeliveredActivation(hospitalId) ||
+    needsCredentialDelivery("HOSPITAL_MEMBER", hospitalId) ||
+    needsCredentialDelivery("OSM", hospitalId)
+  ), [hasUndeliveredActivation, needsCredentialDelivery]);
+
+  const {
+    state: remoteState,
+    action: remoteAction,
+    pending: remotePending,
+    unknownOutcome: remoteThrown,
+  } = useScopedMutation(activationSession, {
+    kind: "remote",
+    action: regenerateWorkforceActivationAction,
+    initialState: initialWorkforceActivationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, activationRequestMatches(state, formData)),
+    notice: standardNotice({
+      success: "ออกลิงก์เปิดใช้งานใหม่แล้ว",
+      conflict: "ไม่สามารถออกลิงก์ใหม่ได้ กรุณาตรวจสอบสถานะล่าสุด",
+      forbidden: "ไม่มีสิทธิ์ออกลิงก์เปิดใช้งานใหม่",
+    }),
+    onSettled: ({ submissionId, state, verdict }) => {
+      if (verdict === "SUCCESS" && state.status === "SUCCESS") {
+        rememberConfirmedActivation(submissionId, state.result);
+      }
+    },
+    // A new link may not replace one that has not been handed over, and no request runs while another is open.
+    isBlocked: () => actionsBlockedRef.current || hasUndeliveredActivation(activeHospitalIdRef.current),
+  });
+  const {
+    state: assistedState,
+    action: assistedAction,
+    pending: assistedPending,
+    unknownOutcome: assistedThrown,
+  } = useScopedMutation(activationSession, {
+    kind: "assisted",
+    action: startAssistedWorkforceActivationAction,
+    initialState: initialWorkforceActivationActionState,
+    classify: (state, formData) => classifyWorkforceState(state, activationRequestMatches(state, formData)),
+    // Success is deliberately silent: the handoff navigation is the feedback, and a Toast would be discarded with the page.
+    notice: standardNotice({
+      conflict: "ไม่สามารถเริ่มการเปิดใช้งานแบบช่วยเหลือได้ กรุณาตรวจสอบสถานะล่าสุด",
+      forbidden: "ไม่มีสิทธิ์เริ่มการเปิดใช้งานแบบช่วยเหลือ",
+    }),
+    // The handoff reloads the page and discards every in-memory credential that is still waiting for delivery.
+    isBlocked: () => actionsBlockedRef.current || hasUndeliveredCredential(activeHospitalIdRef.current),
+  });
+  const {
+    state: bulkState,
+    action: bulkAction,
+    pending: bulkPending,
+    unknownOutcome: bulkThrown,
+  } = useScopedMutation(bulkSession, {
+    kind: "bulk",
+    action: provisionWorkforceBulkAction,
+    initialState: initialWorkforceBulkActionState,
+    classify: (state, formData) => classifyWorkforceState(state, bulkRequestMatches(state, formData)),
+    notice: bulkNotice,
+    // Replaying the same submission after an unconfirmed outcome stays allowed; only live work blocks it.
+    isBlocked: () => actionsBlockedRef.current,
+  });
+  const latestActivation = activationSession.latest;
+  const remoteUnknown =
+    remoteThrown || (latestActivation?.kind === "remote" && latestActivation.status === "UNCONFIRMED");
+  const assistedUnknown =
+    assistedThrown || (latestActivation?.kind === "assisted" && latestActivation.status === "UNCONFIRMED");
+  const assistedHandoffStarted =
+    latestActivation?.kind === "assisted" && latestActivation.status === "SUCCESS";
+  const bulkUnknown = bulkThrown || bulkSession.latest?.status === "UNCONFIRMED";
 
   useEffect(() => {
     const markThrownOutcome = (
@@ -1032,16 +1211,23 @@ export function WorkforceWorkspace({
   }
 
   useEffect(() => {
-    if (assistedState.status !== "SUCCESS") {
+    // Hand the device over once per confirmed submission; retained action state never replays it.
+    if (
+      latestActivation?.kind !== "assisted" ||
+      latestActivation.status !== "SUCCESS" ||
+      latestActivation.state?.status !== "SUCCESS" ||
+      handoffRef.current === latestActivation.id
+    ) {
       return;
     }
 
-    window.location.replace(buildActivationUrl(assistedState.result.activationToken));
-  }, [assistedState]);
+    handoffRef.current = latestActivation.id;
+    window.location.replace(buildActivationUrl(latestActivation.state.result.activationToken));
+  }, [latestActivation]);
 
   const staffRows = workforce.rows.filter((row) => row.kind === "HOSPITAL_MEMBER");
   const osmRows = workforce.rows.filter((row) => row.kind === "OSM");
-  const remoteResult = remoteState.status === "SUCCESS" ? remoteState.result : null;
+  const remoteConfirmed = confirmedActivations.get(selectedHospitalId);
   const currentStaffProvision =
     staffProvision?.hospitalId === selectedHospitalId ? staffProvision : null;
   const currentOsmProvision = osmProvision?.hospitalId === selectedHospitalId ? osmProvision : null;
@@ -1093,7 +1279,18 @@ export function WorkforceWorkspace({
     staffUnknownHospitalId !== null ||
     osmUnknownHospitalId !== null ||
     remoteUnknown ||
-    assistedUnknown;
+    assistedUnknown ||
+    assistedHandoffStarted;
+  useLayoutEffect(() => {
+    actionsBlockedRef.current = actionsBlocked;
+  }, [actionsBlocked]);
+  const remoteCredentialNeedsDelivery = Boolean(remoteConfirmed && !remoteConfirmed.credentialDelivered);
+  const remoteBlocked = actionsBlocked || remoteCredentialNeedsDelivery;
+  const assistedBlocked =
+    actionsBlocked ||
+    remoteCredentialNeedsDelivery ||
+    staffCredentialNeedsDelivery ||
+    osmCredentialNeedsDelivery;
 
   function dispatchProvision(
     kind: SingleProvisionKind,
@@ -1168,10 +1365,10 @@ export function WorkforceWorkspace({
           <Select
             className="mt-2 max-w-xl"
             id="targetHospitalId"
-            disabled={hospitalSwitching || singleProvisionPending}
+            disabled={hospitalSwitching || singleProvisionPending || remotePending || assistedPending || bulkPending}
             onChange={(event) => {
               const hospitalId = event.target.value;
-              if (provisionInFlightRef.current?.status === "PENDING") return;
+              if (provisionInFlightRef.current?.status === "PENDING" || remotePending || assistedPending || bulkPending) return;
               startHospitalSwitch(() => {
                 router.push(`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`);
               });
@@ -1240,9 +1437,36 @@ export function WorkforceWorkspace({
               "ลิงก์ที่ออกแล้วแสดงซ้ำไม่ได้ และการเริ่มใหม่จะยกเลิกลิงก์เดิม หากถูกออกจากระบบ ให้เข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์ แล้วตรวจสอบรายชื่อก่อนตัดสินใจออกลิงก์ทดแทน",
           }}
         />
+        {assistedHandoffStarted ? (
+          <Alert className="mt-6" variant="info">
+            ออกลิงก์เปิดใช้งานแล้ว กำลังส่งต่ออุปกรณ์ให้ผู้ใช้งาน
+          </Alert>
+        ) : null}
         {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
-        {remoteState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
-        {remoteResult ? <section className="mt-6"><ActivationResult result={remoteResult} /></section> : null}
+        {remoteState.status === "ERROR" && remoteState.code !== "UNAVAILABLE" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
+        {remoteConfirmed ? (
+          <section className="mt-6">
+            <ActivationResult result={remoteConfirmed.result} />
+            {remoteConfirmed.credentialDelivered ? (
+              <p className="mt-3 text-sm text-muted">ยืนยันการจัดการลิงก์แล้ว สามารถออกลิงก์ให้รายอื่นได้</p>
+            ) : (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="text-sm leading-6 text-text">
+                  โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนออกลิงก์ใหม่ให้รายอื่น ลิงก์เดิมแสดงซ้ำไม่ได้
+                </p>
+                <Button
+                  className="mt-3"
+                  onClick={() => markActivationDelivered(selectedHospitalId, remoteConfirmed.submissionId)}
+                  size="compact"
+                  type="button"
+                  variant="secondary"
+                >
+                  ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว
+                </Button>
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <Panel className="mt-6">
           <Form action="/app/workforce" className="flex flex-wrap items-end gap-3">
@@ -1271,6 +1495,7 @@ export function WorkforceWorkspace({
           anyPending={actionsBlocked}
           hospitalId={selectedHospitalId}
           remoteAction={remoteAction}
+          remoteBlocked={remoteBlocked}
           remotePending={remotePending}
           rows={workforce.rows}
         />
@@ -1295,11 +1520,12 @@ export function WorkforceWorkspace({
                   {rows.map((row) => (
                     <WorkforceRow
                       assistedAction={assistedAction}
+                      assistedBlocked={assistedBlocked}
                       assistedPending={assistedPending}
-                      anyPending={actionsBlocked}
                       hospitalId={selectedHospitalId}
                       key={`${row.kind}-${row.id}`}
                       remoteAction={remoteAction}
+                      remoteBlocked={remoteBlocked}
                       remotePending={remotePending}
                       row={row}
                     />
@@ -1448,6 +1674,7 @@ export function WorkforceWorkspace({
           anyPending={actionsBlocked}
           canAddStaff={isOwner}
           hospitalId={selectedHospitalId}
+          outcomeHospitalId={bulkSession.latest?.scope ?? null}
           pending={bulkPending}
           state={bulkState}
           unknownOutcome={bulkUnknown}

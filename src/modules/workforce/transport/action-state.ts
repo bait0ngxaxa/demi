@@ -180,6 +180,29 @@ export type WorkforceOwnerGovernanceMutationActionState =
     }
   | { status: "SUCCESS"; result: WorkforceOwnerGovernanceMutationResultState };
 
+/**
+ * `outcome` says what the server proved, which `success: false` alone cannot: `UNAVAILABLE` may follow a
+ * committed release, so only the other failure outcomes are confirmed refusals.
+ */
+export type WorkforceReleaseOutcome =
+  | "RELEASED"
+  | "INVALID_CONFIRMATION"
+  | "CONFLICT"
+  | "FORBIDDEN"
+  | "UNAVAILABLE";
+
+export type WorkforceReleaseActionState = {
+  message: string;
+  success: boolean;
+  outcome: WorkforceReleaseOutcome | null;
+};
+
+export const initialWorkforceReleaseActionState: WorkforceReleaseActionState = {
+  message: "",
+  success: false,
+  outcome: null,
+};
+
 export const initialWorkforceProvisionActionState: WorkforceProvisionActionState = {
   status: "IDLE",
 };
