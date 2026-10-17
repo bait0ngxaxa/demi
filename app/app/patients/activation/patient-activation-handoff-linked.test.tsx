@@ -82,6 +82,23 @@ describe("Access-request linked activation", () => {
     expect(container.textContent).toContain("linked-secret-token");
   });
 
+  it("warns before unload only while an unhandled one-time link is on screen", async () => {
+    const leave = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    mocks.issue.mockResolvedValue(result("ISSUED", "linked-secret-token"));
+    expect(leave()).toBe(false);
+
+    await submit();
+    expect(leave()).toBe(true);
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    expect(leave()).toBe(false);
+  });
+
   it("explains an already-active account inline without a Toast", async () => {
     mocks.issue.mockResolvedValue(result("ALREADY_ACTIVE", null));
 

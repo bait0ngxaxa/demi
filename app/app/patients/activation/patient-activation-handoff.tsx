@@ -177,6 +177,21 @@ function ActivationPresentation({
 
   const visibleQrDataUrl = qrDataUrlFor === activationUrl ? qrDataUrl : null;
 
+  // The token exists only in this component; reloading or closing the tab loses a link that
+  // cannot be shown again, so ask before leaving while it is on screen.
+  useEffect(() => {
+    if (!activationUrl) {
+      return;
+    }
+
+    function warnBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+    }
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [activationUrl]);
+
   async function copyActivationLink(): Promise<void> {
     if (!activationUrl) {
       return;
