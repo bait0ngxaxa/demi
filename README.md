@@ -78,7 +78,11 @@ npm run prisma:migrate:dev
 npm run prisma:generate
 ```
 
-Use `npm run prisma:migrate:dev -- --name <migration_name>` when creating a new migration after a confirmed schema change. Production deployment uses `npm run prisma:migrate:deploy` against the production credentials supplied by the deployment environment.
+Use `npm run prisma:migrate:dev -- --name <migration_name>` when creating a new migration after a confirmed schema change.
+
+Migration folder naming: Prisma applies migrations in folder-name order, and committed folders up to `20261025100000_…` use future-dated timestamps. A new folder must be `<YYYYMMDDHHMMSS>_<lower_snake_case>` and sort after the latest committed migration: if the generated timestamp is not later (e.g. `prisma migrate dev --create-only` used today's date), rename only the new, unapplied folder to a later unique timestamp before applying it. Never rename or delete a committed migration. `npm run prisma:migrations:check [-- <baseRef>]` (default base `main`) enforces this.
+
+Production deployment uses `npm run prisma:migrate:deploy` against the production credentials supplied by the deployment environment.
 
 These scripts invoke standard Prisma commands; the configured `DATABASE_URL` and `DIRECT_URL` determine the actual database project. No application-level database target selector is required.
 
