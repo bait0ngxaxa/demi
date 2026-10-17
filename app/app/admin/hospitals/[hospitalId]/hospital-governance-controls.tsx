@@ -36,6 +36,13 @@ type PendingRefreshContext = {
   sourceStatus: "ACTIVE" | "SUSPENDED";
 };
 
+type GovernanceSubmission = {
+  id: number;
+  kind: GovernanceMutationKind;
+  context: Pick<MutationContext, "hospitalId" | "expectedUpdatedAt">;
+  result: HospitalGovernanceMutationActionState | null;
+};
+
 function getFormString(formData: FormData, field: string): string {
   const value = formData.get(field);
   return typeof value === "string" ? value : "";
@@ -59,6 +66,32 @@ function matchesSubmittedContext(
     current.status === getExpectedStatus(kind);
 }
 
+function contextReflectsResult(
+  current: MutationContext,
+  result: Extract<HospitalGovernanceMutationActionState, { status: "SUCCESS" }>["result"],
+): boolean {
+  return current.hospitalId === result.hospitalId &&
+    current.expectedUpdatedAt === result.updatedAt &&
+    current.status === result.status;
+}
+
+function isUnconfirmedSubmission(
+  submission: GovernanceSubmission,
+  suspendUnknown: boolean,
+  suspendPending: boolean,
+  restoreUnknown: boolean,
+  restorePending: boolean,
+): boolean {
+  if (submission.result === null) {
+    return submission.kind === "suspend"
+      ? suspendUnknown && !suspendPending
+      : restoreUnknown && !restorePending;
+  }
+
+  return submission.result.status === "IDLE" ||
+    (submission.result.status === "ERROR" && submission.result.code === "UNAVAILABLE");
+}
+
 type HospitalGovernanceControlsProps = {
   expectedUpdatedAt: string;
   hospitalId: string;
@@ -66,14 +99,22 @@ type HospitalGovernanceControlsProps = {
 };
 
 function Feedback({
-  states,
-  hospitalId,
+  submission,
+  currentContext,
 }: {
-  states: readonly HospitalGovernanceMutationActionState[];
-  hospitalId: string;
+  submission: GovernanceSubmission | null;
+  currentContext: MutationContext;
 }): React.JSX.Element | null {
-  const errorState = states.find((state) => state.status === "ERROR" && state.code !== "UNAVAILABLE");
+  if (
+    !submission?.result ||
+    !matchesSubmittedContext(currentContext, submission.context, submission.kind)
+  ) {
+    return null;
+  }
 
+  const result = submission.result;
+
+  const errorState = result.status === "ERROR" && result.code !== "UNAVAILABLE" ? result : null;
   if (errorState && errorState.status === "ERROR") {
     return (
       <Alert className="mt-4" role="alert" variant={errorState.code === "CONFLICT" ? "warning" : "danger"}>
@@ -82,11 +123,9 @@ function Feedback({
     );
   }
 
-  const successState = states.find(
-    (state) => state.status === "SUCCESS" && state.result.hospitalId === hospitalId,
-  );
-
-  return successState ? (
+  return result.status === "SUCCESS" &&
+    result.result.hospitalId === submission.context.hospitalId &&
+    result.result.status === getNextStatus(submission.kind) ? (
     <Alert className="mt-4" variant="success">
       บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว
     </Alert>
@@ -101,23 +140,12 @@ export function HospitalGovernanceControls({
   const router = useRouter();
   const mountedRef = useRef(false);
   const inFlightRef = useRef(false);
+  const submissionSequenceRef = useRef(0);
+  const lastRefreshedSubmissionRef = useRef<number | null>(null);
   const currentContextRef = useRef<MutationContext>({ hospitalId, expectedUpdatedAt, status });
-  const [returnedIdleKind, setReturnedIdleKind] = useState<GovernanceMutationKind | null>(null);
+  const latestSubmissionRef = useRef<GovernanceSubmission | null>(null);
+  const [latestSubmission, setLatestSubmission] = useState<GovernanceSubmission | null>(null);
   const [awaitingRefresh, setAwaitingRefresh] = useState<PendingRefreshContext | null>(null);
-
-  useCommittedLayoutEffect(() => {
-    currentContextRef.current = { hospitalId, expectedUpdatedAt, status };
-
-    if (
-      awaitingRefresh &&
-      (hospitalId !== awaitingRefresh.hospitalId ||
-        expectedUpdatedAt !== awaitingRefresh.expectedUpdatedAt ||
-        status !== awaitingRefresh.sourceStatus)
-    ) {
-      inFlightRef.current = false;
-      setAwaitingRefresh(null);
-    }
-  }, [awaitingRefresh, expectedUpdatedAt, hospitalId, status]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -137,20 +165,30 @@ export function HospitalGovernanceControls({
         hospitalId: getFormString(formData, "hospitalId"),
         expectedUpdatedAt: getFormString(formData, "expectedUpdatedAt"),
       };
+      const submission: GovernanceSubmission = {
+        id: submissionSequenceRef.current + 1,
+        kind,
+        context: submittedContext,
+        result: null,
+      };
+      submissionSequenceRef.current = submission.id;
+      latestSubmissionRef.current = submission;
+      setLatestSubmission(submission);
       inFlightRef.current = true;
 
       const result = await action(previousState, formData);
 
-      if (!mountedRef.current) {
+      if (!mountedRef.current || latestSubmissionRef.current?.id !== submission.id) {
         return result;
       }
+
+      const completedSubmission = { ...submission, result };
+      latestSubmissionRef.current = completedSubmission;
+      setLatestSubmission(completedSubmission);
 
       if (result.status === "IDLE") {
-        setReturnedIdleKind(kind);
         return result;
       }
-
-      setReturnedIdleKind(null);
 
       if (result.status === "ERROR") {
         if (result.code === "UNAVAILABLE") {
@@ -176,15 +214,12 @@ export function HospitalGovernanceControls({
       const expectedStatus = getExpectedStatus(kind);
       const nextStatus = getNextStatus(kind);
       const isStillOnSubmittedContext = matchesSubmittedContext(currentContext, submittedContext, kind);
-      const contextReflectsResult =
-        currentContext.hospitalId === result.result.hospitalId &&
-        currentContext.expectedUpdatedAt === result.result.updatedAt &&
-        currentContext.status === result.result.status;
+      const currentContextReflectsResult = contextReflectsResult(currentContext, result.result);
 
       if (
         result.result.hospitalId !== submittedContext.hospitalId ||
         result.result.status !== nextStatus ||
-        (!isStillOnSubmittedContext && !contextReflectsResult)
+        (!isStillOnSubmittedContext && !currentContextReflectsResult)
       ) {
         inFlightRef.current = false;
         return result;
@@ -212,27 +247,75 @@ export function HospitalGovernanceControls({
     [runMutation],
   );
 
-  const [suspendState, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
+  const [, suspendAction, suspendPending, suspendUnknown] = useMutationActionState<
     HospitalGovernanceMutationActionState,
     FormData
   >(runSuspendMutation, initialHospitalGovernanceMutationActionState);
-  const [restoreState, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
+  const [, restoreAction, restorePending, restoreUnknown] = useMutationActionState<
     HospitalGovernanceMutationActionState,
     FormData
   >(runRestoreMutation, initialHospitalGovernanceMutationActionState);
   const pending = suspendPending || restorePending;
-  const suspendUnconfirmed = suspendUnknown || returnedIdleKind === "suspend" ||
-    (suspendState.status === "ERROR" && suspendState.code === "UNAVAILABLE");
-  const restoreUnconfirmed = restoreUnknown || returnedIdleKind === "restore" ||
-    (restoreState.status === "ERROR" && restoreState.code === "UNAVAILABLE");
-  const unknownOutcome = suspendUnconfirmed || restoreUnconfirmed;
+  const latestSubmissionUnconfirmed = latestSubmission !== null && isUnconfirmedSubmission(
+    latestSubmission,
+    suspendUnknown,
+    suspendPending,
+    restoreUnknown,
+    restorePending,
+  );
+  const unknownOutcome = latestSubmissionUnconfirmed && latestSubmission?.context.hospitalId === hospitalId;
+  const suspendUnconfirmed = latestSubmission?.kind === "suspend" &&
+    latestSubmissionUnconfirmed &&
+    latestSubmission.context.hospitalId === hospitalId;
+  const currentContext = { hospitalId, expectedUpdatedAt, status };
+  const latestSuspendResult = latestSubmission?.kind === "suspend" ? latestSubmission.result : null;
+  const latestSuspendOutcome = suspendUnconfirmed
+    ? "unknown"
+    : latestSuspendResult?.status === "SUCCESS"
+      ? "success"
+      : latestSuspendResult?.status === "ERROR"
+        ? "error"
+        : "idle";
   const controlsLocked = pending || unknownOutcome || awaitingRefresh !== null;
 
-  useEffect(() => {
-    if (suspendState.status === "SUCCESS" || restoreState.status === "SUCCESS") {
-      router.refresh();
+  useCommittedLayoutEffect(() => {
+    currentContextRef.current = { hospitalId, expectedUpdatedAt, status };
+
+    if (
+      awaitingRefresh &&
+      (hospitalId !== awaitingRefresh.hospitalId ||
+        expectedUpdatedAt !== awaitingRefresh.expectedUpdatedAt ||
+        status !== awaitingRefresh.sourceStatus)
+    ) {
+      inFlightRef.current = false;
+      setAwaitingRefresh(null);
     }
-  }, [restoreState, router, suspendState]);
+
+    if (latestSubmission && latestSubmission.context.hospitalId !== hospitalId && !pending) {
+      inFlightRef.current = false;
+    }
+  }, [awaitingRefresh, expectedUpdatedAt, hospitalId, latestSubmission, pending, status]);
+
+  useEffect(() => {
+    if (
+      !latestSubmission ||
+      latestSubmission.result?.status !== "SUCCESS" ||
+      lastRefreshedSubmissionRef.current === latestSubmission.id
+    ) {
+      return;
+    }
+
+    const context = currentContextRef.current;
+    if (
+      !matchesSubmittedContext(context, latestSubmission.context, latestSubmission.kind) &&
+      !contextReflectsResult(context, latestSubmission.result.result)
+    ) {
+      return;
+    }
+
+    lastRefreshedSubmissionRef.current = latestSubmission.id;
+    router.refresh();
+  }, [expectedUpdatedAt, hospitalId, latestSubmission, router, status]);
 
   return (
     <Panel aria-labelledby="hospital-governance-controls-heading">
@@ -249,7 +332,7 @@ export function HospitalGovernanceControls({
         recovery={{
           kind: "reload",
           label: "โหลดและตรวจสอบสถานะล่าสุด",
-          message: suspendUnconfirmed
+          message: latestSubmission?.kind === "suspend"
             ? "ระบบยังยืนยันผลการระงับโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ"
             : "ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ",
         }}
@@ -258,6 +341,7 @@ export function HospitalGovernanceControls({
         <ConfirmableActionForm
           action={suspendAction}
           className="mt-6 border-t border-border pt-5"
+          key={hospitalId}
           confirmation={{
             title: "ระงับโรงพยาบาลนี้หรือไม่",
             description: "เมื่อบันทึกสำเร็จ ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้",
@@ -265,9 +349,9 @@ export function HospitalGovernanceControls({
             confirmLabel: "ระงับโรงพยาบาล",
             confirmVariant: "destructive",
           }}
-          outcome={suspendUnconfirmed ? "unknown" : suspendState.status === "SUCCESS" ? "success" : suspendState.status === "ERROR" ? "error" : "idle"}
+          outcome={latestSuspendOutcome}
           pending={pending}
-          resultKey={suspendState}
+          resultKey={latestSubmission?.kind === "suspend" ? latestSubmission : null}
         >
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
@@ -304,7 +388,7 @@ export function HospitalGovernanceControls({
         </form>
       )}
 
-      <Feedback hospitalId={hospitalId} states={[suspendState, restoreState]} />
+      <Feedback currentContext={currentContext} submission={latestSubmission} />
     </Panel>
   );
 }

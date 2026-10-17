@@ -13,15 +13,15 @@ Transient notifications are integrated for suspending an active Hospital and res
 | `CONFLICT` | Warning: `สถานะโรงพยาบาลเปลี่ยนแปลงแล้ว โปรดโหลดข้อมูลล่าสุด` | Existing conflict explanation |
 | `FORBIDDEN` | Error: `ไม่มีสิทธิ์จัดการสถานะโรงพยาบาล` | Existing access-denial explanation |
 | `INVALID_INPUT` | None | Existing validation guidance |
-| `UNAVAILABLE`, returned `IDLE`, or thrown request | None | Unknown-outcome Alert with reload-and-review action; mutations remain locked until the page is reloaded |
+| `UNAVAILABLE`, returned `IDLE`, or thrown request | None | Unknown-outcome Alert with reload-and-review action; mutations for that Hospital remain locked until the page is reloaded |
 
 ## Emission, refresh, and navigation behavior
 
 Each operation uses a component-local wrapper around its existing Server Action. The wrapper awaits that submission's returned state and emits feedback only for the authoritative result codes above. It does not catch action exceptions, so `useMutationActionState` continues to pass Next.js redirect/navigation signals through `unstable_rethrow` and represents ordinary thrown requests as unknown outcomes.
 
-Toast emission is not tied to an effect that observes persisted action state. It occurs only in the wrapper invocation for the user submission, after checking that the component is still mounted and that the submitted Hospital/version context still matches the current page or the returned success result. Rerenders and `router.refresh()` therefore do not replay a prior Toast. A later user submission has its own wrapper invocation and can receive its own feedback.
+Toast emission is not tied to an effect that observes persisted action state. It occurs only in the wrapper invocation for the user submission, after checking that the component is still mounted and that the submitted Hospital/version context still matches the current page or the returned success result. The component records the latest submission, its Hospital/version context, and its result as one local operation record. Inline feedback and refresh use that same record; starting another mutation replaces it, so an earlier `SUCCESS` cannot refresh or appear as feedback for a later `UNAVAILABLE`. Inline errors require the full submitted Hospital/version/status context to remain current, which suppresses errors returned for a Hospital that is no longer displayed. Rerenders and `router.refresh()` therefore do not replay a prior Toast or refresh. A later user submission has its own operation identity and can receive its own feedback.
 
-The existing success effect still calls `router.refresh()`. The component does not fabricate a status update; the server-rendered Hospital status remains authoritative. The existing `revalidatePath` behavior and `expectedUpdatedAt` payload are unchanged. No Toast is emitted when an action settles without a confirmed result.
+The success effect calls `router.refresh()` only for the latest confirmed success whose submission context still matches the displayed Hospital or whose returned status/version is already reflected in the displayed context. It records the submission identity before refreshing to prevent effect replays. The component does not fabricate a status update; the server-rendered Hospital status remains authoritative. The existing `revalidatePath` behavior and `expectedUpdatedAt` payload are unchanged. No Toast is emitted when an action settles without a confirmed result.
 
 Restore also uses a synchronous in-flight guard around form dispatch so rapid duplicate submissions cannot queue. Suspension continues to use `ConfirmableActionForm`; confirmation is required, and its existing pending/unknown guards remain active. If the result is uncertain, confirmation stays visibly unresolved and the dialog's close control is labeled `ปิดหน้าต่าง` so closing it is not presented as canceling the already-dispatched operation. The page-level recovery Alert then provides the reload action.
 
@@ -31,19 +31,13 @@ The Server Action contract uses `ERROR` as its transport discriminant, but `UNAV
 
 ## Regression coverage and verification
 
-The component tests cover confirmation and cancellation, exact success Toasts, conflict/access/validation mapping, returned `UNAVAILABLE` and `IDLE`, thrown requests, inline feedback, no retry, duplicate submission guards, refresh and rerender deduplication, a stale Hospital context, and a result arriving after unmount.
+The component tests cover confirmation and cancellation, exact success Toasts, conflict/access/validation mapping, returned `UNAVAILABLE` and `IDLE`, thrown requests, inline feedback, no retry, duplicate submission guards, refresh and rerender deduplication, stale Hospital contexts, a result arriving after unmount, Suspend `SUCCESS` followed by Restore `UNAVAILABLE`, and an error returned for Hospital A after switching to Hospital B.
 
 Commands run:
 
 ```text
-npm run test -- 'app/app/admin/hospitals/[hospitalId]/hospital-governance-controls.test.tsx'
-  Passed: 1 file, 20 tests
-
-npm run test -- 'src/components/ui/confirmable-action-form.test.tsx' 'src/modules/hospital-governance/transport/server-actions.test.ts'
-  Passed: 2 files, 11 tests
-
-npx eslint 'app/app/admin/hospitals/[hospitalId]/hospital-governance-controls.tsx' 'app/app/admin/hospitals/[hospitalId]/hospital-governance-controls.test.tsx' 'src/components/ui/confirmable-action-form.tsx'
-  Passed
+npm run test -- 'app/app/admin/hospitals/[hospitalId]/hospital-governance-controls.test.tsx' 'src/components/ui/confirmable-action-form.test.tsx' 'src/modules/hospital-governance/transport/server-actions.test.ts'
+  Passed: 3 files, 33 tests
 
 npm run typecheck
   Passed

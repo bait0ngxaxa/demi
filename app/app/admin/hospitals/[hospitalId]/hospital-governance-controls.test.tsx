@@ -377,6 +377,31 @@ describe("HospitalGovernanceControls notifications", () => {
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the latest operation after suspension success followed by restoration UNAVAILABLE", async () => {
+    mocks.suspend.mockResolvedValueOnce(success("SUSPENDED"));
+    mocks.restore.mockResolvedValueOnce(error("UNAVAILABLE"));
+    render();
+
+    submitSuspendConfirmation();
+    await settleAction();
+    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("ระงับโรงพยาบาลแล้ว");
+    expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
+
+    render("SUSPENDED", UPDATED_VERSION);
+    expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+
+    dispatchRestoreSubmit();
+    await settleAction();
+
+    expect(mocks.restore).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้");
+    expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.notify.success).toHaveBeenCalledTimes(1);
+    expect(mocks.notify.warning).not.toHaveBeenCalled();
+    expect(mocks.notify.error).not.toHaveBeenCalled();
+  });
+
   it("blocks duplicate restoration submissions while the action is pending", async () => {
     let resolveAction: ((state: MutationState) => void) | undefined;
     mocks.restore.mockImplementation(() => new Promise((resolve) => {
@@ -464,6 +489,27 @@ describe("HospitalGovernanceControls notifications", () => {
 
     expectNoToast();
     expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+  });
+
+  it("suppresses inline and toast errors from Hospital A after the context changes to Hospital B", async () => {
+    let resolveAction: ((state: MutationState) => void) | undefined;
+    mocks.restore.mockImplementation(() => new Promise((resolve) => {
+      resolveAction = resolve;
+    }));
+    render("SUSPENDED", ORIGINAL_VERSION, "hospital-a");
+    dispatchRestoreSubmit();
+    expect(mocks.restore).toHaveBeenCalledTimes(1);
+
+    render("SUSPENDED", ORIGINAL_VERSION, "hospital-b");
+    await act(async () => {
+      resolveAction?.(error("FORBIDDEN"));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).not.toContain("ผลลัพธ์ FORBIDDEN จากระบบ");
+    expect(findButton("คืนสถานะโรงพยาบาล").disabled).toBe(false);
+    expectNoToast();
+    expect(mocks.router.refresh).not.toHaveBeenCalled();
   });
 
   it("allows a new user submission to receive its own confirmed feedback", async () => {
