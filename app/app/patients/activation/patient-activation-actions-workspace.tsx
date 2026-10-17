@@ -56,7 +56,14 @@ const activationStatusLabels: Record<string, string> = {
 /** Which Hospital the mounted workspace shows, so a late lookup answer can be recognised as stale. */
 function createFeedbackScope() {
   let hospitalId: string | null = null;
+  let holdingHandoff = false;
   return {
+    setHoldingHandoff(next: boolean): void {
+      holdingHandoff = next;
+    },
+    isHoldingHandoff(): boolean {
+      return holdingHandoff;
+    },
     enter(next: string): void {
       hospitalId = next;
     },
@@ -103,6 +110,11 @@ export function PatientActivationActionsWorkspace({
   ): Promise<PatientActivationLookupActionState> {
     const submittedHospitalId = formData.get("targetHospitalId");
     const result = await findPatientActivationCandidatesAction(previous, formData);
+    // A search that started before an issue request must not replace the candidates, which
+    // would unmount a handoff holding an unhandled one-time link.
+    if (feedbackScope.isHoldingHandoff()) {
+      return previous;
+    }
     if (
       result.status === "ERROR" &&
       result.code === "FORBIDDEN" &&
@@ -131,6 +143,9 @@ export function PatientActivationActionsWorkspace({
   // stored in the browser.
   const [guardedHandoffs, setGuardedHandoffs] = useState<ReadonlySet<string>>(new Set());
   const handoffsBusy = guardedHandoffs.size > 0;
+  useEffect(() => {
+    feedbackScope.setHoldingHandoff(handoffsBusy);
+  }, [feedbackScope, handoffsBusy]);
   const setHandoffGuard = useCallback((key: string, active: boolean): void => {
     setGuardedHandoffs((current) => {
       if (current.has(key) === active) {
@@ -355,10 +370,13 @@ export function PatientActivationActionsWorkspace({
                         </dl>
                       </div>
                     </div>
-                    <PatientActivationHandoff
-                      candidate={candidate}
-                      onGuardChange={(active) => setHandoffGuard(`${candidate.userId}-${candidate.hospitalId}`, active)}
-                    />
+                    {/* No issue while a search is pending: its answer would replace this candidate. */}
+                    <fieldset className="m-0 min-w-0 border-0 p-0" disabled={lookupPending}>
+                      <PatientActivationHandoff
+                        candidate={candidate}
+                        onGuardChange={(active) => setHandoffGuard(`${candidate.userId}-${candidate.hospitalId}`, active)}
+                      />
+                    </fieldset>
                   </article>
                 ))}
               </div>

@@ -398,6 +398,52 @@ describe("Patient activation search and link issuance", () => {
       });
     });
 
+    it("does not offer issuing for a candidate while another search is pending", async () => {
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [candidate] });
+      await search("สมชาย");
+      let resolveFind: (value: unknown) => void = () => undefined;
+      mocks.find.mockReturnValue(new Promise((done) => { resolveFind = done; }));
+      await act(async () => {
+        searchInput().value = "คนอื่น";
+        buttonByText("ค้นหา").click();
+      });
+
+      expect(container.querySelector("article form button[type=submit]")!.matches(":disabled")).toBe(true);
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>("article form button[type=submit]")!.click();
+      });
+      expect(mocks.issue).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveFind({ status: "SUCCESS", candidates: [] });
+      });
+    });
+
+    it("keeps an issued link when a search that started earlier answers afterwards", async () => {
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [candidate] });
+      await search("สมชาย");
+      let resolveFind: (value: unknown) => void = () => undefined;
+      mocks.find.mockReturnValue(new Promise((done) => { resolveFind = done; }));
+      await act(async () => {
+        searchInput().value = "คนอื่น";
+        buttonByText("ค้นหา").click();
+      });
+      mocks.issue.mockResolvedValue(issuedResponse);
+      // Bypass the disabled button to model a submit that slips in before the search is pending.
+      await act(async () => {
+        container.querySelector<HTMLFormElement>("article form")!.requestSubmit();
+      });
+      expect(mocks.issue).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveFind({ status: "SUCCESS", candidates: [] });
+      });
+
+      expect(container.textContent).toContain(token);
+      expect(container.textContent).not.toContain("ไม่พบผู้ป่วยตามข้อมูลค้นหา");
+      expect(buttonByText("ค้นหา").disabled).toBe(true);
+    });
+
     it("keeps the search locked after an unconfirmed issue until the page is reloaded", async () => {
       mocks.issue.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "x" });
       await issueFor();
