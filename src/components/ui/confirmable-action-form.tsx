@@ -174,6 +174,7 @@ export function ConfirmableActionForm({
         </Alert>
       ) : null}
       <ConfirmDialog
+        cancelLabel={unknownOutcome ? "ปิดหน้าต่าง" : undefined}
         confirmDisabled={unknownOutcome}
         confirmLabel={confirmation.confirmLabel}
         confirmVariant={confirmation.confirmVariant}
