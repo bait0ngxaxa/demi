@@ -444,6 +444,31 @@ describe("Patient activation search and link issuance", () => {
       expect(buttonByText("ค้นหา").disabled).toBe(true);
     });
 
+    it("keeps an issued link when a search that started earlier fails with a network error", async () => {
+      mocks.find.mockResolvedValue({ status: "SUCCESS", candidates: [candidate] });
+      await search("สมชาย");
+      let rejectFind: (reason: unknown) => void = () => undefined;
+      mocks.find.mockReturnValue(new Promise((_resolve, reject) => { rejectFind = reject; }));
+      await act(async () => {
+        searchInput().value = "คนอื่น";
+        buttonByText("ค้นหา").click();
+      });
+      mocks.issue.mockResolvedValue(issuedResponse);
+      await act(async () => {
+        container.querySelector<HTMLFormElement>("article form")!.requestSubmit();
+      });
+
+      await act(async () => {
+        rejectFind(new TypeError("Failed to fetch"));
+      });
+
+      expect(container.textContent).toContain(token);
+      expect(container.textContent).not.toContain("เชื่อมต่อระบบไม่สำเร็จ");
+      expect(buttonByText("ค้นหา").disabled).toBe(true);
+      expect(mocks.notifyError).not.toHaveBeenCalled();
+      expect(mocks.notifyWarning).not.toHaveBeenCalled();
+    });
+
     it("keeps the search locked after an unconfirmed issue until the page is reloaded", async () => {
       mocks.issue.mockResolvedValue({ status: "ERROR", code: "UNAVAILABLE", message: "x" });
       await issueFor();

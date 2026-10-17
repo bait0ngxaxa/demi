@@ -127,11 +127,14 @@ export function PatientActivationActionsWorkspace({
   }
 
   const [lookupState, lookupAction, lookupPending] = useActionState(
-    withConnectionFailure(findCandidatesAndNotify, (): PatientActivationLookupActionState => ({
-      status: "ERROR",
-      code: "UNAVAILABLE",
-      message: connectionFailureMessage,
-    })),
+    withConnectionFailure(
+      findCandidatesAndNotify,
+      (previous): PatientActivationLookupActionState =>
+        // A failed search must not replace candidates whose handoff holds an unhandled link.
+        feedbackScope.isHoldingHandoff()
+          ? previous
+          : { status: "ERROR", code: "UNAVAILABLE", message: connectionFailureMessage },
+    ),
     initialPatientActivationLookupActionState,
   );
   const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
