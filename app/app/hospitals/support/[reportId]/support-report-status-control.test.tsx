@@ -320,6 +320,33 @@ describe("SupportReportStatusControl Toasts", () => {
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
   });
 
+  it.each([
+    ["UNAVAILABLE", () => mocks.update.mockResolvedValueOnce(failure("UNAVAILABLE"))],
+    ["thrown", () => mocks.update.mockRejectedValueOnce(new TypeError("private server failure"))],
+  ] as const)("keeps report A's unknown %s outcome from blocking report B's submit, and restores it on return to A", async (_name, arrange) => {
+    arrange();
+    render();
+    await click();
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(button().disabled).toBe(true);
+
+    render({ reportId: OTHER_REPORT_ID, updatedAt: V2 });
+    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(button().disabled).toBe(false);
+    mocks.update.mockResolvedValueOnce(ok(OTHER_REPORT_ID));
+    await click();
+
+    expect(mocks.update).toHaveBeenCalledTimes(2);
+    expect(mocks.update).toHaveBeenLastCalledWith({ reportId: OTHER_REPORT_ID, expectedUpdatedAt: V2, status: "ACKNOWLEDGED" });
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("รับทราบรายงานแล้ว");
+
+    render({ reportId: REPORT_ID, updatedAt: V1 });
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(button().disabled).toBe(true);
+    await click();
+    expect(mocks.update).toHaveBeenCalledTimes(2);
+  });
+
   it("shows no Toast for a response that arrives after unmount", async () => {
     const pending = deferred<SupportReportActionState>();
     mocks.update.mockReturnValueOnce(pending.promise);

@@ -18,12 +18,17 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
   const [unknownReportId, setUnknownReportId] = useState<string | null>(null);
   const unknownOutcome = unknownReportId === reportId;
   // The version the confirmed transition started from; the control stays locked until the refreshed page replaces it.
-  const [confirmedFrom, setConfirmedFrom] = useState<{ updatedAt: string; status: SupportReportStatus } | null>(null);
+  const [confirmedFrom, setConfirmedFrom] = useState<{ reportId: string; updatedAt: string; status: SupportReportStatus } | null>(null);
   const mountedRef = useRef(false);
-  const inFlightRef = useRef(false);
+  // The report whose request is in flight or still awaiting its refresh; the lock never applies to another report.
+  const inFlightRef = useRef<string | null>(null);
   const reportIdRef = useRef(reportId);
   const nextStatus = status === "NEW" ? "ACKNOWLEDGED" : status === "ACKNOWLEDGED" ? "RESOLVED" : null;
-  const awaitingRefresh = confirmedFrom !== null && confirmedFrom.updatedAt === updatedAt && confirmedFrom.status === status;
+  const awaitingRefresh =
+    confirmedFrom !== null &&
+    confirmedFrom.reportId === reportId &&
+    confirmedFrom.updatedAt === updatedAt &&
+    confirmedFrom.status === status;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -37,15 +42,15 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
   }, [reportId]);
 
   useEffect(() => {
-    if (confirmedFrom !== null && !awaitingRefresh) inFlightRef.current = false;
+    if (confirmedFrom !== null && !awaitingRefresh && inFlightRef.current === confirmedFrom.reportId) inFlightRef.current = null;
   }, [awaitingRefresh, confirmedFrom]);
 
   if (!nextStatus) return null;
   const targetStatus = nextStatus;
 
   function update(): void {
-    if (inFlightRef.current || awaitingRefresh || unknownOutcome) return;
-    inFlightRef.current = true;
+    if (inFlightRef.current === reportId || awaitingRefresh || unknownOutcome) return;
+    inFlightRef.current = reportId;
     const submitted = { reportId, updatedAt, status };
     setError(null);
     startTransition(async () => {
@@ -60,7 +65,7 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
       if (!mountedRef.current) return;
       const inScope = reportIdRef.current === submitted.reportId;
       if (result.status === "SUCCESS" && result.reportId === submitted.reportId) {
-        setConfirmedFrom({ updatedAt: submitted.updatedAt, status: submitted.status });
+        setConfirmedFrom({ reportId: submitted.reportId, updatedAt: submitted.updatedAt, status: submitted.status });
         if (inScope) {
           notify.success(targetStatus === "ACKNOWLEDGED" ? "รับทราบรายงานแล้ว" : "บันทึกสถานะว่าแก้ไขแล้ว");
           router.refresh();
@@ -68,7 +73,7 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
         return;
       }
       if (result.status === "ERROR" && result.code !== "UNAVAILABLE") {
-        inFlightRef.current = false;
+        if (inFlightRef.current === submitted.reportId) inFlightRef.current = null;
         if (!inScope) return;
         setError(result.message);
         if (result.code === "CONFLICT") notify.warning("สถานะรายงานเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
@@ -82,8 +87,6 @@ export function SupportReportStatusControl({ reportId, updatedAt, status }: { re
 
   function markUnknown(submittedReportId: string): void {
     setUnknownReportId(submittedReportId);
-    // A report that is no longer displayed has nothing to reload; do not keep the new report locked.
-    if (reportIdRef.current !== submittedReportId) inFlightRef.current = false;
   }
   return <div className="mt-5 space-y-3">{error ? <Alert variant="warning">{error}</Alert> : null}<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} /><Button disabled={pending || unknownOutcome || awaitingRefresh} loading={pending} onClick={update} type="button">{targetStatus === "ACKNOWLEDGED" ? "รับทราบรายงาน" : "ทำเครื่องหมายว่าแก้ไขแล้ว"}</Button></div>;
 }
