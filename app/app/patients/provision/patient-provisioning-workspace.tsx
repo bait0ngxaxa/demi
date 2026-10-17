@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { unstable_rethrow, useRouter } from "next/navigation";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   unknownOutcomeMessage,
   useMutationActionState,
 } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -175,6 +176,55 @@ function formatFileSize(size: number): string {
   }
 
   return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+const useCommittedLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** One hydrated single-provisioning request and the Hospital it was submitted for. */
+type ProvisionSubmission = { hospitalId: string; formData: FormData };
+
+const provisionDraftFields = ["targetHospitalId", "givenName", "familyName", "nationalId", "hospitalNumber"] as const;
+
+function provisionFormValue(formData: FormData, field: string): string {
+  const value = formData.get(field);
+  return typeof value === "string" ? value : "";
+}
+
+/** True when the form still holds what was submitted, so a reset cannot discard a newer draft. */
+function isSameProvisionDraft(form: HTMLFormElement, submitted: FormData): boolean {
+  const current = new FormData(form);
+  return provisionDraftFields.every(
+    (field) => provisionFormValue(current, field) === provisionFormValue(submitted, field),
+  );
+}
+
+/**
+ * What a settled single-provisioning request proves. `UNAVAILABLE` can follow a committed write,
+ * so it, a returned `IDLE`, a thrown request (`null`) and a success for another Hospital stay
+ * unconfirmed.
+ */
+function classifyProvisionResult(
+  result: PatientProvisionActionState | null,
+  submittedHospitalId: string,
+): "CREATED" | "ALREADY_PROVISIONED" | "CONFLICT" | "FORBIDDEN" | "REJECTED" | "UNCONFIRMED" {
+  if (result?.status === "SUCCESS") {
+    return result.result.hospitalId === submittedHospitalId ? result.result.outcome : "UNCONFIRMED";
+  }
+
+  if (result?.status !== "ERROR") {
+    return "UNCONFIRMED";
+  }
+
+  switch (result.code) {
+    case "CONFLICT":
+      return "CONFLICT";
+    case "FORBIDDEN":
+      return "FORBIDDEN";
+    case "INVALID_INPUT":
+      return "REJECTED";
+    default:
+      return "UNCONFIRMED";
+  }
 }
 
 function fieldError(
@@ -911,11 +961,115 @@ export function PatientProvisioningWorkspace({
   canAssignOsm = false,
 }: PatientProvisioningWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const [provisionState, provisionAction, provisionPending, provisionUnknown, resendProvision] = useMutationActionState<
-    PatientProvisionActionState,
-    FormData
-  >(provisionPatientAction, initialPatientProvisionActionState);
   const provisionFormRef = useRef<HTMLFormElement>(null);
+  const mountedRef = useRef(false);
+  const activeHospitalIdRef = useRef(selectedHospitalId);
+  const provisionInFlightRef = useRef(false);
+  /** Each Hospital's unconfirmed request payload; it is only re-sent unchanged, by the user. */
+  const unconfirmedProvisionsRef = useRef<ReadonlyMap<string, FormData>>(new Map());
+  const [unconfirmedProvisions, setUnconfirmedProvisions] = useState<ReadonlyMap<string, FormData>>(() => new Map());
+  const [provisionErrorHospitalId, setProvisionErrorHospitalId] = useState<string | null>(null);
+
+  const recordUnconfirmedProvision = useCallback((hospitalId: string, formData: FormData | null): void => {
+    const next = new Map(unconfirmedProvisionsRef.current);
+    if (formData) {
+      next.set(hospitalId, formData);
+    } else {
+      next.delete(hospitalId);
+    }
+    unconfirmedProvisionsRef.current = next;
+    setUnconfirmedProvisions(next);
+  }, []);
+
+  /**
+   * Awaits one submission. Its Toast, form reset and unconfirmed record are decided here, never
+   * from retained action state, and only while this page still shows the submitted Hospital.
+   */
+  const runProvision = useCallback(async (
+    previous: PatientProvisionActionState,
+    submission: ProvisionSubmission,
+  ): Promise<PatientProvisionActionState> => {
+    let response: PatientProvisionActionState | null = null;
+    try {
+      response = await provisionPatientAction(previous, submission.formData);
+    } catch (error) {
+      unstable_rethrow(error);
+    } finally {
+      provisionInFlightRef.current = false;
+    }
+
+    const result = response;
+    const verdict = classifyProvisionResult(result, submission.hospitalId);
+    if (verdict === "UNCONFIRMED" || result === null) {
+      if (mountedRef.current) {
+        recordUnconfirmedProvision(submission.hospitalId, submission.formData);
+      }
+      return initialPatientProvisionActionState;
+    }
+
+    if (!mountedRef.current) {
+      return result;
+    }
+
+    recordUnconfirmedProvision(submission.hospitalId, null);
+    if (result.status === "ERROR") {
+      setProvisionErrorHospitalId(submission.hospitalId);
+    }
+    if (activeHospitalIdRef.current !== submission.hospitalId) {
+      return result;
+    }
+
+    if (verdict === "CREATED") {
+      notify.success("เพิ่มข้อมูลผู้ป่วยแล้ว");
+    } else if (verdict === "CONFLICT") {
+      notify.warning("ข้อมูลผู้ป่วยขัดแย้งกับข้อมูลเดิม กรุณาตรวจสอบ");
+    } else if (verdict === "FORBIDDEN") {
+      notify.error("ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้");
+    }
+
+    const form = provisionFormRef.current;
+    if (result.status === "SUCCESS" && form && isSameProvisionDraft(form, submission.formData)) {
+      form.reset();
+    }
+    return result;
+  }, [recordUnconfirmedProvision]);
+
+  const [provisionState, dispatchProvision, provisionPending] = useMutationActionState<
+    PatientProvisionActionState,
+    ProvisionSubmission
+  >(runProvision, initialPatientProvisionActionState);
+
+  /** Acquires the single-flight lock synchronously, so a rapid second submit never reaches the Server Action. */
+  const sendProvision = useCallback((formData: FormData, resend: boolean): void => {
+    const hospitalId = provisionFormValue(formData, "targetHospitalId");
+    const unconfirmed = unconfirmedProvisionsRef.current.has(hospitalId);
+    if (provisionInFlightRef.current || unconfirmed !== resend) {
+      return;
+    }
+
+    provisionInFlightRef.current = true;
+    dispatchProvision({ hospitalId, formData });
+  }, [dispatchProvision]);
+
+  const submitProvision = useCallback((formData: FormData): void => sendProvision(formData, false), [sendProvision]);
+
+  function handleProvisionSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    submitPreservingInput(submitProvision)(event);
+  }
+
+  function resendProvision(): void {
+    const unconfirmed = unconfirmedProvisionsRef.current.get(selectedHospitalId);
+    if (unconfirmed) {
+      startTransition(() => sendProvision(unconfirmed, true));
+    }
+  }
+
+  const provisionFeedback =
+    (provisionState.status === "SUCCESS" && provisionState.result.hospitalId === selectedHospitalId) ||
+    (provisionState.status === "ERROR" && provisionErrorHospitalId === selectedHospitalId)
+      ? provisionState
+      : initialPatientProvisionActionState;
+  const provisionUnconfirmed = unconfirmedProvisions.has(selectedHospitalId);
   const [importUnknown, setImportUnknown] = useState(false);
   const [previewState, setPreviewState] = useState<PatientImportPreviewActionState>(
     initialPatientImportPreviewActionState,
@@ -938,10 +1092,15 @@ export function PatientProvisioningWorkspace({
   const dialogReturnFocus = useRef<ImportDialogReturnFocus>("PREVIEW_SUBMIT");
 
   useEffect(() => {
-    if (provisionState.status === "SUCCESS") {
-      provisionFormRef.current?.reset();
-    }
-  }, [provisionState]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useCommittedLayoutEffect(() => {
+    activeHospitalIdRef.current = selectedHospitalId;
+  }, [selectedHospitalId]);
 
   useEffect(() => {
     if (previousHospitalId.current === selectedHospitalId) {
@@ -1138,7 +1297,7 @@ export function PatientProvisioningWorkspace({
   }
 
   function changeHospital(hospitalId: string): void {
-    if (previewPending || importPending || hospitalSwitching) {
+    if (previewPending || importPending || hospitalSwitching || provisionInFlightRef.current) {
       return;
     }
 
@@ -1174,7 +1333,7 @@ export function PatientProvisioningWorkspace({
               </label>
               <Select
                 className="mt-2 max-w-xl"
-                disabled={previewPending || importPending || hospitalSwitching}
+                disabled={previewPending || importPending || hospitalSwitching || provisionPending}
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -1240,41 +1399,41 @@ export function PatientProvisioningWorkspace({
               </p>
             </div>
             <form
-              action={provisionAction}
+              action={submitProvision}
               className="mt-6 space-y-4"
-              onSubmit={submitPreservingInput(provisionAction)}
+              onSubmit={handleProvisionSubmit}
               ref={provisionFormRef}
             >
               <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold">
                   <span>ชื่อ</span>
-                  <Input aria-invalid={Boolean(fieldError(provisionState, "givenName"))} name="givenName" required type="text" />
-                  {fieldError(provisionState, "givenName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "givenName")}</span> : null}
+                  <Input aria-invalid={Boolean(fieldError(provisionFeedback, "givenName"))} name="givenName" required type="text" />
+                  {fieldError(provisionFeedback, "givenName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "givenName")}</span> : null}
                 </label>
                 <label className="space-y-2 text-sm font-semibold">
                   <span>นามสกุล</span>
-                  <Input aria-invalid={Boolean(fieldError(provisionState, "familyName"))} name="familyName" required type="text" />
-                  {fieldError(provisionState, "familyName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "familyName")}</span> : null}
+                  <Input aria-invalid={Boolean(fieldError(provisionFeedback, "familyName"))} name="familyName" required type="text" />
+                  {fieldError(provisionFeedback, "familyName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "familyName")}</span> : null}
                 </label>
               </div>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>เลขบัตรประชาชน</span>
-                <Input aria-invalid={Boolean(fieldError(provisionState, "nationalId"))} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
-                {fieldError(provisionState, "nationalId") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "nationalId")}</span> : null}
+                <Input aria-invalid={Boolean(fieldError(provisionFeedback, "nationalId"))} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
+                {fieldError(provisionFeedback, "nationalId") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "nationalId")}</span> : null}
               </label>
               <label className="block space-y-2 text-sm font-semibold">
                 <span>HN ของโรงพยาบาลนี้ <span className="font-normal text-muted">(ไม่บังคับ)</span></span>
-                <Input aria-invalid={Boolean(fieldError(provisionState, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
-                {fieldError(provisionState, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionState, "hospitalNumber")}</span> : null}
+                <Input aria-invalid={Boolean(fieldError(provisionFeedback, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
+                {fieldError(provisionFeedback, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "hospitalNumber")}</span> : null}
               </label>
-              {provisionState.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionState.message}</Alert> : null}
-              <UnknownOutcomeAlert active={provisionUnknown} className="mt-2" recovery={{ kind: "resend", onResend: resendProvision, resending: provisionPending }} />
-              <Button className="w-full" disabled={provisionPending || provisionUnknown} loading={provisionPending} type="submit">
+              {provisionFeedback.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionFeedback.message}</Alert> : null}
+              <UnknownOutcomeAlert active={provisionUnconfirmed} className="mt-2" recovery={{ kind: "resend", onResend: resendProvision, resending: provisionPending }} />
+              <Button className="w-full" disabled={provisionPending || provisionUnconfirmed} loading={provisionPending} type="submit">
                 {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
               </Button>
             </form>
-            <ProvisionResult state={provisionState} />
+            <ProvisionResult state={provisionFeedback} />
           </Panel>
           ) : null}
 
