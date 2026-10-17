@@ -2,7 +2,7 @@
 
 import Form from "next/form";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -80,15 +80,10 @@ function resultMessage(result: PatientOsmAssignmentActionState): string | null {
   return "ยกเลิกการมอบหมายผู้ป่วยเรียบร้อยแล้ว";
 }
 
-function AssignmentFeedback({
-  assignState,
-  unassignState,
-}: {
-  assignState: PatientOsmAssignmentActionState;
-  unassignState: PatientOsmAssignmentActionState;
-}): React.JSX.Element | null {
-  const error = assignState.status === "ERROR" ? assignState : unassignState.status === "ERROR" ? unassignState : null;
-  const success = resultMessage(assignState) ?? resultMessage(unassignState);
+// Only the latest submitted operation is shown, so an earlier result cannot sit beside a newer one.
+function AssignmentFeedback({ state }: { state: PatientOsmAssignmentActionState }): React.JSX.Element | null {
+  const error = state.status === "ERROR" ? state : null;
+  const success = resultMessage(state);
 
   if (error) {
     return (
@@ -182,17 +177,19 @@ export function PatientOsmAssignmentWorkspace({
     PatientOsmAssignmentActionState,
     FormData
   >(runAssignment(unassignOsmFromPatientAction, ["UNASSIGNED", "NOOP"]), initialPatientOsmAssignmentActionState);
-  function guarded(dispatch: (formData: FormData) => void): (formData: FormData) => void {
+  const [latestOperation, setLatestOperation] = useState<"assign" | "unassign">("assign");
+  function guarded(operation: "assign" | "unassign", dispatch: (formData: FormData) => void): (formData: FormData) => void {
     return (formData) => {
       if (inFlight.current) {
         return;
       }
       inFlight.current = true;
+      setLatestOperation(operation);
       dispatch(formData);
     };
   }
-  const assignAction = guarded(dispatchAssign);
-  const unassignAction = guarded(dispatchUnassign);
+  const assignAction = guarded("assign", dispatchAssign);
+  const unassignAction = guarded("unassign", dispatchUnassign);
 
   const busy = assignPending || unassignPending || assignUnknown || unassignUnknown;
 
@@ -247,7 +244,7 @@ export function PatientOsmAssignmentWorkspace({
             </p>
           )}
 
-          <AssignmentFeedback assignState={assignState} unassignState={unassignState} />
+          <AssignmentFeedback state={latestOperation === "assign" ? assignState : unassignState} />
           <UnknownOutcomeAlert active={assignUnknown || unassignUnknown} className="mt-5" recovery={{ kind: "reload" }} />
         </Panel>
 

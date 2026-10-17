@@ -191,6 +191,34 @@ describe("single OSM assignment feedback", () => {
     expect(mocks.notifySuccess).not.toHaveBeenCalled();
   });
 
+  it("shows only the latest operation inline: an earlier assignment never outlives a later unassignment", async () => {
+    mocks.assign.mockResolvedValue(result("ASSIGNED"));
+    render(current);
+    await assign();
+    expect(container.textContent).toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
+
+    mocks.unassign.mockResolvedValue(result("UNASSIGNED", { osmUserId: null, previousOsmUserId: "osm-2" }));
+    await unassign();
+
+    expect(mocks.notifySuccess).toHaveBeenLastCalledWith("ยกเลิกการมอบหมาย อสม. แล้ว");
+    expect(container.textContent).toContain("ยกเลิกการมอบหมายผู้ป่วยเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
+  });
+
+  it("does not keep an earlier assignment error beside a later successful unassignment", async () => {
+    mocks.assign.mockResolvedValue({ status: "ERROR", code: "FORBIDDEN", message: "ไม่มีสิทธิ์มอบหมาย" });
+    render(current);
+    await assign();
+    expect(container.textContent).toContain("ไม่มีสิทธิ์มอบหมาย");
+
+    mocks.unassign.mockResolvedValue(result("UNASSIGNED", { osmUserId: null, previousOsmUserId: "osm-1" }));
+    await unassign();
+
+    expect(container.textContent).toContain("ยกเลิกการมอบหมายผู้ป่วยเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("ไม่มีสิทธิ์มอบหมาย");
+    expect(container.textContent).not.toContain("ดำเนินการไม่สำเร็จ");
+  });
+
   it.each([
     ["returned UNAVAILABLE", { status: "ERROR", code: "UNAVAILABLE", message: "ลองใหม่" }],
     ["returned IDLE", { status: "IDLE" }],
