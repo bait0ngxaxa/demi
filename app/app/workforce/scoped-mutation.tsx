@@ -365,9 +365,10 @@ export function ScopedMutationFeedback<State>({
     return null;
   }
 
+  // Every success of these sessions has a Toast, which is the announcement; the Alert is the visible record.
   if (latest.status === "SUCCESS") {
     return (
-      <Alert className="mt-4" variant="success">
+      <Alert className="mt-4" role="none" variant="success">
         {success(latest)}
       </Alert>
     );

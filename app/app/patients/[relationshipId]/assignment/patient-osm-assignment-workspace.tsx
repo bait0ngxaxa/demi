@@ -94,8 +94,9 @@ function AssignmentFeedback({ state }: { state: PatientOsmAssignmentActionState 
     );
   }
 
+  // Changes are announced by their Toast; NOOP has no Toast and stays a live status.
   return success ? (
-    <Alert className="mt-5" variant="success">
+    <Alert className="mt-5" role={state.status === "SUCCESS" && state.result.operation === "NOOP" ? "status" : "none"} variant="success">
       {success}
     </Alert>
   ) : null;

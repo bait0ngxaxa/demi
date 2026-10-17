@@ -93,6 +93,13 @@ afterEach(() => {
   container.remove();
 });
 
+/** Live regions (status, alert, aria-live) whose text includes `text`; a Toasted success must not be one of them. */
+function liveRegionsContaining(root: ParentNode, text: string): Element[] {
+  return Array.from(root.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')).filter(
+    (element) => element.textContent?.includes(text),
+  );
+}
+
 function render(overrides: Partial<Props> = {}): void {
   currentProps = { ...currentProps, ...overrides };
   act(() => root.render(createElement(StaffMembershipControls, currentProps)));
@@ -193,6 +200,7 @@ describe("Staff membership controls Toasts", () => {
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith(trigger.toast);
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+    expect(liveRegionsContaining(container, "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว")).toHaveLength(0);
     const formData = trigger.action.mock.calls[0]?.[1];
     expect(formData?.get("expectedUpdatedAt")).toBe(V1);
     expect(formData?.get("relationshipId")).toBe(RELATIONSHIP_ID);

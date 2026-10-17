@@ -66,6 +66,12 @@ function statusTextContaining(text: string): string | null {
     .find((element) => element.textContent?.includes(text))?.textContent ?? null;
 }
 
+/** Visible feedback that is not a live region because its Toast already announces it. */
+function quietTextContaining(text: string): string | null {
+  return Array.from(container.querySelectorAll<HTMLElement>('[role="none"]'))
+    .find((element) => element.textContent?.includes(text))?.textContent ?? null;
+}
+
 function alertTextContaining(text: string): string | null {
   return Array.from(container.querySelectorAll<HTMLElement>('[role="alert"]'))
     .find((element) => element.textContent?.includes(text))?.textContent ?? null;
@@ -110,7 +116,8 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
     expect(mocks.notify.success).toHaveBeenCalledWith("ส่งรายงานแล้ว");
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("");
-    expect(statusTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(quietTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
 
     act(() => root.render(createElement(SupportReportForm, {
       hospitals: [{ id: "hospital-1", name: "โรงพยาบาลทดสอบ", hospitalCode: "TEST-001" }],
@@ -174,7 +181,8 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.create).toHaveBeenCalledWith({ hospitalId: "hospital-1", category: "BUG", message: "รายงานของโรงพยาบาลหนึ่ง" });
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("ร่างใหม่ที่ยังไม่ได้ส่ง");
     expect(query<HTMLSelectElement>("#support-hospital").value).toBe("hospital-1");
-    expect(statusTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(quietTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
   });
 
@@ -203,7 +211,7 @@ describe("SupportReportForm notifications", () => {
 
     expect(query<HTMLInputElement>('input[name="hospitalId"]').value).toBe("hospital-2");
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("รายงานของโรงพยาบาลหนึ่ง");
-    expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
+    expect(container.textContent).not.toContain("ส่งรายงานแล้ว");
     expect(mocks.notify.success).not.toHaveBeenCalled();
   });
 

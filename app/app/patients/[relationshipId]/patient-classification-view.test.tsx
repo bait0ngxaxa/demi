@@ -104,6 +104,13 @@ function choose(value: string): void {
   });
 }
 
+/** Live regions (status, alert, aria-live) whose text includes `text`; a Toasted success must not be one of them. */
+function liveRegionsContaining(root: ParentNode, text: string): Element[] {
+  return Array.from(root.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')).filter(
+    (element) => element.textContent?.includes(text),
+  );
+}
+
 function submit(): void {
   const form = container.querySelector("form")!;
   const button = Array.from(form.querySelectorAll<HTMLButtonElement>("button[type=submit]"))[0];
@@ -143,6 +150,8 @@ describe("Patient classification feedback", () => {
     expect(mocks.notifySuccess).toHaveBeenCalledWith("บันทึกสถานะผู้ป่วยแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(toastCalls()).not.toContain("สมชาย");
+    expect(container.textContent).toContain("บันทึกสถานะผู้ป่วยแล้ว");
+    expect(liveRegionsContaining(container, "บันทึกสถานะผู้ป่วยแล้ว")).toHaveLength(0);
 
     render(contextFor("RISK"));
     render(contextFor("RISK"));
@@ -178,6 +187,7 @@ describe("Patient classification feedback", () => {
 
     expect(toastCalls()).toBe("[[],[],[]]");
     expect(container.textContent).toContain("สถานะผู้ป่วยเป็นค่าเดียวกับข้อมูลปัจจุบัน");
+    expect(liveRegionsContaining(container, "สถานะผู้ป่วยเป็นค่าเดียวกับข้อมูลปัจจุบัน")).toHaveLength(1);
   });
 
   it("keeps invalid input inline without a Toast", async () => {

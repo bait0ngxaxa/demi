@@ -197,6 +197,13 @@ function button(label: string, scope: ParentNode = container as HTMLDivElement):
   return found;
 }
 
+/** Live regions (status, alert, aria-live) whose text includes `text`; a Toasted success must not be one of them. */
+function liveRegionsContaining(root: ParentNode, text: string): Element[] {
+  return Array.from(root.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')).filter(
+    (element) => element.textContent?.includes(text),
+  );
+}
+
 function dispatchSubmit(): void {
   const form = container?.querySelector("form");
   if (!form) throw new Error("Missing form");
@@ -241,6 +248,8 @@ describe("Hospital Knowledge create Toasts", () => {
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("สร้างฉบับร่างแล้ว");
     expect(mocks.push).toHaveBeenCalledExactlyOnceWith(`/app/hospitals/knowledge/${CONTENT_ID}`);
     expect(mocks.order).toEqual(["toast", "push"]);
+    expect(container?.textContent).toContain("สร้างฉบับร่างแล้ว กำลังเปิดรายการปัจจุบัน");
+    expect(liveRegionsContaining(container!, "ฉบับร่างแล้ว")).toHaveLength(0);
     expect(window.sessionStorage.length).toBe(0);
     expect(JSON.stringify(toastCalls())).not.toContain(TITLE);
     expect(JSON.stringify(toastCalls())).not.toContain(CONTENT_ID);
@@ -390,6 +399,7 @@ describe("Hospital Knowledge detail Toasts", () => {
 
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกฉบับร่างแล้ว");
     expect(container?.textContent).toContain("บันทึกฉบับร่างแล้ว");
+    expect(liveRegionsContaining(container!, "บันทึกฉบับร่างแล้ว")).toHaveLength(0);
     expect((mocks.edit.mock.calls[0]?.[0] as Record<string, unknown>).expectedUpdatedAt).toBe(V1);
     expect(JSON.stringify(toastCalls())).not.toContain(TITLE);
   });
@@ -403,6 +413,7 @@ describe("Hospital Knowledge detail Toasts", () => {
 
     expect(toastCalls()).toHaveLength(0);
     expect(container?.textContent).toContain("ข้อมูลฉบับร่างเป็นปัจจุบันแล้ว ไม่มีการเปลี่ยนแปลง");
+    expect(liveRegionsContaining(container!, "ข้อมูลฉบับร่างเป็นปัจจุบันแล้ว")).toHaveLength(1);
   });
 
   it("warns for a version conflict and requires reconciliation without overwriting the draft", async () => {

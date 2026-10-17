@@ -469,10 +469,15 @@ export function HospitalContentDetailWorkspace({
       ) : null}
 
       <div aria-live="polite" className="sr-only">
-        {isPending ? pendingAnnouncement ?? "กำลังดำเนินการกับเนื้อหา..." : successMessage ?? messageForState(mutationState) ?? ""}
+        {/* Outcomes are announced by their Toast or their own Alert, so this region only reports progress. */}
+        {isPending ? pendingAnnouncement ?? "กำลังดำเนินการกับเนื้อหา..." : ""}
       </div>
 
-      {successMessage ? <Alert className="mt-5" variant="success">{successMessage}</Alert> : null}
+      {successMessage ? (
+        <Alert className="mt-5" role={mutationState.status === "SUCCESS" && mutationState.result.outcome === "NOOP" ? "status" : "none"} variant="success">
+          {successMessage}
+        </Alert>
+      ) : null}
       {mutationState.status === "UNCONFIRMED" ? (
         <Alert className="mt-5" variant="warning">
           <p className="font-semibold">ยังยืนยันผลการดำเนินการไม่ได้</p>

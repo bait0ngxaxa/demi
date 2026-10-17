@@ -478,7 +478,7 @@ export function HospitalContentCreateForm({
       ) : null}
 
       <p aria-live="polite" className="sr-only">
-        {isPending ? "กำลังตรวจสอบหรือบันทึกฉบับร่าง" : actionState.status === "SUCCESS" && actionState.result.outcome === "CREATED" ? "บันทึกฉบับร่างแล้ว" : ""}
+        {isPending ? "กำลังตรวจสอบหรือบันทึกฉบับร่าง" : ""}
       </p>
 
       {actionState.status === "UNCONFIRMED" ? (
@@ -499,7 +499,8 @@ export function HospitalContentCreateForm({
       ) : null}
 
       {actionState.status === "SUCCESS" && actionState.result.outcome === "CREATED" ? (
-        <Alert className="mt-5" variant="success">บันทึกฉบับร่างแล้ว กำลังเปิดรายการปัจจุบัน</Alert>
+        // Announced by the success Toast; this Alert is the visible state while the detail page opens.
+        <Alert className="mt-5" role="none" variant="success">สร้างฉบับร่างแล้ว กำลังเปิดรายการปัจจุบัน</Alert>
       ) : null}
 
       {actionState.status === "ERROR" ? (

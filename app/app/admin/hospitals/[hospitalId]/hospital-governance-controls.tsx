@@ -126,7 +126,8 @@ function Feedback({
   return result.status === "SUCCESS" &&
     result.result.hospitalId === submission.context.hospitalId &&
     result.result.status === getNextStatus(submission.kind) ? (
-    <Alert className="mt-4" variant="success">
+    // The success Toast announces this; the Alert stays as the visible record without a second announcement.
+    <Alert className="mt-4" role="none" variant="success">
       บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว
     </Alert>
   ) : null;

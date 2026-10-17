@@ -105,7 +105,8 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
           <Input autoComplete="email" id="contact-email" maxLength={320} onChange={(event) => setEmail(event.currentTarget.value)} type="email" value={email} />
           <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
         </div>
-        {message ? <Alert variant={message.variant}>{message.text}</Alert> : null}
+        {/* A success is announced by its Toast; other messages keep the Alert's live role. */}
+        {message ? <Alert role={message.variant === "success" ? "none" : undefined} variant={message.variant}>{message.text}</Alert> : null}
         <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload", label: "โหลดและตรวจสอบข้อมูลล่าสุด", message: "ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบก่อนบันทึกอีกครั้ง" }} />
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
       </form>

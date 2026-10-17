@@ -100,6 +100,13 @@ function result(operation: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Live regions (status, alert, aria-live) whose text includes `text`; a Toasted success must not be one of them. */
+function liveRegionsContaining(root: ParentNode, text: string): Element[] {
+  return Array.from(root.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')).filter(
+    (element) => element.textContent?.includes(text),
+  );
+}
+
 function assignForm(): HTMLFormElement {
   return container.querySelector<HTMLFormElement>('form:has(select[name="osmUserId"])')!;
 }
@@ -171,6 +178,7 @@ describe("single OSM assignment feedback", () => {
 
     expect(allToasts()).toBe("[[],[],[]]");
     expect(container.textContent).toContain("เป็นสถานะปัจจุบันอยู่แล้ว");
+    expect(liveRegionsContaining(container, "เป็นสถานะปัจจุบันอยู่แล้ว")).toHaveLength(1);
   });
 
   it("keeps invalid input inline, warns on CONFLICT with a refresh, errors on FORBIDDEN", async () => {
@@ -196,6 +204,7 @@ describe("single OSM assignment feedback", () => {
     render(current);
     await assign();
     expect(container.textContent).toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
+    expect(liveRegionsContaining(container, "เรียบร้อยแล้ว")).toHaveLength(0);
 
     mocks.unassign.mockResolvedValue(result("UNASSIGNED", { osmUserId: null, previousOsmUserId: "osm-2" }));
     await unassign();

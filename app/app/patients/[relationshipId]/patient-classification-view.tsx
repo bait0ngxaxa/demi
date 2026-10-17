@@ -57,8 +57,9 @@ function ActionFeedback({ state }: { state: PatientClassificationActionState }):
         ? "เปลี่ยนสถานะผู้ป่วยแล้ว"
         : "สถานะผู้ป่วยเป็นค่าเดียวกับข้อมูลปัจจุบัน ระบบไม่สร้างประวัติซ้ำ";
 
+  // CREATED and CHANGED are announced by their Toast; NOOP has no Toast and stays a live status.
   return (
-    <Alert className="mt-4" variant="success">
+    <Alert className="mt-4" role={state.result.operation === "NOOP" ? "status" : "none"} variant="success">
       {message}
     </Alert>
   );

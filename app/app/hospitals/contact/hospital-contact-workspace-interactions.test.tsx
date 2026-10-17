@@ -297,7 +297,8 @@ describe("Hospital Contact Owner form interactions", () => {
       phoneNumber: null,
     });
     expect(markup(loaded)).toContain(message);
-    expect(markup(loaded)).toContain('role="status"');
+    // CREATED/UPDATED are announced by their Toast; NOOP has none, so its Alert is the live status.
+    expect(markup(loaded)).toContain(outcome === "NOOP" ? 'role="status"' : 'role="none"');
   });
 
   it.each([

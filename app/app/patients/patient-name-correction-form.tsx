@@ -43,7 +43,8 @@ export function PatientNameCorrectionForm({ relationshipId, version, givenName, 
       </div>
     </div>
     {state.status === "ERROR" ? <Alert role="alert" variant="warning">{state.message}</Alert> : null}
-    {state.status === "SUCCESS" ? <Alert variant="success">{state.message}</Alert> : null}
+    {/* Announced by the success Toast. */}
+    {state.status === "SUCCESS" ? <Alert role="none" variant="success">{state.message}</Alert> : null}
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     <Button disabled={unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
       {pending ? "กำลังบันทึก…" : "บันทึกชื่อ-สกุล"}

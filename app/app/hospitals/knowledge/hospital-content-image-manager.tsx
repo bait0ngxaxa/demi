@@ -107,9 +107,10 @@ export function HospitalContentImageManager({ contentId, imageIds }: { contentId
       <input accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="min-h-11 min-w-0 max-w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" disabled={busy} id="hospital-content-image-files" multiple onChange={(event) => void handleFiles(event)} type="file" />
       {busy ? <Button disabled loading type="button" variant="secondary">กำลังปรับขนาดและอัปโหลด...</Button> : null}
     </div> : <p className="mt-4 text-sm text-text-muted">เพิ่มรูปครบ 5 รูปแล้ว</p>}
-    <div aria-live="polite" className="mt-3">
+    {/* Each Alert carries its own live role; the count is set only together with a Toast, which announces it. */}
+    <div className="mt-3">
       {error ? <Alert variant="warning">{error}</Alert> : null}
-      {message ? <Alert variant="success">{message}</Alert> : null}
+      {message ? <Alert role="none" variant="success">{message}</Alert> : null}
     </div>
   </section>;
 }

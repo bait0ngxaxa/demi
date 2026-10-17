@@ -315,7 +315,8 @@ export function HospitalContactWorkspace({
       ) : null}
 
       {mutationState.status === "SUCCESS" ? (
-        <Alert className="mt-6" variant="success">
+        // CREATED and UPDATED are announced by their Toast; only NOOP, which has none, is a live status.
+        <Alert className="mt-6" role={mutationState.result.outcome === "NOOP" ? "status" : "none"} variant="success">
           {mutationState.result.outcome === "CREATED"
             ? "บันทึกข้อมูลติดต่อแล้ว"
             : mutationState.result.outcome === "UPDATED"

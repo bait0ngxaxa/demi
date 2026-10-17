@@ -45,7 +45,8 @@ export function HospitalPatientEditForm({ relationshipId, version, health, value
           <p className="mt-2 text-sm text-text-muted">เว้นว่างเมื่อไม่ทราบปี ญาติสายตรงหมายถึงบิดา มารดา พี่น้อง หรือบุตร</p></div>
       </> : null}
     </div>
-    {state.message ? <p role={state.status === "ERROR" ? "alert" : "status"} className="text-sm text-text">{state.message}</p> : null}
+    {/* A success is announced by its Toast, so only errors are a live region here. */}
+    {state.message ? <p role={state.status === "ERROR" ? "alert" : undefined} className="text-sm text-text">{state.message}</p> : null}
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     <Button disabled={unknownOutcome} loading={pending} type="submit">
       {pending ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
