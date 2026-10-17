@@ -1,10 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { submitPreservingInput } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { HEALTH_HISTORY_FIELDS, currentBuddhistYear } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
-import { savePatientHealthHistoryAction, saveStaffPatientHospitalProfileAction, type HospitalPatientEditState } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
+import { savePatientHealthHistoryAction, saveStaffPatientHospitalProfileAction } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
+
+import { usePatientEditAction } from "../use-patient-edit-action";
 
 const control = "mt-2 min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
 const PROFILE_FIELDS = {
@@ -19,7 +21,11 @@ export function HospitalPatientEditForm({ relationshipId, version, health, value
   relationshipId: string; version: number; health: boolean; values: Record<string, string | number | null>;
 }): React.JSX.Element {
   const action = (health ? savePatientHealthHistoryAction : saveStaffPatientHospitalProfileAction).bind(null, relationshipId);
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<HospitalPatientEditState, FormData>(action, { status: "IDLE", message: "" });
+  const { state, dispatch: formAction, pending, unknownOutcome } = usePatientEditAction(relationshipId, action, {
+    success: health ? "บันทึกประวัติสุขภาพแล้ว" : "บันทึกข้อมูลผู้ป่วยแล้ว",
+    conflict: "บันทึกไม่สำเร็จ ข้อมูลมีการเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุด",
+    forbidden: "ไม่มีสิทธิ์บันทึกข้อมูลนี้",
+  });
   return <form action={formAction} className="space-y-5" onSubmit={submitPreservingInput(formAction)}>
     <input type="hidden" name="expectedVersion" value={version} />
     <div className="grid gap-5 sm:grid-cols-2">

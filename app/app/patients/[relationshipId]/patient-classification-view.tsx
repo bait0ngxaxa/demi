@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -9,7 +9,9 @@ import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { notify } from "@/components/ui/notify";
 import { getPatientClassificationLabel, patientClassificationSourceLabels } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 import {
@@ -22,6 +24,9 @@ import type { PatientClassificationPageContext } from "@/modules/patient-classif
 type PatientClassificationViewProps = {
   context: PatientClassificationPageContext;
 };
+
+/** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
+class UnconfirmedClassification extends Error {}
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -63,19 +68,90 @@ export function PatientClassificationView({
   context,
 }: PatientClassificationViewProps): React.JSX.Element {
   const router = useRouter();
-  const [state, action, pending, unknownOutcome] = useMutationActionState<PatientClassificationActionState, FormData>(
-    setPatientClassificationAction,
-    initialPatientClassificationActionState,
-  );
+  const relationshipId = context.patient.patientHospitalRelationshipId;
+  const activeRelationshipId = useRef(relationshipId);
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    activeRelationshipId.current = relationshipId;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, [relationshipId]);
+
+  // Classification is classified and announced here, once per awaited submission, so retained
+  // action state, rerenders and remounts can never replay a Toast or a refresh.
+  const setAndNotify = async (
+    previous: PatientClassificationActionState,
+    formData: FormData,
+  ): Promise<PatientClassificationActionState> => {
+    const submittedRelationshipId = formData.get("patientHospitalRelationshipId");
+    const submittedClassification = formData.get("classification");
+    try {
+      const result = await setPatientClassificationAction(previous, formData);
+
+      if (result.status === "IDLE" || (result.status === "ERROR" && result.code === "UNAVAILABLE")) {
+        throw new UnconfirmedClassification();
+      }
+      if (
+        result.status === "SUCCESS" &&
+        (result.result.classification !== submittedClassification ||
+          (result.result.operation !== "CREATED" &&
+            result.result.operation !== "CHANGED" &&
+            result.result.operation !== "NOOP"))
+      ) {
+        throw new UnconfirmedClassification();
+      }
+
+      const current = mounted.current && activeRelationshipId.current === submittedRelationshipId;
+      if (!current) {
+        return result;
+      }
+      if (result.status === "SUCCESS") {
+        if (result.result.operation === "CREATED") {
+          notify.success("บันทึกสถานะผู้ป่วยแล้ว");
+        } else if (result.result.operation === "CHANGED") {
+          notify.success("เปลี่ยนสถานะผู้ป่วยแล้ว");
+        }
+        router.refresh();
+      } else if (result.code === "CONFLICT") {
+        notify.warning("สถานะผู้ป่วยเปลี่ยนแปลงแล้ว กรุณาตรวจสอบข้อมูลล่าสุด");
+        router.refresh();
+      } else if (result.code === "FORBIDDEN") {
+        notify.error("ไม่มีสิทธิ์เปลี่ยนสถานะผู้ป่วยนี้");
+      }
+      return result;
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
+  const [state, dispatchClassification, pending, unknownOutcome] = useMutationActionState<
+    PatientClassificationActionState,
+    FormData
+  >(setAndNotify, initialPatientClassificationActionState);
   const [selectedClassification, setSelectedClassification] = useState<PatientClassificationType | "">(
     context.current?.classification ?? "",
   );
-
-  useEffect(() => {
-    if (state.status === "SUCCESS") {
-      router.refresh();
-    }
-  }, [router, state]);
+  const requiresConfirmation = Boolean(
+    context.current && selectedClassification && selectedClassification !== context.current.classification,
+  );
+  // ConfirmableActionForm reports an unconfirmed result itself, but only for a submission it
+  // confirmed; the create path has no confirmation, so it needs its own recovery message.
+  const [confirmedSubmission, setConfirmedSubmission] = useState(false);
+  const action = useCallback(
+    (formData: FormData): void => {
+      if (inFlight.current) {
+        return;
+      }
+      inFlight.current = true;
+      setConfirmedSubmission(requiresConfirmation);
+      dispatchClassification(formData);
+    },
+    [dispatchClassification, requiresConfirmation],
+  );
 
   return (
     <section className="mt-6">
@@ -109,9 +185,7 @@ export function PatientClassificationView({
             }}
             outcome={unknownOutcome ? "unknown" : state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
             pending={pending}
-            requiresConfirmation={Boolean(
-              context.current && selectedClassification && selectedClassification !== context.current.classification,
-            )}
+            requiresConfirmation={requiresConfirmation}
             resultKey={state}
           >
             <input
@@ -122,7 +196,7 @@ export function PatientClassificationView({
             <label className="block max-w-sm space-y-2 text-sm font-semibold" htmlFor="patient-classification">
               <span>เปลี่ยนสถานะ</span>
               <Select
-                disabled={pending}
+                disabled={pending || unknownOutcome}
                 id="patient-classification"
                 name="classification"
                 onChange={(event) => {
@@ -142,7 +216,7 @@ export function PatientClassificationView({
             <p className="mt-2 max-w-xl text-xs leading-5 text-text-muted">
               การเลือกค่าเดิมจะไม่สร้างประวัติซ้ำ การเปลี่ยนค่าจะบันทึกผู้ดำเนินการและเวลาจากระบบ
             </p>
-            <Button className="mt-4" disabled={pending} loading={pending} type="submit">
+            <Button className="mt-4" disabled={pending || unknownOutcome} loading={pending} type="submit">
               {pending
                 ? "กำลังบันทึก..."
                 : context.current && selectedClassification !== context.current.classification
@@ -150,6 +224,7 @@ export function PatientClassificationView({
                   : "บันทึกสถานะ"}
             </Button>
             <ActionFeedback state={state} />
+            <UnknownOutcomeAlert active={unknownOutcome && !confirmedSubmission} className="mt-4" recovery={{ kind: "reload" }} />
           </ConfirmableActionForm>
         ) : null}
 

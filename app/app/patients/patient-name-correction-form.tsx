@@ -4,9 +4,11 @@ import { useId } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { submitPreservingInput } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { correctPatientNameAction, type HospitalPatientEditState } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
+import { correctPatientNameAction } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
+
+import { usePatientEditAction } from "./use-patient-edit-action";
 
 const control = "mt-2 min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
 
@@ -18,9 +20,14 @@ export function PatientNameCorrectionForm({ relationshipId, version, givenName, 
   familyName: string | null;
 }): React.JSX.Element {
   const id = useId();
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState<HospitalPatientEditState, FormData>(
+  const { state, dispatch: formAction, pending, unknownOutcome } = usePatientEditAction(
+    relationshipId,
     correctPatientNameAction.bind(null, relationshipId),
-    { status: "IDLE", message: "" },
+    {
+      success: "แก้ไขชื่อ-สกุลแล้ว",
+      conflict: "ไม่สามารถแก้ไขชื่อ-สกุลได้ กรุณาตรวจสอบข้อมูลล่าสุด",
+      forbidden: "ไม่มีสิทธิ์แก้ไขชื่อ-สกุลผู้ป่วยรายนี้",
+    },
   );
 
   return <form action={formAction} className="space-y-4" onSubmit={submitPreservingInput(formAction)}>
