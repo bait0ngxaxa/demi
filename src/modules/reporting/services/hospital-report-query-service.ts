@@ -858,6 +858,8 @@ async function loadParentChildHospitalReportingSourceSnapshot(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
 ): Promise<ParentChildHospitalReportingSourceSnapshot> {
+  // This exact-Child active cohort is not a historical Parent disclosure filter: the model stores only the current
+  // parentHospitalId and has no effective date to compare with source-record timestamps.
   const programWhere = reportHospitalProgramWhere(hospitalId);
   const serviceProcessWhere = { patientProgram: { is: programWhere } };
   const [dashboard, programsWithRoutineRecord, programsWithFloatingChartRecord,

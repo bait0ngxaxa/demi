@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordParentChildHospitalReportingAudit } from "@/modules/reporting/services/parent-child-hospital-report-audit-service";
 import { exportParentChildHospitalReportWorkbook } from "@/modules/reporting/services/parent-child-hospital-report-workbook-service";
 import { safeReportFilenamePart } from "@/modules/reporting/transport/report-export-filename";
 import {
   ApplicationError,
+  ForbiddenError,
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
@@ -31,13 +33,38 @@ function errorResponse(error: unknown): NextResponse {
 
 /** ADR-0013 RPT-32 — "ดาวน์โหลดตามเขต": the nine-value summary of one exact active direct Child. */
 export async function GET(request: Request): Promise<Response> {
+  let actor: ActorContext;
+  try {
+    actor = await getProtectedApplicationActor();
+  } catch (error: unknown) {
+    // No audit is written for an unauthenticated request. A verified session denied DEMI application access has no
+    // ActorContext to attach, but its single authorization denial is still recorded without request-supplied IDs.
+    if (error instanceof ForbiddenError) {
+      try {
+        await recordParentChildHospitalReportingAudit({
+          operation: "export",
+          outcome: "denied",
+          reason: "NOT_AUTHORIZED",
+        });
+      } catch {
+        return errorResponse(null);
+      }
+    }
+    return errorResponse(error);
+  }
+
   const url = new URL(request.url);
   if (
     QUERY_KEYS.some((key) => url.searchParams.getAll(key).length !== 1) ||
     [...url.searchParams.keys()].some((key) => !(QUERY_KEYS as readonly string[]).includes(key))
   ) {
     try {
-      await recordParentChildHospitalReportingAudit({ operation: "export", outcome: "denied", reason: "SCOPE_UNAVAILABLE" });
+      await recordParentChildHospitalReportingAudit({
+        actor,
+        operation: "export",
+        outcome: "denied",
+        reason: "SCOPE_UNAVAILABLE",
+      });
     } catch {
       return errorResponse(null);
     }
@@ -45,7 +72,6 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const actor = await getProtectedApplicationActor();
     const { buffer, generatedAt, summary } = await exportParentChildHospitalReportWorkbook(actor, {
       parentHospitalId: url.searchParams.get("parentHospitalId"),
       hospitalId: url.searchParams.get("hospitalId"),

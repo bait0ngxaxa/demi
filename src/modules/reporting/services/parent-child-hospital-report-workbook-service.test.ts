@@ -12,7 +12,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
-import { exportParentChildHospitalReportWorkbook } from "./parent-child-hospital-report-workbook-service";
+import {
+  exportParentChildHospitalReportWorkbook,
+  generateParentChildHospitalReportWorkbook,
+} from "./parent-child-hospital-report-workbook-service";
 
 const parentHospitalId = "11111111-1111-4111-8111-111111111111";
 const childHospitalId = "22222222-2222-4222-8222-222222222222";
@@ -89,12 +92,23 @@ function createDatabase() {
   return { database, findMembership, relationshipCount, programGroupBy, auditCreate };
 }
 
-async function workbookCells(buffer: Buffer): Promise<{ sheetNames: string[]; values: unknown[] }> {
+async function workbookCells(buffer: Buffer): Promise<{
+  sheetNames: string[];
+  values: unknown[];
+  generationTime: unknown;
+  generationTimeFormat: string;
+}> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer);
   const values: unknown[] = [];
   workbook.eachSheet((sheet) => sheet.eachRow((row) => row.eachCell((cell) => values.push(cell.value))));
-  return { sheetNames: workbook.worksheets.map(({ name }) => name), values };
+  const generationTimeCell = workbook.worksheets[0]?.getCell("B4");
+  return {
+    sheetNames: workbook.worksheets.map(({ name }) => name),
+    values,
+    generationTime: generationTimeCell?.value,
+    generationTimeFormat: generationTimeCell?.numFmt ?? "",
+  };
 }
 
 function expectAudit(auditCreate: ReturnType<typeof vi.fn>, outcome: string, reason?: string): void {
@@ -133,7 +147,9 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
     const text = values.filter((value) => typeof value === "string").join("\n");
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/iu);
     expect(text).not.toMatch(/PARENT-01|CHILD-01|HN|เลขบัตร|ชื่อผู้ป่วย|เบอร์|ที่อยู่|น้ำตาล|น้ำหนัก|ความดัน|Baseline|อสม\./u);
-    expect(values.filter((value) => value instanceof Date)).toEqual([result.generatedAt]);
+    expect(values.filter((value) => value instanceof Date)).toHaveLength(1);
+    expect(values).toContain("เวลาที่สร้างไฟล์ (เวลาไทย)");
+    expect(values).toContain("เวลาที่สร้างไฟล์เป็นเวลาไทย ไม่ใช่เวลาอ้างอิงของข้อมูล");
 
     // Phase F: active Patient–Hospital relationships only; there is no include-ended option.
     expect(relationshipCount).toHaveBeenNthCalledWith(1, { where: { hospitalId: childHospitalId, endedAt: null } });
@@ -144,6 +160,20 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
     }));
     expectAudit(auditCreate, "prepared");
     expect(JSON.stringify(auditCreate.mock.calls)).not.toMatch(/"12"|:12\b|value/u);
+  });
+
+  it("writes the generation instant as Bangkok wall time for a UTC timestamp near midnight", async () => {
+    const { database } = createDatabase();
+    const result = await exportParentChildHospitalReportWorkbook(parentOwner, {
+      parentHospitalId,
+      hospitalId: childHospitalId,
+    }, { database });
+    const generatedAt = new Date("2026-10-16T17:30:00.000Z");
+    const buffer = await generateParentChildHospitalReportWorkbook(result.summary, generatedAt);
+    const workbook = await workbookCells(buffer);
+
+    expect(workbook.generationTime).toEqual(new Date("2026-10-17T00:30:00.000Z"));
+    expect(workbook.generationTimeFormat).toBe("dd/mm/yyyy hh:mm");
   });
 
   it.each([

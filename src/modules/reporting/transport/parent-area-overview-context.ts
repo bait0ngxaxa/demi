@@ -20,6 +20,8 @@ export type ParentAreaOverviewGroup = {
   areas: readonly ParentChildHospitalReportingProjection[];
 };
 
+const MAX_CONCURRENT_CHILD_REPORTS = 4;
+
 async function resolveActor(): Promise<ActorContext> {
   try {
     return await getProtectedApplicationActor();
@@ -43,11 +45,17 @@ export async function getParentAreaOverviewContext(): Promise<ParentAreaOverview
   );
   if (parentGroups.length === 0) redirect("/app");
 
-  return Promise.all(parentGroups.map(async (group) => {
-    const areas = await Promise.all(group.children.map(async (child) => {
+  const childJobs = parentGroups.flatMap((group) =>
+    group.children.map((child) => ({ parentHospitalId: group.parent.id, child })),
+  );
+  const childReports: (ParentChildHospitalReportingProjection | null)[] = [];
+
+  for (let offset = 0; offset < childJobs.length; offset += MAX_CONCURRENT_CHILD_REPORTS) {
+    const batch = childJobs.slice(offset, offset + MAX_CONCURRENT_CHILD_REPORTS);
+    const batchReports = await Promise.all(batch.map(async ({ parentHospitalId, child }) => {
       try {
         return await getParentChildHospitalReportingPage(actor, {
-          parentHospitalId: group.parent.id,
+          parentHospitalId,
           hospitalId: child.id,
         });
       } catch (error: unknown) {
@@ -56,9 +64,16 @@ export async function getParentAreaOverviewContext(): Promise<ParentAreaOverview
         throw error;
       }
     }));
+    childReports.push(...batchReports);
+  }
+
+  let childOffset = 0;
+  return parentGroups.map((group) => {
+    const areas = childReports.slice(childOffset, childOffset + group.children.length);
+    childOffset += group.children.length;
     return {
       parent: group.parent,
       areas: areas.filter((area): area is ParentChildHospitalReportingProjection => area !== null),
     };
-  }));
+  });
 }

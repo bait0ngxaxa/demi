@@ -1,5 +1,7 @@
-import { readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +12,16 @@ const base = [
   "20261025100000_patient_hospital_relationship_reason_whitespace",
   "migration_lock.toml",
 ];
+
+function readTemporaryMigrationDirectory(names) {
+  const directory = mkdtempSync(join(tmpdir(), "demi-migrations-"));
+  try {
+    for (const name of names) mkdirSync(join(directory, name));
+    return readdirSync(directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 describe("migration order check", () => {
   it("passes on the committed migrations of the current tree", () => {
@@ -44,6 +56,22 @@ describe("migration order check", () => {
     })).toContain("20261002120000_zz_new_change: timestamp duplicates 20261002120000_family_delegated_appointment_read");
   });
 
+  it("rejects a new timestamp collision regardless of directory enumeration order", () => {
+    const committed = ["20261002120000_family_delegated_appointment_read", "20261002120000_personal_medication_foundation"];
+    const newCollision = "20261002120000_00_new_change";
+    const first = findMigrationOrderViolations({
+      current: readTemporaryMigrationDirectory([newCollision, ...committed]),
+      base: committed,
+    });
+
+    expect(first).toContain(`${newCollision}: timestamp duplicates 20261002120000_family_delegated_appointment_read`);
+    expect(first).toContain(`${newCollision}: new migration must sort after the latest committed migration 20261002120000_personal_medication_foundation`);
+    expect(findMigrationOrderViolations({
+      current: readTemporaryMigrationDirectory([...committed, newCollision]),
+      base: committed,
+    })).toEqual(first);
+  });
+
   it("fails a renamed or removed committed migration", () => {
     expect(findMigrationOrderViolations({
       current: ["20261024100000_patient_hospital_relationship_end_integrity", "20261026100000_renamed", "migration_lock.toml"],
@@ -55,13 +83,25 @@ describe("migration order check", () => {
 
   it("fails malformed names, impossible timestamps and duplicate timestamps", () => {
     expect(findMigrationOrderViolations({
-      current: [...base, "20261026_short", "20261332100000_bad_month", "20261027100000_one", "20261027100000_two", "20261028100000_Camel"],
+      current: [...base, "20261026_short", "20261332100000_bad_month", "20260230120000_bad_day", "20261027100000_one", "20261027100000_two", "20261028100000_Camel"],
       base,
     })).toEqual([
+      "20260230120000_bad_day: timestamp is not a valid UTC date-time",
       "20261026_short: name must be <YYYYMMDDHHMMSS>_<lower_snake_case>",
-      "20261332100000_bad_month: timestamp is not a valid UTC date-time",
       "20261027100000_two: timestamp duplicates 20261027100000_one",
       "20261028100000_Camel: name must be <YYYYMMDDHHMMSS>_<lower_snake_case>",
+      "20261332100000_bad_month: timestamp is not a valid UTC date-time",
     ]);
+  });
+
+  it("uses an explicit base reference in the checker CLI", () => {
+    const script = resolve(import.meta.dirname, "check-migration-order.mjs");
+    const result = spawnSync(process.execPath, [script, "HEAD"], {
+      cwd: resolve(import.meta.dirname, ".."),
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("base HEAD.");
   });
 });

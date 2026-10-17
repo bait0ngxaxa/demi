@@ -254,4 +254,38 @@ describe("Parent-to-Child Hospital report query", () => {
       hospitalId: childHospitalId,
     }, { database })).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  it("denies a former Parent after a Child is reparented and audits the current-scope denial", async () => {
+    const { database, findMembership, relationshipCount, auditCreate } = createDatabase();
+    findMembership.mockResolvedValueOnce({
+      hospital: {
+        id: parentHospitalId,
+        hospitalCode: "PARENT-01",
+        name: "โรงพยาบาลแม่ข่ายสังเคราะห์",
+        status: HospitalStatus.ACTIVE,
+        parentHospitalId: null,
+        parentHospital: null,
+        // The Child no longer appears in this former Parent's current direct-child set.
+        childHospitals: [],
+      },
+    });
+
+    await expect(getParentChildHospitalReportingPage(actor, {
+      parentHospitalId,
+      hospitalId: childHospitalId,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+
+    expect(relationshipCount).not.toHaveBeenCalled();
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        action: "parent_child_reporting.access.denied",
+        resourceId: childHospitalId,
+        metadata: expect.objectContaining({
+          outcome: "denied",
+          parentHospitalId,
+          reason: "SCOPE_UNAVAILABLE",
+        }),
+      }),
+    }));
+  });
 });

@@ -10,7 +10,9 @@ function isCalendarTimestamp(timestamp) {
     timestamp.slice(0, 4), timestamp.slice(4, 6), timestamp.slice(6, 8),
     timestamp.slice(8, 10), timestamp.slice(10, 12), timestamp.slice(12, 14),
   ].map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day &&
     date.getUTCHours() === hour && date.getUTCMinutes() === minute && date.getUTCSeconds() === second;
 }
@@ -22,9 +24,10 @@ function isCalendarTimestamp(timestamp) {
  */
 export function findMigrationOrderViolations({ current, base }) {
   const violations = [];
-  const currentNames = current.filter((name) => !NON_MIGRATION_ENTRIES.has(name));
+  const currentNames = current.filter((name) => !NON_MIGRATION_ENTRIES.has(name)).sort();
   const baseNames = new Set(base.filter((name) => !NON_MIGRATION_ENTRIES.has(name)));
-  const seenTimestamps = new Map();
+  const namesByTimestamp = new Map();
+  const validCurrentNames = new Set();
 
   for (const name of currentNames) {
     const match = MIGRATION_NAME.exec(name);
@@ -32,25 +35,45 @@ export function findMigrationOrderViolations({ current, base }) {
       violations.push(`${name}: name must be <YYYYMMDDHHMMSS>_<lower_snake_case>`);
       continue;
     }
-    if (!isCalendarTimestamp(match[1])) violations.push(`${name}: timestamp is not a valid UTC date-time`);
-    // Committed history already contains one shared timestamp (ordered by full folder name); only new folders must be unique.
-    const duplicate = seenTimestamps.get(match[1]);
-    if (duplicate && !baseNames.has(name)) violations.push(`${name}: timestamp duplicates ${duplicate}`);
-    if (!duplicate) seenTimestamps.set(match[1], name);
+    if (!isCalendarTimestamp(match[1])) {
+      violations.push(`${name}: timestamp is not a valid UTC date-time`);
+      continue;
+    }
+
+    validCurrentNames.add(name);
+    const names = namesByTimestamp.get(match[1]) ?? [];
+    names.push(name);
+    namesByTimestamp.set(match[1], names);
   }
 
-  for (const name of baseNames) {
-    if (!currentNames.includes(name)) violations.push(`${name}: committed migration was renamed or removed`);
+  for (const names of namesByTimestamp.values()) {
+    if (names.length < 2) continue;
+    const committedNames = names.filter((name) => baseNames.has(name));
+    const newNames = names.filter((name) => !baseNames.has(name));
+    if (committedNames.length > 0) {
+      for (const name of newNames) {
+        violations.push(`${name}: timestamp duplicates ${committedNames[0]}`);
+      }
+    } else {
+      for (const name of newNames.slice(1)) {
+        violations.push(`${name}: timestamp duplicates ${newNames[0]}`);
+      }
+    }
+  }
+
+  const currentNameSet = new Set(currentNames);
+  for (const name of [...baseNames].sort()) {
+    if (!currentNameSet.has(name)) violations.push(`${name}: committed migration was renamed or removed`);
   }
 
   const latestBase = [...baseNames].sort().at(-1);
   if (latestBase) {
-    for (const name of currentNames) {
+    for (const name of validCurrentNames) {
       if (!baseNames.has(name) && name <= latestBase) {
         violations.push(`${name}: new migration must sort after the latest committed migration ${latestBase}`);
       }
     }
   }
 
-  return violations;
+  return violations.sort();
 }

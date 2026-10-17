@@ -28,6 +28,36 @@ const grainLabels = {
   PATIENT_PROGRAM: "Program",
 } as const;
 
+function toBangkokExcelDate(value: Date): Date {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    calendar: "gregory",
+    numberingSystem: "latn",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (type: string): number => {
+    const match = parts.find((item) => item.type === type);
+    if (!match) throw new Error("Report generation time could not be formatted");
+    return Number(match.value);
+  };
+
+  return new Date(Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute"),
+    part("second"),
+    value.getUTCMilliseconds(),
+  ));
+}
+
 /** RPT-32 workbook: Parent/Child names, generation time and the nine summary values only — no IDs or Patient data. */
 export async function generateParentChildHospitalReportWorkbook(
   summary: ParentChildHospitalReportingProjection,
@@ -44,7 +74,7 @@ export async function generateParentChildHospitalReportWorkbook(
   sheet.addRow(["รายงานสรุปโรงพยาบาลลูกข่าย (ดาวน์โหลดตามเขต)"]).font = { bold: true, size: 14 };
   sheet.addRow(["โรงพยาบาลแม่ข่าย", summary.parent.name]);
   sheet.addRow(["โรงพยาบาลลูกข่าย (เขตความรับผิดชอบ)", summary.hospital.name]);
-  const generatedRow = sheet.addRow(["เวลาที่สร้างไฟล์", generatedAt]);
+  const generatedRow = sheet.addRow(["เวลาที่สร้างไฟล์ (เวลาไทย)", toBangkokExcelDate(generatedAt)]);
   generatedRow.getCell(2).numFmt = "dd/mm/yyyy hh:mm";
   sheet.addRow(["ชุดข้อมูล", "ไม่รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว"]);
   sheet.addRow([]);
@@ -55,7 +85,7 @@ export async function generateParentChildHospitalReportWorkbook(
   sheet.addRow([]);
   sheet.addRow(["หมายเหตุ: ค่าทั้งหมดเป็นจำนวนรวมของโรงพยาบาลลูกข่ายที่เลือก ไม่มีข้อมูลระบุตัวผู้ป่วย"]);
   sheet.addRow(["ขั้นตอนบริการนับจำนวน Program ที่มีบันทึก ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ"]);
-  sheet.addRow(["เวลาที่สร้างไฟล์ไม่ใช่เวลาอ้างอิงของข้อมูล"]);
+  sheet.addRow(["เวลาที่สร้างไฟล์เป็นเวลาไทย ไม่ใช่เวลาอ้างอิงของข้อมูล"]);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

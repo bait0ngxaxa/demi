@@ -58,13 +58,44 @@ describe("RPT-32 Parent-to-Child summary export endpoint", () => {
     `parentHospitalId=${parentHospitalId}`,
     `parentHospitalId=${parentHospitalId}&hospitalId=${hospitalId}&hospitalId=${hospitalId}`,
     `parentHospitalId=${parentHospitalId}&hospitalId=${hospitalId}&cohort=INCLUDE_ENDED`,
-  ])("rejects malformed, extra or include-ended parameters and audits the denial (%s)", async (query) => {
+  ])("rejects malformed, extra or include-ended parameters after authentication and audits the denial (%s)", async (query) => {
     const response = await GET(new Request(`${endpoint}?${query}`));
 
     expect(response.status).toBe(400);
-    expect(mockedGetActor).not.toHaveBeenCalled();
+    expect(mockedGetActor).toHaveBeenCalledOnce();
     expect(mockedExport).not.toHaveBeenCalled();
-    expect(mockedAudit).toHaveBeenCalledWith({ operation: "export", outcome: "denied", reason: "SCOPE_UNAVAILABLE" });
+    expect(mockedAudit).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledWith({
+      actor,
+      operation: "export",
+      outcome: "denied",
+      reason: "SCOPE_UNAVAILABLE",
+    });
+  });
+
+  it("does not audit an unauthenticated request, including malformed query parameters", async () => {
+    mockedGetActor.mockRejectedValue(new UnauthenticatedError());
+
+    const response = await GET(new Request(`${endpoint}?hospitalId=${hospitalId}`));
+
+    expect(response.status).toBe(401);
+    expect(mockedAudit).not.toHaveBeenCalled();
+    expect(mockedExport).not.toHaveBeenCalled();
+  });
+
+  it("audits a verified session denied DEMI application access without request-supplied scope", async () => {
+    mockedGetActor.mockRejectedValue(new ForbiddenError());
+
+    const response = await GET(new Request(`${endpoint}?parentHospitalId=${parentHospitalId}&hospitalId=${hospitalId}`));
+
+    expect(response.status).toBe(403);
+    expect(mockedAudit).toHaveBeenCalledOnce();
+    expect(mockedAudit).toHaveBeenCalledWith({
+      operation: "export",
+      outcome: "denied",
+      reason: "NOT_AUTHORIZED",
+    });
+    expect(mockedExport).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -79,5 +110,6 @@ describe("RPT-32 Parent-to-Child summary export endpoint", () => {
 
     expect(response.status).toBe(status);
     expect(JSON.stringify(await response.json())).not.toContain("sensitive detail");
+    expect(mockedAudit).not.toHaveBeenCalled();
   });
 });
