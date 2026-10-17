@@ -193,6 +193,8 @@ export function PatientOsmAssignmentWorkspace({
   const unassignAction = guarded("unassign", dispatchUnassign);
 
   const busy = assignPending || unassignPending || assignUnknown || unassignUnknown;
+  // A pending or unconfirmed request keeps the previous submission's retained state, and `latestOperation`
+  // only commits when the request's transition ends, so inline feedback waits until no request is open.
 
   return (
     <div className="max-w-4xl">
@@ -245,7 +247,7 @@ export function PatientOsmAssignmentWorkspace({
             </p>
           )}
 
-          <AssignmentFeedback state={latestOperation === "assign" ? assignState : unassignState} />
+          {!busy ? <AssignmentFeedback state={latestOperation === "assign" ? assignState : unassignState} /> : null}
           <UnknownOutcomeAlert active={assignUnknown || unassignUnknown} className="mt-5" recovery={{ kind: "reload" }} />
         </Panel>
 

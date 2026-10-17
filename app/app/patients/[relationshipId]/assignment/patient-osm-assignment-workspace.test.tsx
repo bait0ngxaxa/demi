@@ -214,6 +214,29 @@ describe("single OSM assignment feedback", () => {
     expect(container.textContent).not.toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
   });
 
+  it("never shows an earlier assignment success for a later assignment that is pending or unconfirmed", async () => {
+    mocks.assign.mockResolvedValueOnce(result("ASSIGNED"));
+    render(current);
+    await assign();
+    mocks.unassign.mockResolvedValueOnce(result("UNASSIGNED", { osmUserId: null, previousOsmUserId: "osm-2" }));
+    await unassign();
+    expect(container.textContent).toContain("ยกเลิกการมอบหมายผู้ป่วยเรียบร้อยแล้ว");
+
+    let resolve: (value: unknown) => void = () => {};
+    mocks.assign.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await assign();
+    expect(container.textContent).not.toContain("เรียบร้อยแล้ว");
+
+    await act(async () => {
+      resolve({ status: "ERROR", code: "UNAVAILABLE", message: "ลองใหม่" });
+    });
+
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).not.toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("เรียบร้อยแล้ว");
+    expect(mocks.notifySuccess).toHaveBeenCalledTimes(2);
+  });
+
   it("does not keep an earlier assignment error beside a later successful unassignment", async () => {
     mocks.assign.mockResolvedValue({ status: "ERROR", code: "FORBIDDEN", message: "ไม่มีสิทธิ์มอบหมาย" });
     render(current);
