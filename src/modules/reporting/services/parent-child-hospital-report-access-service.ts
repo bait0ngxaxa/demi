@@ -19,6 +19,7 @@ import {
 import {
   decideHospitalNetworkChildReportPolicy,
   HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES,
+  type HospitalNetworkChildReportCapability,
 } from "../policies/hospital-network-child-report-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
 
@@ -26,7 +27,7 @@ export type ParentChildHospitalReportAccessDatabase = HospitalHierarchyDatabase;
 
 export type ParentChildHospitalReportAccessContext = {
   actorId: string;
-  capability: typeof HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read;
+  capability: HospitalNetworkChildReportCapability;
   parentHospitalId: string;
   hospital: {
     id: string;
@@ -55,6 +56,7 @@ async function resolveInDatabase(
   parentHospitalId: string,
   childHospitalId: string,
   database: ParentChildHospitalReportAccessDatabase,
+  capability: HospitalNetworkChildReportCapability,
 ): Promise<ParentChildHospitalReportAccessContext> {
   const hierarchy = await resolveHospitalOwnerDirectChildFacility(
     actor,
@@ -62,7 +64,6 @@ async function resolveInDatabase(
     childHospitalId,
     database,
   );
-  const capability = HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read;
   const decision = decideHospitalNetworkChildReportPolicy({ actor, capability, hierarchy });
   if (!decision.allowed) throw new ForbiddenError();
 
@@ -86,6 +87,7 @@ export async function resolveParentChildHospitalReportAccessContext(
   parentHospitalId: unknown,
   childHospitalId: unknown,
   database: ParentChildHospitalReportAccessDatabase = getPrisma(),
+  capability: HospitalNetworkChildReportCapability = HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read,
 ): Promise<ParentChildHospitalReportAccessContext> {
   if (!actor) throw new ForbiddenError();
 
@@ -102,11 +104,11 @@ export async function resolveParentChildHospitalReportAccessContext(
   const db = database ?? getPrisma();
   try {
     if (!isPrismaClient(db)) {
-      return await resolveInDatabase(actor, parsedParentId.data, parsedChildId.data, db);
+      return await resolveInDatabase(actor, parsedParentId.data, parsedChildId.data, db, capability);
     }
 
     return await db.$transaction(
-      (transaction) => resolveInDatabase(actor, parsedParentId.data, parsedChildId.data, transaction),
+      (transaction) => resolveInDatabase(actor, parsedParentId.data, parsedChildId.data, transaction, capability),
       ACCESS_TRANSACTION_OPTIONS,
     );
   } catch (error: unknown) {

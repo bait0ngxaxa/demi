@@ -69,7 +69,7 @@ describe("application home workspace routing", () => {
   async function renderHome(actor: ActorContext, status: HospitalStatus = HospitalStatus.ACTIVE): Promise<string> {
     vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor);
     vi.mocked(listActorHospitalWorkspaces).mockResolvedValue(
-      [...new Set([...actor.hospitalMemberships, ...actor.osmHospitalRelationships].map(({ hospitalId }) => hospitalId))].map((hospitalId) => ({ hospitalId, hospitalName: `โรงพยาบาล ${hospitalId}`, hospitalCode: hospitalId, hospitalStatus: status })),
+      [...new Set([...actor.hospitalMemberships, ...actor.osmHospitalRelationships].map(({ hospitalId }) => hospitalId))].map((hospitalId) => ({ hospitalId, hospitalName: `โรงพยาบาล ${hospitalId}`, hospitalCode: hospitalId, hospitalStatus: status, network: { hospitalId, name: `โรงพยาบาล ${hospitalId}` }, hasActiveDirectChildren: false })),
     );
     return renderToStaticMarkup(await ApplicationPage());
   }
@@ -160,7 +160,7 @@ describe("application home workspace routing", () => {
     expect(html.match(/href="\/app\/patients\/service-catalog"/g)).toHaveLength(1);
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).toContain(`/app/patients?hospitalId=${secondId}`);
-    expect(html).toContain('aria-label="ไปยังบริบทโรงพยาบาล"');
+    expect(html).toContain('aria-labelledby="work-area-heading"');
     expect(html).toContain(`href="#hospital-workspace-${secondId}"`);
     expect(html).toContain(`/app/hospitals/contact?hospitalId=${secondId}`);
     expect(html).not.toContain('href="/app/patients/service-catalog?hospitalId=');
@@ -170,4 +170,52 @@ describe("application home workspace routing", () => {
     expect(html).not.toContain("บริหารบุคลากรโรงพยาบาลนี้</summary>");
   });
 
+  describe("STAFF-04 responsibility-area selector (ADR-0013 §2)", () => {
+    const parentId = "66666666-6666-4666-8666-666666666666";
+    const childId = "77777777-7777-4777-8777-777777777777";
+    const otherChildId = "88888888-8888-4888-8888-888888888888";
+    const membership = (id: string, membershipType = MembershipType.MEMBER, status: MembershipStatus = MembershipStatus.ACTIVE) => ({
+      hospitalId: id, membershipType, profession: Profession.NURSE, status, hospitalStatus: HospitalStatus.ACTIVE,
+    });
+    function mockWorkspaces(entries: readonly { id: string; name: string; network: { hospitalId: string; name: string } }[]): void {
+      vi.mocked(listActorHospitalWorkspaces).mockResolvedValue(entries.map(({ id, name, network }) => ({
+        hospitalId: id, hospitalName: name, hospitalCode: id, hospitalStatus: HospitalStatus.ACTIVE, network, hasActiveDirectChildren: false,
+      })));
+    }
+    const parentNetwork = { hospitalId: parentId, name: "รพ.แม่ข่ายสังเคราะห์" };
+
+    it("groups direct work contexts under their parent network", async () => {
+      const actor: ActorContext = { ...patientActor, roles: [Role.HOSPITAL, Role.OSM], hospitalMemberships: [membership(childId)], osmHospitalRelationships: [{ hospitalId: otherChildId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] };
+      vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor);
+      mockWorkspaces([
+        { id: childId, name: "รพ.สต.ลูกข่ายหนึ่ง", network: parentNetwork },
+        { id: otherChildId, name: "รพ.สต.ลูกข่ายสอง", network: parentNetwork },
+      ]);
+      const html = renderToStaticMarkup(await ApplicationPage());
+      expect(html).toContain("เขตความรับผิดชอบ");
+      expect(html.match(/เครือข่าย รพ\.แม่ข่ายสังเคราะห์/g)).toHaveLength(1);
+      expect(html).toContain(`href="#hospital-workspace-${childId}"`);
+      expect(html).toContain(`href="#hospital-workspace-${otherChildId}"`);
+    });
+
+    it("never lists a Child for a Parent-only member and excludes inactive direct relationships", async () => {
+      const actor: ActorContext = { ...patientActor, roles: [Role.HOSPITAL], hospitalMemberships: [membership(parentId), membership(otherChildId, MembershipType.MEMBER, MembershipStatus.SUSPENDED)] };
+      vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor);
+      mockWorkspaces([
+        { id: parentId, name: "รพ.แม่ข่ายสังเคราะห์", network: parentNetwork },
+        { id: otherChildId, name: "รพ.สต.ลูกข่ายสอง", network: parentNetwork },
+      ]);
+      const html = renderToStaticMarkup(await ApplicationPage());
+      // One active direct context only: the selector stays hidden, as for any single-Hospital user.
+      expect(html).not.toContain('aria-labelledby="work-area-heading"');
+      expect(html).not.toContain(`hospital-workspace-${childId}`);
+      expect(html).not.toContain(`href="#hospital-workspace-${otherChildId}"`);
+    });
+
+    it("keeps the single-Hospital home unchanged (no selector)", async () => {
+      const html = await renderHome(staff(MembershipType.OWNER));
+      expect(html).not.toContain('aria-labelledby="work-area-heading"');
+      expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
+    });
+  });
 });

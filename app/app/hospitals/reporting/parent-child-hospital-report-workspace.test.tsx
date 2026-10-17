@@ -48,7 +48,7 @@ const report: ParentChildHospitalReportPageProjection = {
 };
 
 describe("Parent-to-Child Hospital report workspace", () => {
-  it("shows exact-Child summary values without exposing patient details or export", () => {
+  it("shows exact-Child summary values and the RPT-32 summary export without exposing patient details", () => {
     const markup = renderToStaticMarkup(createElement(ParentChildHospitalReportWorkspace, {
       hospitals,
       parentGroups,
@@ -77,8 +77,10 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).not.toContain("HOSPITAL-NUMBER");
     expect(markup).not.toContain("bloodSugar");
     expect(markup).not.toContain("/app/patients/");
+    // ADR-0013 RPT-32: the nine-value summary export only; never the direct OWNER patient-row workbook endpoint.
     expect(markup).not.toContain("/api/v1/hospital/reporting/export");
-    expect(markup).not.toContain("ส่งออก Excel");
+    expect(markup).toContain("ส่งออก Excel");
+    expect(markup).toContain("ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้");
     expect(markup).toContain(`href="/app#hospital-workspace-${parentHospitalId}"`);
     expect(markup).not.toContain(`href="/app#hospital-workspace-${childHospitalId}"`);
   });

@@ -1,8 +1,8 @@
 # ADR-0013: Responsibility Areas as Direct Child Hospitals
 
-- Status: Proposed
-- Date: 2026-10-16
-- Customer decision: ก-14 (final)
+- Status: Accepted
+- Date: 2026-10-16 (proposed); accepted 2026-10-17
+- Customer decision: ก-14 (final); จ-1..จ-5 (2026-10-17, see “Customer decisions”)
 
 ## Context
 
@@ -16,10 +16,24 @@ There is no general authorization inheritance through `parentHospitalId`. Curren
 
 1. Area identity is `childHospitalId` where the current server-resolved hierarchy proves an active direct child of the selected active Parent. No separate Area entity or duplicate area assignment is proposed.
 2. Staff and OSM work authority remains attached to the exact Child through existing `HospitalMembership` and `OsmHospitalRelationship` records. A Parent membership alone does not make a Child selectable for work.
-3. Parent OWNER access remains aggregate-only. For RPT-32, this ADR proposes an audited export of the same nine Child summary fields already approved for Parent OWNER viewing. Patient-level export and parent MEMBER access remain denied until separately approved.
+3. Parent OWNER access remains aggregate-only. For RPT-32, the Parent OWNER may download an audited export of the same nine Child summary fields already approved for Parent OWNER viewing. Patient-level export and parent MEMBER access remain denied until separately approved.
 4. Child users receive no parent or sibling data through hierarchy. Any direct membership or grant is evaluated independently for its exact Hospital.
 5. Patient, OSM, appointment, and LINE operations remain bound to an exact Child relationship. No cross-Hospital copying or notification is implied.
 6. Transfers preserve the source Child's history. Ending an area does not delete a Hospital or its records and does not preserve former-Parent access by implication.
+
+## Customer decisions (2026-10-17)
+
+The customer answered the §9 questions (จ-1..จ-5) with this ADR's recommendations; the ADR is accepted on that basis and implemented in Phase H. Recorded in [WB_ALIGNMENT_DECISIONS.md](../requirements/WB_ALIGNMENT_DECISIONS.md) §ซ (closes WB-PD-04).
+
+| ID | Ref | Decision |
+| --- | --- | --- |
+| H1 | จ-1 | A Parent OWNER selects only active direct Children that the canonical Hospital Master already links. No Parent self-service attach/detach; hierarchy changes use the master data + Platform ADMIN reconciliation path (unchanged). §1 option C. |
+| H2 | จ-2 | “ดาวน์โหลดตามเขต” (RPT-32) = export of the existing nine aggregate values of the exact Child summary only; no patient-level data. §3 option B. |
+| H3 | จ-3 | Child OWNERs add their own staff/OSMs through the existing workforce flows. The Parent OWNER may view Child workforce membership only if this ADR allows a roster view; §8 denies it, so no roster view is added. ADR-0008 is unchanged. §2 option A. |
+| H4 | จ-4 | Moving a Patient between Children = Phase F end at the source + normal provisioning/import at the target. No transfer workflow, no record copy. §6 option B. |
+| H5 | จ-5 | Reports follow the current parent link only; no historical Parent attribution. §6. |
+
+Implementation (Phase H): STAFF-04 work-area selector on the Work home built from the actor's active direct memberships/OSM relationships grouped by parent network; `/app/hospitals/areas` Parent area overview; capability `hospital-network:child-report:export` with `GET /api/v1/hospital/reporting/parent-child/export`; §8 matrix tests in `src/modules/reporting/policies/responsibility-area-matrix.test.ts` and `parent-child-hospital-report-workbook-service.test.ts`. No schema migration.
 
 ## 1. Create or attach a Child Hospital; onboarding and verification
 
@@ -71,11 +85,11 @@ For STAFF-04, the work-home selector must list only areas resolved from the sign
 
 | Parent actor and Child scope | Patient list / identifiers | Individual care record or clinical detail | Child mutation | Report / RPT-32 export |
 | --- | --- | --- | --- | --- |
-| Active Parent OWNER; exact active direct Child | Deny | Deny | Deny | Read the current exact-Child summary; proposed export of the same nine aggregate fields only, with an export audit |
+| Active Parent OWNER; exact active direct Child | Deny | Deny | Deny | Read the current exact-Child summary; export of the same nine aggregate fields only, with an export audit (accepted, H2) |
 | Active Parent MEMBER; Parent membership only | Deny | Deny | Deny | Deny Child summary and export |
 | Parent MEMBER with a separate active direct Child membership | Use direct Child policy only | Use direct Child policy only | Use direct Child policy only | Child OWNER's ก-15 grant applies only to that Child's existing Hospital workbook; it is not Parent-derived access |
 
-The proposed RPT-32 export contains only the Parent Child report's existing allowlist plus the Child identity needed to label the selected report:
+The RPT-32 export contains only the Parent Child report's existing allowlist plus the Child identity needed to label the selected report:
 
 1. Patient–Hospital relationship count.
 2. Relationships without a Program.
@@ -87,9 +101,15 @@ The proposed RPT-32 export contains only the Parent Child report's existing allo
 
 These are nine values: five Hospital summary values and four record-presence counts at Program grain. The default cohort is active Patient–Hospital relationships; ended relationships are excluded. The export must not contain Patient name, HN, national identifier, contact/address, Patient/Program IDs, individual Program rows, measurements, Baseline/Final values, OSM names, or care-record details. It is one exact active Child per export, not a network aggregate or combined workbook.
 
-The Parent OWNER's proposed summary export is a new explicit RPT-32 capability; it is **not current behavior**. It does not reuse `HospitalMembership.reportExportGrantedAt`. It must re-check current Parent OWNER, active Parent, current direct-child link, active Child, and exact report capability at export time, then audit actor, Parent, Child, operation, outcome, and timestamp without storing report values in audit metadata. Parent MEMBER access remains denied unless the person also has a separate direct Child relationship and acts through that Child's policy.
+The Parent OWNER's summary export is a new explicit RPT-32 capability (`hospital-network:child-report:export`, accepted as H2). It does not reuse `HospitalMembership.reportExportGrantedAt`. It must re-check current Parent OWNER, active Parent, current direct-child link, active Child, and exact report capability at export time, then audit actor, Parent, Child, operation, outcome, and timestamp without storing report values in audit metadata. Parent MEMBER access remains denied unless the person also has a separate direct Child relationship and acts through that Child's policy.
 
 **Security trade-off:** aggregate-only export supports the requested “ดาวน์โหลดตามเขต” workflow with substantially less exposure than row-level health data, but a downloaded file can still be copied or redistributed and small counts may reveal information. No cell-suppression threshold or onward-sharing permission is invented here. If the customer expects patient-level service rows, RPT-32 stays gated until those fields and disclosure rules are explicitly approved.
+
+**Current hierarchy authorization vs record-time disclosure (Phase H remediation):** H5 decides who may access a Child under the current Parent–Child link and requires the former Parent to lose access after reparenting. It does not decide whether the new Parent may see active-cohort aggregate values whose underlying Patient–Hospital relationship, Program, or Service Process record predates that current link. `Hospital.parentHospitalId` stores only the current Parent; the report query has no effective date or record-level Parent provenance and cannot enforce such a time boundary. H5 therefore remains unchanged, but it is not historical disclosure approval. Small aggregate counts may also reveal sensitive information; no suppression threshold or consent rule is inferred.
+
+**Real-data release gate:** keep the approved nine-value aggregate-only demonstration available with synthetic fixtures in a controlled test database. No runtime mode distinguishes synthetic from real data. Do not treat implementation or tests as approval to disclose real Patient data through either the summary view or export until the Owner answers: (1) may the current Parent OWNER see the active Child cohort's nine values when source records may predate the current Parent link, or must those records be excluded using a separately identified authoritative timestamp/source; and (2) what disclosure review or safeguards, if any, are required for low aggregate counts? Until then, real-data use remains gated. No effective-dated hierarchy, schema migration, environment flag, consent rule, or suppression threshold is introduced by this ADR clarification.
+
+**Export audit contract (Phase H remediation):** unauthenticated requests receive 401 and are not audited, avoiding anonymous audit-log amplification. A verified session denied DEMI application access before an `ActorContext` exists records one actorless `denied` event without request-supplied IDs; authenticated malformed requests record one actor-bound `denied` event. Once an actor is resolved, the export service owns exactly one `prepared`, `denied`, or `failed` event for the outcome, and the route must not duplicate it. Audit metadata contains no report values or Patient data. If a required export audit write fails, the file is not delivered and the request fails closed.
 
 ## 4. What Child staff can see about the Parent or siblings
 
@@ -151,21 +171,21 @@ Child OWNER, Child MEMBER, and Child OSM see no Parent or sibling patient lists,
 
 ก-15 is an OWNER-granted export capability for an active MEMBER's existing Hospital workbook at the exact Hospital named by that `HospitalMembership`. A grant at the Parent applies only to the Parent workbook. It does not authorize a Child workbook or RPT-32 Child export. A Child-local MEMBER export requires that exact Child's active membership and Child OWNER's exact grant; suspension/end, grant revocation, or inactive Hospital status removes its effect. Promotion to OWNER clears the MEMBER grant under the existing flow.
 
-The proposed Parent OWNER RPT-32 summary export is a distinct capability, limited to the nine values in §3. The current Parent-to-Child report path is read-only and does not currently export. No Parent MEMBER receives this capability from ก-15.
+The Parent OWNER RPT-32 summary export is a distinct capability, limited to the nine values in §3; the Parent-to-Child read path itself remains read-only. No Parent MEMBER receives this capability from ก-15.
 
-Every area report uses the active cohort by default. Phase F `endedAt` is terminal for work access: it blocks staff/OSM/caregiver/notification scope and excludes the relationship from default report cohorts. The Patient may read their own ended history; an exact Child OWNER may use the existing include-ended report option in that Child's own report. The proposed Parent RPT-32 summary contains active-cohort data only and provides no include-ended control. Neither reassigning an OSM nor changing an area's hierarchy reopens a Patient relationship.
+Every area report uses the active cohort by default. Phase F `endedAt` is terminal for work access: it blocks staff/OSM/caregiver/notification scope and excludes the relationship from default report cohorts. The Patient may read their own ended history; an exact Child OWNER may use the existing include-ended report option in that Child's own report. The Parent RPT-32 summary contains active-cohort data only and provides no include-ended control. Neither reassigning an OSM nor changing an area's hierarchy reopens a Patient relationship.
 
 **Security trade-off:** a separate Child grant would be more flexible but creates a new cross-Hospital disclosure authority and revocation surface. Keeping current ก-15 exact-Hospital prevents a familiar-looking Parent grant from silently authorizing Child data.
 
 ## 8. Implementation test matrix
 
-Use the following matrix as the authorization contract for the implementation phase. “Allow” is capability-specific; all inputs must be re-resolved from current server state. The proposed Parent summary export rows apply only if this ADR is accepted.
+Use the following matrix as the authorization contract for the implementation phase. “Allow” is capability-specific; all inputs must be re-resolved from current server state. The Parent summary export rows apply because this ADR is accepted (H2).
 
 | Actor | Scope | Action | Expected |
 | --- | --- | --- | --- |
 | Active Parent OWNER | Own active Parent | View/manage own Hospital context under existing direct OWNER policies | Allow |
 | Active Parent OWNER | Exact active direct Child | List/select Child as an Area and read the nine-field Child summary | Allow |
-| Active Parent OWNER | Exact active direct Child | Export the same nine summary fields with export audit (proposed RPT-32) | Allow if ADR accepted |
+| Active Parent OWNER | Exact active direct Child | Export the same nine summary fields with export audit (RPT-32) | Allow |
 | Active Parent OWNER | Child patient relationship | List Patient rows, open Patient/care details, or write care/appointments | Deny |
 | Active Parent OWNER | Child workforce | Read Child workforce roster or add/end Child staff/OSM | Deny under current ADR-0008; requires separate delegation decision |
 | Active Parent OWNER | Sibling, grandchild, unrelated, inactive, or reparented Child | Read/export Child summary | Deny |
@@ -181,24 +201,26 @@ Use the following matrix as the authorization contract for the implementation ph
 | Active OSM | Parent, sibling, or another Child's Patient relationship | Read/assign Patient or appointment | Deny |
 | Hospital staff or OSM | Ended Patient–Hospital relationship | Work, write, assign OSM, reschedule, notify, or include in default area export | Deny / exclude |
 | Patient | Own ended Patient–Hospital relationship | Read own retained history | Allow read-only |
-| Parent OWNER | Child with ended Patient relationships | Proposed RPT-32 export | Allow active cohort only; ended relationships excluded |
+| Parent OWNER | Child with ended Patient relationships | RPT-32 export | Allow active cohort only; ended relationships excluded |
 | Any actor with revoked/ended membership, OSM relationship, grant, or inactive Hospital | Former scope | Continue work/report/export | Deny |
 | Platform ADMIN without qualifying Parent OWNER membership | Parent-to-Child report path | Read as Parent OWNER | Deny; use the separate Global ADMIN exact-Hospital policy where eligible |
 
-## 9. Open questions for the customer
+## 9. Open questions for the customer (resolved 2026-10-17)
 
-1. Does “Parent Hospital admin defines it” mean the Parent OWNER may directly change the official `parentHospitalId`, or may they select/request only a Child already attached by the canonical Hospital Master? The current reconciliation treats the master mapping as canonical; allowing direct owner writes would change that source-of-truth contract.
-2. Does RPT-32 accept a per-Child export of the same nine aggregate fields as the current Parent report, or is patient-level service data required? If patient-level data is required, approve exact fields, row grain, time range, recipient/purpose, consent/governance, retention, and audit before implementation.
-3. Must Parent OWNER directly assign staff/OSMs to a Child, or should the Child OWNER remain responsible for creating the direct Child membership/OSM relationship? Direct Parent assignment would be an explicit exception to ADR-0008 and needs a narrowly scoped, audited capability.
-4. For a Patient moving between Child Hospitals, is source-end plus target-create sufficient, or is a two-Hospital transfer/acceptance workflow required? No clinical record copy is recommended without a separate approved data-sharing rule.
-5. Does the customer require former-Parent historical reports after a Child is detached/reparented? Current hierarchy and Parent reporting use the current link only; historical Parent attribution would require effective-dated hierarchy history and a separate scope rule.
+All five were answered with the recommendation; see “Customer decisions” (H1–H5). The original questions are kept for traceability.
+
+1. Does “Parent Hospital admin defines it” mean the Parent OWNER may directly change the official `parentHospitalId`, or may they select/request only a Child already attached by the canonical Hospital Master? The current reconciliation treats the master mapping as canonical; allowing direct owner writes would change that source-of-truth contract. **Resolved (จ-1 / H1):** select only Children already attached by the canonical Hospital Master; no direct owner writes.
+2. Does RPT-32 accept a per-Child export of the same nine aggregate fields as the current Parent report, or is patient-level service data required? If patient-level data is required, approve exact fields, row grain, time range, recipient/purpose, consent/governance, retention, and audit before implementation. **Resolved (จ-2 / H2):** per-Child export of the same nine aggregate fields; no patient-level data.
+3. Must Parent OWNER directly assign staff/OSMs to a Child, or should the Child OWNER remain responsible for creating the direct Child membership/OSM relationship? Direct Parent assignment would be an explicit exception to ADR-0008 and needs a narrowly scoped, audited capability. **Resolved (จ-3 / H3):** the Child OWNER remains responsible; no Parent assignment exception to ADR-0008.
+4. For a Patient moving between Child Hospitals, is source-end plus target-create sufficient, or is a two-Hospital transfer/acceptance workflow required? No clinical record copy is recommended without a separate approved data-sharing rule. **Resolved (จ-4 / H4):** source-end plus target-create is sufficient; no transfer workflow or record copy.
+5. Does the customer require former-Parent historical reports after a Child is detached/reparented? Current hierarchy and Parent reporting use the current link only; historical Parent attribution would require effective-dated hierarchy history and a separate scope rule. **Resolved (จ-5 / H5):** no former-Parent historical reports; the current link only.
 
 ## Current implementation evidence
 
 - `Hospital.parentHospitalId`, the parent/child relations, and Child-specific patient relationships are in [`prisma/schema.prisma`](../../prisma/schema.prisma).
 - [`hospital-hierarchy-service.ts`](../../src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts) resolves a one-level hierarchy and requires an active direct Parent OWNER for the owner hierarchy context. [`hospital-master-reconciliation-service.ts`](../../src/modules/hospital-hierarchy/services/hospital-master-reconciliation-service.ts) compares and applies parent links from canonical master records.
 - [`hospital-onboarding-service.ts`](../../src/modules/hospital-onboarding/services/hospital-onboarding-service.ts) looks up the existing Hospital by `hospitalCode`; only Platform ADMIN approval activates the Hospital and creates the first direct OWNER membership.
-- [`parent-child-hospital-report-access-service.ts`](../../src/modules/reporting/services/parent-child-hospital-report-access-service.ts), [`hospital-network-child-report-policy.ts`](../../src/modules/reporting/policies/hospital-network-child-report-policy.ts), and [`hospital-report-query-service.ts`](../../src/modules/reporting/services/hospital-report-query-service.ts) revalidate the exact active Parent OWNER/direct Child scope and return only the nine summary values. The current Child path has no export operation.
+- [`parent-child-hospital-report-access-service.ts`](../../src/modules/reporting/services/parent-child-hospital-report-access-service.ts), [`hospital-network-child-report-policy.ts`](../../src/modules/reporting/policies/hospital-network-child-report-policy.ts), and [`hospital-report-query-service.ts`](../../src/modules/reporting/services/hospital-report-query-service.ts) revalidate the exact active Parent OWNER/direct Child scope and return only the nine summary values. [`parent-child-hospital-report-workbook-service.ts`](../../src/modules/reporting/services/parent-child-hospital-report-workbook-service.ts) is the RPT-32 export (Phase H).
 - [`hospital-report-policy.ts`](../../src/modules/reporting/policies/hospital-report-policy.ts) and [`hospital-report-access-service.ts`](../../src/modules/reporting/services/hospital-report-access-service.ts) bind ก-15 export to an active direct MEMBER relationship and exact Hospital. [`workforce-service.ts`](../../src/modules/workforce/services/workforce-service.ts) records the OWNER grant/revocation audit.
 - [`actor-workspace-service.ts`](../../src/modules/auth/services/actor-workspace-service.ts) builds workspaces from the actor's direct Hospital memberships and OSM relationships. [`app/app/workforce/page.tsx`](../../app/app/workforce/page.tsx) validates the selected Hospital against the direct-membership switcher list.
 - [`patient-provisioning-policy.ts`](../../src/modules/patient-provisioning/policies/patient-provisioning-policy.ts), [`patient-osm-assignment-transaction.ts`](../../src/modules/patient-assignment/services/patient-osm-assignment-transaction.ts), and [`appointment-line-notification-recipient-service.ts`](../../src/modules/appointments/services/appointment-line-notification-recipient-service.ts) resolve exact Hospital/relationship scope; OSM assignment and notification recipients are relationship-specific.
@@ -217,8 +239,8 @@ Use the following matrix as the authorization contract for the implementation ph
 
 ## สรุปสำหรับลูกค้า
 
-ข้อเสนอนี้กำหนดให้ “เขตความรับผิดชอบ” คือ รพ.สต. ลูกข่ายที่เชื่อมกับแม่ข่ายในโครงสร้างโรงพยาบาลปัจจุบัน แม่ข่ายเลือกเขตได้จากลูกข่ายที่ผ่านการตรวจสอบแล้ว ส่วนการเพิ่มโรงพยาบาลและการยืนยันความสัมพันธ์ยังผ่านข้อมูลโรงพยาบาลกลางและผู้ดูแลระบบ
+ข้อตัดสินนี้ (ลูกค้ายืนยัน จ-1..จ-5 เมื่อ 2026-10-17) กำหนดให้ “เขตความรับผิดชอบ” คือ รพ.สต. ลูกข่ายที่เชื่อมกับแม่ข่ายในโครงสร้างโรงพยาบาลปัจจุบัน แม่ข่ายเลือกเขตได้จากลูกข่ายที่ผ่านการตรวจสอบแล้ว ส่วนการเพิ่มโรงพยาบาลและการยืนยันความสัมพันธ์ยังผ่านข้อมูลโรงพยาบาลกลางและผู้ดูแลระบบ
 
-บุคลากรและ อสม. ต้องมีความสัมพันธ์กับ รพ.สต. นั้นโดยตรง จึงจะใช้พื้นที่ทำงานของลูกข่ายได้ แม่ข่ายเห็นและดาวน์โหลดได้เฉพาะรายงานสรุป 9 ค่าแบบไม่ระบุตัวผู้ป่วยตามข้อเสนอ และไม่มีสิทธิ์เปิดรายชื่อหรือแก้ไขข้อมูลผู้ป่วยของลูกข่ายโดยอัตโนมัติ
+บุคลากรและ อสม. ต้องมีความสัมพันธ์กับ รพ.สต. นั้นโดยตรง จึงจะใช้พื้นที่ทำงานของลูกข่ายได้ แม่ข่ายเห็นและดาวน์โหลดได้เฉพาะรายงานสรุป 9 ค่าแบบไม่ระบุตัวผู้ป่วย (ลูกค้ายืนยัน 2026-10-17) และไม่มีสิทธิ์เปิดรายชื่อหรือแก้ไขข้อมูลผู้ป่วยของลูกข่ายโดยอัตโนมัติ
 
 การนำเข้าผู้ป่วย การมอบหมาย อสม. นัดหมาย และ LINE ยังคงอยู่ในขอบเขตของ รพ.สต. ที่เกี่ยวข้อง การย้ายหรือปิดเขตจะเก็บประวัติเดิมไว้ และไม่เปิดความสัมพันธ์ที่สิ้นสุดแล้วกลับมาเอง

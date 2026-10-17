@@ -1,4 +1,4 @@
-import { HospitalStatus, MembershipStatus } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
@@ -51,7 +51,14 @@ export type ApplicationHospitalWorkspace = ActorHospitalWorkspace & {
   administrationScope: "OWNER" | "MEMBER";
 };
 
+/** STAFF-04 work-area selector group: the actor's own direct work contexts under one parent network. */
+export type ApplicationWorkAreaGroup = {
+  network: { hospitalId: string; name: string };
+  hospitals: readonly { hospitalId: string; hospitalName: string }[];
+};
+
 export type ApplicationWorkspaceProjection = {
+  areaGroups: readonly ApplicationWorkAreaGroup[];
   availableWorkspaces: readonly ApplicationWorkspaceContext[];
   governanceActions: readonly ApplicationWorkspaceAction[];
   assignedPatientsAction: ApplicationWorkspaceAction | null;
@@ -245,6 +252,16 @@ function projectHospitalActions(
       category: "administration",
       prefetch: false,
     });
+    // ADR-0013: only a Parent with active direct Children has responsibility areas to show.
+    if (workspace.hasActiveDirectChildren) {
+      actions.push({
+        href: "/app/hospitals/areas",
+        label: "เขตความรับผิดชอบ",
+        description: "ดูและดาวน์โหลดตัวเลขสรุปของโรงพยาบาลลูกข่ายที่ใช้งานอยู่ โดยไม่เพิ่มสิทธิ์ดูแลผู้ป่วยหรือจัดการบุคลากรลูกข่าย",
+        category: "administration",
+        prefetch: false,
+      });
+    }
   } else if (decideHospitalReportPolicy({
     actor,
     capability: HOSPITAL_REPORT_CAPABILITIES.export,
@@ -292,6 +309,7 @@ export function projectApplicationWorkspace(
   }));
 
   return {
+    areaGroups: projectWorkAreaGroups(actor, workspaces),
     availableWorkspaces: getAvailableApplicationWorkspaces(actor),
     governanceActions: projectGovernanceActions(actor),
     assignedPatientsAction: projectAssignedPatientsAction(actor),
@@ -301,6 +319,43 @@ export function projectApplicationWorkspace(
       ...[...shared.values()].filter(({ href }) => href === "/app/patients/service-catalog"),
     ],
   };
+}
+
+function hasActiveDirectWorkRelationship(actor: ActorContext, hospitalId: string): boolean {
+  return (
+    actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some((membership) =>
+      membership.hospitalId === hospitalId &&
+      membership.status === MembershipStatus.ACTIVE &&
+      membership.hospitalStatus === HospitalStatus.ACTIVE)
+  ) || (
+    actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some((relationship) =>
+      relationship.hospitalId === hospitalId &&
+      relationship.status === MembershipStatus.ACTIVE &&
+      relationship.hospitalStatus === HospitalStatus.ACTIVE)
+  );
+}
+
+/**
+ * ADR-0013 §2 (STAFF-04): selectable work areas come only from the actor's current active direct Hospital memberships
+ * and OSM relationships, grouped by parent network. A Parent membership never adds its Children as work contexts.
+ */
+function projectWorkAreaGroups(
+  actor: ActorContext,
+  workspaces: readonly ActorHospitalWorkspace[],
+): ApplicationWorkAreaGroup[] {
+  const groups = new Map<string, { network: ApplicationWorkAreaGroup["network"]; hospitals: { hospitalId: string; hospitalName: string }[] }>();
+  for (const workspace of workspaces) {
+    if (workspace.hospitalStatus !== HospitalStatus.ACTIVE || !hasActiveDirectWorkRelationship(actor, workspace.hospitalId)) {
+      continue;
+    }
+    const group = groups.get(workspace.network.hospitalId)
+      ?? { network: workspace.network, hospitals: [] };
+    group.hospitals.push({ hospitalId: workspace.hospitalId, hospitalName: workspace.hospitalName });
+    groups.set(workspace.network.hospitalId, group);
+  }
+  return [...groups.values()].sort((left, right) =>
+    left.network.name.localeCompare(right.network.name, "th") || left.network.hospitalId.localeCompare(right.network.hospitalId),
+  );
 }
 
 function workspaceContextLabel(actor: ActorContext, hospitalId: string): string {

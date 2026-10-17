@@ -14,6 +14,7 @@
     "prisma:generate": "prisma generate",
     "line:rich-menu:reconcile": "node scripts/line-rich-menu-reconcile.mjs",
     "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrations:check": "node scripts/check-migration-order.mjs",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "test:db:up": "node scripts/integration.mjs db:up",
     "test:db:down": "node scripts/integration.mjs db:down",

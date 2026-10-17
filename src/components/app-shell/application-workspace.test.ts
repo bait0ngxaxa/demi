@@ -25,6 +25,8 @@ function workspace(overrides: Partial<ActorHospitalWorkspace> = {}): ActorHospit
     hospitalCode: "HOSPITAL-001",
     hospitalName: "โรงพยาบาลทดสอบ",
     hospitalStatus: HospitalStatus.ACTIVE,
+    network: { hospitalId, name: "โรงพยาบาลทดสอบ" },
+    hasActiveDirectChildren: false,
     ...overrides,
   };
 }
@@ -74,6 +76,38 @@ describe("application workspace projection", () => {
       `/app/hospitals/contact?hospitalId=${hospitalId}`,
       `/app/hospitals/knowledge?hospitalId=${hospitalId}`,
       `/app/hospitals/reporting?hospitalId=${hospitalId}`,
+    ]);
+  });
+
+  it("offers the responsibility-area overview only to the direct OWNER of a Parent with active Children (ADR-0013)", () => {
+    const owner = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] });
+    const member = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.MEMBER)] });
+    const hrefs = (projectionActor: ActorContext, hasActiveDirectChildren: boolean) =>
+      projectApplicationWorkspace(projectionActor, [workspace({ hasActiveDirectChildren })]).hospitals[0]?.actions.map(({ href }) => href);
+
+    expect(hrefs(owner, true)).toContain("/app/hospitals/areas");
+    expect(hrefs(owner, false)).not.toContain("/app/hospitals/areas");
+    expect(hrefs(member, true)).not.toContain("/app/hospitals/areas");
+  });
+
+  it("builds work-area groups only from active direct relationships, grouped by network (STAFF-04)", () => {
+    const childId = "44444444-4444-4444-8444-444444444444";
+    const suspendedId = "55555555-5555-4555-8555-555555555555";
+    const network = { hospitalId: "66666666-6666-4666-8666-666666666666", name: "เครือข่ายทดสอบ" };
+    const projection = projectApplicationWorkspace(
+      actor({
+        roles: [Role.HOSPITAL, Role.OSM],
+        hospitalMemberships: [{ ...directMembership(MembershipType.MEMBER), status: MembershipStatus.SUSPENDED, hospitalId: suspendedId }],
+        osmHospitalRelationships: [{ hospitalId: childId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+      }),
+      [
+        workspace({ hospitalId: childId, hospitalName: "รพ.สต.ทดสอบ", network }),
+        workspace({ hospitalId: suspendedId, hospitalName: "รพ.สต.ระงับ", network }),
+      ],
+    );
+
+    expect(projection.areaGroups).toEqual([
+      { network, hospitals: [{ hospitalId: childId, hospitalName: "รพ.สต.ทดสอบ" }] },
     ]);
   });
 

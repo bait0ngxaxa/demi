@@ -4,6 +4,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
 import { HospitalReportExportLimitError } from "@/modules/reporting/services/hospital-report-query-service";
 import { hospitalReportExportRequestSchema } from "@/modules/reporting/schemas/hospital-report-schemas";
+import { safeReportFilenamePart } from "@/modules/reporting/transport/report-export-filename";
 import {
   ApplicationError,
   UnauthenticatedError,
@@ -34,10 +35,6 @@ function errorResponse(error: unknown): NextResponse {
   return NextResponse.json({ error: "ระบบส่งออกรายงานไม่พร้อมใช้งาน กรุณาลองอีกครั้ง" }, { status: 503, headers: NO_STORE_HEADERS });
 }
 
-function safeFilenamePart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "hospital";
-}
-
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const queryKeys = [...url.searchParams.keys()];
@@ -62,7 +59,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const actor = await getProtectedApplicationActor();
     const { buffer, generatedAt } = await exportHospitalReportingWorkbook(actor, parsed.data);
-    const filename = `demi-hospital-report-${safeFilenamePart(parsed.data.hospitalId)}-${generatedAt.toISOString().slice(0, 10)}.xlsx`;
+    const filename = `demi-hospital-report-${safeReportFilenamePart(parsed.data.hospitalId)}-${generatedAt.toISOString().slice(0, 10)}.xlsx`;
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {

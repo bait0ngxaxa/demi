@@ -12,7 +12,9 @@ import {
 
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
 
-export type ParentChildHospitalReportingAuditOutcome = "read" | "denied" | "failed";
+export type ParentChildHospitalReportingAuditOutcome = "read" | "prepared" | "denied" | "failed";
+/** `read` is the existing summary view; `export` is the ADR-0013 RPT-32 nine-value workbook. */
+export type ParentChildHospitalReportingAuditOperation = "read" | "export";
 export type ParentChildHospitalReportingAuditReason =
   | "UNAUTHENTICATED"
   | "NOT_AUTHORIZED"
@@ -23,6 +25,7 @@ export async function recordParentChildHospitalReportingAudit(input: {
   actor?: ActorContext | null;
   parentHospitalId?: string;
   hospitalId?: string;
+  operation?: ParentChildHospitalReportingAuditOperation;
   outcome: ParentChildHospitalReportingAuditOutcome;
   reason?: ParentChildHospitalReportingAuditReason;
 }, database?: PrismaClient): Promise<void> {
@@ -36,13 +39,15 @@ export async function recordParentChildHospitalReportingAudit(input: {
     ? hospitalReportHospitalIdSchema.safeParse(input.hospitalId)
     : null;
 
+  const isExport = input.operation === "export";
+
   await recordAuditEvent({
     actorUserId: actorUserId?.success ? actorUserId.data : null,
-    action: `parent_child_reporting.access.${input.outcome}`,
+    action: `parent_child_reporting.${isExport ? "export" : "access"}.${input.outcome}`,
     resourceType: hospitalId?.success ? "Hospital" : "ParentChildHospitalReporting",
     ...(hospitalId?.success ? { resourceId: hospitalId.data } : {}),
     metadata: {
-      operation: "PARENT_CHILD_REPORT",
+      operation: isExport ? "PARENT_CHILD_REPORT_EXPORT" : "PARENT_CHILD_REPORT",
       outcome: input.outcome,
       ...(parentHospitalId?.success ? { parentHospitalId: parentHospitalId.data } : {}),
       ...(input.reason ? { reason: input.reason } : {}),

@@ -7,6 +7,7 @@ import type { HospitalReportTargetSelection } from "@/modules/reporting/schemas/
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 
+import { ExportButton } from "./hospital-report-workspace";
 import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
 
 export function ParentChildHospitalReportWorkspace({
@@ -26,6 +27,13 @@ export function ParentChildHospitalReportWorkspace({
   return (
     <div className="content-workspace">
       <PageHeader
+        actions={(
+          <ExportButton
+            endpoint="/api/v1/hospital/reporting/parent-child/export"
+            hospitalId={report.hospital.id}
+            parentHospitalId={report.parent.id}
+          />
+        )}
         breadcrumbs={[
           { label: "งานโรงพยาบาลแม่ข่าย", href: `/app#hospital-workspace-${encodeURIComponent(report.parent.id)}` },
           { label: "รายงานโรงพยาบาล", href: "/app/hospitals/reporting" },
@@ -56,7 +64,7 @@ export function ParentChildHospitalReportWorkspace({
         </div>
 
         <Alert className="mt-5" variant="info">
-          แสดงรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น สิทธิ์นี้ไม่ครอบคลุมการจัดการบัญชี ข้อมูลผู้ป่วย หรือรายงานของโรงพยาบาลอื่น
+          แสดงรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น สิทธิ์นี้ไม่ครอบคลุมการจัดการบัญชี ข้อมูลผู้ป่วย หรือรายงานของโรงพยาบาลอื่น ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้ ไม่รวมผู้ที่สิ้นสุดการดูแล และทุกการส่งออกถูกบันทึกไว้
         </Alert>
 
         <section aria-labelledby="parent-child-report-dashboard-heading" className="mt-6 min-w-0">
