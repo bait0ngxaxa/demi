@@ -1,0 +1,336 @@
+import Link from "next/link";
+
+import { Alert } from "@/components/ui/alert";
+import { Panel } from "@/components/ui/panel";
+import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import {
+  APPOINTMENT_LOCATION_LABELS,
+  APPOINTMENT_STATUS_LABELS,
+  APPOINTMENT_TYPE_LABELS,
+  appointmentResponsiblePresentation,
+  type AppointmentStatusValue,
+  type AppointmentTypeValue,
+  type AppointmentLocationValue,
+} from "@/modules/appointments/domain/appointment-definitions";
+import {
+  APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS,
+  APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE,
+  APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE,
+  APPOINTMENT_INTERACTION_SOURCE_LABELS,
+} from "@/modules/appointments/domain/appointment-interaction-definitions";
+import type {
+  PatientSelfAppointmentDetail,
+  PatientSelfAppointmentHistory,
+} from "@/modules/patient-self/services/patient-self-care-query-service";
+
+import {
+  formatPatientDateTime,
+  PatientSelfEmptyState,
+  PatientSelfHospitalContext,
+  PatientSelfHistoryMoreLink,
+  patientSelfHistoryPageHref,
+} from "./patient-self-care-presentation";
+import { AppointmentContactPhoneEntries } from "../appointment-contact-phones";
+
+/*
+ * Shared, mutation-free Appointment presentation. This module must not import
+ * interaction controls or Server Actions: the LINE MINI scoped routes render it
+ * directly, and ordinary pages compose their own controls around it.
+ */
+
+/** Finite destination adapter; callers pass fixed builders, never request URLs. */
+export type PatientAppointmentLinks = {
+  history: (relationshipId: string) => string;
+  detail: (relationshipId: string, appointmentId: string) => string;
+};
+
+export const ORDINARY_PATIENT_APPOINTMENT_LINKS: PatientAppointmentLinks = {
+  history: (relationshipId) => "/app/personal/appointments/" + encodeURIComponent(relationshipId),
+  detail: (relationshipId, appointmentId) =>
+    `/app/personal/appointments/${encodeURIComponent(relationshipId)}/${encodeURIComponent(appointmentId)}`,
+};
+
+export function appointmentStatusVariant(status: AppointmentStatusValue): StatusVariant {
+  if (status === "COMPLETED") {
+    return "success";
+  }
+
+  if (status === "CANCELLED") {
+    return "danger";
+  }
+
+  if (status === "NO_SHOW") {
+    return "neutral";
+  }
+
+  return "warning";
+}
+
+function appointmentLocationLabel(type: AppointmentLocationValue | null): string {
+  return type ? APPOINTMENT_LOCATION_LABELS[type] : "ไม่ระบุสถานที่";
+}
+
+export function PatientSelfAppointmentHistoryContent({
+  history,
+  links,
+  prefetchMore,
+}: {
+  history: PatientSelfAppointmentHistory;
+  links: PatientAppointmentLinks;
+  prefetchMore?: false;
+}): React.JSX.Element {
+  const relationshipId = history.relationship.relationshipId;
+  const historyHref = links.history(relationshipId);
+
+  return (
+    <div className="space-y-6 pt-6">
+      <PatientSelfHospitalContext relationship={history.relationship} />
+      <div className="space-y-2 text-sm leading-6 text-text-muted">
+        <p>{APPOINTMENT_ACKNOWLEDGEMENT_GUIDANCE}</p>
+        <p>{APPOINTMENT_CANCELLATION_REQUEST_GUIDANCE}</p>
+        <p>แสดงรายการในหน้านี้ตามวันนัด เปิดรายละเอียดเพื่อดูผลล่าสุดและการดำเนินการที่มีสิทธิ์</p>
+      </div>
+      {history.appointments.length > 0 ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
+          {history.appointments.map((appointment) => (
+            <li key={appointment.appointmentId}>
+              <Link
+                className="group block min-w-0 px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
+                href={links.detail(relationshipId, appointment.appointmentId)}
+                prefetch={false}
+              >
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-text group-hover:text-brand-strong">
+                      {formatPatientDateTime(appointment.scheduledAt)}
+                    </p>
+                    <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                      {APPOINTMENT_TYPE_LABELS[appointment.type as AppointmentTypeValue]} · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
+                    </p>
+                    {appointment.locationDetail ? (
+                      <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                        {appointment.locationDetail}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                      {appointmentResponsiblePresentation(
+                        appointment.responsibleDisplayName,
+                        appointment.responsibleProfession,
+                      ).heading}: {appointmentResponsiblePresentation(
+                        appointment.responsibleDisplayName,
+                        appointment.responsibleProfession,
+                      ).displayName}
+                    </p>
+                    {appointment.osmAtCreationDisplayName ? (
+                      <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                        OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง: {appointment.osmAtCreationDisplayName}
+                      </p>
+                    ) : null}
+                  </div>
+                  <StatusBadge variant={appointmentStatusVariant(appointment.status as AppointmentStatusValue)}>
+                    {APPOINTMENT_STATUS_LABELS[appointment.status as AppointmentStatusValue]}
+                  </StatusBadge>
+                </div>
+                {appointment.durationMinutes !== null ? (
+                  <p className="mt-3 break-words text-sm text-text-muted">
+                    ระยะเวลา {appointment.durationMinutes} นาที
+                  </p>
+                ) : null}
+                {appointment.acknowledgement ? (
+                  <p className="mt-2 break-words text-sm text-text-muted">
+                    รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
+                  </p>
+                ) : (
+                  <p className="mt-2 break-words text-sm text-text-muted">ยังไม่มีการรับทราบสำหรับกำหนดการนี้</p>
+                )}
+                {appointment.cancellationRequests[0] ? (
+                  <p className="mt-2 break-words text-sm text-text-muted">
+                    คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[appointment.cancellationRequests[0].status]}
+                  </p>
+                ) : null}
+                <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <PatientSelfEmptyState title="ยังไม่มีรายการนัดหมาย" />
+      )}
+      {history.historyPage.hasMore ? (
+        <PatientSelfHistoryMoreLink
+          href={patientSelfHistoryPageHref(
+            historyHref,
+            { page: history.historyPage.page },
+            "page",
+          )}
+          prefetch={prefetchMore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Schedule, location, contacts and responsible people; interactions are a caller-supplied slot. */
+export function PatientSelfAppointmentDetailContent({
+  detail,
+  rescheduleRequests,
+  interactions,
+}: {
+  detail: PatientSelfAppointmentDetail;
+  rescheduleRequests?: React.ReactNode;
+  interactions: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <>
+      <PatientSelfHospitalContext relationship={detail.relationship} />
+      <Panel>
+        <h2 className="mb-5 text-lg font-semibold">กำหนดการและสถานะนัดหมาย</h2>
+        <dl className="grid min-w-0 gap-x-8 gap-y-5 sm:grid-cols-2">
+          <div className="min-w-0 sm:col-span-2">
+            <dt className="text-sm font-semibold text-text-muted">วันและเวลานัด</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {formatPatientDateTime(detail.scheduledAt)}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">ประเภทนัดหมาย</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {APPOINTMENT_TYPE_LABELS[detail.type as AppointmentTypeValue]}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">สถานะนัดหมาย</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {APPOINTMENT_STATUS_LABELS[detail.status as AppointmentStatusValue]}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">ระยะเวลา</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {detail.durationMinutes === null ? "ไม่ระบุ" : `${detail.durationMinutes} นาที`}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">รูปแบบสถานที่</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {appointmentLocationLabel(detail.locationType as AppointmentLocationValue | null)}
+            </dd>
+          </div>
+          {detail.locationDetail ? (
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-sm font-semibold text-text-muted">รายละเอียดสถานที่</dt>
+              <dd className="mt-1 break-words whitespace-pre-wrap font-semibold leading-6 text-text">
+                {detail.locationDetail}
+              </dd>
+            </div>
+          ) : null}
+          <AppointmentContactPhoneEntries contactPhones={detail.contactPhones} showPatientPhone={false} />
+        </dl>
+        {detail.status !== "SCHEDULED" ? (
+          <p className="mt-5 border-t border-border pt-4 text-sm leading-6 text-text-muted">
+            เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่
+            {detail.status === "COMPLETED" ? " สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว" : ""}
+          </p>
+        ) : null}
+      </Panel>
+      <Panel>
+        <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">
+              {appointmentResponsiblePresentation(
+                detail.responsibleDisplayName,
+                detail.responsibleProfession,
+              ).heading}
+            </dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {appointmentResponsiblePresentation(
+                detail.responsibleDisplayName,
+                detail.responsibleProfession,
+              ).displayName}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>
+            <dd className="mt-1 break-words font-semibold text-text">
+              {detail.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
+            </dd>
+            <dd className="mt-1 text-sm leading-6 text-text-muted">เป็นข้อมูลเมื่อสร้างนัด ไม่ยืนยันผู้รับผิดชอบปัจจุบันหรือการตอบรับงาน</dd>
+          </div>
+        </dl>
+      </Panel>
+      {rescheduleRequests}
+      {interactions}
+    </>
+  );
+}
+
+function formatInteractionTime(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
+
+/**
+ * Read-only acknowledgement and cancellation-request state, with the same
+ * labels as the ordinary controls but no form, button or Server Action.
+ */
+export function PatientAppointmentInteractionSummary({
+  appointment,
+  hospitalStatus,
+  careEnded,
+  notice,
+}: {
+  appointment: PatientSelfAppointmentDetail;
+  hospitalStatus: PatientSelfAppointmentDetail["relationship"]["hospitalStatus"];
+  careEnded: boolean;
+  notice: string;
+}): React.JSX.Element {
+  const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
+
+  return (
+    <Panel>
+      {careEnded ? (
+        <Alert className="mb-5" variant="info">โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว อ่านข้อมูลนัดหมายเดิมได้ แต่รับทราบหรือส่งคำขอยกเลิกไม่ได้</Alert>
+      ) : hospitalStatus !== "ACTIVE" ? (
+        <Alert className="mb-5" variant="info">อ่านข้อมูลนัดหมายเดิมได้ แต่ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้ในขณะที่โรงพยาบาลไม่อยู่ในสถานะเปิดใช้งาน</Alert>
+      ) : null}
+      <section aria-labelledby="patient-appointment-response-heading" className="space-y-3">
+        <h2 className="text-lg font-semibold text-text" id="patient-appointment-response-heading">
+          การรับทราบนัดหมาย
+        </h2>
+        <p className="text-sm font-semibold text-text">
+          {appointment.acknowledgement
+            ? `รับทราบนัดหมายแล้ว · ${APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]} · ${formatInteractionTime(appointment.acknowledgement.acknowledgedAt)}`
+            : "ยังไม่มีการรับทราบสำหรับกำหนดการนี้"}
+        </p>
+      </section>
+      <section aria-labelledby="patient-appointment-cancellation-heading" className="mt-7 space-y-3">
+        <h2 className="text-lg font-semibold text-text" id="patient-appointment-cancellation-heading">
+          คำขอยกเลิกนัด
+        </h2>
+        {pendingRequest ? (
+          <p className="text-sm font-semibold text-text">
+            {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[pendingRequest.status]}
+          </p>
+        ) : null}
+        {appointment.cancellationRequests.length > 0 ? (
+          <div>
+            <h3 className="text-sm font-semibold text-text">คำขอยกเลิกล่าสุด (ไม่เกิน 5 รายการ)</h3>
+            <ul className="mt-2 space-y-2 text-sm text-text-muted">
+              {appointment.cancellationRequests.map((request, index) => (
+                <li key={`${request.submittedAt.toISOString()}-${index}`}>
+                  {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[request.status]} · {APPOINTMENT_INTERACTION_SOURCE_LABELS[request.source]} · {formatInteractionTime(request.submittedAt)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-sm text-text-muted">ยังไม่มีคำขอยกเลิกสำหรับนัดหมายนี้</p>
+        )}
+      </section>
+      <p className="mt-6 border-t border-border pt-4 text-sm leading-6 text-text-muted">{notice}</p>
+    </Panel>
+  );
+}

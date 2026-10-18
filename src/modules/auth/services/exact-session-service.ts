@@ -25,7 +25,7 @@ function denyProviderError(error: unknown): never {
  * Capture is transport only: no cookie user/decoded payload is authorization.
  * Network work finishes before callers acquire database locks.
  */
-export async function getLiveExactSession(): Promise<{ userId: string; sessionId: string; checkedAt: Date }> {
+export async function getLiveExactSession(): Promise<{ userId: string; sessionId: string; authSubject: string; checkedAt: Date }> {
   const deadline = AbortSignal.timeout(10_000);
   try {
     const client = await getServerSupabaseClient({ requireWritableCookies: true, exactSessionDeadline: deadline });
@@ -50,7 +50,8 @@ export async function getLiveExactSession(): Promise<{ userId: string; sessionId
       accountRecoveries: { none: unreconciledAccountRecoveryWhere },
     }, select: { id: true, status: true } });
     if (owner?.status !== "ACTIVE") throw new ForbiddenError();
-    return { userId: owner.id, sessionId: claims.data.session_id, checkedAt: new Date() };
+    // authSubject lets callers revalidate the verified mapping inside their own snapshot.
+    return { userId: owner.id, sessionId: claims.data.session_id, authSubject: claims.data.sub, checkedAt: new Date() };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof UnauthenticatedError || error instanceof InfrastructureError) throw error;
     // No provider payload, token, or replacement JWT escapes this boundary.

@@ -19,10 +19,13 @@ export function PatientSelfRelationshipNavigation({
   relationships,
   emptyMessage,
   area,
+  hrefFor,
 }: {
   relationships: readonly PatientSelfRelationshipNavigation[];
   emptyMessage: string;
   area: "care" | "appointments";
+  /** Fixed destination adapter for non-ordinary composition (LINE MINI scoped routes). */
+  hrefFor?: (relationshipId: string) => string;
 }): React.JSX.Element {
   if (relationships.length === 0) {
     return (
@@ -57,7 +60,7 @@ export function PatientSelfRelationshipNavigation({
             <nav aria-label={`ข้อมูลของฉันที่ ${relationship.hospitalName}`} className="mt-5">
               <Link
                 className={buttonClassName({ size: "compact", className: "w-full max-w-full break-words text-center" })}
-                href={`/app/personal/${area}/${encodeURIComponent(relationship.relationshipId)}`}
+                href={hrefFor ? hrefFor(relationship.relationshipId) : `/app/personal/${area}/${encodeURIComponent(relationship.relationshipId)}`}
                 prefetch={false}
               >
                 {area === "care" ? "ดูข้อมูลการดูแล" : "ดูนัดหมาย"}

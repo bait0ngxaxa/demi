@@ -31,7 +31,7 @@ async function fixture(): Promise<LineAccountBinding> {
 function dependencies(binding: LineAccountBinding): DisconnectionDependencies {
   return { database, now: () => now, configuration: config, authorizationInventory: inventory, enforceRelinkPolicy: true,
     currentSession: async () => ({ userId: binding.userId, sessionHash: hashLineSessionId(sessionId) }),
-    liveSession: async () => ({ userId: binding.userId, sessionId, checkedAt: now }),
+    liveSession: async () => ({ userId: binding.userId, sessionId, authSubject: randomUUID(), checkedAt: now }),
     verifyIdentity: async () => ({ subject, expiresAt: new Date(now.getTime() + 60_000) }),
     freshIdentity: async () => ({ subject, verifiedAt: now, issuedAt: now, expiresAt: new Date(now.getTime() + 60_000) }) };
 }
@@ -120,7 +120,7 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
   it.each(["session", "wrong LINE", "expired proof", "old proof", "future proof", "missing review", "extra review", "no risk", "challenge", "consumed", "expired intent", "binding version", "inventory", "owner inactive", "provider unavailable"])("fails Recovery closed for %s", async (reason) => {
     const binding = await fixture(); const deps = dependencies(binding); await unlink(binding, deps);
     const input = await recoveryInput(binding, deps);
-    if (reason === "session") deps.liveSession = async () => ({ userId: binding.userId, sessionId: randomUUID(), checkedAt: now });
+    if (reason === "session") deps.liveSession = async () => ({ userId: binding.userId, sessionId: randomUUID(), authSubject: randomUUID(), checkedAt: now });
     if (reason === "wrong LINE") deps.freshIdentity = async () => ({ subject: `U${"8".repeat(32)}`, verifiedAt: now, issuedAt: now, expiresAt: new Date(now.getTime() + 60000) });
     if (reason === "expired proof") deps.freshIdentity = async () => ({ subject, verifiedAt: now, issuedAt: now, expiresAt: now });
     if (reason === "old proof") deps.freshIdentity = async () => ({ subject, verifiedAt: new Date(now.getTime() - 600000), issuedAt: now, expiresAt: new Date(now.getTime() + 60000) });
@@ -206,7 +206,7 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction, target, inventory, now));
     await expect(prepareLineAccountRecovery(deps)).rejects.toThrow();
     expect(await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction, target, inventory, now))).toBeNull();
-    deps.now = () => new Date(now.getTime() + 10001); deps.liveSession = async () => ({ userId: binding.userId, sessionId, checkedAt: deps.now?.() ?? now });
+    deps.now = () => new Date(now.getTime() + 10001); deps.liveSession = async () => ({ userId: binding.userId, sessionId, authSubject: randomUUID(), checkedAt: deps.now?.() ?? now });
     deps.freshIdentity = async () => ({ subject, verifiedAt: deps.now?.() ?? now, issuedAt: deps.now?.(), expiresAt: new Date(now.getTime() + 60000) });
     await recoverLineAccount(await recoveryInput(binding, deps), deps);
     expect((await lifecycle(binding))[0]).toMatchObject({ reason: "ATTEMPT_RESERVED", settledAt: null, recoveryReleasedAt: deps.now() });

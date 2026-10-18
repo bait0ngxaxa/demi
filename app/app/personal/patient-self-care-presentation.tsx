@@ -57,14 +57,17 @@ export function patientSelfHistoryPageHref(
 
 export function PatientSelfHistoryMoreLink({
   href,
+  prefetch,
 }: {
   href: string;
+  prefetch?: false;
 }): React.JSX.Element {
   return (
     <p className="mt-3">
       <Link
         className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
         href={href}
+        prefetch={prefetch}
       >
         ดูรายการเก่ากว่า
       </Link>
