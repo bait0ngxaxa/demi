@@ -61,7 +61,7 @@ describe("bounded Family invitation login destination", () => {
 describe("allowlisted login return destination", () => {
   const token = "a".repeat(43);
 
-  it.each(["/line/account", `/app/family/invitations#${token}`])("accepts the approved destination %s", (destination) => {
+  it.each(["/line/account", "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS", `/app/family/invitations#${token}`])("accepts the approved destination %s", (destination) => {
     expect(loginReturnToSchema.parse(destination)).toBe(destination);
   });
 
@@ -76,6 +76,13 @@ describe("allowlisted login return destination", () => {
     "/app/patients/assigned?task=SCREENING",
     "/app/patients/assigned?task=followup%252f..%252f..",
     "/app/patients/assigned?task=screening&task=followup",
+    "/line/workflow", "/line/workflow/appointments", "/line/workflow?intent=OPEN_PATIENT_CARE",
+    "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&appointmentId=1",
+    "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&intent=OPEN_PATIENT_APPOINTMENTS",
+    "/line/workflow?intent=open_patient_appointments", "/line/workflow/?intent=OPEN_PATIENT_APPOINTMENTS",
+    "%2Fline%2Fworkflow%3Fintent%3DOPEN_PATIENT_APPOINTMENTS", "/line/workflow%3Fintent%3DOPEN_PATIENT_APPOINTMENTS",
+    "/line/../line/workflow?intent=OPEN_PATIENT_APPOINTMENTS", "//demi.example/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS",
+    "https://demi.example/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS", "/line/other",
   ])("rejects an arbitrary or external destination %s", (destination) => {
     expect(loginReturnToSchema.safeParse(destination).success).toBe(false);
   });

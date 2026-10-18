@@ -20,6 +20,25 @@ describe("Supabase proxy cookie propagation", () => {
       expect(network).not.toHaveBeenCalled();
     } finally { network.mockRestore(); }
   });
+  it.each(["/line/workflow", "/line/workflow/appointments", "/api/line/workflow/verify"])("marks MINI workflow responses private, uncached and referrer-free at %s", (path) => {
+    const response = propagateSupabaseCookies(new NextRequest(`https://demi.example.org${path}?liff.state=`), [], {});
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+  });
+  it.each(["/line/workflowx", "/app/personal/appointments", "/line/account"])("does not apply MINI workflow headers to %s", (path) => {
+    const response = propagateSupabaseCookies(new NextRequest(`https://demi.example.org${path}`), [], {});
+    expect(response.headers.get("referrer-policy")).toBeNull();
+    expect(response.headers.get("content-security-policy")).toBeNull();
+  });
+  it("keeps SSR auth cache headers while adding the workflow referrer policy", () => {
+    const response = propagateSupabaseCookies(new NextRequest("https://demi.example.org/line/workflow"), [], {
+      "Cache-Control": "private, no-cache, no-store, must-revalidate, max-age=0", Expires: "0", Pragma: "no-cache",
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-cache, no-store, must-revalidate, max-age=0");
+    expect(response.headers.get("expires")).toBe("0");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  });
   it("updates the current request and outgoing response", () => {
     const request = new NextRequest("http://localhost.test/");
 

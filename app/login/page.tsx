@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context-service";
 import {
   isLineQuickActionLoginReturnTo,
+  isLineWorkflowLoginReturnTo,
   loginReturnToSchema,
 } from "@/modules/auth/schemas/login-schema";
 
@@ -29,7 +30,8 @@ export default async function LoginPage({
 
   if (access.status === "AUTHORIZED") {
     redirect(
-      safeReturnTo === "/line/account" || isLineQuickActionLoginReturnTo(safeReturnTo)
+      safeReturnTo === "/line/account" || isLineQuickActionLoginReturnTo(safeReturnTo) ||
+        isLineWorkflowLoginReturnTo(safeReturnTo)
         ? safeReturnTo
         : "/app",
     );

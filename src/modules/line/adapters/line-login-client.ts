@@ -5,6 +5,8 @@ import { z } from "zod";
 import { getLineLoginEnv } from "@/lib/env/server";
 
 import { LineFailure } from "../domain/line-errors";
+import { LineWorkflowFailure } from "../domain/line-workflow-errors";
+import type { LineMiniAppConfiguration } from "../services/line-mini-app-configuration";
 
 const lineIdentitySchema = z.object({
   iss: z.literal("https://access.line.me"),
@@ -38,12 +40,17 @@ export type VerifiedLineIdentity = { subject: string; issuedAt?: Date; expiresAt
 export type VerifiedFreshLineIdentity = VerifiedLineIdentity & { verifiedAt: Date; expiresAt: Date };
 export type VerifiedLineFriendship = { friend: boolean };
 
-export async function verifyFreshLineIdToken(
+type IdTokenVerification =
+  | { status: "VERIFIED"; subject: string; issuedAt?: number; expiresAt: number }
+  | { status: "PROVIDER_UNAVAILABLE" | "PROVIDER_REJECTED" | "RESPONSE_INVALID" | "WRONG_AUDIENCE" | "EXPIRED" };
+
+/** Private low-level call. Each exported entry point selects its own server-owned audience. */
+async function verifyIdTokenForAudience(
   idToken: string,
-  fetcher: typeof fetch = fetch,
-): Promise<VerifiedFreshLineIdentity> {
-  const { DEMI_LINE_LOGIN_CHANNEL_ID } = getLineLoginEnv();
-  const body = new URLSearchParams({ id_token: idToken, client_id: DEMI_LINE_LOGIN_CHANNEL_ID });
+  audience: string,
+  fetcher: typeof fetch,
+): Promise<IdTokenVerification> {
+  const body = new URLSearchParams({ id_token: idToken, client_id: audience });
   let response: Response;
   try {
     response = await fetcher("https://api.line.me/oauth2/v2.1/verify", {
@@ -55,16 +62,52 @@ export async function verifyFreshLineIdToken(
       redirect: "error",
     });
   } catch {
-    throw new LineFailure("LINE_PROVIDER_TRANSIENT");
+    return { status: "PROVIDER_UNAVAILABLE" };
   }
-  if (response.status >= 500 || response.status === 429) {
-    throw new LineFailure("LINE_PROVIDER_TRANSIENT");
-  }
+  if (response.status >= 500 || response.status === 429) return { status: "PROVIDER_UNAVAILABLE" };
   const result = lineIdentitySchema.safeParse(await readJson(response));
-  if (!response.ok || !result.success || result.data.aud !== DEMI_LINE_LOGIN_CHANNEL_ID || result.data.exp <= Math.floor(Date.now() / 1000)) {
-    throw new LineFailure("LINE_TOKEN_INVALID_OR_EXPIRED");
+  if (!response.ok) return { status: "PROVIDER_REJECTED" };
+  if (!result.success) return { status: "RESPONSE_INVALID" };
+  if (result.data.aud !== audience) return { status: "WRONG_AUDIENCE" };
+  if (result.data.exp <= Math.floor(Date.now() / 1000)) return { status: "EXPIRED" };
+  return { status: "VERIFIED", subject: result.data.sub, issuedAt: result.data.iat, expiresAt: result.data.exp };
+}
+
+export async function verifyFreshLineIdToken(
+  idToken: string,
+  fetcher: typeof fetch = fetch,
+): Promise<VerifiedFreshLineIdentity> {
+  const { DEMI_LINE_LOGIN_CHANNEL_ID } = getLineLoginEnv();
+  const result = await verifyIdTokenForAudience(idToken, DEMI_LINE_LOGIN_CHANNEL_ID, fetcher);
+  if (result.status === "PROVIDER_UNAVAILABLE") throw new LineFailure("LINE_PROVIDER_TRANSIENT");
+  if (result.status !== "VERIFIED") throw new LineFailure("LINE_TOKEN_INVALID_OR_EXPIRED");
+  return { subject: result.subject, issuedAt: result.issuedAt ? new Date(result.issuedAt * 1000) : undefined, expiresAt: new Date(result.expiresAt * 1000), verifiedAt: new Date() };
+}
+
+export type VerifiedMiniAppWorkflowIdentity = { subject: string; expiresAt: Date; verifiedAt: Date };
+
+/**
+ * MINI workflow proof only. The audience is the selected deployment tuple's
+ * channel; Account LIFF tokens fail as wrong audience and are never retried.
+ */
+export async function verifyMiniAppWorkflowIdToken(
+  idToken: string,
+  configuration: Pick<LineMiniAppConfiguration, "channelId">,
+  fetcher: typeof fetch = fetch,
+): Promise<VerifiedMiniAppWorkflowIdentity> {
+  const result = await verifyIdTokenForAudience(idToken, configuration.channelId, fetcher);
+  switch (result.status) {
+    case "VERIFIED":
+      return { subject: result.subject, expiresAt: new Date(result.expiresAt * 1000), verifiedAt: new Date() };
+    case "PROVIDER_UNAVAILABLE":
+      throw new LineWorkflowFailure("LINE_PROVIDER_UNAVAILABLE");
+    case "RESPONSE_INVALID":
+      throw new LineWorkflowFailure("LINE_PROVIDER_RESPONSE_INVALID");
+    case "WRONG_AUDIENCE":
+      throw new LineWorkflowFailure("LINE_WRONG_AUDIENCE");
+    default:
+      throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
   }
-  return { subject: result.data.sub, issuedAt: result.data.iat ? new Date(result.data.iat * 1000) : undefined, expiresAt: new Date(result.data.exp * 1000), verifiedAt: new Date() };
 }
 
 export async function verifyLineIdToken(idToken: string, fetcher: typeof fetch = fetch): Promise<VerifiedLineIdentity> {

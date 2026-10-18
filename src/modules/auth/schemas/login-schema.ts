@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   LINE_QUICK_ACTION_RETURN_PATHS,
+  LINE_WORKFLOW_LOGIN_RETURN_PATH,
   type LineQuickActionReturnPath,
 } from "@/modules/line/domain/line-navigation-intents";
 
@@ -20,12 +21,18 @@ const familyInvitationReturnToPattern = /^\/app\/family\/invitations#[A-Za-z0-9_
 
 export const loginReturnToSchema = z.string().refine(
   (value) => value === "/line/account" ||
+    value === LINE_WORKFLOW_LOGIN_RETURN_PATH ||
     LINE_QUICK_ACTION_RETURN_PATHS.some((path) => path === value) ||
     familyInvitationReturnToPattern.test(value),
 );
 
 export function isLineQuickActionLoginReturnTo(value: unknown): value is LineQuickActionReturnPath {
   return typeof value === "string" && LINE_QUICK_ACTION_RETURN_PATHS.some((path) => path === value);
+}
+
+/** Already-authorized login returns to the fixed gateway, never a scoped resource. */
+export function isLineWorkflowLoginReturnTo(value: unknown): value is typeof LINE_WORKFLOW_LOGIN_RETURN_PATH {
+  return value === LINE_WORKFLOW_LOGIN_RETURN_PATH;
 }
 
 export const loginFamilyInvitationReturnToSchema = z.string().regex(familyInvitationReturnToPattern);

@@ -127,7 +127,29 @@ describe("authentication Server Actions", () => {
     expect(mockedRedirect).toHaveBeenCalledWith("/app/patients/assigned?task=screening");
   });
 
-  it.each(["/app/settings", "https://attacker.example/"]) ("does not allow a caller to redirect login to %s", async (returnTo) => {
+  it("returns a successful credential login only to the fixed MINI gateway", async () => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      },
+    });
+    const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
+    formData.set("returnTo", "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS");
+
+    await loginAction(initialLoginActionState, formData);
+
+    expect(mockedRedirect).toHaveBeenCalledWith("/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS");
+  });
+
+  it.each([
+    "/app/settings", "https://attacker.example/", "/line/workflow/appointments",
+    "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&appointmentId=1",
+  ]) ("does not allow a caller to redirect login to %s", async (returnTo) => {
     mockedAuthenticateWithPassword.mockResolvedValue({
       status: "AUTHORIZED",
       actor: {
