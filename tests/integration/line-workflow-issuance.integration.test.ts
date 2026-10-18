@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createLineAccountIntent } from "@/modules/line/services/line-account-service";
-import { initializeLineTermination, observeLineAuthorization } from "@/modules/line/services/line-authorization-lifecycle-service";
+import { initializeLineTermination } from "@/modules/line/services/line-authorization-lifecycle-service";
 import { disconnectLineAccount } from "@/modules/line/services/line-disconnection-service";
 import type { LineDisconnectionConfiguration } from "@/modules/line/services/line-disconnection-configuration";
 import { lineChannelTupleKey, lineChannelTupleDefinition, type LineChannelInventory } from "@/modules/line/domain/line-authorization-lifecycle";
@@ -13,7 +13,7 @@ import { createLineSubjectFingerprint } from "@/modules/line/services/line-ident
 import { hashLineSessionId } from "@/modules/line/services/line-session-service";
 import { createLineWorkflowRateLimiter, lineWorkflowRateLimitInternals } from "@/modules/line/services/line-workflow-rate-limit";
 import type { LineMiniAppConfiguration } from "@/modules/line/services/line-mini-app-configuration";
-import { parseLineWorkflowContextKeyring, sealLineWorkflowContext } from "@/modules/line/services/line-workflow-context";
+import { parseLineWorkflowContextKeyring } from "@/modules/line/services/line-workflow-context";
 import {
   evaluateLineWorkflowEligibility,
   issueLineWorkflowContext,
@@ -106,17 +106,17 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
-async function waitForBlockedUserLock(): Promise<void> {
+async function waitForBlockedQuery(queryFragment: string): Promise<void> {
   const deadline = Date.now() + 10_000;
   let activity: Array<{ state: string | null; waitEventType: string | null; waitEvent: string | null; query: string | null }> = [];
   while (Date.now() < deadline) {
     activity = await database.$queryRaw<Array<{ state: string | null; waitEventType: string | null; waitEvent: string | null; query: string | null }>>`SELECT state,
         wait_event_type AS "waitEventType", wait_event AS "waitEvent", left(query, 240) AS query
       FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND state = 'active'`;
-    if (activity.some((entry) => entry.waitEventType === "Lock")) return;
+    if (activity.some((entry) => entry.waitEventType === "Lock" && entry.query?.includes(queryFragment))) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error(`The competing transaction did not reach the User row lock: ${JSON.stringify(activity)}`);
+  throw new Error(`The competing transaction did not wait on ${queryFragment}: ${JSON.stringify(activity)}`);
 }
 
 async function failureCode(promise: Promise<unknown>): Promise<string> {
@@ -164,44 +164,43 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
     const eligibility = await evaluateLineWorkflowEligibility({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: "synthetic-mini-id-token" }, dependencies);
     const disconnect = disconnectionDependencies(fixture);
     const unlinkIntent = await createLineAccountIntent("UNLINK", disconnect);
-    const entered = deferred();
+    await database.lineAuthorizationLifecycle.create({ data: {
+      bindingId: fixture.bindingId, bindingVersion: eligibility.bindingVersion, tupleKey: miniTupleKey,
+      tupleDefinition: lineChannelTupleDefinition(inventory.channels[1]), applicability: "UNKNOWN", evidenceReference: inventory.revision,
+    } });
+    const blockerEntered = deferred();
     const release = deferred();
-    const issue = database.$transaction(async (transaction) => {
-      await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${fixture.userId}::uuid FOR UPDATE`;
-      await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${fixture.bindingId}::uuid FOR UPDATE`;
-      await observeLineAuthorization(transaction, {
-        ownerUserId: fixture.userId, bindingId: fixture.bindingId, bindingVersion: eligibility.bindingVersion,
-      }, inventory, miniTupleKey, now);
-      entered.resolve();
+    const lifecycleBlocker = database.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT "id" FROM "LineAuthorizationLifecycle" WHERE "bindingId" = ${fixture.bindingId}::uuid ORDER BY "tupleKey", "id" FOR UPDATE`;
+      blockerEntered.resolve();
       await release.promise;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 });
-    await entered.promise;
-
-    const unlinking = disconnectLineAccount(unlinkIntent, disconnect);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 20_000 });
+    await blockerEntered.promise;
+    const issuance = issueLineWorkflowContext(eligibility, dependencies);
+    let unlinking: Promise<Awaited<ReturnType<typeof disconnectLineAccount>>> | undefined;
     try {
+      await waitForBlockedQuery('"LineAuthorizationLifecycle"');
+      unlinking = disconnectLineAccount(unlinkIntent, disconnect);
       await Promise.race([
-        waitForBlockedUserLock(),
+        waitForBlockedQuery('FROM "User"'),
         unlinking.then(() => { throw new Error("Unlink completed before waiting on the issuance lock"); }),
       ]);
+      release.resolve();
+      const context = await issuance;
+      await unlinking;
+
+      const lifecycle = await database.lineAuthorizationLifecycle.findMany({ where: { bindingId: fixture.bindingId }, orderBy: [{ bindingVersion: "asc" }, { tupleKey: "asc" }] });
+      expect(lifecycle).toEqual(expect.arrayContaining([
+        expect.objectContaining({ bindingVersion: 1, tupleKey: miniTupleKey, applicability: "OBSERVED", observedAt: now }),
+        expect.objectContaining({ bindingVersion: 2, tupleKey: miniTupleKey, applicability: "OBSERVED", reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" }),
+      ]));
+      expect(await failureCode(runLineWorkflowScopedRead(context.value, async () => "must-not-read", dependencies))).toBe("SCOPE_REVOKED");
     } catch (error: unknown) {
       release.resolve();
-      await Promise.allSettled([issue, unlinking]);
+      await Promise.allSettled([lifecycleBlocker, issuance, ...(unlinking ? [unlinking] : [])]);
       throw error;
     }
-    release.resolve();
-
-    await issue;
-    await unlinking;
-    const context = sealLineWorkflowContext({
-      bindingId: fixture.bindingId, bindingVersion: eligibility.bindingVersion, userId: fixture.userId,
-      sessionId: fixture.sessionId, proofExpiresAt: eligibility.proofExpiresAt,
-    }, { keyring, tuple: miniConfiguration, now });
-    const lifecycle = await database.lineAuthorizationLifecycle.findMany({ where: { bindingId: fixture.bindingId }, orderBy: [{ bindingVersion: "asc" }, { tupleKey: "asc" }] });
-    expect(lifecycle).toEqual(expect.arrayContaining([
-      expect.objectContaining({ bindingVersion: 1, tupleKey: miniTupleKey, applicability: "OBSERVED", observedAt: now }),
-      expect.objectContaining({ bindingVersion: 2, tupleKey: miniTupleKey, applicability: "OBSERVED", reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" }),
-    ]));
-    expect(await failureCode(runLineWorkflowScopedRead(context.value, async () => "must-not-read", dependencies))).toBe("SCOPE_REVOKED");
+    await lifecycleBlocker;
   }, 20_000);
 
   it("retries issuance on a fresh Serializable snapshot after Unlink commits, then denies without observing MINI", async () => {
@@ -236,7 +235,7 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
       },
     });
     const issuance = failureCode(issueLineWorkflowContext(eligibility, { ...dependencies, database: countedDatabase }));
-    await waitForBlockedUserLock();
+    await waitForBlockedQuery('FROM "User"');
     release.resolve();
     await unlinkTransaction;
     expect(await issuance).toBe("WORKFLOW_INELIGIBLE");
