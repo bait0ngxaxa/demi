@@ -10,6 +10,12 @@ export type ServerSupabaseClientOptions = {
   requireWritableCookies?: boolean;
   /** Sensitive exact-session checks must not replace the captured session. */
   exactSessionDeadline?: AbortSignal;
+  /**
+   * Receives the SSR cache headers that accompany cookie writes, so a writable
+   * Route Handler can merge them onto its own response. Cookie semantics are
+   * unchanged; Next.js applies the cookie writes themselves.
+   */
+  onResponseHeaders?: (headers: Record<string, string>) => void;
 };
 
 export async function getServerSupabaseClient(
@@ -29,11 +35,12 @@ export async function getServerSupabaseClient(
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         try {
           cookiesToSet.forEach(({ name, value, options: cookieOptions }) => {
             cookieStore.set(name, value, cookieOptions);
           });
+          clientOptions.onResponseHeaders?.(headers);
         } catch (error) {
           if (clientOptions.requireWritableCookies) {
             throw error;

@@ -15,6 +15,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
@@ -182,12 +183,10 @@ function getNotificationRollout(dependencies: AppointmentServiceDependencies): A
   return dependencies.appointmentLineNotificationRollout ?? getAppointmentLineNotificationRollout();
 }
 
-function isKnownRequestError(error: unknown, code: string): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
-}
-
 function isRetryableTransactionError(error: unknown): boolean {
-  return isKnownRequestError(error, "P2034") || isKnownRequestError(error, "P2002");
+  // P2034/P2002 plus P2010+40001, which a trusted precondition's raw row lock raises
+  // when a concurrent commit invalidates this attempt's snapshot.
+  return isRetryableSerializableTransactionError(error);
 }
 
 function normalizeDatabaseError(error: unknown): ApplicationError {
@@ -819,6 +818,23 @@ export async function markAppointmentNoShow(
 
 type AppointmentInteractionDependencies = AppointmentServiceDependencies;
 
+/**
+ * Server-only additional restriction for the two Patient SELF interactions
+ * (17J.3B section 12.4). Trusted orchestration supplies it, never request
+ * data or a client-selected mode. It runs first in every Serializable attempt,
+ * on that attempt's transaction, before access resolution, resource reads,
+ * idempotent returns and writes; a throw aborts the attempt. It never widens
+ * the existing Appointment authority.
+ */
+export type AppointmentInteractionPrecondition = (
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+) => Promise<void>;
+
+export type PatientSelfAppointmentInteractionDependencies = AppointmentInteractionDependencies & {
+  beforeInteractionInTransaction?: AppointmentInteractionPrecondition;
+};
+
 function requireInteractionSource(
   scopes: { patientSelf: boolean; exactOsmAssignment: boolean },
   source: AppointmentInteractionSource,
@@ -838,6 +854,7 @@ async function acknowledgeAppointment(
   input: unknown,
   source: AppointmentInteractionSource,
   dependencies: AppointmentInteractionDependencies,
+  precondition?: AppointmentInteractionPrecondition,
 ): Promise<AppointmentAcknowledgementResult> {
   const parsed = appointmentAcknowledgementRequestSchema.safeParse(input);
 
@@ -849,6 +866,7 @@ async function acknowledgeAppointment(
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
+        await precondition?.(transaction, actor);
         const access = await resolveAppointmentAccessContext(
           actor,
           parsed.data.patientHospitalRelationshipId,
@@ -943,9 +961,10 @@ async function acknowledgeAppointment(
 export function acknowledgeOwnPatientAppointment(
   actor: ActorContext | null | undefined,
   input: unknown,
-  dependencies: AppointmentInteractionDependencies = {},
+  dependencies: PatientSelfAppointmentInteractionDependencies = {},
 ): Promise<AppointmentAcknowledgementResult> {
-  return acknowledgeAppointment(actor, input, AppointmentInteractionSource.PATIENT_SELF, dependencies);
+  const { beforeInteractionInTransaction, ...serviceDependencies } = dependencies;
+  return acknowledgeAppointment(actor, input, AppointmentInteractionSource.PATIENT_SELF, serviceDependencies, beforeInteractionInTransaction);
 }
 
 export function acknowledgeAppointmentOnBehalfOfPatient(
@@ -961,6 +980,7 @@ async function requestAppointmentCancellation(
   input: unknown,
   source: AppointmentInteractionSource,
   dependencies: AppointmentInteractionDependencies,
+  precondition?: AppointmentInteractionPrecondition,
 ): Promise<AppointmentCancellationRequestResult> {
   const parsed = appointmentCancellationRequestSchema.safeParse(input);
 
@@ -972,6 +992,7 @@ async function requestAppointmentCancellation(
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
+        await precondition?.(transaction, actor);
         const access = await resolveAppointmentAccessContext(
           actor,
           parsed.data.patientHospitalRelationshipId,
@@ -1116,9 +1137,12 @@ async function requestAppointmentCancellation(
 export function requestOwnPatientAppointmentCancellation(
   actor: ActorContext | null | undefined,
   input: unknown,
-  dependencies: AppointmentInteractionDependencies = {},
+  dependencies: PatientSelfAppointmentInteractionDependencies = {},
 ): Promise<AppointmentCancellationRequestResult> {
-  return requestAppointmentCancellation(actor, input, AppointmentInteractionSource.PATIENT_SELF, dependencies);
+  const { beforeInteractionInTransaction, ...serviceDependencies } = dependencies;
+  return requestAppointmentCancellation(
+    actor, input, AppointmentInteractionSource.PATIENT_SELF, serviceDependencies, beforeInteractionInTransaction,
+  );
 }
 
 export function requestAppointmentCancellationOnBehalfOfPatient(

@@ -10,10 +10,12 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   history: vi.fn(),
   detail: vi.fn(),
+  reschedule: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: mocks.cookie }) }));
 vi.mock("../services/line-workflow-service", () => ({ runLineWorkflowScopedRead: mocks.run }));
+vi.mock("@/modules/appointments/services/appointment-reschedule-history-service", () => ({ getAppointmentRescheduleHistory: mocks.reschedule }));
 vi.mock("@/modules/patient-self/services/patient-self-query-service", () => ({ listOwnPatientRelationshipNavigation: mocks.list }));
 vi.mock("@/modules/patient-self/services/patient-self-care-query-service", () => ({
   getOwnPatientAppointmentHistory: mocks.history,
@@ -42,7 +44,12 @@ describe("scoped Appointment loaders", () => {
     mocks.detail.mockResolvedValue({ appointmentId: "a" });
     await expect(loadLineWorkflowAppointmentRelationships()).resolves.toEqual({ status: "AUTHORIZED", data: ["r"] });
     await loadLineWorkflowAppointmentHistory("rel", "2");
-    await loadLineWorkflowAppointmentDetail("rel", "appt");
+    mocks.reschedule.mockResolvedValue({ requests: [{ id: "q" }], canRequest: true, canReview: true, updatedAt: new Date(), scheduled: true });
+    // Reschedule history shares the guarded snapshot; request/review capability flags never leave the loader.
+    await expect(loadLineWorkflowAppointmentDetail("rel", "appt")).resolves.toEqual({
+      status: "AUTHORIZED", data: { detail: { appointmentId: "a" }, rescheduleRequests: [{ id: "q" }] },
+    });
+    expect(mocks.reschedule).toHaveBeenCalledWith(snapshot.actor, "rel", "appt", { database: snapshot.database });
     expect(mocks.cookie).toHaveBeenCalledWith("__Secure-DEMI_LINE_WORKFLOW");
     expect(mocks.run.mock.calls.every(([credential]) => credential === "v1.k1.context")).toBe(true);
     expect(mocks.list).toHaveBeenCalledWith(snapshot.actor, { database: snapshot.database });

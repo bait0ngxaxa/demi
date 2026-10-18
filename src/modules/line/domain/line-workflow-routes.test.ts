@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyLineWorkflowRequest,
   LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS,
+  lineWorkflowAppointmentHandlers,
   lineWorkflowAppointmentLinks,
 } from "./line-workflow-routes";
 
@@ -49,8 +50,27 @@ describe("MINI receiving-route filter", () => {
     expect(read(pathname, "POST", true)).toBe("NOT_FOUND");
   });
 
-  it.each(LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS)("keeps the reserved B2.2 handler path %s away from the rendering page", (pathname) => {
-    for (const method of ["GET", "POST"]) expect(read(pathname, method)).toBe("NOT_FOUND");
+  it.each(LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS)("admits only a plain POST to the fixed handler %s", (pathname) => {
+    expect(read(pathname, "POST")).toBe("PASS");
+    for (const method of ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"]) expect(read(pathname, method)).toBe("HANDLER_METHOD_NOT_ALLOWED");
+    expect(read(pathname, "POST", true)).toBe("REJECTED");
+  });
+
+  it.each([
+    "/line/workflow/appointments/acknowledge/",
+    "/line/workflow/appointments/Acknowledge",
+    "/line/workflow/appointments/%61cknowledge",
+    "/line/workflow/appointments/cancellation-request/extra",
+    `/line/workflow/appointments/${REL}/acknowledge`,
+  ])("does not route the near-miss handler path %s", (pathname) => {
+    expect(read(pathname, "POST")).toBe("NOT_FOUND");
+  });
+
+  it("names the fixed handlers through one adapter", () => {
+    expect(lineWorkflowAppointmentHandlers).toEqual({
+      acknowledge: "/line/workflow/appointments/acknowledge",
+      cancellationRequest: "/line/workflow/appointments/cancellation-request",
+    });
   });
 
   it("leaves the B1 verification endpoint to its own POST-only handler", () => {

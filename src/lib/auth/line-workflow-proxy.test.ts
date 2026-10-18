@@ -51,8 +51,25 @@ describe("MINI namespace filtering through Proxy", () => {
 
   it("rejects a Next-Action header on GET and an unknown scoped path", async () => {
     expect((await proxy(new NextRequest(SCOPED, { headers: { "next-action": "7f" } }))).status).toBe(400);
-    expect((await proxy(new NextRequest("https://demi.example.org/line/workflow/appointments/acknowledge", { method: "POST" }))).status).toBe(404);
+    expect((await proxy(new NextRequest(`${SCOPED}/acknowledge`, { method: "POST" }))).status).toBe(404);
     expect(mocks.updateSupabaseSession).not.toHaveBeenCalled();
+  });
+
+  it("forwards only a plain POST to the fixed interaction handlers", async () => {
+    for (const path of ["acknowledge", "cancellation-request"]) {
+      const url = `https://demi.example.org/line/workflow/appointments/${path}`;
+      const post = new NextRequest(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      await proxy(post);
+      expect(mocks.updateSupabaseSession).toHaveBeenLastCalledWith(post, null);
+      const get = await proxy(new NextRequest(url));
+      expect(get.status).toBe(405);
+      expect(get.headers.get("allow")).toBe("POST");
+      expect(get.headers.get("cache-control")).toBe("private, no-store");
+      const action = await proxy(new NextRequest(url, { method: "POST", headers: { "next-action": "7f".repeat(21) }, body: "[]" }));
+      expect(action.status).toBe(400);
+      expect(await action.text()).toBe("");
+    }
+    expect(mocks.updateSupabaseSession).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the B1 verification POST and ordinary routes on the existing path", async () => {

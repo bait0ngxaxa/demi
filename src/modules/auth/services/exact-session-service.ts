@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import { isAuthError } from "@supabase/supabase-js";
-import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
+import { getServerSupabaseClient, type ServerSupabaseClientOptions } from "@/lib/auth/supabase-server";
 import { getServerEnv } from "@/lib/env/server";
 import { getPrisma } from "@/lib/db/prisma";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -25,10 +25,14 @@ function denyProviderError(error: unknown): never {
  * Capture is transport only: no cookie user/decoded payload is authorization.
  * Network work finishes before callers acquire database locks.
  */
-export async function getLiveExactSession(): Promise<{ userId: string; sessionId: string; authSubject: string; checkedAt: Date }> {
+export async function getLiveExactSession(
+  options: Pick<ServerSupabaseClientOptions, "onResponseHeaders"> = {},
+): Promise<{ userId: string; sessionId: string; authSubject: string; checkedAt: Date }> {
   const deadline = AbortSignal.timeout(10_000);
   try {
-    const client = await getServerSupabaseClient({ requireWritableCookies: true, exactSessionDeadline: deadline });
+    const client = await getServerSupabaseClient({
+      requireWritableCookies: true, exactSessionDeadline: deadline, onResponseHeaders: options.onResponseHeaders,
+    });
     const captured = await client.auth.getSession();
     const jwt = captured.data.session?.access_token;
     if (captured.error) denyProviderError(captured.error);

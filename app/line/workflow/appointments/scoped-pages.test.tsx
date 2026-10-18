@@ -11,6 +11,10 @@ import type { PatientSelfAppointmentDetail, PatientSelfAppointmentHistory } from
 const mocks = vi.hoisted(() => ({ relationships: vi.fn(), history: vi.fn(), detail: vi.fn() }));
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 vi.mock("@/modules/line/transport/workflow-scoped-appointments", () => ({
   loadLineWorkflowAppointmentRelationships: mocks.relationships,
   loadLineWorkflowAppointmentHistory: mocks.history,
@@ -37,6 +41,14 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
 };
 const history: PatientSelfAppointmentHistory = { relationship, appointments: [appointment], historyPage: { page: 1, hasMore: true } };
 const detail: PatientSelfAppointmentDetail = { ...appointment, relationship, contactPhones: { hospitalPhone: null, patientPhone: null } };
+const rescheduleRequest = {
+  id: "33333333-3333-4333-8333-333333333333", appointmentId: APPT, source: "PATIENT_SELF", status: "REJECTED",
+  reason: "ติดธุระสังเคราะห์", preferredDatetimes: [new Date("2026-11-05T03:00:00Z")], submittedAt: new Date("2026-10-03T00:00:00Z"),
+  resolvedAt: new Date("2026-10-04T00:00:00Z"), rejectionReason: "เต็มสังเคราะห์",
+} as never;
+const scopedDetail = (overrides: Partial<PatientSelfAppointmentDetail> = {}, rescheduleRequests: unknown[] = [rescheduleRequest]) => ({
+  status: "AUTHORIZED", data: { detail: { ...detail, ...overrides }, rescheduleRequests },
+});
 const PATIENT_DATA = /โรงพยาบาลสังเคราะห์|HN-SYN-1|อาคารสังเคราะห์|ผู้ดูแลสังเคราะห์|11111111-1111|22222222-2222/u;
 
 const renderRoot = async (): Promise<string> => renderToStaticMarkup(await LineWorkflowAppointmentRelationshipsPage());
@@ -56,7 +68,7 @@ describe("scoped Appointment pages — authorized", () => {
     vi.clearAllMocks();
     mocks.relationships.mockResolvedValue({ status: "AUTHORIZED", data: [relationship] });
     mocks.history.mockResolvedValue({ status: "AUTHORIZED", data: history });
-    mocks.detail.mockResolvedValue({ status: "AUTHORIZED", data: detail });
+    mocks.detail.mockResolvedValue(scopedDetail());
   });
 
   it("lists own Hospital relationships with status context and scoped history links only", async () => {
@@ -83,14 +95,50 @@ describe("scoped Appointment pages — authorized", () => {
     expect(await renderHistory()).toContain("ยังไม่มีรายการนัดหมาย");
   });
 
-  it("shows detail with read-only interaction state and no mutation control", async () => {
+  it("offers both scoped interactions for a SCHEDULED appointment of an ACTIVE Hospital, without forms or Server Actions", async () => {
+    mocks.detail.mockResolvedValue(scopedDetail({
+      relationship: { ...relationship, hospitalStatus: HospitalStatus.ACTIVE }, cancellationRequests: [],
+    }));
     const markup = await renderDetail();
-    for (const content of ["รายละเอียดนัดหมาย", "อาคารสังเคราะห์", "การรับทราบนัดหมาย", "คำขอยกเลิกนัด", "รอโรงพยาบาลพิจารณา", "การรับทราบนัดหมายและคำขอยกเลิกผ่าน LINE ยังไม่เปิดใช้งาน"]) {
+    expect(markup).toContain("รับทราบนัดหมาย</button>");
+    expect(markup).toContain("ส่งคำขอยกเลิกนัดหมาย</button>");
+    expect(markup).toContain("การส่งคำขอไม่ได้ยกเลิกนัดทันที");
+    expect(markup).not.toMatch(/<form|<input|\$ACTION|formaction/u);
+    expect(hrefs(markup)).toEqual([`/line/workflow/appointments/${REL}`, "/line/workflow/appointments"]);
+  });
+
+  it("shows read-only detail, read-only reschedule history and existing pending request without controls", async () => {
+    const markup = await renderDetail();
+    for (const content of ["รายละเอียดนัดหมาย", "อาคารสังเคราะห์", "การรับทราบนัดหมาย", "คำขอยกเลิกนัด", "รอโรงพยาบาลพิจารณา",
+      "ไม่อยู่ในสถานะเปิดใช้งาน", "คำขอเลื่อนนัด", "ปฏิเสธ", "เหตุผล: ติดธุระสังเคราะห์", "เหตุผลที่ปฏิเสธ: เต็มสังเคราะห์"]) {
       expect(markup).toContain(content);
     }
-    expect(markup).not.toMatch(/<form|<button|<input|\$ACTION/u);
-    expect(markup).not.toContain("คำขอเลื่อนนัด");
-    expect(hrefs(markup)).toEqual([`/line/workflow/appointments/${REL}`, "/line/workflow/appointments"]);
+    // Suspended Hospital and existing pending request: no interaction control; no reschedule request/review control ever.
+    expect(markup).not.toMatch(/<form|<button|<input|<details|\$ACTION/u);
+    expect(markup).not.toContain("ขอเลื่อนนัด</summary>");
+  });
+
+  it("keeps the cancellation request available for an already acknowledged version, like the ordinary page", async () => {
+    mocks.detail.mockResolvedValue(scopedDetail({
+      relationship: { ...relationship, hospitalStatus: HospitalStatus.ACTIVE }, cancellationRequests: [],
+      acknowledgement: { source: AppointmentInteractionSource.PATIENT_SELF, acknowledgedAt: new Date("2026-10-02T00:00:00Z") },
+    }, []));
+    const markup = await renderDetail();
+    expect(markup).toContain("รับทราบนัดหมายแล้ว");
+    expect(markup).not.toContain("รับทราบนัดหมาย</button>");
+    expect(markup).toContain("ส่งคำขอยกเลิกนัดหมาย</button>");
+  });
+
+  it.each([
+    ["cancelled", { status: "CANCELLED" as never, cancellationRequests: [] }, "ยังไม่สามารถบันทึกการรับทราบสำหรับนัดหมายนี้ได้"],
+    ["completed", { status: "COMPLETED" as never, cancellationRequests: [] }, "ยังไม่สามารถส่งคำขอยกเลิกสำหรับนัดหมายนี้ได้"],
+    ["ended care", { relationship: { ...relationship, hospitalStatus: HospitalStatus.ACTIVE, careEndedAt: new Date("2026-10-01T00:00:00Z") }, cancellationRequests: [] }, "โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว"],
+  ] as Array<[string, Partial<PatientSelfAppointmentDetail>, string]>)("shows the %s appointment without an acknowledgement or cancellation control", async (_label, overrides, text) => {
+    mocks.detail.mockResolvedValue(scopedDetail({ relationship: { ...relationship, hospitalStatus: HospitalStatus.ACTIVE }, ...overrides }, []));
+    const markup = await renderDetail();
+    expect(markup).toContain(text);
+    expect(markup).toContain("ยังไม่มีคำขอเลื่อนนัด");
+    expect(markup).not.toMatch(/<button/u);
   });
 
   it("offers an explicit, labelled exit to ordinary DEMI web", () => {
@@ -146,8 +194,9 @@ describe("scoped module graph", () => {
     return null;
   }
 
-  it("contains no Server Action module and no ordinary interaction control", () => {
-    const entries = ["page.tsx", "layout.tsx", "[relationshipId]/page.tsx", "[relationshipId]/[appointmentId]/page.tsx"].map((file) => resolve(__dirname, file));
+  it("contains no Server Action module and no ordinary interaction or reschedule control", () => {
+    const entries = ["page.tsx", "layout.tsx", "[relationshipId]/page.tsx", "[relationshipId]/[appointmentId]/page.tsx",
+      "acknowledge/route.ts", "cancellation-request/route.ts"].map((file) => resolve(__dirname, file));
     const seen = new Set<string>();
     const queue = [...entries];
     while (queue.length > 0) {
@@ -162,7 +211,10 @@ describe("scoped module graph", () => {
       }
     }
     const graph = [...seen].map((file) => file.replaceAll("\\", "/"));
-    expect(graph.some((file) => file.endsWith("app/app/personal/patient-self-appointment-content.tsx"))).toBe(true);
-    expect(graph.filter((file) => /server-actions|interaction-controls|reschedule-request/u.test(file))).toEqual([]);
+    for (const required of ["app/app/personal/patient-self-appointment-content.tsx", "app/line/workflow/appointments/line-workflow-appointment-interactions.tsx",
+      "app/app/patients/[relationshipId]/appointments/reschedule-request-history.tsx", "src/modules/appointments/services/appointment-service.ts"]) {
+      expect(graph.some((file) => file.endsWith(required)), required).toBe(true);
+    }
+    expect(graph.filter((file) => /server-actions|interaction-controls|reschedule-request-(?:section|form)/u.test(file))).toEqual([]);
   });
 });

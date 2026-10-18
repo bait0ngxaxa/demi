@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { Alert } from "@/components/ui/alert";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
@@ -261,76 +260,5 @@ export function PatientSelfAppointmentDetailContent({
       {rescheduleRequests}
       {interactions}
     </>
-  );
-}
-
-function formatInteractionTime(value: Date): string {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Bangkok",
-  }).format(value);
-}
-
-/**
- * Read-only acknowledgement and cancellation-request state, with the same
- * labels as the ordinary controls but no form, button or Server Action.
- */
-export function PatientAppointmentInteractionSummary({
-  appointment,
-  hospitalStatus,
-  careEnded,
-  notice,
-}: {
-  appointment: PatientSelfAppointmentDetail;
-  hospitalStatus: PatientSelfAppointmentDetail["relationship"]["hospitalStatus"];
-  careEnded: boolean;
-  notice: string;
-}): React.JSX.Element {
-  const pendingRequest = appointment.cancellationRequests.find((request) => request.status === "PENDING");
-
-  return (
-    <Panel>
-      {careEnded ? (
-        <Alert className="mb-5" variant="info">โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว อ่านข้อมูลนัดหมายเดิมได้ แต่รับทราบหรือส่งคำขอยกเลิกไม่ได้</Alert>
-      ) : hospitalStatus !== "ACTIVE" ? (
-        <Alert className="mb-5" variant="info">อ่านข้อมูลนัดหมายเดิมได้ แต่ยังรับทราบหรือส่งคำขอยกเลิกไม่ได้ในขณะที่โรงพยาบาลไม่อยู่ในสถานะเปิดใช้งาน</Alert>
-      ) : null}
-      <section aria-labelledby="patient-appointment-response-heading" className="space-y-3">
-        <h2 className="text-lg font-semibold text-text" id="patient-appointment-response-heading">
-          การรับทราบนัดหมาย
-        </h2>
-        <p className="text-sm font-semibold text-text">
-          {appointment.acknowledgement
-            ? `รับทราบนัดหมายแล้ว · ${APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]} · ${formatInteractionTime(appointment.acknowledgement.acknowledgedAt)}`
-            : "ยังไม่มีการรับทราบสำหรับกำหนดการนี้"}
-        </p>
-      </section>
-      <section aria-labelledby="patient-appointment-cancellation-heading" className="mt-7 space-y-3">
-        <h2 className="text-lg font-semibold text-text" id="patient-appointment-cancellation-heading">
-          คำขอยกเลิกนัด
-        </h2>
-        {pendingRequest ? (
-          <p className="text-sm font-semibold text-text">
-            {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[pendingRequest.status]}
-          </p>
-        ) : null}
-        {appointment.cancellationRequests.length > 0 ? (
-          <div>
-            <h3 className="text-sm font-semibold text-text">คำขอยกเลิกล่าสุด (ไม่เกิน 5 รายการ)</h3>
-            <ul className="mt-2 space-y-2 text-sm text-text-muted">
-              {appointment.cancellationRequests.map((request, index) => (
-                <li key={`${request.submittedAt.toISOString()}-${index}`}>
-                  {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[request.status]} · {APPOINTMENT_INTERACTION_SOURCE_LABELS[request.source]} · {formatInteractionTime(request.submittedAt)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <p className="text-sm text-text-muted">ยังไม่มีคำขอยกเลิกสำหรับนัดหมายนี้</p>
-        )}
-      </section>
-      <p className="mt-6 border-t border-border pt-4 text-sm leading-6 text-text-muted">{notice}</p>
-    </Panel>
   );
 }

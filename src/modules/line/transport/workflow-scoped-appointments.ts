@@ -2,7 +2,9 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
+import type { PatientAppointmentRescheduleRequest } from "@prisma/client";
 
+import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import {
   getOwnPatientAppointmentDetail,
   getOwnPatientAppointmentHistory,
@@ -85,9 +87,18 @@ export function loadLineWorkflowAppointmentHistory(
   return loadScoped(({ actor, database }) => getOwnPatientAppointmentHistory(actor, relationshipId, { database }, requestedPage));
 }
 
+export type LineWorkflowAppointmentDetail = {
+  detail: PatientSelfAppointmentDetail;
+  /** Read-only history; request/review capability flags are deliberately not exposed. */
+  rescheduleRequests: PatientAppointmentRescheduleRequest[];
+};
+
 export function loadLineWorkflowAppointmentDetail(
   relationshipId: string,
   appointmentId: string,
-): Promise<LineWorkflowScopedResult<PatientSelfAppointmentDetail>> {
-  return loadScoped(({ actor, database }) => getOwnPatientAppointmentDetail(actor, relationshipId, appointmentId, { database }));
+): Promise<LineWorkflowScopedResult<LineWorkflowAppointmentDetail>> {
+  return loadScoped(async ({ actor, database }) => ({
+    detail: await getOwnPatientAppointmentDetail(actor, relationshipId, appointmentId, { database }),
+    rescheduleRequests: (await getAppointmentRescheduleHistory(actor, relationshipId, appointmentId, { database })).requests,
+  }));
 }

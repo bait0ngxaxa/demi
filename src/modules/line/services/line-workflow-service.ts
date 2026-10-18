@@ -3,6 +3,16 @@ import "server-only";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
+import {
+  acknowledgeOwnPatientAppointment,
+  requestOwnPatientAppointmentCancellation,
+  type AppointmentAcknowledgementResult,
+  type AppointmentCancellationRequestResult,
+  type AppointmentInteractionPrecondition,
+  type AppointmentServiceDependencies,
+  type PatientSelfAppointmentInteractionDependencies,
+} from "@/modules/appointments/services/appointment-service";
 import {
   createActorContextStore,
   resolveActorAccessByUserId,
@@ -29,6 +39,7 @@ import {
   lineWorkflowContextSessionMatches,
   openLineWorkflowContext,
   type LineWorkflowContextKeyring,
+  type OpenedLineWorkflowContext,
 } from "./line-workflow-context";
 import { createLineWorkflowRateLimiter, type LineWorkflowRateLimiter } from "./line-workflow-rate-limit";
 
@@ -202,20 +213,18 @@ export const LINE_WORKFLOW_SCOPED_READ_TRANSACTION = {
   timeout: 5_000,
 } as const;
 
+type OpenedLineWorkflowScope = { context: OpenedLineWorkflowContext; session: LiveSession; clock: () => Date };
+
 /**
- * Mandatory scoped-read boundary (17J.3B section 12.3). The workflow context is
- * a required argument with no bypass mode: absence denies, never downgrades to
- * ordinary DEMI authority. Context decryption and the Auth provider check run
- * first, outside any transaction. One short RepeatableRead snapshot then
- * revalidates expiry, the session-to-User mapping, the exact binding
- * generation, the canonical actor and persisted Patient SELF before the reader
- * runs existing domain queries on that same TransactionClient.
+ * Checks shared by every scoped request, all outside any transaction: the
+ * default-disabled gate, the trusted tuple and keyring, the mandatory context
+ * (absence denies, never downgrades to ordinary DEMI authority), the reviewed
+ * lifecycle tuple and the Auth-provider exact session.
  */
-export async function runLineWorkflowScopedRead<T>(
+async function openLineWorkflowScope(
   credential: string | undefined,
-  read: (snapshot: LineWorkflowScopedSnapshot) => Promise<T>,
-  dependencies: LineWorkflowScopedReadDependencies = {},
-): Promise<T> {
+  dependencies: LineWorkflowScopedReadDependencies,
+): Promise<OpenedLineWorkflowScope> {
   if (!isLineMiniAppWorkflowEnabled()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
   const configuration = configurationOf(dependencies);
   const keyring = (dependencies.keyring ?? getLineWorkflowContextKeyring)();
@@ -227,36 +236,138 @@ export async function runLineWorkflowScopedRead<T>(
   if (session.userId !== context.userId || !lineWorkflowContextSessionMatches(context, session.sessionId, keyring)) {
     throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
   }
+  return { context, session, clock };
+}
 
+/**
+ * Current persisted authority on the caller's transaction: absolute expiry,
+ * exact binding generation, verified session-to-User mapping, canonical ACTIVE
+ * non-quarantined actor and persisted Patient SELF. Serializable conflicts
+ * propagate unchanged so the caller's bounded retry reruns every check.
+ */
+async function requireScopedAuthority(
+  transaction: Prisma.TransactionClient,
+  { context, session, clock }: OpenedLineWorkflowScope,
+): Promise<ActorContext> {
+  // Server time after any pool or lock wait; nothing renews the absolute expiry.
+  if (clock().getTime() >= context.expiresAt * 1000) throw new LineWorkflowFailure("SCOPE_EXPIRED");
+  let binding: { userId: string; lineUserId: string | null; unlinkedAt: Date | null; lifecycleVersion: number } | null;
+  let mapped: { id: string } | null;
+  try {
+    binding = await transaction.lineAccountBinding.findUnique({
+      where: { id: context.bindingId },
+      select: { userId: true, lineUserId: true, unlinkedAt: true, lifecycleVersion: true },
+    });
+    mapped = await transaction.user.findFirst({
+      where: { id: context.userId, authSubject: session.authSubject },
+      select: { id: true },
+    });
+  } catch (error: unknown) {
+    if (isRetryableSerializableTransactionError(error)) throw error;
+    throw new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE");
+  }
+  if (!binding || binding.userId !== context.userId || binding.unlinkedAt !== null ||
+      binding.lineUserId === null || binding.lifecycleVersion !== context.bindingVersion) {
+    throw new LineWorkflowFailure("SCOPE_REVOKED");
+  }
+  if (!mapped) throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
+  return requirePatientSelfActor(context.userId, createActorContextStore(transaction), transaction);
+}
+
+function toScopedFailure(error: unknown): unknown {
+  if (error instanceof LineWorkflowFailure || error instanceof ApplicationError) return error;
+  // Transaction timeout/conflict/connection failures never become partial, empty or successful data.
+  return new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE");
+}
+
+/**
+ * Mandatory scoped-read boundary (17J.3B section 12.3). After the shared
+ * out-of-transaction checks, one short RepeatableRead snapshot revalidates
+ * current authority before the reader runs existing domain queries on that
+ * same TransactionClient.
+ */
+export async function runLineWorkflowScopedRead<T>(
+  credential: string | undefined,
+  read: (snapshot: LineWorkflowScopedSnapshot) => Promise<T>,
+  dependencies: LineWorkflowScopedReadDependencies = {},
+): Promise<T> {
+  const scope = await openLineWorkflowScope(credential, dependencies);
   try {
     return await databaseOf(dependencies).$transaction(async (transaction) => {
-      // Server time after any pool wait; reading never renews the absolute expiry.
-      if (clock().getTime() >= context.expiresAt * 1000) throw new LineWorkflowFailure("SCOPE_EXPIRED");
-      let binding: { userId: string; lineUserId: string | null; unlinkedAt: Date | null; lifecycleVersion: number } | null;
-      let mapped: { id: string } | null;
-      try {
-        binding = await transaction.lineAccountBinding.findUnique({
-          where: { id: context.bindingId },
-          select: { userId: true, lineUserId: true, unlinkedAt: true, lifecycleVersion: true },
-        });
-        mapped = await transaction.user.findFirst({
-          where: { id: context.userId, authSubject: session.authSubject },
-          select: { id: true },
-        });
-      } catch {
-        throw new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE");
-      }
-      if (!binding || binding.userId !== context.userId || binding.unlinkedAt !== null ||
-          binding.lineUserId === null || binding.lifecycleVersion !== context.bindingVersion) {
-        throw new LineWorkflowFailure("SCOPE_REVOKED");
-      }
-      if (!mapped) throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
-      const actor = await requirePatientSelfActor(context.userId, createActorContextStore(transaction), transaction);
+      const actor = await requireScopedAuthority(transaction, scope);
       return read({ actor, database: transaction });
     }, LINE_WORKFLOW_SCOPED_READ_TRANSACTION);
   } catch (error: unknown) {
-    if (error instanceof LineWorkflowFailure || error instanceof ApplicationError) throw error;
-    // Transaction timeout/conflict/connection failures never become partial or empty data.
-    throw new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE");
+    throw toScopedFailure(error);
+  }
+}
+
+/** The two fixed scoped interactions; there is no generic command. */
+export type LineWorkflowScopedInteraction = "ACKNOWLEDGE" | "CANCELLATION_REQUEST";
+
+export type LineWorkflowScopedInteractionResult = {
+  ACKNOWLEDGE: AppointmentAcknowledgementResult;
+  CANCELLATION_REQUEST: AppointmentCancellationRequestResult;
+};
+
+export type LineWorkflowScopedMutationDependencies = LineWorkflowScopedReadDependencies &
+  Pick<AppointmentServiceDependencies, "transactionRetries">;
+
+type ScopedInteractionService<T> = (
+  actor: ActorContext,
+  input: unknown,
+  dependencies: PatientSelfAppointmentInteractionDependencies,
+) => Promise<T>;
+
+const scopedInteractionServices: { [K in LineWorkflowScopedInteraction]: ScopedInteractionService<LineWorkflowScopedInteractionResult[K]> } = {
+  ACKNOWLEDGE: acknowledgeOwnPatientAppointment,
+  CANCELLATION_REQUEST: requestOwnPatientAppointmentCancellation,
+};
+
+/**
+ * Mandatory scoped-mutation boundary (17J.3B section 12.4). The interaction is
+ * a finite key mapped here to an existing Patient SELF service, and this
+ * runner itself supplies the trusted precondition, so a scoped caller can
+ * neither reach another entry point nor omit the guard. Every Serializable
+ * attempt first locks User, then the authenticated binding, FOR UPDATE (held
+ * through commit; never User after binding), then revalidates current
+ * authority before any domain read, idempotent return or write. No
+ * Provider/Auth call, cookie write or other external effect runs in the
+ * callback. A denial is reported as itself, never as an idempotent success or
+ * an ordinary Patient SELF outcome.
+ */
+export async function runLineWorkflowScopedInteraction<K extends LineWorkflowScopedInteraction>(
+  credential: string | undefined,
+  interaction: K,
+  input: unknown,
+  dependencies: LineWorkflowScopedMutationDependencies = {},
+): Promise<LineWorkflowScopedInteractionResult[K]> {
+  const scope = await openLineWorkflowScope(credential, dependencies);
+  const database = databaseOf(dependencies);
+  // Early unlocked eligibility; the precondition repeats every check under the locks.
+  const actor = await requirePatientSelfActor(scope.context.userId, createActorContextStore(database), database);
+  let denial: LineWorkflowFailure | null = null;
+  const beforeInteractionInTransaction: AppointmentInteractionPrecondition = async (transaction, interactionActor) => {
+    denial = null;
+    try {
+      if (interactionActor.userId !== scope.context.userId) throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
+      await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${scope.context.userId}::uuid FOR UPDATE`;
+      await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${scope.context.bindingId}::uuid FOR UPDATE`;
+      await requireScopedAuthority(transaction, scope);
+    } catch (error: unknown) {
+      if (error instanceof LineWorkflowFailure) denial = error;
+      throw error;
+    }
+  };
+  try {
+    return await scopedInteractionServices[interaction](actor, input, {
+      database,
+      now: dependencies.now,
+      transactionRetries: dependencies.transactionRetries,
+      beforeInteractionInTransaction,
+    });
+  } catch (error: unknown) {
+    // The Appointment service normalizes foreign errors; the last attempt's denial is authoritative.
+    throw toScopedFailure(denial ?? error);
   }
 }

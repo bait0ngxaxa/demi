@@ -6,6 +6,30 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.B2.2 scoped Appointment mutations (2026-10-18)
+
+[Phase LINE-QA.B2.2 handoff](./phases/PHASE_LINE_QA_B2_2_SCOPED_APPOINTMENT_MUTATIONS.md), starting HEAD **0c0eafe3a9561b2f9edff11ed99645e9bc68d783**: **SCOPED MUTATIONS IMPLEMENTED / AUTOMATED + POSTGRESQL VERIFICATION COMPLETE / STAGED / DISABLED BY DEFAULT / NON-ISSUING.**
+
+- **Routes:** fixed POST-only Route Handlers `/line/workflow/appointments/acknowledge` and `/cancellation-request`.
+  - They require an exact Origin, JSON, a 2 KiB strict body (existing domain schemas, no duplicate or extra fields) and the HttpOnly workflow cookie.
+  - They return finite, sanitized states. With the default gate they return 503 `NOT_ACTIVATED`.
+- **Authorization:** `runLineWorkflowScopedInteraction` maps a finite key to the existing `acknowledgeOwnPatientAppointment` / `requestOwnPatientAppointmentCancellation`.
+  - It always supplies the server-only `beforeInteractionInTransaction` precondition. That precondition is the first statement of every Serializable attempt: before access resolution, resource reads, idempotent returns and writes.
+  - The precondition locks **User, then LineAccountBinding, FOR UPDATE**. It then revalidates expiry, binding generation and owner, the authSubject mapping, an ACTIVE non-quarantined actor and Patient SELF on the same transaction.
+  - Ordinary calls and OSM paths are unchanged.
+- **Retries:** the Appointment retry classifier reuses `isRetryableSerializableTransactionError`, which adds P2010 with 40001. The limit is unchanged.
+- **Concurrency:** PostgreSQL tests using the real Unlink service prove three orderings.
+  - Unlink first: the mutation denies with no write.
+  - Mutation first: Unlink waits and the mutation completes.
+  - Stale snapshot: the mutation aborts, retries with fresh locks and denies.
+  - Relink invalidates old contexts, and replay after Unlink never succeeds.
+- **UI:** scoped client controls post only to the fixed handlers, with no Server Actions.
+  - Cancellation needs an explicit confirmation that it is a *request*.
+  - An uncertain outcome is recovered only by resending the same payload and nonce.
+- **Reschedule history:** now shown read-only in LINE, from the same snapshot. The B2.1 omission is re-recorded as "Deferred implementation deviation — pending product acceptance".
+- **SSR headers:** a narrow `onResponseHeaders` collector merges Supabase SSR cache headers into handler responses.
+- **Still not done:** nothing mints `__Secure-DEMI_LINE_WORKFLOW`. B1 verify still ends with `WORKFLOW_NOT_ACTIVATED`. No Rich Menu, provider, environment, schema or migration changed. Context issuance and the activation review (B2.3), MINI termination, and real LINE/device UAT remain **NOT IMPLEMENTED / NOT VERIFIED**. B2.3 must not start automatically.
+
 ## CURRENT-status addendum — Phase LINE-QA.B2.1 scoped Appointment read runtime (2026-10-18)
 
 [Phase LINE-QA.B2.1 handoff](./phases/PHASE_LINE_QA_B2_1_SCOPED_APPOINTMENT_READ.md), starting HEAD **9caa7e1d2629c05519f2d56d960cea78163494e2**: **SCOPED READ RUNTIME IMPLEMENTED / AUTOMATED VERIFICATION COMPLETE / DISABLED BY DEFAULT / NON-ISSUING.**

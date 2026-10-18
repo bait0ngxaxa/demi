@@ -6,15 +6,16 @@ import { resolveOwnPatientRelationshipContext } from "@/modules/patient-self/ser
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 import { APPOINTMENT_READ_CAPABILITY } from "../policies/appointment-policy";
-import { resolveAppointmentAccessContext } from "./appointment-access-service";
+import { resolveAppointmentAccessContext, type AppointmentAccessDatabase } from "./appointment-access-service";
 import type { PatientAppointmentRescheduleRequest } from "@prisma/client";
 import { appointmentIdSchema } from "../schemas/appointment-schemas";
 
-export async function getAppointmentRescheduleHistory(actor: ActorContext, relationshipId: string, appointmentId: string): Promise<{
+/** `database` lets a guarded caller run this read on its own TransactionClient snapshot. */
+export async function getAppointmentRescheduleHistory(actor: ActorContext, relationshipId: string, appointmentId: string, dependencies: { database?: AppointmentAccessDatabase } = {}): Promise<{
   requests: PatientAppointmentRescheduleRequest[]; canRequest: boolean; canReview: boolean; updatedAt: Date; scheduled: boolean;
 }> {
   if (!appointmentIdSchema.safeParse(appointmentId).success) throw new NotFoundError();
-  const db = getPrisma();
+  const db = dependencies.database ?? getPrisma();
   let canRequest = false;
   let canReview = false;
   try {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
@@ -10,11 +11,12 @@ import {
 import { lineWorkflowAppointmentLinks } from "@/modules/line/domain/line-workflow-routes";
 import { loadLineWorkflowAppointmentDetail } from "@/modules/line/transport/workflow-scoped-appointments";
 
+import { RescheduleRequestHistory } from "../../../../../app/patients/[relationshipId]/appointments/reschedule-request-history";
 import {
   appointmentStatusVariant,
-  PatientAppointmentInteractionSummary,
   PatientSelfAppointmentDetailContent,
 } from "../../../../../app/personal/patient-self-appointment-content";
+import { LineWorkflowAppointmentInteractions } from "../../line-workflow-appointment-interactions";
 import { LineWorkflowScopedFailure, lineWorkflowScopedSecondaryButtonClass } from "../../line-workflow-scoped-states";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +38,7 @@ export default async function LineWorkflowAppointmentDetailPage({
   if (result.status === "DENIED") {
     return <LineWorkflowScopedFailure retryHref={lineWorkflowAppointmentLinks.detail(relationshipId, appointmentId)} state={result.state} />;
   }
-  const detail = result.data;
+  const { detail, rescheduleRequests } = result.data;
 
   return (
     <>
@@ -52,14 +54,8 @@ export default async function LineWorkflowAppointmentDetailPage({
       <div className="space-y-6 pt-6">
         <PatientSelfAppointmentDetailContent
           detail={detail}
-          interactions={
-            <PatientAppointmentInteractionSummary
-              appointment={detail}
-              careEnded={detail.relationship.careEndedAt !== null}
-              hospitalStatus={detail.relationship.hospitalStatus}
-              notice="หน้านี้แสดงข้อมูลอย่างเดียว การรับทราบนัดหมายและคำขอยกเลิกผ่าน LINE ยังไม่เปิดใช้งาน"
-            />
-          }
+          interactions={<LineWorkflowAppointmentInteractions appointment={detail} cancellationRequestNonce={randomUUID()} />}
+          rescheduleRequests={<RescheduleRequestHistory requests={rescheduleRequests} />}
         />
         <nav aria-label="กลับจากรายละเอียดนัดหมาย" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link className={lineWorkflowScopedSecondaryButtonClass} href={lineWorkflowAppointmentLinks.history(detail.relationship.relationshipId)} prefetch={false}>

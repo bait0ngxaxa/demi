@@ -12,12 +12,13 @@ export async function requireSameOrigin(request: Request): Promise<void> {
   if (request.headers.get("origin") !== expected) throw new ForbiddenError();
 }
 
-export async function readAccountJson(request: Request): Promise<unknown> {
+/** Streamed, capped, fatal-UTF-8 body read; `reject` supplies the caller's own safe failure. */
+export async function readBoundedRequestText(request: Request, maxBytes: number, reject: () => Error): Promise<string> {
   const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_ACCOUNT_REQUEST_BYTES) {
-    throw new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw reject();
   }
-  if (!request.body) throw new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
+  if (!request.body) throw reject();
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -26,9 +27,9 @@ export async function readAccountJson(request: Request): Promise<unknown> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_ACCOUNT_REQUEST_BYTES) {
+      if (size > maxBytes) {
         await reader.cancel();
-        throw new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
+        throw reject();
       }
       chunks.push(value);
     }
@@ -42,9 +43,19 @@ export async function readAccountJson(request: Request): Promise<unknown> {
     offset += chunk.byteLength;
   }
   try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    throw new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
+    throw reject();
+  }
+}
+
+export async function readAccountJson(request: Request): Promise<unknown> {
+  const reject = (): Error => new LineFailure("LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED");
+  const text = await readBoundedRequestText(request, MAX_ACCOUNT_REQUEST_BYTES, reject);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw reject();
   }
 }
 

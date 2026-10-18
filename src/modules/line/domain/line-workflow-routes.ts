@@ -4,13 +4,18 @@ import { LINE_WORKFLOW_GATEWAY_PATH } from "./line-navigation-intents";
 export const LINE_WORKFLOW_APPOINTMENTS_PATH = `${LINE_WORKFLOW_GATEWAY_PATH}/appointments` as const;
 
 /**
- * Reserved for the B2.2 fixed POST Route Handlers. Not implemented in B2.1:
- * the proxy answers them itself, so they can never reach the
- * `[relationshipId]` rendering page.
+ * The two fixed POST-only scoped interaction Route Handlers. Static segments
+ * take precedence over `[relationshipId]`, and the proxy admits only POST
+ * here, so neither path can reach the rendering page.
  */
+export const lineWorkflowAppointmentHandlers = {
+  acknowledge: `${LINE_WORKFLOW_APPOINTMENTS_PATH}/acknowledge`,
+  cancellationRequest: `${LINE_WORKFLOW_APPOINTMENTS_PATH}/cancellation-request`,
+} as const;
+
 export const LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS = [
-  `${LINE_WORKFLOW_APPOINTMENTS_PATH}/acknowledge`,
-  `${LINE_WORKFLOW_APPOINTMENTS_PATH}/cancellation-request`,
+  lineWorkflowAppointmentHandlers.acknowledge,
+  lineWorkflowAppointmentHandlers.cancellationRequest,
 ] as const;
 
 const VERIFY_HANDLER_PATH = "/api/line/workflow/verify";
@@ -25,7 +30,7 @@ export const lineWorkflowAppointmentLinks = {
     `${LINE_WORKFLOW_APPOINTMENTS_PATH}/${encodeURIComponent(relationshipId)}/${encodeURIComponent(appointmentId)}`,
 } as const;
 
-export type LineWorkflowRouteDecision = "PASS" | "METHOD_NOT_ALLOWED" | "REJECTED" | "NOT_FOUND";
+export type LineWorkflowRouteDecision = "PASS" | "METHOD_NOT_ALLOWED" | "HANDLER_METHOD_NOT_ALLOWED" | "REJECTED" | "NOT_FOUND";
 
 function isWorkflowNamespace(pathname: string): boolean {
   let decoded = pathname;
@@ -40,10 +45,11 @@ function isWorkflowNamespace(pathname: string): boolean {
 
 /**
  * Finite receiving-route filter for the MINI namespace (defense in depth; each
- * scoped read still enforces its own authorization). Rendering pages accept
- * only GET/HEAD without a Server Action header, so neither crafted Next-Action
- * requests nor form-action POSTs reach framework action dispatch. Anything
- * encoded, ambiguous or unknown in the namespace is not routed at all.
+ * scoped read and interaction still enforces its own authorization). Rendering
+ * pages accept only GET/HEAD and the two interaction handlers only POST, each
+ * without a Server Action header, so neither crafted Next-Action requests nor
+ * form-action POSTs reach framework action dispatch. Anything encoded,
+ * ambiguous or unknown in the namespace is not routed at all.
  * Returns null outside the namespace.
  */
 export function classifyLineWorkflowRequest(input: {
@@ -53,8 +59,10 @@ export function classifyLineWorkflowRequest(input: {
 }): LineWorkflowRouteDecision | null {
   if (!isWorkflowNamespace(input.pathname)) return null;
   if (input.pathname === VERIFY_HANDLER_PATH) return "PASS";
-  // B2.2 will admit POST only, to dedicated handlers; until then nothing is routed.
-  if (LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS.some((path) => path === input.pathname)) return "NOT_FOUND";
+  if (LINE_WORKFLOW_APPOINTMENT_HANDLER_PATHS.some((path) => path === input.pathname)) {
+    if (input.method !== "POST") return "HANDLER_METHOD_NOT_ALLOWED";
+    return input.serverAction ? "REJECTED" : "PASS";
+  }
   if (input.pathname === LINE_WORKFLOW_GATEWAY_PATH || RENDERING_PATH.test(input.pathname)) {
     if (input.method !== "GET" && input.method !== "HEAD") return "METHOD_NOT_ALLOWED";
     return input.serverAction ? "REJECTED" : "PASS";

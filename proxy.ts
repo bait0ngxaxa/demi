@@ -7,8 +7,14 @@ import { updateSupabaseSession } from "@/lib/auth/supabase-proxy";
 
 const lineWorkflowRejectionStatus: Record<Exclude<LineWorkflowRouteDecision, "PASS">, number> = {
   METHOD_NOT_ALLOWED: 405,
+  HANDLER_METHOD_NOT_ALLOWED: 405,
   REJECTED: 400,
   NOT_FOUND: 404,
+};
+
+const lineWorkflowAllow: Partial<Record<LineWorkflowRouteDecision, string>> = {
+  METHOD_NOT_ALLOWED: "GET, HEAD",
+  HANDLER_METHOD_NOT_ALLOWED: "POST",
 };
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
@@ -19,12 +25,13 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   });
   if (lineWorkflowDecision && lineWorkflowDecision !== "PASS") {
     // Answered before session refresh and framework dispatch; no body, no detail.
+    const allow = lineWorkflowAllow[lineWorkflowDecision];
     return new NextResponse(null, {
       status: lineWorkflowRejectionStatus[lineWorkflowDecision],
       headers: {
         "cache-control": "private, no-store",
         "referrer-policy": "no-referrer",
-        ...(lineWorkflowDecision === "METHOD_NOT_ALLOWED" ? { allow: "GET, HEAD" } : {}),
+        ...(allow ? { allow } : {}),
       },
     });
   }
