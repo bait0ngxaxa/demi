@@ -5,7 +5,9 @@
 ## 1. Starting revision
 
 - Starting HEAD: `d4b727871420f272375df6fbe1dc9f1021a61114` (`main`).
-- Code implementation commit (source and tests): `135991e14240f0725f2d530d7693dc70d842a9a4`. The documentation handoff is a follow-up commit so this file can reference the reviewed code revision; its final HEAD is also returned in the delivery report.
+- Source implementation commit: `135991e14240f0725f2d530d7693dc70d842a9a4`.
+- PostgreSQL issuance-first test refinement commit: `77c3b22f1af747562802740ecea9c1322cf1714e`. This exercises the real issuance service under a deterministic lifecycle-row lock barrier.
+- The documentation handoff is a follow-up commit so this file can reference both reviewed code/test commits; final HEAD is also returned in the delivery report.
 - No production deployment, LINE Provider mutation, real-user binding change, Rich Menu change, or production secret change was performed.
 
 ## 2. Status labels
@@ -190,7 +192,7 @@ Evidence is limited to synthetic users and disposable local PostgreSQL. Mocked P
 
 Disposable local database only (`127.0.0.1:55432`, database `demi_test`); the integration harness applied the additive limiter migration locally. No production migration was run.
 
-- Issuance-first barrier: actual issuance-order locks and lifecycle observation commit before Unlink proceeds; Unlink captures the MINI obligation, revokes the generation, and the sealed stale context is denied.
+- Issuance-first barrier: `issueLineWorkflowContext()` itself waits on a deterministic lifecycle-row lock, then obtains the User → Binding → lifecycle locks and commits the MINI observation before Unlink proceeds; Unlink captures the MINI obligation, revokes the generation, and that actual issued context is denied on the next scoped read.
 - Unlink-first barrier: Unlink holds User then Binding and commits; issuance blocks, the existing bounded Serializable helper retries against a fresh snapshot, denies the stale generation, records no MINI observation for it, and emits no scope.
 - Shared limiter: 40 concurrent calls alternating two instances allow exactly 10; counter saturates at 11; the next window allows a fresh request.
 - MINI termination: mocked MINI token/credential path records only the selected MINI attempt as confirmed when the simulated result is `204`; Account obligation stays unconfirmed without an Account token. This is simulated evidence only.
