@@ -54,11 +54,15 @@
 
 `loginReturnToSchema` อนุญาตเฉพาะ `/line/account`, Family invitation fragment ที่มีรูปแบบเดิม และ path quick action ที่กำหนดตรงตัวใน `LINE_QUICK_ACTION_RETURN_PATHS` เท่านั้น รวมถึง task mode `screening` หรือ `followup` ที่กำหนดไว้ ไม่มี external origin, arbitrary path หรือการต่อ path ผ่าน encoding การเข้าถึงที่ไม่มี session จะกลับไปยังปลายทาง quick action เดิมหลังล็อกอินสำเร็จ ส่วน return ที่ไม่ผ่าน allowlist จะใช้ `/login` หรือ fallback เดิมตามจุดเรียก
 
+Proxy อ่านเฉพาะ request URL ที่ตรงกับ quick action แบบ exact, ลบ header ชื่อเดียวกันที่ผู้เรียกส่งมา แล้วส่งค่าที่ผ่าน allowlist ต่อให้ parent layout ใช้เลือกปลายทาง login header นี้เป็น navigation hint เท่านั้น; layout และปลายทางยังตรวจ session, account, relationship และ policy ฝั่งเซิร์ฟเวอร์ตามเดิม Page-level fallback ของ workflow ใช้ allowlist เดียวกัน จึงกลับไปยัง task mode เดียวกับ parent guard
+
 การกลับจากล็อกอินไม่ได้ยืนยันสิทธิ์ ผู้ใช้ที่ role, membership, assignment หรือ Hospital status เปลี่ยนไปจะถูกปลายทางตรวจใหม่ทุกครั้ง Directory แสดงเฉพาะความสัมพันธ์ที่ query service อนุญาต และ screening/follow-up/provisioning เรียกบริการและ policy เดิมอีกครั้ง เมนูที่ LINE ยังแสดงหลังถอนสิทธิ์จึงไม่ให้สิทธิ์คงค้าง
 
 ## รูปแบบภาพและ preview
 
 Patient ใช้กริดงานหลัก 2×2 และวาง “ข้อมูลการดูแล” เป็นแถบงานหลักเต็มความกว้างถัดลงมาเพราะมีงานหลักทั้งหมดห้ารายการ OSM ใช้กริดงานหลัก 2×2 สำหรับสี่งาน fieldwork; งานทั้งหมด, บัญชี และ workspace switch อยู่แถบรอง ขอบเขตที่วาดและ LINE tappable areas มาจาก `getLineMenuAreaBounds` ชุดเดียวกันและมีช่องไฟระหว่างปุ่ม
+
+แก้ mobile readability เพิ่มเติมโดยใช้ฟอนต์งานหลัก 112px และงานรอง 104px ในเมนู Patient/OSM; footer ที่มีสี่ action จัดเป็น 2×2 แทนสี่ช่องแคบในแถวเดียว ปุ่มรองสามรายการยังเรียงสามช่องขนาดเต็มและข้อความใช้บรรทัดเดียวเมื่อพื้นที่รองรับ
 
 สร้างครบ 18 ภาพ ขนาด `2500×1686` PNG และตรวจไม่เกิน 1 MiB ต่อภาพ ภาพใช้ Noto Sans Thai ผ่าน Pango/HarfBuzz; generator ปฏิเสธข้อความที่ล้นกรอบแทนการย่อหรือ clip
 
@@ -78,14 +82,14 @@ Phase A เปิดใช้ workflow เว็บเดิมตาม matrix 
 
 ## Verification และไฟล์ที่เปลี่ยน
 
-- `npm run line:rich-menu:assets` — สร้าง PNG ครบ 18 variants
-- `npm run line:rich-menu:assets -- --check` — ผ่าน; output ตรงกับ deterministic generator
-- `npm run line:rich-menu:previews -- --output docs/phases/assets/line-qa-a/after --input public/line/rich-menus` — ผ่าน; สร้าง contact sheets 360/390/430 และ Thai glyph sample ครบ
-- ชุดทดสอบที่ครอบคลุม Phase A, appointment webhook และขอบเขต directory/screening/follow-up/provisioning 23 ไฟล์ — ผ่าน 265 tests
+- `npm run line:rich-menu:assets` และ `npm run line:rich-menu:assets -- --check` — สร้างและยืนยันครบ 18 PNG ตาม deterministic generator
+- `npm run line:rich-menu:previews -- --output docs/phases/assets/line-qa-a/after` — สร้าง contact sheets 360/390/430 และ Thai glyph sample ครบ
+- ชุดทดสอบ redirect flow, allowlist, LINE menu geometry, Proxy, login และสินทรัพย์ภาพ 10 ไฟล์ — ผ่าน 65 tests
+- Browser smoke บน localhost โดยใช้ Supabase/PostgreSQL dummy ที่ชี้ localhost เท่านั้น: เปิด `/app/patients/assigned?task=screening` แบบไม่มี session แล้ว browser ไป `/login?returnTo=%2Fapp%2Fpatients%2Fassigned%3Ftask%3Dscreening`; หลังล็อกอินสำเร็จทดสอบเป้าหมายด้วย mocked auth ใน integration test แทนการใช้บัญชีจริง
 - `npm run typecheck` — ผ่าน
 - `npx eslint` บนไฟล์ TypeScript/TSX ที่เปลี่ยน — ผ่าน
 - Impeccable UI detector — ไม่พบรายการตรวจจับ (`[]`)
-- ตรวจภาพ contact sheets ทั้ง 18 variants ที่ 360/390/430 และ Thai glyph sample ด้วยตา; ไม่พบ glyph เสีย, clipped text หรือ tappable-area overlap
+- ตรวจภาพ contact sheets ทั้ง 18 variants ที่ 360/390/430 และ Thai glyph sample ด้วยตา; footer 2×2 อ่านชัดขึ้น, ไม่พบ glyph เสีย, clipped text หรือ tappable-area overlap
 - ไม่เรียก LINE Provider, ไม่ใช้ `--apply`, ไม่ทำ production change และไม่มี database migration
 
 ไฟล์ source หลักที่เปลี่ยน: `src/modules/line/domain/line-navigation-intents.ts`, `src/modules/line/rich-menu/catalog.ts`, `src/modules/line/rich-menu/layout.ts`, `src/modules/line/services/line-deep-link-builder.ts`, `scripts/line-rich-menu-renderer.ts`, `scripts/line-rich-menu-asset-manifest.ts`, `scripts/generate-line-rich-menu-previews.ts`, auth login-return/schema, assigned-patient directory/provisioning page, Patient SELF page contexts และ regression tests ของแต่ละส่วน ภาพ 18 ไฟล์อยู่ใน `public/line/rich-menus/`; preview ก่อน/หลังอยู่ใน `docs/phases/assets/line-qa-a/`

@@ -196,9 +196,9 @@ describe("DEMI shared Rich Menu catalog", () => {
 
     expect(new Set(primaryGrid.map(({ x }) => x)).size).toBe(2);
     expect(new Set(primaryGrid.map(({ y }) => y)).size).toBe(2);
-    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 618, 618]);
-    expect(careBounds).toMatchObject({ x: 48, y: 922, width: 2404, height: 292 });
-    expect(moreBounds?.y).toBe(1230);
+    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 610, 610]);
+    expect(careBounds).toMatchObject({ x: 48, y: 906, width: 2404, height: 252 });
+    expect(moreBounds?.y).toBe(1174);
   });
 
   it("preserves the existing multi-role chooser and account hit regions", () => {
@@ -214,7 +214,7 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(bounds[3]).toEqual({ x: 100, y: 1360, width: 2300, height: 326 });
   });
 
-  it("keeps OSM tasks in a 2×2 grid and multi-role navigation in a full-height footer row", () => {
+  it("keeps OSM tasks in a 2×2 grid and gives four navigation actions a 2×2 footer", () => {
     const menu = LINE_RICH_MENU_BY_KEY.get("OSM_PATIENT_OSM_HOSPITAL");
     if (!menu) throw new Error("Missing multi-role OSM menu");
     const bounds = getLineMenuAreaBounds(menu);
@@ -223,8 +223,22 @@ describe("DEMI shared Rich Menu catalog", () => {
 
     expect(new Set(primaryGrid.map(({ x }) => x)).size).toBe(2);
     expect(new Set(primaryGrid.map(({ y }) => y)).size).toBe(2);
-    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 738, 738]);
-    expect(new Set(footer.map(({ x }) => x)).size).toBe(4);
-    expect(footer.every(({ y, height }) => y === 1162 && height === 524)).toBe(true);
+    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 682, 682]);
+    expect(new Set(footer.map(({ x }) => x)).size).toBe(2);
+    expect(new Set(footer.map(({ y }) => y)).size).toBe(2);
+    expect(footer.map(({ y }) => y)).toEqual([1050, 1050, 1376, 1376]);
+    expect(footer.every(({ width, height }) => width === 1194 && height === 310)).toBe(true);
+  });
+
+  it("keeps four Patient multi-role navigation actions in a 2×2 footer", () => {
+    const menu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
+    if (!menu) throw new Error("Missing three-role Patient menu");
+    const footer = getLineMenuAreaBounds(menu).slice(5);
+
+    expect(footer).toHaveLength(4);
+    expect(new Set(footer.map(({ x }) => x)).size).toBe(2);
+    expect(new Set(footer.map(({ y }) => y)).size).toBe(2);
+    expect(footer.map(({ y }) => y)).toEqual([1174, 1174, 1438, 1438]);
+    expect(footer.every(({ width, height }) => width === 1194 && height === 248)).toBe(true);
   });
 });

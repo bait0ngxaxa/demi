@@ -26,3 +26,10 @@ export const LINE_QUICK_ACTION_RETURN_PATHS = [
 ] as const;
 
 export type LineQuickActionReturnPath = (typeof LINE_QUICK_ACTION_RETURN_PATHS)[number];
+
+export const LINE_QUICK_ACTION_RETURN_TO_HEADER = "x-demi-line-quick-action-return-to";
+
+export function getLineQuickActionReturnPathFromUrl(url: URL): LineQuickActionReturnPath | null {
+  const requestedPath = `${url.pathname}${url.search}`;
+  return LINE_QUICK_ACTION_RETURN_PATHS.find((path) => path === requestedPath) ?? null;
+}

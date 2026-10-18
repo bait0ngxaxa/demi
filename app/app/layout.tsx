@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { connection } from "next/server";
 
 import { roleLabels } from "@/components/app-shell/actor-presentation";
@@ -7,15 +8,22 @@ import { projectApplicationNavigation } from "@/components/app-shell/application
 import { AppShell } from "@/components/app-shell/app-shell";
 import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
+import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-async function resolveProtectedActor(): Promise<ActorContext> {
+async function resolveProtectedActor(lineQuickActionReturnTo: string | null): Promise<ActorContext> {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
-      redirect("/login");
+      redirect(
+        isLineQuickActionLoginReturnTo(lineQuickActionReturnTo)
+          ? buildLoginReturnHref(lineQuickActionReturnTo)
+          : "/login",
+      );
     }
 
     throw error;
@@ -26,7 +34,10 @@ async function ResolvedProtectedApplicationShell({
   children,
 }: Readonly<{ children: React.ReactNode }>): Promise<React.JSX.Element> {
   await connection();
-  const actor = await resolveProtectedActor();
+  const requestHeaders = await headers();
+  const actor = await resolveProtectedActor(
+    requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
+  );
   const navigation = projectApplicationNavigation(actor);
 
   return (

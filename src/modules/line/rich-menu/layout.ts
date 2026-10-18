@@ -46,8 +46,8 @@ function footerBounds(
   top: number,
   height: number,
 ): LineMenuBounds {
-  const rowCount = 1;
-  const columns = count;
+  const columns = count > 3 ? 2 : count;
+  const rowCount = Math.ceil(count / columns);
   const row = Math.floor(index / columns);
   const column = index % columns;
   const gutter = 16;
@@ -85,18 +85,18 @@ function getPatientMenuBounds(menu: LineMenuDefinition): readonly LineMenuBounds
   const bounds = createEmptyBounds(menu);
 
   gridIndexes.forEach((actionIndex, index) => {
-    bounds[actionIndex] = gridBounds(index, 2, 314, 288, 16);
+    bounds[actionIndex] = gridBounds(index, 2, 314, 280, 16);
   });
   if (careIndex >= 0) {
     bounds[careIndex] = {
       x: GRID_MARGIN,
-      y: 922,
+      y: 906,
       width: CANVAS_WIDTH - GRID_MARGIN * 2,
-      height: 292,
+      height: 252,
     };
   }
   footerIndexes.forEach((actionIndex, index) => {
-    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1230, 456);
+    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1174, 512);
   });
 
   return bounds;
@@ -110,10 +110,10 @@ function getOsmMenuBounds(menu: LineMenuDefinition): readonly LineMenuBounds[] {
   const bounds = createEmptyBounds(menu);
 
   taskIndexes.forEach((actionIndex, index) => {
-    bounds[actionIndex] = gridBounds(index, 2, 314, 408, 16);
+    bounds[actionIndex] = gridBounds(index, 2, 314, 352, 16);
   });
   footerIndexes.forEach((actionIndex, index) => {
-    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1162, 524);
+    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1050, 636);
   });
 
   return bounds;

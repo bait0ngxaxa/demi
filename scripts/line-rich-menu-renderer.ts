@@ -153,20 +153,31 @@ function getActionFontSize(
     return width < 1000 ? 140 : 170;
   }
   if (primary && (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_"))) {
-    return 88;
+    return 112;
   }
   if (primary && height > 1000) return 202;
   if (primary && width > 1800) return 186;
   if (primary) return 164;
   if (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_")) {
-    return height > 400 ? 84 : 68;
+    return 104;
   }
   if (width > 1800) return 148;
   if (width > 1000) return 142;
   return 132;
 }
 
-export function getLineRichMenuActionLines(label: string, width?: number): readonly string[] {
+export function getLineRichMenuActionLines(
+  label: string,
+  width?: number,
+  menuKey?: string,
+): readonly string[] {
+  if (
+    width !== undefined &&
+    width >= 700 &&
+    (menuKey?.startsWith("PATIENT_") || menuKey?.startsWith("OSM_"))
+  ) {
+    return [label];
+  }
   if (label === "จัดการบัญชี" && width !== undefined && width > 1800) return [label];
   return thaiLabelLines[label] ?? [label];
 }
@@ -223,7 +234,7 @@ export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEnt
       color: primary ? colors.surface : colors.ink,
     };
     overlays.push(await createTextOverlay(
-      getLineRichMenuActionLines(action.label, action.bounds.width).join("\n"),
+      getLineRichMenuActionLines(action.label, action.bounds.width, menu.key).join("\n"),
       action.bounds,
       style,
       { horizontal: 64, vertical: 24 },
