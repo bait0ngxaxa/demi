@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  LINE_QUICK_ACTION_RETURN_PATHS,
+  type LineQuickActionReturnPath,
+} from "@/modules/line/domain/line-navigation-intents";
+
 /**
  * Hospital onboarding still requires a validated Thai National ID. The
  * shared login boundary also accepts the bounded identifier chosen by the
@@ -14,8 +19,14 @@ export const passwordLoginIdentifierSchema = z
 const familyInvitationReturnToPattern = /^\/app\/family\/invitations#[A-Za-z0-9_-]{43}$/u;
 
 export const loginReturnToSchema = z.string().refine(
-  (value) => value === "/line/account" || familyInvitationReturnToPattern.test(value),
+  (value) => value === "/line/account" ||
+    LINE_QUICK_ACTION_RETURN_PATHS.some((path) => path === value) ||
+    familyInvitationReturnToPattern.test(value),
 );
+
+export function isLineQuickActionLoginReturnTo(value: unknown): value is LineQuickActionReturnPath {
+  return typeof value === "string" && LINE_QUICK_ACTION_RETURN_PATHS.some((path) => path === value);
+}
 
 export const loginFamilyInvitationReturnToSchema = z.string().regex(familyInvitationReturnToPattern);
 

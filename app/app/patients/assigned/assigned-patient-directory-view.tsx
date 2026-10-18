@@ -27,6 +27,26 @@ type AssignedPatientDirectoryViewProps = {
   result: PatientAssignedDirectoryPage | null;
   errorMessage: string | null;
   classificationFilter: PatientDirectoryClassificationFilter;
+  taskMode: AssignedPatientTaskMode | null;
+};
+
+type AssignedPatientTaskMode = "screening" | "followup";
+
+const taskPresentation: Record<AssignedPatientTaskMode, {
+  title: string;
+  description: string;
+  selectionAction: string;
+}> = {
+  screening: {
+    title: "คัดกรองผู้ป่วย",
+    description: "เลือกผู้ป่วยที่ได้รับมอบหมาย ระบบจะแสดงแบบคัดกรองตามสิทธิ์ปัจจุบันของคุณ",
+    selectionAction: "เริ่มคัดกรองผู้ป่วยรายนี้",
+  },
+  followup: {
+    title: "บันทึกติดตาม",
+    description: "เลือกผู้ป่วยที่ได้รับมอบหมาย ระบบจะตรวจสอบความสัมพันธ์และสิทธิ์ก่อนเปิดแบบบันทึก",
+    selectionAction: "บันทึกติดตามผู้ป่วยรายนี้",
+  },
 };
 
 function directoryUrl(input: {
@@ -34,8 +54,13 @@ function directoryUrl(input: {
   value: string;
   page: number;
   classification: PatientDirectoryClassificationFilter;
+  taskMode: AssignedPatientTaskMode | null;
 }): string {
   const params = new URLSearchParams({ lookupType: input.lookupType });
+
+  if (input.taskMode) {
+    params.set("task", input.taskMode);
+  }
 
   if (input.value) {
     params.set("value", input.value);
@@ -52,12 +77,22 @@ function directoryUrl(input: {
   return `/app/patients/assigned?${params.toString()}`;
 }
 
-function PatientRow({ item }: { item: PatientDirectoryItem }): React.JSX.Element {
+function PatientRow({ item, taskMode }: {
+  item: PatientDirectoryItem;
+  taskMode: AssignedPatientTaskMode | null;
+}): React.JSX.Element {
+  const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
+  const href = taskMode === "screening"
+    ? `${relationshipPath}/screenings/new`
+    : taskMode === "followup"
+      ? `${relationshipPath}/followups/new`
+      : relationshipPath;
+
   return (
     <li>
       <Link
         className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-        href={`/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`}
+        href={href}
       >
         <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="min-w-0">
@@ -75,7 +110,9 @@ function PatientRow({ item }: { item: PatientDirectoryItem }): React.JSX.Element
             <StatusBadge variant={item.classification ? "info" : "neutral"}>
               {getPatientClassificationLabel(item.classification)}
             </StatusBadge>
-            <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดผู้ป่วยเพื่อดูแลต่อ</p>
+            <p className="mt-3 text-sm font-semibold text-brand-strong">
+              {taskMode ? taskPresentation[taskMode].selectionAction : "เปิดผู้ป่วยเพื่อดูแลต่อ"}
+            </p>
           </div>
         </div>
       </Link>
@@ -83,7 +120,10 @@ function PatientRow({ item }: { item: PatientDirectoryItem }): React.JSX.Element
   );
 }
 
-function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React.JSX.Element | null {
+function Pagination({ result, taskMode }: {
+  result: PatientAssignedDirectoryPage;
+  taskMode: AssignedPatientTaskMode | null;
+}): React.JSX.Element | null {
   if (result.totalPages <= 1) {
     return null;
   }
@@ -105,6 +145,7 @@ function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React
               value: result.value,
               page: result.page - 1,
               classification: result.classificationFilter,
+              taskMode,
             })}
           >
             ก่อนหน้า
@@ -122,6 +163,7 @@ function Pagination({ result }: { result: PatientAssignedDirectoryPage }): React
               value: result.value,
               page: result.page + 1,
               classification: result.classificationFilter,
+              taskMode,
             })}
           >
             ถัดไป
@@ -142,6 +184,7 @@ export function AssignedPatientDirectoryView({
   result,
   errorMessage,
   classificationFilter,
+  taskMode,
 }: AssignedPatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
   const maxLength =
@@ -155,8 +198,10 @@ export function AssignedPatientDirectoryView({
       <PageHeader
         actions={<StatusBadge variant="info">ขอบเขตที่รับผิดชอบ</StatusBadge>}
         breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
-        description="เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติตามสิทธิ์ของคุณ แสดงเฉพาะความสัมพันธ์ผู้ป่วยที่มอบหมายให้คุณอยู่ในขณะนี้และมีขอบเขตโรงพยาบาลที่ใช้งานได้"
-        title="ผู้ป่วยที่รับผิดชอบ"
+        description={taskMode
+          ? taskPresentation[taskMode].description
+          : "เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติตามสิทธิ์ของคุณ แสดงเฉพาะความสัมพันธ์ผู้ป่วยที่มอบหมายให้คุณอยู่ในขณะนี้และมีขอบเขตโรงพยาบาลที่ใช้งานได้"}
+        title={taskMode ? taskPresentation[taskMode].title : "ผู้ป่วยที่รับผิดชอบ"}
       />
 
       <div className="space-y-6 pt-8">
@@ -166,6 +211,7 @@ export function AssignedPatientDirectoryView({
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวในรายการที่ได้รับมอบหมาย
           </p>
           <Form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end">
+            {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} key={lookupType} name="lookupType">
@@ -195,7 +241,10 @@ export function AssignedPatientDirectoryView({
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap @5xl/workspace:col-span-3">
               <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
               {hasFilters || errorMessage ? (
-                <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/patients/assigned">
+                <Link
+                  className={buttonClassName({ variant: "secondary", size: "compact" })}
+                  href={taskMode ? `/app/patients/assigned?task=${taskMode}` : "/app/patients/assigned"}
+                >
                   ล้างการค้นหาและตัวกรอง
                 </Link>
               ) : null}
@@ -217,7 +266,7 @@ export function AssignedPatientDirectoryView({
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
-                  รายชื่อผู้ป่วยที่รับผิดชอบ
+                  {taskMode ? "เลือกผู้ป่วยที่รับผิดชอบ" : "รายชื่อผู้ป่วยที่รับผิดชอบ"}
                 </h2>
                 <p className="mt-1 text-sm text-text-muted">แต่ละรายการเป็นความสัมพันธ์ผู้ป่วยกับโรงพยาบาล ตรวจสอบโรงพยาบาลและ HN ก่อนเปิดดูแลต่อ</p>
               </div>
@@ -229,11 +278,11 @@ export function AssignedPatientDirectoryView({
                 <div className="overflow-hidden rounded-panel border border-border bg-surface">
                   <ul className="divide-y divide-border" aria-label="รายชื่อผู้ป่วยที่รับผิดชอบ">
                     {result.items.map((item) => (
-                      <PatientRow item={item} key={item.patientHospitalRelationshipId} />
+                      <PatientRow item={item} key={item.patientHospitalRelationshipId} taskMode={taskMode} />
                     ))}
                   </ul>
                 </div>
-                <Pagination result={result} />
+                <Pagination result={result} taskMode={taskMode} />
               </div>
             ) : (
               <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">

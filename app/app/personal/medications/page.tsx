@@ -6,6 +6,8 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { getOwnPersonalMedication, listOwnPersonalMedications } from "@/modules/medications/services/personal-medication-query-service";
 import { ForbiddenError, UnauthenticatedError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { PersonalMedicationWorkspace } from "./personal-medication-workspace";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 
 export const metadata: Metadata = { title: "ยาของฉัน" };
 
@@ -35,7 +37,7 @@ export default async function PersonalMedicationsPage({ searchParams }: {
     presentationKey = createHash("sha256").update(`personal-medication:${actor.userId}`).digest("hex");
     workspace = { active, stopped, selected, safeError };
   } catch (error: unknown) {
-    if (error instanceof UnauthenticatedError) redirect("/login");
+    if (error instanceof UnauthenticatedError) redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_MEDICATIONS));
     if (error instanceof ForbiddenError) redirect("/app");
     if (error instanceof NotFoundError || error instanceof ValidationError) {
       workspace = { active: { items: [], nextCursor: null }, stopped: { items: [], nextCursor: null }, selected: null, safeError: "ไม่พบหน้ารายการที่ต้องการ กรุณากลับไปโหลดรายการล่าสุด" };

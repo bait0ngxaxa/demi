@@ -9,6 +9,8 @@ import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 import { listOwnPersonalExercises } from "@/modules/exercises/services/personal-exercise-query-service";
 import { getOwnPersonalWeightGoal } from "@/modules/weight-goals/services/personal-weight-goal-query-service";
 import { weightGoalBangkokToday } from "@/modules/weight-goals/domain/personal-weight-goal";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 
 export const metadata: Metadata = { title: "สุขภาพ" };
 export default async function PersonalWellnessPage(): Promise<React.JSX.Element> {
@@ -34,7 +36,7 @@ export default async function PersonalWellnessPage(): Promise<React.JSX.Element>
       weightGoalNonce: randomUUID(),
     };
   } catch (error: unknown) {
-    if (error instanceof UnauthenticatedError) redirect("/login");
+    if (error instanceof UnauthenticatedError) redirect(buildLoginReturnHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WELLNESS));
     if (error instanceof ForbiddenError) redirect("/app");
     throw error;
   }

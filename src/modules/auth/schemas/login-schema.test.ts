@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { LINE_QUICK_ACTION_RETURN_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import { loginInputSchema, loginFamilyInvitationReturnToSchema, loginReturnToSchema } from "./login-schema";
 
 describe("login input validation", () => {
@@ -64,9 +65,17 @@ describe("allowlisted login return destination", () => {
     expect(loginReturnToSchema.parse(destination)).toBe(destination);
   });
 
+  it.each(LINE_QUICK_ACTION_RETURN_PATHS)("accepts the exact quick-action destination %s", (destination) => {
+    expect(loginReturnToSchema.parse(destination)).toBe(destination);
+  });
+
   it.each([
     "/app", "/line/account/settings", "//attacker.example/", "https://demi.example/line/account",
     "https://attacker.example/", "javascript:alert(1)", `/app/family/invitations#${"!".repeat(43)}`,
+    "/app/patients/assigned?task=screening&next=https://attacker.example",
+    "/app/patients/assigned?task=SCREENING",
+    "/app/patients/assigned?task=followup%252f..%252f..",
+    "/app/patients/assigned?task=screening&task=followup",
   ])("rejects an arbitrary or external destination %s", (destination) => {
     expect(loginReturnToSchema.safeParse(destination).success).toBe(false);
   });

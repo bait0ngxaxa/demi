@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context-service";
-import { loginReturnToSchema } from "@/modules/auth/schemas/login-schema";
+import {
+  isLineQuickActionLoginReturnTo,
+  loginReturnToSchema,
+} from "@/modules/auth/schemas/login-schema";
 
 import { ClearHospitalContentRecoveryOnLogin } from "./clear-hospital-content-recovery";
 import { LoginForm } from "./login-form";
@@ -25,7 +28,11 @@ export default async function LoginPage({
   const access = await resolveCurrentActorAccess();
 
   if (access.status === "AUTHORIZED") {
-    redirect(safeReturnTo === "/line/account" ? safeReturnTo : "/app");
+    redirect(
+      safeReturnTo === "/line/account" || isLineQuickActionLoginReturnTo(safeReturnTo)
+        ? safeReturnTo
+        : "/app",
+    );
   }
 
   return (

@@ -1,10 +1,11 @@
 import type { OperationalLineRole } from "../domain/line-types";
+import type { LineWebNavigationIntent } from "../domain/line-navigation-intents";
 import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 
 export const LINE_WORKSPACE_SWITCH_MARKER = "DEMI_LINE_WORKSPACE_SWITCH_V1";
 
 export type LineMenuAction =
-  | { type: "uri"; label: string; intent: "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" }
+  | { type: "uri"; label: string; intent: "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | LineWebNavigationIntent }
   | { type: "richmenuswitch"; label: string; role: OperationalLineRole }
   | { type: "postback"; label: string; data: typeof LINE_PATIENT_NEXT_APPOINTMENT_MARKER };
 
@@ -22,6 +23,8 @@ const roleLabels: Record<OperationalLineRole, string> = {
   OSM: "งาน อสม.",
   HOSPITAL: "งานโรงพยาบาล",
 };
+const roleMenuContext = (role: OperationalLineRole): string =>
+  role === "HOSPITAL" ? "เมนูสำหรับคุณ" : "เลือกงานที่ต้องการ";
 
 const roleIntent = (role: OperationalLineRole): "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" =>
   role === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE";
@@ -32,11 +35,96 @@ const appointmentAction: LineMenuAction = {
   data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
 };
 
-const singleRoleActions = (role: OperationalLineRole): LineMenuAction[] => [
-  { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
-  ...(role === "PATIENT" ? [appointmentAction] : []),
-  { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" },
+const patientQuickActions: readonly LineMenuAction[] = [
+  appointmentAction,
+  { type: "uri", intent: "OPEN_PATIENT_APPOINTMENTS", label: "นัดหมายทั้งหมด" },
+  { type: "uri", intent: "OPEN_PATIENT_WELLNESS", label: "บันทึกสุขภาพ" },
+  { type: "uri", intent: "OPEN_PATIENT_MEDICATIONS", label: "ยาของฉัน" },
+  { type: "uri", intent: "OPEN_PATIENT_CARE", label: "ข้อมูลการดูแล" },
 ];
+
+const osmQuickActions: readonly LineMenuAction[] = [
+  { type: "uri", intent: "OPEN_OSM_ASSIGNED_PATIENTS", label: "ผู้ป่วยที่ดูแล" },
+  { type: "uri", intent: "START_OSM_SCREENING", label: "คัดกรองผู้ป่วย" },
+  { type: "uri", intent: "START_OSM_FOLLOWUP", label: "บันทึกติดตาม" },
+  { type: "uri", intent: "OPEN_PATIENT_PROVISIONING", label: "เพิ่มผู้ป่วย" },
+];
+
+const workspaceSwitchActions = (
+  role: OperationalLineRole,
+  roles: readonly OperationalLineRole[],
+): LineMenuAction[] => roles
+  .filter((candidate) => candidate !== role)
+  .map((candidate) => ({
+    type: "richmenuswitch" as const,
+    role: candidate,
+    label: roleLabels[candidate],
+  }));
+
+const singleRoleActions = (role: OperationalLineRole): LineMenuAction[] => {
+  const accountAction: LineMenuAction = {
+    type: "uri",
+    intent: "MANAGE_ACCOUNT",
+    label: "จัดการบัญชี",
+  };
+
+  if (role === "PATIENT") {
+    return [
+      ...patientQuickActions,
+      { type: "uri", intent: "OPEN_PATIENT_WORKSPACE", label: "เพิ่มเติม" },
+      accountAction,
+    ];
+  }
+
+  if (role === "OSM") {
+    return [
+      ...osmQuickActions,
+      { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
+      accountAction,
+    ];
+  }
+
+  return [
+    { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
+    accountAction,
+  ];
+};
+
+const roleMenuActions = (
+  role: OperationalLineRole,
+  roles: readonly OperationalLineRole[],
+): LineMenuAction[] => {
+  const accountAction: LineMenuAction = {
+    type: "uri",
+    intent: "MANAGE_ACCOUNT",
+    label: "จัดการบัญชี",
+  };
+  const switches = workspaceSwitchActions(role, roles);
+
+  if (role === "PATIENT") {
+    return [
+      ...patientQuickActions,
+      { type: "uri", intent: "OPEN_PATIENT_WORKSPACE", label: "เพิ่มเติม" },
+      ...switches,
+      accountAction,
+    ];
+  }
+
+  if (role === "OSM") {
+    return [
+      ...osmQuickActions,
+      { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
+      ...switches,
+      accountAction,
+    ];
+  }
+
+  return [
+    { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
+    ...switches,
+    accountAction,
+  ];
+};
 
 const roleSets: readonly (readonly OperationalLineRole[])[] = [
   ["PATIENT", "OSM"],
@@ -97,7 +185,7 @@ for (const roles of [["PATIENT"], ["OSM"], ["HOSPITAL"]] as const) {
       `${role}_DIRECT`,
       `d_${role.slice(0, 1).toLowerCase()}`,
       roleLabels[role],
-      "เมนูสำหรับคุณ",
+      roleMenuContext(role),
       singleRoleActions(role),
     ),
   );
@@ -111,19 +199,8 @@ for (const roles of roleSets) {
         `${role}_${roles.join("_")}`,
         `${role.slice(0, 1).toLowerCase()}_${suffix}`,
         roleLabels[role],
-        "เมนูสำหรับคุณ",
-        [
-          { type: "uri", intent: roleIntent(role), label: roleLabels[role] },
-          ...(role === "PATIENT" ? [appointmentAction] : []),
-          ...roles
-            .filter((candidate) => candidate !== role)
-            .map((candidate) => ({
-              type: "richmenuswitch" as const,
-              role: candidate,
-              label: roleLabels[candidate],
-            })),
-          { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" },
-        ],
+        roleMenuContext(role),
+        roleMenuActions(role, roles),
       ),
     );
   }

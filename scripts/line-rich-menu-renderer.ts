@@ -19,14 +19,36 @@ const thaiLabelLines: Readonly<Record<string, readonly string[]>> = {
   "ข้อมูลของฉัน": ["ข้อมูล", "ของฉัน"],
   "งานโรงพยาบาล": ["งาน", "โรงพยาบาล"],
   "ตรวจสอบนัดหมาย": ["ตรวจสอบ", "นัดหมาย"],
+  "นัดหมายทั้งหมด": ["นัดหมาย", "ทั้งหมด"],
+  "บันทึกสุขภาพ": ["บันทึก", "สุขภาพ"],
+  "ยาของฉัน": ["ยา", "ของฉัน"],
+  "ข้อมูลการดูแล": ["ข้อมูล", "การดูแล"],
+  "ผู้ป่วยที่ดูแล": ["ผู้ป่วย", "ที่ดูแล"],
+  "คัดกรองผู้ป่วย": ["คัดกรอง", "ผู้ป่วย"],
+  "บันทึกติดตาม": ["บันทึก", "ติดตาม"],
+  "เพิ่มผู้ป่วย": ["เพิ่ม", "ผู้ป่วย"],
   "จัดการบัญชี": ["จัดการ", "บัญชี"],
 };
+
+const PATIENT_TASK_INTENTS = new Set([
+  "OPEN_PATIENT_APPOINTMENTS",
+  "OPEN_PATIENT_WELLNESS",
+  "OPEN_PATIENT_MEDICATIONS",
+  "OPEN_PATIENT_CARE",
+]);
+const OSM_TASK_INTENTS = new Set([
+  "OPEN_OSM_ASSIGNED_PATIENTS",
+  "START_OSM_SCREENING",
+  "START_OSM_FOLLOWUP",
+  "OPEN_PATIENT_PROVISIONING",
+]);
 
 type FontWeight = "Medium" | "Semi-Bold" | "Bold";
 
 type MenuActionManifest = {
   label: string;
   kind: "uri" | "richmenuswitch" | "postback";
+  intent: string | null;
   bounds: LineMenuBounds;
 };
 
@@ -109,10 +131,14 @@ function isPrimaryAction(
   action: MenuActionManifest,
   index: number,
 ): boolean {
-  return menu.actions.length === 1 ||
-    (menu.key.startsWith("CHOOSER_") && action.kind === "richmenuswitch") ||
-    index === 0 ||
-    action.kind === "postback";
+  if (menu.key.startsWith("CHOOSER_")) return action.kind === "richmenuswitch";
+  if (menu.key.startsWith("PATIENT_")) {
+    return action.kind === "postback" || (action.intent !== null && PATIENT_TASK_INTENTS.has(action.intent));
+  }
+  if (menu.key.startsWith("OSM_")) {
+    return action.intent !== null && OSM_TASK_INTENTS.has(action.intent);
+  }
+  return menu.actions.length === 1 || index === 0;
 }
 
 function getActionFontSize(
@@ -126,9 +152,15 @@ function getActionFontSize(
   if (primary && menu.key.startsWith("CHOOSER_") && action.kind === "richmenuswitch") {
     return width < 1000 ? 140 : 170;
   }
+  if (primary && (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_"))) {
+    return 88;
+  }
   if (primary && height > 1000) return 202;
   if (primary && width > 1800) return 186;
   if (primary) return 164;
+  if (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_")) {
+    return height > 400 ? 84 : 68;
+  }
   if (width > 1800) return 148;
   if (width > 1000) return 142;
   return 132;

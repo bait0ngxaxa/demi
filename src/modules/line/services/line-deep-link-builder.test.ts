@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LINE_WEB_NAVIGATION_PATHS } from "../domain/line-navigation-intents";
 import { LineFailure } from "../domain/line-errors";
 import { buildLineIntentUrl } from "./line-deep-link-builder";
 
@@ -11,9 +12,26 @@ describe("LINE intent deep links", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("uses existing authorized Personal and Work routes", () => {
-    expect(buildLineIntentUrl("OPEN_PATIENT_WORKSPACE")).toBe("https://demi.example.org/app/personal");
-    expect(buildLineIntentUrl("OPEN_WORK_WORKSPACE")).toBe("https://demi.example.org/app");
+  it.each(Object.entries(LINE_WEB_NAVIGATION_PATHS))(
+    "builds the fixed same-origin web destination for %s",
+    (intent, path) => {
+      const url = new URL(buildLineIntentUrl(intent as keyof typeof LINE_WEB_NAVIGATION_PATHS));
+
+      expect(url.origin).toBe("https://demi.example.org");
+      expect(`${url.pathname}${url.search}`).toBe(path);
+      expect(url.username).toBe("");
+      expect(url.password).toBe("");
+      expect(url.hash).toBe("");
+    },
+  );
+
+  it("includes only bounded OSM task modes in the quick-action URLs", () => {
+    expect(buildLineIntentUrl("START_OSM_SCREENING")).toBe(
+      "https://demi.example.org/app/patients/assigned?task=screening",
+    );
+    expect(buildLineIntentUrl("START_OSM_FOLLOWUP")).toBe(
+      "https://demi.example.org/app/patients/assigned?task=followup",
+    );
   });
 
   it("uses the LIFF root when the configured endpoint already contains /line/account", () => {

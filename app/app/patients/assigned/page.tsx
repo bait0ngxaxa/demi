@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { z } from "zod";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
+import {
+  LINE_WEB_NAVIGATION_PATHS,
+  type LineQuickActionReturnPath,
+} from "@/modules/line/domain/line-navigation-intents";
 import {
   findAssignedPatientDirectory,
   type PatientAssignedDirectoryPage,
@@ -25,16 +31,25 @@ type AssignedPatientDirectoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+const assignedPatientTaskModeSchema = z.enum(["screening", "followup"]);
+type AssignedPatientTaskMode = z.infer<typeof assignedPatientTaskModeSchema>;
+
 function firstSearchParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-async function resolveActor() {
+function parseTaskMode(value: string | string[] | undefined): AssignedPatientTaskMode | null {
+  if (typeof value !== "string") return null;
+  const parsed = assignedPatientTaskModeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+async function resolveActor(returnTo: LineQuickActionReturnPath) {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
-      redirect("/login");
+      redirect(buildLoginReturnHref(returnTo));
     }
 
     if (error instanceof ForbiddenError) {
@@ -55,8 +70,14 @@ export default async function AssignedPatientDirectoryPage({
   searchParams,
 }: AssignedPatientDirectoryPageProps): Promise<React.JSX.Element> {
   await connection();
-  const actor = await resolveActor();
   const params = await searchParams;
+  const taskMode = parseTaskMode(params.task);
+  const returnTo = taskMode === "screening"
+    ? LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING
+    : taskMode === "followup"
+      ? LINE_WEB_NAVIGATION_PATHS.START_OSM_FOLLOWUP
+      : LINE_WEB_NAVIGATION_PATHS.OPEN_OSM_ASSIGNED_PATIENTS;
+  const actor = await resolveActor(returnTo);
   const requestedLookupType = firstSearchParam(params.lookupType);
   const lookupType: PatientDirectoryLookupType =
     requestedLookupType === "HOSPITAL_NUMBER" ? "HOSPITAL_NUMBER" : "NAME";
@@ -100,6 +121,7 @@ export default async function AssignedPatientDirectoryPage({
       lookupType={result?.lookupType ?? lookupType}
       result={result}
       classificationFilter={result?.classificationFilter ?? classificationFilter}
+      taskMode={taskMode}
       value={result?.value ?? displayValue}
     />
   );

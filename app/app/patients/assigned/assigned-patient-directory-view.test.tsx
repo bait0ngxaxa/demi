@@ -25,13 +25,18 @@ const result: PatientAssignedDirectoryPage = {
   hasNextPage: true,
 };
 
-function render(page: PatientAssignedDirectoryPage | null = result, errorMessage: string | null = null): string {
+function render(
+  page: PatientAssignedDirectoryPage | null = result,
+  errorMessage: string | null = null,
+  taskMode: "screening" | "followup" | null = null,
+): string {
   return renderToStaticMarkup(<AssignedPatientDirectoryView
     lookupType={page?.lookupType ?? "NAME"}
     value={page?.value ?? ""}
     classificationFilter={page?.classificationFilter ?? "ALL"}
     result={page}
     errorMessage={errorMessage}
+    taskMode={taskMode}
   />);
 }
 
@@ -115,5 +120,24 @@ describe("assigned patient operational directory", () => {
     expect(html).toContain("ล้างการค้นหาและตัวกรอง");
     expect(html).not.toContain("พบ 51");
     expect(html).not.toContain("relationship-1");
+  });
+
+  it("keeps screening selection inside the authorized directory and opens the existing screening workflow", () => {
+    const html = render(result, null, "screening");
+
+    expect(html).toContain("คัดกรองผู้ป่วย");
+    expect(html).toContain('name="task" value="screening"');
+    expect(html).toContain('href="/app/patients/relationship-1/screenings/new"');
+    expect(html).toContain("เริ่มคัดกรองผู้ป่วยรายนี้");
+    expect(html).not.toContain('href="/app/patients/relationship-1"');
+  });
+
+  it("keeps follow-up mode through paging and opens the existing relationship follow-up form", () => {
+    const html = render({ ...result, hasPreviousPage: true }, null, "followup");
+
+    expect(html).toContain("บันทึกติดตาม");
+    expect(html).toContain('href="/app/patients/relationship-1/followups/new"');
+    expect(html).toContain("บันทึกติดตามผู้ป่วยรายนี้");
+    expect(html).toContain('href="/app/patients/assigned?lookupType=NAME&amp;task=followup"');
   });
 });

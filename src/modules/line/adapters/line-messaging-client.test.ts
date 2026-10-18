@@ -45,6 +45,43 @@ describe("DEMI LINE Messaging API boundary", () => {
     ]);
   });
 
+  it("projects Patient quick links as fixed ordinary-web URIs and keeps account management on LIFF", () => {
+    const patientMenu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
+    if (!patientMenu) throw new Error("Expected the Patient multi-role menu");
+
+    const actions = createLineRichMenuPayload(patientMenu).areas.map(({ action }) => action);
+
+    expect(actions).toEqual([
+      { type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+      { type: "uri", label: "นัดหมายทั้งหมด", uri: "https://demi.example.org/app/personal/appointments" },
+      { type: "uri", label: "บันทึกสุขภาพ", uri: "https://demi.example.org/app/personal/wellness" },
+      { type: "uri", label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" },
+      { type: "uri", label: "ข้อมูลการดูแล", uri: "https://demi.example.org/app/personal/care" },
+      { type: "uri", label: "เพิ่มเติม", uri: "https://demi.example.org/app/personal" },
+      { type: "richmenuswitch", label: "งาน อสม.", richMenuAliasId: "d17j1_o_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "richmenuswitch", label: "งานโรงพยาบาล", richMenuAliasId: "d17j1_h_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "uri", label: "จัดการบัญชี", uri: "https://liff.line.me/1234567890-AbCdEfGh" },
+    ]);
+  });
+
+  it("projects OSM work entry as safe directories and leaves provisioning scope to the existing server workflow", () => {
+    const osmMenu = LINE_RICH_MENU_BY_KEY.get("OSM_PATIENT_OSM_HOSPITAL");
+    if (!osmMenu) throw new Error("Expected the OSM multi-role menu");
+
+    const actions = createLineRichMenuPayload(osmMenu).areas.map(({ action }) => action);
+
+    expect(actions).toEqual([
+      { type: "uri", label: "ผู้ป่วยที่ดูแล", uri: "https://demi.example.org/app/patients/assigned" },
+      { type: "uri", label: "คัดกรองผู้ป่วย", uri: "https://demi.example.org/app/patients/assigned?task=screening" },
+      { type: "uri", label: "บันทึกติดตาม", uri: "https://demi.example.org/app/patients/assigned?task=followup" },
+      { type: "uri", label: "เพิ่มผู้ป่วย", uri: "https://demi.example.org/app/patients/provision" },
+      { type: "uri", label: "งานทั้งหมด", uri: "https://demi.example.org/app" },
+      { type: "richmenuswitch", label: "ข้อมูลของฉัน", richMenuAliasId: "d17j1_p_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "richmenuswitch", label: "งานโรงพยาบาล", richMenuAliasId: "d17j1_h_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
+      { type: "uri", label: "จัดการบัญชี", uri: "https://liff.line.me/1234567890-AbCdEfGh" },
+    ]);
+  });
+
   it("uses the authenticated Messaging API and requires GET read-back after unlink", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(null, { status: 200 }))

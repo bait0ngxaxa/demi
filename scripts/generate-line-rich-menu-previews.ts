@@ -77,15 +77,23 @@ async function writeContactSheet(inputDirectory: string, outputDirectory: string
 async function writeThaiGlyphProof(outputDirectory: string): Promise<void> {
   const samples = [
     "เชื่อมบัญชี DEMI",
-    "ข้อมูลของฉัน",
-    "งานโรงพยาบาล",
     "ตรวจสอบนัดหมาย",
+    "นัดหมายทั้งหมด",
+    "บันทึกสุขภาพ",
+    "ยาของฉัน",
+    "ข้อมูลการดูแล",
+    "ผู้ป่วยที่ดูแล",
+    "คัดกรองผู้ป่วย",
+    "บันทึกติดตาม",
+    "เพิ่มผู้ป่วย",
+    "เพิ่มเติม",
+    "งานทั้งหมด",
     "จัดการบัญชี",
     "เลือกเมนูที่ต้องการใช้",
   ];
   const proofWidth = 1800;
   const headerHeight = 80;
-  const rowHeight = 420;
+  const rowHeight = 440;
   const proofHeight = headerHeight + samples.length * rowHeight;
   const colors = getLineRichMenuColors();
   const composites: ImageOverlay[] = [];

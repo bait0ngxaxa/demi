@@ -4,6 +4,8 @@ import { HospitalStatus } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import type { LoginReturnTo } from "@/modules/auth/schemas/login-schema";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
 import type { PatientSelfContext } from "@/modules/patient-self/services/patient-self-query-service";
@@ -27,11 +29,15 @@ export type PatientPersonalHomePageContext = Omit<PatientSelfContext, "hospitalR
   >;
 };
 
-async function getPatientActor(): Promise<ActorContext> {
+async function getPatientActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
-    if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
+    if (error instanceof UnauthenticatedError) {
+      redirect(buildLoginReturnHref(returnTo));
+    }
+
+    if (error instanceof ForbiddenError) {
       redirect("/login");
     }
 
@@ -56,8 +62,10 @@ export async function getPatientSelfPageContext(): Promise<PatientSelfContext | 
   return resolvePatientContext(actor);
 }
 
-export async function getPatientPersonalHomePageContext(): Promise<PatientPersonalHomePageContext | null> {
-  const actor = await getPatientActor();
+export async function getPatientPersonalHomePageContext(
+  returnTo?: LoginReturnTo,
+): Promise<PatientPersonalHomePageContext | null> {
+  const actor = await getPatientActor(returnTo);
 
   try {
     const patient = await resolveOwnPatientContext(actor);

@@ -1,10 +1,123 @@
-import type { LineMenuDefinition } from "./catalog";
+import type { LineMenuAction, LineMenuDefinition } from "./catalog";
 
 export type LineMenuBounds = { x: number; y: number; width: number; height: number };
 
 const CANVAS_WIDTH = 2500;
-const ACTION_LEFT = 100;
-const ACTION_WIDTH = 2300;
+const CANVAS_HEIGHT = 1686;
+const GRID_MARGIN = 48;
+const GRID_GUTTER = 24;
+const GRID_COLUMN_WIDTH = Math.floor((CANVAS_WIDTH - GRID_MARGIN * 2 - GRID_GUTTER) / 2);
+const PATIENT_TASK_INTENTS = new Set([
+  "OPEN_PATIENT_APPOINTMENTS",
+  "OPEN_PATIENT_WELLNESS",
+  "OPEN_PATIENT_MEDICATIONS",
+  "OPEN_PATIENT_CARE",
+]);
+const OSM_TASK_INTENTS = new Set([
+  "OPEN_OSM_ASSIGNED_PATIENTS",
+  "START_OSM_SCREENING",
+  "START_OSM_FOLLOWUP",
+  "OPEN_PATIENT_PROVISIONING",
+]);
+
+function isUriIntent(action: LineMenuAction, intent: string): boolean {
+  return action.type === "uri" && action.intent === intent;
+}
+
+function gridBounds(
+  index: number,
+  columns: number,
+  top: number,
+  rowHeight: number,
+  rowGap: number,
+): LineMenuBounds {
+  const column = index % columns;
+  const row = Math.floor(index / columns);
+  const x = GRID_MARGIN + column * (GRID_COLUMN_WIDTH + GRID_GUTTER);
+  const width = column === columns - 1
+    ? CANVAS_WIDTH - GRID_MARGIN - x
+    : GRID_COLUMN_WIDTH;
+  return { x, y: top + row * (rowHeight + rowGap), width, height: rowHeight };
+}
+
+function footerBounds(
+  index: number,
+  count: number,
+  top: number,
+  height: number,
+): LineMenuBounds {
+  const rowCount = 1;
+  const columns = count;
+  const row = Math.floor(index / columns);
+  const column = index % columns;
+  const gutter = 16;
+  const rowHeight = Math.floor((height - gutter * (rowCount - 1)) / rowCount);
+  const columnWidth = Math.floor(
+    (CANVAS_WIDTH - GRID_MARGIN * 2 - gutter * (columns - 1)) / columns,
+  );
+  const x = GRID_MARGIN + column * (columnWidth + gutter);
+  const width = column === columns - 1
+    ? CANVAS_WIDTH - GRID_MARGIN - x
+    : columnWidth;
+  return { x, y: top + row * (rowHeight + gutter), width, height: rowHeight };
+}
+
+function menuActionIndexes(
+  menu: LineMenuDefinition,
+  matches: (action: LineMenuAction) => boolean,
+): number[] {
+  return menu.actions.flatMap((action, index) => matches(action) ? [index] : []);
+}
+
+function createEmptyBounds(menu: LineMenuDefinition): LineMenuBounds[] {
+  return menu.actions.map(() => ({ x: 0, y: 0, width: 0, height: 0 }));
+}
+
+function getPatientMenuBounds(menu: LineMenuDefinition): readonly LineMenuBounds[] {
+  const taskIndexes = menuActionIndexes(menu, (action) =>
+    action.type === "postback" || (action.type === "uri" && PATIENT_TASK_INTENTS.has(action.intent)),
+  );
+  const careIndex = menu.actions.findIndex((action) => isUriIntent(action, "OPEN_PATIENT_CARE"));
+  const gridIndexes = taskIndexes.filter((index) => index !== careIndex);
+  const footerIndexes = menu.actions.flatMap((_, index) =>
+    gridIndexes.includes(index) || index === careIndex ? [] : [index],
+  );
+  const bounds = createEmptyBounds(menu);
+
+  gridIndexes.forEach((actionIndex, index) => {
+    bounds[actionIndex] = gridBounds(index, 2, 314, 288, 16);
+  });
+  if (careIndex >= 0) {
+    bounds[careIndex] = {
+      x: GRID_MARGIN,
+      y: 922,
+      width: CANVAS_WIDTH - GRID_MARGIN * 2,
+      height: 292,
+    };
+  }
+  footerIndexes.forEach((actionIndex, index) => {
+    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1230, 456);
+  });
+
+  return bounds;
+}
+
+function getOsmMenuBounds(menu: LineMenuDefinition): readonly LineMenuBounds[] {
+  const taskIndexes = menuActionIndexes(menu, (action) =>
+    action.type === "uri" && OSM_TASK_INTENTS.has(action.intent),
+  );
+  const footerIndexes = menu.actions.flatMap((_, index) => taskIndexes.includes(index) ? [] : [index]);
+  const bounds = createEmptyBounds(menu);
+
+  taskIndexes.forEach((actionIndex, index) => {
+    bounds[actionIndex] = gridBounds(index, 2, 314, 408, 16);
+  });
+  footerIndexes.forEach((actionIndex, index) => {
+    bounds[actionIndex] = footerBounds(index, footerIndexes.length, 1162, 524);
+  });
+
+  return bounds;
+}
 
 export function getLineMenuAreaBounds(menu: LineMenuDefinition): readonly LineMenuBounds[] {
   const chooser = menu.key.startsWith("CHOOSER_");
@@ -13,7 +126,7 @@ export function getLineMenuAreaBounds(menu: LineMenuDefinition): readonly LineMe
       action.type === "richmenuswitch" ? [index] : [],
     );
     const accountIndex = menu.actions.findIndex(
-      (action) => action.type === "uri" && action.intent === "MANAGE_ACCOUNT",
+      (action) => isUriIntent(action, "MANAGE_ACCOUNT"),
     );
     const roleWidth = Math.floor(CANVAS_WIDTH / roleIndexes.length);
     const bounds = menu.actions.map(() => ({
@@ -35,49 +148,33 @@ export function getLineMenuAreaBounds(menu: LineMenuDefinition): readonly LineMe
     });
     if (accountIndex >= 0) {
       bounds[accountIndex] = {
-        x: ACTION_LEFT,
+        x: 100,
         y: 1360,
-        width: ACTION_WIDTH,
-        height: 326,
+        width: 2300,
+        height: CANVAS_HEIGHT - 1360,
       };
     }
     return bounds;
   }
+
   if (menu.key === "UNLINKED" || menu.key === "LINKED_INELIGIBLE") {
-    return menu.actions.map(() => ({ x: ACTION_LEFT, y: 340, width: ACTION_WIDTH, height: 1250 }));
-  }
-  const appointmentIndex = menu.actions.findIndex((action) => action.type === "postback");
-  const mainActionIndexes = appointmentIndex >= 0 ? [0, appointmentIndex] : [0];
-  const bottomIndexes = menu.actions.flatMap((_, index) =>
-    mainActionIndexes.includes(index) ? [] : [index],
-  );
-  const bounds = menu.actions.map(() => ({
-    x: ACTION_LEFT,
-    y: 340,
-    width: ACTION_WIDTH,
-    height: 840,
-  }));
-
-  if (appointmentIndex >= 0) {
-    const gap = 40;
-    const cellWidth = (ACTION_WIDTH - gap) / 2;
-    bounds[0] = { x: ACTION_LEFT, y: 340, width: cellWidth, height: 840 };
-    bounds[appointmentIndex] = {
-      x: ACTION_LEFT + cellWidth + gap,
-      y: 340,
-      width: cellWidth,
-      height: 840,
-    };
+    return menu.actions.map(() => ({ x: 100, y: 340, width: 2300, height: 1250 }));
   }
 
-  const bottomWidth = Math.floor(ACTION_WIDTH / bottomIndexes.length);
-  bottomIndexes.forEach((index, position) => {
-    bounds[index] = {
-      x: ACTION_LEFT + position * bottomWidth,
+  if (menu.key.startsWith("PATIENT_")) return getPatientMenuBounds(menu);
+  if (menu.key.startsWith("OSM_")) return getOsmMenuBounds(menu);
+
+  const footerIndexes = menu.actions.flatMap((_, index) => index === 0 ? [] : [index]);
+  const bounds = createEmptyBounds(menu);
+  bounds[0] = { x: 100, y: 340, width: 2300, height: 840 };
+  footerIndexes.forEach((actionIndex, index) => {
+    const width = Math.floor(2300 / footerIndexes.length);
+    bounds[actionIndex] = {
+      x: 100 + index * width,
       y: 1220,
-      width: position === bottomIndexes.length - 1
-        ? ACTION_LEFT + ACTION_WIDTH - (ACTION_LEFT + position * bottomWidth)
-        : bottomWidth,
+      width: index === footerIndexes.length - 1
+        ? 2400 - (100 + index * width)
+        : width,
       height: 466,
     };
   });

@@ -3,6 +3,8 @@ import "server-only";
 import { notFound, redirect } from "next/navigation";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { LoginReturnTo } from "@/modules/auth/schemas/login-schema";
+import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
   ForbiddenError,
@@ -25,12 +27,12 @@ import {
   listOwnPatientRelationshipNavigation,
 } from "../services/patient-self-query-service";
 
-async function resolveActor(): Promise<ActorContext> {
+async function resolveActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
-      redirect("/login");
+      redirect(buildLoginReturnHref(returnTo));
     }
 
     if (error instanceof ForbiddenError) {
@@ -43,14 +45,15 @@ async function resolveActor(): Promise<ActorContext> {
 
 async function withPatientSelfPageContext<T>(
   load: (actor: ActorContext) => Promise<T>,
+  returnTo?: LoginReturnTo,
 ): Promise<T> {
-  const actor = await resolveActor();
+  const actor = await resolveActor(returnTo);
 
   try {
     return await load(actor);
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) {
-      redirect("/login");
+      redirect(buildLoginReturnHref(returnTo));
     }
 
     if (error instanceof ForbiddenError) {
@@ -65,10 +68,12 @@ async function withPatientSelfPageContext<T>(
   }
 }
 
-export async function getPatientSelfRelationshipNavigationPageContext(): Promise<
+export async function getPatientSelfRelationshipNavigationPageContext(
+  returnTo?: LoginReturnTo,
+): Promise<
   Awaited<ReturnType<typeof listOwnPatientRelationshipNavigation>>
 > {
-  return withPatientSelfPageContext((actor) => listOwnPatientRelationshipNavigation(actor));
+  return withPatientSelfPageContext((actor) => listOwnPatientRelationshipNavigation(actor), returnTo);
 }
 
 export async function getPatientSelfCareJourneyPageContext(

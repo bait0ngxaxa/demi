@@ -55,6 +55,28 @@ describe("Login page assisted recovery guidance", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/line/account");
   });
 
+  it("returns an already-authorized user to the exact quick-action destination", async () => {
+    mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
+    mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
+
+    await expect(LoginPage({
+      searchParams: Promise.resolve({ returnTo: "/app/patients/assigned?task=screening" }),
+    })).rejects.toThrow("redirect boundary");
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/patients/assigned?task=screening");
+  });
+
+  it("preserves the existing already-authorized Family invitation fallback", async () => {
+    mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
+    mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
+
+    await expect(LoginPage({
+      searchParams: Promise.resolve({ returnTo: `/app/family/invitations#${"a".repeat(43)}` }),
+    })).rejects.toThrow("redirect boundary");
+
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
   it.each(["/app/settings", "https://attacker.example/"]) (
     "keeps an already-authorized login on /app for an unsafe return path %s",
     async (returnTo) => {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Role } from "@prisma/client";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
 import { ForbiddenError, InfrastructureError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -161,6 +162,14 @@ describe("Patient self page context", () => {
       expect(resolveOwnPatientContext).not.toHaveBeenCalled();
     },
   );
+
+  it("returns a Patient home quick action to its fixed destination after login", async () => {
+    vi.mocked(getProtectedApplicationActor).mockRejectedValue(new UnauthenticatedError());
+
+    await expect(getPatientPersonalHomePageContext(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WORKSPACE))
+      .rejects.toThrow("NEXT_REDIRECT:/login?returnTo=%2Fapp%2Fpersonal");
+    expect(mockedRedirect).toHaveBeenCalledWith("/login?returnTo=%2Fapp%2Fpersonal");
+  });
 
   it("returns the safe incomplete result when no valid PatientProfile resolves", async () => {
     await expect(getPatientSelfPageContext()).resolves.toBeNull();

@@ -108,6 +108,25 @@ describe("authentication Server Actions", () => {
     expect(mockedRedirect).toHaveBeenCalledWith("/line/account");
   });
 
+  it("returns the authorized user to an exact quick-action destination after login", async () => {
+    mockedAuthenticateWithPassword.mockResolvedValue({
+      status: "AUTHORIZED",
+      actor: {
+        userId: "user-1",
+        personId: "person-1",
+        roles: [],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      },
+    });
+    const formData = createLoginFormData("DEMI-ADMIN-ROOT", "valid-password");
+    formData.set("returnTo", "/app/patients/assigned?task=screening");
+
+    await loginAction(initialLoginActionState, formData);
+
+    expect(mockedRedirect).toHaveBeenCalledWith("/app/patients/assigned?task=screening");
+  });
+
   it.each(["/app/settings", "https://attacker.example/"]) ("does not allow a caller to redirect login to %s", async (returnTo) => {
     mockedAuthenticateWithPassword.mockResolvedValue({
       status: "AUTHORIZED",
