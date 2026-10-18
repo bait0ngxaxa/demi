@@ -152,7 +152,7 @@ describe("scoped Appointment pages — authorized", () => {
 describe("scoped Appointment pages — denied", () => {
   const states: LineWorkflowScopedFailureState[] = [
     "NOT_ACTIVATED", "SCOPE_MISSING", "SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED",
-    "AUTH_UNAVAILABLE", "INELIGIBLE", "RESOURCE_INVALID", "TEMPORARILY_UNAVAILABLE",
+    "AUTH_UNAVAILABLE", "RATE_LIMITED", "INELIGIBLE", "RESOURCE_INVALID", "TEMPORARILY_UNAVAILABLE",
   ];
 
   it.each(states)("renders %s as Thai status with no Patient data, no empty state and no ordinary substitute", async (state) => {

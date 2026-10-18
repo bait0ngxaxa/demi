@@ -40,6 +40,7 @@ const errorMessages: Record<LineWorkflowInteractionErrorCode, string> = {
   ORIGIN_DENIED: "ส่งคำขอนี้ไม่ได้ กรุณาเปิดหน้านี้ใหม่จากเมนู DEMI ใน LINE",
   TEMPORARILY_UNAVAILABLE: "ระบบไม่พร้อมบันทึกในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   AUTH_UNAVAILABLE: "ระบบยังตรวจสอบการเข้าสู่ระบบไม่ได้ กรุณาลองใหม่อีกครั้ง",
+  RATE_LIMITED: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่ก่อนลองอีกครั้ง รายการนี้ยังไม่ได้บันทึก",
   NOT_ACTIVATED: "นัดหมายผ่าน LINE MINI App ยังไม่เปิดใช้งาน ยังไม่ได้บันทึกรายการนี้",
   SCOPE_MISSING: "หน้านี้ไม่ได้เปิดจากเมนู DEMI ใน LINE ยังไม่ได้บันทึกรายการนี้",
   SCOPE_EXPIRED: "หมดเวลาการใช้งานแล้ว ยังไม่ได้บันทึกรายการนี้ กรุณาเริ่มใหม่จากเมนู DEMI ใน LINE",
@@ -98,7 +99,7 @@ function ScopedError({ state, onReload }: { state: ScopedInteractionState; onRel
   return (
     <Alert role="alert" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
       <p>{errorMessages[state.code]}</p>
-      {scopeDenials.has(state.code) ? null : (
+      {scopeDenials.has(state.code) || state.code === "RATE_LIMITED" ? null : (
         <Button className="mt-3" onClick={onReload} size="compact" type="button" variant="secondary">
           โหลดข้อมูลล่าสุด
         </Button>

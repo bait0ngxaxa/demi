@@ -1,14 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ evaluate: vi.fn(), issue: vi.fn(), consumeLimit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ evaluate: vi.fn(), issue: vi.fn() }));
 vi.mock("@/modules/line/services/line-workflow-service", () => ({
   evaluateLineWorkflowEligibility: mocks.evaluate,
   issueLineWorkflowContext: mocks.issue,
 }));
-vi.mock("@/modules/line/services/line-workflow-rate-limit", () => ({
-  createLineWorkflowRateLimiter: () => ({ consume: mocks.consumeLimit }),
-}));
-
 import { LineWorkflowFailure } from "@/modules/line/domain/line-workflow-errors";
 import { handleLineWorkflowVerifyRequest, lineWorkflowResponseHeaders } from "@/modules/line/transport/workflow-http";
 
@@ -52,7 +48,6 @@ async function expectCode(response: Response, status: number, code: string): Pro
 describe("POST /api/line/workflow/verify activation fence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.consumeLimit.mockResolvedValue(true);
     mocks.evaluate.mockResolvedValue({ userId: "u", sessionId: "s", bindingId: "b", bindingVersion: 1, proofExpiresAt: new Date(), miniTupleKey: "t" });
     mocks.issue.mockResolvedValue({ value: "v1.k1.synthetic.ciphertext.tag", expiresAt: new Date(Date.now() + 60_000) });
   });
@@ -128,7 +123,6 @@ describe("POST /api/line/workflow/verify activation fence", () => {
 describe("bounded verification transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.consumeLimit.mockResolvedValue(true);
     enableMini();
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -175,17 +169,16 @@ describe("bounded verification transport", () => {
     expect(mocks.evaluate).not.toHaveBeenCalled();
   });
 
-  it("fails closed on shared limiter infrastructure failure before LINE verification", async () => {
-    mocks.consumeLimit.mockRejectedValue(new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE"));
+  it("returns a safe unavailable response when the shared limiter fails closed", async () => {
+    mocks.evaluate.mockRejectedValue(new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE"));
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "INFRASTRUCTURE_UNAVAILABLE");
-    expect(mocks.evaluate).not.toHaveBeenCalled();
   });
 
-  it("limits provider verification globally across application instances", async () => {
-    mocks.consumeLimit.mockResolvedValue(false);
+  it("returns 429 without issuing a context when a verification quota denies", async () => {
+    mocks.evaluate.mockRejectedValue(new LineWorkflowFailure("RATE_LIMITED"));
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 429, "RATE_LIMITED");
-    expect(mocks.consumeLimit).toHaveBeenCalledWith("VERIFY_GLOBAL", "GLOBAL", expect.any(Date));
-    expect(mocks.evaluate).not.toHaveBeenCalled();
+    expect(mocks.evaluate).toHaveBeenCalledOnce();
+    expect(mocks.issue).not.toHaveBeenCalled();
   });
 
   it.each([

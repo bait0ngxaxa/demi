@@ -149,6 +149,7 @@ describe("fixed scoped interaction Route Handler transport", () => {
     ["SCOPE_SESSION_MISMATCH", 403, "SESSION_MISMATCH"],
     ["LOGIN_REQUIRED", 401, "LOGIN_REQUIRED"],
     ["SESSION_UNAVAILABLE", 503, "AUTH_UNAVAILABLE"],
+    ["RATE_LIMITED", 429, "RATE_LIMITED"],
     ["WORKFLOW_INELIGIBLE", 403, "INELIGIBLE"],
     ["INFRASTRUCTURE_UNAVAILABLE", 503, "TEMPORARILY_UNAVAILABLE"],
   ] as Array<[LineWorkflowFailureCode, number, string]>)("maps %s to a finite %i state", async (failure, status, code) => {

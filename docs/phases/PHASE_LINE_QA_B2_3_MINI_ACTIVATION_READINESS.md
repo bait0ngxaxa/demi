@@ -39,9 +39,10 @@ sequenceDiagram
     P->>G: GET /line/workflow
     G->>G: Initialize only the selected LIFF; initialization is not authorization
     P->>V: POST finite intent + transient ID token, exact Origin
-    V->>D: Consume shared global verification quota
-    V->>L: Verify ID token once against selected MINI channel ID
     V->>A: Verify current exact DEMI session and Auth subject mapping
+    V->>D: Consume authenticated per-user quota, then global backstop
+    V->>D: Validate selected MINI tuple and reviewed inventory
+    V->>L: Verify ID token once against selected MINI channel ID
     V->>D: Resolve exactly one current ACTIVE binding and Patient SELF authority
     V->>D: Serializable: lock User → binding → lifecycle rows; revalidate and observe MINI
     D-->>V: Commit observation or deny after fresh retry
@@ -116,7 +117,7 @@ Account user tokens and Account secrets cannot enter the MINI adapter. Messaging
 
 ## 9. Shared abuse control
 
-The former process-local limiter is replaced with an atomic PostgreSQL fixed-window limiter shared by app instances. Migration: `20261026100000_line_workflow_shared_rate_limit`.
+The former process-local limiter is replaced with an atomic PostgreSQL fixed-window limiter shared by app instances. Migration: `20261026100000_line_workflow_shared_rate_limit`. Verify first requires a live exact DEMI session, then consumes `VERIFY_USER` using the server-resolved DEMI User ID, then consumes the shared global backstop. Both buckets are consumed before LINE Provider I/O. A user's eleventh request in a fixed window is rejected before it consumes global capacity or reaches LINE. The global bucket still protects aggregate provider/database load across distinct authenticated users; no untrusted forwarded-IP value or unverified edge header is treated as identity, and this implementation does not claim protection against coordinated activity across many DEMI accounts.
 
 | Category | Limit per fixed 5-minute window |
 | --- | ---: |
@@ -127,7 +128,7 @@ The former process-local limiter is replaced with an atomic PostgreSQL fixed-win
 
 Rows expire after 10 minutes and are pruned in batches of at most 100. `INSERT ... ON CONFLICT ... DO UPDATE` caps counters atomically under concurrency. Stored keys are SHA-256 purpose/category hashes; no raw token, LINE subject, Patient ID, national ID, or raw DEMI User ID is stored. Limiter/database failures deny with a generic infrastructure-unavailable response. Appointment idempotency remains independent.
 
-The integration suite tested two limiter instances with 40 simultaneous synthetic calls: exactly 10 were allowed and the counter saturated at 11. Production UAT must confirm the deployed DB role owns or has explicit permission to use the migration table; RLS is enabled and `PUBLIC` privileges are revoked. No new paid infrastructure was introduced.
+The integration suite tested two limiter instances with 40 simultaneous synthetic calls: exactly 10 were allowed and the counter saturated at 11. A follow-up running-Next smoke also exercised ten successful requests for one synthetic User and confirmed the eleventh received HTTP 429 without another Provider call. Scoped mutation `RATE_LIMITED` is now a finite state mapped to HTTP 429 with Thai retry guidance; it remains independent of appointment idempotency. Production UAT must confirm the deployed DB role owns or has explicit permission to use the migration table; RLS is enabled and `PUBLIC` privileges are revoked. No new paid infrastructure was introduced.
 
 ## 10. Gateway continuation and recovery
 
@@ -188,6 +189,13 @@ Evidence is limited to synthetic users and disposable local PostgreSQL. Mocked P
 - `npx prisma validate`: passed.
 - `npm run build`: passed on Next.js 16.3.0 with issuance gates left disabled.
 
+Follow-up review findings (post-implementation working tree):
+
+- `npm run test -- src/modules/line/services/line-workflow-service.test.ts app/api/line/workflow/verify/route.test.ts src/modules/line/transport/workflow-scoped-appointments.test.ts src/modules/line/transport/workflow-scoped-interactions.test.ts app/line/workflow/appointments/scoped-pages.test.tsx app/line/workflow/appointments/line-workflow-appointment-interactions.test.tsx`: **208/208 passed** across 6 files. Includes the post-Provider timestamp regression and finite mutation `RATE_LIMITED` / HTTP 429 state.
+- `npm run typecheck`: **passed**.
+- `npm run test:line-workflow:next-smoke`: **passed** against disposable PostgreSQL and synthetic local Auth/LINE mocks; details below. The harness tears down its synthetic records, temporary bundle, mock servers, and provider call log. `npm run test:db:down` removed the disposable PostgreSQL container/network after the run.
+- A normal isolated `next build --webpack` run was also attempted and reached Next's generated type check, which reported existing contract issues in `app/app/patients/[relationshipId]/evidence/upload/route.ts` (unsupported exported test helper) and optional outer page arguments in `app/line/workflow/page.tsx` and `app/login/page.tsx`. The standalone `tsc --noEmit` check above passes. The focused runtime smoke uses Next's documented experimental `compile` build mode and `next start`; it does not claim the default full build/type-check passed. A separate `compile` then `generate` attempt failed prerendering `/api/health` with a syntax error in the generated Windows bundle. These build-mode findings are reported separately from the successful Verify flow; no unrelated route/type changes were made here.
+
 ## 15. PostgreSQL concurrency evidence
 
 Disposable local database only (`127.0.0.1:55432`, database `demi_test`); the integration harness applied the additive limiter migration locally. No production migration was run.
@@ -212,6 +220,20 @@ Observed production responses:
 - A temporary local-only route wrote two synthetic Supabase-like cookies through Next's cookie store and the workflow cookie; the response contained all three cookie names. The temporary route/script were deleted before build and are not in the diff.
 
 This smoke verifies local Next dispatch/header/cookie behavior only, not LINE browser behavior or production proxy configuration.
+
+Additional positive issuance smoke: `npm run test:line-workflow:next-smoke` copies tracked source into a temporary workspace without `.env` files, builds the production server bundle with Next `--webpack --experimental-build-mode compile`, and starts it with `next start` on loopback. It uses disposable local PostgreSQL, a synthetic RSA-signed Auth session and JWKS endpoint, a synthetic Patient/relationship/binding, synthetic encryption/session keys, and a test-only Node preload that mocks only the LINE ID-token verification request. The bundle scan verifies that the mock marker, mock module, synthetic token, and key material are absent from `.next/server`; there is no application issuance bypass.
+
+Observed end-to-end results:
+
+- Anonymous Verify returned `401 LOGIN_REQUIRED`, no workflow cookie, and no LINE Provider mock call.
+- Ten valid synthetic LINE A + DEMI A requests each returned exactly `{ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" }` and an encrypted workflow cookie with `HttpOnly`, `Secure`, `SameSite=Lax`, host-only scope, `Path=/line/workflow`, and `Max-Age` at most 900 seconds.
+- Request eleven for the same authenticated DEMI User returned `429 RATE_LIMITED`, no workflow cookie, and did not call LINE. The mock recorded exactly ten provider verifications.
+- The issued Auth + workflow cookies authorized `GET /line/workflow/appointments`; the HTML contained only the synthetic hospital/relationship fixture, effective response policy was private/no-store and no-referrer, and the GET did not refresh the workflow cookie.
+- PostgreSQL contained one `OBSERVED` MINI lifecycle row for binding generation 1 (with observation-only outcome), `VERIFY_USER=11` and `VERIFY_GLOBAL=10`. The generated cookie was created from the verified proof and remained subject to the same scoped guard.
+
+The first smoke run exposed an implementation issue: proof time was compared with a clock value sampled before LINE Provider I/O. Since a valid verification returns a later `verifiedAt`, issuance was denied. The clock check now samples again after the Provider response; a unit regression covers this ordering and the positive production-server smoke passes. This local synthetic test does not verify real LINE token behavior or external Provider UAT.
+
+The build smoke uses Next's experimental compile mode because the default generated type check currently reports the pre-existing route/page diagnostics listed in Section 14; the separate generate phase also failed on Windows. The smoke confirms runtime dispatch from the compiled production server bundle, not successful completion of the default full `npm run build` pipeline.
 
 ## 17. Responsive/accessibility review
 
@@ -274,3 +296,13 @@ No destructive rollback script was added. Preserve lifecycle history and unresol
 - **OWNER APPROVAL REQUIRED:** isolated Stage 2 setup and real-device Stage 3 UAT must be explicitly scheduled and reviewed. Production activation and any Rich Menu switch require separate approvals.
 
 **Recommendation:** CODE READY FOR ISOLATED UAT after the Stage 1 operator inventory and Stage 2 owner approval. Not production-ready; do not enable production issuance from this handoff.
+
+## 21. Follow-up findings addressed
+
+| Finding | Status after follow-up | Evidence / limitation |
+| --- | --- | --- |
+| Global verification quota could be drained by one caller; per-user cap occurred after Provider I/O | **IMPLEMENTED / VERIFIED LOCALLY** | Exact DEMI session is verified first. The server-resolved User bucket (`10 / 5 min`) is consumed before the global backstop (`600 / 5 min`) and before LINE I/O. Smoke confirms the eleventh same-user request is 429 and Provider call count remains 10. Global quota remains a backstop across users; no unverified edge/IP identity is assumed. |
+| Scoped mutation limiter returned 503 for `RATE_LIMITED` | **IMPLEMENTED / VERIFIED LOCALLY** | Finite state maps to HTTP 429, with Thai retry guidance and transport/component regression coverage in the focused 208-test run. |
+| No positive running-Next Verify → Cookie → Scoped Read proof | **VERIFIED LOCALLY** | Disposable PostgreSQL + synthetic Auth and LINE mocks; production `next start` accepted the issued cookie on scoped GET. See Section 16 for exact evidence. |
+
+This follow-up does not enable issuance in any deployment, use real credentials/users, alter Rich Menus, or start external UAT. Standard default `next build` type-check issues remain a repository build limitation and must be cleared before a deployment build is relied upon; the positive runtime smoke is evidence for the flow only.

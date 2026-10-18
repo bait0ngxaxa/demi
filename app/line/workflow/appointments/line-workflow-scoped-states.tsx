@@ -50,6 +50,11 @@ const copy: Record<LineWorkflowScopedFailureState, { title: string; body: string
     body: "กรุณาลองอีกครั้งในอีกสักครู่",
     recovery: ["RETRY"],
   },
+  RATE_LIMITED: {
+    title: "ส่งคำขอบ่อยเกินไป",
+    body: "กรุณารอสักครู่ก่อนลองใหม่ รายการนี้ยังไม่ได้บันทึก",
+    recovery: ["RETRY"],
+  },
   INELIGIBLE: {
     title: "ยังใช้งานนัดหมายผ่าน LINE ไม่ได้",
     body: "บัญชีนี้ยังไม่พร้อมสำหรับนัดหมายผู้ป่วยผ่าน LINE หากคิดว่าไม่ถูกต้อง กรุณาติดต่อโรงพยาบาล",

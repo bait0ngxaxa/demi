@@ -89,6 +89,7 @@ describe("scoped failure classification", () => {
     ["SCOPE_SESSION_MISMATCH", "SESSION_MISMATCH"],
     ["LOGIN_REQUIRED", "LOGIN_REQUIRED"],
     ["SESSION_UNAVAILABLE", "AUTH_UNAVAILABLE"],
+    ["RATE_LIMITED", "RATE_LIMITED"],
     ["WORKFLOW_INELIGIBLE", "INELIGIBLE"],
     ["INFRASTRUCTURE_UNAVAILABLE", "TEMPORARILY_UNAVAILABLE"],
   ])("maps %s to %s", (code, state) => {

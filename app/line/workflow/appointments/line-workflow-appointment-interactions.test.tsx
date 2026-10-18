@@ -184,6 +184,18 @@ describe("scoped Appointment interaction controls", () => {
     expect(text()).not.toContain("บันทึกการรับทราบนัดหมายแล้ว");
   });
 
+  it("shows a bounded Thai wait message for HTTP 429 without calling the scope unavailable", async () => {
+    fetchMock.mockResolvedValue(reply({ status: "ERROR", code: "RATE_LIMITED" }, 429));
+    mount();
+    act(() => button("รับทราบนัดหมาย").click());
+    await flush();
+    expect(text()).toContain("ส่งคำขอบ่อยเกินไป กรุณารอสักครู่ก่อนลองอีกครั้ง");
+    expect(text()).not.toContain("ระบบไม่พร้อมบันทึก");
+    expect(text()).not.toContain("บันทึกการรับทราบนัดหมายแล้ว");
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("renders no controls for an existing pending request, and shows its status", () => {
     mount({ ...appointment, cancellationRequests: [{
       source: AppointmentInteractionSource.PATIENT_SELF, status: AppointmentCancellationRequestStatus.PENDING, submittedAt: new Date(VERSION),

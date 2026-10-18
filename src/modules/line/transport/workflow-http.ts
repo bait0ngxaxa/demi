@@ -11,7 +11,6 @@ import {
   isLineMiniAppWorkflowEnabled,
   isLineMiniAppWorkflowIssuanceEnabled,
 } from "../services/line-mini-app-configuration";
-import { createLineWorkflowRateLimiter } from "../services/line-workflow-rate-limit";
 import {
   evaluateLineWorkflowEligibility,
   issueLineWorkflowContext,
@@ -170,10 +169,6 @@ export async function handleLineWorkflowVerifyRequest(
     const configuration = (dependencies.configuration ?? getLineMiniAppConfiguration)();
     if (request.headers.get("origin") !== configuration.origin) throw new LineWorkflowFailure("ORIGIN_DENIED");
     const input = await readWorkflowRequest(request);
-    const rateLimiter = dependencies.rateLimiter ?? createLineWorkflowRateLimiter(dependencies.database);
-    if (!await rateLimiter.consume("VERIFY_GLOBAL", "GLOBAL", dependencies.now?.() ?? new Date())) {
-      throw new LineWorkflowFailure("RATE_LIMITED");
-    }
 
     const scopedDependencies = { ...dependencies, liveSession, configuration: () => configuration };
     const eligibility = await evaluateLineWorkflowEligibility(input, scopedDependencies);

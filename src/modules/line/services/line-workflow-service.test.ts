@@ -108,6 +108,21 @@ describe("MINI workflow eligibility orchestration", () => {
     }));
   });
 
+  it("checks the verified proof against time after LINE Provider I/O", async () => {
+    const verifiedAt = new Date(NOW.getTime() + 25);
+    const expiresAt = new Date(verifiedAt.getTime() + 3_600_000);
+    const now = vi.fn().mockReturnValueOnce(NOW).mockReturnValueOnce(verifiedAt);
+    const verifyIdentity = vi.fn().mockResolvedValue({ subject: SUBJECT, verifiedAt, expiresAt });
+    const { dependencies, rateLimiter } = setup({ now, verifyIdentity });
+
+    await expect(evaluateLineWorkflowEligibility(input, dependencies)).resolves.toMatchObject({
+      proofVerifiedAt: verifiedAt,
+      proofExpiresAt: expiresAt,
+    });
+    expect(rateLimiter.consume).toHaveBeenNthCalledWith(1, "VERIFY_USER", USER_A, NOW);
+    expect(rateLimiter.consume).toHaveBeenNthCalledWith(2, "VERIFY_GLOBAL", "GLOBAL", NOW);
+  });
+
   it("fails closed for LINE A / DEMI B before any Patient query and without identity disclosure", async () => {
     const { dependencies, database, actorStore } = setup({
       liveSession: vi.fn().mockResolvedValue({ userId: USER_B, sessionId: SESSION_A, checkedAt: NOW }),
@@ -119,19 +134,19 @@ describe("MINI workflow eligibility orchestration", () => {
     expect(actorStore.findUserById).not.toHaveBeenCalled();
   });
 
-  it("verifies the MINI proof before requiring the current DEMI session", async () => {
+  it("requires the current DEMI session before verifying the MINI proof", async () => {
     const { dependencies, verifyIdentity } = setup({ liveSession: vi.fn().mockRejectedValue(new UnauthenticatedError()) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("LOGIN_REQUIRED");
-    expect(verifyIdentity).toHaveBeenCalledOnce();
+    expect(verifyIdentity).not.toHaveBeenCalled();
   });
 
   it.each([
     ["inactive or unmapped DEMI User", new ForbiddenError(), "WORKFLOW_INELIGIBLE"],
     ["Auth provider outage", new InfrastructureError(), "SESSION_UNAVAILABLE"],
-  ])("maps %s after bounded LINE verification", async (_label, failure, code) => {
+  ])("maps %s before LINE verification", async (_label, failure, code) => {
     const { dependencies, verifyIdentity } = setup({ liveSession: vi.fn().mockRejectedValue(failure) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe(code);
-    expect(verifyIdentity).toHaveBeenCalledOnce();
+    expect(verifyIdentity).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -148,10 +163,10 @@ describe("MINI workflow eligibility orchestration", () => {
     ["an unexpected Account tuple", { ...inventory, channels: [{ ...inventory.channels[0], channelId: "1000000009" }, inventory.channels[1]] }],
     ["two Account tuples", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[0], providerReference: "provider:other" }, inventory.channels[1]] }],
     ["an inventory-wide MINI exclusion", { ...inventory, miniExclusionReference: "review:no-mini" }],
-  ])("rejects when lifecycle has %s, before session or provider work", async (_label, value) => {
+  ])("rejects when lifecycle has %s before provider work", async (_label, value) => {
     const { dependencies, verifyIdentity, liveSession } = setup({ lifecycleInventory: vi.fn().mockResolvedValue(value) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("LIFECYCLE_UNAVAILABLE");
-    expect(liveSession).not.toHaveBeenCalled();
+    expect(liveSession).toHaveBeenCalledOnce();
     expect(verifyIdentity).not.toHaveBeenCalled();
   });
 
@@ -216,15 +231,27 @@ describe("MINI workflow eligibility orchestration", () => {
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("INFRASTRUCTURE_UNAVAILABLE");
   });
 
-  it("applies the shared per-user quota after the fresh exact DEMI session check", async () => {
+  it("applies the shared per-user quota after the fresh exact DEMI session and before LINE Provider I/O", async () => {
     const { dependencies, verifyIdentity, liveSession, rateLimiter } = setup();
     rateLimiter.consume.mockResolvedValue(false);
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("RATE_LIMITED");
-    expect(verifyIdentity).toHaveBeenCalledOnce();
+    expect(verifyIdentity).not.toHaveBeenCalled();
     expect(liveSession).toHaveBeenCalledOnce();
-    expect(rateLimiter.consume).toHaveBeenCalledWith("VERIFY_USER", USER_A, NOW);
+    expect(rateLimiter.consume.mock.calls).toEqual([["VERIFY_USER", USER_A, NOW]]);
     expect(LINE_WORKFLOW_RATE_LIMITS.VERIFY_USER).toBe(10);
     expect(lineWorkflowRateLimitInternals.WINDOW_MS).toBe(300_000);
+  });
+
+  it("uses the global bucket only after the authenticated per-user bucket and before LINE Provider I/O", async () => {
+    const { dependencies, verifyIdentity, rateLimiter } = setup();
+    rateLimiter.consume.mockImplementation(async (category) => category !== "VERIFY_GLOBAL");
+
+    expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("RATE_LIMITED");
+    expect(rateLimiter.consume.mock.calls).toEqual([
+      ["VERIFY_USER", USER_A, NOW],
+      ["VERIFY_GLOBAL", "GLOBAL", NOW],
+    ]);
+    expect(verifyIdentity).not.toHaveBeenCalled();
   });
 });
 

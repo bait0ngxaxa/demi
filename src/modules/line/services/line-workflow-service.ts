@@ -154,26 +154,35 @@ async function requirePatientSelfActor(
 }
 
 /**
- * Composes server MINI tuple, MINI-audience LINE proof, current exact DEMI
- * session, distributed per-user abuse control, exactly one ACTIVE binding, exact
- * binding-User/session-User equality, ACTIVE canonical actor and Patient SELF.
- * A binding never creates a DEMI session or Patient authority.
+ * Verifies the exact DEMI session before using its canonical User ID for the
+ * shared per-user limiter. Both that quota and the global backstop run before
+ * LINE Provider I/O. It then composes the server MINI tuple, MINI-audience LINE
+ * proof, exactly one ACTIVE binding, exact binding-User/session-User equality,
+ * ACTIVE canonical actor and Patient SELF. A binding never creates a DEMI
+ * session or Patient authority.
  */
 export async function evaluateLineWorkflowEligibility(
   input: { intent: LineWorkflowIntent; idToken: string },
   dependencies: LineWorkflowDependencies = {},
 ): Promise<LineWorkflowEligibility> {
   const configuration = configurationOf(dependencies);
+  const session = await requireLiveSession(dependencies);
+  const rateLimitAt = dependencies.now?.() ?? new Date();
+  const rateLimiter = rateLimiterOf(dependencies);
+  if (!await rateLimiter.consume("VERIFY_USER", session.userId, rateLimitAt)) {
+    throw new LineWorkflowFailure("RATE_LIMITED");
+  }
+  if (!await rateLimiter.consume("VERIFY_GLOBAL", "GLOBAL", rateLimitAt)) {
+    throw new LineWorkflowFailure("RATE_LIMITED");
+  }
+
   const lifecycle = await requireMiniLifecycleTuple(configuration, dependencies);
   const identity = await (dependencies.verifyIdentity ?? verifyMiniAppWorkflowIdToken)(input.idToken, configuration);
-  const session = await requireLiveSession(dependencies);
-  const now = dependencies.now?.() ?? new Date();
-  if (!Number.isFinite(identity.verifiedAt.getTime()) || identity.verifiedAt > now ||
-      !Number.isFinite(identity.expiresAt.getTime()) || identity.expiresAt <= now) {
+  const proofCheckedAt = dependencies.now?.() ?? new Date();
+  if (!Number.isFinite(proofCheckedAt.getTime()) ||
+      !Number.isFinite(identity.verifiedAt.getTime()) || identity.verifiedAt > proofCheckedAt ||
+      !Number.isFinite(identity.expiresAt.getTime()) || identity.expiresAt <= proofCheckedAt) {
     throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
-  }
-  if (!await rateLimiterOf(dependencies).consume("VERIFY_USER", session.userId, now)) {
-    throw new LineWorkflowFailure("RATE_LIMITED");
   }
 
   let bindings: Array<{ id: string; userId: string; lineUserId: string | null; lifecycleVersion: number }>;
