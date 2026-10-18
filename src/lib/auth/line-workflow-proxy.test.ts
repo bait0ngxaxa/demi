@@ -35,8 +35,10 @@ describe("MINI namespace filtering through Proxy", () => {
     }));
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("GET, HEAD");
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("cache-control")).toBe("private, no-cache, no-store, must-revalidate, max-age=0");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await response.text()).toBe("");
     expect(mocks.updateSupabaseSession).not.toHaveBeenCalled();
   });
@@ -64,7 +66,10 @@ describe("MINI namespace filtering through Proxy", () => {
       const get = await proxy(new NextRequest(url));
       expect(get.status).toBe(405);
       expect(get.headers.get("allow")).toBe("POST");
-      expect(get.headers.get("cache-control")).toBe("private, no-store");
+      expect(get.headers.get("cache-control")).toBe("private, no-cache, no-store, must-revalidate, max-age=0");
+      expect(get.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(get.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+      expect(get.headers.get("x-content-type-options")).toBe("nosniff");
       const action = await proxy(new NextRequest(url, { method: "POST", headers: { "next-action": "7f".repeat(21) }, body: "[]" }));
       expect(action.status).toBe(400);
       expect(await action.text()).toBe("");

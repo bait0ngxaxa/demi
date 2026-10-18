@@ -19,7 +19,7 @@ import {
   type LineWorkflowScopedMutationDependencies,
 } from "../services/line-workflow-service";
 import { readBoundedRequestText } from "./account-http";
-import { LINE_WORKFLOW_RESPONSE_HEADERS } from "./workflow-http";
+import { lineWorkflowResponseHeaders } from "./workflow-http";
 import { lineWorkflowScopedFailureState, type LineWorkflowScopedFailureState } from "./workflow-scoped-appointments";
 
 /** The fixed business fields are UUIDs, an ISO timestamp and a nonce; 2 KiB is ample. */
@@ -123,9 +123,9 @@ async function readInteractionBody(request: Request): Promise<unknown> {
   return body;
 }
 
-function interactionResponse(body: LineWorkflowInteractionResponse, status: number, authHeaders: Record<string, string>): Response {
+function interactionResponse(body: LineWorkflowInteractionResponse, status: number, authHeaders: HeadersInit): Response {
   // SSR auth cache headers first, then this transport's stricter superset; never CORS.
-  return Response.json(body, { status, headers: { ...authHeaders, ...LINE_WORKFLOW_RESPONSE_HEADERS } });
+  return Response.json(body, { status, headers: lineWorkflowResponseHeaders(authHeaders) });
 }
 
 export type LineWorkflowInteractionHandlerDependencies = LineWorkflowScopedMutationDependencies & {
@@ -151,9 +151,9 @@ export async function handleLineWorkflowInteractionRequest(
   interaction: LineWorkflowScopedInteraction,
   dependencies: LineWorkflowInteractionHandlerDependencies = {},
 ): Promise<Response> {
-  const authHeaders: Record<string, string> = {};
+  const authHeaders = new Headers();
   const collectAuthHeaders = (headers: Record<string, string>): void => {
-    Object.assign(authHeaders, headers);
+    for (const [name, value] of Object.entries(headers)) authHeaders.set(name, value);
   };
   try {
     if (!(dependencies.enabled ?? isLineMiniAppWorkflowEnabled)()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");

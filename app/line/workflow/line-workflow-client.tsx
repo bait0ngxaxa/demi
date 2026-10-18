@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LINE_WORKFLOW_GATEWAY_PATH } from "@/modules/line/domain/line-navigation-intents";
+import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "@/modules/line/domain/line-workflow-routes";
 
 import {
   consumeLineWorkflowLoginAttempt,
@@ -26,6 +27,7 @@ type Copy = { title: string; body: string; busy?: boolean };
 const copy: Record<LineWorkflowScreenState, Copy> = {
   INITIALIZING: { title: "กำลังเปิดนัดหมายผ่าน LINE", body: "กรุณารอสักครู่", busy: true },
   VERIFYING: { title: "กำลังตรวจสอบบัญชี", body: "ระบบกำลังตรวจสอบบัญชี LINE และบัญชี DEMI ของคุณ", busy: true },
+  SCOPE_GRANTED: { title: "กำลังเปิดรายการนัดหมาย", body: "กรุณารอสักครู่", busy: true },
   UNAVAILABLE: { title: "ยังเปิดนัดหมายผ่าน LINE ไม่ได้", body: "บริการนี้ยังไม่พร้อมใช้งาน คุณยังใช้ DEMI บนเว็บได้ตามปกติ" },
   NAVIGATION_INVALID: { title: "ลิงก์นี้ไม่ถูกต้อง", body: "กรุณาเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
   PLATFORM_STATE_INVALID: { title: "ลิงก์นี้ไม่ถูกต้อง", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
@@ -141,6 +143,10 @@ export function LineWorkflowClient({
       const next = await verifyLineWorkflow(liff);
       const store = sessionStore();
       const attempted = store ? consumeLineWorkflowLoginAttempt(store) : false;
+      if (next === "SCOPE_GRANTED") {
+        window.location.replace(LINE_WORKFLOW_APPOINTMENTS_PATH);
+        return;
+      }
       setRepeatedLogin(next === "LOGIN_REQUIRED" && attempted);
       setState(next);
     } finally {

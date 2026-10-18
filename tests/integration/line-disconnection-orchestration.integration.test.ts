@@ -7,8 +7,8 @@ import { createLineAccountIntent, linkLineAccount } from "@/modules/line/service
 import { disconnectLineAccount, getLineDisconnectionStatus, prepareLineAccountRecovery, recoverLineAccount, type DisconnectionDependencies } from "@/modules/line/services/line-disconnection-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import { hashLineSessionId } from "@/modules/line/services/line-session-service";
-import { recordLineTerminationOutcome, reserveLineTerminationAttempt, type LineAttemptTarget, type LineProviderEvidence } from "@/modules/line/services/line-authorization-lifecycle-service";
-import { lineChannelTupleKey } from "@/modules/line/domain/line-authorization-lifecycle";
+import { recordLineTerminationOutcome, reserveLineTerminationAttempt, type LineAttemptTarget } from "@/modules/line/services/line-authorization-lifecycle-service";
+import { lineChannelTupleKey, type LineProviderEvidence } from "@/modules/line/domain/line-authorization-lifecycle";
 import type { LineDisconnectionConfiguration } from "@/modules/line/services/line-disconnection-configuration";
 import { deauthorizeLineAccount } from "@/modules/line/adapters/line-deauthorization-client";
 

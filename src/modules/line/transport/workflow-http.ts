@@ -1,13 +1,60 @@
 import "server-only";
 
+import { getLiveExactSession } from "@/modules/auth/services/exact-session-service";
+
+import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "../domain/line-workflow-routes";
 import { LineWorkflowFailure, type LineWorkflowFailureCode } from "../domain/line-workflow-errors";
 import { lineWorkflowVerifyRequestSchema } from "../schemas/line-schemas";
-import { getLineMiniAppConfiguration, isLineMiniAppWorkflowEnabled } from "../services/line-mini-app-configuration";
-import { evaluateLineWorkflowEligibility, type LineWorkflowDependencies } from "../services/line-workflow-service";
-import { readAccountJson } from "./account-http";
+import { LINE_WORKFLOW_CONTEXT_COOKIE_NAME, lineWorkflowContextCookieOptions } from "../services/line-workflow-context";
+import {
+  getLineMiniAppConfiguration,
+  isLineMiniAppWorkflowEnabled,
+  isLineMiniAppWorkflowIssuanceEnabled,
+} from "../services/line-mini-app-configuration";
+import { createLineWorkflowRateLimiter } from "../services/line-workflow-rate-limit";
+import {
+  evaluateLineWorkflowEligibility,
+  issueLineWorkflowContext,
+  type LineWorkflowDependencies,
+} from "../services/line-workflow-service";
+import { readBoundedRequestText } from "./account-http";
+
+const MAX_VERIFY_REQUEST_BYTES = 32 * 1024;
+
+function topLevelMemberCount(text: string): number {
+  let depth = 0;
+  let members = 0;
+  let inString = false;
+  let escaped = false;
+  let stringClosedAtTopLevel = false;
+  for (const character of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") {
+        inString = false;
+        stringClosedAtTopLevel = depth === 1;
+      }
+      continue;
+    }
+    if (character === "\"") {
+      inString = true;
+      continue;
+    }
+    if (/\s/u.test(character)) continue;
+    if (character === ":" && stringClosedAtTopLevel) members += 1;
+    stringClosedAtTopLevel = false;
+    if (character === "{" || character === "[") depth += 1;
+    else if (character === "}" || character === "]") depth -= 1;
+  }
+  return members;
+}
 
 /** Codes a caller may observe; internal distinctions stay server-side. */
 export type LineWorkflowResponseCode = Exclude<LineWorkflowFailureCode, "LINE_WRONG_AUDIENCE" | "BINDING_INCONSISTENT">;
+
+export const LINE_WORKFLOW_SUCCESS_CODE = "SCOPE_GRANTED" as const;
+export const LINE_WORKFLOW_SUCCESS_CONTINUATION = LINE_WORKFLOW_APPOINTMENTS_PATH;
 
 const publicCode: Partial<Record<LineWorkflowFailureCode, LineWorkflowResponseCode>> = {
   // Audience confusion is reported like any other invalid proof.
@@ -39,60 +86,112 @@ const statusOf: Record<LineWorkflowResponseCode, number> = {
   INFRASTRUCTURE_UNAVAILABLE: 503,
 };
 
-/** Superset of the Supabase SSR auth cache headers plus no-referrer for this sensitive transport. */
+/** Superset of Supabase SSR cache headers plus the sensitive-page frame boundary. */
 export const LINE_WORKFLOW_RESPONSE_HEADERS = {
   "cache-control": "private, no-cache, no-store, must-revalidate, max-age=0",
   expires: "0",
   pragma: "no-cache",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
+  "content-security-policy": "frame-ancestors 'none'",
 } as const;
 
-function workflowResponse(code: LineWorkflowResponseCode): Response {
-  return Response.json({ code }, { status: statusOf[code], headers: LINE_WORKFLOW_RESPONSE_HEADERS });
+/** Normalize header names before applying the stricter workflow policy. */
+export function lineWorkflowResponseHeaders(authHeaders: HeadersInit = {}): Headers {
+  const headers = new Headers(authHeaders);
+  for (const [name, value] of Object.entries(LINE_WORKFLOW_RESPONSE_HEADERS)) headers.set(name, value);
+  return headers;
 }
 
-export function lineWorkflowErrorResponse(error: unknown): Response {
+function workflowResponse(
+  code: LineWorkflowResponseCode,
+  authHeaders: HeadersInit = {},
+): Response {
+  return Response.json({ code }, {
+    status: statusOf[code],
+    headers: lineWorkflowResponseHeaders(authHeaders),
+  });
+}
+
+export function lineWorkflowErrorResponse(error: unknown, authHeaders: HeadersInit = {}): Response {
   if (error instanceof LineWorkflowFailure) {
-    return workflowResponse(publicCode[error.code] ?? (error.code as LineWorkflowResponseCode));
+    return workflowResponse(publicCode[error.code] ?? (error.code as LineWorkflowResponseCode), authHeaders);
   }
   // Raw exception text and provider payloads never reach the caller.
-  return workflowResponse("INFRASTRUCTURE_UNAVAILABLE");
+  return workflowResponse("INFRASTRUCTURE_UNAVAILABLE", authHeaders);
 }
 
 async function readWorkflowRequest(request: Request): Promise<{ intent: "OPEN_PATIENT_APPOINTMENTS"; idToken: string }> {
   const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (contentType !== "application/json") throw new LineWorkflowFailure("REQUEST_INVALID");
   let body: unknown;
+  let text: string;
   try {
-    // Same streamed 32 KiB cap and fatal UTF-8 decoding as the Account transport.
-    body = await readAccountJson(request);
+    // Same streamed cap and fatal UTF-8 decoding as the Account transport.
+    text = await readBoundedRequestText(request, MAX_VERIFY_REQUEST_BYTES, () => new Error("invalid workflow body"));
+    body = JSON.parse(text) as unknown;
   } catch {
     throw new LineWorkflowFailure("REQUEST_INVALID");
   }
+  if (typeof body !== "object" || body === null || Array.isArray(body) ||
+      Object.keys(body).length !== topLevelMemberCount(text)) throw new LineWorkflowFailure("REQUEST_INVALID");
   const parsed = lineWorkflowVerifyRequestSchema.safeParse(body);
   if (!parsed.success) throw new LineWorkflowFailure("REQUEST_INVALID");
   return parsed.data;
 }
 
+function serializeWorkflowCookie(value: string, options: ReturnType<typeof lineWorkflowContextCookieOptions>): string {
+  return `${LINE_WORKFLOW_CONTEXT_COOKIE_NAME}=${value}; Path=${options.path}; Max-Age=${options.maxAge}; HttpOnly; Secure; SameSite=Lax`;
+}
+
 /**
- * POST /api/line/workflow/verify. Phase B1 activation fence: the default
- * disabled gate stops before any provider work, and even an enabled gate ends
- * every fully eligible request with WORKFLOW_NOT_ACTIVATED. No context cookie,
- * scope or success continuation is ever returned in B1.
+ * POST /api/line/workflow/verify. Issuance requires two independent literal
+ * server-side gates; no normal deploy or NODE_ENV value can turn them on.
  */
 export async function handleLineWorkflowVerifyRequest(
   request: Request,
-  dependencies: LineWorkflowDependencies & { enabled?: () => boolean } = {},
+  dependencies: LineWorkflowDependencies & {
+    enabled?: () => boolean;
+    issuanceEnabled?: () => boolean;
+  } = {},
 ): Promise<Response> {
+  const authHeaders = new Headers();
+  const liveSession = dependencies.liveSession ?? (() => getLiveExactSession({
+    onResponseHeaders: (headers) => {
+      for (const [name, value] of Object.entries(headers)) authHeaders.set(name, value);
+    },
+  }));
+
   try {
     if (!(dependencies.enabled ?? isLineMiniAppWorkflowEnabled)()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
+    if (!(dependencies.issuanceEnabled ?? isLineMiniAppWorkflowIssuanceEnabled)()) {
+      throw new LineWorkflowFailure("WORKFLOW_NOT_ACTIVATED");
+    }
     const configuration = (dependencies.configuration ?? getLineMiniAppConfiguration)();
     if (request.headers.get("origin") !== configuration.origin) throw new LineWorkflowFailure("ORIGIN_DENIED");
     const input = await readWorkflowRequest(request);
-    await evaluateLineWorkflowEligibility(input, { ...dependencies, configuration: () => configuration });
-    throw new LineWorkflowFailure("WORKFLOW_NOT_ACTIVATED");
+    const rateLimiter = dependencies.rateLimiter ?? createLineWorkflowRateLimiter(dependencies.database);
+    if (!await rateLimiter.consume("VERIFY_GLOBAL", "GLOBAL", dependencies.now?.() ?? new Date())) {
+      throw new LineWorkflowFailure("RATE_LIMITED");
+    }
+
+    const scopedDependencies = { ...dependencies, liveSession, configuration: () => configuration };
+    const eligibility = await evaluateLineWorkflowEligibility(input, scopedDependencies);
+    const context = await issueLineWorkflowContext(eligibility, scopedDependencies);
+    const now = dependencies.now?.() ?? new Date();
+    const cookie = lineWorkflowContextCookieOptions(context.expiresAt, now);
+    if (cookie.maxAge <= 0) throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
+
+    const response = Response.json({
+      code: LINE_WORKFLOW_SUCCESS_CODE,
+      continuation: LINE_WORKFLOW_SUCCESS_CONTINUATION,
+    }, {
+      status: 200,
+      headers: lineWorkflowResponseHeaders(authHeaders),
+    });
+    response.headers.append("set-cookie", serializeWorkflowCookie(context.value, cookie));
+    return response;
   } catch (error: unknown) {
-    return lineWorkflowErrorResponse(error);
+    return lineWorkflowErrorResponse(error, authHeaders);
   }
 }

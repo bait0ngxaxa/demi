@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ evaluate: vi.fn() }));
-vi.mock("@/modules/line/services/line-workflow-service", () => ({ evaluateLineWorkflowEligibility: mocks.evaluate }));
+const mocks = vi.hoisted(() => ({ evaluate: vi.fn(), issue: vi.fn(), consumeLimit: vi.fn() }));
+vi.mock("@/modules/line/services/line-workflow-service", () => ({
+  evaluateLineWorkflowEligibility: mocks.evaluate,
+  issueLineWorkflowContext: mocks.issue,
+}));
+vi.mock("@/modules/line/services/line-workflow-rate-limit", () => ({
+  createLineWorkflowRateLimiter: () => ({ consume: mocks.consumeLimit }),
+}));
 
 import { LineWorkflowFailure } from "@/modules/line/domain/line-workflow-errors";
-import { handleLineWorkflowVerifyRequest } from "@/modules/line/transport/workflow-http";
+import { handleLineWorkflowVerifyRequest, lineWorkflowResponseHeaders } from "@/modules/line/transport/workflow-http";
 
 import { POST } from "./route";
 
@@ -14,6 +20,7 @@ const TOKEN = "synthetic.mini.id-token-value";
 function enableMini(): void {
   for (const [name, value] of Object.entries({
     DEMI_LINE_MINI_APP_WORKFLOW_ENABLED: "true",
+    DEMI_LINE_MINI_APP_ISSUANCE_ENABLED: "true",
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
     DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING",
     DEMI_LINE_MINI_APP_CHANNEL_ID: "2000000001",
@@ -37,6 +44,7 @@ async function expectCode(response: Response, status: number, code: string): Pro
   expect(response.headers.get("cache-control")).toContain("no-store");
   expect(response.headers.get("cache-control")).toContain("private");
   expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+  expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
   expect(response.headers.get("access-control-allow-origin")).toBeNull();
   expect(response.headers.get("set-cookie")).toBeNull();
 }
@@ -44,7 +52,9 @@ async function expectCode(response: Response, status: number, code: string): Pro
 describe("POST /api/line/workflow/verify activation fence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.consumeLimit.mockResolvedValue(true);
     mocks.evaluate.mockResolvedValue({ userId: "u", sessionId: "s", bindingId: "b", bindingVersion: 1, proofExpiresAt: new Date(), miniTupleKey: "t" });
+    mocks.issue.mockResolvedValue({ value: "v1.k1.synthetic.ciphertext.tag", expiresAt: new Date(Date.now() + 60_000) });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -55,10 +65,12 @@ describe("POST /api/line/workflow/verify activation fence", () => {
     expect(mocks.evaluate).not.toHaveBeenCalled();
   });
 
-  it("never issues a scope or success continuation for a fully eligible request in B1", async () => {
+  it("does not issue a scope when the separate issuance gate is missing", async () => {
     enableMini();
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", undefined);
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "WORKFLOW_NOT_ACTIVATED");
-    expect(mocks.evaluate).toHaveBeenCalledWith({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }, expect.anything());
+    expect(mocks.evaluate).not.toHaveBeenCalled();
+    expect(mocks.issue).not.toHaveBeenCalled();
   });
 
   it("fails closed when the enabled gate has no valid MINI configuration", async () => {
@@ -67,11 +79,56 @@ describe("POST /api/line/workflow/verify activation fence", () => {
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "MINI_CONFIGURATION_UNAVAILABLE");
     expect(mocks.evaluate).not.toHaveBeenCalled();
   });
+
+  it("issues the encrypted context only after eligibility succeeds and returns the finite continuation", async () => {
+    enableMini();
+    const eligibility = {
+      userId: "11111111-1111-4111-8111-111111111111",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      bindingId: "33333333-3333-4333-8333-333333333333",
+      bindingVersion: 2,
+      proofExpiresAt: new Date(Date.now() + 60_000),
+      miniTupleKey: "a".repeat(64),
+    };
+    mocks.evaluate.mockResolvedValue(eligibility);
+    const response = await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }));
+    expect(response.status).toBe(200);
+    const responseBody = await response.json();
+    expect(responseBody).toEqual({ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" });
+    const cookie = response.headers.get("set-cookie");
+    expect(cookie).toContain("__Secure-DEMI_LINE_WORKFLOW=v1.k1.synthetic.ciphertext.tag");
+    expect(cookie).toContain("Path=/line/workflow");
+    expect(cookie).toMatch(/Max-Age=\d+/u);
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).not.toContain("Domain=");
+    expect(JSON.stringify(responseBody)).not.toContain("synthetic.ciphertext");
+    expect(mocks.issue).toHaveBeenCalledWith(eligibility, expect.objectContaining({ configuration: expect.any(Function) }));
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("retains unrelated Supabase headers while normalized workflow policy wins case-insensitively", () => {
+    const headers = lineWorkflowResponseHeaders({
+      "Cache-Control": "public, max-age=3600",
+      "X-Supabase-Api-Version": "2026-10-01",
+      "Content-Security-Policy": "frame-ancestors https://example.org",
+    });
+    expect(headers.get("cache-control")).toContain("private");
+    expect(headers.get("cache-control")).toContain("no-store");
+    expect(headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(headers.get("x-supabase-api-version")).toBe("2026-10-01");
+    expect(headers.get("access-control-allow-origin")).toBeNull();
+  });
 });
 
 describe("bounded verification transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.consumeLimit.mockResolvedValue(true);
     enableMini();
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -92,6 +149,7 @@ describe("bounded verification transport", () => {
     ["non-JSON content type", { intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }, { "content-type": "text/plain" }],
     ["form content type", "intent=OPEN_PATIENT_APPOINTMENTS", { "content-type": "application/x-www-form-urlencoded" }],
     ["malformed JSON", "{", {}],
+    ["duplicate request key", '{"intent":"OPEN_PATIENT_APPOINTMENTS","idToken":"synthetic.mini.id-token-value","idToken":"synthetic.mini.id-token-value"}', {}],
     ["unsupported intent", { intent: "OPEN_PATIENT_CARE", idToken: TOKEN }, {}],
     ["missing intent", { idToken: TOKEN }, {}],
     ["missing token", { intent: "OPEN_PATIENT_APPOINTMENTS" }, {}],
@@ -114,6 +172,19 @@ describe("bounded verification transport", () => {
       method: "POST", headers: { origin: ORIGIN, "content-type": "application/json" }, body: stream, duplex: "half",
     } as RequestInit & { duplex: "half" });
     await expectCode(await POST(streamed), 400, "REQUEST_INVALID");
+    expect(mocks.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on shared limiter infrastructure failure before LINE verification", async () => {
+    mocks.consumeLimit.mockRejectedValue(new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE"));
+    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "INFRASTRUCTURE_UNAVAILABLE");
+    expect(mocks.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("limits provider verification globally across application instances", async () => {
+    mocks.consumeLimit.mockResolvedValue(false);
+    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 429, "RATE_LIMITED");
+    expect(mocks.consumeLimit).toHaveBeenCalledWith("VERIFY_GLOBAL", "GLOBAL", expect.any(Date));
     expect(mocks.evaluate).not.toHaveBeenCalled();
   });
 

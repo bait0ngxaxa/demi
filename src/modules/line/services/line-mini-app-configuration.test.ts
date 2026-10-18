@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LineWorkflowFailure } from "../domain/line-workflow-errors";
-import { getLineMiniAppConfiguration, isLineMiniAppWorkflowEnabled } from "./line-mini-app-configuration";
+import {
+  getLineMiniAppConfiguration,
+  getLineMiniAppDeauthorizationCredentials,
+  isLineMiniAppWorkflowEnabled,
+  isLineMiniAppWorkflowIssuanceEnabled,
+} from "./line-mini-app-configuration";
 
 // Synthetic identifiers only.
 function setMiniEnvironment(overrides: Record<string, string | undefined> = {}): void {
@@ -78,6 +83,19 @@ describe("selected MINI App environment tuple", () => {
     setMiniEnvironment({ DEMI_LINE_MINI_APP_CHANNEL_ID: undefined, DEMI_LINE_MINI_APP_LIFF_ID: "2000000001-MiniDev" });
     expectUnavailable();
   });
+
+  it("selects a MINI deauthorization secret only with the exact MINI tuple", () => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_SECRET", "synthetic-mini-channel-secret");
+    expect(getLineMiniAppDeauthorizationCredentials()).toEqual({
+      channelId: "2000000001", channelSecret: "synthetic-mini-channel-secret",
+      environment: "DEVELOPING", deploymentReference: "deploy:dev-1",
+    });
+  });
+
+  it.each([undefined, "", "short"]) ("fails closed for missing or invalid MINI channel credentials (%s)", (secret) => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_SECRET", secret);
+    expect(() => getLineMiniAppDeauthorizationCredentials()).toThrow(LineWorkflowFailure);
+  });
 });
 
 describe("MINI workflow activation gate", () => {
@@ -91,5 +109,20 @@ describe("MINI workflow activation gate", () => {
   it("enables orchestration only for the literal true", () => {
     vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
     expect(isLineMiniAppWorkflowEnabled()).toBe(true);
+  });
+});
+
+describe("MINI context issuance activation gate", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, "", "false", "TRUE", "1", "yes"])("stays disabled for %s", (value) => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", value);
+    expect(isLineMiniAppWorkflowIssuanceEnabled()).toBe(false);
+  });
+
+  it("enables issuance only for the literal true independent of NODE_ENV", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", "true");
+    expect(isLineMiniAppWorkflowIssuanceEnabled()).toBe(true);
   });
 });

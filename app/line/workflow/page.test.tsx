@@ -16,6 +16,7 @@ const ORIGIN = "https://demi.example.org";
 function enableMini(): void {
   for (const [name, value] of Object.entries({
     DEMI_LINE_MINI_APP_WORKFLOW_ENABLED: "true",
+    DEMI_LINE_MINI_APP_ISSUANCE_ENABLED: "true",
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
     DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING",
     DEMI_LINE_MINI_APP_CHANNEL_ID: "2000000001",
@@ -79,6 +80,15 @@ describe("GET /line/workflow initialization shell", () => {
     enableMini();
     vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", undefined);
     expect(await render()).toContain("ยังเปิดนัดหมายผ่าน LINE ไม่ได้");
+  });
+
+  it("does not initialize LIFF while scope issuance has not been activated", async () => {
+    enableMini();
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", undefined);
+    const markup = await render();
+    expect(markup).toContain("ยังเปิดนัดหมายผ่าน LINE ไม่ได้");
+    expect(mocks.init).not.toHaveBeenCalled();
+    expect(mocks.database).not.toHaveBeenCalled();
   });
 });
 

@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
+import { isRetryableSerializableTransactionError, runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import {
   acknowledgeOwnPatientAppointment,
   requestOwnPatientAppointmentCancellation,
@@ -27,6 +27,7 @@ import { verifyMiniAppWorkflowIdToken, type VerifiedMiniAppWorkflowIdentity } fr
 import { lineChannelTupleKey, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
 import type { LineWorkflowIntent } from "../domain/line-navigation-intents";
 import { LineWorkflowFailure } from "../domain/line-workflow-errors";
+import { observeLineAuthorization } from "./line-authorization-lifecycle-service";
 import { requireLineDisconnectionReadiness } from "./line-disconnection-configuration";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import {
@@ -37,7 +38,9 @@ import {
 import {
   getLineWorkflowContextKeyring,
   lineWorkflowContextSessionMatches,
+  lineWorkflowContextExpiry,
   openLineWorkflowContext,
+  sealLineWorkflowContext,
   type LineWorkflowContextKeyring,
   type OpenedLineWorkflowContext,
 } from "./line-workflow-context";
@@ -63,16 +66,22 @@ export type LineWorkflowEligibility = {
   intent: LineWorkflowIntent;
   userId: string;
   sessionId: string;
+  authSubject: string;
+  verifiedLineSubject: string;
   bindingId: string;
   bindingVersion: number;
+  proofVerifiedAt: Date;
   proofExpiresAt: Date;
   miniTupleKey: string;
+  inventoryRevision: string;
 };
-
-const processRateLimiter = createLineWorkflowRateLimiter();
 
 function databaseOf(dependencies: LineWorkflowDependencies): PrismaClient {
   return dependencies.database ?? getPrisma();
+}
+
+function rateLimiterOf(dependencies: LineWorkflowDependencies): LineWorkflowRateLimiter {
+  return dependencies.rateLimiter ?? createLineWorkflowRateLimiter(databaseOf(dependencies));
 }
 
 function configurationOf(dependencies: LineWorkflowDependencies): LineMiniAppConfiguration {
@@ -93,7 +102,7 @@ async function defaultLifecycleInventory(): Promise<LineChannelInventory | null>
 async function requireMiniLifecycleTuple(
   configuration: LineMiniAppConfiguration,
   dependencies: LineWorkflowDependencies,
-): Promise<string> {
+): Promise<{ tupleKey: string; inventory: LineChannelInventory }> {
   let inventory: LineChannelInventory | null;
   try {
     inventory = await (dependencies.lifecycleInventory ?? defaultLifecycleInventory)();
@@ -111,7 +120,7 @@ async function requireMiniLifecycleTuple(
       minis[0].exclusionReference || minis[0].providerReference !== accounts[0].providerReference) {
     throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
   }
-  return lineChannelTupleKey(minis[0]);
+  return { tupleKey: lineChannelTupleKey(minis[0]), inventory };
 }
 
 async function requireLiveSession(dependencies: LineWorkflowDependencies): Promise<LiveSession> {
@@ -145,8 +154,8 @@ async function requirePatientSelfActor(
 }
 
 /**
- * Composes server MINI tuple, live exact DEMI session, local abuse control,
- * MINI-audience LINE proof, exactly one current ACTIVE binding, exact
+ * Composes server MINI tuple, MINI-audience LINE proof, current exact DEMI
+ * session, distributed per-user abuse control, exactly one ACTIVE binding, exact
  * binding-User/session-User equality, ACTIVE canonical actor and Patient SELF.
  * A binding never creates a DEMI session or Patient authority.
  */
@@ -155,13 +164,17 @@ export async function evaluateLineWorkflowEligibility(
   dependencies: LineWorkflowDependencies = {},
 ): Promise<LineWorkflowEligibility> {
   const configuration = configurationOf(dependencies);
-  const miniTupleKey = await requireMiniLifecycleTuple(configuration, dependencies);
+  const lifecycle = await requireMiniLifecycleTuple(configuration, dependencies);
+  const identity = await (dependencies.verifyIdentity ?? verifyMiniAppWorkflowIdToken)(input.idToken, configuration);
   const session = await requireLiveSession(dependencies);
   const now = dependencies.now?.() ?? new Date();
-  if (!(dependencies.rateLimiter ?? processRateLimiter).consume(session.userId, now)) {
+  if (!Number.isFinite(identity.verifiedAt.getTime()) || identity.verifiedAt > now ||
+      !Number.isFinite(identity.expiresAt.getTime()) || identity.expiresAt <= now) {
+    throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
+  }
+  if (!await rateLimiterOf(dependencies).consume("VERIFY_USER", session.userId, now)) {
     throw new LineWorkflowFailure("RATE_LIMITED");
   }
-  const identity = await (dependencies.verifyIdentity ?? verifyMiniAppWorkflowIdToken)(input.idToken, configuration);
 
   let bindings: Array<{ id: string; userId: string; lineUserId: string | null; lifecycleVersion: number }>;
   try {
@@ -188,11 +201,95 @@ export async function evaluateLineWorkflowEligibility(
     intent: input.intent,
     userId: session.userId,
     sessionId: session.sessionId,
+    authSubject: session.authSubject,
+    verifiedLineSubject: identity.subject,
     bindingId: binding.id,
     bindingVersion: binding.lifecycleVersion,
+    proofVerifiedAt: identity.verifiedAt,
     proofExpiresAt: identity.expiresAt,
-    miniTupleKey,
+    miniTupleKey: lifecycle.tupleKey,
+    inventoryRevision: lifecycle.inventory.revision,
   };
+}
+
+export const LINE_WORKFLOW_SCOPE_ISSUANCE_TRANSACTION = { timeout: 5_000 } as const;
+
+/**
+ * The initial eligibility result is only a precheck. This final gate serializes
+ * MINI observation with Full Disconnection: User, binding, then the lifecycle
+ * rows in their existing tuple/id order. LINE/Auth network work happens before
+ * this callback; scope encryption and cookie delivery happen after commit.
+ */
+export async function issueLineWorkflowContext(
+  eligibility: LineWorkflowEligibility,
+  dependencies: LineWorkflowDependencies = {},
+): Promise<{ value: string; expiresAt: Date }> {
+  const configuration = configurationOf(dependencies);
+  const lifecycle = await requireMiniLifecycleTuple(configuration, dependencies);
+  if (lifecycle.tupleKey !== eligibility.miniTupleKey ||
+      lifecycle.inventory.revision !== eligibility.inventoryRevision) {
+    throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
+  }
+
+  const keyring = (dependencies.keyring ?? getLineWorkflowContextKeyring)();
+  if (!keyring.keys.has(keyring.currentKid)) throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
+  const live = await requireLiveSession(dependencies);
+  if (live.userId !== eligibility.userId || live.sessionId !== eligibility.sessionId ||
+      live.authSubject !== eligibility.authSubject) {
+    throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
+  }
+
+  const database = databaseOf(dependencies);
+  const fingerprint = createLineSubjectFingerprint(eligibility.verifiedLineSubject);
+  const clock = dependencies.now ?? ((): Date => new Date());
+  await runSerializableTransaction(database, async (transaction) => {
+    const now = clock();
+    const issuedAt = Math.floor(now.getTime() / 1000);
+    const proofExpiresAt = Math.floor(eligibility.proofExpiresAt.getTime() / 1000);
+    if (!Number.isFinite(now.getTime()) || !Number.isFinite(eligibility.proofVerifiedAt.getTime()) ||
+        eligibility.proofVerifiedAt > now || eligibility.proofExpiresAt <= now ||
+        lineWorkflowContextExpiry(issuedAt, proofExpiresAt) <= issuedAt) {
+      throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
+    }
+
+    await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${eligibility.userId}::uuid FOR UPDATE`;
+    await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${eligibility.bindingId}::uuid FOR UPDATE`;
+    const binding = await transaction.lineAccountBinding.findUnique({
+      where: { id: eligibility.bindingId },
+      select: {
+        id: true, userId: true, lineUserId: true, lineSubjectFingerprint: true,
+        lineSubjectFingerprintKeyId: true, unlinkedAt: true, lifecycleVersion: true,
+      },
+    });
+    if (!binding || binding.userId !== eligibility.userId || binding.unlinkedAt !== null ||
+        binding.lifecycleVersion !== eligibility.bindingVersion ||
+        binding.lineUserId !== eligibility.verifiedLineSubject ||
+        binding.lineSubjectFingerprint !== fingerprint.fingerprint ||
+        binding.lineSubjectFingerprintKeyId !== fingerprint.keyId) {
+      throw new LineWorkflowFailure("WORKFLOW_INELIGIBLE");
+    }
+
+    const mapping = await transaction.user.findFirst({
+      where: { id: eligibility.userId, authSubject: eligibility.authSubject },
+      select: { id: true },
+    });
+    if (!mapping) throw new LineWorkflowFailure("SCOPE_SESSION_MISMATCH");
+    await requirePatientSelfActor(eligibility.userId, createActorContextStore(transaction), transaction);
+
+    await observeLineAuthorization(transaction, {
+      ownerUserId: eligibility.userId,
+      bindingId: eligibility.bindingId,
+      bindingVersion: eligibility.bindingVersion,
+    }, lifecycle.inventory, eligibility.miniTupleKey, now);
+  }, undefined, LINE_WORKFLOW_SCOPE_ISSUANCE_TRANSACTION);
+
+  return sealLineWorkflowContext({
+    bindingId: eligibility.bindingId,
+    bindingVersion: eligibility.bindingVersion,
+    userId: eligibility.userId,
+    sessionId: eligibility.sessionId,
+    proofExpiresAt: eligibility.proofExpiresAt,
+  }, { keyring, tuple: configuration, now: clock() });
 }
 
 /** The only authority a scoped reader receives: one guarded snapshot, never a client or session. */
@@ -203,7 +300,7 @@ export type LineWorkflowScopedSnapshot = {
 
 export type LineWorkflowScopedReadDependencies = Pick<
   LineWorkflowDependencies,
-  "database" | "now" | "configuration" | "lifecycleInventory" | "liveSession" | "keyring"
+  "database" | "now" | "configuration" | "lifecycleInventory" | "liveSession" | "keyring" | "rateLimiter"
 >;
 
 /** Approved 17J.3B section 12.3 bounds; no network work runs under this transaction. */
@@ -343,6 +440,10 @@ export async function runLineWorkflowScopedInteraction<K extends LineWorkflowSco
   dependencies: LineWorkflowScopedMutationDependencies = {},
 ): Promise<LineWorkflowScopedInteractionResult[K]> {
   const scope = await openLineWorkflowScope(credential, dependencies);
+  const rateCategory = interaction === "ACKNOWLEDGE" ? "ACKNOWLEDGE" : "CANCELLATION_REQUEST";
+  if (!await rateLimiterOf(dependencies).consume(rateCategory, scope.context.userId, scope.clock())) {
+    throw new LineWorkflowFailure("RATE_LIMITED");
+  }
   const database = databaseOf(dependencies);
   // Early unlocked eligibility; the precondition repeats every check under the locks.
   const actor = await requirePatientSelfActor(scope.context.userId, createActorContextStore(database), database);

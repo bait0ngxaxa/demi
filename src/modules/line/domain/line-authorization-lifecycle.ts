@@ -32,6 +32,7 @@ export const lineChannelInventorySchema = z.object({
 
 export type LineChannelInventory = z.infer<typeof lineChannelInventorySchema>;
 export type LineChannel = z.infer<typeof channelSchema>;
+export type LineProviderEvidence = "PROVIDER_204" | "PROVIDER_REJECTED" | "INVALID_RESPONSE" | "POSSIBLY_DISPATCHED" | "KNOWN_NOT_DISPATCHED";
 
 export function lineChannelTupleKey(channel: LineChannel): string {
   return createHash("sha256").update(lineChannelTupleDefinition(channel)).digest("hex");

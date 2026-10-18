@@ -4,12 +4,14 @@
  */
 
 import { LINE_WORKFLOW_INTENT } from "@/modules/line/domain/line-navigation-intents";
+import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "@/modules/line/domain/line-workflow-routes";
 
 export type LineWorkflowGatewayState =
   | "INITIALIZING"
   | "INIT_FAILED"
   | "LINE_LOGIN_REQUIRED"
   | "VERIFYING"
+  | "SCOPE_GRANTED"
   | "LINE_PROOF_UNAVAILABLE"
   | "LOGIN_REQUIRED"
   | "ACCOUNT_MISMATCH"
@@ -61,8 +63,16 @@ const stateByCode: Record<string, LineWorkflowGatewayState> = {
   WORKFLOW_NOT_ACTIVATED: "NOT_ACTIVATED",
 };
 
-/** Unknown or unexpected responses, including any 2xx in B1, never continue the workflow. */
+/** Only the exact finite success response can start the scoped continuation. */
 export function lineWorkflowStateFromResponse(body: unknown): LineWorkflowGatewayState {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const record = body as Record<string, unknown>;
+    const keys = Object.keys(record);
+    if (record.code === "SCOPE_GRANTED") {
+      return keys.length === 2 && keys.includes("code") && keys.includes("continuation") &&
+        record.continuation === LINE_WORKFLOW_APPOINTMENTS_PATH ? "SCOPE_GRANTED" : "TEMPORARILY_UNAVAILABLE";
+    }
+  }
   const code = body && typeof body === "object" && !Array.isArray(body) && "code" in body ? body.code : undefined;
   return (typeof code === "string" && Object.hasOwn(stateByCode, code) ? stateByCode[code] : undefined) ??
     "TEMPORARILY_UNAVAILABLE";
@@ -96,7 +106,9 @@ export async function verifyLineWorkflow(
     } catch {
       body = null;
     }
-    return lineWorkflowStateFromResponse(body);
+    const state = lineWorkflowStateFromResponse(body);
+    if (state === "SCOPE_GRANTED" && (!response.ok || response.status !== 200)) return "TEMPORARILY_UNAVAILABLE";
+    return state;
   } catch {
     return "TEMPORARILY_UNAVAILABLE";
   }

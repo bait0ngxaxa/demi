@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deauthorizeLineAccount } from "./line-deauthorization-client";
+import { deauthorizeLineAccount, deauthorizeLineMiniApp } from "./line-deauthorization-client";
 
 const subject = `U${"a".repeat(32)}`;
 const userToken = "transient-user-access-token";
@@ -70,5 +70,29 @@ describe("Account Login deauthorization boundary", () => {
       .mockResolvedValueOnce(json({ access_token: "channel", token_type: "Bearer", expires_in: 900 })).mockRejectedValueOnce(new DOMException("timeout", "TimeoutError"));
     expect(await deauthorizeLineAccount(userToken, subject, async () => true, fetcher)).toBe("POSSIBLY_DISPATCHED");
     expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("uses only the selected MINI audience and MINI channel secret", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(json({ client_id: "2000000001", scope: "openid", expires_in: 60 }))
+      .mockResolvedValueOnce(json({ sub: subject }))
+      .mockResolvedValueOnce(json({ access_token: "mini-stateless-channel-token", token_type: "Bearer", expires_in: 900 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const result = await deauthorizeLineMiniApp(userToken, subject, {
+      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING", deploymentReference: "deploy:test",
+    }, async () => true, fetcher);
+    expect(result).toBe("PROVIDER_204");
+    expect(String(fetcher.mock.calls[2][1]?.body)).toContain("client_id=2000000001&client_secret=mini-only-secret");
+    expect(fetcher.mock.calls[3][1]?.headers).toMatchObject({ authorization: "Bearer mini-stateless-channel-token" });
+    expect(fetcher.mock.calls[3][1]?.body).toBe(JSON.stringify({ userAccessToken: userToken }));
+    expect(JSON.stringify(fetcher.mock.calls)).not.toContain("account-login-secret-only");
+    expect(JSON.stringify(fetcher.mock.calls)).not.toContain("must-never-be-used");
+  });
+
+  it("rejects an Account-audience access token on the MINI deauthorization path", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(json({ client_id: "1234567890", scope: "openid", expires_in: 60 }));
+    expect(await deauthorizeLineMiniApp(userToken, subject, {
+      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING", deploymentReference: "deploy:test",
+    }, async () => true, fetcher)).toBe("KNOWN_NOT_DISPATCHED");
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });

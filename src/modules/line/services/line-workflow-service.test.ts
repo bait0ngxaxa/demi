@@ -11,7 +11,7 @@ import { LineWorkflowFailure } from "../domain/line-workflow-errors";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import type { LineMiniAppConfiguration } from "./line-mini-app-configuration";
 import { parseLineWorkflowContextKeyring, sealLineWorkflowContext } from "./line-workflow-context";
-import { createLineWorkflowRateLimiter, lineWorkflowRateLimitInternals } from "./line-workflow-rate-limit";
+import { LINE_WORKFLOW_RATE_LIMITS, lineWorkflowRateLimitInternals } from "./line-workflow-rate-limit";
 import {
   evaluateLineWorkflowEligibility,
   runLineWorkflowScopedRead,
@@ -65,6 +65,7 @@ function setup(overrides: Partial<LineWorkflowDependencies> = {}) {
   const verifyIdentity = vi.fn().mockResolvedValue({ subject: SUBJECT, expiresAt: new Date(NOW.getTime() + 3_600_000), verifiedAt: NOW });
   const liveSession = vi.fn().mockResolvedValue({ userId: USER_A, sessionId: SESSION_A, authSubject: "88888888-8888-4888-8888-888888888888", checkedAt: NOW });
   const actorStore = { findUserById: vi.fn().mockResolvedValue(patientActor()) };
+  const rateLimiter = { consume: vi.fn().mockResolvedValue(true) };
   const dependencies: LineWorkflowDependencies = {
     database: database as unknown as PrismaClient,
     now: () => NOW,
@@ -72,12 +73,12 @@ function setup(overrides: Partial<LineWorkflowDependencies> = {}) {
     lifecycleInventory: vi.fn().mockResolvedValue(inventory),
     liveSession,
     verifyIdentity,
-    rateLimiter: createLineWorkflowRateLimiter(),
+    rateLimiter,
     actorStore,
     keyring: () => keyring,
     ...overrides,
   };
-  return { database, verifyIdentity, liveSession, actorStore, dependencies };
+  return { database, verifyIdentity, liveSession, actorStore, rateLimiter, dependencies };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -118,19 +119,19 @@ describe("MINI workflow eligibility orchestration", () => {
     expect(actorStore.findUserById).not.toHaveBeenCalled();
   });
 
-  it("requires a DEMI session before calling LINE", async () => {
+  it("verifies the MINI proof before requiring the current DEMI session", async () => {
     const { dependencies, verifyIdentity } = setup({ liveSession: vi.fn().mockRejectedValue(new UnauthenticatedError()) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("LOGIN_REQUIRED");
-    expect(verifyIdentity).not.toHaveBeenCalled();
+    expect(verifyIdentity).toHaveBeenCalledOnce();
   });
 
   it.each([
     ["inactive or unmapped DEMI User", new ForbiddenError(), "WORKFLOW_INELIGIBLE"],
     ["Auth provider outage", new InfrastructureError(), "SESSION_UNAVAILABLE"],
-  ])("maps %s without LINE verification", async (_label, failure, code) => {
+  ])("maps %s after bounded LINE verification", async (_label, failure, code) => {
     const { dependencies, verifyIdentity } = setup({ liveSession: vi.fn().mockRejectedValue(failure) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe(code);
-    expect(verifyIdentity).not.toHaveBeenCalled();
+    expect(verifyIdentity).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -215,13 +216,15 @@ describe("MINI workflow eligibility orchestration", () => {
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("INFRASTRUCTURE_UNAVAILABLE");
   });
 
-  it("applies the per-user local limit before provider verification", async () => {
-    const { dependencies, verifyIdentity } = setup();
-    for (let attempt = 0; attempt < lineWorkflowRateLimitInternals.PER_USER_LIMIT; attempt += 1) {
-      await evaluateLineWorkflowEligibility(input, dependencies);
-    }
+  it("applies the shared per-user quota after the fresh exact DEMI session check", async () => {
+    const { dependencies, verifyIdentity, liveSession, rateLimiter } = setup();
+    rateLimiter.consume.mockResolvedValue(false);
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("RATE_LIMITED");
-    expect(verifyIdentity).toHaveBeenCalledTimes(lineWorkflowRateLimitInternals.PER_USER_LIMIT);
+    expect(verifyIdentity).toHaveBeenCalledOnce();
+    expect(liveSession).toHaveBeenCalledOnce();
+    expect(rateLimiter.consume).toHaveBeenCalledWith("VERIFY_USER", USER_A, NOW);
+    expect(LINE_WORKFLOW_RATE_LIMITS.VERIFY_USER).toBe(10);
+    expect(lineWorkflowRateLimitInternals.WINDOW_MS).toBe(300_000);
   });
 });
 

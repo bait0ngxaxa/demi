@@ -71,12 +71,27 @@ describe("MINI gateway verification step", () => {
     [{ code: "LINE_IDENTITY_INVALID" }, "LINE_PROOF_UNAVAILABLE"],
     [{ code: "RATE_LIMITED" }, "RATE_LIMITED"],
     [{ code: "WORKFLOW_DISABLED" }, "NOT_ACTIVATED"],
+    [{ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" }, "SCOPE_GRANTED"],
+    [{ code: "SCOPE_GRANTED", continuation: "https://attacker.example" }, "TEMPORARILY_UNAVAILABLE"],
+    [{ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments", target: "/app" }, "TEMPORARILY_UNAVAILABLE"],
     [{ code: "LINE_PROVIDER_UNAVAILABLE" }, "TEMPORARILY_UNAVAILABLE"],
     [{ code: "toString" }, "TEMPORARILY_UNAVAILABLE"],
     [{ ok: true, scope: "granted" }, "TEMPORARILY_UNAVAILABLE"],
     [null, "TEMPORARILY_UNAVAILABLE"],
   ])("maps response %j to UI state %s without continuing", (body, state) => {
     expect(lineWorkflowStateFromResponse(body)).toBe(state);
+  });
+
+  it("accepts the finite continuation only on the exact successful HTTP response", async () => {
+    const liff = liffDouble();
+    const success = vi.fn<typeof fetch>().mockResolvedValue(Response.json(
+      { code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" }, { status: 200 },
+    ));
+    await expect(verifyLineWorkflow(liff, success)).resolves.toBe("SCOPE_GRANTED");
+    const wrongStatus = vi.fn<typeof fetch>().mockResolvedValue(Response.json(
+      { code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" }, { status: 503 },
+    ));
+    await expect(verifyLineWorkflow(liff, wrongStatus)).resolves.toBe("TEMPORARILY_UNAVAILABLE");
   });
 
   it("treats a network failure as temporarily unavailable", async () => {

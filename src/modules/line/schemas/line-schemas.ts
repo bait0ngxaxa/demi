@@ -15,7 +15,10 @@ export const lineLinkRequestSchema = lineIntentUseSchema.extend({
   accessToken: z.string().min(20).max(16_384).optional(),
 }).strict();
 
-export const lineUnlinkRequestSchema = lineIntentUseSchema.extend({ accessToken: z.string().min(20).max(8192).optional() }).strict();
+export const lineUnlinkRequestSchema = lineIntentUseSchema.extend({
+  accessToken: z.string().min(20).max(8192).optional(),
+  miniAccessToken: z.string().min(20).max(8192).optional(),
+}).strict();
 
 export const lineRecoveryRequestSchema = lineIntentUseSchema.extend({
   idToken: z.string().min(20).max(16_384),

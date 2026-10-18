@@ -1964,3 +1964,14 @@ model LineWebhookEventReceipt {
 
   @@index([acceptedAt])
 }
+
+model LineWorkflowRateLimitBucket {
+  category   String   @db.VarChar(32)
+  keyHash    String   @db.VarChar(64)
+  windowStart DateTime @db.Timestamptz(3)
+  expiresAt  DateTime @db.Timestamptz(3)
+  hitCount   Int      @default(1)
+
+  @@id([category, keyHash, windowStart], map: "LineWorkflowRateLimitBucket_pkey")
+  @@index([expiresAt], map: "LineWorkflowRateLimitBucket_expiresAt_idx")
+}

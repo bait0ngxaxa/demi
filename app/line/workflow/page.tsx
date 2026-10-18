@@ -9,6 +9,7 @@ import {
 } from "@/modules/line/domain/line-navigation-intents";
 import {
   getLineMiniAppConfiguration,
+  isLineMiniAppWorkflowIssuanceEnabled,
   isLineMiniAppWorkflowEnabled,
   type LineMiniAppConfiguration,
 } from "@/modules/line/services/line-mini-app-configuration";
@@ -36,7 +37,8 @@ export default async function LineWorkflowPage({
   const entry = classifyLineWorkflowEntry(await searchParams);
   let configuration: LineMiniAppConfiguration | null = null;
   try {
-    configuration = isLineMiniAppWorkflowEnabled() ? getLineMiniAppConfiguration() : null;
+    configuration = isLineMiniAppWorkflowEnabled() && isLineMiniAppWorkflowIssuanceEnabled()
+      ? getLineMiniAppConfiguration() : null;
   } catch {
     configuration = null;
   }

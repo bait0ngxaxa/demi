@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 
 import { getApplicationPublicOrigin } from "@/lib/env/server";
+import type { LineMiniAppDeauthorizationCredentials } from "../adapters/line-deauthorization-client";
 
 import { LINE_WORKFLOW_GATEWAY_PATH } from "../domain/line-navigation-intents";
 import { LineWorkflowFailure } from "../domain/line-workflow-errors";
@@ -48,6 +49,23 @@ export function getLineMiniAppConfiguration(): LineMiniAppConfiguration {
   }
 }
 
+/** Server-only channel credentials for LINE's documented user deauthorization API. */
+export function getLineMiniAppDeauthorizationCredentials(): LineMiniAppDeauthorizationCredentials {
+  const configuration = getLineMiniAppConfiguration();
+  try {
+    const channelSecret = z.string().regex(/^[A-Za-z0-9+/=_-]{16,1024}$/u)
+      .parse(process.env.DEMI_LINE_MINI_APP_CHANNEL_SECRET);
+    return {
+      channelId: configuration.channelId,
+      channelSecret,
+      environment: configuration.environment,
+      deploymentReference: configuration.deploymentReference,
+    };
+  } catch {
+    throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
+  }
+}
+
 /**
  * Activation fence owned by LINE integration. Only the literal "true" enables
  * the verification orchestration; unset or any other value stays disabled.
@@ -55,4 +73,9 @@ export function getLineMiniAppConfiguration(): LineMiniAppConfiguration {
  */
 export function isLineMiniAppWorkflowEnabled(): boolean {
   return process.env.DEMI_LINE_MINI_APP_WORKFLOW_ENABLED === "true";
+}
+
+/** A separate operator-owned gate is required before any MINI workflow cookie can be issued. */
+export function isLineMiniAppWorkflowIssuanceEnabled(): boolean {
+  return process.env.DEMI_LINE_MINI_APP_ISSUANCE_ENABLED === "true";
 }

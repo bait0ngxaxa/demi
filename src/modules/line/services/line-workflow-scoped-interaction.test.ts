@@ -75,6 +75,7 @@ function setup(overrides: { binding?: Record<string, unknown> | null; mapped?: u
     calls.push("session");
     return { userId: USER_A, sessionId: SESSION_A, authSubject: AUTH_SUBJECT };
   });
+  const rateLimiter = { consume: vi.fn().mockResolvedValue(true) };
   const emulate = (result: unknown) => async (actor: ActorContext, _input: unknown, dependencies: { beforeInteractionInTransaction: AppointmentInteractionPrecondition }) => {
     calls.push("service");
     try {
@@ -95,8 +96,9 @@ function setup(overrides: { binding?: Record<string, unknown> | null; mapped?: u
     lifecycleInventory: vi.fn().mockResolvedValue(inventory),
     liveSession,
     keyring: () => keyring,
+    rateLimiter,
   };
-  return { calls, lockSql, lockValues, transaction, liveSession, dependencies };
+  return { calls, lockSql, lockValues, transaction, liveSession, rateLimiter, dependencies };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -132,6 +134,14 @@ describe("mandatory scoped interaction boundary", () => {
     await expect(runLineWorkflowScopedInteraction(seal(), "CANCELLATION_REQUEST", input, dependencies)).resolves.toEqual({ kind: "cancel" });
     expect(mocks.cancellation).toHaveBeenCalledWith(expect.objectContaining({ userId: USER_A }), input,
       expect.objectContaining({ database: dependencies.database, beforeInteractionInTransaction: expect.any(Function) }));
+    expect(mocks.acknowledge).not.toHaveBeenCalled();
+  });
+
+  it("denies a shared quota before invoking the Appointment domain service", async () => {
+    const { dependencies, rateLimiter } = setup();
+    rateLimiter.consume.mockResolvedValue(false);
+    expect(await codeOf(runLineWorkflowScopedInteraction(seal(), "ACKNOWLEDGE", input, dependencies))).toBe("RATE_LIMITED");
+    expect(rateLimiter.consume).toHaveBeenCalledWith("ACKNOWLEDGE", USER_A, NOW);
     expect(mocks.acknowledge).not.toHaveBeenCalled();
   });
 

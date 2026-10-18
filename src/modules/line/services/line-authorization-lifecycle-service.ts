@@ -9,6 +9,7 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 import {
   isLineObligationSatisfied, isLineRecoveryEligible, lineChannelInventorySchema,
   lineChannelTupleDefinition, lineChannelTupleKey, lineObligationSetDigest, type LineChannelInventory,
+  type LineProviderEvidence,
 } from "../domain/line-authorization-lifecycle";
 import { timingSafeHashMatch } from "./line-session-service";
 
@@ -143,8 +144,6 @@ export async function reserveLineTerminationAttempt(
   await auditTransition(transaction, target, "line.lifecycle.attempt.reserved", { tupleKey: target.tupleKey, attemptId });
   return { ...target, attemptId };
 }
-
-export type LineProviderEvidence = "PROVIDER_204" | "PROVIDER_REJECTED" | "INVALID_RESPONSE" | "POSSIBLY_DISPATCHED" | "KNOWN_NOT_DISPATCHED";
 
 /** Original reservation holder's pre-dispatch recheck. A true result is NOT a
  * transferable send permit or LINE cancellation/drain guarantee. Never redispatch. */
