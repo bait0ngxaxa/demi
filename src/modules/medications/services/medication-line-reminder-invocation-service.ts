@@ -14,6 +14,21 @@ const PATH = "/api/internal/line/medication-reminders/drain";
 const MAX_CLOCK_SKEW_MS = 60_000;
 
 type Headers = { timestamp: string | null; nonce: string | null; signature: string | null };
+let legacySecretWarned = false;
+
+// The dedicated secret wins whenever it is set, even if invalid (fail closed). During the rotation transition only,
+// an unset dedicated secret falls back to the shared appointment worker secret with a one-time warning.
+function configuredWorkerSecret(): string | undefined {
+  const dedicated = process.env.DEMI_LINE_MEDICATION_REMINDERS_WORKER_SECRET;
+  if (dedicated !== undefined && dedicated.trim() !== "") return dedicated;
+  const legacy = process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_WORKER_SECRET;
+  if (legacy !== undefined && legacy.trim() !== "" && !legacySecretWarned) {
+    legacySecretWarned = true;
+    console.warn("medication_line_reminder_worker_config", { warning: "LEGACY_SHARED_WORKER_SECRET_IN_USE" });
+  }
+  return legacy;
+}
+
 function digest(secret: string, timestamp: string, nonce: string): Buffer { return createHmac("sha256", secret).update(`POST\n${PATH}\n${timestamp}\n${nonce}`, "utf8").digest(); }
 
 export function signMedicationLineReminderInvocation(input: { timestamp: string; nonce: string; secret: string }): string {
@@ -24,7 +39,7 @@ export async function verifyAndConsumeMedicationLineReminderInvocation(headers: 
   const timestamp = timestampSchema.safeParse(headers.timestamp);
   const nonce = nonceSchema.safeParse(headers.nonce);
   const signature = signatureSchema.safeParse(headers.signature);
-  const secret = secretSchema.safeParse(input.secret ?? process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_WORKER_SECRET);
+  const secret = secretSchema.safeParse(input.secret ?? configuredWorkerSecret());
   if (!timestamp.success || !nonce.success || !signature.success || !secret.success) throw new ForbiddenError();
   const requestTime = Number(timestamp.data);
   const now = (input.now ?? new Date()).getTime();

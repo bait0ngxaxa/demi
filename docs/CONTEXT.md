@@ -6,6 +6,14 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.E1 notification operations (2026-10-19)
+
+[Phase LINE-QA.E1 handoff](./phases/PHASE_LINE_QA_E1_NOTIFICATION_OPERATIONS.md), starting HEAD **a8189bd7f18d3bc79b39dafc0319b03b0ead3837**. Code only; no scheduler is wired (Vercel Cron / pg_cron wiring is E2) and no environment was changed.
+
+- `GET /api/internal/scheduler/tick` (Bearer `DEMI_SCHEDULER_SECRET`, else `CRON_SECRET`; wrong/missing → 404) runs medication drain, appointment drain and both terminal purges under a transaction-scoped advisory try-lock, at most once per 60 s. `GET /api/internal/scheduler/readiness` (same bearer) shows `lastTickCompletedAt` and pending depth/age per outbox. The HMAC drain routes are unchanged.
+- The medication HMAC route reads `DEMI_LINE_MEDICATION_REMINDERS_WORKER_SECRET`; the shared appointment secret is accepted only while it is unset (one-time warning). `DEMI_LINE_MEDICATION_REMINDERS_DISABLED` stops materialization and sending (`REMINDERS_DISABLED` outcome).
+- A workforce-only binding that sends a next-appointment keyword gets the role-aware HELP reply. All `public` functions now pin `search_path`.
+
 ## CURRENT-status addendum — Phase LINE-QA.C3 conversational replies (2026-10-19)
 
 [Phase LINE-QA.C3 handoff](./phases/PHASE_LINE_QA_C3_CONVERSATIONAL_REPLIES.md), starting HEAD **f43ad31f402ab69872dd4fbd2e95e353dfac35cb**. 1:1 text messages to the DEMI OA now get a reply on the existing reactive pipeline (receipt → `after()` → Reply API).

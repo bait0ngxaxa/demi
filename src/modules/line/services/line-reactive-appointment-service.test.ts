@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createActorContextStore: vi.fn(),
   resolveActorAccessByUserId: vi.fn(),
   getOwnNextAppointment: vi.fn(),
+  resolveEligibleLineRoles: vi.fn(),
 }));
 
 vi.mock("@/modules/auth/services/actor-context-service", () => ({
@@ -14,10 +15,17 @@ vi.mock("@/modules/auth/services/actor-context-service", () => ({
 vi.mock("@/modules/patient-self/services/patient-self-care-query-service", () => ({
   getOwnNextAppointment: mocks.getOwnNextAppointment,
 }));
+vi.mock("./line-eligibility-service", () => ({
+  resolveEligibleLineRoles: mocks.resolveEligibleLineRoles,
+}));
+vi.mock("./line-deep-link-builder", () => ({
+  buildLineIntentUrl: (intent: string) => `https://liff.line.me/2000000000-test?intent=${intent}`,
+}));
 
 import { LineFailure } from "../domain/line-errors";
 import type { LineReactiveWorkItem } from "../domain/line-reactive-types";
 import { LINE_APPOINTMENT_REPLY_COPY } from "../presentation/line-appointment-reply";
+import { LINE_HELP_REPLY_COPY } from "../presentation/line-help-reply";
 import { executeLineReactiveAppointment } from "./line-reactive-appointment-service";
 
 const actor = {
@@ -221,6 +229,85 @@ describe("LINE reactive Patient appointment execution", () => {
       "transient-reply-token",
       LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE,
     );
+  });
+
+  it.each([
+    [["OSM"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม"]],
+    [["HOSPITAL"], ["งานโรงพยาบาล"]],
+    [["OSM", "HOSPITAL"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]],
+  ])("replies with the role-aware HELP menu to a workforce-only %j account", async (roles, labels) => {
+    const harness = createHarness();
+    mocks.resolveActorAccessByUserId.mockResolvedValue({ status: "AUTHORIZED", actor: { ...actor, roles } });
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
+    mocks.resolveEligibleLineRoles.mockResolvedValue(roles);
+    const replyText = vi.fn();
+    const replyMessages = vi.fn(async () => {
+      expect(harness.isTransactionActive()).toBe(false);
+    });
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: harness.database,
+      monotonicNow: () => 0,
+      replyText,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_HELP");
+
+    expect(mocks.resolveEligibleLineRoles).toHaveBeenCalledWith("demi-user-id", harness.transaction);
+    expect(replyText).not.toHaveBeenCalled();
+    expect(replyMessages).toHaveBeenCalledOnce();
+    const [token, messages] = replyMessages.mock.calls[0] as unknown as [string, Array<{ text: string; quickReply: { items: Array<{ action: { label: string } }> } }>];
+    expect(token).toBe("transient-reply-token");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
+    expect(messages[0]?.quickReply.items.map(({ action }) => action.label)).toEqual(labels);
+  });
+
+  it.each([
+    ["no eligible role", [], { status: "AUTHORIZED", actor }],
+    ["an inactive account", [], { status: "ACCOUNT_NOT_ACTIVE", accountStatus: "SUSPENDED" }],
+    ["an eligible Patient role", ["PATIENT", "OSM"], { status: "AUTHORIZED", actor }],
+  ])("keeps the Patient INELIGIBLE copy for %s", async (_label, roles, access) => {
+    const harness = createHarness();
+    mocks.resolveActorAccessByUserId.mockResolvedValue(access);
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
+    mocks.resolveEligibleLineRoles.mockResolvedValue(roles);
+    const replyText = vi.fn().mockResolvedValue(undefined);
+    const replyMessages = vi.fn();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: harness.database,
+      monotonicNow: () => 0,
+      replyText,
+      replyMessages,
+    })).resolves.toBe("REFUSED_INELIGIBLE");
+    expect(replyMessages).not.toHaveBeenCalled();
+    expect(replyText).toHaveBeenCalledWith("transient-reply-token", LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE);
+  });
+
+  it("does not resolve workforce roles when the Patient read succeeds", async () => {
+    const harness = createHarness();
+    await executeLineReactiveAppointment(workItem(), {
+      database: harness.database,
+      monotonicNow: () => 0,
+      replyText: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(mocks.resolveEligibleLineRoles).not.toHaveBeenCalled();
+  });
+
+  it("does not reply with the workforce HELP menu after the deadline passes", async () => {
+    const harness = createHarness();
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
+    mocks.resolveEligibleLineRoles.mockResolvedValue(["OSM"]);
+    const monotonicNow = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(45_000);
+    const replyMessages = vi.fn();
+
+    await expect(executeLineReactiveAppointment(workItem(45_000), {
+      database: harness.database,
+      monotonicNow,
+      replyText: vi.fn(),
+      replyMessages,
+    })).resolves.toBe("EXPIRED_BEFORE_REPLY");
+    expect(replyMessages).not.toHaveBeenCalled();
   });
 
   it("does not send a second message after a failed data Reply", async () => {

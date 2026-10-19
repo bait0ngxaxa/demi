@@ -13,24 +13,32 @@ import {
   type PatientSelfNextAppointmentResult,
 } from "@/modules/patient-self/services/patient-self-care-query-service";
 
-import { LineMessagingClient } from "../adapters/line-messaging-client";
+import { LineMessagingClient, type LineReplyMessage } from "../adapters/line-messaging-client";
 import { LineFailure } from "../domain/line-errors";
 import type {
   LineReactiveMonotonicClock,
   LineReactiveOperationalOutcome,
   LineReactiveWorkItem,
 } from "../domain/line-reactive-types";
+import type { OperationalLineRole } from "../domain/line-types";
 import {
   formatLineAppointmentReply,
   LINE_APPOINTMENT_REPLY_COPY,
 } from "../presentation/line-appointment-reply";
+import { buildLineHelpReply } from "../presentation/line-help-reply";
+import { resolveEligibleLineRoles } from "./line-eligibility-service";
 
 export type LineReactiveAppointmentDependencies = {
   readonly database?: PrismaClient;
   readonly monotonicNow?: LineReactiveMonotonicClock;
   readonly captureAsOf?: () => Date;
   readonly replyText?: (replyToken: string, text: string) => Promise<void>;
+  readonly replyMessages?: (replyToken: string, messages: readonly LineReplyMessage[]) => Promise<void>;
 };
+
+type LineReactiveAppointmentRead =
+  | PatientSelfNextAppointmentResult
+  | { status: "WORKFORCE_HELP"; roles: readonly OperationalLineRole[] };
 
 type LineReactiveReplyInput =
   | "INELIGIBLE"
@@ -85,6 +93,33 @@ function safeProviderOutcome(error: unknown): LineReactiveOperationalOutcome {
   return "LINE_PROVIDER_TRANSIENT";
 }
 
+/** A workforce-only account gets its role-aware HELP menu instead of the Patient INELIGIBLE copy. */
+async function replyWorkforceHelp(
+  workItem: LineReactiveWorkItem,
+  roles: readonly OperationalLineRole[],
+  dependencies: LineReactiveAppointmentDependencies,
+  monotonicNow: LineReactiveMonotonicClock,
+): Promise<LineReactiveOperationalOutcome> {
+  let message: LineReplyMessage;
+  let built = true;
+  try {
+    message = buildLineHelpReply(roles);
+  } catch {
+    built = false;
+    message = buildLineHelpReply("INFRASTRUCTURE_FAILURE");
+  }
+  if (!isLineReactiveWorkItemLocallyEligible(workItem, monotonicNow)) {
+    return "EXPIRED_BEFORE_REPLY";
+  }
+  try {
+    await (dependencies.replyMessages ?? ((replyToken, messages) =>
+      defaultMessagingClient.replyMessages(replyToken, messages)))(workItem.replyToken, [message]);
+  } catch (error: unknown) {
+    return safeProviderOutcome(error);
+  }
+  return built ? "COMPLETED_HELP" : "INFRASTRUCTURE_FAILURE";
+}
+
 export async function executeLineReactiveAppointment(
   workItem: LineReactiveWorkItem,
   dependencies: LineReactiveAppointmentDependencies = {},
@@ -94,10 +129,10 @@ export async function executeLineReactiveAppointment(
     return "EXPIRED_BEFORE_QUERY";
   }
 
-  let replyInput: LineReactiveReplyInput;
+  let read: LineReactiveAppointmentRead | "INFRASTRUCTURE_FAILURE";
   try {
-    const result = await (dependencies.database ?? getPrisma()).$transaction(
-      async (transaction): Promise<PatientSelfNextAppointmentResult> => {
+    read = await (dependencies.database ?? getPrisma()).$transaction(
+      async (transaction): Promise<LineReactiveAppointmentRead> => {
         const bindings = await transaction.lineAccountBinding.findMany({
           where: {
             lineUserId: workItem.lineUserId,
@@ -113,15 +148,22 @@ export async function executeLineReactiveAppointment(
           bindings[0].userId,
           createActorContextStore(transaction),
         );
-        if (actorAccess.status !== "AUTHORIZED") {
-          return { status: "INELIGIBLE" };
+        const patientResult: PatientSelfNextAppointmentResult = actorAccess.status === "AUTHORIZED"
+          ? await getOwnNextAppointment(
+              actorAccess.actor,
+              dependencies.captureAsOf ?? (() => new Date()),
+              { database: transaction },
+            )
+          : { status: "INELIGIBLE" };
+        if (patientResult.status !== "INELIGIBLE") {
+          return patientResult;
         }
 
-        return getOwnNextAppointment(
-          actorAccess.actor,
-          dependencies.captureAsOf ?? (() => new Date()),
-          { database: transaction },
-        );
+        // Same eligibility as HELP and the Rich Menu; an account with no eligible role keeps the INELIGIBLE copy.
+        const roles = await resolveEligibleLineRoles(bindings[0].userId, transaction);
+        return roles.length > 0 && !roles.includes("PATIENT")
+          ? { status: "WORKFORCE_HELP", roles }
+          : patientResult;
       },
       {
         isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
@@ -129,10 +171,16 @@ export async function executeLineReactiveAppointment(
         timeout: 5_000,
       },
     );
-    replyInput = replyInputFromPatientResult(result);
   } catch {
-    replyInput = "INFRASTRUCTURE_FAILURE";
+    read = "INFRASTRUCTURE_FAILURE";
   }
+  if (read !== "INFRASTRUCTURE_FAILURE" && read.status === "WORKFORCE_HELP") {
+    return replyWorkforceHelp(workItem, read.roles, dependencies, monotonicNow);
+  }
+
+  const replyInput: LineReactiveReplyInput = read === "INFRASTRUCTURE_FAILURE"
+    ? read
+    : replyInputFromPatientResult(read);
 
   const text = formatLineAppointmentReply(replyInput);
   if (!isLineReactiveWorkItemLocallyEligible(workItem, monotonicNow)) {

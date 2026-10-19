@@ -10,6 +10,15 @@ export function isFamilyDelegatedAppointmentReadEnabled(): boolean {
   return parsed.success && parsed.data === "true";
 }
 
+/**
+ * Medication LINE reminder emergency kill switch, parsed like
+ * DEMI_LINE_MINI_APP_DISABLED: only unset/empty/"false" leaves reminders running.
+ */
+export function isMedicationLineRemindersDisabled(): boolean {
+  const value = process.env.DEMI_LINE_MEDICATION_REMINDERS_DISABLED?.trim();
+  return value !== undefined && value !== "" && value !== "false";
+}
+
 const postgresUrlSchema = z
   .url()
   .refine((value) => value.startsWith("postgres://") || value.startsWith("postgresql://"), {

@@ -7,6 +7,9 @@ import { createPersonalMedication, stopPersonalMedication } from "@/modules/medi
 import { setOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
 import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryInternals } from "@/modules/medications/services/medication-line-reminder-delivery-service";
+import { MEDICATION_LINE_REMINDER_TEXT } from "@/modules/medications/domain/medication-line-reminders";
+import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
+import { runNotificationSchedulerTick } from "@/modules/notification-scheduler/services/notification-scheduler-tick-service";
 import { createSupportReport, getOwnerSupportReport, listOwnerSupportReports, SupportReportRateLimitError, updateOwnerSupportReportStatus } from "@/modules/support/services/support-report-service";
 import { updateOwnContactEmail } from "@/modules/account-settings/services/contact-setting-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
@@ -153,7 +156,7 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     if (!url || process.env.DATABASE_URL !== url || process.env.DIRECT_URL !== url || process.env.NODE_ENV === "production" || !["localhost", "127.0.0.1", "::1"].includes(new URL(url).hostname)) throw new Error("Verified local disposable PostgreSQL required");
     await prisma.$connect(); connected = true;
   });
-  afterEach(async () => { revalidation.beforeEach = () => undefined; await cleanup(); });
+  afterEach(async () => { revalidation.beforeEach = () => undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); await cleanup(); });
   afterAll(async () => { if (connected) { await cleanup(); await prisma.$disconnect(); } });
 
   it("materializes one Bangkok 07:00 occurrence and concurrent drains send one generic LINE message", async () => {
@@ -314,6 +317,85 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(calls).toEqual([]);
     expect(await reminderRows([stoppedSubject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "STALE_SOURCE", attemptCount: 0 }]);
     expect(await reminderRows([disabledSubject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "OPT_IN_REVOKED", attemptCount: 0 }]);
+  });
+
+  it("materializes nothing while the medication reminder kill switch is set and leaves preferences untouched", async () => {
+    const subject = await setupReminderSubject();
+    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "true");
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 0 });
+    expect(await reminderRows([subject.medicationId])).toEqual([]);
+    expect(await prisma.lineMedicationReminderPreference.findUniqueOrThrow({ where: { userId: subject.patient.userId } })).toMatchObject({ enabled: true });
+    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "false");
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, providerAccepted: 1 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("suppresses a row claimed before the kill switch flipped without contacting LINE", async () => {
+    const subject = await setupReminderSubject();
+    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
+    // A worker claimed the row while reminders were enabled and stopped before sending; its lease has expired.
+    await prisma.medicationLineReminderNotification.updateMany({ where: { personalMedicationId: subject.medicationId }, data: { state: "CLAIMED", leaseToken: randomUUID(), leaseExpiresAt: bangkok("2026-10-14T07:02:00.000") } });
+    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "true");
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 1, suppressed: 1, providerAccepted: 0 });
+    expect(calls).toEqual([]);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "REMINDERS_DISABLED", attemptCount: 0, leaseToken: null, terminalAt: reminderNow }]);
+    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "");
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 0 });
+    expect(calls).toEqual([]);
+    expect(await prisma.lineMedicationReminderPreference.findUniqueOrThrow({ where: { userId: subject.patient.userId } })).toMatchObject({ enabled: true });
+  });
+
+  it("re-checks the kill switch immediately before the provider call and releases the reserved attempt", async () => {
+    const subject = await setupReminderSubject();
+    let revalidations = 0;
+    // The second revalidation is the final eligibility check after the attempt was reserved.
+    revalidation.beforeEach = () => { revalidations += 1; if (revalidations === 2) vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "1"); };
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, claimed: 1, suppressed: 1, providerAccepted: 0 });
+    expect(revalidations).toBe(2);
+    expect(calls).toEqual([]);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "REMINDERS_DISABLED", attemptCount: 0, firstAttemptAt: null, lastAttemptAt: null, leaseToken: null }]);
+  });
+
+  it("reports pending medication reminders and the oldest pending age for operators", async () => {
+    const subject = await setupReminderSubject();
+    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
+    const readiness = await getNotificationSchedulerReadiness({ database: prisma, now: bangkok("2026-10-14T07:03:00.000") });
+    expect(readiness.outboxes.medicationLineReminders).toEqual({ pending: 1, oldestPendingAgeSeconds: 120 });
+    expect(JSON.stringify(readiness)).not.toContain(subject.medicationId);
+    expect(JSON.stringify(readiness)).not.toContain(subject.patient.userId);
+  });
+
+  it("keeps identifiers and message content out of scheduler tick and drain logs", async () => {
+    const subject = await setupReminderSubject();
+    await prisma.notificationSchedulerState.update({ where: { id: 1 }, data: { lastTickCompletedAt: null } });
+    const logs = (["log", "info", "warn", "error", "debug"] as const).map((level) => vi.spyOn(console, level).mockImplementation(() => undefined));
+    const calls: PushCall[] = [];
+    try {
+      const result = await runNotificationSchedulerTick({
+        database: prisma,
+        now: () => reminderNow,
+        drainMedication: () => drainMedicationLineReminderOutbox({
+          database: prisma, now: () => reminderNow, random: () => 0.5,
+          push: async (lineUserId, text, retryKey) => { calls.push({ lineUserId, text, retryKey }); return { kind: "ACCEPTED" }; },
+        }),
+      });
+      expect(result).toMatchObject({ status: "COMPLETED", steps: { medicationDrain: { status: "COMPLETED", counts: { materialized: 1, providerAccepted: 1 } }, appointmentDrain: { status: "COMPLETED" }, appointmentPurge: { status: "COMPLETED" }, medicationPurge: { status: "COMPLETED" } } });
+    } finally {
+      await prisma.notificationSchedulerState.update({ where: { id: 1 }, data: { lastTickCompletedAt: null } });
+    }
+    expect(calls).toHaveLength(1);
+    const [row] = await reminderRows([subject.medicationId]);
+    const binding = await prisma.lineAccountBinding.findFirstOrThrow({ where: { userId: subject.patient.userId } });
+    const logged = logs.flatMap((spy) => spy.mock.calls);
+    expect(logged.map(([label]) => label)).toEqual(expect.arrayContaining(["notification_scheduler_tick", "medication_line_reminder_drain", "appointment_line_notification_drain"]));
+    const serialized = JSON.stringify(logged);
+    for (const forbidden of [subject.patient.userId, subject.patient.actor.personId, subject.patient.profileId, subject.patient.relationshipId, subject.medicationId, subject.lineUserId, binding.id, row?.id, row?.scheduleId, row?.retryKey, "ชื่อยาที่ห้ามอยู่ในข้อความ", MEDICATION_LINE_REMINDER_TEXT]) {
+      expect(forbidden).toBeTruthy();
+      expect(serialized).not.toContain(forbidden as string);
+    }
   });
 
   it("routes reports from patient, OSM and staff to the hospital owner and audits status transitions", async () => {

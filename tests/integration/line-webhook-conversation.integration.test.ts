@@ -17,11 +17,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { getPrisma } from "@/lib/db/prisma";
 import type { LineReplyMessage } from "@/modules/line/adapters/line-messaging-client";
 import type { LineHelpWorkItem, LineReactiveOperationalOutcome } from "@/modules/line/domain/line-reactive-types";
+import { LINE_APPOINTMENT_REPLY_COPY } from "@/modules/line/presentation/line-appointment-reply";
 import { LINE_HELP_REPLY_COPY } from "@/modules/line/presentation/line-help-reply";
 import {
   createLineHelpReplyThrottle,
   lineHelpReplyThrottleInternals,
 } from "@/modules/line/services/line-help-reply-throttle";
+import { executeLineReactiveAppointment } from "@/modules/line/services/line-reactive-appointment-service";
 import { executeLineReactiveHelp } from "@/modules/line/services/line-reactive-help-service";
 import { processLineWebhookRequest } from "@/modules/line/services/line-webhook-service";
 import { scheduleLineReactiveWork } from "@/modules/line/transport/line-reactive-scheduler";
@@ -334,5 +336,43 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
     ]);
     expect(replies[1]).toEqual(replies[2]);
     expect(replies[1]?.[0]?.text).toBe(LINE_HELP_REPLY_COPY.INELIGIBLE);
+  });
+
+  it("answers a next-appointment keyword from a workforce-only binding with the role-aware HELP menu", async () => {
+    const workforceLineUserId = subject();
+    const suspendedLineUserId = subject();
+    const unboundLineUserId = subject();
+    await bindLineUser(await createWorkforceUser(), workforceLineUserId);
+    await bindLineUser(await createWorkforceUser(UserStatus.SUSPENDED), suspendedLineUserId);
+    const ids = [webhookEventId(), webhookEventId(), webhookEventId()];
+
+    const result = await processLineWebhookRequest(signedWebhook([
+      textEvent(ids[0] as string, workforceLineUserId, "นัด"),
+      textEvent(ids[1] as string, suspendedLineUserId, "นัดหมาย"),
+      textEvent(ids[2] as string, unboundLineUserId, "นัดถัดไป"),
+    ]), database);
+    expect(result.reactiveWorkItems.map(({ intent }) => intent)).toEqual(["PATIENT_NEXT_APPOINTMENT", "PATIENT_NEXT_APPOINTMENT", "PATIENT_NEXT_APPOINTMENT"]);
+
+    const outcomes = new Map<string, LineReactiveOperationalOutcome>();
+    const messageReplies = new Map<string, readonly LineReplyMessage[]>();
+    const textReplies = new Map<string, string>();
+    for (const item of result.reactiveWorkItems) {
+      outcomes.set(item.lineUserId, await executeLineReactiveAppointment(item, {
+        database,
+        replyMessages: async (_token, messages) => { messageReplies.set(item.lineUserId, messages); },
+        replyText: async (_token, text) => { textReplies.set(item.lineUserId, text); },
+      }));
+    }
+
+    expect(outcomes.get(workforceLineUserId)).toBe("COMPLETED_HELP");
+    expect(textReplies.has(workforceLineUserId)).toBe(false);
+    const help = messageReplies.get(workforceLineUserId)?.[0];
+    expect(help?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
+    expect(help?.quickReply?.items.map(({ action }) => action.label)).toEqual(["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]);
+    for (const ineligible of [suspendedLineUserId, unboundLineUserId]) {
+      expect(outcomes.get(ineligible)).toBe("REFUSED_INELIGIBLE");
+      expect(messageReplies.has(ineligible)).toBe(false);
+      expect(textReplies.get(ineligible)).toBe(LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE);
+    }
   });
 });

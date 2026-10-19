@@ -1342,6 +1342,40 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(await prisma.appointmentLineNotification.findUnique({ where: { id: completed.id } })).toBeNull();
   });
 
+  it("purges only terminal notification rows older than 30 days, oldest first, in batches of at most 100", async () => {
+    const subject = await createAppointmentNotificationSubject("PURGE");
+    const now = new Date();
+    const day = 24 * 60 * 60 * 1000;
+    const ids: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+        database: prisma,
+        appointmentLineNotificationRollout: notificationRollout,
+      });
+      const row = await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId }, select: { id: true } });
+      ids.push(row.id);
+    }
+    const fixtures: Array<[AppointmentLineNotificationState, Date | null]> = [
+      [AppointmentLineNotificationState.PROVIDER_ACCEPTED, new Date(now.getTime() - 40 * day)],
+      [AppointmentLineNotificationState.SUPPRESSED, new Date(now.getTime() - 35 * day)],
+      [AppointmentLineNotificationState.OUTCOME_UNKNOWN, new Date(now.getTime() - 31 * day)],
+      [AppointmentLineNotificationState.PERMANENT_FAILURE, new Date(now.getTime() - 30 * day)],
+      [AppointmentLineNotificationState.RETRY_SCHEDULED, null],
+    ];
+    for (const [index, [state, terminalAt]] of fixtures.entries()) {
+      await prisma.appointmentLineNotification.update({ where: { id: ids[index] }, data: { state, terminalAt } });
+    }
+
+    await expect(purgeTerminalAppointmentLineNotifications({ database: prisma, now, batchSize: 101 })).rejects.toBeInstanceOf(RangeError);
+    expect(await purgeTerminalAppointmentLineNotifications({ database: prisma, now, batchSize: 2 })).toBe(2);
+    expect((await prisma.appointmentLineNotification.findMany({ where: { id: { in: ids } }, select: { id: true } })).map(({ id }) => id).sort())
+      .toEqual(ids.slice(2).sort());
+    expect(await purgeTerminalAppointmentLineNotifications({ database: prisma, now })).toBe(1);
+    expect(await purgeTerminalAppointmentLineNotifications({ database: prisma, now })).toBe(0);
+    expect((await prisma.appointmentLineNotification.findMany({ where: { id: { in: ids } }, select: { id: true } })).map(({ id }) => id).sort())
+      .toEqual([ids[3], ids[4]].sort());
+  });
+
   it("bounds repeated temporary Push rate limits to three attempts with the same key and payload", async () => {
     const subject = await createAppointmentNotificationSubject("RATE_LIMIT");
     let now = new Date();
