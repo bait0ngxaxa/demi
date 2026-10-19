@@ -64,7 +64,7 @@ const messages: Record<LineFailureCode, string> = {
   LINE_TOKEN_INVALID_OR_EXPIRED: "การยืนยัน LINE หมดอายุแล้ว กรุณาลองใหม่",
   LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED: "รายการนี้หมดอายุแล้ว กรุณาเริ่มใหม่",
   DEMI_ACCOUNT_INELIGIBLE: "บัญชี DEMI นี้ยังไม่พร้อมใช้งาน",
-  LINE_BINDING_CONFLICT: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ กรุณาตรวจสอบบัญชีและลองใหม่",
+  LINE_BINDING_CONFLICT: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ หาก LINE นี้หรือบัญชี DEMI นี้ยังเชื่อมกับอีกบัญชีหนึ่ง กรุณายกเลิกการเชื่อมต่อเดิมก่อนแล้วลองใหม่",
   UNLINK_UNAUTHORIZED: "ไม่สามารถยกเลิกการเชื่อมต่อนี้ได้",
   FRIENDSHIP_UNKNOWN_OR_UNAVAILABLE: "ยังตรวจสอบการเพิ่ม DEMI เป็นเพื่อนไม่ได้",
   LINE_PROVIDER_TRANSIENT: "บริการ LINE ยังไม่พร้อม กรุณาลองใหม่ภายหลัง",

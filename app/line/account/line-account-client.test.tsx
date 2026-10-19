@@ -470,7 +470,7 @@ describe("LINE account user experience", () => {
       canUnlink: false,
     }, {
       view: "FAILURE",
-      message: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ กรุณาตรวจสอบบัญชีและลองใหม่",
+      message: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ หาก LINE นี้หรือบัญชี DEMI นี้ยังเชื่อมกับอีกบัญชีหนึ่ง กรุณายกเลิกการเชื่อมต่อเดิมก่อนแล้วลองใหม่",
     });
 
     expect(markup).toContain('role="alert"');

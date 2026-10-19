@@ -147,6 +147,21 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     await recoverLineAccount(await recoveryInput(binding, deps), deps);
     expect((await lifecycle(binding)).every((row) => row.recoveryReleasedAt && row.remoteOutcome === "REMOTE_UNCONFIRMED" && row.applicability === "UNKNOWN")).toBe(true);
   });
+  it("another User can link after the owner's Full Disconnection while the owner's obligations stay on the owner's binding", async () => {
+    const owner = await fixture(); const ownerDeps = dependencies(owner); await unlink(owner, ownerDeps);
+    const pending = await lifecycle(owner);
+    expect(pending.length).toBeGreaterThan(0);
+    const person = await database.person.create({ data: { identityKeyHash: createHash("sha256").update(randomUUID()).digest("hex"), givenName: "ทดสอบ", familyName: "Transfer" } }); people.push(person.id);
+    const other = await database.user.create({ data: { personId: person.id, authSubject: randomUUID(), status: "ACTIVE" } }); users.push(other.id);
+    const otherDeps = dependencies({ ...owner, id: randomUUID(), userId: other.id });
+    const intent = await createLineAccountIntent("LINK", otherDeps);
+    const linked = await linkLineAccount({ ...intent, idToken: "fresh-proof" }, otherDeps);
+    expect(linked.status).toBe("LINKED");
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } })).userId).toBe(other.id);
+    // Never confirmed, cleared or moved by the transfer.
+    expect((await lifecycle(owner)).map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt])).toEqual(pending.map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt]));
+    await expect(createLineAccountIntent("LINK", ownerDeps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+  });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {
     const binding = await fixture(); const deps = dependencies(binding); const intent = await createLineAccountIntent("LINK", deps);
     await unlink(binding, deps); await database.lineAccountBinding.update({ where: { id: binding.id }, data: { unlinkedAt: null, providerCleanupState: null } });

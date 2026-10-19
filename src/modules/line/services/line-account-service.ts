@@ -208,17 +208,16 @@ export async function linkLineAccount(
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.CONFLICT);
         return { status: "CONFLICT" as const, bindingId: userBinding?.id ?? "" };
       }
-      const matchingHistory = await transaction.lineAccountBinding.findFirst({
+      const subjectHistory = await transaction.lineAccountBinding.findMany({
         where: { lineSubjectFingerprint: identity.fingerprint },
-        select: {
-          id: true,
-          userId: true,
-          lineSubjectFingerprint: true,
-          lineSubjectFingerprintKeyId: true,
-          unlinkedAt: true,
-          lifecycleVersion: true,
-        },
+        orderBy: { id: "asc" },
+        select: { id: true, userId: true, unlinkedAt: true, reconcileLeaseExpiresAt: true },
       });
+      for (const history of subjectHistory) {
+        await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${history.id}::uuid FOR UPDATE`;
+      }
+      const matchingHistory = subjectHistory.find((history) => history.userId === session.userId);
+      const otherOwners = subjectHistory.filter((history) => history.userId !== session.userId);
       if (dependencies.enforceRelinkPolicy) {
         // Before both idempotent success and reactivation; serializable retries
         // reread historical obligations rather than carrying a stale permit.
@@ -229,9 +228,28 @@ export async function linkLineAccount(
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.SUCCEEDED);
         return { status: "ALREADY_LINKED" as const, bindingId: userBinding.id, lifecycleVersion: userBinding.lifecycleVersion };
       }
-      if (matchingHistory && matchingHistory.userId !== session.userId) {
+      // Transfer only after the other owner explicitly unlinked; an active foreign
+      // binding (including inaccessible-LINE takeover attempts) stays a conflict.
+      if (otherOwners.some((history) => !history.unlinkedAt)) {
         await consumeIntent(transaction, intent.id, nowOf(dependencies), LineAccountActionOutcome.CONFLICT);
         return { status: "CONFLICT" as const, bindingId: "" };
+      }
+      // An in-flight Rich Menu cleanup for the previous owner could otherwise
+      // remove the new owner's menu; retry once its bounded lease ends.
+      if (otherOwners.some((history) => history.reconcileLeaseExpiresAt && history.reconcileLeaseExpiresAt > nowOf(dependencies))) {
+        throw new LineFailure("LINE_PROVIDER_TRANSIENT");
+      }
+      for (const previous of otherOwners) {
+        // The previous owner's lifecycle history stays on its own binding. Only its
+        // raw cleanup locator is retired: the new binding now owns this LINE user's menu.
+        const retired = await transaction.lineAccountBinding.updateMany({
+          where: { id: previous.id, unlinkedAt: { not: null }, lineUserId: { not: null } },
+          data: { lineUserId: null, providerCleanupState: LineProviderCleanupState.CONFIRMED_CLEAN },
+        });
+        if (retired.count) {
+          await recordAuditEvent({ actorUserId: session.userId, action: "line.account.cleanup.superseded", resourceType: "LineAccountBinding",
+            resourceId: previous.id, metadata: { reason: "LINE_SUBJECT_RELINKED_TO_ANOTHER_ACCOUNT" } }, transaction);
+        }
       }
       const binding = matchingHistory
         ? await transaction.lineAccountBinding.update({

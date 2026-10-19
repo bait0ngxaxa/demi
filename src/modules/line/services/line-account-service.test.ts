@@ -1,6 +1,5 @@
 import {
   LineAccountAction,
-  LineAccountActionOutcome,
   LineMenuSyncState,
   LineProviderCleanupState,
   LineReachability,
@@ -83,8 +82,11 @@ function createLinkHarness(options: {
         }
         return binding;
       }),
-      findMany: vi.fn().mockResolvedValue(bindings),
+      findMany: vi.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => typeof where.lineSubjectFingerprint === "string"
+        ? history.filter((entry) => entry.lineSubjectFingerprint === where.lineSubjectFingerprint)
+        : bindings),
       findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => bindings.find((entry) => entry.id === where.id) ?? binding),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 1 }),
       update: vi.fn().mockResolvedValue({ id: bindingId, lifecycleVersion: 2 }),
     },
@@ -347,23 +349,43 @@ describe("LINE account lifecycle service", () => {
     expect(legacy.tx.lineAccountBinding.create).not.toHaveBeenCalled();
   });
 
-  it("consumes a conflicting cross-user history intent and never transfers the binding", async () => {
+  it("links to a new account only after the previous owner unlinked, retiring just the old cleanup locator", async () => {
     const identity = createLineSubjectFingerprint(lineSubject);
+    const previousOwner = "ca8b9f8d-9084-4b86-9860-c8c95e246d76";
     const historical = {
-      id: bindingId,
-      userId: "ca8b9f8d-9084-4b86-9860-c8c95e246d76",
+      id: "2f6fbd7e-7a54-4a43-9c1f-0d8c1a1e9f10",
+      userId: previousOwner,
       lineSubjectFingerprint: identity.fingerprint,
       lineSubjectFingerprintKeyId: identity.keyId,
       unlinkedAt: now,
       reconcileLeaseExpiresAt: null,
     };
     const harness = createLinkHarness({ history: [historical] });
-    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, dependencies(harness.database))).rejects.toMatchObject({ code: "LINE_BINDING_CONFLICT" });
-    expect(harness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
-    expect(harness.tx.lineAccountActionIntent.update).toHaveBeenCalledWith({
-      where: { id: intentId },
-      data: { consumedAt: now, outcome: LineAccountActionOutcome.CONFLICT },
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, dependencies(harness.database)))
+      .resolves.toEqual({ status: "LINKED", bindingId, lifecycleVersion: 1 });
+    // A new binding for this User; the previous owner's binding (and its lifecycle history) is never reassigned.
+    expect(harness.tx.lineAccountBinding.create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId, lineSubjectFingerprint: identity.fingerprint }) });
+    expect(harness.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+    expect(harness.tx.lineAccountBinding.updateMany).toHaveBeenCalledWith({
+      where: { id: historical.id, unlinkedAt: { not: null }, lineUserId: { not: null } },
+      data: { lineUserId: null, providerCleanupState: LineProviderCleanupState.CONFIRMED_CLEAN },
     });
+    expect(harness.tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      action: "line.account.cleanup.superseded", resourceId: historical.id,
+    }) }));
+  });
+
+  it("asks to retry while the previous owner's Rich Menu cleanup lease is active", async () => {
+    const identity = createLineSubjectFingerprint(lineSubject);
+    const harness = createLinkHarness({ history: [{
+      id: "2f6fbd7e-7a54-4a43-9c1f-0d8c1a1e9f10", userId: "ca8b9f8d-9084-4b86-9860-c8c95e246d76",
+      lineSubjectFingerprint: identity.fingerprint, lineSubjectFingerprintKeyId: identity.keyId,
+      unlinkedAt: now, reconcileLeaseExpiresAt: new Date(now.getTime() + 30_000),
+    }] });
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, dependencies(harness.database)))
+      .rejects.toMatchObject({ code: "LINE_PROVIDER_TRANSIENT" });
+    expect(harness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
+    expect(harness.tx.lineAccountBinding.updateMany).not.toHaveBeenCalled();
   });
 
   it("fails closed on an incompatible retained fingerprint key version using targeted queries", async () => {

@@ -14,6 +14,7 @@ Resolve apparent conflicts in this order: (1) latest confirmed Product Owner dir
 - **Full Disconnection is permanent policy.** The channel inventory is derived on the server from the Account Login channel and, when provisioned, the selected MINI channel; migration readiness is checked from `_prisma_migrations`. Relink with unavailable configuration fails closed (`LINE_CONFIGURATION_MISSING`); legacy revoked bindings without lifecycle rows require Recovery. Rows persisted under the pre-B2.4 tuple format stay distinct, enforceable history and are never remapped.
 - **One MINI availability policy** (kill switch, then a complete valid channel) governs the gateway page, Verify/issuance and every scoped read/mutation. Partial MINI configuration never degrades to Account-only.
 - Provider pairing is not configured: it is enforced by requiring the MINI-audience LINE subject to equal the Account binding subject. Real Provider/Console setup, device UAT and production rollout remain owner-managed and **NOT VERIFIED**.
+- **LINE transfer between DEMI Users (owner decision, same day):** after the current owner explicitly unlinks, another User may link the same LINE through the normal Link flow; the previous owner's binding and lifecycle obligations stay with the previous owner. See the ADR-0009 owner-decision section. Signing out does not unlink LINE.
 
 ## CURRENT-status addendum — Phase LINE-QA.B2.2 scoped Appointment mutations (2026-10-18)
 

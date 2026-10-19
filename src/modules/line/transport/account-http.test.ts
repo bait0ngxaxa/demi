@@ -22,7 +22,7 @@ describe("LINE account HTTP boundary", () => {
     await expect(readAccountJson(tooLarge)).rejects.toMatchObject({ code: "LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED" });
     const response = lineErrorResponse(new LineFailure("LINE_BINDING_CONFLICT"));
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({ error: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ กรุณาตรวจสอบบัญชีและลองใหม่" });
+    await expect(response.json()).resolves.toEqual({ error: "ไม่สามารถเชื่อมบัญชี LINE นี้ได้ หาก LINE นี้หรือบัญชี DEMI นี้ยังเชื่อมกับอีกบัญชีหนึ่ง กรุณายกเลิกการเชื่อมต่อเดิมก่อนแล้วลองใหม่" });
     expect(JSON.stringify(await lineErrorResponse(new LineFailure("LINE_BINDING_CONFLICT")).json())).not.toContain("Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   });
 });

@@ -453,30 +453,64 @@ describe("Phase 17J.1 LINE PostgreSQL invariants", () => {
     expect(await database.lineAccountBinding.count({ where: { userId, unlinkedAt: null } })).toBe(0);
   });
 
-  it("rejects cross-user retained-history takeover but permits explicit same-user relink", async () => {
+  it("transfers a LINE identity to another User only after the owner unlinked, and back the same way", async () => {
     const ownerId = await createUser();
     const otherUserId = await createUser();
     const ownerDependencies = lineAccountDependencies(ownerId);
+    const otherDependencies = lineAccountDependencies(otherUserId);
     const initialIntent = await createLineAccountIntent(LineAccountAction.LINK, ownerDependencies);
     const initial = await linkLineAccount({ ...initialIntent, idToken: "opaque-token-not-persisted" }, ownerDependencies);
-    const unlinkIntent = await createLineAccountIntent(LineAccountAction.UNLINK, ownerDependencies);
-    await unlinkLineAccount(unlinkIntent, ownerDependencies);
 
-    const otherDependencies = lineAccountDependencies(otherUserId);
+    // While the owner's binding is ACTIVE, no other User can take this LINE identity.
     const takeoverIntent = await createLineAccountIntent(LineAccountAction.LINK, otherDependencies);
     await expect(linkLineAccount({ ...takeoverIntent, idToken: "opaque-token-not-persisted" }, otherDependencies))
       .rejects.toMatchObject({ code: "LINE_BINDING_CONFLICT" });
-    expect(await database.lineAccountBinding.count({ where: { userId: otherUserId, unlinkedAt: null } })).toBe(0);
+    expect(await database.lineAccountBinding.count({ where: { userId: otherUserId } })).toBe(0);
 
-    const relinkIntent = await createLineAccountIntent(LineAccountAction.LINK, ownerDependencies);
-    const relinked = await linkLineAccount({ ...relinkIntent, idToken: "opaque-token-not-persisted" }, ownerDependencies);
+    const unlinkIntent = await createLineAccountIntent(LineAccountAction.UNLINK, ownerDependencies);
+    await unlinkLineAccount(unlinkIntent, ownerDependencies);
+    const transferIntent = await createLineAccountIntent(LineAccountAction.LINK, otherDependencies);
+    const transferred = await linkLineAccount({ ...transferIntent, idToken: "opaque-token-not-persisted" }, otherDependencies);
+    expect(transferred).toMatchObject({ status: "LINKED", lifecycleVersion: 1 });
+    expect(transferred.bindingId).not.toBe(initial.bindingId);
+    // The previous owner's binding is never reassigned; only its raw cleanup locator is retired.
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: initial.bindingId } })).toMatchObject({
+      userId: ownerId, lifecycleVersion: 2, lineUserId: null, providerCleanupState: LineProviderCleanupState.CONFIRMED_CLEAN,
+    });
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: transferred.bindingId } })).toMatchObject({
+      userId: otherUserId, unlinkedAt: null, lineUserId: subject("trusted-line-subject"),
+    });
+    expect(await database.auditEvent.count({ where: { action: "line.account.cleanup.superseded", resourceId: initial.bindingId } })).toBe(1);
+
+    // The original owner can take it back the same way, reactivating their own retained binding.
+    await expect(linkLineAccount({ ...(await createLineAccountIntent(LineAccountAction.LINK, ownerDependencies)), idToken: "opaque-token-not-persisted" }, ownerDependencies))
+      .rejects.toMatchObject({ code: "LINE_BINDING_CONFLICT" });
+    await unlinkLineAccount(await createLineAccountIntent(LineAccountAction.UNLINK, otherDependencies), otherDependencies);
+    const relinked = await linkLineAccount({ ...(await createLineAccountIntent(LineAccountAction.LINK, ownerDependencies)), idToken: "opaque-token-not-persisted" }, ownerDependencies);
     expect(relinked).toMatchObject({ status: "LINKED", bindingId: initial.bindingId, lifecycleVersion: 3 });
     const binding = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: initial.bindingId } });
     expect(binding.unlinkedAt).toBeNull();
     expect(binding.providerCleanupState).toBeNull();
-    expect(binding.presentationRole).toBeNull();
-    expect(binding.reachability).toBe(LineReachability.UNKNOWN);
     expect(binding.lineUserId).toBe(subject("trusted-line-subject"));
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: transferred.bindingId } })).toMatchObject({
+      lineUserId: null, providerCleanupState: LineProviderCleanupState.CONFIRMED_CLEAN,
+    });
+  });
+
+  it("does not transfer while the previous owner's Rich Menu cleanup lease is active", async () => {
+    const ownerId = await createUser();
+    const otherUserId = await createUser();
+    const ownerDependencies = lineAccountDependencies(ownerId);
+    const otherDependencies = lineAccountDependencies(otherUserId);
+    const owned = await linkLineAccount({ ...(await createLineAccountIntent(LineAccountAction.LINK, ownerDependencies)), idToken: "opaque-token-not-persisted" }, ownerDependencies);
+    await unlinkLineAccount(await createLineAccountIntent(LineAccountAction.UNLINK, ownerDependencies), ownerDependencies);
+    await database.lineAccountBinding.update({ where: { id: owned.bindingId }, data: {
+      reconcileLeaseToken: randomUUID(), reconcileLeaseExpiresAt: new Date(Date.now() + 60_000),
+    } });
+    await expect(linkLineAccount({ ...(await createLineAccountIntent(LineAccountAction.LINK, otherDependencies)), idToken: "opaque-token-not-persisted" }, otherDependencies))
+      .rejects.toMatchObject({ code: "LINE_PROVIDER_TRANSIENT" });
+    expect(await database.lineAccountBinding.count({ where: { userId: otherUserId } })).toBe(0);
+    expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: owned.bindingId } })).lineUserId).toBe(subject("trusted-line-subject"));
   });
 
   it("uses PostgreSQL uniqueness as the concurrent identity and user race arbiter", async () => {
