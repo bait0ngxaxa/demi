@@ -2,6 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
+import {
+  getPatientSelfLoginHref,
+  PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+} from "@/modules/patient-self/transport/patient-self-session";
 import { ApplicationError } from "@/shared/errors/application-error";
 import { ExerciseCreateConsumedError } from "../domain/exercise-create-consumed-error";
 import { createPersonalExercise, updatePersonalExercise, deletePersonalExercise } from "../services/personal-exercise-service";
@@ -35,7 +40,14 @@ async function perform(form: FormData, operation: ExerciseOperation): Promise<Ex
   } catch (error: unknown) {
     if (error instanceof ExerciseCreateConsumedError) return { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
     if (error instanceof ApplicationError) {
-      if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") return { status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" };
+      if (error.code === "UNAUTHENTICATED") {
+        return {
+          status: "DENIED",
+          message: PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+          loginHref: getPatientSelfLoginHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WELLNESS),
+        };
+      }
+      if (error.code === "FORBIDDEN") return { status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" };
       if (error.code === "NOT_FOUND") return { status: "CONFLICT", message: "ไม่พบรายการที่ต้องการ กรุณาโหลดรายการล่าสุด" };
       if (error.code === "CONFLICT") return { status: "CONFLICT", message: "รายการหรือคำขอนี้เปลี่ยนไปแล้ว กรุณาโหลดรายการล่าสุดก่อนดำเนินการต่อ หากกำลังเพิ่มรายการให้ลองคำขอเดิมอีกครั้ง" };
       if (error.code === "VALIDATION") return { status: "ERROR", message: "กรุณาตรวจสอบกิจกรรม วันที่ ระยะเวลา และบันทึกเพิ่มเติม วันที่ต้องเป็นวันนี้หรือวันที่ผ่านมาแล้ว" };

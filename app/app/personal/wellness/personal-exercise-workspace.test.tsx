@@ -78,4 +78,25 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     const create = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).not.toContain("<fieldset disabled");
     expect(renderToStaticMarkup(<ExerciseEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />)).toContain("<fieldset disabled");
   });
+  it("guards mobile navigation only while an exercise outcome is unconfirmed and separates session expiry from denial", () => {
+    simulation.state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" };
+    const unknown = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
+    expect(unknown).toContain('data-navigation-guard="unknown-outcome"');
+
+    simulation.state = { status: "SUCCESS", message: "บันทึกแล้ว" };
+    expect(renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />)).not.toContain("data-navigation-guard");
+    simulation.state = { status: "IDLE" };
+    expect(renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />)).not.toContain("data-navigation-guard");
+
+    simulation.state = { status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" };
+    const forbidden = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
+    expect(forbidden).toContain("บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้");
+    expect(forbidden).not.toContain("เข้าสู่ระบบ DEMI");
+
+    simulation.state = { status: "DENIED", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
+    const expired = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
+    expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expired).toContain('href="/login"');
+    expect(expired).toContain("เข้าสู่ระบบ DEMI");
+  });
 });

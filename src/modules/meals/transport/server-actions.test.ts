@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { MealCreateConsumedError } from "../domain/meal-create-consumed-error";
 const mock = vi.hoisted(() => ({ actor: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), list: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: mock.revalidate }));
@@ -52,5 +52,18 @@ describe("Meal Server Action boundary", () => {
   it.each([{ error: new ConflictError(), status: "CONFLICT" }, { error: new NotFoundError(), status: "CONFLICT" }, { error: new ForbiddenError(), status: "DENIED" }, { error: new InfrastructureError("secret SQL"), status: "UNCONFIRMED" }, { error: new Error("secret payload"), status: "UNCONFIRMED" }])("safe $status outcome, no false success/invalidation", async ({ error, status }) => {
     mock.create.mockRejectedValue(error); const result = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
     expect(result.status).toBe(status); expect(JSON.stringify(result)).not.toContain("secret"); expect(result.result).toBeUndefined(); expect(mock.revalidate).not.toHaveBeenCalled();
+  });
+  it("shows session expiry with a safe login return and preserves forbidden copy", async () => {
+    mock.actor.mockRejectedValueOnce(new UnauthenticatedError());
+    const expired = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+    expect(expired).toMatchObject({
+      status: "DENIED",
+      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fwellness",
+    });
+
+    mock.actor.mockRejectedValueOnce(new ForbiddenError());
+    const forbidden = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+    expect(forbidden).toEqual({ status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" });
   });
 });

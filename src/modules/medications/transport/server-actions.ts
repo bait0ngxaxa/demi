@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import { ApplicationError } from "@/shared/errors/application-error";
+import {
+  getPatientSelfLoginHref,
+  PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+} from "@/modules/patient-self/transport/patient-self-session";
 import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication, replacePersonalMedicationSchedules } from "../services/personal-medication-service";
 import { personalMedicationCreateSchema, personalMedicationUpdateSchema, personalMedicationStopSchema, personalMedicationScheduleSchema } from "../schemas/personal-medication-schemas";
 import { parseMedicationCreateForm, parseMedicationScheduleForm } from "./schedule-form";
@@ -39,7 +44,14 @@ async function performAction(formData: FormData, operation: "create" | "update" 
     if (error instanceof ApplicationError) {
       if (error.code === "CONFLICT") return { status: "CONFLICT", message: "รายการเปลี่ยนไปแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการต่อ" };
       if (error.code === "NOT_FOUND") return { status: "ERROR", message: "ไม่พบรายการที่ต้องการ" };
-      if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") return { status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" };
+      if (error.code === "UNAUTHENTICATED") {
+        return {
+          status: "ERROR",
+          message: PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+          loginHref: getPatientSelfLoginHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_MEDICATIONS),
+        };
+      }
+      if (error.code === "FORBIDDEN") return { status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" };
       if (error.code === "VALIDATION") return { status: "ERROR", message: "กรุณาตรวจสอบข้อมูลที่กรอก" };
     }
     return { status: "ERROR", message: "ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดรายการล่าสุดเพื่อตรวจสอบก่อนส่งอีกครั้ง", refreshRequired: true };

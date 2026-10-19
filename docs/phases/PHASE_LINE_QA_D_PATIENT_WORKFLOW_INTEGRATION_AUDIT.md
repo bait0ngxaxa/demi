@@ -146,3 +146,23 @@ Observed: no horizontal scroll on any view; after scrolling to the end, the last
 ## 13. Final commit
 
 One commit on `feat/line-qa-d-patient-workflow`: `feat(line): close Patient workflow gaps found in the D audit`. A file cannot record its own commit SHA; use `git log -1 -- docs/phases/PHASE_LINE_QA_D_PATIENT_WORKFLOW_INTEGRATION_AUDIT.md`.
+
+## 14. Phase LINE-QA.D.1 — Unknown outcomes and expired sessions
+
+**Decision:** Q2 yes. Q3 yes.
+
+### Q2 — Guard active unknown outcomes
+
+Exercise and meal feedback registers `UNCONFIRMED` with the existing `data-navigation-guard="unknown-outcome"` contract. Medication feedback registers `refreshRequired` the same way while the user is asked to load the latest list. A confirmed action removes the marker; a reload resets the action state. The C2 bottom-tab and More guard continues to use its existing confirmation dialog, so cancel leaves the route and unknown state in place. No draft tracking or domain mutation behavior was added.
+
+### Q3 — Expired-session prompt
+
+Patient self-service actions now distinguish `UNAUTHENTICATED` from `FORBIDDEN`. An expired session shows **“เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง”** and a sign-in link. Exercise and meals use the fixed Wellness entry, medications use the fixed Medications entry, and appointment interactions use the fixed Appointments entry. Self-measurements have no LINE quick-action entry and use plain `/login`. The return-path helper accepts only `LINE_QUICK_ACTION_RETURN_PATHS` before calling `buildLoginReturnHref`; it rejects other destinations even when they are valid for a different login flow. Existing `FORBIDDEN` copy and all authorization checks remain unchanged.
+
+### Verification
+
+- Focused tests: **13 files / 112 tests passed**, covering the three unknown-outcome states, cancel behavior on a bottom tab and More, action error mapping, and login-return allowlisting.
+- `npm run typecheck` — **passed**.
+- `npx eslint` on changed TypeScript files — **passed with no findings**.
+- Full `npm run test` — **436 files / 4,524 tests passed**.
+- `npm run build` — **passed**, including TypeScript and generation of 48 static pages.

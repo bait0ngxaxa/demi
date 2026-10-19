@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
+import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
@@ -41,9 +42,13 @@ function formatInteractionTime(value: Date): string {
   }).format(value);
 }
 
-function ActionError({ state }: { state: AppointmentInteractionActionState }): React.JSX.Element | null {
+export function PatientAppointmentActionError({ state }: { state: AppointmentInteractionActionState }): React.JSX.Element | null {
   if (state.status !== "ERROR") {
     return null;
+  }
+
+  if (state.loginHref) {
+    return <PatientSelfSessionExpiredAlert className="mt-3" href={state.loginHref} message={state.message} />;
   }
 
   return (
@@ -118,7 +123,7 @@ export function PatientAppointmentInteractionControls({
         {acknowledgementState.status === "SUCCESS" ? (
           <Alert variant="success">บันทึกการรับทราบนัดหมายแล้ว</Alert>
         ) : null}
-        <ActionError state={acknowledgementState} />
+        <PatientAppointmentActionError state={acknowledgementState} />
         <UnknownOutcomeAlert active={acknowledgementUnknown} recovery={{ kind: "resend", onResend: resendAcknowledgement, resending: acknowledgementPending }} />
       </section>
 
@@ -158,7 +163,7 @@ export function PatientAppointmentInteractionControls({
         {cancellationState.status === "SUCCESS" ? (
           <Alert variant="success">ส่งคำขอไปยังโรงพยาบาลแล้ว นัดหมายยังไม่ถูกยกเลิก</Alert>
         ) : null}
-        <ActionError state={cancellationState} />
+        <PatientAppointmentActionError state={cancellationState} />
         <UnknownOutcomeAlert active={cancellationUnknown} recovery={{ kind: "resend", onResend: resendCancellation, resending: cancellationPending }} />
 
         {appointment.cancellationRequests.length > 0 ? (

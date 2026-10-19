@@ -3,6 +3,7 @@ import type { PersonalMedicationDto } from "../domain/personal-medication-defini
 export type PersonalMedicationActionState = {
   status: "IDLE" | "SUCCESS" | "ERROR" | "CONFLICT";
   message?: string;
+  loginHref?: string;
   item?: PersonalMedicationDto;
   fieldErrors?: Partial<Record<"medicationName" | "instructionText" | "times", string>>;
   refreshRequired?: boolean;

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
+import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import type { PersonalMedicationDto, PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
 import { MEDICATION_NAME_RAW_MAX_LENGTH, INSTRUCTION_TEXT_RAW_MAX_LENGTH, MEDICATION_SCHEDULE_MAX_TIMES } from "@/modules/medications/domain/personal-medication-definitions";
 import { personalMedicationScheduleSchema } from "@/modules/medications/schemas/personal-medication-schemas";
@@ -33,7 +34,8 @@ function useMedicationAction(
 
 export function MedicationFeedback({ state }: { state: PersonalMedicationActionState }): React.JSX.Element | null {
   if (!state.message) return null;
-  return <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}
+  if (state.loginHref) return <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} />;
+  return <Alert data-navigation-guard={state.refreshRequired ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}
     {state.status === "CONFLICT" || state.refreshRequired ? <a className="ml-2 underline" href="/app/personal/medications">โหลดรายการล่าสุด</a> : null}
   </Alert>;
 }

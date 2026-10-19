@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication } from "../services/personal-medication-service";
 import { createPersonalMedicationAction as create, updatePersonalMedicationAction as update, stopPersonalMedicationAction as stop } from "./server-actions";
 
@@ -37,5 +37,18 @@ describe("medication actions", () => {
     expect(JSON.stringify(state)).not.toContain("SQL private");
     expect(createPersonalMedication).toHaveBeenCalledTimes(1); expect(revalidatePath).not.toHaveBeenCalled();
     if (!(error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ValidationError)) expect(state.refreshRequired).toBe(true);
+  });
+  it("shows a sign-in prompt after session expiry and keeps forbidden copy", async () => {
+    vi.mocked(createPersonalMedication).mockRejectedValueOnce(new UnauthenticatedError());
+    const expired = await create({ status: "IDLE" }, form({ medicationName: "ยา", times: "[]" }));
+    expect(expired).toMatchObject({
+      status: "ERROR",
+      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fmedications",
+    });
+
+    vi.mocked(createPersonalMedication).mockRejectedValueOnce(new ForbiddenError());
+    const forbidden = await create({ status: "IDLE" }, form({ medicationName: "ยา", times: "[]" }));
+    expect(forbidden).toEqual({ status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" });
   });
 });

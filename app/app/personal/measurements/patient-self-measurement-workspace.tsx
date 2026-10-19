@@ -12,6 +12,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import {
   PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
   PATIENT_SELF_MEASUREMENT_LABEL,
@@ -65,7 +66,7 @@ function CreateForm({ nonce, defaultMeasuredAt }: { nonce: string; defaultMeasur
         </div>
       </fieldset>
       <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
-      {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
+      {state.status === "ERROR" ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert role="alert" variant="danger">{state.message}</Alert> : null}
       {state.status === "SUCCESS" ? <Alert variant="success">{state.message}</Alert> : null}
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <Button disabled={unknownOutcome} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึก"}</Button>
@@ -89,7 +90,7 @@ function DeleteForm({ measurementId }: { measurementId: string }): React.JSX.Ele
     >
       <input name="measurementId" type="hidden" value={measurementId} />
       <Button loading={pending} size="compact" type="submit" variant="danger">{pending ? "กำลังลบ..." : "ลบ"}</Button>
-      {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      {state.status === "ERROR" ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
     </ConfirmableActionForm>
   );
 }

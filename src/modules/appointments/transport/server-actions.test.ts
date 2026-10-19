@@ -2,7 +2,7 @@ import { AppointmentStatus, HospitalStatus, MembershipStatus, MembershipType, Ro
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedCreate = vi.hoisted(() => vi.fn());
@@ -332,6 +332,54 @@ describe("Appointment Server Actions", () => {
     expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
     expect(JSON.stringify(result)).not.toContain("internal stale");
     expect(mockedRevalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("shows a sign-in prompt for expired SELF interaction sessions and preserves forbidden copy", async () => {
+    mockedAcknowledgeSelf.mockRejectedValueOnce(new UnauthenticatedError());
+    const expired = await acknowledgeOwnPatientAppointmentAction(
+      initialAppointmentInteractionActionState,
+      acknowledgementFormData(),
+    );
+    expect(expired).toMatchObject({
+      status: "ERROR",
+      code: "UNAUTHENTICATED",
+      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fappointments",
+    });
+
+    mockedAcknowledgeSelf.mockRejectedValueOnce(new ForbiddenError());
+    const forbidden = await acknowledgeOwnPatientAppointmentAction(
+      initialAppointmentInteractionActionState,
+      acknowledgementFormData(),
+    );
+    expect(forbidden).toEqual({
+      status: "ERROR",
+      code: "FORBIDDEN",
+      message: "บัญชีนี้ไม่มีสิทธิ์จัดการนัดหมายสำหรับผู้ป่วยรายนี้",
+    });
+
+    mockedRequestSelf.mockRejectedValueOnce(new UnauthenticatedError());
+    const expiredCancellation = await requestOwnPatientAppointmentCancellationAction(
+      initialAppointmentInteractionActionState,
+      cancellationRequestFormData(),
+    );
+    expect(expiredCancellation).toMatchObject({
+      status: "ERROR",
+      code: "UNAUTHENTICATED",
+      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fappointments",
+    });
+
+    mockedRequestSelf.mockRejectedValueOnce(new ForbiddenError());
+    const forbiddenCancellation = await requestOwnPatientAppointmentCancellationAction(
+      initialAppointmentInteractionActionState,
+      cancellationRequestFormData(),
+    );
+    expect(forbiddenCancellation).toMatchObject({
+      status: "ERROR",
+      code: "FORBIDDEN",
+      message: "บัญชีนี้ไม่มีสิทธิ์จัดการนัดหมายสำหรับผู้ป่วยรายนี้",
+    });
   });
 
   it.each(["unknown field", "duplicate field", "authority field"])(

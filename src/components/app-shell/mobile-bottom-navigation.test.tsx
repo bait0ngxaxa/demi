@@ -428,5 +428,20 @@ describe("unified mobile bottom navigation", () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("ระบบยังยืนยันผลการบันทึกไม่ได้"));
     expect(dialog()).toBeTruthy();
     expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')?.textContent).toBe("ต้องตรวจสอบผลก่อนออกจากหน้านี้");
+  });
+
+  it("asks before leaving an active unknown outcome through a bottom tab and preserves route and state when cancelled", () => {
+    routerState.unknownOutcome = true;
+    mount("/app/personal/wellness");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    const appointments = container.querySelector<HTMLAnchorElement>('[aria-label="นัดหมาย"]');
+    act(() => appointments?.click());
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("ระบบยังยืนยันผลการบันทึกไม่ได้"));
+    expect(routerState.currentHref).toBe("/app/personal/wellness");
+    expect(container.querySelector('[aria-label="สุขภาพ"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')?.textContent).toBe("ต้องตรวจสอบผลก่อนออกจากหน้านี้");
   });
 });

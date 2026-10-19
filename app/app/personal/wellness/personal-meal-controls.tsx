@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { MEAL_CATEGORIES, MEAL_CATEGORY_LABELS, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { createPersonalMealAction, updatePersonalMealAction, deletePersonalMealAction } from "@/modules/meals/transport/server-actions";
@@ -48,7 +49,7 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
         <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />
         <p id={`${prefix}-description-help`} className="text-sm text-text-muted">{state.fieldErrors?.description ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
     </fieldset>
-    <div ref={feedback} tabIndex={-1} role="status">{state.message ? <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
+    <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
     <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
   </form>;
 }
@@ -67,6 +68,6 @@ export function MealDeleteForm({ item, coordination }: { item: PersonalMealDto; 
       <div className="flex flex-wrap gap-2"><Button ref={confirm} type="submit" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button>
         <Button variant="secondary" disabled={pending} onClick={() => { setConfirming(false); opener.current?.focus(); }}>ยกเลิก</Button></div>
     </form> : null}
-    {state.message ? <div role="status"><Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert></div> : null}
+    {state.message ? <div role="status">{state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert>}</div> : null}
   </div>;
 }

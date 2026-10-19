@@ -74,6 +74,30 @@ describe("Personal medication UI states", () => {
     simulation.state = { status, message: "ผลการดำเนินการ", refreshRequired: status === "ERROR" };
     const html = renderToStaticMarkup(<MedicationEditor />); expect(html).toContain("ผลการดำเนินการ"); expect(html).toContain("disabled");
     expect(html).toContain(status === "SUCCESS" ? "กลับไปดูรายการล่าสุด" : "โหลดรายการล่าสุด");
+    expect(html.includes('data-navigation-guard="unknown-outcome"')).toBe(status === "ERROR");
+  });
+  it("keeps the mobile navigation guard only until an uncertain medication result is reloaded", () => {
+    simulation.state = { status: "ERROR", message: "ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดรายการล่าสุดเพื่อตรวจสอบก่อนส่งอีกครั้ง", refreshRequired: true };
+    const unknown = renderToStaticMarkup(<MedicationEditor />);
+    expect(unknown).toContain('data-navigation-guard="unknown-outcome"');
+    expect(unknown).toContain('href="/app/personal/medications"');
+
+    simulation.state = { status: "SUCCESS", message: "บันทึกรายการแล้ว" };
+    expect(renderToStaticMarkup(<MedicationEditor />)).not.toContain("data-navigation-guard");
+    simulation.state = { status: "IDLE" };
+    expect(renderToStaticMarkup(<MedicationEditor />)).not.toContain("data-navigation-guard");
+
+    simulation.state = { status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" };
+    const forbidden = renderToStaticMarkup(<MedicationEditor />);
+    expect(forbidden).toContain("บัญชีนี้ไม่สามารถเข้าถึงรายการได้");
+    expect(forbidden).not.toContain("เข้าสู่ระบบ DEMI");
+
+    simulation.state = { status: "ERROR", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
+    const expired = renderToStaticMarkup(<MedicationEditor />);
+    expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expired).toContain('href="/login"');
+    expect(expired).toContain("เข้าสู่ระบบ DEMI");
+    expect(expired).not.toContain("โหลดรายการล่าสุด</a>");
   });
   it("renders inaccessible and loading states safely", () => {
     expect(renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} safeError="ไม่พบรายการที่ต้องการ" />)).toContain("ไม่พบรายการที่ต้องการ");

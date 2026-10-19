@@ -21,8 +21,9 @@ export type AppointmentInteractionActionState =
   | { status: "IDLE" }
   | {
       status: "ERROR";
-      code: "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
+      code: "INVALID_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
       message: string;
+      loginHref?: string;
     }
   | {
       status: "SUCCESS";

@@ -3,6 +3,6 @@ import type { ExerciseMutationResult } from "../services/personal-exercise-servi
 
 export type ExerciseActionState = {
   status: "IDLE" | "SUCCESS" | "ERROR" | "CONFLICT" | "CREATE_CONSUMED" | "DENIED" | "UNCONFIRMED";
-  message?: string; result?: ExerciseMutationResult; page?: PersonalExercisePage;
+  message?: string; loginHref?: string; result?: ExerciseMutationResult; page?: PersonalExercisePage;
   fieldErrors?: Partial<Record<"activityName" | "occurredOn" | "durationMinutes" | "note", string>>;
 };

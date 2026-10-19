@@ -5,6 +5,11 @@ import type { ZodType } from "zod";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
+import {
+  getPatientSelfLoginHref,
+  PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+} from "@/modules/patient-self/transport/patient-self-session";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -377,6 +382,15 @@ async function runInteractionAction(
 
     return { status: "SUCCESS", ...result };
   } catch (error: unknown) {
+    if (audience === "self" && error instanceof ApplicationError && error.code === "UNAUTHENTICATED") {
+      return {
+        status: "ERROR",
+        code: "UNAUTHENTICATED",
+        message: PATIENT_SELF_SESSION_EXPIRED_MESSAGE,
+        loginHref: getPatientSelfLoginHref(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_APPOINTMENTS),
+      };
+    }
+
     return { status: "ERROR", ...mapAppointmentError(error, "interaction") };
   }
 }

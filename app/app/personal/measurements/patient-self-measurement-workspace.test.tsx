@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 type ActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS"; message: string }
-  | { status: "ERROR"; message: string };
+  | { status: "ERROR"; message: string; loginHref?: string };
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn<(previous: ActionState, formData: FormData) => Promise<ActionState>>(),
@@ -93,5 +93,27 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(records.size).toBe(1);
     expect(query('[role="status"]').textContent).toContain("บันทึกแล้ว");
     expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("renders session expiry with sign-in and keeps forbidden access copy", async () => {
+    mocks.create.mockResolvedValueOnce({
+      status: "ERROR",
+      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      loginHref: "/login",
+    });
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(query('[role="alert"]').textContent).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(query<HTMLAnchorElement>('[role="alert"] a').getAttribute("href")).toBe("/login");
+
+    mocks.create.mockResolvedValueOnce({
+      status: "ERROR",
+      message: "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้",
+    });
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(query('[role="alert"]').textContent).toContain("บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้");
+    expect(container.querySelector('[role="alert"] a')).toBeNull();
   });
 });

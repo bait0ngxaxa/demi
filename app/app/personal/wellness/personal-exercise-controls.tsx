@@ -3,6 +3,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
+import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { EXERCISE_DURATION_MAX, EXERCISE_ACTIVITY_RAW_MAX, EXERCISE_NOTE_RAW_MAX, type PersonalExerciseDto } from "@/modules/exercises/domain/personal-exercise";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
 import { createPersonalExerciseAction, updatePersonalExerciseAction, deletePersonalExerciseAction } from "@/modules/exercises/transport/server-actions";
@@ -50,7 +51,7 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
         <textarea id={`${prefix}-note`} className={`${inputClassName} py-3`} name="note" rows={4} maxLength={EXERCISE_NOTE_RAW_MAX} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.note)} aria-describedby={`${prefix}-note-help`} />
         <p id={`${prefix}-note-help`} className="text-sm text-text-muted">{state.fieldErrors?.note ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
     </fieldset>
-    <div ref={feedback} tabIndex={-1} role="status">{state.message ? <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
+    <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
     <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
   </form>;
 }
@@ -69,6 +70,6 @@ export function ExerciseDeleteForm({ item, coordination }: { item: PersonalExerc
       <div className="flex flex-wrap gap-2"><Button ref={confirm} type="submit" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button>
         <Button variant="secondary" disabled={pending} onClick={() => { setConfirming(false); opener.current?.focus(); }}>ยกเลิก</Button></div>
     </form> : null}
-    {state.message ? <div role="status"><Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert></div> : null}
+    {state.message ? <div role="status">{state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert>}</div> : null}
   </div>;
 }
