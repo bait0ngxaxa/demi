@@ -26,6 +26,7 @@ import {
 import {
   listOwnPatientRelationshipNavigation,
 } from "../services/patient-self-query-service";
+import { PATIENT_ACCESS_UNAVAILABLE, type PatientAccessUnavailable } from "./patient-access-unavailable";
 
 async function resolveActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {
@@ -43,10 +44,11 @@ async function resolveActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   }
 }
 
-async function withPatientSelfPageContext<T>(
+async function withPatientSelfPageContext<T, D = never>(
   load: (actor: ActorContext) => Promise<T>,
   returnTo?: LoginReturnTo,
-): Promise<T> {
+  denied?: D,
+): Promise<T | D> {
   const actor = await resolveActor(returnTo);
 
   try {
@@ -57,6 +59,7 @@ async function withPatientSelfPageContext<T>(
     }
 
     if (error instanceof ForbiddenError) {
+      if (denied !== undefined) return denied;
       redirect("/app");
     }
 
@@ -68,12 +71,17 @@ async function withPatientSelfPageContext<T>(
   }
 }
 
+/** Rich Menu entry: a denied SELF read renders an explanatory state instead of redirecting. */
 export async function getPatientSelfRelationshipNavigationPageContext(
   returnTo?: LoginReturnTo,
 ): Promise<
-  Awaited<ReturnType<typeof listOwnPatientRelationshipNavigation>>
+  Awaited<ReturnType<typeof listOwnPatientRelationshipNavigation>> | PatientAccessUnavailable
 > {
-  return withPatientSelfPageContext((actor) => listOwnPatientRelationshipNavigation(actor), returnTo);
+  return withPatientSelfPageContext(
+    (actor) => listOwnPatientRelationshipNavigation(actor),
+    returnTo,
+    PATIENT_ACCESS_UNAVAILABLE,
+  );
 }
 
 export async function getPatientSelfCareJourneyPageContext(

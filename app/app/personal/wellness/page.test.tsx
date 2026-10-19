@@ -22,8 +22,11 @@ describe("private Wellness page", () => {
     expect(second.props.mealNonce).not.toBe(first.props.mealNonce);
     expect(JSON.stringify(first.props)).not.toMatch(/userId|personId|patientProfileId/u);
   });
-  it.each(["list", "exercises", "weightGoal"] as const)("renders neither private section when %s denies", async (service) => {
-    mock[service].mockRejectedValue(new ForbiddenError()); await expect(Page()).rejects.toThrow("redirect:/app");
+  it.each(["list", "exercises", "weightGoal"] as const)("renders neither private section when %s denies, explaining instead of redirecting", async (service) => {
+    mock[service].mockRejectedValue(new ForbiddenError());
+    const html = renderToStaticMarkup(await Page());
+    expect(html).toContain("บัญชีนี้ยังเปิดข้อมูลผู้ป่วยไม่ได้"); expect(html).toContain(">สุขภาพ</h1>"); expect(html).not.toContain("ข้อมูลที่คุณบันทึก");
+    expect(mock.redirect).not.toHaveBeenCalled();
   });
   it.each([{ error: new UnauthenticatedError(), path: "/login" }, { error: new ForbiddenError(), path: "/app" }])("denies safely via $path", async ({ error, path }) => {
     mock.actor.mockRejectedValue(error); await expect(Page()).rejects.toThrow(`redirect:${path}`); expect(mock.list).not.toHaveBeenCalled(); expect(mock.exercises).not.toHaveBeenCalled();

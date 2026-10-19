@@ -13,6 +13,7 @@ import {
   getPatientPersonalHomePageContext,
   getPatientSelfPageContext,
 } from "@/modules/patient-self/transport/patient-self-page-context";
+import { PATIENT_ACCESS_UNAVAILABLE } from "@/modules/patient-self/transport/patient-access-unavailable";
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: ComponentProps<"a"> & { prefetch?: boolean }) => createElement("a", { "data-prefetch": String(prefetch), ...props }) }));
@@ -219,6 +220,25 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
     expect(markup).toContain('href="/app/personal"');
     expect(markup).not.toMatch(/href="\/app\/personal\/(?:care|appointments)\//u);
+  });
+
+  it.each([
+    { page: PersonalHomePage, title: "พื้นที่ส่วนตัว" },
+    { page: PersonalCarePage, title: "ข้อมูลการดูแล" },
+    { page: PersonalAppointmentsPage, title: "นัดหมาย" },
+  ])("explains a denied $title entry instead of redirecting, without Patient data", async ({ page, title }) => {
+    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
+    vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
+    const markup = renderToStaticMarkup(await page());
+    expect(markup).toContain(`>${title}</h1>`);
+    expect(markup).toContain("บัญชีนี้ยังเปิดข้อมูลผู้ป่วยไม่ได้");
+    expect(markup).toContain("เข้าสู่ระบบด้วยบัญชีผู้ป่วยของคุณ");
+    expect(markup).toContain('href="/app"');
+    expect(markup).toContain("ออกจากระบบ");
+    expect(markup).not.toMatch(/href="\/app\/personal/u);
+    expect(markup).not.toContain("โรงพยาบาล ก");
+    expect(markup).not.toContain("HN-001");
+    expect(scheduleCurrentLineAccountReconciliation).not.toHaveBeenCalled();
   });
 
   it("shows an explicit incomplete state without fabricating profile values", async () => {

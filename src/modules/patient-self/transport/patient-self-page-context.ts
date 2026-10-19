@@ -17,6 +17,8 @@ import {
 } from "@/modules/hospital-contact/services/hospital-contact-service";
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
 
+import { PATIENT_ACCESS_UNAVAILABLE, type PatientAccessUnavailable } from "./patient-access-unavailable";
+
 export type PatientSelfContactAvailability =
   | { status: "AVAILABLE"; contact: PatientHospitalContactProjection }
   | { status: "UNAVAILABLE" };
@@ -62,9 +64,10 @@ export async function getPatientSelfPageContext(): Promise<PatientSelfContext | 
   return resolvePatientContext(actor);
 }
 
+/** Rich Menu entry: a denied SELF read renders an explanatory state instead of redirecting. */
 export async function getPatientPersonalHomePageContext(
   returnTo?: LoginReturnTo,
-): Promise<PatientPersonalHomePageContext | null> {
+): Promise<PatientPersonalHomePageContext | PatientAccessUnavailable | null> {
   const actor = await getPatientActor(returnTo);
 
   try {
@@ -94,7 +97,7 @@ export async function getPatientPersonalHomePageContext(
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
-      redirect("/app");
+      return PATIENT_ACCESS_UNAVAILABLE;
     }
 
     if (error instanceof NotFoundError) {

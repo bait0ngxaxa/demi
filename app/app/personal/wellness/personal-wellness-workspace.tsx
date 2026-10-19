@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import type { PersonalMealPage } from "@/modules/meals/domain/personal-meal";
@@ -37,6 +38,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   return <div className="max-w-4xl space-y-8">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
     <nav aria-label="หัวข้อสุขภาพ" className="flex flex-wrap gap-2"><a className={linkClassName} href="#meal">อาหาร</a><a className={linkClassName} href="#exercise">การออกกำลังกาย</a><a className={linkClassName} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
+    <p className="text-sm leading-6 text-text-muted">บันทึกน้ำหนัก ความดัน และน้ำตาลที่คุณวัดเองได้ที่ <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/personal/measurements">ตัวฉันในตอนนี้</Link></p>
     <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace initialPage={session.mealPage} today={today} initialNonce={session.mealNonce} authority={authority} /></section>
     <section id="exercise" aria-label="การออกกำลังกาย" className="scroll-mt-24 border-t border-border pt-8"><PersonalExerciseWorkspace initialPage={session.exercisePage} today={today} initialNonce={session.exerciseNonce} authority={authority} /></section>
     <section id="weight-goal" aria-label="เป้าหมายน้ำหนัก" className="scroll-mt-24 border-t border-border pt-8"><PersonalWeightGoalWorkspace initialGoal={session.weightGoal} initialNonce={session.weightGoalNonce} authority={authority} /></section>

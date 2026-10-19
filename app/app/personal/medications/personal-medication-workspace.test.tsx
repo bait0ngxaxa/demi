@@ -27,6 +27,21 @@ describe("Personal medication UI states", () => {
     for (const preset of ["เช้า 07:00", "กลางวัน 12:00", "เย็น 18:00", "ก่อนนอน 21:00"]) expect(html).toContain(preset);
     for (const excluded of ["หยุดยาแล้ว", "หยุดรับประทานยา", "แพทย์สั่ง", "ยาที่ได้รับการรับรอง", "รายการยาจากโรงพยาบาล", "ลบรายการ", "caregiver", "schedule", "doseAmount", "prescriber"]) expect(html).not.toContain(excluded);
   });
+  it.each([
+    { reminder: { enabled: true, canEnable: true }, state: "เปิด", unbound: false },
+    { reminder: { enabled: false, canEnable: true }, state: "ปิด", unbound: false },
+    { reminder: { enabled: false, canEnable: false }, state: "ปิด", unbound: true },
+  ])("reads back the LINE reminder preference ($state) and links to Settings without a toggle", ({ reminder, state, unbound }) => {
+    const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} reminder={reminder} />);
+    expect(html).toContain(`การแจ้งเตือนยาทาง LINE: ${state}`);
+    expect(html).toContain('href="/app/settings"');
+    expect(html.includes("เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้")).toBe(unbound);
+    expect(html).not.toContain("เปิดการแจ้งเตือนยา</button>");
+  });
+  it("shows no reminder state when none was read back", () => {
+    const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} />);
+    expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
+  });
   it("renders distinct text statuses, escaped user text and cursor continuation", () => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: item.id }} stopped={{ items: [{ ...item, id: "stopped", status: "STOPPED", stoppedAt: item.updatedAt }], nextCursor: item.id }} selected={null} />);
     expect(html).toContain("กำลังติดตาม"); expect(html).toContain("หยุดติดตามแล้ว"); expect(html).toContain("activeCursor="); expect(html).toContain("stoppedCursor=");

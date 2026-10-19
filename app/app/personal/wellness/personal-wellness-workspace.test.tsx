@@ -17,4 +17,8 @@ describe("Wellness composition", () => {
     for (const text of ["คะแนน", "แคลอรี", "Goal", "patientProfileId", "personId", "userId", "33333333-3333-4333-8333-333333333333"]) expect(html).not.toContain(text);
     expect(html).not.toMatch(/type="date"[^>]*\smax=/u);
   });
+  it("links the Rich Menu Wellness destination to self-measurements", () => {
+    const html = renderToStaticMarkup(<PersonalWellnessWorkspace mealPage={{ items: [], nextCursor: null }} exercisePage={{ items: [], nextCursor: null }} weightGoal={null} today="2026-10-04" mealNonce="11111111-1111-4111-8111-111111111111" exerciseNonce="22222222-2222-4222-8222-222222222222" weightGoalNonce="33333333-3333-4333-8333-333333333333" />);
+    expect(html).toMatch(/<a[^>]*href="\/app\/personal\/measurements"[^>]*>ตัวฉันในตอนนี้<\/a>/u);
+  });
 });

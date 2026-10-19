@@ -11,6 +11,7 @@ import {
   getPatientSelfHospitalProfilePageContext,
   getPatientSelfPageContext,
 } from "./patient-self-page-context";
+import { PATIENT_ACCESS_UNAVAILABLE } from "./patient-access-unavailable";
 
 const { mockedRedirect, mockedNotFound } = vi.hoisted(() => ({
   mockedRedirect: vi.fn(),
@@ -180,6 +181,23 @@ describe("Patient self page context", () => {
 
     await expect(getPatientSelfPageContext()).rejects.toThrow("NEXT_REDIRECT:/app");
     expect(mockedRedirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("returns the explanatory denied decision for a Patient home entry without redirecting", async () => {
+    vi.mocked(resolveOwnPatientContext).mockRejectedValue(new ForbiddenError());
+
+    await expect(getPatientPersonalHomePageContext(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WORKSPACE))
+      .resolves.toBe(PATIENT_ACCESS_UNAVAILABLE);
+    expect(mockedRedirect).not.toHaveBeenCalled();
+    expect(listOwnPatientHospitalContacts).not.toHaveBeenCalled();
+  });
+
+  it("still sends an account without application access to login from the Patient home entry", async () => {
+    vi.mocked(getProtectedApplicationActor).mockRejectedValue(new ForbiddenError());
+
+    await expect(getPatientPersonalHomePageContext(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WORKSPACE))
+      .rejects.toThrow("NEXT_REDIRECT:/login");
+    expect(resolveOwnPatientContext).not.toHaveBeenCalled();
   });
 
   it("resolves the exact server-verified Hospital relationship for self edit", async () => {

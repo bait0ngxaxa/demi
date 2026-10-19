@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PersonalMedicationDetailDto, PersonalMedicationPage } from "@/modules/medications/domain/personal-medication-definitions";
 import type { PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
+import type { OwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
 import { MedicationEditor, MedicationStopForm, MedicationScheduleEditor, MedicationFeedback } from "./personal-medication-controls";
 
 function SelectedMedicationForms({ item, onFeedback }: { item: PersonalMedicationDetailDto; onFeedback: (state: PersonalMedicationActionState) => void }): React.JSX.Element {
@@ -41,13 +42,24 @@ function MedicationList({ page, status }: { page: PersonalMedicationPage; status
   </section>;
 }
 
-export function PersonalMedicationWorkspace({ active, stopped, selected, safeError }: {
+/** Read-only readback of the LINE reminder preference; changes stay in Settings. */
+function MedicationReminderStatus({ reminder }: { reminder: OwnMedicationLineReminderPreference }): React.JSX.Element {
+  return <section aria-labelledby="medication-reminder-status-heading" className="space-y-2 rounded-panel border border-border bg-surface px-5 py-4">
+    <h2 id="medication-reminder-status-heading" className="text-base font-semibold text-text">การแจ้งเตือนยาทาง LINE: {reminder.enabled ? "เปิด" : "ปิด"}</h2>
+    {!reminder.enabled && !reminder.canEnable ? <p className="text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้</p> : null}
+    <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/settings">ตั้งค่าการแจ้งเตือนยา</Link>
+  </section>;
+}
+
+export function PersonalMedicationWorkspace({ active, stopped, selected, safeError, reminder = null }: {
   active: PersonalMedicationPage; stopped: PersonalMedicationPage; selected: PersonalMedicationDetailDto | null; safeError?: string;
+  reminder?: OwnMedicationLineReminderPreference | null;
 }): React.JSX.Element {
   const [feedback, setFeedback] = useState<PersonalMedicationActionState>({ status: "IDLE" });
   return <div className="max-w-4xl space-y-6">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ยาของฉัน" }]} title="ยาของฉัน" description="รายการยาที่คุณบันทึก" />
     <p className="max-w-prose text-text-muted">ใช้ติดตามรายการส่วนตัวใน DEMI ข้อความประกอบเป็นข้อมูลที่คุณกรอก ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
+    {reminder ? <MedicationReminderStatus reminder={reminder} /> : null}
     {safeError ? <Alert variant="danger">{safeError} <Link className="underline" href="/app/personal/medications">โหลดรายการล่าสุด</Link></Alert> : null}
     {selected && feedback.item?.id === selected.id ? <div role="status"><MedicationFeedback state={feedback} /></div> : null}
     {selected ? <section id="medication-detail" aria-labelledby="medication-detail-heading"><Panel><div className="space-y-4">

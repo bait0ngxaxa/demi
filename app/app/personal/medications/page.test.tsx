@@ -4,16 +4,18 @@ import { connection } from "next/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { listOwnPersonalMedications, getOwnPersonalMedication } from "@/modules/medications/services/personal-medication-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { getOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
 import Page from "./page";
 
 vi.mock("next/server", () => ({ connection: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: vi.fn() }));
 vi.mock("@/modules/medications/services/personal-medication-query-service", () => ({ listOwnPersonalMedications: vi.fn(), getOwnPersonalMedication: vi.fn() }));
+vi.mock("@/modules/medications/services/medication-line-reminder-preference-service", () => ({ getOwnMedicationLineReminderPreference: vi.fn() }));
 vi.mock("./personal-medication-controls", () => ({ MedicationEditor: () => <div>เพิ่มรายการ</div>, MedicationStopForm: () => <div>หยุดติดตาม</div> }));
 const actor = { userId: "user", personId: "person", roles: ["PATIENT" as const], hospitalMemberships: [], osmHospitalRelationships: [] };
 describe("request-time protected medication page", () => {
-  beforeEach(() => { vi.resetAllMocks(); vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor); vi.mocked(listOwnPersonalMedications).mockResolvedValue({ items: [], nextCursor: null }); });
+  beforeEach(() => { vi.resetAllMocks(); vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor); vi.mocked(listOwnPersonalMedications).mockResolvedValue({ items: [], nextCursor: null }); vi.mocked(getOwnMedicationLineReminderPreference).mockResolvedValue({ enabled: true, canEnable: true }); });
   it("awaits connection before actor and authorizes both bounded lists", async () => {
     expect(renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }))).toContain("ยาของฉัน");
     expect(connection).toHaveBeenCalledOnce(); expect(vi.mocked(connection).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(getProtectedApplicationActor).mock.invocationCallOrder[0]);
@@ -23,6 +25,22 @@ describe("request-time protected medication page", () => {
   it.each([[new UnauthenticatedError(), "/login"], [new ForbiddenError(), "/app"]] as const)("redirects safe auth errors", async (error, path) => {
     vi.mocked(getProtectedApplicationActor).mockRejectedValue(error);
     await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow(`redirect:${path}`);
+  });
+  it("explains a denied SELF read instead of redirecting, without private data", async () => {
+    vi.mocked(listOwnPersonalMedications).mockRejectedValue(new ForbiddenError());
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain("บัญชีนี้ยังเปิดข้อมูลผู้ป่วยไม่ได้"); expect(html).toContain(">ยาของฉัน</h1>");
+    expect(html).not.toContain("กำลังติดตาม"); expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
+  });
+  it("reads back the current LINE reminder preference for the own account", async () => {
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(getOwnMedicationLineReminderPreference).toHaveBeenCalledWith(actor);
+    expect(html).toContain("การแจ้งเตือนยาทาง LINE: เปิด"); expect(html).toContain('href="/app/settings"');
+  });
+  it("omits the reminder readback for an account that is not eligible for reminders", async () => {
+    vi.mocked(getOwnMedicationLineReminderPreference).mockRejectedValue(new ForbiddenError());
+    const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain("ยังไม่มีรายการที่กำลังติดตาม"); expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
   });
   it("uses safe identical not-found presentation for foreign item/cursor", async () => {
     vi.mocked(getOwnPersonalMedication).mockRejectedValue(new NotFoundError());

@@ -261,6 +261,14 @@ describe("Patient Personal care read views", () => {
     expect(renderToStaticMarkup(<PatientSelfGoalPlanDetailView detail={goalPlanDetail} />)).not.toContain("<form");
   });
 
+  it("gives every care history link a 44px touch target", () => {
+    const markup = renderToStaticMarkup(<PatientSelfCareJourneyView journey={journey} />);
+    const historyLinks = markup.match(/<a[^>]*href="\/app\/personal\/care\/[^"]+\/(?:programs|goal-plans|followups)\/[^"]+"[^>]*>/gu) ?? [];
+
+    expect(historyLinks).toHaveLength(3);
+    for (const link of historyLinks) expect(link).toMatch(/class="[^"]*\binline-flex min-h-11\b/u);
+  });
+
   it("presents Program and Final records as workflow facts without an outcome judgment", () => {
     const markup = renderToStaticMarkup(
       <PatientSelfProgramDetailView detail={programDetail} relationshipId={ownRelationship.relationshipId} />,

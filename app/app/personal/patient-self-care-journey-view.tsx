@@ -24,7 +24,7 @@ import {
 } from "./patient-self-care-presentation";
 
 const linkClassName =
-  "font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
+  "inline-flex min-h-11 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
 
 function programContextText(program: PatientSelfGoalPlanHistoryItem["program"]): string {
   if (!program) {
