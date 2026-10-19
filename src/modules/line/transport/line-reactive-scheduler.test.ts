@@ -1,15 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LineReactiveWorkItem } from "../domain/line-reactive-types";
+import type {
+  LineHelpWorkItem,
+  LineReactiveOperationalOutcome,
+  LineReactiveWorkItem,
+} from "../domain/line-reactive-types";
 
 const mocks = vi.hoisted(() => ({
   state: { callbacks: [] as Array<() => void | Promise<void>> },
   after: vi.fn((callback: () => void | Promise<void>) => {
     mocks.state.callbacks.push(callback);
   }),
+  executeLineReactiveAppointment: vi.fn(),
+  executeLineReactiveHelp: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ after: mocks.after }));
+vi.mock("../services/line-reactive-appointment-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/line-reactive-appointment-service")>()),
+  executeLineReactiveAppointment: mocks.executeLineReactiveAppointment,
+}));
+vi.mock("../services/line-reactive-help-service", () => ({
+  executeLineReactiveHelp: mocks.executeLineReactiveHelp,
+}));
 
 import {
   MAX_LINE_REACTIVE_WORKERS_PER_REQUEST,
@@ -26,6 +39,10 @@ function workItem(index: number, deadline = 45_000): LineReactiveWorkItem {
     replyToken: `reply-token-${index}`,
     isRedelivery: false,
   };
+}
+
+function helpWorkItem(index: number, throttled = false): LineHelpWorkItem {
+  return { ...workItem(index), intent: "HELP", throttled };
 }
 
 describe("LINE transient reactive scheduler", () => {
@@ -62,9 +79,10 @@ describe("LINE transient reactive scheduler", () => {
       }
       await gate;
       active -= 1;
+      return "COMPLETED_EMPTY" as const;
     });
 
-    scheduleLineReactiveWork(items, { execute, monotonicNow: () => 0 });
+    scheduleLineReactiveWork(items, { execute, monotonicNow: () => 0, logSummary: vi.fn() });
     const afterCallback = mocks.state.callbacks[0];
     if (!afterCallback) throw new Error("Expected one after() callback");
     const completion = Promise.resolve(afterCallback());
@@ -88,9 +106,10 @@ describe("LINE transient reactive scheduler", () => {
       if (item.webhookEventId === "event-2") {
         throw new Error("private transient job failure");
       }
+      return "COMPLETED_EMPTY" as const;
     });
 
-    scheduleLineReactiveWork(items, { execute, monotonicNow: () => 0 });
+    scheduleLineReactiveWork(items, { execute, monotonicNow: () => 0, logSummary: vi.fn() });
     const afterCallback = mocks.state.callbacks[0];
     if (!afterCallback) throw new Error("Expected one after() callback");
 
@@ -100,16 +119,61 @@ describe("LINE transient reactive scheduler", () => {
   });
 
   it("skips queued work that is already locally expired", async () => {
-    const execute = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn().mockResolvedValue("COMPLETED_EMPTY");
     scheduleLineReactiveWork([workItem(0, 10)], {
       execute,
       monotonicNow: () => 10,
+      logSummary: vi.fn(),
     });
     const afterCallback = mocks.state.callbacks[0];
     if (!afterCallback) throw new Error("Expected one after() callback");
 
     await expect(afterCallback()).resolves.toBeUndefined();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("dispatches each intent to its own executor and appointment work stays on the existing executor", async () => {
+    mocks.executeLineReactiveAppointment.mockResolvedValue("COMPLETED_EMPTY");
+    mocks.executeLineReactiveHelp.mockResolvedValue("COMPLETED_HELP");
+    const appointment = workItem(0);
+    const help = helpWorkItem(1, true);
+
+    scheduleLineReactiveWork([appointment, help], { monotonicNow: () => 0, logSummary: vi.fn() });
+    await mocks.state.callbacks[0]?.();
+
+    expect(mocks.executeLineReactiveAppointment).toHaveBeenCalledOnce();
+    expect(mocks.executeLineReactiveAppointment).toHaveBeenCalledWith(appointment, { monotonicNow: expect.any(Function) });
+    expect(mocks.executeLineReactiveHelp).toHaveBeenCalledOnce();
+    expect(mocks.executeLineReactiveHelp).toHaveBeenCalledWith(help, { monotonicNow: expect.any(Function) });
+  });
+
+  it("logs one aggregate outcome summary per intent without identifiers or content", async () => {
+    const outcomes = new Map<string, LineReactiveOperationalOutcome>([
+      ["event-0", "COMPLETED_WITH_APPOINTMENT"],
+      ["event-1", "COMPLETED_HELP"],
+      ["event-2", "THROTTLED"],
+      ["event-3", "THROTTLED"],
+    ]);
+    const execute = vi.fn(async (item: LineReactiveWorkItem): Promise<LineReactiveOperationalOutcome> => {
+      const outcome = outcomes.get(item.webhookEventId);
+      if (!outcome) throw new Error("private failure detail");
+      return outcome;
+    });
+    const logSummary = vi.fn();
+
+    scheduleLineReactiveWork(
+      [workItem(0), helpWorkItem(1), helpWorkItem(2, true), helpWorkItem(3, true), helpWorkItem(4), workItem(5, 0)],
+      { execute, monotonicNow: () => 0, logSummary },
+    );
+    await mocks.state.callbacks[0]?.();
+
+    expect(logSummary).toHaveBeenCalledOnce();
+    const summary: unknown = logSummary.mock.calls[0]?.[0];
+    expect(summary).toEqual({
+      PATIENT_NEXT_APPOINTMENT: { COMPLETED_WITH_APPOINTMENT: 1, EXPIRED_BEFORE_QUERY: 1 },
+      HELP: { COMPLETED_HELP: 1, THROTTLED: 2, INFRASTRUCTURE_FAILURE: 1 },
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/event-|reply-token|U[a]{32}|private/u);
   });
 
   it("contains after() registration failures after durable acceptance", () => {

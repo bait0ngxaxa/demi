@@ -142,6 +142,56 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
+  it("sends a text Reply with quick-reply actions exactly as given, on the bounded Reply request", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const client = new LineMessagingClient(fetcher);
+    const messages = [{
+      type: "text" as const,
+      text: "เลือกเมนูที่ต้องการด้านล่าง",
+      quickReply: {
+        items: [
+          { type: "action" as const, action: { type: "uri" as const, label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" } },
+          { type: "action" as const, action: { type: "postback" as const, label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER } },
+        ],
+      },
+    }];
+
+    await client.replyMessages("transient-reply-token", messages);
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.line.me/v2/bot/message/reply");
+    const request = fetcher.mock.calls[0]?.[1];
+    expect(request).toMatchObject({ method: "POST", cache: "no-store" });
+    expect(request?.signal).toBeInstanceOf(AbortSignal);
+    const headers = new Headers(request?.headers);
+    expect(headers.get("authorization")).toBe("Bearer dedicated-demi-line-access-token");
+    expect(headers.get("x-line-retry-key")).toBeNull();
+    expect(JSON.parse(String(request?.body)) as unknown).toEqual({ replyToken: "transient-reply-token", messages });
+  });
+
+  it.each([
+    [400, "LINE_PROVIDER_PERMANENT"],
+    [404, "LINE_PROVIDER_PERMANENT"],
+    [429, "LINE_PROVIDER_TRANSIENT"],
+    [500, "LINE_PROVIDER_TRANSIENT"],
+  ] as const)("normalizes quick-reply HTTP %i as %s like a text Reply", async (status, code) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("private provider response", { status }));
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.replyMessages("transient-reply-token", [{ type: "text", text: "text" }]))
+      .rejects.toMatchObject({ code });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("normalizes quick-reply network failures as transient without retrying", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new Error("private network failure"));
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.replyMessages("transient-reply-token", [{ type: "text", text: "text" }]))
+      .rejects.toMatchObject({ code: "LINE_PROVIDER_TRANSIENT" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it.each([
     [200, "ACCEPTED"],
     [409, "DUPLICATE_ACCEPTED"],

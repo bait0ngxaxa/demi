@@ -22,6 +22,16 @@ export type LineRichMenuAction =
   | { type: "richmenuswitch"; label: string; richMenuAliasId: string; data: string }
   | { type: "postback"; label: string; data: string };
 
+export type LineQuickReplyAction =
+  | { type: "uri"; label: string; uri: string }
+  | { type: "postback"; label: string; data: string };
+
+export type LineReplyMessage = {
+  type: "text";
+  text: string;
+  quickReply?: { items: { type: "action"; action: LineQuickReplyAction }[] };
+};
+
 export type LinePushResult =
   | { kind: "ACCEPTED" }
   | { kind: "DUPLICATE_ACCEPTED" }
@@ -92,13 +102,14 @@ export class LineMessagingClient {
   }
 
   async replyText(replyToken: string, text: string): Promise<void> {
+    await this.replyMessages(replyToken, [{ type: "text", text }]);
+  }
+
+  async replyMessages(replyToken: string, messages: readonly LineReplyMessage[]): Promise<void> {
     const response = await this.request("/v2/bot/message/reply", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        replyToken,
-        messages: [{ type: "text", text }],
-      }),
+      body: JSON.stringify({ replyToken, messages }),
     });
     if (!response.ok) {
       throw new LineFailure(

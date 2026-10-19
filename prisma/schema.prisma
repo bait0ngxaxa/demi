@@ -90,6 +90,7 @@ enum LineWebhookEventType {
   UNFOLLOW
   RICHMENUSWITCH
   PATIENT_NEXT_APPOINTMENT
+  HELP
 }
 
 enum LineWebhookEventOutcome {
@@ -1963,6 +1964,15 @@ model LineWebhookEventReceipt {
   outcome        LineWebhookEventOutcome
 
   @@index([acceptedAt])
+}
+
+/// One row per hashed LINE user; holds no message content. Throttles HELP replies to unmatched text.
+model LineConversationReplyThrottle {
+  keyHash       String   @id @db.VarChar(64)
+  lastRepliedAt DateTime @db.Timestamptz(3)
+  expiresAt     DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt])
 }
 
 model LineWorkflowRateLimitBucket {

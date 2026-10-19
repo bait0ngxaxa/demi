@@ -23,11 +23,14 @@ import {
   lineWebhookEventSchema,
 } from "../schemas/line-schemas";
 import { LINE_RICH_MENU_BY_ALIAS, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
+import { classifyLineConversationText } from "../domain/line-conversation-keywords";
 import {
+  LINE_HELP_INTENT,
   LINE_PATIENT_NEXT_APPOINTMENT_INTENT,
   LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
   LINE_REACTIVE_EXECUTION_AGE_LIMIT_MS,
   type LineReactiveDurableResult,
+  type LineReactiveIntent,
   type LineReactiveMonotonicClock,
   type LineReactiveWorkItem,
 } from "../domain/line-reactive-types";
@@ -43,6 +46,7 @@ type ProviderEvent = {
   source?: { type: string; userId?: string };
   replyToken?: string;
   postback?: { data?: string; params?: Record<string, string> };
+  message?: unknown;
   mode?: unknown;
   deliveryContext?: unknown;
 };
@@ -58,22 +62,62 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-type PatientAppointmentClassification =
+type ReactiveEventType =
+  | typeof LineWebhookEventType.PATIENT_NEXT_APPOINTMENT
+  | typeof LineWebhookEventType.HELP;
+
+type ReactiveIntentSelection = {
+  eventType: ReactiveEventType;
+  intent: LineReactiveIntent;
+  throttled: boolean;
+};
+
+type ReactiveClassification =
   | { status: "IGNORED" }
-  | { status: "RECEIPT_ONLY"; eventOccurredAt: Date }
-  | { status: "REACTIVE"; workItem: LineReactiveWorkItem };
+  | { status: "RECEIPT_ONLY"; eventType: ReactiveEventType; eventOccurredAt: Date }
+  | { status: "REACTIVE"; eventType: ReactiveEventType; workItem: LineReactiveWorkItem };
 
-function classifyPatientNextAppointment(
-  event: ProviderEvent,
-  localExecutionDeadline: number,
-): PatientAppointmentClassification | null {
-  if (
-    event.type !== "postback" ||
-    event.postback?.data !== LINE_PATIENT_NEXT_APPOINTMENT_MARKER
-  ) {
-    return null;
+/**
+ * Selects the reactive command an event carries, or null when the event is
+ * not a reactive command. Text is classified here and then discarded: only the
+ * resulting intent reaches receipts, work items or logs.
+ */
+function selectReactiveIntent(event: ProviderEvent): ReactiveIntentSelection | "IGNORED" | null {
+  if (event.type === "postback") {
+    return event.postback?.data === LINE_PATIENT_NEXT_APPOINTMENT_MARKER
+      ? {
+          eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+          intent: LINE_PATIENT_NEXT_APPOINTMENT_INTENT,
+          throttled: false,
+        }
+      : null;
   }
+  if (event.type !== "message") return null;
 
+  const message = isRecord(event.message) ? event.message : null;
+  if (event.source?.type !== "user" || message?.type !== "text" || typeof message.text !== "string") {
+    return "IGNORED";
+  }
+  const textClass = classifyLineConversationText(message.text);
+  if (textClass === "NEXT_APPOINTMENT") {
+    return {
+      eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      intent: LINE_PATIENT_NEXT_APPOINTMENT_INTENT,
+      throttled: false,
+    };
+  }
+  return {
+    eventType: LineWebhookEventType.HELP,
+    intent: LINE_HELP_INTENT,
+    throttled: textClass === "UNMATCHED",
+  };
+}
+
+function classifyReactiveEvent(
+  event: ProviderEvent,
+  selection: ReactiveIntentSelection,
+  localExecutionDeadline: number,
+): ReactiveClassification {
   const eventOccurredAt = eventTime(event.timestamp);
   const lineUserId = event.source?.type === "user" ? event.source.userId : undefined;
   const parsedLineUserId = lineUserIdSchema.safeParse(lineUserId);
@@ -88,26 +132,31 @@ function classifyPatientNextAppointment(
     return { status: "IGNORED" };
   }
 
+  const { eventType } = selection;
   if (event.mode === "standby" || !replyToken?.trim()) {
-    return { status: "RECEIPT_ONLY", eventOccurredAt };
+    return { status: "RECEIPT_ONLY", eventType, eventOccurredAt };
   }
 
+  const base = {
+    webhookEventId: event.webhookEventId,
+    eventOccurredAt,
+    localExecutionDeadline,
+    lineUserId: parsedLineUserId.data,
+    replyToken,
+    isRedelivery: deliveryContext.isRedelivery,
+  };
   return {
     status: "REACTIVE",
-    workItem: {
-      intent: LINE_PATIENT_NEXT_APPOINTMENT_INTENT,
-      webhookEventId: event.webhookEventId,
-      eventOccurredAt,
-      localExecutionDeadline,
-      lineUserId: parsedLineUserId.data,
-      replyToken,
-      isRedelivery: deliveryContext.isRedelivery,
-    },
+    eventType,
+    workItem: selection.intent === LINE_HELP_INTENT
+      ? { ...base, intent: LINE_HELP_INTENT, throttled: selection.throttled }
+      : { ...base, intent: LINE_PATIENT_NEXT_APPOINTMENT_INTENT },
   };
 }
 
-async function persistPatientNextAppointmentReceipt(
+async function persistReactiveReceipt(
   event: ProviderEvent,
+  eventType: ReactiveEventType,
   eventOccurredAt: Date,
   database: PrismaClient,
 ): Promise<LineReactiveDurableResult> {
@@ -116,7 +165,7 @@ async function persistPatientNextAppointmentReceipt(
       await transaction.lineWebhookEventReceipt.create({
         data: {
           webhookEventId: event.webhookEventId,
-          eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+          eventType,
           eventOccurredAt,
           outcome: LineWebhookEventOutcome.ACCEPTED,
         },
@@ -133,7 +182,7 @@ async function persistPatientNextAppointmentReceipt(
         throw error;
       }
       if (
-        prior.eventType === LineWebhookEventType.PATIENT_NEXT_APPOINTMENT &&
+        prior.eventType === eventType &&
         prior.eventOccurredAt.getTime() === eventOccurredAt.getTime()
       ) {
         return { status: "MATCHING_DUPLICATE" };
@@ -375,7 +424,8 @@ export async function processLineWebhookRequest(
   let ignored = 0;
   const bindingIds = new Set<string>();
   const reactiveWorkItems: LineReactiveWorkItem[] = [];
-  const patientAppointmentEvents = new Map<string, {
+  const reactiveEvents = new Map<string, {
+    eventType: ReactiveEventType;
     eventOccurredAt: number;
     reactiveSelected: boolean;
   }>();
@@ -386,32 +436,40 @@ export async function processLineWebhookRequest(
       continue;
     }
     const providerEvent = event.data as ProviderEvent;
-    if (
-      providerEvent.type === "postback" &&
-      providerEvent.postback?.data === LINE_PATIENT_NEXT_APPOINTMENT_MARKER
-    ) {
-      const classification = classifyPatientNextAppointment(
+    const selection = selectReactiveIntent(providerEvent);
+    if (selection === "IGNORED") {
+      ignored += 1;
+      continue;
+    }
+    if (selection) {
+      const classification = classifyReactiveEvent(
         providerEvent,
+        selection,
         localExecutionDeadline,
       );
-      if (!classification || classification.status === "IGNORED") {
+      if (classification.status === "IGNORED") {
         ignored += 1;
         continue;
       }
+      const { eventType } = classification;
       const eventOccurredAt =
         classification.status === "REACTIVE"
           ? classification.workItem.eventOccurredAt
           : classification.eventOccurredAt;
-      let canonical = patientAppointmentEvents.get(providerEvent.webhookEventId);
+      let canonical = reactiveEvents.get(providerEvent.webhookEventId);
       if (canonical) {
-        if (canonical.eventOccurredAt !== eventOccurredAt.getTime()) {
+        if (
+          canonical.eventType !== eventType ||
+          canonical.eventOccurredAt !== eventOccurredAt.getTime()
+        ) {
           ignored += 1;
           continue;
         }
         duplicates += 1;
       } else {
-        const durableResult = await persistPatientNextAppointmentReceipt(
+        const durableResult = await persistReactiveReceipt(
           providerEvent,
+          eventType,
           eventOccurredAt,
           database,
         );
@@ -423,8 +481,8 @@ export async function processLineWebhookRequest(
           ignored += 1;
           continue;
         }
-        canonical = { eventOccurredAt: eventOccurredAt.getTime(), reactiveSelected: false };
-        patientAppointmentEvents.set(providerEvent.webhookEventId, canonical);
+        canonical = { eventType, eventOccurredAt: eventOccurredAt.getTime(), reactiveSelected: false };
+        reactiveEvents.set(providerEvent.webhookEventId, canonical);
       }
 
       if (classification.status === "REACTIVE" && !canonical.reactiveSelected) {
@@ -456,6 +514,7 @@ export const lineWebhookInternals = {
   eventTime,
   lineWorkspaceForAlias,
   applyWorkspacePreference,
-  classifyPatientNextAppointment,
-  persistPatientNextAppointmentReceipt,
+  selectReactiveIntent,
+  classifyReactiveEvent,
+  persistReactiveReceipt,
 };

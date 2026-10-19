@@ -6,6 +6,14 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.C3 conversational replies (2026-10-19)
+
+[Phase LINE-QA.C3 handoff](./phases/PHASE_LINE_QA_C3_CONVERSATIONAL_REPLIES.md), starting HEAD **f43ad31f402ab69872dd4fbd2e95e353dfac35cb**. 1:1 text messages to the DEMI OA now get a reply on the existing reactive pipeline (receipt → `after()` → Reply API).
+
+- Exact keywords (NFKC, trimmed, Latin lower-cased; no fuzzy/NLU): “นัด/นัดหมาย/นัดถัดไป” run the unchanged next-appointment reply; “เมนู/ช่วยเหลือ/help” and any other text get HELP: short text + Quick Reply buttons from the binding's current eligible roles (fixed intent URLs only). Unbound, multiple-binding or inactive users get the generic INELIGIBLE copy with the account management link.
+- HELP for unmatched text: one reply per LINE user per 10 minutes, stored as a SHA-256 hash in the new `LineConversationReplyThrottle` table. New receipt type `HELP`; message text is never stored or logged. Aggregate outcome log `line_reactive_reply_summary`.
+- Default WB-DF-18 awaits customer confirmation. Required OA settings: webhook on, auto-response off. No Rich Menu, LIFF, MINI App or Console change.
+
 ## CURRENT-status addendum — Phase LINE-QA.D Patient workflow audit (2026-10-19)
 
 [Phase LINE-QA.D handoff](./phases/PHASE_LINE_QA_D_PATIENT_WORKFLOW_INTEGRATION_AUDIT.md), starting HEAD **77ece3e1087498ea9811a6c4a1a6f56bd53815e1**. The five Patient Rich Menu actions (workspace, appointments, wellness, medications, care) were traced end to end on ordinary DEMI Web routes; login return, scope and policies passed unchanged.

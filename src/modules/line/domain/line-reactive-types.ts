@@ -13,8 +13,13 @@ export type LineReactiveDurableResult =
   | { status: "MATCHING_DUPLICATE" }
   | { status: "EVENT_ID_CONFLICT" };
 
-export type LineReactiveWorkItem = {
-  readonly intent: typeof LINE_PATIENT_NEXT_APPOINTMENT_INTENT;
+export const LINE_HELP_INTENT = "HELP" as const;
+
+export type LineReactiveIntent =
+  | typeof LINE_PATIENT_NEXT_APPOINTMENT_INTENT
+  | typeof LINE_HELP_INTENT;
+
+type LineReactiveWorkItemBase = {
   readonly webhookEventId: string;
   readonly eventOccurredAt: Date;
   readonly localExecutionDeadline: number;
@@ -23,9 +28,23 @@ export type LineReactiveWorkItem = {
   readonly isRedelivery: boolean;
 };
 
+export type LinePatientNextAppointmentWorkItem = LineReactiveWorkItemBase & {
+  readonly intent: typeof LINE_PATIENT_NEXT_APPOINTMENT_INTENT;
+};
+
+export type LineHelpWorkItem = LineReactiveWorkItemBase & {
+  readonly intent: typeof LINE_HELP_INTENT;
+  /** True only for unmatched text; explicit HELP keywords are never throttled. */
+  readonly throttled: boolean;
+};
+
+export type LineReactiveWorkItem = LinePatientNextAppointmentWorkItem | LineHelpWorkItem;
+
 export type LineReactiveOperationalOutcome =
   | "COMPLETED_WITH_APPOINTMENT"
   | "COMPLETED_EMPTY"
+  | "COMPLETED_HELP"
+  | "THROTTLED"
   | "REFUSED_INELIGIBLE"
   | "INFRASTRUCTURE_FAILURE"
   | "EXPIRED_BEFORE_QUERY"

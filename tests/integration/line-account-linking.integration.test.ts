@@ -222,15 +222,20 @@ describe("Phase 17J.1 LINE PostgreSQL invariants", () => {
     const eventOccurredAt = new Date(timestamp);
     receiptIds.push(webhookEventId);
 
-    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(event, eventOccurredAt, database))
+    const eventType = LineWebhookEventType.PATIENT_NEXT_APPOINTMENT;
+
+    await expect(lineWebhookInternals.persistReactiveReceipt(event, eventType, eventOccurredAt, database))
       .resolves.toEqual({ status: "ACCEPTED" });
-    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(event, eventOccurredAt, database))
+    await expect(lineWebhookInternals.persistReactiveReceipt(event, eventType, eventOccurredAt, database))
       .resolves.toEqual({ status: "MATCHING_DUPLICATE" });
-    await expect(lineWebhookInternals.persistPatientNextAppointmentReceipt(
+    await expect(lineWebhookInternals.persistReactiveReceipt(
       event,
+      eventType,
       new Date(timestamp + 1_000),
       database,
     )).resolves.toEqual({ status: "EVENT_ID_CONFLICT" });
+    await expect(lineWebhookInternals.persistReactiveReceipt(event, LineWebhookEventType.HELP, eventOccurredAt, database))
+      .resolves.toEqual({ status: "EVENT_ID_CONFLICT" });
 
     const receipts = await database.lineWebhookEventReceipt.findMany({
       where: { webhookEventId },

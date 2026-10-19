@@ -53,6 +53,24 @@ function patientNextAppointmentEvent(
   };
 }
 
+function textMessageEvent(
+  id: string,
+  text: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    type: "message",
+    webhookEventId: id,
+    timestamp: 1_791_254_400_000,
+    source: { type: "user", userId: lineUserId },
+    replyToken: "incoming-reply-token",
+    mode: "active",
+    deliveryContext: { isRedelivery: false },
+    message: { id: "468789577898262530", type: "text", quoteToken: "private-quote-token", text },
+    ...overrides,
+  };
+}
+
 function createDatabase() {
   const binding = {
     id: "1a9c6559-3f23-44b6-b920-07d176777772",
@@ -200,7 +218,6 @@ describe("LINE webhook ingestion", () => {
       { ...base, webhookEventId: eventId("13"), postback: { data: ` ${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}` } },
       { ...base, webhookEventId: eventId("14"), postback: { data: `prefix-${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}` } },
       { ...base, webhookEventId: eventId("15"), postback: { data: `${LINE_PATIENT_NEXT_APPOINTMENT_MARKER}-suffix` } },
-      { ...base, webhookEventId: eventId("16"), type: "message", message: { type: "text", text: "ตรวจสอบนัดหมาย" } },
       { ...base, webhookEventId: eventId("17"), postback: { data: "unknown-postback" } },
     ];
 
@@ -210,6 +227,116 @@ describe("LINE webhook ingestion", () => {
     expect(result.reactiveWorkItems).toEqual([]);
     expect(harness.receipts.size).toBe(0);
     expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
+  });
+
+  it("maps text keywords exactly after normalization and sends everything else to throttled HELP", async () => {
+    const harness = createDatabase();
+    const cases = [
+      ["30", "นัด", "PATIENT_NEXT_APPOINTMENT", undefined],
+      ["31", "  นัดหมาย\n", "PATIENT_NEXT_APPOINTMENT", undefined],
+      ["32", "นัดถัดไป", "PATIENT_NEXT_APPOINTMENT", undefined],
+      ["33", "เมนู", "HELP", false],
+      ["34", "ช่วยเหลือ", "HELP", false],
+      ["35", "ＨｅＬＰ", "HELP", false],
+      ["36", " help ", "HELP", false],
+      ["37", "นัด หมาย", "HELP", true],
+      ["38", "ตรวจสอบนัดหมาย", "HELP", true],
+      ["39", "นัดหมายพรุ่งนี้", "HELP", true],
+      ["3A", "helpme", "HELP", true],
+      ["3B", "", "HELP", true],
+    ] as const;
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope(cases.map(([id, text]) => textMessageEvent(eventId(id), text)))),
+      harness.database,
+      { monotonicNow: () => 0 },
+    );
+
+    expect(result).toMatchObject({ accepted: cases.length, duplicates: 0, ignored: 0 });
+    expect(result.reactiveWorkItems.map((item) => [
+      item.webhookEventId,
+      item.intent,
+      item.intent === "HELP" ? item.throttled : undefined,
+    ])).toEqual(cases.map(([id, , intent, throttled]) => [eventId(id), intent, throttled]));
+    for (const [id, , intent] of cases) {
+      expect(harness.receipts.get(eventId(id))).toEqual({
+        webhookEventId: eventId(id),
+        eventType: intent === "HELP" ? LineWebhookEventType.HELP : LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+        eventOccurredAt: new Date(1_791_254_400_000),
+        outcome: LineWebhookEventOutcome.ACCEPTED,
+      });
+    }
+    const persisted = JSON.stringify([...harness.receipts.values()]);
+    const transient = JSON.stringify(result.reactiveWorkItems);
+    for (const serialized of [persisted, transient]) {
+      expect(serialized).not.toMatch(/นัด|เมนู|ช่วยเหลือ|helpme|ＨｅＬＰ|private-quote-token|468789577898262530|"text"/iu);
+    }
+    expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
+  });
+
+  it("ignores non-text messages and group or room text before any receipt", async () => {
+    const harness = createDatabase();
+    const events = [
+      textMessageEvent(eventId("40"), "นัด", { source: { type: "group", groupId: "C".padEnd(33, "1"), userId: lineUserId } }),
+      textMessageEvent(eventId("41"), "เมนู", { source: { type: "room", roomId: "R".padEnd(33, "1"), userId: lineUserId } }),
+      textMessageEvent(eventId("42"), "นัด", { message: { id: "1", type: "sticker", packageId: "1", stickerId: "1" } }),
+      textMessageEvent(eventId("43"), "นัด", { message: { id: "1", type: "image" } }),
+      textMessageEvent(eventId("44"), "นัด", { message: { id: "1", type: "text" } }),
+      textMessageEvent(eventId("45"), "นัด", { message: undefined }),
+    ];
+
+    const result = await processLineWebhookRequest(signedRequest(envelope(events)), harness.database);
+
+    expect(result).toMatchObject({ accepted: 0, duplicates: 0, ignored: events.length });
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect(harness.receipts.size).toBe(0);
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("records standby and token-less text with only the classified intent and no reply work", async () => {
+    const harness = createDatabase();
+    const events = [
+      textMessageEvent(eventId("46"), "นัด", { mode: "standby", replyToken: undefined }),
+      textMessageEvent(eventId("47"), "สวัสดี", { mode: "standby" }),
+      textMessageEvent(eventId("48"), "เมนู", { replyToken: undefined }),
+      textMessageEvent(eventId("49"), "สวัสดี", { replyToken: " " }),
+    ];
+
+    const result = await processLineWebhookRequest(signedRequest(envelope(events)), harness.database);
+
+    expect(result).toMatchObject({ accepted: 4, ignored: 0 });
+    expect(result.reactiveWorkItems).toEqual([]);
+    expect([...harness.receipts.values()].map((receipt) => (receipt as { eventType: string }).eventType)).toEqual([
+      LineWebhookEventType.PATIENT_NEXT_APPOINTMENT,
+      LineWebhookEventType.HELP,
+      LineWebhookEventType.HELP,
+      LineWebhookEventType.HELP,
+    ]);
+    expect(JSON.stringify([...harness.receipts.values()])).not.toMatch(/สวัสดี|นัด|เมนู|"text"/u);
+  });
+
+  it("collapses a duplicated text event to one job and fails closed when a sibling changes intent", async () => {
+    const harness = createDatabase();
+    const first = textMessageEvent(eventId("4A"), "นัด", { replyToken: "first-token" });
+    const duplicate = textMessageEvent(eventId("4A"), "นัด", { replyToken: "later-token", deliveryContext: { isRedelivery: true } });
+    const changed = textMessageEvent(eventId("4A"), "เมนู", { replyToken: "changed-token" });
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope([first, duplicate, changed])),
+      harness.database,
+    );
+
+    expect(result).toMatchObject({ accepted: 1, duplicates: 1, ignored: 1 });
+    expect(result.reactiveWorkItems).toHaveLength(1);
+    expect(result.reactiveWorkItems[0]).toMatchObject({ intent: "PATIENT_NEXT_APPOINTMENT", replyToken: "first-token" });
+    expect(harness.transaction.lineWebhookEventReceipt.create).toHaveBeenCalledOnce();
+
+    const redelivered = await processLineWebhookRequest(
+      signedRequest(envelope([textMessageEvent(eventId("4A"), "เมนู", { deliveryContext: { isRedelivery: true } })])),
+      harness.database,
+    );
+    expect(redelivered).toMatchObject({ accepted: 0, duplicates: 0, ignored: 1 });
+    expect(redelivered.reactiveWorkItems).toEqual([]);
   });
 
   it("ignores group and room appointment markers before any Patient/account lookup or receipt", async () => {
