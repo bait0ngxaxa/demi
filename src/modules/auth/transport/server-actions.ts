@@ -14,6 +14,7 @@ import {
 import { resolveCurrentActorContext } from "../services/actor-context-service";
 import type { ActorContext } from "../types/actor-context";
 import type { LoginActionState, LogoutActionState } from "./action-state";
+import { buildLoginReturnHref } from "./login-return";
 
 export async function loginAction(
   _previousState: LoginActionState,
@@ -67,13 +68,7 @@ export async function loginAction(
   redirect(requestedReturnTo.success ? requestedReturnTo.data : "/app");
 }
 
-export async function logoutAction(
-  _previousState: LogoutActionState,
-  _formData: FormData,
-): Promise<LogoutActionState> {
-  void _previousState;
-  void _formData;
-
+async function signOutAndRedirect(destination: string): Promise<LogoutActionState> {
   try {
     await signOutCurrentSession();
   } catch {
@@ -84,7 +79,30 @@ export async function logoutAction(
   }
 
   revalidatePath("/", "layout");
-  redirect("/login");
+  redirect(destination);
+}
+
+export async function logoutAction(
+  _previousState: LogoutActionState,
+  _formData: FormData,
+): Promise<LogoutActionState> {
+  void _previousState;
+  void _formData;
+  return signOutAndRedirect("/login");
+}
+
+/**
+ * Ends only the DEMI session (never the LINE binding) and returns to the LINE
+ * account screen after login, so a different DEMI account can be used inside
+ * the LINE app, whose webview otherwise keeps the previous session.
+ */
+export async function switchDemiAccountForLineAction(
+  _previousState: LogoutActionState,
+  _formData: FormData,
+): Promise<LogoutActionState> {
+  void _previousState;
+  void _formData;
+  return signOutAndRedirect(buildLoginReturnHref("/line/account"));
 }
 
 export async function getActorContextAction(): Promise<ActorContext | null> {

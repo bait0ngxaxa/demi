@@ -5,7 +5,7 @@ import {
   signOutCurrentSession,
 } from "../services/authentication-service";
 import { initialLoginActionState, initialLogoutActionState } from "./action-state";
-import { loginAction, logoutAction } from "./server-actions";
+import { loginAction, logoutAction, switchDemiAccountForLineAction } from "./server-actions";
 
 const mockedRedirect = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
@@ -226,6 +226,24 @@ describe("authentication Server Actions", () => {
       status: "ERROR",
       message: "ไม่สามารถออกจากระบบได้ กรุณาลองใหม่อีกครั้ง",
     });
+    expect(mockedRedirect).not.toHaveBeenCalled();
+  });
+
+  it("ends only the DEMI session and returns to the LINE account screen after login", async () => {
+    mockedSignOutCurrentSession.mockResolvedValue();
+
+    await switchDemiAccountForLineAction(initialLogoutActionState, new FormData());
+
+    expect(mockedSignOutCurrentSession).toHaveBeenCalledOnce();
+    expect(mockedRedirect).toHaveBeenCalledWith("/login?returnTo=%2Fline%2Faccount");
+  });
+
+  it("does not leave the LINE screen when the DEMI sign-out fails", async () => {
+    mockedSignOutCurrentSession.mockRejectedValue(new Error("raw provider failure"));
+
+    const result = await switchDemiAccountForLineAction(initialLogoutActionState, new FormData());
+
+    expect(result).toEqual({ status: "ERROR", message: "ไม่สามารถออกจากระบบได้ กรุณาลองใหม่อีกครั้ง" });
     expect(mockedRedirect).not.toHaveBeenCalled();
   });
 });

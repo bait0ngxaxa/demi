@@ -50,6 +50,8 @@ function renderScreen(
       onStartLineLogin={() => undefined}
       onBeginLink={() => undefined}
       onBeginUnlink={() => undefined}
+      onBeginUnlinkAndSwitch={() => undefined}
+      switchAfterUnlink={state.switchAfterUnlink ?? false}
       onConfirmLink={() => undefined}
       onConfirmUnlink={() => undefined}
       onRequestFriendship={() => undefined}
@@ -426,6 +428,25 @@ describe("LINE account user experience", () => {
     expect(markup).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
     expect(markup).not.toContain(">เข้าสู่ระบบ LINE</button>");
     expect(markup).not.toContain("ยังเริ่มการตรวจสอบเพื่อเชื่อมใหม่ได้");
+  });
+
+  it("offers switching DEMI accounts inside LINE without implying logout unlinks LINE", () => {
+    const linked = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true });
+    expect(linked).toContain(">ยกเลิกการเชื่อมต่อ LINE</button>");
+    expect(linked).toContain(">ยกเลิกการเชื่อมต่อ LINE และใช้บัญชี DEMI อื่น</button>");
+    expect(linked).toContain(">ออกจากระบบ DEMI</button>");
+    expect(linked).toContain("LINE ยังเชื่อมกับบัญชีนี้");
+
+    const unlinked = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false });
+    expect(unlinked).toContain(">ใช้บัญชี DEMI อื่น</button>");
+    expect(unlinked).not.toContain(">ออกจากระบบ DEMI</button>");
+
+    const afterUnlink = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { view: "SUCCESS", successAction: "UNLINK" });
+    expect(afterUnlink).toContain(">ใช้บัญชี DEMI อื่น</button>");
+
+    const confirm = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, { view: "UNLINK_CONFIRM", switchAfterUnlink: true });
+    expect(confirm).toContain("จากนั้นระบบจะออกจากบัญชี DEMI นี้");
+    expect(renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, { view: "UNLINK_CONFIRM" })).not.toContain("จากนั้นระบบจะออกจากบัญชี DEMI นี้");
   });
 
   it("keeps the Link path available only when the server marks Relink eligible", () => {

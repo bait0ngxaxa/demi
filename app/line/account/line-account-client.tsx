@@ -2,10 +2,13 @@
 
 import liff from "@line/liff";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
+import { initialLogoutActionState } from "@/modules/auth/transport/action-state";
+import { switchDemiAccountForLineAction } from "@/modules/auth/transport/server-actions";
 import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { disconnectionStatusSchema, initializeLineAccountLiff, LineRecoveryPanel } from "./line-recovery-panel";
 import { AppointmentNotificationPreference, type AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
+import { LineDemiAccountSwitch } from "./line-demi-account-switch";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -129,6 +132,9 @@ type LineAccountScreenProps = {
   onStartLineLogin: () => void;
   onBeginLink: () => void;
   onBeginUnlink: () => void;
+  /** Unlink, then end the DEMI session so another DEMI account can link this LINE. */
+  onBeginUnlinkAndSwitch: () => void;
+  switchAfterUnlink: boolean;
   onConfirmLink: () => void;
   onConfirmUnlink: () => void;
   onRequestFriendship: () => void;
@@ -163,6 +169,8 @@ export function LineAccountScreen({
   onStartLineLogin,
   onBeginLink,
   onBeginUnlink,
+  onBeginUnlinkAndSwitch,
+  switchAfterUnlink,
   onConfirmLink,
   onConfirmUnlink,
   onRequestFriendship,
@@ -248,6 +256,8 @@ export function LineAccountScreen({
                       เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น
                     </p>
                   ) : null}
+                  <LineDemiAccountSwitch label="ใช้บัญชี DEMI อื่น" className={secondaryButtonClass}
+                    hint="ออกจากบัญชี DEMI นี้ แล้วเข้าสู่ระบบด้วยบัญชีที่จะเชื่อมกับ LINE นี้" />
                 </>
               )}
               {isInClient ? (
@@ -340,6 +350,15 @@ export function LineAccountScreen({
                       ยกเลิกการเชื่อมต่อ LINE
                     </button>
                   ) : null}
+                  {canUnlink && view === "READY" ? (
+                    <button type="button" disabled={busy || reachabilityBusy || friendshipBusy} onClick={onBeginUnlinkAndSwitch} className={secondaryButtonClass}>
+                      ยกเลิกการเชื่อมต่อ LINE และใช้บัญชี DEMI อื่น
+                    </button>
+                  ) : null}
+                  {view === "READY" ? (
+                    <LineDemiAccountSwitch label="ออกจากระบบ DEMI" className={secondaryButtonClass} disabled={reachabilityBusy || friendshipBusy}
+                      hint="LINE ยังเชื่อมกับบัญชีนี้ และเมนู LINE ยังเป็นของบัญชีนี้ หากจะใช้ LINE นี้กับบัญชีอื่น ให้ยกเลิกการเชื่อมต่อก่อน" />
+                  ) : null}
                   {lifecycleReadiness.state === "DEGRADED" ? (
                     <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="status" aria-live="polite">
                       ขณะนี้ตรวจสอบการถอนสิทธิ์จาก LINE ไม่ได้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน
@@ -404,6 +423,12 @@ export function LineAccountScreen({
                       ) : null}
                     </div>
                   ) : null}
+                  {(accountStatus === "UNLINKED" || accountStatus === "INELIGIBLE") && view === "READY" ? (
+                    <div className="mt-4">
+                      <LineDemiAccountSwitch label="ใช้บัญชี DEMI อื่น" className={secondaryButtonClass}
+                        hint="ออกจากบัญชี DEMI นี้ แล้วเข้าสู่ระบบด้วยบัญชีที่จะเชื่อมกับ LINE นี้" />
+                    </div>
+                  ) : null}
                 </>
               )}
 
@@ -424,6 +449,9 @@ export function LineAccountScreen({
                   <p className="mt-2 text-sm text-ink">{lifecycleReadiness.state === "READY"
                     ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มดำเนินการถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้"
                     : "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
+                  {switchAfterUnlink ? (
+                    <p className="mt-2 text-sm font-semibold text-ink">จากนั้นระบบจะออกจากบัญชี DEMI นี้ และพาไปเข้าสู่ระบบด้วยบัญชีอื่น</p>
+                  ) : null}
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
@@ -482,6 +510,7 @@ export function LineAccountClient({
   const [friendshipSupported, setFriendshipSupported] = useState(false);
   const [canRefreshReachability, setCanRefreshReachability] = useState(false);
   const [successAction, setSuccessAction] = useState<SuccessAction>(null);
+  const [switchAfterUnlink, setSwitchAfterUnlink] = useState(false);
   const [appointmentPreference, setAppointmentPreference] = useState(notificationPreference);
   const [preferenceUiGeneration, setPreferenceUiGeneration] = useState(0);
   const refreshAttempted = useRef(false);
@@ -657,6 +686,11 @@ export function LineAccountClient({
       setSuccessAction("UNLINK");
       setView("SUCCESS");
       setIntent(null);
+      if (switchAfterUnlink) {
+        // Redirects to login (returning here) on success; on failure the unlinked
+        // success view keeps its own "use another DEMI account" retry.
+        startTransition(() => { void switchDemiAccountForLineAction(initialLogoutActionState, new FormData()); });
+      }
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : safeFailure);
       setView("FAILURE");
@@ -748,13 +782,15 @@ export function LineAccountClient({
       confirmationRef={confirmationRef}
       onStartLineLogin={() => void startLineLogin()}
       onBeginLink={() => void begin("LINK")}
-      onBeginUnlink={() => void begin("UNLINK")}
+      onBeginUnlink={() => { setSwitchAfterUnlink(false); void begin("UNLINK"); }}
+      onBeginUnlinkAndSwitch={() => { setSwitchAfterUnlink(true); void begin("UNLINK"); }}
+      switchAfterUnlink={switchAfterUnlink}
       onConfirmLink={() => void confirmLink()}
       onConfirmUnlink={() => void confirmUnlink()}
       onRequestFriendship={() => void requestFriendship()}
       onRefreshReachability={() => void refreshReachability()}
       onReturnToLine={returnToLine}
-      onCancel={() => { setView("READY"); setIntent(null); }}
+      onCancel={() => { setView("READY"); setIntent(null); setSwitchAfterUnlink(false); }}
       onRestart={() => { setIntent(null); setMessage(""); setView("READY"); }}
       onReload={reloadPage}
     />
