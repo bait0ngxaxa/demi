@@ -6,7 +6,11 @@ import { AppShell } from "./app-shell";
 import { ProtectedApplicationShellSkeleton } from "./app-shell-skeleton";
 import { PageHeader } from "../ui/page-header";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/app", useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/app",
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock("./logout-button", () => ({ LogoutButton: () => <button>ออกจากระบบ</button> }));
 
 function source(path: string): string {
@@ -43,6 +47,29 @@ describe("responsive shell contract", () => {
     expect(sidebar).toContain("useSyncExternalStore");
   });
 
+  it("uses one mobile bottom navigation while retaining the desktop sidebar", () => {
+    const navigation = [
+      {
+        label: null,
+        workspace: "work" as const,
+        items: [{ href: "/app", label: "หน้าหลัก", match: "exact" as const }],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <AppShell navigation={navigation} roleLabels={["อสม."]}>เนื้อหา</AppShell>,
+    );
+
+    expect(html).toContain('aria-label="เมนูหลักบนมือถือ"');
+    expect(html).toContain("app-mobile-bottom-navigation");
+    expect(html).toContain("hidden h-svh shrink-0");
+    expect(html).toContain("lg:flex lg:flex-col");
+    expect(html).not.toContain('aria-label="เปิดเมนูหลัก"');
+    expect(html).not.toContain('id="mobile-application-navigation"');
+    expect(source("app/globals.css")).toContain("env(safe-area-inset-bottom, 0px)");
+    expect(source("app/globals.css")).toContain("--app-mobile-bottom-navigation-height");
+    expect(source("app/app/layout.tsx")).toContain('viewportFit: "cover"');
+  });
+
   it("uses opt-in workspace/detail policies while preserving reading form constraints", () => {
     for (const path of ["app/app/page.tsx", "app/app/workforce/workforce-workspace.tsx", "app/app/patients/patient-directory-view.tsx", "app/app/hospitals/reporting/hospital-report-workspace.tsx"]) {
       expect(source(path)).toContain("content-workspace");
@@ -66,6 +93,8 @@ describe("responsive shell contract", () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("min-w-0 max-w-full");
     expect(html).toContain("flex-wrap items-end");
-    expect(source("app/globals.css")).toContain("scroll-padding-top: calc(var(--app-header-height) + 1.5rem)");
+    expect(source("app/globals.css")).toContain(
+      "scroll-padding-top: calc(var(--app-header-height) + env(safe-area-inset-top, 0px) + 1.5rem)",
+    );
   });
 });

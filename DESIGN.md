@@ -234,9 +234,9 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 ### Navigation
 
 - **Desktop:** sidebar สี navigation-background กว้าง 17rem มี group label, nested domain item และ active item ใช้ navigation-active
-- **Header:** sticky surface header แสดง DEMI, role context และ logout; mobile เพิ่ม accessible menu trigger
-- **Mobile:** drawer จากด้านซ้าย ใช้เมนูชุดเดียวกับ desktop รองรับ Escape, focus containment/restoration และ route navigation ปิด drawer
-- Active route ใช้ `aria-current="page"`; ตัวเลือกพื้นที่ Work/Personal ใช้ `aria-current="location"` เพื่อแยกบริบทจากหน้าปัจจุบัน; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
+- **Header:** sticky surface header แสดง DEMI, role context และ logout บน desktop; mobile แสดงแบรนด์และ workspace ปัจจุบัน พร้อมเข้าถึงการสลับ workspace ได้จาก “เพิ่มเติม”
+- **Mobile:** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม” โดยใช้ server-projected navigation ชุดเดียวกับ desktop; More ใช้ native modal `dialog` รองรับ Escape, focus containment/restoration, body scroll lock และปิดเมื่อ route หรือ breakpoint เปลี่ยน
+- Active route ใช้ `aria-current="page"`; workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
 
 ### Content Width and Responsive Layout
 
@@ -245,7 +245,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - `content-workspace` ใช้เต็มพื้นที่จนถึง 90rem และจัดกึ่งกลางสำหรับ Work Home, directories, Workforce และ reporting. Work Home ใช้ auto-fit columns ขั้นต่ำ 28rem โดย card เดียวใช้เต็มแถว.
 - `content-detail` จำกัด 72rem และจัดกึ่งกลางสำหรับ Patient Detail; บริบทและงานดูแลอยู่สองคอลัมน์เมื่อ container กว้างอย่างน้อย 64rem ส่วนประวัติใช้เต็มแถว. ลำดับ DOM และ mobile ยังคงบริบท → งานดูแล → ประวัติ.
 - Reading forms, Contact, Content, Personal และรายละเอียดการบันทึกยังรักษา local max-width เดิม; prose ใช้ `type-readable` 68ch. ไม่ใช้ global override เพื่อยืดทุกหน้า.
-- Mobile navigation ใช้ native modal `dialog` เพื่อทำให้ background inert; ปิดตามปกติคืน focus ไป trigger ส่วน navigation/desktop transition ย้าย focus ไป Main. Skeleton ใช้ gutters และ width policy ของปลายทาง.
+- Mobile More navigation ใช้ native modal `dialog` เพื่อทำให้ background inert; ปิดตามปกติคืน focus ไป trigger ส่วน navigation/desktop transition ย้าย focus ไป Main. Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ใช้ gutters และ width policy ของปลายทาง.
 
 ### Local Navigation
 

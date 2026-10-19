@@ -18,18 +18,20 @@ import type {
 
 type NavigationListProps = {
   groups: readonly ApplicationNavigationGroup[];
+  availableContexts?: readonly ApplicationWorkspaceContext[];
   /** Called for client-side navigations only; may cancel the link navigation to perform it itself. */
   onNavigate?: (event: { preventDefault: () => void }, href: string) => void;
   tone?: "desktop" | "mobile";
 };
 
 export function NavigationList({
+  availableContexts: providedAvailableContexts,
   groups,
   onNavigate,
   tone = "desktop",
 }: NavigationListProps): React.JSX.Element {
   const pathname = usePathname();
-  const availableContexts = Array.from(
+  const availableContexts = providedAvailableContexts ?? Array.from(
     new Set(
       groups
         .map(({ workspace }) => workspace)

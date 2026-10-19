@@ -167,6 +167,7 @@ describe("useMutationActionState", () => {
     const whileUnknown = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(whileUnknown);
     expect(whileUnknown.defaultPrevented).toBe(true);
+    expect(query('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
 
     await clickResend();
 
@@ -277,5 +278,17 @@ describe("UnknownOutcomeAlert recovery contracts", () => {
 
     expect(query('[role="alert"]').textContent).toContain("ออกจากระบบแล้วเข้าสู่ระบบด้วยรหัสผ่านใหม่เพื่อตรวจสอบ");
     expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("marks active resend and verify recoveries for client navigation protection", () => {
+    renderAlert({
+      kind: "verify",
+      label: "ตรวจสอบสถานะ",
+      message: "ระบบยังไม่ยืนยันผล",
+      onVerify: vi.fn(),
+      verifying: false,
+    });
+
+    expect(query('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
   });
 });

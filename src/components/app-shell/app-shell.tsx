@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type { ApplicationNavigationGroup } from "./navigation-types";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
+import { MobileBottomNavigation } from "./mobile-bottom-navigation";
+import { projectMobileNavigation } from "./mobile-tab-projection";
 
 type AppShellProps = {
   children: ReactNode;
@@ -15,6 +17,8 @@ export function AppShell({
   navigation,
   roleLabels,
 }: AppShellProps): React.JSX.Element {
+  const mobileNavigation = projectMobileNavigation(navigation);
+
   return (
     <div className="min-h-svh bg-canvas text-text lg:flex">
       <a
@@ -25,15 +29,19 @@ export function AppShell({
       </a>
       <AppSidebar navigation={navigation} />
       <div className="min-w-0 flex-1">
-        <AppHeader navigation={navigation} roleLabels={roleLabels} />
+        <AppHeader
+          availableWorkspaces={mobileNavigation.availableWorkspaces}
+          roleLabels={roleLabels}
+        />
         <main
-          className="@container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12"
+          className="app-shell-horizontal-gutter app-shell-main-content @container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12"
           id="application-main-content"
           tabIndex={-1}
         >
           {children}
         </main>
       </div>
+      <MobileBottomNavigation navigation={navigation} projection={mobileNavigation} />
     </div>
   );
 }

@@ -43,6 +43,10 @@
   --app-sidebar-width: 17rem;
   --app-sidebar-collapsed-width: 4.5rem;
   --app-header-height: 4.5rem;
+  --app-mobile-bottom-navigation-height: 4rem;
+  --app-mobile-bottom-navigation-content-inset: calc(
+    var(--app-mobile-bottom-navigation-height) + env(safe-area-inset-bottom, 0px)
+  );
   --content-workspace-width: 90rem;
   --content-detail-width: 72rem;
 }
@@ -101,7 +105,7 @@
 }
 
 html {
-  scroll-padding-top: calc(var(--app-header-height) + 1.5rem);
+  scroll-padding-top: calc(var(--app-header-height) + env(safe-area-inset-top, 0px) + 1.5rem);
   background: var(--canvas);
 }
 
@@ -113,6 +117,58 @@ body {
     var(--font-geist-sans), "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif;
   font-weight: var(--font-weight-body);
   line-height: 1.65;
+}
+
+.app-shell-horizontal-gutter {
+  padding-inline: max(1rem, env(safe-area-inset-left, 0px))
+    max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.app-shell-header {
+  min-height: calc(var(--app-header-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.app-shell-main-content {
+  padding-bottom: calc(var(--app-mobile-bottom-navigation-content-inset) + 2rem);
+}
+
+.app-mobile-bottom-navigation {
+  height: calc(
+    var(--app-mobile-bottom-navigation-height) + env(safe-area-inset-bottom, 0px)
+  );
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-inline-start: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-inline-end: max(0.75rem, env(safe-area-inset-right, 0px));
+}
+
+.app-mobile-drawer-panel {
+  padding-left: max(0px, calc(env(safe-area-inset-left, 0px) - 1rem));
+  padding-right: max(0px, calc(env(safe-area-inset-right, 0px) - 1rem));
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 40rem) {
+  .app-shell-horizontal-gutter {
+    padding-inline: max(1.5rem, env(safe-area-inset-left, 0px))
+      max(1.5rem, env(safe-area-inset-right, 0px));
+  }
+
+  .app-shell-main-content {
+    padding-bottom: calc(var(--app-mobile-bottom-navigation-content-inset) + 2.5rem);
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-shell-horizontal-gutter {
+    padding-inline: max(2rem, env(safe-area-inset-left, 0px))
+      max(2rem, env(safe-area-inset-right, 0px));
+  }
+
+  .app-shell-main-content {
+    padding-bottom: 3rem;
+  }
 }
 
 :where(h1, h2, h3, h4, h5, h6) {

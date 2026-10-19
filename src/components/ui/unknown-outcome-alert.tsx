@@ -63,7 +63,12 @@ export function UnknownOutcomeAlert({
 
   if (recovery.kind === "resend") {
     return (
-      <Alert className={className} role="alert" variant="warning">
+      <Alert
+        className={className}
+        data-navigation-guard={guardsUnload ? "unknown-outcome" : undefined}
+        role="alert"
+        variant="warning"
+      >
         <p>{resendMessage}</p>
         <Button
           className="mt-3"
@@ -90,7 +95,12 @@ export function UnknownOutcomeAlert({
 
   if (recovery.kind === "verify") {
     return (
-      <Alert className={className} role="alert" variant="warning">
+      <Alert
+        className={className}
+        data-navigation-guard={guardsUnload ? "unknown-outcome" : undefined}
+        role="alert"
+        variant="warning"
+      >
         <p>{recovery.message}</p>
         <Button
           className="mt-3"

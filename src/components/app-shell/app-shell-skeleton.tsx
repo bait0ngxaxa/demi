@@ -46,11 +46,14 @@ export function ProtectedApplicationShellSkeleton(): React.JSX.Element {
       <div className="min-w-0 flex-1">
         <header
           aria-hidden="true"
-          className="flex min-h-app-header items-center justify-between gap-4 border-b border-border bg-surface px-4 sm:px-6 lg:px-8"
+          className="app-shell-header app-shell-horizontal-gutter flex min-h-app-header items-center justify-between gap-4 border-b border-border bg-surface px-4 sm:px-6 lg:px-8"
         >
           <div className="flex min-w-0 items-center gap-3">
-            <Skeleton className="size-10 shrink-0 lg:hidden" />
-            <div className="min-w-0">
+            <div className="min-w-0 lg:hidden">
+              <p className="text-lg font-bold tracking-[-0.03em] text-text">DEMI</p>
+              <Skeleton className="mt-1 h-3 w-24" />
+            </div>
+            <div className="hidden min-w-0 lg:block">
               <Skeleton className="h-5 w-28 lg:h-4 lg:w-36" />
               <Skeleton className="mt-2 h-3 w-36" />
             </div>
@@ -58,7 +61,7 @@ export function ProtectedApplicationShellSkeleton(): React.JSX.Element {
           <Skeleton className="h-10 w-24 shrink-0" />
         </header>
 
-        <main className="@container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+        <main className="app-shell-horizontal-gutter app-shell-main-content @container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
           <PageHeaderSkeleton actions />
           <div className="grid gap-6 pt-8 lg:grid-cols-2">
             <PanelSkeleton rows={3} />
@@ -67,6 +70,19 @@ export function ProtectedApplicationShellSkeleton(): React.JSX.Element {
           </div>
         </main>
       </div>
+      <nav
+        aria-hidden="true"
+        className="app-mobile-bottom-navigation fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface shadow-surface lg:hidden"
+      >
+        <ul className="m-0 grid h-full list-none grid-cols-5 p-0">
+          {Array.from({ length: 5 }, (_, index) => (
+            <li className="flex flex-col items-center justify-center gap-1" key={index}>
+              <Skeleton className="size-5" />
+              <Skeleton className="h-3 w-10" />
+            </li>
+          ))}
+        </ul>
+      </nav>
     </LoadingRegion>
   );
 }

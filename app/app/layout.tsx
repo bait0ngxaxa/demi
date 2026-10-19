@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Viewport } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { connection } from "next/server";
@@ -13,6 +14,10 @@ import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+export const viewport: Viewport = {
+  viewportFit: "cover",
+};
 
 async function resolveProtectedActor(lineQuickActionReturnTo: string | null): Promise<ActorContext> {
   try {

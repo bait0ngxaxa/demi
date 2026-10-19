@@ -6,6 +6,10 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.C2 unified mobile navigation (2026-10-19)
+
+[Phase LINE-QA.C2 handoff](./phases/PHASE_LINE_QA_C2_UNIFIED_MOBILE_BOTTOM_NAVIGATION.md), starting HEAD **539022eb751857eaa6d6b427025b0babe8c2e088**. All operational roles use one shared mobile-first bottom-tab system below the existing 1024px desktop breakpoint; desktop keeps the existing collapsible Sidebar. The trusted server navigation projection remains the source of available destinations. Personal and Work remain separate route-derived workspaces, and selecting one changes navigation only. Mobile primary tabs are capability-aware and stable; remaining authorized destinations stay in the shared “เพิ่มเติม” menu. OSM screening/follow-up task queries select tabs but do not grant authority. `/line/workflow/...` keeps its separate MINI App layout. No authorization policy, LINE Provider/Rich Menu behavior, schema, flag, or route hierarchy is changed by C2.
+
 ## CURRENT-status addendum — Phase LINE-QA.C1 OSM fieldwork workflow audit (2026-10-19)
 
 [Phase LINE-QA.C1 handoff](./phases/PHASE_LINE_QA_C1_OSM_WORKFLOW_INTEGRATION_AUDIT.md), starting HEAD **b2e1823054486e929b0fb62d7f72f84038e87e8a**. The four OSM Rich Menu actions (assigned Patients, screening, follow-up, provisioning) were traced end to end on ordinary DEMI Web routes; login return, scope and policies passed unchanged.
