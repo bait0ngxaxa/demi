@@ -47,7 +47,9 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     h.init.mockResolvedValue(undefined); h.isInClient.mockReturnValue(false); h.isLoggedIn.mockReturnValue(true); h.getIDToken.mockReturnValue("fresh-line-id-token-only-in-body");
     h.fetch.mockImplementation(async (path: string) => Response.json(path.endsWith("/prepare") ? prepared() : { status: "RECOVERY_RELEASED_UNVERIFIED" }));
     vi.stubGlobal("fetch", h.fetch); vi.stubGlobal("window", { location: { assign: h.assign } });
-    vi.stubGlobal("sessionStorage", { getItem: (key: string) => h.saved.get(key) ?? null, setItem: (key: string, value: string) => h.saved.set(key, value), removeItem: (key: string) => h.saved.delete(key) });
+    vi.stubGlobal("localStorage", { getItem: (key: string) => h.saved.get(key) ?? null, setItem: (key: string, value: string) => h.saved.set(key, value), removeItem: (key: string) => h.saved.delete(key) });
+    // A LIFF reopen in the LINE app starts with empty sessionStorage; the handoff must not depend on it.
+    vi.stubGlobal("sessionStorage", { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
   });
   afterEach(() => vi.unstubAllGlobals());
   it("requires complete reviews/risk decision before requesting fresh proof, without authorizing unused MINI", async () => {
@@ -63,6 +65,16 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     expect(h.fetch).toHaveBeenCalledTimes(1); expect(h.getIDToken).not.toHaveBeenCalled();
     const saved = [...h.saved.values()].join(); expect(saved).toContain("riskAcknowledged"); expect(saved).not.toContain("idToken"); expect(saved).not.toContain("accessToken");
     expect(JSON.stringify(h.login.mock.calls)).not.toContain(prepared().challenge);
+  });
+  it("resumes after the LINE app reopens DEMI in a new LIFF webview", async () => {
+    h.isInClient.mockReturnValue(true); await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    // New webview: no React state survives, only origin storage.
+    h.states.length = 0; h.refs.length = 0;
+    expect(render().find((control) => control.props.children === "ตรวจสอบเพื่อเชื่อมใหม่")).toBeUndefined();
+    render().find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")?.props.onClick?.(); await settle();
+    expect(h.fetch).toHaveBeenCalledTimes(2);
+    expect(h.fetch.mock.calls[1][0]).toBe("/api/line/account/recovery");
+    expect(h.saved.size).toBe(0);
   });
   it("LIFF handoff carries no challenge/identity in URL", async () => {
     h.isInClient.mockReturnValue(true); await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();

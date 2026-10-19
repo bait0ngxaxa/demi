@@ -10,6 +10,9 @@ const reviewSchema = z.enum(["REMOVED", "NOT_LISTED", "UNDETERMINED"]);
 const handoffSchema = preparedSchema.extend({ manualReviews: z.record(z.string().uuid(), reviewSchema), riskAcknowledged: z.literal(true) });
 type Prepared = z.infer<typeof preparedSchema>;
 type Review = z.infer<typeof reviewSchema>;
+// localStorage, not sessionStorage: inside the LINE app the liff.line.me
+// handoff reopens DEMI in a new webview, which starts with empty sessionStorage.
+// The stored intent is session-bound, single-use and expires in five minutes.
 const storageKey = "demi-line-recovery-intent-v1";
 function subscribeHandoff(callback: () => void): () => void {
   window.addEventListener("storage", callback);
@@ -17,7 +20,7 @@ function subscribeHandoff(callback: () => void): () => void {
   return () => { window.removeEventListener("storage", callback); window.removeEventListener("pageshow", callback); };
 }
 function handoffSnapshot(): string | null {
-  try { return sessionStorage.getItem(storageKey); } catch { return null; }
+  try { return localStorage.getItem(storageKey); } catch { return null; }
 }
 function readHandoff(value: string | null): z.infer<typeof handoffSchema> | null {
   try {
@@ -84,7 +87,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
     if (running.current) return;
     running.current = true; setBusy(true); setError("");
     try {
-      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
       const result = preparedSchema.parse(await post("/api/line/account/recovery/prepare", {}));
       setPrepared(result); setReviews({}); setAcknowledged(false);
       heading.current?.focus();
@@ -96,7 +99,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
     if (!prepared.reviews.every((row) => reviews[row.id])) return;
     running.current = true; setBusy(true); setError("");
     try {
-      sessionStorage.setItem(storageKey, JSON.stringify({ ...prepared, manualReviews: reviews, riskAcknowledged: true }));
+      localStorage.setItem(storageKey, JSON.stringify({ ...prepared, manualReviews: reviews, riskAcknowledged: true }));
       // Explicit recovery-only restart; no binding is created by this step.
       await initializeLineAccountLiff(liffId);
       if (liff.isInClient()) {
@@ -116,7 +119,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error();
       await post("/api/line/account/recovery", { intentId: prepared.intentId, challenge: prepared.challenge, idToken, riskAcknowledged: true, manualReviews: reviews });
-      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
       onReload();
     } catch { setError(failure); } finally { running.current = false; setBusy(false); }
   }
