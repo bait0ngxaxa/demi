@@ -3,6 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import {
+  decideOsmAssignedPatientReadPolicy,
+  PATIENT_READ_CAPABILITY,
+} from "@/modules/patient-directory/policies/patient-directory-policy";
 import { getFollowupDetail } from "@/modules/followups/services/followup-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -56,6 +60,9 @@ export default async function FollowupDetailPage({
 
   return (
     <FollowupDetailView
+      canContinueAssignedFollowup={
+        decideOsmAssignedPatientReadPolicy({ actor, capability: PATIENT_READ_CAPABILITY }).allowed
+      }
       detail={detail}
       scope={{ kind: "relationship", relationshipId }}
     />

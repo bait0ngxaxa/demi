@@ -17,8 +17,8 @@ import {
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
+  PatientAssignedDirectoryItem,
   PatientAssignedDirectoryPage,
-  PatientDirectoryItem,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
 
 type AssignedPatientDirectoryViewProps = {
@@ -78,14 +78,18 @@ function directoryUrl(input: {
 }
 
 function PatientRow({ item, taskMode }: {
-  item: PatientDirectoryItem;
+  item: PatientAssignedDirectoryItem;
   taskMode: AssignedPatientTaskMode | null;
 }): React.JSX.Element {
   const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
+  // A new follow-up round belongs to the active Program, matching the follow-up history CTA.
+  const followupPath = item.activeProgramId
+    ? `${relationshipPath}/programs/${encodeURIComponent(item.activeProgramId)}/followups/new`
+    : `${relationshipPath}/followups/new`;
   const href = taskMode === "screening"
     ? `${relationshipPath}/screenings/new`
     : taskMode === "followup"
-      ? `${relationshipPath}/followups/new`
+      ? followupPath
       : relationshipPath;
 
   return (

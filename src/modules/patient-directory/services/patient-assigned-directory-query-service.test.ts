@@ -1,4 +1,4 @@
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, PatientProgramStatus, Role } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -46,6 +46,7 @@ function createDatabase(total: number): {
         id: patientProfileId,
         person: { givenName: "สมชาย", familyName: "ผู้ป่วย" },
       },
+      programs: [],
     },
   ]);
 
@@ -177,7 +178,35 @@ describe("assigned Patient directory query boundary", () => {
       },
       hospitalNumber: "HN-001",
     });
-    expect(query.select).toEqual(patientDirectoryInternals.patientDirectorySelect);
+    expect(query.select).toEqual(patientDirectoryInternals.assignedPatientDirectorySelect);
+    expect(query.select.programs).toEqual({
+      where: { status: PatientProgramStatus.ACTIVE },
+      select: { id: true },
+      take: 1,
+    });
+  });
+
+  it("projects the active Program so follow-up selection can open the Program round", async () => {
+    const { database, findMany } = createDatabase(1);
+    const activeProgramId = "66666666-6666-4666-8666-666666666666";
+    findMany.mockResolvedValueOnce([{
+      id: relationshipId,
+      hospitalNumber: "HN-001",
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      patientProfile: {
+        id: patientProfileId,
+        person: { givenName: "สมชาย", familyName: "ผู้ป่วย" },
+      },
+      programs: [{ id: activeProgramId }],
+    }]);
+
+    const result = await findAssignedPatientDirectory(
+      osmActor,
+      { lookupType: "NAME", page: "1" },
+      { database },
+    );
+
+    expect(result.items[0]?.activeProgramId).toBe(activeProgramId);
   });
 
   it("returns only the minimal Patient projection", async () => {
@@ -195,6 +224,7 @@ describe("assigned Patient directory query boundary", () => {
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       hospitalNumber: "HN-001",
       classification: null,
+      activeProgramId: null,
     });
     expect(JSON.stringify(result)).not.toContain("identityKeyHash");
     expect(JSON.stringify(result)).not.toContain("authSubject");

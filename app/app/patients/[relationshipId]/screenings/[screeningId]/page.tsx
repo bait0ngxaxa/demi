@@ -8,6 +8,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
+import {
+  decideOsmAssignedPatientReadPolicy,
+  PATIENT_READ_CAPABILITY,
+} from "@/modules/patient-directory/policies/patient-directory-policy";
 import { getQuestionSet } from "@/modules/screening/domain/question-sets";
 import {
   getScreeningDetail,
@@ -99,10 +104,12 @@ function AnswerList({
 
 function ScreeningDetailView({
   activeProgram,
+  canContinueAssignedScreening,
   canManageProgram,
   detail,
 }: {
   activeProgram: PatientProgramProjection | null;
+  canContinueAssignedScreening: boolean;
   canManageProgram: boolean;
   detail: ScreeningDetail;
 }): React.JSX.Element {
@@ -239,7 +246,7 @@ function ScreeningDetailView({
           </dl>
         </Panel>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={goalPlanHref}
@@ -256,6 +263,14 @@ function ScreeningDetailView({
           >
             กลับไปประวัติการประเมิน
           </Link>
+          {canContinueAssignedScreening ? (
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href={LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING}
+            >
+              เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง
+            </Link>
+          ) : null}
         </div>
       </div>
     </div>
@@ -291,6 +306,9 @@ export default async function ScreeningDetailPage({
   return (
     <ScreeningDetailView
       activeProgram={programContext.active}
+      canContinueAssignedScreening={
+        decideOsmAssignedPatientReadPolicy({ actor, capability: PATIENT_READ_CAPABILITY }).allowed
+      }
       canManageProgram={programContext.canManage}
       detail={detail}
     />

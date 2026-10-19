@@ -4,6 +4,7 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  PatientProgramStatus,
   Prisma,
   Role,
   UserStatus,
@@ -91,8 +92,13 @@ export type PatientDirectoryPage = {
   classificationFilter: PatientDirectoryClassificationFilter;
 };
 
+/** Lets the follow-up task open the active Program, as the follow-up history CTA does. */
+export type PatientAssignedDirectoryItem = PatientDirectoryItem & {
+  activeProgramId: string | null;
+};
+
 export type PatientAssignedDirectoryPage = {
-  items: PatientDirectoryItem[];
+  items: PatientAssignedDirectoryItem[];
   lookupType: PatientDirectoryLookupType;
   value: string;
   page: number;
@@ -130,6 +136,15 @@ export const patientDirectorySelect = {
         },
       },
     },
+  },
+} satisfies Prisma.PatientHospitalRelationshipSelect;
+
+const assignedPatientDirectorySelect = {
+  ...patientDirectorySelect,
+  programs: {
+    where: { status: PatientProgramStatus.ACTIVE },
+    select: { id: true },
+    take: 1,
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
 
@@ -573,11 +588,14 @@ export async function findAssignedPatientDirectory(
       orderBy: patientDirectoryOrderBy,
       skip: (page - 1) * PATIENT_DIRECTORY_PAGE_SIZE,
       take: PATIENT_DIRECTORY_PAGE_SIZE,
-      select: patientDirectorySelect,
+      select: assignedPatientDirectorySelect,
     });
 
     return {
-      items: relationships.map(toPatientDirectoryItem),
+      items: relationships.map((record) => ({
+        ...toPatientDirectoryItem(record),
+        activeProgramId: record.programs[0]?.id ?? null,
+      })),
       lookupType: parsed.lookupType,
       value: parsed.value ?? "",
       page,
@@ -602,6 +620,7 @@ export const patientDirectoryInternals = {
   buildNameWhere,
   buildPatientRelationshipWhere,
   buildOsmAssignedPatientRelationshipWhere,
+  assignedPatientDirectorySelect,
   patientDirectoryOrderBy,
   patientDirectorySelect,
   patientDetailSelect,

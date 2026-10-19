@@ -6,6 +6,14 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.C1 OSM fieldwork workflow audit (2026-10-19)
+
+[Phase LINE-QA.C1 handoff](./phases/PHASE_LINE_QA_C1_OSM_WORKFLOW_INTEGRATION_AUDIT.md), starting HEAD **b2e1823054486e929b0fb62d7f72f84038e87e8a**. The four OSM Rich Menu actions (assigned Patients, screening, follow-up, provisioning) were traced end to end on ordinary DEMI Web routes; login return, scope and policies passed unchanged.
+
+- In follow-up task mode, a Patient with an ACTIVE Program now opens the Program follow-up round (same rule as the follow-up history CTA), so the round is recorded in the Program and BR-06 plan adjustment continues. Relationship follow-ups remain for Patients without an ACTIVE Program.
+- Screening and follow-up detail pages offer a fixed link back to the assigned task list for actors with a current OSM scope. Success destinations are unchanged.
+- No schema, flag, channel, Rich Menu or provider change. Open owner questions: Program round-1 screening from LINE, and OSM provisioning scope (handoff section 10).
+
 ## CURRENT-status addendum — Phase LINE-QA.B2.4 LINE configuration simplification (2026-10-19)
 
 [Phase LINE-QA.B2.4 handoff](./phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md), starting HEAD **961bc1bfe3d3a3710fa5b855d0764c5fbe51bd75**. This entry supersedes the configuration statements in the B1–B2.3 and 17J.3D addenda below, including every "keep `DEMI_LINE_DISCONNECTION_ENABLED=false`" instruction.

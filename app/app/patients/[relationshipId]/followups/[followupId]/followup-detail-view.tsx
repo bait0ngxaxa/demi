@@ -16,6 +16,7 @@ import type {
   FollowupDetail,
   FollowupProgramDetail,
 } from "@/modules/followups/services/followup-query-service";
+import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 
 export type FollowupDetailViewScope =
   | {
@@ -73,9 +74,12 @@ function yesNoValue(value: boolean | null, yes: string, no: string): string {
 }
 
 export function FollowupDetailView({
+  canContinueAssignedFollowup = false,
   detail,
   scope,
 }: {
+  /** Server-derived: the viewer currently has an assigned-Patient OSM scope. */
+  canContinueAssignedFollowup?: boolean;
   detail: FollowupDetail | FollowupProgramDetail;
   scope: FollowupDetailViewScope;
 }): React.JSX.Element {
@@ -351,7 +355,7 @@ export function FollowupDetailView({
           </dl>
         </Panel>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={historyHref}
@@ -364,6 +368,14 @@ export function FollowupDetailView({
           >
             กลับไปยังรายละเอียดผู้ป่วย
           </Link>
+          {canContinueAssignedFollowup ? (
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              href={LINE_WEB_NAVIGATION_PATHS.START_OSM_FOLLOWUP}
+            >
+              เลือกผู้ป่วยรายถัดไปเพื่อบันทึกติดตาม
+            </Link>
+          ) : null}
         </div>
       </div>
     </div>

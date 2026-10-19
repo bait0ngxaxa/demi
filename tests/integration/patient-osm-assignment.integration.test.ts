@@ -2,6 +2,7 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  PatientProgramStatus,
   Prisma,
   Role,
   UserStatus,
@@ -32,6 +33,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
+  await prisma.patientProgram.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -471,6 +473,33 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(assigned.items.map((item) => item.patientHospitalRelationshipId)).toEqual([
       patientA.relationshipId,
     ]);
+    expect(assigned.items[0]?.activeProgramId).toBeNull();
+
+    // Follow-up selection opens only the current ACTIVE Program, never a completed one.
+    await prisma.patientProgram.create({
+      data: {
+        patientHospitalRelationshipId: patientA.relationshipId,
+        createdByUserId: ownerA.actor.userId,
+        status: PatientProgramStatus.COMPLETED,
+        startedAt: new Date("2026-08-01T05:00:00.000Z"),
+        completedAt: new Date("2026-08-20T05:00:00.000Z"),
+      },
+    });
+    const activeProgram = await prisma.patientProgram.create({
+      data: {
+        patientHospitalRelationshipId: patientA.relationshipId,
+        createdByUserId: ownerA.actor.userId,
+        status: PatientProgramStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    await expect(findAssignedPatientDirectory(osmA.actor, {
+      lookupType: "NAME",
+      value: "",
+      page: "1",
+    })).resolves.toMatchObject({
+      items: [{ patientHospitalRelationshipId: patientA.relationshipId, activeProgramId: activeProgram.id }],
+    });
     await expect(
       findAssignedPatientDirectory(osmB.actor, {
         lookupType: "NAME",

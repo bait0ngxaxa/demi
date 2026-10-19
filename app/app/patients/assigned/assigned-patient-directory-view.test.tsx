@@ -13,6 +13,7 @@ const result: PatientAssignedDirectoryPage = {
     hospital: { id: "hospital-1", name: "โรงพยาบาล ก" },
     hospitalNumber: "HN-001",
     classification: null,
+    activeProgramId: null,
   }],
   lookupType: "NAME",
   value: "",
@@ -139,5 +140,18 @@ describe("assigned patient operational directory", () => {
     expect(html).toContain('href="/app/patients/relationship-1/followups/new"');
     expect(html).toContain("บันทึกติดตามผู้ป่วยรายนี้");
     expect(html).toContain('href="/app/patients/assigned?lookupType=NAME&amp;task=followup"');
+  });
+
+  it("opens the active Program follow-up round instead of a relationship follow-up", () => {
+    const first = result.items[0];
+    if (!first) throw new Error("Missing fixture");
+    const html = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "followup");
+
+    expect(html).toContain('href="/app/patients/relationship-1/programs/program-1/followups/new"');
+    expect(html).not.toContain('href="/app/patients/relationship-1/followups/new"');
+
+    const screening = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "screening");
+    expect(screening).toContain('href="/app/patients/relationship-1/screenings/new"');
+    expect(screening).not.toContain("programs/program-1");
   });
 });
