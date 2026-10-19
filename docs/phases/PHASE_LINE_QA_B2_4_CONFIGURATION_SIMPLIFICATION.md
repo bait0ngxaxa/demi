@@ -1,6 +1,13 @@
 # Phase LINE-QA.B2.4 — LINE Configuration Simplification and Build Gate Cleanup
 
-**Status:** Implemented and verified locally with synthetic data and disposable PostgreSQL. No real LINE Provider call, LINE Console change, Rich Menu change, production migration, environment change or deployment was made.
+**Status:** Implemented, deployed to `demi_demo` production by the owner, and owner-tested in the LINE app for account switching. The original B2.4 commit (`32500ae`) was verified locally with synthetic data and disposable PostgreSQL; same-day follow-ups are recorded in section 14. The agent made no LINE Console, Rich Menu, environment or migration change; production inspection was read-only.
+
+| Commit | Change |
+| --- | --- |
+| `32500ae` | B2.4 configuration simplification and build-gate fixes (sections 1–13) |
+| `ecdefd9` | LINE transfer to another DEMI account after explicit Unlink (14.2) |
+| `5f25b8b` | Recovery handoff survives the LINE app LIFF reopen (14.3) |
+| `24c336d` | Switch DEMI accounts from `/line/account` (14.4) |
 
 ## 1. Starting HEAD
 
@@ -116,8 +123,49 @@ All on Windows 11, Node via the repository scripts, Next.js 16.3.0. Disposable l
 
 - Owner: create/verify the LINE Login and MINI channels under the same DEMI Provider, configure environment values per deployment, and run real device/Provider UAT. None of this was verified here.
 - Production DB role must be able to read `_prisma_migrations` (readiness check) and use `LineWorkflowRateLimitBucket` (unchanged from B2.3).
-- With MINI provisioned, the Account LIFF cannot obtain a MINI access token, so an Unlink leaves the MINI obligation unconfirmed and Relink requires Recovery. This is existing behavior, not introduced here.
+- With MINI provisioned, the Account LIFF cannot obtain a MINI access token, so an Unlink leaves the MINI obligation unconfirmed and relinking the *same* DEMI account requires Recovery. This is existing behavior, not introduced here. Linking the LINE to a *different* DEMI account is not blocked by it (14.2).
 - Unused export `verifyLineTerminationToken` in `line-deauthorization-client.ts` predates this phase and was left untouched.
+
+## 14. Same-day follow-ups after production deployment (2026-10-19)
+
+### 14.1 Production diagnosis (read-only)
+
+The owner reported that, after deployment, Link showed "ตรวจสอบสถานะอีกครั้ง" and a second DEMI account could not link. Read-only checks:
+
+- `GET /line/workflow` on `https://demidemo.vercel.app` rendered the ready shell, so the full MINI configuration passed the availability policy; `/api/health` returned `ok`. An initial assumption that MINI variables were incomplete was wrong.
+- Supabase `Demi-dev`: all 65 migrations finished (including `20261008120000_line_authorization_lifecycle`); `LineAuthorizationLifecycle` and `LineWorkflowRateLimitBucket` exist; the app connects as `postgres` through the pooler, which can read `_prisma_migrations`.
+- The only binding was still ACTIVE for the first account: signing out of DEMI had not unlinked LINE, so the second account received `CONFLICT` (observed as three LINK intents with outcome `CONFLICT`). The exact cause of the earlier recheck screen was not reproduced; it coincided with the deployment cutover and Vercel Hobby runtime logs (one-hour retention, no LINE logging) were no longer available.
+- After the owner unlinked, the database showed the Account obligation `REMOTE_CONFIRMED / PROVIDER_204` (real LINE deauthorization succeeded) and the MINI obligation `REMOTE_UNCONFIRMED / TOKEN_UNAVAILABLE`.
+
+### 14.2 LINE transfer after explicit Unlink — `ecdefd9`
+
+Owner decision (recorded in ADR-0009): a LINE identity may be linked by a different DEMI User once no ACTIVE binding exists for it.
+
+- `linkLineAccount` locks every binding for the LINE subject. An ACTIVE binding of another User is still `LINE_BINDING_CONFLICT` (no takeover); the User's own retained binding is reactivated as before; otherwise a **new** binding is created. The database already enforced uniqueness only for ACTIVE bindings, so no migration was needed.
+- The previous owner's binding, lifecycle generations, unresolved obligations and audit history are never moved, confirmed or released. Only its raw Rich Menu cleanup locator is retired (`lineUserId = null`, `CONFIRMED_CLEAN` as required by `LineAccountBinding_raw_locator_lifecycle_check`, audit `line.account.cleanup.superseded`) so its cleanup cannot remove the new owner's menu. While that cleanup holds its 90-second reconcile lease the transfer returns `LINE_PROVIDER_TRANSIENT`.
+- The conflict copy now tells the user to unlink the previous connection first.
+- Accepted risk: a late remote deauthorization from the previous owner's Unlink may disconnect the new owner's LINE consent (availability only).
+
+### 14.3 Recovery handoff in the LINE app — `5f25b8b`
+
+In the LINE app, "ยืนยันตัวตนกับ LINE ใหม่" reopens DEMI through `liff.line.me` in a new webview, which starts with empty `sessionStorage`; the prepared Recovery intent was lost and the flow restarted (three unconsumed RECOVERY intents in production). The handoff (intent ID, challenge, review choices; never a LINE token) now uses `localStorage`; it remains session-bound, single-use, five-minute and is removed on completion or restart.
+
+### 14.4 Switching DEMI accounts inside LINE — `24c336d`
+
+The LINE webview keeps the DEMI session and `/line/account` had no sign-out, so another account could not be used inside LINE. Added `switchDemiAccountForLineAction` (sign-out, then `/login?returnTo=%2Fline%2Faccount`) and, on `/line/account`:
+
+- linked: "ยกเลิกการเชื่อมต่อ LINE และใช้บัญชี DEMI อื่น" (existing Unlink confirmation, then sign-out) and "ออกจากระบบ DEMI" (sign-out only; LINE stays linked to this account);
+- unlinked / after Unlink: "ใช้บัญชี DEMI อื่น".
+
+Signing out still never unlinks LINE (owner decision). The owner confirmed this flow works in the LINE app.
+
+### 14.5 Verification for the follow-ups
+
+- `npm run test:integration:focused` on disposable PostgreSQL: `line-account-linking` **27/27** (transfer A→B→A, lease refusal), `line-disconnection-orchestration` **35/35** (B links while A's obligations stay on A and still require A's Recovery), `line-authorization-lifecycle` **32/32**, `line-workflow-issuance` **5/5**.
+- `npx vitest run app/line src/modules/auth src/modules/line app/login`: **56 files / 824 tests passed** (includes the new LIFF-reopen Recovery test, account-switch rendering and the switch server action).
+- `npx tsc --noEmit` and `npx eslint` on changed files: passed.
+- Not run after the follow-ups: full `npm run test`, production build locally (Vercel built and deployed each commit successfully).
+- Owner test in production: account switch and relink to the other account in the LINE app — **works**. MINI device UAT remains not verified.
 
 <a id="owner-setup-th"></a>
 
@@ -165,3 +213,15 @@ node -e "const r=()=>require('crypto').randomBytes(32).toString('base64url');con
 - **ปิด MINI ฉุกเฉิน:** ตั้ง `DEMI_LINE_MINI_APP_DISABLED=true` แล้ว redeploy เมื่อจะเปิดคืนให้ลบค่านี้หรือตั้งเป็น `false` ไม่มี flag อื่นที่ต้องเปิด
 - ค่าเก่า `DEMI_LINE_DISCONNECTION_ENABLED`, `DEMI_LINE_DISCONNECTION_MANIFEST`, `DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED`, `DEMI_LINE_MINI_APP_WORKFLOW_ENABLED`, `DEMI_LINE_MINI_APP_ISSUANCE_ENABLED`, `DEMI_LINE_MINI_APP_ENDPOINT_URL`, `DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE` ไม่ถูกใช้แล้ว ลบออกได้
 - **Production:** origin ต้องเป็น HTTPS และ database migration ต้อง apply ครบ (เจ้าของเป็นผู้ apply ตามขั้นตอนปกติ) **Local:** ใช้ `http://localhost` ได้เฉพาะ LINE Login ส่วน MINI ต้องเป็น HTTPS เสมอ
+
+### D. สลับบัญชี DEMI ในแอป LINE
+
+การออกจากระบบ DEMI **ไม่** ยกเลิกการเชื่อม LINE (LINE กับเมนู LINE ยังเป็นของบัญชีเดิม) LINE หนึ่งบัญชีเชื่อมกับบัญชี DEMI ได้ทีละบัญชี
+
+1. เปิดหน้า "บัญชี LINE" จาก Rich Menu แล้วกด **"ยกเลิกการเชื่อมต่อ LINE และใช้บัญชี DEMI อื่น"** และยืนยัน
+2. ระบบออกจากบัญชีเดิมและพาไปหน้าเข้าสู่ระบบ ให้เข้าด้วยบัญชีใหม่
+3. กลับมาหน้า "บัญชี LINE" แล้วกด **"เชื่อมบัญชี LINE นี้"** เมนู LINE จะเปลี่ยนเป็นของบัญชีใหม่
+
+- ถ้าแค่ต้องการออกจากระบบโดยให้ LINE ยังเชื่อมบัญชีเดิม ให้กด **"ออกจากระบบ DEMI"**
+- ถ้าจะเชื่อม LINE กลับเข้า**บัญชีเดิม**หลังยกเลิก ระบบจะให้ทำ "ตรวจสอบเพื่อเชื่อมใหม่" ก่อน (เพราะเปิด MINI ไว้) ทำตามขั้นตอนบนหน้าจอจนกด "ยืนยันผลการตรวจสอบ" แล้วจึงเชื่อมได้
+- ถ้าขึ้นว่าบริการ LINE ยังไม่พร้อม ให้รอประมาณ 1–2 นาทีแล้วลองใหม่ (ระบบกำลังล้างเมนูของบัญชีเดิม)
