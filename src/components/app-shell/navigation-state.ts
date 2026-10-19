@@ -3,10 +3,34 @@ import type {
   ApplicationWorkspaceContext,
 } from "./navigation-types";
 
-export function getWorkspaceContextForPathname(pathname: string): ApplicationWorkspaceContext {
-  return pathname === "/app/personal" || pathname.startsWith("/app/personal/")
-    ? "personal"
-    : "work";
+function normalizePathname(pathname: string): string {
+  const path = pathname.split("?")[0] ?? "";
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
+}
+
+function isPathWithin(pathname: string, basePath: string): boolean {
+  return pathname === basePath || pathname.startsWith(`${basePath}/`);
+}
+
+export function getWorkspaceContextForPathname(
+  pathname: string,
+): ApplicationWorkspaceContext | null {
+  const normalizedPathname = normalizePathname(pathname);
+
+  if (isPathWithin(normalizedPathname, "/app/personal")) {
+    return "personal";
+  }
+
+  if (
+    normalizedPathname === "/app" ||
+    ["/app/admin", "/app/hospitals", "/app/patients", "/app/workforce"].some((basePath) =>
+      isPathWithin(normalizedPathname, basePath),
+    )
+  ) {
+    return "work";
+  }
+
+  return null;
 }
 
 export function resolveSelectedWorkspaceContext(
@@ -22,6 +46,18 @@ export function resolveSelectedWorkspaceContext(
   }
 
   return availableContexts[0] ?? null;
+}
+
+export function resolveWorkspaceContextForPathname(
+  pathname: string,
+  availableContexts: readonly ApplicationWorkspaceContext[],
+  previouslySelectedContext: ApplicationWorkspaceContext | null,
+): ApplicationWorkspaceContext | null {
+  const routeContext = getWorkspaceContextForPathname(pathname);
+  return resolveSelectedWorkspaceContext(
+    availableContexts,
+    routeContext ?? previouslySelectedContext,
+  );
 }
 
 export function isNavigationItemActive(

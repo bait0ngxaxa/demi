@@ -4,6 +4,7 @@
 
 - Repository: `bait0ngxaxa/demi`, branch `main`
 - Required starting HEAD: `539022eb751857eaa6d6b427025b0babe8c2e088`
+- Shared-route UX follow-up base HEAD: `38f17a7535c68c0a071337f265ec81046e33eab1`
 - Scope: one shared mobile navigation system for PATIENT, OSM, HOSPITAL, ADMIN, and supported combinations
 - Desktop Sidebar, existing route tree, server authorization, LINE Provider/Rich Menus, and `/line/workflow/...` MINI App remain separate and unchanged in behavior
 
@@ -11,7 +12,7 @@
 
 The protected server layout continues to resolve canonical `ActorContext` and call `projectApplicationNavigation(actor)`. `AppShell` derives the mobile projection only from that already authorized navigation list. `projectMobileNavigation` owns stable primary order, maximum slot count, workspace availability, and More coverage. `resolveActiveMobileTabId` is a pure route matcher. `MobileBottomNavigation`, `MoreNavigation`, `MobileWorkspaceLabel`, and `MobileNavigationGlyph` are shared presentation components; the existing `NavigationList` renders secondary destinations.
 
-The existing `ApplicationWorkspaceContext` remains `personal | work`. Pathname determines the selected workspace. Users with both contexts switch through the existing “พื้นที่ใช้งาน” links in More; no preference persistence or new role switching endpoint is introduced.
+The existing `ApplicationWorkspaceContext` remains `personal | work`. Workspace-specific route segments select Personal or Work; shared routes (`/app/family`, `/app/settings`, `/app/support`) retain the current selection in `NavigationWorkspaceProvider`, which is scoped to the AppShell and stores no preference outside React state. A direct shared-route URL defaults to Work when available, otherwise to the only available workspace. Users with both contexts switch through the existing “พื้นที่ใช้งาน” links in More; selecting a workspace remains navigation-only, with no new role switching endpoint.
 
 ## 3. All-role navigation matrix
 
@@ -65,16 +66,19 @@ The bottom tabs expose a named navigation landmark, `aria-current`, focus-visibl
 
 ## 9. Regression evidence
 
-Projection tests construct server actor contexts across all 15 non-empty PATIENT/OSM/HOSPITAL/ADMIN role combinations and also cover no/revoked OSM scope, missing/suspended Hospital membership, primary slot limits, deterministic order, and More coverage. Active-route tests cover task queries, details, invalid queries, secondary routes, exact home, Hospital directory, workspace selection, and route-history sequences. Interaction tests cover keyboard operation, dialog focus, Escape/backdrop, body lock, route transitions, desktop breakpoint crossing, and cancel/confirm behavior for pending actions and unknown outcomes. Responsive shell tests retain Sidebar/collapse assertions and check the shared navigation and safe-area contract.
+Projection tests construct server actor contexts across all 15 non-empty PATIENT/OSM/HOSPITAL/ADMIN role combinations and also cover no/revoked OSM scope, missing/suspended Hospital membership, primary slot limits, deterministic order, and More coverage. Active-route tests cover task queries, details, invalid queries, secondary routes, exact home, Hospital directory, workspace selection, and route-history sequences. Interaction tests cover keyboard operation, dialog focus, Escape/backdrop, body lock, route transitions, desktop breakpoint crossing, and cancel/confirm behavior for pending actions and unknown outcomes. A multi-role regression follows Personal → shared Family → Work → shared Settings and verifies the selected tabs, Header context, and More dialog stay aligned; direct shared-route fallback is tested separately. Responsive shell tests retain Sidebar/collapse assertions and check the shared navigation and safe-area contract.
+
+The new regression was first run against the pre-fix C2 shell and failed on the reported symptom: after `/app/personal/appointments` → `/app/family`, the Personal appointment tab disappeared. It passes after the shared workspace provider was added.
 
 **Focused verification:**
 
-- `npm run test -- src/components/app-shell/mobile-tab-projection.test.ts src/components/app-shell/mobile-navigation-state.test.ts src/components/app-shell/mobile-bottom-navigation.test.tsx src/components/app-shell/responsive-layout.test.tsx src/components/app-shell/mobile-navigation-lifecycle.test.ts src/components/app-shell/navigation-list.test.tsx src/components/app-shell/app-shell-skeleton.test.ts src/components/app-shell/application-navigation.test.ts src/components/ui/mutation-action-state.test.tsx` — **9 files / 98 tests passed**.
-- `npm run typecheck` — **passed**.
-- `npx eslint` on changed TypeScript/TSX shell/navigation components and tests — **passed with no findings**.
-- `impeccable.cmd detect --json` on changed shell/navigation UI targets — **passed; no findings (`[]`)**.
-- `npm run build` — **passed**, including TypeScript and generation of 48 static pages.
-- `npm run test` — **430 files / 4,472 tests passed**.
+- Initial C2 focused suite: `npm run test -- src/components/app-shell/mobile-tab-projection.test.ts src/components/app-shell/mobile-navigation-state.test.ts src/components/app-shell/mobile-bottom-navigation.test.tsx src/components/app-shell/responsive-layout.test.tsx src/components/app-shell/mobile-navigation-lifecycle.test.ts src/components/app-shell/navigation-list.test.tsx src/components/app-shell/app-shell-skeleton.test.ts src/components/app-shell/application-navigation.test.ts src/components/ui/mutation-action-state.test.tsx` — **9 files / 98 tests passed**.
+- Shared-workspace follow-up: `npm run test -- src/components/app-shell/navigation-state.test.ts src/components/app-shell/mobile-bottom-navigation.test.tsx src/components/app-shell/navigation-list.test.tsx src/components/app-shell/responsive-layout.test.tsx` — **4 files / 24 tests passed**.
+- `npm run typecheck` — **passed after the follow-up**.
+- Targeted `npx eslint` on changed shell/navigation components and tests — **passed with no findings**.
+- `impeccable.cmd detect --json` on the C2 shell/navigation UI targets — **passed; no findings (`[]`)**. The workspace-retention follow-up changed no styles.
+- `npm run build` — **passed after the follow-up**, including TypeScript and generation of 48 static pages.
+- `npm run test` — **430 files / 4,475 tests passed after the follow-up**.
 
 No PostgreSQL integration suite was run because C2 does not change authorization policies, data access, or persistence. No migrations or real LINE Provider calls were made.
 
@@ -86,12 +90,14 @@ Observed: no horizontal tab scrolling or label collision at mobile widths; all f
 
 Limitation: these were desktop Chrome responsive viewport captures using synthetic navigation projections, not authenticated production sessions or physical iOS/Android devices. Safe-area CSS was inspected and exercised through the responsive layout, but device-specific safe-area, browser chrome, and on-screen keyboard behavior were not verified on hardware.
 
+The shared-route retention correction was verified through a client component/router harness covering route transitions and direct-route fallback; no new browser screenshots were captured because the follow-up changes navigation state only and does not change visual styles.
+
 ## 11. Files changed
 
 **Updated:**
 
 - `DESIGN.md`, `docs/CONTEXT.md`, `app/app/layout.tsx`, `app/globals.css`
-- `src/components/app-shell/app-shell.tsx`, `app-header.tsx`, `app-shell-skeleton.tsx`, `navigation-list.tsx`, `responsive-layout.test.tsx`
+- `src/components/app-shell/app-shell.tsx`, `app-header.tsx`, `app-shell-skeleton.tsx`, `navigation-list.tsx`, `navigation-state.ts`, `navigation-state.test.ts`, `mobile-bottom-navigation.test.tsx`, `responsive-layout.test.tsx`
 - `src/components/ui/unknown-outcome-alert.tsx`, `mutation-action-state.test.tsx`
 
 **Added:**
@@ -100,6 +106,7 @@ Limitation: these were desktop Chrome responsive viewport captures using synthet
 - `src/components/app-shell/mobile-tab-projection.ts` and its test
 - `src/components/app-shell/mobile-navigation-state.ts` and its test
 - `src/components/app-shell/mobile-navigation-guard.ts`
+- `src/components/app-shell/navigation-workspace-provider.tsx`
 - `src/components/app-shell/mobile-bottom-navigation.tsx` and its test
 - `src/components/app-shell/mobile-navigation-glyph.tsx`
 - `src/components/app-shell/mobile-workspace-label.tsx`

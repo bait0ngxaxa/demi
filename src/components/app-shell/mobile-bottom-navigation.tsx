@@ -10,6 +10,7 @@ import {
   getWorkspaceContextForPathname,
   resolveSelectedWorkspaceContext,
 } from "./navigation-state";
+import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
 import { confirmMobileNavigation } from "./mobile-navigation-guard";
 import { MobileNavigationGlyph } from "./mobile-navigation-glyph";
 import { MoreNavigation } from "./more-navigation";
@@ -50,9 +51,10 @@ export function MobileBottomNavigation({
 }: MobileBottomNavigationProps): React.JSX.Element | null {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const navigationWorkspace = useNavigationWorkspaceContext();
   const selectedWorkspace = resolveSelectedWorkspaceContext(
     projection.availableWorkspaces,
-    getWorkspaceContextForPathname(pathname),
+    navigationWorkspace ?? getWorkspaceContextForPathname(pathname),
   );
 
   if (!selectedWorkspace) {

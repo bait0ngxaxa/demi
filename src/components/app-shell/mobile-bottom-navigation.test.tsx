@@ -66,6 +66,8 @@ vi.mock("next/link", () => ({
 }));
 
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
+import { MobileWorkspaceLabel } from "./mobile-workspace-label";
+import { NavigationWorkspaceProvider } from "./navigation-workspace-provider";
 import { projectMobileNavigation } from "./mobile-tab-projection";
 import type { ApplicationNavigationGroup } from "./navigation-types";
 
@@ -76,6 +78,16 @@ const navigation: readonly ApplicationNavigationGroup[] = [
     items: [
       { href: "/app/personal", label: "ส่วนตัว", match: "prefix", workspaceContext: "personal" },
       { href: "/app", label: "งาน", match: "exact", workspaceContext: "work" },
+    ],
+  },
+  {
+    label: "ส่วนตัว",
+    workspace: "personal",
+    items: [
+      { href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" },
+      { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
+      { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
+      { href: "/app/personal/care", label: "การดูแล", match: "prefix" },
     ],
   },
   { label: null, workspace: "work", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },
@@ -90,7 +102,10 @@ const navigation: readonly ApplicationNavigationGroup[] = [
   {
     label: "บัญชีและช่วยเหลือ",
     workspace: "all",
-    items: [{ href: "/app/settings", label: "ตั้งค่า", match: "prefix" }],
+    items: [
+      { href: "/app/family", label: "ญาติและผู้ดูแล", match: "prefix" },
+      { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
+    ],
   },
 ];
 const projection = projectMobileNavigation(navigation);
@@ -150,14 +165,15 @@ function RouterHarness(): React.JSX.Element {
   }, []);
 
   return (
-    <>
+    <NavigationWorkspaceProvider availableWorkspaces={projection.availableWorkspaces}>
+      <MobileWorkspaceLabel />
       <MobileBottomNavigation navigation={navigation} projection={projection} />
       <PageErrorBoundary>
         <Suspense fallback={<main id="application-main-content" tabIndex={-1}>กำลังโหลดหน้า</main>}>
           <Page href={href} />
         </Suspense>
       </PageErrorBoundary>
-    </>
+    </NavigationWorkspaceProvider>
   );
 }
 
@@ -208,8 +224,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(): void {
-  routerState.currentHref = "/app/patients/assigned?task=screening";
+function mount(initialHref = "/app/patients/assigned?task=screening"): void {
+  routerState.currentHref = initialHref;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -233,6 +249,39 @@ function navigate(href: string): void {
 }
 
 describe("unified mobile bottom navigation", () => {
+  it("keeps the Patient workspace selected when opening a shared family route", () => {
+    mount("/app/personal/appointments");
+
+    expect(container.querySelector('[aria-label="นัดหมาย"]')).not.toBeNull();
+    act(() => moreTrigger().click());
+
+    const familyLink = dialog().querySelector<HTMLAnchorElement>('a[href="/app/family"]');
+    if (!familyLink) throw new Error("Missing shared family destination in More");
+    act(() => familyLink.click());
+
+    expect(routerState.currentHref).toBe("/app/family");
+    expect(container.querySelector('[aria-label="นัดหมาย"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')).toBeNull();
+    expect(container.textContent).toContain("พื้นที่ส่วนตัว");
+    act(() => moreTrigger().click());
+    expect(dialog().getAttribute("aria-label")).toBe("เมนูเพิ่มเติม · พื้นที่ส่วนตัว");
+
+    navigate("/app/patients/assigned");
+    expect(container.querySelector('[aria-label="ผู้ป่วยที่รับผิดชอบ"]')).not.toBeNull();
+    expect(container.textContent).toContain("พื้นที่งาน");
+
+    navigate("/app/settings");
+    expect(container.querySelector('[aria-label="ผู้ป่วยที่รับผิดชอบ"]')).not.toBeNull();
+    expect(container.textContent).toContain("พื้นที่งาน");
+  });
+
+  it("defaults a direct shared-route URL to Work when both workspaces are available", () => {
+    mount("/app/family");
+
+    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')).not.toBeNull();
+    expect(container.textContent).toContain("พื้นที่งาน");
+  });
+
   it("keeps query task selection current across route and history changes", () => {
     mount();
 

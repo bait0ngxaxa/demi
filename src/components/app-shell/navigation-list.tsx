@@ -11,6 +11,7 @@ import {
   isNavigationItemActive,
   resolveSelectedWorkspaceContext,
 } from "./navigation-state";
+import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
 import type {
   ApplicationNavigationGroup,
   ApplicationWorkspaceContext,
@@ -31,6 +32,7 @@ export function NavigationList({
   tone = "desktop",
 }: NavigationListProps): React.JSX.Element {
   const pathname = usePathname();
+  const navigationWorkspace = useNavigationWorkspaceContext();
   const availableContexts = providedAvailableContexts ?? Array.from(
     new Set(
       groups
@@ -43,7 +45,7 @@ export function NavigationList({
   );
   const selectedContext = resolveSelectedWorkspaceContext(
     availableContexts,
-    getWorkspaceContextForPathname(pathname),
+    navigationWorkspace ?? getWorkspaceContextForPathname(pathname),
   );
   const visibleGroups = groups.filter(({ workspace }) =>
     workspace === undefined || workspace === "all" || workspace === selectedContext,

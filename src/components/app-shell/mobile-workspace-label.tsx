@@ -1,25 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
 
-import {
-  getWorkspaceContextForPathname,
-  resolveSelectedWorkspaceContext,
-} from "./navigation-state";
-import type { ApplicationWorkspaceContext } from "./navigation-types";
-
-type MobileWorkspaceLabelProps = {
-  availableWorkspaces: readonly ApplicationWorkspaceContext[];
-};
-
-export function MobileWorkspaceLabel({
-  availableWorkspaces,
-}: MobileWorkspaceLabelProps): React.JSX.Element {
-  const pathname = usePathname();
-  const selectedWorkspace = resolveSelectedWorkspaceContext(
-    availableWorkspaces,
-    getWorkspaceContextForPathname(pathname),
-  );
+export function MobileWorkspaceLabel(): React.JSX.Element {
+  const selectedWorkspace = useNavigationWorkspaceContext();
 
   return (
     <p className="truncate text-xs text-text-muted">
