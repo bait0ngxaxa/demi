@@ -1,0 +1,20 @@
+# One DEMI notification scheduler tick (docs/operations/DEPLOY_VPS.md).
+# Install: /etc/systemd/system/demi-scheduler.service, started by demi-scheduler.timer.
+# The tick itself skips when another tick holds the lock or the last one completed < 60 s ago.
+
+[Unit]
+Description=DEMI notification scheduler tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=demi
+Group=demi
+ExecStart=/usr/bin/node --env-file=/etc/demi/demi.env /srv/demi/current/scripts/scheduler-tick.mjs
+# Above the script's 320 s client timeout (route maxDuration is 300 s).
+TimeoutStartSec=330
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

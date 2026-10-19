@@ -25,7 +25,7 @@ const postgresUrlSchema = z
     message: "Database connection URL must be a PostgreSQL connection URL",
   });
 
-const serverEnvSchema = z
+export const serverEnvSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     DATABASE_URL: postgresUrlSchema,
@@ -37,7 +37,7 @@ const serverEnvSchema = z
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
-const supabaseAdminEnvSchema = z
+export const supabaseAdminEnvSchema = z
   .object({
     NEXT_PUBLIC_SUPABASE_URL: z.url(),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().trim().min(1),
@@ -56,11 +56,11 @@ export type SupabaseAdminEnv = Pick<
   "NEXT_PUBLIC_SUPABASE_URL" | "SUPABASE_SERVICE_ROLE_KEY"
 >;
 
-const patientEvidenceStorageEnvSchema = z.object({
+export const patientEvidenceStorageEnvSchema = z.object({
   SUPABASE_PATIENT_EVIDENCE_BUCKET: z.string().trim().min(1).max(100),
 });
 
-const lineLoginEnvSchema = z.object({
+export const lineLoginEnvSchema = z.object({
   DEMI_LINE_LOGIN_CHANNEL_ID: z.string().trim().regex(/^\d{4,20}$/u),
   DEMI_LINE_PUBLIC_ORIGIN: z.string().trim().url(),
   IDENTITY_HASH_SECRET: z.string().trim().min(32),
@@ -79,13 +79,13 @@ const lineLoginEnvSchema = z.object({
   }
 });
 
-const lineMessagingEnvSchema = z.object({
+export const lineMessagingEnvSchema = z.object({
   DEMI_LINE_MESSAGING_CHANNEL_SECRET: z.string().trim().min(1).max(1024),
   DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: z.string().trim().min(1).max(8192),
   DEMI_LINE_MESSAGING_BOT_USER_ID: z.string().trim().regex(/^U[0-9a-f]{32}$/iu),
 });
 
-const lineLiffIdEnvSchema = z.string().trim().regex(/^\d{4,20}-[A-Za-z0-9]+$/u);
+export const lineLiffIdEnvSchema = z.string().trim().regex(/^\d{4,20}-[A-Za-z0-9]+$/u);
 
 export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
   SUPABASE_PATIENT_EVIDENCE_BUCKET: string;

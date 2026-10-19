@@ -1,0 +1,129 @@
+# nginx site for DEMI on the single production VPS behind the Cloudflare proxy (orange cloud).
+# See docs/operations/DEPLOY_VPS.md. Install as /etc/nginx/sites-available/demi.conf and replace every
+# <PROD_HOST> with the host part of <PROD_ORIGIN> (DEMI_LINE_PUBLIC_ORIGIN without "https://").
+#
+# TLS: browsers terminate at Cloudflare; Cloudflare connects here with SSL/TLS mode "Full (strict)",
+# validated against a Cloudflare Origin CA certificate. Authenticated Origin Pulls (mTLS) make nginx
+# accept only connections that Cloudflare itself opens, so the origin cannot be reached around the proxy.
+# Requires nginx >= 1.25.1 for "http2 on;" (on older nginx use "listen 443 ssl http2;" instead).
+
+upstream demi_app {
+    # next start --hostname 127.0.0.1 --port 3000 (deploy/pm2/ecosystem.config.cjs)
+    server 127.0.0.1:3000;
+    keepalive 16;
+}
+
+# Cloudflare redirects HTTP to HTTPS at the edge ("Always Use HTTPS"); this only covers a direct hit.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name <PROD_HOST>;
+    server_tokens off;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name <PROD_HOST>;
+    server_tokens off;
+
+    # Cloudflare Origin CA certificate and key (Cloudflare dashboard → SSL/TLS → Origin Server).
+    ssl_certificate /etc/ssl/cloudflare/<PROD_HOST>.origin.pem;
+    ssl_certificate_key /etc/ssl/cloudflare/<PROD_HOST>.origin.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:DEMI_TLS:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # Authenticated Origin Pulls: Cloudflare's origin-pull client certificate CA.
+    ssl_client_certificate /etc/ssl/cloudflare/origin-pull-ca.pem;
+    ssl_verify_client on;
+
+    # Real client address from CF-Connecting-IP, trusted only from Cloudflare's published ranges
+    # (set_real_ip_from lines generated as in DEPLOY_VPS.md; refresh when Cloudflare changes them).
+    include /etc/nginx/snippets/cloudflare-real-ip.conf;
+
+    # No includeSubDomains/preload until the production domain and its subdomains are decided.
+    # Locations below add no headers of their own, so this one is inherited everywhere.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Default request body limit (nginx default). LINE webhooks are also capped at 1 MiB by the app.
+    client_max_body_size 1m;
+    client_body_timeout 30s;
+
+    # Inherited by every location below (none of them sets its own proxy_set_header).
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # $remote_addr is the real client after the real_ip include. Overwrite (do not append) so a
+    # client cannot inject addresses.
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_connect_timeout 5s;
+    # Cloudflare ends a proxied request after 100 s (HTTP 524); stay below that everywhere.
+    proxy_send_timeout 60s;
+    proxy_read_timeout 60s;
+    # App Router pages stream (loading UI / Suspense); buffering would hold the stream until it ends.
+    proxy_buffering off;
+
+    # Internal machine routes (scheduler tick/readiness, HMAC drains) are never public. The systemd
+    # timer calls 127.0.0.1:3000 directly. Placed first and with ^~ so no regex location can match.
+    location ^~ /api/internal/ {
+        return 404;
+    }
+
+    # Larger bodies only where the code accepts them; sizes match the code validators exactly.
+
+    # Patient import Server Action: next.config.ts experimental.serverActions.bodySizeLimit = "6mb"
+    # (file itself <= MAX_PATIENT_IMPORT_BYTES = 5 MiB, excel-patient-import-adapter.ts).
+    location = /app/patients/provision {
+        client_max_body_size 6144k;
+        client_body_timeout 60s;
+        proxy_read_timeout 90s;
+        proxy_pass http://demi_app;
+    }
+
+    # Failed-rows download re-uploads the import file: MAX_REQUEST_BYTES = 5 MiB + 256 KiB
+    # (app/api/v1/hospital/patient-import/failed-rows/route.ts).
+    location = /api/v1/hospital/patient-import/failed-rows {
+        client_max_body_size 5376k;
+        client_body_timeout 60s;
+        proxy_read_timeout 90s;
+        proxy_pass http://demi_app;
+    }
+
+    # Patient evidence image: PATIENT_EVIDENCE_MAX_MULTIPART_BYTES = 8 MiB + 128 KiB
+    # (patient-evidence-upload-parser.ts; the browser normalizes images to <= 8 MiB before upload).
+    location ~ ^/app/patients/[^/]+/evidence/upload$ {
+        client_max_body_size 8320k;
+        client_body_timeout 60s;
+        proxy_read_timeout 90s;
+        proxy_pass http://demi_app;
+    }
+
+    # Hospital content image: same multipart parser and limit (app/api/hospital-content/[contentId]/images/route.ts).
+    location ~ ^/api/hospital-content/[^/]+/images$ {
+        client_max_body_size 8320k;
+        client_body_timeout 60s;
+        proxy_read_timeout 90s;
+        proxy_pass http://demi_app;
+    }
+
+    # Immutable build assets: not streamed, so normal buffering is fine.
+    location ^~ /_next/static/ {
+        proxy_buffering on;
+        proxy_pass http://demi_app;
+    }
+
+    location / {
+        proxy_pass http://demi_app;
+    }
+}

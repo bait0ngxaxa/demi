@@ -85,7 +85,7 @@ const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
 const REPORT_CURSOR_ORDERING = "startedAt:desc,id:desc";
 const REPORT_CURSOR_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const REPORT_CURSOR_PAYLOAD_PATTERN = /^[A-Za-z0-9_-]+$/u;
-const REPORT_CURSOR_SECRET_MIN_BYTES = 32;
+export const REPORT_CURSOR_SECRET_MIN_BYTES = 32;
 
 export type HospitalReportQueryDatabase = PrismaClient | Prisma.TransactionClient;
 

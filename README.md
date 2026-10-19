@@ -102,7 +102,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser. `/` จะส่งผู้ใช้ที่มี ACTIVE DEMI actor ไป `/app` และส่งผู้ใช้อื่นไป `/login`
 
-The server-only health check is available at `/api/health`. It returns only `ok` or `unavailable` and never exposes credentials or stack traces.
+Health checks: `/api/health` is readiness (`status` `ok`/`unavailable` with boolean `checks` for database, applied migrations and core configuration; 200 or 503) and `/api/health/live` is liveness. Neither exposes versions, credentials or error detail. Production deployment on a VPS is described in [docs/operations](docs/operations/DEPLOY_VPS.md).
 
 ## Verification commands
 

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "db:seed": "node scripts/seed-hospital-master.mjs",
+    "env:check": "node scripts/env-check.mjs",
     "prisma:generate": "prisma generate",
     "line:rich-menu:assets": "jiti scripts/generate-line-rich-menu-assets.ts",
     "line:rich-menu:previews": "jiti scripts/generate-line-rich-menu-previews.ts",

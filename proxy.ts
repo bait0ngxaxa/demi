@@ -33,7 +33,11 @@ function secureLineWorkflowResponse(response: NextResponse, pathname: string): N
   return response;
 }
 
+// Probes must answer without a session refresh or valid auth configuration.
+const HEALTH_PATHS = new Set(["/api/health", "/api/health/live"]);
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  if (HEALTH_PATHS.has(request.nextUrl.pathname)) return NextResponse.next();
   const lineWorkflowDecision = classifyLineWorkflowRequest({
     method: request.method,
     pathname: request.nextUrl.pathname,

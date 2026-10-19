@@ -14,11 +14,10 @@ export function getPrisma(): PrismaClient {
   }
 
   getServerEnv();
+  // One client (and connection pool) per process in every environment; a
+  // long-running `next start` must not open a new pool on each call.
   const client = new PrismaClient();
-
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.demiPrisma = client;
-  }
+  globalForPrisma.demiPrisma = client;
 
   return client;
 }

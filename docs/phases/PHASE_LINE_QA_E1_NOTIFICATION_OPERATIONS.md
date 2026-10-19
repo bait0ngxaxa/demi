@@ -89,6 +89,8 @@ Preferences are not touched. Housekeeping (late first-attempt expiry, exhausted-
 
 ## 7. Scheduler wiring examples (not applied — E2)
 
+Production (E2) uses neither example: a systemd timer on the VPS calls the tick on `127.0.0.1` (see [DEPLOY_VPS](../operations/DEPLOY_VPS.md) §1.11). The examples remain valid for other hosts.
+
 Vercel Cron (Pro; Hobby runs at most once a day, which cannot meet the 15-minute medication window). Vercel sends `GET` with `Authorization: Bearer $CRON_SECRET`, does not retry, and may skip or duplicate runs — the lock and the 60 s gate absorb duplicates; the outboxes absorb a skipped run.
 
 ```jsonc

@@ -6,6 +6,17 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.E2 production topology (2026-10-19)
+
+Starting HEAD **69f69e5** (E1). Repository artifacts and Thai runbooks only; no VPS, Cloudflare, Supabase, LINE or DNS resource was created or changed. Decided production topology:
+
+- **Production:** one VPS running `next start` under PM2 (fork mode, exactly one instance, `kill_timeout` 30 s so `after()` work drains), nginx with a Cloudflare Origin CA certificate behind the **Cloudflare proxy** (SSL Full (strict) + Authenticated Origin Pulls; real client IP from `CF-Connecting-IP`), domain `<PROD_ORIGIN>` still TBD. Secrets live in `/etc/demi/demi.env`, loaded by `node --env-file`. A systemd timer calls the scheduler tick on `127.0.0.1` every 5 minutes; nginx returns 404 for `/api/internal/*`.
+- **Database/Auth/Storage:** a new Supabase Cloud project on Pro, separate from `Demi-dev`; region pending the legal answer on cross-border transfer (ก-25).
+- **LINE:** a new production provider with its own Account LINE Login/LIFF, Messaging API and optional MINI channels; demo bindings are not migrated.
+- **Demo:** stays on Vercel Hobby with `Demi-dev`, no scheduler, medication reminders off.
+- `GET /api/health` is now readiness (database, shipped migrations applied, core configuration; booleans only, 200/503) and `GET /api/health/live` is liveness; both bypass the session proxy. `npm run env:check` validates an env file with the runtime schemas. `getPrisma()` caches one client per process in every environment.
+- Runbooks: [DEPLOY_VPS](./operations/DEPLOY_VPS.md), [SUPABASE_PRODUCTION](./operations/SUPABASE_PRODUCTION.md), [LINE_PRODUCTION_SETUP](./operations/LINE_PRODUCTION_SETUP.md), [RELEASE_GATE](./operations/RELEASE_GATE.md). Business gates (ก-25 incl. จ-6 and data residency, ACCOUNT-04, WB-PD-01/02/03) block real patient data independently of the technical gate.
+
 ## CURRENT-status addendum — Phase LINE-QA.E1 notification operations (2026-10-19)
 
 [Phase LINE-QA.E1 handoff](./phases/PHASE_LINE_QA_E1_NOTIFICATION_OPERATIONS.md), starting HEAD **a8189bd7f18d3bc79b39dafc0319b03b0ead3837**. Code only; no scheduler is wired (Vercel Cron / pg_cron wiring is E2) and no environment was changed.
