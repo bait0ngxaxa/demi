@@ -23,11 +23,11 @@ const LINE_SUBJECT = `U${"a".repeat(32)}`;
 const NOW = new Date("2026-10-18T03:00:00.000Z");
 const configuration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow", deploymentReference: "deploy:dev-1",
+  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow",
 };
-const inventory: LineChannelInventory = { revision: "inventory:test-1", channels: [
-  { kind: "ACCOUNT", providerReference: "provider:demi", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:dev-1" },
-  { kind: "MINI", providerReference: "provider:demi", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:dev-1" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
 ] };
 const keyring = parseLineWorkflowContextKeyring(JSON.stringify({
   currentKid: "synthetic-1", keys: [{ kid: "synthetic-1", encryptionKey: randomBytes(32).toString("base64url"), sessionKey: randomBytes(32).toString("base64url") }],
@@ -46,7 +46,6 @@ const eligibility: LineWorkflowEligibility = {
   proofVerifiedAt: NOW,
   proofExpiresAt: new Date(NOW.getTime() + 60 * 60_000),
   miniTupleKey: lineChannelTupleKey(inventory.channels[1]),
-  inventoryRevision: inventory.revision,
 };
 
 function binding(changes: Record<string, unknown> = {}): Record<string, unknown> {
@@ -132,7 +131,7 @@ describe("serialized MINI context issuance", () => {
       } },
       create: expect.objectContaining({
         bindingId: BINDING_ID, bindingVersion: 2, applicability: "OBSERVED",
-        evidenceReference: inventory.revision, observedAt: NOW,
+        evidenceReference: "LINE_CHANNEL_V2", observedAt: NOW,
       }),
     }));
     expect(transaction.auditEvent.create).toHaveBeenCalledOnce();

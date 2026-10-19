@@ -60,7 +60,6 @@ const stateByCode: Record<string, LineWorkflowGatewayState> = {
   LINE_IDENTITY_INVALID: "LINE_PROOF_UNAVAILABLE",
   RATE_LIMITED: "RATE_LIMITED",
   WORKFLOW_DISABLED: "NOT_ACTIVATED",
-  WORKFLOW_NOT_ACTIVATED: "NOT_ACTIVATED",
 };
 
 /** Only the exact finite success response can start the scoped continuation. */

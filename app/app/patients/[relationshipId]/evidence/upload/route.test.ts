@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PatientEvidenceStorageError } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import { NORMALIZED_UPLOAD_MAX_BYTES } from "@/modules/patient-evidence/policies/patient-evidence-image-policy";
+import { PATIENT_EVIDENCE_MAX_MULTIPART_BYTES } from "@/modules/patient-evidence/transport/patient-evidence-upload-parser";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const {
@@ -27,7 +28,7 @@ vi.mock("@/modules/patient-evidence/services/patient-evidence-service", () => ({
   createPatientEvidenceArtifact: mockedCreateArtifact,
 }));
 
-import { POST, patientEvidenceUploadRouteInternals } from "./route";
+import { POST } from "./route";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const artifactId = "22222222-2222-4222-8222-222222222222";
@@ -316,7 +317,7 @@ describe("Patient Evidence upload Route Handler", () => {
     const { request, state } = requestWithStream(
       multipart.body,
       multipart.contentType,
-      { contentLength: String(patientEvidenceUploadRouteInternals.MAX_MULTIPART_REQUEST_BYTES + 1) },
+      { contentLength: String(PATIENT_EVIDENCE_MAX_MULTIPART_BYTES + 1) },
     );
     const response = await POST(
       request,
@@ -347,7 +348,7 @@ describe("Patient Evidence upload Route Handler", () => {
   });
 
   it("rejects a multipart request that crosses the total stream bound without Content-Length", async () => {
-    const body = new Uint8Array(patientEvidenceUploadRouteInternals.MAX_MULTIPART_REQUEST_BYTES + 1);
+    const body = new Uint8Array(PATIENT_EVIDENCE_MAX_MULTIPART_BYTES + 1);
     const { request, state } = requestWithStream(
       body,
       "multipart/form-data; boundary=patient-evidence-raw-limit",

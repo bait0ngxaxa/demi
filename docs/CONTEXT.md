@@ -6,6 +6,15 @@ DEMI is one production-ready MVP codebase. Deployment and verification environme
 
 Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) Accepted ADRs, (3) current `PRODUCT.md` and this project context, (4) actual implementation and verification evidence, then (5) relevant historical phase decisions. The dated `CURRENT-status addendum` sections below are snapshots recorded at their stated dates; they preserve historical evidence but do not by themselves set current runtime requirements. Later confirmed decisions and verified implementation supersede older status statements only within the affected scope. See [ADR-0010](./adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
+## CURRENT-status addendum — Phase LINE-QA.B2.4 LINE configuration simplification (2026-10-19)
+
+[Phase LINE-QA.B2.4 handoff](./phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md), starting HEAD **961bc1bfe3d3a3710fa5b855d0764c5fbe51bd75**. This entry supersedes the configuration statements in the B1–B2.3 and 17J.3D addenda below, including every "keep `DEMI_LINE_DISCONNECTION_ENABLED=false`" instruction.
+
+- **Configuration is connection data only.** `DEMI_LINE_DISCONNECTION_ENABLED`, `DEMI_LINE_DISCONNECTION_MANIFEST`, `DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED`, `DEMI_LINE_MINI_APP_WORKFLOW_ENABLED`, `DEMI_LINE_MINI_APP_ISSUANCE_ENABLED`, `DEMI_LINE_MINI_APP_ENDPOINT_URL` and `DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE` are removed and no longer read. MINI uses `DEMI_LINE_MINI_APP_{ENVIRONMENT,CHANNEL_ID,LIFF_ID,CHANNEL_SECRET,CONTEXT_KEYRING}` plus one optional emergency kill switch `DEMI_LINE_MINI_APP_DISABLED`. The MINI endpoint is derived as `DEMI_LINE_PUBLIC_ORIGIN + /line/workflow`.
+- **Full Disconnection is permanent policy.** The channel inventory is derived on the server from the Account Login channel and, when provisioned, the selected MINI channel; migration readiness is checked from `_prisma_migrations`. Relink with unavailable configuration fails closed (`LINE_CONFIGURATION_MISSING`); legacy revoked bindings without lifecycle rows require Recovery. Rows persisted under the pre-B2.4 tuple format stay distinct, enforceable history and are never remapped.
+- **One MINI availability policy** (kill switch, then a complete valid channel) governs the gateway page, Verify/issuance and every scoped read/mutation. Partial MINI configuration never degrades to Account-only.
+- Provider pairing is not configured: it is enforced by requiring the MINI-audience LINE subject to equal the Account binding subject. Real Provider/Console setup, device UAT and production rollout remain owner-managed and **NOT VERIFIED**.
+
 ## CURRENT-status addendum — Phase LINE-QA.B2.2 scoped Appointment mutations (2026-10-18)
 
 [Phase LINE-QA.B2.2 handoff](./phases/PHASE_LINE_QA_B2_2_SCOPED_APPOINTMENT_MUTATIONS.md), starting HEAD **0c0eafe3a9561b2f9edff11ed99645e9bc68d783**: **SCOPED MUTATIONS IMPLEMENTED / AUTOMATED + POSTGRESQL VERIFICATION COMPLETE / STAGED / DISABLED BY DEFAULT / NON-ISSUING.**

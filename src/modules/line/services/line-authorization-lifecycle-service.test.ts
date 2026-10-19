@@ -6,9 +6,7 @@ import { authorizeLineRecoveryDecision, evaluateLineRelinkEligibility, releaseLi
 import type { LineChannelInventory } from "../domain/line-authorization-lifecycle";
 
 const now = new Date("2026-10-08T06:00:00Z");
-const inventory: LineChannelInventory = { revision: "test-v1", channels: [
-  { kind: "ACCOUNT", providerReference: "test-provider", channelId: "1234567890", environment: "ACCOUNT", deploymentReference: "unit-test" },
-], miniExclusionReference: "operator-review-test" };
+const inventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 const request: AuthorizedLineRecoveryDecision = {
   ownerUserId: randomUUID(), bindingId: randomUUID(), bindingVersion: 2, intentId: randomUUID(), reviewedSetDigest: "a".repeat(64),
   policyVersion: "LINE_RECOVERY_V1", copyVersion: "LINE_RECOVERY_V1", sessionCheckedAt: now,

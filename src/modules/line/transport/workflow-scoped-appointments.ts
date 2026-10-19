@@ -41,7 +41,6 @@ export type LineWorkflowScopedResult<T> =
 
 const failureStates: Partial<Record<LineWorkflowFailureCode, LineWorkflowScopedFailureState>> = {
   WORKFLOW_DISABLED: "NOT_ACTIVATED",
-  WORKFLOW_NOT_ACTIVATED: "NOT_ACTIVATED",
   MINI_CONFIGURATION_UNAVAILABLE: "NOT_ACTIVATED",
   LIFECYCLE_UNAVAILABLE: "NOT_ACTIVATED",
   // A tampered, unknown-key or wrong-tuple context is indistinguishable from none.

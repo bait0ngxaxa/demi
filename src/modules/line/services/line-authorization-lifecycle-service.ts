@@ -7,7 +7,7 @@ import { recordAuditEvent, recordAuditEventWithId } from "@/modules/audit/servic
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 import {
-  isLineObligationSatisfied, isLineRecoveryEligible, lineChannelInventorySchema,
+  isLineObligationSatisfied, isLineRecoveryEligible, LINE_CHANNEL_TUPLE_VERSION, lineChannelInventorySchema,
   lineChannelTupleDefinition, lineChannelTupleKey, lineObligationSetDigest, type LineChannelInventory,
   type LineProviderEvidence,
 } from "../domain/line-authorization-lifecycle";
@@ -75,12 +75,12 @@ export async function initializeLineTermination(
     const channel = channelsByTuple.get(tupleKey);
     const tupleDefinition = channel ? lineChannelTupleDefinition(channel) : prior?.tupleDefinition;
     if (!tupleDefinition) throw new ForbiddenError();
+    // Configuration never proves a grant absent: everything not observed is UNKNOWN.
     const observed = prior?.applicability === "OBSERVED";
-    const absent = (!prior || prior.applicability === "PROVEN_ABSENT") && channel?.exclusionReference !== undefined;
     await transaction.lineAuthorizationLifecycle.create({ data: {
       bindingId: binding.id, bindingVersion: binding.lifecycleVersion, tupleKey, tupleDefinition,
-      applicability: observed ? "OBSERVED" : absent ? "PROVEN_ABSENT" : "UNKNOWN",
-      evidenceReference: observed ? prior.evidenceReference : absent ? channel.exclusionReference ?? inventory.revision : inventory.revision,
+      applicability: observed ? "OBSERVED" : "UNKNOWN",
+      evidenceReference: observed ? prior.evidenceReference : LINE_CHANNEL_TUPLE_VERSION,
       observedAt: observed ? prior.observedAt : null,
       remoteOutcome: "REMOTE_UNCONFIRMED", requestedAt: now,
       reason: "TOKEN_UNAVAILABLE",
@@ -89,7 +89,7 @@ export async function initializeLineTermination(
   }
   if (createdCount === 0) return;
   await auditTransition(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion },
-    "line.lifecycle.initialized", { inventoryRevision: inventory.revision, tupleCount: createdCount, miniExclusion: inventory.miniExclusionReference ?? "NONE" });
+    "line.lifecycle.initialized", { channelTupleVersion: LINE_CHANNEL_TUPLE_VERSION, tupleCount: createdCount });
 }
 
 /** Only after server identity verification and binding match; cannot mint a scope. */
@@ -99,17 +99,17 @@ export async function observeLineAuthorization(
 ): Promise<void> {
   const inventory = lineChannelInventorySchema.parse(trustedInventory);
   const channel = inventory.channels.find((entry) => lineChannelTupleKey(entry) === tupleKey);
-  if (!channel || channel.exclusionReference) throw new ForbiddenError();
+  if (!channel) throw new ForbiddenError();
   const binding = await lockBinding(transaction, target);
   await requireActiveOwner(transaction, target.ownerUserId);
   if (binding.unlinkedAt || binding.lifecycleVersion !== target.bindingVersion) throw new ForbiddenError();
   await lockRows(transaction, binding.id);
   await transaction.lineAuthorizationLifecycle.upsert({
     where: { bindingId_bindingVersion_tupleKey: { bindingId: binding.id, bindingVersion: target.bindingVersion, tupleKey } },
-    create: { bindingId: binding.id, bindingVersion: target.bindingVersion, tupleKey, tupleDefinition: lineChannelTupleDefinition(channel), applicability: "OBSERVED", evidenceReference: inventory.revision, observedAt: now },
-    update: { applicability: "OBSERVED", evidenceReference: inventory.revision, observedAt: now },
+    create: { bindingId: binding.id, bindingVersion: target.bindingVersion, tupleKey, tupleDefinition: lineChannelTupleDefinition(channel), applicability: "OBSERVED", evidenceReference: LINE_CHANNEL_TUPLE_VERSION, observedAt: now },
+    update: { applicability: "OBSERVED", evidenceReference: LINE_CHANNEL_TUPLE_VERSION, observedAt: now },
   });
-  await auditTransition(transaction, target, "line.lifecycle.observed", { tupleKey, inventoryRevision: inventory.revision });
+  await auditTransition(transaction, target, "line.lifecycle.observed", { tupleKey, channelTupleVersion: LINE_CHANNEL_TUPLE_VERSION });
 }
 
 /** Transaction-compatible final guard. Caller owns User/binding locks; no idempotent-success bypass. */
@@ -131,7 +131,7 @@ export async function reserveLineTerminationAttempt(
   trustedInventory: LineChannelInventory, now: Date,
 ): Promise<LineAttemptTarget | null> {
   const inventory = lineChannelInventorySchema.parse(trustedInventory);
-  if (!inventory.channels.some((channel) => lineChannelTupleKey(channel) === target.tupleKey && !channel.exclusionReference)) throw new ForbiddenError();
+  if (!inventory.channels.some((channel) => lineChannelTupleKey(channel) === target.tupleKey)) throw new ForbiddenError();
   const binding = await lockBinding(transaction, target);
   requireCurrentRevoked(binding, target);
   const rows = await lockRows(transaction, binding.id);
@@ -255,7 +255,7 @@ export async function releaseLineRecovery(
       !fresh(evidence.riskAcknowledgedAt) || evidence.riskAcknowledgedAt < intent.createdAt ||
       !fresh(decision.proofVerifiedAt) || decision.proofVerifiedAt < intent.createdAt ||
       !Number.isFinite(decision.proofExpiresAt.getTime()) || decision.proofExpiresAt <= now ||
-      !inventory.channels.some((channel) => lineChannelTupleKey(channel) === decision.proofTupleKey && !channel.exclusionReference)) throw new ForbiddenError();
+      !inventory.channels.some((channel) => lineChannelTupleKey(channel) === decision.proofTupleKey)) throw new ForbiddenError();
   const auditId = await recordAuditEventWithId({ actorUserId: decision.ownerUserId, action: "line.lifecycle.recovery.released",
     resourceType: "LineAccountBinding", resourceId: binding.id, metadata: {
       bindingVersion: decision.bindingVersion, setDigest: digest, tupleCount: rows.length,
@@ -264,7 +264,7 @@ export async function releaseLineRecovery(
       sessionCheckedAt: decision.sessionCheckedAt.toISOString(), sessionMatched: true,
       proofTupleKey: decision.proofTupleKey, proofVerifiedAt: decision.proofVerifiedAt.toISOString(),
       proofExpiresAt: decision.proofExpiresAt.toISOString(), fingerprintMatched: true, riskAcknowledged: true,
-      inventoryRevision: inventory.revision,
+      channelTupleVersion: LINE_CHANNEL_TUPLE_VERSION,
     } }, transaction);
   for (const row of rows) {
     await transaction.lineAuthorizationLifecycle.update({ where: { id: row.id }, data: { recoveryReleasedAt: now, recoveryDecisionAuditId: auditId } });

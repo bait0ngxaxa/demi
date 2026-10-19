@@ -2,6 +2,8 @@
 
 **Status:** Code implementation complete for isolated synthetic UAT preparation. This is not production activation and does not verify real LINE devices or Provider behavior.
 
+> **Configuration superseded by [Phase LINE-QA.B2.4](./PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md) (2026-10-19):** the workflow/issuance/disconnection/provider-query flags, endpoint/deployment variables and the Full Disconnection manifest described below were removed. Authorization checks are unchanged; Full Disconnection is now permanent policy. This document remains the historical B2.3 record.
+
 ## 1. Starting revision
 
 - Starting HEAD: `d4b727871420f272375df6fbe1dc9f1021a61114` (`main`).

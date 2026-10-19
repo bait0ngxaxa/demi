@@ -23,7 +23,6 @@ const tuple = {
   environment: "DEVELOPING" as const,
   channelId: "2000000001",
   liffId: "2000000001-MiniDev",
-  deploymentReference: "deploy:dev-1",
 };
 const NOW = new Date("2026-10-18T03:00:00.000Z");
 const subject = {
@@ -127,7 +126,6 @@ describe("AES-256-GCM scoped workflow context", () => {
     ["channel", { channelId: "2000000002" }],
     ["LIFF ID", { liffId: "2000000002-MiniRev" }],
     ["origin", { origin: "https://other.example.org" }],
-    ["deployment", { deploymentReference: "deploy:review-1" }],
   ])("rejects a context presented to another %s even with shared keys", (_label, changes) => {
     const { value } = sealLineWorkflowContext(subject, { keyring, tuple, now: NOW });
     expect(codeOf(() => openLineWorkflowContext(value, { keyring, tuple: { ...tuple, ...changes }, now: NOW }))).toBe("SCOPE_INVALID");

@@ -25,7 +25,6 @@ type RelinkEligibility = "ELIGIBLE" | "BLOCKED" | "UNVERIFIED";
 
 export type LineAccountLifecycleReadiness =
   | { state: "READY" }
-  | { state: "STAGED" }
   | { state: "DEGRADED"; history: "PRESENT" | "NONE" | "UNKNOWN" }
   | { state: "NOT_CHECKED" };
 
@@ -238,11 +237,9 @@ export function LineAccountScreen({
               ) : (
                 <>
                   <p className="text-base text-ink">บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว</p>
-                  {lifecycleReadiness.state === "DEGRADED" || lifecycleReadiness.state === "STAGED" ? (
+                  {lifecycleReadiness.state === "DEGRADED" ? (
                     <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning">
-                      <p>{lifecycleReadiness.state === "STAGED"
-                        ? "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่การถอนสิทธิ์จาก LINE ยังไม่เปิดใช้ในสภาพแวดล้อมนี้"
-                        : "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
+                      <p>หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้</p>
                       <button type="button" onClick={onReload} className={secondaryButtonClass}>ตรวจสอบสถานะอีกครั้ง</button>
                     </div>
                   ) : null}
@@ -343,11 +340,9 @@ export function LineAccountScreen({
                       ยกเลิกการเชื่อมต่อ LINE
                     </button>
                   ) : null}
-                  {lifecycleReadiness.state === "DEGRADED" || lifecycleReadiness.state === "STAGED" ? (
+                  {lifecycleReadiness.state === "DEGRADED" ? (
                     <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="status" aria-live="polite">
-                      {lifecycleReadiness.state === "STAGED"
-                        ? "การถอนสิทธิ์จาก LINE ยังไม่เปิดใช้ในสภาพแวดล้อมนี้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน"
-                        : "ขณะนี้ตรวจสอบการถอนสิทธิ์จาก LINE ไม่ได้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน"}
+                      ขณะนี้ตรวจสอบการถอนสิทธิ์จาก LINE ไม่ได้ แต่คุณยังหยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้จากปุ่มยกเลิกด้านบน
                     </p>
                   ) : null}
                 </div>
@@ -428,9 +423,7 @@ export function LineAccountScreen({
                   <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อบัญชี LINE?</h3>
                   <p className="mt-2 text-sm text-ink">{lifecycleReadiness.state === "READY"
                     ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มดำเนินการถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้"
-                    : lifecycleReadiness.state === "DEGRADED"
-                      ? "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"
-                      : "การเข้าถึง DEMI ผ่านการเชื่อมต่อ LINE เดิมจะหยุดทันที แต่การถอนสิทธิ์ LINE จากภายนอกยังไม่เปิดใช้ในสภาพแวดล้อมนี้ บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ"}</p>
+                    : "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
@@ -495,11 +488,9 @@ export function LineAccountClient({
   const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
   const privateRoot = useRef<HTMLDivElement>(null);
-  const relinkEligibility: RelinkEligibility = lifecycleReadiness.state === "STAGED"
-    ? "ELIGIBLE"
-    : lifecycleReadiness.state === "READY"
-      ? termination?.canRelink ? "ELIGIBLE" : "BLOCKED"
-      : "UNVERIFIED";
+  const relinkEligibility: RelinkEligibility = lifecycleReadiness.state === "READY"
+    ? termination?.canRelink ? "ELIGIBLE" : "BLOCKED"
+    : "UNVERIFIED";
 
 
   useEffect(() => {

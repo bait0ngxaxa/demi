@@ -84,10 +84,10 @@ export type LineWorkflowContextSubject = {
   proofExpiresAt: Date;
 };
 
-type TupleSource = Pick<LineMiniAppConfiguration, "origin" | "environment" | "channelId" | "liffId" | "deploymentReference">;
+type TupleSource = Pick<LineMiniAppConfiguration, "origin" | "environment" | "channelId" | "liffId">;
 
 function tupleDescriptor(tuple: TupleSource): string {
-  return [PURPOSE, tuple.origin, tuple.environment, tuple.channelId, tuple.liffId, tuple.deploymentReference].join("|");
+  return [PURPOSE, tuple.origin, tuple.environment, tuple.channelId, tuple.liffId].join("|");
 }
 
 function tupleDigest(tuple: TupleSource): string {

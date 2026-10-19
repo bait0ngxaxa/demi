@@ -30,11 +30,7 @@ import { LineWorkflowFailure } from "../domain/line-workflow-errors";
 import { observeLineAuthorization } from "./line-authorization-lifecycle-service";
 import { requireLineDisconnectionReadiness } from "./line-disconnection-configuration";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
-import {
-  getLineMiniAppConfiguration,
-  isLineMiniAppWorkflowEnabled,
-  type LineMiniAppConfiguration,
-} from "./line-mini-app-configuration";
+import { getLineMiniAppConfiguration, type LineMiniAppConfiguration } from "./line-mini-app-configuration";
 import {
   getLineWorkflowContextKeyring,
   lineWorkflowContextSessionMatches,
@@ -51,9 +47,10 @@ type LiveSession = { userId: string; sessionId: string; authSubject: string };
 export type LineWorkflowDependencies = {
   database?: PrismaClient;
   now?: () => Date;
+  /** Defaults to the single MINI availability policy (kill switch + validated channel). */
   configuration?: () => LineMiniAppConfiguration;
-  /** Reviewed Full Disconnection inventory; null means the lifecycle bundle is not active. */
-  lifecycleInventory?: () => Promise<LineChannelInventory | null>;
+  /** Server-derived Full Disconnection inventory with migration readiness. */
+  lifecycleInventory?: () => Promise<LineChannelInventory>;
   liveSession?: () => Promise<LiveSession>;
   verifyIdentity?: (idToken: string, configuration: LineMiniAppConfiguration) => Promise<VerifiedMiniAppWorkflowIdentity>;
   rateLimiter?: LineWorkflowRateLimiter;
@@ -73,7 +70,6 @@ export type LineWorkflowEligibility = {
   proofVerifiedAt: Date;
   proofExpiresAt: Date;
   miniTupleKey: string;
-  inventoryRevision: string;
 };
 
 function databaseOf(dependencies: LineWorkflowDependencies): PrismaClient {
@@ -88,36 +84,27 @@ function configurationOf(dependencies: LineWorkflowDependencies): LineMiniAppCon
   return (dependencies.configuration ?? getLineMiniAppConfiguration)();
 }
 
-async function defaultLifecycleInventory(): Promise<LineChannelInventory | null> {
-  return (await requireLineDisconnectionReadiness())?.inventory ?? null;
-}
-
 /**
- * Account-only termination is not MINI termination: the selected MINI tuple must
- * be the single non-excluded MINI entry of the active reviewed inventory, paired
- * with the same Provider reference as the inventory's sole expected Account
- * tuple, so Unlink records its obligation. The inventory is the operator
- * manifest, never request input. Missing/staged/ambiguous configuration fails closed.
+ * Account-only termination is not MINI termination: the selected MINI channel
+ * must be the inventory's single MINI entry so Unlink records its obligation.
+ * Same-Provider placement is not asserted by configuration; it is enforced by
+ * requiring the MINI-audience LINE subject to equal the binding's Account
+ * subject (LINE user IDs are Provider-scoped). Missing/ambiguous configuration
+ * or unavailable migration readiness fails closed.
  */
 async function requireMiniLifecycleTuple(
   configuration: LineMiniAppConfiguration,
   dependencies: LineWorkflowDependencies,
 ): Promise<{ tupleKey: string; inventory: LineChannelInventory }> {
-  let inventory: LineChannelInventory | null;
+  let inventory: LineChannelInventory;
   try {
-    inventory = await (dependencies.lifecycleInventory ?? defaultLifecycleInventory)();
+    inventory = await (dependencies.lifecycleInventory ?? requireLineDisconnectionReadiness)();
   } catch {
     throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
   }
-  const accounts = inventory?.channels.filter((entry) => entry.kind === "ACCOUNT") ?? [];
-  const minis = inventory?.channels.filter((entry) => entry.kind === "MINI" &&
-    entry.channelId === configuration.channelId && entry.environment === configuration.environment &&
-    entry.deploymentReference === configuration.deploymentReference) ?? [];
-  const expectedAccountChannelId = process.env.DEMI_LINE_LOGIN_CHANNEL_ID?.trim();
-  // Never pick one of several candidates; an excluded or cross-Provider tuple denies.
-  if (!inventory || inventory.miniExclusionReference || accounts.length !== 1 || minis.length !== 1 ||
-      !expectedAccountChannelId || accounts[0].channelId !== expectedAccountChannelId ||
-      minis[0].exclusionReference || minis[0].providerReference !== accounts[0].providerReference) {
+  const minis = inventory.channels.filter((entry) => entry.kind === "MINI");
+  if (minis.length !== 1 || minis[0].channelId !== configuration.channelId ||
+      minis[0].environment !== configuration.environment) {
     throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
   }
   return { tupleKey: lineChannelTupleKey(minis[0]), inventory };
@@ -217,7 +204,6 @@ export async function evaluateLineWorkflowEligibility(
     proofVerifiedAt: identity.verifiedAt,
     proofExpiresAt: identity.expiresAt,
     miniTupleKey: lifecycle.tupleKey,
-    inventoryRevision: lifecycle.inventory.revision,
   };
 }
 
@@ -235,10 +221,7 @@ export async function issueLineWorkflowContext(
 ): Promise<{ value: string; expiresAt: Date }> {
   const configuration = configurationOf(dependencies);
   const lifecycle = await requireMiniLifecycleTuple(configuration, dependencies);
-  if (lifecycle.tupleKey !== eligibility.miniTupleKey ||
-      lifecycle.inventory.revision !== eligibility.inventoryRevision) {
-    throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
-  }
+  if (lifecycle.tupleKey !== eligibility.miniTupleKey) throw new LineWorkflowFailure("LIFECYCLE_UNAVAILABLE");
 
   const keyring = (dependencies.keyring ?? getLineWorkflowContextKeyring)();
   if (!keyring.keys.has(keyring.currentKid)) throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
@@ -323,15 +306,14 @@ type OpenedLineWorkflowScope = { context: OpenedLineWorkflowContext; session: Li
 
 /**
  * Checks shared by every scoped request, all outside any transaction: the
- * default-disabled gate, the trusted tuple and keyring, the mandatory context
- * (absence denies, never downgrades to ordinary DEMI authority), the reviewed
- * lifecycle tuple and the Auth-provider exact session.
+ * MINI availability policy (kill switch + trusted channel), the keyring, the
+ * mandatory context (absence denies, never downgrades to ordinary DEMI
+ * authority), the derived lifecycle tuple and the Auth-provider exact session.
  */
 async function openLineWorkflowScope(
   credential: string | undefined,
   dependencies: LineWorkflowScopedReadDependencies,
 ): Promise<OpenedLineWorkflowScope> {
-  if (!isLineMiniAppWorkflowEnabled()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
   const configuration = configurationOf(dependencies);
   const keyring = (dependencies.keyring ?? getLineWorkflowContextKeyring)();
   const clock = dependencies.now ?? ((): Date => new Date());

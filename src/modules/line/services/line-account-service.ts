@@ -35,9 +35,9 @@ export type LineAccountDependencies = {
   verifyIdentity?: typeof verifyLineIdToken;
   verifyFriendship?: typeof verifyLineFriendship;
   currentSession?: () => Promise<CurrentLineSession>;
-  /** Server-only composition seam. Inventory alone does not enable Relink restrictions. */
+  /** Server-derived channel inventory; required whenever the Relink policy is enforced. */
   authorizationInventory?: LineChannelInventory;
-  /** Installed only by the complete runtime bundle, never by inventory alone. */
+  /** Installed by the Account transport; Relink then fails closed without an inventory. */
   enforceRelinkPolicy?: boolean;
   /** Server-derived marker for local Unlink committed while readiness failed. */
   disconnectionReadinessUnavailable?: boolean;
@@ -82,8 +82,7 @@ export async function createLineAccountIntent(
     const user = await transaction.user.findUnique({ where: { id: session.userId }, select: { status: true } });
     if (!user || user.status !== UserStatus.ACTIVE) throw new ForbiddenError();
     if (action === LineAccountAction.LINK && dependencies.enforceRelinkPolicy) {
-      const bindings = await transaction.lineAccountBinding.findMany({ where: { userId: session.userId }, orderBy: { id: "asc" } });
-      for (const binding of bindings) await requireRelinkEligibility(transaction, binding, now, Boolean(dependencies.authorizationInventory));
+      await requireRelinkPolicy(transaction, session.userId, dependencies, now);
     }
     if (action === LineAccountAction.UNLINK) {
       const binding = await transaction.lineAccountBinding.findFirst({ where: { userId: session.userId, unlinkedAt: null }, select: { id: true } });
@@ -223,8 +222,7 @@ export async function linkLineAccount(
       if (dependencies.enforceRelinkPolicy) {
         // Before both idempotent success and reactivation; serializable retries
         // reread historical obligations rather than carrying a stale permit.
-        const bindings = await transaction.lineAccountBinding.findMany({ where: { userId: session.userId }, orderBy: { id: "asc" } });
-        for (const binding of bindings) await requireRelinkEligibility(transaction, binding, nowOf(dependencies), Boolean(dependencies.authorizationInventory));
+        await requireRelinkPolicy(transaction, session.userId, dependencies, nowOf(dependencies));
       }
       if (userBinding && userBinding.lineSubjectFingerprint === identity.fingerprint) {
         await observeAccountBinding(transaction, userBinding, dependencies, nowOf(dependencies));
@@ -295,20 +293,18 @@ export async function linkLineAccount(
   }
 }
 
-async function requireRelinkEligibility(transaction: Prisma.TransactionClient, binding: { id: string; userId: string; lifecycleVersion: number }, now: Date, includeLegacy: boolean): Promise<void> {
-  await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
-  // Never-activated legacy bindings have no lifecycle rows and retain their
-  // existing path. Any known lifecycle history or recorded readiness-fallback
-  // Unlink keeps the current-generation guard active when the gate is disabled.
-  if (!includeLegacy && await transaction.lineAuthorizationLifecycle.count({ where: { bindingId: binding.id } }) === 0) {
-    const latestUnlink = await transaction.auditEvent.findFirst({
-      where: { action: "line.account.unlinked", resourceType: "LineAccountBinding", resourceId: binding.id },
-      orderBy: { createdAt: "desc" }, select: { metadata: true },
-    });
-    if (!isLineDisconnectionReadinessUnavailableAudit(latestUnlink?.metadata)) return;
+/** Full Disconnection is permanent policy: a missing inventory is unavailable
+ * configuration, never unrestricted Relink. Legacy revoked bindings without
+ * lifecycle rows are blocked until Recovery lazily initializes them.
+ */
+async function requireRelinkPolicy(transaction: Prisma.TransactionClient, userId: string, dependencies: LineAccountDependencies, now: Date): Promise<void> {
+  if (!dependencies.authorizationInventory) throw new LineFailure("LINE_CONFIGURATION_MISSING");
+  const bindings = await transaction.lineAccountBinding.findMany({ where: { userId }, orderBy: { id: "asc" } });
+  for (const binding of bindings) {
+    await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
+    const eligibility = await evaluateLineRelinkEligibility(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion }, now);
+    if (!eligibility.eligible) throw new LineFailure("LINE_RECOVERY_REQUIRED");
   }
-  const eligibility = await evaluateLineRelinkEligibility(transaction, { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion }, now);
-  if (!eligibility.eligible) throw new LineFailure("LINE_RECOVERY_REQUIRED");
 }
 
 async function consumeIntent(

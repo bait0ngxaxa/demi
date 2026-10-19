@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ForbiddenError } from "@/shared/errors/application-error";
 
+import type { LineChannelInventory } from "../domain/line-authorization-lifecycle";
 import { LineFailure } from "../domain/line-errors";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import {
@@ -117,6 +118,8 @@ function createLinkHarness(options: {
   };
   return { database, tx, intent };
 }
+
+const accountInventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 
 function dependencies(database: ReturnType<typeof createLinkHarness>["database"]) {
   return {
@@ -289,7 +292,7 @@ describe("LINE account lifecycle service", () => {
     }));
   });
 
-  it("keeps pre-launch Link eligibility fail-closed for known history after the gate is disabled", async () => {
+  it("fails closed without a derived inventory instead of allowing unrestricted Relink", async () => {
     const identity = createLineSubjectFingerprint(lineSubject);
     const revoked = {
       id: bindingId,
@@ -299,33 +302,23 @@ describe("LINE account lifecycle service", () => {
       unlinkedAt: now,
       lifecycleVersion: 2,
     };
-    const observedHistory = createLinkHarness({
-      history: [revoked],
-      bindings: [revoked],
-      lifecycleRows: [{ bindingId, bindingVersion: 1, requestedAt: null }],
-    });
-
+    const intentHarness = createLinkHarness({ history: [revoked], bindings: [revoked] });
     await expect(createLineAccountIntent(LineAccountAction.LINK, {
-      ...dependencies(observedHistory.database), enforceRelinkPolicy: true,
-    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
-    expect(observedHistory.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
+      ...dependencies(intentHarness.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_CONFIGURATION_MISSING" });
+    expect(intentHarness.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
 
-    const failedReadinessUnlink = createLinkHarness({ history: [revoked], bindings: [revoked] });
-    failedReadinessUnlink.tx.auditEvent.findFirst.mockResolvedValue({ metadata: { disconnectionReadiness: "UNAVAILABLE" } });
-    await expect(createLineAccountIntent(LineAccountAction.LINK, {
-      ...dependencies(failedReadinessUnlink.database), enforceRelinkPolicy: true,
-    })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
-    expect(failedReadinessUnlink.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
-
-    const neverActivatedLegacy = createLinkHarness({ history: [revoked], bindings: [revoked] });
-    await expect(createLineAccountIntent(LineAccountAction.LINK, {
-      ...dependencies(neverActivatedLegacy.database), enforceRelinkPolicy: true,
-    })).resolves.toMatchObject({ intentId, challenge: expect.any(String) });
+    const linkHarness = createLinkHarness({ history: [revoked], binding: revoked, bindings: [revoked] });
+    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
+      ...dependencies(linkHarness.database), enforceRelinkPolicy: true,
+    })).rejects.toMatchObject({ code: "LINE_CONFIGURATION_MISSING" });
+    expect(linkHarness.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+    expect(linkHarness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
   });
 
-  it("retains the never-activated legacy Relink path but blocks known lifecycle history after gate disablement", async () => {
+  it("blocks known history and legacy revoked bindings without lifecycle rows until Recovery", async () => {
     const identity = createLineSubjectFingerprint(lineSubject);
-    const legacy = {
+    const revoked = {
       id: bindingId,
       userId,
       lineSubjectFingerprint: identity.fingerprint,
@@ -333,29 +326,25 @@ describe("LINE account lifecycle service", () => {
       unlinkedAt: now,
       lifecycleVersion: 2,
     };
-    const eligibleLegacy = createLinkHarness({ history: [legacy], bindings: [legacy] });
-    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
-      ...dependencies(eligibleLegacy.database), enforceRelinkPolicy: true,
-    })).resolves.toMatchObject({ status: "LINKED", bindingId });
+    const policy = { enforceRelinkPolicy: true, authorizationInventory: accountInventory };
 
-    const previouslyObserved = createLinkHarness({
-      history: [legacy],
-      binding: legacy,
-      bindings: [legacy],
+    const observedHistory = createLinkHarness({
+      history: [revoked],
+      bindings: [revoked],
       lifecycleRows: [{ bindingId, bindingVersion: 1, requestedAt: null }],
     });
-    await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
-      ...dependencies(previouslyObserved.database), enforceRelinkPolicy: true,
+    await expect(createLineAccountIntent(LineAccountAction.LINK, {
+      ...dependencies(observedHistory.database), ...policy,
     })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
-    expect(previouslyObserved.tx.lineAccountBinding.update).not.toHaveBeenCalled();
-    expect(previouslyObserved.tx.lineAccountBinding.create).not.toHaveBeenCalled();
+    expect(observedHistory.tx.lineAccountActionIntent.create).not.toHaveBeenCalled();
 
-    const fallbackUnlink = createLinkHarness({ history: [legacy], binding: legacy, bindings: [legacy] });
-    fallbackUnlink.tx.auditEvent.findFirst.mockResolvedValue({ metadata: { disconnectionReadiness: "UNAVAILABLE" } });
+    // A legacy Unlink never recorded obligations; that is not proof the grant was removed.
+    const legacy = createLinkHarness({ history: [revoked], binding: revoked, bindings: [revoked] });
     await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, {
-      ...dependencies(fallbackUnlink.database), enforceRelinkPolicy: true,
+      ...dependencies(legacy.database), ...policy,
     })).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
-    expect(fallbackUnlink.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+    expect(legacy.tx.lineAccountBinding.update).not.toHaveBeenCalled();
+    expect(legacy.tx.lineAccountBinding.create).not.toHaveBeenCalled();
   });
 
   it("consumes a conflicting cross-user history intent and never transfers the binding", async () => {

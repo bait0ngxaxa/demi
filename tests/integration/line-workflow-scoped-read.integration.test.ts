@@ -20,11 +20,11 @@ const database = getPrisma();
 const created = { people: [] as string[], users: [] as string[], hospitals: [] as string[] };
 const configuration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow", deploymentReference: "deploy:it",
+  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow",
 };
-const inventory: LineChannelInventory = { revision: "inventory:it", channels: [
-  { kind: "ACCOUNT", providerReference: "provider:synthetic", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:it" },
-  { kind: "MINI", providerReference: "provider:synthetic", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:it" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
 ] };
 const keyring = parseLineWorkflowContextKeyring(JSON.stringify({
   currentKid: "it1", keys: [{ kid: "it1", encryptionKey: randomBytes(32).toString("base64url"), sessionKey: randomBytes(32).toString("base64url") }],
@@ -97,7 +97,6 @@ describe("LINE-QA.B2.1 scoped Appointment reads on PostgreSQL", () => {
     await database.$connect();
   });
   beforeEach(() => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
   });
   afterEach(async () => {

@@ -20,11 +20,11 @@ const database = getPrisma();
 const created = { people: [] as string[], users: [] as string[], hospitals: [] as string[] };
 const configuration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow", deploymentReference: "deploy:it",
+  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow",
 };
-const inventory: LineChannelInventory = { revision: "inventory:it", channels: [
-  { kind: "ACCOUNT", providerReference: "provider:synthetic", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:it" },
-  { kind: "MINI", providerReference: "provider:synthetic", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:it" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
 ] };
 const keyring = parseLineWorkflowContextKeyring(JSON.stringify({
   currentKid: "it1", keys: [{ kid: "it1", encryptionKey: randomBytes(32).toString("base64url"), sessionKey: randomBytes(32).toString("base64url") }],
@@ -188,7 +188,6 @@ describe("LINE-QA.B2.2 scoped Appointment mutations on PostgreSQL", () => {
     await database.$connect();
   });
   beforeEach(() => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
   });
   afterEach(async () => {
@@ -247,7 +246,7 @@ describe("LINE-QA.B2.2 scoped Appointment mutations on PostgreSQL", () => {
       expect(await failure(runLineWorkflowScopedInteraction(undefined, "ACKNOWLEDGE", acknowledgement(own), dependencies(own)))).toBe("SCOPE_MISSING");
       expect(await failure(acknowledge(own, {}, contextFor(own, { issuedAt: new Date(Date.now() - 20 * 60_000) })))).toBe("SCOPE_EXPIRED");
       expect(await failure(acknowledge(own, {}, `${contextFor(own).slice(0, -2)}AA`))).toBe("SCOPE_INVALID");
-      expect(await failure(acknowledge(own, {}, contextFor(own, { tuple: { ...configuration, deploymentReference: "deploy:other" } })))).toBe("SCOPE_INVALID");
+      expect(await failure(acknowledge(own, {}, contextFor(own, { tuple: { ...configuration, environment: "REVIEW" } })))).toBe("SCOPE_INVALID");
       expect(await writes(own)).toEqual(noWrites(own));
     });
 
@@ -297,11 +296,11 @@ describe("LINE-QA.B2.2 scoped Appointment mutations on PostgreSQL", () => {
       await database.lineAccountBinding.update({ where: { id: regenerated.bindingId }, data: { lifecycleVersion: { increment: 1 } } });
       expect(await failure(requestCancellation(regenerated))).toBe("SCOPE_REVOKED");
 
-      const crossProvider = await patient();
-      const foreignInventory = { ...inventory, channels: inventory.channels.map((entry) => entry.kind === "MINI" ? { ...entry, providerReference: "provider:other" } : entry) };
-      expect(await failure(acknowledge(crossProvider, { lifecycleInventory: async () => foreignInventory }))).toBe("LIFECYCLE_UNAVAILABLE");
+      const miniRemoved = await patient();
+      const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
+      expect(await failure(acknowledge(miniRemoved, { lifecycleInventory: async () => accountOnly }))).toBe("LIFECYCLE_UNAVAILABLE");
 
-      for (const fixture of [unlinked, regenerated, crossProvider]) expect(await writes(fixture)).toEqual(noWrites(fixture));
+      for (const fixture of [unlinked, regenerated, miniRemoved]) expect(await writes(fixture)).toEqual(noWrites(fixture));
     });
 
     it("denies another Patient's relationship or appointment through existing domain policy", async () => {

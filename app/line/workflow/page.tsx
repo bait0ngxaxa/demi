@@ -9,8 +9,6 @@ import {
 } from "@/modules/line/domain/line-navigation-intents";
 import {
   getLineMiniAppConfiguration,
-  isLineMiniAppWorkflowIssuanceEnabled,
-  isLineMiniAppWorkflowEnabled,
   type LineMiniAppConfiguration,
 } from "@/modules/line/services/line-mini-app-configuration";
 
@@ -29,16 +27,15 @@ export const metadata: Metadata = {
  * service, and treats successful LIFF initialization as UI state, not authority.
  */
 export default async function LineWorkflowPage({
-  searchParams = Promise.resolve({}),
+  searchParams,
 }: {
-  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
-} = {}): Promise<React.JSX.Element> {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}): Promise<React.JSX.Element> {
   await connection();
   const entry = classifyLineWorkflowEntry(await searchParams);
   let configuration: LineMiniAppConfiguration | null = null;
   try {
-    configuration = isLineMiniAppWorkflowEnabled() && isLineMiniAppWorkflowIssuanceEnabled()
-      ? getLineMiniAppConfiguration() : null;
+    configuration = getLineMiniAppConfiguration();
   } catch {
     configuration = null;
   }

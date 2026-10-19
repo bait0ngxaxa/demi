@@ -10,9 +10,8 @@ import {
 import { getLiveExactSession } from "@/modules/auth/services/exact-session-service";
 import { ConflictError, ValidationError } from "@/shared/errors/application-error";
 
-import { LineWorkflowFailure } from "../domain/line-workflow-errors";
 import { LINE_WORKFLOW_CONTEXT_COOKIE_NAME } from "../services/line-workflow-context";
-import { getLineMiniAppConfiguration, isLineMiniAppWorkflowEnabled } from "../services/line-mini-app-configuration";
+import { getLineMiniAppConfiguration } from "../services/line-mini-app-configuration";
 import {
   runLineWorkflowScopedInteraction,
   type LineWorkflowScopedInteraction,
@@ -130,7 +129,6 @@ function interactionResponse(body: LineWorkflowInteractionResponse, status: numb
 }
 
 export type LineWorkflowInteractionHandlerDependencies = LineWorkflowScopedMutationDependencies & {
-  enabled?: () => boolean;
   credential?: () => Promise<string | undefined>;
 };
 
@@ -140,7 +138,7 @@ async function readWorkflowCredential(): Promise<string | undefined> {
 
 /**
  * Fixed scoped interaction transport (17J.3B sections 12.4 and 17). Order:
- * default-disabled gate, trusted tuple, exact canonical Origin, no Server
+ * MINI availability policy (kill switch + trusted channel), exact canonical Origin, no Server
  * Action dispatch, JSON content type, bounded strict body (existing domain
  * schema, no extra or duplicate fields), then the mandatory HttpOnly workflow
  * cookie and the scoped runner. It never issues, renews or clears the
@@ -157,7 +155,6 @@ export async function handleLineWorkflowInteractionRequest(
     for (const [name, value] of Object.entries(headers)) authHeaders.set(name, value);
   };
   try {
-    if (!(dependencies.enabled ?? isLineMiniAppWorkflowEnabled)()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
     const configuration = (dependencies.configuration ?? getLineMiniAppConfiguration)();
     if (request.headers.get("origin") !== configuration.origin) throw new InteractionRequestRejected("ORIGIN_DENIED");
     if (request.headers.has("next-action")) throw new InteractionRequestRejected("REQUEST_INVALID");

@@ -18,10 +18,10 @@ export const metadata: Metadata = {
 };
 
 export default async function LoginPage({
-  searchParams = Promise.resolve({}),
+  searchParams,
 }: {
-  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
-} = {}): Promise<React.JSX.Element> {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}): Promise<React.JSX.Element> {
   await connection();
   const query = await searchParams;
   const parsedReturnTo = loginReturnToSchema.safeParse(query.returnTo);

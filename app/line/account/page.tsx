@@ -47,16 +47,11 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   }
   if (accountManagementAvailable) {
     let configurationReady = false;
-    let staged = false;
     try {
-      const configuration = await requireLineDisconnectionReadiness();
-      if (configuration) {
-        disconnection = await getLineDisconnectionStatus({ configuration });
-        lifecycleReadiness = { state: "READY" };
-        configurationReady = true;
-      } else {
-        staged = true;
-      }
+      const inventory = await requireLineDisconnectionReadiness();
+      disconnection = await getLineDisconnectionStatus({ inventory });
+      lifecycleReadiness = { state: "READY" };
+      configurationReady = true;
     } catch {
       // Keep the independent Account summary usable; Link/Recovery remain fenced.
     }
@@ -64,9 +59,7 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
     if (!configurationReady) {
       try {
         const hasHistory = await hasLineLifecycleHistoryForCurrentOwner();
-        lifecycleReadiness = staged && !hasHistory
-          ? { state: "STAGED" }
-          : { state: "DEGRADED", history: hasHistory ? "PRESENT" : "NONE" };
+        lifecycleReadiness = { state: "DEGRADED", history: hasHistory ? "PRESENT" : "NONE" };
       } catch {
         lifecycleReadiness = { state: "DEGRADED", history: "UNKNOWN" };
       }

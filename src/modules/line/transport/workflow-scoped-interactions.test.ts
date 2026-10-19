@@ -22,7 +22,7 @@ const URL_ACK = `${ORIGIN}/line/workflow/appointments/acknowledge`;
 const CONTEXT = "v1.k1.synthetic-context";
 const configuration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: ORIGIN, endpointUrl: `${ORIGIN}/line/workflow`, deploymentReference: "deploy:dev-1",
+  origin: ORIGIN, endpointUrl: `${ORIGIN}/line/workflow`,
 };
 const ack = { patientHospitalRelationshipId: "11111111-1111-4111-8111-111111111111", appointmentId: "22222222-2222-4222-8222-222222222222",
   expectedUpdatedAt: "2026-10-01T00:00:00.000Z" };
@@ -38,7 +38,7 @@ function post(body: BodyInit | null, headers: Record<string, string> = {}): Requ
 }
 
 const handle = (request: Request, interaction: "ACKNOWLEDGE" | "CANCELLATION_REQUEST" = "ACKNOWLEDGE") =>
-  handleLineWorkflowInteractionRequest(request, interaction, { enabled: () => true, configuration: () => configuration });
+  handleLineWorkflowInteractionRequest(request, interaction, { configuration: () => configuration });
 
 async function expectSensitiveHeaders(response: Response): Promise<void> {
   expect(response.headers.get("cache-control")).toBe("private, no-cache, no-store, must-revalidate, max-age=0");
@@ -73,12 +73,14 @@ describe("fixed scoped interaction Route Handler transport", () => {
     expect(mocks.run).toHaveBeenCalledWith(CONTEXT, "CANCELLATION_REQUEST", cancellation, expect.anything());
   });
 
-  it("stays disabled by default before any other work", async () => {
-    const response = await handleLineWorkflowInteractionRequest(post(JSON.stringify(ack)), "ACKNOWLEDGE", { configuration: () => configuration });
+  it("stays disabled behind the emergency kill switch before any other work", async () => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
+    const response = await handleLineWorkflowInteractionRequest(post(JSON.stringify(ack)), "ACKNOWLEDGE");
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ status: "ERROR", code: "NOT_ACTIVATED" });
     expect(mocks.run).not.toHaveBeenCalled();
     expect(mocks.cookie).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it.each([

@@ -23,7 +23,7 @@ describe("Login page assisted recovery guidance", () => {
   });
 
   it("keeps account recovery unavailable and distinguishes a Patient request from activation", async () => {
-    const markup = renderToStaticMarkup(await LoginPage());
+    const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
 
     expect(markup).toContain("ลืมรหัสผ่าน?");
     expect(markup).toContain("ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ");
@@ -40,7 +40,7 @@ describe("Login page assisted recovery guidance", () => {
   it("redirects an already-authorized request before rendering the login client", async () => {
     mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
     mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });
-    await expect(LoginPage()).rejects.toThrow("redirect boundary");
+    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect boundary");
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     // This proves the server destination, not browser fragment inheritance.
   });

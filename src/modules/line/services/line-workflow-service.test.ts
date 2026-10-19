@@ -34,14 +34,12 @@ const configuration: LineMiniAppConfiguration = {
   liffId: "2000000001-MiniDev",
   origin: "https://demi.example.org",
   endpointUrl: "https://demi.example.org/line/workflow",
-  deploymentReference: "deploy:dev-1",
 };
 
 const inventory: LineChannelInventory = {
-  revision: "inventory:test-1",
   channels: [
-    { kind: "ACCOUNT", providerReference: "provider:demi", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:dev-1" },
-    { kind: "MINI", providerReference: "provider:demi", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:dev-1" },
+    { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+    { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
   ],
 };
 
@@ -150,19 +148,10 @@ describe("MINI workflow eligibility orchestration", () => {
   });
 
   it.each([
-    ["no reviewed lifecycle bundle", null],
-    ["Account-only inventory", { revision: "inventory:test-1", channels: [inventory.channels[0]], miniExclusionReference: "review:no-mini" }],
-    ["excluded MINI tuple", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[1], exclusionReference: "review:never" }] }],
-    ["other MINI environment", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[1], environment: "PUBLISHED" as const }] }],
-    ["other deployment", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[1], deploymentReference: "deploy:other" }] }],
-    // Provider pairing (B1 review remediation).
-    ["MINI tuple under another Provider", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[1], providerReference: "provider:other" }] }],
-    ["the same MINI tuple listed under two Providers", { ...inventory, channels: [
-      inventory.channels[0], { ...inventory.channels[1], providerReference: "provider:other", exclusionReference: "review:other" }, inventory.channels[1],
-    ] }],
-    ["an unexpected Account tuple", { ...inventory, channels: [{ ...inventory.channels[0], channelId: "1000000009" }, inventory.channels[1]] }],
-    ["two Account tuples", { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[0], providerReference: "provider:other" }, inventory.channels[1]] }],
-    ["an inventory-wide MINI exclusion", { ...inventory, miniExclusionReference: "review:no-mini" }],
+    ["an Account-only inventory", { channels: [inventory.channels[0]] }],
+    ["another MINI environment", { channels: [inventory.channels[0], { ...inventory.channels[1], environment: "PUBLISHED" as const }] }],
+    ["another MINI channel", { channels: [inventory.channels[0], { ...inventory.channels[1], channelId: "2000000009" }] }],
+    ["two MINI channels", { channels: [inventory.channels[0], inventory.channels[1], { ...inventory.channels[1], channelId: "2000000009" }] }],
   ])("rejects when lifecycle has %s before provider work", async (_label, value) => {
     const { dependencies, verifyIdentity, liveSession } = setup({ lifecycleInventory: vi.fn().mockResolvedValue(value) });
     expect(await codeOf(evaluateLineWorkflowEligibility(input, dependencies))).toBe("LIFECYCLE_UNAVAILABLE");
@@ -259,7 +248,6 @@ describe("mandatory scoped read boundary", () => {
   beforeEach(() => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
     vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -324,9 +312,9 @@ describe("mandatory scoped read boundary", () => {
     expect(transaction.user.findFirst).toHaveBeenCalledWith({ where: { id: USER_A, authSubject: AUTH_SUBJECT }, select: { id: true } });
   });
 
-  it("stays disabled behind the activation gate before reading the context", async () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "false");
-    const { liveSession, reader, dependencies } = scoped();
+  it("stays disabled behind the emergency kill switch before reading the context", async () => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
+    const { liveSession, reader, dependencies } = scoped({ configuration: undefined });
     expect(await codeOf(runLineWorkflowScopedRead(seal(), reader, dependencies))).toBe("WORKFLOW_DISABLED");
     expect(liveSession).not.toHaveBeenCalled();
   });
@@ -434,9 +422,9 @@ describe("mandatory scoped read boundary", () => {
     expect(reader).not.toHaveBeenCalled();
   });
 
-  it("fails closed on a cross-Provider MINI tuple before the Auth provider check", async () => {
-    const crossProvider = { ...inventory, channels: [inventory.channels[0], { ...inventory.channels[1], providerReference: "provider:other" }] };
-    const { liveSession, reader, dependencies } = scoped({ lifecycleInventory: vi.fn().mockResolvedValue(crossProvider) });
+  it("fails closed on a MINI channel missing from the lifecycle inventory before the Auth provider check", async () => {
+    const accountOnly = { channels: [inventory.channels[0]] };
+    const { liveSession, reader, dependencies } = scoped({ lifecycleInventory: vi.fn().mockResolvedValue(accountOnly) });
     expect(await codeOf(runLineWorkflowScopedRead(seal(), reader, dependencies))).toBe("LIFECYCLE_UNAVAILABLE");
     expect(liveSession).not.toHaveBeenCalled();
   });

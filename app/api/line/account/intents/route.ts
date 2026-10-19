@@ -15,10 +15,10 @@ export async function POST(request: Request): Promise<Response> {
     if (!parsed.success) return Response.json({ error: "คำขอไม่ถูกต้อง กรุณาเริ่มใหม่" }, { status: 400, headers: { "cache-control": "private, no-store" } });
     const action = parsed.data.action === "LINK" ? LineAccountAction.LINK : LineAccountAction.UNLINK;
     // Inventory/provider readiness cannot prevent an owner preparing local revocation.
-    const configuration = action === LineAccountAction.UNLINK
-      ? await requireLineDisconnectionReadiness().catch(() => null)
+    const inventory = action === LineAccountAction.UNLINK
+      ? await requireLineDisconnectionReadiness().catch(() => undefined)
       : await requireLineDisconnectionReadiness();
-    const intent = await createLineAccountIntent(action, { enforceRelinkPolicy: true, ...(configuration ? { authorizationInventory: configuration.inventory } : {}) });
+    const intent = await createLineAccountIntent(action, { enforceRelinkPolicy: true, authorizationInventory: inventory });
     return Response.json(intent, { status: 201, headers: { "cache-control": "private, no-store" } });
   } catch (error: unknown) {
     return lineErrorResponse(error);

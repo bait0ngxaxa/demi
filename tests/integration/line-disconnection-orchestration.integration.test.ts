@@ -8,19 +8,17 @@ import { disconnectLineAccount, getLineDisconnectionStatus, prepareLineAccountRe
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import { hashLineSessionId } from "@/modules/line/services/line-session-service";
 import { recordLineTerminationOutcome, reserveLineTerminationAttempt, type LineAttemptTarget } from "@/modules/line/services/line-authorization-lifecycle-service";
-import { lineChannelTupleKey, type LineProviderEvidence } from "@/modules/line/domain/line-authorization-lifecycle";
-import type { LineDisconnectionConfiguration } from "@/modules/line/services/line-disconnection-configuration";
+import { lineChannelTupleDefinition, lineChannelTupleKey, type LineChannelInventory, type LineProviderEvidence } from "@/modules/line/domain/line-authorization-lifecycle";
 import { deauthorizeLineAccount } from "@/modules/line/adapters/line-deauthorization-client";
 
 const database = getPrisma();
 const people: string[] = []; const users: string[] = [];
 const now = new Date("2026-10-09T06:00:00Z"); const sessionId = randomUUID();
 const subject = `U${"7".repeat(32)}`; const accessToken = "transient-access-token-not-persisted";
-const inventory: LineDisconnectionConfiguration["inventory"] = { revision: "synthetic-v1", miniExclusionReference: "synthetic-reviewed-not-provisioned", channels: [
-  { kind: "ACCOUNT", providerReference: "synthetic-provider", channelId: "1234567890", environment: "ACCOUNT", deploymentReference: "integration" },
-] };
+// Account-only deployment: MINI not provisioned, so no MINI obligation is created.
+const inventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 const account = lineChannelTupleKey(inventory.channels[0]);
-const config: LineDisconnectionConfiguration = { inventory, accountLiffId: "1234567890-test", appNames: { [account]: "DEMI ทดสอบ" }, migrationEvidence: "test", recoveryUatEvidence: "test", providerCredentialEvidence: "test", exactSessionEvidence: "test", deploymentReference: "integration" };
+const mini = { kind: "MINI" as const, channelId: "2222222222", environment: "DEVELOPING" as const };
 
 async function fixture(): Promise<LineAccountBinding> {
   const person = await database.person.create({ data: { identityKeyHash: createHash("sha256").update(randomUUID()).digest("hex"), givenName: "ทดสอบ", familyName: "Recovery" } }); people.push(person.id);
@@ -29,7 +27,7 @@ async function fixture(): Promise<LineAccountBinding> {
   return database.lineAccountBinding.create({ data: { userId: user.id, lineUserId: subject, lineSubjectFingerprint: fp.fingerprint, lineSubjectFingerprintKeyId: fp.keyId } });
 }
 function dependencies(binding: LineAccountBinding): DisconnectionDependencies {
-  return { database, now: () => now, configuration: config, authorizationInventory: inventory, enforceRelinkPolicy: true,
+  return { database, now: () => now, inventory, authorizationInventory: inventory, enforceRelinkPolicy: true,
     currentSession: async () => ({ userId: binding.userId, sessionHash: hashLineSessionId(sessionId) }),
     liveSession: async () => ({ userId: binding.userId, sessionId, authSubject: randomUUID(), checkedAt: now }),
     verifyIdentity: async () => ({ subject, expiresAt: new Date(now.getTime() + 60_000) }),
@@ -56,7 +54,6 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
   beforeEach(() => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890"); vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     vi.stubEnv("IDENTITY_HASH_SECRET", "synthetic-integration-identity-secret-32-chars"); vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_SECRET", "synthetic-account-channel-secret");
-    vi.stubEnv("DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED", "true");
   });
   afterEach(async () => {
     await database.lineAuthorizationLifecycle.deleteMany({ where: { binding: { userId: { in: users } } } });
@@ -132,22 +129,22 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     if (reason === "consumed") await database.lineAccountActionIntent.update({ where: { id: input.intentId }, data: { consumedAt: now, outcome: "SUCCEEDED" } });
     if (reason === "expired intent") await database.lineAccountActionIntent.update({ where: { id: input.intentId }, data: { expiresAt: now } });
     if (reason === "binding version") await database.lineAccountBinding.update({ where: { id: binding.id }, data: { lifecycleVersion: { increment: 1 } } });
-    if (reason === "inventory") deps.configuration = { ...config, inventory: { ...inventory, revision: "synthetic-v2" } };
+    if (reason === "inventory") deps.inventory = { channels: [...inventory.channels, mini] };
     if (reason === "owner inactive") await database.user.update({ where: { id: binding.userId }, data: { status: "SUSPENDED" } });
     if (reason === "provider unavailable") deps.liveSession = async () => { throw new Error("unavailable"); };
     await expect(recoverLineAccount(input, deps)).rejects.toThrow(); expect((await lifecycle(binding)).every((row) => !row.recoveryReleasedAt)).toBe(true);
   });
   it("new obligation invalidates the prepared decision", async () => {
     const binding = await fixture(); const deps = dependencies(binding); await unlink(binding, deps); const input = await recoveryInput(binding, deps);
-    const mini = { kind: "MINI" as const, providerReference: "synthetic-provider", channelId: "2222222222", environment: "DEVELOPING" as const, deploymentReference: "integration" };
-    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 2, tupleKey: lineChannelTupleKey(mini), tupleDefinition: JSON.stringify([mini.providerReference, mini.kind, mini.channelId, mini.environment, mini.deploymentReference]), applicability: "UNKNOWN", evidenceReference: "test", requestedAt: now, reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" } });
+    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 2, tupleKey: lineChannelTupleKey(mini), tupleDefinition: lineChannelTupleDefinition(mini), applicability: "UNKNOWN", evidenceReference: "test", requestedAt: now, reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" } });
     await expect(recoverLineAccount(input, deps)).rejects.toThrow();
   });
   it("Account proof releases reviewed independent unknown MINI history without claiming MINI removal", async () => {
     const binding = await fixture(); const deps = dependencies(binding);
-    const mini = { kind: "MINI" as const, providerReference: "synthetic-provider", channelId: "2222222222", environment: "DEVELOPING" as const, deploymentReference: "integration" };
-    deps.configuration = { ...config, inventory: { revision: "with-mini", channels: [...inventory.channels, mini] }, appNames: { ...config.appNames, [lineChannelTupleKey(mini)]: "DEMI ทดสอบ MINI" } };
-    await unlink(binding, deps); await recoverLineAccount(await recoveryInput(binding, deps), deps);
+    deps.inventory = { channels: [...inventory.channels, mini] };
+    await unlink(binding, deps);
+    expect((await prepareLineAccountRecovery(deps)).reviews.map((row) => row.appName).sort()).toEqual(["DEMI MINI App", "LINE Login ของ DEMI"]);
+    await recoverLineAccount(await recoveryInput(binding, deps), deps);
     expect((await lifecycle(binding)).every((row) => row.recoveryReleasedAt && row.remoteOutcome === "REMOTE_UNCONFIRMED" && row.applicability === "UNKNOWN")).toBe(true);
   });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {
@@ -188,12 +185,14 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
       await expect(linkLineAccount({ ...next, idToken: "new-proof" }, deps)).resolves.toMatchObject({ lifecycleVersion: 3 });
     }
   });
-  it("disabled rollout cannot waive durable pending records; never-activated legacy behavior stays available", async () => {
+  it("unavailable configuration never waives durable pending records; only Recovery restores Link", async () => {
     const binding = await fixture(); const deps = dependencies(binding); await unlink(binding, deps);
-    const runtimeStaged = { ...deps, authorizationInventory: undefined, enforceRelinkPolicy: true };
-    await expect(createLineAccountIntent("LINK", runtimeStaged)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    const unavailable = { ...deps, authorizationInventory: undefined, enforceRelinkPolicy: true };
+    await expect(createLineAccountIntent("LINK", unavailable)).rejects.toMatchObject({ code: "LINE_CONFIGURATION_MISSING" });
+    await expect(createLineAccountIntent("LINK", deps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
     await recoverLineAccount(await recoveryInput(binding, deps), deps);
-    expect(await createLineAccountIntent("LINK", runtimeStaged)).toHaveProperty("intentId");
+    await expect(createLineAccountIntent("LINK", unavailable)).rejects.toMatchObject({ code: "LINE_CONFIGURATION_MISSING" });
+    expect(await createLineAccountIntent("LINK", deps)).toHaveProperty("intentId");
   });
   it("expired fresh proof during a final Link lock wait cannot yield idempotent success", async () => {
     const binding = await fixture(); const deps = dependencies(binding); const intent = await createLineAccountIntent("LINK", deps);

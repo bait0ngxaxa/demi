@@ -97,7 +97,8 @@ describe("LINE account user experience", () => {
         initial={{ ...emptyStatus, status: "UNLINKED", canUnlink: false }}
         liffId="1234567890-AbCdEfGh"
         publicOrigin="https://demi.example.org"
-        lifecycleReadiness={{ state: "STAGED" }}
+        lifecycleReadiness={{ state: "READY" }}
+        disconnection={{ state: "NONE", canRelink: true, obligations: [] }}
       />,
     );
 
@@ -427,9 +428,9 @@ describe("LINE account user experience", () => {
     expect(markup).not.toContain("ยังเริ่มการตรวจสอบเพื่อเชื่อมใหม่ได้");
   });
 
-  it("keeps the staged path available only when the server marks Relink eligible", () => {
-    const staged = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
-      lifecycleReadiness: { state: "STAGED" },
+  it("keeps the Link path available only when the server marks Relink eligible", () => {
+    const eligible = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
+      lifecycleReadiness: { state: "READY" },
       relinkEligibility: "ELIGIBLE",
     });
     const unknown = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, {
@@ -437,7 +438,7 @@ describe("LINE account user experience", () => {
       relinkEligibility: "UNVERIFIED",
     });
 
-    expect(staged).toContain(">เชื่อมบัญชี LINE นี้</button>");
+    expect(eligible).toContain(">เชื่อมบัญชี LINE นี้</button>");
     expect(unknown).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
   });
 

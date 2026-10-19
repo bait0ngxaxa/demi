@@ -88,6 +88,10 @@ Local fences cannot protect new external permission from an accepted old request
 - Sending detailed patient information in chat is intentionally constrained and requires explicit content/privacy approval.
 - At ADR acceptance, a single user-specific Rich Menu could represent only one effective menu at a time and multi-role presentation remained an owner decision; Phase 17J.0B later selected Option C, with current eligible-set projection defined by Phase 17J.1.
 
+## Configuration note — Phase LINE-QA.B2.4 (2026-10-19)
+
+Runtime configuration describes only how to connect: Account Login/LIFF, Messaging API, public origin and, optionally, the selected MINI internal channel (environment, Channel ID, LIFF ID, Channel Secret) plus a DEMI-owned workflow keyring. Full Disconnection is permanent; its channel inventory is derived from that configuration, not an operator manifest, and operator evidence strings are not runtime authority. Same-Provider placement (decision 1) is verified by the owner in LINE Console and enforced at runtime by MINI subject = Account binding subject; it is not asserted by a configuration value. The single `DEMI_LINE_MINI_APP_DISABLED` switch is an emergency stop, never an activation approval. See [Phase LINE-QA.B2.4](../phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md).
+
 ## Open Questions at initial ADR acceptance (historical)
 
 - Appointment reminder event/timing/recipient/cancellation/staleness/content/preferences/consent and retry policy remain P17D-NOTIF-01.

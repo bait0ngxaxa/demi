@@ -14,8 +14,8 @@ export async function POST(request: Request): Promise<Response> {
     await requireSameOrigin(request);
     const parsed = lineLinkRequestSchema.safeParse(await readAccountJson(request));
     if (!parsed.success) return Response.json({ error: "คำขอไม่ถูกต้อง กรุณาเริ่มใหม่" }, { status: 400, headers: { "cache-control": "private, no-store" } });
-    const configuration = await requireLineDisconnectionReadiness();
-    const linked = await linkLineAccount(parsed.data, { enforceRelinkPolicy: true, ...(configuration ? { authorizationInventory: configuration.inventory } : {}) });
+    const authorizationInventory = await requireLineDisconnectionReadiness();
+    const linked = await linkLineAccount(parsed.data, { enforceRelinkPolicy: true, authorizationInventory });
     scheduleLineBindingReconciliation([linked.bindingId]);
     return Response.json({
       status: linked.status,

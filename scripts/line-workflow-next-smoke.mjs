@@ -15,8 +15,6 @@ const accountChannelId = "1000000001";
 const miniChannelId = "2000000001";
 const accountLiffId = "1000000001-Account";
 const miniLiffId = "2000000001-MiniSmoke";
-const deploymentReference = "deploy:next-smoke";
-const providerReference = "provider:next-smoke";
 const hospitalName = "โรงพยาบาลสังเคราะห์ MINI smoke";
 const workflowCookieName = "__Secure-DEMI_LINE_WORKFLOW";
 
@@ -69,35 +67,18 @@ function testDatabaseEnvironment() {
   };
 }
 
+// Mirrors lineChannelTupleDefinition: the server derives the inventory from the channel variables below.
 function tupleKey(channel) {
-  const definition = JSON.stringify([
-    channel.providerReference,
-    channel.kind,
-    channel.channelId,
-    channel.environment,
-    channel.deploymentReference,
-  ]);
+  const definition = JSON.stringify(["LINE_CHANNEL_V2", channel.kind, channel.channelId, channel.environment, "server-config"]);
   return createHash("sha256").update(definition).digest("hex");
 }
 
 function makeSyntheticConfiguration(identityHashSecret) {
   const inventory = {
-    revision: "inventory:next-smoke",
     channels: [
-      { kind: "ACCOUNT", providerReference, channelId: accountChannelId, environment: "ACCOUNT", deploymentReference },
-      { kind: "MINI", providerReference, channelId: miniChannelId, environment: "DEVELOPING", deploymentReference },
+      { kind: "ACCOUNT", channelId: accountChannelId, environment: "ACCOUNT" },
+      { kind: "MINI", channelId: miniChannelId, environment: "DEVELOPING" },
     ],
-  };
-  const appNames = Object.fromEntries(inventory.channels.map((channel) => [tupleKey(channel), "DEMI synthetic smoke"]));
-  const manifest = {
-    inventory,
-    accountLiffId,
-    appNames,
-    migrationEvidence: "synthetic:next-smoke",
-    recoveryUatEvidence: "synthetic:next-smoke",
-    providerCredentialEvidence: "synthetic:next-smoke",
-    exactSessionEvidence: "synthetic:next-smoke",
-    deploymentReference,
   };
   const keyring = {
     currentKid: "next-smoke",
@@ -107,7 +88,7 @@ function makeSyntheticConfiguration(identityHashSecret) {
       sessionKey: randomBytes(32).toString("base64url"),
     }],
   };
-  return { inventory, manifest, keyring, identityHashSecret };
+  return { inventory, keyring, identityHashSecret };
 }
 
 function buildApplicationEnvironment(databaseEnvironment, authUrl, configuration) {
@@ -121,16 +102,10 @@ function buildApplicationEnvironment(databaseEnvironment, authUrl, configuration
     DEMI_LINE_LOGIN_CHANNEL_ID: accountChannelId,
     DEMI_LINE_PUBLIC_ORIGIN: publicOrigin,
     NEXT_PUBLIC_DEMI_LINE_LIFF_ID: accountLiffId,
-    DEMI_LINE_MINI_APP_WORKFLOW_ENABLED: "true",
-    DEMI_LINE_MINI_APP_ISSUANCE_ENABLED: "true",
     DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING",
     DEMI_LINE_MINI_APP_CHANNEL_ID: miniChannelId,
     DEMI_LINE_MINI_APP_LIFF_ID: miniLiffId,
-    DEMI_LINE_MINI_APP_ENDPOINT_URL: `${publicOrigin}/line/workflow`,
-    DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE: deploymentReference,
     DEMI_LINE_MINI_APP_CONTEXT_KEYRING: JSON.stringify(configuration.keyring),
-    DEMI_LINE_DISCONNECTION_ENABLED: "true",
-    DEMI_LINE_DISCONNECTION_MANIFEST: JSON.stringify(configuration.manifest),
   };
 }
 

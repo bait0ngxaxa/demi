@@ -15,14 +15,14 @@ const TOKEN = "synthetic.mini.id-token-value";
 
 function enableMini(): void {
   for (const [name, value] of Object.entries({
-    DEMI_LINE_MINI_APP_WORKFLOW_ENABLED: "true",
-    DEMI_LINE_MINI_APP_ISSUANCE_ENABLED: "true",
+    DEMI_LINE_MINI_APP_DISABLED: undefined,
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
+    DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001",
+    IDENTITY_HASH_SECRET: "synthetic-secret-at-least-32-characters",
+    NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1000000001-Account",
     DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING",
     DEMI_LINE_MINI_APP_CHANNEL_ID: "2000000001",
     DEMI_LINE_MINI_APP_LIFF_ID: "2000000001-MiniDev",
-    DEMI_LINE_MINI_APP_ENDPOINT_URL: `${ORIGIN}/line/workflow`,
-    DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE: "deploy:dev-1",
   })) vi.stubEnv(name, value);
 }
 
@@ -53,22 +53,32 @@ describe("POST /api/line/workflow/verify activation fence", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it.each([undefined, "false", "TRUE"])("is disabled by default (%s) before Origin, body or provider work", async (value) => {
+  it.each(["true", "TRUE", "1"])("the emergency kill switch (%s) denies before Origin, body or provider work", async (value) => {
     enableMini();
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", value);
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", value);
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }, { origin: "https://attacker.example" })), 503, "WORKFLOW_DISABLED");
-    expect(mocks.evaluate).not.toHaveBeenCalled();
-  });
-
-  it("does not issue a scope when the separate issuance gate is missing", async () => {
-    enableMini();
-    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", undefined);
-    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "WORKFLOW_NOT_ACTIVATED");
     expect(mocks.evaluate).not.toHaveBeenCalled();
     expect(mocks.issue).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the enabled gate has no valid MINI configuration", async () => {
+  it("does not require any legacy workflow/issuance activation flag", async () => {
+    enableMini();
+    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", undefined);
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", "false");
+    mocks.evaluate.mockRejectedValue(new LineWorkflowFailure("LOGIN_REQUIRED"));
+    const response = await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }));
+    expect(response.status).toBe(401);
+    expect(mocks.evaluate).toHaveBeenCalledOnce();
+  });
+
+  it("is unavailable when MINI is not provisioned at all", async () => {
+    enableMini();
+    for (const name of ["DEMI_LINE_MINI_APP_ENVIRONMENT", "DEMI_LINE_MINI_APP_CHANNEL_ID", "DEMI_LINE_MINI_APP_LIFF_ID"]) vi.stubEnv(name, undefined);
+    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "MINI_CONFIGURATION_UNAVAILABLE");
+    expect(mocks.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the MINI configuration is partial", async () => {
     enableMini();
     vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", undefined);
     await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 503, "MINI_CONFIGURATION_UNAVAILABLE");

@@ -150,10 +150,3 @@ export async function POST(request: Request, { params }: UploadRouteParams): Pro
     return mapUploadError(error);
   }
 }
-
-export const patientEvidenceUploadRouteInternals = {
-  MAX_MULTIPART_REQUEST_BYTES,
-  hasOversizedDeclaredContentLength,
-  inputErrorMessage,
-  mapUploadError,
-};

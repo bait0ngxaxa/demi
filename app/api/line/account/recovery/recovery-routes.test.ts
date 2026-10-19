@@ -3,6 +3,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({ ready: vi.fn(), prepare: vi.fn(), recover: vi.fn(), summary: vi.fn() }));
 vi.mock("@/modules/line/services/line-disconnection-configuration", () => ({ requireLineDisconnectionReadiness: h.ready }));
 vi.mock("@/modules/line/services/line-disconnection-service", () => ({ prepareLineAccountRecovery: h.prepare, recoverLineAccount: h.recover, getLineDisconnectionStatus: h.summary }));
+import { LineFailure } from "@/modules/line/domain/line-errors";
+
 import { POST as prepare } from "./prepare/route";
 import { POST as recover } from "./route";
 import { POST as status } from "../disconnection/route";
@@ -13,7 +15,7 @@ describe("Recovery sensitive HTTP boundary", () => {
   afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     vi.clearAllMocks(); vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890"); vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org"); vi.stubEnv("IDENTITY_HASH_SECRET", "synthetic-test-secret-at-least-32-characters");
-    h.ready.mockResolvedValue({ inventory: {} }); h.prepare.mockResolvedValue({ intentId: randomUUID(), challenge: "c".repeat(43), reviews: [] });
+    h.ready.mockResolvedValue({ channels: [] }); h.prepare.mockResolvedValue({ intentId: randomUUID(), challenge: "c".repeat(43), reviews: [] });
     h.recover.mockResolvedValue({ status: "RECOVERY_RELEASED_UNVERIFIED" }); h.summary.mockResolvedValue({ state: "RECOVERY_REQUIRED", canRelink: false, obligations: [] });
   });
   it.each([prepare, recover, status])("requires exact Origin before reading/authorizing sensitive proof", async (handler) => {
@@ -40,8 +42,8 @@ describe("Recovery sensitive HTTP boundary", () => {
     const response = await recover(request(input())); expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store"); expect(await response.json()).toEqual({ status: "RECOVERY_RELEASED_UNVERIFIED" });
   });
-  it("staged readiness has no Recovery side effects", async () => {
-    h.ready.mockResolvedValue(null); const response = await recover(request(input())); expect(response.status).toBe(503); expect(h.recover).not.toHaveBeenCalled();
+  it("unavailable readiness has no Recovery side effects", async () => {
+    h.ready.mockRejectedValue(new LineFailure("LINE_CONFIGURATION_MISSING")); const response = await recover(request(input())); expect(response.status).toBe(503); expect(h.recover).not.toHaveBeenCalled();
   });
   it("sanitizes unexpected provider/SQL details without returning submitted proof", async () => {
     h.recover.mockRejectedValue(new Error("JWT, subject, SQL detail must stay private")); const response = await recover(request(input()));

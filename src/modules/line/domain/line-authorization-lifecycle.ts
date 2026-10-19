@@ -2,31 +2,32 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { LineAuthorizationLifecycle } from "@prisma/client";
 
-const reference = z.string().regex(/^[A-Za-z0-9._:/-]{1,128}$/u);
+/**
+ * Version of the server-derived channel tuple. Rows persisted under an older
+ * tuple definition keep their own `tupleKey`/`tupleDefinition` and remain
+ * historical obligations; they are never recomputed or remapped.
+ */
+export const LINE_CHANNEL_TUPLE_VERSION = "LINE_CHANNEL_V2";
+/** Fixed fifth slot required by the persisted five-string tuple CHECK; not a deployment identity. */
+const LINE_CHANNEL_TUPLE_SOURCE = "server-config";
+
 const channelSchema = z.object({
   kind: z.enum(["ACCOUNT", "MINI"]),
-  providerReference: reference,
   channelId: z.string().regex(/^\d{4,20}$/u),
   environment: z.enum(["ACCOUNT", "DEVELOPING", "REVIEW", "PUBLISHED"]),
-  deploymentReference: reference,
-  exclusionReference: reference.optional(),
 }).strict().superRefine((channel, context) => {
-  if ((channel.kind === "ACCOUNT") !== (channel.environment === "ACCOUNT") ||
-      (channel.kind === "ACCOUNT" && channel.exclusionReference)) {
+  if ((channel.kind === "ACCOUNT") !== (channel.environment === "ACCOUNT")) {
     context.addIssue({ code: "custom", message: "Invalid channel boundary" });
   }
 });
 
-/** Server/operator inventory, never parsed from an end-user request. */
+/** Derived from server configuration only, never parsed from an end-user request. */
 export const lineChannelInventorySchema = z.object({
-  revision: reference,
-  channels: z.array(channelSchema).min(1).max(8),
-  miniExclusionReference: reference.optional(),
+  channels: z.array(channelSchema).min(1).max(2),
 }).strict().superRefine((inventory, context) => {
   if (inventory.channels.filter((channel) => channel.kind === "ACCOUNT").length !== 1 ||
-      (!inventory.channels.some((channel) => channel.kind === "MINI") && !inventory.miniExclusionReference) ||
-      new Set(inventory.channels.map(lineChannelTupleKey)).size !== inventory.channels.length) {
-    context.addIssue({ code: "custom", message: "Reviewed channel inventory required" });
+      new Set(inventory.channels.map((channel) => channel.channelId)).size !== inventory.channels.length) {
+    context.addIssue({ code: "custom", message: "Exactly one Account and at most one distinct MINI channel" });
   }
 });
 
@@ -38,18 +39,32 @@ export function lineChannelTupleKey(channel: LineChannel): string {
   return createHash("sha256").update(lineChannelTupleDefinition(channel)).digest("hex");
 }
 
+/**
+ * Same five-string shape as the pre-B2.4 `[provider, kind, channelId,
+ * environment, deployment]` tuple, so the existing database CHECK applies
+ * unchanged. Slots 0 and 4 are fixed format markers, never Provider ownership
+ * or deployment evidence; Provider pairing is enforced by LINE subject equality.
+ */
 export function lineChannelTupleDefinition(channel: LineChannel): string {
-  return JSON.stringify([
-    channel.providerReference, channel.kind, channel.channelId,
-    channel.environment, channel.deploymentReference,
-  ]);
+  return JSON.stringify([LINE_CHANNEL_TUPLE_VERSION, channel.kind, channel.channelId, channel.environment, LINE_CHANNEL_TUPLE_SOURCE]);
+}
+
+/** Display label from the persisted definition; both tuple versions keep `kind` at index 1. */
+export function lineChannelDisplayName(tupleDefinition: string): string {
+  try {
+    const kind: unknown = (JSON.parse(tupleDefinition) as unknown[])[1];
+    if (kind === "ACCOUNT") return "LINE Login ของ DEMI";
+    if (kind === "MINI") return "DEMI MINI App";
+  } catch {
+    // Unreadable historical definitions still display as a connected DEMI app.
+  }
+  return "แอป DEMI ที่เคยเชื่อมต่อ";
 }
 
 export function lineObligationSetDigest(rows: readonly LineAuthorizationLifecycle[], inventory: LineChannelInventory): string {
   return createHash("sha256").update(JSON.stringify([
-    inventory.revision,
-    inventory.miniExclusionReference ?? null,
-    inventory.channels.map((channel) => [lineChannelTupleKey(channel), channel.exclusionReference ?? null]).sort(),
+    LINE_CHANNEL_TUPLE_VERSION,
+    inventory.channels.map(lineChannelTupleKey).sort(),
     rows.map((row) => [row.id, row.bindingVersion, row.tupleKey]).sort(),
   ])).digest("hex");
 }

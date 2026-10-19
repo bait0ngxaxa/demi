@@ -17,7 +17,6 @@ describe("Account Login deauthorization boundary", () => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890"); vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     vi.stubEnv("IDENTITY_HASH_SECRET", "test-identity-secret-at-least-32-chars"); vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_SECRET", "account-login-secret-only");
     vi.stubEnv("DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN", "must-never-be-used");
-    vi.stubEnv("DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED", "true");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -54,10 +53,16 @@ describe("Account Login deauthorization boundary", () => {
     expect(await deauthorizeLineAccount(userToken, subject, async () => true, fetcher)).toBe("KNOWN_NOT_DISPATCHED");
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
-  it("does not send any token URL without the explicit provider privacy exception", async () => {
-    vi.stubEnv("DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED", "false"); const fetcher = provider();
-    expect(await deauthorizeLineAccount(userToken, subject, async () => true, fetcher)).toBe("KNOWN_NOT_DISPATCHED");
-    expect(fetcher).not.toHaveBeenCalled();
+  it("sends the token-bearing verification query only to the fixed LINE endpoint, without any runtime switch", async () => {
+    vi.stubEnv("DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED", undefined); const fetcher = provider();
+    expect(await deauthorizeLineAccount(userToken, subject, async () => true, fetcher)).toBe("PROVIDER_204");
+    const verifyUrl = fetcher.mock.calls[0][0];
+    expect(verifyUrl).toBeInstanceOf(URL);
+    expect(`${(verifyUrl as URL).origin}${(verifyUrl as URL).pathname}`).toBe("https://api.line.me/oauth2/v2.1/verify");
+    expect((verifyUrl as URL).searchParams.get("access_token")).toBe(userToken);
+    // Every other request carries the token only in headers/body, never in a URL.
+    expect(fetcher.mock.calls.slice(1).every((call) => !String(call[0]).includes(userToken))).toBe(true);
+    expect(fetcher.mock.calls.every((call) => String(call[0]).startsWith("https://api.line.me/"))).toBe(true);
   });
   it("does not send after generation/recovery boundary changes", async () => {
     const fetcher = provider();
@@ -78,7 +83,7 @@ describe("Account Login deauthorization boundary", () => {
       .mockResolvedValueOnce(json({ access_token: "mini-stateless-channel-token", token_type: "Bearer", expires_in: 900 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const result = await deauthorizeLineMiniApp(userToken, subject, {
-      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING", deploymentReference: "deploy:test",
+      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING",
     }, async () => true, fetcher);
     expect(result).toBe("PROVIDER_204");
     expect(String(fetcher.mock.calls[2][1]?.body)).toContain("client_id=2000000001&client_secret=mini-only-secret");
@@ -91,7 +96,7 @@ describe("Account Login deauthorization boundary", () => {
   it("rejects an Account-audience access token on the MINI deauthorization path", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(json({ client_id: "1234567890", scope: "openid", expires_in: 60 }));
     expect(await deauthorizeLineMiniApp(userToken, subject, {
-      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING", deploymentReference: "deploy:test",
+      channelId: "2000000001", channelSecret: "mini-only-secret", environment: "DEVELOPING",
     }, async () => true, fetcher)).toBe("KNOWN_NOT_DISPATCHED");
     expect(fetcher).toHaveBeenCalledOnce();
   });

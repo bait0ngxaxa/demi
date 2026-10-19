@@ -28,11 +28,11 @@ const AUTH_SUBJECT = "88888888-8888-4888-8888-888888888888";
 const NOW = new Date("2026-10-18T03:00:00.000Z");
 const configuration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow", deploymentReference: "deploy:dev-1",
+  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow",
 };
-const inventory: LineChannelInventory = { revision: "inventory:test-1", channels: [
-  { kind: "ACCOUNT", providerReference: "provider:demi", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:dev-1" },
-  { kind: "MINI", providerReference: "provider:demi", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:dev-1" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
 ] };
 const keyring = parseLineWorkflowContextKeyring(JSON.stringify({
   currentKid: "k1", keys: [{ kid: "k1", encryptionKey: randomBytes(32).toString("base64url"), sessionKey: randomBytes(32).toString("base64url") }],
@@ -111,7 +111,6 @@ describe("mandatory scoped interaction boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -170,14 +169,16 @@ describe("mandatory scoped interaction boundary", () => {
   });
 
   it.each([
-    ["the disabled gate", () => vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "false"), () => seal(), "WORKFLOW_DISABLED"],
+    ["the emergency kill switch", () => vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true"), () => seal(), "WORKFLOW_DISABLED"],
     ["a missing context", () => undefined, () => undefined, "SCOPE_MISSING"],
     ["a tampered context", () => undefined, () => `${seal().slice(0, -2)}AA`, "SCOPE_INVALID"],
     ["an expired context", () => undefined, () => seal(new Date(NOW.getTime() - 20 * 60_000)), "SCOPE_EXPIRED"],
   ] as Array<[string, () => void, () => string | undefined, string]>)("stops on %s before any session, database or service work", async (_label, arrange, credential, code) => {
     arrange();
     const { calls, dependencies } = setup();
-    expect(await codeOf(runLineWorkflowScopedInteraction(credential(), "ACKNOWLEDGE", input, dependencies))).toBe(code);
+    // The kill switch belongs to the default availability policy, not an injected channel.
+    const policy = code === "WORKFLOW_DISABLED" ? { ...dependencies, configuration: undefined } : dependencies;
+    expect(await codeOf(runLineWorkflowScopedInteraction(credential(), "ACKNOWLEDGE", input, policy))).toBe(code);
     expect(calls).toEqual([]);
   });
 

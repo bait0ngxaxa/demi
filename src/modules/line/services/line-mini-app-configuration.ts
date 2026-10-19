@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import { getApplicationPublicOrigin } from "@/lib/env/server";
+import { getApplicationPublicOrigin, getLineLiffId, getLineLoginEnv } from "@/lib/env/server";
 import type { LineMiniAppDeauthorizationCredentials } from "../adapters/line-deauthorization-client";
 
 import { LINE_WORKFLOW_GATEWAY_PATH } from "../domain/line-navigation-intents";
@@ -10,72 +10,83 @@ import { LineWorkflowFailure } from "../domain/line-workflow-errors";
 
 const channelIdSchema = z.string().regex(/^\d{4,20}$/u);
 const liffIdSchema = z.string().regex(/^\d{4,20}-[A-Za-z0-9]+$/u);
-const referenceSchema = z.string().regex(/^[A-Za-z0-9._:/-]{1,128}$/u);
+const channelSecretSchema = z.string().regex(/^[A-Za-z0-9+/=_-]{16,1024}$/u);
 
 export const LINE_MINI_APP_ENVIRONMENTS = ["DEVELOPING", "REVIEW", "PUBLISHED"] as const;
 export type LineMiniAppEnvironment = (typeof LINE_MINI_APP_ENVIRONMENTS)[number];
 
-/** The single trusted tuple for this deployment. Public IDs are identifiers, not authority. */
+/** The single trusted channel for this deployment. Public IDs are identifiers, not authority. */
 export type LineMiniAppConfiguration = {
   environment: LineMiniAppEnvironment;
   /** Expected ID-token audience; never derived from the LIFF ID or a request. */
   channelId: string;
   liffId: string;
   origin: string;
+  /** Derived as DEMI_LINE_PUBLIC_ORIGIN + /line/workflow; never configured separately. */
   endpointUrl: string;
-  deploymentReference: string;
 };
 
+/** Every MINI variable except the kill switch; any one present means MINI is being provisioned. */
+const MINI_VARIABLES = [
+  "DEMI_LINE_MINI_APP_CHANNEL_ID",
+  "DEMI_LINE_MINI_APP_LIFF_ID",
+  "DEMI_LINE_MINI_APP_ENVIRONMENT",
+  "DEMI_LINE_MINI_APP_CHANNEL_SECRET",
+  "DEMI_LINE_MINI_APP_CONTEXT_KEYRING",
+] as const;
+
+function readMiniVariable(name: (typeof MINI_VARIABLES)[number]): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
 /**
- * Operator-owned server configuration. Missing or invalid values disable only
- * the MINI workflow; Account LIFF and ordinary DEMI web do not read this.
+ * Channel identity only (no availability policy). `null` means MINI is not
+ * provisioned at all: Account-only operation. Any partial or invalid MINI
+ * configuration fails closed; it never degrades to Account-only.
+ */
+export function resolveLineMiniAppChannel(): LineMiniAppConfiguration | null {
+  if (MINI_VARIABLES.every((name) => readMiniVariable(name) === undefined)) return null;
+  try {
+    const environment = z.enum(LINE_MINI_APP_ENVIRONMENTS).parse(readMiniVariable("DEMI_LINE_MINI_APP_ENVIRONMENT"));
+    const channelId = channelIdSchema.parse(readMiniVariable("DEMI_LINE_MINI_APP_CHANNEL_ID"));
+    const liffId = liffIdSchema.parse(readMiniVariable("DEMI_LINE_MINI_APP_LIFF_ID"));
+    const origin = getApplicationPublicOrigin();
+    // LINE serves MINI Apps over HTTPS only; no local-development HTTP exception here.
+    if (!origin.startsWith("https://")) throw new Error();
+    // Account and MINI audiences stay separate; equality signals a misconfigured channel.
+    if (channelId === getLineLoginEnv().DEMI_LINE_LOGIN_CHANNEL_ID || liffId === getLineLiffId()) throw new Error();
+    return { environment, channelId, liffId, origin, endpointUrl: `${origin}${LINE_WORKFLOW_GATEWAY_PATH}` };
+  } catch {
+    throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
+  }
+}
+
+/** Emergency kill switch. Only unset/empty/"false" leaves MINI available; any other value denies. */
+export function isLineMiniAppDisabled(): boolean {
+  const value = process.env.DEMI_LINE_MINI_APP_DISABLED?.trim();
+  return value !== undefined && value !== "" && value !== "false";
+}
+
+/**
+ * The one MINI runtime availability policy for the gateway, ID-token
+ * verification, scope issuance and every scoped read/mutation. Account LIFF
+ * and ordinary DEMI web never call this.
  */
 export function getLineMiniAppConfiguration(): LineMiniAppConfiguration {
-  try {
-    const environment = z.enum(LINE_MINI_APP_ENVIRONMENTS).parse(process.env.DEMI_LINE_MINI_APP_ENVIRONMENT);
-    const channelId = channelIdSchema.parse(process.env.DEMI_LINE_MINI_APP_CHANNEL_ID);
-    const liffId = liffIdSchema.parse(process.env.DEMI_LINE_MINI_APP_LIFF_ID);
-    const deploymentReference = referenceSchema.parse(process.env.DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE);
-    const origin = getApplicationPublicOrigin();
-    const endpointUrl = `${origin}${LINE_WORKFLOW_GATEWAY_PATH}`;
-    // LINE serves MINI Apps over HTTPS only; no local-development HTTP exception here.
-    if (!origin.startsWith("https://") || process.env.DEMI_LINE_MINI_APP_ENDPOINT_URL !== endpointUrl) throw new Error();
-    // Account and MINI audiences stay separate; equality signals a misconfigured tuple.
-    if (channelId === process.env.DEMI_LINE_LOGIN_CHANNEL_ID?.trim() ||
-        liffId === process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID?.trim()) throw new Error();
-    return { environment, channelId, liffId, origin, endpointUrl, deploymentReference };
-  } catch {
-    throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
-  }
-}
-
-/** Server-only channel credentials for LINE's documented user deauthorization API. */
-export function getLineMiniAppDeauthorizationCredentials(): LineMiniAppDeauthorizationCredentials {
-  const configuration = getLineMiniAppConfiguration();
-  try {
-    const channelSecret = z.string().regex(/^[A-Za-z0-9+/=_-]{16,1024}$/u)
-      .parse(process.env.DEMI_LINE_MINI_APP_CHANNEL_SECRET);
-    return {
-      channelId: configuration.channelId,
-      channelSecret,
-      environment: configuration.environment,
-      deploymentReference: configuration.deploymentReference,
-    };
-  } catch {
-    throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
-  }
+  if (isLineMiniAppDisabled()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
+  const configuration = resolveLineMiniAppChannel();
+  if (!configuration) throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
+  return configuration;
 }
 
 /**
- * Activation fence owned by LINE integration. Only the literal "true" enables
- * the verification orchestration; unset or any other value stays disabled.
- * Phase B1 never issues a workflow context even when this returns true.
+ * Server-only credentials for LINE's user deauthorization API. Deliberately not
+ * gated by the kill switch: terminating a grant reduces access.
  */
-export function isLineMiniAppWorkflowEnabled(): boolean {
-  return process.env.DEMI_LINE_MINI_APP_WORKFLOW_ENABLED === "true";
-}
-
-/** A separate operator-owned gate is required before any MINI workflow cookie can be issued. */
-export function isLineMiniAppWorkflowIssuanceEnabled(): boolean {
-  return process.env.DEMI_LINE_MINI_APP_ISSUANCE_ENABLED === "true";
+export function getLineMiniAppDeauthorizationCredentials(): LineMiniAppDeauthorizationCredentials {
+  const configuration = resolveLineMiniAppChannel();
+  const channelSecret = channelSecretSchema.safeParse(readMiniVariable("DEMI_LINE_MINI_APP_CHANNEL_SECRET"));
+  if (!configuration || !channelSecret.success) throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
+  return { channelId: configuration.channelId, channelSecret: channelSecret.data, environment: configuration.environment };
 }

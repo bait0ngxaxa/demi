@@ -6,11 +6,7 @@ import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "../domain/line-workflow-routes"
 import { LineWorkflowFailure, type LineWorkflowFailureCode } from "../domain/line-workflow-errors";
 import { lineWorkflowVerifyRequestSchema } from "../schemas/line-schemas";
 import { LINE_WORKFLOW_CONTEXT_COOKIE_NAME, lineWorkflowContextCookieOptions } from "../services/line-workflow-context";
-import {
-  getLineMiniAppConfiguration,
-  isLineMiniAppWorkflowEnabled,
-  isLineMiniAppWorkflowIssuanceEnabled,
-} from "../services/line-mini-app-configuration";
+import { getLineMiniAppConfiguration } from "../services/line-mini-app-configuration";
 import {
   evaluateLineWorkflowEligibility,
   issueLineWorkflowContext,
@@ -63,7 +59,6 @@ const publicCode: Partial<Record<LineWorkflowFailureCode, LineWorkflowResponseCo
 
 const statusOf: Record<LineWorkflowResponseCode, number> = {
   WORKFLOW_DISABLED: 503,
-  WORKFLOW_NOT_ACTIVATED: 503,
   MINI_CONFIGURATION_UNAVAILABLE: 503,
   LIFECYCLE_UNAVAILABLE: 503,
   ORIGIN_DENIED: 403,
@@ -144,15 +139,12 @@ function serializeWorkflowCookie(value: string, options: ReturnType<typeof lineW
 }
 
 /**
- * POST /api/line/workflow/verify. Issuance requires two independent literal
- * server-side gates; no normal deploy or NODE_ENV value can turn them on.
+ * POST /api/line/workflow/verify. Issuance is governed by the single MINI
+ * availability policy: a valid server-owned channel and an inactive kill switch.
  */
 export async function handleLineWorkflowVerifyRequest(
   request: Request,
-  dependencies: LineWorkflowDependencies & {
-    enabled?: () => boolean;
-    issuanceEnabled?: () => boolean;
-  } = {},
+  dependencies: LineWorkflowDependencies = {},
 ): Promise<Response> {
   const authHeaders = new Headers();
   const liveSession = dependencies.liveSession ?? (() => getLiveExactSession({
@@ -162,10 +154,6 @@ export async function handleLineWorkflowVerifyRequest(
   }));
 
   try {
-    if (!(dependencies.enabled ?? isLineMiniAppWorkflowEnabled)()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
-    if (!(dependencies.issuanceEnabled ?? isLineMiniAppWorkflowIssuanceEnabled)()) {
-      throw new LineWorkflowFailure("WORKFLOW_NOT_ACTIVATED");
-    }
     const configuration = (dependencies.configuration ?? getLineMiniAppConfiguration)();
     if (request.headers.get("origin") !== configuration.origin) throw new LineWorkflowFailure("ORIGIN_DENIED");
     const input = await readWorkflowRequest(request);

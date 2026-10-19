@@ -2,6 +2,8 @@
 
 วันที่ 2026-10-09 อ้างอิง source commit 53e0d0fa36254b3181b5e077d59e177f957f3e6d
 
+> **ถูกแทนที่บางส่วนโดย Phase LINE-QA.B2.4 (2026-10-19):** ระบบไม่ใช้ `DEMI_LINE_DISCONNECTION_ENABLED`, `DEMI_LINE_DISCONNECTION_MANIFEST` และ `DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED` อีกแล้ว หัวข้อ 2 (การทำ manifest) จึงไม่ใช้แล้ว ให้ดูวิธีตั้งค่าปัจจุบันใน [คู่มือตั้งค่า B2.4](./PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md#owner-setup-th) เนื้อหาด้านล่างเก็บไว้เป็นประวัติ
+
 **สถานะ: CONDITIONAL GO — ต้องตรวจข้อมูลและขออนุมัติการทดสอบก่อน ยังไม่เปิดใช้งาน** คู่มือนี้ใช้เตรียมข้อมูล ไม่อนุญาตให้ deploy, apply migration, เปลี่ยน env, เปิด gate หรือถอนสิทธิ์ LINE จริง ดูผลตรวจใน [รายงาน preflight](./PHASE_17J3D_UAT1_ACTIVATION_READINESS_PREFLIGHT.md) และกรณีทดสอบใน [UAT matrix](./PHASE_17J3D_UAT_TEST_MATRIX.md)
 
 ## 1. SAFE TO INSPECT NOW — ตรวจได้ตอนนี้โดยไม่เปลี่ยนระบบ

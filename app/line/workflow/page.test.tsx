@@ -15,14 +15,14 @@ const ORIGIN = "https://demi.example.org";
 
 function enableMini(): void {
   for (const [name, value] of Object.entries({
-    DEMI_LINE_MINI_APP_WORKFLOW_ENABLED: "true",
-    DEMI_LINE_MINI_APP_ISSUANCE_ENABLED: "true",
+    DEMI_LINE_MINI_APP_DISABLED: undefined,
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
+    DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001",
+    IDENTITY_HASH_SECRET: "synthetic-secret-at-least-32-characters",
+    NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1000000001-Account",
     DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING",
     DEMI_LINE_MINI_APP_CHANNEL_ID: "2000000001",
     DEMI_LINE_MINI_APP_LIFF_ID: "2000000001-MiniDev",
-    DEMI_LINE_MINI_APP_ENDPOINT_URL: `${ORIGIN}/line/workflow`,
-    DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE: "deploy:dev-1",
   })) vi.stubEnv(name, value);
 }
 
@@ -76,19 +76,21 @@ describe("GET /line/workflow initialization shell", () => {
     expect(mocks.database).not.toHaveBeenCalled();
   });
 
-  it("stays unavailable while the activation gate is disabled", async () => {
+  it("does not initialize LIFF while the emergency kill switch is active", async () => {
     enableMini();
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", undefined);
-    expect(await render()).toContain("ยังเปิดนัดหมายผ่าน LINE ไม่ได้");
-  });
-
-  it("does not initialize LIFF while scope issuance has not been activated", async () => {
-    enableMini();
-    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", undefined);
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
     const markup = await render();
     expect(markup).toContain("ยังเปิดนัดหมายผ่าน LINE ไม่ได้");
+    expect(markup).not.toContain("2000000001-MiniDev");
     expect(mocks.init).not.toHaveBeenCalled();
     expect(mocks.database).not.toHaveBeenCalled();
+  });
+
+  it("is ready from valid configuration alone, without legacy activation flags", async () => {
+    enableMini();
+    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", undefined);
+    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", undefined);
+    expect(await render()).toContain("กำลังเปิดนัดหมายผ่าน LINE");
   });
 });
 

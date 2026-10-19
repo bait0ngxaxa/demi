@@ -6,7 +6,6 @@ import { getPrisma } from "@/lib/db/prisma";
 import { createLineAccountIntent } from "@/modules/line/services/line-account-service";
 import { initializeLineTermination } from "@/modules/line/services/line-authorization-lifecycle-service";
 import { disconnectLineAccount } from "@/modules/line/services/line-disconnection-service";
-import type { LineDisconnectionConfiguration } from "@/modules/line/services/line-disconnection-configuration";
 import { lineChannelTupleKey, lineChannelTupleDefinition, type LineChannelInventory } from "@/modules/line/domain/line-authorization-lifecycle";
 import { LineWorkflowFailure } from "@/modules/line/domain/line-workflow-errors";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
@@ -26,22 +25,15 @@ const created = { people: [] as string[], users: [] as string[], hospitals: [] a
 const rateLimitKeys: string[] = [];
 const now = new Date();
 const lineSubject = `U${randomBytes(16).toString("hex")}`;
-const inventory: LineChannelInventory = { revision: "synthetic-inventory-b2.3", channels: [
-  { kind: "ACCOUNT", providerReference: "provider:synthetic", channelId: "1000000001", environment: "ACCOUNT", deploymentReference: "deploy:it" },
-  { kind: "MINI", providerReference: "provider:synthetic", channelId: "2000000001", environment: "DEVELOPING", deploymentReference: "deploy:it" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1000000001", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2000000001", environment: "DEVELOPING" },
 ] };
 const accountTupleKey = lineChannelTupleKey(inventory.channels[0]);
 const miniTupleKey = lineChannelTupleKey(inventory.channels[1]);
-const disconnectionConfiguration: LineDisconnectionConfiguration = {
-  inventory,
-  accountLiffId: "1000000001-Account",
-  appNames: { [accountTupleKey]: "DEMI synthetic", [miniTupleKey]: "DEMI MINI synthetic" },
-  migrationEvidence: "synthetic", recoveryUatEvidence: "synthetic", providerCredentialEvidence: "synthetic",
-  exactSessionEvidence: "synthetic", deploymentReference: "deploy:it",
-};
 const miniConfiguration: LineMiniAppConfiguration = {
   environment: "DEVELOPING", channelId: "2000000001", liffId: "2000000001-MiniDev",
-  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow", deploymentReference: "deploy:it",
+  origin: "https://demi.example.org", endpointUrl: "https://demi.example.org/line/workflow",
 };
 const keyring = parseLineWorkflowContextKeyring(JSON.stringify({
   currentKid: "synthetic-it",
@@ -91,7 +83,7 @@ function disconnectionDependencies(fixture: Fixture) {
   return {
     database,
     now: () => now,
-    configuration: disconnectionConfiguration,
+    inventory,
     authorizationInventory: inventory,
     enforceRelinkPolicy: true,
     currentSession: async () => ({ userId: fixture.userId, sessionHash: hashLineSessionId(fixture.sessionId) }),
@@ -135,8 +127,6 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
   beforeEach(() => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
     vi.stubEnv("IDENTITY_HASH_SECRET", "synthetic-b2-3-identity-hash-secret-32-chars");
-    vi.stubEnv("DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "true");
-    vi.stubEnv("DEMI_LINE_MINI_APP_ISSUANCE_ENABLED", "true");
   });
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -166,7 +156,7 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
     const unlinkIntent = await createLineAccountIntent("UNLINK", disconnect);
     await database.lineAuthorizationLifecycle.create({ data: {
       bindingId: fixture.bindingId, bindingVersion: eligibility.bindingVersion, tupleKey: miniTupleKey,
-      tupleDefinition: lineChannelTupleDefinition(inventory.channels[1]), applicability: "UNKNOWN", evidenceReference: inventory.revision,
+      tupleDefinition: lineChannelTupleDefinition(inventory.channels[1]), applicability: "UNKNOWN", evidenceReference: "LINE_CHANNEL_V2",
     } });
     const blockerEntered = deferred();
     const release = deferred();
@@ -248,6 +238,20 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
     expect(await database.auditEvent.count({ where: { actorUserId: fixture.userId, action: "line.lifecycle.observed" } })).toBe(0);
   });
 
+  it("denies a MINI identity from another LINE Provider because its subject never matches the Account binding", async () => {
+    const fixture = await patient();
+    // LINE user IDs are Provider-scoped: a MINI channel under another Provider yields another subject.
+    const otherProviderSubject = `U${randomBytes(16).toString("hex")}`;
+    const dependencies = workflowDependencies(fixture, {
+      verifyIdentity: async () => ({ subject: otherProviderSubject, verifiedAt: now, expiresAt: new Date(now.getTime() + 60 * 60_000) }),
+    });
+    const failure = await evaluateLineWorkflowEligibility({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: "synthetic-mini-id-token" }, dependencies)
+      .then(() => null, (error: unknown) => error);
+    expect(failure).toBeInstanceOf(LineWorkflowFailure);
+    expect((failure as LineWorkflowFailure).code).toBe("LINE_NOT_LINKED");
+    expect(await database.lineAuthorizationLifecycle.count({ where: { bindingId: fixture.bindingId } })).toBe(0);
+  });
+
   it("enforces one fixed-window user cap across independent limiter instances under concurrent requests", async () => {
     const principal = randomUUID();
     const keyHash = lineWorkflowRateLimitInternals.hashRateLimitKey("VERIFY_USER", principal);
@@ -268,12 +272,12 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
     const fixture = await patient();
     await database.lineAuthorizationLifecycle.create({ data: {
       bindingId: fixture.bindingId, bindingVersion: 1, tupleKey: miniTupleKey,
-      tupleDefinition: lineChannelTupleDefinition(inventory.channels[1]), applicability: "OBSERVED", evidenceReference: inventory.revision,
+      tupleDefinition: lineChannelTupleDefinition(inventory.channels[1]), applicability: "OBSERVED", evidenceReference: "LINE_CHANNEL_V2",
       observedAt: now,
     } });
     const dependencies = {
       ...disconnectionDependencies(fixture),
-      miniDeauthorizationCredentials: () => ({ channelId: "2000000001", channelSecret: "synthetic-mini-secret-only", environment: "DEVELOPING" as const, deploymentReference: "deploy:it" }),
+      miniDeauthorizationCredentials: () => ({ channelId: "2000000001", channelSecret: "synthetic-mini-secret-only", environment: "DEVELOPING" as const }),
       terminate: async () => { throw new Error("Account deauthorization must not run without an Account token"); },
       terminateMini: async (token: string, subject: string, credentials: { channelId: string }, mayDispatch: () => Promise<boolean>) => {
         expect(token).toBe("synthetic-mini-user-access-token");

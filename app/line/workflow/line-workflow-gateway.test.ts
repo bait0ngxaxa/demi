@@ -45,7 +45,7 @@ describe("MINI gateway LIFF initialization", () => {
 
 describe("MINI gateway verification step", () => {
   it("sends only the finite intent and transient proof in a same-origin POST body", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ code: "WORKFLOW_NOT_ACTIVATED" }, { status: 503 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ code: "WORKFLOW_DISABLED" }, { status: 503 }));
     await expect(verifyLineWorkflow(liffDouble(), fetcher)).resolves.toBe("NOT_ACTIVATED");
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/line/workflow/verify");

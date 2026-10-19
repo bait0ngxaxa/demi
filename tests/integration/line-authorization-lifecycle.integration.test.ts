@@ -18,10 +18,13 @@ const people: string[] = [];
 const users: string[] = [];
 const now = new Date("2026-10-08T06:00:00Z");
 const sessionHash = "a".repeat(64);
-const inventory: LineChannelInventory = { revision: "integration-v1", channels: [
-  { kind: "ACCOUNT", providerReference: "test-provider", channelId: "1234567890", environment: "ACCOUNT", deploymentReference: "integration" },
-  { kind: "MINI", providerReference: "test-provider", channelId: "2222222222", environment: "DEVELOPING", deploymentReference: "integration" },
+const inventory: LineChannelInventory = { channels: [
+  { kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" },
+  { kind: "MINI", channelId: "2222222222", environment: "DEVELOPING" },
 ] };
+// Exactly the pre-B2.4 manifest tuple for the same MINI channel; persisted verbatim, never remapped.
+const legacyMiniDefinition = JSON.stringify(["synthetic-provider", "MINI", "2222222222", "DEVELOPING", "synthetic-deploy"]);
+const legacyMini = createHash("sha256").update(legacyMiniDefinition).digest("hex");
 const account = lineChannelTupleKey(inventory.channels[0]);
 const mini = lineChannelTupleKey(inventory.channels[1]);
 const subject = `U${"1".repeat(32)}`;
@@ -154,8 +157,8 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect(await database.auditEvent.count({ where: { actorUserId: binding.userId } })).toBe(0);
   });
 
-  it("creates only Account obligations with reviewed never-provisioned MINI exclusion", async () => {
-    const binding = await fixture(); const accountOnly: LineChannelInventory = { revision: "reviewed-v1", channels: [inventory.channels[0]], miniExclusionReference: "operator-never-provisioned-v1" };
+  it("creates only Account obligations when MINI is not provisioned", async () => {
+    const binding = await fixture(); const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
     const dependencies = { ...deps(binding), authorizationInventory: accountOnly };
     const intent = await createLineAccountIntent("UNLINK", dependencies);
     await unlinkLineAccount(intent, dependencies);
@@ -169,9 +172,43 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     const revoked = await unlink(binding);
     expect((await rows(binding)).filter((row) => row.bindingVersion === revoked.lifecycleVersion).find((row) => row.tupleKey === mini)?.applicability).toBe("OBSERVED");
     await expect(tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, account, now))).rejects.toThrow();
-    const revised = { ...inventory, channels: [{ ...inventory.channels[0] }, { ...inventory.channels[1], exclusionReference: "reviewed-excluded" }] };
-    await tx((transaction) => initializeLineTermination(transaction, revoked, revised, now));
+    // Removing MINI from configuration later never rewrites or erases the observed obligation.
+    const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
+    await tx((transaction) => initializeLineTermination(transaction, revoked, accountOnly, now));
     expect((await rows(binding)).find((row) => row.bindingVersion === 2 && row.tupleKey === mini)?.applicability).toBe("OBSERVED");
+  });
+
+  it("carries a historical MINI grant forward after MINI configuration is removed", async () => {
+    const binding = await fixture();
+    await tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, mini, now));
+    const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
+    const intent = await createLineAccountIntent(LineAccountAction.UNLINK, deps(binding));
+    await unlinkLineAccount(intent, { ...deps(binding), authorizationInventory: accountOnly });
+    const current = (await rows(binding)).filter((row) => row.bindingVersion === 2);
+    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, mini].sort());
+    expect(current.find((row) => row.tupleKey === mini)).toMatchObject({ applicability: "OBSERVED", remoteOutcome: "REMOTE_UNCONFIRMED" });
+    // Without the channel's own configuration no termination can be dispatched or confirmed for it.
+    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target({ ...binding, lifecycleVersion: 2 }), tupleKey: mini }, accountOnly, now))).rejects.toThrow();
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target({ ...binding, lifecycleVersion: 2 }), now))).eligible).toBe(false);
+  });
+
+  it("keeps pre-B2.4 tuple rows as distinct enforceable history and resolves them only through Recovery", async () => {
+    const binding = await fixture();
+    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 1, tupleKey: legacyMini,
+      tupleDefinition: legacyMiniDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", observedAt: now } });
+    const revoked = await unlink(binding);
+    const current = (await rows(binding)).filter((row) => row.bindingVersion === revoked.lifecycleVersion);
+    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, legacyMini, mini].sort());
+    expect(current.find((row) => row.tupleKey === legacyMini)).toMatchObject({
+      tupleDefinition: legacyMiniDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", remoteOutcome: "REMOTE_UNCONFIRMED",
+    });
+    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(revoked), tupleKey: legacyMini }, inventory, now))).rejects.toThrow();
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(revoked), now))).eligible).toBe(false);
+    const decision = await recovery(revoked);
+    expect(Object.keys(decision.manualReviews)).toHaveLength(3);
+    await release(decision);
+    expect((await rows(binding)).filter((row) => row.bindingVersion === 2).every((row) => row.recoveryReleasedAt !== null)).toBe(true);
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(revoked), now))).eligible).toBe(true);
   });
 
   it("enforces composite uniqueness, foreign keys, nullable pairs and generation at the database", async () => {
@@ -242,7 +279,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     if (kind === "stale-generation") decision.bindingVersion += 1;
     if (kind === "incomplete-review") decision.manualReviews = {};
     if (kind === "expired-proof") decision.proofExpiresAt = now;
-    const selectedInventory = kind === "changed-inventory" ? { ...inventory, revision: "new-review-v2" } : inventory;
+    const selectedInventory: LineChannelInventory = kind === "changed-inventory" ? { channels: [inventory.channels[0]] } : inventory;
     const selectedAuthority: LineRecoveryAuthority = kind === "denied-authority" ? { authorize: async () => { throw new Error("trusted verifier denied"); } } : authority;
     await expect(release(decision, selectedInventory, selectedAuthority)).rejects.toThrow();
     expect((await rows(binding)).every((row) => row.recoveryReleasedAt === null)).toBe(true);

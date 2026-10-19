@@ -9,7 +9,6 @@ export type LineMiniAppDeauthorizationCredentials = {
   channelId: string;
   channelSecret: string;
   environment: "DEVELOPING" | "REVIEW" | "PUBLISHED";
-  deploymentReference: string;
 };
 
 const tokenResult = z.object({ client_id: z.string(), expires_in: z.number().int().positive(), scope: z.string() });
@@ -17,7 +16,9 @@ const userInfo = z.object({ sub: z.string().regex(/^U[0-9a-f]{32}$/iu) });
 const channelToken = z.object({ access_token: z.string().min(1).max(8192), token_type: z.literal("Bearer"), expires_in: z.number().positive() });
 
 /** LINE's documented access-token verification endpoint mandates this provider-only
- * HTTPS query. Never log its URL or return it to the browser (operator privacy review).
+ * HTTPS query. The URL is built only here, sent only to the fixed LINE host,
+ * never logged, persisted, retried or returned to the browser, and redirects
+ * are refused. Callers reach it only from an explicit authorized unlink.
  */
 async function verifyLineUserAccessToken(
   accessToken: string,
@@ -26,9 +27,6 @@ async function verifyLineUserAccessToken(
   signal: AbortSignal,
 ): Promise<string> {
   try {
-    // Explicit operator privacy exception for LINE's mandated outbound query.
-    // Staged/absent approval cannot send a sensitive URL even to LINE.
-    if (process.env.DEMI_LINE_PROVIDER_TOKEN_VERIFY_QUERY_ENABLED !== "true") throw new Error();
     const url = new URL("https://api.line.me/oauth2/v2.1/verify");
     url.searchParams.set("access_token", accessToken);
     const response = await fetcher(url, { signal, cache: "no-store", redirect: "error" });

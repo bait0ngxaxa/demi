@@ -13,12 +13,11 @@ import {
   type LineMiniAppDeauthorizationCredentials,
 } from "../adapters/line-deauthorization-client";
 import { verifyFreshLineIdToken } from "../adapters/line-login-client";
-import { isLineObligationSatisfied, isLineRecoveryEligible, lineChannelTupleKey, lineObligationStatus, lineObligationSetDigest } from "../domain/line-authorization-lifecycle";
+import { isLineObligationSatisfied, isLineRecoveryEligible, lineChannelDisplayName, lineChannelTupleKey, lineObligationStatus, lineObligationSetDigest, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
 import { LineFailure } from "../domain/line-errors";
 import { lineRecoveryRequestSchema } from "../schemas/line-schemas";
 import { isLineDisconnectionReadinessUnavailableAudit, unlinkLineAccount, type LineAccountDependencies } from "./line-account-service";
 import { authorizeLineRecoveryDecision, isLineTerminationDispatchAllowed, prepareLineRecoverySet, recordLineTerminationOutcome, releaseLineRecovery, reserveLineTerminationAttempt } from "./line-authorization-lifecycle-service";
-import type { LineDisconnectionConfiguration } from "./line-disconnection-configuration";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import { getLineMiniAppDeauthorizationCredentials } from "./line-mini-app-configuration";
 import { getCurrentLineSession, hashLineSessionId, timingSafeHashMatch } from "./line-session-service";
@@ -27,7 +26,8 @@ const digest = (value: string): string => createHash("sha256").update(value).dig
 const targetOf = (binding: LineAccountBinding): { ownerUserId: string; bindingId: string; bindingVersion: number } => ({ ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion });
 
 export type DisconnectionDependencies = LineAccountDependencies & {
-  configuration: LineDisconnectionConfiguration;
+  /** Server-derived channel inventory (see getLineChannelInventory), never request input. */
+  inventory: LineChannelInventory;
   liveSession?: typeof getLiveExactSession;
   freshIdentity?: typeof verifyFreshLineIdToken;
   terminate?: typeof deauthorizeLineAccount;
@@ -58,13 +58,12 @@ export async function getLineDisconnectionStatus(deps: DisconnectionDependencies
     ? blocked.every((row) => isLineRecoveryEligible(row, nowOf(deps))) ? "RECOVERY_REQUIRED" : "PENDING"
     : rows.some((row) => row.recoveryReleasedAt) ? "RECOVERY_RELEASED_UNVERIFIED" : rows.length ? "REMOTE_CONFIRMED" : "NONE";
   return { state, canRelink: !legacy && blocked.length === 0,
-    obligations: rows.map((row) => ({ id: row.id, appName: deps.configuration.appNames[row.tupleKey] ?? "แอป DEMI ที่เคยเชื่อมต่อ", status: lineObligationStatus(row) })) };
+    obligations: rows.map((row) => ({ id: row.id, appName: lineChannelDisplayName(row.tupleDefinition), status: lineObligationStatus(row) })) };
 }
 
 /**
- * Read-only display support for the intentionally staged rollout. A disabled
- * feature gate is only safe to present as ordinary Link/Relink when this owner
- * has no durable lifecycle history. Backend Link guards remain authoritative.
+ * Read-only display support while disconnection readiness is unavailable.
+ * Backend Link guards remain authoritative.
  */
 export async function hasLineLifecycleHistoryForCurrentOwner(
   dependencies: Pick<DisconnectionDependencies, "database" | "currentSession"> = {},
@@ -93,14 +92,14 @@ export async function hasLineLifecycleHistoryForCurrentOwner(
 export async function disconnectLineAccount(input: { intentId: string; challenge: string; accessToken?: string; miniAccessToken?: string }, deps: DisconnectionDependencies): Promise<{ status: "UNLINKED"; bindingId: string; disconnection: LineDisconnectionStatus | null }> {
   const session = await (deps.currentSession ?? getCurrentLineSession)();
   const database = dbOf(deps);
-  const result = await unlinkLineAccount(input, { ...deps, currentSession: async () => session, authorizationInventory: deps.configuration.inventory });
+  const result = await unlinkLineAccount(input, { ...deps, currentSession: async () => session, authorizationInventory: deps.inventory });
   if (input.accessToken) {
     try {
       const binding = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: result.bindingId } });
-      const account = deps.configuration.inventory.channels.find((channel) => channel.kind === "ACCOUNT");
+      const account = deps.inventory.channels.find((channel) => channel.kind === "ACCOUNT");
       if (!account) throw new ForbiddenError();
       const attempt = await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction,
-        { ownerUserId: session.userId, bindingId: result.bindingId, bindingVersion: result.lifecycleVersion, tupleKey: lineChannelTupleKey(account) }, deps.configuration.inventory, nowOf(deps)));
+        { ownerUserId: session.userId, bindingId: result.bindingId, bindingVersion: result.lifecycleVersion, tupleKey: lineChannelTupleKey(account) }, deps.inventory, nowOf(deps)));
       if (attempt) {
         const evidence = binding.lineUserId ? await (deps.terminate ?? deauthorizeLineAccount)(input.accessToken, binding.lineUserId,
           () => runSerializableTransaction(database, (transaction) => isLineTerminationDispatchAllowed(transaction, attempt))) : "KNOWN_NOT_DISPATCHED";
@@ -113,19 +112,15 @@ export async function disconnectLineAccount(input: { intentId: string; challenge
   if (input.miniAccessToken) {
     try {
       const credentials = (deps.miniDeauthorizationCredentials ?? getLineMiniAppDeauthorizationCredentials)();
-      const account = deps.configuration.inventory.channels.find((channel) => channel.kind === "ACCOUNT");
-      const selected = deps.configuration.inventory.channels.filter((channel) => channel.kind === "MINI" &&
-        channel.channelId === credentials.channelId && channel.environment === credentials.environment &&
-        channel.deploymentReference === credentials.deploymentReference);
-      if (!account || selected.length !== 1 || deps.configuration.inventory.miniExclusionReference ||
-          selected[0].exclusionReference || selected[0].providerReference !== account.providerReference) {
-        throw new ForbiddenError();
-      }
+      // Only the MINI credentials' own channel; never Account credentials or another environment.
+      const selected = deps.inventory.channels.filter((channel) => channel.kind === "MINI" &&
+        channel.channelId === credentials.channelId && channel.environment === credentials.environment);
+      if (selected.length !== 1) throw new ForbiddenError();
       const binding = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: result.bindingId } });
       const mini = selected[0];
       const attempt = await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction,
         { ownerUserId: session.userId, bindingId: result.bindingId, bindingVersion: result.lifecycleVersion, tupleKey: lineChannelTupleKey(mini) },
-        deps.configuration.inventory, nowOf(deps)));
+        deps.inventory, nowOf(deps)));
       if (attempt) {
         const evidence = binding.lineUserId ? await (deps.terminateMini ?? deauthorizeLineMiniApp)(input.miniAccessToken,
           binding.lineUserId, credentials,
@@ -169,15 +164,15 @@ export async function prepareLineAccountRecovery(deps: DisconnectionDependencies
     const intent = await transaction.lineAccountActionIntent.create({ data: { action: "RECOVERY", userId: live.userId, challengeHash: digest(challenge),
       sessionHash: hashLineSessionId(live.sessionId), createdAt: now, expiresAt: new Date(now.getTime() + 300_000),
       targetBindingId: selected.id, targetBindingVersion: selected.lifecycleVersion,
-      reviewedSetDigest: lineObligationSetDigest(preview.filter((row) => !isLineObligationSatisfied(row)), deps.configuration.inventory) } });
+      reviewedSetDigest: lineObligationSetDigest(preview.filter((row) => !isLineObligationSatisfied(row)), deps.inventory) } });
     await transaction.$queryRaw`SELECT "id" FROM "LineAccountActionIntent" WHERE "id" = ${intent.id}::uuid FOR UPDATE`;
-    const set = await prepareLineRecoverySet(transaction, targetOf(selected), deps.configuration.inventory, now);
+    const set = await prepareLineRecoverySet(transaction, targetOf(selected), deps.inventory, now);
     await transaction.lineAccountActionIntent.update({ where: { id: intent.id }, data: {
       targetBindingId: selected.id, targetBindingVersion: selected.lifecycleVersion, reviewedSetDigest: set.reviewedSetDigest,
     } });
     const rows = await transaction.lineAuthorizationLifecycle.findMany({ where: { id: { in: set.rowIds } } });
     return { intentId: intent.id, challenge, expiresAt: intent.expiresAt.toISOString(),
-      reviews: rows.map((row) => ({ id: row.id, appName: deps.configuration.appNames[row.tupleKey] ?? "แอป DEMI ที่เคยเชื่อมต่อ" })) };
+      reviews: rows.map((row) => ({ id: row.id, appName: lineChannelDisplayName(row.tupleDefinition) })) };
   });
 }
 
@@ -202,7 +197,7 @@ export async function recoverLineAccount(input: z.infer<typeof lineRecoveryReque
   const sessionHash = hashLineSessionId(live.sessionId);
   if (live.userId !== intent.userId || binding.userId !== live.userId || !timingSafeHashMatch(intent.sessionHash, sessionHash) ||
       !timingSafeHashMatch(binding.lineSubjectFingerprint, fingerprint.fingerprint) || binding.lineSubjectFingerprintKeyId !== fingerprint.keyId) throw new ForbiddenError();
-  const account = deps.configuration.inventory.channels.find((channel) => channel.kind === "ACCOUNT");
+  const account = deps.inventory.channels.find((channel) => channel.kind === "ACCOUNT");
   if (!account) throw new ForbiddenError();
   // Production authority is a private closure over actual Auth + LINE verification.
   const capability = await authorizeLineRecoveryDecision({ ownerUserId: live.userId, bindingId: binding.id,
@@ -211,6 +206,6 @@ export async function recoverLineAccount(input: z.infer<typeof lineRecoveryReque
     proofTupleKey: lineChannelTupleKey(account), proofVerifiedAt: proof.verifiedAt, proofExpiresAt: proof.expiresAt, manualReviews: input.manualReviews,
   }, { authorize: async (decision) => ({ decision, sessionHash, challengeHash: digest(input.challenge), fingerprint: fingerprint.fingerprint,
     fingerprintKeyId: fingerprint.keyId, riskAcknowledgedAt: now }) });
-  await runSerializableTransaction(database, (transaction) => releaseLineRecovery(transaction, capability, deps.configuration.inventory, nowOf(deps)));
+  await runSerializableTransaction(database, (transaction) => releaseLineRecovery(transaction, capability, deps.inventory, nowOf(deps)));
   return { status: "RECOVERY_RELEASED_UNVERIFIED" };
 }

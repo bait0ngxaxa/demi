@@ -53,7 +53,7 @@ const ineligibleSummary = {
   menuState: null,
   cleanupState: null,
 };
-const readyConfiguration = { inventory: { revision: "synthetic" } };
+const readyInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 const confirmedStatus: LineDisconnectionStatus = {
   state: "REMOTE_CONFIRMED",
   canRelink: true,
@@ -65,7 +65,6 @@ type ClientProps = {
   disconnection?: LineDisconnectionStatus;
   lifecycleReadiness:
     | { state: "READY" }
-    | { state: "STAGED" }
     | { state: "DEGRADED"; history: "PRESENT" | "NONE" | "UNKNOWN" }
     | { state: "NOT_CHECKED" };
 };
@@ -80,7 +79,7 @@ describe("Account page readiness composition", () => {
     vi.clearAllMocks();
     mocks.connection.mockResolvedValue(undefined);
     mocks.summary.mockResolvedValue(linkedSummary);
-    mocks.requireReadiness.mockResolvedValue(null);
+    mocks.requireReadiness.mockResolvedValue(readyInventory);
     mocks.status.mockResolvedValue(confirmedStatus);
     mocks.history.mockResolvedValue(false);
     mocks.reconcile.mockResolvedValue(undefined);
@@ -102,9 +101,9 @@ describe("Account page readiness composition", () => {
     expect(props.lifecycleReadiness).toEqual({ state: "DEGRADED", history: "NONE" });
   });
 
-  it("keeps historical eligibility unknown and disables ordinary Relink when configuration is staged", async () => {
+  it("keeps historical eligibility unknown and disables ordinary Relink when configuration is unavailable", async () => {
     mocks.summary.mockResolvedValue(unlinkedSummary);
-    mocks.requireReadiness.mockResolvedValue(null);
+    mocks.requireReadiness.mockRejectedValue(new Error("partial MINI configuration"));
     mocks.history.mockResolvedValue(true);
 
     const props = await clientProps();
@@ -114,28 +113,27 @@ describe("Account page readiness composition", () => {
     expect(props.lifecycleReadiness).toEqual({ state: "DEGRADED", history: "PRESENT" });
   });
 
-  it("marks the disabled rollout staged only after confirming no recorded termination history", async () => {
+  it("never presents unavailable configuration as an unrestricted Relink, even without history", async () => {
     mocks.summary.mockResolvedValue(unlinkedSummary);
-    mocks.requireReadiness.mockResolvedValue(null);
+    mocks.requireReadiness.mockRejectedValue(new Error("migration unavailable"));
     mocks.history.mockResolvedValue(false);
 
     const props = await clientProps();
 
-    expect(props.lifecycleReadiness).toEqual({ state: "STAGED" });
+    expect(props.lifecycleReadiness).toEqual({ state: "DEGRADED", history: "NONE" });
   });
 
   it("restores server-derived eligibility and keeps provider-confirmed lifecycle status", async () => {
-    mocks.requireReadiness.mockResolvedValue(readyConfiguration);
     mocks.status.mockResolvedValue(confirmedStatus);
 
     const props = await clientProps();
 
     expect(props.lifecycleReadiness).toEqual({ state: "READY" });
     expect(props.disconnection).toEqual(confirmedStatus);
+    expect(mocks.status).toHaveBeenCalledWith({ inventory: readyInventory });
   });
 
   it("does not treat a Recovery release as remote confirmation after readiness returns", async () => {
-    mocks.requireReadiness.mockResolvedValue(readyConfiguration);
     const recoveryReleased: LineDisconnectionStatus = {
       state: "RECOVERY_RELEASED_UNVERIFIED",
       canRelink: true,
@@ -178,7 +176,7 @@ describe("Account page readiness composition", () => {
 
   it("marks lifecycle state unknown when the history probe cannot verify the lifecycle table", async () => {
     mocks.summary.mockResolvedValue(unlinkedSummary);
-    mocks.requireReadiness.mockResolvedValue(null);
+    mocks.requireReadiness.mockRejectedValue(new Error("lifecycle migration unavailable"));
     mocks.history.mockRejectedValue(new Error("lifecycle migration unavailable"));
 
     const props = await clientProps();
