@@ -73,6 +73,8 @@ export type DemoScenarioDependencies = {
   today?: string;
   /** Parent hospital code; defaults to the first eligible Parent of the Hospital master. */
   parentHospitalCode?: string;
+  /** Called with a short step name (no data) as the seed advances. */
+  onProgress?: (step: string) => void;
 };
 
 export type DemoSeedReport = {
@@ -513,11 +515,14 @@ async function seedAppointment(
 
 /** Removes any previous demo data, then creates the scenario. Re-running refreshes every date relative to today. */
 export async function seedDemoScenario(dependencies: DemoScenarioDependencies): Promise<DemoSeedReport> {
+  const progress = dependencies.onProgress ?? (() => undefined);
+  progress("ลบข้อมูล demo เดิม");
   await resetDemoScenario(dependencies);
   const today = dependencies.today ?? toServiceDateOnly(new Date());
   const { parent, children } = await selectDemoHospitals(dependencies.parentHospitalCode);
   const [childA, childB] = children;
 
+  progress("Platform ADMIN และ onboarding โรงพยาบาล");
   const adminUserId = await seedPlatformAdmin(dependencies);
   const parentOwnerId = await onboardHospital(parent, DEMO_ACCOUNTS.parentOwner, adminUserId, dependencies);
   const childAOwnerId = await onboardHospital(childA, DEMO_ACCOUNTS.childAOwner, adminUserId, dependencies);
@@ -525,6 +530,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   const ownerA = await actorOf(childAOwnerId);
   const ownerB = await actorOf(childBOwnerId);
 
+  progress("บุคลากรและ อสม.");
   const memberExport = await seedWorkforce("MEMBER", DEMO_ACCOUNTS.memberExport, childA.id, ownerA, dependencies);
   await seedWorkforce("MEMBER", DEMO_ACCOUNTS.member, childA.id, ownerA, dependencies);
   const osmA1 = await seedWorkforce("OSM", DEMO_ACCOUNTS.osmA1, childA.id, ownerA, dependencies);
@@ -537,6 +543,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
     relationshipId: memberExport.relationshipId, targetHospitalId: childA.id, expectedUpdatedAt: grantTarget.updatedAt.toISOString(), granted: true,
   });
 
+  progress("ผู้ป่วยและการเปิดใช้งานบัญชี");
   // Patients (Child A provisioned by its OWNER, Child B by its OWNER).
   const patients = {} as Record<DemoAccountKey, PatientRef>;
   for (const key of ["patientA1", "patientA2", "patientA3", "patientA4", "patientA5", "patientA6"] as const) {
@@ -566,6 +573,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   ];
   for (const [owner, patient, yearsAgo] of histories) await seedHealthHistory(owner, patient.relationshipId, yearsAgo);
 
+  progress("Program ทุกสถานะ (ขั้นที่ใช้เวลานานที่สุด)");
   // Programs across every stage.
   const vitals = (weight: number, heightCm: number, dtx: number, hba1c: number, cvd: number): Vitals =>
     ({ weight, heightCm, waist: Math.round(weight * 1.1), systolic: 138, diastolic: 88, dtx, hba1c, cvd });
@@ -579,6 +587,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   await seedProgram({ patient: patients.patientB4, staffActor: ownerB, osmActor: osm.B1, stage: "ROUND_2", startDay: addDays(today, -18), vitals: vitals(71, 155, 162, 7.4, 14), improvement: 0 });
   await seedProgram({ patient: patients.patientB5, staffActor: ownerB, osmActor: osm.B2, stage: "ROUND_1", startDay: addDays(today, -2), vitals: vitals(85, 169, 189, 8.6, 23), improvement: 0 });
 
+  progress("การดูแลนอก Program และการสิ้นสุดการดูแล");
   // Care outside any Program (counted in the report summary only) and an ended relationship with history.
   await seedOutsideProgramCare(osm.A2, patients.patientA5.relationshipId, addDays(today, -6));
   await seedOutsideProgramCare(osm.B2, patients.patientB6.relationshipId, addDays(today, -4));
@@ -588,6 +597,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
     relationshipId: patients.patientA6.relationshipId, endReason: "ทดสอบ: ย้ายไปรับบริการที่หน่วยบริการอื่น", confirmRetention: true,
   }, clock(addDays(today, -30), "15:00"));
 
+  progress("ข้อมูลที่ผู้ป่วยบันทึกเอง");
   // Patient self data.
   const patientActor = async (key: DemoAccountKey) => actorOf(patients[key].userId);
   const a1 = await patientActor("patientA1");
@@ -611,6 +621,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
     hospitalId: childA.id, category: "ACCESS", message: "ทดสอบ: เปิดหน้านัดหมายแล้วโหลดช้า",
   }, clock(addDays(today, -1), "20:00"));
 
+  progress("นัดหมาย");
   // Appointments: past completed, upcoming within 7 days, a pending reschedule request, a cancellation request,
   // an OSM home visit, and one shared with a caregiver.
   const past = await seedAppointment(ownerA, patients.patientA1.relationshipId, at(addDays(today, -14), "09:30"), { createdOn: addDays(today, -21) });
@@ -634,6 +645,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   await seedAppointment(ownerB, patients.patientB1.relationshipId, at(addDays(today, 6), "09:30"), { createdOn: addDays(today, -3) });
   await seedAppointment(ownerB, patients.patientB3.relationshipId, at(addDays(today, 20), "10:30"), { createdOn: addDays(today, -3) });
 
+  progress("ผู้ดูแลและสิทธิ์ดูนัด");
   // Caregiver: Patient B1 accepts Patient A1's invitation and an appointment-sharing grant.
   const invitation = await createCaregiverInvitation(a1, { nationalId: demoNationalId(DEMO_ACCOUNTS.patientB1.index) }, clock(addDays(today, -10), "12:00"));
   const accepted = await acceptCaregiverInvitation(b1, invitation.plaintextToken, clock(addDays(today, -10), "12:30"));
@@ -642,6 +654,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   }, { ...FAMILY_ENABLED, ...clock(addDays(today, -10), "13:00") });
   await acceptAppointmentGrant(b1, grant.grantId, { ...FAMILY_ENABLED, ...clock(addDays(today, -10), "13:30") });
 
+  progress("ตรวจผลผ่าน read model ของรายงาน");
   return {
     hospitals: { parent: parent.name, children: [childA.name, childB.name] },
     accounts: DEMO_ACCOUNT_LIST.map((account) => ({

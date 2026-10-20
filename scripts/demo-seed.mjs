@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { PrismaClient } from "@prisma/client";
 import { createJiti } from "jiti";
 
 import { DemoSeedRefusedError, assertDemoSeedAllowed } from "./demo-guard.mjs";
@@ -13,6 +14,11 @@ import { DemoSeedRefusedError, assertDemoSeedAllowed } from "./demo-guard.mjs";
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const credentialsPath = resolve(repositoryRoot, ".demo-credentials.local.md");
 const MIN_PASSWORD_LENGTH = 12;
+// The CLI usually runs far from the database, so each statement costs a network round trip. Domain services that
+// do not pass their own limits would otherwise get Prisma's 5 s interactive-transaction default and time out.
+const DEMO_TRANSACTION_OPTIONS = { maxWait: 30_000, timeout: 120_000 };
+// ApplicationError codes carry fixed messages; Prisma error messages may echo query values, so only their code is shown.
+const APPLICATION_ERROR_CODES = new Set(["VALIDATION", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "INFRASTRUCTURE"]);
 
 function loadDotEnv(fileName) {
   const filePath = resolve(repositoryRoot, fileName);
@@ -52,6 +58,9 @@ async function main() {
     throw new DemoSeedRefusedError(`DEMI_DEMO_PASSWORD must be set (at least ${MIN_PASSWORD_LENGTH} characters)`);
   }
 
+  // Pre-seed the process-wide client that getPrisma() returns, before any service module is loaded.
+  globalThis.demiPrisma = new PrismaClient({ transactionOptions: DEMO_TRANSACTION_OPTIONS });
+
   const jiti = createJiti(import.meta.url, {
     alias: {
       "@": resolve(repositoryRoot, "src"),
@@ -68,9 +77,11 @@ async function main() {
       console.log("Removed:", removed);
       return;
     }
+    const startedAt = Date.now();
     const report = await scenario.seedDemoScenario({
       password,
       parentHospitalCode: process.env.DEMI_DEMO_PARENT_HOSPITAL_CODE || undefined,
+      onProgress: (step) => console.log(`[${Math.round((Date.now() - startedAt) / 1000)}s] ${step}`),
     });
     writeCredentials(report);
     console.log("Counts:", report.counts);
@@ -84,9 +95,11 @@ async function main() {
 try {
   await main();
 } catch (error) {
-  // Refusals carry safe messages; anything else is reported by type only so no data or secret is echoed.
+  // Refusals and application errors carry fixed, data-free messages; anything else is reported by type only.
+  const code = error instanceof Error && typeof error.code === "string" ? error.code : null;
+  const detail = code && APPLICATION_ERROR_CODES.has(code) ? `: ${error.message}` : code ? ` ${code}` : "";
   console.error(error instanceof DemoSeedRefusedError
     ? `Demo seed refused: ${error.message}`
-    : `Demo seed failed (${error instanceof Error ? error.name : "unknown error"}); no credentials were written.`);
+    : `Demo seed failed (${error instanceof Error ? error.name : "unknown error"}${detail}); no credentials were written. Re-run demo:seed — it removes partial demo data first.`);
   process.exitCode = 1;
 }
