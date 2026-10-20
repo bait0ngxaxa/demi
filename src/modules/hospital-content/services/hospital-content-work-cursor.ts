@@ -14,6 +14,7 @@ const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 const cursorSchema = z.object({
   version: z.literal(1),
+  hospitalId: z.string().regex(uuidPattern).nullable(),
   latestPublishedAt: z.string().regex(timestampPattern).refine((value) => {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) && date.toISOString() === value;
@@ -24,7 +25,7 @@ const cursorSchema = z.object({
 export type HospitalContentWorkCursor = z.infer<typeof cursorSchema>;
 
 function canonical(cursor: HospitalContentWorkCursor): Buffer {
-  return Buffer.from(JSON.stringify({ version: 1, latestPublishedAt: cursor.latestPublishedAt, id: cursor.id }), "utf8");
+  return Buffer.from(JSON.stringify({ version: 1, hospitalId: cursor.hospitalId, latestPublishedAt: cursor.latestPublishedAt, id: cursor.id }), "utf8");
 }
 
 function secret(): string {
@@ -32,9 +33,9 @@ function secret(): string {
   catch { throw new InfrastructureError("Hospital work content cursor could not be secured"); }
 }
 
-function signature(actor: ActorContext, payload: Buffer): Buffer {
+function signature(actor: ActorContext, hospitalId: HospitalContentWorkCursor["hospitalId"], payload: Buffer): Buffer {
   return createHmac("sha256", secret())
-    .update(`demi.hospital-content.work-cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000latestPublishedAt-id-desc:25:published-content-current-membership-or-osm-hospitals\u0000`, "utf8")
+    .update(`demi.hospital-content.work-cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000${hospitalId ?? "all-hospitals"}\u0000latestPublishedAt-id-desc:25:published-content-current-membership-or-osm-hospitals\u0000`, "utf8")
     .update(payload)
     .digest();
 }
@@ -50,23 +51,23 @@ export function encodeHospitalContentWorkCursor(actor: ActorContext, cursor: Hos
   if (!parsed.success || parsed.data.id !== parsed.data.id.toLowerCase()) throw new ValidationError("Hospital work content cursor is invalid");
   const payload = canonical(parsed.data);
   if (payload.byteLength > MAX_PAYLOAD_BYTES) throw new ValidationError("Hospital work content cursor is invalid");
-  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, payload).toString("base64url")}`;
+  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, parsed.data.hospitalId, payload).toString("base64url")}`;
   if (token.length > MAX_CURSOR_LENGTH) throw new ValidationError("Hospital work content cursor is invalid");
   return token;
 }
 
-export function decodeHospitalContentWorkCursor(actor: ActorContext, token: string): HospitalContentWorkCursor {
+export function decodeHospitalContentWorkCursor(actor: ActorContext, hospitalId: HospitalContentWorkCursor["hospitalId"], token: string): HospitalContentWorkCursor {
   if (token.length > MAX_CURSOR_LENGTH || !token.startsWith(PREFIX)) throw new ValidationError("Hospital work content cursor is invalid");
   const parts = token.slice(PREFIX.length).split(".");
   if (parts.length !== 2) throw new ValidationError("Hospital work content cursor is invalid");
   const payload = decodeBase64Url(parts[0] ?? "");
   const suppliedSignature = decodeBase64Url(parts[1] ?? "");
   if (!payload || payload.byteLength > MAX_PAYLOAD_BYTES || !suppliedSignature || suppliedSignature.byteLength !== 32) throw new ValidationError("Hospital work content cursor is invalid");
-  if (!timingSafeEqual(signature(actor, payload), suppliedSignature)) throw new ValidationError("Hospital work content cursor is invalid");
+  if (!timingSafeEqual(signature(actor, hospitalId, payload), suppliedSignature)) throw new ValidationError("Hospital work content cursor is invalid");
   let raw: unknown;
   try { raw = JSON.parse(payload.toString("utf8")); }
   catch { throw new ValidationError("Hospital work content cursor is invalid"); }
   const parsed = cursorSchema.safeParse(raw);
-  if (!parsed.success || parsed.data.id !== parsed.data.id.toLowerCase() || !canonical(parsed.data).equals(payload)) throw new ValidationError("Hospital work content cursor is invalid");
+  if (!parsed.success || parsed.data.id !== parsed.data.id.toLowerCase() || !canonical(parsed.data).equals(payload) || parsed.data.hospitalId !== hospitalId) throw new ValidationError("Hospital work content cursor is invalid");
   return parsed.data;
 }

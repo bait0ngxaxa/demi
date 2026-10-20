@@ -15,12 +15,15 @@ export function HomeContentSection({
   emptyMessage,
   heading,
   id,
+  itemHrefBase,
   items,
 }: {
   allHref: string;
   emptyMessage: string;
   heading: string;
   id: string;
+  /** Detail route of the feed the items came from; each item links to `${itemHrefBase}/${id}`. */
+  itemHrefBase: string;
   items: readonly HospitalContentPatientListItem[];
 }): React.JSX.Element {
   return (
@@ -43,7 +46,7 @@ export function HomeContentSection({
                 <h3 className="min-w-0 break-words text-base font-semibold leading-6 text-text">
                   <Link
                     className="inline-flex min-h-12 max-w-full items-center rounded-control text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                    href={`/app/personal/knowledge/${encodeURIComponent(item.id)}`}
+                    href={`${itemHrefBase}/${encodeURIComponent(item.id)}`}
                     prefetch={false}
                   >
                     {item.title}

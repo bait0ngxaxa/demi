@@ -1,9 +1,10 @@
 import "server-only";
 
 import { HospitalContentStatus, HospitalStatus, MembershipStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import type { HospitalContentPatientDetail, HospitalContentPatientListItem } from "../types/hospital-content-patient-projections";
 import { hospitalContentLocatorSchema } from "../schemas/hospital-content-schemas";
 import { HOSPITAL_CONTENT_PAGE_SIZE } from "../domain/hospital-content";
@@ -41,9 +42,19 @@ function toListItem(row: ContentRecord): HospitalContentPatientListItem {
   return { id: row.id, hospital: row.hospital, title: row.title, category: row.category, latestPublishedAt: publishedAt(row), imageIds: row.images.map(({ id }) => id) };
 }
 
-export async function listHospitalWorkContent(actor: ActorContext | null | undefined, input: { cursor?: string } = {}, database: Database = getPrisma()): Promise<{ items: HospitalContentPatientListItem[]; nextCursor: string | null }> {
+const workContentRequestSchema = z.object({
+  cursor: z.string().optional(),
+  hospitalId: hospitalContentLocatorSchema.optional(),
+  limit: z.number().int().min(1).max(HOSPITAL_CONTENT_PAGE_SIZE).optional(),
+}).strict();
+
+export async function listHospitalWorkContent(actor: ActorContext | null | undefined, input: { cursor?: string; hospitalId?: string; limit?: number } = {}, database: Database = getPrisma()): Promise<{ items: HospitalContentPatientListItem[]; nextCursor: string | null }> {
   assertWorkActor(actor);
-  const cursor = input.cursor === undefined ? null : decodeHospitalContentWorkCursor(actor, input.cursor);
+  const request = workContentRequestSchema.safeParse(input);
+  if (!request.success) throw new ValidationError("Hospital work content request is invalid");
+  const hospitalId = request.data.hospitalId ?? null;
+  const pageSize = request.data.limit ?? HOSPITAL_CONTENT_PAGE_SIZE;
+  const cursor = request.data.cursor === undefined ? null : decodeHospitalContentWorkCursor(actor, hospitalId, request.data.cursor);
   try {
     const user = await database.user.findFirst({ where: { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: { in: [Role.HOSPITAL, Role.OSM] } } } }, select: { id: true } });
     if (!user) throw new ForbiddenError();
@@ -52,20 +63,21 @@ export async function listHospitalWorkContent(actor: ActorContext | null | undef
         status: HospitalContentStatus.PUBLISHED,
         firstPublishedAt: { not: null },
         latestPublishedAt: { not: null },
-        hospital: { is: activeWorkHospitalWhere(actor) },
+        // The optional Hospital locator only narrows the authorized predicate; it never widens it.
+        hospital: { is: hospitalId === null ? activeWorkHospitalWhere(actor) : { AND: [activeWorkHospitalWhere(actor), { id: hospitalId }] } },
         ...(cursor ? { OR: [
           { latestPublishedAt: { lt: new Date(cursor.latestPublishedAt) } },
           { latestPublishedAt: new Date(cursor.latestPublishedAt), id: { lt: cursor.id } },
         ] } : {}),
       },
-      orderBy: [{ latestPublishedAt: "desc" }, { id: "desc" }], take: HOSPITAL_CONTENT_PAGE_SIZE + 1, select: contentSelect,
+      orderBy: [{ latestPublishedAt: "desc" }, { id: "desc" }], take: pageSize + 1, select: contentSelect,
     });
-    const pageRows = rows.slice(0, HOSPITAL_CONTENT_PAGE_SIZE);
+    const pageRows = rows.slice(0, pageSize);
     const last = pageRows.at(-1);
     return {
       items: pageRows.map(toListItem),
-      nextCursor: rows.length > HOSPITAL_CONTENT_PAGE_SIZE && last?.latestPublishedAt
-        ? encodeHospitalContentWorkCursor(actor, { version: 1, latestPublishedAt: last.latestPublishedAt.toISOString(), id: last.id })
+      nextCursor: rows.length > pageSize && last?.latestPublishedAt
+        ? encodeHospitalContentWorkCursor(actor, { version: 1, hospitalId, latestPublishedAt: last.latestPublishedAt.toISOString(), id: last.id })
         : null,
     };
   } catch (error: unknown) {

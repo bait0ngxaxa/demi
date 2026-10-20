@@ -8,11 +8,12 @@ import { HospitalContentImageList } from "./hospital-content-image-list";
 
 export const metadata: Metadata = { title: "ข่าวสารและสื่อความรู้ของโรงพยาบาล" };
 
-export default async function HospitalWorkContentPage({ searchParams }: { searchParams: Promise<{ cursor?: string | string[] }> }): Promise<React.JSX.Element> {
+export default async function HospitalWorkContentPage({ searchParams }: { searchParams: Promise<{ cursor?: string | string[]; hospitalId?: string | string[] }> }): Promise<React.JSX.Element> {
   await connection();
   const query = await searchParams;
   const cursor = typeof query.cursor === "string" ? query.cursor : query.cursor === undefined ? undefined : "";
-  const page = await getHospitalWorkContentPageContext(cursor);
+  const hospitalId = typeof query.hospitalId === "string" ? query.hospitalId : query.hospitalId === undefined ? undefined : "";
+  const page = await getHospitalWorkContentPageContext(cursor, hospitalId);
   return <div className="min-w-0 max-w-5xl space-y-6">
     <PageHeader title="ข่าวสารและสื่อความรู้" description="เนื้อหาที่เผยแพร่จากโรงพยาบาลที่คุณปฏิบัติงาน" />
     {page.items.length === 0 ? <p className="rounded-panel border border-border p-5 text-text-muted">ยังไม่มีเนื้อหาที่เผยแพร่</p> : <ul className="divide-y divide-border">
@@ -23,7 +24,7 @@ export default async function HospitalWorkContentPage({ searchParams }: { search
       </li>)}
     </ul>}
     {page.nextCursor ? <nav aria-label="หน้ารายการข่าวสารและสื่อความรู้">
-      <Link className="inline-flex min-h-11 items-center rounded-control font-medium text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/hospitals/content?cursor=${encodeURIComponent(page.nextCursor)}`}>รายการถัดไป</Link>
+      <Link className="inline-flex min-h-11 items-center rounded-control font-medium text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/hospitals/content?${hospitalId === undefined ? "" : `hospitalId=${encodeURIComponent(hospitalId)}&`}cursor=${encodeURIComponent(page.nextCursor)}`}>รายการถัดไป</Link>
     </nav> : null}
   </div>;
 }

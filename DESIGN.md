@@ -236,7 +236,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Desktop:** sidebar สี navigation-background กว้าง 17rem มี group label, nested domain item และ active item ใช้ navigation-active
 - **Header:** sticky surface header แสดง DEMI, role context และ logout บน desktop; mobile แสดงแบรนด์และ workspace ปัจจุบัน พร้อมเข้าถึงการสลับ workspace ได้จาก “เพิ่มเติม”
 - **Mobile (2026-10-20):** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม”; “เพิ่มเติม” เป็นลิงก์ไปหน้า `/app/more` ที่แสดง server-projected navigation ชุดเดียวกับ desktop โดยไม่เปิด sidebar หรือ dialog; logout อยู่ด้านล่างของหน้า More
-- **Mobile Patient Personal Home (2026-10-20):** หน้า `/app/personal` ใช้ hero เป็นแถบพื้นทึบ `brand-deep` สำหรับคำทักทายและบริบทโรงพยาบาลเท่านั้น นี่เป็นข้อยกเว้นเฉพาะ hero ของหน้า personal บน mobile; ไม่ใช้ gradient และไม่ขยายรูปแบบนี้ไปหน้าอื่น
+- **Mobile Patient Personal Home (2026-10-20):** หน้า `/app/personal` ใช้ hero เป็นแถบพื้นทึบ `brand-deep` สำหรับคำทักทายและบริบทโรงพยาบาลเท่านั้น นี่เป็นข้อยกเว้นเฉพาะ hero ของหน้า home (personal และ `/app` ของงาน ตั้งแต่ UI-3); ไม่ใช้ gradient และไม่ขยายรูปแบบนี้ไปหน้าอื่น
 - Active route ใช้ `aria-current="page"`; workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
 
 ### Content Width and Responsive Layout
@@ -248,6 +248,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - Reading forms, Contact, Content, Personal และรายละเอียดการบันทึกยังรักษา local max-width เดิม; prose ใช้ `type-readable` 68ch. ไม่ใช้ global override เพื่อยืดทุกหน้า.
 - **2026-10-20:** `/app/more` เป็นหน้าเมนูปกติทั้งบน mobile และ desktop; ลิงก์ในหน้านำทางด้วย browser history และคง workspace ที่เลือกไว้ Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ของ More ใช้ gutters และ width policy ของหน้า.
 - **2026-10-20:** Patient Personal Home ใช้ hero, ตัวเลือกโรงพยาบาล, shortcut grid 4 คอลัมน์บน mobile และข่าวสาร/สื่อความรู้แยกตามโรงพยาบาล; ส่วน hero ใช้พื้นทึบ `brand-deep` เป็นข้อยกเว้นเฉพาะหน้านี้จาก canvas ปกติ.
+- **2026-10-20 (UI-3):** Work Home (`/app`) ใช้ hero, chip เลือกโรงพยาบาล (`?hospitalId=`, จัดกลุ่มตามเครือข่าย) และ grid เมนูชุดเดียวกันทุกบทบาท โดยเมนูมาจาก server projection เท่านั้น. Hero เป็นลิงก์งานหลักไม่มีตัวเลข: action หมวด `care` แรกของโรงพยาบาลที่เลือก → `assignedPatientsAction` → governance แรก (ADMIN ที่ไม่มีงานโรงพยาบาล). Grid สูงสุด 8 ช่องตาม `WORK_HOME_TILE_ORDER` ใน `src/components/home/work-home-projection.ts` ช่องเกินเป็น "ทั้งหมด" ไป `/app/more`; งานที่ครอบคลุมทุกโรงพยาบาลแสดงเป็นแถวในส่วน "งานจากทุกโรงพยาบาล" ไม่อยู่ใน grid. Desktop ใช้ component เดียวกันใน `content-workspace`.
 
 ### Local Navigation
 

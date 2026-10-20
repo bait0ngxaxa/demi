@@ -135,8 +135,14 @@ const iconPaths: Record<MobileNavigationIcon, React.ReactNode> = {
 };
 
 export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
-  const pathname = href.split("?")[0]?.replace(/\/+$/, "") ?? "";
+  const [rawPathname = "", query = ""] = href.split("?");
+  const pathname = rawPathname.replace(/\/+$/, "");
 
+  if (pathname === "/app/patients/assigned") {
+    const task = new URLSearchParams(query).get("task");
+    if (task === "screening") return "screening";
+    if (task === "followup") return "followup";
+  }
   if (pathname === "/app" || pathname === "/app/personal") return "home";
   if (pathname.startsWith("/app/personal/appointments")) return "appointments";
   if (pathname.startsWith("/app/personal/wellness")) return "wellness";

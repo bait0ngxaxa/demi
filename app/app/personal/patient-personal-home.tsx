@@ -2,8 +2,8 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { HomeContentSection } from "@/components/home/home-content-section";
 import { HomeHospitalContact } from "@/components/home/home-hospital-contact";
-import { HomeHero } from "@/components/home/home-hero";
-import type { HomeHospitalOption } from "@/components/home/home-hospital-chip";
+import { HomeHero, HomeNextAppointment } from "@/components/home/home-hero";
+import { HomeHospitalChip, type HomeHospitalOption } from "@/components/home/home-hospital-chip";
 import { HomeShortcutGrid, type HomeShortcut } from "@/components/home/home-shortcut-grid";
 import type { HospitalContentPatientListItem } from "@/modules/hospital-content/types/hospital-content-patient-projections";
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
@@ -97,17 +97,29 @@ export function PatientPersonalHome({
   const currentHospital = selectedHospital ?? null;
   const hasHospitalContact = currentHospital?.hospitalContact.status === "AVAILABLE";
   const shortcuts = createShortcuts(currentHospital, hasHospitalContact);
+  const displayName = getPersistedDisplayName(patient);
 
   return (
     <div className="min-w-0 max-w-5xl">
       <HomeHero
-        activeHospitals={activeHospitals ?? []}
-        displayName={getPersistedDisplayName(patient)}
-        nextAppointment={nextAppointment ?? null}
-        selectedHospital={currentHospital
-          ? { relationshipId: currentHospital.relationshipId, hospitalName: currentHospital.hospitalName }
-          : null}
-      />
+        chip={(
+          <HomeHospitalChip
+            action="/app/personal"
+            fieldName="hospital"
+            groups={[{
+              label: null,
+              options: (activeHospitals ?? []).map(({ relationshipId, hospitalName }) => ({ value: relationshipId, label: hospitalName })),
+            }]}
+            selectId="personal-home-hospital"
+            selectedLabel={currentHospital?.hospitalName ?? null}
+            selectedValue={currentHospital?.relationshipId ?? null}
+          />
+        )}
+        headingId="personal-home-heading"
+        title={displayName ? `สวัสดี, ${displayName}` : "สวัสดี"}
+      >
+        <HomeNextAppointment nextAppointment={nextAppointment ?? null} />
+      </HomeHero>
       <HomeShortcutGrid shortcuts={shortcuts} />
       <HomeContentSection
         allHref={`/app/personal/news${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`}
@@ -116,6 +128,7 @@ export function PatientPersonalHome({
           : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงข่าวสาร"}
         heading="ข่าวสาร"
         id="personal-home-news-heading"
+        itemHrefBase="/app/personal/knowledge"
         items={newsItems ?? []}
       />
       <HomeContentSection
@@ -125,6 +138,7 @@ export function PatientPersonalHome({
           : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"}
         heading="สื่อความรู้"
         id="personal-home-knowledge-heading"
+        itemHrefBase="/app/personal/knowledge"
         items={knowledgeItems ?? []}
       />
       {currentHospital?.hospitalContact.status === "AVAILABLE" ? (
