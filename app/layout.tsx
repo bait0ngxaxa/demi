@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import { DESKTOP_SIDEBAR_PREPAINT_SCRIPT } from "@/components/app-shell/desktop-sidebar-state";
 import { AppToaster } from "@/components/ui/app-toaster";
 import "./globals.css";
 
@@ -31,6 +32,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Applies the stored sidebar width before paint so the shell skeleton and sidebar never jump. */}
+        <script dangerouslySetInnerHTML={{ __html: DESKTOP_SIDEBAR_PREPAINT_SCRIPT }} />
+      </head>
       <body className="min-h-full">
         {children}
         <AppToaster />

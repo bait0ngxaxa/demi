@@ -9,10 +9,10 @@ const sidebarItemWidths = ["w-44", "w-36", "w-48"] as const;
 
 function SidebarNavigationSkeleton(): React.JSX.Element {
   return (
-    <div className="flex-1 space-y-8 px-4 py-6">
-      {Array.from({ length: 2 }, (_, groupIndex) => (
-        <div className="space-y-3" key={groupIndex}>
-          <Skeleton className="h-3 w-24" tone="inverse" />
+    <div className="min-h-0 flex-1 space-y-3 overflow-hidden py-3 pl-3 pr-1">
+      {Array.from({ length: 3 }, (_, groupIndex) => (
+        <div className="space-y-0.5" key={groupIndex}>
+          <Skeleton className="mb-1 h-3 w-24 max-w-full" tone="inverse" />
           {sidebarItemWidths.map((width, itemIndex) => (
             <Skeleton
               className={`h-10 ${width} max-w-full`}
@@ -32,33 +32,31 @@ export function ProtectedApplicationShellSkeleton(): React.JSX.Element {
       className="min-h-svh bg-canvas text-text lg:flex"
       label="กำลังเตรียมพื้นที่ใช้งาน..."
     >
+      {/* Same structure and width rule as AppSidebar, so the stored collapsed preference causes no jump. */}
       <aside
         aria-hidden="true"
-        className="hidden h-svh w-app-sidebar shrink-0 bg-navigation-background lg:flex lg:flex-col"
+        className="app-desktop-sidebar hidden h-svh shrink-0 overflow-x-clip bg-navigation-background lg:flex lg:flex-col"
       >
-        <div className="flex h-28 shrink-0 flex-col justify-center border-b border-white/12 px-5">
-          <Skeleton className="h-8 w-24" tone="inverse" />
-          <Skeleton className="mt-3 h-4 w-40" tone="inverse" />
+        <div className="flex h-app-header shrink-0 flex-col justify-center border-b border-white/12 px-5">
+          <Skeleton className="h-5 w-16 max-w-full" tone="inverse" />
+          <Skeleton className="mt-2 h-3 w-32 max-w-full" tone="inverse" />
         </div>
         <SidebarNavigationSkeleton />
+        <div className="flex h-16 shrink-0 items-center gap-3 border-t border-white/12 px-4">
+          <Skeleton className="size-8 shrink-0 rounded-full" tone="inverse" />
+          <Skeleton className="h-4 w-32 max-w-full" tone="inverse" />
+        </div>
       </aside>
 
       <div className="min-w-0 flex-1">
         <header
           aria-hidden="true"
-          className="app-shell-header app-shell-horizontal-gutter flex min-h-app-header items-center justify-between gap-4 border-b border-border bg-surface px-4 sm:px-6 lg:px-8"
+          className="app-shell-header app-shell-horizontal-gutter flex min-h-app-header items-center justify-between gap-4 border-b border-border bg-surface px-4 sm:px-6 lg:hidden"
         >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="min-w-0 lg:hidden">
-              <p className="text-lg font-bold tracking-[-0.03em] text-text">DEMI</p>
-              <Skeleton className="mt-1 h-3 w-24" />
-            </div>
-            <div className="hidden min-w-0 lg:block">
-              <Skeleton className="h-5 w-28 lg:h-4 lg:w-36" />
-              <Skeleton className="mt-2 h-3 w-36" />
-            </div>
+          <div className="min-w-0">
+            <p className="text-lg font-bold tracking-[-0.03em] text-text">DEMI</p>
+            <Skeleton className="mt-1 h-3 w-24" />
           </div>
-          <Skeleton className="hidden h-10 w-24 shrink-0 lg:block" />
         </header>
 
         <main className="app-shell-horizontal-gutter app-shell-main-content @container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">

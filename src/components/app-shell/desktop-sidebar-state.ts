@@ -9,6 +9,16 @@ type SidebarPreferenceStorage = {
   setItem(key: string, value: string): void;
 };
 
+/** <html data-desktop-sidebar> drives the sidebar width in CSS (`.app-desktop-sidebar`). */
+export const DESKTOP_SIDEBAR_ROOT_ATTRIBUTE = "data-desktop-sidebar";
+
+/** Runs before paint; storage failures leave the default expanded width. */
+export const DESKTOP_SIDEBAR_PREPAINT_SCRIPT = `try{if(localStorage.getItem(${JSON.stringify(DESKTOP_SIDEBAR_STORAGE_KEY)})==="collapsed")document.documentElement.setAttribute(${JSON.stringify(DESKTOP_SIDEBAR_ROOT_ATTRIBUTE)},"collapsed")}catch(e){}`;
+
+export function applyDesktopSidebarRootState(root: Pick<Element, "setAttribute">, state: DesktopSidebarState): void {
+  root.setAttribute(DESKTOP_SIDEBAR_ROOT_ATTRIBUTE, state);
+}
+
 export function parseDesktopSidebarPreference(value: string | null): DesktopSidebarState {
   return value === "collapsed" || value === "expanded"
     ? value

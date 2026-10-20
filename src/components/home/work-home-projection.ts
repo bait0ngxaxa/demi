@@ -33,7 +33,7 @@ export type WorkHomeProjection = {
   unavailableHospitals: readonly ApplicationHospitalWorkspace[];
 };
 
-type WorkHomeLink = Pick<ApplicationWorkspaceAction, "href" | "label" | "prefetch">;
+type WorkHomeLink = Pick<ApplicationWorkspaceAction, "href" | "label" | "prefetch"> & { description?: string };
 
 function tileKey(href: string): string {
   const [pathname = "", query = ""] = href.split("?");
@@ -64,6 +64,7 @@ export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationO
       href: link.href,
       icon: getMoreNavigationIcon(link.href),
       label: link.label,
+      ...(link.description === undefined ? {} : { description: link.description }),
       ...(link.prefetch === undefined ? {} : { prefetch: link.prefetch }),
     }));
 

@@ -52,7 +52,7 @@ export function AppToaster(): React.JSX.Element {
       className="demi-toaster"
       closeButton
       containerAriaLabel="การแจ้งเตือน"
-      offset={{ top: "calc(var(--app-header-height) + 1rem)", right: "1rem" }}
+      offset={{ top: "calc(var(--app-sticky-top) + 1rem)", right: "1rem" }}
       mobileOffset={{
         bottom: "calc(env(safe-area-inset-bottom, 0px) + 5rem)",
         left: "1rem",

@@ -24,6 +24,8 @@ type NavigationListProps = {
   availableContexts?: readonly ApplicationWorkspaceContext[];
   /** Icon rail: every item stays reachable as an icon link named by `aria-label`; headings are visually hidden. */
   collapsed?: boolean;
+  /** Desktop sidebar height budget (UI-4.1): 40px items and tighter section spacing. */
+  density?: "default" | "compact";
   /** Called for client-side navigations only; may cancel the link navigation to perform it itself. */
   onNavigate?: (event: { preventDefault: () => void }, href: string) => void;
   tone?: "desktop" | "mobile";
@@ -32,6 +34,7 @@ type NavigationListProps = {
 export function NavigationList({
   availableContexts: providedAvailableContexts,
   collapsed = false,
+  density = "default",
   groups,
   onNavigate,
   tone = "desktop",
@@ -63,7 +66,7 @@ export function NavigationList({
   );
 
   return (
-    <div className={collapsed ? "space-y-3" : "space-y-6"}>
+    <div className={collapsed || density === "compact" ? "space-y-3" : "space-y-6"}>
       {visibleGroups.map((group) => {
         const groupActive = group.items.some(({ href }) => activeHrefs.has(href));
         const headingId = `navigation-section-${tone}-${group.id}`;
@@ -73,7 +76,11 @@ export function NavigationList({
             {group.label ? (
               <p
                 className={classNames(
-                  collapsed ? "sr-only" : "mb-2 px-3 text-xs font-medium tracking-[0.01em]",
+                  collapsed
+                    ? "sr-only"
+                    : density === "compact"
+                      ? "mb-1 px-3 text-xs font-medium leading-4 tracking-[0.01em]"
+                      : "mb-2 px-3 text-xs font-medium tracking-[0.01em]",
                   tone === "desktop"
                     ? groupActive
                       ? "text-brand-bright"
@@ -87,7 +94,7 @@ export function NavigationList({
                 {group.label}
               </p>
             ) : null}
-            <ul aria-labelledby={group.label ? headingId : undefined} className="space-y-1">
+            <ul aria-labelledby={group.label ? headingId : undefined} className={density === "compact" ? "space-y-0.5" : "space-y-1"}>
               {group.items.map((item) => {
                 const active = activeHrefs.has(item.href);
 
@@ -97,7 +104,8 @@ export function NavigationList({
                       aria-current={active ? "page" : undefined}
                       aria-label={collapsed ? item.label : undefined}
                       className={classNames(
-                        "flex min-w-0 min-h-11 items-center gap-3 rounded-control py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        "flex min-w-0 items-center gap-3 rounded-control text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        density === "compact" ? "min-h-10 py-1.5" : "min-h-11 py-2",
                         collapsed ? "justify-center px-0" : "px-3",
                         tone === "desktop"
                           ? active

@@ -126,28 +126,31 @@ export function PatientPersonalHome({
         <HomeNextAppointment nextAppointment={nextAppointment ?? null} />
       </HomeHero>
       <HomeShortcutGrid shortcuts={shortcuts} />
-      <HomeContentSection
-        allHref={`/app/personal/news${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`}
-        emptyMessage={currentHospital
-          ? `ยังไม่มีข่าวสารจาก${currentHospital.hospitalName}`
-          : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงข่าวสาร"}
-        failure={newsFailed ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref } : undefined}
-        heading="ข่าวสาร"
-        id="personal-home-news-heading"
-        itemHrefBase="/app/personal/knowledge"
-        items={newsItems ?? []}
-      />
-      <HomeContentSection
-        allHref={`/app/personal/knowledge${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`}
-        emptyMessage={currentHospital
-          ? `ยังไม่มีสื่อความรู้จาก${currentHospital.hospitalName}`
-          : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"}
-        failure={knowledgeFailed ? { message: "โหลดสื่อความรู้ไม่สำเร็จ", retryHref } : undefined}
-        heading="สื่อความรู้"
-        id="personal-home-knowledge-heading"
-        itemHrefBase="/app/personal/knowledge"
-        items={knowledgeItems ?? []}
-      />
+      {/* Two columns once the workspace is at least 64rem wide; one column below (UI-4.1). */}
+      <div className="grid min-w-0 gap-x-8 @5xl/workspace:grid-cols-2">
+        <HomeContentSection
+          allHref={`/app/personal/news${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`}
+          emptyMessage={currentHospital
+            ? `ยังไม่มีข่าวสารจาก${currentHospital.hospitalName}`
+            : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงข่าวสาร"}
+          failure={newsFailed ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref } : undefined}
+          heading="ข่าวสาร"
+          id="personal-home-news-heading"
+          itemHrefBase="/app/personal/knowledge"
+          items={newsItems ?? []}
+        />
+        <HomeContentSection
+          allHref={`/app/personal/knowledge${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`}
+          emptyMessage={currentHospital
+            ? `ยังไม่มีสื่อความรู้จาก${currentHospital.hospitalName}`
+            : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"}
+          failure={knowledgeFailed ? { message: "โหลดสื่อความรู้ไม่สำเร็จ", retryHref } : undefined}
+          heading="สื่อความรู้"
+          id="personal-home-knowledge-heading"
+          itemHrefBase="/app/personal/knowledge"
+          items={knowledgeItems ?? []}
+        />
+      </div>
       {currentHospital?.hospitalContact.status === "AVAILABLE" ? (
         <HomeHospitalContact contact={currentHospital.hospitalContact.contact} hospitalName={currentHospital.hospitalName} />
       ) : null}

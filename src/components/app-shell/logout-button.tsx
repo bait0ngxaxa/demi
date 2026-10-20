@@ -25,7 +25,7 @@ export function LogoutButton({
       <form action={formAction}>
         <button
           aria-label={pending ? "กำลังออกจากระบบ" : "ออกจากระบบ"}
-          className="flex min-h-11 w-full items-center justify-center rounded-control text-white/82 transition-colors hover:bg-navigation-hover hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright disabled:opacity-60"
+          className="flex size-10 shrink-0 items-center justify-center rounded-control text-white/82 transition-colors hover:bg-navigation-hover hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright disabled:opacity-60"
           data-navigation-tooltip={state.status === "ERROR" ? state.message : "ออกจากระบบ"}
           disabled={pending}
           type="submit"

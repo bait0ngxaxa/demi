@@ -33,7 +33,8 @@ describe("responsive shell contract", () => {
       renderToStaticMarkup(<AppShell displayName="สมชาย ใจดี" navigation={[]} roleLabels={[]}>ข้อมูล</AppShell>),
       renderToStaticMarkup(<ProtectedApplicationShellSkeleton />),
     ]) {
-      expect(html).toMatch(/<header[^>]+px-4 sm:px-6 lg:px-8/);
+      // UI-4.1: the content header is mobile/tablet only; the sidebar carries brand and identity at lg+.
+      expect(html).toMatch(/<header[^>]+px-4 sm:px-6 lg:hidden/);
       expect(html).toMatch(/<main[^>]+px-4 py-8 sm:px-6 sm:py-10 lg:px-8/);
     }
   });
@@ -41,7 +42,11 @@ describe("responsive shell contract", () => {
   it("keeps collapsed navigation reachable as an icon rail with the restore control outside it", () => {
     const sidebar = source("src/components/app-shell/app-sidebar.tsx");
     expect(sidebar).not.toMatch(/inert/);
-    expect(sidebar).toContain("<NavigationList collapsed={collapsed} groups={sections} />");
+    // One scrolling region holds every section, account last; nothing else in the sidebar scrolls.
+    expect(sidebar).toContain('<NavigationList collapsed={collapsed} density="compact" groups={navigation} />');
+    expect(sidebar.match(/overflow-y-auto/g)).toHaveLength(1);
+    expect(sidebar).toContain("overflow-x-clip");
+    expect(sidebar).toContain("h-app-header");
     // Rail tooltips are decorative and never focusable, so they cannot trap focus.
     expect(sidebar).toMatch(/aria-hidden="true"\s+className="pointer-events-none fixed/);
     expect(sidebar).toContain("ระบบบริการสุขภาพ");
@@ -106,7 +111,11 @@ describe("responsive shell contract", () => {
     expect(html).toContain("min-w-0 max-w-full");
     expect(html).toContain("flex-wrap items-end");
     expect(source("app/globals.css")).toContain(
-      "scroll-padding-top: calc(var(--app-header-height) + env(safe-area-inset-top, 0px) + 1.5rem)",
+      "scroll-padding-top: calc(var(--app-sticky-top) + env(safe-area-inset-top, 0px) + 1.5rem)",
     );
+    // No sticky header at lg+, so anchors and toasts do not reserve its height there.
+    expect(source("app/globals.css")).toMatch(/@media \(min-width: 64rem\) \{\s*:root \{\s*--app-sticky-top: 0px;/);
+    expect(source("app/globals.css")).not.toContain("app-mobile-drawer-panel");
+    expect(source("app/globals.css")).toContain("scrollbar-gutter: stable;");
   });
 });

@@ -35,7 +35,8 @@ export function WorkspaceSwitch({
     <nav aria-label="พื้นที่ใช้งาน">
       <ul
         className={classNames(
-          "m-0 grid list-none gap-1 rounded-control p-1",
+          "m-0 grid list-none rounded-control",
+          tone === "desktop" ? "gap-0.5 p-0.5" : "gap-1 p-1",
           collapsed ? "grid-cols-1" : "grid-cols-2",
           tone === "desktop" ? "bg-white/8" : "bg-surface-muted",
         )}
@@ -50,7 +51,9 @@ export function WorkspaceSwitch({
                 aria-current={selected ? "location" : undefined}
                 aria-label={collapsed ? `พื้นที่${label}` : undefined}
                 className={classNames(
-                  "flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-control px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 motion-reduce:transition-none",
+                  "flex min-w-0 items-center justify-center gap-2 rounded-control px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 motion-reduce:transition-none",
+                  // Desktop row stays within 52px (UI-4.1); the mobile More control keeps a 44px target.
+                  tone === "desktop" ? "min-h-9" : "min-h-11",
                   tone === "desktop"
                     ? selected
                       ? "bg-navigation-active text-brand-deep focus-visible:ring-brand-bright"

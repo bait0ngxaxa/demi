@@ -26,25 +26,22 @@ export function HomeHospitalChip({
   selectedLabel: string | null;
   selectedValue: string | null;
 }): React.JSX.Element {
+  // Nothing to choose: plain text, never styled like a control (UI-4.1).
   if (selectedValue === null || selectedLabel === null) {
-    return (
-      <p className="mt-3 inline-flex min-h-12 items-center rounded-full border border-white/35 bg-white/10 px-4 text-sm text-white">
-        {emptyLabel}
-      </p>
-    );
+    return <p className="mt-2 max-w-full break-words text-sm leading-6 text-white/85 lg:mt-0">{emptyLabel}</p>;
   }
 
   if (groups.flatMap(({ options }) => options).length < 2) {
     return (
-      <p className="mt-3 inline-flex min-h-12 max-w-full items-center rounded-full border border-white/35 bg-white/10 px-4 text-sm font-medium text-white">
+      <p className="mt-2 max-w-full text-sm leading-6 text-white lg:mt-0">
         <span className="mr-2 text-white/75">โรงพยาบาล</span>
-        <span className="break-words">{selectedLabel}</span>
+        <span className="break-words font-semibold">{selectedLabel}</span>
       </p>
     );
   }
 
   return (
-    <form action={action} className="mt-3 flex max-w-full flex-wrap items-end gap-2" method="get">
+    <form action={action} className="mt-3 flex max-w-full flex-wrap items-end gap-2 lg:mt-0 lg:w-full lg:max-w-md" method="get">
       <div className="min-w-0 flex-1">
         <label className="mb-1 block text-xs font-medium text-white/80" htmlFor={selectId}>
           โรงพยาบาลปัจจุบัน

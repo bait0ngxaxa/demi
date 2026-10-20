@@ -75,7 +75,8 @@ describe("collapsed desktop sidebar icon rail", () => {
     expect(aside?.dataset.state).toBe("collapsed");
     expect(sidebar.querySelector("[inert]")).toBeNull();
     expect(sidebar.querySelector("#desktop-application-navigation")?.getAttribute("aria-hidden")).toBeNull();
-    expect(links.map((link) => link.getAttribute("aria-label"))).toEqual(["หน้าหลัก", "รายชื่อผู้ป่วย", "มอบหมาย อสม."]);
+    // UI-4.1: account items are the last section of the single scrolling nav.
+    expect(links.map((link) => link.getAttribute("aria-label"))).toEqual(["หน้าหลัก", "รายชื่อผู้ป่วย", "มอบหมาย อสม.", "ตั้งค่า"]);
     for (const link of links) {
       expect(link.tabIndex).toBe(0);
       link.focus();
@@ -83,10 +84,12 @@ describe("collapsed desktop sidebar icon rail", () => {
     }
     // Section headings are hidden visually but still label their lists.
     expect(sidebar.querySelector("#navigation-section-desktop-care")?.className).toContain("sr-only");
-    // The pinned account section and logout stay reachable as icons; the name is hidden in the rail.
-    expect(sidebar.querySelector('nav[aria-label="บัญชี"] a')?.getAttribute("aria-label")).toBe("ตั้งค่า");
+    // The pinned identity row keeps only the avatar and logout icon in the rail; the name stays for screen readers.
+    expect(sidebar.querySelectorAll("nav").length).toBe(2);
     expect(sidebar.querySelector('[data-icon-only="true"]')).not.toBeNull();
-    expect(sidebar.textContent).not.toContain("สมชาย ใจดี");
+    expect(sidebar.querySelector(".rounded-full")?.textContent).toBe("ส");
+    expect([...sidebar.querySelectorAll(".sr-only")].map(({ textContent }) => textContent)).toContain("สมชาย ใจดี · เจ้าของโรงพยาบาล");
+    expect([...sidebar.querySelectorAll("p")].some(({ textContent }) => textContent === "สมชาย ใจดี")).toBe(false);
     // The workspace switch is a segmented control above the sections, not a section.
     expect([...sidebar.querySelectorAll('nav[aria-label="พื้นที่ใช้งาน"] a')].map((link) => link.getAttribute("href"))).toEqual(["/app/personal", "/app"]);
   });

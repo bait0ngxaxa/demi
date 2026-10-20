@@ -38,7 +38,7 @@ export function AppShell({
           roleLabels={roleLabels}
         />
         <div className="min-w-0 flex-1">
-          <AppHeader roleLabels={roleLabels} />
+          <AppHeader />
           <main
             className="app-shell-horizontal-gutter app-shell-main-content @container/workspace min-w-0 w-full px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12"
             id="application-main-content"

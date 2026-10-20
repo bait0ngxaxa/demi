@@ -80,12 +80,12 @@ function WorkHomePrimaryAction({ action }: { action: ApplicationWorkspaceAction 
   return (
     <HomeHeroCard heading="เริ่มงาน" headingId="work-home-primary-heading">
       <Link
-        className="mt-2 flex min-h-12 flex-col justify-center gap-1 rounded-control text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
+        className="mt-2 flex min-h-12 min-w-0 flex-col justify-center gap-1 rounded-control text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright lg:mt-0 lg:min-h-11 lg:flex-row lg:items-center lg:justify-start lg:gap-3"
         href={action.href}
         prefetch={action.prefetch ?? false}
       >
-        <span className="font-semibold underline decoration-white/60 underline-offset-4">{action.label}</span>
-        <span className="text-sm leading-6 text-white/85">{action.description}</span>
+        <span className="font-semibold underline decoration-white/60 underline-offset-4 lg:shrink-0">{action.label}</span>
+        <span className="text-sm leading-6 text-white/85 lg:min-w-0 lg:truncate">{action.description}</span>
       </Link>
     </HomeHeroCard>
   );
@@ -197,7 +197,7 @@ export default async function ApplicationPage(
       <HomeHero chip={<WorkHomeChip scope={home.scope} />} headingId="work-home-heading" title="พื้นที่ทำงาน">
         {home.hero ? <WorkHomePrimaryAction action={home.hero} /> : null}
         {hasPersonalWorkspace ? (
-          <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:mt-2">
             <p className="text-sm leading-6 text-white/85">หน้านี้เป็นพื้นที่ทำงาน ข้อมูลและบริการของคุณเองอยู่ในพื้นที่ส่วนตัว</p>
             <Link
               className="inline-flex min-h-12 items-center rounded-control text-sm font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
@@ -228,7 +228,7 @@ export default async function ApplicationPage(
       ) : null}
 
       {home.sharedActions.length > 0 || teamNews ? (
-        <div className="grid min-w-0 gap-x-8 lg:grid-cols-2">
+        <div className="grid min-w-0 gap-x-8 @5xl/workspace:grid-cols-2">
           {home.sharedActions.length > 0 ? (
             <section aria-labelledby="work-home-shared-heading" className="mt-8 min-w-0">
               <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="work-home-shared-heading">

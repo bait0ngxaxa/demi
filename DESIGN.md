@@ -174,7 +174,7 @@ Palette เป็น restrained clinical green: brand ทำหน้าที�
 
 Application shell ใช้ layout แบบสองพื้นที่เมื่อ viewport ถึง `lg` (1024px): sidebar คงที่กว้าง 17rem หรือ 4.5rem เมื่อย่อ และ main workspace ยืดหยุ่นตามพื้นที่ที่เหลือ ส่วน mobile ใช้ header สูง 4.5rem, bottom tabs และหน้าเมนู `/app/more`
 
-Main workspace เป็น fluid พร้อม horizontal padding 20px บน mobile, 32px ตั้งแต่ `sm` และ 40px ตั้งแต่ `lg`; vertical page rhythm คือ 32px, 40px และ 48px ตาม breakpoint หน้า feature จำกัด readable width ของตนเองได้เมื่อข้อมูลเป็น form, prose หรือ review detail ส่วน directory, report และ operational workspace ใช้พื้นที่ที่เหลือได้ตามความเหมาะสม
+Main workspace เป็น fluid พร้อม horizontal padding 16px บน mobile, 24px ตั้งแต่ `sm` และ 32px ตั้งแต่ `lg`; vertical page rhythm คือ 32px, 40px และ 48px ตาม breakpoint หน้า feature จำกัด readable width ของตนเองได้เมื่อข้อมูลเป็น form, prose หรือ review detail ส่วน directory, report และ operational workspace ใช้พื้นที่ที่เหลือได้ตามความเหมาะสม
 
 Page hierarchy คือ `PageHeader` → optional local navigation → bounded content sections ใช้ grid เฉพาะเมื่อข้อมูลสัมพันธ์กันจริง Form และ result stack บน mobile และเปลี่ยนเป็น row/grid เมื่อมีพื้นที่เพียงพอ
 
@@ -234,9 +234,11 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 ### Navigation
 
 - **Task sections (UI-4, 2026-10-20):** navigation จัดตามงาน ไม่ใช่ตาม data module ลำดับคงที่ทุก role อยู่ใน `NAVIGATION_SECTION_ORDER` (`src/components/app-shell/navigation-sections.ts`) ซึ่งเป็นที่เดียวที่กำหนดลำดับและชื่อ section: `home` → `care` (ส่วนตัว “การดูแลของฉัน” / งาน “ดูแลผู้ป่วย”) → `health-records` (“บันทึกสุขภาพ”) → `registration` (“ลงทะเบียนผู้ป่วย”) → `review-queue` (“คำขอรอตรวจ”) → `reports-info` (งาน “รายงานและข้อมูล” / ส่วนตัว “ข่าวสารและความรู้”) → `administration` (OWNER “บริหารโรงพยาบาล”, ADMIN “กำกับดูแล”) → `account` (“บัญชีและช่วยเหลือ”). Section ว่างไม่แสดง; code อ้าง section ด้วย `id` เท่านั้น ห้ามเทียบชื่อภาษาไทย. แต่ละ section ไม่ควรเกิน 6 รายการ ถ้าเกินให้ทบทวนการจัดกลุ่มก่อนเพิ่ม section ใหม่. Desktop sidebar, หน้า `/app/more` และ grid ของ Work Home ใช้ projection และลำดับเดียวกัน
-- **Desktop:** sidebar สี navigation-background กว้าง 17rem: ด้านบนเป็น segmented control สลับพื้นที่ส่วนตัว/งาน (เฉพาะบัญชีที่มีสองพื้นที่ ไม่ใช่ section), ตามด้วย section heading และรายการที่มีไอคอน (`getMoreNavigationIcon` ผูกกับ href, ปลายทางที่ไม่รู้จักใช้ไอคอนกลาง), active item ใช้ navigation-active; section `account` ปักไว้ด้านล่างพร้อมชื่อ บทบาท และปุ่มออกจากระบบ
+- **Desktop:** sidebar สี navigation-background กว้าง 17rem: ด้านบนเป็น segmented control สลับพื้นที่ส่วนตัว/งาน (เฉพาะบัญชีที่มีสองพื้นที่ ไม่ใช่ section), ตามด้วย section heading และรายการที่มีไอคอน (`getMoreNavigationIcon` ผูกกับ href, ปลายทางที่ไม่รู้จักใช้ไอคอนกลาง), active item ใช้ navigation-active; section `account` เป็น section สุดท้ายใน navigation ที่เลื่อนได้ ส่วนชื่อ บทบาท และปุ่มออกจากระบบอยู่ในแถว identity ที่ปักด้านล่าง
+- **Desktop height budget (UI-4.1):** sidebar สูง `100svh` มี brand row 72px, workspace switch เฉพาะบัญชีที่มีสองพื้นที่, navigation เป็นบริเวณเลื่อนเพียงแห่งเดียว (`min-h-0`, `overflow-y-auto`) และ identity row ปักด้านล่าง (64px เมื่อขยาย). รายการ navigation สูงอย่างน้อย 40px, workspace switch สูงอย่างน้อย 36px และปุ่ม logout แบบไอคอน 40px เป็นข้อยกเว้นด้าน density เฉพาะ desktop; mobile คง touch target อย่างน้อย 44px. Scrollbar บางใช้สี navigation และกัน gutter ไว้คงที่; focus และ tooltip ต้องยังเข้าถึงได้เมื่อเลื่อน
 - **Icon rail (sidebar ย่อ 4.5rem):** ทุกรายการยังแสดงเป็นไอคอนที่กดและ tab ถึงได้ มี `aria-label` เท่าชื่อรายการ และ tooltip ที่ไม่รับ focus (`aria-hidden`, `pointer-events-none`, จัดตำแหน่งแบบ fixed จึงไม่ถูก scroll ตัด) ซ่อนเมื่อ blur, เลื่อน หรือกด Escape; heading ของ section ซ่อนด้วย `sr-only`; ห้ามใช้ `inert` หรือซ่อนเมนูทั้งชุด; ค่าย่อ/ขยายยังจำใน browser storage เดิม
-- **Header:** sticky surface header แสดง DEMI และ role context บน desktop (logout ย้ายไปส่วนบัญชีของ sidebar); mobile แสดงแบรนด์และ workspace ปัจจุบัน พร้อมเข้าถึงการสลับ workspace ได้จาก “เพิ่มเติม”
+- **Sidebar preference (UI-4.1):** อ่านค่า `demi:desktop-sidebar` ก่อน paint แล้วใช้ `data-desktop-sidebar` บน `<html>` กำหนดความกว้างร่วมกันทั้ง shell และ skeleton; ถ้าอ่าน storage ไม่ได้ใช้สถานะขยาย การย่อ/ขยายและ storage event อัปเดตค่าเดียวกัน; เปิด width transition หลัง mount และเคารพ reduced motion
+- **Header (UI-4.1):** sticky surface header สูง 72px แสดงเฉพาะ mobile/tablet พร้อมแบรนด์และ workspace ปัจจุบัน; ตั้งแต่ `lg` ซ่อน content header โดยแสดงแบรนด์และ identity ใน sidebar แทน การสลับ workspace บน mobile เข้าถึงได้จาก “เพิ่มเติม”
 - **Mobile (2026-10-20):** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม”; “เพิ่มเติม” เป็นลิงก์ไปหน้า `/app/more` ที่แสดง server-projected navigation ชุดเดียวกับ desktop โดยไม่เปิด sidebar หรือ dialog; logout อยู่ด้านล่างของหน้า More
 - **Mobile Patient Personal Home (2026-10-20):** หน้า `/app/personal` ใช้ hero เป็นแถบพื้นทึบ `brand-deep` สำหรับคำทักทายและบริบทโรงพยาบาลเท่านั้น นี่เป็นข้อยกเว้นเฉพาะ hero ของหน้า home (personal และ `/app` ของงาน ตั้งแต่ UI-3); ไม่ใช้ gradient และไม่ขยายรูปแบบนี้ไปหน้าอื่น
 - Active route ใช้ `aria-current="page"` (รายการที่มี query เช่น `?task=screening` ชนะรายการ path เดียวกันที่ไม่มี query); workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
@@ -254,6 +256,8 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **2026-10-20 (UI-3.1):** ช่อง อสม. ใน grid ของ Work Home แสดงเฉพาะโรงพยาบาลที่บัญชีเป็น อสม. อยู่ และส่ง `hospitalId` ไปกรองรายชื่อผู้ป่วยที่รับผิดชอบ (bottom tab ยังไม่กรอง). ส่วนเนื้อหาที่โหลดไม่สำเร็จแสดง Alert พร้อมลิงก์ "ลองอีกครั้ง" เฉพาะส่วนนั้น ส่วนอื่นของหน้ายังแสดงตามปกติ.
 - **2026-10-20 (UI-4):** navigation จัดตาม task section ลำดับคงที่ (ดู Navigation). `WORK_HOME_TILE_ORDER` ถูกแทนด้วยลำดับของ Work navigation (`projectWorkNavigationOrder`) เพื่อให้ sidebar, `/app/more` และ grid ของ Work Home เรียงตรงกัน; การสลับพื้นที่เป็น segmented control; sidebar ย่อเป็น icon rail แทนการซ่อนเมนู; “เปลี่ยนรหัสผ่าน” ย้ายจากเมนูไปหน้าตั้งค่า.
 
+- **2026-10-20 (UI-4.1):** Home ทั้งส่วนตัวและงานลดความสูง hero บน desktop โดยวางชื่อหน้าและบริบทโรงพยาบาลในแถวเดียวกันเมื่อพื้นที่พอ และวางข้อมูลนัด/งานหลักแนวนอน. โรงพยาบาลเดียวหรือไม่มีตัวเลือกแสดงเป็นข้อความ; หลายโรงพยาบาลใช้ native select. Shortcut บน mobile ยังคง 4 คอลัมน์; ตั้งแต่ `lg` เป็น card แนวนอนแบบ auto-fill กว้างขั้นต่ำ 15rem พร้อมคำอธิบายเมื่อมี. ข่าวสาร/สื่อความรู้ของ Personal Home และงานจากทุกโรงพยาบาล/ข่าวสารของ Work Home แบ่งสองคอลัมน์เมื่อ `workspace` container กว้างอย่างน้อย 64rem. Anchor scroll และ Toast ใช้ `--app-sticky-top` ร่วมกัน (72px บน mobile/tablet, 0 บน desktop)
+
 ### Local Navigation
 
 ใช้ segmented button group (`aria-pressed`) สำหรับการเปลี่ยน execution mode ภายใน operation เดียว เช่น “เพิ่มรายบุคคล / นำเข้าจาก Excel” ไม่สร้าง sidebar route ซ้ำ
@@ -263,7 +267,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 ### Do:
 
 - **Do** ใช้ semantic tokens และ shared primitives แทน raw color, radius และ shadow ใหม่
-- **Do** รักษา control touch target อย่างน้อย 44px และ focus-visible ที่มี contrast ชัดเจน
+- **Do** รักษา control touch target อย่างน้อย 44px บน mobile (desktop sidebar ใช้ข้อยกเว้น density ที่ระบุใน Navigation) และ focus-visible ที่มี contrast ชัดเจน
 - **Do** ใช้ PageHeader, Panel, Alert และ StatusBadge เพื่อทำให้ hierarchy และ state สม่ำเสมอ
 - **Do** ใช้ native form semantics, label association, `aria-current` และ navigation links ที่เข้าถึงได้ด้วย keyboard
 - **Do** ใช้ border + whitespace + status text ก่อนเพิ่ม elevation
