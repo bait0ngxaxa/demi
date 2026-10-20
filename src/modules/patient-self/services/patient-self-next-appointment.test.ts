@@ -161,7 +161,7 @@ describe("Patient SELF next appointment query", () => {
     );
   });
 
-  it("loads the earliest non-cancelled appointment from one verified active self relationship", async () => {
+  it("loads the earliest scheduled appointment from one verified active self relationship", async () => {
     const { database, personFindFirst, appointmentFindFirst } = createDatabase(
       ownRelationshipRecord(),
     );
@@ -196,7 +196,7 @@ describe("Patient SELF next appointment query", () => {
       where: {
         patientHospitalRelationshipId: relationshipId,
         scheduledAt: { gte: asOf },
-        status: { not: "CANCELLED" },
+        status: "SCHEDULED",
       },
       orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
       take: 1,
@@ -238,6 +238,32 @@ describe("Patient SELF next appointment query", () => {
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(personFindFirst).not.toHaveBeenCalled();
     expect(appointmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("ignores COMPLETED, NO_SHOW, CANCELLED and past appointments when choosing the next one", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const rows = [
+      { id: "a-completed", status: "COMPLETED", scheduledAt: new Date(asOf.getTime() + day) },
+      { id: "b-no-show", status: "NO_SHOW", scheduledAt: new Date(asOf.getTime() + 2 * day) },
+      { id: "c-cancelled", status: "CANCELLED", scheduledAt: new Date(asOf.getTime() + 3 * day) },
+      { id: "d-past", status: "SCHEDULED", scheduledAt: new Date(asOf.getTime() - day) },
+      { id: appointmentId, status: "SCHEDULED", scheduledAt: new Date(asOf.getTime() + 4 * day) },
+    ];
+    const { database, appointmentFindFirst } = createDatabase(ownRelationshipRecord());
+    // Evaluates the issued predicate over the fixture rows instead of trusting its shape.
+    appointmentFindFirst.mockImplementation(async ({ where }: {
+      where: { status: unknown; scheduledAt: { gte: Date } };
+    }) => rows
+      .filter((row) => row.scheduledAt >= where.scheduledAt.gte)
+      .filter((row) => typeof where.status === "string"
+        ? row.status === where.status
+        : row.status !== (where.status as { not: string }).not)
+      .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
+      .map(({ id, scheduledAt }) => ({ id, scheduledAt }))[0] ?? null);
+
+    await expect(
+      getOwnNextAppointmentForRelationship(actor, relationshipId, { database, now: asOf }),
+    ).resolves.toEqual({ appointmentId, scheduledAt: rows[4]?.scheduledAt });
   });
 
   it("returns empty when no upcoming appointment matches the selected relationship", async () => {

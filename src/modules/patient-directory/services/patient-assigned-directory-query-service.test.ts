@@ -2,7 +2,7 @@ import { HospitalStatus, MembershipStatus, MembershipType, PatientProgramStatus,
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { patientAssignedDirectoryQuerySchema } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 
 import {
@@ -35,6 +35,7 @@ function createDatabase(total: number): {
   database: PatientDirectoryDatabase;
   count: ReturnType<typeof vi.fn>;
   findMany: ReturnType<typeof vi.fn>;
+  findHospital: ReturnType<typeof vi.fn>;
 } {
   const count = vi.fn().mockResolvedValue(total);
   const findMany = vi.fn().mockResolvedValue([
@@ -50,12 +51,16 @@ function createDatabase(total: number): {
     },
   ]);
 
+  const findHospital = vi.fn().mockResolvedValue({ name: "โรงพยาบาลทดสอบ" });
+
   return {
     database: {
+      hospital: { findFirst: findHospital },
       patientHospitalRelationship: { count, findMany },
     } as unknown as PatientDirectoryDatabase,
     count,
     findMany,
+    findHospital,
   };
 }
 
@@ -261,5 +266,71 @@ describe("assigned Patient directory query boundary", () => {
         { database: createDatabase(0).database },
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe("assigned Patient directory Hospital filter", () => {
+  const otherHospitalId = "66666666-6666-4666-8666-666666666666";
+  const multiHospitalOsm: ActorContext = {
+    ...osmActor,
+    osmHospitalRelationships: [
+      ...osmActor.osmHospitalRelationships,
+      { hospitalId: otherHospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+    ],
+  };
+  const baseQuery = { lookupType: "NAME", value: "สมชาย", page: "1", classification: "RISK" } as const;
+
+  async function issuedWhere(input: Record<string, unknown>) {
+    const { database, count, findMany, findHospital } = createDatabase(1);
+    const result = await findAssignedPatientDirectory(multiHospitalOsm, input, { database });
+    const where = findMany.mock.calls[0]?.[0]?.where;
+    expect(count).toHaveBeenCalledWith({ where });
+    return { result, where, findHospital };
+  }
+
+  it("keeps the unfiltered roster cross-hospital and skips the Hospital lookup", async () => {
+    const { result, where, findHospital } = await issuedWhere(baseQuery);
+    expect(where).not.toHaveProperty("hospitalId");
+    expect(findHospital).not.toHaveBeenCalled();
+    expect(result.hospitalFilter).toBeNull();
+  });
+
+  it("narrows inside the full assignment predicate together with task-independent search filters", async () => {
+    const { where: unfiltered } = await issuedWhere(baseQuery);
+    const { result, where, findHospital } = await issuedWhere({ ...baseQuery, hospitalId: hospitalId.toUpperCase() });
+
+    // Every authorization, lookup and classification condition stays; the locator is one more AND-ed key.
+    expect(where).toEqual({ ...unfiltered, hospitalId });
+    expect(findHospital).toHaveBeenCalledWith({
+      where: { id: hospitalId, ...patientDirectoryInternals.buildOsmAssignedPatientRelationshipWhere(osmUserId).hospital },
+      select: { name: true },
+    });
+    expect(result.hospitalFilter).toEqual({ hospitalId, hospitalName: "โรงพยาบาลทดสอบ" });
+  });
+
+  it("keeps a forged Hospital locator fail-closed: the assignment predicate still applies and no name is shown", async () => {
+    const forgedHospitalId = "99999999-9999-4999-8999-999999999999";
+    const { database, findMany, findHospital } = createDatabase(0);
+    findMany.mockResolvedValue([]);
+    findHospital.mockResolvedValue(null);
+
+    const result = await findAssignedPatientDirectory(multiHospitalOsm, { ...baseQuery, hospitalId: forgedHospitalId }, { database });
+    const where = findMany.mock.calls[0]?.[0]?.where;
+
+    expect(where).toMatchObject({
+      hospitalId: forgedHospitalId,
+      osmAssignments: { some: { osmUserId, endedAt: null } },
+      hospital: { status: HospitalStatus.ACTIVE, osmHospitalRelationships: { some: { userId: osmUserId, status: MembershipStatus.ACTIVE } } },
+    });
+    expect(result).toMatchObject({ items: [], total: 0, hospitalFilter: { hospitalId: forgedHospitalId, hospitalName: null } });
+  });
+
+  it.each(["not-a-uuid", "", ["a", "b"]])("rejects a malformed Hospital locator %j before querying", async (hospitalLocator) => {
+    const { database, count, findMany, findHospital } = createDatabase(0);
+    await expect(findAssignedPatientDirectory(multiHospitalOsm, { ...baseQuery, hospitalId: hospitalLocator }, { database }))
+      .rejects.toBeInstanceOf(ValidationError);
+    expect(findHospital).not.toHaveBeenCalled();
+    expect(count).not.toHaveBeenCalled();
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

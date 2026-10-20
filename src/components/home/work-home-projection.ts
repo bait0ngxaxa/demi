@@ -1,3 +1,5 @@
+import { HospitalStatus, MembershipStatus, Role } from "@prisma/client";
+
 import type {
   ApplicationHospitalWorkspace,
   ApplicationWorkAreaGroup,
@@ -6,6 +8,7 @@ import type {
 } from "@/components/app-shell/application-workspace";
 import { getMoreNavigationIcon } from "@/components/app-shell/mobile-navigation-glyph";
 import type { MobileNavigationTab } from "@/components/app-shell/mobile-tab-projection";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { HomeShortcut } from "./home-shortcut-grid";
 
@@ -89,6 +92,27 @@ export function projectOsmTaskLinks(workTabs: readonly MobileNavigationTab[]): W
   );
 }
 
+/** Hospitals where the actor currently works as an OSM; OSM task tiles belong only to these. */
+export function projectActiveOsmHospitalIds(actor: ActorContext): string[] {
+  if (!actor.roles.includes(Role.OSM)) return [];
+  return actor.osmHospitalRelationships
+    .filter(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
+    .map(({ hospitalId }) => hospitalId);
+}
+
+/**
+ * The grid holds only actions scoped to the selected Hospital, so OSM task links appear only where the actor
+ * is an active OSM and carry that Hospital as a narrowing locator for the assigned directory.
+ */
+function scopeOsmTaskLinks(
+  osmTaskLinks: readonly WorkHomeLink[],
+  hospitalId: string,
+  activeOsmHospitalIds: readonly string[],
+): WorkHomeLink[] {
+  if (!activeOsmHospitalIds.includes(hospitalId)) return [];
+  return osmTaskLinks.map((link) => ({ ...link, href: `${link.href}${link.href.includes("?") ? "&" : "?"}hospitalId=${encodeURIComponent(hospitalId)}` }));
+}
+
 /**
  * ADR-0013 §2: the requested `hospitalId` is only a locator among the actor's active direct work areas
  * (`areaGroups`). Anything else falls back to the first candidate in the projection's sort order.
@@ -97,6 +121,7 @@ export function projectOsmTaskLinks(workTabs: readonly MobileNavigationTab[]): W
 export function projectWorkHome(
   projection: ApplicationWorkspaceProjection,
   osmTaskLinks: readonly WorkHomeLink[],
+  activeOsmHospitalIds: readonly string[],
   requestedHospitalId: unknown,
 ): WorkHomeProjection {
   const candidateIds = projection.areaGroups.flatMap(({ hospitals }) => hospitals.map(({ hospitalId }) => hospitalId));
@@ -110,7 +135,7 @@ export function projectWorkHome(
     return {
       scope: { kind: "hospital", hospital: selected, groups: projection.areaGroups },
       hero: selected.actions.find(({ category }) => category === "care") ?? projection.assignedPatientsAction,
-      tiles: projectWorkHomeTiles([...selected.actions, ...osmTaskLinks]),
+      tiles: projectWorkHomeTiles([...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)]),
       sharedActions: [...requestAndSupporting, ...projection.governanceActions],
       unavailableHospitals,
     };

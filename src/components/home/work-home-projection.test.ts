@@ -7,7 +7,13 @@ import { projectMobileNavigation } from "@/components/app-shell/mobile-tab-proje
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
-import { WORK_HOME_MAX_TILES, projectOsmTaskLinks, projectWorkHome, projectWorkHomeTiles } from "./work-home-projection";
+import {
+  WORK_HOME_MAX_TILES,
+  projectActiveOsmHospitalIds,
+  projectOsmTaskLinks,
+  projectWorkHome,
+  projectWorkHomeTiles,
+} from "./work-home-projection";
 
 const hospitalA = "11111111-1111-4111-8111-111111111111";
 const hospitalB = "44444444-4444-4444-8444-444444444444";
@@ -48,13 +54,15 @@ function workspace(hospitalId: string, overrides: Partial<ActorHospitalWorkspace
 function project(subject: ActorContext, workspaces: readonly ActorHospitalWorkspace[], requested?: string) {
   const projection = projectApplicationWorkspace(subject, workspaces);
   const taskLinks = projectOsmTaskLinks(projectMobileNavigation(projectApplicationNavigation(subject)).tabsByWorkspace.work);
-  return { projection, taskLinks, home: projectWorkHome(projection, taskLinks, requested) };
+  return { projection, taskLinks, home: projectWorkHome(projection, taskLinks, projectActiveOsmHospitalIds(subject), requested) };
 }
 
 const path = (href: string): string => href.split("?")[0] ?? href;
 const withHospital = (href: string, hospitalId: string): string => `${href}?hospitalId=${hospitalId}`;
 const screening = "/app/patients/assigned?task=screening";
 const followup = "/app/patients/assigned?task=followup";
+const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
+const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
 const ownerRequests = ["/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog"];
 const ownerTiles = (id: string, areas = false) => [
@@ -87,7 +95,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: "/app/patients/assigned",
-    tiles: [screening, followup, withHospital("/app/patients/provision", hospitalA)],
+    tiles: [screeningAt(hospitalA), followupAt(hospitalA), withHospital("/app/patients/provision", hospitalA)],
     shared: [],
   },
   {
@@ -97,7 +105,7 @@ const cases: Case[] = [
     requested: hospitalB.toUpperCase(),
     scope: "hospital", selected: hospitalB,
     hero: "/app/patients/assigned",
-    tiles: [screening, followup, withHospital("/app/patients/provision", hospitalB)],
+    tiles: [screeningAt(hospitalB), followupAt(hospitalB), withHospital("/app/patients/provision", hospitalB)],
     shared: [],
   },
   {
@@ -157,8 +165,28 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: "/app/patients/assigned",
-    tiles: [screening, followup, withHospital("/app/patients/provision", hospitalA)],
+    tiles: [screeningAt(hospitalA), followupAt(hospitalA), withHospital("/app/patients/provision", hospitalA)],
     shared: [],
+  },
+  {
+    name: "MEMBER at one Hospital and OSM at another, selecting the MEMBER Hospital",
+    subject: actor({
+      roles: [Role.HOSPITAL, Role.OSM],
+      hospitalMemberships: [membership(hospitalA, MembershipType.MEMBER)],
+      osmHospitalRelationships: [osm(hospitalB)],
+    }),
+    workspaces: [workspace(hospitalA), workspace(hospitalB)],
+    requested: hospitalA,
+    scope: "hospital", selected: hospitalA,
+    hero: withHospital("/app/patients", hospitalA),
+    // OSM task tiles belong to the OSM Hospital only; they never appear under another Hospital's chip.
+    tiles: [
+      withHospital("/app/patients", hospitalA),
+      withHospital("/app/patients/provision", hospitalA),
+      withHospital("/app/patients/activation", hospitalA),
+      withHospital("/app/workforce", hospitalA),
+    ],
+    shared: ["/app/patients/access-requests", "/app/patients/service-requests"],
   },
 ];
 
@@ -172,10 +200,11 @@ describe("work home projection per actor", () => {
     expect(home.tiles.map(({ href }) => href)).toEqual(tiles);
     expect(home.sharedActions.map(({ href }) => href)).toEqual(shared);
 
-    // Nothing outside the projection: tiles come only from the selected Hospital (or governance) and task links.
+    // Nothing outside the projection: tiles come only from the selected Hospital (or governance) and task links
+    // narrowed to that Hospital.
     const allowed = new Set([
       ...(home.scope.kind === "hospital" ? home.scope.hospital.actions : home.scope.kind === "system" ? projection.governanceActions : []),
-      ...taskLinks,
+      ...(home.scope.kind === "hospital" ? taskLinks.map(({ href }) => ({ href: `${href}&hospitalId=${selected}` })) : taskLinks),
     ].map(({ href }) => href));
     expect(home.tiles.length).toBeLessThanOrEqual(WORK_HOME_MAX_TILES);
     for (const tile of home.tiles) expect(allowed.has(tile.href)).toBe(true);
@@ -189,7 +218,7 @@ describe("work home projection per actor", () => {
     const { home } = project(subject, [workspace(parentId, { hasActiveDirectChildren: true })]);
 
     expect(home.tiles).toHaveLength(WORK_HOME_MAX_TILES);
-    expect(home.tiles.map(({ href }) => href)).toEqual([...ownerTiles(parentId).slice(0, 1), screening, followup, ...ownerTiles(parentId).slice(1, 5), "/app/more"]);
+    expect(home.tiles.map(({ href }) => href)).toEqual([...ownerTiles(parentId).slice(0, 1), screeningAt(parentId), followupAt(parentId), ...ownerTiles(parentId).slice(1, 5), "/app/more"]);
     expect(home.tiles.at(-1)).toEqual({ href: "/app/more", icon: "more", label: "ทั้งหมด" });
   });
 

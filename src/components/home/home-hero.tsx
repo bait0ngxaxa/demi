@@ -55,17 +55,20 @@ export function HomeHeroCard({
 export function HomeNextAppointment({
   nextAppointment,
 }: {
-  nextAppointment: HomeAppointment | null;
+  /** `"UNAVAILABLE"` when the appointment could not be loaded; the rest of the home still renders. */
+  nextAppointment: HomeAppointment | null | "UNAVAILABLE";
 }): React.JSX.Element {
   return (
     <HomeHeroCard heading="นัดถัดไป" headingId="personal-next-appointment-heading">
-      {nextAppointment ? (
+      {nextAppointment === "UNAVAILABLE" ? (
+        <p className="mt-2 text-sm leading-6 text-white">ยังโหลดนัดหมายไม่ได้</p>
+      ) : nextAppointment ? (
         <div className="mt-2 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <time className="text-sm leading-6 text-white" dateTime={nextAppointment.scheduledAt.toISOString()}>
             {formatAppointmentTime(nextAppointment.scheduledAt)}
           </time>
           <Link
-            className="inline-flex min-h-12 items-center rounded-control font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+            className="inline-flex min-h-12 items-center rounded-control font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
             href={nextAppointment.href}
             prefetch={false}
           >

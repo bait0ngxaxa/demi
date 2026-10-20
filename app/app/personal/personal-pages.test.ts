@@ -14,6 +14,7 @@ import {
   getPatientSelfPageContext,
 } from "@/modules/patient-self/transport/patient-self-page-context";
 import { PATIENT_ACCESS_UNAVAILABLE } from "@/modules/patient-self/transport/patient-access-unavailable";
+import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
 const homeServices = vi.hoisted(() => ({ nextAppointment: vi.fn(), content: vi.fn() }));
@@ -223,6 +224,62 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("21 ตุลาคม 2569");
     expect(markup).toContain("00:30");
     expect(markup).toContain(`href="/app/personal/appointments/44444444-4444-4444-8444-444444444444/${appointmentId}"`);
+  });
+
+  describe("section-level failure and hero focus (UI-3.1)", () => {
+    const heroOf = (markup: string): string => {
+      const start = markup.indexOf('<section aria-labelledby="personal-home-heading"');
+      return markup.slice(start, markup.indexOf("</section>", start));
+    };
+
+    it("keeps the hero, shortcuts and knowledge when the news feed fails, with a retry link to the same Hospital", async () => {
+      homeServices.content.mockImplementation(async (_actor: unknown, input: { category?: string }) => {
+        if (input.category === "NEWS") throw new InfrastructureError("feed down");
+        return { category: null, items: [], nextCursor: null, emptyState: "EMPTY_B" };
+      });
+      const markup = renderToStaticMarkup(await PersonalHomePage());
+
+      expect(markup).toContain("โหลดข่าวสารไม่สำเร็จ");
+      expect(markup).toContain('href="/app/personal?hospital=44444444-4444-4444-8444-444444444444"');
+      expect(markup).not.toContain("ยังไม่มีข่าวสารจาก");
+      expect(markup).toContain("ยังไม่มีสื่อความรู้จากโรงพยาบาล ก");
+      expect(markup).toContain("สวัสดี, สมชาย ใจดี");
+      expect(markup).toContain('href="/app/personal/care/44444444-4444-4444-8444-444444444444"');
+    });
+
+    it("shows that the next appointment could not load while the rest of the home renders", async () => {
+      homeServices.nextAppointment.mockRejectedValue(new InfrastructureError("appointments down"));
+      const markup = renderToStaticMarkup(await PersonalHomePage());
+
+      expect(heroOf(markup)).toContain("ยังโหลดนัดหมายไม่ได้");
+      expect(heroOf(markup)).not.toContain("ยังไม่มีนัดหมาย");
+      expect(markup).toContain('id="personal-home-news-heading"');
+      expect(markup).toContain('href="/app/family"');
+    });
+
+    it.each([
+      ["news feed", () => homeServices.content.mockRejectedValue(new ForbiddenError())],
+      ["next appointment", () => homeServices.nextAppointment.mockRejectedValue(new ForbiddenError())],
+    ])("does not swallow an authorization error from the %s", async (_label, arrange) => {
+      arrange();
+      await expect(PersonalHomePage()).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it("uses a focus ring that reaches 3:1 on brand-deep for every focusable hero element", async () => {
+      const secondRelationship = { ...completeContext.hospitalRelationships[1], hospitalStatus: HospitalStatus.ACTIVE };
+      vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({
+        ...completeContext,
+        hospitalRelationships: [completeContext.hospitalRelationships[0], secondRelationship],
+      });
+      homeServices.nextAppointment.mockResolvedValue({ appointmentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", scheduledAt: new Date("2026-10-21T02:00:00.000Z") });
+      const hero = heroOf(renderToStaticMarkup(await PersonalHomePage()));
+
+      expect(hero).toContain("<select");
+      expect(hero).toContain('type="submit"');
+      expect(hero).toContain("ดูรายละเอียดนัด");
+      expect(hero.match(/focus-visible:ring-brand-bright/gu)).toHaveLength(3);
+      expect(hero).not.toContain("ring-focus-ring");
+    });
   });
 
   it("keeps self-service entry points when no active Hospital exists", async () => {

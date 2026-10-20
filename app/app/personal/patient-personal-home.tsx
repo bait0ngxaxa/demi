@@ -69,16 +69,20 @@ function createShortcuts(
 
 export function PatientPersonalHome({
   activeHospitals,
+  knowledgeFailed = false,
   knowledgeItems,
+  newsFailed = false,
   newsItems,
   nextAppointment,
   patient,
   selectedHospital,
 }: {
   activeHospitals?: readonly HomeHospitalOption[];
+  knowledgeFailed?: boolean;
   knowledgeItems?: readonly HospitalContentPatientListItem[];
+  newsFailed?: boolean;
   newsItems?: readonly HospitalContentPatientListItem[];
-  nextAppointment?: { href: string; scheduledAt: Date } | null;
+  nextAppointment?: { href: string; scheduledAt: Date } | null | "UNAVAILABLE";
   patient: PatientPresentation | null;
   selectedHospital?: PatientHomeRelationship | null;
 }): React.JSX.Element {
@@ -98,6 +102,7 @@ export function PatientPersonalHome({
   const hasHospitalContact = currentHospital?.hospitalContact.status === "AVAILABLE";
   const shortcuts = createShortcuts(currentHospital, hasHospitalContact);
   const displayName = getPersistedDisplayName(patient);
+  const retryHref = `/app/personal${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`;
 
   return (
     <div className="min-w-0 max-w-5xl">
@@ -126,6 +131,7 @@ export function PatientPersonalHome({
         emptyMessage={currentHospital
           ? `ยังไม่มีข่าวสารจาก${currentHospital.hospitalName}`
           : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงข่าวสาร"}
+        failure={newsFailed ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref } : undefined}
         heading="ข่าวสาร"
         id="personal-home-news-heading"
         itemHrefBase="/app/personal/knowledge"
@@ -136,6 +142,7 @@ export function PatientPersonalHome({
         emptyMessage={currentHospital
           ? `ยังไม่มีสื่อความรู้จาก${currentHospital.hospitalName}`
           : "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"}
+        failure={knowledgeFailed ? { message: "โหลดสื่อความรู้ไม่สำเร็จ", retryHref } : undefined}
         heading="สื่อความรู้"
         id="personal-home-knowledge-heading"
         itemHrefBase="/app/personal/knowledge"

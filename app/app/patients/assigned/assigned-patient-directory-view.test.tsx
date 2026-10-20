@@ -24,6 +24,7 @@ const result: PatientAssignedDirectoryPage = {
   totalPages: 3,
   hasPreviousPage: false,
   hasNextPage: true,
+  hospitalFilter: null,
 };
 
 function render(
@@ -153,5 +154,39 @@ describe("assigned patient operational directory", () => {
     const screening = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "screening");
     expect(screening).toContain('href="/app/patients/relationship-1/screenings/new"');
     expect(screening).not.toContain("programs/program-1");
+  });
+
+  it("names the selected Hospital, keeps it through search and paging, and offers a way back to every Hospital", () => {
+    const hospitalId = "44444444-4444-4444-8444-444444444444";
+    const html = render({
+      ...result,
+      value: "สมชาย",
+      classificationFilter: "RISK",
+      hospitalFilter: { hospitalId, hospitalName: "โรงพยาบาล ก" },
+    }, null, "screening");
+
+    expect(html).toContain("แสดงเฉพาะผู้ป่วยของ<span class=\"font-semibold\">โรงพยาบาล ก</span>");
+    expect(html).toContain(`name="hospitalId" value="${hospitalId}"`);
+    expect(html).toContain(`page=2&amp;classification=RISK`);
+    expect(html).toContain(`task=screening&amp;hospitalId=${hospitalId}&amp;value=`);
+    // Clearing the search keeps the Hospital; clearing the Hospital keeps the task and search.
+    expect(html).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
+    expect(html).toContain(`href="/app/patients/assigned?lookupType=NAME&amp;task=screening&amp;value=${encodeURIComponent("สมชาย")}&amp;classification=RISK"`);
+    expect(html).toContain("ดูผู้ป่วยจากทุกโรงพยาบาล");
+  });
+
+  it("states that a Hospital outside the assigned scope shows no patients", () => {
+    const html = render({
+      ...result,
+      items: [],
+      total: 0,
+      totalPages: 1,
+      hasNextPage: false,
+      hospitalFilter: { hospitalId: "99999999-9999-4999-8999-999999999999", hospitalName: null },
+    });
+
+    expect(html).toContain("ไม่พบโรงพยาบาลที่เลือกในขอบเขตที่คุณรับผิดชอบ จึงไม่แสดงผู้ป่วย");
+    expect(html).toContain('href="/app/patients/assigned?lookupType=NAME"');
+    expect(html).not.toContain("relationship-1");
   });
 });

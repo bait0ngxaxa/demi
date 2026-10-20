@@ -8,6 +8,7 @@ import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transpo
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
+import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 const { mockedRedirect } = vi.hoisted(() => ({ mockedRedirect: vi.fn() }));
 
@@ -130,8 +131,8 @@ describe("application home workspace routing", () => {
     expect(html.indexOf('href="/app/patients/assigned"')).toBeLessThan(html.indexOf(`/app/patients/provision?hospitalId=${hospitalId}`));
     expect(section(html, "work-home-heading")).toContain('href="/app/patients/assigned"');
     const grid = section(html, "work-home-menu-heading");
-    expect(grid).toContain('href="/app/patients/assigned?task=screening"');
-    expect(grid).toContain('href="/app/patients/assigned?task=followup"');
+    expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
+    expect(grid).toContain(`href="/app/patients/assigned?task=followup&amp;hospitalId=${hospitalId}"`);
     expect(html).not.toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).not.toContain("นำเข้าผู้ป่วย");
     expect(html).not.toContain("/app/workforce");
@@ -345,6 +346,51 @@ describe("application home workspace routing", () => {
       expect(section(html, "work-home-menu-heading")).toContain("min-h-20");
       expect(html).toContain('class="content-workspace min-w-0 break-words"');
       expect(html).not.toMatch(/\bw-\[\d+px\]|min-w-\[\d+px\]/u);
+    });
+  });
+
+  describe("UI-3.1 review fixes", () => {
+    const secondId = "55555555-5555-4555-8555-555555555555";
+    const osmAt = (...ids: string[]): ActorContext => ({
+      ...patientActor,
+      roles: [Role.OSM, Role.PATIENT],
+      osmHospitalRelationships: ids.map((id) => ({ hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE })),
+    });
+
+    it("scopes OSM task tiles to the selected Hospital for a multi-Hospital OSM", async () => {
+      const grid = section(await renderHome(osmAt(hospitalId, secondId), HospitalStatus.ACTIVE, { hospitalId: secondId }), "work-home-menu-heading");
+
+      expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${secondId}"`);
+      expect(grid).toContain(`href="/app/patients/assigned?task=followup&amp;hospitalId=${secondId}"`);
+      expect(grid).not.toContain(hospitalId);
+    });
+
+    it("uses a focus ring that reaches 3:1 on brand-deep for every focusable hero element", async () => {
+      const hero = section(await renderHome(osmAt(hospitalId, secondId)), "work-home-heading");
+
+      expect(hero).toContain("<select");
+      expect(hero).toContain('type="submit"');
+      expect(hero).toContain('href="/app/personal"');
+      expect(hero.match(/focus-visible:ring-brand-bright/gu)).toHaveLength(4);
+      expect(hero).not.toContain("ring-focus-ring");
+    });
+
+    it("keeps the hero and grid when the team news feed fails, with a retry link to the same Hospital", async () => {
+      vi.mocked(listHospitalWorkContent).mockRejectedValue(new InfrastructureError("feed down"));
+      const html = await renderHome(staff(MembershipType.OWNER));
+      const news = section(html, "work-home-news-heading");
+
+      expect(news).toContain("โหลดข่าวสารไม่สำเร็จ");
+      expect(news).toContain(`href="/app?hospitalId=${hospitalId}"`);
+      expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
+      expect(section(html, "work-home-menu-heading")).toContain(`/app/workforce?hospitalId=${hospitalId}`);
+      expect(section(html, "work-home-shared-heading")).toContain('href="/app/patients/service-requests"');
+    });
+
+    it("does not swallow an authorization error from the team news feed", async () => {
+      vi.mocked(listHospitalWorkContent).mockRejectedValue(new ForbiddenError());
+
+      await expect(renderHome(staff(MembershipType.OWNER))).rejects.toBeInstanceOf(ForbiddenError);
     });
   });
 });

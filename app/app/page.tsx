@@ -16,7 +16,13 @@ import { HomeContentSection } from "@/components/home/home-content-section";
 import { HomeHero, HomeHeroCard } from "@/components/home/home-hero";
 import { HomeHospitalChip } from "@/components/home/home-hospital-chip";
 import { HomeShortcutGrid } from "@/components/home/home-shortcut-grid";
-import { projectOsmTaskLinks, projectWorkHome, type WorkHomeScope } from "@/components/home/work-home-projection";
+import { loadHomeSection } from "@/components/home/load-home-section";
+import {
+  projectActiveOsmHospitalIds,
+  projectOsmTaskLinks,
+  projectWorkHome,
+  type WorkHomeScope,
+} from "@/components/home/work-home-projection";
 import { Alert } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -76,7 +82,7 @@ function WorkHomePrimaryAction({ action }: { action: ApplicationWorkspaceAction 
   return (
     <HomeHeroCard heading="เริ่มงาน" headingId="work-home-primary-heading">
       <Link
-        className="mt-2 flex min-h-12 flex-col justify-center gap-1 rounded-control text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        className="mt-2 flex min-h-12 flex-col justify-center gap-1 rounded-control text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
         href={action.href}
         prefetch={action.prefetch ?? false}
       >
@@ -173,11 +179,17 @@ export default async function ApplicationPage(
   await scheduleCurrentLineAccountReconciliation();
 
   const workTabs = projectMobileNavigation(projectApplicationNavigation(actor)).tabsByWorkspace.work;
-  const home = projectWorkHome(projection, projectOsmTaskLinks(workTabs), params.hospitalId);
+  const home = projectWorkHome(
+    projection,
+    projectOsmTaskLinks(workTabs),
+    projectActiveOsmHospitalIds(actor),
+    params.hospitalId,
+  );
   const selectedHospital = home.scope.kind === "hospital" ? home.scope.hospital : null;
   // The feed re-applies the persisted work-membership predicate; the locator only narrows it.
+  // An infrastructure failure stays inside the news section; authorization errors still propagate.
   const teamNews = selectedHospital
-    ? await listHospitalWorkContent(actor, { hospitalId: selectedHospital.hospitalId, limit: 3 })
+    ? await loadHomeSection(() => listHospitalWorkContent(actor, { hospitalId: selectedHospital.hospitalId, limit: 3 }))
     : null;
   const hasPersonalWorkspace = projection.availableWorkspaces.includes("personal");
   const hasNoActions = projection.governanceActions.length === 0 && !projection.assignedPatientsAction &&
@@ -192,7 +204,7 @@ export default async function ApplicationPage(
           <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
             <p className="text-sm leading-6 text-white/85">หน้านี้เป็นพื้นที่ทำงาน ข้อมูลและบริการของคุณเองอยู่ในพื้นที่ส่วนตัว</p>
             <Link
-              className="inline-flex min-h-12 items-center rounded-control text-sm font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              className="inline-flex min-h-12 items-center rounded-control text-sm font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
               href="/app/personal"
               prefetch={false}
             >
@@ -237,9 +249,12 @@ export default async function ApplicationPage(
               allHref={`/app/hospitals/content?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}`}
               emptyMessage={`ยังไม่มีข่าวสารสำหรับทีมงานจาก${selectedHospital.hospitalName}`}
               heading="ข่าวสารทีมงาน"
+              failure={teamNews.status === "FAILED"
+                ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref: `/app?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}` }
+                : undefined}
               id="work-home-news-heading"
               itemHrefBase="/app/hospitals/content"
-              items={teamNews.items}
+              items={teamNews.status === "LOADED" ? teamNews.value.items : []}
             />
           ) : null}
         </div>

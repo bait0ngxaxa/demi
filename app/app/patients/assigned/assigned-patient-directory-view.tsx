@@ -55,11 +55,16 @@ function directoryUrl(input: {
   page: number;
   classification: PatientDirectoryClassificationFilter;
   taskMode: AssignedPatientTaskMode | null;
+  hospitalId: string | null;
 }): string {
   const params = new URLSearchParams({ lookupType: input.lookupType });
 
   if (input.taskMode) {
     params.set("task", input.taskMode);
+  }
+
+  if (input.hospitalId) {
+    params.set("hospitalId", input.hospitalId);
   }
 
   if (input.value) {
@@ -150,6 +155,7 @@ function Pagination({ result, taskMode }: {
               page: result.page - 1,
               classification: result.classificationFilter,
               taskMode,
+              hospitalId: result.hospitalFilter?.hospitalId ?? null,
             })}
           >
             ก่อนหน้า
@@ -168,6 +174,7 @@ function Pagination({ result, taskMode }: {
               page: result.page + 1,
               classification: result.classificationFilter,
               taskMode,
+              hospitalId: result.hospitalFilter?.hospitalId ?? null,
             })}
           >
             ถัดไป
@@ -196,6 +203,11 @@ export function AssignedPatientDirectoryView({
       ? PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
   const hasFilters = Boolean(result?.value) || (result?.classificationFilter ?? classificationFilter) !== "ALL";
+  const hospitalFilter = result?.hospitalFilter ?? null;
+  const clearSearchParams = new URLSearchParams();
+  if (taskMode) clearSearchParams.set("task", taskMode);
+  if (hospitalFilter) clearSearchParams.set("hospitalId", hospitalFilter.hospitalId);
+  const clearSearchHref = `/app/patients/assigned${clearSearchParams.size > 0 ? `?${clearSearchParams.toString()}` : ""}`;
 
   return (
     <div className="content-workspace break-words">
@@ -216,6 +228,7 @@ export function AssignedPatientDirectoryView({
           </p>
           <Form action="/app/patients/assigned" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem] @5xl/workspace:items-end">
             {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
+            {hospitalFilter ? <input name="hospitalId" type="hidden" value={hospitalFilter.hospitalId} /> : null}
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} key={lookupType} name="lookupType">
@@ -247,7 +260,7 @@ export function AssignedPatientDirectoryView({
               {hasFilters || errorMessage ? (
                 <Link
                   className={buttonClassName({ variant: "secondary", size: "compact" })}
-                  href={taskMode ? `/app/patients/assigned?task=${taskMode}` : "/app/patients/assigned"}
+                  href={clearSearchHref}
                 >
                   ล้างการค้นหาและตัวกรอง
                 </Link>
@@ -264,6 +277,29 @@ export function AssignedPatientDirectoryView({
             </Alert>
           ) : null}
         </Panel>
+
+        {result && hospitalFilter ? (
+          <div className="flex min-w-0 flex-col gap-2 rounded-panel border border-border bg-surface-muted px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+            <p className="text-sm leading-6 text-text">
+              {hospitalFilter.hospitalName
+                ? <>แสดงเฉพาะผู้ป่วยของ<span className="font-semibold">{hospitalFilter.hospitalName}</span></>
+                : "ไม่พบโรงพยาบาลที่เลือกในขอบเขตที่คุณรับผิดชอบ จึงไม่แสดงผู้ป่วย"}
+            </p>
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center rounded-control text-sm font-semibold text-brand-strong underline underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              href={directoryUrl({
+                lookupType: result.lookupType,
+                value: result.value,
+                page: 1,
+                classification: result.classificationFilter,
+                taskMode,
+                hospitalId: null,
+              })}
+            >
+              ดูผู้ป่วยจากทุกโรงพยาบาล
+            </Link>
+          </div>
+        ) : null}
 
         {result ? (
           <section aria-labelledby="assigned-patient-results-heading" aria-live="polite">

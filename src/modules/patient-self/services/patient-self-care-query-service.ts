@@ -1122,7 +1122,7 @@ export async function getOwnNextAppointmentForRelationship(
       where: {
         patientHospitalRelationshipId: relationship.relationshipId,
         scheduledAt: { gte: now },
-        status: { not: "CANCELLED" },
+        status: "SCHEDULED",
       },
       orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
       take: 1,

@@ -102,6 +102,8 @@ export default async function AssignedPatientDirectoryPage({
       value: requestedValue,
       page: firstSearchParam(params.page) ?? "1",
       classification: classificationFilter,
+      // Only narrows the assignment predicate inside the service; the bottom tabs never send it.
+      hospitalId: firstSearchParam(params.hospitalId),
     });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {

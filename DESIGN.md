@@ -187,7 +187,7 @@ Page hierarchy คือ `PageHeader` → optional local navigation → bounded 
 - **Surface:** `0 1px 2px rgb(16 38 32 / 0.06)` สำหรับ selected local navigation และ surface ที่ต้องยกขึ้นเล็กน้อย
 - **Floating:** `0 18px 48px rgb(8 35 31 / 0.22)` สำหรับ dialog หรือ interaction ที่ลอยเหนือหน้า
 
-Focus ใช้ 4px `focus-ring` พร้อม offset เพื่อให้เห็นได้ชัดโดยไม่พึ่ง shadow เป็น decoration
+Focus ใช้ 4px `focus-ring` พร้อม offset เพื่อให้เห็นได้ชัดโดยไม่พึ่ง shadow เป็น decoration บนพื้นเข้ม (`brand-deep` เช่น hero ของหน้า home และ desktop navigation) focus ring ใช้ `brand-bright` แทน เพราะ `focus-ring` ได้ contrast ต่ำกว่า 3:1 บนพื้นนั้น
 
 **The Flat-By-Default Rule.** เริ่มจาก background + border + whitespace ก่อนเพิ่ม shadow; elevation ต้องสื่อ interaction hierarchy ไม่ใช่เพิ่มความสวยงามเฉย ๆ
 
@@ -249,6 +249,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **2026-10-20:** `/app/more` เป็นหน้าเมนูปกติทั้งบน mobile และ desktop; ลิงก์ในหน้านำทางด้วย browser history และคง workspace ที่เลือกไว้ Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ของ More ใช้ gutters และ width policy ของหน้า.
 - **2026-10-20:** Patient Personal Home ใช้ hero, ตัวเลือกโรงพยาบาล, shortcut grid 4 คอลัมน์บน mobile และข่าวสาร/สื่อความรู้แยกตามโรงพยาบาล; ส่วน hero ใช้พื้นทึบ `brand-deep` เป็นข้อยกเว้นเฉพาะหน้านี้จาก canvas ปกติ.
 - **2026-10-20 (UI-3):** Work Home (`/app`) ใช้ hero, chip เลือกโรงพยาบาล (`?hospitalId=`, จัดกลุ่มตามเครือข่าย) และ grid เมนูชุดเดียวกันทุกบทบาท โดยเมนูมาจาก server projection เท่านั้น. Hero เป็นลิงก์งานหลักไม่มีตัวเลข: action หมวด `care` แรกของโรงพยาบาลที่เลือก → `assignedPatientsAction` → governance แรก (ADMIN ที่ไม่มีงานโรงพยาบาล). Grid สูงสุด 8 ช่องตาม `WORK_HOME_TILE_ORDER` ใน `src/components/home/work-home-projection.ts` ช่องเกินเป็น "ทั้งหมด" ไป `/app/more`; งานที่ครอบคลุมทุกโรงพยาบาลแสดงเป็นแถวในส่วน "งานจากทุกโรงพยาบาล" ไม่อยู่ใน grid. Desktop ใช้ component เดียวกันใน `content-workspace`.
+- **2026-10-20 (UI-3.1):** ช่อง อสม. ใน grid ของ Work Home แสดงเฉพาะโรงพยาบาลที่บัญชีเป็น อสม. อยู่ และส่ง `hospitalId` ไปกรองรายชื่อผู้ป่วยที่รับผิดชอบ (bottom tab ยังไม่กรอง). ส่วนเนื้อหาที่โหลดไม่สำเร็จแสดง Alert พร้อมลิงก์ "ลองอีกครั้ง" เฉพาะส่วนนั้น ส่วนอื่นของหน้ายังแสดงตามปกติ.
 
 ### Local Navigation
 

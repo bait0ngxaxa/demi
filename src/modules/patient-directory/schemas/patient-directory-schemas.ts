@@ -51,6 +51,8 @@ export const patientDirectoryQuerySchema = z
 
 export const patientAssignedDirectoryQuerySchema = z
   .object({
+    /** Optional Hospital locator; it only narrows the assignment predicate and never widens it. */
+    hospitalId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     lookupType: patientDirectoryLookupTypeSchema,
     classification: patientDirectoryClassificationFilterSchema.optional(),
     value: optionalLookupValueSchema,

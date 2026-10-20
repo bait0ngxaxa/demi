@@ -108,6 +108,11 @@ export type PatientAssignedDirectoryPage = {
   hasPreviousPage: boolean;
   hasNextPage: boolean;
   classificationFilter: PatientDirectoryClassificationFilter;
+  /**
+   * Present when the roster is narrowed to one Hospital. `hospitalName` is null when the locator is not one
+   * of the actor's active OSM Hospitals; the narrowed roster is then empty (fail closed, never unfiltered).
+   */
+  hospitalFilter: { hospitalId: string; hospitalName: string | null } | null;
 };
 
 export type PatientDirectoryQueryDependencies = {
@@ -295,6 +300,22 @@ function buildPatientRelationshipWhere(
   };
 }
 
+function buildOsmActiveHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+  return {
+    status: HospitalStatus.ACTIVE,
+    osmHospitalRelationships: {
+      some: {
+        userId: actorUserId,
+        status: MembershipStatus.ACTIVE,
+        user: {
+          status: UserStatus.ACTIVE,
+          roles: { some: { role: Role.OSM } },
+        },
+      },
+    },
+  };
+}
+
 export function buildOsmAssignedPatientRelationshipWhere(
   actorUserId: string,
   input?: PatientAssignedDirectoryQueryInput,
@@ -312,19 +333,9 @@ export function buildOsmAssignedPatientRelationshipWhere(
         ? { patientClassification: { is: { classification: input.classification } } }
         : {}),
     },
-    hospital: {
-      status: HospitalStatus.ACTIVE,
-      osmHospitalRelationships: {
-        some: {
-          userId: actorUserId,
-          status: MembershipStatus.ACTIVE,
-          user: {
-            status: UserStatus.ACTIVE,
-            roles: { some: { role: Role.OSM } },
-          },
-        },
-      },
-    },
+    hospital: buildOsmActiveHospitalWhere(actorUserId),
+    // The optional Hospital locator is one more AND-ed condition; it narrows and never widens the predicate.
+    ...(input?.hospitalId ? { hospitalId: input.hospitalId } : {}),
     osmAssignments: {
       some: {
         osmUserId: actorUserId,
@@ -580,6 +591,12 @@ export async function findAssignedPatientDirectory(
   try {
     const database = getDatabase(dependencies.database);
     const where = buildOsmAssignedPatientRelationshipWhere(actor.userId, parsed);
+    const filteredHospital = parsed.hospitalId
+      ? await database.hospital.findFirst({
+        where: { id: parsed.hospitalId, ...buildOsmActiveHospitalWhere(actor.userId) },
+        select: { name: true },
+      })
+      : null;
     const total = await database.patientHospitalRelationship.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / PATIENT_DIRECTORY_PAGE_SIZE));
     const page = Math.min(parsed.page, totalPages);
@@ -605,6 +622,9 @@ export async function findAssignedPatientDirectory(
       classificationFilter: parsed.classification ?? "ALL",
       hasPreviousPage: page > 1,
       hasNextPage: page < totalPages,
+      hospitalFilter: parsed.hospitalId
+        ? { hospitalId: parsed.hospitalId, hospitalName: filteredHospital?.name ?? null }
+        : null,
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ValidationError) {

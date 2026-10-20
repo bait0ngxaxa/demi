@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { HospitalContentCategory } from "@prisma/client";
 
+import { loadHomeSection } from "@/components/home/load-home-section";
 import { getOwnNextAppointmentForRelationship } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { listPatientHospitalContent } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
 import { getActivePatientHospitals, selectPatientPersonalHomeHospital } from "@/modules/patient-self/transport/patient-personal-home-selection";
@@ -38,20 +39,22 @@ export default async function PatientPersonalPage(
 
   const activeHospitals = getActivePatientHospitals(patient);
   const selectedHospital = selectPatientPersonalHomeHospital(patient, params.hospital);
+  // Each section fails on its own: an infrastructure error renders that section's fallback only.
   const [nextAppointment, newsPage, knowledgePage] = selectedHospital
     ? await Promise.all([
-        getOwnNextAppointmentForRelationship(patient.actor, selectedHospital.relationshipId),
-        listPatientHospitalContent(patient.actor, {
+        loadHomeSection(() => getOwnNextAppointmentForRelationship(patient.actor, selectedHospital.relationshipId)),
+        loadHomeSection(() => listPatientHospitalContent(patient.actor, {
           category: HospitalContentCategory.NEWS,
           hospitalId: selectedHospital.hospitalId,
           limit: 3,
-        }),
-        listPatientHospitalContent(patient.actor, {
+        })),
+        loadHomeSection(() => listPatientHospitalContent(patient.actor, {
           hospitalId: selectedHospital.hospitalId,
           limit: 3,
-        }),
+        })),
       ])
     : [null, null, null];
+  const nextAppointmentValue = nextAppointment?.status === "LOADED" ? nextAppointment.value : null;
   const patientPresentation = {
     person: patient.person,
   };
@@ -70,16 +73,20 @@ export default async function PatientPersonalPage(
   return (
     <PatientPersonalHome
       activeHospitals={activeHospitalOptions}
-      knowledgeItems={knowledgePage?.items ?? []}
-      newsItems={newsPage?.items ?? []}
+      knowledgeFailed={knowledgePage?.status === "FAILED"}
+      knowledgeItems={knowledgePage?.status === "LOADED" ? knowledgePage.value.items : []}
+      newsFailed={newsPage?.status === "FAILED"}
+      newsItems={newsPage?.status === "LOADED" ? newsPage.value.items : []}
       patient={patientPresentation}
       selectedHospital={selectedHospitalPresentation}
-      nextAppointment={nextAppointment && selectedHospital
-        ? {
-            href: `/app/personal/appointments/${encodeURIComponent(selectedHospital.relationshipId)}/${encodeURIComponent(nextAppointment.appointmentId)}`,
-            scheduledAt: nextAppointment.scheduledAt,
-          }
-        : null}
+      nextAppointment={nextAppointment?.status === "FAILED"
+        ? "UNAVAILABLE"
+        : nextAppointmentValue && selectedHospital
+          ? {
+              href: `/app/personal/appointments/${encodeURIComponent(selectedHospital.relationshipId)}/${encodeURIComponent(nextAppointmentValue.appointmentId)}`,
+              scheduledAt: nextAppointmentValue.scheduledAt,
+            }
+          : null}
     />
   );
 }

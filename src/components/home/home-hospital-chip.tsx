@@ -50,7 +50,7 @@ export function HomeHospitalChip({
           โรงพยาบาลปัจจุบัน
         </label>
         <select
-          className="min-h-12 w-full max-w-full rounded-control border border-white/40 bg-surface px-3 text-sm font-medium text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          className="min-h-12 w-full max-w-full rounded-control border border-white/40 bg-surface px-3 text-sm font-medium text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
           defaultValue={selectedValue}
           id={selectId}
           name={fieldName}
@@ -71,7 +71,7 @@ export function HomeHospitalChip({
         </select>
       </div>
       <button
-        className="min-h-12 shrink-0 rounded-control border border-white/50 px-4 text-sm font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        className="min-h-12 shrink-0 rounded-control border border-white/50 px-4 text-sm font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
         type="submit"
       >
         เปลี่ยน

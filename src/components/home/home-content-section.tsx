@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { HospitalContentImageList } from "@/components/hospital-content/hospital-content-image-list";
+import { Alert } from "@/components/ui/alert";
 import type { HospitalContentPatientListItem } from "@/modules/hospital-content/types/hospital-content-patient-projections";
 
 function formatPublishedAt(value: string): string {
@@ -13,6 +14,7 @@ function formatPublishedAt(value: string): string {
 export function HomeContentSection({
   allHref,
   emptyMessage,
+  failure,
   heading,
   id,
   itemHrefBase,
@@ -20,6 +22,8 @@ export function HomeContentSection({
 }: {
   allHref: string;
   emptyMessage: string;
+  /** Set when the feed failed to load; the section shows a retry Alert instead of its items. */
+  failure?: { message: string; retryHref: string };
   heading: string;
   id: string;
   /** Detail route of the feed the items came from; each item links to `${itemHrefBase}/${id}`. */
@@ -38,7 +42,18 @@ export function HomeContentSection({
           ดูทั้งหมด
         </Link>
       </div>
-      {items.length > 0 ? (
+      {failure ? (
+        <Alert className="mt-3" variant="warning">
+          <p className="font-semibold">{failure.message}</p>
+          <Link
+            className="mt-1 inline-flex min-h-12 items-center rounded-control font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+            href={failure.retryHref}
+            prefetch={false}
+          >
+            ลองอีกครั้ง
+          </Link>
+        </Alert>
+      ) : items.length > 0 ? (
         <ul aria-label={`${heading}ล่าสุด`} className="mt-2 divide-y divide-border border-y border-border">
           {items.map((item) => (
             <li className="min-w-0 py-4" key={item.id}>

@@ -82,6 +82,21 @@ describe("assigned Patient directory page", () => {
     });
   });
 
+  it("forwards the Hospital locator to the service, which validates and only narrows it", async () => {
+    const hospitalId = "44444444-4444-4444-8444-444444444444";
+    await AssignedPatientDirectoryPage({
+      searchParams: Promise.resolve({ task: "followup", hospitalId: [hospitalId, "99999999-9999-4999-8999-999999999999"] }),
+    });
+
+    expect(mockedFindAssignedPatientDirectory).toHaveBeenCalledWith(expect.anything(), {
+      lookupType: "NAME",
+      value: "",
+      page: "1",
+      classification: "ALL",
+      hospitalId,
+    });
+  });
+
   it.each(invalidTaskModes)("drops the $name task mode before building a return target", async ({ task }) => {
     mockedGetProtectedApplicationActor.mockRejectedValue(new UnauthenticatedError());
 

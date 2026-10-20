@@ -553,6 +553,55 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
     })).resolves.toMatchObject({ total: 0, items: [] });
   });
 
+  it("narrows a multi-Hospital OSM roster to the selected Hospital without ever widening it", async () => {
+    const hospitalA = await createHospital("ASSIGN-SCOPE-A");
+    const hospitalB = await createHospital("ASSIGN-SCOPE-B");
+    const hospitalC = await createHospital("ASSIGN-SCOPE-C");
+    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id });
+    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id });
+    const ownerC = await createHospitalActor({ hospitalId: hospitalC.id });
+    const osm = await createOsmActor({ hospitalId: hospitalA.id });
+    await prisma.osmHospitalRelationship.create({
+      data: { userId: osm.userId, hospitalId: hospitalB.id, status: MembershipStatus.ACTIVE },
+    });
+    const multiHospitalOsm: ActorContext = {
+      ...osm.actor,
+      osmHospitalRelationships: [
+        ...osm.actor.osmHospitalRelationships,
+        { hospitalId: hospitalB.id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+    };
+    const otherOsmAtC = await createOsmActor({ hospitalId: hospitalC.id });
+    const patientA = await createPatient(ownerA.actor, hospitalA.id, { identity: "scope-a", givenName: "ผู้ป่วย", familyName: "เอ" });
+    const patientB = await createPatient(ownerB.actor, hospitalB.id, { identity: "scope-b", givenName: "ผู้ป่วย", familyName: "บี" });
+    const patientC = await createPatient(ownerC.actor, hospitalC.id, { identity: "scope-c", givenName: "ผู้ป่วย", familyName: "ซี" });
+    await assignOsmToPatient(ownerA.actor, { patientHospitalRelationshipId: patientA.relationshipId, osmUserId: osm.userId });
+    await assignOsmToPatient(ownerB.actor, { patientHospitalRelationshipId: patientB.relationshipId, osmUserId: osm.userId });
+    await assignOsmToPatient(ownerC.actor, { patientHospitalRelationshipId: patientC.relationshipId, osmUserId: otherOsmAtC.userId });
+    const roster = async (hospitalId?: string) => {
+      const page = await findAssignedPatientDirectory(multiHospitalOsm, { lookupType: "NAME", value: "", page: "1", hospitalId });
+      return { ids: page.items.map((item) => item.patientHospitalRelationshipId).sort(), total: page.total, filter: page.hospitalFilter };
+    };
+
+    await expect(roster()).resolves.toEqual({
+      ids: [patientA.relationshipId, patientB.relationshipId].sort(),
+      total: 2,
+      filter: null,
+    });
+    await expect(roster(hospitalA.id.toUpperCase())).resolves.toEqual({
+      ids: [patientA.relationshipId],
+      total: 1,
+      filter: { hospitalId: hospitalA.id, hospitalName: "โรงพยาบาล ASSIGN-SCOPE-A" },
+    });
+    await expect(roster(hospitalB.id)).resolves.toMatchObject({ ids: [patientB.relationshipId], total: 1 });
+    // A forged locator for a Hospital the OSM has no relationship with stays empty and unnamed.
+    await expect(roster(hospitalC.id)).resolves.toEqual({
+      ids: [],
+      total: 0,
+      filter: { hospitalId: hospitalC.id, hospitalName: null },
+    });
+  });
+
   it("keeps one active assignment under concurrent assignment attempts", async () => {
     const hospital = await createHospital("ASSIGN-CONCURRENT");
     const owner = await createHospitalActor({ hospitalId: hospital.id });
