@@ -1,8 +1,12 @@
 # ADR-0013: Responsibility Areas as Direct Child Hospitals
 
-- Status: Accepted
+- Status: Accepted; H1 operational self-management restriction partially superseded by [ADR-0014](./0014-operational-hospital-service-areas.md) (2026-10-20)
 - Date: 2026-10-16 (proposed); accepted 2026-10-17
 - Customer decision: ก-14 (final); จ-1..จ-5 (2026-10-17, see “Customer decisions”)
+
+## Current decision amendment (2026-10-20)
+
+The Product Owner now authorizes active direct Parent OWNERs to attach/end eligible existing Child operational service-area associations. [ADR-0014](./0014-operational-hospital-service-areas.md) supersedes H1's prohibition of operational self-management and its single canonical-area equivalence; it adds a separate association, never OWNER writes to official identity or `parentHospitalId`. The historical decision and alternatives below are retained as the Phase H record. H2–H5, direct work authority, summary/reporting scope and all Patient/workforce restrictions remain unchanged. Current canonical reports continue to use canonical links; ending an operational association does not remove the independent canonical-report authority. Management UI, network Patient read, editable fields and cross-Parent approval are not delivered by Phase A.
 
 ## Context
 
@@ -27,7 +31,7 @@ The customer answered the §9 questions (จ-1..จ-5) with this ADR's recommend
 
 | ID | Ref | Decision |
 | --- | --- | --- |
-| H1 | จ-1 | A Parent OWNER selects only active direct Children that the canonical Hospital Master already links. No Parent self-service attach/detach; hierarchy changes use the master data + Platform ADMIN reconciliation path (unchanged). §1 option C. |
+| H1 (partially superseded by ADR-0014) | จ-1 | A Parent OWNER selects only active direct Children that the canonical Hospital Master already links. No Parent self-service attach/detach; hierarchy changes use the master data + Platform ADMIN reconciliation path (unchanged). §1 option C. |
 | H2 | จ-2 | “ดาวน์โหลดตามเขต” (RPT-32) = export of the existing nine aggregate values of the exact Child summary only; no patient-level data. §3 option B. |
 | H3 | จ-3 | Child OWNERs add their own staff/OSMs through the existing workforce flows. The Parent OWNER may view Child workforce membership only if this ADR allows a roster view; §8 denies it, so no roster view is added. ADR-0008 is unchanged. §2 option A. |
 | H4 | จ-4 | Moving a Patient between Children = Phase F end at the source + normal provisioning/import at the target. No transfer workflow, no record copy. §6 option B. |

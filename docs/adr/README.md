@@ -52,3 +52,5 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 
 - [ADR-0012 — Global credential recovery proof](./0012-global-credential-recovery-proof.md): security restriction superseding assisted-recovery ownership assumptions; independent proof remains pending.
 - [ADR-0013 — Responsibility areas as direct Child Hospitals](./0013-responsibility-areas.md): accepted 2026-10-17 (จ-1..จ-5); area = active direct Child, Parent OWNER nine-value summary view/export (RPT-32) only.
+
+- [ADR-0014 — Operational Hospital Service Area Ownership](./0014-operational-hospital-service-areas.md): Phase A; partially supersedes H1 of ADR-0013, keeps H2–H5 and official Master authority unchanged; no Patient/workforce/report inheritance.

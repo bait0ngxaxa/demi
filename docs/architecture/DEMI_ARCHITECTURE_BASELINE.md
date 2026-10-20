@@ -10,6 +10,10 @@
 
 ---
 
+## Current decision addendum — operational service areas (2026-10-20)
+
+[ADR-0014](../adr/0014-operational-hospital-service-areas.md) separates OWNER-managed operational service-area lifecycle from official Hospital identity/hierarchy. Only H1 operational self-management prohibition/canonical-only equivalence is superseded; H2–H5 and existing direct-work/Patient/report policies remain unchanged. Eligibility needs explicit trusted-source attestation and fails closed when missing. Phase A has no UI or network Patient authority. See [handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md).
+
 ## Current decision addendum — Patient import profile persistence (2026-10-13)
 
 [ADR-0011](../adr/0011-patient-import-profile-persistence.md) extends the accepted provisioning/transaction boundaries with owner-approved Template v2 profile persistence. Global DOB belongs to PatientProfile, while hospital demographics/contact/structured address/emergency relationship belong to the exact PatientHospitalProfile. A row succeeds atomically with existing clinical domain writes; duplicate imports never overwrite established data. Address components and addressText are mutually exclusive, and both read paths use the same derived address. Historical profile gates below apply at their recorded dates; the new approval is limited to this scope.

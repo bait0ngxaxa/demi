@@ -410,6 +410,8 @@ model Person {
 }
 
 model User {
+  serviceAreasCreated HospitalServiceArea[] @relation("ServiceAreaCreator")
+  serviceAreasEnded HospitalServiceArea[] @relation("ServiceAreaEnder")
   id          String     @id @default(uuid()) @db.Uuid
   personId    String     @unique @db.Uuid
   authSubject String?    @unique @db.VarChar(255)
@@ -504,6 +506,9 @@ model UserRole {
 }
 
 model Hospital {
+  serviceAreaEligibility HospitalServiceAreaEligibility?
+  managedServiceAreas HospitalServiceArea[] @relation("ServiceAreaParent")
+  serviceAreaAssignments HospitalServiceArea[] @relation("ServiceAreaChild")
   workforceBulkSubmissions WorkforceBulkSubmission[]
   workforceActivationContexts WorkforceActivation[] @relation("WorkforceActivationHospital")
   id              String         @id @default(uuid()) @db.Uuid
@@ -528,6 +533,39 @@ model Hospital {
   childHospitals            Hospital[] @relation("HospitalHierarchy")
 
   @@index([status, name])
+}
+
+// Explicit trusted-source attestation, never inferred from names/codes/hierarchy.
+enum HospitalServiceAreaFacilityKind {
+  PARENT
+  CHILD
+}
+
+model HospitalServiceAreaEligibility {
+  hospitalId String @id @db.Uuid
+  kind HospitalServiceAreaFacilityKind
+  sourceReference String @db.VarChar(255)
+  verifiedAt DateTime @db.Timestamptz(3)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+model HospitalServiceArea {
+  id String @id @default(uuid()) @db.Uuid
+  parentHospitalId String @db.Uuid
+  childHospitalId String @db.Uuid
+  createdByUserId String @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  endedAt DateTime? @db.Timestamptz(3)
+  endedByUserId String? @db.Uuid
+  endReason String? @db.VarChar(500)
+  parent Hospital @relation("ServiceAreaParent", fields: [parentHospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  child Hospital @relation("ServiceAreaChild", fields: [childHospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy User @relation("ServiceAreaCreator", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  endedBy User? @relation("ServiceAreaEnder", fields: [endedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // Partial active-child uniqueness and immutable-history trigger live in migration SQL.
+  @@index([parentHospitalId, endedAt, id])
+  @@index([childHospitalId, parentHospitalId])
 }
 
 model HospitalContact {
