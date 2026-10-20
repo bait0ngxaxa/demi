@@ -63,6 +63,10 @@ describe("responsive shell contract", () => {
     expect(html).toContain("app-mobile-bottom-navigation");
     expect(html).toContain("hidden h-svh shrink-0");
     expect(html).toContain("lg:flex lg:flex-col");
+    const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
+    expect(header).toContain('class="hidden lg:block"');
+    expect(header).toContain("ออกจากระบบ");
+    expect(html).not.toContain("<dialog");
     expect(html).not.toContain('aria-label="เปิดเมนูหลัก"');
     expect(html).not.toContain('id="mobile-application-navigation"');
     expect(source("app/globals.css")).toContain("env(safe-area-inset-bottom, 0px)");

@@ -100,7 +100,7 @@ describe("server-projected mobile navigation", () => {
       "/app/patients/assigned",
       "/app/patients/assigned?task=screening",
       "/app/patients/assigned?task=followup",
-      null,
+      "/app/more",
     ]);
   });
 

@@ -13,16 +13,10 @@ import {
 import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
 import { confirmMobileNavigation } from "./mobile-navigation-guard";
 import { MobileNavigationGlyph } from "./mobile-navigation-glyph";
-import { MoreNavigation } from "./more-navigation";
 import { resolveActiveMobileTabId } from "./mobile-navigation-state";
-import type {
-  MobileNavigationProjection,
-  MobileNavigationTab,
-} from "./mobile-tab-projection";
-import type { ApplicationNavigationGroup } from "./navigation-types";
+import type { MobileNavigationProjection, MobileNavigationTab } from "./mobile-tab-projection";
 
 type MobileBottomNavigationProps = {
-  navigation: readonly ApplicationNavigationGroup[];
   projection: MobileNavigationProjection;
 };
 
@@ -46,7 +40,6 @@ function MobileTabLinkContent({ tab }: { tab: MobileNavigationTab }): React.JSX.
 }
 
 export function MobileBottomNavigation({
-  navigation,
   projection,
 }: MobileBottomNavigationProps): React.JSX.Element | null {
   const pathname = usePathname();
@@ -54,7 +47,7 @@ export function MobileBottomNavigation({
   const navigationWorkspace = useNavigationWorkspaceContext();
   const selectedWorkspace = resolveSelectedWorkspaceContext(
     projection.availableWorkspaces,
-    navigationWorkspace ?? getWorkspaceContextForPathname(pathname),
+    navigationWorkspace ?? getWorkspaceContextForPathname(pathname, searchParams.toString()),
   );
 
   if (!selectedWorkspace) {
@@ -79,15 +72,7 @@ export function MobileBottomNavigation({
       >
         {tabs.map((tab) => (
           <li className="min-w-0" key={`${selectedWorkspace}:${tab.id}`}>
-            {tab.id === "more" ? (
-              <MoreNavigation
-                active={activeTabId === tab.id}
-                availableWorkspaces={projection.availableWorkspaces}
-                navigation={navigation}
-                primaryTabs={tabs}
-                selectedWorkspace={selectedWorkspace}
-              />
-            ) : tab.href ? (
+            {tab.href ? (
               <Link
                 aria-current={activeTabId === tab.id ? "page" : undefined}
                 aria-label={tab.accessibleLabel}
@@ -97,7 +82,9 @@ export function MobileBottomNavigation({
                     ? "type-nav-active bg-brand-soft text-brand-strong"
                     : "hover:bg-surface-muted hover:text-text",
                 )}
-                href={tab.href}
+                href={tab.id === "more" && projection.availableWorkspaces.length > 1
+                  ? `${tab.href}?workspace=${selectedWorkspace}`
+                  : tab.href}
                 onNavigate={(event) => {
                   if (!confirmMobileNavigation()) {
                     event.preventDefault();

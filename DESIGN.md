@@ -121,7 +121,7 @@ components:
 - เขียวเข้มใช้กับ identity, primary action และ navigation authority
 - Thai-first copy ที่สุภาพ ตรงไปตรงมา และเป็นกลางต่อทุกบทบาท
 - Controls รองรับ touch, focus-visible, pending, disabled และ error state
-- Mobile ใช้ information architecture เดียวกับ desktop ผ่าน compact header และ drawer
+- Mobile ใช้ bottom tabs และหน้า `/app/more` โดยหน้า More แสดง navigation ที่ project จาก server เช่นเดียวกับ desktop
 
 ## Colors
 
@@ -172,7 +172,7 @@ Palette เป็น restrained clinical green: brand ทำหน้าที�
 
 ## Layout
 
-Application shell ใช้ layout แบบสองพื้นที่เมื่อ viewport ถึง `lg` (1024px): sidebar คงที่กว้าง 17rem หรือ 4.5rem เมื่อย่อ และ main workspace ยืดหยุ่นตามพื้นที่ที่เหลือ ส่วน mobile ใช้ header สูง 4.5rem และ drawer ที่มี information architecture เดียวกันกับ sidebar
+Application shell ใช้ layout แบบสองพื้นที่เมื่อ viewport ถึง `lg` (1024px): sidebar คงที่กว้าง 17rem หรือ 4.5rem เมื่อย่อ และ main workspace ยืดหยุ่นตามพื้นที่ที่เหลือ ส่วน mobile ใช้ header สูง 4.5rem, bottom tabs และหน้าเมนู `/app/more`
 
 Main workspace เป็น fluid พร้อม horizontal padding 20px บน mobile, 32px ตั้งแต่ `sm` และ 40px ตั้งแต่ `lg`; vertical page rhythm คือ 32px, 40px และ 48px ตาม breakpoint หน้า feature จำกัด readable width ของตนเองได้เมื่อข้อมูลเป็น form, prose หรือ review detail ส่วน directory, report และ operational workspace ใช้พื้นที่ที่เหลือได้ตามความเหมาะสม
 
@@ -180,12 +180,12 @@ Page hierarchy คือ `PageHeader` → optional local navigation → bounded 
 
 ## Elevation & Depth
 
-ระบบเป็น flat-by-default ใช้ tonal layering และ 1px border เป็น depth หลัก Standard panel ไม่ต้องมี shadow; shadow ใช้เฉพาะ surface ที่ต้องแยกจากพื้นเล็กน้อย และ drawer ที่ลอยเหนือ content
+ระบบเป็น flat-by-default ใช้ tonal layering และ 1px border เป็น depth หลัก Standard panel ไม่ต้องมี shadow; shadow ใช้เฉพาะ surface ที่ต้องแยกจากพื้นเล็กน้อย และ dialog ที่ลอยเหนือ content
 
 ### Shadow Vocabulary
 
 - **Surface:** `0 1px 2px rgb(16 38 32 / 0.06)` สำหรับ selected local navigation และ surface ที่ต้องยกขึ้นเล็กน้อย
-- **Floating:** `0 18px 48px rgb(8 35 31 / 0.22)` สำหรับ mobile navigation drawer หรือ interaction ที่ลอยเหนือหน้า
+- **Floating:** `0 18px 48px rgb(8 35 31 / 0.22)` สำหรับ dialog หรือ interaction ที่ลอยเหนือหน้า
 
 Focus ใช้ 4px `focus-ring` พร้อม offset เพื่อให้เห็นได้ชัดโดยไม่พึ่ง shadow เป็น decoration
 
@@ -193,7 +193,7 @@ Focus ใช้ 4px `focus-ring` พร้อม offset เพื่อให้
 
 ## Shapes
 
-Form controls ใช้ corner 12px (`control`), panel ใช้ 14px (`panel`) และ dialog/drawer ใช้ 16px (`dialog`) Status badge ใช้ pill เต็มรูปแบบเฉพาะเมื่อเป็น status/role chip
+Form controls ใช้ corner 12px (`control`), panel ใช้ 14px (`panel`) และ dialog ใช้ 16px (`dialog`) Status badge ใช้ pill เต็มรูปแบบเฉพาะเมื่อเป็น status/role chip
 
 เส้นขอบ 1px เป็น recurring silhouette ของ form, panel, table และ list; ไม่มี clipping หรือ decorative geometry ใน protected shell รูปทรงทั้งหมดควรรู้สึก tactile แต่ไม่ playful
 
@@ -235,7 +235,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 
 - **Desktop:** sidebar สี navigation-background กว้าง 17rem มี group label, nested domain item และ active item ใช้ navigation-active
 - **Header:** sticky surface header แสดง DEMI, role context และ logout บน desktop; mobile แสดงแบรนด์และ workspace ปัจจุบัน พร้อมเข้าถึงการสลับ workspace ได้จาก “เพิ่มเติม”
-- **Mobile:** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม” โดยใช้ server-projected navigation ชุดเดียวกับ desktop; More ใช้ native modal `dialog` รองรับ Escape, focus containment/restoration, body scroll lock และปิดเมื่อ route หรือ breakpoint เปลี่ยน
+- **Mobile (2026-10-20):** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม”; “เพิ่มเติม” เป็นลิงก์ไปหน้า `/app/more` ที่แสดง server-projected navigation ชุดเดียวกับ desktop โดยไม่เปิด sidebar หรือ dialog; logout อยู่ด้านล่างของหน้า More
 - Active route ใช้ `aria-current="page"`; workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
 
 ### Content Width and Responsive Layout
@@ -245,7 +245,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - `content-workspace` ใช้เต็มพื้นที่จนถึง 90rem และจัดกึ่งกลางสำหรับ Work Home, directories, Workforce และ reporting. Work Home ใช้ auto-fit columns ขั้นต่ำ 28rem โดย card เดียวใช้เต็มแถว.
 - `content-detail` จำกัด 72rem และจัดกึ่งกลางสำหรับ Patient Detail; บริบทและงานดูแลอยู่สองคอลัมน์เมื่อ container กว้างอย่างน้อย 64rem ส่วนประวัติใช้เต็มแถว. ลำดับ DOM และ mobile ยังคงบริบท → งานดูแล → ประวัติ.
 - Reading forms, Contact, Content, Personal และรายละเอียดการบันทึกยังรักษา local max-width เดิม; prose ใช้ `type-readable` 68ch. ไม่ใช้ global override เพื่อยืดทุกหน้า.
-- Mobile More navigation ใช้ native modal `dialog` เพื่อทำให้ background inert; ปิดตามปกติคืน focus ไป trigger ส่วน navigation/desktop transition ย้าย focus ไป Main. Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ใช้ gutters และ width policy ของปลายทาง.
+- **2026-10-20:** `/app/more` เป็นหน้าเมนูปกติทั้งบน mobile และ desktop; ลิงก์ในหน้านำทางด้วย browser history และคง workspace ที่เลือกไว้ Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ของ More ใช้ gutters และ width policy ของหน้า.
 
 ### Local Navigation
 
@@ -258,7 +258,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Do** ใช้ semantic tokens และ shared primitives แทน raw color, radius และ shadow ใหม่
 - **Do** รักษา control touch target อย่างน้อย 44px และ focus-visible ที่มี contrast ชัดเจน
 - **Do** ใช้ PageHeader, Panel, Alert และ StatusBadge เพื่อทำให้ hierarchy และ state สม่ำเสมอ
-- **Do** ใช้ native form semantics, label association, `aria-current` และ accessible drawer controls
+- **Do** ใช้ native form semantics, label association, `aria-current` และ navigation links ที่เข้าถึงได้ด้วย keyboard
 - **Do** ใช้ border + whitespace + status text ก่อนเพิ่ม elevation
 
 ### Don't:

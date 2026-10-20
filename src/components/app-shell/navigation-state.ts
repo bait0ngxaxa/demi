@@ -14,7 +14,9 @@ function isPathWithin(pathname: string, basePath: string): boolean {
 
 export function getWorkspaceContextForPathname(
   pathname: string,
+  search = "",
 ): ApplicationWorkspaceContext | null {
+  const pathnameSearch = pathname.includes("?") ? pathname.slice(pathname.indexOf("?")) : "";
   const normalizedPathname = normalizePathname(pathname);
 
   if (isPathWithin(normalizedPathname, "/app/personal")) {
@@ -28,6 +30,15 @@ export function getWorkspaceContextForPathname(
     )
   ) {
     return "work";
+  }
+
+  if (normalizedPathname === "/app/more") {
+    const params = new URLSearchParams(search || pathnameSearch);
+    const requestedWorkspaces = params.getAll("workspace");
+    const requestedWorkspace = requestedWorkspaces.length === 1 ? requestedWorkspaces[0] : null;
+    return requestedWorkspace === "personal" || requestedWorkspace === "work"
+      ? requestedWorkspace
+      : null;
   }
 
   return null;
@@ -52,8 +63,9 @@ export function resolveWorkspaceContextForPathname(
   pathname: string,
   availableContexts: readonly ApplicationWorkspaceContext[],
   previouslySelectedContext: ApplicationWorkspaceContext | null,
+  search = "",
 ): ApplicationWorkspaceContext | null {
-  const routeContext = getWorkspaceContextForPathname(pathname);
+  const routeContext = getWorkspaceContextForPathname(pathname, search);
   return resolveSelectedWorkspaceContext(
     availableContexts,
     routeContext ?? previouslySelectedContext,

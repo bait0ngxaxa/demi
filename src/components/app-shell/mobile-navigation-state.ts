@@ -105,6 +105,11 @@ export function resolveActiveMobileTabId(
   tabs: readonly MobileNavigationTab[],
 ): string | null {
   const pathname = normalizePathname(requestedPathname);
+  const moreTab = tabs.find((tab) => tab.id === "more");
+  if (moreTab?.href && isPathWithin(pathname, moreTab.href)) {
+    return moreTab.id;
+  }
+
   if (pathname === assignedPatientPath) {
     return resolveAssignedTaskTab(search, tabs) ?? findTabById(tabs, "patients")?.id ?? null;
   }
@@ -126,5 +131,5 @@ export function resolveActiveMobileTabId(
     return patientDetailTab;
   }
 
-  return resolveNavigationItemTab(pathname, tabs) ?? tabs.find((tab) => tab.id === "more")?.id ?? null;
+  return resolveNavigationItemTab(pathname, tabs);
 }

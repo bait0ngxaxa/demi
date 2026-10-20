@@ -1,31 +1,22 @@
 // @vitest-environment jsdom
 
-import {
-  act,
-  Component,
-  createElement,
-  Suspense,
-  use,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { act, createElement, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const routerState = vi.hoisted(() => ({
   currentHref: "/app/patients/assigned?task=screening",
   pendingAction: false,
   unknownOutcome: false,
+  history: [] as string[],
+  historyIndex: 0,
   navigate: null as ((href: string) => void) | null,
+  back: null as (() => void) | null,
 }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => routerState.currentHref.split("?")[0],
   useSearchParams: () => new URLSearchParams(routerState.currentHref.split("?")[1] ?? ""),
-  useRouter: () => ({
-    push: (href: string) => routerState.navigate?.(href),
-  }),
 }));
 
 vi.mock("next/link", () => ({
@@ -44,21 +35,12 @@ vi.mock("next/link", () => ({
     return createElement("a", {
       ...props,
       href,
+      "data-prefetch": prefetch === false ? "false" : "true",
       onClick: (event: MouseEvent) => {
         event.preventDefault();
-        if (onNavigate) {
-          let navigationPrevented = false;
-          onNavigate({
-            preventDefault: () => {
-              navigationPrevented = true;
-            },
-          });
-          if (!navigationPrevented) {
-            routerState.navigate?.(href);
-          }
-        } else {
-          routerState.navigate?.(href);
-        }
+        let navigationPrevented = false;
+        onNavigate?.({ preventDefault: () => { navigationPrevented = true; } });
+        if (!navigationPrevented) routerState.navigate?.(href);
       },
     });
   },
@@ -105,184 +87,157 @@ const navigation: readonly ApplicationNavigationGroup[] = [
     items: [
       { href: "/app/family", label: "ญาติและผู้ดูแล", match: "prefix" },
       { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
+      { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
     ],
   },
 ];
 const projection = projectMobileNavigation(navigation);
-const pendingPages = new Map<string, Promise<void>>();
 let container: HTMLDivElement;
 let root: Root;
-let originalShowModal: PropertyDescriptor | undefined;
-let originalClose: PropertyDescriptor | undefined;
-let originalMatchMedia: typeof window.matchMedia;
-let desktopMatches = false;
-const mediaListeners = new Set<(event: MediaQueryListEvent) => void>();
-
-function Page({ href }: { href: string }): React.JSX.Element {
-  const pending = pendingPages.get(href);
-  if (pending) use(pending);
-  return (
-    <main id="application-main-content" tabIndex={-1}>
-      {href}
-      {routerState.pendingAction ? (
-        <form>
-          <button aria-busy="true" disabled type="submit">กำลังบันทึก</button>
-        </form>
-      ) : null}
-      {routerState.unknownOutcome ? (
-        <div data-navigation-guard="unknown-outcome">ต้องตรวจสอบผลก่อนออกจากหน้านี้</div>
-      ) : null}
-    </main>
-  );
-}
-
-class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-
-  static getDerivedStateFromError(): { failed: boolean } {
-    return { failed: true };
-  }
-
-  render(): ReactNode {
-    return this.state.failed
-      ? <main id="application-main-content" role="alert">โหลดหน้าไม่สำเร็จ</main>
-      : this.props.children;
-  }
-}
 
 function RouterHarness(): React.JSX.Element {
-  const [href, setHref] = useState(routerState.currentHref);
+  const [, setCurrentHref] = useState(routerState.currentHref);
 
   useEffect(() => {
-    routerState.navigate = (nextHref) => {
-      routerState.currentHref = nextHref;
-      setHref(nextHref);
+    routerState.navigate = (href) => {
+      routerState.history = routerState.history.slice(0, routerState.historyIndex + 1);
+      routerState.history.push(href);
+      routerState.historyIndex += 1;
+      routerState.currentHref = href;
+      setCurrentHref(href);
+    };
+    routerState.back = () => {
+      if (routerState.historyIndex === 0) return;
+
+      routerState.historyIndex -= 1;
+      const href = routerState.history[routerState.historyIndex];
+      if (!href) return;
+
+      routerState.currentHref = href;
+      setCurrentHref(href);
     };
 
     return () => {
       routerState.navigate = null;
+      routerState.back = null;
     };
   }, []);
 
   return (
     <NavigationWorkspaceProvider availableWorkspaces={projection.availableWorkspaces}>
       <MobileWorkspaceLabel />
-      <MobileBottomNavigation navigation={navigation} projection={projection} />
-      <PageErrorBoundary>
-        <Suspense fallback={<main id="application-main-content" tabIndex={-1}>กำลังโหลดหน้า</main>}>
-          <Page href={href} />
-        </Suspense>
-      </PageErrorBoundary>
+      <MobileBottomNavigation projection={projection} />
+      <main id="application-main-content" tabIndex={-1}>
+        {routerState.currentHref}
+        {routerState.pendingAction ? (
+          <button aria-busy="true" disabled type="button">กำลังบันทึก</button>
+        ) : null}
+        {routerState.unknownOutcome ? (
+          <div data-navigation-guard="unknown-outcome">ต้องตรวจสอบผลก่อนออกจากหน้านี้</div>
+        ) : null}
+      </main>
     </NavigationWorkspaceProvider>
   );
 }
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
-  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      this.setAttribute("open", "");
-    },
-  });
-  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
-  Object.defineProperty(HTMLDialogElement.prototype, "close", {
-    configurable: true,
-    value(this: HTMLDialogElement) {
-      this.removeAttribute("open");
-    },
-  });
-  originalMatchMedia = window.matchMedia;
-  window.matchMedia = ((query: string) => ({
-    matches: desktopMatches,
-    media: query,
-    addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => {
-      mediaListeners.add(listener);
-    },
-    removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => {
-      mediaListeners.delete(listener);
-    },
-  })) as unknown as typeof window.matchMedia;
-});
-
-afterAll(() => {
-  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
-  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
-  window.matchMedia = originalMatchMedia;
 });
 
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
-  pendingPages.clear();
-  desktopMatches = false;
   routerState.pendingAction = false;
   routerState.unknownOutcome = false;
-  mediaListeners.clear();
+  routerState.history = [];
+  routerState.historyIndex = 0;
   routerState.navigate = null;
+  routerState.back = null;
   vi.restoreAllMocks();
 });
 
 function mount(initialHref = "/app/patients/assigned?task=screening"): void {
   routerState.currentHref = initialHref;
+  routerState.history = [initialHref];
+  routerState.historyIndex = 0;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => root.render(createElement(RouterHarness)));
 }
 
-function moreTrigger(): HTMLButtonElement {
-  const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="เพิ่มเติม"]');
-  if (!trigger) throw new Error("Missing More navigation button");
-  return trigger;
-}
-
-function dialog(): HTMLDialogElement {
-  const element = container.querySelector<HTMLDialogElement>("dialog");
-  if (!element) throw new Error("Missing More navigation dialog");
-  return element;
+function moreLink(): HTMLAnchorElement {
+  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="เปิดเมนูเพิ่มเติม"]');
+  if (!link) throw new Error("Missing More navigation link");
+  return link;
 }
 
 function navigate(href: string): void {
   act(() => routerState.navigate?.(href));
 }
 
+function goBack(): void {
+  act(() => routerState.back?.());
+}
+
 describe("unified mobile bottom navigation", () => {
-  it("keeps the Patient workspace selected when opening a shared family route", () => {
+  it("uses a More history entry and browser back restores the previous page and workspace", () => {
     mount("/app/personal/appointments");
 
-    expect(container.querySelector('[aria-label="นัดหมาย"]')).not.toBeNull();
-    act(() => moreTrigger().click());
-
-    const familyLink = dialog().querySelector<HTMLAnchorElement>('a[href="/app/family"]');
-    if (!familyLink) throw new Error("Missing shared family destination in More");
-    act(() => familyLink.click());
-
-    expect(routerState.currentHref).toBe("/app/family");
-    expect(container.querySelector('[aria-label="นัดหมาย"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')).toBeNull();
+    expect(moreLink().tagName).toBe("A");
+    expect(moreLink().getAttribute("href")).toBe("/app/more?workspace=personal");
+    expect(moreLink().getAttribute("data-prefetch")).toBe("false");
+    expect(moreLink().hasAttribute("aria-current")).toBe(false);
     expect(container.textContent).toContain("พื้นที่ส่วนตัว");
-    act(() => moreTrigger().click());
-    expect(dialog().getAttribute("aria-label")).toBe("เมนูเพิ่มเติม · พื้นที่ส่วนตัว");
 
-    navigate("/app/patients/assigned");
-    expect(container.querySelector('[aria-label="ผู้ป่วยที่รับผิดชอบ"]')).not.toBeNull();
-    expect(container.textContent).toContain("พื้นที่งาน");
+    act(() => moreLink().click());
+    expect(routerState.currentHref).toBe("/app/more?workspace=personal");
+    expect(moreLink().getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.textContent).toContain("พื้นที่ส่วนตัว");
 
-    navigate("/app/settings");
-    expect(container.querySelector('[aria-label="ผู้ป่วยที่รับผิดชอบ"]')).not.toBeNull();
-    expect(container.textContent).toContain("พื้นที่งาน");
+    goBack();
+    expect(routerState.currentHref).toBe("/app/personal/appointments");
+    expect(container.querySelector('[aria-label="นัดหมาย"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.textContent).toContain("พื้นที่ส่วนตัว");
   });
 
-  it("defaults a direct shared-route URL to Work when both workspaces are available", () => {
-    mount("/app/family");
+  it("marks More active only on its route and reads a direct workspace query", () => {
+    mount("/app/more?workspace=personal");
 
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')).not.toBeNull();
-    expect(container.textContent).toContain("พื้นที่งาน");
+    expect(moreLink().getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('[aria-label="นัดหมาย"]')?.getAttribute("aria-current")).toBeNull();
+    expect(container.textContent).toContain("พื้นที่ส่วนตัว");
+
+    navigate("/app/family");
+    expect(moreLink().hasAttribute("aria-current")).toBe(false);
   });
 
-  it("keeps query task selection current across route and history changes", () => {
+  it("asks before navigating from More when a pending action is active", () => {
+    routerState.pendingAction = true;
+    mount("/app/patients/assigned?task=screening");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    act(() => moreLink().click());
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("มีรายการกำลังดำเนินการอยู่"));
+    expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
+    expect(moreLink().getAttribute("aria-current")).toBeNull();
+  });
+
+  it("allows the More link after the user confirms leaving a pending action", () => {
+    routerState.pendingAction = true;
+    mount("/app/patients/assigned?task=screening");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    act(() => moreLink().click());
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(routerState.currentHref).toBe("/app/more?workspace=work");
+    expect(moreLink().getAttribute("aria-current")).toBe("page");
+  });
+
+  it("keeps task tabs active as query navigation changes", () => {
     mount();
 
     expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
@@ -291,147 +246,11 @@ describe("unified mobile bottom navigation", () => {
     act(() => followup?.click());
     expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
 
-    navigate("/app/patients/assigned?task=screening");
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
     navigate("/app/patients/assigned");
     expect(container.querySelector('[aria-label="ผู้ป่วยที่รับผิดชอบ"]')?.getAttribute("aria-current")).toBe("page");
   });
 
-  it("opens More as an accessible dialog and traps keyboard focus", () => {
-    mount();
-    moreTrigger().focus();
-    act(() => moreTrigger().click());
-
-    expect(dialog().getAttribute("aria-label")).toBe("เมนูเพิ่มเติม · พื้นที่งาน");
-    expect(document.body.style.overflow).toBe("hidden");
-    expect(document.activeElement?.hasAttribute("data-drawer-close")).toBe(true);
-    expect(dialog().querySelector('nav[aria-label="เมนูเพิ่มเติม"]')).not.toBeNull();
-
-    const focusable = Array.from(
-      dialog().querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
-    );
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) throw new Error("Missing focusable dialog controls");
-
-    last.focus();
-    const tabForward = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Tab" });
-    document.dispatchEvent(tabForward);
-    expect(tabForward.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(first);
-
-    first.focus();
-    const tabBackward = new KeyboardEvent("keydown", {
-      bubbles: true,
-      cancelable: true,
-      key: "Tab",
-      shiftKey: true,
-    });
-    document.dispatchEvent(tabBackward);
-    expect(tabBackward.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(last);
-  });
-
-  it("closes on Escape and backdrop, restoring focus and body scrolling", () => {
-    mount();
-    moreTrigger().focus();
-    act(() => moreTrigger().click());
-    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" })));
-
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(document.body.style.overflow).toBe("");
-    expect(document.activeElement).toBe(moreTrigger());
-
-    act(() => moreTrigger().click());
-    act(() => dialog().dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(document.activeElement).toBe(moreTrigger());
-  });
-
-  it("closes and moves focus to Main after route changes or crossing the desktop breakpoint", () => {
-    mount();
-    act(() => moreTrigger().click());
-    navigate("/app/patients/provision");
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(document.activeElement?.id).toBe("application-main-content");
-
-    act(() => moreTrigger().click());
-    desktopMatches = true;
-    act(() => {
-      for (const listener of mediaListeners) {
-        listener({ matches: true, media: "(min-width: 1024px)" } as MediaQueryListEvent);
-      }
-    });
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(document.activeElement?.id).toBe("application-main-content");
-    expect(document.body.style.overflow).toBe("");
-  });
-
-  it("announces a pending secondary navigation and clears pending state after completion", async () => {
-    let finish: () => void = () => undefined;
-    pendingPages.set("/app/patients/provision", new Promise<void>((resolve) => { finish = resolve; }));
-    mount();
-    act(() => moreTrigger().click());
-
-    const link = Array.from(dialog().querySelectorAll<HTMLAnchorElement>("a")).find(
-      (anchor) => anchor.getAttribute("href") === "/app/patients/provision",
-    );
-    if (!link) throw new Error("Missing Patient provisioning link in More");
-    await act(async () => link.click());
-
-    expect(container.querySelector("dialog")).toBeNull();
-    expect(moreTrigger().getAttribute("aria-busy")).toBe("true");
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("กำลังเปิดหน้า");
-    expect(document.activeElement?.id).toBe("application-main-content");
-
-    await act(async () => finish());
-    expect(moreTrigger().hasAttribute("aria-busy")).toBe(false);
-    expect(container.querySelector('[role="status"]')?.textContent).toBe("");
-  });
-
-  it("asks before navigating away from a pending form action and preserves the page when cancelled", () => {
-    routerState.pendingAction = true;
-    mount();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-
-    const followup = container.querySelector<HTMLAnchorElement>('[aria-label="ติดตามผู้ป่วย"]');
-    act(() => followup?.click());
-
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("มีรายการกำลังดำเนินการอยู่"));
-    expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
-    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
-  });
-
-  it("allows navigation when the user confirms leaving a pending action", () => {
-    routerState.pendingAction = true;
-    mount();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-
-    const followup = container.querySelector<HTMLAnchorElement>('[aria-label="ติดตามผู้ป่วย"]');
-    act(() => followup?.click());
-
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(routerState.currentHref).toBe("/app/patients/assigned?task=followup");
-    expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
-  });
-
-  it("keeps More open when navigation from an unknown outcome is cancelled", () => {
-    routerState.unknownOutcome = true;
-    mount();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    act(() => moreTrigger().click());
-
-    const provisioning = dialog().querySelector<HTMLAnchorElement>('a[href="/app/patients/provision"]');
-    if (!provisioning) throw new Error("Missing Patient provisioning link in More");
-    act(() => provisioning.click());
-
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("ระบบยังยืนยันผลการบันทึกไม่ได้"));
-    expect(dialog()).toBeTruthy();
-    expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
-    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')?.textContent).toBe("ต้องตรวจสอบผลก่อนออกจากหน้านี้");
-  });
-
-  it("asks before leaving an active unknown outcome through a bottom tab and preserves route and state when cancelled", () => {
+  it("asks before changing tabs when an unresolved outcome is active", () => {
     routerState.unknownOutcome = true;
     mount("/app/personal/wellness");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -442,6 +261,5 @@ describe("unified mobile bottom navigation", () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("ระบบยังยืนยันผลการบันทึกไม่ได้"));
     expect(routerState.currentHref).toBe("/app/personal/wellness");
     expect(container.querySelector('[aria-label="สุขภาพ"]')?.getAttribute("aria-current")).toBe("page");
-    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')?.textContent).toBe("ต้องตรวจสอบผลก่อนออกจากหน้านี้");
   });
 });

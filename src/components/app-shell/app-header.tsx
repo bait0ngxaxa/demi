@@ -20,7 +20,9 @@ export function AppHeader({ roleLabels }: AppHeaderProps): React.JSX.Element {
           </p>
         </div>
       </div>
-      <LogoutButton />
+      <div className="hidden lg:block">
+        <LogoutButton />
+      </div>
     </header>
   );
 }

@@ -26,6 +26,10 @@ describe("workspace context presentation", () => {
     expect(getWorkspaceContextForPathname("/app/family")).toBeNull();
     expect(getWorkspaceContextForPathname("/app/settings/contact")).toBeNull();
     expect(getWorkspaceContextForPathname("/app/support")).toBeNull();
+    expect(getWorkspaceContextForPathname("/app/more?workspace=personal")).toBe("personal");
+    expect(getWorkspaceContextForPathname("/app/more", "workspace=work")).toBe("work");
+    expect(getWorkspaceContextForPathname("/app/more?workspace=admin")).toBeNull();
+    expect(getWorkspaceContextForPathname("/app/more?workspace=personal&workspace=work")).toBeNull();
   });
 
   it("falls back to an available context when the selected route is stale", () => {
@@ -55,6 +59,12 @@ describe("workspace context presentation", () => {
     ).toBe("personal");
     expect(
       resolveWorkspaceContextForPathname("/app/patients/assigned", bothContexts, "personal"),
+    ).toBe("work");
+    expect(
+      resolveWorkspaceContextForPathname("/app/more?workspace=personal", bothContexts, "work"),
+    ).toBe("personal");
+    expect(
+      resolveWorkspaceContextForPathname("/app/more?workspace=personal", ["work"], "work"),
     ).toBe("work");
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { resolveWorkspaceContextForPathname } from "./navigation-state";
 import type { ApplicationWorkspaceContext } from "./navigation-types";
@@ -18,15 +18,17 @@ export function NavigationWorkspaceProvider({
   children,
 }: NavigationWorkspaceProviderProps): React.JSX.Element {
   const pathname = usePathname() ?? "";
-  const selectionIdentity = JSON.stringify([pathname, availableWorkspaces]) ?? "[]";
+  const search = useSearchParams().toString();
+  const selectionIdentity = JSON.stringify([pathname, search, availableWorkspaces]) ?? "[]";
   const [selectionState, setSelectionState] = useState(() => ({
     identity: selectionIdentity,
-    context: resolveWorkspaceContextForPathname(pathname, availableWorkspaces, null),
+    context: resolveWorkspaceContextForPathname(pathname, availableWorkspaces, null, search),
   }));
   const selectedContext = resolveWorkspaceContextForPathname(
     pathname,
     availableWorkspaces,
     selectionState.context,
+    search,
   );
 
   if (selectionState.identity !== selectionIdentity) {

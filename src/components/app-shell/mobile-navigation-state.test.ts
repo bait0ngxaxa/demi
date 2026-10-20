@@ -64,11 +64,11 @@ const workTabs: MobileNavigationTab[] = [
   },
   {
     id: "more",
-    href: null,
+    href: "/app/more",
     label: "เพิ่มเติม",
     accessibleLabel: "เปิดเมนูเพิ่มเติม",
     icon: "more",
-    match: "exact",
+    match: "prefix",
     activeRoute: "more",
   },
 ];
@@ -94,11 +94,11 @@ const personalTabs: MobileNavigationTab[] = [
   },
   {
     id: "more",
-    href: null,
+    href: "/app/more",
     label: "เพิ่มเติม",
     accessibleLabel: "เปิดเมนูเพิ่มเติม",
     icon: "more",
-    match: "exact",
+    match: "prefix",
     activeRoute: "more",
   },
 ];
@@ -115,11 +115,11 @@ const hospitalPatientTabs: MobileNavigationTab[] = [
   },
   {
     id: "more",
-    href: null,
+    href: "/app/more",
     label: "เพิ่มเติม",
     accessibleLabel: "เปิดเมนูเพิ่มเติม",
     icon: "more",
-    match: "exact",
+    match: "prefix",
     activeRoute: "more",
   },
 ];
@@ -127,11 +127,11 @@ const hospitalPatientTabs: MobileNavigationTab[] = [
 describe("mobile navigation active route", () => {
   it("keeps Home exact and matches nested destinations on segment boundaries", () => {
     expect(resolveActiveMobileTabId("/app", "", workTabs)).toBe("home");
-    expect(resolveActiveMobileTabId("/app/workforce", "", workTabs)).toBe("more");
+    expect(resolveActiveMobileTabId("/app/workforce", "", workTabs)).toBeNull();
     expect(resolveActiveMobileTabId("/app/admin/hospitals/child-id", "", workTabs)).toBe(
       "admin-hospitals",
     );
-    expect(resolveActiveMobileTabId("/app/admin/hospitals-other", "", workTabs)).toBe("more");
+    expect(resolveActiveMobileTabId("/app/admin/hospitals-other", "", workTabs)).toBeNull();
     expect(resolveActiveMobileTabId("/app/hospitals/reporting/export", "", workTabs)).toBe(
       "hospital-reports",
     );
@@ -183,18 +183,15 @@ describe("mobile navigation active route", () => {
     ).toBe("patients");
   });
 
-  it("uses More for secondary destinations and falls back safely on invalid task modes", () => {
+  it("marks only the More route active and falls back safely on invalid task modes", () => {
     for (const pathname of [
-      "/app/patients/provision",
-      "/app/settings",
-      "/app/family",
-      "/app/admin/hospital-onboarding/request-id",
+      "/app/more",
+      "/app/more/secondary",
     ]) {
       expect(resolveActiveMobileTabId(pathname, "", workTabs)).toBe("more");
     }
-    expect(resolveActiveMobileTabId("/app/patients/assigned/other", "task=screening", workTabs)).toBe(
-      "more",
-    );
+    expect(resolveActiveMobileTabId("/app/settings", "", workTabs)).toBeNull();
+    expect(resolveActiveMobileTabId("/app/patients/assigned/other", "task=screening", workTabs)).toBeNull();
   });
 
   it("updates active selection as route history moves between task modes and details", () => {

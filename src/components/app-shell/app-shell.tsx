@@ -40,7 +40,7 @@ export function AppShell({
             {children}
           </main>
         </div>
-        <MobileBottomNavigation navigation={navigation} projection={mobileNavigation} />
+        <MobileBottomNavigation projection={mobileNavigation} />
       </div>
     </NavigationWorkspaceProvider>
   );

@@ -76,7 +76,95 @@ const iconPaths: Record<MobileNavigationIcon, React.ReactNode> = {
       <circle cx="19" cy="12" r="1" />
     </>
   ),
+  default: (
+    <>
+      <path d="M6 4.5h8l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V6a1.5 1.5 0 0 1 2-1.5Z" />
+      <path d="M13.5 4.5V9H18M8 13h8M8 16h5" />
+    </>
+  ),
+  family: (
+    <>
+      <circle cx="9" cy="8" r="3" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M3.5 20v-1a5.5 5.5 0 0 1 11 0v1zM16 14.5a4.5 4.5 0 0 1 4.5 4.5v1H17" />
+    </>
+  ),
+  knowledge: (
+    <>
+      <path d="M12 6.5c-2.4-2-5.2-2.4-8-1.5v13c2.8-.9 5.6-.5 8 1.5 2.4-2 5.2-2.4 8-1.5V5c-2.8-.9-5.6-.5-8 1.5Z" />
+      <path d="M12 6.5v13" />
+    </>
+  ),
+  medications: (
+    <>
+      <path d="M8.5 19.5a4.5 4.5 0 0 1-3.2-7.7l6.5-6.5a4.5 4.5 0 0 1 6.4 6.4l-6.5 6.5a4.5 4.5 0 0 1-3.2 1.3Z" />
+      <path d="m8.5 8.5 7 7" />
+    </>
+  ),
+  measurements: (
+    <>
+      <path d="M4 20V4M4 20h16" />
+      <path d="m7 15 3-3 2.5 2 4.5-6" />
+      <circle cx="17" cy="8" r="1" />
+    </>
+  ),
+  profile: (
+    <>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M4 20a8 8 0 0 1 16 0z" />
+    </>
+  ),
+  services: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7v10M7 12h10" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="m9.8 3.8.5-1.3h3.4l.5 1.3 1.4.8 1.3-.4 1.7 2.9-1 1v1.7l1 1-1.7 2.9-1.3-.4-1.4.8-.5 1.3h-3.4l-.5-1.3-1.4-.8-1.3.4-1.7-2.9 1-1V8l-1-1 1.7-2.9 1.3.4z" transform="translate(0 2)" />
+      <circle cx="12" cy="12" r="2.7" />
+    </>
+  ),
+  support: (
+    <>
+      <path d="M20 11.5a7.8 7.8 0 0 1-8 7.5 8.6 8.6 0 0 1-3.4-.7L4 20l1.3-3.8A7.1 7.1 0 0 1 4 12c0-4.2 3.6-7.5 8-7.5s8 3.2 8 7Z" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 4.3 1.7c-1.1 1-1.8 1.2-1.8 2.6M12 16.8h.01" />
+    </>
+  ),
 };
+
+export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
+  const pathname = href.split("?")[0]?.replace(/\/+$/, "") ?? "";
+
+  if (pathname === "/app" || pathname === "/app/personal") return "home";
+  if (pathname.startsWith("/app/personal/appointments")) return "appointments";
+  if (pathname.startsWith("/app/personal/wellness")) return "wellness";
+  if (pathname.startsWith("/app/personal/care")) return "care";
+  if (pathname.startsWith("/app/personal/profile")) return "profile";
+  if (pathname.startsWith("/app/personal/medications")) return "medications";
+  if (pathname.startsWith("/app/personal/measurements")) return "measurements";
+  if (pathname.startsWith("/app/personal/knowledge") || pathname.startsWith("/app/personal/news")) {
+    return "knowledge";
+  }
+  if (pathname.startsWith("/app/personal/services") || pathname.startsWith("/app/patients/service-")) {
+    return "services";
+  }
+  if (pathname === "/app/family" || pathname.startsWith("/app/family/")) return "family";
+  if (pathname === "/app/settings" || pathname.startsWith("/app/settings/")) return "settings";
+  if (pathname === "/app/support" || pathname.startsWith("/app/support/")) return "support";
+  if (pathname.startsWith("/app/patients")) return "patients";
+  if (pathname.startsWith("/app/workforce")) return "workforce";
+  if (pathname.startsWith("/app/admin/hospital-onboarding")) return "review";
+  if (pathname.startsWith("/app/admin/reporting") || pathname.startsWith("/app/hospitals/reporting")) {
+    return "reports";
+  }
+  if (pathname.startsWith("/app/admin/hospitals") || pathname.startsWith("/app/hospitals")) {
+    return pathname.startsWith("/app/hospitals/knowledge") ? "knowledge" : "hospital";
+  }
+
+  return "default";
+}
 
 export function MobileNavigationGlyph({
   icon,

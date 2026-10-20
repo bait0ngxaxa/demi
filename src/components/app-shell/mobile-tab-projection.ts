@@ -16,7 +16,16 @@ export type MobileNavigationIcon =
   | "workforce"
   | "reports"
   | "review"
-  | "more";
+  | "more"
+  | "default"
+  | "family"
+  | "knowledge"
+  | "medications"
+  | "measurements"
+  | "profile"
+  | "services"
+  | "settings"
+  | "support";
 
 export type MobileNavigationMatch = "exact" | "prefix";
 
@@ -46,11 +55,11 @@ export type MobileNavigationProjection = {
 
 const moreTab: MobileNavigationTab = {
   id: "more",
-  href: null,
+  href: "/app/more",
   label: "เพิ่มเติม",
   accessibleLabel: "เปิดเมนูเพิ่มเติม",
   icon: "more",
-  match: "exact",
+  match: "prefix",
   activeRoute: "more",
 };
 
