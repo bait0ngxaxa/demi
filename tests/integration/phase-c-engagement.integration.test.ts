@@ -5,7 +5,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createPersonalMedication, stopPersonalMedication } from "@/modules/medications/services/personal-medication-service";
 import { setOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
-import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryInternals } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { MEDICATION_LINE_REMINDER_TEXT } from "@/modules/medications/domain/medication-line-reminders";
 import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
@@ -186,6 +186,78 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(rows[0]).toMatchObject({ localDate: new Date("2026-10-14T00:00:00.000Z"), localTime: new Date("1970-01-01T07:00:00.000Z"), state: "PROVIDER_ACCEPTED", attemptCount: 1 });
   });
 
+  it.each([10, 50, 100, 200])("drains %i synchronized eligible patients across repeated scheduler batches without duplicates", async (size) => {
+    const subjects = [];
+    for (let index = 0; index < size; index += 1) subjects.push(await setupReminderSubject());
+    await prisma.notificationSchedulerState.update({ where: { id: 1 }, data: { lastTickCompletedAt: null, lastTickStatus: null } });
+    let clock = 0;
+    const keys = new Set<string>();
+    vi.spyOn(LineMessagingClient.prototype, "pushText").mockImplementation(async (_user, _text, retryKey) => {
+      expect(keys.has(retryKey)).toBe(false);
+      keys.add(retryKey); clock += 400; return { kind: "ACCEPTED" };
+    });
+    const tickStartedAt = performance.now();
+    const result = await runNotificationSchedulerTick({
+      database: prisma, now: () => new Date(reminderNow.getTime() + clock), monotonicNow: () => clock,
+      drainAppointment: async () => ({ claimed: 0, remainingDue: 0 }),
+      purgeAppointment: async () => 0, purgeMedication: async () => 0, logSummary: () => undefined,
+    });
+    expect(result).toMatchObject({ status: "COMPLETED", steps: { medicationDrain: { batches: Math.ceil(size / 5), counts: { providerAccepted: size, remainingDue: 0, deliveryWindowExpired: 0 } } } });
+    process.stdout.write(`${JSON.stringify({ benchmark: "local-postgresql-mocked-line", size, simulatedProviderAndDbMs: clock, tickWallMs: Math.round(performance.now() - tickStartedAt) })}\n`);
+    expect(keys.size).toBe(size);
+    const rows = await reminderRows(subjects.map(({ medicationId }) => medicationId));
+    expect(rows).toHaveLength(size);
+    expect(rows.every((row) => row.state === "PROVIDER_ACCEPTED" && row.attemptCount === 1)).toBe(true);
+    expect(clock).toBeLessThan(15 * 60_000);
+  }, 120_000);
+
+  it.each([1, 2])("releases an undispatched medication claim when the budget expires at revalidation %i", async (at) => {
+    const subject = await setupReminderSubject();
+    let allow = true;
+    let checks = 0;
+    revalidation.beforeEach = () => { checks += 1; if (checks === at) allow = false; };
+    const push = vi.fn(async (): Promise<LinePushResult> => ({ kind: "ACCEPTED" }));
+    const result = await drainMedicationLineReminderOutbox({ database: prisma, now: () => reminderNow,
+      shouldContinue: () => allow, push, logSummary: () => undefined });
+    expect(result).toMatchObject({ claimed: 1, remainingDue: 1, providerAccepted: 0 });
+    expect(push).not.toHaveBeenCalled();
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "PENDING", attemptCount: 0, firstAttemptAt: null, leaseToken: null }]);
+    revalidation.beforeEach = () => undefined;
+    expect(await drainAt(reminderNow, [])).toMatchObject({ providerAccepted: 1, remainingDue: 0 });
+  });
+
+  it("restores a retry reservation on budget stop without losing its ambiguous outcome or stable key", async () => {
+    const subject = await setupReminderSubject();
+    const calls: PushCall[] = [];
+    await drainAt(reminderNow, calls, () => ({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" }));
+    const [before] = await reminderRows([subject.medicationId]);
+    if (!before) throw new Error("expected durable retry");
+    let checks = 0;
+    const push = vi.fn(async (): Promise<LinePushResult> => ({ kind: "ACCEPTED" }));
+    const stopped = await drainMedicationLineReminderOutbox({ database: prisma, now: () => before.dueAt,
+      shouldContinue: () => ++checks < 3, push, logSummary: () => undefined });
+    expect(stopped).toMatchObject({ claimed: 1, remainingDue: 1 });
+    expect(push).not.toHaveBeenCalled();
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "RETRY_SCHEDULED", attemptCount: 1,
+      firstAttemptAt: before.firstAttemptAt, lastAttemptAt: before.lastAttemptAt,
+      safeOutcome: "AMBIGUOUS_TRANSPORT_FAILURE", retryKey: before.retryKey, leaseToken: null }]);
+    expect(await drainAt(before.dueAt, calls, () => ({ kind: "DUPLICATE_ACCEPTED" }))).toMatchObject({ providerAccepted: 1 });
+    expect(calls.map(({ retryKey }) => retryKey)).toEqual([before.retryKey, before.retryKey]);
+  });
+
+  it("settles an owned slow attempt, stops mid-batch and recovers the remaining durable work after restart", async () => {
+    const subject = await setupReminderSubject();
+    await addMedication(subject.patient.actor, ["07:00"]);
+    let clock = 0;
+    const push = vi.fn(async (): Promise<LinePushResult> => { clock += 8_000; return { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }; });
+    const first = await drainMedicationLineReminderOutbox({ database: prisma, now: () => new Date(reminderNow.getTime() + clock),
+      shouldContinue: () => clock < 1_000, push, random: () => 0.5, logSummary: () => undefined });
+    expect(first).toMatchObject({ claimed: 1, retryScheduled: 1, remainingDue: 1 });
+    expect(push).toHaveBeenCalledOnce();
+    const recovered = await drainAt(new Date(reminderNow.getTime() + 300_000), []);
+    expect(recovered).toMatchObject({ providerAccepted: 2, remainingDue: 0 });
+  });
+
   it("does not materialize after medication reminders are opted out or the medication is stopped", async () => {
     const subject = await setupReminderSubject();
     await setOwnMedicationLineReminderPreference(subject.patient.actor, false, { database: prisma, now: () => reminderNow });
@@ -250,7 +322,7 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     const subject = await setupReminderSubject();
     expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
     const calls: PushCall[] = [];
-    expect(await drainAt(bangkok("2026-10-14T13:00:00.000"), calls)).toMatchObject({ materialized: 0, claimed: 0, suppressed: 1 });
+    expect(await drainAt(bangkok("2026-10-14T13:00:00.000"), calls)).toMatchObject({ materialized: 0, claimed: 0, suppressed: 1, deliveryWindowExpired: 1 });
     expect(calls).toEqual([]);
     expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "DELIVERY_WINDOW_EXPIRED", attemptCount: 0, firstAttemptAt: null }]);
   });
@@ -261,10 +333,23 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     let clock = reminderNow;
     const calls: PushCall[] = [];
     const result = await drainAt(() => clock, calls, () => { clock = bangkok("2026-10-14T07:16:00.000"); return { kind: "ACCEPTED" }; });
-    expect(result).toMatchObject({ materialized: 2, claimed: 2, providerAccepted: 1, suppressed: 1 });
+    expect(result).toMatchObject({ materialized: 2, claimed: 2, providerAccepted: 1, suppressed: 1, deliveryWindowExpired: 1 });
     expect(calls).toHaveLength(1);
     const rows = await reminderRows([subject.medicationId, secondMedicationId]);
     expect(rows.map(({ state, safeOutcome }) => `${state}:${safeOutcome}`).sort()).toEqual(["PROVIDER_ACCEPTED:null", "SUPPRESSED:DELIVERY_WINDOW_EXPIRED"]);
+  });
+
+  it("prioritizes a due first attempt ahead of older retry work and still later settles that retry", async () => {
+    const first = await setupReminderSubject();
+    await drainAt(reminderNow, [], () => ({ kind: "RETRYABLE_HTTP_FAILURE" }));
+    const fresh = await setupReminderSubject();
+    await prisma.medicationLineReminderNotification.updateMany({ where: { personalMedicationId: first.medicationId }, data: { dueAt: new Date(reminderNow.getTime() - 1) } });
+    const calls: string[] = [];
+    await drainMedicationLineReminderOutbox({ database: prisma, now: () => reminderNow, batchSize: 1,
+      push: async (user) => { calls.push(user); return { kind: "ACCEPTED" }; }, logSummary: () => undefined });
+    expect(calls).toEqual([fresh.lineUserId]);
+    expect(await drainAt(reminderNow, [])).toMatchObject({ providerAccepted: 1 });
+    expect(await reminderRows([first.medicationId, fresh.medicationId])).toHaveLength(2);
   });
 
   it("retries an on-time occurrence after the lateness tolerance with the same retry key", async () => {
@@ -363,7 +448,7 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     const subject = await setupReminderSubject();
     expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
     const readiness = await getNotificationSchedulerReadiness({ database: prisma, now: bangkok("2026-10-14T07:03:00.000") });
-    expect(readiness.outboxes.medicationLineReminders).toEqual({ pending: 1, oldestPendingAgeSeconds: 120 });
+    expect(readiness.outboxes.medicationLineReminders).toEqual({ pending: 1, oldestPendingAgeSeconds: 120, oldestDueAgeSeconds: 180 });
     expect(JSON.stringify(readiness)).not.toContain(subject.medicationId);
     expect(JSON.stringify(readiness)).not.toContain(subject.patient.userId);
   });

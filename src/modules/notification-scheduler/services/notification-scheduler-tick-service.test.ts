@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
+  NOTIFICATION_SCHEDULER_MAX_BATCHES_PER_QUEUE,
   NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS,
   runNotificationSchedulerTick,
   type NotificationSchedulerTickDependencies,
@@ -143,91 +144,52 @@ describe("notification scheduler tick", () => {
     expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("FAILED");
   });
 
-  it.each(["medication", "appointment"] as const)("makes bounded progress for a %s-only backlog", async (backlogged) => {
-    const harness = fakeDatabase();
-    const drainMedication = vi.fn(async () => drainCounts(backlogged === "medication" ? NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE : 0));
-    const drainAppointment = vi.fn(async () => drainCounts(backlogged === "appointment" ? NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE : 0));
-    const dependencies = steps({ drainMedication, drainAppointment });
-    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
-    expect(drainMedication).toHaveBeenCalledOnce();
-    expect(drainAppointment).toHaveBeenCalledOnce();
-    expect(drainMedication).toHaveBeenCalledWith(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
-    expect(drainAppointment).toHaveBeenCalledWith(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
-    expect(result).toMatchObject({
-      status: "DEFERRED",
-      steps: {
-        medicationDrain: { status: backlogged === "medication" ? "DEFERRED" : "COMPLETED" },
-        appointmentDrain: { status: backlogged === "appointment" ? "DEFERRED" : "COMPLETED" },
-      },
-    });
-    expect(harness.executeRaw).toHaveBeenCalledOnce();
-    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
+  it.each(["medication", "appointment"] as const)("bounds a continuously populated %s-only backlog", async (backlogged) => {
+    const drainMedication = vi.fn(async () => ({ ...drainCounts(backlogged === "medication" ? 5 : 0), remainingDue: backlogged === "medication" ? 100 : 0 }));
+    const drainAppointment = vi.fn(async () => ({ ...drainCounts(backlogged === "appointment" ? 5 : 0), remainingDue: backlogged === "appointment" ? 100 : 0 }));
+    const result = await runNotificationSchedulerTick({ ...steps({ drainMedication, drainAppointment }), database: fakeDatabase().database });
+    expect(backlogged === "medication" ? drainMedication : drainAppointment).toHaveBeenCalledTimes(NOTIFICATION_SCHEDULER_MAX_BATCHES_PER_QUEUE);
+    expect(backlogged === "medication" ? drainAppointment : drainMedication).toHaveBeenCalledOnce();
+    expect(result.status).toBe("DEFERRED");
   });
 
-  it.each(["medication", "appointment"] as const)("still gives the other queue a turn after a slow %s batch", async (slowQueue) => {
-    const harness = fakeDatabase();
+  it.each(["medication", "appointment"] as const)("gives both queues repeated turns with slow %s requests", async (slowQueue) => {
     let clock = 0;
-    const slowDrain = vi.fn(async (batchSize: number) => {
-      clock += batchSize * 8_000;
-      return drainCounts(batchSize);
+    const turns: string[] = [];
+    const drain = (queue: string) => vi.fn(async (batchSize: number) => {
+      turns.push(queue);
+      clock += batchSize * (queue === slowQueue ? 8_000 : 100);
+      return { ...drainCounts(batchSize), remainingDue: 100 };
     });
-    const quickDrain = vi.fn(async () => drainCounts(0));
-    const dependencies = steps({
-      drainMedication: slowQueue === "medication" ? slowDrain : quickDrain,
-      drainAppointment: slowQueue === "appointment" ? slowDrain : quickDrain,
-      monotonicNow: () => clock,
-    });
-
-    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
-
-    expect(dependencies.drainMedication).toHaveBeenCalledOnce();
-    expect(dependencies.drainAppointment).toHaveBeenCalledOnce();
-    expect(result).toMatchObject({
-      status: "DEFERRED",
-      steps: {
-        medicationDrain: { status: slowQueue === "medication" ? "DEFERRED" : "COMPLETED" },
-        appointmentDrain: { status: slowQueue === "appointment" ? "DEFERRED" : "COMPLETED" },
-      },
-    });
-    expect(clock).toBe(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 8_000);
+    const result = await runNotificationSchedulerTick({ ...steps({
+      drainMedication: drain("medication"), drainAppointment: drain("appointment"), monotonicNow: () => clock,
+    }), database: fakeDatabase().database });
+    expect(turns.slice(0, 4)).toEqual(["medication", "appointment", "medication", "appointment"]);
+    expect(result.status).toBe("DEFERRED");
+    expect(clock).toBeLessThan(221_000);
   });
 
-  it("gives both full queues a bounded turn when every provider call reaches its timeout", async () => {
-    const harness = fakeDatabase();
-    let clock = 0;
-    let activePushes = 0;
-    let maximumConcurrentPushes = 0;
-    const slowProviderPush = vi.fn(async () => {
-      activePushes += 1;
-      maximumConcurrentPushes = Math.max(maximumConcurrentPushes, activePushes);
-      clock += 8_000;
-      activePushes -= 1;
-    });
-    const slowDrain = vi.fn(async (batchSize: number) => {
-      for (let index = 0; index < batchSize; index += 1) await slowProviderPush();
-      return drainCounts(batchSize);
-    });
-    const dependencies = steps({ drainMedication: slowDrain, drainAppointment: slowDrain, monotonicNow: () => clock });
+  it("continues the healthy queue after a later round fails without leaking error details", async () => {
+    const medication = vi.fn().mockResolvedValueOnce({ ...drainCounts(5), remainingDue: 10 }).mockRejectedValueOnce(new Error("private"));
+    const appointment = vi.fn().mockResolvedValueOnce({ ...drainCounts(5), remainingDue: 5 }).mockResolvedValueOnce({ ...drainCounts(5), remainingDue: 0 });
+    const result = await runNotificationSchedulerTick({ ...steps({ drainMedication: medication, drainAppointment: appointment }), database: fakeDatabase().database });
+    expect(result).toMatchObject({ status: "FAILED", steps: { medicationDrain: { status: "FAILED", batches: 1 }, appointmentDrain: { status: "COMPLETED", batches: 2 } } });
+    expect(JSON.stringify(result)).not.toContain("private");
+  });
 
-    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
-
-    expect(slowDrain).toHaveBeenCalledTimes(2);
-    expect(slowDrain).toHaveBeenNthCalledWith(1, NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
-    expect(slowDrain).toHaveBeenNthCalledWith(2, NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
-    expect(slowProviderPush).toHaveBeenCalledTimes(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 2);
-    expect(maximumConcurrentPushes).toBe(1);
-    expect(clock).toBe(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 2 * 8_000);
-    expect(result).toMatchObject({
-      status: "DEFERRED",
-      steps: {
-        medicationDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT", batches: 1 },
-        appointmentDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT", batches: 1 },
-        appointmentPurge: { status: "COMPLETED" },
-        medicationPurge: { status: "COMPLETED" },
-      },
-    });
-    expect(harness.executeRaw).toHaveBeenCalledOnce();
-    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
+  it.each(["medication", "appointment"] as const)("maintains measurable progress over five ticks with slow %s work", async (slowQueue) => {
+    for (let tick = 0; tick < 5; tick++) {
+      let clock = 0;
+      const drain = (queue: string) => async (batchSize: number) => {
+        clock += batchSize * (queue === slowQueue ? 8_000 : 400);
+        return { ...drainCounts(batchSize), remainingDue: 1000 };
+      };
+      const result = await runNotificationSchedulerTick({ ...steps({ drainMedication: drain("medication"), drainAppointment: drain("appointment"), monotonicNow: () => clock }), database: fakeDatabase().database });
+      if (result.status === "SKIPPED") throw new Error("unexpected skip");
+      expect(result.steps.medicationDrain.counts.claimed).toBeGreaterThanOrEqual(20);
+      expect(result.steps.appointmentDrain.counts.claimed).toBeGreaterThanOrEqual(20);
+      expect(result.status).toBe("DEFERRED");
+    }
   });
 
   it("marks later work deferred when the launch budget is exhausted", async () => {
@@ -249,7 +211,7 @@ describe("notification scheduler tick", () => {
     expect(result).toMatchObject({
       status: "DEFERRED",
       steps: {
-        medicationDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT" },
+        medicationDrain: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
         appointmentDrain: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
         appointmentPurge: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
         medicationPurge: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },

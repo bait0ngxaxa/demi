@@ -57,6 +57,7 @@ export type AppointmentLineNotificationDrainResult = {
   suppressed: number;
   permanentFailure: number;
   unknownOutcome: number;
+  remainingDue: number;
 };
 
 export type AppointmentLineNotificationDeliveryDependencies = {
@@ -67,6 +68,7 @@ export type AppointmentLineNotificationDeliveryDependencies = {
   random?: () => number;
   familyAppointmentReadEnabled?: () => boolean;
   batchSize?: number;
+  shouldContinue?: () => boolean;
   logSummary?: (result: AppointmentLineNotificationDrainResult) => void;
 };
 
@@ -437,6 +439,16 @@ function countState(
   else if (state === AppointmentLineNotificationState.OUTCOME_UNKNOWN) result.unknownOutcome += 1;
 }
 
+// A budget stop before dispatch must release only this worker's lease and undo an unused reservation.
+async function releaseUndispatchedClaim(database: DeliveryDatabase, notification: Claim, reserved: boolean, now: Date): Promise<void> {
+  await database.appointmentLineNotification.updateMany({
+    where: { id: notification.id, state: AppointmentLineNotificationState.CLAIMED, leaseToken: notification.leaseToken, attemptCount: notification.attemptCount + (reserved ? 1 : 0) },
+    data: { state: notification.firstAttemptAt ? AppointmentLineNotificationState.RETRY_SCHEDULED : AppointmentLineNotificationState.PENDING,
+      attemptCount: notification.attemptCount, firstAttemptAt: notification.firstAttemptAt, lastAttemptAt: notification.lastAttemptAt,
+      safeOutcome: notification.safeOutcome, leaseToken: null, leaseExpiresAt: null, updatedAt: now },
+  });
+}
+
 export async function drainAppointmentLineNotificationOutbox(
   dependencies: AppointmentLineNotificationDeliveryDependencies = {},
 ): Promise<AppointmentLineNotificationDrainResult> {
@@ -447,6 +459,7 @@ export async function drainAppointmentLineNotificationOutbox(
   }
 
   const result: AppointmentLineNotificationDrainResult = {
+    remainingDue: 0,
     claimed: 0,
     providerAccepted: 0,
     retryScheduled: 0,
@@ -456,6 +469,7 @@ export async function drainAppointmentLineNotificationOutbox(
   };
 
   for (let index = 0; index < batchSize; index += 1) {
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) break;
     const notification = await claimDueNotification(database, nowOf(dependencies));
     if (!notification) break;
     result.claimed += 1;
@@ -520,6 +534,10 @@ export async function drainAppointmentLineNotificationOutbox(
       continue;
     }
 
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) {
+      await releaseUndispatchedClaim(database, notification, false, nowOf(dependencies));
+      break;
+    }
     const attempt = await reserveProviderAttempt(database, notification, nowOf(dependencies));
     if (!attempt) continue;
 
@@ -546,6 +564,10 @@ export async function drainAppointmentLineNotificationOutbox(
       continue;
     }
 
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) {
+      await releaseUndispatchedClaim(database, notification, true, nowOf(dependencies));
+      break;
+    }
     let providerOutcome: LinePushResult;
     try {
       providerOutcome = await (dependencies.push ?? pushWithLine)(
@@ -560,6 +582,14 @@ export async function drainAppointmentLineNotificationOutbox(
     countState(result, await finishProviderOutcome(database, notification, attempt, providerOutcome, dependencies));
   }
 
+  const checkedAt = nowOf(dependencies);
+  result.remainingDue = await database.appointmentLineNotification.count({ where: {
+    attemptCount: { lt: APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS },
+    OR: [
+      { state: { in: [AppointmentLineNotificationState.PENDING, AppointmentLineNotificationState.RETRY_SCHEDULED] }, dueAt: { lte: checkedAt } },
+      { state: AppointmentLineNotificationState.CLAIMED, leaseExpiresAt: { lte: checkedAt } },
+    ],
+  } });
   (dependencies.logSummary ?? ((summary) => console.info("appointment_line_notification_drain", summary)))(result);
   return result;
 }

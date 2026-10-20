@@ -1900,6 +1900,25 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     ]);
   });
 
+  it.each([2, 3])("returns an undispatched appointment lease on budget check %i and recovers it", async (stopAt) => {
+    const subject = await createAppointmentNotificationSubject("BUDGET");
+    const now = new Date();
+    const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+      database: prisma, now: () => now, appointmentLineNotificationRollout: notificationRollout,
+    });
+    let checks = 0;
+    let calls = 0;
+    const dependencies = { database: prisma, now: () => now, rollout: () => notificationRollout,
+      push: async () => { calls++; return { kind: "ACCEPTED" as const }; }, logSummary: () => undefined };
+    const stopped = await drainAppointmentLineNotificationOutbox({ ...dependencies, shouldContinue: () => ++checks < stopAt });
+    expect(stopped).toMatchObject({ claimed: 1, providerAccepted: 0, remainingDue: 1 });
+    expect(calls).toBe(0);
+    expect(await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId } }))
+      .toMatchObject({ state: "PENDING", attemptCount: 0, firstAttemptAt: null, leaseToken: null });
+    expect(await drainAppointmentLineNotificationOutbox(dependencies)).toMatchObject({ providerAccepted: 1, remainingDue: 0 });
+    expect(calls).toBe(1);
+  });
+
   it("allows only one active worker claim and fences a stale worker after lease expiry", async () => {
     const subject = await createAppointmentNotificationSubject("FENCING");
     let now = new Date();

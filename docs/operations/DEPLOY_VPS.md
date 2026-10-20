@@ -174,7 +174,7 @@ sudo systemctl enable --now demi-scheduler.timer
 systemctl list-timers demi-scheduler.timer
 ```
 
-timer ยิงทุก 5 นาที (`Persistent=true` จะรันรอบที่พลาดหนึ่งครั้งหลังเครื่องกลับมา) ตัว tick เองจะข้ามถ้า tick อื่นถือ lock อยู่ หรือ tick ล่าสุดจบไม่ถึง 60 วินาที (E1 §2) `/api/internal/*` ถูก nginx ตอบ 404 เสมอ timer จึงเรียก `127.0.0.1:3000` ตรง
+timer ยิงทุก 1 นาที (`OnCalendar=*-*-* *:*:00`, `AccuracySec=1s`) (`Persistent=true` จะรันรอบที่พลาดหนึ่งครั้งหลังเครื่องกลับมา) ตัว tick เองจะข้ามถ้า tick อื่นถือ lock อยู่ หรือ tick ล่าสุดจบไม่ถึง 60 วินาที (E1 §2) `/api/internal/*` ถูก nginx ตอบ 404 เสมอ timer จึงเรียก `127.0.0.1:3000` ตรง
 
 บน self-hosted Node process ค่า route `maxDuration=300` เป็น metadata ของ deployment platform ไม่ใช่ตัวตัด request ของ systemd/PM2 เอง; tick จึงมี Prisma transaction timeout 290 วินาที, CLI timeout 320 วินาที และ systemd `TimeoutStartSec=330` เป็นขอบเขตแยกกัน ห้ามเพิ่มเวลาใดเวลาหนึ่งโดยไม่ทบทวนลำดับ deadline ทั้งชุด
 
@@ -185,11 +185,21 @@ sudo -u demi -H node --env-file=/etc/demi/demi.env -e 'fetch("http://127.0.0.1:3
 journalctl -u demi-scheduler.service -n 20 --no-pager
 ```
 
-ผลปกติต้องเป็น HTTP `200` และ JSON มี `healthy: true`; `lastTickAgeSeconds` ต้องอยู่ระหว่าง 0–600 วินาที และ `lastTickStatus=COMPLETED`; `healthy: false` ตอบ HTTP `503` แม้ endpoint ยังส่ง aggregate queue counts/age ได้ การข้าม `LOCK_BUSY` และ `TOO_SOON` เป็นผลปกติของ tick; `FAILED`, `DEFERRED`, `NOT_STARTED`, `INVALID_RESPONSE`, `HTTP_ERROR` หรือ `UNREACHABLE` ทำให้ systemd unit ล้มเหลวและต้องตรวจ log ห้ามสรุปว่า health ผ่านจาก HTTP 200 ของ tick เพียงอย่างเดียว
+ผลปกติต้องเป็น HTTP `200` และ JSON มี `healthy: true`; `lastTickAgeSeconds` ต้องอยู่ระหว่าง 0–600 วินาที และ `lastTickStatus=COMPLETED` หรือ `DEFERRED` ชั่วคราวตามเกณฑ์ด้านล่าง; `healthy: false` ตอบ HTTP `503` แม้ endpoint ยังส่ง aggregate queue counts/age ได้ การข้าม `LOCK_BUSY` และ `TOO_SOON` เป็นผลปกติของ tick; `FAILED`, `DEFERRED`, `NOT_STARTED`, `INVALID_RESPONSE`, `HTTP_ERROR` หรือ `UNREACHABLE` ทำให้ systemd unit ล้มเหลวและต้องตรวจ log ห้ามสรุปว่า health ผ่านจาก HTTP 200 ของ tick เพียงอย่างเดียว
 
 `OK`/`COMPLETED` ยืนยันว่าแต่ละ bounded step จบและผล delivery ถูกบันทึกตาม service contract ไม่ได้ยืนยันว่า LINE ยอมรับทุกข้อความ ตรวจ aggregate `providerAccepted`, `retryScheduled`, `suppressed`, `permanentFailure` และ `unknownOutcome` ใน log; triage `permanentFailure`/`unknownOutcome` ที่ยังไม่อธิบาย และติดตาม retry/backlog จนคลี่คลาย
 
-แต่ละ tick ทำ drain ได้ไม่เกินหนึ่ง batch ต่อ queue (สูงสุด 10 รายการต่อ queue) โดยยาได้ทำก่อนตามหน้าต่างส่ง 15 นาที; batch เต็มรายงาน `DEFERRED/BATCH_LIMIT` และงานที่ไม่ได้เริ่มเพราะงบเวลาเป็น `DEFERRED/EXECUTION_BUDGET` ทั้งคู่ไม่ถือว่าสำเร็จ ตรวจ `oldestPendingAgeSeconds` และยอดค้างของทั้ง appointment/medication ร่วมกับ log ทุกครั้ง การค้างหรือ defer ต่อเนื่องต้องหยุด rollout ของ notification และแก้ backlog/สาเหตุ ก่อนเปิด feature ต่อ
+แต่ละ tick สลับ medication → appointment ครั้งละไม่เกิน 5 claims แล้ววนต่อเมื่อ query ยืนยันว่ายังมี due work; queue ว่างออกจาก rotation ทันที จำกัด 80 batches / 400 claims ต่อ queue (รวม 800), materialize ยาสูงสุด 400 occurrences และ provider in-flight รวม 1 request จึงยังใช้ connection ของ scheduler สูงสุด 2 จาก pool 5 เดิม ไม่ต้องเพิ่ม pool ขณะ request เดิมยังทำงาน timer จะไม่สร้าง service ซ้อน และ advisory lock ป้องกัน caller อื่นอีกชั้น
+
+หยุดเริ่ม claim/dispatch ที่ 180 วินาที รอ attempt ที่เริ่มแล้วบันทึกผลก่อนตอบกลับ; lease ของงานที่ยังไม่ได้ dispatch ถูกคืนพร้อมย้อน reservation ที่ยังไม่ได้ใช้ ไม่ทิ้ง promise ทำงานเบื้องหลัง LINE timeout ยังเป็น 8 วินาที; DB latency/connection contention ต้องวัดรวมในเวลาแต่ละรายการและตรวจ headroom ก่อน transaction 290 วินาทีตาม T-16 ห้ามอ้างว่า transaction timeout เป็นตัว cancel งานทุกอย่างใน callback
+
+`remainingDue` เป็นจำนวน due rows ที่ claim ได้ ณ จบ batch (snapshot ไม่รวม active lease ของ worker อื่นหรืองานที่ยังไม่ materialize); ไม่บวกรวมข้ามรอบ batch พอดีเต็มแต่เหลือ 0 ถือว่าจบได้ `DEFERRED/BATCH_LIMIT` หมายถึงชนเพดาน 80 batches ขณะยังมีงาน; `DEFERRED/EXECUTION_BUDGET` หมายถึงหยุดเพราะเวลา ทั้งคู่ยังทำให้ CLI exit 1 เพื่อให้เห็น unfinished work
+
+readiness อาจยัง healthy ในช่วง defer สั้น ๆ หาก last fully completed tick อายุไม่เกิน 600 วินาที โดยต้องไม่มี due ยาอายุ ≥300 วินาที, due appointment อายุ ≥600 วินาที, `deliveryWindowExpiredLast10Minutes` หรือ `terminalDeliveryFailuresLast10Minutes` มากกว่า 0 สถานะ `FAILED` ทำให้ unhealthy ทันที lastTickCompletedAt ไม่เลื่อนเมื่อ defer/fail; จึงไม่ซ่อน persistent saturation การเกิด 503 จาก buffer ของ burst เริ่มลดลงเป็นสัญญาณ capacity ให้ตรวจ ไม่ใช่หลักฐานว่าข้อความหาย
+
+ติดตาม snapshots ทุกนาที: `pending`, `oldestPendingAgeSeconds`, `oldestDueAgeSeconds`, `remainingDue`, claimed/accepted/retry/expired และ duration ต่อ queue เปรียบเทียบ trend อย่างน้อย 3 ticks; due backlog ที่ไม่ลดหรือ queue ไม่มี claims ทั้งที่มี eligible work ให้ตรวจทันที งานหมดหน้าต่างแยกนับ `deliveryWindowExpired` จาก suppression สาเหตุอื่น ถ้า queue มี progress แต่ backlog โตต่อเนื่อง ต้องลด rollout ให้กลับเข้า capacity envelope ก่อน ไม่ replay ข้อความที่หมดเวลา ดู model และผล synthetic ใน [E1 §15](../phases/PHASE_LINE_QA_E1_NOTIFICATION_OPERATIONS.md#15-current-throughput-and-fairness-remediation-2026-10-20)
+
+release นี้เปลี่ยน timer artifact: ขณะ timer หยุดและ service เดิมจบแล้ว ต้องติดตั้งไฟล์ `.service`/`.timer` จาก release ใหม่ตาม §1.11 แล้ว `daemon-reload` ก่อนเปิด timer; rollback ต้องใช้ unit ของ release ที่ย้อนกลับด้วย การสลับ symlink อย่างเดียวไม่อัปเดต `/etc/systemd/system`
 
 ## 2. Deploy (ทุก release)
 
@@ -241,6 +251,8 @@ sudo -u demi -H sh -c 'readlink -f /srv/demi/current > /srv/demi/previous-releas
 sudo -u demi -H sh -c 'ln -sfn "$1" /srv/demi/current.next && mv -Tf /srv/demi/current.next /srv/demi/current' sh "$REL"
 sudo -u demi -H pm2 startOrReload /srv/demi/current/deploy/pm2/ecosystem.config.cjs
 sudo -u demi -H pm2 save
+sudo install -m 0644 /srv/demi/current/deploy/systemd/demi-scheduler.service /srv/demi/current/deploy/systemd/demi-scheduler.timer /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl start demi-scheduler.timer
 ```
 
@@ -257,7 +269,7 @@ curl -fsS "https://$PROD_HOST/api/health"
 
 `/api/health` ต้องได้ `{"status":"ok","checks":{"database":true,"migrations":true,"configuration":true}}` (ค่าใน checks เป็น boolean ล้วน) ถ้าได้ 503 ให้ดู check ที่เป็น `false` แล้ว rollback (§3) ส่วน uptime monitor ภายนอกให้ใช้ `https://<PROD_HOST>/api/health`
 
-หลัง tick รอบถัดไป (ภายใน 5 นาที) ให้ตรวจ readiness ของ scheduler ตาม §1.11
+หลัง tick รอบถัดไป (timer ทุกนาที; `TOO_SOON` อาจทำให้รออีกหนึ่งรอบหลัง completed) ให้ตรวจ readiness ของ scheduler ตาม §1.11
 
 ### 2.7 ล้าง release เก่า (เก็บ 3 ล่าสุด)
 
@@ -271,9 +283,12 @@ ls -1dt /srv/demi/releases/*/ | tail -n +4 | grep -v -e "$(readlink -f /srv/demi
 
 ```sh
 sudo systemctl stop demi-scheduler.timer
+while systemctl is-active --quiet demi-scheduler.service; do sleep 5; done
 sudo -u demi -H sh -c 'ln -sfn "$(cat /srv/demi/previous-release)" /srv/demi/current.next && mv -Tf /srv/demi/current.next /srv/demi/current'
 sudo -u demi -H pm2 startOrReload /srv/demi/current/deploy/pm2/ecosystem.config.cjs
 sudo -u demi -H pm2 save
+sudo install -m 0644 /srv/demi/current/deploy/systemd/demi-scheduler.service /srv/demi/current/deploy/systemd/demi-scheduler.timer /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo systemctl start demi-scheduler.timer
 curl -fsS http://127.0.0.1:3000/api/health
 ```

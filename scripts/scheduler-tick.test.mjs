@@ -61,6 +61,16 @@ describe("scheduler tick script", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
   });
 
+  it("accepts repeated-round aggregate counts with the actual CLI exit code", () => {
+    const summary = completedSummary();
+    summary.steps.medicationDrain = { status: "COMPLETED", batches: 40, counts: { claimed: 200, providerAccepted: 200, remainingDue: 0, deliveryWindowExpired: 0 } };
+    summary.steps.appointmentDrain = { status: "COMPLETED", batches: 40, counts: { claimed: 200, providerAccepted: 200, remainingDue: 0 } };
+    expect(runCli({ body: summary }).status).toBe(0);
+    summary.status = "DEFERRED";
+    summary.steps.medicationDrain = { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET", batches: 2, counts: { claimed: 7, remainingDue: 193 } };
+    expect(runCli({ body: summary }).status).toBe(1);
+  });
+
   it.each(["LOCK_BUSY", "TOO_SOON"]) ("treats the expected %s skip as successful", async (reason) => {
     const { log, run } = harness(new Response(JSON.stringify({ status: "SKIPPED", reason }), { status: 200 }));
     await expect(run()).resolves.toBe(0);

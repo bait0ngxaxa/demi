@@ -10,8 +10,8 @@ export const SCHEDULER_TICK_TIMEOUT_MS = 320_000;
 
 const STEP_NAMES = ["medicationDrain", "appointmentDrain", "appointmentPurge", "medicationPurge"];
 const STEP_COUNT_FIELDS = {
-  medicationDrain: ["materialized", "claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
-  appointmentDrain: ["claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
+  medicationDrain: ["remainingDue", "deliveryWindowExpired", "materialized", "claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
+  appointmentDrain: ["remainingDue", "claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
   appointmentPurge: ["deleted"],
   medicationPurge: ["deleted"],
 };

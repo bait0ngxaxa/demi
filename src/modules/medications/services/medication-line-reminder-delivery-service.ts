@@ -17,8 +17,8 @@ type Claim = MedicationLineReminderNotification;
 type SafeSuppression = "STALE_SOURCE" | "AUTHORITY_CHANGED" | "OPT_IN_REVOKED" | "LINE_INELIGIBLE";
 type Eligibility = { eligible: true; lineUserId: string } | { eligible: false; outcome: SafeSuppression };
 
-export type MedicationLineReminderDrainResult = { materialized: number; claimed: number; providerAccepted: number; retryScheduled: number; suppressed: number; permanentFailure: number; unknownOutcome: number };
-export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; random?: () => number; batchSize?: number; remindersDisabled?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
+export type MedicationLineReminderDrainResult = { materialized: number; claimed: number; providerAccepted: number; retryScheduled: number; suppressed: number; permanentFailure: number; unknownOutcome: number; remainingDue: number; deliveryWindowExpired: number };
+export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; random?: () => number; batchSize?: number; prepare?: boolean; materialize?: boolean; shouldContinue?: () => boolean; remindersDisabled?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
 
 function nowOf(input: MedicationLineReminderDependencies): Date {
   const now = new Date((input.now?.() ?? new Date()).getTime());
@@ -89,7 +89,7 @@ async function claim(database: Database, now: Date): Promise<Claim | null> {
       WHERE "attemptCount" < ${MEDICATION_LINE_REMINDER_MAX_ATTEMPTS}
         AND (("state" IN ('PENDING'::"MedicationLineReminderState", 'RETRY_SCHEDULED'::"MedicationLineReminderState") AND "dueAt" <= ${now})
           OR ("state" = 'CLAIMED'::"MedicationLineReminderState" AND "leaseExpiresAt" <= ${now}))
-      ORDER BY "dueAt" ASC, "createdAt" ASC, "id" ASC FOR UPDATE SKIP LOCKED LIMIT 1
+      ORDER BY ("firstAttemptAt" IS NULL) DESC, "dueAt" ASC, "createdAt" ASC, "id" ASC FOR UPDATE SKIP LOCKED LIMIT 1
     )
     UPDATE "MedicationLineReminderNotification" n SET "state" = 'CLAIMED'::"MedicationLineReminderState", "leaseToken" = ${leaseToken}::uuid,
       "leaseExpiresAt" = ${leaseExpiresAt}, "terminalAt" = NULL, "updatedAt" = ${now}
@@ -217,15 +217,27 @@ async function finish(database: Database, notification: Claim, attempt: { attemp
   return saved ? state : null;
 }
 
+// A budget stop before dispatch must release only this worker's lease and undo an unused reservation.
+async function releaseUndispatchedClaim(database: Database, notification: Claim, reserved: boolean, now: Date): Promise<void> {
+  await database.medicationLineReminderNotification.updateMany({
+    where: { id: notification.id, state: MedicationLineReminderState.CLAIMED, leaseToken: notification.leaseToken, attemptCount: notification.attemptCount + (reserved ? 1 : 0) },
+    data: { state: notification.firstAttemptAt ? MedicationLineReminderState.RETRY_SCHEDULED : MedicationLineReminderState.PENDING,
+      attemptCount: notification.attemptCount, firstAttemptAt: notification.firstAttemptAt, lastAttemptAt: notification.lastAttemptAt,
+      safeOutcome: notification.safeOutcome, leaseToken: null, leaseExpiresAt: null, updatedAt: now },
+  });
+}
+
 export async function drainMedicationLineReminderOutbox(dependencies: MedicationLineReminderDependencies = {}): Promise<MedicationLineReminderDrainResult> {
   const database = dependencies.database ?? getPrisma();
   const batchSize = dependencies.batchSize ?? MEDICATION_LINE_REMINDER_BATCH_SIZE;
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MEDICATION_LINE_REMINDER_BATCH_SIZE) throw new RangeError("Medication reminder batch exceeds its bound");
   // Emergency kill switch: evaluated before materializing, at claim and immediately before the provider call.
   const remindersDisabled = dependencies.remindersDisabled ?? isMedicationLineRemindersDisabled;
-  const materialized = remindersDisabled() ? 0 : await materializeDueOccurrences(database, nowOf(dependencies));
-  const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: await expireLateFirstAttempts(database, nowOf(dependencies)), permanentFailure: 0, unknownOutcome: await closeExhausted(database, nowOf(dependencies)) };
+  const materialized = remindersDisabled() || dependencies.materialize === false ? 0 : await materializeDueOccurrences(database, nowOf(dependencies));
+  const expired = dependencies.prepare === false ? 0 : await expireLateFirstAttempts(database, nowOf(dependencies));
+  const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: expired, deliveryWindowExpired: expired, remainingDue: 0, permanentFailure: 0, unknownOutcome: dependencies.prepare === false ? 0 : await closeExhausted(database, nowOf(dependencies)) };
   for (let index = 0; index < batchSize; index += 1) {
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) break;
     const notification = await claim(database, nowOf(dependencies));
     if (!notification) break;
     result.claimed += 1;
@@ -246,7 +258,10 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
       const dueAt = occurrenceDueAt(notification);
       if (!dueAt || isMedicationLineReminderOccurrenceExpired(dueAt, checkedAt)) {
         const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: dueAt ? MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED : MedicationLineReminderOutcome.STALE_SOURCE, now: checkedAt, terminal: true });
-        if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+        if (settled) {
+          countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+          if (dueAt) result.deliveryWindowExpired += 1;
+        }
         continue;
       }
     }
@@ -256,10 +271,14 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
       if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
       continue;
     }
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) {
+      await releaseUndispatchedClaim(database, notification, false, nowOf(dependencies));
+      break;
+    }
     const attempt = await reserveAttempt(database, notification, nowOf(dependencies));
     if (attempt === "DEADLINE_PASSED") {
       const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, now: nowOf(dependencies), terminal: true });
-      if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+      if (settled) { countOutcome(result, MedicationLineReminderState.SUPPRESSED); result.deliveryWindowExpired += 1; }
       continue;
     }
     if (!attempt) continue;
@@ -271,18 +290,30 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
     }
     const dispatchAt = nowOf(dependencies);
     if (firstAttemptDeadlinePassed(notification, dispatchAt)) {
-      if (await cancelReservedAttempt(database, notification, MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, dispatchAt)) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
+      if (await cancelReservedAttempt(database, notification, MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, dispatchAt)) { countOutcome(result, MedicationLineReminderState.SUPPRESSED); result.deliveryWindowExpired += 1; }
       continue;
     }
     if (remindersDisabled()) {
       if (await cancelReservedAttempt(database, notification, MedicationLineReminderOutcome.REMINDERS_DISABLED, nowOf(dependencies))) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
       continue;
     }
+    if (dependencies.shouldContinue && !dependencies.shouldContinue()) {
+      await releaseUndispatchedClaim(database, notification, true, nowOf(dependencies));
+      break;
+    }
     let provider: LinePushResult;
     try { provider = await (dependencies.push ?? ((lineUserId, text, retryKey) => new LineMessagingClient().pushText(lineUserId, text, retryKey)))(final.lineUserId, MEDICATION_LINE_REMINDER_TEXT, notification.retryKey); }
     catch { provider = { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }; }
     countOutcome(result, await finish(database, notification, attempt, provider, dependencies));
   }
+  const checkedAt = nowOf(dependencies);
+  result.remainingDue = await database.medicationLineReminderNotification.count({ where: {
+    attemptCount: { lt: MEDICATION_LINE_REMINDER_MAX_ATTEMPTS },
+    OR: [
+      { state: { in: [MedicationLineReminderState.PENDING, MedicationLineReminderState.RETRY_SCHEDULED] }, dueAt: { lte: checkedAt } },
+      { state: MedicationLineReminderState.CLAIMED, leaseExpiresAt: { lte: checkedAt } },
+    ],
+  } });
   (dependencies.logSummary ?? ((summary) => console.info("medication_line_reminder_drain", summary)))(result);
   return result;
 }

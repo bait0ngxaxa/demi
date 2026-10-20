@@ -64,9 +64,9 @@ describe("npm run env:check", () => {
   });
 
   it.each([
-    ["DATABASE_URL", /^DATABASE_URL=.*\n/mu, "MISSING +CORE +DATABASE_URL"],
-    ["DEMI_SCHEDULER_SECRET", /^DEMI_SCHEDULER_SECRET=.*\n/mu, "MISSING +PRODUCTION +DEMI_SCHEDULER_SECRET"],
-    ["DEMI_LINE_MESSAGING_BOT_USER_ID", /^DEMI_LINE_MESSAGING_BOT_USER_ID=.*\n/mu, "MISSING +PRODUCTION +DEMI_LINE_MESSAGING_BOT_USER_ID"],
+    ["DATABASE_URL", /^DATABASE_URL=.*\r?\n/mu, "MISSING +CORE +DATABASE_URL"],
+    ["DEMI_SCHEDULER_SECRET", /^DEMI_SCHEDULER_SECRET=.*\r?\n/mu, "MISSING +PRODUCTION +DEMI_SCHEDULER_SECRET"],
+    ["DEMI_LINE_MESSAGING_BOT_USER_ID", /^DEMI_LINE_MESSAGING_BOT_USER_ID=.*\r?\n/mu, "MISSING +PRODUCTION +DEMI_LINE_MESSAGING_BOT_USER_ID"],
   ])("fails when the required %s is missing, even if the shell defines it", (name, pattern, expected) => {
     const path = variant(`missing-${name}.env`, (text) => text.replace(pattern, ""));
     const { status, output } = check(path);

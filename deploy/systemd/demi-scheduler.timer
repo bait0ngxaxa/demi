@@ -1,13 +1,13 @@
-# Every 5 minutes; Persistent=true runs one missed tick after downtime (docs/operations/DEPLOY_VPS.md).
+# Every minute; Persistent=true runs one missed tick after downtime (docs/operations/DEPLOY_VPS.md).
 # Install: /etc/systemd/system/demi-scheduler.timer, then: sudo systemctl enable --now demi-scheduler.timer
 
 [Unit]
-Description=DEMI notification scheduler tick every 5 minutes
+Description=DEMI notification scheduler tick every minute
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*-*-* *:*:00
 Persistent=true
-AccuracySec=10s
+AccuracySec=1s
 Unit=demi-scheduler.service
 
 [Install]

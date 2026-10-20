@@ -13,8 +13,8 @@ function readinessDatabase(
 ): PrismaClient {
   return {
     notificationSchedulerState: { findUnique: vi.fn(async () => ({ lastTickCompletedAt, lastTickStatus })) },
-    appointmentLineNotification: { aggregate: vi.fn(async () => emptyAggregate) },
-    medicationLineReminderNotification: { aggregate: vi.fn(async () => emptyAggregate) },
+    appointmentLineNotification: { count: vi.fn(async () => 0), aggregate: vi.fn(async () => emptyAggregate) },
+    medicationLineReminderNotification: { count: vi.fn(async () => 0), aggregate: vi.fn(async () => emptyAggregate) },
   } as unknown as PrismaClient;
 }
 
@@ -30,10 +30,27 @@ describe("notification scheduler readiness", () => {
 
     expect(healthy).toMatchObject({ healthy: true, lastTickAgeSeconds: 599 });
     expect(failed).toMatchObject({ healthy: false, lastTickAgeSeconds: 600, lastTickStatus: "FAILED" });
-    expect(deferred).toMatchObject({ healthy: false, lastTickStatus: "DEFERRED" });
+    expect(deferred).toMatchObject({ healthy: true, lastTickStatus: "DEFERRED" });
     expect(stale).toMatchObject({ healthy: false, lastTickAgeSeconds: 600 });
     expect(neverSucceeded).toMatchObject({ healthy: false, lastTickAgeSeconds: null, lastTickStatus: null, lastTickCompletedAt: null });
     expect(clockMovedBack.healthy).toBe(false);
+  });
+
+  it("allows brief deferral but rejects stale deferral, overdue work, expired windows and terminal failures", async () => {
+    const now = new Date(lastSuccess.getTime() + 60_000);
+    const db = readinessDatabase(lastSuccess, NotificationSchedulerTickStatus.DEFERRED);
+    expect((await getNotificationSchedulerReadiness({ database: db, now })).healthy).toBe(true);
+    expect((await getNotificationSchedulerReadiness({ database: db, now: new Date(lastSuccess.getTime() + 600_001) })).healthy).toBe(false);
+    vi.mocked(db.medicationLineReminderNotification.aggregate).mockResolvedValue({ ...emptyAggregate, _min: { createdAt: lastSuccess, dueAt: new Date(now.getTime() - 300_000) } } as never);
+    expect((await getNotificationSchedulerReadiness({ database: db, now })).healthy).toBe(false);
+    vi.mocked(db.medicationLineReminderNotification.aggregate).mockResolvedValue(emptyAggregate as never);
+    vi.mocked(db.appointmentLineNotification.aggregate).mockResolvedValue({ ...emptyAggregate, _min: { createdAt: lastSuccess, dueAt: new Date(now.getTime() - 600_000) } } as never);
+    expect((await getNotificationSchedulerReadiness({ database: db, now })).healthy).toBe(false);
+    vi.mocked(db.appointmentLineNotification.aggregate).mockResolvedValue(emptyAggregate as never);
+    vi.mocked(db.medicationLineReminderNotification.count).mockResolvedValueOnce(1);
+    expect(await getNotificationSchedulerReadiness({ database: db, now })).toMatchObject({ healthy: false, deliveryWindowExpiredLast10Minutes: 1 });
+    vi.mocked(db.appointmentLineNotification.count).mockResolvedValueOnce(1);
+    expect(await getNotificationSchedulerReadiness({ database: db, now })).toMatchObject({ healthy: false, terminalDeliveryFailuresLast10Minutes: 1 });
   });
 
   it("repeated failed ticks cannot advance readiness success time", async () => {
@@ -57,8 +74,8 @@ describe("notification scheduler readiness", () => {
     const database = {
       $transaction: vi.fn(async (operation: (transaction: unknown) => Promise<unknown>) => operation({ $queryRaw: queryRaw, $executeRaw: executeRaw })),
       notificationSchedulerState: { findUnique: vi.fn(async () => ({ ...state })) },
-      appointmentLineNotification: { aggregate: vi.fn(async () => emptyAggregate) },
-      medicationLineReminderNotification: { aggregate: vi.fn(async () => emptyAggregate) },
+      appointmentLineNotification: { count: vi.fn(async () => 0), aggregate: vi.fn(async () => emptyAggregate) },
+      medicationLineReminderNotification: { count: vi.fn(async () => 0), aggregate: vi.fn(async () => emptyAggregate) },
     } as unknown as PrismaClient;
 
     const successful = await runNotificationSchedulerTick({

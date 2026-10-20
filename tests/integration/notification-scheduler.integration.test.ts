@@ -118,11 +118,11 @@ describe("notification scheduler tick on PostgreSQL", () => {
     });
   });
 
-  it("keeps repeated full-batch deferrals visible and readiness unhealthy", async () => {
-    const lastSuccessAt = new Date(Date.now() - 120_000);
+  it("keeps persistent work-budget deferrals visible and readiness unhealthy", async () => {
+    const lastSuccessAt = new Date(Date.now() - 660_000);
     await setLastTick(lastSuccessAt);
     const dependencies = stubSteps({
-      drainMedication: vi.fn(async () => ({ materialized: 0, ...counts, claimed: 10 })),
+      drainMedication: vi.fn(async () => ({ materialized: 0, ...counts, claimed: 5, remainingDue: 100 })),
     });
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -148,7 +148,7 @@ describe("notification scheduler tick on PostgreSQL", () => {
     const readiness = await getNotificationSchedulerReadiness({ database, now });
     expect(readiness).toMatchObject({ healthy: true, lastTickAgeSeconds: 0, lastTickStatus: NotificationSchedulerTickStatus.COMPLETED, lastTickCompletedAt: now.toISOString() });
     for (const outbox of Object.values(readiness.outboxes)) {
-      expect(Object.keys(outbox).sort()).toEqual(["oldestPendingAgeSeconds", "pending"]);
+      expect(Object.keys(outbox).sort()).toEqual(["oldestDueAgeSeconds", "oldestPendingAgeSeconds", "pending"]);
       expect(Number.isInteger(outbox.pending)).toBe(true);
       expect(outbox.pending === 0 ? outbox.oldestPendingAgeSeconds === null : (outbox.oldestPendingAgeSeconds ?? -1) >= 0).toBe(true);
     }

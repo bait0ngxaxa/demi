@@ -52,8 +52,9 @@ describe("systemd scheduler units", () => {
     expect(timeout * 1000).toBeGreaterThan(SCHEDULER_TICK_TIMEOUT_MS);
   });
 
-  it("fires every 5 minutes and catches up after downtime", () => {
-    expect(timer).toMatch(/^OnCalendar=\*:0\/5$/mu);
+  it("fires every minute and catches up after downtime", () => {
+    expect(timer).toContain("OnCalendar=*-*-* *:*:00");
+    expect(timer).toMatch(/^AccuracySec=1s$/mu);
     expect(timer).toMatch(/^Persistent=true$/mu);
     expect(timer).toMatch(/^Unit=demi-scheduler\.service$/mu);
   });

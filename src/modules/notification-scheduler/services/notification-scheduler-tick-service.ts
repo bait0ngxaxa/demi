@@ -9,7 +9,7 @@ import {
   drainAppointmentLineNotificationOutbox,
   purgeTerminalAppointmentLineNotifications,
 } from "@/modules/appointments/services/appointment-line-notification-delivery-service";
-import { MEDICATION_LINE_REMINDER_BATCH_SIZE } from "@/modules/medications/domain/medication-line-reminders";
+import { MEDICATION_LINE_REMINDER_BATCH_SIZE, MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT } from "@/modules/medications/domain/medication-line-reminders";
 import {
   drainMedicationLineReminderOutbox,
   purgeTerminalMedicationLineReminderNotifications,
@@ -18,17 +18,16 @@ import { InfrastructureError } from "@/shared/errors/application-error";
 
 /** Ticks closer than this to the last completed tick are skipped. */
 export const NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS = 60_000;
-/**
- * No new work starts after this much of a tick has elapsed. Each queue gets one bounded batch of at most 10
- * sequential LINE pushes (8-second client timeout each); a slow first queue cannot use an unbounded number of turns.
- */
+/** Stop launching work at 180 s; every owned provider attempt settles before the tick returns. */
 export const NOTIFICATION_SCHEDULER_LAUNCH_BUDGET_MS = 180_000;
-/** Each notification queue gets one bounded turn per tick; a full batch is reported as deferred. */
+/** Small sequential turns bound the wait before the other queue gets an opportunity. */
 export const NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE = Math.min(
-  10,
+  5,
   APPOINTMENT_LINE_NOTIFICATION_BATCH_SIZE,
   MEDICATION_LINE_REMINDER_BATCH_SIZE,
 );
+/** At most 400 claims per queue / 800 globally, with one provider request in flight. */
+export const NOTIFICATION_SCHEDULER_MAX_BATCHES_PER_QUEUE = 80;
 // Bounds the lock-holding callback below the route metadata limit and the self-hosted systemd caller deadline.
 const LOCK_TRANSACTION_TIMEOUT_MS = 290_000;
 // Arbitrary application-wide key reserved for the notification scheduler tick (pg_try_advisory_xact_lock).
@@ -70,7 +69,9 @@ function emptyReport(): NotificationSchedulerStepReport {
 
 function addCounts(report: NotificationSchedulerStepReport, counts: Record<string, number>): void {
   for (const [key, value] of Object.entries(counts)) {
-    if (Number.isFinite(value)) report.counts[key] = (report.counts[key] ?? 0) + value;
+    if (Number.isFinite(value)) {
+      report.counts[key] = key === "remainingDue" ? value : (report.counts[key] ?? 0) + value;
+    }
   }
 }
 
@@ -86,42 +87,65 @@ async function runSteps(
     medicationPurge: emptyReport(),
   };
 
-  // Medication reminders go first because they expire 15 minutes after their occurrence. The bounded batch leaves
-  // time for appointment work before the 180-second launch budget even when every LINE call reaches its 8-second cap.
+  // Fair repeated rounds, medication first for its first-attempt deadline. No concurrency is added: the
+  // scheduler still needs only its lock connection plus one delivery connection. Empty queues leave the rotation.
+  let prepareMedication = true;
+  let materializeMedication = true;
+  let materialized = 0;
   const drains: Drain[] = [
     {
       name: "medicationDrain",
       batchSize: NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
       run: (batchSize) => dependencies.drainMedication
         ? dependencies.drainMedication(batchSize)
-        : drainMedicationLineReminderOutbox({ database, batchSize }),
+        : (async () => {
+          const counts = await drainMedicationLineReminderOutbox({
+            database, batchSize, now: dependencies.now, prepare: prepareMedication, materialize: materializeMedication, shouldContinue: withinBudget,
+          });
+          prepareMedication = false;
+          materialized += counts.materialized;
+          materializeMedication = counts.materialized >= MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT
+            && materialized < 2 * MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT;
+          return counts;
+        })(),
     },
     {
       name: "appointmentDrain",
       batchSize: NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
       run: (batchSize) => dependencies.drainAppointment
         ? dependencies.drainAppointment(batchSize)
-        : drainAppointmentLineNotificationOutbox({ database, batchSize }),
+        : drainAppointmentLineNotificationOutbox({ database, batchSize, now: dependencies.now, shouldContinue: withinBudget }),
     },
   ];
-  for (const drain of drains) {
-    const report = steps[drain.name];
-    if (!withinBudget()) {
-      report.status = "DEFERRED";
-      report.deferredReason = "EXECUTION_BUDGET";
-      continue;
-    }
-    try {
-      const counts = await drain.run(drain.batchSize);
-      report.status = "COMPLETED";
-      report.batches = 1;
-      addCounts(report, counts);
-      if (counts.claimed >= drain.batchSize) {
+  const active = new Set(drains);
+  for (let round = 0; round < NOTIFICATION_SCHEDULER_MAX_BATCHES_PER_QUEUE && active.size > 0; round += 1) {
+    for (const drain of active) {
+      const report = steps[drain.name];
+      if (!withinBudget()) {
         report.status = "DEFERRED";
-        report.deferredReason = "BATCH_LIMIT";
+        report.deferredReason = "EXECUTION_BUDGET";
+        active.delete(drain);
+        continue;
       }
-    } catch {
-      report.status = "FAILED";
+      try {
+        const counts = await drain.run(drain.batchSize);
+        report.batches += 1;
+        addCounts(report, counts);
+        // Real drains inspect eligible work; exactly filling a batch alone does not prove backlog.
+        const remaining = counts.remainingDue ?? (counts.claimed >= drain.batchSize ? 1 : 0);
+        if (remaining > 0) {
+          report.status = "DEFERRED";
+          report.deferredReason = withinBudget() ? "BATCH_LIMIT" : "EXECUTION_BUDGET";
+        } else {
+          report.status = "COMPLETED";
+          delete report.deferredReason;
+          active.delete(drain);
+        }
+      } catch {
+        report.status = "FAILED";
+        delete report.deferredReason;
+        active.delete(drain);
+      }
     }
   }
 

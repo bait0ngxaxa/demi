@@ -103,7 +103,7 @@ sudo -u demi -H sh -c 'cd /srv/demi/current && node --env-file=/etc/demi/demi.en
 | ขั้น | ค่า | ตรวจก่อนไปต่อ |
 | --- | --- | --- |
 | 1. Account | ค่า §2–§3 ครบ; MINI ว่าง; `DEMI_LINE_MINI_APP_DISABLED=true`; `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=true`; `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false` | webhook Verify ผ่าน, Rich Menu §6, เชื่อม/ยกเลิก/เชื่อมใหม่, keyword "นัด"/"เมนู" ตอบถูก (C3), device UAT (`RELEASE_GATE.md` T-10/T-11) |
-| 2. Medication reminders | `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=` (ว่าง) | รอ scheduler health `healthy: true` + `lastTickStatus=COMPLETED` และ HTTP 200 ต่อเนื่อง; log ทุก tick ต้องเป็น `OK` หรือ skip `LOCK_BUSY`/`TOO_SOON` ที่อธิบายได้ ไม่มี `FAILED`/`DEFERRED`/`NOT_STARTED`; ตรวจ queue depth/age, retry และผล provider; triage `permanentFailure`/`unknownOutcome` ที่ยังไม่อธิบายและต้องไม่เกิด backlog ต่อเนื่อง; ผู้ทดสอบที่เปิดรับได้รับข้อความครั้งเดียวต่อเวลา |
+| 2. Medication reminders | `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=` (ว่าง) | รอ scheduler health `healthy: true` + `lastTickStatus=COMPLETED` (หรือ brief DEFERRED ตาม DEPLOY_VPS §1.11) และ HTTP 200 ต่อเนื่อง; log ทุก tick ต้องเป็น `OK` หรือ skip `LOCK_BUSY`/`TOO_SOON` ที่อธิบายได้ ไม่มี `FAILED`/`NOT_STARTED`; `DEFERRED` ชั่วคราวยอมรับได้เฉพาะเมื่อมี progress, readiness ผ่าน และ backlog กลับลงภายใน envelope ใน E1 §15; ตรวจ queue depth/age, retry และผล provider; triage `permanentFailure`/`unknownOutcome` ที่ยังไม่อธิบายและต้องไม่เกิด backlog ต่อเนื่อง; ผู้ทดสอบที่เปิดรับได้รับข้อความครั้งเดียวต่อเวลา |
 | 3. Appointment notifications | `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION` = UUID ใหม่ (`cat /proc/sys/kernel/random/uuid`) และ `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=true` | ทำข้อ 2 เรื่อง scheduler health/log/backlog/provider outcomes ซ้ำ พร้อมตรวจข้อความเมื่อสร้าง/เลื่อน/ยกเลิกนัดของผู้ทดสอบที่ opt-in; ห้ามใช้ UUID ซ้ำกับรอบก่อนหรือกับ demo (17J.4B: แถวของ generation เก่าจะถูก suppress) |
 | 4. MINI | ตั้งค่า §4 ครบ (`env:check` ผ่าน) แล้วตั้ง `DEMI_LINE_MINI_APP_DISABLED=` (ว่าง) | gateway `/line/workflow` เปิดได้ใน LINE, Verify ผ่าน, device UAT ของ MINI |
 
@@ -128,3 +128,5 @@ read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://
 ```
 
 ตัวเลขผู้รับใช้จาก SQL ที่นับเฉพาะจำนวน (ไม่ดึงตัวตน) ก่อนเปิดขั้น 2/3 แล้วบันทึกผลประเมินใน `RELEASE_GATE.md` T-13
+
+ก่อนเปิด proactive notification ต้องผ่าน capacity gate T-16 ด้วยข้อมูลสังเคราะห์ใน target topology: burst ยา 200 + appointment 200, วัด provider+DB ต่อรายการรวม revalidation และ contention, ตรวจ first attempts ไม่เกิน 15 นาทีและทั้ง queue มี progress ห้ามใช้ผล local synthetic เป็น production measurement Timer ใหม่ทุกนาทีต้องติดตั้งจริงและตรวจ unit version; ไม่มีการเปิด provider หรือโหลดข้อมูลผู้ป่วยจริงเป็นส่วนหนึ่งของการแก้โค้ดนี้ หากเกิด 429 ให้รักษา backoff/retry key เดิมและตรวจ quota/rate limit ไม่เพิ่ม workers เพื่อเร่งฝ่า limit
