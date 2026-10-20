@@ -19,7 +19,6 @@ import {
 
 const parentHospitalId = "11111111-1111-4111-8111-111111111111";
 const childHospitalId = "22222222-2222-4222-8222-222222222222";
-const otherParentId = "99999999-9999-4999-8999-999999999999";
 const parentName = "โรงพยาบาลแม่ข่ายสังเคราะห์";
 const childName = "รพ.สต.ลูกข่ายสังเคราะห์";
 
@@ -41,42 +40,21 @@ function actorWith(membershipType: MembershipType, hospitalId = parentHospitalId
 }
 const parentOwner = actorWith(MembershipType.OWNER);
 
-function parentRecord(children: readonly { status?: HospitalStatus; parentHospitalId?: string }[] = [{}]) {
-  return {
-    hospital: {
-      id: parentHospitalId,
-      hospitalCode: "PARENT-01",
-      name: parentName,
-      status: HospitalStatus.ACTIVE,
-      parentHospitalId: null,
-      parentHospital: null,
-      childHospitals: children.map((child) => ({
-        id: childHospitalId,
-        hospitalCode: "CHILD-01",
-        name: childName,
-        status: child.status ?? HospitalStatus.ACTIVE,
-        parentHospitalId: child.parentHospitalId ?? parentHospitalId,
-      })),
-    },
-  };
-}
+// ADR-0016: the active network association (SQL-filtered for OWNER, ACTIVE Parent/Child) or nothing.
+const activeArea = {
+  parent: { id: parentHospitalId, hospitalCode: "PARENT-01", name: parentName },
+  child: { id: childHospitalId, hospitalCode: "CHILD-01", name: childName },
+};
 
 function createDatabase() {
-  const findMembership = vi.fn().mockResolvedValue(parentRecord());
+  const findMembership = vi.fn().mockResolvedValue(activeArea);
   const relationshipCount = vi.fn().mockResolvedValueOnce(12).mockResolvedValueOnce(4);
   const programGroupBy = vi.fn().mockResolvedValue([
     { status: PatientProgramStatus.ACTIVE, _count: { _all: 5 } },
     { status: PatientProgramStatus.COMPLETED, _count: { _all: 3 } },
   ]);
   const transaction = {
-    hospitalMembership: { findFirst: findMembership },
-    hospital: {
-      findFirst: vi.fn().mockResolvedValue({
-        id: childHospitalId,
-        name: childName,
-        parentHospital: { id: parentHospitalId, name: parentName },
-      }),
-    },
+    hospitalServiceArea: { findFirst: findMembership },
     patientHospitalRelationship: { count: relationshipCount },
     patientProgram: { groupBy: programGroupBy },
     patientProgramServiceOneRoutine: { count: vi.fn().mockResolvedValue(7) },
@@ -198,12 +176,12 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
   });
 
   it.each([
-    ["detached Child (no current direct link)", []],
-    ["reparented Child (linked to another Parent)", [{ parentHospitalId: otherParentId }]],
-    ["inactive Child", [{ status: HospitalStatus.SUSPENDED }]],
-  ])("denies a %s", async (_label, children) => {
+    "ended association (Child removed from the network)",
+    "transferred Child (active under another Parent)",
+    "inactive Child or Parent (filtered by the network predicate)",
+  ])("denies a %s", async () => {
     const { database, findMembership, auditCreate } = createDatabase();
-    findMembership.mockResolvedValue(parentRecord(children));
+    findMembership.mockResolvedValue(null);
 
     await expect(exportParentChildHospitalReportWorkbook(parentOwner, {
       parentHospitalId,
@@ -212,9 +190,9 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
     expectAudit(auditCreate, "denied", "SCOPE_UNAVAILABLE");
   });
 
-  it("ends access with the current link: a Child detached while the file is built is denied at the export-time re-check", async () => {
+  it("ends access with the current association: a Child detached while the file is built is denied at the export-time re-check", async () => {
     const { database, findMembership, auditCreate } = createDatabase();
-    findMembership.mockResolvedValueOnce(parentRecord()).mockResolvedValueOnce(parentRecord([]));
+    findMembership.mockResolvedValueOnce(activeArea).mockResolvedValueOnce(null);
 
     await expect(exportParentChildHospitalReportWorkbook(parentOwner, {
       parentHospitalId,

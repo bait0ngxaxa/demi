@@ -18,6 +18,7 @@ import {
   InfrastructureError,
   NotFoundError,
 } from "@/shared/errors/application-error";
+import { buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   decidePatientClassificationPolicy,
@@ -196,18 +197,24 @@ export async function getPatientClassificationPageContext(
 function buildAuthorizedHospitalWhere(actorUserId: string, hospitalId: string): Prisma.HospitalWhereInput {
   return {
     id: hospitalId,
-    status: HospitalStatus.ACTIVE,
-    memberships: {
-      some: {
-        userId: actorUserId,
-        membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
-        status: MembershipStatus.ACTIVE,
-        user: {
-          status: UserStatus.ACTIVE,
-          roles: { some: { role: Role.HOSPITAL } },
+    OR: [
+      {
+        status: HospitalStatus.ACTIVE,
+        memberships: {
+          some: {
+            userId: actorUserId,
+            membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+            status: MembershipStatus.ACTIVE,
+            user: {
+              status: UserStatus.ACTIVE,
+              roles: { some: { role: Role.HOSPITAL } },
+            },
+          },
         },
       },
-    },
+      // ADR-0016: aggregate counts for a read-only network Child; the directory list audits the read.
+      buildNetworkReadableChildHospitalWhere(actorUserId),
+    ],
   };
 }
 

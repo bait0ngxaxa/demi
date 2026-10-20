@@ -16,9 +16,11 @@ import type {
 import { getPrisma } from "@/lib/db/prisma";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertGoalPolicy,
+  GOAL_READ_CAPABILITY,
   type GoalCapability,
   type GoalPolicyTarget,
 } from "../policies/goal-policy";
@@ -197,11 +199,13 @@ export async function resolveGoalAccessContext(
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
   };
 
-  assertGoalPolicy({
-    actor: authoritativeActor,
-    capability,
-    target,
-  });
+  // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+  await assertDirectOrNetworkPatientRead(
+    () => assertGoalPolicy({ actor: authoritativeActor, capability, target }),
+    capability === GOAL_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "goal" },
+  );
 
   return {
     patient: {

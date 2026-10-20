@@ -16,9 +16,11 @@ import type {
 import { getPrisma } from "@/lib/db/prisma";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertScreeningPolicy,
+  SCREENING_READ_CAPABILITY,
   type ScreeningCapability,
   type ScreeningPolicyTarget,
 } from "../policies/screening-policy";
@@ -197,11 +199,13 @@ export async function resolveScreeningAccessContext(
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
   };
 
-  assertScreeningPolicy({
-    actor: authoritativeActor,
-    capability,
-    target,
-  });
+  // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+  await assertDirectOrNetworkPatientRead(
+    () => assertScreeningPolicy({ actor: authoritativeActor, capability, target }),
+    capability === SCREENING_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "screening" },
+  );
 
   return {
     patient: {

@@ -412,6 +412,7 @@ model Person {
 model User {
   serviceAreasCreated HospitalServiceArea[] @relation("ServiceAreaCreator")
   serviceAreasEnded HospitalServiceArea[] @relation("ServiceAreaEnder")
+  networkRolesClassified HospitalServiceAreaEligibility[] @relation("NetworkRoleClassifier")
   id          String     @id @default(uuid()) @db.Uuid
   personId    String     @unique @db.Uuid
   authSubject String?    @unique @db.VarChar(255)
@@ -423,6 +424,7 @@ model User {
   roles       UserRole[]
   memberships HospitalMembership[]
   reportExportGrantsIssued HospitalMembership[] @relation("HospitalMembershipReportExportGrantedBy")
+  networkPatientReadGrantsIssued HospitalMembership[] @relation("HospitalMembershipNetworkPatientReadGrantedBy")
   patientSelfMeasurementsDeleted PatientSelfMeasurement[] @relation("PatientSelfMeasurementDeletedBy")
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
   workforceActivations WorkforceActivation[] @relation("WorkforceActivationTarget")
@@ -535,7 +537,7 @@ model Hospital {
   @@index([status, name])
 }
 
-// Explicit trusted-source attestation, never inferred from names/codes/hierarchy.
+// Network role set only by an audited Platform ADMIN decision (ADR-0015), never inferred from names/codes/hierarchy.
 enum HospitalServiceAreaFacilityKind {
   PARENT
   CHILD
@@ -544,9 +546,11 @@ enum HospitalServiceAreaFacilityKind {
 model HospitalServiceAreaEligibility {
   hospitalId String @id @db.Uuid
   kind HospitalServiceAreaFacilityKind
-  sourceReference String @db.VarChar(255)
   verifiedAt DateTime @db.Timestamptz(3)
+  // NULL = one-time system bootstrap from canonical Master placement (migration 20261030110000).
+  classifiedByUserId String? @db.Uuid
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  classifiedBy User? @relation("NetworkRoleClassifier", fields: [classifiedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 }
 
 model HospitalServiceArea {
@@ -660,12 +664,16 @@ model HospitalMembership {
   // Customer decision E1 (ก-15): OWNER-granted report export for a MEMBER; both set or both null (SQL CHECK).
   reportExportGrantedAt       DateTime? @db.Timestamptz(3)
   reportExportGrantedByUserId String?   @db.Uuid
+  // ADR-0016: OWNER-granted read-only network Patient access for a MEMBER; both set or both null (SQL CHECK).
+  networkPatientReadGrantedAt       DateTime? @db.Timestamptz(3)
+  networkPatientReadGrantedByUserId String?   @db.Uuid
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   reportExportGrantedByUser User? @relation("HospitalMembershipReportExportGrantedBy", fields: [reportExportGrantedByUserId], references: [id], onDelete: Restrict)
+  networkPatientReadGrantedByUser User? @relation("HospitalMembershipNetworkPatientReadGrantedBy", fields: [networkPatientReadGrantedByUserId], references: [id], onDelete: Restrict)
 
   @@index([userId, hospitalId])
   @@index([hospitalId, status])

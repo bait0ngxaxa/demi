@@ -26,30 +26,20 @@ const actor: ActorContext = {
   osmHospitalRelationships: [],
 };
 
-function createDatabase(hospital = {
-  id: parentHospitalId,
-  hospitalCode: "PARENT-01",
-  name: "โรงพยาบาลแม่ข่ายสังเคราะห์",
-  status: HospitalStatus.ACTIVE,
-  parentHospitalId: null,
-  parentHospital: null,
-  childHospitals: [{
-    id: childHospitalId,
-    hospitalCode: "CHILD-01",
-    name: "โรงพยาบาลลูกข่ายสังเคราะห์",
-    status: HospitalStatus.ACTIVE,
-    parentHospitalId,
-  }],
+// ADR-0016: the active operational network association is the only Parent scope source.
+function createDatabase(area: unknown = {
+  parent: { id: parentHospitalId, hospitalCode: "PARENT-01", name: "โรงพยาบาลแม่ข่ายสังเคราะห์" },
+  child: { id: childHospitalId, hospitalCode: "CHILD-01", name: "โรงพยาบาลลูกข่ายสังเคราะห์" },
 }) {
-  const findFirst = vi.fn().mockResolvedValue({ hospital });
+  const findFirst = vi.fn().mockResolvedValue(area);
   return {
-    database: { hospitalMembership: { findFirst } } as unknown as ParentChildHospitalReportAccessDatabase,
+    database: { hospitalServiceArea: { findFirst } } as unknown as ParentChildHospitalReportAccessDatabase,
     findFirst,
   };
 }
 
 describe("Parent-to-Child Hospital report access service", () => {
-  it("returns one exact direct Child target without requiring a Child OWNER membership or loading report data", async () => {
+  it("returns one exact active network Child target without requiring a Child OWNER membership or loading report data", async () => {
     const { database, findFirst } = createDatabase();
 
     const access = await resolveParentChildHospitalReportAccessContext(
@@ -63,14 +53,24 @@ describe("Parent-to-Child Hospital report access service", () => {
       actorId: actor.userId,
       capability: HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES.read,
       parentHospitalId,
+      parent: { id: parentHospitalId, name: "โรงพยาบาลแม่ข่ายสังเคราะห์" },
       hospital: {
         id: childHospitalId,
+        name: "โรงพยาบาลลูกข่ายสังเคราะห์",
         status: HospitalStatus.ACTIVE,
         parentHospitalId,
       },
     });
     expect(findFirst).toHaveBeenCalledOnce();
-    expect(JSON.stringify(access)).not.toMatch(/patient|program|measurement|hospitalCode|name/iu);
+    expect(findFirst.mock.calls[0]?.[0]).toMatchObject({ where: { parentHospitalId, childHospitalId, endedAt: null } });
+    expect(JSON.stringify(access)).not.toMatch(/patient|program|measurement|hospitalCode/iu);
+  });
+
+  it("returns not-found when there is no active network association, whatever canonical placement says", async () => {
+    const { database } = createDatabase(null);
+
+    await expect(resolveParentChildHospitalReportAccessContext(actor, parentHospitalId, childHospitalId, database))
+      .rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("uses a coherent RepeatableRead transaction when given a Prisma client", async () => {
@@ -78,7 +78,7 @@ describe("Parent-to-Child Hospital report access service", () => {
     const outsideFindFirst = vi.fn();
     let transactionOptions: unknown;
     const database = {
-      hospitalMembership: { findFirst: outsideFindFirst },
+      hospitalServiceArea: { findFirst: outsideFindFirst },
       $transaction: async <T>(
         operation: (transaction: ParentChildHospitalReportAccessDatabase) => Promise<T>,
         options: unknown,

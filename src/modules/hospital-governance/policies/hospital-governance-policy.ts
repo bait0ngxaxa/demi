@@ -10,6 +10,11 @@ export const HOSPITAL_GOVERNANCE_CAPABILITIES = {
   readGovernance: "hospital:read-governance",
   suspend: "hospital:suspend",
   restore: "hospital:restore",
+  create: "hospital:create",
+  rename: "hospital:rename",
+  // ADR-0015: Platform ADMIN governs network roles and cross-Parent area transfers.
+  networkRoleManage: "hospital-network:role:manage",
+  networkAreaGovern: "hospital-network:area:govern",
 } as const;
 
 export type HospitalGovernanceCapability =

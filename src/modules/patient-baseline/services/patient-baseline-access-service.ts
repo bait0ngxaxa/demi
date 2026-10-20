@@ -20,9 +20,11 @@ import {
 } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead, buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertPatientBaselinePolicy,
+  PATIENT_BASELINE_READ_CAPABILITY,
   type PatientBaselineCapability,
   type PatientBaselinePolicyTarget,
 } from "../policies/patient-baseline-policy";
@@ -108,6 +110,7 @@ function hasPatientRole(record: PatientBaselineRelationshipAccessRecord): boolea
 function buildAuthorizedPatientBaselineRelationshipWhere(
   actor: ActorContext,
   relationshipId: string,
+  includeNetworkRead = false,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
   const patientRoleWhere: Prisma.PatientHospitalRelationshipWhereInput = {
@@ -122,6 +125,14 @@ function buildAuthorizedPatientBaselineRelationshipWhere(
     accessPredicates.push({
       ...patientRoleWhere,
       hospital: buildAuthorizedHospitalWhere(actor.userId),
+    });
+  }
+
+  if (actor.roles.includes(Role.HOSPITAL) && includeNetworkRead) {
+    // ADR-0016: read-only locator through an active network Parent; the resolver re-proves and audits it.
+    accessPredicates.push({
+      ...patientRoleWhere,
+      hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
     });
   }
 
@@ -221,6 +232,7 @@ export async function resolvePatientBaselineAccessContext(
     where: buildAuthorizedPatientBaselineRelationshipWhere(
       actor,
       parsedRelationshipId.data.toLowerCase(),
+      capability === PATIENT_BASELINE_READ_CAPABILITY,
     ),
     select: patientBaselineRelationshipAccessSelect,
   });
@@ -236,11 +248,13 @@ export async function resolvePatientBaselineAccessContext(
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
   };
 
-  assertPatientBaselinePolicy({
-    actor: authoritativeActor,
-    capability,
-    target,
-  });
+  // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+  await assertDirectOrNetworkPatientRead(
+    () => assertPatientBaselinePolicy({ actor: authoritativeActor, capability, target }),
+    capability === PATIENT_BASELINE_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "baseline" },
+  );
 
   return {
     actor: authoritativeActor,

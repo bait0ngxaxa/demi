@@ -9,8 +9,8 @@ import { HospitalServiceCatalogWorkspace } from "./service-catalog/hospital-serv
 import { HospitalPatientAccessRequestsWorkspace } from "./access-requests/patient-access-requests-workspace";
 
 const scopes = [
-  { hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาล ก", hospitalCode: "H-A" },
-  { hospitalId: "22222222-2222-4222-8222-222222222222", hospitalName: "โรงพยาบาล ข", hospitalCode: "H-B" },
+  { hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาล ก", hospitalCode: "H-A", access: "DIRECT" as const },
+  { hospitalId: "22222222-2222-4222-8222-222222222222", hospitalName: "โรงพยาบาล ข", hospitalCode: "H-B", access: "DIRECT" as const },
 ];
 const scope = scopes[1];
 

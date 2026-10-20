@@ -26,7 +26,7 @@ function workspace(overrides: Partial<ActorHospitalWorkspace> = {}): ActorHospit
     hospitalName: "โรงพยาบาลทดสอบ",
     hospitalStatus: HospitalStatus.ACTIVE,
     network: { hospitalId, name: "โรงพยาบาลทดสอบ" },
-    hasActiveDirectChildren: false,
+    networkRole: null, hasActiveDirectChildren: false,
     ...overrides,
   };
 }

@@ -27,6 +27,7 @@ vi.mock("@/modules/workforce/transport/server-actions", () => ({
   suspendOsmRelationshipAction: mocks.osmSuspend,
   restoreOsmRelationshipAction: mocks.osmRestore,
   setHospitalMembershipReportExportGrantAction: mocks.grant,
+  setHospitalMembershipNetworkPatientReadGrantAction: mocks.grant,
 }));
 vi.mock("@/modules/workforce/transport/workforce-release-action", () => ({
   releaseWorkforceAction: mocks.release,

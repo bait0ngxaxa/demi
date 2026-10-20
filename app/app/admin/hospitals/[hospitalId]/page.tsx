@@ -36,7 +36,13 @@ import {
   type WorkforceHospitalOwnerForReset,
 } from "@/modules/workforce/services/workforce-service";
 
+import {
+  getHospitalNetworkForAdmin,
+  type HospitalNetworkAdminView,
+} from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
+
 import { HospitalGovernanceControls } from "./hospital-governance-controls";
+import { HospitalNetworkSection } from "./hospital-network-section";
 
 export const metadata: Metadata = {
   title: "รายละเอียดการกำกับดูแลโรงพยาบาล",
@@ -174,6 +180,10 @@ function GovernanceMetadata({
           <dd className="mt-1 font-semibold text-text">{hospital.name}</dd>
         </div>
         <div>
+          <dt className="text-sm text-text-muted">รหัสโรงพยาบาล</dt>
+          <dd className="mt-1 font-semibold text-text">{hospital.hospitalCode}</dd>
+        </div>
+        <div>
           <dt className="text-sm text-text-muted">สถานะวงจรชีวิต</dt>
           <dd className="mt-1 font-semibold text-text">{statusLabel(hospital.status)}</dd>
         </div>
@@ -205,10 +215,12 @@ export default async function HospitalGovernanceDetailPage({
   if (Array.isArray(hn)) notFound();
   let hospital: HospitalGovernanceProjection;
   let owners: WorkforceHospitalOwnerForReset[] = [];
+  let network: HospitalNetworkAdminView;
 
   try {
     hospital = await getHospitalGovernanceDetail(actor, hospitalId);
     owners = await listHospitalOwnersForPasswordReset(actor, hospitalId);
+    network = await getHospitalNetworkForAdmin(actor, hospitalId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -226,12 +238,14 @@ export default async function HospitalGovernanceDetailPage({
           { href: "/app/admin/hospitals", label: "การกำกับดูแลโรงพยาบาล" },
           { label: "รายละเอียดโรงพยาบาล" },
         ]}
-        description="ใช้สำหรับตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล และแก้ชื่อ-สกุลผู้ป่วยตามที่เจ้าของโรงพยาบาลแจ้ง ไม่รวมการจัดการบัญชีหรือข้อมูลผู้ป่วยอื่น"
+        description="ตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล แก้ชื่อและประเภทในเครือข่าย โอนย้ายลูกข่าย และแก้ชื่อ-สกุลผู้ป่วยตามที่เจ้าของโรงพยาบาลแจ้ง ไม่รวมการดูข้อมูลผู้ป่วย"
         title={hospital.name}
       />
 
       <div className="space-y-6 pt-8">
         <GovernanceMetadata hospital={hospital} />
+
+        <HospitalNetworkSection hospital={hospital} network={network} />
 
         <Alert variant={hospital.status === HospitalStatus.SUSPENDED ? "warning" : "info"}>
           <p className="font-semibold">ขอบเขตการเปลี่ยนสถานะ</p>

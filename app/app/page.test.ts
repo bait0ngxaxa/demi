@@ -76,7 +76,7 @@ describe("application home workspace routing", () => {
   async function renderHome(actor: ActorContext, status: HospitalStatus = HospitalStatus.ACTIVE, query: Record<string, string> = {}): Promise<string> {
     vi.mocked(getProtectedApplicationActor).mockResolvedValue(actor);
     vi.mocked(listActorHospitalWorkspaces).mockResolvedValue(
-      [...new Set([...actor.hospitalMemberships, ...actor.osmHospitalRelationships].map(({ hospitalId }) => hospitalId))].map((hospitalId) => ({ hospitalId, hospitalName: `โรงพยาบาล ${hospitalId}`, hospitalCode: hospitalId, hospitalStatus: status, network: { hospitalId, name: `โรงพยาบาล ${hospitalId}` }, hasActiveDirectChildren: false })),
+      [...new Set([...actor.hospitalMemberships, ...actor.osmHospitalRelationships].map(({ hospitalId }) => hospitalId))].map((hospitalId) => ({ hospitalId, hospitalName: `โรงพยาบาล ${hospitalId}`, hospitalCode: hospitalId, hospitalStatus: status, network: { hospitalId, name: `โรงพยาบาล ${hospitalId}` }, networkRole: null, hasActiveDirectChildren: false })),
     );
     return renderToStaticMarkup(await ApplicationPage({ searchParams: Promise.resolve(query) }));
   }
@@ -220,7 +220,7 @@ describe("application home workspace routing", () => {
     });
     function mockWorkspaces(entries: readonly { id: string; name: string; network: { hospitalId: string; name: string } }[]): void {
       vi.mocked(listActorHospitalWorkspaces).mockResolvedValue(entries.map(({ id, name, network }) => ({
-        hospitalId: id, hospitalName: name, hospitalCode: id, hospitalStatus: HospitalStatus.ACTIVE, network, hasActiveDirectChildren: false,
+        hospitalId: id, hospitalName: name, hospitalCode: id, hospitalStatus: HospitalStatus.ACTIVE, network, networkRole: null, hasActiveDirectChildren: false,
       })));
     }
     const parentNetwork = { hospitalId: parentId, name: "รพ.แม่ข่ายสังเคราะห์" };
@@ -280,7 +280,7 @@ describe("application home workspace routing", () => {
         hospitalCode: id,
         hospitalStatus: HospitalStatus.ACTIVE,
         network: id === childId ? { hospitalId: parentId, name: "เครือข่ายแม่ข่าย" } : { hospitalId: id, name: `เครือข่าย ${id.slice(0, 4)}` },
-        hasActiveDirectChildren: false,
+        networkRole: null, hasActiveDirectChildren: false,
       })));
     }
 

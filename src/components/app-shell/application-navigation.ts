@@ -205,8 +205,8 @@ function canAssignOsm(actor: ActorContext): boolean {
 }
 
 /**
- * The areas page (getParentAreaOverviewContext) admits an active direct OWNER of an active MAIN Hospital, one with
- * no Parent, even before it has Children. The page still re-resolves the hierarchy and every Child server-side.
+ * The areas page (getParentAreaOverviewContext) admits an active direct OWNER of an active network PARENT
+ * (ADR-0015), even before it has Children. The page still re-resolves the network and every Child server-side.
  */
 export function canOpenParentAreaOverview(
   actor: ActorContext,
@@ -214,8 +214,7 @@ export function canOpenParentAreaOverview(
 ): boolean {
   return actor.roles.includes(Role.HOSPITAL) && hospitalWorkspaces.some((workspace) =>
     workspace.hospitalStatus === HospitalStatus.ACTIVE &&
-    // `network` is the current Parent, or the Hospital itself when it has none (MAIN).
-    workspace.network.hospitalId === workspace.hospitalId &&
+    workspace.networkRole === "PARENT" &&
     actor.hospitalMemberships.some((membership) =>
       membership.hospitalId === workspace.hospitalId &&
       membership.membershipType === MembershipType.OWNER &&
@@ -314,6 +313,8 @@ function projectWorkSections(
     canManagePatientServiceCatalog(actor) && { href: "/app/patients/service-catalog", label: "บริการที่เปิดให้ขอ", match: "prefix" },
     canManageHospitalContent(actor) && { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" },
     canManageHospitalContact(actor) && { href: "/app/hospitals/contact", label: "ข้อมูลติดต่อของ รพ.", match: "exact" },
+    // ADR-0016: the same audience as the areas overview (OWNER of an active network PARENT).
+    canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/network", label: "จัดการลูกข่าย", match: "exact", prefetch: false },
   ]);
   const platformAdministration = compact([governance.hospitals, governance.reporting]);
   const administrationScope: NavigationAdministrationScope = hospitalAdministration.length > 0

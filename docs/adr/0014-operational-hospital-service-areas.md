@@ -1,6 +1,6 @@
 # ADR-0014: Operational Hospital Service Area Ownership
 
-- Status: Accepted for Phase A foundation; eligibility-source onboarding, editable fields and transfer approval remain open
+- Status: Accepted for Phase A foundation; eligibility source, candidate boundary and transfer partially superseded by [ADR-0015](./0015-admin-governed-hospital-network.md) (2026-10-20)
 - Date: 2026-10-20
 - Supersedes: ADR-0013 H1 only insofar as it prohibits Parent OWNER operational attach/end and equates all operational areas with canonical links. H2–H5 are unchanged.
 

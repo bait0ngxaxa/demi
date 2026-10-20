@@ -251,12 +251,22 @@ function projectHospitalActions(
       category: "administration",
       prefetch: false,
     });
-    // ADR-0013: only a Parent with active direct Children has responsibility areas to show.
+    // ADR-0016: a network Parent OWNER manages its Children; the page re-resolves persisted authority.
+    if (workspace.networkRole === "PARENT") {
+      actions.push({
+        href: withHospitalContext("/app/hospitals/network", hospitalId),
+        label: "จัดการลูกข่าย",
+        description: "เพิ่มหรือนำ รพ.สต. และหน่วยบริการลูกข่ายออกจากเครือข่าย และเปิดดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว",
+        category: "administration",
+        prefetch: false,
+      });
+    }
+    // Only a Parent with active network Children has responsibility areas to show.
     if (workspace.hasActiveDirectChildren) {
       actions.push({
         href: "/app/hospitals/areas",
         label: "เขตความรับผิดชอบ",
-        description: "ดูและดาวน์โหลดตัวเลขสรุปของโรงพยาบาลลูกข่ายที่ใช้งานอยู่ โดยไม่เพิ่มสิทธิ์ดูแลผู้ป่วยหรือจัดการบุคลากรลูกข่าย",
+        description: "ดูและดาวน์โหลดตัวเลขสรุปของโรงพยาบาลลูกข่ายในเครือข่าย",
         category: "administration",
         prefetch: false,
       });

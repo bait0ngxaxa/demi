@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { PatientDirectoryView } from "./patient-directory-view";
 
-const scope = { hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาล ก" };
+const scope = { hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาล ก", access: "DIRECT" as const };
 
 function render(canAssignOsm?: boolean): string {
   return renderToStaticMarkup(

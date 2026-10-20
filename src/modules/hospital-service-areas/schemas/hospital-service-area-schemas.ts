@@ -1,14 +1,32 @@
 import { z } from "zod";
 
 const id = z.string().uuid().transform((value) => value.toLowerCase());
+const reason = z.string().trim().min(1).max(500);
+const pagination = { afterId: id.optional(), limit: z.number().int().min(1).max(100).default(50) };
 export const serviceAreaParentSchema = z.object({ parentHospitalId: id }).strict();
 export const serviceAreaAttachSchema = serviceAreaParentSchema.extend({ childHospitalId: id });
 export const serviceAreaEndSchema = serviceAreaParentSchema.extend({
   areaId: id,
   confirm: z.literal(true),
-  endReason: z.string().trim().min(1).max(500),
+  endReason: reason,
 });
-export const serviceAreaPageSchema = serviceAreaParentSchema.extend({
-  afterId: id.optional(),
-  limit: z.number().int().min(1).max(100).default(50),
+export const serviceAreaPageSchema = serviceAreaParentSchema.extend(pagination);
+export const serviceAreaCandidatePageSchema = serviceAreaPageSchema.extend({
+  query: z.string().trim().max(100).optional(),
 });
+
+// Platform ADMIN network governance (ADR-0015).
+export const networkRoleSetSchema = z.object({
+  hospitalId: id,
+  kind: z.enum(["PARENT", "CHILD"]),
+}).strict();
+export const governedHospitalIdSchema = id;
+export const networkRoleClearSchema = z.object({ hospitalId: id, confirm: z.literal(true) }).strict();
+export const governedAreaPageSchema = serviceAreaPageSchema;
+export const governedAreaEndSchema = z.object({ areaId: id, confirm: z.literal(true), endReason: reason }).strict();
+export const governedAreaTransferSchema = z.object({
+  areaId: id,
+  toParentHospitalId: id,
+  confirm: z.literal(true),
+  reason,
+}).strict();

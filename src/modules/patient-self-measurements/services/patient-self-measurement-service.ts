@@ -237,7 +237,7 @@ export async function listPatientSelfMeasurementsForCareTeam(
   const database = deps.database ?? getPrisma();
   try {
     const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, database);
-    if (!access.scopes.exactOsmAssignment && !access.scopes.directHospital) throw new ForbiddenError();
+    if (!access.scopes.exactOsmAssignment && !access.scopes.directHospital && !access.scopes.networkRead) throw new ForbiddenError();
     const parsedInput = patientSelfMeasurementListSchema.safeParse(input);
     if (!parsedInput.success) throw new ValidationError("Self measurement list input is invalid");
     const scopeId = access.patient.patientHospitalRelationshipId;

@@ -370,7 +370,8 @@ export async function getStaffPatientHospitalProfile(
   actor: ActorContext, relationshipId: string, database: PatientHospitalProfileDatabase = getPrisma(),
 ): Promise<PatientHospitalProfileRecord> {
   const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, database);
-  if (!access.scopes.directHospital) throw new ForbiddenError();
+  // ADR-0016: an audited network reader may read (never update) the Hospital-local profile.
+  if (!access.scopes.directHospital && !access.scopes.networkRead) throw new ForbiddenError();
   const record = await database.patientHospitalRelationship.findUnique({ where: { id: relationshipId }, select: patientHospitalProfileSelect });
   if (!record) throw new NotFoundError();
   return record;

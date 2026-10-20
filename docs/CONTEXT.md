@@ -10,7 +10,9 @@ Resolve apparent conflicts in this order: (1) latest confirmed Product Owner dir
 
 - **Canonical Hospital hierarchy:** official organization identity and placement owned by Hospital Master reconciliation; it is independent of an operational assignment.
 - **Hospital service area:** an OWNER-managed operational Parent–Child association with at most one active Parent per Child and retained ended history. It is neither direct workforce membership nor Patient/report authority.
-- **Service-area eligibility:** explicit trusted-source confirmation that an existing verified facility qualifies as Parent or Child; hierarchy, names and codes alone do not establish it.
+- **Network role (service-area eligibility):** an audited Platform ADMIN decision that a facility is a network PARENT or CHILD ([ADR-0015](./adr/0015-admin-governed-hospital-network.md)); hierarchy, names and codes alone do not establish it.
+- **Network Patient read:** read-only access by a Parent OWNER (or OWNER-granted Parent MEMBER) to the Patients of the Parent's active network Children, audited per read ([ADR-0016](./adr/0016-network-patient-read.md)).
+- **Area transfer:** a Platform ADMIN operation that ends a Child's active association and records a new one under another Parent in one transaction.
 - **Area termination:** ending only the operational association; it preserves official hierarchy, facility records and care history.
 
 Current ownership decision: [ADR-0014](./adr/0014-operational-hospital-service-areas.md), partially superseding H1 of ADR-0013 while retaining H2–H5. The Phase A foundation does not complete network Patient reads or management UI. [Phase A handoff](./phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) records implementation and remaining decisions.

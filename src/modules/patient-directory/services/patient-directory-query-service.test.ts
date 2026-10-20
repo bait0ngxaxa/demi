@@ -15,6 +15,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   findPatientDirectory,
   getPatientDirectoryDetail,
+  buildAuthorizedHospitalWhere,
   patientDirectoryInternals,
   type PatientDirectoryDetailRecord,
   type PatientDirectoryDatabase,
@@ -134,7 +135,7 @@ describe("Patient directory query boundary", () => {
 
   it("builds name and exact HN filters under the direct Hospital relationship boundary", () => {
     const nameWhere = patientDirectoryInternals.buildPatientRelationshipWhere(
-      "44444444-4444-4444-8444-444444444444",
+      buildAuthorizedHospitalWhere("44444444-4444-4444-8444-444444444444"),
       {
         targetHospitalId: hospitalId,
         lookupType: "NAME",
@@ -143,7 +144,7 @@ describe("Patient directory query boundary", () => {
       },
     );
     const hnWhere = patientDirectoryInternals.buildPatientRelationshipWhere(
-      "44444444-4444-4444-8444-444444444444",
+      buildAuthorizedHospitalWhere("44444444-4444-4444-8444-444444444444"),
       {
         targetHospitalId: hospitalId,
         lookupType: "HOSPITAL_NUMBER",
@@ -297,6 +298,7 @@ describe("Patient directory query boundary", () => {
       hospitalNumber: "HN-001",
       classification: null,
       profileSource: "LEGACY_FALLBACK",
+      access: "DIRECT",
       profile: {
         dateOfBirth,
         emergencyContactRelationship: null,

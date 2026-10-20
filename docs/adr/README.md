@@ -54,3 +54,5 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 - [ADR-0013 — Responsibility areas as direct Child Hospitals](./0013-responsibility-areas.md): accepted 2026-10-17 (จ-1..จ-5); area = active direct Child, Parent OWNER nine-value summary view/export (RPT-32) only.
 
 - [ADR-0014 — Operational Hospital Service Area Ownership](./0014-operational-hospital-service-areas.md): Phase A; partially supersedes H1 of ADR-0013, keeps H2–H5 and official Master authority unchanged; no Patient/workforce/report inheritance.
+- [ADR-0015 — Platform-governed Hospital network roles and transfers](./0015-admin-governed-hospital-network.md): Platform ADMIN sets PARENT/CHILD roles, registers/renames Hospitals and transfers areas; OWNERs attach any free CHILD; partially supersedes ADR-0014.
+- [ADR-0016 — Read-only network Patient access](./0016-network-patient-read.md): Parent OWNER (and granted MEMBERs) read Child Patients read-only with audit; Parent reports follow the network; supersedes ADR-0013 H5.

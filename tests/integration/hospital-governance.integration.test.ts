@@ -15,8 +15,10 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getAppointmentHistory } from "@/modules/appointments/services/appointment-query-service";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import {
+  createHospital as registerHospital,
   getHospitalGovernanceDetail,
   listHospitalGovernanceDirectory,
+  renameHospital,
   restoreHospital,
   suspendHospital,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
@@ -24,7 +26,7 @@ import { assignOsmToPatient } from "@/modules/patient-assignment/services/patien
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { listWorkforce } from "@/modules/workforce/services/workforce-service";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -50,6 +52,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.osmHospitalRelationship.deleteMany();
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
+  await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
   await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
@@ -402,6 +405,79 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(await prisma.auditEvent.count({ where: { resourceId: active.id } })).toBe(2);
+  });
+
+  it("registers and renames a Hospital with audit, leaving activation to onboarding (ADR-0015)", async () => {
+    const admin = await createAdmin();
+    const created = await registerHospital(admin.actor, { hospitalCode: " new-parent_1 ", name: " โรงพยาบาลแม่ข่ายใหม่ ", networkRole: "PARENT" });
+    expect(created).toMatchObject({
+      hospitalCode: "NEW-PARENT_1",
+      name: "โรงพยาบาลแม่ข่ายใหม่",
+      status: HospitalStatus.PENDING_VERIFICATION,
+    });
+    expect(await prisma.hospital.findUniqueOrThrow({
+      where: { id: created.id },
+      select: { parentHospitalId: true, serviceAreaEligibility: { select: { kind: true, classifiedByUserId: true } } },
+    })).toEqual({
+      parentHospitalId: null,
+      serviceAreaEligibility: { kind: "PARENT", classifiedByUserId: admin.userId },
+    });
+    await expect(
+      registerHospital(admin.actor, { hospitalCode: "NEW-PARENT_1", name: "ซ้ำ", networkRole: "CHILD" }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(
+      registerHospital(admin.actor, { hospitalCode: "รหัสไทย", name: "x", networkRole: "CHILD" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      registerHospital(admin.actor, { hospitalCode: "OK1", name: "x", networkRole: "CHILD", parentHospitalId: created.id }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      registerHospital(admin.actor, { hospitalCode: "OK2", name: "x" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    const renamed = await renameHospital(admin.actor, {
+      hospitalId: created.id,
+      expectedUpdatedAt: created.updatedAt.toISOString(),
+      name: "โรงพยาบาลแม่ข่ายใหม่ (แก้ไข)",
+    });
+    expect(renamed.name).toBe("โรงพยาบาลแม่ข่ายใหม่ (แก้ไข)");
+    await expect(
+      renameHospital(admin.actor, {
+        hospitalId: created.id,
+        expectedUpdatedAt: created.updatedAt.toISOString(),
+        name: "ค่าเก่า",
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(await prisma.auditEvent.findMany({
+      where: { resourceId: created.id },
+      select: { action: true, actorUserId: true, metadata: true },
+      orderBy: { createdAt: "asc" },
+    })).toEqual([
+      {
+        action: "hospital.created",
+        actorUserId: admin.userId,
+        metadata: { hospitalCode: "NEW-PARENT_1", toStatus: "PENDING_VERIFICATION", networkRole: "PARENT" },
+      },
+      {
+        action: "hospital.renamed",
+        actorUserId: admin.userId,
+        metadata: { fromName: "โรงพยาบาลแม่ข่ายใหม่", toName: "โรงพยาบาลแม่ข่ายใหม่ (แก้ไข)" },
+      },
+    ]);
+
+    const owner = await createOwner((await createHospital("OWNED")).id);
+    await expect(
+      registerHospital(owner.actor, { hospitalCode: "DENIED1", name: "x", networkRole: "CHILD" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    await prisma.user.update({ where: { id: admin.userId }, data: { status: UserStatus.SUSPENDED } });
+    await expect(
+      renameHospital(admin.actor, {
+        hospitalId: created.id,
+        expectedUpdatedAt: renamed.updatedAt.toISOString(),
+        name: "ต้องไม่สำเร็จ",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await prisma.hospital.count({ where: { hospitalCode: "DENIED1" } })).toBe(0);
   });
 
   it("fails closed for a suspended Hospital, restores only valid scopes, and isolates another Hospital", async () => {

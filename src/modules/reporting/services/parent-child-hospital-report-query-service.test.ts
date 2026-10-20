@@ -30,26 +30,10 @@ const actor: ActorContext = {
 };
 
 function createDatabase() {
-  const parentRecord = {
-    id: parentHospitalId,
-    hospitalCode: "PARENT-01",
-    name: "โรงพยาบาลแม่ข่ายสังเคราะห์",
-    status: HospitalStatus.ACTIVE,
-    parentHospitalId: null,
-    parentHospital: null,
-    childHospitals: [{
-      id: childHospitalId,
-      hospitalCode: "CHILD-01",
-      name: "โรงพยาบาลลูกข่ายสังเคราะห์",
-      status: HospitalStatus.ACTIVE,
-      parentHospitalId,
-    }],
-  };
-  const findMembership = vi.fn().mockResolvedValue({ hospital: parentRecord });
-  const findHospital = vi.fn().mockResolvedValue({
-    id: childHospitalId,
-    name: "โรงพยาบาลลูกข่ายสังเคราะห์",
-    parentHospital: { id: parentHospitalId, name: "โรงพยาบาลแม่ข่ายสังเคราะห์" },
+  // ADR-0016: the active network association supplies the exact Parent/Child scope and labels.
+  const findArea = vi.fn().mockResolvedValue({
+    parent: { id: parentHospitalId, hospitalCode: "PARENT-01", name: "โรงพยาบาลแม่ข่ายสังเคราะห์" },
+    child: { id: childHospitalId, hospitalCode: "CHILD-01", name: "โรงพยาบาลลูกข่ายสังเคราะห์" },
   });
   const relationshipCount = vi.fn()
     .mockResolvedValueOnce(3)
@@ -63,8 +47,7 @@ function createDatabase() {
   const dreamCardCount = vi.fn().mockResolvedValue(0);
   const confidenceCount = vi.fn().mockResolvedValue(0);
   const transaction = {
-    hospitalMembership: { findFirst: findMembership },
-    hospital: { findFirst: findHospital },
+    hospitalServiceArea: { findFirst: findArea },
     patientHospitalRelationship: { count: relationshipCount },
     patientProgram: { groupBy: programGroupBy },
     patientProgramServiceOneRoutine: { count: routineCount },
@@ -80,8 +63,7 @@ function createDatabase() {
 
   return {
     database,
-    findMembership,
-    findHospital,
+    findArea,
     transaction,
     relationshipCount,
     programGroupBy,
@@ -97,8 +79,7 @@ describe("Parent-to-Child Hospital report query", () => {
   it("returns source-backed summary values for the exact Child without projecting patient or program details", async () => {
     const {
       database,
-      findMembership,
-      findHospital,
+      findArea,
       relationshipCount,
       programGroupBy,
       routineCount,
@@ -139,8 +120,7 @@ describe("Parent-to-Child Hospital report query", () => {
         },
       },
     });
-    expect(findMembership).toHaveBeenCalledTimes(2);
-    expect(findHospital).toHaveBeenCalledOnce();
+    expect(findArea).toHaveBeenCalledTimes(2);
     expect(relationshipCount).toHaveBeenNthCalledWith(1, { where: { hospitalId: childHospitalId, endedAt: null } });
     expect(relationshipCount).toHaveBeenNthCalledWith(2, {
       where: { hospitalId: childHospitalId, endedAt: null, programs: { none: {} } },
@@ -195,14 +175,14 @@ describe("Parent-to-Child Hospital report query", () => {
   });
 
   it("does not let ADMIN-only actors use the Parent report operation", async () => {
-    const { database, findMembership, auditCreate } = createDatabase();
+    const { database, findArea, auditCreate } = createDatabase();
 
     await expect(getParentChildHospitalReportingPage({
       ...actor,
       roles: [Role.ADMIN],
     }, { parentHospitalId, hospitalId: childHospitalId }, { database }))
       .rejects.toBeInstanceOf(ForbiddenError);
-    expect(findMembership).not.toHaveBeenCalled();
+    expect(findArea).not.toHaveBeenCalled();
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         action: "parent_child_reporting.access.denied",
@@ -235,19 +215,9 @@ describe("Parent-to-Child Hospital report query", () => {
     expect(JSON.stringify(auditCreate.mock.calls)).not.toContain("sensitive database error");
   });
 
-  it("fails closed when the selected Child is not the exact direct child resolved by the hierarchy", async () => {
-    const { database, findMembership } = createDatabase();
-    findMembership.mockResolvedValueOnce({
-      hospital: {
-        id: parentHospitalId,
-        hospitalCode: "PARENT-01",
-        name: "โรงพยาบาลแม่ข่ายสังเคราะห์",
-        status: HospitalStatus.ACTIVE,
-        parentHospitalId: null,
-        parentHospital: null,
-        childHospitals: [],
-      },
-    });
+  it("fails closed when the selected Child is not an active network Child of the Parent", async () => {
+    const { database, findArea } = createDatabase();
+    findArea.mockResolvedValueOnce(null);
 
     await expect(getParentChildHospitalReportingPage(actor, {
       parentHospitalId,
@@ -255,20 +225,10 @@ describe("Parent-to-Child Hospital report query", () => {
     }, { database })).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it("denies a former Parent after a Child is reparented and audits the current-scope denial", async () => {
-    const { database, findMembership, relationshipCount, auditCreate } = createDatabase();
-    findMembership.mockResolvedValueOnce({
-      hospital: {
-        id: parentHospitalId,
-        hospitalCode: "PARENT-01",
-        name: "โรงพยาบาลแม่ข่ายสังเคราะห์",
-        status: HospitalStatus.ACTIVE,
-        parentHospitalId: null,
-        parentHospital: null,
-        // The Child no longer appears in this former Parent's current direct-child set.
-        childHospitals: [],
-      },
-    });
+  it("denies a former Parent after a Child is ended or transferred and audits the current-scope denial", async () => {
+    const { database, findArea, relationshipCount, auditCreate } = createDatabase();
+    // The former Parent no longer holds an active association with the Child.
+    findArea.mockResolvedValueOnce(null);
 
     await expect(getParentChildHospitalReportingPage(actor, {
       parentHospitalId,

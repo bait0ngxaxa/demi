@@ -16,8 +16,10 @@ import type {
   ActorOsmHospitalRelationship,
 } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
+  APPOINTMENT_READ_CAPABILITY,
   appointmentPolicyInternals,
   decideAppointmentPolicy,
   type AppointmentCapability,
@@ -84,6 +86,8 @@ export type AppointmentAccessContext = {
     patientSelf: boolean;
     exactOsmAssignment: boolean;
     directHospital: boolean;
+    /** ADR-0016: read-only access through an active network Parent; never sufficient for any write. */
+    networkRead: boolean;
   };
 };
 
@@ -217,9 +221,16 @@ export async function resolveAppointmentAccessContext(
     target,
   });
 
-  if (!decision.allowed) {
-    throw new ForbiddenError();
-  }
+  // ADR-0016: READ may fall back to an audited network read; every write path additionally
+  // requires a direct scope or a manage capability, which a network reader never holds.
+  const access = await assertDirectOrNetworkPatientRead(
+    () => {
+      if (!decision.allowed) throw new ForbiddenError();
+    },
+    capability === APPOINTMENT_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "appointment" },
+  );
 
   return {
     authoritativeActor,
@@ -240,6 +251,7 @@ export async function resolveAppointmentAccessContext(
         appointmentPolicyInternals.hasExactActiveOsmAssignment(authoritativeActor, target),
       directHospital: authoritativeActor.roles.includes(Role.HOSPITAL) &&
         appointmentPolicyInternals.hasActiveDirectHospitalScope(authoritativeActor, target.hospitalId),
+      networkRead: access === "NETWORK",
     },
   };
 }

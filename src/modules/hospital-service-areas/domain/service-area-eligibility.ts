@@ -3,27 +3,19 @@ import { HospitalServiceAreaFacilityKind, HospitalStatus } from "@prisma/client"
 export type ServiceAreaFacility = {
   id: string;
   status: HospitalStatus;
-  parentHospitalId: string | null;
-  serviceAreaEligibility: {
-    kind: HospitalServiceAreaFacilityKind;
-    sourceReference: string;
-    verifiedAt: Date;
-  } | null;
+  serviceAreaEligibility: { kind: HospitalServiceAreaFacilityKind } | null;
 };
 
 export function hasServiceAreaEligibility(
   facility: ServiceAreaFacility,
   kind: HospitalServiceAreaFacilityKind,
 ): boolean {
-  return facility.status === HospitalStatus.ACTIVE &&
-    facility.serviceAreaEligibility?.kind === kind &&
-    facility.serviceAreaEligibility.sourceReference.trim().length > 0;
+  return facility.status === HospitalStatus.ACTIVE && facility.serviceAreaEligibility?.kind === kind;
 }
 
-/** Canonical placement is a conservative boundary until cross-Parent transfer is approved. */
+/** ADR-0015: the ADMIN-governed network role decides eligibility; canonical placement is reference data only. */
 export function isEligibleServiceAreaPair(parent: ServiceAreaFacility, child: ServiceAreaFacility): boolean {
-  return parent.id !== child.id && parent.parentHospitalId === null &&
-    child.parentHospitalId === parent.id &&
+  return parent.id !== child.id &&
     hasServiceAreaEligibility(parent, HospitalServiceAreaFacilityKind.PARENT) &&
     hasServiceAreaEligibility(child, HospitalServiceAreaFacilityKind.CHILD);
 }

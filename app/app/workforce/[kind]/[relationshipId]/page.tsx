@@ -225,6 +225,16 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           />
         ) : null}
 
+        {detail.viewerScope === "OWNER" && detail.networkPatientReadGrant && detail.relationshipStatus !== "ENDED" ? (
+          <ReportExportGrantControl
+            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
+            grant={detail.networkPatientReadGrant}
+            kind="NETWORK_PATIENT_READ"
+            relationshipId={detail.relationshipId}
+            targetHospitalId={detail.hospital.id}
+          />
+        ) : null}
+
         {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
           <WorkforcePasswordResetControl
             subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}

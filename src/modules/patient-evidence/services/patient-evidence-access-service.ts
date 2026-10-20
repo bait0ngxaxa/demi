@@ -20,9 +20,11 @@ import {
 } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead, buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertPatientEvidencePolicy,
+  PATIENT_ARTIFACT_READ_CAPABILITY,
   type PatientEvidenceCapability,
   type PatientEvidencePolicyTarget,
 } from "../policies/patient-evidence-policy";
@@ -108,6 +110,7 @@ function hasPatientRole(record: PatientEvidenceRelationshipAccessRecord): boolea
 function buildAuthorizedPatientEvidenceRelationshipWhere(
   actor: ActorContext,
   relationshipId: string,
+  includeNetworkRead = false,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
   const patientRoleWhere: Prisma.PatientHospitalRelationshipWhereInput = {
@@ -122,6 +125,14 @@ function buildAuthorizedPatientEvidenceRelationshipWhere(
     accessPredicates.push({
       ...patientRoleWhere,
       hospital: buildAuthorizedHospitalWhere(actor.userId),
+    });
+  }
+
+  if (actor.roles.includes(Role.HOSPITAL) && includeNetworkRead) {
+    // ADR-0016: read-only locator through an active network Parent; the resolver re-proves and audits it.
+    accessPredicates.push({
+      ...patientRoleWhere,
+      hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
     });
   }
 
@@ -222,6 +233,7 @@ export async function resolvePatientEvidenceAccessContext(
       where: buildAuthorizedPatientEvidenceRelationshipWhere(
         actor,
         parsedRelationshipId.data.toLowerCase(),
+        capability === PATIENT_ARTIFACT_READ_CAPABILITY,
       ),
       select: patientEvidenceRelationshipAccessSelect,
     });
@@ -237,11 +249,13 @@ export async function resolvePatientEvidenceAccessContext(
       assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
     };
 
-    assertPatientEvidencePolicy({
-      actor: authoritativeActor,
-      capability,
-      target,
-    });
+    // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+    await assertDirectOrNetworkPatientRead(
+      () => assertPatientEvidencePolicy({ actor: authoritativeActor, capability, target }),
+      capability === PATIENT_ARTIFACT_READ_CAPABILITY,
+      db,
+      { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "evidence" },
+    );
 
     return {
       actor: authoritativeActor,

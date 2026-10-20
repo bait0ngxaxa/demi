@@ -20,7 +20,13 @@ import {
   resolveEffectivePatientHospitalProfile,
 } from "@/modules/patient-hospital-profile/domain/patient-hospital-profile-values";
 import {
-  assertPatientReadPolicy,
+  buildNetworkReadableChildHospitalWhere,
+  findNetworkPatientReadParent,
+  listNetworkScopes,
+  recordNetworkPatientRead,
+} from "@/modules/hospital-service-areas/services/hospital-network-access";
+import {
+  decidePatientReadPolicy,
   decideOsmAssignedPatientReadPolicy,
   assertOsmAssignedPatientReadPolicy,
   PATIENT_READ_CAPABILITY,
@@ -47,6 +53,8 @@ export type PatientDirectoryDatabase = PrismaClient | Prisma.TransactionClient;
 export type PatientDirectoryScope = {
   hospitalId: string;
   hospitalName: string;
+  /** ADR-0016: NETWORK scopes are read-only Child Hospitals of a Parent the actor reads for. */
+  access: "DIRECT" | "NETWORK";
 };
 
 export type PatientDirectoryItem = {
@@ -76,6 +84,8 @@ export type PatientProfileDetail = {
 export type PatientDirectoryDetail = PatientDirectoryItem & {
   profile: PatientProfileDetail;
   profileSource: "HOSPITAL_LOCAL" | "LEGACY_FALLBACK";
+  /** ADR-0016: NETWORK detail is read-only; callers must not offer any write action. */
+  access: "DIRECT" | "NETWORK";
 };
 
 export type PatientDirectoryPage = {
@@ -276,7 +286,7 @@ export function buildNameWhere(value: string): Prisma.PersonWhereInput {
 }
 
 function buildPatientRelationshipWhere(
-  actorUserId: string,
+  hospitalWhere: Prisma.HospitalWhereInput,
   input: PatientDirectoryQueryInput,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   const personWhere: Prisma.PersonWhereInput = {
@@ -287,7 +297,7 @@ function buildPatientRelationshipWhere(
   return {
     ...activePatientHospitalRelationshipWhere,
     hospitalId: input.targetHospitalId,
-    hospital: buildAuthorizedHospitalWhere(actorUserId),
+    hospital: hospitalWhere,
     patientProfile: {
       person: personWhere,
       ...(input.classification && input.classification !== "ALL"
@@ -373,7 +383,7 @@ export function toPatientDirectoryItem(record: PatientDirectoryRecordLike): Pati
 
 export function toPatientDirectoryDetail(
   record: PatientDirectoryDetailRecord,
-): PatientDirectoryDetail {
+): Omit<PatientDirectoryDetail, "access"> {
   const effectiveProfile = resolveEffectivePatientHospitalProfile({
     legacy: {
       gender: record.patientProfile.gender,
@@ -400,13 +410,14 @@ export function toPatientDirectoryDetail(
 
 async function resolveAuthorizedHospital(
   database: PatientDirectoryDatabase,
-  actorUserId: string,
+  hospitalWhere: Prisma.HospitalWhereInput,
   hospitalId: string,
+  access: PatientDirectoryScope["access"],
 ): Promise<PatientDirectoryScope> {
   const hospital = await database.hospital.findFirst({
     where: {
       id: hospitalId,
-      ...buildAuthorizedHospitalWhere(actorUserId),
+      ...hospitalWhere,
     },
     select: { id: true, name: true },
   });
@@ -418,6 +429,7 @@ async function resolveAuthorizedHospital(
   return {
     hospitalId: hospital.id,
     hospitalName: hospital.name,
+    access,
   };
 }
 
@@ -428,16 +440,25 @@ export async function listPatientDirectoryScopes(
   assertHospitalActor(actor);
 
   try {
-    const scopes = await getDatabase(dependencies.database).hospital.findMany({
+    const database = getDatabase(dependencies.database);
+    const scopes = await database.hospital.findMany({
       where: buildAuthorizedHospitalWhere(actor.userId),
       select: { id: true, name: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
-
-    return scopes.map((scope) => ({
+    const direct: PatientDirectoryScope[] = scopes.map((scope) => ({
       hospitalId: scope.id,
       hospitalName: scope.name,
+      access: "DIRECT",
     }));
+    // ADR-0016: Children of networks the actor reads for, after direct scopes and never duplicating them.
+    const directIds = new Set(direct.map(({ hospitalId }) => hospitalId));
+    const network = (await listNetworkScopes(database, actor.userId, "PATIENT_READ"))
+      .flatMap(({ children }) => children)
+      .filter(({ id }) => !directIds.has(id))
+      .map(({ id, name }): PatientDirectoryScope => ({ hospitalId: id, hospitalName: name, access: "NETWORK" }));
+
+    return [...direct, ...network];
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
       throw error;
@@ -453,24 +474,42 @@ export async function findPatientDirectory(
   dependencies: PatientDirectoryQueryDependencies = {},
 ): Promise<PatientDirectoryPage> {
   const parsed = parseDirectoryQuery(input);
-  assertPatientReadPolicy({
+  const decision = decidePatientReadPolicy({
     actor,
     capability: PATIENT_READ_CAPABILITY,
     targetHospitalId: parsed.targetHospitalId,
   });
 
-  if (!actor) {
+  if (!actor || (!decision.allowed && decision.reason !== "active_direct_hospital_scope_required")) {
     throw new ForbiddenError();
   }
 
   try {
     const database = getDatabase(dependencies.database);
+    let access: PatientDirectoryScope["access"] = "DIRECT";
+    let hospitalWhere = buildAuthorizedHospitalWhere(actor.userId);
+    if (!decision.allowed) {
+      // ADR-0016: read-only list of an active network Child, proven in SQL and audited per read.
+      const parent = await findNetworkPatientReadParent(database, actor.userId, parsed.targetHospitalId);
+      if (!parent) throw new ForbiddenError();
+      await recordNetworkPatientRead(database, {
+        actorUserId: actor.userId,
+        parentHospitalId: parent.id,
+        childHospitalId: parsed.targetHospitalId,
+        resourceType: "Hospital",
+        resourceId: parsed.targetHospitalId,
+        scope: "patient-directory",
+      });
+      access = "NETWORK";
+      hospitalWhere = buildNetworkReadableChildHospitalWhere(actor.userId);
+    }
     const hospital = await resolveAuthorizedHospital(
       database,
-      actor.userId,
+      hospitalWhere,
       parsed.targetHospitalId,
+      access,
     );
-    const where = buildPatientRelationshipWhere(actor.userId, parsed);
+    const where = buildPatientRelationshipWhere(hospitalWhere, parsed);
     const total = await database.patientHospitalRelationship.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / PATIENT_DIRECTORY_PAGE_SIZE));
     const page = Math.min(parsed.page, totalPages);
@@ -541,7 +580,8 @@ export async function getPatientDirectoryDetail(
   }
 
   try {
-    const relationship = await getDatabase(dependencies.database).patientHospitalRelationship.findFirst({
+    const database = getDatabase(dependencies.database);
+    const relationship = await database.patientHospitalRelationship.findFirst({
       where: {
         id: parsedRelationshipId.data,
         OR: accessPredicates,
@@ -549,11 +589,40 @@ export async function getPatientDirectoryDetail(
       select: patientDetailSelect,
     });
 
-    if (!relationship) {
+    if (relationship) {
+      return { ...toPatientDirectoryDetail(relationship), access: "DIRECT" };
+    }
+
+    if (!actor.roles.includes(Role.HOSPITAL)) {
       throw new NotFoundError();
     }
 
-    return toPatientDirectoryDetail(relationship);
+    // ADR-0016: read-only detail of an active network Child's Patient, audited with the granting Parent.
+    const networkRelationship = await database.patientHospitalRelationship.findFirst({
+      where: {
+        id: parsedRelationshipId.data,
+        ...activePatientHospitalRelationshipWhere,
+        hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
+      },
+      select: patientDetailSelect,
+    });
+    const parent = networkRelationship
+      ? await findNetworkPatientReadParent(database, actor.userId, networkRelationship.hospital.id)
+      : null;
+
+    if (!networkRelationship || !parent) {
+      throw new NotFoundError();
+    }
+
+    await recordNetworkPatientRead(database, {
+      actorUserId: actor.userId,
+      parentHospitalId: parent.id,
+      childHospitalId: networkRelationship.hospital.id,
+      resourceType: "PatientHospitalRelationship",
+      resourceId: networkRelationship.id,
+      scope: "patient-detail",
+    });
+    return { ...toPatientDirectoryDetail(networkRelationship), access: "NETWORK" };
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;

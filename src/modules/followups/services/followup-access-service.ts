@@ -16,9 +16,11 @@ import type {
   ActorOsmHospitalRelationship,
 } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertFollowupPolicy,
+  FOLLOWUP_READ_CAPABILITY,
   type FollowupCapability,
   type FollowupPolicyTarget,
 } from "../policies/followup-policy";
@@ -197,11 +199,13 @@ export async function resolveFollowupAccessContext(
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
   };
 
-  assertFollowupPolicy({
-    actor: authoritativeActor,
-    capability,
-    target,
-  });
+  // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+  await assertDirectOrNetworkPatientRead(
+    () => assertFollowupPolicy({ actor: authoritativeActor, capability, target }),
+    capability === FOLLOWUP_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "followup" },
+  );
 
   return {
     patient: {

@@ -29,6 +29,7 @@ import {
   previewWorkforceActivation,
   promoteHospitalOwner,
   provisionHospitalMember,
+  setHospitalMembershipNetworkPatientReadGrant,
   setHospitalMembershipReportExportGrant,
   provisionOsm,
   provisionWorkforceBulk,
@@ -459,6 +460,35 @@ export async function setHospitalMembershipReportExportGrantAction(
   try {
     const actor = await getProtectedApplicationActor();
     const result = await setHospitalMembershipReportExportGrant(actor, parsed.data);
+    revalidateWorkforceMembership(result.relationshipId);
+    return { status: "SUCCESS", granted: result.granted };
+  } catch (error: unknown) {
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+/** ADR-0016: same form contract as the report export grant, for read-only network Patient access. */
+export async function setHospitalMembershipNetworkPatientReadGrantAction(
+  _previousState: WorkforceReportExportGrantActionState,
+  formData: FormData,
+): Promise<WorkforceReportExportGrantActionState> {
+  const granted = getString(formData, "granted");
+  const parsed = hospitalMembershipReportExportGrantSchema.safeParse({
+    ...getMembershipMutationInput(formData),
+    granted: granted === "true" ? true : granted === "false" ? false : granted,
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "ข้อมูลสิทธิ์ดูผู้ป่วยในเครือข่ายไม่ถูกต้อง กรุณาโหลดหน้าใหม่",
+    };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await setHospitalMembershipNetworkPatientReadGrant(actor, parsed.data);
     revalidateWorkforceMembership(result.relationshipId);
     return { status: "SUCCESS", granted: result.granted };
   } catch (error: unknown) {

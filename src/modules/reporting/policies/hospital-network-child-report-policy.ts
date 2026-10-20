@@ -13,6 +13,7 @@ export const HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES = {
 export type HospitalNetworkChildReportCapability =
   (typeof HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES)[keyof typeof HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES];
 
+/** ADR-0016: network placement from the active operational association; `parentHospitalId` here is the network Parent. */
 export type HospitalNetworkChildReportHierarchy = {
   parent: {
     id: string;

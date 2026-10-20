@@ -11,19 +11,18 @@ export type ServiceAreaAdoptionRow = {
 };
 
 /** Trusted offline maintenance primitive, like master reconciliation; never expose directly as an action/route.
- * Report-only. There is deliberately no import/apply operation without an approved classification source.
+ * Report-only: lists canonical pairs as suggestions for explicit OWNER attachment or ADMIN transfer (ADR-0015).
  */
 export async function reportHospitalServiceAreaAdoption(database: PrismaClient): Promise<ServiceAreaAdoptionRow[]> {
   return database.$transaction(async (tx) => {
     const facilities = await tx.hospital.findMany({
       orderBy: { id: "asc" },
       select: { id: true, status: true, parentHospitalId: true,
-        serviceAreaEligibility: { select: { kind: true, sourceReference: true, verifiedAt: true } } },
+        serviceAreaEligibility: { select: { kind: true } } },
     });
     const areas = await tx.hospitalServiceArea.findMany({ select: { parentHospitalId: true, childHospitalId: true, endedAt: true } });
     const byId = new Map(facilities.map((facility) => [facility.id, facility]));
     const historyByChild = new Map<string, typeof areas>();
-    const parentIds = new Set(facilities.flatMap(({ parentHospitalId }) => parentHospitalId ? [parentHospitalId] : []));
     const operationalParents = new Set(areas.filter(({ endedAt }) => endedAt === null).map(({ parentHospitalId }) => parentHospitalId));
     const operationalChildren = new Set(areas.filter(({ endedAt }) => endedAt === null).map(({ childHospitalId }) => childHospitalId));
     for (const area of areas) {
@@ -36,14 +35,15 @@ export async function reportHospitalServiceAreaAdoption(database: PrismaClient):
       const parent = byId.get(child.parentHospitalId);
       const history = historyByChild.get(child.id) ?? [];
       let disposition: ServiceAreaAdoptionRow["disposition"];
-      if (!parent || !isEligibleServiceAreaPair(parent, child) || parentIds.has(child.id) ||
+      const active = history.find((area) => area.endedAt === null);
+      if (!parent || !isEligibleServiceAreaPair(parent, child) ||
           operationalParents.has(child.id) || operationalChildren.has(parent.id)) {
         disposition = "BLOCKED_CLASSIFICATION_OR_HIERARCHY";
-      } else if (history.some((area) => area.parentHospitalId !== parent.id)) {
+      } else if (active && active.parentHospitalId !== parent.id) {
         disposition = "BLOCKED_ASSIGNMENT_CONFLICT";
-      } else if (history.some((area) => area.endedAt === null)) {
+      } else if (active) {
         disposition = "ALREADY_ACTIVE";
-      } else if (history.length > 0) {
+      } else if (history.some((area) => area.parentHospitalId === parent.id)) {
         disposition = "ENDED_REQUIRES_EXPLICIT_REATTACH";
       } else {
         disposition = "READY_FOR_OWNER_ATTACH";

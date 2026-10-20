@@ -17,10 +17,13 @@ import {
 import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
+  type HospitalGovernanceCapability,
 } from "../policies/hospital-governance-policy";
 import {
+  hospitalGovernanceCreateSchema,
   hospitalGovernanceHospitalIdSchema,
   hospitalGovernanceMutationSchema,
+  hospitalGovernanceRenameSchema,
   type HospitalGovernanceMutationInput,
 } from "../schemas/hospital-governance-schemas";
 
@@ -132,7 +135,7 @@ function parseExpectedUpdatedAt(value: string): Date {
   return parsed;
 }
 
-async function assertPlatformAdminInDatabase(
+export async function assertPlatformAdminInDatabase(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
 ): Promise<void> {
@@ -274,7 +277,7 @@ export async function getHospitalGovernanceDetail(
 
 function getMutationActor(
   actor: ActorContext | null | undefined,
-  capability: HospitalGovernanceStatusTransition["capability"],
+  capability: HospitalGovernanceCapability,
 ): ActorContext {
   assertHospitalGovernanceCapability(actor, capability);
 
@@ -345,6 +348,154 @@ export async function restoreHospital(
     },
     dependencies,
   );
+}
+
+/**
+ * ADR-0015: Platform ADMIN registers a facility without a Master file change. It starts
+ * PENDING_VERIFICATION so the existing onboarding approval stays the only activation path.
+ * Canonical placement (`parentHospitalId`) remains owned by Master reconciliation.
+ */
+export async function createHospital(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalGovernanceProjection> {
+  const parsed = hospitalGovernanceCreateSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital registration data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.create);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+
+        const existing = await transaction.hospital.findUnique({
+          where: { hospitalCode: parsed.data.hospitalCode },
+          select: { id: true },
+        });
+
+        if (existing) {
+          throw new ConflictError("A Hospital with this code already exists");
+        }
+
+        const created = await transaction.hospital.create({
+          data: {
+            hospitalCode: parsed.data.hospitalCode,
+            name: parsed.data.name,
+            status: HospitalStatus.PENDING_VERIFICATION,
+            serviceAreaEligibility: {
+              create: {
+                kind: parsed.data.networkRole,
+                verifiedAt: new Date(),
+                classifiedByUserId: currentActor.userId,
+              },
+            },
+          },
+          select: hospitalGovernanceSelect,
+        });
+
+        await recordAuditEvent(
+          {
+            actorUserId: currentActor.userId,
+            action: "hospital.created",
+            resourceType: "Hospital",
+            resourceId: created.id,
+            metadata: {
+              hospitalCode: created.hospitalCode,
+              toStatus: created.status,
+              networkRole: parsed.data.networkRole,
+            },
+          },
+          transaction,
+        );
+
+        return toProjection(created);
+      },
+      // A duplicate code surfaces as a conflict, never a silent retry into success.
+      0,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital registration could not be completed");
+  }
+}
+
+export async function renameHospital(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalGovernanceProjection> {
+  const parsed = hospitalGovernanceRenameSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital rename data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.rename);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+
+        const current = await transaction.hospital.findUnique({
+          where: { id: parsed.data.hospitalId },
+          select: hospitalGovernanceSelect,
+        });
+
+        if (!current) {
+          throw new NotFoundError("The Hospital was not found");
+        }
+
+        if (current.updatedAt.getTime() !== parseExpectedUpdatedAt(parsed.data.expectedUpdatedAt).getTime()) {
+          throw new ConflictError("The Hospital changed before this operation");
+        }
+
+        if (current.name === parsed.data.name) {
+          throw new ValidationError("The Hospital already has this name");
+        }
+
+        const updated = await transaction.hospital.updateMany({
+          where: { id: current.id, updatedAt: current.updatedAt },
+          data: { name: parsed.data.name },
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictError("The Hospital changed before this operation");
+        }
+
+        const result = await transaction.hospital.findUnique({
+          where: { id: current.id },
+          select: hospitalGovernanceSelect,
+        });
+
+        if (!result) {
+          throw new InfrastructureError("The updated Hospital could not be read");
+        }
+
+        await recordAuditEvent(
+          {
+            actorUserId: currentActor.userId,
+            action: "hospital.renamed",
+            resourceType: "Hospital",
+            resourceId: result.id,
+            metadata: { fromName: current.name, toName: result.name },
+          },
+          transaction,
+        );
+
+        return toProjection(result);
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital rename could not be completed");
+  }
 }
 
 export const hospitalGovernanceServiceInternals = {

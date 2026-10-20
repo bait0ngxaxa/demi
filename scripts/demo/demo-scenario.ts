@@ -33,6 +33,7 @@ import { acceptCaregiverInvitation, createCaregiverInvitation } from "@/modules/
 import { createFollowup, createFollowupForProgram } from "@/modules/followups/services/followup-service";
 import { createGoalPlanForProgram } from "@/modules/goals/services/goal-service";
 import { approveHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
+import { attachHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { createPersonalMedication } from "@/modules/medications/services/personal-medication-service";
 import { completePatientActivation, issuePatientActivation } from "@/modules/patient-activation/services/patient-activation-service";
@@ -530,6 +531,20 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   const ownerA = await actorOf(childAOwnerId);
   const ownerB = await actorOf(childBOwnerId);
 
+  // ADR-0015/0016: the operational network (not Master placement) scopes Parent reports and Patient reads.
+  // Keep any existing ADMIN decision; only fill a missing role as the Master-shaped system bootstrap would.
+  for (const [hospitalId, kind] of [[parent.id, "PARENT"], [childA.id, "CHILD"], [childB.id, "CHILD"]] as const) {
+    await database().hospitalServiceAreaEligibility.upsert({
+      where: { hospitalId },
+      create: { hospitalId, kind, verifiedAt: new Date(), classifiedByUserId: null },
+      update: {},
+    });
+  }
+  const parentOwner = await actorOf(parentOwnerId);
+  for (const child of children) {
+    await attachHospitalServiceArea(parentOwner, { parentHospitalId: parent.id, childHospitalId: child.id });
+  }
+
   progress("บุคลากรและ อสม.");
   const memberExport = await seedWorkforce("MEMBER", DEMO_ACCOUNTS.memberExport, childA.id, ownerA, dependencies);
   await seedWorkforce("MEMBER", DEMO_ACCOUNTS.member, childA.id, ownerA, dependencies);
@@ -853,6 +868,9 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.workforceBulkSubmission.deleteMany({ where: { OR: [{ hospitalId: { in: hospitalIds } }, { actorUserId: users }] } });
     await tx.workforceActivation.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }, { createdByUserId: users }] } });
     await tx.osmHospitalRelationship.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
+    // Demo-attributed network history references demo users; purge only those rows (migration 20261030130000).
+    await tx.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
+    await tx.hospitalServiceArea.deleteMany({ where: { OR: [{ createdByUserId: users }, { endedByUserId: users }] } });
     await tx.hospitalMembership.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
     await tx.hospitalOnboardingApplication.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
     await tx.userContactSetting.deleteMany({ where: { userId: users } });

@@ -62,6 +62,7 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     await prisma.userRole.deleteMany({ where: { user: { personId: outsiderPersonId } } });
     await prisma.user.deleteMany({ where: { personId: outsiderPersonId } });
     await prisma.person.deleteMany({ where: { id: outsiderPersonId } });
+    await prisma.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
     await prisma.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { parentHospitalId: null } });
     await prisma.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   });

@@ -8,14 +8,14 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { hasServiceAreaEligibility, isEligibleServiceAreaPair, type ServiceAreaFacility } from "../domain/service-area-eligibility";
 import { assertHospitalServiceAreaPolicy, HOSPITAL_SERVICE_AREA_CAPABILITIES, type HospitalServiceAreaCapability } from "../policies/hospital-service-area-policy";
-import { serviceAreaAttachSchema, serviceAreaEndSchema, serviceAreaPageSchema } from "../schemas/hospital-service-area-schemas";
+import { serviceAreaAttachSchema, serviceAreaCandidatePageSchema, serviceAreaEndSchema, serviceAreaPageSchema } from "../schemas/hospital-service-area-schemas";
 
-const facilitySelect = {
-  id: true, hospitalCode: true, name: true, status: true, parentHospitalId: true,
-  serviceAreaEligibility: { select: { kind: true, sourceReference: true, verifiedAt: true } },
+export const facilitySelect = {
+  id: true, hospitalCode: true, name: true, status: true,
+  serviceAreaEligibility: { select: { kind: true } },
 } satisfies Prisma.HospitalSelect;
 
-const areaSelect = {
+export const areaSelect = {
   id: true, parentHospitalId: true, childHospitalId: true, createdAt: true, endedAt: true,
 } satisfies Prisma.HospitalServiceAreaSelect;
 
@@ -34,7 +34,7 @@ async function authorize(
       hospitalId: parentHospitalId, userId: actor.userId,
       membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE,
       user: { is: { personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } },
-      hospital: { is: { status: HospitalStatus.ACTIVE, parentHospitalId: null } },
+      hospital: { is: { status: HospitalStatus.ACTIVE } },
     },
     select: { hospital: { select: facilitySelect } },
   });
@@ -45,7 +45,7 @@ async function authorize(
   return membership.hospital;
 }
 
-async function operation<T>(database: PrismaClient, work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+export async function operation<T>(database: PrismaClient, work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   try {
     // No automatic replay: callers must reload after a conflict. Entire state + audit rolls back.
     return await runSerializableTransaction(database, work, 0);
@@ -56,17 +56,17 @@ async function operation<T>(database: PrismaClient, work: (tx: Prisma.Transactio
   }
 }
 
-async function hasUnsupportedShape(tx: Prisma.TransactionClient, parentHospitalId: string, childHospitalId: string): Promise<boolean> {
+/** Keeps the operational network one level deep even if network roles drift. */
+export async function hasUnsupportedShape(tx: Prisma.TransactionClient, parentHospitalId: string, childHospitalId: string): Promise<boolean> {
   return await tx.hospital.findFirst({
     where: { id: { in: [parentHospitalId, childHospitalId] }, OR: [
-      { id: childHospitalId, childHospitals: { some: {} } },
       { id: childHospitalId, managedServiceAreas: { some: { endedAt: null } } },
       { id: parentHospitalId, serviceAreaAssignments: { some: { endedAt: null } } },
     ] }, select: { id: true },
   }) !== null;
 }
 
-function page<T extends { id: string }>(rows: T[], limit: number): ServiceAreaPage<T> {
+export function page<T extends { id: string }>(rows: T[], limit: number): ServiceAreaPage<T> {
   const items = rows.slice(0, limit);
   return { items, nextAfterId: rows.length > limit ? items.at(-1)?.id ?? null : null };
 }
@@ -93,18 +93,22 @@ export async function listEligibleServiceAreaCandidates(
   actor: ActorContext | null | undefined, input: unknown, dependencies: HospitalServiceAreaDependencies = {},
 ): Promise<ServiceAreaPage<ServiceAreaCandidate>> {
   if (!actor) throw new ForbiddenError();
-  const parsed = serviceAreaPageSchema.safeParse(input);
+  const parsed = serviceAreaCandidatePageSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError();
-  const { parentHospitalId, afterId, limit } = parsed.data;
+  const { parentHospitalId, afterId, limit, query } = parsed.data;
   return operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorize(tx, actor, parentHospitalId, HOSPITAL_SERVICE_AREA_CAPABILITIES.manage);
+    // Any free CHILD facility (ADR-0015); occupied Children move only through Platform ADMIN transfer.
     const rows = await tx.hospital.findMany({
       where: {
-        parentHospitalId, status: HospitalStatus.ACTIVE,
-        serviceAreaEligibility: { is: { kind: "CHILD", sourceReference: { not: "" } } },
-        childHospitals: { none: {} },
-        serviceAreaAssignments: { none: { OR: [{ endedAt: null }, { parentHospitalId: { not: parentHospitalId } }] } },
+        status: HospitalStatus.ACTIVE,
+        serviceAreaEligibility: { is: { kind: "CHILD" } },
+        serviceAreaAssignments: { none: { endedAt: null } },
         managedServiceAreas: { none: { endedAt: null } },
+        ...(query ? { OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { hospitalCode: { contains: query, mode: "insensitive" } },
+        ] } : {}),
         ...(afterId ? { id: { gt: afterId } } : {}),
       },
       orderBy: { id: "asc" }, take: limit + 1,
@@ -128,9 +132,6 @@ export async function attachHospitalServiceArea(
     const active = await tx.hospitalServiceArea.findFirst({ where: { childHospitalId, endedAt: null }, select: { parentHospitalId: true } });
     if (active) throw new ConflictError(active.parentHospitalId === parentHospitalId ? "Child facility is already attached" : "Child facility already has an active assignment");
     if (await hasUnsupportedShape(tx, parentHospitalId, childHospitalId)) throw new ValidationError("Unsupported service area hierarchy");
-    if (await tx.hospitalServiceArea.findFirst({ where: { childHospitalId, parentHospitalId: { not: parentHospitalId } }, select: { id: true } })) {
-      throw new ConflictError("Cross-Parent transfer requires a separately approved workflow");
-    }
     const area = await tx.hospitalServiceArea.create({ data: { parentHospitalId, childHospitalId, createdByUserId: actor.userId }, select: areaSelect });
     await recordAuditEvent({ actorUserId: actor.userId, action: "hospital_service_area.attached", resourceType: "HospitalServiceArea", resourceId: area.id,
       metadata: { parentHospitalId, childHospitalId, fromStatus: null, toStatus: "ACTIVE" },

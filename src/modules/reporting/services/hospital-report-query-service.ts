@@ -858,8 +858,8 @@ async function loadParentChildHospitalReportingSourceSnapshot(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
 ): Promise<ParentChildHospitalReportingSourceSnapshot> {
-  // This exact-Child active cohort is not a historical Parent disclosure filter: the model stores only the current
-  // parentHospitalId and has no effective date to compare with source-record timestamps.
+  // This exact-Child active cohort is not a historical Parent disclosure filter: access follows only the current
+  // active network association (ADR-0016), so a former Parent loses the report immediately.
   const programWhere = reportHospitalProgramWhere(hospitalId);
   const serviceProcessWhere = { patientProgram: { is: programWhere } };
   const [dashboard, programsWithRoutineRecord, programsWithFloatingChartRecord,
@@ -1117,34 +1117,14 @@ async function loadParentChildHospitalReportingProjection(
     transaction,
     capability,
   );
-  const target = await transaction.hospital.findFirst({
-    where: {
-      id: access.hospital.id,
-      status: HospitalStatus.ACTIVE,
-      parentHospitalId: access.parentHospitalId,
-      parentHospital: {
-        is: {
-          id: access.parentHospitalId,
-          status: HospitalStatus.ACTIVE,
-          parentHospitalId: null,
-        },
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-      parentHospital: { select: { id: true, name: true } },
-    },
-  });
-  if (!target?.parentHospital) throw new NotFoundError();
-
-  const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, target.id);
+  // The access resolver already proved the active network association in this same snapshot.
+  const source = await loadParentChildHospitalReportingSourceSnapshot(transaction, access.hospital.id);
 
   return {
     operation: "PARENT_CHILD_REPORT",
     access: "PARENT_OWNER",
-    parent: target.parentHospital,
-    hospital: { id: target.id, name: target.name },
+    parent: access.parent,
+    hospital: { id: access.hospital.id, name: access.hospital.name },
     content: projectParentChildHospitalReportingContent(source),
   } satisfies ParentChildHospitalReportingProjection;
 }

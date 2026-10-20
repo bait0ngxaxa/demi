@@ -90,6 +90,7 @@ const actorContextUserSelect = {
       profession: true,
       status: true,
       reportExportGrantedAt: true,
+      networkPatientReadGrantedAt: true,
       hospital: {
         select: { status: true },
       },
@@ -123,6 +124,7 @@ function toActorUserRecord(user: ActorContextUserProjection): ActorUserRecord {
       status: membership.status,
       hospitalStatus: membership.hospital.status,
       reportExportGranted: membership.reportExportGrantedAt !== null,
+      networkPatientReadGranted: membership.networkPatientReadGrantedAt !== null,
     })),
     osmHospitalRelationships: user.osmHospitalRelationships.map((relationship) => ({
       hospitalId: relationship.hospitalId,

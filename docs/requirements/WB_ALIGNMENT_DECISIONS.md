@@ -34,7 +34,7 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 | WB-PD-01 | ~~"รู้จักตัวเอง", "ตารางชีวิตของฉัน"~~ ปิดแล้ว (D1/D2); "เส้นทางสุขภาพ" ยังเปิด | แบบฟอร์มจริงของเส้นทางสุขภาพ (ช่อง, ตัวเลือก, การให้คะแนน) — ก-3 | ลูกค้า | ครั้งที่ 1, 6 (แสดงเป็น "รอแบบฟอร์ม") |
 | WB-PD-02 | "ผลลัพธ์ที่ได้" (BR-05) | รายการประโยค/วลี dropdown | ลูกค้า | รายงานการจัดบริการ คอลัมน์ผลลัพธ์ |
 | ~~WB-PD-03~~ | CVD risk score | **ปิด (D7 → WB-DF-17):** เจ้าหน้าที่กรอก % ไม่คำนวณ | ลูกค้า | Dashboard คอลัมน์ CVD (Before/After) |
-| WB-PD-04 | เขตความรับผิดชอบ | **Phase A foundation / workflow ยังไม่ครบ:** OWNER แม่ข่ายจัดการ operational association แยกจาก canonical hierarchy (§Phase A ด้านล่าง); H1 ถูกแทนที่บางส่วน, H2–H5 คงเดิม; รอ classification source, edit/transfer decisions และ Phase B/C | ลูกค้า | AREA-01–05, ดาวน์โหลดตามเขต |
+| WB-PD-04 | เขตความรับผิดชอบ | **ส่งมอบแล้ว (ADR-0015/0016):** ผู้ดูแลระบบเพิ่มโรงพยาบาลและกำหนดแม่ข่าย/ลูกข่าย; OWNER แม่ข่ายเพิ่ม/นำลูกข่ายออก; แม่ข่ายดูผู้ป่วยลูกข่ายแบบอ่านอย่างเดียวพร้อม audit; รายงานแม่ข่ายตามเครือข่าย (H5 ถูกแทนที่) | ลูกค้า | AREA-01–05, ดาวน์โหลดตามเขต |
 | ~~WB-PD-05~~ | เจ้าหน้าที่ดาวน์โหลดข้อมูล | **ปิด (E1 / ก-15):** OWNER และ MEMBER ที่ OWNER ให้สิทธิ์; ไฟล์เดียวกับของ OWNER; audit ทุกครั้ง (§ฉ) | ลูกค้า | STAFF-05, RPT-31 |
 | WB-PD-06 | Terms, Privacy Policy, ยินยอมเปิดเผยข้อมูลสุขภาพ, ยินยอมการตลาด | ฐานทางกฎหมาย (PDPA ม.26) + ข้อความ + ใครเป็นผู้ควบคุมข้อมูล — รวมฐานความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน (D9 / WB-DF-16): ลูกค้าเลื่อนไว้ (จ-6) จึงต้องยืนยันก่อนใช้ข้อมูลผู้ป่วยจริง (§ฌ) | กฎหมาย / รพ. | Gate ก่อนเปิดระบบ |
 | WB-PD-07 | ญาติดูยา/แผนสุขภาพ | รูปแบบความยินยอมและขอบเขต field | กฎหมาย | FAM-04/05 |
@@ -154,7 +154,7 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 | H2 | จ-2 | “ดาวน์โหลดตามเขต” (RPT-32) = ไฟล์ตัวเลขสรุป 9 ค่าของลูกข่ายที่เลือกเท่านั้น ไม่มีข้อมูลรายผู้ป่วย | `GET /api/v1/hospital/reporting/parent-child/export`, capability `hospital-network:child-report:export` เฉพาะ OWNER แม่ข่าย; audit ทุก outcome หลังตรวจ authentication (contract ในข้อ 3) |
 | H3 | จ-3 | OWNER ลูกข่ายเพิ่มบุคลากร/อสม. ของตนเอง (flow เดิม); แม่ข่ายดู roster ได้เฉพาะเมื่อ ADR-0013 อนุญาต | ADR-0013 §8 ปฏิเสธการอ่าน roster ลูกข่าย จึงไม่เพิ่มหน้าดู roster; สิทธิ์ workforce ของลูกข่าย (ADR-0008) ไม่เปลี่ยน |
 | H4 | จ-4 | ย้ายผู้ป่วยระหว่างลูกข่าย = สิ้นสุดการดูแลที่ต้นทาง (Phase F) + เพิ่ม/นำเข้าที่ปลายทางตามปกติ | ไม่มี transfer workflow และไม่คัดลอกบันทึก |
-| H5 | จ-5 | รายงานตามความสัมพันธ์แม่ข่าย-ลูกข่ายปัจจุบันเท่านั้น | ไม่มีประวัติแม่ข่ายย้อนหลัง; ถอด/ย้ายลูกข่ายแล้วสิทธิ์แม่ข่ายเดิมสิ้นสุดทันที (ตรวจซ้ำตอนอ่านและตอนส่งออก) |
+| H5 (superseded by ADR-0016: ตามเครือข่ายปฏิบัติการ) | จ-5 | รายงานตามความสัมพันธ์แม่ข่าย-ลูกข่ายปัจจุบันเท่านั้น | ไม่มีประวัติแม่ข่ายย้อนหลัง; ถอด/ย้ายลูกข่ายแล้วสิทธิ์แม่ข่ายเดิมสิ้นสุดทันที (ตรวจซ้ำตอนอ่านและตอนส่งออก) |
 
 การตีความที่ใช้ตอนนำไปใช้:
 
@@ -171,7 +171,25 @@ Requirement A: active direct Parent Hospital OWNER manages attach/end of eligibl
 
 Confirmed baseline: one ACTIVE operational Parent per Child, end with confirmation/reason, immutable history, same-Parent reattach by new row, atomic audit, current direct OWNER proof. No approved edit fields exist, so no update API is invented. Missing trusted facility classification fails closed: current Master lacks explicit RPST/operational eligibility; no name/code inference or automatic backfill. Canonical placement must match the chosen Parent until transfer approval is specified; prior other-Parent history blocks self-service transfer. Adoption report is read-only, repeatable and has no apply/import mode. [Phase A handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) records exact services, rollout and Phase B/C contracts.
 
-Open: authoritative classification source/controlled ingestion; operational editable fields; cross-Parent approval; Patient disclosure/real-data rules; management UI, selected-area workflow and approved reporting integration/UAT. The full responsibility-area/Patient-access flow is not complete. Phase H implementation and out-of-scope statements above are historical where contradicted by this amendment.
+**Amendment (Product Owner, 2026-10-20, [ADR-0015](../adr/0015-admin-governed-hospital-network.md)):** ผู้ดูแลระบบ (Platform ADMIN) กำหนดบทบาทแม่ข่าย/ลูกข่ายผ่านระบบ, เพิ่มและแก้ชื่อโรงพยาบาลได้; OWNER แม่ข่ายเลือกลูกข่ายที่ยังว่างได้ทุกแห่งโดยไม่ต้องอยู่ใต้แม่ข่ายตาม Master; การย้ายลูกข่ายที่มีแม่ข่ายอยู่แล้วทำโดยผู้ดูแลระบบแบบ atomic พร้อมเหตุผลและ audit. ข้อ classification source และ cross-Parent approval ด้านล่างจึงปิดด้วยการตัดสินใจนี้
+
+**Target matrix + Phase B decisions (Product Owner, 2026-10-20):**
+
+| ผู้ใช้ | สิทธิ์ |
+| --- | --- |
+| แอดมินระบบ (Platform ADMIN) | เพิ่ม/แก้ชื่อโรงพยาบาล, กำหนดแม่ข่าย/ลูกข่าย, โอนหรือถอดลูกข่าย; ไม่เห็นข้อมูลคนไข้ผ่านเครือข่าย |
+| OWNER แม่ข่าย | เลือก รพ.สต. ที่ ACTIVE (onboard แล้ว) และยังว่างเข้าเป็นลูกข่าย, ถอดลูกข่าย; เลือกพื้นที่ลูกข่ายแล้วดูรายชื่อ + รายละเอียดคนไข้แบบอ่านอย่างเดียว |
+| MEMBER แม่ข่ายที่ OWNER มอบสิทธิ์ | ดูรายชื่อ + รายละเอียดคนไข้ลูกข่ายแบบอ่านอย่างเดียว (grant ต่อ membership แบบเดียวกับ E1) |
+| MEMBER แม่ข่ายที่ไม่ได้รับสิทธิ์ | ไม่เห็นคนไข้ลูกข่าย |
+| บุคลากรลูกข่าย | เห็นเฉพาะคนไข้ของโรงพยาบาลตัวเอง (เดิม) |
+
+- ลูกข่ายต้อง onboard จน ACTIVE ก่อนแม่ข่ายจึงเลือกได้ (คงกติกาเดิม)
+- อ่านอย่างเดียว: แก้ไข นัดหมาย มอบหมาย อสม. หรือ provisioning ข้ามเครือข่ายไม่ได้; ทุกการเปิดดูบันทึก audit
+- ถอดหรือโอนลูกข่ายแล้ว แม่ข่ายเดิมหมดสิทธิ์ทันที ไม่มีการดูย้อนหลัง
+
+- ขอบเขตข้อมูล (2026-10-20): เมื่อกดเข้าไปที่คนไข้ลูกข่าย แม่ข่ายเห็นข้อมูลทั้งหมดเท่าที่บุคลากรลูกข่ายเห็นในหน้าคนไข้ (ข้อมูลคนไข้ โปรแกรม บันทึกการดูแล ฯลฯ) แต่เป็นอ่านอย่างเดียว ไม่มีปุ่ม/การกระทำที่แก้ไขข้อมูล
+
+Open: operational editable fields; Patient disclosure/real-data rules; management UI, selected-area workflow and approved reporting integration/UAT. The full responsibility-area/Patient-access flow is not complete. Phase H implementation and out-of-scope statements above are historical where contradicted by this amendment.
 
 ## ฌ. Customer answers round 2 (2026-10-17)
 

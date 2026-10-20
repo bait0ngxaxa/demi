@@ -39,13 +39,16 @@ function osm(hospitalId: string): ActorContext["osmHospitalRelationships"][numbe
   return { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE };
 }
 
+/** A Hospital grouped under another network is a CHILD; network PARENT tests set `networkRole` explicitly. */
 function workspace(hospitalId: string, overrides: Partial<ActorHospitalWorkspace> = {}): ActorHospitalWorkspace {
+  const network = overrides.network ?? { hospitalId, name: `เครือข่าย ${hospitalId.slice(0, 4)}` };
   return {
     hospitalId,
     hospitalCode: hospitalId,
     hospitalName: `โรงพยาบาล ${hospitalId.slice(0, 4)}`,
     hospitalStatus: HospitalStatus.ACTIVE,
-    network: { hospitalId, name: `เครือข่าย ${hospitalId.slice(0, 4)}` },
+    network,
+    networkRole: network.hospitalId === hospitalId ? null : "CHILD",
     hasActiveDirectChildren: false,
     ...overrides,
   };
@@ -76,6 +79,7 @@ const ownerTiles = (id: string, areas = false) => [
   withHospital("/app/workforce", id),
   withHospital("/app/hospitals/knowledge", id),
   withHospital("/app/hospitals/contact", id),
+  ...(areas ? [withHospital("/app/hospitals/network", id)] : []),
 ];
 
 type Case = {
@@ -136,10 +140,11 @@ const cases: Case[] = [
   {
     name: "OWNER of a parent network",
     subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(parentId, MembershipType.OWNER)] }),
-    workspaces: [workspace(parentId, { hasActiveDirectChildren: true })],
+    workspaces: [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })],
     scope: "hospital", selected: parentId,
     hero: withHospital("/app/patients", parentId),
-    tiles: ownerTiles(parentId, true),
+    // Nine actions overflow into the final "ทั้งหมด" tile.
+    tiles: [...ownerTiles(parentId, true).slice(0, 7), "/app/more"],
     shared: ownerRequests,
   },
   {
@@ -207,6 +212,8 @@ describe("work home projection per actor", () => {
     const allowed = new Set([
       ...(home.scope.kind === "hospital" ? home.scope.hospital.actions : home.scope.kind === "system" ? projection.governanceActions : []),
       ...(home.scope.kind === "hospital" ? taskLinks.map(({ href }) => ({ href: `${href}&hospitalId=${selected}` })) : taskLinks),
+      // The overflow tile is part of the projection whenever actions exceed the grid.
+      { href: "/app/more" },
     ].map(({ href }) => href));
     expect(home.tiles.length).toBeLessThanOrEqual(WORK_HOME_MAX_TILES);
     for (const tile of home.tiles) expect(allowed.has(tile.href)).toBe(true);
@@ -217,7 +224,7 @@ describe("work home projection per actor", () => {
 
   it("overflows to a final 'ทั้งหมด' tile after seven ordered actions", () => {
     const subject = actor({ roles: [Role.HOSPITAL, Role.OSM], hospitalMemberships: [membership(parentId, MembershipType.OWNER)], osmHospitalRelationships: [osm(parentId)] });
-    const { home } = project(subject, [workspace(parentId, { hasActiveDirectChildren: true })]);
+    const { home } = project(subject, [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })]);
 
     expect(home.tiles).toHaveLength(WORK_HOME_MAX_TILES);
     expect(home.tiles.map(({ href }) => href)).toEqual([screeningAt(parentId), followupAt(parentId), ...ownerTiles(parentId, true).slice(0, 5), "/app/more"]);
@@ -226,7 +233,7 @@ describe("work home projection per actor", () => {
 
   it("orders tiles by the same section order as the sidebar and More", () => {
     const subject = actor({ roles: [Role.HOSPITAL, Role.OSM], hospitalMemberships: [membership(parentId, MembershipType.OWNER)], osmHospitalRelationships: [osm(parentId)] });
-    const { navigation, home } = project(subject, [workspace(parentId, { hasActiveDirectChildren: true })]);
+    const { navigation, home } = project(subject, [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })]);
     const sectionOf = (href: string): number => {
       const key = href.split("&")[0]?.replace(/\?hospitalId=.*$/u, "") ?? href;
       const group = navigation.find(({ workspace: groupWorkspace, items }) => groupWorkspace === "work" && items.some((item) => item.href === key));

@@ -20,9 +20,11 @@ import {
 } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { assertDirectOrNetworkPatientRead, buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
   assertPatientProgramPolicy,
+  PATIENT_PROGRAM_READ_CAPABILITY,
   type PatientProgramCapability,
   type PatientProgramPolicyTarget,
 } from "../policies/patient-program-policy";
@@ -111,6 +113,7 @@ function hasPatientRole(record: PatientProgramRelationshipAccessRecord): boolean
 export function buildAuthorizedPatientProgramRelationshipWhere(
   actor: ActorContext,
   relationshipId?: string,
+  includeNetworkRead = false,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   const accessPredicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
   const patientRoleWhere: Prisma.PatientHospitalRelationshipWhereInput = {
@@ -125,6 +128,14 @@ export function buildAuthorizedPatientProgramRelationshipWhere(
     accessPredicates.push({
       ...patientRoleWhere,
       hospital: buildAuthorizedHospitalWhere(actor.userId),
+    });
+  }
+
+  if (actor.roles.includes(Role.HOSPITAL) && includeNetworkRead) {
+    // ADR-0016: read-only locator through an active network Parent; the resolver re-proves and audits it.
+    accessPredicates.push({
+      ...patientRoleWhere,
+      hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
     });
   }
 
@@ -222,7 +233,11 @@ export async function resolvePatientProgramAccessContext(
   const db = getDatabase(database);
   const normalizedRelationshipId = parsedRelationshipId.data.toLowerCase();
   const record = await db.patientHospitalRelationship.findFirst({
-    where: buildAuthorizedPatientProgramRelationshipWhere(actor, normalizedRelationshipId),
+    where: buildAuthorizedPatientProgramRelationshipWhere(
+      actor,
+      normalizedRelationshipId,
+      capability === PATIENT_PROGRAM_READ_CAPABILITY,
+    ),
     select: patientProgramRelationshipAccessSelect,
   });
 
@@ -237,11 +252,13 @@ export async function resolvePatientProgramAccessContext(
     assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
   };
 
-  assertPatientProgramPolicy({
-    actor: authoritativeActor,
-    capability,
-    target,
-  });
+  // ADR-0016: READ may fall back to an audited network read; writes stay direct-only.
+  await assertDirectOrNetworkPatientRead(
+    () => assertPatientProgramPolicy({ actor: authoritativeActor, capability, target }),
+    capability === PATIENT_PROGRAM_READ_CAPABILITY,
+    db,
+    { actorUserId: actor.userId, childHospitalId: record.hospitalId, patientHospitalRelationshipId: record.id, scope: "program" },
+  );
 
   return {
     actor: authoritativeActor,
@@ -278,7 +295,11 @@ export async function resolvePatientProgramByIdAccessContext(
   const program = await db.patientProgram.findFirst({
     where: {
       id: parsedProgramId.data.toLowerCase(),
-      patientHospitalRelationship: buildAuthorizedPatientProgramRelationshipWhere(actor),
+      patientHospitalRelationship: buildAuthorizedPatientProgramRelationshipWhere(
+        actor,
+        undefined,
+        capability === PATIENT_PROGRAM_READ_CAPABILITY,
+      ),
     },
     select: { patientHospitalRelationshipId: true },
   });

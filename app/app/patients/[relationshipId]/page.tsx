@@ -7,6 +7,7 @@ import { decideAccountRecoveryIssuePolicy } from "@/modules/account-security/pol
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
@@ -147,8 +148,12 @@ export default async function PatientDetailPage({
     patient.hospital.id,
   ).allowed;
   const hasHospitalDirectoryAccess = hasDirectHospitalPatientReadScope(actor, patient.hospital.id);
-  const backLabel = hasHospitalDirectoryAccess ? "รายชื่อผู้ป่วยของโรงพยาบาล" : "ผู้ป่วยที่รับผิดชอบ";
-  const backHref = hasHospitalDirectoryAccess
+  // ADR-0016: a network reader returns to the Child's directory; every write control stays policy-hidden.
+  const isNetworkRead = patient.access === "NETWORK";
+  const backLabel = hasHospitalDirectoryAccess
+    ? "รายชื่อผู้ป่วยของโรงพยาบาล"
+    : isNetworkRead ? "รายชื่อผู้ป่วยของลูกข่าย" : "ผู้ป่วยที่รับผิดชอบ";
+  const backHref = hasHospitalDirectoryAccess || isNetworkRead
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
 
@@ -202,6 +207,12 @@ export default async function PatientDetailPage({
         description="ข้อมูลผู้ป่วย งานดูแลปัจจุบัน และประวัติในขอบเขตโรงพยาบาลนี้"
         title="รายละเอียดผู้ป่วย"
       />
+
+      {isNetworkRead ? (
+        <Alert className="mt-6" variant="info">
+          ผู้ป่วยของ {patient.hospital.name} ซึ่งเป็นลูกข่ายในเครือข่ายของคุณ ดูข้อมูลได้อย่างเดียว แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
+        </Alert>
+      ) : null}
 
       <nav aria-label="ส่วนของข้อมูลผู้ป่วย" className="mt-6 flex flex-wrap gap-2">
         {[

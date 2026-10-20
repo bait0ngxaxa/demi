@@ -212,6 +212,8 @@ export type WorkforceDetail = {
   };
   /** E1: staff MEMBER only; null for OWNER and OSM relationships. */
   reportExportGrant: { granted: boolean; canGrant: boolean; canRevoke: boolean } | null;
+  /** ADR-0016: staff MEMBER of a network PARENT only; null otherwise. */
+  networkPatientReadGrant: { granted: boolean; canGrant: boolean; canRevoke: boolean } | null;
   viewerScope: WorkforceViewerScope;
   actions: {
     updateProfession: boolean;
@@ -306,6 +308,7 @@ const workforceMembershipDetailSelect = {
   profession: true,
   status: true,
   reportExportGrantedAt: true,
+  networkPatientReadGrantedAt: true,
   updatedAt: true,
   hospital: {
     select: {
@@ -313,6 +316,7 @@ const workforceMembershipDetailSelect = {
       hospitalCode: true,
       name: true,
       status: true,
+      serviceAreaEligibility: { select: { kind: true } },
     },
   },
   user: {
@@ -1325,12 +1329,14 @@ function toReportExportGrantDetail(
   kind: WorkforceDetailKind,
   record: WorkforceMembershipDetailRecord | WorkforceOsmDetailRecord,
   viewerScope: WorkforceViewerScope,
+  grant: MembershipGrantKind = "REPORT_EXPORT",
 ): WorkforceDetail["reportExportGrant"] {
   if (kind !== "staff") return null;
   const membership = record as WorkforceMembershipDetailRecord;
   if (membership.membershipType !== MembershipType.MEMBER) return null;
+  if (grant === "NETWORK_PATIENT_READ" && membership.hospital.serviceAreaEligibility?.kind !== "PARENT") return null;
 
-  const granted = membership.reportExportGrantedAt !== null;
+  const granted = membershipGrantedAt(grant, membership) !== null;
   const isOwnerViewer = viewerScope === "OWNER" && membership.hospital.status === HospitalStatus.ACTIVE;
   return {
     granted,
@@ -1389,6 +1395,7 @@ function toWorkforceDetail(
     }),
     relationshipUpdatedAt: record.updatedAt,
     reportExportGrant: toReportExportGrantDetail(kind, record, viewer.scope),
+    networkPatientReadGrant: toReportExportGrantDetail(kind, record, viewer.scope, "NETWORK_PATIENT_READ"),
     viewerScope: viewer.scope,
     ownerGovernance: {
       canPromote:
@@ -1842,11 +1849,13 @@ async function promoteHospitalOwnerInTransaction(
       status: MembershipStatus.ACTIVE,
       updatedAt: current.updatedAt,
     },
-    // An OWNER exports by role; the SQL CHECK keeps export grants MEMBER-only.
+    // An OWNER exports and reads the network by role; SQL CHECKs keep both grants MEMBER-only.
     data: {
       membershipType: MembershipType.OWNER,
       reportExportGrantedAt: null,
       reportExportGrantedByUserId: null,
+      networkPatientReadGrantedAt: null,
+      networkPatientReadGrantedByUserId: null,
     },
   });
 
@@ -2011,11 +2020,45 @@ export async function demoteHospitalOwner(
   );
 }
 
-async function setReportExportGrantInTransaction(
+/** E1 report export (ก-15) and ADR-0016 network Patient read: OWNER-issued, MEMBER-only grants (SQL CHECKs). */
+type MembershipGrantKind = "REPORT_EXPORT" | "NETWORK_PATIENT_READ";
+
+const membershipGrantLabels = {
+  REPORT_EXPORT: { name: "report export", action: "report_export" },
+  NETWORK_PATIENT_READ: { name: "network Patient read", action: "network_patient_read" },
+} as const satisfies Record<MembershipGrantKind, { name: string; action: string }>;
+
+function membershipGrantedAt(
+  kind: MembershipGrantKind,
+  membership: { reportExportGrantedAt: Date | null; networkPatientReadGrantedAt: Date | null },
+): Date | null {
+  return kind === "REPORT_EXPORT" ? membership.reportExportGrantedAt : membership.networkPatientReadGrantedAt;
+}
+
+function membershipGrantWhere(kind: MembershipGrantKind, granted: boolean): Prisma.HospitalMembershipWhereInput {
+  const current = granted ? null : { not: null };
+  return kind === "REPORT_EXPORT" ? { reportExportGrantedAt: current } : { networkPatientReadGrantedAt: current };
+}
+
+function membershipGrantData(
+  kind: MembershipGrantKind,
+  granted: boolean,
+  actorUserId: string,
+): Prisma.HospitalMembershipUncheckedUpdateManyInput {
+  const at = granted ? new Date() : null;
+  const by = granted ? actorUserId : null;
+  return kind === "REPORT_EXPORT"
+    ? { reportExportGrantedAt: at, reportExportGrantedByUserId: by }
+    : { networkPatientReadGrantedAt: at, networkPatientReadGrantedByUserId: by };
+}
+
+async function setMembershipGrantInTransaction(
   transaction: Prisma.TransactionClient,
   input: HospitalMembershipReportExportGrantInput,
   actorUserId: string,
+  kind: MembershipGrantKind,
 ): Promise<WorkforceReportExportGrantMutationResult> {
+  const label = membershipGrantLabels[kind];
   const membership = await transaction.hospitalMembership.findFirst({
     where: { id: input.relationshipId, hospitalId: input.targetHospitalId },
     select: {
@@ -2025,6 +2068,7 @@ async function setReportExportGrantInTransaction(
       membershipType: true,
       status: true,
       reportExportGrantedAt: true,
+      networkPatientReadGrantedAt: true,
       updatedAt: true,
       user: { select: { status: true } },
     },
@@ -2035,22 +2079,22 @@ async function setReportExportGrantInTransaction(
   }
 
   if (membership.membershipType !== MembershipType.MEMBER) {
-    throw new ConflictError("Only a MEMBER can hold a report export grant");
+    throw new ConflictError(`Only a MEMBER can hold a ${label.name} grant`);
   }
 
   if (membership.updatedAt.getTime() !== parseExpectedMembershipUpdatedAt(input.expectedUpdatedAt).getTime()) {
     throw new ConflictError("The Hospital membership changed before this operation");
   }
 
-  if ((membership.reportExportGrantedAt !== null) === input.granted) {
-    throw new ConflictError("The report export grant is already in the requested state");
+  if ((membershipGrantedAt(kind, membership) !== null) === input.granted) {
+    throw new ConflictError(`The ${label.name} grant is already in the requested state`);
   }
 
   if (
     input.granted &&
     (membership.status !== MembershipStatus.ACTIVE || membership.user.status !== UserStatus.ACTIVE)
   ) {
-    throw new ConflictError("A report export grant requires an active membership and account");
+    throw new ConflictError(`A ${label.name} grant requires an active membership and account`);
   }
 
   const updated = await transaction.hospitalMembership.updateMany({
@@ -2059,12 +2103,10 @@ async function setReportExportGrantInTransaction(
       hospitalId: membership.hospitalId,
       membershipType: MembershipType.MEMBER,
       updatedAt: membership.updatedAt,
-      reportExportGrantedAt: input.granted ? null : { not: null },
+      ...membershipGrantWhere(kind, input.granted),
       ...(input.granted ? { status: MembershipStatus.ACTIVE } : {}),
     },
-    data: input.granted
-      ? { reportExportGrantedAt: new Date(), reportExportGrantedByUserId: actorUserId }
-      : { reportExportGrantedAt: null, reportExportGrantedByUserId: null },
+    data: membershipGrantData(kind, input.granted, actorUserId),
   });
 
   if (updated.count !== 1) {
@@ -2073,7 +2115,7 @@ async function setReportExportGrantInTransaction(
 
   const result = await transaction.hospitalMembership.findUnique({
     where: { id: membership.id },
-    select: { id: true, hospitalId: true, reportExportGrantedAt: true, updatedAt: true },
+    select: { id: true, hospitalId: true, reportExportGrantedAt: true, networkPatientReadGrantedAt: true, updatedAt: true },
   });
 
   if (!result) {
@@ -2083,9 +2125,7 @@ async function setReportExportGrantInTransaction(
   await recordAuditEvent(
     {
       actorUserId,
-      action: input.granted
-        ? "hospital_membership.report_export_granted"
-        : "hospital_membership.report_export_revoked",
+      action: `hospital_membership.${label.action}_${input.granted ? "granted" : "revoked"}`,
       resourceType: "HospitalMembership",
       resourceId: result.id,
       metadata: {
@@ -2100,7 +2140,7 @@ async function setReportExportGrantInTransaction(
   return {
     relationshipId: result.id,
     hospitalId: result.hospitalId,
-    granted: result.reportExportGrantedAt !== null,
+    granted: membershipGrantedAt(kind, result) !== null,
     updatedAt: result.updatedAt,
   };
 }
@@ -2132,12 +2172,48 @@ export async function setHospitalMembershipReportExportGrant(
       getDatabase(dependencies),
       async (transaction) => {
         await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
-        return setReportExportGrantInTransaction(transaction, parsed.data, actor.userId);
+        return setMembershipGrantInTransaction(transaction, parsed.data, actor.userId, "REPORT_EXPORT");
       },
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
     throw normalizeDatabaseError(error, "Report export grant could not be changed");
+  }
+}
+
+/** ADR-0016: the Parent OWNER grants or revokes read-only network Patient access for a Parent MEMBER. */
+export async function setHospitalMembershipNetworkPatientReadGrant(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceReportExportGrantMutationResult> {
+  const parsed = hospitalMembershipReportExportGrantSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Network Patient read grant data is invalid");
+  }
+
+  assertHospitalOwnerPolicy({
+    actor,
+    capability: HOSPITAL_OWNER_CAPABILITIES.networkPatientReadGrant,
+    targetHospitalId: parsed.data.targetHospitalId,
+  });
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
+        return setMembershipGrantInTransaction(transaction, parsed.data, actor.userId, "NETWORK_PATIENT_READ");
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Network Patient read grant could not be changed");
   }
 }
 

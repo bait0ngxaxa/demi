@@ -7,6 +7,9 @@ import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/p
 import { resolveParentChildHospitalReportAccessContext } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import { reportHospitalServiceAreaAdoption } from "@/modules/hospital-service-areas/services/service-area-adoption-report";
 import {
+  adminEndHospitalServiceArea, clearHospitalNetworkRole, listHospitalServiceAreasForAdmin, setHospitalNetworkRole, transferHospitalServiceArea,
+} from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
+import {
   attachHospitalServiceArea, endHospitalServiceArea, listEligibleServiceAreaCandidates,
   listManagedHospitalServiceAreas, resolveActiveHospitalServiceArea,
 } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
@@ -18,6 +21,7 @@ const userIds: string[] = [];
 let parentId: string;
 let childId: string;
 let owner: ActorContext;
+let admin: ActorContext;
 
 beforeAll(() => {
   const url = process.env.DEMI_TEST_DATABASE_URL;
@@ -30,7 +34,7 @@ beforeAll(() => {
 async function hospital(parentHospitalId: string | null, kind: "PARENT" | "CHILD" | null): Promise<string> {
   const row = await db.hospital.create({ data: {
     hospitalCode: `SA${randomUUID().replaceAll("-", "").slice(0, 20)}`, name: "ทดสอบเขตบริการ", status: "ACTIVE", parentHospitalId,
-    ...(kind ? { serviceAreaEligibility: { create: { kind, sourceReference: "synthetic-test-fixture/approved", verifiedAt: new Date() } } } : {}),
+    ...(kind ? { serviceAreaEligibility: { create: { kind, verifiedAt: new Date(), classifiedByUserId: admin.userId } } } : {}),
   } });
   hospitalIds.push(row.id);
   return row.id;
@@ -48,6 +52,7 @@ async function actor(hospitalId: string | null, roles: Role[] = ["HOSPITAL"], me
 }
 
 beforeEach(async () => {
+  admin = await actor(null, ["ADMIN"]);
   parentId = await hospital(null, "PARENT");
   childId = await hospital(parentId, "CHILD");
   owner = await actor(parentId);
@@ -62,11 +67,11 @@ afterEach(async () => {
     await tx.hospitalServiceArea.deleteMany({ where: { parentHospitalId: { in: hospitalIds } } });
   });
   await db.auditEvent.deleteMany({ where: { actorUserId: { in: userIds } } });
+  await db.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
   await db.hospitalMembership.deleteMany({ where: { userId: { in: userIds } } });
   await db.userRole.deleteMany({ where: { userId: { in: userIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
   await db.person.deleteMany({ where: { id: { in: personIds } } });
-  await db.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
   await db.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { parentHospitalId: null } });
   await db.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   hospitalIds.length = 0; personIds.length = 0; userIds.length = 0;
@@ -124,11 +129,17 @@ describe("Hospital operational service areas / PostgreSQL", () => {
   it("keeps paginated candidates/areas scoped and handles stale eligibility without granting data access", async () => {
     const secondChild = await hospital(parentId, "CHILD");
     const otherParent = await hospital(null, "PARENT");
-    await hospital(otherParent, "CHILD");
-    const candidates = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, limit: 1 });
-    expect(candidates.items).toHaveLength(1);
-    const remaining = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, limit: 1, afterId: candidates.nextAfterId });
-    expect(new Set([...candidates.items, ...remaining.items].map(({ id }) => id))).toEqual(new Set([childId, secondChild]));
+    const canonicallyForeignChild = await hospital(otherParent, "CHILD");
+    await hospital(parentId, null);
+    const candidates = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, limit: 2 });
+    expect(candidates.items).toHaveLength(2);
+    const remaining = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, limit: 2, afterId: candidates.nextAfterId });
+    expect(remaining.nextAfterId).toBeNull();
+    // ADR-0015: any free CHILD-role facility regardless of canonical placement; unclassified ones never.
+    expect(new Set([...candidates.items, ...remaining.items].map(({ id }) => id))).toEqual(new Set([childId, secondChild, canonicallyForeignChild]));
+    const { hospitalCode } = await db.hospital.findUniqueOrThrow({ where: { id: secondChild } });
+    const searched = await listEligibleServiceAreaCandidates(owner, { parentHospitalId: parentId, query: hospitalCode.toLowerCase() });
+    expect(searched.items.map(({ id }) => id)).toEqual([secondChild]);
     const area = await attach();
     await attachHospitalServiceArea(owner, { parentHospitalId: parentId, childHospitalId: secondChild });
     const first = await listManagedHospitalServiceAreas(owner, { parentHospitalId: parentId, limit: 1 });
@@ -140,9 +151,10 @@ describe("Hospital operational service areas / PostgreSQL", () => {
     // A stale/now-inactive Child must still be removable by the active Parent OWNER.
     await endHospitalServiceArea(owner, { parentHospitalId: parentId, areaId: area.id, confirm: true, endReason: "suspended" });
     await db.hospital.update({ where: { id: childId }, data: { status: "ACTIVE" } });
-    await attach();
+    const reattached = await attach();
+    // Canonical nesting no longer affects operational resolution.
     await hospital(childId, "CHILD");
-    await expect(resolveActiveHospitalServiceArea(owner, input())).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await resolveActiveHospitalServiceArea(owner, input())).id).toBe(reattached.id);
   });
 
   it("denies stale ownership on subsequent reads and end, while multi-role OWNER must qualify independently", async () => {
@@ -166,15 +178,17 @@ describe("Hospital operational service areas / PostgreSQL", () => {
     expect(await db.hospitalServiceArea.count({ where: { childHospitalId: childId, endedAt: null } })).toBe(1);
   });
 
-  it("blocks competing Parent services and cross-Parent transfers, including after canonical reconciliation", async () => {
+  it("blocks seizing an occupied Child but lets another Parent claim it once released", async () => {
     const otherParent = await hospital(null, "PARENT");
     const otherOwner = await actor(otherParent);
     const attempts = await Promise.allSettled([attach(), attachHospitalServiceArea(otherOwner, { parentHospitalId: otherParent, childHospitalId: childId })]);
-    expect(attempts.map(({ status }) => status)).toEqual(["fulfilled", "rejected"]);
-    const [area] = (await listManagedHospitalServiceAreas(owner, { parentHospitalId: parentId })).items;
-    await endHospitalServiceArea(owner, { parentHospitalId: parentId, areaId: area.id, confirm: true, endReason: "end" });
-    await db.hospital.update({ where: { id: childId }, data: { parentHospitalId: otherParent } });
-    await expect(attachHospitalServiceArea(otherOwner, { parentHospitalId: otherParent, childHospitalId: childId })).rejects.toMatchObject({ code: "CONFLICT", message: "Cross-Parent transfer requires a separately approved workflow" });
+    expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    const [area] = await db.hospitalServiceArea.findMany({ where: { childHospitalId: childId, endedAt: null } });
+    const [holder, claimant] = area.parentHospitalId === parentId ? [owner, otherOwner] : [otherOwner, owner];
+    const claimantParent = claimant === owner ? parentId : otherParent;
+    await expect(attachHospitalServiceArea(claimant, { parentHospitalId: claimantParent, childHospitalId: childId })).rejects.toMatchObject({ code: "CONFLICT", message: "Child facility already has an active assignment" });
+    await endHospitalServiceArea(holder, { parentHospitalId: area.parentHospitalId, areaId: area.id, confirm: true, endReason: "release" });
+    expect(await attachHospitalServiceArea(claimant, { parentHospitalId: claimantParent, childHospitalId: childId })).toMatchObject({ parentHospitalId: claimantParent, endedAt: null });
   });
 
   it("rejects self, unknown, ineligible, inactive and unsupported nested facilities", async () => {
@@ -182,13 +196,15 @@ describe("Hospital operational service areas / PostgreSQL", () => {
     await expect(attachHospitalServiceArea(owner, { parentHospitalId: parentId, childHospitalId: randomUUID() })).rejects.toMatchObject({ code: "VALIDATION" });
     await db.hospitalServiceAreaEligibility.delete({ where: { hospitalId: childId } });
     await expect(attach()).rejects.toMatchObject({ code: "VALIDATION" });
-    await db.hospitalServiceAreaEligibility.create({ data: { hospitalId: childId, kind: "CHILD", sourceReference: "test", verifiedAt: new Date() } });
+    await db.hospitalServiceAreaEligibility.create({ data: { hospitalId: childId, kind: "CHILD", verifiedAt: new Date(), classifiedByUserId: admin.userId } });
     for (const status of ["SUSPENDED", "PENDING_VERIFICATION"] as const) {
       await db.hospital.update({ where: { id: childId }, data: { status } });
       await expect(attach()).rejects.toMatchObject({ code: "VALIDATION" });
     }
     await db.hospital.update({ where: { id: childId }, data: { status: "ACTIVE" } });
-    await hospital(childId, "CHILD");
+    // Drifted fixture: the Child already manages an operational area, so nesting is refused.
+    const grandChild = await hospital(null, "CHILD");
+    await db.hospitalServiceArea.create({ data: { parentHospitalId: childId, childHospitalId: grandChild, createdByUserId: owner.userId } });
     await expect(attach()).rejects.toMatchObject({ code: "VALIDATION" });
   });
 
@@ -267,29 +283,122 @@ describe("Hospital operational service areas / PostgreSQL", () => {
     expect(await db.auditEvent.count({ where: { actorUserId: owner.userId } })).toBe(0);
   });
 
-  it("preserves hierarchy, Patient/workforce relationships, summary permissions and direct scope", async () => {
+  it("preserves hierarchy, Patient/workforce relationships and direct scope; Parent report follows the association", async () => {
     const beforeChild = await db.hospital.findUniqueOrThrow({ where: { id: childId } });
     const before = await db.hospitalMembership.count({ where: { hospitalId: childId } });
     const patients = await db.patientHospitalRelationship.count({ where: { hospitalId: childId } });
-    const report = await resolveParentChildHospitalReportAccessContext(owner, parentId, childId);
+    // ADR-0016: canonical placement alone grants no Parent report.
+    await expect(resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).rejects.toMatchObject({ code: "NOT_FOUND" });
     const area = await attach();
     expect(hasDirectHospitalPatientReadScope(owner, parentId)).toBe(true);
     expect(hasDirectHospitalPatientReadScope(owner, childId)).toBe(false);
-    expect(await resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).toEqual(report);
+    expect(await resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).toMatchObject({ hospital: { id: childId } });
     await endHospitalServiceArea(owner, { parentHospitalId: parentId, areaId: area.id, confirm: true, endReason: "end" });
     expect(await db.hospital.findUniqueOrThrow({ where: { id: childId } })).toEqual(beforeChild);
     expect(await db.hospitalMembership.count({ where: { hospitalId: childId } })).toBe(before);
     expect(await db.patientHospitalRelationship.count({ where: { hospitalId: childId } })).toBe(patients);
-    expect(await resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).toEqual(report);
+    await expect(resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("does not give canonical-unrelated Parent reporting or Patient access through an operational row", async () => {
+  it("gives a canonically unrelated Parent the report through its association, never direct Patient scope", async () => {
     const otherParent = await hospital(null, "PARENT");
     const otherOwner = await actor(otherParent);
-    // Deliberately inconsistent trusted fixture proves current report policy never consumes this table.
-    await db.hospitalServiceArea.create({ data: { parentHospitalId: otherParent, childHospitalId: childId, createdByUserId: otherOwner.userId } });
+    const area = await attachHospitalServiceArea(otherOwner, { parentHospitalId: otherParent, childHospitalId: childId });
+    expect((await resolveActiveHospitalServiceArea(otherOwner, { parentHospitalId: otherParent, childHospitalId: childId })).id).toBe(area.id);
     expect(hasDirectHospitalPatientReadScope(otherOwner, childId)).toBe(false);
-    await expect(resolveParentChildHospitalReportAccessContext(otherOwner, otherParent, childId)).rejects.toThrow();
-    await expect(resolveActiveHospitalServiceArea(otherOwner, { parentHospitalId: otherParent, childHospitalId: childId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await resolveParentChildHospitalReportAccessContext(otherOwner, otherParent, childId)).toMatchObject({ hospital: { id: childId } });
+    await expect(resolveParentChildHospitalReportAccessContext(owner, parentId, childId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("Platform ADMIN network governance / PostgreSQL", () => {
+  const end = { confirm: true as const, endReason: "governance" };
+
+  it("sets and clears roles with attribution and audit, blocking changes under active areas", async () => {
+    const newParent = await hospital(null, null);
+    await db.hospital.update({ where: { id: newParent }, data: { status: "PENDING_VERIFICATION" } });
+    const role = await setHospitalNetworkRole(admin, { hospitalId: newParent, kind: "PARENT" });
+    expect(role).toMatchObject({ hospitalId: newParent, kind: "PARENT", classifiedByUserId: admin.userId });
+    await setHospitalNetworkRole(admin, { hospitalId: newParent, kind: "PARENT" });
+    await clearHospitalNetworkRole(admin, { hospitalId: newParent, confirm: true });
+    expect(await db.hospitalServiceAreaEligibility.findUnique({ where: { hospitalId: newParent } })).toBeNull();
+    await expect(clearHospitalNetworkRole(admin, { hospitalId: newParent, confirm: true })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const events = await db.auditEvent.findMany({ where: { resourceId: newParent }, orderBy: { createdAt: "asc" } });
+    expect(events.map(({ action }) => action)).toEqual(["hospital_network_role.set", "hospital_network_role.set", "hospital_network_role.cleared"]);
+    expect(events[0]).toMatchObject({ actorUserId: admin.userId, metadata: { hospitalId: newParent, fromKind: null, toKind: "PARENT" } });
+
+    await attach();
+    await expect(setHospitalNetworkRole(admin, { hospitalId: childId, kind: "PARENT" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(setHospitalNetworkRole(admin, { hospitalId: parentId, kind: "CHILD" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(clearHospitalNetworkRole(admin, { hospitalId: childId, confirm: true })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(setHospitalNetworkRole(admin, { hospitalId: randomUUID(), kind: "CHILD" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(setHospitalNetworkRole(admin, { hospitalId: childId, kind: "OTHER" })).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("transfers an active area atomically to another eligible Parent with immutable history and audit", async () => {
+    const area = await attach();
+    const newParent = await hospital(null, "PARENT");
+    const newOwner = await actor(newParent);
+    const { ended, created } = await transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId: newParent, confirm: true, reason: "โอนให้แม่ข่ายใหม่" });
+    expect(ended).toMatchObject({ id: area.id, parentHospitalId: parentId });
+    expect(created).toMatchObject({ parentHospitalId: newParent, childHospitalId: childId, endedAt: null });
+    expect(ended.endedAt?.getTime()).toBe(created.createdAt.getTime());
+    expect(await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: area.id } })).toMatchObject({ endedByUserId: admin.userId, endReason: "โอนให้แม่ข่ายใหม่" });
+    expect(await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: created.id } })).toMatchObject({ createdByUserId: admin.userId });
+    expect((await listManagedHospitalServiceAreas(owner, { parentHospitalId: parentId })).items).toEqual([]);
+    expect((await listManagedHospitalServiceAreas(newOwner, { parentHospitalId: newParent })).items).toEqual([created]);
+    expect((await listHospitalServiceAreasForAdmin(admin, { parentHospitalId: newParent })).items).toEqual([created]);
+    const actions = (await db.auditEvent.findMany({ where: { actorUserId: admin.userId }, orderBy: { createdAt: "asc" } })).map(({ action }) => action);
+    expect(actions).toEqual(["hospital_service_area.ended", "hospital_service_area.transferred"]);
+    await expect(transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId: newParent, confirm: true, reason: "again" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(transferHospitalServiceArea(admin, { areaId: created.id, toParentHospitalId: newParent, confirm: true, reason: "same" })).rejects.toMatchObject({ code: "VALIDATION" });
+    const unclassified = await hospital(null, null);
+    await expect(transferHospitalServiceArea(admin, { areaId: created.id, toParentHospitalId: unclassified, confirm: true, reason: "bad" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(transferHospitalServiceArea(admin, { areaId: randomUUID(), toParentHospitalId: parentId, confirm: true, reason: "x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("lets ADMIN end an area for a Parent without a working OWNER, once", async () => {
+    const area = await attach();
+    await db.hospitalMembership.updateMany({ where: { userId: owner.userId }, data: { status: "ENDED" } });
+    expect((await adminEndHospitalServiceArea(admin, { areaId: area.id, ...end })).endedAt).toBeInstanceOf(Date);
+    await expect(adminEndHospitalServiceArea(admin, { areaId: area.id, ...end })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(adminEndHospitalServiceArea(admin, { areaId: area.id, endReason: "x", confirm: false })).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("allows one winner when ADMIN transfers race", async () => {
+    const area = await attach();
+    const targets = [await hospital(null, "PARENT"), await hospital(null, "PARENT")];
+    const attempts = await Promise.allSettled(targets.map((toParentHospitalId) => transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId, confirm: true, reason: "race" })));
+    expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(await db.hospitalServiceArea.count({ where: { childHospitalId: childId, endedAt: null } })).toBe(1);
+    expect(await db.auditEvent.count({ where: { actorUserId: admin.userId, action: "hospital_service_area.transferred" } })).toBe(1);
+  });
+
+  it("denies non-ADMIN actors, forged ADMIN context and stale persisted ADMIN", async () => {
+    const area = await attach();
+    const denied: ActorContext[] = [owner, await actor(null, ["OSM"]), await actor(null, ["PATIENT"]), { ...owner, roles: ["HOSPITAL", "ADMIN"] }];
+    for (const candidate of denied) {
+      await expect(setHospitalNetworkRole(candidate, { hospitalId: childId, kind: "CHILD" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(transferHospitalServiceArea(candidate, { areaId: area.id, toParentHospitalId: parentId, confirm: true, reason: "x" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(adminEndHospitalServiceArea(candidate, { areaId: area.id, ...end })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(listHospitalServiceAreasForAdmin(candidate, { parentHospitalId: parentId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    await expect(setHospitalNetworkRole(null, { hospitalId: childId, kind: "CHILD" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await db.user.update({ where: { id: admin.userId }, data: { status: "SUSPENDED" } });
+    await expect(adminEndHospitalServiceArea(admin, { areaId: area.id, ...end })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: area.id } })).endedAt).toBeNull();
+  });
+
+  it("rolls back transfer and role changes if the required audit write fails", async () => {
+    const failing = db.$extends({ query: { auditEvent: { async create(): Promise<never> { throw new Error("simulated audit failure"); } } } });
+    const dependencies = { database: failing as unknown as PrismaClient };
+    const area = await attach();
+    const newParent = await hospital(null, "PARENT");
+    await expect(transferHospitalServiceArea(admin, { areaId: area.id, toParentHospitalId: newParent, confirm: true, reason: "x" }, dependencies)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    expect(await db.hospitalServiceArea.count({ where: { childHospitalId: childId } })).toBe(1);
+    expect((await db.hospitalServiceArea.findUniqueOrThrow({ where: { id: area.id } })).endedAt).toBeNull();
+    const plain = await hospital(null, null);
+    await expect(setHospitalNetworkRole(admin, { hospitalId: plain, kind: "CHILD" }, dependencies)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    expect(await db.hospitalServiceAreaEligibility.findUnique({ where: { hospitalId: plain } })).toBeNull();
   });
 });

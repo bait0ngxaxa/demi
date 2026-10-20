@@ -5,11 +5,14 @@ import { HospitalStatus, Prisma, Role, type PrismaClient } from "@prisma/client"
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
-  getHospitalOwnerHierarchyContext,
-  resolveHospitalOwnerDirectChildFacility,
-  type HospitalHierarchyDatabase,
-  type HospitalHierarchyContext,
-} from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
+  findNetworkChild,
+  listNetworkScopes,
+  type HospitalNetworkDatabase,
+} from "@/modules/hospital-service-areas/services/hospital-network-access";
+import {
+  assertHospitalOwnerPolicy,
+  HOSPITAL_OWNER_CAPABILITIES,
+} from "@/modules/workforce/policies/hospital-owner-policy";
 import {
   ApplicationError,
   ForbiddenError,
@@ -23,14 +26,16 @@ import {
 } from "../policies/hospital-network-child-report-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
 
-export type ParentChildHospitalReportAccessDatabase = HospitalHierarchyDatabase;
+export type ParentChildHospitalReportAccessDatabase = HospitalNetworkDatabase;
 
 export type ParentChildHospitalReportAccessContext = {
   actorId: string;
   capability: HospitalNetworkChildReportCapability;
   parentHospitalId: string;
+  parent: { id: string; name: string };
   hospital: {
     id: string;
+    name: string;
     status: HospitalStatus;
     parentHospitalId: string;
   };
@@ -58,23 +63,37 @@ async function resolveInDatabase(
   database: ParentChildHospitalReportAccessDatabase,
   capability: HospitalNetworkChildReportCapability,
 ): Promise<ParentChildHospitalReportAccessContext> {
-  const hierarchy = await resolveHospitalOwnerDirectChildFacility(
+  // Context check first (no read for a non-OWNER), then persisted proof through the network association.
+  assertHospitalOwnerPolicy({
     actor,
-    parentHospitalId,
-    childHospitalId,
-    database,
-  );
-  const decision = decideHospitalNetworkChildReportPolicy({ actor, capability, hierarchy });
+    capability: HOSPITAL_OWNER_CAPABILITIES.readGovernance,
+    targetHospitalId: parentHospitalId,
+  });
+  // ADR-0016: the active operational network (not canonical Master placement) scopes Parent reports.
+  const network = await findNetworkChild(database, actor.userId, parentHospitalId, childHospitalId, "OWNER");
+  if (!network) throw new NotFoundError();
+
+  const decision = decideHospitalNetworkChildReportPolicy({
+    actor,
+    capability,
+    hierarchy: {
+      parent: { id: network.parent.id, status: HospitalStatus.ACTIVE, parentHospitalId: null },
+      child: { id: network.child.id, status: HospitalStatus.ACTIVE, parentHospitalId: network.parent.id },
+      issues: [],
+    },
+  });
   if (!decision.allowed) throw new ForbiddenError();
 
   return {
     actorId: actor.userId,
     capability,
-    parentHospitalId: hierarchy.parent.id,
+    parentHospitalId: network.parent.id,
+    parent: { id: network.parent.id, name: network.parent.name },
     hospital: {
-      id: hierarchy.child.id,
-      status: hierarchy.child.status,
-      parentHospitalId: hierarchy.parent.id,
+      id: network.child.id,
+      name: network.child.name,
+      status: HospitalStatus.ACTIVE,
+      parentHospitalId: network.parent.id,
     },
   };
 }
@@ -123,7 +142,7 @@ export async function resolveParentChildHospitalReportAccessContext(
   }
 }
 
-/** List only name/ID targets under Parents the current actor directly owns. Each report read still uses the exact-target resolver above. */
+/** List only name/ID targets of the active networks of Parents the actor directly owns. Each report read still uses the exact-target resolver above. */
 export async function listParentChildHospitalReportTargetGroups(
   actor: ActorContext | null | undefined,
   parentHospitalIds: readonly string[],
@@ -138,36 +157,14 @@ export async function listParentChildHospitalReportTargetGroups(
   }))];
 
   try {
-    const groups = await Promise.all(parentIds.map(async (parentHospitalId) => {
-      let context: HospitalHierarchyContext;
-      try {
-        context = await getHospitalOwnerHierarchyContext(actor, parentHospitalId, database);
-      } catch (error: unknown) {
-        if (error instanceof ForbiddenError || error instanceof NotFoundError) return null;
-        throw error;
-      }
-
-      if (
-        context.classification !== "MAIN" ||
-        context.hospital.status !== HospitalStatus.ACTIVE ||
-        context.issues.length > 0
-      ) {
-        return null;
-      }
-
-      const group: ParentChildHospitalReportTargetGroup = {
-        parent: { id: context.hospital.id, name: context.hospital.name },
-        children: context.directChildren
-          .filter(({ status, parentHospitalId: currentParentId }) =>
-            status === HospitalStatus.ACTIVE && currentParentId === context.hospital.id,
-          )
-          .map(({ id, name }) => ({ id, name }))
-          .sort((left, right) => left.name.localeCompare(right.name, "th") || left.id.localeCompare(right.id)),
-      };
-      return group;
-    }));
-
-    return groups.filter((group): group is ParentChildHospitalReportTargetGroup => group !== null);
+    const requested = new Set(parentIds);
+    const scopes = await listNetworkScopes(database, actor.userId, "OWNER");
+    return scopes
+      .filter(({ parent }) => requested.has(parent.id))
+      .map(({ parent, children }) => ({
+        parent: { id: parent.id, name: parent.name },
+        children: children.map(({ id, name }) => ({ id, name })),
+      }));
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     throw new InfrastructureError("Parent-to-Child Hospital report targets could not be loaded");

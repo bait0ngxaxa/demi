@@ -203,7 +203,7 @@ export function PatientDirectoryView({
                     <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
                       {scopes.map((scope) => (
                         <option key={scope.hospitalId} value={scope.hospitalId}>
-                          {scope.hospitalName}
+                          {scope.access === "NETWORK" ? `${scope.hospitalName} (ลูกข่าย · อ่านอย่างเดียว)` : scope.hospitalName}
                         </option>
                       ))}
                     </Select>
@@ -222,6 +222,11 @@ export function PatientDirectoryView({
               <p className="text-sm leading-6 text-text-muted">
                 แสดงเฉพาะผู้ป่วยของโรงพยาบาลที่เลือก
               </p>
+              {selectedScope.access === "NETWORK" ? (
+                <Alert variant="info">
+                  ลูกข่ายในเครือข่ายของคุณ ดูข้อมูลได้อย่างเดียว แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
+                </Alert>
+              ) : null}
               {canAssignOsm ? (
                 <Link
                   className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

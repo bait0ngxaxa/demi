@@ -33,7 +33,7 @@ async function resolveActor(): Promise<ActorContext> {
 }
 
 /**
- * ADR-0013 §1/§3: an area is an active direct Child of a Parent the actor directly OWNS. Each Child's nine values come
+ * ADR-0016: an area is an active network Child of a Parent the actor directly OWNS. Each Child's nine values come
  * from the existing exact-Child read path, which re-authorizes and audits per Child; no other Child data is loaded.
  */
 export async function getParentAreaOverviewContext(): Promise<ParentAreaOverviewGroup[]> {

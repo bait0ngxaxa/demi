@@ -76,7 +76,7 @@ type HospitalMasterPrismaRecord = Prisma.HospitalGetPayload<{
 }>;
 
 const validStatuses = new Set<string>(Object.values(HospitalStatus));
-const canonicalCodePattern = /^[A-Z0-9][A-Z0-9_-]{0,31}$/u;
+export const canonicalCodePattern = /^[A-Z0-9][A-Z0-9_-]{0,31}$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

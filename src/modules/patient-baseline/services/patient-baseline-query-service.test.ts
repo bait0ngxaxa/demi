@@ -71,6 +71,8 @@ function createDatabase(input: {
         osmHospitalRelationships: [],
       }),
     },
+    // ADR-0016: no active network association unless a test supplies one.
+    hospitalServiceArea: { findFirst: vi.fn().mockResolvedValue(null) },
     patientHospitalRelationship: {
       findFirst: vi.fn().mockResolvedValue(
         input.relationship === undefined

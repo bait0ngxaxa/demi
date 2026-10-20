@@ -12,6 +12,8 @@ export const HOSPITAL_OWNER_CAPABILITIES = {
   demote: "hospital-owner:demote",
   // Customer decision E1 (ก-15): OWNER grants/revokes report export for a MEMBER.
   reportExportGrant: "hospital-owner:report-export-grant",
+  // ADR-0016: OWNER grants/revokes read-only network Patient access for a MEMBER.
+  networkPatientReadGrant: "hospital-owner:network-patient-read-grant",
 } as const;
 
 export type HospitalOwnerCapability =

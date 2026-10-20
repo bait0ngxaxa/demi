@@ -56,7 +56,7 @@ function osm(id: string): ActorContext["osmHospitalRelationships"][number] {
   return { hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE };
 }
 
-/** A Hospital workspace; `parent: null` makes it a MAIN Hospital (its own network). */
+/** A Hospital workspace; `parent: null` makes it a network PARENT (its own network). */
 function workspace(id: string, parent: string | null, overrides: Partial<ActorHospitalWorkspace> = {}): ActorHospitalWorkspace {
   return {
     hospitalId: id,
@@ -64,6 +64,7 @@ function workspace(id: string, parent: string | null, overrides: Partial<ActorHo
     hospitalName: `โรงพยาบาล ${id.slice(0, 4)}`,
     hospitalStatus: HospitalStatus.ACTIVE,
     network: { hospitalId: parent ?? id, name: "เครือข่าย" },
+    networkRole: parent ? "CHILD" : "PARENT",
     hasActiveDirectChildren: false,
     ...overrides,
   };
@@ -115,7 +116,7 @@ const ownerSections = (areas: boolean) => [
   staffRegistration,
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/access-requests", "/app/patients/service-requests", "/app/hospitals/support"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
-  ["administration", "บริหารโรงพยาบาล", ownerAdministration],
+  ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
 ] as const;
 const memberSections = (reporting: readonly string[]) => [
