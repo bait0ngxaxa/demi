@@ -208,4 +208,43 @@ describe("Hospital reporting customer workbook export", () => {
     expect(serviceText).toContain("generatedAt");
     expect(serviceText).toContain("ไม่ใช่ dataAsOf");
   });
+
+  it("keeps notes and the detail table below the template's data-entry rows when there are few Programs", async () => {
+    const bytes = await generateHospitalReportWorkbook(dataset(), new Date("2026-10-11T05:00:00.000Z"));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const rowsWithText = (sheet: ExcelJS.Worksheet, from: number, to: number, column: number, text: string): number[] =>
+      Array.from({ length: to - from + 1 }, (_, index) => from + index)
+        .filter((rowNumber) => String(sheet.getCell(rowNumber, column).value ?? "").includes(text));
+
+    // Template data-entry grids: Dashboard rows 9–29, รายงานการจัดบริการ rows 9–30. This fixture fills 2 and 3 rows.
+    for (const [name, gridEnd, dataEnd] of [["Dashboard ภาพรวม", 29, 11], ["รายงานการจัดบริการ", 30, 11]] as const) {
+      const sheet = workbook.getWorksheet(name)!;
+      for (let rowNumber = dataEnd + 1; rowNumber <= gridEnd; rowNumber += 1) {
+        const values = (sheet.getRow(rowNumber).values as unknown[]).filter((value) => value !== null && value !== undefined && value !== "");
+        expect({ name, rowNumber, values }).toEqual({ name, rowNumber, values: [] });
+      }
+      const noteRows = rowsWithText(sheet, 1, sheet.rowCount, 1, "หมายเหตุ");
+      expect(noteRows.length).toBeGreaterThan(0);
+      expect(Math.min(...noteRows)).toBeGreaterThan(gridEnd);
+    }
+    const service = workbook.getWorksheet("รายงานการจัดบริการ")!;
+    expect(Math.min(...rowsWithText(service, 1, service.rowCount, 1, "รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก"))).toBeGreaterThan(30);
+  });
+
+  it("starts notes right after the data when the Programs outgrow the template grid", async () => {
+    const many = dataset();
+    many.programs = Array.from({ length: 25 }, (_, index) =>
+      program({ id: `55555555-5555-4555-8555-${String(index + 1).padStart(12, "0")}`, status: PatientProgramStatus.ACTIVE }));
+    const bytes = await generateHospitalReportWorkbook(many, new Date("2026-10-11T05:00:00.000Z"));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    for (const name of ["Dashboard ภาพรวม", "รายงานการจัดบริการ"]) {
+      const sheet = workbook.getWorksheet(name)!;
+      // Data rows 9–33, one blank row, then the first note.
+      expect(sheet.getCell(33, 2).value).toBe("สมชาย");
+      expect(sheet.getCell(34, 1).value ?? null).toBeNull();
+      expect(sheet.getCell(35, 1).value).toBe("หมายเหตุ");
+    }
+  });
 });

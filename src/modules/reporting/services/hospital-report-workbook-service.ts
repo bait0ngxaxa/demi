@@ -281,6 +281,21 @@ function styleExtensionHeaders(
   }
 }
 
+/** Last row of the template's bordered data-entry grid, read before any row is written. */
+function templateDataEndRow(sheet: ExcelJS.Worksheet): number {
+  let lastRow = DATA_START_ROW - 1;
+  for (let rowNumber = DATA_START_ROW; rowNumber <= sheet.rowCount; rowNumber += 1) {
+    if (Object.keys(sheet.getRow(rowNumber).getCell(1).border ?? {}).length === 0) break;
+    lastRow = rowNumber;
+  }
+  return lastRow;
+}
+
+/** Notes start after one blank row below both the written rows and the template grid, never inside data cells. */
+function notesAnchorRow(dataRowCount: number, templateEndRow: number): number {
+  return Math.max(DATA_START_ROW + dataRowCount, templateEndRow + 1);
+}
+
 function clearReportBody(sheet: ExcelJS.Worksheet): void {
   for (let rowNumber = DATA_START_ROW; rowNumber <= sheet.rowCount; rowNumber += 1) {
     sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell) => {
@@ -720,6 +735,8 @@ export async function generateHospitalReportWorkbook(
   workbook.lastModifiedBy = "DEMI";
   workbook.created = generatedAt;
   workbook.modified = generatedAt;
+  const dashboardTemplateEndRow = templateDataEndRow(dashboardSheet);
+  const serviceTemplateEndRow = templateDataEndRow(serviceSheet);
   clearReportBody(dashboardSheet);
   clearReportBody(serviceSheet);
   setHeaderFacts(dashboardSheet, dataset);
@@ -729,7 +746,7 @@ export async function generateHospitalReportWorkbook(
 
   const dashboardRowCount = programContinuationGroups(dataset.programs, DASHBOARD_FOLLOWUPS_PER_ROW).length;
   const serviceRowCount = programContinuationGroups(dataset.programs, SERVICE_FOLLOWUPS_PER_ROW).length;
-  appendNotes(dashboardSheet, DATA_START_ROW + dashboardRowCount, [
+  appendNotes(dashboardSheet, notesAnchorRow(dashboardRowCount, dashboardTemplateEndRow), [
     "จำนวนผู้ป่วยนับตาม Patient-Hospital relationship; จำนวน Program นับตาม PatientProgram และผู้ป่วยที่ไม่มี Program จะไม่มีแถว Program",
     "ผู้ดูแลที่แสดงเป็นการมอบหมายปัจจุบันของ relationship ณ เวลาที่อ่านข้อมูล ไม่ใช่ผู้ให้บริการย้อนหลังของ Program",
     "ระหว่างโปรแกรม ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; Service 1 และ Goal Plan ยังไม่มีการบันทึกค่าวัดในระบบ",
@@ -739,7 +756,7 @@ export async function generateHospitalReportWorkbook(
       ? "ชุดข้อมูลนี้รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว (ประวัติก่อนสิ้นสุดการดูแล)"
       : "ชุดข้อมูลนี้ไม่รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว",
   ]);
-  const detailStartRow = appendNotes(serviceSheet, DATA_START_ROW + serviceRowCount, [
+  const detailStartRow = appendNotes(serviceSheet, notesAnchorRow(serviceRowCount, serviceTemplateEndRow), [
     "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
     "ครั้งที่ 2 ใช้ Goal Plan รอบแรกของ Program: การลดมื้ออาหาร = เป้าหมายลดข้าว/แป้ง, การเปลี่ยนอาหาร = เป้าหมายอาหารอื่น, จำนวนมื้อและจำนวนวันต่อสัปดาห์ = วันเป้าหมายสูงสุดของหมวด, รวมเวลา = ผลรวมวันเป้าหมาย × นาทีต่อครั้ง ของกิจกรรมออกกำลังกาย",
     "Goal Plan เป็นค่าเป้าหมาย ไม่ใช่ผลที่ทำได้; Follow-up ที่เกิน 4 ครั้งแสดงในแถวต่อเนื่องและตารางรายละเอียดท้ายรายงาน",

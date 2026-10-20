@@ -394,10 +394,11 @@ describe("report pipeline end to end (P1 Part D)", () => {
       "COMPLETED", programId, 1, 2, 4,
     ]);
 
-    // Exactly one Program row (notes follow after one blank row), and the outside Patient appears nowhere.
-    for (const sheet of [dashboard, service]) {
-      expect(sheet.getRow(10).getCell(1).value ?? null).toBeNull();
-      expect(sheet.getRow(11).getCell(1).value).toBe("หมายเหตุ");
+    // Exactly one Program row: the rest of the template's data-entry grid stays empty (Dashboard rows 10–29,
+    // รายงานการจัดบริการ rows 10–30), notes start below it, and the outside Patient appears nowhere.
+    for (const [sheet, gridEnd] of [[dashboard, 29], [service, 30]] as const) {
+      for (let rowNumber = 10; rowNumber <= gridEnd + 1; rowNumber += 1) expect(sheet.getRow(rowNumber).getCell(1).value ?? null).toBeNull();
+      expect(sheet.getRow(gridEnd + 2).getCell(1).value).toBe("หมายเหตุ");
     }
     for (const sheet of [dashboard, service]) {
       sheet.eachRow((row) => row.eachCell((cell) => expect(String(cell.value ?? "")).not.toContain("ทดสอบนอกโปรแกรม")));
