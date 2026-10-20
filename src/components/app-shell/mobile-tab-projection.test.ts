@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
-import { projectApplicationNavigation } from "./application-navigation";
+import { projectApplicationNavigation as projectNavigation } from "./application-navigation";
 import { projectMobileNavigation, projectMoreNavigation } from "./mobile-tab-projection";
 import type { ApplicationNavigationGroup, ApplicationWorkspaceContext } from "./navigation-types";
 
@@ -57,6 +57,11 @@ function actor(
         ]
       : [],
   };
+}
+
+/** Hospital workspaces only gate the areas entry, which these tab tests do not exercise. */
+function projectApplicationNavigation(subject: ActorContext): readonly ApplicationNavigationGroup[] {
+  return projectNavigation(subject, []);
 }
 
 function hrefs(groups: readonly ApplicationNavigationGroup[]): string[] {
@@ -201,12 +206,15 @@ describe("server-projected mobile navigation", () => {
     expect(moreHrefs).toContain("/app/patients");
     expect(moreHrefs).toContain("/app/workforce");
     expect(moreHrefs).toContain("/app/hospitals/reporting");
+    // The workspace switch is a separate control; the Work home is a primary tab, so More omits it.
     expect(moreHrefs).toContain("/app/personal");
-    expect(moreHrefs).toContain("/app");
+    expect(moreHrefs).not.toContain("/app");
     expect(moreHrefs).not.toContain("/app/patients/assigned");
+    expect(moreHrefs).not.toContain("/app/patients/assigned?task=screening");
+    expect(moreHrefs).not.toContain("/app/patients/assigned?task=followup");
   });
 
-  it("retains every authorized navigation entry in a primary slot, workspace switch, or More", () => {
+  it("retains every authorized navigation entry in a primary slot or More", () => {
     for (const roles of roleCombinations) {
       const navigation = projectApplicationNavigation(actor(roles));
       const projection = projectMobileNavigation(navigation);
@@ -214,7 +222,7 @@ describe("server-projected mobile navigation", () => {
       for (const workspace of projection.availableWorkspaces) {
         const tabs = projection.tabsByWorkspace[workspace];
         const primaryHrefs = new Set(
-          tabs.flatMap(({ href }) => (href ? [href.split("?")[0]] : [])),
+          tabs.flatMap(({ href }) => (href ? [href] : [])),
         );
         const moreHrefs = new Set(hrefs(projectMoreNavigation(navigation, tabs)));
         const visibleGroups = navigation.filter(
@@ -224,11 +232,7 @@ describe("server-projected mobile navigation", () => {
 
         for (const group of visibleGroups) {
           for (const item of group.items) {
-            if (item.workspaceContext && item.workspaceContext !== workspace) {
-              continue;
-            }
-
-            if (group.label === "พื้นที่ใช้งาน" || !primaryHrefs.has(item.href)) {
+            if (!primaryHrefs.has(item.href)) {
               expect(moreHrefs, `${workspace}: ${item.href}`).toContain(item.href);
             }
           }

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
 import { projectApplicationWorkspace } from "@/components/app-shell/application-workspace";
-import { projectMobileNavigation } from "@/components/app-shell/mobile-tab-projection";
+import { NAVIGATION_SECTION_ORDER } from "@/components/app-shell/navigation-sections";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
@@ -53,8 +53,9 @@ function workspace(hospitalId: string, overrides: Partial<ActorHospitalWorkspace
 
 function project(subject: ActorContext, workspaces: readonly ActorHospitalWorkspace[], requested?: string) {
   const projection = projectApplicationWorkspace(subject, workspaces);
-  const taskLinks = projectOsmTaskLinks(projectMobileNavigation(projectApplicationNavigation(subject)).tabsByWorkspace.work);
-  return { projection, taskLinks, home: projectWorkHome(projection, taskLinks, projectActiveOsmHospitalIds(subject), requested) };
+  const navigation = projectApplicationNavigation(subject, workspaces);
+  const taskLinks = projectOsmTaskLinks(navigation);
+  return { projection, navigation, taskLinks, home: projectWorkHome(projection, navigation, projectActiveOsmHospitalIds(subject), requested) };
 }
 
 const path = (href: string): string => href.split("?")[0] ?? href;
@@ -65,13 +66,14 @@ const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
 const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
 const ownerRequests = ["/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog"];
+// UI-4: tiles follow the Work navigation sections (care → registration → reports-info → administration).
 const ownerTiles = (id: string, areas = false) => [
   withHospital("/app/patients", id),
   withHospital("/app/patients/provision", id),
   withHospital("/app/patients/activation", id),
-  withHospital("/app/workforce", id),
   withHospital("/app/hospitals/reporting", id),
   ...(areas ? ["/app/hospitals/areas"] : []),
+  withHospital("/app/workforce", id),
   withHospital("/app/hospitals/knowledge", id),
   withHospital("/app/hospitals/contact", id),
 ];
@@ -146,7 +148,7 @@ const cases: Case[] = [
     workspaces: [],
     scope: "system",
     hero: "/app/admin/reporting",
-    tiles: ["/app/admin/hospitals", "/app/admin/reporting", "/app/admin/hospital-onboarding"],
+    tiles: ["/app/admin/hospital-onboarding", "/app/admin/hospitals", "/app/admin/reporting"],
     shared: [],
   },
   {
@@ -218,8 +220,22 @@ describe("work home projection per actor", () => {
     const { home } = project(subject, [workspace(parentId, { hasActiveDirectChildren: true })]);
 
     expect(home.tiles).toHaveLength(WORK_HOME_MAX_TILES);
-    expect(home.tiles.map(({ href }) => href)).toEqual([...ownerTiles(parentId).slice(0, 1), screeningAt(parentId), followupAt(parentId), ...ownerTiles(parentId).slice(1, 5), "/app/more"]);
+    expect(home.tiles.map(({ href }) => href)).toEqual([screeningAt(parentId), followupAt(parentId), ...ownerTiles(parentId, true).slice(0, 5), "/app/more"]);
     expect(home.tiles.at(-1)).toEqual({ href: "/app/more", icon: "more", label: "ทั้งหมด" });
+  });
+
+  it("orders tiles by the same section order as the sidebar and More", () => {
+    const subject = actor({ roles: [Role.HOSPITAL, Role.OSM], hospitalMemberships: [membership(parentId, MembershipType.OWNER)], osmHospitalRelationships: [osm(parentId)] });
+    const { navigation, home } = project(subject, [workspace(parentId, { hasActiveDirectChildren: true })]);
+    const sectionOf = (href: string): number => {
+      const key = href.split("&")[0]?.replace(/\?hospitalId=.*$/u, "") ?? href;
+      const group = navigation.find(({ workspace: groupWorkspace, items }) => groupWorkspace === "work" && items.some((item) => item.href === key));
+      return group ? NAVIGATION_SECTION_ORDER.indexOf(group.id) : Number.POSITIVE_INFINITY;
+    };
+    const ranks = home.tiles.filter(({ href }) => href !== "/app/more").map(({ href }) => sectionOf(href));
+
+    expect(ranks.every(Number.isFinite)).toBe(true);
+    expect(ranks).toEqual([...ranks].sort((left, right) => left - right));
   });
 
   it("keys icons by href with a neutral default and keeps unknown hrefs after ordered ones", () => {
@@ -227,7 +243,7 @@ describe("work home projection per actor", () => {
       { href: "/app/unknown", label: "อื่น ๆ" },
       { href: followup, label: "ติดตาม" },
       { href: withHospital("/app/workforce", hospitalA), label: "บุคลากร" },
-    ]);
+    ], ["/app/patients/assigned?task=followup", "/app/workforce"]);
     expect(tiles.map(({ href, icon }) => [href, icon])).toEqual([
       [followup, "followup"],
       [withHospital("/app/workforce", hospitalA), "workforce"],

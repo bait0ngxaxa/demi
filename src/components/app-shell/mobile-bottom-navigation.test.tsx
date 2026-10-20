@@ -54,38 +54,33 @@ import { projectMobileNavigation } from "./mobile-tab-projection";
 import type { ApplicationNavigationGroup } from "./navigation-types";
 
 const navigation: readonly ApplicationNavigationGroup[] = [
+  { id: "home", label: null, workspace: "personal", items: [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" }] },
   {
-    label: "พื้นที่ใช้งาน",
-    workspace: "all",
-    items: [
-      { href: "/app/personal", label: "ส่วนตัว", match: "prefix", workspaceContext: "personal" },
-      { href: "/app", label: "งาน", match: "exact", workspaceContext: "work" },
-    ],
-  },
-  {
-    label: "ส่วนตัว",
+    id: "care",
+    label: "การดูแลของฉัน",
     workspace: "personal",
     items: [
-      { href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" },
       { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
-      { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
-      { href: "/app/personal/care", label: "การดูแล", match: "prefix" },
+      { href: "/app/personal/wellness", label: "อาหารและออกกำลังกาย", match: "prefix" },
+      { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
     ],
   },
-  { label: null, workspace: "work", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },
+  { id: "home", label: null, workspace: "work", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },
   {
-    label: "ผู้ป่วย",
+    id: "care",
+    label: "ดูแลผู้ป่วย",
     workspace: "work",
     items: [
       { href: "/app/patients/assigned", label: "ผู้ป่วยที่รับผิดชอบ", match: "exact" },
-      { href: "/app/patients/provision", label: "เพิ่มหรือนำเข้าผู้ป่วย", match: "prefix" },
+      { href: "/app/patients/provision", label: "เพิ่มผู้ป่วย", match: "prefix" },
     ],
   },
   {
+    id: "account",
     label: "บัญชีและช่วยเหลือ",
     workspace: "all",
     items: [
-      { href: "/app/family", label: "ญาติและผู้ดูแล", match: "prefix" },
+      { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
       { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
       { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
     ],

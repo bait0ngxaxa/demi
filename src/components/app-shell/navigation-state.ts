@@ -72,11 +72,35 @@ export function resolveWorkspaceContextForPathname(
   );
 }
 
+/** An item's own query (e.g. `?task=screening`) must match the current URL; other current params are ignored. */
 export function isNavigationItemActive(
   pathname: string,
   item: ApplicationNavigationItem,
+  search = "",
 ): boolean {
+  const [path = "", query = ""] = item.href.split("?");
+  const current = new URLSearchParams(search);
+  if (![...new URLSearchParams(query)].every(([key, value]) => current.get(key) === value)) {
+    return false;
+  }
+
   return item.match === "exact"
-    ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    ? pathname === path
+    : pathname === path || pathname.startsWith(`${path}/`);
+}
+
+/** The active hrefs, preferring the item with the more specific query when several share one path. */
+export function resolveActiveNavigationHrefs(
+  pathname: string,
+  search: string,
+  items: readonly ApplicationNavigationItem[],
+): ReadonlySet<string> {
+  const active = items.filter((item) => isNavigationItemActive(pathname, item, search));
+  const specificity = (href: string): number => [...new URLSearchParams(href.split("?")[1] ?? "")].length;
+  const pathOf = (href: string): string => href.split("?")[0] ?? href;
+
+  return new Set(active
+    .filter((item) => !active.some((other) =>
+      pathOf(other.href) === pathOf(item.href) && specificity(other.href) > specificity(item.href)))
+    .map(({ href }) => href));
 }

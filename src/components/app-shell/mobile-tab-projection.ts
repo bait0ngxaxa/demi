@@ -25,7 +25,15 @@ export type MobileNavigationIcon =
   | "profile"
   | "services"
   | "settings"
-  | "support";
+  | "support"
+  | "provision"
+  | "activation"
+  | "assign"
+  | "requests"
+  | "export"
+  | "areas"
+  | "contact"
+  | "publish";
 
 export type MobileNavigationMatch = "exact" | "prefix";
 
@@ -63,17 +71,11 @@ const moreTab: MobileNavigationTab = {
   activeRoute: "more",
 };
 
-function isItemAvailableInWorkspace(
+function isGroupAvailableInWorkspace(
   group: ApplicationNavigationGroup,
-  item: ApplicationNavigationItem,
   workspace: ApplicationWorkspaceContext,
 ): boolean {
-  const groupMatches =
-    group.workspace === undefined ||
-    group.workspace === "all" ||
-    group.workspace === workspace;
-
-  return groupMatches && (item.workspaceContext === undefined || item.workspaceContext === workspace);
+  return group.workspace === undefined || group.workspace === "all" || group.workspace === workspace;
 }
 
 function findNavigationItem(
@@ -84,7 +86,7 @@ function findNavigationItem(
   for (const group of navigation) {
     const item = group.items.find(
       (candidate) =>
-        candidate.href === href && isItemAvailableInWorkspace(group, candidate, workspace),
+        candidate.href === href && isGroupAvailableInWorkspace(group, workspace),
     );
 
     if (item) {
@@ -99,11 +101,7 @@ function hasWorkspaceNavigation(
   navigation: readonly ApplicationNavigationGroup[],
   workspace: ApplicationWorkspaceContext,
 ): boolean {
-  return navigation.some(
-    (group) =>
-      group.workspace === workspace ||
-      group.items.some((item) => item.workspaceContext === workspace),
-  );
+  return navigation.some((group) => group.workspace === workspace);
 }
 
 function tabFromItem(
@@ -334,18 +332,17 @@ export function projectMoreNavigation(
   navigation: readonly ApplicationNavigationGroup[],
   primaryTabs: readonly MobileNavigationTab[],
 ): readonly ApplicationNavigationGroup[] {
+  // Full hrefs: the OSM task tabs and their navigation items share the `?task=` query.
   const primaryHrefs = new Set(
     primaryTabs.flatMap(({ href, activeRoute }) =>
-      href && activeRoute !== "more" ? [href.split("?")[0]] : [],
+      href && activeRoute !== "more" ? [href] : [],
     ),
   );
 
   return navigation
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) => item.workspaceContext !== undefined || !primaryHrefs.has(item.href),
-      ),
+      items: group.items.filter((item) => !primaryHrefs.has(item.href)),
     }))
     .filter(({ items }) => items.length > 0);
 }

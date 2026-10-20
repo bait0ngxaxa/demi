@@ -132,6 +132,53 @@ const iconPaths: Record<MobileNavigationIcon, React.ReactNode> = {
       <path d="M9.5 9.5a2.5 2.5 0 1 1 4.3 1.7c-1.1 1-1.8 1.2-1.8 2.6M12 16.8h.01" />
     </>
   ),
+  provision: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3.5 20v-1.3a5.5 5.5 0 0 1 11 0V20zM18 8v6M15 11h6" />
+    </>
+  ),
+  activation: (
+    <>
+      <rect height="9" rx="1.5" width="14" x="5" y="10.5" />
+      <path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.8-1.2M12 14v2.5" />
+    </>
+  ),
+  assign: (
+    <>
+      <circle cx="7.5" cy="8" r="2.8" />
+      <path d="M3 19.5v-1a4.5 4.5 0 0 1 9 0v1zM14 12h6.5M17.5 9l3 3-3 3" />
+    </>
+  ),
+  requests: (
+    <>
+      <path d="M4 13.5 6.5 5h11l2.5 8.5V19H4z" />
+      <path d="M4 13.5h4.5l1 2h5l1-2H20" />
+    </>
+  ),
+  export: (
+    <>
+      <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5" />
+      <path d="M4.5 16v3.5h15V16" />
+    </>
+  ),
+  areas: (
+    <>
+      <path d="M3.5 6.5 9 4l6 2.5L20.5 4v13.5L15 20l-6-2.5-5.5 2.5z" />
+      <path d="M9 4v13.5M15 6.5V20" />
+    </>
+  ),
+  contact: (
+    <>
+      <path d="M8.2 3.8 6 4.4c-1.3.4-2 1.8-1.6 3.1a17 17 0 0 0 12.1 12.1c1.3.4 2.7-.3 3.1-1.6l.6-2.2-3.7-2-2 1.8a11.6 11.6 0 0 1-4.5-4.5l1.8-2z" />
+    </>
+  ),
+  publish: (
+    <>
+      <path d="M4 10v4h3l7 4.5v-13L7 10z" />
+      <path d="M17.5 9a4 4 0 0 1 0 6M7 14l1.2 5.5h2.6L10 15.5" />
+    </>
+  ),
 };
 
 export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
@@ -153,21 +200,31 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/personal/knowledge") || pathname.startsWith("/app/personal/news")) {
     return "knowledge";
   }
+  if (pathname.startsWith("/app/patients/access-requests") || pathname.startsWith("/app/patients/service-requests")) {
+    return "requests";
+  }
   if (pathname.startsWith("/app/personal/services") || pathname.startsWith("/app/patients/service-")) {
     return "services";
   }
   if (pathname === "/app/family" || pathname.startsWith("/app/family/")) return "family";
   if (pathname === "/app/settings" || pathname.startsWith("/app/settings/")) return "settings";
   if (pathname === "/app/support" || pathname.startsWith("/app/support/")) return "support";
+  if (pathname.startsWith("/app/patients/provision")) return "provision";
+  if (pathname.startsWith("/app/patients/activation")) return "activation";
+  if (pathname.startsWith("/app/patients/assign-osm")) return "assign";
   if (pathname.startsWith("/app/patients")) return "patients";
   if (pathname.startsWith("/app/workforce")) return "workforce";
   if (pathname.startsWith("/app/admin/hospital-onboarding")) return "review";
+  if (pathname.startsWith("/app/hospitals/reporting/export")) return "export";
   if (pathname.startsWith("/app/admin/reporting") || pathname.startsWith("/app/hospitals/reporting")) {
     return "reports";
   }
-  if (pathname.startsWith("/app/admin/hospitals") || pathname.startsWith("/app/hospitals")) {
-    return pathname.startsWith("/app/hospitals/knowledge") ? "knowledge" : "hospital";
-  }
+  if (pathname.startsWith("/app/hospitals/areas")) return "areas";
+  if (pathname.startsWith("/app/hospitals/knowledge")) return "publish";
+  if (pathname.startsWith("/app/hospitals/content")) return "knowledge";
+  if (pathname.startsWith("/app/hospitals/contacts")) return "contact";
+  if (pathname.startsWith("/app/hospitals/support")) return "support";
+  if (pathname.startsWith("/app/admin/hospitals") || pathname.startsWith("/app/hospitals")) return "hospital";
 
   return "default";
 }

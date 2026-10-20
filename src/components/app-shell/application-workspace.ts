@@ -35,7 +35,7 @@ import {
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
 import type { ApplicationWorkspaceContext } from "./navigation-types";
-import { projectApplicationNavigation } from "./application-navigation";
+import { projectApplicationNavigation, projectPlatformGovernanceNavigation } from "./application-navigation";
 
 export type ApplicationWorkspaceAction = {
   href: string;
@@ -83,22 +83,21 @@ function navigationDescription(href: string): string {
 }
 
 function projectGovernanceActions(actor: ActorContext): ApplicationWorkspaceAction[] {
-  const governanceGroup = projectApplicationNavigation(actor).find(
-    ({ label }) => label === "ผู้ดูแลระบบ",
-  );
+  const { reporting, hospitals, onboarding } = projectPlatformGovernanceNavigation(actor);
 
-  return (
-    governanceGroup?.items.map((item) => ({
-      href: item.href,
-      label: item.label,
-      description: navigationDescription(item.href),
-      prefetch: item.prefetch,
-    })) ?? []
-  );
+  return [reporting, hospitals, onboarding].flatMap((item) => item
+    ? [{
+        href: item.href,
+        label: item.label,
+        description: navigationDescription(item.href),
+        prefetch: item.prefetch,
+      }]
+    : []);
 }
 
 function projectAssignedPatientsAction(actor: ActorContext): ApplicationWorkspaceAction | null {
-  const assignedPatientsItem = projectApplicationNavigation(actor)
+  // Hospital workspaces only gate the areas entry, which this lookup does not read.
+  const assignedPatientsItem = projectApplicationNavigation(actor, [])
     .flatMap((group) => group.items)
     .find((item) => item.href === "/app/patients/assigned");
 
@@ -207,7 +206,7 @@ function projectHospitalActions(
   ) {
     actions.push({
       href: "/app/patients/service-catalog",
-      label: "บริการที่ผู้ป่วยขอได้",
+      label: "บริการที่เปิดให้ขอ",
       description: "กำหนดบริการในโรงพยาบาลที่บัญชีนี้มีสิทธิ์จัดการ",
     });
   }
@@ -220,7 +219,7 @@ function projectHospitalActions(
   }).allowed) {
     actions.push({
       href: withHospitalContext("/app/hospitals/contact", hospitalId),
-      label: "ข้อมูลติดต่อโรงพยาบาล",
+      label: "ข้อมูลติดต่อของ รพ.",
       description: "ปรับปรุงที่อยู่และโทรศัพท์ที่โรงพยาบาลนี้ให้ไว้สำหรับผู้ป่วย",
       category: "administration",
       prefetch: false,
@@ -234,7 +233,7 @@ function projectHospitalActions(
   }).allowed) {
     actions.push({
       href: withHospitalContext("/app/hospitals/knowledge", hospitalId),
-      label: "ข่าวสารและความรู้",
+      label: "เผยแพร่ข่าวสาร",
       description: "สร้างฉบับร่างและจัดการการเผยแพร่เนื้อหาของโรงพยาบาลนี้",
       category: "administration",
       prefetch: false,

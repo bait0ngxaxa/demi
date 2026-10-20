@@ -5,15 +5,19 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 
 import { roleLabels } from "@/components/app-shell/actor-presentation";
-import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
+import {
+  listNavigationHospitalWorkspaces,
+  projectApplicationNavigation,
+} from "@/components/app-shell/application-navigation";
 import { AppShell } from "@/components/app-shell/app-shell";
 import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
+import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const viewport: Viewport = {
   viewportFit: "cover",
@@ -43,10 +47,17 @@ async function ResolvedProtectedApplicationShell({
   const actor = await resolveProtectedActor(
     requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
   );
-  const navigation = projectApplicationNavigation(actor);
+  const [hospitalWorkspaces, displayName] = await Promise.all([
+    listNavigationHospitalWorkspaces(actor),
+    getActorDisplayName(actor).catch((error: unknown) =>
+      error instanceof InfrastructureError ? "ผู้ใช้งาน DEMI" : Promise.reject(error),
+    ),
+  ]);
+  const navigation = projectApplicationNavigation(actor, hospitalWorkspaces);
 
   return (
     <AppShell
+      displayName={displayName}
       navigation={navigation}
       roleLabels={actor.roles.map((role) => roleLabels[role])}
     >

@@ -17,10 +17,12 @@ export async function getSettingsPageContext() {
     throw error;
   }
   const contact = await getOwnContactSetting(actor);
-  if (!actor.roles.includes(Role.PATIENT)) return { contact, patient: null };
+  // UI-4: password change moved from navigation to settings, keeping its Patient-only visibility.
+  const canChangePassword = actor.roles.includes(Role.PATIENT);
+  if (!canChangePassword) return { contact, patient: null, canChangePassword };
   const [appointment, medication] = await Promise.all([
     getOwnAppointmentLineNotificationPreference(actor),
     getOwnMedicationLineReminderPreference(actor).catch((error: unknown) => error instanceof ForbiddenError ? null : Promise.reject(error)),
   ]);
-  return { contact, patient: appointment ? { appointment, medication } : null };
+  return { contact, patient: appointment ? { appointment, medication } : null, canChangePassword };
 }

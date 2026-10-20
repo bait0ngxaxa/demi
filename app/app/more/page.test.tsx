@@ -14,10 +14,14 @@ vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
 vi.mock("next/navigation", () => ({
   redirect: (href: string) => { throw new Error(`REDIRECT:${href}`); },
   usePathname: () => "/app/more",
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...props }: { href: string; children: ReactNode }) =>
-    createElement("a", { ...props, href }, children),
+  default: ({ href, children, prefetch, ...props }: { href: string; children: ReactNode; prefetch?: boolean }) =>
+    createElement("a", { ...props, href, "data-prefetch": String(prefetch) }, children),
+}));
+vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
+  listActorHospitalWorkspaces: () => Promise.resolve([]),
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: () => dependencies.actor(),
@@ -84,8 +88,9 @@ describe("/app/more page", () => {
   it("validates the selected workspace against the actor's available workspaces", async () => {
     const html = await renderPage(actor([Role.PATIENT, Role.OSM]), "personal");
 
-    expect(html).toContain('aria-current="location"');
-    expect(html).toContain('href="/app/personal"');
+    // UI-4: the workspace switch is a segmented control that keeps the viewer on More.
+    expect(html).toContain('href="/app/more?workspace=personal"');
+    expect(html).toContain('href="/app/more?workspace=work"');
     expect(html).toContain("href=\"/app/personal/profile\"");
     expect(html).not.toContain("href=\"/app/patients/provision\"");
   });
@@ -93,7 +98,7 @@ describe("/app/more page", () => {
   it("rejects duplicate workspace query values and defaults dual-workspace actors to Work", async () => {
     const html = await renderPage(actor([Role.PATIENT, Role.OSM]), ["personal", "work"]);
 
-    expect(html).toContain('href="/app/personal"');
+    expect(html).toContain('href="/app/more?workspace=personal"');
     expect(html).toContain('href="/app/patients/provision"');
     expect(html).not.toContain('href="/app/personal/profile"');
   });

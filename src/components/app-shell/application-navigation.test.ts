@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   HospitalStatus,
   MembershipStatus,
@@ -7,12 +10,20 @@ import {
 } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
+import type { ActorContext, ActorHospitalMembership } from "@/modules/auth/types/actor-context";
+import {
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 
-import { projectApplicationNavigation } from "./application-navigation";
-import { isNavigationItemActive } from "./navigation-state";
+import { canOpenParentAreaOverview, projectApplicationNavigation } from "./application-navigation";
+import { NAVIGATION_SECTION_ORDER } from "./navigation-sections";
+import { isNavigationItemActive, resolveActiveNavigationHrefs } from "./navigation-state";
+import type { ApplicationNavigationGroup, ApplicationWorkspaceContext } from "./navigation-types";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
+const parentId = "55555555-5555-4555-8555-555555555555";
 const runtimeEnvironments = [
   ["local development", { NODE_ENV: "development" }],
   ["Vercel Preview", { NODE_ENV: "production", VERCEL: "1", VERCEL_ENV: "preview", VERCEL_PROJECT_ID: "preview-project" }],
@@ -33,11 +44,51 @@ function actor(overrides: Partial<ActorContext> = {}): ActorContext {
   };
 }
 
-function navigationLabels(context: ActorContext): string[] {
-  return projectApplicationNavigation(context).flatMap((group) => [
+function membership(
+  id: string,
+  membershipType: MembershipType,
+  overrides: Partial<ActorHospitalMembership> = {},
+): ActorHospitalMembership {
+  return { hospitalId: id, membershipType, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE, ...overrides };
+}
+
+function osm(id: string): ActorContext["osmHospitalRelationships"][number] {
+  return { hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE };
+}
+
+/** A Hospital workspace; `parent: null` makes it a MAIN Hospital (its own network). */
+function workspace(id: string, parent: string | null, overrides: Partial<ActorHospitalWorkspace> = {}): ActorHospitalWorkspace {
+  return {
+    hospitalId: id,
+    hospitalCode: id,
+    hospitalName: `โรงพยาบาล ${id.slice(0, 4)}`,
+    hospitalStatus: HospitalStatus.ACTIVE,
+    network: { hospitalId: parent ?? id, name: "เครือข่าย" },
+    hasActiveDirectChildren: false,
+    ...overrides,
+  };
+}
+
+function project(subject: ActorContext, workspaces: readonly ActorHospitalWorkspace[] = []): readonly ApplicationNavigationGroup[] {
+  return projectApplicationNavigation(subject, workspaces);
+}
+
+function allHrefs(groups: readonly ApplicationNavigationGroup[]): string[] {
+  return groups.flatMap(({ items }) => items.map(({ href }) => href));
+}
+
+function navigationLabels(subject: ActorContext, workspaces: readonly ActorHospitalWorkspace[] = []): string[] {
+  return project(subject, workspaces).flatMap((group) => [
     ...(group.label ? [group.label] : []),
     ...group.items.map((item) => item.label),
   ]);
+}
+
+/** Sections as one workspace renders them: [id, heading, item hrefs]. */
+function sectionsIn(groups: readonly ApplicationNavigationGroup[], context: ApplicationWorkspaceContext) {
+  return groups
+    .filter(({ workspace: groupWorkspace }) => groupWorkspace === undefined || groupWorkspace === "all" || groupWorkspace === context)
+    .map(({ id, label, items }) => [id, label, items.map(({ href }) => href)] as const);
 }
 
 function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>>): void {
@@ -46,15 +97,247 @@ function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>
   }
 }
 
-describe("application navigation projection", () => {
+const personalSections = [
+  ["home", null, ["/app/personal"]],
+  ["care", "การดูแลของฉัน", ["/app/personal/appointments", "/app/personal/care", "/app/personal/services"]],
+  ["health-records", "บันทึกสุขภาพ", ["/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements"]],
+  ["reports-info", "ข่าวสารและความรู้", ["/app/personal/news", "/app/personal/knowledge"]],
+] as const;
+const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/family", "/app/settings", "/app/support"]] as const;
+const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup", "/app/patients/provision"]] as const;
+const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
+const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
+const ownerAdministration = ["/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
+const ownerSections = (areas: boolean) => [
+  ["home", null, ["/app"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
+  staffRegistration,
+  ["review-queue", "คำขอรอตรวจ", ["/app/patients/access-requests", "/app/patients/service-requests", "/app/hospitals/support"]],
+  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
+  ["administration", "บริหารโรงพยาบาล", ownerAdministration],
+  workAccount,
+] as const;
+const memberSections = (reporting: readonly string[]) => [
+  ["home", null, ["/app"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/patients"]],
+  staffRegistration,
+  ["review-queue", "คำขอรอตรวจ", ["/app/patients/access-requests", "/app/patients/service-requests"]],
+  ["reports-info", "รายงานและข้อมูล", [...reporting, "/app/hospitals/content", "/app/hospitals/contacts"]],
+  ["administration", "บริหารโรงพยาบาล", ["/app/workforce"]],
+  workAccount,
+] as const;
+
+/** Every href each actor saw before UI-4 (frozen from the previous projection); only the password item may go. */
+const previousHrefs: Record<string, readonly string[]> = {
+  patient: ["/app/personal", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/family", "/app/settings", "/app/support"],
+  osm: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/patients/provision", "/app/family", "/app/settings", "/app/support"],
+  member: ["/app", "/app/workforce", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/family", "/app/settings", "/app/support"],
+  memberExport: ["/app", "/app/workforce", "/app/hospitals/contacts", "/app/hospitals/content", "/app/hospitals/reporting/export", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/family", "/app/settings", "/app/support"],
+  owner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog", "/app/family", "/app/settings", "/app/support"],
+  admin: ["/app", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family"],
+  adminOwner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family", "/app/settings", "/app/support"],
+  osmPatient: ["/app/personal", "/app", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/patients/provision", "/app/family", "/app/settings", "/app/support"],
+};
+
+type Case = {
+  name: keyof typeof previousHrefs | "parentOwner";
+  subject: ActorContext;
+  workspaces: readonly ActorHospitalWorkspace[];
+  expected: Partial<Record<ApplicationWorkspaceContext, readonly (readonly [string, string | null, readonly string[]])[]>>;
+};
+
+const cases: Case[] = [
+  {
+    name: "patient",
+    subject: actor(),
+    workspaces: [],
+    expected: { personal: [...personalSections, patientAccount], work: [] },
+  },
+  {
+    name: "osm",
+    subject: actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    expected: { work: [["home", null, ["/app"]], osmCare, osmReports, workAccount] },
+  },
+  {
+    name: "member",
+    subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    expected: { work: memberSections([]) },
+  },
+  {
+    name: "memberExport",
+    subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER, { reportExportGranted: true })] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    expected: { work: memberSections(["/app/hospitals/reporting/export"]) },
+  },
+  {
+    name: "owner",
+    subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    expected: { work: ownerSections(false) },
+  },
+  {
+    name: "parentOwner",
+    subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(parentId, MembershipType.OWNER)] }),
+    workspaces: [workspace(parentId, null, { hasActiveDirectChildren: true })],
+    expected: { work: ownerSections(true) },
+  },
+  {
+    name: "admin",
+    subject: actor({ roles: [Role.ADMIN] }),
+    workspaces: [],
+    expected: { work: [
+      ["home", null, ["/app"]],
+      ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding"]],
+      ["administration", "กำกับดูแล", ["/app/admin/hospitals", "/app/admin/reporting"]],
+      ["account", "บัญชีและช่วยเหลือ", ["/app/family"]],
+    ] },
+  },
+  {
+    name: "adminOwner",
+    subject: actor({ roles: [Role.ADMIN, Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    // Request and service-catalog policies deny ADMIN, exactly as before UI-4.
+    expected: { work: [
+      ["home", null, ["/app"]],
+      ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
+      staffRegistration,
+      ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
+      ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
+      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/workforce", "/app/hospitals/knowledge", "/app/hospitals/contact", "/app/admin/hospitals", "/app/admin/reporting"]],
+      workAccount,
+    ] },
+  },
+  {
+    name: "osmPatient",
+    subject: actor({ roles: [Role.OSM, Role.PATIENT], osmHospitalRelationships: [osm(hospitalId)] }),
+    workspaces: [workspace(hospitalId, parentId)],
+    expected: {
+      personal: [...personalSections, patientAccount],
+      work: [["home", null, ["/app"]], osmCare, osmReports, workAccount],
+    },
+  },
+];
+
+describe("UI-4 task-based navigation per actor", () => {
+  it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {
+    const groups = project(subject, workspaces);
+
+    for (const context of ["personal", "work"] as const) {
+      expect(sectionsIn(groups, context)).toEqual(
+        expected[context] ?? (groups.some(({ workspace: groupWorkspace }) => groupWorkspace === context) ? "missing expectation" : sectionsIn(groups, context)),
+      );
+    }
+    // Sections follow NAVIGATION_SECTION_ORDER within each workspace and are never empty.
+    for (const context of ["personal", "work"] as const) {
+      const ids = sectionsIn(groups, context).map(([id]) => NAVIGATION_SECTION_ORDER.indexOf(id));
+      expect(ids).toEqual([...ids].sort((left, right) => left - right));
+    }
+    expect(groups.every(({ items }) => items.length > 0)).toBe(true);
+  });
+
+  it.each(cases.filter(({ name }) => name in previousHrefs))("$name: loses no destination that was visible before UI-4", ({ name, subject, workspaces }) => {
+    const reachable = new Set(allHrefs(project(subject, workspaces)));
+    const lost = (previousHrefs[name] ?? []).filter((href) => !reachable.has(href));
+
+    // The password item moved to the settings page (see settings page tests).
+    expect(lost).toEqual(subject.roles.includes(Role.PATIENT) ? ["/app/personal/password"] : []);
+  });
+
+  it("keeps sections at six items or fewer for every projected actor", () => {
+    for (const { subject, workspaces } of cases) {
+      for (const group of project(subject, workspaces)) {
+        expect(group.items.length, `${group.id}`).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  it("does not project the workspace switch as a navigation section", () => {
+    const groups = project(actor({ roles: [Role.HOSPITAL, Role.PATIENT], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }));
+    expect(groups.map(({ label }) => label)).not.toContain("พื้นที่ใช้งาน");
+    expect(groups.filter(({ id }) => id === "home").map(({ workspace: groupWorkspace, items }) => [groupWorkspace, items[0]?.href])).toEqual([
+      ["personal", "/app/personal"],
+      ["work", "/app"],
+    ]);
+  });
+});
+
+describe("orphan entries reuse their pages' policies", () => {
+  const memberships: ActorHospitalMembership[][] = [
+    [membership(hospitalId, MembershipType.OWNER)],
+    [membership(hospitalId, MembershipType.MEMBER)],
+    [membership(hospitalId, MembershipType.OWNER, { status: MembershipStatus.SUSPENDED })],
+    [membership(hospitalId, MembershipType.OWNER, { hospitalStatus: HospitalStatus.SUSPENDED })],
+    [membership(hospitalId, MembershipType.OWNER, { status: MembershipStatus.INVITED })],
+    [],
+  ];
+
+  it.each(memberships.flatMap((hospitalMemberships) => [
+    { roles: [Role.HOSPITAL], hospitalMemberships },
+    { roles: [Role.OSM, Role.PATIENT], hospitalMemberships },
+    { roles: [Role.ADMIN, Role.HOSPITAL], hospitalMemberships },
+  ]))("assign-osm follows decidePatientOsmAssignmentPolicy (%j)", ({ roles, hospitalMemberships }) => {
+    const subject = actor({ roles, hospitalMemberships });
+    const pageAllows = subject.hospitalMemberships.some(({ hospitalId: target }) =>
+      decidePatientOsmAssignmentPolicy({ actor: subject, capability: PATIENT_ASSIGN_OSM_CAPABILITY, targetHospitalId: target }).allowed,
+    );
+
+    expect(allHrefs(project(subject)).includes("/app/patients/assign-osm")).toBe(pageAllows);
+  });
+
+  it.each([
+    ["OWNER of a MAIN Hospital with Children", [membership(parentId, MembershipType.OWNER)], [workspace(parentId, null, { hasActiveDirectChildren: true })], true],
+    ["OWNER of a MAIN Hospital without Children (the page shows its empty state)", [membership(parentId, MembershipType.OWNER)], [workspace(parentId, null)], true],
+    ["OWNER of a Child Hospital", [membership(hospitalId, MembershipType.OWNER)], [workspace(hospitalId, parentId)], false],
+    ["MEMBER of a MAIN Hospital", [membership(parentId, MembershipType.MEMBER)], [workspace(parentId, null)], false],
+    ["suspended OWNER membership", [membership(parentId, MembershipType.OWNER, { status: MembershipStatus.SUSPENDED })], [workspace(parentId, null)], false],
+    ["OWNER of a suspended MAIN Hospital", [membership(parentId, MembershipType.OWNER, { hospitalStatus: HospitalStatus.SUSPENDED })], [workspace(parentId, null, { hospitalStatus: HospitalStatus.SUSPENDED })], false],
+    ["OWNER without workspace data", [membership(parentId, MembershipType.OWNER)], [], false],
+    ["workspace without a matching membership", [], [workspace(parentId, null)], false],
+  ] as const)("areas: %s", (_label, hospitalMemberships, workspaces, allowed) => {
+    const subject = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [...hospitalMemberships] });
+
+    expect(canOpenParentAreaOverview(subject, workspaces)).toBe(allowed);
+    expect(allHrefs(project(subject, workspaces)).includes("/app/hospitals/areas")).toBe(allowed);
+  });
+
+  it("never shows areas to OSM or ADMIN without a direct OWNER membership", () => {
+    const workspaces = [workspace(parentId, null, { hasActiveDirectChildren: true })];
+    expect(allHrefs(project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(parentId)] }), workspaces))).not.toContain("/app/hospitals/areas");
+    expect(allHrefs(project(actor({ roles: [Role.ADMIN] }), workspaces))).not.toContain("/app/hospitals/areas");
+  });
+});
+
+describe("no code keys navigation by Thai group labels", () => {
+  function sourceFiles(directory: string): string[] {
+    return readdirSync(directory).flatMap((entry) => {
+      const path = join(directory, entry);
+      if (statSync(path).isDirectory()) return entry === "node_modules" ? [] : sourceFiles(path);
+      return /\.(ts|tsx)$/u.test(entry) && !/\.test\.(ts|tsx)$/u.test(entry) ? [path] : [];
+    });
+  }
+
+  it("compares section ids, never a label against a string literal", () => {
+    const offenders = [...sourceFiles("src"), ...sourceFiles("app")].filter((path) =>
+      /\blabel\s*[!=]==?\s*["'`]|["'`]\s*[!=]==?\s*[\w.?]*\blabel\b/u.test(readFileSync(path, "utf8")),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("application navigation visibility (unchanged policies)", () => {
   it("shows Platform Admin navigation only to ADMIN", () => {
     const adminLabels = navigationLabels(actor({ roles: [Role.ADMIN] }));
     const hospitalLabels = navigationLabels(actor({ roles: [Role.HOSPITAL] }));
 
-    expect(adminLabels).toContain("ผู้ดูแลระบบ");
-    expect(adminLabels).toContain("การกำกับดูแลโรงพยาบาล");
-    expect(adminLabels).toContain("คำขอขึ้นทะเบียนโรงพยาบาล");
-    expect(hospitalLabels).not.toContain("ผู้ดูแลระบบ");
+    expect(adminLabels).toContain("กำกับดูแล");
+    expect(adminLabels).toContain("โรงพยาบาลทั้งหมด");
+    expect(adminLabels).toContain("คำขอขึ้นทะเบียน รพ.");
+    expect(hospitalLabels).not.toContain("กำกับดูแล");
+    expect(hospitalLabels).not.toContain("โรงพยาบาลทั้งหมด");
   });
 
   it.each(runtimeEnvironments)("shows Global Reporting to Platform ADMIN on %s", (_name, environment) => {
@@ -69,404 +352,116 @@ describe("application navigation projection", () => {
     }
   });
 
-  it("keeps Owner contact management distinct from read-only contact navigation", () => {
-    const owner = actor({
-      roles: [Role.HOSPITAL],
-      hospitalMemberships: [
-        {
-          hospitalId,
-          membershipType: MembershipType.OWNER,
-          profession: Profession.DOCTOR,
-          status: MembershipStatus.ACTIVE,
-          hospitalStatus: HospitalStatus.ACTIVE,
-        },
-      ],
-    });
-    const member = actor({
-      roles: [Role.HOSPITAL],
-      hospitalMemberships: [
-        {
-          hospitalId,
-          membershipType: MembershipType.MEMBER,
-          profession: Profession.NURSE,
-          status: MembershipStatus.ACTIVE,
-          hospitalStatus: HospitalStatus.ACTIVE,
-        },
-      ],
-    });
+  it("names Owner contact management and read-only contacts unambiguously", () => {
+    const owner = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER, { profession: Profession.DOCTOR })] });
+    const member = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] });
 
-    expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อโรงพยาบาล");
-    expect(navigationLabels(owner)).toContain("ติดต่อโรงพยาบาลที่เกี่ยวข้อง");
+    expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อของ รพ.");
+    expect(navigationLabels(owner)).toContain("ติดต่อโรงพยาบาล");
+    expect(navigationLabels(owner)).toContain("เผยแพร่ข่าวสาร");
     expect(navigationLabels(owner)).toContain("ข่าวสารและความรู้");
-    expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
+    expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อของ รพ.");
     expect(navigationLabels(member)).toContain("ติดต่อโรงพยาบาล");
-    expect(navigationLabels(member)).not.toContain("ข่าวสารและความรู้");
-    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
-    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ติดต่อโรงพยาบาล");
-    expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("ข่าวสารและความรู้");
-    const osmLabels = navigationLabels(actor({
-      roles: [Role.OSM],
-      osmHospitalRelationships: [
-        { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
-      ],
-    }));
-    expect(osmLabels).toContain("ติดต่อโรงพยาบาล");
-    expect(osmLabels).not.toContain("ข้อมูลติดต่อโรงพยาบาล");
-    expect(osmLabels).not.toContain("ข่าวสารและความรู้");
+    expect(navigationLabels(member)).not.toContain("เผยแพร่ข่าวสาร");
+    for (const label of ["ข้อมูลติดต่อของ รพ.", "ติดต่อโรงพยาบาล", "เผยแพร่ข่าวสาร"]) {
+      expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain(label);
+    }
+    expect(navigationLabels(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }))).toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(actor({ roles: [Role.OSM] }))).not.toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(actor())).not.toContain("ติดต่อโรงพยาบาล");
   });
 
   it.each([MembershipStatus.SUSPENDED, MembershipStatus.ENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED])(
-    "hides work-context Hospital contacts for a %s membership",
+    "hides work-context Hospital contacts and team content for a %s membership",
     (status) => {
-      const labels = navigationLabels(actor({
-        roles: [Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.MEMBER,
-            profession: Profession.NURSE,
-            status,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }));
+      const hrefs = allHrefs(project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER, { status })] })));
 
-      expect(labels).not.toContain("ติดต่อโรงพยาบาล");
+      expect(hrefs).not.toContain("/app/hospitals/contacts");
+      expect(hrefs).not.toContain("/app/hospitals/content");
     },
   );
 
   it.each(runtimeEnvironments)("shows Hospital reporting to a direct active Hospital Owner on %s", (_name, environment) => {
     simulateRuntimeEnvironment(environment);
     try {
-      const ownerActor = actor({
-        roles: [Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.OWNER,
-            profession: null,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      });
-      const ownerLabels = navigationLabels(ownerActor);
-      const memberLabels = navigationLabels(
-        actor({
-          roles: [Role.HOSPITAL],
-          hospitalMemberships: [
-            {
-              hospitalId,
-              membershipType: MembershipType.MEMBER,
-              profession: Profession.NURSE,
-              status: MembershipStatus.ACTIVE,
-              hospitalStatus: HospitalStatus.ACTIVE,
-            },
-          ],
-        }),
-      );
-
-      expect(ownerLabels).toContain("รายงานโรงพยาบาล");
-      expect(memberLabels).not.toContain("รายงานโรงพยาบาล");
+      expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }))).toContain("รายงานโรงพยาบาล");
+      expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }))).not.toContain("รายงานโรงพยาบาล");
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานโรงพยาบาล");
-      expect(
-        navigationLabels(
-          actor({
-            roles: [Role.HOSPITAL],
-            hospitalMemberships: [
-              {
-                hospitalId,
-                membershipType: MembershipType.OWNER,
-                profession: null,
-                status: MembershipStatus.SUSPENDED,
-                hospitalStatus: HospitalStatus.ACTIVE,
-              },
-            ],
-          }),
-        ),
-      ).not.toContain("รายงานโรงพยาบาล");
-
+      expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER, { status: MembershipStatus.SUSPENDED })] }))).not.toContain("รายงานโรงพยาบาล");
     } finally {
       vi.unstubAllEnvs();
     }
   });
 
-  it("offers the shared Family management route to active actor types without granting authority", () => {
-    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN]] as const) {
-      const familyItem = projectApplicationNavigation(actor({ roles }))
-        .flatMap((group) => group.items)
-        .find(({ href }) => href === "/app/family");
+  it("offers the shared Family route in every workspace to every active actor type, including non-Patient caregivers", () => {
+    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN], [Role.PATIENT, Role.OSM]] as const) {
+      const groups = project(actor({ roles }));
+      const workspaces = [...new Set(groups.flatMap(({ workspace: groupWorkspace }) => groupWorkspace === "personal" || groupWorkspace === "work" ? [groupWorkspace] : []))];
 
-      expect(familyItem?.label).toBe("ญาติและผู้ดูแล");
+      expect(workspaces.length).toBeGreaterThan(0);
+      for (const context of workspaces) {
+        const account = sectionsIn(groups, context).at(-1);
+        expect(account?.[0]).toBe("account");
+        expect(account?.[2]).toContain("/app/family");
+      }
     }
   });
 
-  it("projects password changes into More for Patient actors only", () => {
-    const patientHrefs = projectApplicationNavigation(actor({ roles: [Role.PATIENT] }))
-      .flatMap((group) => group.items.map(({ href }) => href));
-    const workOnlyHrefs = projectApplicationNavigation(actor({ roles: [Role.OSM] }))
-      .flatMap((group) => group.items.map(({ href }) => href));
-
-    expect(patientHrefs).toContain("/app/personal/password");
-    expect(workOnlyHrefs).not.toContain("/app/personal/password");
+  it("removes the password item from navigation for every actor", () => {
+    for (const roles of [[Role.PATIENT], [Role.OSM], [Role.PATIENT, Role.HOSPITAL]] as const) {
+      expect(allHrefs(project(actor({ roles })))).not.toContain("/app/personal/password");
+    }
   });
 
-  it("shows Patient provisioning and activation for a valid direct Hospital scope", () => {
-    const labels = navigationLabels(
-      actor({
-        roles: [Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.MEMBER,
-            profession: Profession.NURSE,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
+  it("keeps Patient provisioning and activation as separate registration items", () => {
+    const registration = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }))
+      .find(({ id }) => id === "registration");
 
-    expect(labels).toContain("เพิ่มหรือนำเข้าผู้ป่วย");
-    expect(labels).toContain("เปิดใช้งานบัญชีผู้ป่วย");
-    expect(labels).toContain("รายชื่อผู้ป่วย");
-    expect(labels).toContain("คำขอใช้บัญชีผู้ป่วย");
-    expect(labels).toContain("คำขอบริการผู้ป่วย");
-    expect(labels).not.toContain("บริการที่ผู้ป่วยขอได้");
-    // ADR-0008 amendment (D1): a direct MEMBER reaches workforce for OSM only.
-    expect(labels).toContain("จัดการบุคลากร");
+    expect(registration?.items.map(({ href, label }) => [href, label])).toEqual([
+      ["/app/patients/provision", "เพิ่มหรือนำเข้า"],
+      ["/app/patients/activation", "เปิดใช้งานบัญชี"],
+    ]);
   });
 
-  it("shows the service catalog only to an exact active Hospital owner", () => {
-    const ownerLabels = navigationLabels(
-      actor({
-        roles: [Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.OWNER,
-            profession: null,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
-    const adminLabels = navigationLabels(
-      actor({
-        roles: [Role.ADMIN, Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.OWNER,
-            profession: null,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
+  it("does not grant Hospital-only activation or directory navigation to an OSM provisioning actor", () => {
+    const groups = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }));
 
-    expect(ownerLabels).toContain("บริการที่ผู้ป่วยขอได้");
-    expect(adminLabels).not.toContain("บริการที่ผู้ป่วยขอได้");
-    expect(adminLabels).not.toContain("คำขอเปิดใช้งานผู้ป่วย");
-    expect(adminLabels).not.toContain("คำขอบริการผู้ป่วย");
-  });
-
-  it("shows Workforce navigation for an active Hospital owner", () => {
-    const labels = navigationLabels(
-      actor({
-        roles: [Role.HOSPITAL],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.OWNER,
-            profession: null,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
-
-    expect(labels).toContain("จัดการบุคลากร");
-  });
-
-  it("does not grant Hospital-only activation navigation to an OSM provisioning actor", () => {
-    const labels = navigationLabels(
-      actor({
-        roles: [Role.OSM],
-        osmHospitalRelationships: [
-          {
-            hospitalId,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
-
-    expect(labels).toContain("เพิ่มหรือนำเข้าผู้ป่วย");
-    expect(labels).not.toContain("รายชื่อผู้ป่วย");
-    expect(labels).toContain("ผู้ป่วยที่รับผิดชอบ");
-    expect(labels).not.toContain("เปิดใช้งานบัญชีผู้ป่วย");
+    expect(groups.find(({ id }) => id === "care")?.items.find(({ href }) => href === "/app/patients/provision")?.label).toBe("เพิ่มผู้ป่วย");
+    expect(groups.some(({ id }) => id === "registration")).toBe(false);
+    expect(allHrefs(groups)).not.toContain("/app/patients");
+    expect(allHrefs(groups)).not.toContain("/app/patients/activation");
   });
 
   it("does not show assigned Patient navigation without an active OSM Hospital relationship", () => {
-    const labels = navigationLabels(
-      actor({
-        roles: [Role.OSM],
-        osmHospitalRelationships: [
-          {
-            hospitalId,
-            status: MembershipStatus.SUSPENDED,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
+    const hrefs = allHrefs(project(actor({ roles: [Role.OSM], osmHospitalRelationships: [{ ...osm(hospitalId), status: MembershipStatus.SUSPENDED }] })));
 
-    expect(labels).not.toContain("ผู้ป่วยที่รับผิดชอบ");
+    expect(hrefs.filter((href) => href.startsWith("/app/patients/assigned"))).toEqual([]);
   });
 
   it("does not show Patient Directory navigation to Platform ADMIN", () => {
-    const labels = navigationLabels(actor({ roles: [Role.ADMIN] }));
-
-    expect(labels).not.toContain("รายชื่อผู้ป่วย");
+    expect(allHrefs(project(actor({ roles: [Role.ADMIN] })))).not.toContain("/app/patients");
   });
 
-  it("omits unavailable groups instead of rendering them empty", () => {
-    const navigation = projectApplicationNavigation(actor());
+  it.each([[Role.OSM], [Role.HOSPITAL], [Role.HOSPITAL, Role.OSM]] as const)("does not project Personal navigation from %j alone", (...roles) => {
+    const groups = project(actor({ roles, hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }));
 
-    expect(navigation).toHaveLength(3);
-    expect(navigation.every((group) => group.items.length > 0)).toBe(true);
-    expect(navigation[0].workspace).toBe("personal");
-    expect(navigation[0].items.map(({ href }) => href)).toEqual([
-      "/app/personal",
-      "/app/personal/care",
-      "/app/personal/services",
-      "/app/personal/medications",
-      "/app/personal/wellness",
-      "/app/personal/measurements",
-      "/app/personal/news",
-      "/app/personal/knowledge",
-      "/app/personal/appointments",
-      "/app/personal/profile",
-      "/app/personal/password",
-    ]);
-    expect(navigation[1].items.map(({ href }) => href)).toEqual(["/app/family"]);
-    expect(navigation[2].items.map(({ href }) => href)).toEqual(["/app/settings", "/app/support"]);
-  });
-
-  it.each([
-    ["OSM", [Role.OSM]],
-    ["Hospital", [Role.HOSPITAL]],
-  ] as const)("keeps %s in the Work context", (_label, roles) => {
-    const navigation = projectApplicationNavigation(actor({ roles }));
-
-    expect(navigation[0].workspace).toBe("work");
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).toContain("/app");
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
-      "/app/personal",
-    );
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
-      "/app/personal/medications",
-    );
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
-      "/app/personal/wellness",
-    );
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
-      "/app/personal/knowledge",
-    );
-  });
-
-  it.each([
-    ["OSM and Patient", [Role.OSM, Role.PATIENT]],
-    ["Hospital and Patient", [Role.HOSPITAL, Role.PATIENT]],
-  ] as const)("projects Personal and Work navigation for %s", (_label, roles) => {
-    const navigation = projectApplicationNavigation(actor({ roles }));
-    const workspaceItems = navigation.find(({ label }) => label === "พื้นที่ใช้งาน")?.items ?? [];
-
-    expect(workspaceItems.map(({ href }) => href)).toEqual(["/app/personal", "/app"]);
-    expect(navigation.find(({ label }) => label === "บัญชีและช่วยเหลือ")?.items.map(({ href }) => href)).toEqual(["/app/settings", "/app/support"]);
-    expect(navigation.some(({ workspace }) => workspace === "personal")).toBe(true);
-    expect(navigation.some(({ workspace }) => workspace === "work")).toBe(true);
-    const personalItems = navigation
-      .filter(({ workspace }) => workspace === "personal")
-      .flatMap(({ items }) => items);
-    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/care");
-    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/services");
-    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/wellness");
-    expect(personalItems.map(({ href }) => href)).toContain("/app/personal/appointments");
-    expect(personalItems.map(({ href }) => href)).not.toContain("/app/patients/assigned");
-  });
-
-  it("does not project Personal navigation from an OSM or Hospital role alone", () => {
-    const navigation = projectApplicationNavigation(
-      actor({
-        roles: [Role.HOSPITAL, Role.OSM],
-        hospitalMemberships: [
-          {
-            hospitalId,
-            membershipType: MembershipType.MEMBER,
-            profession: Profession.NURSE,
-            status: MembershipStatus.ACTIVE,
-            hospitalStatus: HospitalStatus.ACTIVE,
-          },
-        ],
-      }),
-    );
-
-    expect(navigation.flatMap(({ items }) => items).map(({ href }) => href)).not.toContain(
-      "/app/personal",
-    );
+    expect(groups.some(({ workspace: groupWorkspace }) => groupWorkspace === "personal")).toBe(false);
+    expect(allHrefs(groups).filter((href) => href.startsWith("/app/personal"))).toEqual([]);
   });
 });
 
 describe("application navigation active state", () => {
   it("matches the dashboard exactly and nested feature routes by prefix", () => {
-    expect(
-      isNavigationItemActive("/app/workforce", {
-        href: "/app",
-        label: "หน้าหลัก",
-        match: "exact",
-      }),
-    ).toBe(false);
-    expect(
-      isNavigationItemActive("/app/admin/hospital-onboarding/request-id", {
-        href: "/app/admin/hospital-onboarding",
-        label: "คำขอขึ้นทะเบียนโรงพยาบาล",
-        match: "prefix",
-      }),
-    ).toBe(true);
-    expect(
-      isNavigationItemActive("/app/hospitals/knowledge/record-id", {
-        href: "/app/hospitals/knowledge",
-        label: "ข่าวสารและความรู้",
-        match: "prefix",
-      }),
-    ).toBe(true);
+    expect(isNavigationItemActive("/app/workforce", { href: "/app", label: "หน้าหลัก", match: "exact" })).toBe(false);
+    expect(isNavigationItemActive("/app/admin/hospital-onboarding/request-id", { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียน รพ.", match: "prefix" })).toBe(true);
+    expect(isNavigationItemActive("/app/hospitals/knowledge/record-id", { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" })).toBe(true);
   });
-});
 
-describe("Patient Content Personal navigation", () => {
-  it("keeps the protected News and knowledge feeds separate", () => {
-    const personal = projectApplicationNavigation(actor()).find(({ workspace }) => workspace === "personal");
-    const items = personal?.items ?? [];
-    const index = items.findIndex(({ href }) => href === "/app/personal/knowledge");
-    expect(index).toBeGreaterThan(0);
-    expect(items[index - 1]).toMatchObject({ href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false });
-    expect(items[index + 1]?.label).toBe("นัดหมาย");
-    expect(items[index]).toMatchObject({ label: "สื่อความรู้", match: "prefix", prefetch: false });
-  });
-  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN])("does not project Patient knowledge for %s-only", (role) => {
-    expect(projectApplicationNavigation(actor({ roles: [role] })).flatMap(({ items }) => items).some(({ href }) => href === "/app/personal/knowledge")).toBe(false);
-  });
-  it("keeps Patient+Owner Work Publisher and Personal knowledge separated", () => {
-    const groups = projectApplicationNavigation(actor({ roles: [Role.PATIENT, Role.HOSPITAL], hospitalMemberships: [{ hospitalId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] }));
-    expect(groups.find(({ workspace }) => workspace === "personal")?.items.some(({ href }) => href === "/app/personal/knowledge")).toBe(true);
-    expect(groups.filter(({ workspace }) => workspace === "work").flatMap(({ items }) => items).some(({ href }) => href === "/app/hospitals/knowledge")).toBe(true);
+  it("marks only the OSM task item whose query matches, ignoring unrelated query params", () => {
+    const care = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] })).find(({ id }) => id === "care")?.items ?? [];
+
+    expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "task=screening&hospitalId=x", care)]).toEqual(["/app/patients/assigned?task=screening"]);
+    expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "page=2", care)]).toEqual(["/app/patients/assigned"]);
+    expect([...resolveActiveNavigationHrefs("/app/patients/provision", "", care)]).toEqual(["/app/patients/provision"]);
   });
 });

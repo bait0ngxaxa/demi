@@ -7,34 +7,13 @@ import type {
   ApplicationWorkspaceProjection,
 } from "@/components/app-shell/application-workspace";
 import { getMoreNavigationIcon } from "@/components/app-shell/mobile-navigation-glyph";
-import type { MobileNavigationTab } from "@/components/app-shell/mobile-tab-projection";
+import { compareNavigationSections } from "@/components/app-shell/navigation-sections";
+import type { ApplicationNavigationGroup } from "@/components/app-shell/navigation-types";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { HomeShortcut } from "./home-shortcut-grid";
 
 export const WORK_HOME_MAX_TILES = 8;
-
-/**
- * The single tile order for every work role. Keys are pathnames (plus the OSM `task` query); a projected
- * action whose key is not listed keeps its projection order after the listed ones. The table only orders
- * what the server projection already allowed; it never adds a destination.
- */
-const WORK_HOME_TILE_ORDER: readonly string[] = [
-  "/app/patients",
-  "/app/patients/assigned?task=screening",
-  "/app/patients/assigned?task=followup",
-  "/app/patients/provision",
-  "/app/patients/activation",
-  "/app/workforce",
-  "/app/hospitals/reporting",
-  "/app/hospitals/reporting/export",
-  "/app/hospitals/areas",
-  "/app/hospitals/knowledge",
-  "/app/hospitals/contact",
-  "/app/admin/hospitals",
-  "/app/admin/reporting",
-  "/app/admin/hospital-onboarding",
-];
 
 const overflowTile: HomeShortcut = { href: "/app/more", icon: "more", label: "ทั้งหมด" };
 
@@ -62,12 +41,22 @@ function tileKey(href: string): string {
   return task === null ? pathname : `${pathname}?task=${task}`;
 }
 
-function tileRank(href: string): number {
-  const rank = WORK_HOME_TILE_ORDER.indexOf(tileKey(href));
-  return rank === -1 ? WORK_HOME_TILE_ORDER.length : rank;
+/**
+ * UI-4: the tile order is the Work navigation order (NAVIGATION_SECTION_ORDER, then item order), keyed by pathname
+ * plus the OSM `task` query. It only orders what the server projection already allowed; it never adds a destination.
+ */
+export function projectWorkNavigationOrder(navigation: readonly ApplicationNavigationGroup[]): string[] {
+  return navigation
+    .filter(({ workspace }) => workspace === undefined || workspace === "all" || workspace === "work")
+    .sort((left, right) => compareNavigationSections(left.id, right.id))
+    .flatMap(({ items }) => items.map(({ href }) => tileKey(href)));
 }
 
-export function projectWorkHomeTiles(links: readonly WorkHomeLink[]): HomeShortcut[] {
+export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationOrder: readonly string[]): HomeShortcut[] {
+  const tileRank = (href: string): number => {
+    const rank = navigationOrder.indexOf(tileKey(href));
+    return rank === -1 ? navigationOrder.length : rank;
+  };
   const tiles = links
     .map((link, index) => ({ link, index, rank: tileRank(link.href) }))
     .sort((left, right) => left.rank - right.rank || left.index - right.index)
@@ -83,13 +72,13 @@ export function projectWorkHomeTiles(links: readonly WorkHomeLink[]): HomeShortc
     : tiles;
 }
 
-/** OSM task links reuse the bottom-tab projection instead of restating their destinations. */
-export function projectOsmTaskLinks(workTabs: readonly MobileNavigationTab[]): WorkHomeLink[] {
-  return workTabs.flatMap(({ activeRoute, accessibleLabel, href }) =>
-    href && (activeRoute === "osm-screening" || activeRoute === "osm-followup")
-      ? [{ href, label: accessibleLabel }]
-      : [],
-  );
+/** OSM task links are the navigation's own task items instead of restated destinations. */
+export function projectOsmTaskLinks(navigation: readonly ApplicationNavigationGroup[]): WorkHomeLink[] {
+  return navigation
+    .filter(({ workspace }) => workspace === "work")
+    .flatMap(({ items }) => items)
+    .filter(({ href }) => tileKey(href).startsWith("/app/patients/assigned?task="))
+    .map(({ href, label, prefetch }) => ({ href, label, ...(prefetch === undefined ? {} : { prefetch }) }));
 }
 
 /** Hospitals where the actor currently works as an OSM; OSM task tiles belong only to these. */
@@ -120,10 +109,12 @@ function scopeOsmTaskLinks(
  */
 export function projectWorkHome(
   projection: ApplicationWorkspaceProjection,
-  osmTaskLinks: readonly WorkHomeLink[],
+  navigation: readonly ApplicationNavigationGroup[],
   activeOsmHospitalIds: readonly string[],
   requestedHospitalId: unknown,
 ): WorkHomeProjection {
+  const osmTaskLinks = projectOsmTaskLinks(navigation);
+  const navigationOrder = projectWorkNavigationOrder(navigation);
   const candidateIds = projection.areaGroups.flatMap(({ hospitals }) => hospitals.map(({ hospitalId }) => hospitalId));
   const requested = typeof requestedHospitalId === "string" ? requestedHospitalId.toLowerCase() : null;
   const selectedId = candidateIds.find((hospitalId) => hospitalId === requested) ?? candidateIds[0];
@@ -135,7 +126,7 @@ export function projectWorkHome(
     return {
       scope: { kind: "hospital", hospital: selected, groups: projection.areaGroups },
       hero: selected.actions.find(({ category }) => category === "care") ?? projection.assignedPatientsAction,
-      tiles: projectWorkHomeTiles([...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)]),
+      tiles: projectWorkHomeTiles([...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)], navigationOrder),
       sharedActions: [...requestAndSupporting, ...projection.governanceActions],
       unavailableHospitals,
     };
@@ -145,7 +136,7 @@ export function projectWorkHome(
     return {
       scope: { kind: "system" },
       hero: projection.governanceActions[0] ?? null,
-      tiles: projectWorkHomeTiles(projection.governanceActions),
+      tiles: projectWorkHomeTiles(projection.governanceActions, navigationOrder),
       sharedActions: requestAndSupporting,
       unavailableHospitals,
     };
@@ -154,7 +145,7 @@ export function projectWorkHome(
   return {
     scope: { kind: "none" },
     hero: projection.assignedPatientsAction,
-    tiles: projectWorkHomeTiles(osmTaskLinks),
+    tiles: projectWorkHomeTiles(osmTaskLinks, navigationOrder),
     sharedActions: requestAndSupporting,
     unavailableHospitals,
   };

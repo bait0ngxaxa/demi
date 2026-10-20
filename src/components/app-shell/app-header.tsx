@@ -1,4 +1,3 @@
-import { LogoutButton } from "./logout-button";
 import { MobileWorkspaceLabel } from "./mobile-workspace-label";
 
 type AppHeaderProps = {
@@ -19,9 +18,6 @@ export function AppHeader({ roleLabels }: AppHeaderProps): React.JSX.Element {
             {roleLabels.length > 0 ? roleLabels.join(" · ") : "ผู้ใช้งาน DEMI"}
           </p>
         </div>
-      </div>
-      <div className="hidden lg:block">
-        <LogoutButton />
       </div>
     </header>
   );

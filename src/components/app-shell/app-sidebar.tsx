@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type SyntheticEvent } from "react";
 
 import { classNames } from "@/components/ui/class-names";
 
@@ -14,12 +14,28 @@ import {
   writeDesktopSidebarPreference,
 } from "./desktop-sidebar-state";
 import { DesktopSidebarToggle } from "./desktop-sidebar-toggle";
-import type { ApplicationNavigationGroup } from "./navigation-types";
+import { LogoutButton } from "./logout-button";
+import type { ApplicationNavigationGroup, ApplicationWorkspaceContext } from "./navigation-types";
 import { NavigationList } from "./navigation-list";
+import { WorkspaceSwitch } from "./workspace-switch";
 
 type AppSidebarProps = {
+  availableWorkspaces: readonly ApplicationWorkspaceContext[];
+  displayName: string;
   navigation: readonly ApplicationNavigationGroup[];
+  roleLabels: readonly string[];
 };
+
+type RailTooltip = { label: string; top: number; left: number };
+
+/** Rail tooltips are positioned on the viewport so the scrolling nav cannot clip them; they never take focus. */
+function tooltipFor(event: SyntheticEvent): RailTooltip | null {
+  const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-navigation-tooltip]") : null;
+  const label = target?.dataset.navigationTooltip;
+  if (!target || !label) return null;
+  const rect = target.getBoundingClientRect();
+  return { label, top: rect.top + rect.height / 2, left: rect.right + 8 };
+}
 
 let browserSidebarState: DesktopSidebarState = DEFAULT_DESKTOP_SIDEBAR_STATE;
 let browserSidebarStateInitialized = false;
@@ -80,14 +96,25 @@ function setBrowserSidebarState(state: DesktopSidebarState): void {
   notifyBrowserSidebarListeners();
 }
 
-export function AppSidebar({ navigation }: AppSidebarProps): React.JSX.Element {
+export function AppSidebar({
+  availableWorkspaces,
+  displayName,
+  navigation,
+  roleLabels,
+}: AppSidebarProps): React.JSX.Element {
   const state = useSyncExternalStore(
     subscribeToBrowserSidebarState,
     getBrowserSidebarSnapshot,
     getServerSidebarSnapshot,
   );
   const [transitionsReady, setTransitionsReady] = useState(false);
+  const [tooltip, setTooltip] = useState<RailTooltip | null>(null);
   const expanded = state === "expanded";
+  const collapsed = !expanded;
+  const sections = navigation.filter(({ id }) => id !== "account");
+  const account = navigation.filter(({ id }) => id === "account");
+  const showTooltip = (event: SyntheticEvent): void => setTooltip(collapsed ? tooltipFor(event) : null);
+  const hideTooltip = (): void => setTooltip(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setTransitionsReady(true));
@@ -143,20 +170,58 @@ export function AppSidebar({ navigation }: AppSidebarProps): React.JSX.Element {
           />
         </div>
       </div>
-      <nav
-        aria-hidden={expanded ? undefined : true}
-        aria-label="เมนูหลัก"
-        className={classNames(
-          "w-app-sidebar flex-1 overflow-y-auto px-4 py-6",
-          expanded ? "opacity-100" : "pointer-events-none opacity-0",
-          transitionsReady &&
-            "motion-safe:transition-opacity motion-safe:duration-150 motion-safe:ease-out motion-reduce:transition-none",
-        )}
-        id="desktop-application-navigation"
-        inert={expanded ? undefined : true}
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onBlur={hideTooltip}
+        onFocus={showTooltip}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") hideTooltip();
+        }}
+        onMouseLeave={hideTooltip}
+        onMouseOver={showTooltip}
       >
-        <NavigationList groups={navigation} />
-      </nav>
+        {availableWorkspaces.length > 1 ? (
+          <div className={classNames("shrink-0 border-b border-white/12 py-4", collapsed ? "px-3" : "px-4")}>
+            <WorkspaceSwitch
+              availableWorkspaces={availableWorkspaces}
+              collapsed={collapsed}
+              hrefs={{ personal: "/app/personal", work: "/app" }}
+              tone="desktop"
+            />
+          </div>
+        ) : null}
+        <nav
+          aria-label="เมนูหลัก"
+          className={classNames("min-h-0 flex-1 overflow-y-auto py-6", collapsed ? "px-3" : "px-4")}
+          id="desktop-application-navigation"
+          onScroll={hideTooltip}
+        >
+          <NavigationList collapsed={collapsed} groups={sections} />
+        </nav>
+        <div className={classNames("shrink-0 space-y-3 border-t border-white/12 py-4", collapsed ? "px-3" : "px-4")}>
+          {account.length > 0 ? (
+            <nav aria-label="บัญชี">
+              <NavigationList collapsed={collapsed} groups={account} />
+            </nav>
+          ) : null}
+          {collapsed ? null : (
+            <div className="min-w-0 px-3">
+              <p className="truncate text-sm font-semibold text-white">{displayName}</p>
+              <p className="truncate text-xs text-white/65">{roleLabels.length > 0 ? roleLabels.join(" · ") : "ผู้ใช้งาน DEMI"}</p>
+            </div>
+          )}
+          {collapsed ? <LogoutButton iconOnly /> : <div className="px-3"><LogoutButton fullWidth /></div>}
+        </div>
+      </div>
+      {tooltip ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed z-50 -translate-y-1/2 whitespace-nowrap rounded-control bg-text px-2.5 py-1.5 text-xs font-medium text-white shadow-floating"
+          style={{ top: tooltip.top, left: tooltip.left }}
+        >
+          {tooltip.label}
+        </div>
+      ) : null}
     </aside>
   );
 }

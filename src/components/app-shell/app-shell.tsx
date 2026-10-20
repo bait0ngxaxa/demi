@@ -9,12 +9,14 @@ import { projectMobileNavigation } from "./mobile-tab-projection";
 
 type AppShellProps = {
   children: ReactNode;
+  displayName: string;
   navigation: readonly ApplicationNavigationGroup[];
   roleLabels: readonly string[];
 };
 
 export function AppShell({
   children,
+  displayName,
   navigation,
   roleLabels,
 }: AppShellProps): React.JSX.Element {
@@ -29,7 +31,12 @@ export function AppShell({
         >
           ข้ามไปยังเนื้อหาหลัก
         </a>
-        <AppSidebar navigation={navigation} />
+        <AppSidebar
+          availableWorkspaces={mobileNavigation.availableWorkspaces}
+          displayName={displayName}
+          navigation={navigation}
+          roleLabels={roleLabels}
+        />
         <div className="min-w-0 flex-1">
           <AppHeader roleLabels={roleLabels} />
           <main

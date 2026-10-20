@@ -19,7 +19,7 @@ function source(path: string): string {
 
 describe("responsive shell contract", () => {
   it("provides one focusable main landmark and a skip destination without a stale sidebar offset", () => {
-    const html = renderToStaticMarkup(<AppShell navigation={[]} roleLabels={[]}><h1>พื้นที่ทำงาน</h1></AppShell>);
+    const html = renderToStaticMarkup(<AppShell displayName="สมชาย ใจดี" navigation={[]} roleLabels={[]}><h1>พื้นที่ทำงาน</h1></AppShell>);
     expect(html.match(/<main\s/g)).toHaveLength(1);
     expect(html).toContain('href="#application-main-content"');
     expect(html).toMatch(/<main[^>]+id="application-main-content"[^>]+tabindex="-1"/);
@@ -30,7 +30,7 @@ describe("responsive shell contract", () => {
 
   it("keeps header and main gutters aligned during shell loading", () => {
     for (const html of [
-      renderToStaticMarkup(<AppShell navigation={[]} roleLabels={[]}>ข้อมูล</AppShell>),
+      renderToStaticMarkup(<AppShell displayName="สมชาย ใจดี" navigation={[]} roleLabels={[]}>ข้อมูล</AppShell>),
       renderToStaticMarkup(<ProtectedApplicationShellSkeleton />),
     ]) {
       expect(html).toMatch(/<header[^>]+px-4 sm:px-6 lg:px-8/);
@@ -38,9 +38,12 @@ describe("responsive shell contract", () => {
     }
   });
 
-  it("keeps collapsed navigation inert and the restore control outside it", () => {
+  it("keeps collapsed navigation reachable as an icon rail with the restore control outside it", () => {
     const sidebar = source("src/components/app-shell/app-sidebar.tsx");
-    expect(sidebar).toContain("inert={expanded ? undefined : true}");
+    expect(sidebar).not.toMatch(/inert/);
+    expect(sidebar).toContain("<NavigationList collapsed={collapsed} groups={sections} />");
+    // Rail tooltips are decorative and never focusable, so they cannot trap focus.
+    expect(sidebar).toMatch(/aria-hidden="true"\s+className="pointer-events-none fixed/);
     expect(sidebar).toContain("ระบบบริการสุขภาพ");
     expect(sidebar.indexOf("<DesktopSidebarToggle")).toBeLessThan(sidebar.indexOf("<nav"));
     expect(sidebar).toContain("motion-reduce:transition-none");
@@ -50,13 +53,14 @@ describe("responsive shell contract", () => {
   it("uses one mobile bottom navigation while retaining the desktop sidebar", () => {
     const navigation = [
       {
+        id: "home" as const,
         label: null,
         workspace: "work" as const,
         items: [{ href: "/app", label: "หน้าหลัก", match: "exact" as const }],
       },
     ];
     const html = renderToStaticMarkup(
-      <AppShell navigation={navigation} roleLabels={["อสม."]}>เนื้อหา</AppShell>,
+      <AppShell displayName="สมชาย ใจดี" navigation={navigation} roleLabels={["อสม."]}>เนื้อหา</AppShell>,
     );
 
     expect(html).toContain('aria-label="เมนูหลักบนมือถือ"');
@@ -64,8 +68,12 @@ describe("responsive shell contract", () => {
     expect(html).toContain("hidden h-svh shrink-0");
     expect(html).toContain("lg:flex lg:flex-col");
     const header = html.match(/<header[^>]*>[\s\S]*?<\/header>/)?.[0] ?? "";
-    expect(header).toContain('class="hidden lg:block"');
-    expect(header).toContain("ออกจากระบบ");
+    const sidebar = html.match(/<aside[^>]*>[\s\S]*?<\/aside>/)?.[0] ?? "";
+    // UI-4: logout moved from the header to the sidebar account section with the name and roles.
+    expect(header).not.toContain("ออกจากระบบ");
+    expect(sidebar).toContain("ออกจากระบบ");
+    expect(sidebar).toContain("สมชาย ใจดี");
+    expect(sidebar).toContain("อสม.");
     expect(html).not.toContain("<dialog");
     expect(html).not.toContain('aria-label="เปิดเมนูหลัก"');
     expect(html).not.toContain('id="mobile-application-navigation"');

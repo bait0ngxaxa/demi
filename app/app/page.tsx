@@ -11,7 +11,6 @@ import {
 } from "@/components/app-shell/application-workspace";
 import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
 import { roleLabels } from "@/components/app-shell/actor-presentation";
-import { projectMobileNavigation } from "@/components/app-shell/mobile-tab-projection";
 import { HomeContentSection } from "@/components/home/home-content-section";
 import { HomeHero, HomeHeroCard } from "@/components/home/home-hero";
 import { HomeHospitalChip } from "@/components/home/home-hospital-chip";
@@ -19,7 +18,6 @@ import { HomeShortcutGrid } from "@/components/home/home-shortcut-grid";
 import { loadHomeSection } from "@/components/home/load-home-section";
 import {
   projectActiveOsmHospitalIds,
-  projectOsmTaskLinks,
   projectWorkHome,
   type WorkHomeScope,
 } from "@/components/home/work-home-projection";
@@ -164,10 +162,8 @@ export default async function ApplicationPage(
   const paramsPromise: Promise<Record<string, string | string[] | undefined>> =
     searchParams ?? Promise.resolve({});
   const [actor, params] = await Promise.all([resolveProtectedActor(), paramsPromise]);
-  const projection = projectApplicationWorkspace(
-    actor,
-    await listActorHospitalWorkspaces(actor),
-  );
+  const hospitalWorkspaces = await listActorHospitalWorkspaces(actor);
+  const projection = projectApplicationWorkspace(actor, hospitalWorkspaces);
 
   if (
     projection.availableWorkspaces.length === 1 &&
@@ -178,10 +174,10 @@ export default async function ApplicationPage(
 
   await scheduleCurrentLineAccountReconciliation();
 
-  const workTabs = projectMobileNavigation(projectApplicationNavigation(actor)).tabsByWorkspace.work;
+  // The grid follows the same task sections and order as the sidebar and the More page.
   const home = projectWorkHome(
     projection,
-    projectOsmTaskLinks(workTabs),
+    projectApplicationNavigation(actor, hospitalWorkspaces),
     projectActiveOsmHospitalIds(actor),
     params.hospitalId,
   );

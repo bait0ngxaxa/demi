@@ -41,9 +41,27 @@ import {
   decideHospitalReportPolicy,
   HOSPITAL_REPORT_CAPABILITIES,
 } from "@/modules/reporting/policies/hospital-report-policy";
+import {
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
+import {
+  listActorHospitalWorkspaces,
+  type ActorHospitalWorkspace,
+} from "@/modules/auth/services/actor-workspace-service";
+import { InfrastructureError } from "@/shared/errors/application-error";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
-import type { ApplicationNavigationGroup } from "./navigation-types";
+import {
+  getNavigationSectionLabel,
+  type NavigationAdministrationScope,
+} from "./navigation-sections";
+import type {
+  ApplicationNavigationGroup,
+  ApplicationNavigationItem,
+  ApplicationWorkspaceContext,
+  NavigationSectionId,
+} from "./navigation-types";
 
 function canManageWorkforce(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
@@ -175,230 +193,211 @@ function canReadAssignedPatients(actor: ActorContext): boolean {
   );
 }
 
+function canAssignOsm(actor: ActorContext): boolean {
+  // Same policy the assign-osm page applies to each Hospital it lists (listPatientOsmAssignmentScopes).
+  return actor.hospitalMemberships.some(({ hospitalId }) =>
+    decidePatientOsmAssignmentPolicy({
+      actor,
+      capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+      targetHospitalId: hospitalId,
+    }).allowed,
+  );
+}
+
+/**
+ * The areas page (getParentAreaOverviewContext) admits an active direct OWNER of an active MAIN Hospital, one with
+ * no Parent, even before it has Children. The page still re-resolves the hierarchy and every Child server-side.
+ */
+export function canOpenParentAreaOverview(
+  actor: ActorContext,
+  hospitalWorkspaces: readonly ActorHospitalWorkspace[],
+): boolean {
+  return actor.roles.includes(Role.HOSPITAL) && hospitalWorkspaces.some((workspace) =>
+    workspace.hospitalStatus === HospitalStatus.ACTIVE &&
+    // `network` is the current Parent, or the Hospital itself when it has none (MAIN).
+    workspace.network.hospitalId === workspace.hospitalId &&
+    actor.hospitalMemberships.some((membership) =>
+      membership.hospitalId === workspace.hospitalId &&
+      membership.membershipType === MembershipType.OWNER &&
+      membership.status === MembershipStatus.ACTIVE &&
+      membership.hospitalStatus === HospitalStatus.ACTIVE),
+  );
+}
+
+function hasActiveWorkHospital(actor: ActorContext): boolean {
+  return (
+    actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
+  ) || (
+    actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
+  );
+}
+
+function isActiveHospitalOwner(actor: ActorContext): boolean {
+  return actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ membershipType, status, hospitalStatus }) =>
+    membershipType === MembershipType.OWNER && status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE);
+}
+
+/** Platform governance items; the Work Home reads these instead of looking a group up by its label. */
+export function projectPlatformGovernanceNavigation(actor: ActorContext): {
+  reporting: ApplicationNavigationItem | null;
+  hospitals: ApplicationNavigationItem | null;
+  onboarding: ApplicationNavigationItem | null;
+} {
+  const isAdmin = actor.roles.includes(Role.ADMIN);
+  return {
+    reporting: isAdmin
+      ? { href: "/app/admin/reporting", label: "รายงานระบบ", match: "prefix", prefetch: false }
+      : null,
+    hospitals: decideHospitalGovernancePolicy({
+      actor,
+      capability: HOSPITAL_GOVERNANCE_CAPABILITIES.readGovernance,
+    }).allowed
+      ? { href: "/app/admin/hospitals", label: "โรงพยาบาลทั้งหมด", match: "prefix" }
+      : null,
+    onboarding: isAdmin && decideHospitalOnboardingPolicy({
+      actor,
+      capability: HOSPITAL_ONBOARDING_CAPABILITIES.review,
+    }).allowed
+      ? { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียน รพ.", match: "prefix" }
+      : null,
+  };
+}
+
+function compact(items: readonly (ApplicationNavigationItem | null | false)[]): ApplicationNavigationItem[] {
+  return items.filter((item): item is ApplicationNavigationItem => Boolean(item));
+}
+
+function section(
+  id: NavigationSectionId,
+  workspace: ApplicationWorkspaceContext,
+  items: readonly ApplicationNavigationItem[],
+  administrationScope?: NavigationAdministrationScope,
+): ApplicationNavigationGroup[] {
+  return items.length === 0
+    ? []
+    : [{ id, label: getNavigationSectionLabel(id, workspace, administrationScope), workspace, items }];
+}
+
+function projectPersonalSections(): ApplicationNavigationGroup[] {
+  return [
+    ...section("home", "personal", [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" }]),
+    ...section("care", "personal", [
+      { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
+      { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
+      { href: "/app/personal/services", label: "คำขอรับบริการ", match: "prefix" },
+    ]),
+    ...section("health-records", "personal", [
+      { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
+      { href: "/app/personal/wellness", label: "อาหารและออกกำลังกาย", match: "prefix" },
+      { href: "/app/personal/measurements", label: "ตัวฉันในตอนนี้", match: "prefix" },
+    ]),
+    ...section("reports-info", "personal", [
+      { href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false },
+      { href: "/app/personal/knowledge", label: "สื่อความรู้", match: "prefix", prefetch: false },
+    ]),
+  ];
+}
+
+function projectWorkSections(
+  actor: ActorContext,
+  hospitalWorkspaces: readonly ActorHospitalWorkspace[],
+): ApplicationNavigationGroup[] {
+  const assignedPatients = canReadAssignedPatients(actor);
+  const directProvisioning = actor.hospitalMemberships.some(({ hospitalId }) =>
+    hasDirectHospitalProvisioningScope(actor, hospitalId),
+  );
+  // An OSM-only provisioner adds patients as part of care; direct Hospital staff register them.
+  const osmOnlyProvisioning = !directProvisioning && canProvisionPatients(actor);
+  const governance = projectPlatformGovernanceNavigation(actor);
+  const hospitalAdministration = compact([
+    canManageWorkforce(actor) && { href: "/app/workforce", label: "บุคลากร", match: "prefix" },
+    canManagePatientServiceCatalog(actor) && { href: "/app/patients/service-catalog", label: "บริการที่เปิดให้ขอ", match: "prefix" },
+    canManageHospitalContent(actor) && { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" },
+    canManageHospitalContact(actor) && { href: "/app/hospitals/contact", label: "ข้อมูลติดต่อของ รพ.", match: "exact" },
+  ]);
+  const platformAdministration = compact([governance.hospitals, governance.reporting]);
+  const administrationScope: NavigationAdministrationScope = hospitalAdministration.length > 0
+    ? platformAdministration.length > 0 ? "both" : "hospital"
+    : "platform";
+
+  return [
+    ...section("home", "work", [{ href: "/app", label: "หน้าหลัก", match: "exact" }]),
+    ...section("care", "work", compact([
+      assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่รับผิดชอบ", match: "exact" },
+      assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
+      assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
+      osmOnlyProvisioning && { href: "/app/patients/provision", label: "เพิ่มผู้ป่วย", match: "prefix" },
+      canReadPatients(actor) && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
+      canAssignOsm(actor) && { href: "/app/patients/assign-osm", label: "มอบหมาย อสม.", match: "prefix" },
+    ])),
+    ...section("registration", "work", compact([
+      directProvisioning && { href: "/app/patients/provision", label: "เพิ่มหรือนำเข้า", match: "prefix" },
+      canActivatePatients(actor) && { href: "/app/patients/activation", label: "เปิดใช้งานบัญชี", match: "prefix" },
+    ])),
+    ...section("review-queue", "work", compact([
+      canReviewPatientRequests(actor) && { href: "/app/patients/access-requests", label: "คำขอใช้บัญชี", match: "prefix" },
+      canReviewPatientServiceRequests(actor) && { href: "/app/patients/service-requests", label: "คำขอรับบริการ", match: "prefix" },
+      isActiveHospitalOwner(actor) && { href: "/app/hospitals/support", label: "กล่องแจ้งปัญหา", match: "prefix" },
+      governance.onboarding,
+    ])),
+    ...section("reports-info", "work", compact([
+      canReadHospitalReports(actor)
+        ? { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" }
+        : canOnlyExportHospitalReports(actor) && { href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" },
+      canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/areas", label: "เขตความรับผิดชอบ", match: "exact", prefetch: false },
+      hasActiveWorkHospital(actor) && { href: "/app/hospitals/content", label: "ข่าวสารและความรู้", match: "prefix" },
+      canReadWorkHospitalContacts(actor) && { href: "/app/hospitals/contacts", label: "ติดต่อโรงพยาบาล", match: "exact" },
+    ])),
+    ...section("administration", "work", [...hospitalAdministration, ...platformAdministration], administrationScope),
+  ];
+}
+
+/** Shell navigation must not fail the page: without workspace data the areas entry is simply withheld (fail closed). */
+export async function listNavigationHospitalWorkspaces(actor: ActorContext): Promise<readonly ActorHospitalWorkspace[]> {
+  try {
+    return await listActorHospitalWorkspaces(actor);
+  } catch (error: unknown) {
+    if (error instanceof InfrastructureError) return [];
+    throw error;
+  }
+}
+
+/**
+ * UI-4: navigation is organised by task sections in NAVIGATION_SECTION_ORDER. Each item keeps its own policy
+ * function; empty sections are omitted. The workspace switch is not a section (see WorkspaceSwitch).
+ * `hospitalWorkspaces` only gates the areas entry, whose page decides from persisted hierarchy data.
+ */
 export function projectApplicationNavigation(
   actor: ActorContext,
+  hospitalWorkspaces: readonly ActorHospitalWorkspace[],
 ): readonly ApplicationNavigationGroup[] {
   const availableWorkspaces = getAvailableApplicationWorkspaces(actor);
   const hasPersonalWorkspace = availableWorkspaces.includes("personal");
-  const hasWorkWorkspace = availableWorkspaces.includes("work");
-  const groups: ApplicationNavigationGroup[] = [];
+  const groups: ApplicationNavigationGroup[] = [
+    ...(hasPersonalWorkspace ? projectPersonalSections() : []),
+    ...(availableWorkspaces.includes("work") ? projectWorkSections(actor, hospitalWorkspaces) : []),
+  ];
 
-  if (availableWorkspaces.length > 1) {
-    groups.push({
-      label: "พื้นที่ใช้งาน",
-      workspace: "all",
-      items: [
-        {
-          href: "/app/personal",
-          label: "ส่วนตัว",
-          match: "prefix",
-          workspaceContext: "personal",
-        },
-        {
-          href: "/app",
-          label: "งาน",
-          match: "exact",
-          workspaceContext: "work",
-        },
-      ],
-    });
+  if (availableWorkspaces.length === 0) {
+    groups.push({ id: "home", label: null, items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] });
   }
 
-  if (hasPersonalWorkspace) {
-    groups.push({
-      label: "ส่วนตัว",
-      workspace: "personal",
-      items: [
-        ...(!hasWorkWorkspace
-          ? [{ href: "/app/personal", label: "หน้าส่วนตัว", match: "exact" as const }]
-          : []),
-        { href: "/app/personal/care", label: "ข้อมูลการดูแล", match: "prefix" },
-        { href: "/app/personal/services", label: "บริการของฉัน", match: "prefix" },
-        { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
-        { href: "/app/personal/wellness", label: "สุขภาพ", match: "prefix" },
-        { href: "/app/personal/measurements", label: "ตัวฉันในตอนนี้", match: "prefix" },
-        { href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false },
-        { href: "/app/personal/knowledge", label: "สื่อความรู้", match: "prefix", prefetch: false },
-        { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
-        { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
-        ...(actor.roles.includes(Role.PATIENT)
-          ? [{ href: "/app/personal/password", label: "เปลี่ยนรหัสผ่าน", match: "exact" as const }]
-          : []),
-      ],
-    });
-  }
+  // Family serves any authenticated account: a delegated caregiver needs no PATIENT role (docs/CONTEXT.md).
+  const supportsAccountTools = actor.roles.some((role) => role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL);
+  const accountItems = (workspace: ApplicationWorkspaceContext | null): ApplicationNavigationItem[] => compact([
+    // The Patient's own profile stays in the Personal workspace, as before UI-4.
+    workspace === "personal" && { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
+    { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
+    supportsAccountTools && { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
+    supportsAccountTools && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
+  ]);
 
-  if (hasWorkWorkspace) {
-    groups.push({
-      label: null,
-      workspace: "work",
-      items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }],
-    });
-  } else if (!hasPersonalWorkspace) {
-    groups.push({
-      label: null,
-      items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }],
-    });
+  // One account section per workspace: at most one is visible at a time, always last.
+  if (availableWorkspaces.length === 0) {
+    groups.push({ id: "account", label: getNavigationSectionLabel("account", "work"), items: accountItems(null) });
   }
-
-  if (canManageWorkforce(actor)) {
-    groups.push({
-      label: "บุคลากร",
-      workspace: "work",
-      items: [{ href: "/app/workforce", label: "จัดการบุคลากร", match: "prefix" }],
-    });
-  }
-
-  const hospitalWorkItems = [];
-  if (canManageHospitalContact(actor)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/contact", label: "ข้อมูลติดต่อโรงพยาบาล", match: "exact" as const });
-  }
-  if (canReadWorkHospitalContacts(actor)) {
-    hospitalWorkItems.push({
-      href: "/app/hospitals/contacts",
-      label: canManageHospitalContact(actor) ? "ติดต่อโรงพยาบาลที่เกี่ยวข้อง" : "ติดต่อโรงพยาบาล",
-      match: "exact" as const,
-    });
-  }
-  if (canManageHospitalContent(actor)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/knowledge", label: "ข่าวสารและความรู้", match: "prefix" as const });
-  }
-  if (actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
-    || actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some(({ status, hospitalStatus }) => status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/content", label: "เนื้อหาสำหรับทีมงาน", match: "prefix" as const });
-  }
-  if (actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ membershipType, status, hospitalStatus }) => membershipType === MembershipType.OWNER && status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/support", label: "กล่องรายงานปัญหา", match: "prefix" as const });
-  }
-  if (canReadHospitalReports(actor)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" as const });
-  } else if (canOnlyExportHospitalReports(actor)) {
-    hospitalWorkItems.push({ href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" as const });
-  }
-  if (hospitalWorkItems.length > 0) {
-    groups.push({
-      label: "โรงพยาบาล",
-      workspace: "work",
-      items: hospitalWorkItems,
-    });
-  }
-
-  const patientItems = [];
-
-  if (canReadAssignedPatients(actor)) {
-    patientItems.push({
-      href: "/app/patients/assigned",
-      label: "ผู้ป่วยที่รับผิดชอบ",
-      match: "exact" as const,
-    });
-  }
-
-  if (canReadPatients(actor)) {
-    patientItems.push({
-      href: "/app/patients",
-      label: "รายชื่อผู้ป่วย",
-      match: "exact" as const,
-    });
-  }
-
-  if (canProvisionPatients(actor)) {
-    patientItems.push({
-      href: "/app/patients/provision",
-      label: "เพิ่มหรือนำเข้าผู้ป่วย",
-      match: "prefix" as const,
-    });
-  }
-
-  if (canActivatePatients(actor)) {
-    patientItems.push({
-      href: "/app/patients/activation",
-      label: "เปิดใช้งานบัญชีผู้ป่วย",
-      match: "prefix" as const,
-    });
-  }
-
-  if (canReviewPatientRequests(actor)) {
-    patientItems.push({
-      href: "/app/patients/access-requests",
-      label: "คำขอใช้บัญชีผู้ป่วย",
-      match: "prefix" as const,
-    });
-  }
-
-  if (canReviewPatientServiceRequests(actor)) {
-    patientItems.push({
-      href: "/app/patients/service-requests",
-      label: "คำขอบริการผู้ป่วย",
-      match: "prefix" as const,
-    });
-  }
-
-  if (canManagePatientServiceCatalog(actor)) {
-    patientItems.push({
-      href: "/app/patients/service-catalog",
-      label: "บริการที่ผู้ป่วยขอได้",
-      match: "prefix" as const,
-    });
-  }
-
-  if (patientItems.length > 0) {
-    groups.push({ label: "ผู้ป่วย", items: patientItems, workspace: "work" });
-  }
-
-  const canReviewOnboarding = decideHospitalOnboardingPolicy({
-    actor,
-    capability: HOSPITAL_ONBOARDING_CAPABILITIES.review,
-  }).allowed;
-  const canReadHospitalGovernance = decideHospitalGovernancePolicy({
-    actor,
-    capability: HOSPITAL_GOVERNANCE_CAPABILITIES.readGovernance,
-  }).allowed;
-
-  const adminItems = [];
-
-  if (actor.roles.includes(Role.ADMIN)) {
-    adminItems.push({
-      href: "/app/admin/reporting",
-      label: "รายงานระบบ",
-      match: "prefix" as const,
-      prefetch: false,
-    });
-  }
-
-  if (canReadHospitalGovernance) {
-    adminItems.push({
-      href: "/app/admin/hospitals",
-      label: "การกำกับดูแลโรงพยาบาล",
-      match: "prefix" as const,
-    });
-  }
-
-  if (actor.roles.includes(Role.ADMIN) && canReviewOnboarding) {
-    adminItems.push({
-      href: "/app/admin/hospital-onboarding",
-      label: "คำขอขึ้นทะเบียนโรงพยาบาล",
-      match: "prefix" as const,
-    });
-  }
-
-  if (adminItems.length > 0) {
-    groups.push({
-      label: "ผู้ดูแลระบบ",
-      items: adminItems,
-      workspace: "work",
-    });
-  }
-
-  groups.push({
-    label: "ครอบครัว",
-    items: [{ href: "/app/family", label: "ญาติและผู้ดูแล", match: "prefix" }],
-  });
-
-  if (actor.roles.some((role) => role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL)) {
-    groups.push({ label: "บัญชีและช่วยเหลือ", workspace: "all", items: [
-      { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
-      { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
-    ] });
+  for (const workspace of availableWorkspaces) {
+    groups.push(...section("account", workspace, accountItems(workspace)));
   }
 
   return groups;

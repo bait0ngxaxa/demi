@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { roleLabels } from "@/components/app-shell/actor-presentation";
-import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
+import {
+  listNavigationHospitalWorkspaces,
+  projectApplicationNavigation,
+} from "@/components/app-shell/application-navigation";
 import { LogoutButton } from "@/components/app-shell/logout-button";
 import { projectMobileNavigation, projectMoreNavigation } from "@/components/app-shell/mobile-tab-projection";
 import { MoreMenuNavigation } from "@/components/app-shell/more-menu-navigation";
 import { resolveSelectedWorkspaceContext } from "@/components/app-shell/navigation-state";
 import type { ApplicationWorkspaceContext } from "@/components/app-shell/navigation-types";
+import { WorkspaceSwitch } from "@/components/app-shell/workspace-switch";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
@@ -46,7 +50,7 @@ function parseRequestedWorkspace(value: string | string[] | undefined): Applicat
 export default async function MorePage({ searchParams }: MorePageProps): Promise<React.JSX.Element> {
   await connection();
   const [actor, query] = await Promise.all([resolveProtectedActor(), searchParams]);
-  const navigation = projectApplicationNavigation(actor);
+  const navigation = projectApplicationNavigation(actor, await listNavigationHospitalWorkspaces(actor));
   const mobileNavigation = projectMobileNavigation(navigation);
   const requestedWorkspace = parseRequestedWorkspace(query.workspace);
   const selectedWorkspace = resolveSelectedWorkspaceContext(
@@ -75,6 +79,11 @@ export default async function MorePage({ searchParams }: MorePageProps): Promise
       </section>
 
       <div className="space-y-8 pt-8">
+        <WorkspaceSwitch
+          availableWorkspaces={mobileNavigation.availableWorkspaces}
+          hrefs={{ personal: "/app/more?workspace=personal", work: "/app/more?workspace=work" }}
+          tone="mobile"
+        />
         <MoreMenuNavigation groups={moreGroups} selectedWorkspace={selectedWorkspace} />
 
         <section aria-label="ออกจากระบบ" className="border-t border-border pt-6">

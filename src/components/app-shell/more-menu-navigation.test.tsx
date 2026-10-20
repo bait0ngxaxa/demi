@@ -13,6 +13,7 @@ const navigationState = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigationState.pathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -39,16 +40,22 @@ vi.mock("next/link", () => ({
       },
     });
   },
+  useLinkStatus: () => ({ pending: false }),
 }));
 
-import { projectApplicationNavigation } from "./application-navigation";
+import { projectApplicationNavigation as projectNavigation } from "./application-navigation";
 import { MobileNavigationGlyph, getMoreNavigationIcon } from "./mobile-navigation-glyph";
 import { MoreMenuNavigation } from "./more-menu-navigation";
+import { NavigationList } from "./navigation-list";
 import { projectMobileNavigation, projectMoreNavigation } from "./mobile-tab-projection";
 import type { ApplicationNavigationGroup, ApplicationWorkspaceContext } from "./navigation-types";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
+
+function projectApplicationNavigation(subject: ActorContext): readonly ApplicationNavigationGroup[] {
+  return projectNavigation(subject, []);
+}
 
 function actor(
   roles: readonly Role[],
@@ -134,11 +141,27 @@ describe("More menu page navigation", () => {
     expect(html.match(/<h2\b/g)).toHaveLength(visibleGroups.length);
     expect(html).toContain("min-h-12");
     expect(html.match(/<svg\b/g)).toHaveLength(expectedHrefs.length * 2);
+    // UI-4: the workspace switch is a separate segmented control, never a More section.
+    expect(html).not.toContain("พื้นที่ใช้งาน");
+    expect(html).not.toContain('aria-current="location"');
+  });
 
-    if (mobileProjection.availableWorkspaces.length > 1) {
-      expect(html).toContain('aria-current="location"');
-      expect(html).toContain(`href="${workspace === "personal" ? "/app/personal" : "/app"}"`);
-    }
+  it.each(menuCases)("shows $label sections in the same order as the desktop sidebar ($workspace)", ({
+    roles,
+    workspace,
+    membershipType,
+  }) => {
+    const projectedNavigation = projectApplicationNavigation(actor(roles, membershipType));
+    const groups = projectMoreNavigation(projectedNavigation, projectMobileNavigation(projectedNavigation).tabsByWorkspace[workspace]);
+    const moreIds = Array.from(renderNavigation(groups, workspace).matchAll(/id="more-navigation-heading-([a-z-]+)"/g), (match) => match[1]);
+    const sidebarIds = Array.from(
+      renderToStaticMarkup(createElement(NavigationList, { availableContexts: [workspace], groups: projectedNavigation })).matchAll(/<ul aria-labelledby="navigation-section-desktop-([a-z-]+)"/g),
+      (match) => match[1],
+    );
+
+    expect(moreIds.length).toBeGreaterThan(0);
+    expect(sidebarIds.filter((id) => moreIds.includes(id))).toEqual(moreIds);
+    expect(moreIds.at(-1)).toBe("account");
   });
 
   it("asks before leaving a guarded form from a More row and cancels when declined", () => {

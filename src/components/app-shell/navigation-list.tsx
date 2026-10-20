@@ -1,14 +1,16 @@
 "use client";
 
 import Link, { useLinkStatus } from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { LoadingSpinner } from "@/components/ui/button";
 import { classNames } from "@/components/ui/class-names";
 
+import { getMoreNavigationIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
+import { compareNavigationSections } from "./navigation-sections";
 import {
   getWorkspaceContextForPathname,
-  isNavigationItemActive,
+  resolveActiveNavigationHrefs,
   resolveSelectedWorkspaceContext,
 } from "./navigation-state";
 import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
@@ -20,6 +22,8 @@ import type {
 type NavigationListProps = {
   groups: readonly ApplicationNavigationGroup[];
   availableContexts?: readonly ApplicationWorkspaceContext[];
+  /** Icon rail: every item stays reachable as an icon link named by `aria-label`; headings are visually hidden. */
+  collapsed?: boolean;
   /** Called for client-side navigations only; may cancel the link navigation to perform it itself. */
   onNavigate?: (event: { preventDefault: () => void }, href: string) => void;
   tone?: "desktop" | "mobile";
@@ -27,11 +31,13 @@ type NavigationListProps = {
 
 export function NavigationList({
   availableContexts: providedAvailableContexts,
+  collapsed = false,
   groups,
   onNavigate,
   tone = "desktop",
 }: NavigationListProps): React.JSX.Element {
   const pathname = usePathname();
+  const search = useSearchParams()?.toString() ?? "";
   const navigationWorkspace = useNavigationWorkspaceContext();
   const availableContexts = providedAvailableContexts ?? Array.from(
     new Set(
@@ -47,27 +53,27 @@ export function NavigationList({
     availableContexts,
     navigationWorkspace ?? getWorkspaceContextForPathname(pathname),
   );
-  const visibleGroups = groups.filter(({ workspace }) =>
-    workspace === undefined || workspace === "all" || workspace === selectedContext,
+  const visibleGroups = groups
+    .filter(({ workspace }) => workspace === undefined || workspace === "all" || workspace === selectedContext)
+    .sort((left, right) => compareNavigationSections(left.id, right.id));
+  const activeHrefs = resolveActiveNavigationHrefs(
+    pathname,
+    search,
+    visibleGroups.flatMap(({ items }) => items),
   );
 
-  function isItemActive(item: (typeof groups)[number]["items"][number]): boolean {
-    return item.workspaceContext
-      ? item.workspaceContext === selectedContext
-      : isNavigationItemActive(pathname, item);
-  }
-
   return (
-    <div className="space-y-6">
-      {visibleGroups.map((group, groupIndex) => {
-        const groupActive = group.items.some(isItemActive);
+    <div className={collapsed ? "space-y-3" : "space-y-6"}>
+      {visibleGroups.map((group) => {
+        const groupActive = group.items.some(({ href }) => activeHrefs.has(href));
+        const headingId = `navigation-section-${tone}-${group.id}`;
 
         return (
-          <div key={group.label ?? `root-${groupIndex}`}>
+          <div key={group.id}>
             {group.label ? (
               <p
                 className={classNames(
-                  "mb-2 px-3 text-xs font-medium tracking-[0.01em]",
+                  collapsed ? "sr-only" : "mb-2 px-3 text-xs font-medium tracking-[0.01em]",
                   tone === "desktop"
                     ? groupActive
                       ? "text-brand-bright"
@@ -76,20 +82,23 @@ export function NavigationList({
                       ? "text-brand-strong"
                       : "text-text-subtle",
                 )}
+                id={headingId}
               >
                 {group.label}
               </p>
             ) : null}
-            <ul className="space-y-1">
+            <ul aria-labelledby={group.label ? headingId : undefined} className="space-y-1">
               {group.items.map((item) => {
-                const active = isItemActive(item);
+                const active = activeHrefs.has(item.href);
 
                 return (
                   <li key={item.href}>
                     <Link
-                      aria-current={active ? (item.workspaceContext ? "location" : "page") : undefined}
+                      aria-current={active ? "page" : undefined}
+                      aria-label={collapsed ? item.label : undefined}
                       className={classNames(
-                        "flex min-w-0 min-h-11 items-center rounded-control px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        "flex min-w-0 min-h-11 items-center gap-3 rounded-control py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
+                        collapsed ? "justify-center px-0" : "px-3",
                         tone === "desktop"
                           ? active
                             ? "type-nav-active bg-navigation-active text-brand-deep focus-visible:ring-brand-bright"
@@ -98,11 +107,13 @@ export function NavigationList({
                             ? "type-nav-active bg-brand-soft text-brand-deep focus-visible:ring-focus-ring"
                             : "text-text hover:bg-surface-muted focus-visible:ring-focus-ring",
                       )}
+                      data-navigation-tooltip={collapsed ? item.label : undefined}
                       href={item.href}
                       prefetch={item.prefetch}
                       onNavigate={onNavigate ? (event) => onNavigate(event, item.href) : undefined}
                     >
-                      <span className="min-w-0 flex-1">{item.label}</span>
+                      <MobileNavigationGlyph icon={getMoreNavigationIcon(item.href)} />
+                      {collapsed ? null : <span className="min-w-0 flex-1">{item.label}</span>}
                       <NavigationPendingHint />
                     </Link>
                   </li>
