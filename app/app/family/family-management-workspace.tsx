@@ -373,7 +373,7 @@ function PatientPerspective({
       <section aria-labelledby="patient-relationships-heading" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="patient-relationships-heading">ความสัมพันธ์ผู้ดูแล</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          รายการนี้แสดงสถานะการเชื่อมและการจัดการความสัมพันธ์เท่านั้น
+          รายการนี้แสดงสถานะการเชื่อมและการจัดการความสัมพันธ์เท่านั้น ความสัมพันธ์ผู้ดูแลไม่ได้ให้สิทธิ์ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ
         </p>
         <Panel className="mt-4">
           {overview.relationships.length === 0 ? (

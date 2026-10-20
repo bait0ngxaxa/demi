@@ -203,6 +203,16 @@ describe("application navigation projection", () => {
     }
   });
 
+  it("projects password changes into More for Patient actors only", () => {
+    const patientHrefs = projectApplicationNavigation(actor({ roles: [Role.PATIENT] }))
+      .flatMap((group) => group.items.map(({ href }) => href));
+    const workOnlyHrefs = projectApplicationNavigation(actor({ roles: [Role.OSM] }))
+      .flatMap((group) => group.items.map(({ href }) => href));
+
+    expect(patientHrefs).toContain("/app/personal/password");
+    expect(workOnlyHrefs).not.toContain("/app/personal/password");
+  });
+
   it("shows Patient provisioning and activation for a valid direct Hospital scope", () => {
     const labels = navigationLabels(
       actor({
@@ -344,6 +354,7 @@ describe("application navigation projection", () => {
       "/app/personal/knowledge",
       "/app/personal/appointments",
       "/app/personal/profile",
+      "/app/personal/password",
     ]);
     expect(navigation[1].items.map(({ href }) => href)).toEqual(["/app/family"]);
     expect(navigation[2].items.map(({ href }) => href)).toEqual(["/app/settings", "/app/support"]);

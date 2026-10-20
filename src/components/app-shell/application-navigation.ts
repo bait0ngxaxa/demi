@@ -221,6 +221,9 @@ export function projectApplicationNavigation(
         { href: "/app/personal/knowledge", label: "สื่อความรู้", match: "prefix", prefetch: false },
         { href: "/app/personal/appointments", label: "นัดหมาย", match: "prefix" },
         { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
+        ...(actor.roles.includes(Role.PATIENT)
+          ? [{ href: "/app/personal/password", label: "เปลี่ยนรหัสผ่าน", match: "exact" as const }]
+          : []),
       ],
     });
   }

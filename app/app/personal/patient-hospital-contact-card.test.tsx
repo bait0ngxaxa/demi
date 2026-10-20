@@ -13,6 +13,7 @@ const hospitalName = "โรงพยาบาลตัวอย่างภา�
 function relationship(overrides: Partial<Relationship> = {}): Relationship {
   return {
     relationshipId: "11111111-1111-4111-8111-111111111111",
+    hospitalId: "22222222-2222-4222-8222-222222222222",
     hospitalCode: "H-001",
     hospitalName,
     hospitalNumber: null,

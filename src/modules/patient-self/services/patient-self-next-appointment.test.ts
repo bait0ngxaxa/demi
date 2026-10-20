@@ -1,10 +1,13 @@
-import { Prisma, Role, UserStatus } from "@prisma/client";
+import { HospitalStatus, Prisma, Role, UserStatus } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
-import { getOwnNextAppointment } from "./patient-self-care-query-service";
+import {
+  getOwnNextAppointment,
+  getOwnNextAppointmentForRelationship,
+} from "./patient-self-care-query-service";
 import { patientSelfQueryInternals } from "./patient-self-query-service";
 
 const actor: ActorContext = {
@@ -16,22 +19,46 @@ const actor: ActorContext = {
 };
 
 const asOf = new Date("2026-10-15T02:00:00.000Z");
+const relationshipId = "44444444-4444-4444-8444-444444444444";
+const appointmentId = "55555555-5555-4555-8555-555555555555";
 const appointment = {
   scheduledAt: asOf,
   patientHospitalRelationship: { hospital: { name: "โรงพยาบาลตัวอย่าง" } },
 };
 
+function ownRelationshipRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    patientProfile: {
+      hospitalRelationships: [
+        {
+          id: relationshipId,
+          hospitalNumber: "HN-001",
+          endedAt: null,
+          hospital: {
+            hospitalCode: "H-001",
+            name: "โรงพยาบาลตัวอย่าง",
+            status: HospitalStatus.ACTIVE,
+          },
+          ...overrides,
+        },
+      ],
+    },
+  };
+}
+
 function createDatabase(
   personResult: unknown = { patientProfile: { hospitalRelationships: [{ id: "internal" }] } },
   appointmentResult: unknown[] = [appointment],
+  nextAppointmentResult: unknown = { id: appointmentId, scheduledAt: asOf },
 ) {
   const personFindFirst = vi.fn().mockResolvedValue(personResult);
   const appointmentFindMany = vi.fn().mockResolvedValue(appointmentResult);
+  const appointmentFindFirst = vi.fn().mockResolvedValue(nextAppointmentResult);
   const database = {
     person: { findFirst: personFindFirst },
-    patientAppointment: { findMany: appointmentFindMany },
+    patientAppointment: { findMany: appointmentFindMany, findFirst: appointmentFindFirst },
   } as unknown as Prisma.TransactionClient;
-  return { database, personFindFirst, appointmentFindMany };
+  return { database, personFindFirst, appointmentFindMany, appointmentFindFirst };
 }
 
 describe("Patient SELF next appointment query", () => {
@@ -132,5 +159,93 @@ describe("Patient SELF next appointment query", () => {
     await expect(getOwnNextAppointment(actor, () => asOf, { database })).rejects.toBeInstanceOf(
       InfrastructureError,
     );
+  });
+
+  it("loads the earliest non-cancelled appointment from one verified active self relationship", async () => {
+    const { database, personFindFirst, appointmentFindFirst } = createDatabase(
+      ownRelationshipRecord(),
+    );
+
+    await expect(
+      getOwnNextAppointmentForRelationship(actor, relationshipId, { database, now: asOf }),
+    ).resolves.toEqual({ appointmentId, scheduledAt: asOf });
+
+    expect(personFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: actor.personId,
+        user: {
+          is: {
+            id: actor.userId,
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.PATIENT } },
+          },
+        },
+      },
+      select: {
+        patientProfile: {
+          select: {
+            hospitalRelationships: {
+              where: { id: relationshipId },
+              select: patientSelfQueryInternals.patientSelfRelationshipNavigationSelect,
+            },
+          },
+        },
+      },
+    });
+    expect(appointmentFindFirst).toHaveBeenCalledWith({
+      where: {
+        patientHospitalRelationshipId: relationshipId,
+        scheduledAt: { gte: asOf },
+        status: { not: "CANCELLED" },
+      },
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      take: 1,
+      select: { id: true, scheduledAt: true },
+    });
+  });
+
+  it.each([
+    ["ended care", { endedAt: new Date("2026-10-01T00:00:00.000Z") }],
+    ["inactive Hospital", { hospital: { hospitalCode: "H-001", name: "โรงพยาบาลตัวอย่าง", status: HospitalStatus.SUSPENDED } }],
+  ])("does not query appointments for an %s relationship", async (_label, overrides) => {
+    const { database, appointmentFindFirst } = createDatabase(ownRelationshipRecord(overrides));
+
+    await expect(
+      getOwnNextAppointmentForRelationship(actor, relationshipId, { database, now: asOf }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(appointmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("does not query appointments when the relationship belongs to another Patient", async () => {
+    const { database, appointmentFindFirst } = createDatabase({ patientProfile: null });
+
+    await expect(
+      getOwnNextAppointmentForRelationship(actor, relationshipId, { database, now: asOf }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(appointmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-Patient actors before querying a relationship", async () => {
+    const { database, personFindFirst, appointmentFindFirst } = createDatabase(
+      ownRelationshipRecord(),
+    );
+
+    await expect(
+      getOwnNextAppointmentForRelationship({ ...actor, roles: [] }, relationshipId, {
+        database,
+        now: asOf,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(personFindFirst).not.toHaveBeenCalled();
+    expect(appointmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns empty when no upcoming appointment matches the selected relationship", async () => {
+    const { database, appointmentFindFirst } = createDatabase(ownRelationshipRecord(), [], null);
+
+    await expect(
+      getOwnNextAppointmentForRelationship(actor, relationshipId, { database, now: asOf }),
+    ).resolves.toBeNull();
+    expect(appointmentFindFirst).toHaveBeenCalledOnce();
   });
 });

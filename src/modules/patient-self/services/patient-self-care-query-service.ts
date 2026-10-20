@@ -72,9 +72,18 @@ export type PatientSelfCareQueryDependencies = {
   database?: PatientSelfCareQueryDatabase;
 };
 
+export type PatientSelfHomeNextAppointmentDependencies = PatientSelfCareQueryDependencies & {
+  now?: Date;
+};
+
 export type PatientSelfNextAppointmentProjection = {
   scheduledAt: Date;
   hospitalName: string;
+};
+
+export type PatientSelfHomeNextAppointment = {
+  appointmentId: string;
+  scheduledAt: Date;
 };
 
 export type PatientSelfNextAppointmentResult =
@@ -1081,6 +1090,53 @@ export async function getOwnNextAppointment(
     if (error instanceof InfrastructureError) {
       throw error;
     }
+    throw new InfrastructureError("Next Patient appointment could not be loaded");
+  }
+}
+
+export async function getOwnNextAppointmentForRelationship(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientSelfHomeNextAppointmentDependencies = {},
+): Promise<PatientSelfHomeNextAppointment | null> {
+  const database = getDatabase(dependencies);
+
+  try {
+    const relationship = await resolveAuthorizedRelationship(
+      actor,
+      relationshipId,
+      APPOINTMENT_READ_CAPABILITY,
+      database,
+    );
+
+    if (relationship.hospitalStatus !== "ACTIVE" || relationship.careEndedAt !== null) {
+      throw new NotFoundError();
+    }
+
+    const now = dependencies.now ?? new Date();
+    if (Number.isNaN(now.getTime())) {
+      throw new InfrastructureError("Current appointment time could not be captured");
+    }
+
+    const appointment = await database.patientAppointment.findFirst({
+      where: {
+        patientHospitalRelationshipId: relationship.relationshipId,
+        scheduledAt: { gte: now },
+        status: { not: "CANCELLED" },
+      },
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      take: 1,
+      select: { id: true, scheduledAt: true },
+    });
+
+    return appointment
+      ? { appointmentId: appointment.id, scheduledAt: appointment.scheduledAt }
+      : null;
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
     throw new InfrastructureError("Next Patient appointment could not be loaded");
   }
 }

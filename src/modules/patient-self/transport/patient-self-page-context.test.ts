@@ -95,6 +95,7 @@ describe("Patient self page context", () => {
       hospitalRelationships: [
         {
           relationshipId: "44444444-4444-4444-8444-444444444444",
+          hospitalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
           hospitalCode: "H-001",
           hospitalName: "โรงพยาบาล ก",
           hospitalNumber: null,
@@ -103,6 +104,7 @@ describe("Patient self page context", () => {
         },
         {
           relationshipId: "55555555-5555-4555-8555-555555555555",
+          hospitalId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
           hospitalCode: "H-002",
           hospitalName: "โรงพยาบาล ข",
           hospitalNumber: null,
@@ -126,6 +128,7 @@ describe("Patient self page context", () => {
     ]);
 
     await expect(getPatientPersonalHomePageContext()).resolves.toMatchObject({
+      actor,
       hospitalRelationships: [
         {
           relationshipId: "44444444-4444-4444-8444-444444444444",

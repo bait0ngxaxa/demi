@@ -9,6 +9,21 @@ import { HospitalContentImageList } from "../../hospitals/content/hospital-conte
 
 const knowledgeBase = "/app/personal/knowledge";
 const knowledgeCategories = [HospitalContentCategory.NCD, HospitalContentCategory.FOOD, HospitalContentCategory.EXERCISE, HospitalContentCategory.OTHER] as const;
+
+function buildFeedHref(
+  base: string,
+  hospitalRelationshipId: string | null,
+  category?: HospitalContentCategory,
+  cursor?: string | null,
+): string {
+  const params = new URLSearchParams();
+  if (category !== undefined) params.set("category", category);
+  if (cursor) params.set("cursor", cursor);
+  if (hospitalRelationshipId !== null) params.set("hospital", hospitalRelationshipId);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
 export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
   context: HospitalContentPatientFeedContext;
   kind?: "NEWS" | "KNOWLEDGE";
@@ -22,7 +37,7 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
   };
   const breadcrumbs = <nav aria-label="ลำดับหน้า">
     <ol className="flex flex-wrap items-center gap-2 text-sm leading-6 text-text-muted">
-      <li><PatientContentLink href="/app/personal" className={patientContentControlClass}>พื้นที่ส่วนตัว</PatientContentLink></li>
+      <li><PatientContentLink href={buildFeedHref("/app/personal", context.hospitalRelationshipId)} className={patientContentControlClass}>พื้นที่ส่วนตัว</PatientContentLink></li>
       <li><span aria-hidden="true">/ </span><span aria-current="page">{title}</span></li>
     </ol>
   </nav>;
@@ -34,18 +49,16 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
   </div>;
 
   const { page } = context;
-  const continuation = new URLSearchParams();
-  if (kind === "NEWS") continuation.set("category", HospitalContentCategory.NEWS);
-  else if (page.category !== null) continuation.set("category", page.category);
-  if (page.nextCursor !== null) continuation.set("cursor", page.nextCursor);
+  const continuationCategory = kind === "NEWS" ? HospitalContentCategory.NEWS : page.category ?? undefined;
 
   return <div className="min-w-0 max-w-4xl space-y-8">
     {breadcrumbs}
     <PageHeader title={title} description={kind === "NEWS" ? "ประกาศจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ" : "เนื้อหาให้ความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"} />
-    {kind === "NEWS" ? <PatientContentLink href={knowledgeBase} className={patientContentControlClass}>ไปที่สื่อความรู้</PatientContentLink> : (
+    {kind === "NEWS" ? <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} className={patientContentControlClass}>ไปที่สื่อความรู้</PatientContentLink> : (
       <nav aria-label="เลือกหมวดหมู่สื่อความรู้" className="flex flex-wrap gap-2">
-        <PatientContentLink href={knowledgeBase} current={page.category === null} className={patientContentControlClass}>{page.category === null ? "ทุกหมวดหมู่ (เลือกอยู่)" : "ทุกหมวดหมู่"}</PatientContentLink>
+        <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} current={page.category === null} className={patientContentControlClass}>{page.category === null ? "ทุกหมวดหมู่ (เลือกอยู่)" : "ทุกหมวดหมู่"}</PatientContentLink>
         {knowledgeCategories.map((category) => <form action={knowledgeBase} method="get" key={category}>
+          {context.hospitalRelationshipId !== null ? <input name="hospital" type="hidden" value={context.hospitalRelationshipId} /> : null}
           <button type="submit" name="category" value={category} aria-pressed={page.category === category} className={patientContentControlClass}>
             {HOSPITAL_CONTENT_CATEGORY_LABELS[category]}{page.category === category ? " (เลือกอยู่)" : ""}
           </button>
@@ -54,7 +67,7 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
     )}
     {page.emptyState !== null ? <Alert variant="neutral">
       <p>{emptyCopy[page.emptyState]}</p>
-      {page.emptyState === "EMPTY_C" ? <PatientContentLink href={feedBase} className={`${patientContentControlClass} mt-4`}>ดูรายการทั้งหมด</PatientContentLink> : null}
+      {page.emptyState === "EMPTY_C" ? <PatientContentLink href={buildFeedHref(feedBase, context.hospitalRelationshipId)} className={`${patientContentControlClass} mt-4`}>ดูรายการทั้งหมด</PatientContentLink> : null}
     </Alert> : <ul className="space-y-4" aria-label={`รายการ${title}`}>
       {page.items.map((content) => <li key={content.id} className="min-w-0 rounded-panel border border-border bg-surface p-5 sm:p-7">
         <h2 className="mb-4 text-xl font-semibold leading-8 [overflow-wrap:anywhere]">
@@ -65,8 +78,8 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
       </li>)}
     </ul>}
     <nav aria-label={`หน้ารายการ${title}`} className="flex flex-wrap gap-3">
-      {page.nextCursor !== null ? <PatientContentLink href={`${feedBase}?${continuation}`} className={patientContentControlClass}>หน้าถัดไป</PatientContentLink> : null}
-      <PatientContentLink href={feedBase} className={patientContentControlClass}>โหลดรายการล่าสุด</PatientContentLink>
+      {page.nextCursor !== null ? <PatientContentLink href={buildFeedHref(feedBase, context.hospitalRelationshipId, continuationCategory, page.nextCursor)} className={patientContentControlClass}>หน้าถัดไป</PatientContentLink> : null}
+      <PatientContentLink href={buildFeedHref(feedBase, context.hospitalRelationshipId)} className={patientContentControlClass}>โหลดรายการล่าสุด</PatientContentLink>
     </nav>
   </div>;
 }

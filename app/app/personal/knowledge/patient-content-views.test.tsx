@@ -9,7 +9,7 @@ import type { HospitalContentPatientFeedContext } from "@/modules/hospital-conte
 vi.mock("next/link", () => ({ default: ({ prefetch, onNavigate: _onNavigate, ...props }: { prefetch?: boolean; onNavigate?: unknown }) => { void _onNavigate; return <a data-prefetch={String(prefetch)} {...props} />; } }));
 const content: HospitalContentPatientDetail = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", title: "ข่าวสารภาษาไทย".repeat(15), category: "FOOD", latestPublishedAt: "2026-10-05T12:00:00.000Z", hospital: { name: "โรงพยาบาล ก", hospitalCode: "A001" }, body: "<script>bad</script>\n**plain Markdown**\nบรรทัดที่สอง", sourceText: "https://example.com/" + "long".repeat(100), imageIds: [] };
 function feed(overrides: Partial<Extract<HospitalContentPatientFeedContext, { outcome: "READY" }>["page"]> = {}): string {
-  return renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "READY", page: { category: null, items: [content], nextCursor: null, emptyState: null, ...overrides } }} />);
+  return renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", hospitalRelationshipId: null, outcome: "READY", page: { category: null, items: [content], nextCursor: null, emptyState: null, ...overrides } }} />);
 }
 describe("Patient Content read presentation", () => {
   it("renders minimal cards with attribution and Bangkok latest time but no body/source", () => {
@@ -34,6 +34,19 @@ describe("Patient Content read presentation", () => {
     expect(html).toContain("min-h-11"); expect(html).toContain("focus-visible:ring");
     expect(html).not.toMatch(/name="(?:hospital|search|sort)"/u);
   });
+  it("keeps the selected Hospital on feed links, category forms and cursor pagination", () => {
+    const html = renderToStaticMarkup(<PatientContentFeed context={{
+      requestId: "request",
+      hospitalRelationshipId: "44444444-4444-4444-8444-444444444444",
+      outcome: "READY",
+      page: { category: "FOOD", items: [content], nextCursor: "opaque-position", emptyState: null },
+    }} />);
+
+    expect(html).toContain('name="hospital"');
+    expect(html).toContain('value="44444444-4444-4444-8444-444444444444"');
+    expect(html).toContain("category=FOOD&amp;cursor=opaque-position&amp;hospital=44444444-4444-4444-8444-444444444444");
+    expect(html).toContain('href="/app/personal?hospital=44444444-4444-4444-8444-444444444444"');
+  });
   it.each([
     ["EMPTY_A", "ยังไม่มีโรงพยาบาลที่พร้อมแสดงสื่อความรู้"],
     ["EMPTY_B", "ยังไม่มีสื่อความรู้จากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ"],
@@ -43,12 +56,12 @@ describe("Patient Content read presentation", () => {
     if (emptyState === "EMPTY_C") expect(html).toContain("ดูรายการทั้งหมด");
   });
   it("uses News copy separately from the knowledge feed", () => {
-    const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "READY", page: { category: "NEWS", items: [], nextCursor: null, emptyState: "EMPTY_B" } }} kind="NEWS" />);
+    const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", hospitalRelationshipId: null, outcome: "READY", page: { category: "NEWS", items: [], nextCursor: null, emptyState: "EMPTY_B" } }} kind="NEWS" />);
     expect(html).toContain("ข่าวสารจากโรงพยาบาลที่เชื่อมโยงกับบัญชีของคุณ");
     expect(html).not.toContain("สื่อความรู้จากโรงพยาบาล");
   });
   it("renders validation separately with a bounded restart", () => {
-    const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", outcome: "VALIDATION" }} />);
+    const html = renderToStaticMarkup(<PatientContentFeed context={{ requestId: "request", hospitalRelationshipId: null, outcome: "VALIDATION" }} />);
     expect(html).toContain("ไม่สามารถเปิดหน้ารายการที่ขอได้"); expect(html).not.toContain("ยังไม่มีข่าวสาร");
     expect(html).toContain('href="/app/personal"');
   });

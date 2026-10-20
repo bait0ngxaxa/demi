@@ -287,7 +287,7 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     const b = await actor(); await relate(b, h);
     for (const input of [{ cursor: first.nextCursor + "x" }, { cursor: first.nextCursor, category: "FOOD" }]) await expect(list(a, input, db)).rejects.toBeInstanceOf(ValidationError);
     await expect(list(b, { cursor: first.nextCursor }, db)).rejects.toBeInstanceOf(ValidationError);
-    const profile = await profileId(a); const valid = { version: 1 as const, category: null, firstPublishedAt: now.toISOString(), id: randomUUID() };
+    const profile = await profileId(a); const valid = { version: 1 as const, category: null, hospitalId: null, firstPublishedAt: now.toISOString(), id: randomUUID() };
     for (const token of [encodeHospitalContentPatientCursor({ ...a, personId: b.personId }, profile, valid), encodeHospitalContentPatientCursor(a, randomUUID(), valid)]) await expect(list(a, { cursor: token }, db)).rejects.toBeInstanceOf(ValidationError);
     // A signed tuple for an absent row is still a valid continuation.
     expect((await list(a, { cursor: encodeHospitalContentPatientCursor(a, profile, valid) }, db)).items.length).toBeGreaterThan(0);

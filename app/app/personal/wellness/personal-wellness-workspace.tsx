@@ -37,6 +37,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   const linkClassName = "inline-flex min-h-11 items-center rounded-control px-4 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
   return <div className="max-w-4xl space-y-8">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
+    <p className="text-sm leading-6 text-text-muted">บันทึกสุขภาพเป็นข้อมูลที่คุณบันทึกเอง ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
     <nav aria-label="หัวข้อสุขภาพ" className="flex flex-wrap gap-2"><a className={linkClassName} href="#meal">อาหาร</a><a className={linkClassName} href="#exercise">การออกกำลังกาย</a><a className={linkClassName} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
     <p className="text-sm leading-6 text-text-muted">บันทึกน้ำหนัก ความดัน และน้ำตาลที่คุณวัดเองได้ที่ <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/personal/measurements">ตัวฉันในตอนนี้</Link></p>
     <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace initialPage={session.mealPage} today={today} initialNonce={session.mealNonce} authority={authority} /></section>

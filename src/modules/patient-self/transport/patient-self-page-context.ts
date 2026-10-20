@@ -23,12 +23,13 @@ export type PatientSelfContactAvailability =
   | { status: "AVAILABLE"; contact: PatientHospitalContactProjection }
   | { status: "UNAVAILABLE" };
 
+type PatientPersonalHomeRelationship = PatientSelfContext["hospitalRelationships"][number] & {
+  hospitalContact: PatientSelfContactAvailability;
+};
+
 export type PatientPersonalHomePageContext = Omit<PatientSelfContext, "hospitalRelationships"> & {
-  hospitalRelationships: Array<
-    PatientSelfContext["hospitalRelationships"][number] & {
-      hospitalContact: PatientSelfContactAvailability;
-    }
-  >;
+  actor: ActorContext;
+  hospitalRelationships: PatientPersonalHomeRelationship[];
 };
 
 async function getPatientActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
@@ -83,6 +84,7 @@ export async function getPatientPersonalHomePageContext(
 
     return {
       ...patient,
+      actor,
       hospitalRelationships: patient.hospitalRelationships.map((relationship) => {
         const contact = contactByRelationshipId.get(relationship.relationshipId);
 

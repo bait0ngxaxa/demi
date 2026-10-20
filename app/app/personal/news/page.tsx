@@ -7,8 +7,15 @@ import { PatientContentPrivateBoundary } from "../knowledge/patient-content-priv
 
 export const metadata: Metadata = { title: "ข่าวสาร" };
 
-export default async function PatientNewsPage(): Promise<React.JSX.Element> {
+export default async function PatientNewsPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<React.JSX.Element> {
   await connection();
-  const context = await getHospitalContentPatientFeedContext({ category: HospitalContentCategory.NEWS });
+  const params = await searchParams;
+  const context = await getHospitalContentPatientFeedContext({
+    category: HospitalContentCategory.NEWS,
+    cursor: params.cursor,
+    hospital: params.hospital,
+  });
   return <PatientContentPrivateBoundary key={context.requestId} requestId={context.requestId}><PatientContentFeed context={context} kind="NEWS" /></PatientContentPrivateBoundary>;
 }

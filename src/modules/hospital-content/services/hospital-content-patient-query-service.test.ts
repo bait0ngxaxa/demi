@@ -6,6 +6,7 @@ import { getPatientHospitalContent, hospitalContentPatientWhere, listPatientHosp
 
 const actor: ActorContext = { userId: "11111111-1111-4111-8111-111111111111", personId: "22222222-2222-4222-8222-222222222222", roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
 const profile = "33333333-3333-4333-8333-333333333333";
+const hospitalA = "44444444-4444-4444-8444-444444444444";
 const findProfile = vi.fn();
 const relationship = vi.fn();
 const many = vi.fn();
@@ -23,6 +24,19 @@ describe("Patient Content query boundaries and classifications", () => {
     expect(Object.keys(page.items[0]).sort()).toEqual(["category", "hospital", "id", "imageIds", "latestPublishedAt", "title"]);
     expect(Object.keys(detail).sort()).toEqual(["body", "category", "hospital", "id", "imageIds", "latestPublishedAt", "sourceText", "title"]);
     expect(Object.keys(detail.hospital)).toEqual(["hospitalCode", "name"]);
+  });
+  it("narrows the authorized predicate to one Hospital and returns the requested home limit", async () => {
+    many.mockResolvedValue([row, row, row, row]);
+    const page = await listPatientHospitalContent(actor, { category: "NEWS", hospitalId: hospitalA, limit: 3 }, db);
+    const query = many.mock.calls[0]?.[0];
+
+    expect(query?.where.AND).toEqual([
+      { ...hospitalContentPatientWhere(actor, profile), category: "NEWS" },
+      { hospital: { is: { id: hospitalA } } },
+    ]);
+    expect(query?.take).toBe(4);
+    expect(page.items).toHaveLength(3);
+    expect(page.nextCursor).not.toBeNull();
   });
   it("freshly rechecks SELF after an empty query and never maps authority loss to empty", async () => {
     findProfile.mockResolvedValueOnce({ id: profile }).mockResolvedValueOnce(null);

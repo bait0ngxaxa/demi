@@ -54,6 +54,7 @@ function ownPersonRecord(): Record<string, unknown> {
           id: hospitalOneId,
           patientProfileId: "another-internal-id",
           hospitalId: "hospital-id-one",
+          endedAt: null,
           hospitalNumber: "HN-001",
           hospital: {
             id: "hospital-id-one",
@@ -66,6 +67,7 @@ function ownPersonRecord(): Record<string, unknown> {
           id: hospitalTwoId,
           patientProfileId: "another-internal-id",
           hospitalId: "hospital-id-two",
+          endedAt: null,
           hospitalNumber: null,
           hospital: {
             id: "hospital-id-two",
@@ -78,6 +80,7 @@ function ownPersonRecord(): Record<string, unknown> {
           id: hospitalThreeId,
           patientProfileId: "another-internal-id",
           hospitalId: "hospital-id-three",
+          endedAt: null,
           hospitalNumber: "HN-003",
           hospital: {
             id: "hospital-id-three",
@@ -137,24 +140,30 @@ describe("Patient self query boundary", () => {
       hospitalRelationships: [
         {
           relationshipId: hospitalOneId,
+          hospitalId: "hospital-id-one",
           hospitalCode: "H-001",
           hospitalName: "โรงพยาบาล ก",
           hospitalNumber: "HN-001",
           hospitalStatus: HospitalStatus.ACTIVE,
+          careEndedAt: null,
         },
         {
           relationshipId: hospitalTwoId,
+          hospitalId: "hospital-id-two",
           hospitalCode: "H-002",
           hospitalName: "โรงพยาบาล ข",
           hospitalNumber: null,
           hospitalStatus: HospitalStatus.SUSPENDED,
+          careEndedAt: null,
         },
         {
           relationshipId: hospitalThreeId,
+          hospitalId: "hospital-id-three",
           hospitalCode: "H-003",
           hospitalName: "โรงพยาบาล ค",
           hospitalNumber: "HN-003",
           hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+          careEndedAt: null,
         },
       ],
     });
@@ -194,24 +203,30 @@ describe("Patient self query boundary", () => {
     expect(result?.hospitalRelationships).toEqual([
       {
         relationshipId: hospitalOneId,
+        hospitalId: "hospital-id-one",
         hospitalCode: "H-001",
         hospitalName: "โรงพยาบาล ก",
         hospitalNumber: "HN-001",
         hospitalStatus: HospitalStatus.ACTIVE,
+        careEndedAt: null,
       },
       {
         relationshipId: hospitalTwoId,
+        hospitalId: "hospital-id-two",
         hospitalCode: "H-002",
         hospitalName: "โรงพยาบาล ข",
         hospitalNumber: null,
         hospitalStatus: HospitalStatus.SUSPENDED,
+        careEndedAt: null,
       },
       {
         relationshipId: hospitalThreeId,
+        hospitalId: "hospital-id-three",
         hospitalCode: "H-003",
         hospitalName: "โรงพยาบาล ค",
         hospitalNumber: "HN-003",
         hospitalStatus: HospitalStatus.PENDING_VERIFICATION,
+        careEndedAt: null,
       },
     ]);
   });
@@ -267,6 +282,7 @@ describe("Patient self query boundary", () => {
       hospitalName: "โรงพยาบาล ข",
       hospitalNumber: null,
       hospitalStatus: HospitalStatus.SUSPENDED,
+      careEndedAt: null,
     });
     expect(findFirst).toHaveBeenCalledWith({
       where: {
@@ -398,6 +414,6 @@ describe("Patient self query boundary", () => {
     ).toHaveProperty("id", true);
     expect(
       patientSelfContextSelect.patientProfile.select.hospitalRelationships.select.hospital.select,
-    ).not.toHaveProperty("id");
+    ).toHaveProperty("id", true);
   });
 });

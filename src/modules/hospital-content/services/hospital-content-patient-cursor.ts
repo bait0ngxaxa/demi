@@ -17,6 +17,7 @@ const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const cursorSchema = z.object({
   version: z.literal(1),
   category: hospitalContentPatientCategorySchema.nullable(),
+  hospitalId: z.string().uuid().transform((value) => value.toLowerCase()).nullable(),
   firstPublishedAt: z.string().regex(timestampPattern).refine((value) => {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) && date.toISOString() === value;
@@ -30,6 +31,7 @@ function canonical(cursor: HospitalContentPatientCursor): Buffer {
   return Buffer.from(JSON.stringify({
     version: 1,
     category: cursor.category,
+    hospitalId: cursor.hospitalId,
     firstPublishedAt: cursor.firstPublishedAt,
     id: cursor.id,
   }), "utf8");
@@ -43,9 +45,15 @@ function getCursorSecret(): string {
   }
 }
 
-function signature(actor: ActorContext, patientProfileId: string, category: HospitalContentPatientCursor["category"], payload: Buffer): Buffer {
+function signature(
+  actor: ActorContext,
+  patientProfileId: string,
+  category: HospitalContentPatientCursor["category"],
+  hospitalId: HospitalContentPatientCursor["hospitalId"],
+  payload: Buffer,
+): Buffer {
   return createHmac("sha256", getCursorSecret())
-    .update(`demi.hospital-content.patient-cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000${patientProfileId.toLowerCase()}\u0000${category ?? "all"}\u0000firstPublishedAt-id-desc:25:all-current-own-ACTIVE-Hospitals\u0000`, "utf8")
+    .update(`demi.hospital-content.patient-cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000${patientProfileId.toLowerCase()}\u0000${category ?? "all"}\u0000${hospitalId ?? "all-hospitals"}\u0000firstPublishedAt-id-desc:25:all-current-own-ACTIVE-Hospitals\u0000`, "utf8")
     .update(payload)
     .digest();
 }
@@ -63,12 +71,18 @@ export function encodeHospitalContentPatientCursor(actor: ActorContext, patientP
   }
   const payload = canonical(parsed.data);
   if (payload.byteLength > MAX_PAYLOAD_BYTES) throw new ValidationError("Hospital Content cursor is invalid");
-  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, patientProfileId, parsed.data.category, payload).toString("base64url")}`;
+  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, patientProfileId, parsed.data.category, parsed.data.hospitalId, payload).toString("base64url")}`;
   if (token.length > MAX_CURSOR_LENGTH) throw new ValidationError("Hospital Content cursor is invalid");
   return token;
 }
 
-export function decodeHospitalContentPatientCursor(actor: ActorContext, patientProfileId: string, category: HospitalContentPatientCursor["category"], token: string): HospitalContentPatientCursor {
+export function decodeHospitalContentPatientCursor(
+  actor: ActorContext,
+  patientProfileId: string,
+  category: HospitalContentPatientCursor["category"],
+  hospitalId: HospitalContentPatientCursor["hospitalId"],
+  token: string,
+): HospitalContentPatientCursor {
   if (token.length > MAX_CURSOR_LENGTH || !token.startsWith(PREFIX)) throw new ValidationError("Hospital Content cursor is invalid");
   const segments = token.slice(PREFIX.length).split(".");
   if (segments.length !== 2) throw new ValidationError("Hospital Content cursor is invalid");
@@ -77,7 +91,7 @@ export function decodeHospitalContentPatientCursor(actor: ActorContext, patientP
   if (!payload || payload.byteLength > MAX_PAYLOAD_BYTES || !suppliedSignature || suppliedSignature.byteLength !== 32) {
     throw new ValidationError("Hospital Content cursor is invalid");
   }
-  const expectedSignature = signature(actor, patientProfileId, category, payload);
+  const expectedSignature = signature(actor, patientProfileId, category, hospitalId, payload);
   if (!timingSafeEqual(expectedSignature, suppliedSignature)) throw new ValidationError("Hospital Content cursor is invalid");
 
   let raw: unknown;
@@ -87,7 +101,12 @@ export function decodeHospitalContentPatientCursor(actor: ActorContext, patientP
     throw new ValidationError("Hospital Content cursor is invalid");
   }
   const parsed = cursorSchema.safeParse(raw);
-  if (!parsed.success || !canonical(parsed.data).equals(payload) || parsed.data.category !== category) {
+  if (
+    !parsed.success ||
+    !canonical(parsed.data).equals(payload) ||
+    parsed.data.category !== category ||
+    parsed.data.hospitalId !== hospitalId
+  ) {
     throw new ValidationError("Hospital Content cursor is invalid");
   }
   return parsed.data;

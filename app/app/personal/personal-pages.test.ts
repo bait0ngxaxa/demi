@@ -1,4 +1,4 @@
-import { HospitalStatus } from "@prisma/client";
+import { HospitalStatus, Role } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement, type ComponentProps } from "react";
@@ -16,6 +16,12 @@ import {
 import { PATIENT_ACCESS_UNAVAILABLE } from "@/modules/patient-self/transport/patient-access-unavailable";
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
+const homeServices = vi.hoisted(() => ({ nextAppointment: vi.fn(), content: vi.fn() }));
+vi.mock("@/modules/patient-self/services/patient-self-care-query-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/modules/patient-self/services/patient-self-care-query-service")>()),
+  getOwnNextAppointmentForRelationship: homeServices.nextAppointment,
+}));
+vi.mock("@/modules/hospital-content/services/hospital-content-patient-query-service", () => ({ listPatientHospitalContent: homeServices.content }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: ComponentProps<"a"> & { prefetch?: boolean }) => createElement("a", { "data-prefetch": String(prefetch), ...props }) }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: vi.fn() }));
 vi.mock("@/modules/patient-self/transport/patient-self-care-page-context", () => ({ getPatientSelfRelationshipNavigationPageContext: vi.fn() }));
@@ -25,10 +31,18 @@ vi.mock("@/modules/patient-self/transport/patient-self-page-context", () => ({
 }));
 
 const completeContext = {
+  actor: {
+    userId: "11111111-1111-4111-8111-111111111111",
+    personId: "22222222-2222-4222-8222-222222222222",
+    roles: [Role.PATIENT],
+    hospitalMemberships: [],
+    osmHospitalRelationships: [],
+  },
   person: { givenName: "สมชาย", familyName: "ใจดี" },
   hospitalRelationships: [
     {
       relationshipId: "44444444-4444-4444-8444-444444444444",
+      hospitalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       hospitalCode: "H-001",
       hospitalName: "โรงพยาบาล ก",
       hospitalNumber: "HN-001",
@@ -56,6 +70,7 @@ const completeContext = {
     },
     {
       relationshipId: "55555555-5555-4555-8555-555555555555",
+      hospitalId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       hospitalCode: "H-002",
       hospitalName: "โรงพยาบาล ข",
       hospitalNumber: null,
@@ -76,6 +91,7 @@ const completeContext = {
     },
     {
       relationshipId: "77777777-7777-4777-8777-777777777777",
+      hospitalId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       hospitalCode: "H-003",
       hospitalName: "โรงพยาบาล ค",
       hospitalNumber: "HN-003",
@@ -109,75 +125,129 @@ describe("Patient Personal pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(completeContext);
+    homeServices.nextAppointment.mockResolvedValue(null);
+    homeServices.content.mockResolvedValue({ category: null, items: [], nextCursor: null, emptyState: "EMPTY_B" });
     vi.mocked(getPatientSelfPageContext).mockResolvedValue(profileOnlyContext);
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue(profileOnlyContext.hospitalRelationships);
   });
 
-  it("renders a useful Personal Home from the own authorized projection", async () => {
+  it("renders the selected Hospital home with eight shortcuts, local content sections and a contact anchor", async () => {
     const markup = renderToStaticMarkup(await PersonalHomePage());
 
-    expect(markup).toContain("พื้นที่ส่วนตัว");
-    expect(markup).toContain("สมชาย ใจดี");
-    expect(markup).toContain("ข้อมูลของฉัน");
+    expect(markup).toContain("สวัสดี, สมชาย ใจดี");
     expect(markup).toContain("โรงพยาบาล ก");
-    expect(markup).toContain("โรงพยาบาลถูกระงับการใช้งาน");
-    expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
-    expect(markup).toContain("HN-001");
-    expect(markup).toContain('href="/app/personal/care"');
-    expect(markup).toContain('href="/app/personal/appointments"');
-    expect(markup).toContain('href="/app/personal/profile"');
+    expect(markup).not.toContain("โรงพยาบาล ข");
+    expect(markup).not.toContain("HN-001");
+    expect(markup).toContain('href="/app/personal/care/44444444-4444-4444-8444-444444444444"');
+    expect(markup).toContain('href="/app/personal/appointments/44444444-4444-4444-8444-444444444444"');
+    expect(markup).toContain('href="/app/personal/medications"');
+    expect(markup).toContain('href="/app/personal/wellness"');
+    expect(markup).toContain('href="/app/personal/measurements"');
+    expect(markup).toContain('href="/app/personal/services"');
     expect(markup).toContain('href="/app/family"');
-    expect(markup).not.toContain('href="/app/patients/assigned"');
-    expect(markup).not.toContain('href="/app/hospitals/contact"');
-    expect(markup).not.toContain("เพิ่มบริการ");
-    expect(markup).toContain("นัดหมาย");
+    expect(markup).toContain('href="/app/personal?hospital=44444444-4444-4444-8444-444444444444#personal-hospital-contact"');
+    expect(markup).toContain('id="personal-home-news-heading"');
+    expect(markup).toContain('id="personal-home-knowledge-heading"');
     expect(markup).toContain("ยังไม่มีข้อมูลติดต่อ");
+    expect(markup).not.toContain("ไม่ได้สร้างโปรแกรมการดูแล");
+    expect(markup).not.toContain("ข้อมูลที่คุณบันทึกเอง");
+    expect(homeServices.nextAppointment).toHaveBeenCalledWith(completeContext.actor, "44444444-4444-4444-8444-444444444444");
+    expect(homeServices.content).toHaveBeenCalledTimes(2);
+    expect(homeServices.content).toHaveBeenCalledWith(completeContext.actor, {
+      category: "NEWS",
+      hospitalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      limit: 3,
+    });
+    expect(homeServices.content).toHaveBeenCalledWith(completeContext.actor, {
+      hospitalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      limit: 3,
+    });
+    const links = markup.match(/<a\b[^>]*>/gu) ?? [];
+    expect(links.length).toBeGreaterThanOrEqual(9);
+    for (const link of links) expect(link).toContain('data-prefetch="false"');
     expect(getPatientPersonalHomePageContext).toHaveBeenCalledOnce();
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
   });
 
-  it("prioritizes care, appointments and requests before supporting health and account activities", async () => {
-    const markup = renderToStaticMarkup(await PersonalHomePage());
-    const orderedSections = ["patient-self-identity-heading", "personal-primary-heading", "personal-health-heading", "patient-self-hospitals-heading", "personal-account-heading"];
-    const positions = orderedSections.map((id) => markup.indexOf(`id="${id}"`));
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    const primary = markup.slice(markup.indexOf('id="personal-primary-heading"'), markup.indexOf('id="personal-health-heading"'));
-    const destinations = ["care", "appointments", "services"];
-    const links = [...primary.matchAll(/href="([^"]+)"/gu)].map((match) => match[1]);
-    expect(links).toEqual(destinations.map((area) => `/app/personal/${area}`));
-    for (const area of ["medications", "wellness", "profile", "knowledge", "password"]) expect(markup).toContain(`href="/app/personal/${area}"`);
-    expect(markup).toContain("รับทราบนัดหรือขอยกเลิกเมื่อทำได้");
-    expect(markup).toContain("ไม่ได้สร้างโปรแกรมการดูแล นัดหมาย หรือมอบหมาย อสม. ให้อัตโนมัติ");
-    expect(markup).toContain("ไม่ใช่คำแนะนำทางการแพทย์");
-    expect(markup).toContain("ไม่ได้ให้สิทธิ์ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ");
-    for (const claim of ["งานค้าง", "เกินกำหนด", "ความเสี่ยง", "ความก้าวหน้า", "บริการเสร็จสิ้น", "BMI", "คะแนนสุขภาพ"]) expect(markup).not.toContain(claim);
-    expect(markup).not.toMatch(/href="\/app\/(?:patients|hospitals|workforce|admin)/u);
-    expect(markup).not.toContain("0812345678");
-    expect(markup).not.toContain("99 ถนนตัวอย่าง");
+  it("switches appointment, deep links and both content queries with an eligible Hospital", async () => {
+    const secondRelationship = {
+      ...completeContext.hospitalRelationships[1],
+      hospitalStatus: HospitalStatus.ACTIVE,
+    };
+    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({
+      ...completeContext,
+      hospitalRelationships: [completeContext.hospitalRelationships[0], secondRelationship],
+    });
+    const markup = renderToStaticMarkup(await PersonalHomePage({
+      searchParams: Promise.resolve({ hospital: secondRelationship.relationshipId }),
+    }));
+
+    expect(markup).toContain('name="hospital"');
+    expect(markup).toContain('value="55555555-5555-4555-8555-555555555555" selected=""');
+    expect(markup).toContain('href="/app/personal/care/55555555-5555-4555-8555-555555555555"');
+    expect(markup).not.toContain("personal-hospital-contact");
+    expect(homeServices.nextAppointment).toHaveBeenCalledWith(completeContext.actor, secondRelationship.relationshipId);
+    expect(homeServices.content).toHaveBeenCalledWith(completeContext.actor, {
+      category: "NEWS",
+      hospitalId: secondRelationship.hospitalId,
+      limit: 3,
+    });
+    expect(homeServices.content).toHaveBeenCalledWith(completeContext.actor, {
+      hospitalId: secondRelationship.hospitalId,
+      limit: 3,
+    });
   });
 
-  it.each([1, 3])("keeps %s Hospital relationships distinct with exact care and profile paths", async (count) => {
-    const relationships = completeContext.hospitalRelationships.slice(0, count);
-    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({ ...completeContext, hospitalRelationships: relationships });
-    const markup = renderToStaticMarkup(await PersonalHomePage());
-    for (const relationship of relationships) {
-      expect(markup).toContain(relationship.hospitalName);
-      expect(markup).not.toContain(relationship.hospitalCode);
-      expect(markup).toContain(`href="/app/personal/care/${relationship.relationshipId}"`);
-      expect(markup).toContain(`href="/app/personal/profile/${relationship.relationshipId}"`);
-    }
-    expect(markup.match(/href="\/app\/personal\/care\//gu)).toHaveLength(count);
-    expect(markup.match(/href="\/app\/personal\/profile\//gu)).toHaveLength(count);
-    expect(markup).not.toContain("โรงพยาบาลหลัก");
-    if (count === 3) {
-      expect(markup).toContain("โรงพยาบาลถูกระงับการใช้งาน");
-      expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
-      expect(markup).toContain("ยังไม่ได้บันทึก");
+  it("falls back to the first active Hospital for a forged locator without querying it", async () => {
+    const markup = renderToStaticMarkup(await PersonalHomePage({
+      searchParams: Promise.resolve({ hospital: "99999999-9999-4999-8999-999999999999" }),
+    }));
+
+    expect(markup).toContain("โรงพยาบาล ก");
+    expect(markup).not.toContain("โรงพยาบาล ข");
+    expect(homeServices.nextAppointment).toHaveBeenCalledWith(completeContext.actor, "44444444-4444-4444-8444-444444444444");
+    for (const call of homeServices.content.mock.calls) {
+      expect(call[1].hospitalId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+      expect(call[1].hospitalId).not.toBe("99999999-9999-4999-8999-999999999999");
     }
   });
 
-  it("renders long Thai identity safely and avoids prefetching every linked private workspace", async () => {
+  it("formats the next appointment in Bangkok time across midnight and links to its detail", async () => {
+    const appointmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    homeServices.nextAppointment.mockResolvedValue({
+      appointmentId,
+      scheduledAt: new Date("2026-10-20T17:30:00.000Z"),
+    });
+    const markup = renderToStaticMarkup(await PersonalHomePage());
+
+    expect(markup).toContain("21 ตุลาคม 2569");
+    expect(markup).toContain("00:30");
+    expect(markup).toContain(`href="/app/personal/appointments/44444444-4444-4444-8444-444444444444/${appointmentId}"`);
+  });
+
+  it("keeps self-service entry points when no active Hospital exists", async () => {
+    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({
+      ...completeContext,
+      person: { givenName: null, familyName: null },
+      hospitalRelationships: completeContext.hospitalRelationships.map((relationship) => ({
+        ...relationship,
+        careEndedAt: new Date("2026-10-01T00:00:00.000Z"),
+      })),
+    });
+    const markup = renderToStaticMarkup(await PersonalHomePage());
+
+    expect(markup).toContain("สวัสดี");
+    expect(markup).toContain("ยังไม่มีโรงพยาบาลที่พร้อมใช้งาน");
+    expect(markup).toContain('href="/app/personal/care"');
+    expect(markup).toContain('href="/app/personal/appointments"');
+    expect(markup).toContain('href="/app/personal/services"');
+    expect(markup).not.toContain('href="/app/personal/care/');
+    expect(markup).not.toContain("personal-hospital-contact");
+    expect(homeServices.nextAppointment).not.toHaveBeenCalled();
+    expect(homeServices.content).not.toHaveBeenCalled();
+  });
+
+  it("renders escaped long Thai names and only creates a hospital switch for multiple active candidates", async () => {
     const hospitalName = "โรงพยาบาลภาษาไทย".repeat(20) + " <script>";
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({
       ...completeContext,
@@ -185,22 +255,12 @@ describe("Patient Personal pages", () => {
       hospitalRelationships: [{ ...completeContext.hospitalRelationships[0], hospitalName }],
     });
     const markup = renderToStaticMarkup(await PersonalHomePage());
-    expect(markup).toContain("สมชาย</h2>");
+    expect(markup).toContain("สวัสดี, สมชาย");
     expect(markup).toContain(hospitalName.replace("<script>", "&lt;script&gt;"));
     expect(markup).not.toContain("<script>");
-    const links = markup.match(/<a\b[^>]*>/gu) ?? [];
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link).toContain('data-prefetch="false"');
-  });
-
-  it("keeps self-service entry points available with no Hospitals without inventing records or names", async () => {
-    vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({ person: { givenName: null, familyName: null }, hospitalRelationships: [] });
-    const markup = renderToStaticMarkup(await PersonalHomePage());
-    expect(markup).toContain("ยังไม่ได้บันทึกชื่อในระบบ");
-    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
-    for (const area of ["care", "appointments", "services", "medications", "wellness", "profile", "knowledge"]) expect(markup).toContain(`href="/app/personal/${area}"`);
-    expect(markup).not.toMatch(/href="\/app\/personal\/(?:care|profile)\//u);
-    expect(markup).not.toContain("ข้อมูลผู้ป่วยยังไม่พร้อมแสดง");
+    expect(markup).not.toContain('name="hospital"');
+    expect(markup).toContain("min-h-20");
+    expect(markup).toContain("grid-cols-4");
   });
 
   it.each(["care", "appointments"] as const)("continues the selected %s area through each exact Hospital without a competing action", async (area) => {

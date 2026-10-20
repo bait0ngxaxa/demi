@@ -21,6 +21,9 @@ export function PatientServicesWorkspace({
         description="ส่งคำขอรับบริการจากโรงพยาบาลที่เชื่อมกับบัญชีของคุณ โรงพยาบาลจะตรวจสอบก่อนเริ่มให้บริการ"
         title="บริการของฉัน"
       />
+      <p className="mt-3 text-sm leading-6 text-text-muted">
+        โรงพยาบาลจะตรวจสอบคำขอรับบริการ การส่งคำขอไม่ได้สร้างโปรแกรมการดูแล นัดหมาย หรือมอบหมาย อสม. ให้อัตโนมัติ
+      </p>
 
       {relationships.length === 0 ? (
         <Alert className="mt-6" variant="info">

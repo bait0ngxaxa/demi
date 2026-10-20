@@ -20,7 +20,7 @@ export type PatientSelfContext = {
     givenName: string | null;
     familyName: string | null;
   };
-  hospitalRelationships: PatientSelfRelationshipNavigation[];
+  hospitalRelationships: Array<PatientSelfRelationshipNavigation & { hospitalId: string }>;
 };
 
 export type PatientSelfQueryDependencies = {
@@ -59,8 +59,19 @@ export const patientSelfContextSelect = {
   patientProfile: {
     select: {
       hospitalRelationships: {
+        // Personal Home defaults to the first relationship ordered by Hospital name then relationship ID.
         orderBy: [{ hospital: { name: "asc" } }, { id: "asc" }],
-        select: patientSelfRelationshipNavigationSelect,
+        select: {
+          ...patientSelfRelationshipNavigationSelect,
+          hospital: {
+            select: {
+              id: true,
+              hospitalCode: true,
+              name: true,
+              status: true,
+            },
+          },
+        },
       },
     },
   },
@@ -103,7 +114,10 @@ function toPatientSelfContext(record: PatientSelfContextRecord): PatientSelfCont
       givenName: record.givenName,
       familyName: record.familyName,
     },
-    hospitalRelationships: patientProfile.hospitalRelationships.map(toRelationshipNavigation),
+    hospitalRelationships: patientProfile.hospitalRelationships.map((relationship) => ({
+      ...toRelationshipNavigation(relationship),
+      hospitalId: relationship.hospital.id,
+    })),
   };
 }
 
