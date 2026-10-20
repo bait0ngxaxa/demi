@@ -293,6 +293,12 @@ enum AppointmentLineNotificationOutcome {
   PROCESS_OUTCOME_UNKNOWN
 }
 
+enum NotificationSchedulerTickStatus {
+  COMPLETED
+  FAILED
+  DEFERRED
+}
+
 enum FollowupActivityProgressStatus {
   DONE
   PARTIAL
@@ -1868,6 +1874,7 @@ model AppointmentLineNotificationWorkerState {
 model NotificationSchedulerState {
   id                  Int       @id @default(1)
   lastTickCompletedAt DateTime? @db.Timestamptz(3)
+  lastTickStatus      NotificationSchedulerTickStatus?
 }
 
 model LineAccountBinding {

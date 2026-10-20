@@ -44,6 +44,23 @@ describe("GET /api/internal/scheduler/tick", () => {
     await expect(response.json()).resolves.toEqual({ status: "SKIPPED", reason: "LOCK_BUSY" });
   });
 
+  it("returns HTTP 200 with an explicit failed step for the caller to classify", async () => {
+    const failed = {
+      status: "FAILED",
+      durationMs: 12,
+      steps: {
+        medicationDrain: { status: "COMPLETED", batches: 1, counts: { claimed: 2 } },
+        appointmentDrain: { status: "FAILED", batches: 0, counts: {} },
+        appointmentPurge: { status: "COMPLETED", batches: 1, counts: { deleted: 0 } },
+        medicationPurge: { status: "COMPLETED", batches: 1, counts: { deleted: 0 } },
+      },
+    };
+    mocks.tick.mockResolvedValue(failed);
+    const response = await GET(request(`Bearer ${secret}`));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(failed);
+  });
+
   it("accepts the CRON_SECRET bearer when the dedicated secret is unset", async () => {
     vi.stubEnv("DEMI_SCHEDULER_SECRET", undefined);
     vi.stubEnv("CRON_SECRET", secret);

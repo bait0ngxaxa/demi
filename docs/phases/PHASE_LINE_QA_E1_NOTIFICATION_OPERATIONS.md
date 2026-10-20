@@ -162,3 +162,11 @@ Migration `20261028110000_function_search_path` runs `ALTER FUNCTION public.<nam
 - LINE: `src/modules/line/services/line-reactive-appointment-service.ts`
 - Tests: unit tests beside each changed source; `tests/integration/{notification-scheduler,database-function-search-path}.integration.test.ts` (new), `phase-c-engagement`, `appointments`, `line-webhook-conversation` (extended)
 - Docs/config: this file, `docs/CONTEXT.md` addendum, `.env.example`
+
+## 14. CURRENT correction — scheduler health and bounded queue turns (2026-10-20)
+
+This section supersedes the earlier scheduler outcome/readiness statements above where they conflict. A tick is `COMPLETED` only when both notification drains and both purges complete. A failed step makes the tick `FAILED`; a full per-queue batch or a step skipped at the execution budget is explicitly `DEFERRED`. `NOT_STARTED` is not success. `lastTickCompletedAt` records the last fully completed tick and does not advance after a failed or deferred attempt. The additive `NotificationSchedulerTickStatus` field records the latest locked tick result so readiness becomes unhealthy immediately after `FAILED` or `DEFERRED`, even when the last success is recent; stale readiness also returns HTTP 503. This required one forward-only migration and stores only an aggregate enum, with no patient/provider data.
+
+The tick gives medication and appointment queues one sequential batch each, up to 10 rows per queue, medication first to preserve its 15-minute delivery window. The 180-second launch budget is below the 290-second advisory-lock transaction and 300-second route limit. A full batch is conservatively reported deferred even if the queue happened to empty at exactly the batch boundary; the next tick confirms it. Persistent deferral/failure is visible through systemd nonzero exit and readiness, and requires operational investigation. Transaction lock, leases, idempotency, provider outcomes, retries, generation fencing and kill switches are unchanged.
+
+This code correction has not been activated or observed on a production VPS or LINE provider. See `operations/RELEASE_GATE.md`: code verification, operational verification and business approval remain separate.

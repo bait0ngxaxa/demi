@@ -5,8 +5,82 @@ import { pathToFileURL } from "node:url";
 // Prints the route's aggregate summary only; never the secret.
 
 export const SCHEDULER_TICK_URL = "http://127.0.0.1:3000/api/internal/scheduler/tick";
-// Above the route's maxDuration (300 s) so the route, not this client, decides the outcome.
+// Above maxDuration for hosts that enforce it; the self-hosted tick has its own 290 s Prisma transaction cap.
 export const SCHEDULER_TICK_TIMEOUT_MS = 320_000;
+
+const STEP_NAMES = ["medicationDrain", "appointmentDrain", "appointmentPurge", "medicationPurge"];
+const STEP_COUNT_FIELDS = {
+  medicationDrain: ["materialized", "claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
+  appointmentDrain: ["claimed", "providerAccepted", "retryScheduled", "suppressed", "permanentFailure", "unknownOutcome"],
+  appointmentPurge: ["deleted"],
+  medicationPurge: ["deleted"],
+};
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value, expectedKeys) {
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function isCount(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validateCounts(value, allowedFields) {
+  if (!isRecord(value) || Object.keys(value).some((key) => !allowedFields.includes(key))) return null;
+  const counts = {};
+  for (const [key, count] of Object.entries(value)) {
+    if (!isCount(count)) return null;
+    counts[key] = count;
+  }
+  return counts;
+}
+
+function validateStep(value, name) {
+  if (!isRecord(value) || !["COMPLETED", "FAILED", "DEFERRED", "NOT_STARTED"].includes(value.status) || !isCount(value.batches)) return null;
+  const isDeferred = value.status === "DEFERRED";
+  const expectedKeys = isDeferred ? ["status", "deferredReason", "batches", "counts"] : ["status", "batches", "counts"];
+  if (!hasExactKeys(value, expectedKeys)) return null;
+  const counts = validateCounts(value.counts, STEP_COUNT_FIELDS[name]);
+  if (!counts) return null;
+  if (isDeferred && !["EXECUTION_BUDGET", "BATCH_LIMIT"].includes(value.deferredReason)) return null;
+  return isDeferred
+    ? { status: value.status, deferredReason: value.deferredReason, batches: value.batches, counts }
+    : { status: value.status, batches: value.batches, counts };
+}
+
+function validateSummary(value) {
+  if (!isRecord(value)) return null;
+  if (value.status === "SKIPPED") {
+    return hasExactKeys(value, ["status", "reason"]) && ["LOCK_BUSY", "TOO_SOON"].includes(value.reason)
+      ? { kind: "SKIPPED", reason: value.reason }
+      : null;
+  }
+  if (!["COMPLETED", "FAILED", "DEFERRED"].includes(value.status) || !hasExactKeys(value, ["status", "durationMs", "steps"]) || !isCount(value.durationMs)) return null;
+  if (!isRecord(value.steps) || !hasExactKeys(value.steps, STEP_NAMES)) return null;
+
+  const steps = {};
+  for (const name of STEP_NAMES) {
+    const step = validateStep(value.steps[name], name);
+    if (!step) return null;
+    steps[name] = step;
+  }
+
+  const failed = Object.values(steps).some(({ status }) => status === "FAILED" || status === "NOT_STARTED");
+  const deferred = Object.values(steps).some(({ status }) => status === "DEFERRED");
+  if (value.status === "FAILED" && !failed) return null;
+  if (value.status === "DEFERRED" && !deferred) return null;
+  if (value.status === "COMPLETED" && !failed && !deferred) {
+    return { kind: "COMPLETED", summary: { status: value.status, durationMs: value.durationMs, steps } };
+  }
+  if (failed) return { kind: "FAILED", summary: { status: value.status, durationMs: value.durationMs, steps } };
+  if (deferred) return { kind: "DEFERRED", summary: { status: value.status, durationMs: value.durationMs, steps } };
+  return null;
+}
 
 export async function runSchedulerTick({
   secret = process.env.DEMI_SCHEDULER_SECRET,
@@ -37,15 +111,28 @@ export async function runSchedulerTick({
     log("scheduler_tick", { outcome: "HTTP_ERROR", status: response.status });
     return 1;
   }
-  let summary;
+  let responseBody;
   try {
-    summary = await response.json();
+    responseBody = await response.json();
   } catch {
     log("scheduler_tick", { outcome: "INVALID_RESPONSE" });
     return 1;
   }
-  log("scheduler_tick", { outcome: "OK", summary });
-  return 0;
+  const result = validateSummary(responseBody);
+  if (!result) {
+    log("scheduler_tick", { outcome: "INVALID_RESPONSE" });
+    return 1;
+  }
+  if (result.kind === "SKIPPED") {
+    log("scheduler_tick", { outcome: "SKIPPED", reason: result.reason });
+    return 0;
+  }
+  if (result.kind === "COMPLETED") {
+    log("scheduler_tick", { outcome: "OK", summary: result.summary });
+    return 0;
+  }
+  log("scheduler_tick", { outcome: result.kind, summary: result.summary });
+  return 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

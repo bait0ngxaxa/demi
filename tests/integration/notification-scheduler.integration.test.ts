@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { NotificationSchedulerTickStatus } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
 import {
@@ -24,7 +25,10 @@ function stubSteps(overrides: Partial<NotificationSchedulerTickDependencies> = {
 }
 
 async function setLastTick(value: Date | null): Promise<void> {
-  await database.notificationSchedulerState.update({ where: { id: 1 }, data: { lastTickCompletedAt: value } });
+  await database.notificationSchedulerState.update({ where: { id: 1 }, data: {
+    lastTickCompletedAt: value,
+    lastTickStatus: value ? NotificationSchedulerTickStatus.COMPLETED : null,
+  } });
 }
 
 describe("notification scheduler tick on PostgreSQL", () => {
@@ -56,7 +60,10 @@ describe("notification scheduler tick on PostgreSQL", () => {
     release();
     await expect(running).resolves.toMatchObject({ status: "COMPLETED" });
     expect(blockingDrain).toHaveBeenCalledOnce();
-    expect(await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } })).toMatchObject({ lastTickCompletedAt: expect.any(Date) });
+    expect(await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } })).toMatchObject({
+      lastTickCompletedAt: expect.any(Date),
+      lastTickStatus: NotificationSchedulerTickStatus.COMPLETED,
+    });
   });
 
   it("starts exactly one run among simultaneous ticks", async () => {
@@ -71,7 +78,11 @@ describe("notification scheduler tick on PostgreSQL", () => {
     const completedAt = new Date("2026-10-19T08:00:00.000Z");
     const first = stubSteps({ now: () => completedAt });
     await expect(runNotificationSchedulerTick(first)).resolves.toMatchObject({ status: "COMPLETED" });
-    expect(await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } })).toEqual({ id: 1, lastTickCompletedAt: completedAt });
+    expect(await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } })).toEqual({
+      id: 1,
+      lastTickCompletedAt: completedAt,
+      lastTickStatus: NotificationSchedulerTickStatus.COMPLETED,
+    });
 
     const early = stubSteps({ now: () => new Date(completedAt.getTime() + NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS - 1) });
     await expect(runNotificationSchedulerTick(early)).resolves.toEqual({ status: "SKIPPED", reason: "TOO_SOON" });
@@ -81,10 +92,15 @@ describe("notification scheduler tick on PostgreSQL", () => {
     await expect(runNotificationSchedulerTick(due)).resolves.toMatchObject({ status: "COMPLETED" });
   });
 
-  it("isolates a failing step and still records the completed tick", async () => {
-    const dependencies = stubSteps({ drainAppointment: vi.fn().mockRejectedValue(new Error("private failure")) });
+  it("does not advance the last successful tick when a step fails", async () => {
+    const lastSuccessAt = new Date(Date.now() - 120_000);
+    await setLastTick(lastSuccessAt);
+    const dependencies = stubSteps({
+      now: () => new Date(),
+      drainAppointment: vi.fn().mockRejectedValue(new Error("private failure")),
+    });
     await expect(runNotificationSchedulerTick(dependencies)).resolves.toMatchObject({
-      status: "COMPLETED",
+      status: "FAILED",
       steps: {
         medicationDrain: { status: "COMPLETED" },
         appointmentDrain: { status: "FAILED" },
@@ -92,15 +108,45 @@ describe("notification scheduler tick on PostgreSQL", () => {
         medicationPurge: { status: "COMPLETED" },
       },
     });
-    expect((await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } })).lastTickCompletedAt).not.toBeNull();
+    const state = await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } });
+    expect(state.lastTickCompletedAt).toEqual(lastSuccessAt);
+    expect(state.lastTickStatus).toBe(NotificationSchedulerTickStatus.FAILED);
+    await expect(getNotificationSchedulerReadiness({ database, now: new Date() })).resolves.toMatchObject({
+      healthy: false,
+      lastTickStatus: NotificationSchedulerTickStatus.FAILED,
+      lastTickCompletedAt: lastSuccessAt.toISOString(),
+    });
+  });
+
+  it("keeps repeated full-batch deferrals visible and readiness unhealthy", async () => {
+    const lastSuccessAt = new Date(Date.now() - 120_000);
+    await setLastTick(lastSuccessAt);
+    const dependencies = stubSteps({
+      drainMedication: vi.fn(async () => ({ materialized: 0, ...counts, claimed: 10 })),
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(runNotificationSchedulerTick(dependencies)).resolves.toMatchObject({
+        status: "DEFERRED",
+        steps: { medicationDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT" } },
+      });
+      const state = await database.notificationSchedulerState.findUniqueOrThrow({ where: { id: 1 } });
+      expect(state.lastTickCompletedAt).toEqual(lastSuccessAt);
+      expect(state.lastTickStatus).toBe(NotificationSchedulerTickStatus.DEFERRED);
+      await expect(getNotificationSchedulerReadiness({ database, now: new Date() })).resolves.toMatchObject({
+        healthy: false,
+        lastTickStatus: NotificationSchedulerTickStatus.DEFERRED,
+      });
+    }
   });
 
   it("reports the last completed tick and pending outbox depth without identifiers", async () => {
-    const before = await getNotificationSchedulerReadiness({ database });
-    expect(before.lastTickCompletedAt).toBeNull();
-    await expect(runNotificationSchedulerTick(stubSteps({ now: () => new Date("2026-10-19T08:00:00.000Z") }))).resolves.toMatchObject({ status: "COMPLETED" });
-    const readiness = await getNotificationSchedulerReadiness({ database });
-    expect(readiness.lastTickCompletedAt).toBe("2026-10-19T08:00:00.000Z");
+    const now = new Date();
+    const before = await getNotificationSchedulerReadiness({ database, now });
+    expect(before).toMatchObject({ lastTickCompletedAt: null, lastTickStatus: null, healthy: false });
+    await expect(runNotificationSchedulerTick(stubSteps({ now: () => now }))).resolves.toMatchObject({ status: "COMPLETED" });
+    const readiness = await getNotificationSchedulerReadiness({ database, now });
+    expect(readiness).toMatchObject({ healthy: true, lastTickAgeSeconds: 0, lastTickStatus: NotificationSchedulerTickStatus.COMPLETED, lastTickCompletedAt: now.toISOString() });
     for (const outbox of Object.values(readiness.outboxes)) {
       expect(Object.keys(outbox).sort()).toEqual(["oldestPendingAgeSeconds", "pending"]);
       expect(Number.isInteger(outbox.pending)).toBe(true);

@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
   NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS,
   runNotificationSchedulerTick,
   type NotificationSchedulerTickDependencies,
@@ -85,19 +86,34 @@ describe("notification scheduler tick", () => {
         medicationPurge: { status: "COMPLETED", batches: 1, counts: { deleted: 4 } },
       },
     });
-    const [strings, completedAt] = harness.executeRaw.mock.calls[0] as [TemplateStringsArray, Date];
-    expect(strings.join("?")).toContain(`UPDATE "NotificationSchedulerState" SET "lastTickCompletedAt"`);
+    const [strings, status, repeatedStatus, completedAt] = harness.executeRaw.mock.calls[0] as [TemplateStringsArray, string, string, Date];
+    expect(strings.join("?")).toContain(`UPDATE "NotificationSchedulerState"`);
+    expect(strings.join("?")).toContain(`"lastTickCompletedAt"`);
+    expect(status).toBe("COMPLETED");
+    expect(repeatedStatus).toBe("COMPLETED");
     expect(completedAt).toEqual(now);
     expect(dependencies.logSummary).toHaveBeenCalledWith(result);
   });
 
+  it.each([0, 3])("completes empty and partial queue batches with %i claimed records", async (claimed) => {
+    const harness = fakeDatabase();
+    const dependencies = steps({
+      drainMedication: vi.fn(async () => ({ materialized: 0, ...drainCounts(claimed) })),
+      drainAppointment: vi.fn(async () => drainCounts(claimed)),
+    });
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
+
+    expect(result).toMatchObject({ status: "COMPLETED", steps: { medicationDrain: { status: "COMPLETED", batches: 1 }, appointmentDrain: { status: "COMPLETED", batches: 1 } } });
+    expect(harness.executeRaw).toHaveBeenCalledOnce();
+  });
+
   it.each(["drainMedication", "drainAppointment", "purgeAppointment", "purgeMedication"] as const)(
-    "isolates a failing %s step from the others",
+    "reports a failing %s step and does not advance the successful tick time",
     async (failing) => {
       const harness = fakeDatabase();
       const dependencies = steps({ [failing]: vi.fn().mockRejectedValue(new Error("private failure detail")) });
       const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
-      if (result.status !== "COMPLETED") throw new Error("expected a completed tick");
+      if (result.status !== "FAILED") throw new Error("expected a failed tick");
       const failedStep = { drainMedication: "medicationDrain", drainAppointment: "appointmentDrain", purgeAppointment: "appointmentPurge", purgeMedication: "medicationPurge" }[failing];
       for (const [name, report] of Object.entries(result.steps)) {
         expect(report.status).toBe(name === failedStep ? "FAILED" : "COMPLETED");
@@ -106,36 +122,141 @@ describe("notification scheduler tick", () => {
         expect(dependencies[step]).toHaveBeenCalledOnce();
       }
       expect(harness.executeRaw).toHaveBeenCalledOnce();
+      expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("FAILED");
       expect(JSON.stringify(result)).not.toContain("private failure detail");
     },
   );
 
-  it("keeps launching batches round-robin while a drain returns full batches", async () => {
+  it("reports multiple independent failures without exposing failure details", async () => {
     const harness = fakeDatabase();
-    const drainMedication = vi.fn()
-      .mockResolvedValueOnce(drainCounts(20))
-      .mockResolvedValueOnce(drainCounts(20))
-      .mockResolvedValueOnce(drainCounts(5));
-    const drainAppointment = vi.fn().mockResolvedValueOnce(drainCounts(20)).mockResolvedValueOnce(drainCounts(0));
-    const result = await runNotificationSchedulerTick({ ...steps({ drainMedication, drainAppointment }), database: harness.database });
-    expect(drainMedication).toHaveBeenCalledTimes(3);
-    expect(drainAppointment).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({ steps: { medicationDrain: { batches: 3, counts: { claimed: 45 } }, appointmentDrain: { batches: 2, counts: { claimed: 20 } } } });
+    const dependencies = steps({
+      drainMedication: vi.fn().mockRejectedValue(new Error("private medication detail")),
+      purgeAppointment: vi.fn().mockRejectedValue(new Error("private purge detail")),
+    });
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
+    expect(result).toMatchObject({
+      status: "FAILED",
+      steps: { medicationDrain: { status: "FAILED" }, appointmentDrain: { status: "COMPLETED" }, appointmentPurge: { status: "FAILED" }, medicationPurge: { status: "COMPLETED" } },
+    });
+    expect(JSON.stringify(result)).not.toContain("private");
+    expect(harness.executeRaw).toHaveBeenCalledOnce();
+    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("FAILED");
   });
 
-  it("stops launching new batches once the launch budget is spent", async () => {
+  it.each(["medication", "appointment"] as const)("makes bounded progress for a %s-only backlog", async (backlogged) => {
     const harness = fakeDatabase();
-    let clock = 0;
-    const drainMedication = vi.fn(async () => { clock += 600; return drainCounts(20); });
-    const drainAppointment = vi.fn(async () => { clock += 600; return drainCounts(20); });
-    const dependencies = steps({ drainMedication, drainAppointment, monotonicNow: () => clock, launchBudgetMs: 1_000 });
+    const drainMedication = vi.fn(async () => drainCounts(backlogged === "medication" ? NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE : 0));
+    const drainAppointment = vi.fn(async () => drainCounts(backlogged === "appointment" ? NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE : 0));
+    const dependencies = steps({ drainMedication, drainAppointment });
     const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
     expect(drainMedication).toHaveBeenCalledOnce();
     expect(drainAppointment).toHaveBeenCalledOnce();
+    expect(drainMedication).toHaveBeenCalledWith(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
+    expect(drainAppointment).toHaveBeenCalledWith(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
+    expect(result).toMatchObject({
+      status: "DEFERRED",
+      steps: {
+        medicationDrain: { status: backlogged === "medication" ? "DEFERRED" : "COMPLETED" },
+        appointmentDrain: { status: backlogged === "appointment" ? "DEFERRED" : "COMPLETED" },
+      },
+    });
+    expect(harness.executeRaw).toHaveBeenCalledOnce();
+    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
+  });
+
+  it.each(["medication", "appointment"] as const)("still gives the other queue a turn after a slow %s batch", async (slowQueue) => {
+    const harness = fakeDatabase();
+    let clock = 0;
+    const slowDrain = vi.fn(async (batchSize: number) => {
+      clock += batchSize * 8_000;
+      return drainCounts(batchSize);
+    });
+    const quickDrain = vi.fn(async () => drainCounts(0));
+    const dependencies = steps({
+      drainMedication: slowQueue === "medication" ? slowDrain : quickDrain,
+      drainAppointment: slowQueue === "appointment" ? slowDrain : quickDrain,
+      monotonicNow: () => clock,
+    });
+
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
+
+    expect(dependencies.drainMedication).toHaveBeenCalledOnce();
+    expect(dependencies.drainAppointment).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      status: "DEFERRED",
+      steps: {
+        medicationDrain: { status: slowQueue === "medication" ? "DEFERRED" : "COMPLETED" },
+        appointmentDrain: { status: slowQueue === "appointment" ? "DEFERRED" : "COMPLETED" },
+      },
+    });
+    expect(clock).toBe(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 8_000);
+  });
+
+  it("gives both full queues a bounded turn when every provider call reaches its timeout", async () => {
+    const harness = fakeDatabase();
+    let clock = 0;
+    let activePushes = 0;
+    let maximumConcurrentPushes = 0;
+    const slowProviderPush = vi.fn(async () => {
+      activePushes += 1;
+      maximumConcurrentPushes = Math.max(maximumConcurrentPushes, activePushes);
+      clock += 8_000;
+      activePushes -= 1;
+    });
+    const slowDrain = vi.fn(async (batchSize: number) => {
+      for (let index = 0; index < batchSize; index += 1) await slowProviderPush();
+      return drainCounts(batchSize);
+    });
+    const dependencies = steps({ drainMedication: slowDrain, drainAppointment: slowDrain, monotonicNow: () => clock });
+
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
+
+    expect(slowDrain).toHaveBeenCalledTimes(2);
+    expect(slowDrain).toHaveBeenNthCalledWith(1, NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
+    expect(slowDrain).toHaveBeenNthCalledWith(2, NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
+    expect(slowProviderPush).toHaveBeenCalledTimes(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 2);
+    expect(maximumConcurrentPushes).toBe(1);
+    expect(clock).toBe(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE * 2 * 8_000);
+    expect(result).toMatchObject({
+      status: "DEFERRED",
+      steps: {
+        medicationDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT", batches: 1 },
+        appointmentDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT", batches: 1 },
+        appointmentPurge: { status: "COMPLETED" },
+        medicationPurge: { status: "COMPLETED" },
+      },
+    });
+    expect(harness.executeRaw).toHaveBeenCalledOnce();
+    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
+  });
+
+  it("marks later work deferred when the launch budget is exhausted", async () => {
+    const harness = fakeDatabase();
+    let clock = 0;
+    const drainMedication = vi.fn(async () => {
+      clock = 180_000;
+      return drainCounts(NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE);
+    });
+    const drainAppointment = vi.fn(async () => drainCounts(0));
+    const dependencies = steps({ drainMedication, drainAppointment, monotonicNow: () => clock });
+
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: harness.database });
+
+    expect(drainMedication).toHaveBeenCalledOnce();
+    expect(drainAppointment).not.toHaveBeenCalled();
     expect(dependencies.purgeAppointment).not.toHaveBeenCalled();
     expect(dependencies.purgeMedication).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ status: "COMPLETED", durationMs: 1_200, steps: { appointmentPurge: { status: "NOT_STARTED" }, medicationPurge: { status: "NOT_STARTED" } } });
+    expect(result).toMatchObject({
+      status: "DEFERRED",
+      steps: {
+        medicationDrain: { status: "DEFERRED", deferredReason: "BATCH_LIMIT" },
+        appointmentDrain: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
+        appointmentPurge: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
+        medicationPurge: { status: "DEFERRED", deferredReason: "EXECUTION_BUDGET" },
+      },
+    });
     expect(harness.executeRaw).toHaveBeenCalledOnce();
+    expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
   });
 
   it("logs a bare failure and rethrows when the lock transaction fails", async () => {

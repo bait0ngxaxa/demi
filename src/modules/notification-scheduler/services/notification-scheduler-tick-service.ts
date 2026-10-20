@@ -19,11 +19,17 @@ import { InfrastructureError } from "@/shared/errors/application-error";
 /** Ticks closer than this to the last completed tick are skipped. */
 export const NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS = 60_000;
 /**
- * No new batch starts after this much of a tick has elapsed. One drain batch is at most 20 LINE pushes with an
- * 8-second timeout each, so a batch started just before the budget still finishes inside the route's 300 s maxDuration.
+ * No new work starts after this much of a tick has elapsed. Each queue gets one bounded batch of at most 10
+ * sequential LINE pushes (8-second client timeout each); a slow first queue cannot use an unbounded number of turns.
  */
-export const NOTIFICATION_SCHEDULER_LAUNCH_BUDGET_MS = 90_000;
-// The lock-holding transaction must outlive the steps it guards but end before the platform stops the function.
+export const NOTIFICATION_SCHEDULER_LAUNCH_BUDGET_MS = 180_000;
+/** Each notification queue gets one bounded turn per tick; a full batch is reported as deferred. */
+export const NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE = Math.min(
+  10,
+  APPOINTMENT_LINE_NOTIFICATION_BATCH_SIZE,
+  MEDICATION_LINE_REMINDER_BATCH_SIZE,
+);
+// Bounds the lock-holding callback below the route metadata limit and the self-hosted systemd caller deadline.
 const LOCK_TRANSACTION_TIMEOUT_MS = 290_000;
 // Arbitrary application-wide key reserved for the notification scheduler tick (pg_try_advisory_xact_lock).
 const NOTIFICATION_SCHEDULER_LOCK_KEY = 4_201_028_001;
@@ -32,14 +38,15 @@ export type NotificationSchedulerStepName = "medicationDrain" | "appointmentDrai
 
 /** Aggregate counts only; never user, binding, appointment or medication identifiers. */
 export type NotificationSchedulerStepReport = {
-  status: "COMPLETED" | "FAILED" | "NOT_STARTED";
+  status: "COMPLETED" | "FAILED" | "DEFERRED" | "NOT_STARTED";
+  deferredReason?: "EXECUTION_BUDGET" | "BATCH_LIMIT";
   batches: number;
   counts: Record<string, number>;
 };
 
 export type NotificationSchedulerTickResult =
   | { status: "SKIPPED"; reason: "LOCK_BUSY" | "TOO_SOON" }
-  | { status: "COMPLETED"; durationMs: number; steps: Record<NotificationSchedulerStepName, NotificationSchedulerStepReport> };
+  | { status: "COMPLETED" | "FAILED" | "DEFERRED"; durationMs: number; steps: Record<NotificationSchedulerStepName, NotificationSchedulerStepReport> };
 
 type DrainCounts = { claimed: number } & Record<string, number>;
 
@@ -48,14 +55,14 @@ export type NotificationSchedulerTickDependencies = {
   now?: () => Date;
   monotonicNow?: () => number;
   launchBudgetMs?: number;
-  drainMedication?: () => Promise<DrainCounts>;
-  drainAppointment?: () => Promise<DrainCounts>;
+  drainMedication?: (batchSize: number) => Promise<DrainCounts>;
+  drainAppointment?: (batchSize: number) => Promise<DrainCounts>;
   purgeAppointment?: () => Promise<number>;
   purgeMedication?: () => Promise<number>;
   logSummary?: (summary: NotificationSchedulerTickResult | { status: "FAILED" }) => void;
 };
 
-type Drain = { name: NotificationSchedulerStepName; batchSize: number; run: () => Promise<DrainCounts> };
+type Drain = { name: NotificationSchedulerStepName; batchSize: number; run: (batchSize: number) => Promise<DrainCounts> };
 
 function emptyReport(): NotificationSchedulerStepReport {
   return { status: "NOT_STARTED", batches: 0, counts: {} };
@@ -79,28 +86,43 @@ async function runSteps(
     medicationPurge: emptyReport(),
   };
 
-  // Medication reminders go first in every round: they expire 15 minutes after their occurrence.
-  let drains: Drain[] = [
-    { name: "medicationDrain", batchSize: MEDICATION_LINE_REMINDER_BATCH_SIZE, run: dependencies.drainMedication ?? (() => drainMedicationLineReminderOutbox({ database })) },
-    { name: "appointmentDrain", batchSize: APPOINTMENT_LINE_NOTIFICATION_BATCH_SIZE, run: dependencies.drainAppointment ?? (() => drainAppointmentLineNotificationOutbox({ database })) },
+  // Medication reminders go first because they expire 15 minutes after their occurrence. The bounded batch leaves
+  // time for appointment work before the 180-second launch budget even when every LINE call reaches its 8-second cap.
+  const drains: Drain[] = [
+    {
+      name: "medicationDrain",
+      batchSize: NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
+      run: (batchSize) => dependencies.drainMedication
+        ? dependencies.drainMedication(batchSize)
+        : drainMedicationLineReminderOutbox({ database, batchSize }),
+    },
+    {
+      name: "appointmentDrain",
+      batchSize: NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
+      run: (batchSize) => dependencies.drainAppointment
+        ? dependencies.drainAppointment(batchSize)
+        : drainAppointmentLineNotificationOutbox({ database, batchSize }),
+    },
   ];
-  // Round-robin batches; a drain continues only while its last batch was full, and a failed drain stops for this tick.
-  while (drains.length > 0 && withinBudget()) {
-    const continuing: Drain[] = [];
-    for (const drain of drains) {
-      if (!withinBudget()) break;
-      const report = steps[drain.name];
-      try {
-        const counts = await drain.run();
-        report.status = "COMPLETED";
-        report.batches += 1;
-        addCounts(report, counts);
-        if (counts.claimed >= drain.batchSize) continuing.push(drain);
-      } catch {
-        report.status = "FAILED";
-      }
+  for (const drain of drains) {
+    const report = steps[drain.name];
+    if (!withinBudget()) {
+      report.status = "DEFERRED";
+      report.deferredReason = "EXECUTION_BUDGET";
+      continue;
     }
-    drains = continuing;
+    try {
+      const counts = await drain.run(drain.batchSize);
+      report.status = "COMPLETED";
+      report.batches = 1;
+      addCounts(report, counts);
+      if (counts.claimed >= drain.batchSize) {
+        report.status = "DEFERRED";
+        report.deferredReason = "BATCH_LIMIT";
+      }
+    } catch {
+      report.status = "FAILED";
+    }
   }
 
   const purges: Array<{ name: NotificationSchedulerStepName; run: () => Promise<number> }> = [
@@ -108,8 +130,12 @@ async function runSteps(
     { name: "medicationPurge", run: dependencies.purgeMedication ?? (() => purgeTerminalMedicationLineReminderNotifications({ database })) },
   ];
   for (const purge of purges) {
-    if (!withinBudget()) break;
     const report = steps[purge.name];
+    if (!withinBudget()) {
+      report.status = "DEFERRED";
+      report.deferredReason = "EXECUTION_BUDGET";
+      continue;
+    }
     try {
       const deleted = await purge.run();
       report.status = "COMPLETED";
@@ -120,6 +146,13 @@ async function runSteps(
     }
   }
   return steps;
+}
+
+function tickStatus(steps: Record<NotificationSchedulerStepName, NotificationSchedulerStepReport>): "COMPLETED" | "FAILED" | "DEFERRED" {
+  const reports = Object.values(steps);
+  if (reports.some(({ status }) => status === "FAILED" || status === "NOT_STARTED")) return "FAILED";
+  if (reports.some(({ status }) => status === "DEFERRED")) return "DEFERRED";
+  return "COMPLETED";
 }
 
 /**
@@ -156,10 +189,17 @@ export async function runNotificationSchedulerTick(
       }
 
       const steps = await runSteps(dependencies, database, () => monotonicNow() - startedAt < launchBudgetMs);
+      const status = tickStatus(steps);
       await transaction.$executeRaw`
-        UPDATE "NotificationSchedulerState" SET "lastTickCompletedAt" = ${now()} WHERE "id" = 1
+        UPDATE "NotificationSchedulerState"
+        SET "lastTickStatus" = CAST(${status} AS "NotificationSchedulerTickStatus"),
+            "lastTickCompletedAt" = CASE
+              WHEN CAST(${status} AS "NotificationSchedulerTickStatus") = 'COMPLETED'::"NotificationSchedulerTickStatus" THEN ${now()}
+              ELSE "lastTickCompletedAt"
+            END
+        WHERE "id" = 1
       `;
-      return { status: "COMPLETED", durationMs: Math.max(0, Math.round(monotonicNow() - startedAt)), steps };
+      return { status, durationMs: Math.max(0, Math.round(monotonicNow() - startedAt)), steps };
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
       maxWait: 5_000,

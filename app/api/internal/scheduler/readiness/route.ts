@@ -11,7 +11,8 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: "ไม่พบปลายทางนี้" }, { status: 404, headers: NO_STORE });
   }
   try {
-    return Response.json(await getNotificationSchedulerReadiness(), { headers: NO_STORE });
+    const readiness = await getNotificationSchedulerReadiness();
+    return Response.json(readiness, { status: readiness.healthy ? 200 : 503, headers: NO_STORE });
   } catch {
     return Response.json({ error: "บริการไม่พร้อมใช้งาน" }, { status: 503, headers: NO_STORE });
   }

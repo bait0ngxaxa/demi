@@ -59,6 +59,42 @@ describe("systemd scheduler units", () => {
   });
 });
 
+describe("scheduler and restore release gates", () => {
+  const scheduler = read("../src/modules/notification-scheduler/services/notification-scheduler-tick-service.ts");
+  const readiness = read("../src/modules/notification-scheduler/services/notification-scheduler-readiness-service.ts");
+  const releaseGate = read("../docs/operations/RELEASE_GATE.md");
+  const restoreRunbook = read("../docs/operations/SUPABASE_PRODUCTION.md");
+  const schedulerStatusMigration = read("../prisma/migrations/20261029120000_notification_scheduler_tick_status/migration.sql");
+
+  it("defines bounded per-queue scheduler work and a successful-tick readiness signal", () => {
+    expect(scheduler).toContain("NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE");
+    expect(scheduler).toContain('"DEFERRED"');
+    expect(readiness).toContain("NOTIFICATION_SCHEDULER_HEALTHY_MAX_AGE_MS");
+    expect(readiness).toContain("healthy:");
+    expect(readiness).toContain("lastTickStatus");
+    expect(schedulerStatusMigration).toContain('ADD COLUMN "lastTickStatus"');
+    expect(schedulerStatusMigration).toContain('"lastTickCompletedAt" IS NOT NULL THEN \'COMPLETED\'::"NotificationSchedulerTickStatus"');
+    expect(releaseGate).toContain("DEFERRED");
+    expect(releaseGate).toContain("NOT_STARTED");
+    expect(releaseGate).toContain("lastTickStatus=COMPLETED");
+  });
+
+  it("requires format-specific fail-fast restore and validation evidence", () => {
+    expect(restoreRunbook).toContain("ON_ERROR_STOP=1");
+    expect(restoreRunbook).not.toContain("ON_ERROR_STOP=0");
+    expect(restoreRunbook).toContain("pg_restore");
+    expect(restoreRunbook).toContain("migrate diff");
+    expect(restoreRunbook).toContain("backup-time reference");
+    expect(releaseGate).toContain("backup-time reference");
+  });
+
+  it("keeps code, operational, and business acceptance as separate states", () => {
+    expect(releaseGate).toContain("CODE VERIFIED");
+    expect(releaseGate).toContain("OPERATIONALLY VERIFIED");
+    expect(releaseGate).toContain("BUSINESS APPROVED");
+  });
+});
+
 describe("nginx example", () => {
   const nginx = read("nginx/demi.conf.example");
   const limits = [...nginx.matchAll(/location ([^{]+)\{[^}]*?client_max_body_size (\d+)k;/gu)]

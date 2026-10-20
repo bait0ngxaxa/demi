@@ -176,12 +176,20 @@ systemctl list-timers demi-scheduler.timer
 
 timer ยิงทุก 5 นาที (`Persistent=true` จะรันรอบที่พลาดหนึ่งครั้งหลังเครื่องกลับมา) ตัว tick เองจะข้ามถ้า tick อื่นถือ lock อยู่ หรือ tick ล่าสุดจบไม่ถึง 60 วินาที (E1 §2) `/api/internal/*` ถูก nginx ตอบ 404 เสมอ timer จึงเรียก `127.0.0.1:3000` ตรง
 
+บน self-hosted Node process ค่า route `maxDuration=300` เป็น metadata ของ deployment platform ไม่ใช่ตัวตัด request ของ systemd/PM2 เอง; tick จึงมี Prisma transaction timeout 290 วินาที, CLI timeout 320 วินาที และ systemd `TimeoutStartSec=330` เป็นขอบเขตแยกกัน ห้ามเพิ่มเวลาใดเวลาหนึ่งโดยไม่ทบทวนลำดับ deadline ทั้งชุด
+
 ตรวจ readiness ของ scheduler (บน VPS เท่านั้น):
 
 ```sh
 sudo -u demi -H node --env-file=/etc/demi/demi.env -e 'fetch("http://127.0.0.1:3000/api/internal/scheduler/readiness",{headers:{authorization:`Bearer ${process.env.DEMI_SCHEDULER_SECRET}`}}).then(async(r)=>console.log(r.status,await r.text()))'
 journalctl -u demi-scheduler.service -n 20 --no-pager
 ```
+
+ผลปกติต้องเป็น HTTP `200` และ JSON มี `healthy: true`; `lastTickAgeSeconds` ต้องอยู่ระหว่าง 0–600 วินาที และ `lastTickStatus=COMPLETED`; `healthy: false` ตอบ HTTP `503` แม้ endpoint ยังส่ง aggregate queue counts/age ได้ การข้าม `LOCK_BUSY` และ `TOO_SOON` เป็นผลปกติของ tick; `FAILED`, `DEFERRED`, `NOT_STARTED`, `INVALID_RESPONSE`, `HTTP_ERROR` หรือ `UNREACHABLE` ทำให้ systemd unit ล้มเหลวและต้องตรวจ log ห้ามสรุปว่า health ผ่านจาก HTTP 200 ของ tick เพียงอย่างเดียว
+
+`OK`/`COMPLETED` ยืนยันว่าแต่ละ bounded step จบและผล delivery ถูกบันทึกตาม service contract ไม่ได้ยืนยันว่า LINE ยอมรับทุกข้อความ ตรวจ aggregate `providerAccepted`, `retryScheduled`, `suppressed`, `permanentFailure` และ `unknownOutcome` ใน log; triage `permanentFailure`/`unknownOutcome` ที่ยังไม่อธิบาย และติดตาม retry/backlog จนคลี่คลาย
+
+แต่ละ tick ทำ drain ได้ไม่เกินหนึ่ง batch ต่อ queue (สูงสุด 10 รายการต่อ queue) โดยยาได้ทำก่อนตามหน้าต่างส่ง 15 นาที; batch เต็มรายงาน `DEFERRED/BATCH_LIMIT` และงานที่ไม่ได้เริ่มเพราะงบเวลาเป็น `DEFERRED/EXECUTION_BUDGET` ทั้งคู่ไม่ถือว่าสำเร็จ ตรวจ `oldestPendingAgeSeconds` และยอดค้างของทั้ง appointment/medication ร่วมกับ log ทุกครั้ง การค้างหรือ defer ต่อเนื่องต้องหยุด rollout ของ notification และแก้ backlog/สาเหตุ ก่อนเปิด feature ต่อ
 
 ## 2. Deploy (ทุก release)
 

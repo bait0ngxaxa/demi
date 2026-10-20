@@ -12,7 +12,7 @@ Type=oneshot
 User=demi
 Group=demi
 ExecStart=/usr/bin/node --env-file=/etc/demi/demi.env /srv/demi/current/scripts/scheduler-tick.mjs
-# Above the script's 320 s client timeout (route maxDuration is 300 s).
+# The route's maxDuration is deployment metadata; Prisma bounds the tick transaction at 290 s and the CLI at 320 s.
 TimeoutStartSec=330
 NoNewPrivileges=true
 PrivateTmp=true

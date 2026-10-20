@@ -25,11 +25,20 @@ describe("GET /api/internal/scheduler/readiness", () => {
     expect(mocks.readiness).not.toHaveBeenCalled();
   });
 
-  it("returns the readiness view with no-store", async () => {
-    const view = { lastTickCompletedAt: null, outboxes: { appointmentLineNotifications: { pending: 0, oldestPendingAgeSeconds: null }, medicationLineReminders: { pending: 2, oldestPendingAgeSeconds: 61 } } };
+  it("returns a healthy readiness view with no-store", async () => {
+    const view = { healthy: true, lastTickAgeSeconds: 1, lastTickStatus: "COMPLETED", lastTickCompletedAt: "2026-10-19T08:00:00.000Z", outboxes: { appointmentLineNotifications: { pending: 0, oldestPendingAgeSeconds: null }, medicationLineReminders: { pending: 2, oldestPendingAgeSeconds: 61 } } };
     mocks.readiness.mockResolvedValue(view);
     const response = await GET(request(`Bearer ${secret}`));
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual(view);
+  });
+
+  it("returns 503 immediately when the latest tick is deferred despite a recent successful tick", async () => {
+    const view = { healthy: false, lastTickAgeSeconds: 301, lastTickStatus: "DEFERRED", lastTickCompletedAt: "2026-10-19T08:00:00.000Z", outboxes: { appointmentLineNotifications: { pending: 0, oldestPendingAgeSeconds: null }, medicationLineReminders: { pending: 0, oldestPendingAgeSeconds: null } } };
+    mocks.readiness.mockResolvedValue(view);
+    const response = await GET(request(`Bearer ${secret}`));
+    expect(response.status).toBe(503);
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toEqual(view);
   });
