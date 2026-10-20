@@ -24,6 +24,7 @@ import type { HospitalReportingHospital } from "@/modules/reporting/services/hos
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
 import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 
+import { ExportPreview, PROGRAM_ENTRY_HREF } from "./export-preview";
 import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
 
 type ReportView = "overview" | "service";
@@ -627,6 +628,15 @@ export function HospitalReportWorkspace({
           : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
         title="รายงานโรงพยาบาล"
       />
+
+      <div className="mt-5">
+        <ExportPreview
+          hospitalName={page.hospital.name}
+          programEntryHref={isGlobalAdmin ? undefined : PROGRAM_ENTRY_HREF}
+          programRows={page.counts.programs.total}
+          relationshipsWithoutProgram={page.counts.relationshipsWithoutProgram.value}
+        />
+      </div>
 
       {isGlobalAdmin ? (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">

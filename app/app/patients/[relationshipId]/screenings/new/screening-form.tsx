@@ -171,6 +171,13 @@ export function ScreeningForm({
           <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
         </Alert>
 
+        {programId ? null : (
+          <Alert variant="warning">
+            แบบประเมินนี้บันทึกนอก Program จึงจะไม่อยู่ในรายงานโรงพยาบาลตาม Program (ไฟล์ Excel)
+            หากต้องการให้อยู่ในรายงาน ให้บันทึกจากครั้งที่ของ Program ของผู้ป่วยรายนี้
+          </Alert>
+        )}
+
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">

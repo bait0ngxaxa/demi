@@ -1,18 +1,31 @@
 # RELEASE_GATE — เงื่อนไขก่อนเปิด production
 
-ใช้ตัดสินว่า production (VPS + Supabase Pro + LINE provider production + Cloudflare) พร้อมแค่ไหน โดยแยกหลักฐานเป็นสามสถานะที่ใช้แทนกันไม่ได้:
+ใช้ตัดสินว่า production (VPS + Supabase Pro + LINE provider production + Cloudflare) พร้อมแค่ไหน แบ่งเป็นสามส่วนตามเจ้าของงาน:
+
+| ส่วน | เจ้าของ | ความหมายต่อทีม product |
+| --- | --- | --- |
+| **A. Product / technical** | ทีม product (ผู้ดูแลระบบ/owner ตามแถว) | product backlog และ operational gates ที่ทีม product ต้องปิดเอง |
+| **B. Agency / hospital governance** | หน่วยงานพันธมิตรที่ประสานกับโรงพยาบาล | ข้อมูลประกอบสำหรับทีม product **ไม่ใช่** product backlog; product มี hook ไว้แล้ว หรือไม่ต้องทำอะไร |
+| **C. Customer content inputs** | ลูกค้า (ผู้ให้เนื้อหา) | ลูกค้าส่งเนื้อหา; product มีฟีเจอร์และ placeholder ที่ระบุชัดแล้ว |
+
+ทิศทางจาก Owner (final): DEMI เป็นงานสร้าง product การตัดสินด้านนโยบาย กฎหมาย และ data governance (PDPA/ก-25, data residency, ข้อความความยินยอม, ข้อความ Terms/Privacy, กฎการเปิดเผยข้อมูลจริง, การปกปิดจำนวนต่ำ, การส่งต่อข้อมูล) เป็นของหน่วยงานพันธมิตร จึงไม่นับเป็นงาน product ที่ค้าง ส่วนเนื้อหาที่หน่วยงานหรือลูกค้าจะส่งมาภายหลัง product มีฟีเจอร์และ placeholder ที่ระบุชัดไว้แล้ว
+
+หลักฐานแยกเป็นสามสถานะที่ใช้แทนกันไม่ได้:
 
 - **CODE VERIFIED** — implementation และ regression tests ใน repository ผ่านตามขอบเขตที่ระบุ; ไม่ยืนยันการตั้งค่า provider, infrastructure หรือ UAT ภายนอก
 - **OPERATIONALLY VERIFIED** — deployment, provider configuration, scheduler/monitoring, restore drill และ infrastructure checks ผ่านใน target environment พร้อมหลักฐานลงวันที่
-- **BUSINESS APPROVED** — owner/customer และ privacy/legal decision ที่เกี่ยวข้องอนุมัติพร้อมหลักฐาน; ต้องผ่านก่อนใช้ข้อมูลผู้ป่วยจริง
+- **BUSINESS APPROVED** — คำตัดสินของหน่วยงานพันธมิตร (ส่วน B) หรือเนื้อหาจากลูกค้า (ส่วน C) ได้รับและบันทึกพร้อมหลักฐาน; การใช้ข้อมูลผู้ป่วยจริงเป็นการตัดสินของหน่วยงานพันธมิตรตามส่วน B
 
-ข้อ A. Technical ด้านล่างเป็น operational gates; ข้อ B. Business gates เป็น business approvals. มี code artifact หรือ automated test อย่างเดียวไม่ทำให้ข้อ A/B ผ่าน และการผ่านข้อ A ไม่ได้แปลว่าอนุมัติข้อ B
+มี code artifact หรือ automated test อย่างเดียวไม่ทำให้แถวใดในส่วน A–C ผ่าน และการผ่านส่วน A ไม่ได้แทนคำตัดสินในส่วน B
 
 สถานะ: `เปิด` / `ผ่าน` / `ไม่ผ่าน` / `N/A (เหตุผล)` ช่องหลักฐานให้ใส่ลิงก์หรือที่เก็บหลักฐาน (วันที่ + ผู้บันทึก) ห้ามใส่ secret, connection string หรือข้อมูลผู้ป่วย
 
 ณ วันที่ 2026-10-20 ทุก external gate ด้านล่างยังเป็น `เปิด`; ไม่มีหลักฐานจาก VPS, Cloudflare, Supabase, LINE Provider หรือ real-device UAT ใน repository นี้ สถานะ CODE VERIFIED ให้บันทึกแยกพร้อม commit SHA และผล checks ที่รันจริงเท่านั้น
 
-## A. Technical
+## A. Product / technical — เจ้าของ: ทีม product
+
+### A.1 Operational gates (T-01..T-20)
+
 
 | ID | รายการ | Owner | หลักฐานที่ต้องมี | สถานะ |
 | --- | --- | --- | --- | --- |
@@ -37,16 +50,33 @@
 | T-19 | ข้อมูลตั้งต้นของ production: Platform ADMIN ผ่าน `node --env-file=/etc/demi/demi.env scripts/admin-bootstrap.mjs` และวิธีนำเข้า Hospital master (`npm run db:seed -- --apply` ถูกออกแบบให้**ปฏิเสธ** production จึงต้องมีขั้นตอนที่อนุมัติแยก) | owner | วิธีที่อนุมัติ + ผล | เปิด |
 | T-20 | Rollback ซ้อมแล้วหนึ่งครั้ง (`DEPLOY_VPS.md` §3) ด้วย release ที่มีแต่ migration แบบ expand-only | ผู้ดูแลระบบ | เวลาและผล `/api/health` | เปิด |
 
-## B. Business gates (ปิดกั้นข้อมูลผู้ป่วยจริง)
+### A.2 Product feature gaps (product backlog)
 
 | ID | รายการ | Owner | หลักฐานที่ต้องมี | สถานะ |
 | --- | --- | --- | --- | --- |
-| B-01 | **ก-25 PDPA**: ฐานทางกฎหมายและการประมวลผลข้อมูลสุขภาพ รวม **จ-6** (ฐานความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน) และ consent/Terms/Privacy ที่เกี่ยวข้อง (WB-PD-06) | owner + DPO/ที่ปรึกษากฎหมาย | เอกสารตัดสินใจที่ลงนาม | เปิด |
-| B-02 | **Data residency** (ส่วนหนึ่งของ ก-25): region ของ Supabase (`<SUPABASE_REGION>`), Cloudflare ที่ถอดรหัส TLS และประมวลผล request ที่ edge นอกประเทศได้, LINE และที่เก็บ backup/restore drill | owner + DPO/ที่ปรึกษากฎหมาย | คำตอบด้านกฎหมาย + region ที่อนุมัติ | เปิด |
-| B-03 | **ACCOUNT-04** การกู้คืนบัญชี: Phase I หรือขั้นตอนชั่วคราวที่อนุมัติแล้ว (ปัจจุบัน SECURITY_GATED ตาม ADR-0012) | owner + Security | ผลของ Phase I หรือขั้นตอนชั่วคราวที่ลงนาม | เปิด |
-| B-04 | **WB-PD-01** แบบฟอร์ม "เส้นทางสุขภาพ" (ก-3) | ลูกค้า | แบบฟอร์มจริง | เปิด |
-| B-05 | **WB-PD-02** รายการคำ "ผลลัพธ์ที่ได้" (BR-05) | ลูกค้า | รายการที่ยืนยันแล้ว | เปิด |
-| B-06 | **WB-PD-03** CVD risk score: บันทึกว่าปิดแล้ว (D7 → WB-DF-17 เจ้าหน้าที่กรอก %) ให้ลูกค้ายืนยันการปิด | ลูกค้า | การยืนยัน | เปิด |
+| F-01 (เดิม B-03) | **ACCOUNT-04 Phase I account recovery — ยังไม่ได้ implement**: `/recover` แสดงเพียง “ยังไม่สามารถกู้คืนรหัสผ่านได้”; assisted recovery ปิดตาม ADR-0012 จนกว่าจะมีวิธีพิสูจน์ความเป็นเจ้าของบัญชีที่อนุมัติ | ทีม product + Security | Phase I ที่ implement และทดสอบแล้ว หรือขั้นตอนชั่วคราวที่ลงนาม | เปิด |
+| F-02 | **หน้าจอ Terms / Privacy / ความยินยอม พร้อมบันทึกการยอมรับแบบมีเวอร์ชัน — ยังไม่มี**: ไม่มีหน้าแสดง ไม่มีการยอมรับ และไม่มีบันทึกเวอร์ชันที่ผู้ใช้ยอมรับ; product สร้างฟีเจอร์พร้อมข้อความ placeholder ที่ระบุชัด ส่วนข้อความจริงเป็นของหน่วยงานพันธมิตร (G-01) | ทีม product | หน้าจอ + บันทึกการยอมรับ (ผู้ใช้, เวอร์ชัน, เวลา) + tests | เปิด |
+
+ดูรายการงาน product ทั้งหมดที่เหลือใน [REMAINING_GAPS.md](../requirements/REMAINING_GAPS.md)
+
+## B. Agency / hospital governance — เจ้าของ: หน่วยงานพันธมิตร (ข้อมูลประกอบ ไม่ใช่ product backlog)
+
+| ID | รายการ | Owner | สิ่งที่ product มีแล้ว / hook | สถานะ |
+| --- | --- | --- | --- | --- |
+| G-01 (เดิม B-01) | **ก-25 PDPA**: ฐานทางกฎหมายและการประมวลผลข้อมูลสุขภาพ รวม **จ-6** (ฐานความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน) และข้อความ consent/Terms/Privacy (WB-PD-06) | หน่วยงานพันธมิตร + DPO/ที่ปรึกษากฎหมาย | ข้อความจะแสดงในหน้าจอ F-02 เมื่อได้รับ; รายงานติดป้าย “ผู้ป่วยบันทึกเอง” สำหรับค่าเฉลี่ยออกกำลังกาย | เปิด |
+| G-02 (เดิม B-02) | **Data residency** (ส่วนหนึ่งของ ก-25): region ของ Supabase (`<SUPABASE_REGION>`), Cloudflare ที่ถอดรหัส TLS และประมวลผล request ที่ edge นอกประเทศได้, LINE และที่เก็บ backup/restore drill | หน่วยงานพันธมิตร + DPO/ที่ปรึกษากฎหมาย | ไม่ต้องทำอะไรใน product; region เป็นการตั้งค่า infrastructure (`SUPABASE_PRODUCTION.md`) | เปิด |
+| G-03 | **Record-time disclosure** ของ Parent summary view/export (REPORTING_ACCESS_CANONICAL §5): Parent OWNER ปัจจุบันเห็น 9 ค่า active-cohort ที่อาจรวม record ก่อน Parent–Child link ปัจจุบันได้หรือไม่ | หน่วยงานพันธมิตร | Query ใช้ current hierarchy; ไม่สร้าง effective date ขึ้นเอง | เปิด |
+| G-04 | **Small-count aggregate privacy**: ต้องปกปิดหรือทบทวนจำนวนต่ำใน Parent summary หรือไม่ (§5) | หน่วยงานพันธมิตร | ไม่มี suppression threshold ใน product จนกว่าจะได้รับกฎ | เปิด |
+| G-05 | **Onward distribution**: ผู้รับปลายทาง ชุดข้อมูล และกระบวนการส่งต่อไฟล์ที่ Global ADMIN/โรงพยาบาลดาวน์โหลด (§5) | หน่วยงานพันธมิตร | ทุกการส่งออกบันทึก audit event แล้ว | เปิด |
+
+## C. Customer content inputs — เจ้าของ: ลูกค้า (product มี placeholder แล้ว)
+
+| ID | รายการ | Owner | Placeholder ใน product | สถานะ |
+| --- | --- | --- | --- | --- |
+| C-01 (เดิม B-04) | **WB-PD-01** แบบฟอร์ม “เส้นทางสุขภาพ” (ก-3): ช่อง ตัวเลือก และการให้คะแนน | ลูกค้า | ครั้งที่ 1 และ 6 แสดง “รอแบบฟอร์มจากหน่วยงาน” | เปิด |
+| C-02 (เดิม B-05) | **WB-PD-02** รายการคำ “ผลลัพธ์ที่ได้” (ก-9 / BR-05) | ลูกค้า | คอลัมน์ผลลัพธ์ในรายงานการจัดบริการแสดง “ไม่มีแหล่งข้อมูลในระบบ” | เปิด |
+| C-03 | **ก-8** เกณฑ์การให้คะแนน PAM/PROMs ฉบับจริง | ลูกค้า | แบบประเมินใช้ชุดคำถาม/เกณฑ์จากระบบ DEMI เดิม และแสดงประกาศ “แบบประเมินนี้ยังอยู่ระหว่างยืนยันข้อกำหนด” บนฟอร์ม | เปิด |
+| C-04 (เดิม B-06) | **WB-PD-03** CVD risk score: บันทึกว่าปิดแล้ว (D7 → WB-DF-17 เจ้าหน้าที่กรอก %) ให้ลูกค้ายืนยันการปิด | ลูกค้า | เจ้าหน้าที่กรอก % ที่ Baseline/Final แล้ว | เปิด |
 
 ## หมายเหตุ: สิ่งที่ repository มีแล้ว (ไม่ใช่หลักฐานของ production)
 
@@ -56,7 +86,7 @@
 | --- | --- |
 | CODE VERIFIED | commit SHA, focused regression tests, lint/typecheck และ integration checks ที่รันจริง; ถ้าไม่รันให้ระบุเหตุผลและห้ามอ้างว่าผ่าน |
 | OPERATIONALLY VERIFIED | ต้องมีหลักฐานจาก target environment สำหรับ T-01–T-20 ที่เกี่ยวข้อง; repository artifacts ไม่เพียงพอ |
-| BUSINESS APPROVED | ต้องมีการอนุมัติและ privacy/legal evidence ตาม B-01–B-06; ยังเป็น `เปิด` จนมีหลักฐาน |
+| BUSINESS APPROVED | คำตัดสินของหน่วยงานพันธมิตรตาม G-01–G-05 และเนื้อหาจากลูกค้าตาม C-01–C-04; ยังเป็น `เปิด` จนมีหลักฐาน |
 
 - `deploy/pm2/ecosystem.config.cjs`, `deploy/nginx/demi.conf.example`, `deploy/systemd/demi-scheduler.{service,timer}`, `scripts/scheduler-tick.mjs`, `.env.production.example`, `npm run env:check`, `/api/health` + `/api/health/live`
 - การทดสอบอัตโนมัติ: `deploy/deploy-artifacts.test.mjs` (PM2 1 instance/`kill_timeout` ≥ 30000, ขนาด body ตรงกับ validator, header ของ proxy, Cloudflare mTLS, timeout < 100 s, timer), `scripts/env-check.test.mjs`, `scripts/scheduler-tick.test.mjs`, unit/integration ของ readiness

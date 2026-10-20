@@ -1410,6 +1410,54 @@ export async function getGlobalAdminHospitalReportingDatasetForExport(
   return getHospitalReportingDatasetForOperation(actor, input, dependencies, "GLOBAL_ADMIN");
 }
 
+export type HospitalReportExportPreview = {
+  hospital: { id: string; name: string };
+  cohort: HospitalReportCohort;
+  /** Workbook Program rows: ACTIVE/COMPLETED Programs in the cohort (one row per Program before continuations). */
+  programRows: number;
+  relationships: number;
+  /** Counted in the workbook header only; these Patients have no Program row. */
+  relationshipsWithoutProgram: number;
+};
+
+/**
+ * P1 Part D: the counts an export will contain, read under the export capability with the same cohort filter
+ * and summary query the workbook uses, so the page can say what the file holds before it is downloaded.
+ */
+export async function getHospitalReportExportPreview(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<HospitalReportExportPreview> {
+  const parsed = hospitalReportExportRequestSchema.safeParse(input);
+  if (!parsed.success) throw new NotFoundError();
+  const cohort = parsed.data.cohort ?? "ACTIVE";
+
+  try {
+    return await runConsistentRead(dependencies.database ?? getPrisma(), async (transaction) => {
+      const access = await resolveAuthorizedHospitalReportScope(
+        actor,
+        parsed.data.hospitalId,
+        "HOSPITAL_OWNER",
+        "export",
+        transaction,
+        cohort,
+      );
+      const summary = await loadSummary(transaction, access.hospital.id, cohort);
+      return {
+        hospital: { id: access.hospital.id, name: access.hospital.name },
+        cohort,
+        programRows: summary.programs.total,
+        relationships: summary.patientHospitalRelationships.value,
+        relationshipsWithoutProgram: summary.relationshipsWithoutProgram.value,
+      };
+    });
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
+    throw new InfrastructureError("Hospital report export preview could not be loaded");
+  }
+}
+
 export const hospitalReportQueryInternals = {
   assertExportBounds,
   countExportSourceRows,

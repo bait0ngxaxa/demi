@@ -240,6 +240,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
     expect(markup).not.toContain("exact-Hospital");
     expect(markup).not.toContain("Platform ADMIN");
+    expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
   });
 
   it("does not create a fake Program row when only a relationship without a Program exists", () => {
@@ -247,6 +248,21 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ยังไม่มี Program ที่รายงานได้");
     expect(markup).toContain("มีความสัมพันธ์ผู้ป่วย 1 รายที่ยังไม่มี Program");
     expect(markup).not.toContain("Program ID:");
+    // P1 Part D: the pre-download summary explains the empty workbook and links to where a Program is opened.
+    expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
+    expect(markup).toContain("โรงพยาบาล: โรงพยาบาลทดสอบ");
+    expect(markup).toContain("0 Program");
+    expect(markup).toContain("ไฟล์นี้จะมีเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล");
+    expect(markup).toContain('href="/app/patients"');
+  });
+
+  it("shows the pre-download row counts without an empty-file warning when Programs exist", () => {
+    const markup = render("overview");
+    expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
+    expect(markup).toContain("2 Program");
+    expect(markup).toContain("ผู้ป่วยที่ยังไม่มี Program (นับในหัวรายงาน ไม่มีแถวในไฟล์)");
+    expect(markup).toContain("1 ราย");
+    expect(markup).not.toContain("ไฟล์นี้จะมีเฉพาะหัวรายงาน");
   });
 
   it("distinguishes an empty continuation page from an empty Hospital report", () => {

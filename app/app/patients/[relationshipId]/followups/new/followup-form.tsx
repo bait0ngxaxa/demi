@@ -402,7 +402,12 @@ export function FollowupForm({
             <p className="mt-3 text-sm leading-6 text-text-muted">
               การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนเป้าหมายของโปรแกรมเดียวกันได้
             </p>
-          ) : null}
+          ) : (
+            <Alert className="mt-4" variant="warning">
+              การติดตามผลนี้บันทึกนอก Program จึงจะไม่อยู่ในรายงานโรงพยาบาลตาม Program (ไฟล์ Excel)
+              หากต้องการให้อยู่ในรายงาน ให้บันทึกจากครั้งที่ของ Program ของผู้ป่วยรายนี้
+            </Alert>
+          )}
         </Panel>
 
         <Panel>

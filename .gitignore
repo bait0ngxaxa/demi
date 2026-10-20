@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 docs/**/รายชื่อคนไข้*.xlsx
+.demo-credentials.local.md
 
 # debug
 npm-debug.log*
