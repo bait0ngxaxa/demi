@@ -20,14 +20,19 @@ const record = {
   id: programId,
   patientHospitalRelationshipId: relationshipId,
   status: "ACTIVE",
+  patientHospitalRelationship: { hospitalProfile: null },
   initialBaseline: null,
   roundVitals: [],
   roundActivities: [],
+  roundCompletions: [1, 2].map((roundNumber) => ({ roundNumber, completedAt: new Date("2026-10-10T00:00:00Z"), completedByUser: recorder })),
+  roundStepSkips: [
+    { roundNumber: 3, stepCode: "DREAM_CARD", reasonCode: "PATIENT_DECLINED", note: null, createdAt: new Date("2026-10-20T00:00:00Z"), skippedByUser: recorder },
+  ],
   screeningAssessment: null,
-  serviceOneRoutine: null,
-  serviceOneFloatingChart: null,
-  serviceOneDreamCard: null,
-  serviceOneConfidence: null,
+  serviceOneRoutines: [],
+  serviceOneFloatingCharts: [],
+  serviceOneDreamCards: [],
+  serviceOneConfidences: [],
   goalPlans: [],
   followups: [
     {
@@ -36,6 +41,7 @@ const record = {
       serviceDate: new Date("2026-10-20T00:00:00Z"),
       recordedAt: new Date("2026-10-20T04:00:00Z"),
       sourceGoalPlanId: null,
+      planAdjusted: null,
       weight: 62,
       waistCircumference: null,
       systolicBloodPressure: null,
@@ -49,19 +55,26 @@ const record = {
 } as unknown as ProgramRoundRecord;
 
 describe("Patient SELF round history", () => {
-  it("links to a recorded Follow-up without marking the plan review as done", () => {
-    const patient = { displayName: "ผู้ป่วย", occupation: null };
+  it("shows read-only progress, skips with reasons and the Follow-up link without recorder names", () => {
+    const options = { recorderNames: false };
     const rounds = {
       relationship: { hospitalName: "โรงพยาบาล" },
-      overview: buildProgramRoundsOverview(record),
-      rounds: ([1, 2, 3, 4, 5, 6] as const).map((n) => buildProgramRoundDetail(record, n, patient)),
+      overview: buildProgramRoundsOverview(record, options),
+      rounds: ([1, 2, 3, 4, 5, 6] as const).map((n) =>
+        buildProgramRoundDetail(record, n, { displayName: "" }, { canManage: false, options }),
+      ),
     } as unknown as PatientSelfProgramRounds;
     const markup = renderToStaticMarkup(
       createElement(PatientSelfProgramRoundsView, { programId, relationshipId, rounds }),
     );
 
-    expect(markup).toContain("มีบันทึกการติดตามผล");
     expect(markup).toContain(`/followups/${followupId}`);
-    expect(markup).not.toContain("ทบทวนแผนสุขภาพ");
+    expect(markup).toContain("เสร็จแล้ว");
+    expect(markup).toContain("กำลังทำ");
+    expect(markup).toContain("เหตุผลที่ข้าม: ผู้ป่วยปฏิเสธ");
+    // The Follow-up is not linked to a plan, so the plan review is not done.
+    expect(markup).toMatch(/ทบทวนแผนสุขภาพ<\/span><\/span><span[^>]*>ยังไม่ได้บันทึก/u);
+    expect(markup).not.toContain("สมศรี");
+    expect(markup).not.toContain("<form");
   });
 });

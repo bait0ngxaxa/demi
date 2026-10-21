@@ -170,6 +170,7 @@ export type PatientSelfCareJourney = {
   };
 };
 
+/** SR-D8: Service 1 tools are recorded per round; this shows the latest recorded time of each tool. */
 export type PatientSelfServiceOneActivity = {
   label: "Routine" | "Floating Chart" | "Dream Card" | "Confidence";
   recordedAt: Date | null;
@@ -301,10 +302,10 @@ const programDetailSelect = {
   status: true,
   startedAt: true,
   completedAt: true,
-  serviceOneRoutine: { select: { recordedAt: true } },
-  serviceOneFloatingChart: { select: { recordedAt: true } },
-  serviceOneDreamCard: { select: { recordedAt: true } },
-  serviceOneConfidence: { select: { recordedAt: true } },
+  serviceOneRoutines: { orderBy: { roundNumber: "desc" }, take: 1, select: { recordedAt: true } },
+  serviceOneFloatingCharts: { orderBy: { roundNumber: "desc" }, take: 1, select: { recordedAt: true } },
+  serviceOneDreamCards: { orderBy: { roundNumber: "desc" }, take: 1, select: { recordedAt: true } },
+  serviceOneConfidences: { orderBy: { roundNumber: "desc" }, take: 1, select: { recordedAt: true } },
   finalAssessment: {
     select: {
       recordedAt: true,
@@ -766,10 +767,10 @@ export async function getOwnPatientProgramDetail(
       startedAt: program.startedAt,
       completedAt: program.completedAt,
       serviceOne: [
-        { label: "Routine", recordedAt: program.serviceOneRoutine?.recordedAt ?? null },
-        { label: "Floating Chart", recordedAt: program.serviceOneFloatingChart?.recordedAt ?? null },
-        { label: "Dream Card", recordedAt: program.serviceOneDreamCard?.recordedAt ?? null },
-        { label: "Confidence", recordedAt: program.serviceOneConfidence?.recordedAt ?? null },
+        { label: "Routine", recordedAt: program.serviceOneRoutines[0]?.recordedAt ?? null },
+        { label: "Floating Chart", recordedAt: program.serviceOneFloatingCharts[0]?.recordedAt ?? null },
+        { label: "Dream Card", recordedAt: program.serviceOneDreamCards[0]?.recordedAt ?? null },
+        { label: "Confidence", recordedAt: program.serviceOneConfidences[0]?.recordedAt ?? null },
       ],
       goalPlans: goalPlanResults.items.map(toGoalPlanHistoryItem),
       followups: followupResults.items.map(toFollowupHistoryItem),
@@ -830,32 +831,15 @@ export async function getOwnPatientProgramRounds(
       parsedProgramId.data.toLowerCase(),
       relationship.relationshipId,
     );
-    const withoutRecorder = <T extends { recordedByDisplayName: string | null }>(value: T): T => ({
-      ...value,
-      recordedByDisplayName: null,
-    });
-    const overview = buildProgramRoundsOverview(program);
+    // The same status rule as the staff views, without recorder names (read-only, SR-D3 skips visible).
+    const options = { recorderNames: false };
 
     return {
       relationship,
-      overview: {
-        ...overview,
-        rounds: overview.rounds.map(withoutRecorder),
-        after: withoutRecorder(overview.after),
-      },
-      rounds: PROGRAM_ROUND_NUMBERS.map((roundNumber) => {
-        const detail = buildProgramRoundDetail(program, roundNumber, {
-          displayName: "",
-          occupation: null,
-        });
-
-        return {
-          ...detail,
-          vitals: detail.vitals ? withoutRecorder(detail.vitals) : null,
-          activities: detail.activities.map(withoutRecorder),
-          addOptions: detail.addOptions.map(withoutRecorder),
-        };
-      }),
+      overview: buildProgramRoundsOverview(program, options),
+      rounds: PROGRAM_ROUND_NUMBERS.map((roundNumber) =>
+        buildProgramRoundDetail(program, roundNumber, { displayName: "" }, { canManage: false, options }),
+      ),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

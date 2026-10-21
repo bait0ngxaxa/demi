@@ -1,3 +1,4 @@
+import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 const FINAL_ASSESSMENT_FORM_FIELDS = new Set([
@@ -120,7 +121,9 @@ export function mapPatientFinalAssessmentError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "ไม่สามารถบันทึก Final Assessment ได้ โปรแกรมอาจจบแล้วหรือมีข้อมูลถูกบันทึกไว้แล้ว กรุณาตรวจสอบข้อมูลล่าสุด",
+        message:
+          roundConflictMessage(error) ??
+          "ไม่สามารถบันทึก Final Assessment ได้ โปรแกรมอาจจบแล้วหรือมีข้อมูลถูกบันทึกไว้แล้ว กรุณาตรวจสอบข้อมูลล่าสุด",
       };
     }
   }

@@ -9,6 +9,7 @@ import {
   buildPatientRoundPath,
   formatRoundDate,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
+import { RoundProgressSummary } from "@/modules/patient-program-rounds/presentation/round-progress";
 import type { ProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
 
 export function ProgramRoundsOverviewView({
@@ -19,6 +20,7 @@ export function ProgramRoundsOverviewView({
   const relationshipId = overview.patientHospitalRelationshipId;
   const programId = overview.patientProgramId;
   const programPath = `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}`;
+  const after = overview.after;
 
   return (
     <div>
@@ -33,7 +35,7 @@ export function ProgramRoundsOverviewView({
           { href: programPath, label: "รายละเอียดโปรแกรม" },
           { label: "การจัดบริการครั้งที่ 1–6" },
         ]}
-        description={`ผู้ป่วย: ${overview.patientDisplayName} · เลือกครั้งที่ต้องการบันทึกหรือดูประวัติ`}
+        description={`ผู้ป่วย: ${overview.patientDisplayName} · ทำทีละครั้งตามลำดับ ครั้งถัดไปเปิดเมื่อจบบริการครั้งก่อนหน้า`}
         title="การจัดบริการครั้งที่ 1–6"
       />
 
@@ -42,63 +44,47 @@ export function ProgramRoundsOverviewView({
           <Alert variant="neutral">โปรแกรมนี้จบแล้ว ครั้งต่าง ๆ อยู่ในประวัติแบบอ่านอย่างเดียว</Alert>
         ) : null}
 
-        <Panel>
-          <ol className="divide-y divide-border">
-            {overview.rounds.map((round) => (
-              <li className="py-4 first:pt-0 last:pb-0" key={round.roundNumber}>
-                <Link
-                  className="flex flex-col gap-3 rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:flex-row sm:items-center sm:justify-between"
-                  href={buildPatientRoundPath(relationshipId, programId, round.roundNumber)}
-                >
-                  <span className="min-w-0">
-                    <span className="block text-base font-semibold text-text">{round.title}</span>
-                    <span className="mt-1 block text-sm text-text-muted">
-                      {round.status === "RECORDED"
-                        ? `วันที่ ${formatRoundDate(round.date)} · ผู้บันทึก ${round.recordedByDisplayName ?? "ไม่ระบุ"}`
-                        : "ยังไม่มีสัญญาณชีพหรือกิจกรรมในครั้งนี้"}
-                    </span>
-                    {round.status === "RECORDED" ? (
-                      <span className="mt-1 block text-xs text-text-subtle">
-                        {round.hasVitals ? "มีสัญญาณชีพ" : "ไม่มีสัญญาณชีพ"} · กิจกรรม {round.activityCount} รายการ
-                      </span>
-                    ) : null}
-                  </span>
-                  <StatusBadge variant={round.status === "RECORDED" ? "success" : "neutral"}>
-                    {round.status === "RECORDED" ? "บันทึกแล้ว" : "ไม่ได้บันทึก"}
-                  </StatusBadge>
-                </Link>
-              </li>
-            ))}
-            <li className="py-4 last:pb-0">
+        <ol className="grid gap-4 md:grid-cols-2">
+          {overview.rounds.map((round) => (
+            <li key={round.roundNumber}>
               <Link
-                className={buttonClassName({
-                  variant: "secondary",
-                  className: "w-full justify-between text-left",
-                })}
-                href={`${programPath}#program-final`}
+                className="block h-full rounded-panel border border-border bg-surface p-5 transition-colors hover:border-action-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                href={buildPatientRoundPath(relationshipId, programId, round.roundNumber)}
               >
-                <span className="min-w-0">
-                  <span className="block font-semibold">After · การประเมินสุดท้าย</span>
-                  <span className="mt-1 block text-sm font-normal text-text-muted">
-                    {overview.after.status === "RECORDED"
-                      ? `วันที่ ${formatRoundDate(overview.after.date)} · ผู้บันทึก ${overview.after.recordedByDisplayName ?? "ไม่ระบุ"}`
-                      : "ยังไม่มีการประเมินสุดท้าย"}
-                  </span>
-                </span>
-                <StatusBadge variant={overview.after.status === "RECORDED" ? "success" : "neutral"}>
-                  {overview.after.status === "RECORDED" ? "บันทึกแล้ว" : "ไม่ได้บันทึก"}
-                </StatusBadge>
+                <RoundProgressSummary round={round} />
               </Link>
             </li>
-          </ol>
+          ))}
+        </ol>
+
+        <Panel>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-text">After · การประเมินสุดท้าย</h2>
+              <p className="mt-1 text-sm text-text-muted">
+                {after.state === "RECORDED"
+                  ? `วันที่ ${formatRoundDate(after.date)} · ผู้บันทึก ${after.recordedByDisplayName ?? "ไม่ระบุ"}`
+                  : after.state === "LOCKED"
+                    ? "🔒 ต้องจบครั้งที่ 6 ก่อน"
+                    : "ยังไม่มีการประเมินสุดท้าย"}
+              </p>
+            </div>
+            {after.state === "LOCKED" ? (
+              <StatusBadge variant="neutral">ยังเปิดไม่ได้</StatusBadge>
+            ) : (
+              <Link className={buttonClassName({ size: "compact", variant: "secondary" })} href={`${programPath}#program-final`}>
+                {after.state === "RECORDED" ? "ดูการประเมินสุดท้าย" : "บันทึกการประเมินสุดท้าย"}
+              </Link>
+            )}
+          </div>
         </Panel>
 
         <p className="text-sm leading-6 text-text-muted">
-          รายการในแต่ละครั้งเป็นรายการแนะนำ ไม่บังคับทำครบ ครั้งหนึ่งนับว่าบันทึกแล้วเมื่อมีสัญญาณชีพหรือกิจกรรมอย่างน้อย 1 รายการ
+          แต่ละครั้งต้องบันทึกทุกรายการ หรือข้ามพร้อมเหตุผล แล้วกด “จบบริการครั้งที่ n” เมื่อจบแล้วครั้งนั้นเป็นแบบอ่านอย่างเดียว
         </p>
 
         <Link className={buttonClassName({ variant: "secondary" })} href={programPath}>
-          ไปยังรายละเอียดโปรแกรมแบบเดิม
+          ไปยังรายละเอียดโปรแกรม
         </Link>
       </div>
     </div>

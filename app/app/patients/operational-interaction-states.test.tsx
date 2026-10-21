@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   complete: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   noShow: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   profile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  push: vi.fn(),
   refresh: vi.fn(),
   review: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   vitals: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -16,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
-  useRouter: () => ({ refresh: mocks.refresh }),
+  useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }),
 }));
 vi.mock("@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions", () => ({
   savePatientHealthHistoryAction: vi.fn(),
@@ -118,7 +119,9 @@ describe("Program round vitals", () => {
       createElement(RoundVitalsForm, {
         heightEditable: true,
         latestHeightCm: null,
+        nextHref: "/app/patients/relationship-1/programs/program-1/rounds/1?after=VITALS",
         occupation: null,
+        profile: null,
         patientDisplayName: "สมชาย ใจดี",
         patientHospitalRelationshipId: "relationship-1",
         patientProgramId: "program-1",
@@ -146,7 +149,8 @@ describe("Program round vitals", () => {
     expect(mocks.vitals.mock.calls[1]?.[1]).toBeInstanceOf(FormData);
     expect((mocks.vitals.mock.calls[1]?.[1] as FormData).get("systolicBloodPressure")).toBe("120");
     expect(input("systolicBloodPressure").value).toBe("");
-    expect(mocks.refresh).toHaveBeenCalled();
+    // SR-D7: a confirmed save moves the stepper on to the next step.
+    expect(mocks.push).toHaveBeenCalledWith("/app/patients/relationship-1/programs/program-1/rounds/1?after=VITALS");
   });
 });
 

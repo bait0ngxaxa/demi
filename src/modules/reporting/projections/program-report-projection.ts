@@ -8,7 +8,7 @@ import type {
   PatientProgramServiceOneProjection,
   PatientProgramServiceOneRecord,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
-import { toPatientProgramServiceOneProjection } from "@/modules/patient-program/services/patient-program-service-one-query-service";
+import { toPatientProgramServiceOneReportProjection } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
 export type ReportFact<T> =
@@ -519,7 +519,7 @@ export function toProgramReportingProjection(input: {
       // The existing Service 1 mapper is the source of the safe activity/evidence
       // select semantics. This report mapper deliberately drops content URLs and
       // large free-text fields while retaining presence/provenance metadata.
-      toPatientProgramServiceOneProjection(input.program),
+      toPatientProgramServiceOneReportProjection(input.program),
     ),
     goalPlans: input.goalPlans,
     followups: input.followups,

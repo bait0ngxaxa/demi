@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getFollowupCreateContextForProgram } from "@/modules/followups/services/followup-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import { parseRoundReturnPath } from "@/modules/patient-program-rounds/presentation/round-return-path";
 import { toServiceDateOnly } from "@/shared/time/service-date";
 import {
   ConflictError,
@@ -25,6 +26,7 @@ type NewProgramFollowupPageProps = {
   searchParams: Promise<{
     appointmentId?: string | string[];
     sourceGoalPlanId?: string | string[];
+    returnTo?: string | string[];
   }>;
 };
 
@@ -106,6 +108,7 @@ export default async function NewProgramFollowupPage({
         kind: "program",
         patientProgramId: context.patientProgramId,
         relationshipId,
+        returnTo: parseRoundReturnPath(query.returnTo),
       }}
       selectedAppointmentId={context.selectedAppointmentId}
       selectedGoalPlanId={context.selectedGoalPlanId}

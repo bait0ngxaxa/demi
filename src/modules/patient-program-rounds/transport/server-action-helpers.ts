@@ -1,3 +1,4 @@
+import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 const VITALS_FORM_FIELDS = new Set([
@@ -12,6 +13,34 @@ const VITALS_FORM_FIELDS = new Set([
   "systolicBloodPressure",
   "diastolicBloodPressure",
   "bloodSugar",
+  "preferredName",
+  "occupation",
+  "profileVersion",
+]);
+
+const PROFILE_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "preferredName",
+  "occupation",
+  "profileVersion",
+]);
+
+const STEP_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "stepCode",
+  "reasonCode",
+  "note",
+]);
+
+const COMPLETION_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "submissionNonce",
 ]);
 
 const REVIEW_FORM_FIELDS = new Set([
@@ -93,6 +122,75 @@ export function buildVitalsInput(formData: FormData): unknown {
     systolicBloodPressure: getOptionalNumber(formData, "systolicBloodPressure"),
     diastolicBloodPressure: getOptionalNumber(formData, "diastolicBloodPressure"),
     bloodSugar: getOptionalNumber(formData, "bloodSugar"),
+    ...buildProfileFields(formData),
+  } satisfies Record<string, unknown>;
+}
+
+function buildProfileFields(formData: FormData): Record<string, unknown> {
+  return {
+    preferredName: getOptionalText(formData, "preferredName"),
+    occupation: getOptionalText(formData, "occupation"),
+    profileVersion: getOptionalNumber(formData, "profileVersion"),
+  };
+}
+
+function getOptionalText(formData: FormData, field: string): string | null | undefined {
+  const values = formData.getAll(field);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.length === 1 && typeof values[0] === "string" ? values[0] : undefined;
+}
+
+export function buildProfileInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, PROFILE_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    ...buildProfileFields(formData),
+  } satisfies Record<string, unknown>;
+}
+
+export function buildStepSkipInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, STEP_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    stepCode: getSingleString(formData, "stepCode"),
+    reasonCode: getSingleString(formData, "reasonCode"),
+    note: getOptionalText(formData, "note"),
+  } satisfies Record<string, unknown>;
+}
+
+export function buildStepUnskipInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, STEP_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    stepCode: getSingleString(formData, "stepCode"),
+  } satisfies Record<string, unknown>;
+}
+
+export function buildCompletionInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, COMPLETION_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
   } satisfies Record<string, unknown>;
 }
 
@@ -117,7 +215,7 @@ export function mapPatientProgramRoundError(error: unknown): {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบวันที่ (ห้ามเป็นวันในอนาคต) และกรอกค่าอย่างน้อย 1 รายการก่อนบันทึก",
+        message: "กรุณาตรวจสอบข้อมูลที่กรอก (วันที่ต้องไม่เป็นวันในอนาคต และกรอกค่าที่จำเป็นให้ครบ) แล้วลองอีกครั้ง",
       };
     }
 
@@ -146,6 +244,7 @@ export function mapPatientProgramRoundError(error: unknown): {
       return {
         code: "CONFLICT",
         message:
+          roundConflictMessage(error) ??
           "ไม่สามารถบันทึกได้ โปรแกรมอาจจบแล้ว หรือครั้งนี้มีข้อมูลบันทึกไว้แล้ว กรุณาตรวจสอบข้อมูลล่าสุด",
       };
     }
@@ -158,7 +257,11 @@ export function mapPatientProgramRoundError(error: unknown): {
 }
 
 export const patientProgramRoundTransportInternals = {
+  buildCompletionInput,
+  buildProfileInput,
   buildReviewInput,
+  buildStepSkipInput,
+  buildStepUnskipInput,
   buildVitalsInput,
   hasUnexpectedOrDuplicateFields,
   mapPatientProgramRoundError,

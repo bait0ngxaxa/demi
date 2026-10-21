@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -66,56 +67,61 @@ function hasUnexpectedOrDuplicateFields(formData: FormData, allowedFields: Reado
 }
 
 function buildRoutineInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getSingleInteger(formData, "roundNumber"),
   };
 }
 
 function buildFloatingChartInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "summary"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "summary"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getSingleInteger(formData, "roundNumber"),
     summary: getSingleString(formData, "summary"),
   };
 }
 
 function buildDreamCardInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "description"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "description"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getSingleInteger(formData, "roundNumber"),
     description: getSingleString(formData, "description"),
   };
 }
 
 function buildConfidenceInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "score", "improvementPlan"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "score", "improvementPlan"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getSingleInteger(formData, "roundNumber"),
     score: getSingleInteger(formData, "score"),
     improvementPlan: getSingleString(formData, "improvementPlan"),
   };
 }
 
 function buildArtifactAssociationInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "activity", "patientEvidenceArtifactId"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "activity", "patientEvidenceArtifactId"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getSingleInteger(formData, "roundNumber"),
     activity: getSingleString(formData, "activity"),
     patientEvidenceArtifactId: getSingleString(formData, "patientEvidenceArtifactId"),
   };
@@ -150,7 +156,9 @@ function mapServiceOneError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "กิจกรรมถูกบันทึกแล้ว หรือโปรแกรมถูกเปลี่ยนสถานะ กรุณาโหลดข้อมูลล่าสุด",
+        message:
+          roundConflictMessage(error) ??
+          "กิจกรรมถูกบันทึกแล้ว หรือโปรแกรมถูกเปลี่ยนสถานะ กรุณาโหลดข้อมูลล่าสุด",
       };
     }
   }
@@ -203,7 +211,9 @@ function mapServiceOneEvidenceError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "หลักฐานถูกแนบแล้ว หรือโปรแกรมถูกเปลี่ยนสถานะ กรุณาโหลดข้อมูลล่าสุด",
+        message:
+          roundConflictMessage(error) ??
+          "หลักฐานถูกแนบแล้ว หรือโปรแกรมถูกเปลี่ยนสถานะ กรุณาโหลดข้อมูลล่าสุด",
       };
     }
   }
@@ -237,6 +247,7 @@ function revalidatePatientProgramServiceOnePaths(
   revalidatePath(`/app/patients/${relationshipId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
+  revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
 }
 
 export async function recordPatientProgramServiceOneRoutineAction(

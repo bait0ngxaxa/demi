@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { buildRoundReturnQuery } from "@/modules/patient-program-rounds/presentation/round-return-path";
+
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -88,6 +90,8 @@ export type FollowupFormScope =
       kind: "program";
       relationshipId: string;
       patientProgramId: string;
+      /** R1-D: validated round page to return to after saving (`parseRoundReturnPath`). */
+      returnTo?: string | null;
     };
 
 type FollowupFormProps = {
@@ -244,6 +248,7 @@ export function FollowupForm({
   const router = useRouter();
   const relationshipId = scope.relationshipId;
   const programId = scope.kind === "program" ? scope.patientProgramId : null;
+  const returnTo = scope.kind === "program" ? (scope.returnTo ?? null) : null;
   const createAction =
     scope.kind === "program" ? createFollowupForProgramAction : createFollowupAction;
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<FollowupActionState, FormData>(
@@ -279,10 +284,12 @@ export function FollowupForm({
     if (state.status === "SUCCESS") {
       // Owner decision BR-06: a Program Follow-up that chose "ปรับแผน" continues to the new plan.
       const destination = programId && planAdjusted === "true"
-        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/new?sourceFollowupId=${encodeURIComponent(state.result.followupId)}`
-        : programId
-          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/followups/${encodeURIComponent(state.result.followupId)}`
-          : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`;
+        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/new?sourceFollowupId=${encodeURIComponent(state.result.followupId)}${returnTo ? `&${buildRoundReturnQuery(returnTo)}` : ""}`
+        : returnTo
+          ? returnTo
+          : programId
+            ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/followups/${encodeURIComponent(state.result.followupId)}`
+            : `/app/patients/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(state.result.followupId)}`;
 
       router.push(destination);
       return;
@@ -294,7 +301,7 @@ export function FollowupForm({
     ) {
       router.refresh();
     }
-  }, [planAdjusted, programId, relationshipId, router, state]);
+  }, [planAdjusted, programId, relationshipId, returnTo, router, state]);
 
   const serializedProgress = selectedGoalPlan
     ? selectedGoalPlan.items.flatMap((activity) => {
@@ -375,9 +382,9 @@ export function FollowupForm({
         <input name="systolicBloodPressure" readOnly type="hidden" value={systolicBloodPressure} />
         <input name="diastolicBloodPressure" readOnly type="hidden" value={diastolicBloodPressure} />
         <input name="bloodSugar" readOnly type="hidden" value={bloodSugar} />
-        <input name="confidenceScore" readOnly type="hidden" value={confidenceScore} />
+        {programId ? null : <input name="confidenceScore" readOnly type="hidden" value={confidenceScore} />}
         <input name="reflectionNote" readOnly type="hidden" value={reflectionNote} />
-        <input name="confidencePlan" readOnly type="hidden" value={confidencePlan} />
+        {programId ? null : <input name="confidencePlan" readOnly type="hidden" value={confidencePlan} />}
         <input name="generalNote" readOnly type="hidden" value={generalNote} />
         <input name="activityProgress" readOnly type="hidden" value={JSON.stringify(serializedProgress)} />
 
@@ -653,11 +660,17 @@ export function FollowupForm({
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">
+            {programId ? "สิ่งที่ต้องการสะท้อน / หมายเหตุ" : "ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ"}
+          </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา
+            {programId
+              ? "คะแนนความมั่นใจของโปรแกรมบันทึกที่ขั้นตอน “ไม้บรรทัดวัดใจ” ของแต่ละครั้ง ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"
+              : "บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"}
           </p>
           <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+            {programId ? null : (
+            <>
             <label className={labelClassName} htmlFor="followup-confidence-score">
               <span>คะแนนความมั่นใจ (0–10)</span>
               <input
@@ -674,6 +687,8 @@ export function FollowupForm({
             <div className="text-sm leading-6 text-text-muted sm:pt-8">
               เลือกใส่เมื่อเหมาะสม ไม่ใช้เพื่อคำนวณคะแนนหรือแนะนำการรักษา
             </div>
+            </>
+            )}
             <label className={labelClassName} htmlFor="followup-reflection">
               <span>สิ่งที่ต้องการสะท้อน (ไม่บังคับ)</span>
               <textarea
@@ -685,6 +700,7 @@ export function FollowupForm({
                 value={reflectionNote}
               />
             </label>
+            {programId ? null : (
             <label className={labelClassName} htmlFor="followup-confidence-plan">
               <span>แผนต่อเนื่อง (ไม่บังคับ)</span>
               <textarea
@@ -696,6 +712,7 @@ export function FollowupForm({
                 value={confidencePlan}
               />
             </label>
+            )}
             <label className={`${labelClassName} sm:col-span-2`} htmlFor="followup-general-note">
               <span>หมายเหตุทั่วไป (ไม่บังคับ)</span>
               <textarea

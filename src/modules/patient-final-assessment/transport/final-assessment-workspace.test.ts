@@ -51,30 +51,7 @@ function detail(overrides: Partial<PatientProgramDetail> = {}): PatientProgramDe
     initialBaseline: null,
     patient,
     canManage: true,
-    serviceOne: {
-      routine: { recorded: false, recordedAt: null, recordedBy: null, evidence: null },
-      floatingChart: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        summary: null,
-        evidence: null,
-      },
-      dreamCard: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        description: null,
-        evidence: null,
-      },
-      confidence: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        score: null,
-        improvementPlan: null,
-      },
-    },
+    serviceOne: [],
     ...overrides,
   };
 }

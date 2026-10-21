@@ -57,6 +57,8 @@ export type GoalPlanFormScope =
       patientProgramId: string;
       /** Follow-up that chose "ปรับแผน" and leads to this plan (Owner decision BR-06). */
       sourceFollowupId?: string | null;
+      /** R1-D: validated round page to return to after saving (`parseRoundReturnPath`). */
+      returnTo?: string | null;
     };
 
 type GoalPlanFormProps = {
@@ -241,6 +243,7 @@ export function GoalPlanForm({
   const router = useRouter();
   const relationshipId = scope.relationshipId;
   const programId = scope.kind === "program" ? scope.patientProgramId : null;
+  const returnTo = scope.kind === "program" ? (scope.returnTo ?? null) : null;
   const submitAction =
     scope.kind === "program" ? submitGoalPlanForProgramAction : submitGoalPlanAction;
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<GoalPlanActionState, FormData>(
@@ -254,9 +257,11 @@ export function GoalPlanForm({
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
-      const destination = programId
-        ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`
-        : `/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`;
+      const destination = returnTo
+        ? returnTo
+        : programId
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`
+          : `/app/patients/${encodeURIComponent(relationshipId)}/goals/${encodeURIComponent(state.result.goalPlanId)}`;
 
       router.push(destination);
       return;
@@ -268,7 +273,7 @@ export function GoalPlanForm({
     ) {
       router.refresh();
     }
-  }, [programId, relationshipId, router, state]);
+  }, [programId, relationshipId, returnTo, router, state]);
 
   const selectedCodes = useMemo(() => new Set(items.map((item) => item.activityCode)), [items]);
   const itemsByCategory = useMemo(

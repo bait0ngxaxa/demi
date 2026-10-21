@@ -84,6 +84,7 @@ function createDatabase(input: {
   routine?: Record<string, unknown> | null;
   floatingChart?: Record<string, unknown> | null;
   updateCount?: number;
+  completedRounds?: number[];
 } = {}): {
   database: PatientProgramServiceOneDatabase;
   transaction: {
@@ -111,6 +112,9 @@ function createDatabase(input: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+    patientProgramRoundCompletion: {
+      findMany: ReturnType<typeof vi.fn>;
+    };
   };
 } {
   const transaction = {
@@ -123,6 +127,7 @@ function createDatabase(input: {
       create: vi.fn().mockResolvedValue({
         id: recordId,
         patientProgramId: programId,
+        roundNumber: 1,
         recordedByUserId: actorUserId,
         recordedAt,
       }),
@@ -149,6 +154,9 @@ function createDatabase(input: {
       findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "77777777-7777-4777-8777-777777777777" }),
     },
+    patientProgramRoundCompletion: {
+      findMany: vi.fn().mockResolvedValue((input.completedRounds ?? []).map((roundNumber) => ({ roundNumber }))),
+    },
   };
   const database = {
     $transaction: vi.fn(async (operation: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
@@ -171,7 +179,7 @@ describe("Patient Program Service 1 service", () => {
 
     const result = await recordPatientProgramServiceOneRoutine(
       actor,
-      { patientProgramId: programId },
+      { patientProgramId: programId, roundNumber: 1 },
       { database, now: () => recordedAt },
     );
 
@@ -181,18 +189,20 @@ describe("Patient Program Service 1 service", () => {
       patientProgramId: programId,
       patientHospitalRelationshipId: relationshipId,
       hospitalId,
+      roundNumber: 1,
       recordedByUserId: actorUserId,
       recordedAt,
     });
     expect(transaction.patientProgramServiceOneRoutine.create).toHaveBeenCalledWith({
       data: {
         patientProgramId: programId,
+        roundNumber: 1,
         recordedByUserId: actorUserId,
         recordedAt,
       },
       select: expect.anything(),
     });
-    // WB-DF-01: the new Service 1 record is linked to round 1 in the same transaction.
+    // SR-D8: the new per-round record is linked to its round in the same transaction.
     expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         patientProgramId: programId,
@@ -218,6 +228,7 @@ describe("Patient Program Service 1 service", () => {
           patientHospitalRelationshipId: relationshipId,
           hospitalId,
           activity: "ROUTINE",
+          roundNumber: 1,
         },
       }),
       expect.anything(),
@@ -228,6 +239,7 @@ describe("Patient Program Service 1 service", () => {
     const existing = {
       id: recordId,
       patientProgramId: programId,
+      roundNumber: 1,
       recordedByUserId: actorUserId,
       recordedAt,
       summary: "สรุป",
@@ -236,7 +248,7 @@ describe("Patient Program Service 1 service", () => {
 
     const result = await recordPatientProgramServiceOneFloatingChart(
       actor,
-      { patientProgramId: programId, summary: "  สรุป  " },
+      { patientProgramId: programId, roundNumber: 1, summary: "  สรุป  " },
       { database, now: () => new Date("2026-08-21T05:00:00.000Z") },
     );
 
@@ -260,7 +272,7 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneFloatingChart(
         actor,
-        { patientProgramId: programId, summary: "ข้อมูลใหม่" },
+        { patientProgramId: programId, roundNumber: 1, summary: "ข้อมูลใหม่" },
         { database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -279,7 +291,7 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneRoutine(
         actor,
-        { patientProgramId: programId },
+        { patientProgramId: programId, roundNumber: 1 },
         { database: completedDatabase.database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -289,7 +301,7 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneRoutine(
         actor,
-        { patientProgramId: programId },
+        { patientProgramId: programId, roundNumber: 1 },
         { database: raceDatabase.database, transactionRetries: 0 },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -303,12 +315,46 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneConfidence(
         actor,
-        { patientProgramId: programId, score: 5 },
+        { patientProgramId: programId, roundNumber: 1, score: 5 },
         { database },
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(transaction.patientProgram.findFirst).not.toHaveBeenCalled();
     expect(transaction.patientProgramServiceOneConfidence.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a round 2 result until round 1 is completed, and any write to a completed round (SR-D5)", async () => {
+    const locked = createDatabase();
+    await expect(
+      recordPatientProgramServiceOneConfidence(actor, { patientProgramId: programId, roundNumber: 2, score: 5 }, { database: locked.database }),
+    ).rejects.toMatchObject({ name: "RoundConflictError", message: "ต้องจบบริการครั้งที่ 1 ก่อน จึงจะบันทึกครั้งที่ 2 ได้" });
+    expect(locked.transaction.patientProgramServiceOneConfidence.create).not.toHaveBeenCalled();
+
+    const completed = createDatabase({ completedRounds: [1] });
+    await expect(
+      recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 1 }, { database: completed.database }),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+    expect(completed.transaction.patientProgramServiceOneRoutine.create).not.toHaveBeenCalled();
+
+    const open = createDatabase({ completedRounds: [1] });
+    open.transaction.patientProgramServiceOneConfidence.create.mockResolvedValue({
+      id: recordId, patientProgramId: programId, roundNumber: 2, recordedByUserId: actorUserId, recordedAt, score: 5, improvementPlan: null,
+    });
+    await expect(
+      recordPatientProgramServiceOneConfidence(actor, { patientProgramId: programId, roundNumber: 2, score: 5 }, { database: open.database }),
+    ).resolves.toMatchObject({ operation: "RECORDED", roundNumber: 2 });
+    expect(open.transaction.patientProgramServiceOneConfidence.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { patientProgramId_roundNumber: { patientProgramId: programId, roundNumber: 2 } } }),
+    );
+  });
+
+  it("rejects a tool in a round whose checklist does not list it (SR-D8/SR-D11)", async () => {
+    const { database, transaction } = createDatabase();
+
+    await expect(
+      recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 3 }, { database }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(transaction.patientProgramServiceOneRoutine.create).not.toHaveBeenCalled();
   });
 
   it("rejects browser-supplied actor fields through the strict service schema", async () => {
@@ -319,6 +365,7 @@ describe("Patient Program Service 1 service", () => {
         actor,
         {
           patientProgramId: programId,
+          roundNumber: 1,
           score: 5,
           recordedByUserId: actorUserId,
         },

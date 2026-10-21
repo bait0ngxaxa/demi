@@ -2,6 +2,44 @@
 
 แก้ A-01: รายการแนะนำของครั้งที่ 1–6 ใน `ROUND_RECOMMENDED_TOOLS` (`src/modules/patient-program-rounds/domain/round-catalog.ts`) ให้ตรงกับกล่องบน Canva Whiteboard ของ Product Owner ไม่ใช่ตามสมมติฐานของ Workbook เดิม. `source` PLANNED/EXTRA ของ ledger derive จากตารางนี้ที่ server ผ่าน `roundActivitySourceFor`.
 
+## R1. Checklist ที่ต้องทำครบ (Phase R1, Product Owner 2026-10-21)
+
+**ตารางนี้แทน "รายการแนะนำที่ใช้" ด้านล่าง** (ส่วนที่เหลือของเอกสารเป็นประวัติ Phase A/D). ที่มา: กล่อง "ผลการจัดบริการ" บน Canva ของ Product Owner (2026-10-21) — ลำดับในกล่องคือลำดับขั้นตอน. Decisions: [WB_ALIGNMENT_DECISIONS.md](./WB_ALIGNMENT_DECISIONS.md) §R1 (SR-D1..D13).
+
+รายการ 1–7 ของทุกครั้ง: ชื่อ-สกุล, อาชีพ, น้ำหนัก, ส่วนสูง, รอบเอว, ค่าน้ำตาล, ความดัน.
+
+| ครั้งที่ | ชื่อครั้ง (SR-D13) | รายการ (หลังรายการ 1–7) | จำนวนรายการ |
+| --- | --- | --- | --- |
+| 1 | รู้จักตัวเอง | รู้จักตัวฉันเอง, PAM, PROMs, กราฟวัดลอยจม, ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, เส้นทางสุขภาพ | 14 |
+| 2 | ทำแผนสุขภาพ เป้าหมายเล็กๆที่ตั้งไว้ | ทบทวนแผนสุขภาพ, ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน | 10 |
+| 3 | ติดตามการฝึกซ้อมพฤติกรรม | ทบทวนแผนสุขภาพ, ไม้บรรทัดวัดใจ, ความฝันของฉัน | 10 |
+| 4 | ติดตามการฝึกซ้อมพฤติกรรม | ทบทวนแผนสุขภาพ, กราฟวัดลอยจม, ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, แผนสุขภาพดีของฉัน | 12 |
+| 5 | ติดตามการฝึกซ้อมพฤติกรรม | ทบทวนแผนสุขภาพ, ตารางชีวิตของฉัน | 9 |
+| 6 | ติดตามการฝึกซ้อมพฤติกรรม | ทบทวนเส้นทางสุขภาพ, ทบทวนแผนสุขภาพ, ไม้บรรทัดวัดใจ | 10 |
+
+### Step catalog (`ROUND_STEPS` ใน `src/modules/patient-program-rounds/domain/round-steps.ts`)
+
+ขั้นตอนแรกของทุกครั้งคือ `VITALS` ซึ่งครอบรายการ 1–7; ขั้นอื่นครอบ 1 รายการ. ทุกขั้นข้ามได้พร้อมเหตุผล (SR-D3); ขั้นสรุปข้ามไม่ได้. ความคืบหน้า x/y นับตามรายการ (DONE หรือ SKIPPED).
+
+| Step code | ชนิด | ครั้ง | DONE เมื่อ |
+| --- | --- | --- | --- |
+| `VITALS` | FORM | 1–6 | ครั้งที่ 1–2: มี `PatientProgramRoundVitals` ของครั้งนั้น; ครั้งที่ 3–6: มี Follow-up ของครั้งนั้น (Follow-up k = ครั้งที่ k+2). ค่าแต่ละช่องไม่บังคับตาม validation เดิม; ครั้งที่ 1 รับชื่อที่อยากให้เรียกและอาชีพ (ถ้ายังว่าง) ในขั้นนี้ด้วย |
+| `KNOW_SELF` | FORM | 1 | มี `PatientHospitalProfile.preferredName` (SR-D12) |
+| `PAM`, `PROMS` | SCREENING | 1 | มีแบบประเมินที่ผูกกับ Program (ชุดเดียวตอบทั้งสองรายการ) |
+| `FLOATING_CHART` | PER_ROUND_TOOL | 1, 4 | มีผลของครั้งนั้น |
+| `CONFIDENCE_RULER` | PER_ROUND_TOOL | 1, 2, 3, 4, 6 | มีผลของครั้งนั้น |
+| `ROUTINE` | PER_ROUND_TOOL | 1, 2, 4, 5 | มีผลของครั้งนั้น |
+| `DREAM_CARD` | PER_ROUND_TOOL | 3 | มีผลของครั้งที่ 3 (SR-D11) |
+| `HEALTH_PATH` | DERIVED | 1 | มีสัญญาณชีพครั้งที่ 1 (SR-D9) |
+| `HEALTH_PLAN_REVIEW` | GOAL_PLAN | 2 | มี Goal Plan แรกของ Program (D4, ชั่วคราว) |
+| `HEALTH_PLAN_REVIEW` | FOLLOWUP_REVIEW | 3–6 | Follow-up ของครั้งนั้นอ้างอิง Goal Plan และตอบ `planAdjusted` (D5, ชั่วคราว) |
+| `HEALTHY_PLAN` | GOAL_PLAN | 4 | Follow-up ครั้งที่ 4 ตอบ `planAdjusted=false`, หรือ `true` และมี Goal Plan ที่ปรับจาก Follow-up นั้น (**รอลูกค้ายืนยัน**) |
+| `HEALTH_PATH_REVIEW` | DERIVED | 6 | ผู้บันทึกยืนยันการทบทวน timeline ครั้งที่ 1–6 (ledger `HEALTH_PATH` ครั้งที่ 6) |
+
+สถานะของครั้ง: COMPLETED (มี `PatientProgramRoundCompletion`, พร้อมวันที่และผู้จบ) / LOCKED (ครั้งก่อนหน้ายังไม่จบ) / IN_PROGRESS x/y / NOT_STARTED. After ล็อกจนกว่าครั้งที่ 6 จบ.
+
+`roundActivitySourceFor` (PLANNED/EXTRA ของ ledger) derive จาก step catalog เดียวกัน; การจัดบริการเพิ่มที่เหลือคือการทบทวน PAM/PROMs ในครั้งที่ 2–6.
+
 ## หลักฐาน
 
 - Canva "ร่าง DEMI App ใหม่" (`DAHSvdQ3gvU`) อ่านข้อความ design ผ่าน Canva connector เมื่อ 2026-10-14: กล่อง "การจัดบริการ" ครั้งที่ 1–6 ใน flow อสม. / เจ้าหน้าที่ / แอดมิน ซ้ำกันตรงกันทุก flow และตรงกับ [§3.1 ของ BF_GAP_WB_00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md) (ตรวจ visual 2026-10-12).
@@ -27,7 +65,7 @@
 | ความฝันของฉัน (ครั้งที่ 3) | `DREAM_CARD` (ป้าย "ความฝันของฉัน (การ์ดความฝัน)") | ยืนยัน D3 — บันทึกในครั้งที่ 1 ("การ์ดความฝัน"), ทบทวนในครั้งที่ 3 |
 | แผนสุขภาพดีของฉัน (ครั้งที่ 4) | `HEALTHY_PLAN` | ยืนยัน D4 — Goal Plan ฉบับปรับ; ครั้งที่ 4 เป็น DONE เมื่อปรับจาก Follow-up ของครั้งที่ 4 เอง (ปรับครั้งหลังแสดงเป็นข้อมูลปัจจุบัน) |
 
-## รายการแนะนำที่ใช้
+## รายการแนะนำที่ใช้ (ประวัติ Phase D — superseded by §R1)
 
 | ครั้งที่ | รายการ (ลำดับที่แสดง) | `ROUND_RECOMMENDED_TOOLS` |
 | --- | --- | --- |

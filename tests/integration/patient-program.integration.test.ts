@@ -18,7 +18,7 @@ import {
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
 import { getPatientFinalAssessmentForProgram } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
-import { createPatientFinalAssessment } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
+import { createPatientFinalAssessment as createPatientFinalAssessmentService } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
 import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import {
@@ -27,7 +27,7 @@ import {
   getGoalPlanOverview,
   getGoalPlanOverviewForProgram,
 } from "@/modules/goals/services/goal-query-service";
-import { createGoalPlan, createGoalPlanForProgram } from "@/modules/goals/services/goal-service";
+import { createGoalPlan, createGoalPlanForProgram as createGoalPlanForProgramService } from "@/modules/goals/services/goal-service";
 import { GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION } from "@/modules/goals/domain/goal-templates";
 import {
   getFollowupCreateContext,
@@ -36,7 +36,7 @@ import {
   getFollowupHistory,
   getFollowupHistoryForProgram,
 } from "@/modules/followups/services/followup-query-service";
-import { createFollowup, createFollowupForProgram } from "@/modules/followups/services/followup-service";
+import { createFollowup, createFollowupForProgram as createFollowupForProgramService } from "@/modules/followups/services/followup-service";
 import {
   getPatientProgramDetail,
   getPatientProgramPageContext,
@@ -45,20 +45,46 @@ import {
   completePatientProgram,
   openPatientProgram,
 } from "@/modules/patient-program/services/patient-program-service";
-import {
-  associatePatientProgramServiceOneArtifact,
-  recordPatientProgramServiceOneConfidence,
-  recordPatientProgramServiceOneDreamCard,
-  recordPatientProgramServiceOneFloatingChart,
-  recordPatientProgramServiceOneRoutine,
-} from "@/modules/patient-program/services/patient-program-service-one-service";
+import * as serviceOne from "@/modules/patient-program/services/patient-program-service-one-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import {
+  afterOpening,
+  clearProgramRoundCompletions,
+  inRound,
+  openFinalAssessmentRound,
+  openFollowupRound,
+  openGoalPlanRound,
+  openProgramRound,
+} from "./support/program-rounds";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+
+/*
+ * Phase R1 (SR-D5/SR-D8): these Program tests are not about round sequencing, so writes are placed in
+ * their round: Service 1 tools in round 1 (ความฝันของฉัน in round 3), the first Goal Plan in round 2,
+ * Follow-up k in round k + 2 and the Final Assessment after round 6. Sequencing itself is covered by
+ * patient-program-rounds.integration.test.ts.
+ */
+const recordPatientProgramServiceOneRoutine = inRound(serviceOne.recordPatientProgramServiceOneRoutine, () => 1);
+const recordPatientProgramServiceOneFloatingChart = inRound(serviceOne.recordPatientProgramServiceOneFloatingChart, () => 1);
+const recordPatientProgramServiceOneConfidence = inRound(serviceOne.recordPatientProgramServiceOneConfidence, () => 1);
+const recordPatientProgramServiceOneDreamCard = inRound(serviceOne.recordPatientProgramServiceOneDreamCard, () => 3);
+const associatePatientProgramServiceOneArtifact = inRound(
+  serviceOne.associatePatientProgramServiceOneArtifact,
+  (input) => (input.activity === "DREAM_CARD" ? 3 : 1),
+);
+const createGoalPlanForProgram = afterOpening(createGoalPlanForProgramService, openGoalPlanRound);
+const createFollowupForProgram = afterOpening(createFollowupForProgramService, openFollowupRound);
+const createPatientFinalAssessment = afterOpening(createPatientFinalAssessmentService, openFinalAssessmentRound);
+
+function roundResults<T extends { roundNumber: number }>(detail: { serviceOne: readonly T[] }, roundNumber: number): T | undefined {
+  return detail.serviceOne.find((round) => round.roundNumber === roundNumber);
+}
 
 const prisma = getPrisma();
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await clearProgramRoundCompletions();
   await prisma.patientProgramRoundActivity.deleteMany();
   await prisma.patientProgramRoundVitals.deleteMany();
   await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
@@ -299,9 +325,7 @@ function followupProgramInput(
     systolicBloodPressure: 120,
     diastolicBloodPressure: 80,
     bloodSugar: 95,
-    confidenceScore: 7,
     reflectionNote: "บันทึกสะท้อนของโปรแกรม",
-    confidencePlan: "แผนความมั่นใจของโปรแกรม",
     generalNote: "หมายเหตุของโปรแกรม",
     serviceDate: "2026-08-01",
     planAdjusted: false,
@@ -663,12 +687,12 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patient.relationshipId,
       opened.patientProgramId,
     );
-    expect(empty.serviceOne).toMatchObject({
+    expect(roundResults(empty, 1)).toMatchObject({
       routine: { recorded: false, recordedAt: null, recordedBy: null },
       floatingChart: { recorded: false, summary: null },
-      dreamCard: { recorded: false, description: null },
       confidence: { recorded: false, score: null, improvementPlan: null },
     });
+    expect(roundResults(empty, 3)).toMatchObject({ dreamCard: { recorded: false, description: null } });
 
     await recordPatientProgramServiceOneRoutine(
       owner.actor,
@@ -680,15 +704,15 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       { patientProgramId: opened.patientProgramId, summary: "  สรุปจากกราฟ  " },
       { now: () => new Date("2026-08-20T05:01:00.000Z") },
     );
-    await recordPatientProgramServiceOneDreamCard(
-      owner.actor,
-      { patientProgramId: opened.patientProgramId, description: "  ความฝัน  " },
-      { now: () => new Date("2026-08-20T05:02:00.000Z") },
-    );
     await recordPatientProgramServiceOneConfidence(
       owner.actor,
       { patientProgramId: opened.patientProgramId, score: 0, improvementPlan: "  แผนสะท้อนผล  " },
       { now: () => new Date("2026-08-20T05:03:00.000Z") },
+    );
+    await recordPatientProgramServiceOneDreamCard(
+      owner.actor,
+      { patientProgramId: opened.patientProgramId, description: "  ความฝัน  " },
+      { now: () => new Date("2026-08-20T05:02:00.000Z") },
     );
 
     const detail = await getPatientProgramDetail(
@@ -696,12 +720,12 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patient.relationshipId,
       opened.patientProgramId,
     );
-    expect(detail.serviceOne).toMatchObject({
+    expect(roundResults(detail, 1)).toMatchObject({
       routine: { recorded: true },
       floatingChart: { recorded: true, summary: "สรุปจากกราฟ" },
-      dreamCard: { recorded: true, description: "ความฝัน" },
       confidence: { recorded: true, score: 0, improvementPlan: "แผนสะท้อนผล" },
     });
+    expect(roundResults(detail, 3)).toMatchObject({ dreamCard: { recorded: true, description: "ความฝัน" } });
     expect(JSON.stringify(detail.serviceOne)).not.toContain("membership");
     expect(await prisma.patientProgramServiceOneRoutine.count({ where: { patientProgramId: opened.patientProgramId } })).toBe(1);
     expect(await prisma.patientProgramServiceOneFloatingChart.count({ where: { patientProgramId: opened.patientProgramId } })).toBe(1);
@@ -733,10 +757,6 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     await recordPatientProgramServiceOneFloatingChart(owner.actor, {
       patientProgramId: opened.patientProgramId,
       summary: "สรุปที่บันทึกไว้",
-    });
-    await recordPatientProgramServiceOneDreamCard(owner.actor, {
-      patientProgramId: opened.patientProgramId,
-      description: "ความฝันที่บันทึกไว้",
     });
 
     const storage = createFakeStorage();
@@ -770,6 +790,11 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         activity: "FLOATING_CHART",
       }),
     ).resolves.toMatchObject({ activity: "FLOATING_CHART", operation: "ASSOCIATED" });
+    // ความฝันของฉัน is a round 3 result (SR-D11).
+    await recordPatientProgramServiceOneDreamCard(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+      description: "ความฝันที่บันทึกไว้",
+    });
     await expect(
       associatePatientProgramServiceOneArtifact(owner.actor, {
         patientProgramId: opened.patientProgramId,
@@ -783,12 +808,12 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patient.relationshipId,
       opened.patientProgramId,
     );
-    expect(detail.serviceOne).toMatchObject({
+    expect(roundResults(detail, 1)).toMatchObject({
       routine: { evidence: { artifactId: routineArtifact.artifactId, mediaType: "image/jpeg" } },
       floatingChart: { evidence: { artifactId: floatingChartArtifact.artifactId } },
-      dreamCard: { evidence: { artifactId: dreamCardArtifact.artifactId } },
     });
-    expect(detail.serviceOne.confidence).not.toHaveProperty("evidence");
+    expect(roundResults(detail, 3)).toMatchObject({ dreamCard: { evidence: { artifactId: dreamCardArtifact.artifactId } } });
+    expect(roundResults(detail, 1)?.confidence).not.toHaveProperty("evidence");
     expect(JSON.stringify(detail.serviceOne)).not.toContain("storageObjectKey");
     expect(await prisma.patientProgramServiceOneArtifactAssociation.count({
       where: { patientProgramId: opened.patientProgramId },
@@ -825,7 +850,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       { storage },
     );
     const firstRoutine = await prisma.patientProgramServiceOneRoutine.findUniqueOrThrow({
-      where: { patientProgramId: firstProgram.patientProgramId },
+      where: { patientProgramId_roundNumber: { patientProgramId: firstProgram.patientProgramId, roundNumber: 1 } },
       select: { id: true },
     });
     await expect(
@@ -920,7 +945,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     ).rejects.toBeInstanceOf(ConflictError);
     expect(
       await prisma.patientProgramServiceOneFloatingChart.findUniqueOrThrow({
-        where: { patientProgramId: opened.patientProgramId },
+        where: { patientProgramId_roundNumber: { patientProgramId: opened.patientProgramId, roundNumber: 1 } },
         select: { id: true, summary: true },
       }),
     ).toEqual({ id: firstChart.recordId, summary: "ข้อมูลเดิม" });
@@ -989,12 +1014,10 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       patient.relationshipId,
       opened.patientProgramId,
     );
-    expect(historical).toMatchObject({
-      status: PatientProgramStatus.COMPLETED,
-      serviceOne: {
-        routine: { recorded: true, evidence: { artifactId: historicalArtifact.artifactId } },
-        confidence: { recorded: false, score: null },
-      },
+    expect(historical.status).toBe(PatientProgramStatus.COMPLETED);
+    expect(roundResults(historical, 1)).toMatchObject({
+      routine: { recorded: true, evidence: { artifactId: historicalArtifact.artifactId } },
+      confidence: { recorded: false, score: null },
     });
     expect(completed.operation).toBe("COMPLETED");
   });
@@ -1144,7 +1167,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       select: { status: true, completedAt: true },
     });
     const storedChart = await prisma.patientProgramServiceOneFloatingChart.findUnique({
-      where: { patientProgramId: opened.patientProgramId },
+      where: { patientProgramId_roundNumber: { patientProgramId: opened.patientProgramId, roundNumber: 1 } },
       select: { recordedAt: true },
     });
 
@@ -1175,6 +1198,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       prisma.patientProgramServiceOneConfidence.create({
         data: {
           patientProgramId: opened.patientProgramId,
+          roundNumber: 1,
           recordedByUserId: owner.userId,
           score: 6,
         },
@@ -1189,6 +1213,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       prisma.patientProgramServiceOneConfidence.create({
         data: {
           patientProgramId: secondProgram.patientProgramId,
+          roundNumber: 1,
           recordedByUserId: owner.userId,
           score: 11,
         },
@@ -1342,14 +1367,14 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       owner.actor,
       followupProgramInput(programA.patientProgramId, { planAdjusted: true }),
     );
-    const notAdjusted = await createFollowupForProgram(
-      owner.actor,
-      followupProgramInput(programA.patientProgramId, { planAdjusted: false }),
-    );
-
+    // SR-D5: the adjusted plan belongs to the Follow-up's round, so it is made before that round closes.
     const plan = await createGoalPlanForProgram(
       owner.actor,
       goalProgramInput(programA.patientProgramId, { sourceFollowupId: adjusted.followupId }),
+    );
+    const notAdjusted = await createFollowupForProgram(
+      owner.actor,
+      followupProgramInput(programA.patientProgramId, { planAdjusted: false }),
     );
     expect(
       await prisma.patientGoalPlan.findUniqueOrThrow({
@@ -1798,18 +1823,23 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       where: { patientProgramId: program.patientProgramId },
     })).toBe(2);
 
+    // SR-D5: Follow-up 2 (round 4) waits for round 3 to be completed, so of two concurrent Follow-ups
+    // exactly one is allocated (number 1) and the other is refused without a duplicate number.
+    await openProgramRound(program.patientProgramId, 3);
     const followupOutcomes = await Promise.allSettled([
-      createFollowupForProgram(owner.actor, followupProgramInput(program.patientProgramId)),
-      createFollowupForProgram(owner.actor, followupProgramInput(program.patientProgramId)),
+      createFollowupForProgramService(owner.actor, followupProgramInput(program.patientProgramId)),
+      createFollowupForProgramService(owner.actor, followupProgramInput(program.patientProgramId)),
     ]);
     const followupRounds = followupOutcomes.flatMap((outcome) =>
       outcome.status === "fulfilled" ? [outcome.value.roundNumber] : [],
     );
-    expect(followupOutcomes.every((outcome) => outcome.status === "fulfilled")).toBe(true);
-    expect(followupRounds.sort((left, right) => left - right)).toEqual([1, 2]);
+    expect(followupRounds).toEqual([1]);
+    for (const outcome of followupOutcomes) {
+      if (outcome.status === "rejected") expect(outcome.reason).toBeInstanceOf(ConflictError);
+    }
     expect(await prisma.patientFollowup.count({
       where: { patientProgramId: program.patientProgramId },
-    })).toBe(2);
+    })).toBe(1);
   });
 
   it("serializes linked Goal Plan and Follow-up writes against Program completion", async () => {

@@ -13,22 +13,35 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient, unassignOsmFromPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
-import { createPatientFinalAssessment } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
-import { createGoalPlan, createGoalPlanForProgram } from "@/modules/goals/services/goal-service";
-import { createFollowup, createFollowupForProgram } from "@/modules/followups/services/followup-service";
-import {
-  recordPatientProgramServiceOneDreamCard,
-  recordPatientProgramServiceOneRoutine,
-} from "@/modules/patient-program/services/patient-program-service-one-service";
+import { createPatientFinalAssessment as createPatientFinalAssessmentService } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
+import { createGoalPlan, createGoalPlanForProgram as createGoalPlanForProgramService } from "@/modules/goals/services/goal-service";
+import { createFollowup, createFollowupForProgram as createFollowupForProgramService } from "@/modules/followups/services/followup-service";
+import * as serviceOne from "@/modules/patient-program/services/patient-program-service-one-service";
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import {
+  afterOpening,
+  clearProgramRoundCompletions,
+  inRound,
+  openFinalAssessmentRound,
+  openFollowupRound,
+  openGoalPlanRound,
+} from "./support/program-rounds";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
 let sequence = 0;
 
+// Phase R1 (SR-D5/SR-D8): writes are placed in their round; sequencing is covered by the rounds tests.
+const recordPatientProgramServiceOneRoutine = inRound(serviceOne.recordPatientProgramServiceOneRoutine, () => 1);
+const recordPatientProgramServiceOneDreamCard = inRound(serviceOne.recordPatientProgramServiceOneDreamCard, () => 3);
+const createGoalPlanForProgram = afterOpening(createGoalPlanForProgramService, openGoalPlanRound);
+const createFollowupForProgram = afterOpening(createFollowupForProgramService, openFollowupRound);
+const createPatientFinalAssessment = afterOpening(createPatientFinalAssessmentService, openFinalAssessmentRound);
+
 async function clearDatabase(): Promise<void> {
+  await clearProgramRoundCompletions();
   await prisma.patientProgramRoundActivity.deleteMany();
   await prisma.patientProgramRoundVitals.deleteMany();
   await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
@@ -242,9 +255,7 @@ function followupInput(
     systolicBloodPressure: null,
     diastolicBloodPressure: null,
     bloodSugar: null,
-    confidenceScore: null,
     reflectionNote: null,
-    confidencePlan: null,
     generalNote: null,
     serviceDate: "2026-08-01",
     planAdjusted: false,
@@ -340,11 +351,12 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     const programB = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
     });
+    await createGoalPlanForProgram(owner.actor, goalInput(programB.patientProgramId, "medication"));
+    // ความฝันของฉัน is a round 3 result (SR-D11).
     await recordPatientProgramServiceOneDreamCard(owner.actor, {
       patientProgramId: programB.patientProgramId,
       description: "ข้อมูลของ Program B",
     });
-    await createGoalPlanForProgram(owner.actor, goalInput(programB.patientProgramId, "medication"));
     await createFollowupForProgram(owner.actor, followupInput(programB.patientProgramId, 81));
     await createPatientFinalAssessment(
       owner.actor,

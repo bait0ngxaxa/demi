@@ -294,7 +294,7 @@ async function addProgramSources(input: {
   });
 
   await prisma.patientProgramServiceOneRoutine.create({
-    data: { patientProgramId: input.programId, recordedByUserId: input.recordedByUserId },
+    data: { patientProgramId: input.programId, roundNumber: 1, recordedByUserId: input.recordedByUserId },
   });
 
   for (let roundNumber = 1; roundNumber <= input.rounds; roundNumber += 1) {
@@ -1034,16 +1034,16 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       status: PatientProgramStatus.ACTIVE,
     });
     await prisma.patientProgramServiceOneRoutine.create({
-      data: { patientProgramId: childProgram.id, recordedByUserId: childOwner.userId },
+      data: { patientProgramId: childProgram.id, roundNumber: 1, recordedByUserId: childOwner.userId },
     });
     await prisma.patientProgramServiceOneFloatingChart.create({
-      data: { patientProgramId: completedChildProgram.id, recordedByUserId: childOwner.userId },
+      data: { patientProgramId: completedChildProgram.id, roundNumber: 1, recordedByUserId: childOwner.userId },
     });
     await prisma.patientProgramServiceOneDreamCard.create({
-      data: { patientProgramId: childProgram.id, recordedByUserId: childOwner.userId },
+      data: { patientProgramId: childProgram.id, roundNumber: 3, recordedByUserId: childOwner.userId },
     });
     await prisma.patientProgramServiceOneConfidence.create({
-      data: { patientProgramId: completedChildProgram.id, recordedByUserId: childOwner.userId, score: 5 },
+      data: { patientProgramId: completedChildProgram.id, roundNumber: 1, recordedByUserId: childOwner.userId, score: 5 },
     });
 
     const targets = await listParentChildHospitalReportTargetGroups(

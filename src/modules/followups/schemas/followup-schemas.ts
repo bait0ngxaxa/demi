@@ -109,7 +109,9 @@ export const followupCreateRequestSchema = followupPayloadSchema
   .strict()
   .superRefine(refineObstacleNote);
 
+// SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, so Program Follow-ups do not take one.
 export const followupProgramCreateRequestSchema = followupPayloadSchema
+  .omit({ confidenceScore: true, confidencePlan: true })
   .extend({ patientProgramId: patientProgramIdSchema })
   .strict()
   .superRefine(refineObstacleNote);

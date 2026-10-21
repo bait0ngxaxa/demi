@@ -110,6 +110,7 @@ function createDatabase(input: {
   createError?: unknown;
   updateCount?: number;
   transactionErrors?: unknown[];
+  completedRounds?: number[];
 } = {}): {
   database: PatientFinalAssessmentDatabase;
   transaction: {
@@ -121,6 +122,7 @@ function createDatabase(input: {
       findUnique: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+    patientProgramRoundCompletion: { findMany: ReturnType<typeof vi.fn> };
   };
 } {
   const transaction = {
@@ -133,6 +135,10 @@ function createDatabase(input: {
       create: input.createError
         ? vi.fn().mockRejectedValue(input.createError)
         : vi.fn().mockResolvedValue(input.createResult ?? finalAssessmentRecord()),
+    },
+    // SR-D5: the After assessment needs round 6 completed (all six by default).
+    patientProgramRoundCompletion: {
+      findMany: vi.fn().mockResolvedValue((input.completedRounds ?? [1, 2, 3, 4, 5, 6]).map((roundNumber) => ({ roundNumber }))),
     },
   };
 
@@ -165,6 +171,18 @@ describe("Patient Final Assessment service", () => {
     vi.clearAllMocks();
     mockedAudit.mockResolvedValue(undefined);
     mockedProgramAccess.mockResolvedValue(access);
+  });
+
+  it("refuses the After assessment until round 6 is completed (SR-D5)", async () => {
+    const { database, transaction } = createDatabase({ completedRounds: [1, 2, 3, 4, 5] });
+
+    await expect(
+      createPatientFinalAssessment(actor, validInput(), { database, now: () => recordedAt }),
+    ).rejects.toMatchObject({
+      name: "RoundConflictError",
+      message: "ต้องจบบริการครั้งที่ 6 ก่อน จึงจะบันทึกการประเมินหลังจบโปรแกรมได้",
+    });
+    expect(transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
   });
 
   it("creates an immutable Program-owned record with server-derived provenance and time", async () => {

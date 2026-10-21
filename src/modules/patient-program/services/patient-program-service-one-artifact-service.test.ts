@@ -83,6 +83,7 @@ function createDatabase(input: {
     patientProgramServiceOneRoutine: { findUnique: ReturnType<typeof vi.fn> };
     patientProgramServiceOneFloatingChart: { findUnique: ReturnType<typeof vi.fn> };
     patientProgramServiceOneDreamCard: { findUnique: ReturnType<typeof vi.fn> };
+    patientProgramRoundCompletion: { findMany: ReturnType<typeof vi.fn> };
     patientProgramServiceOneArtifactAssociation: {
       findFirst: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
@@ -113,6 +114,9 @@ function createDatabase(input: {
     },
     patientProgramServiceOneDreamCard: {
       findUnique: vi.fn().mockResolvedValue({ id: dreamCardId }),
+    },
+    patientProgramRoundCompletion: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     patientProgramServiceOneArtifactAssociation: {
       findFirst: vi
@@ -152,6 +156,11 @@ describe("Patient Program Service 1 evidence association", () => {
     ["DREAM_CARD", dreamCardId],
   ] as const)("associates a valid %s artifact with its recorded activity", async (activity, activityId) => {
     const { database, transaction } = createDatabase();
+    // SR-D8/SR-D11: the dream card is a round 3 result, so rounds 1-2 are completed first.
+    const roundNumber = activity === "DREAM_CARD" ? 3 : 1;
+    transaction.patientProgramRoundCompletion.findMany.mockResolvedValue(
+      roundNumber === 3 ? [{ roundNumber: 1 }, { roundNumber: 2 }] : [],
+    );
 
     const result = await associatePatientProgramServiceOneArtifact(
       actor,
@@ -159,6 +168,7 @@ describe("Patient Program Service 1 evidence association", () => {
         patientProgramId: programId,
         patientEvidenceArtifactId: artifactId,
         activity,
+        roundNumber,
       },
       { database, now: () => associatedAt },
     );
@@ -193,6 +203,7 @@ describe("Patient Program Service 1 evidence association", () => {
           hospitalId,
           activity,
           artifactId,
+          roundNumber,
         },
       }),
       expect.anything(),
@@ -215,7 +226,7 @@ describe("Patient Program Service 1 evidence association", () => {
     await expect(
       associatePatientProgramServiceOneArtifact(
         actor,
-        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE" },
+        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE", roundNumber: 1 },
         { database },
       ),
     ).resolves.toMatchObject({ operation: "ALREADY_ASSOCIATED", associationId });
@@ -240,7 +251,7 @@ describe("Patient Program Service 1 evidence association", () => {
     await expect(
       associatePatientProgramServiceOneArtifact(
         actor,
-        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE" },
+        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE", roundNumber: 1 },
         { database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -264,7 +275,7 @@ describe("Patient Program Service 1 evidence association", () => {
     await expect(
       associatePatientProgramServiceOneArtifact(
         actor,
-        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE" },
+        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE", roundNumber: 1 },
         { database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -277,7 +288,7 @@ describe("Patient Program Service 1 evidence association", () => {
     await expect(
       associatePatientProgramServiceOneArtifact(
         actor,
-        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE" },
+        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE", roundNumber: 1 },
         { database },
       ),
     ).rejects.toBeInstanceOf(NotFoundError);
@@ -298,7 +309,7 @@ describe("Patient Program Service 1 evidence association", () => {
     await expect(
       associatePatientProgramServiceOneArtifact(
         actor,
-        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE" },
+        { patientProgramId: programId, patientEvidenceArtifactId: artifactId, activity: "ROUTINE", roundNumber: 1 },
         { database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -315,6 +326,7 @@ describe("Patient Program Service 1 evidence association", () => {
           patientProgramId: programId,
           patientEvidenceArtifactId: artifactId,
           activity: "ROUTINE",
+          roundNumber: 1,
           patientHospitalRelationshipId: relationshipId,
         },
         { database },

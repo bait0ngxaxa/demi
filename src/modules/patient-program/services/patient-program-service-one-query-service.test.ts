@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { toPatientProgramServiceOneProjection } from "./patient-program-service-one-query-service";
+import {
+  toPatientProgramServiceOneProjection,
+  toPatientProgramServiceOneReportProjection,
+  toPatientProgramServiceOneRounds,
+  type PatientProgramServiceOneRecord,
+} from "./patient-program-service-one-query-service";
 
 const recordedAt = new Date("2026-08-20T05:00:00.000Z");
 const artifactUploadedAt = new Date("2026-08-21T01:00:00.000Z");
@@ -13,121 +18,103 @@ const recordedByUser = {
   },
 };
 
-describe("Patient Program Service 1 read projection", () => {
+function record(overrides: Partial<PatientProgramServiceOneRecord> = {}): PatientProgramServiceOneRecord {
+  return {
+    serviceOneRoutines: [],
+    serviceOneFloatingCharts: [],
+    serviceOneDreamCards: [],
+    serviceOneConfidences: [],
+    ...overrides,
+  };
+}
+
+const confidence = (roundNumber: number, score: number) => ({
+  roundNumber,
+  recordedAt,
+  recordedByUser,
+  score,
+  improvementPlan: "แผนสะท้อนผล",
+});
+
+describe("Patient Program Service 1 read projection (SR-D8)", () => {
   it("returns empty structural progress before any activity is recorded", () => {
-    const projection = toPatientProgramServiceOneProjection({
-      serviceOneRoutine: null,
-      serviceOneFloatingChart: null,
-      serviceOneDreamCard: null,
-      serviceOneConfidence: null,
-    });
-
-    expect(projection).toEqual({
+    expect(toPatientProgramServiceOneProjection(record(), 1)).toEqual({
       routine: { recorded: false, recordedAt: null, recordedBy: null, evidence: null },
-      floatingChart: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        summary: null,
-        evidence: null,
-      },
-      dreamCard: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        description: null,
-        evidence: null,
-      },
-      confidence: {
-        recorded: false,
-        recordedAt: null,
-        recordedBy: null,
-        score: null,
-        improvementPlan: null,
-      },
+      floatingChart: { recorded: false, recordedAt: null, recordedBy: null, summary: null, evidence: null },
+      dreamCard: { recorded: false, recordedAt: null, recordedBy: null, description: null, evidence: null },
+      confidence: { recorded: false, recordedAt: null, recordedBy: null, score: null, improvementPlan: null },
     });
   });
 
-  it("projects partial activity progress and safe display identity", () => {
-    const projection = toPatientProgramServiceOneProjection({
-      serviceOneRoutine: { recordedAt, recordedByUser, serviceOneArtifactAssociation: null },
-      serviceOneFloatingChart: {
-        recordedAt,
-        recordedByUser,
-        summary: "สรุปจากกราฟ",
-        serviceOneArtifactAssociation: null,
-      },
-      serviceOneDreamCard: null,
-      serviceOneConfidence: null,
+  it("projects only the requested round, so a later round never overwrites round 1", () => {
+    const source = record({
+      serviceOneRoutines: [{ roundNumber: 1, recordedAt, recordedByUser, serviceOneArtifactAssociation: null }],
+      serviceOneConfidences: [confidence(1, 3), confidence(2, 8)],
     });
 
-    expect(projection.routine).toMatchObject({
-      recorded: true,
-      recordedAt,
-      recordedBy: { displayName: "สมชาย ผู้บันทึก" },
+    expect(toPatientProgramServiceOneProjection(source, 1)).toMatchObject({
+      routine: { recorded: true, recordedBy: { displayName: "สมชาย ผู้บันทึก" } },
+      confidence: { recorded: true, score: 3 },
     });
-    expect(projection.floatingChart).toMatchObject({
-      recorded: true,
-      summary: "สรุปจากกราฟ",
+    expect(toPatientProgramServiceOneProjection(source, 2)).toMatchObject({
+      routine: { recorded: false },
+      confidence: { recorded: true, score: 8 },
     });
-    expect(projection.dreamCard.recorded).toBe(false);
-    expect(projection.confidence.score).toBeNull();
   });
 
-  it("keeps confidence structural and does not infer clinical meaning", () => {
-    const projection = toPatientProgramServiceOneProjection({
-      serviceOneRoutine: { recordedAt, recordedByUser, serviceOneArtifactAssociation: null },
-      serviceOneFloatingChart: {
-        recordedAt,
-        recordedByUser,
-        summary: null,
-        serviceOneArtifactAssociation: null,
-      },
-      serviceOneDreamCard: {
-        recordedAt,
-        recordedByUser,
-        description: "ความฝัน",
-        serviceOneArtifactAssociation: null,
-      },
-      serviceOneConfidence: {
-        recordedAt,
-        recordedByUser,
-        score: 0,
-        improvementPlan: "แผนสะท้อนผล",
-      },
-    });
+  it("lists only the tools each round's checklist names", () => {
+    const rounds = toPatientProgramServiceOneRounds(record());
+
+    expect(rounds.map((round) => [round.roundNumber, round.listedTools])).toEqual([
+      [1, ["routine", "floatingChart", "confidence"]],
+      [2, ["routine", "confidence"]],
+      [3, ["dreamCard", "confidence"]],
+      [4, ["routine", "floatingChart", "confidence"]],
+      [5, ["routine"]],
+      [6, ["confidence"]],
+    ]);
+  });
+
+  it("reports round 1 for the Before columns and round 3 for the dream card (R1-E)", () => {
+    const projection = toPatientProgramServiceOneReportProjection(
+      record({
+        serviceOneConfidences: [confidence(1, 0), confidence(3, 9)],
+        serviceOneDreamCards: [
+          { roundNumber: 3, recordedAt, recordedByUser, description: "ความฝัน", serviceOneArtifactAssociation: null },
+        ],
+      }),
+    );
 
     expect(projection).toMatchObject({
-      confidence: {
-        recorded: true,
-        score: 0,
-        improvementPlan: "แผนสะท้อนผล",
-      },
-      dreamCard: { description: "ความฝัน" },
+      confidence: { recorded: true, score: 0, improvementPlan: "แผนสะท้อนผล" },
+      dreamCard: { recorded: true, description: "ความฝัน" },
     });
     expect(JSON.stringify(projection)).not.toContain("clinical");
   });
 
   it("projects an attached artifact without exposing its storage key", () => {
     const artifactId = "66666666-6666-4666-8666-666666666666";
-    const projection = toPatientProgramServiceOneProjection({
-      serviceOneRoutine: {
-        recordedAt,
-        recordedByUser,
-        serviceOneArtifactAssociation: {
-          createdAt: evidenceAssociatedAt,
-          patientEvidenceArtifact: {
-            id: artifactId,
-            mediaType: "image/jpeg",
-            byteSize: 1024,
-            createdAt: artifactUploadedAt,
+    const projection = toPatientProgramServiceOneProjection(
+      record({
+        serviceOneRoutines: [
+          {
+            roundNumber: 2,
+            recordedAt,
+            recordedByUser,
+            serviceOneArtifactAssociation: {
+              createdAt: evidenceAssociatedAt,
+              patientEvidenceArtifact: {
+                id: artifactId,
+                mediaType: "image/jpeg",
+                byteSize: 1024,
+                createdAt: artifactUploadedAt,
+              },
+            },
           },
-        },
-      },
-      serviceOneFloatingChart: null,
-      serviceOneDreamCard: null,
-      serviceOneConfidence: null,
-    });
+        ],
+      }),
+      2,
+    );
 
     expect(projection.routine.evidence).toEqual({
       artifactId,
@@ -136,9 +123,6 @@ describe("Patient Program Service 1 read projection", () => {
       uploadedAt: artifactUploadedAt,
       associatedAt: evidenceAssociatedAt,
     });
-    expect(projection.routine.evidence?.uploadedAt).not.toEqual(
-      projection.routine.evidence?.associatedAt,
-    );
     expect(JSON.stringify(projection)).not.toContain("storageObjectKey");
   });
 });

@@ -51,7 +51,11 @@ import {
   recordPatientProgramServiceOneFloatingChart,
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
-import { recordPatientProgramRoundReview, recordPatientProgramRoundVitals } from "@/modules/patient-program-rounds/services/round-service";
+import {
+  completePatientProgramRound,
+  recordPatientProgramRoundReview,
+  recordPatientProgramRoundVitals,
+} from "@/modules/patient-program-rounds/services/round-service";
 import { readPatientImportFile } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
 import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
 import { createPatientImportTemplateWorkbook } from "@/modules/patient-provisioning/import/patient-import-template";
@@ -432,7 +436,6 @@ async function seedProgramFollowup(osmActor: ActorContext, programId: string, go
     obstacleNote: spec.obstacle ? "ทดสอบ: ช่วงเทศกาลควบคุมอาหารได้ยาก" : null,
     weight: spec.weight,
     bloodSugar: spec.dtx,
-    confidenceScore: 7,
     activityProgress: spec.plan.map((item, index) => ({
       goalActivityCode: item.activityCode,
       status: status(spec.progress[index]!, item.targetDays),
@@ -459,20 +462,31 @@ async function seedProgram(input: {
   const program = await openPatientProgram(staffActor, { patientHospitalRelationshipId: relationshipId }, clock(startDay, "09:30"));
   const programId = program.patientProgramId;
 
-  // Round 1: vitals, the Program screening and Service 1 tools.
+  // Phase R1: every round is recorded in checklist order and completed before the next one opens (SR-D5).
+  const completeRound = (roundNumber: number, onDay: string) =>
+    completePatientProgramRound(osmActor, { patientProgramId: programId, roundNumber, submissionNonce: randomUUID() }, clock(onDay, "12:00"));
+  const ruler = (roundNumber: number, onDay: string, score: number) =>
+    recordPatientProgramServiceOneConfidence(osmActor, { patientProgramId: programId, roundNumber, score, improvementPlan: "ทดสอบ: เดินหลังอาหารเย็น" }, clock(onDay, "10:35"));
+  const routine = (roundNumber: number, onDay: string) =>
+    recordPatientProgramServiceOneRoutine(osmActor, { patientProgramId: programId, roundNumber }, clock(onDay, "10:30"));
+
+  // Round 1: vitals with the preferred name, the Program screening and the per-round tools; เส้นทางสุขภาพ is derived.
+  const profileVersion = (await database().patientHospitalProfile.findUnique({
+    where: { patientHospitalRelationshipId: relationshipId }, select: { version: true },
+  }))?.version ?? null;
   await recordPatientProgramRoundVitals(osmActor, {
     patientProgramId: programId, roundNumber: 1, submissionNonce: randomUUID(), serviceDate: startDay,
     weight: vitals.weight - 0.5, heightCm: vitals.heightCm, waistCircumference: vitals.waist, systolicBloodPressure: vitals.systolic,
-    diastolicBloodPressure: vitals.diastolic, bloodSugar: vitals.dtx - 5,
+    diastolicBloodPressure: vitals.diastolic, bloodSugar: vitals.dtx - 5, preferredName: "ทดสอบ: ป้าใจดี", profileVersion,
   }, clock(startDay, "10:00"));
   await submitScreening(osmActor, screeningInput(relationshipId, programId, 2), clock(startDay, "10:10"));
-  await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, summary: "ทดสอบ: กราฟวัดลอยจม" }, clock(startDay, "10:20"));
-  await recordPatientProgramServiceOneDreamCard(osmActor, { patientProgramId: programId, description: "ทดสอบ: อยากเล่นกับหลานได้นานขึ้น" }, clock(startDay, "10:25"));
-  await recordPatientProgramServiceOneRoutine(osmActor, { patientProgramId: programId }, clock(startDay, "10:30"));
-  await recordPatientProgramServiceOneConfidence(osmActor, { patientProgramId: programId, score: 7, improvementPlan: "ทดสอบ: เดินหลังอาหารเย็น" }, clock(startDay, "10:35"));
+  await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 1, summary: "ทดสอบ: กราฟวัดลอยจม" }, clock(startDay, "10:20"));
+  await routine(1, startDay);
+  await ruler(1, startDay, 6);
   if (stage === "ROUND_1") return { programId, finalDay: null };
+  await completeRound(1, startDay);
 
-  // Round 2: vitals and the first Goal Plan (v1).
+  // Round 2: vitals, the first Goal Plan (v1), ruler and routine.
   const round2 = day(14);
   await recordPatientProgramRoundVitals(osmActor, {
     patientProgramId: programId, roundNumber: 2, submissionNonce: randomUUID(), serviceDate: round2,
@@ -482,15 +496,20 @@ async function seedProgram(input: {
     patientProgramId: programId, submissionNonce: randomUUID(), primaryGoalCode: "glucose", items: PLAN_V1,
     weeklyNote: "ทดสอบ: เป้าหมายรายสัปดาห์",
   }, clock(round2, "10:30"));
+  await ruler(2, round2, 7);
+  await routine(2, round2);
   if (stage === "ROUND_2") return { programId, finalDay: null };
+  await completeRound(2, round2);
 
-  // Rounds 3–4: Follow-ups 1–2; round 3 reviews the Dream Card (REVIEWED, planned) and round 4 adjusts the plan (v2).
+  // Round 3: Follow-up 1 (plan kept), ruler and ความฝันของฉัน.
   await seedProgramFollowup(osmActor, programId, planV1.goalPlanId, {
     day: day(28), dtx: vitals.dtx - 20, weight: vitals.weight - 1.5, planAdjusted: false, obstacle: true, progress: [3, 4, 1], plan: PLAN_V1,
   });
-  await recordPatientProgramRoundReview(osmActor, {
-    patientProgramId: programId, roundNumber: 3, toolCode: "DREAM_CARD", submissionNonce: randomUUID(),
-  }, clock(day(28), "11:30"));
+  await ruler(3, day(28), 7);
+  await recordPatientProgramServiceOneDreamCard(osmActor, { patientProgramId: programId, roundNumber: 3, description: "ทดสอบ: อยากเล่นกับหลานได้นานขึ้น" }, clock(day(28), "10:25"));
+  await completeRound(3, day(28));
+
+  // Round 4: Follow-up 2 adjusts the plan (v2 = แผนสุขภาพดีของฉัน), floating chart, ruler and routine.
   const adjustingFollowupId = await seedProgramFollowup(osmActor, programId, planV1.goalPlanId, {
     day: day(42), dtx: vitals.dtx - 28, weight: vitals.weight - 2.5, planAdjusted: true, obstacle: false, progress: [5, 6, 2], plan: PLAN_V1,
   });
@@ -498,21 +517,32 @@ async function seedProgram(input: {
     patientProgramId: programId, sourceFollowupId: adjustingFollowupId, submissionNonce: randomUUID(), primaryGoalCode: "glucose", items: PLAN_V2,
     weeklyNote: "ทดสอบ: ปรับเพิ่มวันออกกำลังกาย",
   }, clock(day(42), "11:30"));
+  await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 4, summary: "ทดสอบ: กราฟวัดลอยจมครั้งที่ 4" }, clock(day(42), "10:20"));
+  await ruler(4, day(42), 8);
+  await routine(4, day(42));
   if (stage === "ROUND_4") return { programId, finalDay: null };
+  await completeRound(4, day(42));
 
-  // Round 5: Follow-up 3 and an EXTRA activity (a Floating Chart review that round 5 does not recommend).
+  // Round 5: Follow-up 3, routine and an EXTRA activity (a PAM review that round 5 does not list).
   await seedProgramFollowup(osmActor, programId, planV2.goalPlanId, {
     day: day(56), dtx: vitals.dtx - 35, weight: vitals.weight - 3.5, planAdjusted: false, obstacle: false, progress: [5, 7, 4], plan: PLAN_V2,
   });
+  await routine(5, day(56));
   await recordPatientProgramRoundReview(osmActor, {
-    patientProgramId: programId, roundNumber: 5, toolCode: "FLOATING_CHART", submissionNonce: randomUUID(),
+    patientProgramId: programId, roundNumber: 5, toolCode: "PAM", submissionNonce: randomUUID(),
   }, clock(day(56), "11:30"));
   if (stage === "ROUND_5") return { programId, finalDay: null };
+  await completeRound(5, day(56));
 
-  // Round 6, Final Assessment (After) and completion.
+  // Round 6: Follow-up 4, the health path review and the ruler; then Final Assessment (After) and completion.
   await seedProgramFollowup(osmActor, programId, planV2.goalPlanId, {
     day: day(70), dtx: vitals.dtx - 40, weight: vitals.weight - 4, planAdjusted: false, obstacle: false, progress: [4, 7, 3], plan: PLAN_V2,
   });
+  await recordPatientProgramRoundReview(osmActor, {
+    patientProgramId: programId, roundNumber: 6, toolCode: "HEALTH_PATH", submissionNonce: randomUUID(),
+  }, clock(day(70), "11:30"));
+  await ruler(6, day(70), 9);
+  await completeRound(6, day(70));
   const finalDay = day(77);
   await createPatientFinalAssessment(staffActor, {
     patientHospitalRelationshipId: relationshipId,
@@ -890,7 +920,10 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.patientAppointmentRescheduleRequest.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
     await tx.patientAppointmentCoordinationEvent.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
 
-    // Program care data.
+    // Program care data. Round completions and skips are append-only outside the demo-reset switch (20261102100000).
+    await tx.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
+    await tx.patientProgramRoundCompletion.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await tx.patientProgramRoundStepSkip.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneArtifactAssociation.deleteMany({ where: { patientProgramId: { in: programIds } } });

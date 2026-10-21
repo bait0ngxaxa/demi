@@ -2,108 +2,78 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-export const patientProgramServiceOneSelect = {
-  serviceOneRoutine: {
-    select: {
-      recordedAt: true,
-      recordedByUser: {
-        select: {
-          person: {
-            select: {
-              givenName: true,
-              familyName: true,
-            },
-          },
-        },
-      },
-      serviceOneArtifactAssociation: {
-        select: {
-          createdAt: true,
-          patientEvidenceArtifact: {
-            select: {
-              id: true,
-              mediaType: true,
-              byteSize: true,
-              createdAt: true,
-            },
-          },
-        },
+import {
+  DREAM_CARD_ROUND,
+  PROGRAM_ROUND_NUMBERS,
+  SERVICE_ONE_HOME_ROUND,
+  type ProgramRoundNumber,
+} from "@/modules/patient-program-rounds/domain/round-catalog";
+import { isPerRoundToolInRound } from "@/modules/patient-program-rounds/domain/round-steps";
+
+const recordedByUserSelect = {
+  select: {
+    person: {
+      select: {
+        givenName: true,
+        familyName: true,
       },
     },
   },
-  serviceOneFloatingChart: {
+} as const;
+
+const artifactAssociationSelect = {
+  select: {
+    createdAt: true,
+    patientEvidenceArtifact: {
+      select: {
+        id: true,
+        mediaType: true,
+        byteSize: true,
+        createdAt: true,
+      },
+    },
+  },
+} as const;
+
+/** SR-D8: one result per round; every round's results are loaded in round order. */
+export const patientProgramServiceOneSelect = {
+  serviceOneRoutines: {
+    orderBy: { roundNumber: "asc" },
     select: {
+      roundNumber: true,
+      recordedAt: true,
+      recordedByUser: recordedByUserSelect,
+      serviceOneArtifactAssociation: artifactAssociationSelect,
+    },
+  },
+  serviceOneFloatingCharts: {
+    orderBy: { roundNumber: "asc" },
+    select: {
+      roundNumber: true,
       summary: true,
       recordedAt: true,
-      recordedByUser: {
-        select: {
-          person: {
-            select: {
-              givenName: true,
-              familyName: true,
-            },
-          },
-        },
-      },
-      serviceOneArtifactAssociation: {
-        select: {
-          createdAt: true,
-          patientEvidenceArtifact: {
-            select: {
-              id: true,
-              mediaType: true,
-              byteSize: true,
-              createdAt: true,
-            },
-          },
-        },
-      },
+      recordedByUser: recordedByUserSelect,
+      serviceOneArtifactAssociation: artifactAssociationSelect,
     },
   },
-  serviceOneDreamCard: {
+  serviceOneDreamCards: {
+    orderBy: { roundNumber: "asc" },
     select: {
+      roundNumber: true,
       description: true,
       recordedAt: true,
-      recordedByUser: {
-        select: {
-          person: {
-            select: {
-              givenName: true,
-              familyName: true,
-            },
-          },
-        },
-      },
-      serviceOneArtifactAssociation: {
-        select: {
-          createdAt: true,
-          patientEvidenceArtifact: {
-            select: {
-              id: true,
-              mediaType: true,
-              byteSize: true,
-              createdAt: true,
-            },
-          },
-        },
-      },
+      recordedByUser: recordedByUserSelect,
+      serviceOneArtifactAssociation: artifactAssociationSelect,
     },
   },
-  serviceOneConfidence: {
+  serviceOneConfidences: {
+    orderBy: { roundNumber: "asc" },
     select: {
+      roundNumber: true,
       score: true,
       improvementPlan: true,
       recordedAt: true,
-      recordedByUser: {
-        select: {
-          person: {
-            select: {
-              givenName: true,
-              familyName: true,
-            },
-          },
-        },
-      },
+      recordedByUser: recordedByUserSelect,
     },
   },
 } satisfies Prisma.PatientProgramSelect;
@@ -128,6 +98,7 @@ export type PatientProgramServiceOneEvidenceProjection = {
   associatedAt: Date;
 };
 
+/** The Service 1 results of one round. */
 export type PatientProgramServiceOneProjection = {
   routine: PatientProgramServiceOneActivityProjection & {
     evidence: PatientProgramServiceOneEvidenceProjection | null;
@@ -144,6 +115,12 @@ export type PatientProgramServiceOneProjection = {
     score: number | null;
     improvementPlan: string | null;
   };
+};
+
+export type PatientProgramServiceOneRoundProjection = PatientProgramServiceOneProjection & {
+  roundNumber: ProgramRoundNumber;
+  /** Tools this round's checklist lists (SR-D8). */
+  listedTools: readonly ("routine" | "floatingChart" | "dreamCard" | "confidence")[];
 };
 
 function toDisplayName(person: {
@@ -211,13 +188,18 @@ function toActivityProjection(record: {
   };
 }
 
+function inRound<T extends { roundNumber: number }>(records: readonly T[] | undefined, roundNumber: number): T | null {
+  return records?.find((record) => record.roundNumber === roundNumber) ?? null;
+}
+
 export function toPatientProgramServiceOneProjection(
   record: PatientProgramServiceOneRecord | null | undefined,
+  roundNumber: number,
 ): PatientProgramServiceOneProjection {
-  const routine = record?.serviceOneRoutine ?? null;
-  const floatingChart = record?.serviceOneFloatingChart ?? null;
-  const dreamCard = record?.serviceOneDreamCard ?? null;
-  const confidence = record?.serviceOneConfidence ?? null;
+  const routine = inRound(record?.serviceOneRoutines, roundNumber);
+  const floatingChart = inRound(record?.serviceOneFloatingCharts, roundNumber);
+  const dreamCard = inRound(record?.serviceOneDreamCards, roundNumber);
+  const confidence = inRound(record?.serviceOneConfidences, roundNumber);
 
   return {
     routine: {
@@ -242,11 +224,46 @@ export function toPatientProgramServiceOneProjection(
   };
 }
 
+/** Rounds that list at least one Service 1 tool, each with its own results. */
+export function toPatientProgramServiceOneRounds(
+  record: PatientProgramServiceOneRecord | null | undefined,
+): PatientProgramServiceOneRoundProjection[] {
+  return PROGRAM_ROUND_NUMBERS.map((roundNumber) => ({
+    roundNumber,
+    listedTools: (
+      [
+        ["routine", "ROUTINE"],
+        ["floatingChart", "FLOATING_CHART"],
+        ["dreamCard", "DREAM_CARD"],
+        ["confidence", "CONFIDENCE_RULER"],
+      ] as const
+    )
+      .filter(([, code]) => isPerRoundToolInRound(roundNumber, code))
+      .map(([key]) => key),
+    ...toPatientProgramServiceOneProjection(record, roundNumber),
+  })).filter((round) => round.listedTools.length > 0);
+}
+
+/**
+ * R1-E: the report's Service 1 "Before" view: routine, floating chart and ruler from round 1, the dream
+ * card from round 3 (SR-D11). A skipped tool has no record and so reports as not done.
+ */
+export function toPatientProgramServiceOneReportProjection(
+  record: PatientProgramServiceOneRecord | null | undefined,
+): PatientProgramServiceOneProjection {
+  return {
+    ...toPatientProgramServiceOneProjection(record, SERVICE_ONE_HOME_ROUND),
+    dreamCard: toPatientProgramServiceOneProjection(record, DREAM_CARD_ROUND).dreamCard,
+  };
+}
+
 export const patientProgramServiceOneQueryInternals = {
   patientProgramServiceOneSelect,
   toActivityProjection,
   toDisplayName,
   toEvidenceProjection,
   toPatientProgramServiceOneProjection,
+  toPatientProgramServiceOneReportProjection,
+  toPatientProgramServiceOneRounds,
   toRecordedBy,
 };

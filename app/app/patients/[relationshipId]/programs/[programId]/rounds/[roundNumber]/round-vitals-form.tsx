@@ -43,23 +43,36 @@ function parseOptionalNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** SR-D12: round 1 also captures the preferred name and an empty occupation of the hospital profile. */
+export type RoundVitalsProfileFields = {
+  preferredName: string | null;
+  occupation: string | null;
+  profileVersion: number | null;
+};
+
 export function RoundVitalsForm({
   heightEditable,
   latestHeightCm,
+  nextHref,
   occupation,
   patientDisplayName,
   patientHospitalRelationshipId,
   patientProgramId,
+  profile,
   roundNumber,
   submissionNonce,
   todayServiceDate,
 }: {
   heightEditable: boolean;
   latestHeightCm: number | null;
+  /** SR-D7: the next step after a successful save. */
+  nextHref: string;
   occupation: string | null;
   patientDisplayName: string;
   patientHospitalRelationshipId: string;
   patientProgramId: string;
+  /** Round 1 only. */
+  profile: RoundVitalsProfileFields | null;
   roundNumber: number;
   submissionNonce: string;
   todayServiceDate: string;
@@ -78,14 +91,14 @@ export function RoundVitalsForm({
   useEffect(() => {
     if (state.status === "SUCCESS") {
       formRef.current?.reset();
+      router.push(nextHref);
+      return;
     }
-  }, [state]);
 
-  useEffect(() => {
-    if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
+    if (state.status === "ERROR" && state.code === "CONFLICT") {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
     <form action={action} onSubmit={submitPreservingInput(action)} ref={formRef}>
@@ -93,6 +106,7 @@ export function RoundVitalsForm({
       <input name="patientProgramId" type="hidden" value={patientProgramId} />
       <input name="roundNumber" type="hidden" value={roundNumber} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
+      {profile ? <input name="profileVersion" type="hidden" value={profile.profileVersion ?? ""} /> : null}
 
       <fieldset disabled={pending || unknownOutcome}>
         <dl className="grid gap-4 sm:grid-cols-2">
@@ -100,11 +114,35 @@ export function RoundVitalsForm({
             <dt className="text-sm font-semibold text-text-muted">ชื่อ-สกุล</dt>
             <dd className="mt-1 font-semibold text-text">{patientDisplayName}</dd>
           </div>
-          <div>
-            <dt className="text-sm font-semibold text-text-muted">อาชีพ</dt>
-            <dd className="mt-1 font-semibold text-text">{occupation ?? "ไม่ได้บันทึก"}</dd>
-          </div>
+          {profile && !occupation ? null : (
+            <div>
+              <dt className="text-sm font-semibold text-text-muted">อาชีพ</dt>
+              <dd className="mt-1 font-semibold text-text">{occupation ?? "ไม่ได้บันทึก"}</dd>
+            </div>
+          )}
         </dl>
+
+        {profile ? (
+          <div className="mt-5 grid gap-5 sm:grid-cols-2">
+            {occupation ? null : (
+              <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-1-occupation">
+                <span>อาชีพ (ยังไม่ได้บันทึก)</span>
+                <input className={inputClassName} id="round-1-occupation" maxLength={200} name="occupation" type="text" />
+              </label>
+            )}
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-1-preferred-name">
+              <span>รู้จักตัวฉันเอง · ชื่อที่อยากให้เรียก</span>
+              <input
+                className={inputClassName}
+                defaultValue={profile.preferredName ?? ""}
+                id="round-1-preferred-name"
+                maxLength={100}
+                name="preferredName"
+                type="text"
+              />
+            </label>
+          </div>
+        ) : null}
 
         <label className="mt-5 block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor={`round-${roundNumber}-service-date`}>
           <span>วันที่ให้บริการ</span>
@@ -175,7 +213,7 @@ export function RoundVitalsForm({
       ) : null}
       {state.status === "SUCCESS" ? (
         <Alert className="mt-5" variant="success">
-          บันทึกสัญญาณชีพแล้ว กำลังโหลดข้อมูลล่าสุด
+          บันทึกสัญญาณชีพแล้ว กำลังไปขั้นตอนถัดไป
         </Alert>
       ) : null}
 

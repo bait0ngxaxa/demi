@@ -141,7 +141,7 @@ function goldenProgram(): HospitalReportProgramRow {
       routine: { state: "PRESENT", value: { recordedAt: "2026-07-02T03:00:00.000Z" } },
       floatingChart: { state: "PRESENT", value: { recordedAt: "2026-07-02T03:00:00.000Z" } },
       dreamCard: { state: "MISSING" },
-      confidence: { state: "PRESENT", value: { recordedAt: "2026-07-02T03:00:00.000Z" } },
+      confidence: { state: "PRESENT", value: { recordedAt: "2026-07-02T03:00:00.000Z", score: 6 } },
     },
     goalPlans: {
       totalCount: 1,
@@ -336,7 +336,7 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["J", 74.5, "SOURCE_READY"],
   ["K", 15, "SOURCE_READY"],
   ["L", 18, "SOURCE_READY"],
-  // D8: confidence ruler 0-10; D9: self-reported exercise minutes per week.
+  // D8: confidence ruler 0-10 from the round-1 ruler (R1-E); D9: self-reported exercise minutes per week.
   ["M", 6, "SOURCE_READY"],
   ["N", 37.5, "SOURCE_READY"],
   ["O", 108, "SOURCE_READY"],

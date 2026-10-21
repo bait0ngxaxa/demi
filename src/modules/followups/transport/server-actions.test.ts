@@ -48,6 +48,8 @@ function validFormData(): FormData {
 function validProgramFormData(): FormData {
   const formData = validFormData();
   formData.delete("patientHospitalRelationshipId");
+  formData.delete("confidenceScore");
+  formData.delete("confidencePlan");
   formData.set("patientProgramId", "33333333-3333-4333-8333-333333333333");
   return formData;
 }
@@ -81,6 +83,13 @@ describe("Follow-up transport", () => {
       confidenceScore: 7,
       activityProgress: [],
     });
+  });
+
+  it("does not take a confidence score on a Program Follow-up (SR-D8)", () => {
+    const withConfidence = validProgramFormData();
+    withConfidence.set("confidenceScore", "7");
+
+    expect(followupTransportInternals.buildProgramSubmissionInput(withConfidence)).toBeNull();
   });
 
   it("parses Program-scoped input without accepting relationship authority", () => {

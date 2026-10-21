@@ -5,6 +5,8 @@ import { ConflictError, ForbiddenError } from "@/shared/errors/application-error
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedVitals = vi.hoisted(() => vi.fn());
 const mockedReview = vi.hoisted(() => vi.fn());
+const mockedSkip = vi.hoisted(() => vi.fn());
+const mockedComplete = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
@@ -14,12 +16,19 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("../services/round-service", () => ({
   recordPatientProgramRoundVitals: mockedVitals,
   recordPatientProgramRoundReview: mockedReview,
+  recordPatientProgramRoundProfile: vi.fn(),
+  skipPatientProgramRoundStep: mockedSkip,
+  unskipPatientProgramRoundStep: vi.fn(),
+  completePatientProgramRound: mockedComplete,
 }));
 
 import { initialPatientProgramRoundActionState } from "./action-state";
+import { RoundConflictError } from "../domain/round-conflict-error";
 import {
+  completePatientProgramRoundAction,
   recordPatientProgramRoundReviewAction,
   recordPatientProgramRoundVitalsAction,
+  skipPatientProgramRoundStepAction,
 } from "./server-actions";
 
 const programId = "33333333-3333-4333-8333-333333333333";
@@ -51,7 +60,7 @@ function reviewForm(extra: Record<string, string> = {}): FormData {
     patientHospitalRelationshipId: relationshipId,
     patientProgramId: programId,
     roundNumber: "3",
-    toolCode: "DREAM_CARD",
+    toolCode: "PAM",
     submissionNonce: nonce,
     ...extra,
   };
@@ -77,9 +86,12 @@ describe("Program round Server Actions", () => {
       patientProgramId: programId,
       patientHospitalRelationshipId: relationshipId,
       roundNumber: 3,
-      toolCode: "DREAM_CARD",
-      source: "PLANNED",
+      toolCode: "PAM",
+      source: "EXTRA",
     });
+    const written = { operation: "RECORDED", patientProgramId: programId, patientHospitalRelationshipId: relationshipId, roundNumber: 1 };
+    mockedSkip.mockResolvedValue(written);
+    mockedComplete.mockResolvedValue(written);
   });
 
   it("passes only the narrow vitals payload with the actor resolved on the server", async () => {
@@ -97,6 +109,9 @@ describe("Program round Server Actions", () => {
       systolicBloodPressure: null,
       diastolicBloodPressure: null,
       bloodSugar: null,
+      preferredName: null,
+      occupation: null,
+      profileVersion: null,
     });
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/programs/${programId}`);
     expect(mockedRevalidatePath).toHaveBeenCalledWith(
@@ -140,8 +155,52 @@ describe("Program round Server Actions", () => {
     expect(mockedReview).toHaveBeenCalledWith(actor, {
       patientProgramId: programId,
       roundNumber: 3,
-      toolCode: "DREAM_CARD",
+      toolCode: "PAM",
       submissionNonce: nonce,
+    });
+  });
+
+  it("requires a reason for a skip and a note for OTHER before calling the service", async () => {
+    const skipForm = (extra: Record<string, string>) => {
+      const formData = new FormData();
+      for (const [key, value] of Object.entries({ patientProgramId: programId, roundNumber: "1", stepCode: "PAM", ...extra })) {
+        formData.append(key, value);
+      }
+      return formData;
+    };
+
+    await expect(skipPatientProgramRoundStepAction(initialPatientProgramRoundActionState, skipForm({}))).resolves.toMatchObject({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+    });
+    await expect(
+      skipPatientProgramRoundStepAction(initialPatientProgramRoundActionState, skipForm({ reasonCode: "OTHER", note: " " })),
+    ).resolves.toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(mockedSkip).not.toHaveBeenCalled();
+
+    await expect(
+      skipPatientProgramRoundStepAction(initialPatientProgramRoundActionState, skipForm({ reasonCode: "PATIENT_DECLINED" })),
+    ).resolves.toMatchObject({ status: "SUCCESS" });
+    expect(mockedSkip).toHaveBeenCalledWith(actor, {
+      patientProgramId: programId,
+      roundNumber: 1,
+      stepCode: "PAM",
+      reasonCode: "PATIENT_DECLINED",
+      note: null,
+    });
+  });
+
+  it("shows the Thai sequencing message of a refused completion", async () => {
+    mockedComplete.mockRejectedValueOnce(new RoundConflictError("ต้องจบบริการครั้งที่ 1 ก่อน จึงจะบันทึกครั้งที่ 2 ได้"));
+    const formData = new FormData();
+    formData.append("patientProgramId", programId);
+    formData.append("roundNumber", "2");
+    formData.append("submissionNonce", nonce);
+
+    await expect(completePatientProgramRoundAction(initialPatientProgramRoundActionState, formData)).resolves.toEqual({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "ต้องจบบริการครั้งที่ 1 ก่อน จึงจะบันทึกครั้งที่ 2 ได้",
     });
   });
 

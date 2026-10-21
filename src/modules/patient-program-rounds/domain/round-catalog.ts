@@ -3,10 +3,11 @@ import type {
   PatientProgramRoundToolCode,
 } from "@prisma/client";
 
+import { isStepInRound } from "./round-steps";
+
 /**
- * Whiteboard alignment (docs/requirements/WB_ALIGNMENT_DECISIONS.md):
- * WB-DF-01 round mapping, WB-DF-02 recommended (not mandatory) items, WB-DF-03 review of
- * Service 1 tools, WB-PD-01 tools without an approved form.
+ * Round numbering and ledger tool codes (docs/requirements/WB_ALIGNMENT_DECISIONS.md: WB-DF-01 round
+ * mapping; Phase R1 SR-D1..D13). The required checklist of each round lives in ./round-steps.ts.
  */
 export const PROGRAM_ROUND_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
 export type ProgramRoundNumber = (typeof PROGRAM_ROUND_NUMBERS)[number];
@@ -15,11 +16,13 @@ export type ProgramRoundNumber = (typeof PROGRAM_ROUND_NUMBERS)[number];
 export const ROUND_VITALS_ROUND_NUMBERS = [1, 2] as const;
 export type RoundVitalsRoundNumber = (typeof ROUND_VITALS_ROUND_NUMBERS)[number];
 
-/** Service 1 tools and the program screening are recorded once, in round 1 (WB-DF-01). */
+/** The program screening (PAM/PROMs) and the preferred name belong to round 1. */
 export const SERVICE_ONE_HOME_ROUND = 1;
+/** SR-D11: ความฝันของฉัน is recorded in round 3. */
+export const DREAM_CARD_ROUND = 3;
 /** The Program's first Goal Plan is round 2 (WB-DF-01). */
 export const GOAL_PLAN_ROUND = 2;
-/** D4: "แผนสุขภาพดีของฉัน" is a Goal Plan adjusted from a Follow-up in this round or later. */
+/** "แผนสุขภาพดีของฉัน" is answered by this round's Follow-up (interim rule, pending customer confirmation). */
 export const ADJUSTED_PLAN_ROUND = 4;
 /**
  * Follow-up rounds 3-6 map to PatientFollowup.roundNumber 1-4 (the workbook and the follow-up
@@ -29,85 +32,49 @@ export const FIRST_FOLLOWUP_ROUND = 3;
 export const LAST_FOLLOWUP_ROUND = 6;
 export const FOLLOWUP_ROUND_NUMBER_OFFSET = 2;
 
-export type RoundToolKind =
-  | "SCREENING"
-  | "SERVICE_ONE"
-  | "GOAL_PLAN"
-  | "FOLLOWUP_REVIEW"
-  | "PENDING_FORM";
+/** SR-D13: round titles from the customer workbook. */
+const ROUND_TITLES: Readonly<Record<ProgramRoundNumber, string>> = {
+  1: "รู้จักตัวเอง",
+  2: "ทำแผนสุขภาพ เป้าหมายเล็กๆที่ตั้งไว้",
+  3: "ติดตามการฝึกซ้อมพฤติกรรม",
+  4: "ติดตามการฝึกซ้อมพฤติกรรม",
+  5: "ติดตามการฝึกซ้อมพฤติกรรม",
+  6: "ติดตามการฝึกซ้อมพฤติกรรม",
+};
+
+export function roundTitle(roundNumber: ProgramRoundNumber): string {
+  return `ครั้งที่ ${roundNumber} · ${ROUND_TITLES[roundNumber]}`;
+}
 
 export type RoundToolDefinition = {
   code: PatientProgramRoundToolCode;
   label: string;
-  kind: RoundToolKind;
 };
 
 export const ROUND_TOOLS: Readonly<Record<PatientProgramRoundToolCode, RoundToolDefinition>> = {
-  PAM: { code: "PAM", label: "แบบประเมิน PAM", kind: "SCREENING" },
-  PROMS: { code: "PROMS", label: "แบบประเมิน PROMs", kind: "SCREENING" },
-  // Retired by customer decision D1 (round 1 name, not a tool); the enum value stays for history.
-  KNOW_SELF: { code: "KNOW_SELF", label: "รู้จักตัวเอง", kind: "PENDING_FORM" },
-  FLOATING_CHART: { code: "FLOATING_CHART", label: "กราฟวัดลอยจม", kind: "SERVICE_ONE" },
-  CONFIDENCE_RULER: { code: "CONFIDENCE_RULER", label: "ไม้บรรทัดวัดใจ", kind: "SERVICE_ONE" },
+  PAM: { code: "PAM", label: "แบบประเมิน PAM" },
+  PROMS: { code: "PROMS", label: "แบบประเมิน PROMs" },
+  // Retired by customer decision D1; the enum value stays for history.
+  KNOW_SELF: { code: "KNOW_SELF", label: "รู้จักตัวเอง" },
+  FLOATING_CHART: { code: "FLOATING_CHART", label: "กราฟวัดลอยจม" },
+  CONFIDENCE_RULER: { code: "CONFIDENCE_RULER", label: "ไม้บรรทัดวัดใจ" },
   // Retired by customer decision D2 (= ROUTINE); the enum value stays for history.
-  LIFE_TABLE: { code: "LIFE_TABLE", label: "ตารางชีวิตของฉัน", kind: "PENDING_FORM" },
-  ROUTINE: { code: "ROUTINE", label: "ตารางชีวิตของฉัน (ตารางกิจวัตร)", kind: "SERVICE_ONE" },
-  DREAM_CARD: { code: "DREAM_CARD", label: "การ์ดความฝัน", kind: "SERVICE_ONE" },
-  HEALTH_PLAN_REVIEW: {
-    code: "HEALTH_PLAN_REVIEW",
-    label: "ทบทวนแผนสุขภาพ",
-    kind: "FOLLOWUP_REVIEW",
-  },
-  HEALTHY_PLAN: { code: "HEALTHY_PLAN", label: "แผนสุขภาพดีของฉัน", kind: "GOAL_PLAN" },
-  HEALTH_PATH: { code: "HEALTH_PATH", label: "เส้นทางสุขภาพ", kind: "PENDING_FORM" },
+  LIFE_TABLE: { code: "LIFE_TABLE", label: "ตารางชีวิตของฉัน" },
+  ROUTINE: { code: "ROUTINE", label: "ตารางชีวิตของฉัน" },
+  DREAM_CARD: { code: "DREAM_CARD", label: "ความฝันของฉัน" },
+  HEALTH_PLAN_REVIEW: { code: "HEALTH_PLAN_REVIEW", label: "ทบทวนแผนสุขภาพ" },
+  HEALTHY_PLAN: { code: "HEALTHY_PLAN", label: "แผนสุขภาพดีของฉัน" },
+  HEALTH_PATH: { code: "HEALTH_PATH", label: "เส้นทางสุขภาพ" },
 };
-
-/** Tools no longer offered in any round or Add list (customer decisions D1/D2). */
-export const RETIRED_TOOL_CODES: readonly PatientProgramRoundToolCode[] = ["KNOW_SELF", "LIFE_TABLE"];
 
 /**
- * Recommended items per round (WB-DF-02), transcribed from the Product Owner's Canva whiteboard
- * "ร่าง DEMI App ใหม่" (DAHSvdQ3gvU, OSM flow boxes verified 2026-10-14) and resolved by the customer
- * decisions D1-D4 (2026-10-15). Crosswalk and decision log: docs/requirements/WB_ROUND_ACTIVITY_CROSSWALK.md.
- * Ledger `source` is derived from this table on the server (PLANNED when listed, otherwise EXTRA).
+ * Ledger tools a later round can mark as reviewed: PAM/PROMs as an extra activity (CARE-13), and the
+ * round 6 "ทบทวนเส้นทางสุขภาพ" confirmation (SR-D9), stored as HEALTH_PATH in round 6.
  */
-export const ROUND_RECOMMENDED_TOOLS: Readonly<
-  Record<ProgramRoundNumber, readonly PatientProgramRoundToolCode[]>
-> = {
-  1: ["PAM", "PROMS", "FLOATING_CHART", "DREAM_CARD", "ROUTINE", "CONFIDENCE_RULER", "HEALTH_PATH"],
-  // D4/D5: the whiteboard's plan box in round 2 is creating the Goal Plan.
-  2: ["HEALTHY_PLAN", "CONFIDENCE_RULER", "ROUTINE"],
-  3: ["HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER", "DREAM_CARD"],
-  4: ["HEALTH_PLAN_REVIEW", "FLOATING_CHART", "CONFIDENCE_RULER", "ROUTINE", "HEALTHY_PLAN"],
-  5: ["HEALTH_PLAN_REVIEW", "ROUTINE"],
-  6: ["HEALTH_PATH", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"],
-};
+export const REVIEWABLE_TOOL_CODES = ["PAM", "PROMS", "HEALTH_PATH"] as const;
+export type ReviewableToolCode = (typeof REVIEWABLE_TOOL_CODES)[number];
 
-/** Per-round whiteboard wording of a tool (D3/D4 and the round 6 Health Path review). */
-const ROUND_TOOL_LABEL_OVERRIDES: Readonly<
-  Partial<Record<ProgramRoundNumber, Partial<Record<PatientProgramRoundToolCode, string>>>>
-> = {
-  2: { HEALTHY_PLAN: "ทำแผนสุขภาพ" },
-  3: { DREAM_CARD: "ความฝันของฉัน (การ์ดความฝัน)" },
-  6: { HEALTH_PATH: "ทบทวนเส้นทางสุขภาพ" },
-};
-
-export function roundToolLabel(
-  roundNumber: ProgramRoundNumber,
-  toolCode: PatientProgramRoundToolCode,
-): string {
-  return ROUND_TOOL_LABEL_OVERRIDES[roundNumber]?.[toolCode] ?? ROUND_TOOLS[toolCode].label;
-}
-
-/** Tools whose single Program-level result can be reviewed read-only in a later round (WB-DF-03). */
-export const REVIEWABLE_TOOL_CODES: readonly PatientProgramRoundToolCode[] = [
-  "PAM",
-  "PROMS",
-  "FLOATING_CHART",
-  "DREAM_CARD",
-  "ROUTINE",
-  "CONFIDENCE_RULER",
-];
+export const HEALTH_PATH_REVIEW_ROUND = 6;
 
 export const SERVICE_ONE_TOOL_LINKED_RECORD_TYPES: Readonly<
   Partial<Record<PatientProgramRoundToolCode, PatientProgramRoundLinkedRecordType>>
@@ -140,23 +107,14 @@ export function toProgramRoundNumber(followupRoundNumber: number): number {
   return followupRoundNumber + FOLLOWUP_ROUND_NUMBER_OFFSET;
 }
 
-export function isRecommendedTool(
-  roundNumber: ProgramRoundNumber,
-  toolCode: PatientProgramRoundToolCode,
-): boolean {
-  return ROUND_RECOMMENDED_TOOLS[roundNumber].includes(toolCode);
-}
-
 /** Server-derived classification of a ledger entry; never taken from the client. */
 export function roundActivitySourceFor(
   roundNumber: ProgramRoundNumber,
   toolCode: PatientProgramRoundToolCode,
 ): "PLANNED" | "EXTRA" {
-  return isRecommendedTool(roundNumber, toolCode) ? "PLANNED" : "EXTRA";
-}
+  const stepCode = toolCode === "HEALTH_PATH" && roundNumber === HEALTH_PATH_REVIEW_ROUND
+    ? "HEALTH_PATH_REVIEW"
+    : toolCode;
 
-export function isReviewableTool(toolCode: PatientProgramRoundToolCode): boolean {
-  return REVIEWABLE_TOOL_CODES.includes(toolCode);
+  return isStepInRound(roundNumber, stepCode) ? "PLANNED" : "EXTRA";
 }
-
-export const roundToolCodes = Object.keys(ROUND_TOOLS) as PatientProgramRoundToolCode[];

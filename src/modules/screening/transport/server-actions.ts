@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -127,7 +128,9 @@ function mapScreeningError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "การบันทึกแบบประเมินนี้เสร็จสิ้นแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเปิดประวัติอีกครั้ง",
+        message:
+          roundConflictMessage(error) ??
+          "การบันทึกแบบประเมินนี้เสร็จสิ้นแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเปิดประวัติอีกครั้ง",
       };
     }
 

@@ -43,8 +43,13 @@ describe("Follow-up schemas", () => {
   it("accepts Program scope without accepting a browser-supplied relationship scope", () => {
     const programInput: Record<string, unknown> = { ...validInput(), patientProgramId: programId };
     delete programInput.patientHospitalRelationshipId;
+    delete programInput.confidenceScore;
+    delete programInput.confidencePlan;
 
     expect(followupProgramCreateRequestSchema.safeParse(programInput).success).toBe(true);
+    // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, not a Follow-up field.
+    expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidenceScore: 7 }).success).toBe(false);
+    expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidencePlan: "x" }).success).toBe(false);
     expect(
       followupProgramCreateRequestSchema.safeParse({
         ...programInput,

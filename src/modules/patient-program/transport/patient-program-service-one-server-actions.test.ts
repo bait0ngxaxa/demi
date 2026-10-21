@@ -40,6 +40,7 @@ function validFormData(): FormData {
   const formData = new FormData();
   formData.set("patientProgramId", programId);
   formData.set("activity", "ROUTINE");
+  formData.set("roundNumber", "1");
   formData.set("patientEvidenceArtifactId", artifactId);
   return formData;
 }
@@ -89,6 +90,7 @@ describe("Patient Program Service 1 evidence server actions", () => {
       patientProgramId: programId,
       patientEvidenceArtifactId: artifactId,
       activity: "ROUTINE",
+      roundNumber: 1,
     });
     expect(mockedRevalidatePath).toHaveBeenNthCalledWith(1, `/app/patients/${relationshipId}`);
     expect(mockedRevalidatePath).toHaveBeenNthCalledWith(2, `/app/patients/${relationshipId}/programs`);
@@ -96,7 +98,8 @@ describe("Patient Program Service 1 evidence server actions", () => {
       3,
       `/app/patients/${relationshipId}/programs/${programId}`,
     );
-    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(4, `/app/patients/${relationshipId}/evidence`);
+    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(4, `/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(5, `/app/patients/${relationshipId}/evidence`);
   });
 
   it("maps a duplicate association to a safe conflict state", async () => {

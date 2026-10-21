@@ -6,10 +6,10 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import {
   formatRoundDate,
   formatRoundNumber,
-  ROUND_AWAITING_FORM_LABEL,
-  roundActivitySourceLabel,
-  roundActivityStatusLabel,
+  roundSkipDescription,
+  roundStepStatusLabel,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
+import { RoundProgressSummary } from "@/modules/patient-program-rounds/presentation/round-progress";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 import { PatientSelfHospitalContext } from "./patient-self-care-presentation";
@@ -48,27 +48,15 @@ export function PatientSelfProgramRoundsView({
 
         {rounds.rounds.map((round) => {
           const summary = rounds.overview.rounds.find((item) => item.roundNumber === round.roundNumber);
-          const doneActivities = round.activities.filter((activity) => activity.status === "DONE");
 
           return (
             <Panel key={round.roundNumber}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-lg font-semibold text-text">{round.title}</h2>
-                  <p className="mt-1 text-sm text-text-muted">
-                    {summary?.status === "RECORDED"
-                      ? `วันที่ ${formatRoundDate(summary.date)}`
-                      : "ยังไม่มีบันทึกในครั้งนี้"}
-                  </p>
-                </div>
-                <StatusBadge variant={summary?.status === "RECORDED" ? "success" : "neutral"}>
-                  {summary?.status === "RECORDED" ? "บันทึกแล้ว" : "ไม่ได้บันทึก"}
-                </StatusBadge>
-              </div>
+              {summary ? <RoundProgressSummary round={summary} /> : <h2 className="text-lg font-semibold text-text">{round.title}</h2>}
 
               {round.vitals ? (
                 <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-3">
                   {[
+                    ["วันที่", formatRoundDate(round.vitals.serviceDate)],
                     ["น้ำหนัก (kg)", formatRoundNumber(round.vitals.weight)],
                     ["ส่วนสูง (cm)", formatRoundNumber(round.vitals.heightCm)],
                     ["BMI (kg/m²)", formatRoundNumber(round.vitals.bmi)],
@@ -87,45 +75,36 @@ export function PatientSelfProgramRoundsView({
                 </dl>
               ) : null}
 
-              {round.followupId ? (
-                <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4 text-sm">
-                  <span className="font-medium text-text">มีบันทึกการติดตามผล</span>
-                  <Link className={linkClassName} href={`${careHref}/followups/${encodeURIComponent(round.followupId)}`}>
-                    ดูรายละเอียดการติดตามผล
-                  </Link>
-                </p>
-              ) : null}
-
-              {doneActivities.length > 0 ? (
+              {round.status.state === "LOCKED" ? null : (
                 <ul className="mt-4 divide-y divide-border border-t border-border">
-                  {doneActivities.map((activity) => {
-                    const sourceLabel = roundActivitySourceLabel(activity);
-                    const detailHref =
-                      activity.linkedRecord?.type === "GOAL_PLAN"
-                        ? `${careHref}/goal-plans/${encodeURIComponent(activity.linkedRecord.id)}`
-                        : activity.linkedRecord?.type === "FOLLOWUP"
-                          ? `${careHref}/followups/${encodeURIComponent(activity.linkedRecord.id)}`
-                          : null;
-
-                    return (
-                      <li className="flex flex-wrap items-center gap-2 py-3" key={activity.toolCode}>
-                        <span className="font-medium text-text">{activity.label}</span>
-                        <StatusBadge variant="success">{roundActivityStatusLabel(activity)}</StatusBadge>
-                        {sourceLabel ? <StatusBadge variant="info">{sourceLabel}</StatusBadge> : null}
-                        {detailHref ? (
-                          <Link className={linkClassName} href={detailHref}>
-                            ดูรายละเอียด
-                          </Link>
+                  {round.status.steps.map((step) => (
+                    <li className="flex flex-wrap items-center justify-between gap-2 py-3" key={step.code}>
+                      <span className="min-w-0">
+                        <span className="block font-medium text-text">{step.label}</span>
+                        {step.status === "SKIPPED" ? (
+                          <span className="mt-0.5 block break-words text-xs text-text-muted">เหตุผลที่ข้าม: {roundSkipDescription(step)}</span>
                         ) : null}
-                      </li>
-                    );
-                  })}
+                      </span>
+                      <StatusBadge variant={step.status === "DONE" ? "success" : step.status === "SKIPPED" ? "warning" : "neutral"}>
+                        {roundStepStatusLabel(step)}
+                      </StatusBadge>
+                    </li>
+                  ))}
                 </ul>
-              ) : null}
+              )}
 
-              {round.activities.some((activity) => activity.status === "AWAITING_FORM") ? (
-                <p className="mt-3 text-xs text-text-subtle">
-                  บางเครื่องมือในครั้งนี้ {ROUND_AWAITING_FORM_LABEL}
+              {round.followupId || (round.roundNumber === 2 && round.goalPlan.firstGoalPlanId) ? (
+                <p className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4 text-sm">
+                  {round.followupId ? (
+                    <Link className={linkClassName} href={`${careHref}/followups/${encodeURIComponent(round.followupId)}`}>
+                      ดูรายละเอียดการติดตามผล
+                    </Link>
+                  ) : null}
+                  {round.roundNumber === 2 && round.goalPlan.firstGoalPlanId ? (
+                    <Link className={linkClassName} href={`${careHref}/goal-plans/${encodeURIComponent(round.goalPlan.firstGoalPlanId)}`}>
+                      ดูแผนสุขภาพ
+                    </Link>
+                  ) : null}
                 </p>
               ) : null}
             </Panel>
@@ -135,9 +114,11 @@ export function PatientSelfProgramRoundsView({
         <Panel>
           <h2 className="text-lg font-semibold text-text">After · การประเมินสุดท้าย</h2>
           <p className="mt-1 text-sm text-text-muted">
-            {rounds.overview.after.status === "RECORDED"
+            {rounds.overview.after.state === "RECORDED"
               ? `บันทึกวันที่ ${formatRoundDate(rounds.overview.after.date)}`
-              : "ยังไม่มีการประเมินสุดท้าย"}
+              : rounds.overview.after.state === "LOCKED"
+                ? "ทำได้หลังจบการรับบริการครั้งที่ 6"
+                : "ยังไม่มีการประเมินสุดท้าย"}
           </p>
         </Panel>
 

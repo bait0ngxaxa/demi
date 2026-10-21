@@ -58,7 +58,7 @@ export function PatientProgramDetailView({
   latestGoalPlan: GoalPlanProgramDetail | null;
 }): React.JSX.Element {
   const relationshipId = detail.patient.patientHospitalRelationshipId;
-  const serviceOneRecorded = Object.values(detail.serviceOne).some((activity) => activity.recorded);
+  const serviceOneRecorded = detail.serviceOne.some((round) => round.listedTools.some((tool) => round[tool].recorded));
 
   return (
     <div>
@@ -155,7 +155,7 @@ export function PatientProgramDetailView({
           </p>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
-              ["program-service-one", "Service 1 — กิจกรรมเริ่มต้นของโปรแกรม", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
+              ["program-service-one", "เครื่องมือ Service 1 รายครั้ง", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
               ["program-goals", "แผนเป้าหมาย", goalPlanOverview.latest ? "มีแผนเป้าหมาย" : "ยังไม่มีแผนเป้าหมาย"],
               ["program-followups", "การติดตามผล", followupHistory.totalCount > 0 ? "มีบันทึกการติดตามผล" : "ยังไม่มีบันทึกการติดตามผล"],
               ["program-final", "การประเมินสุดท้ายและจบโปรแกรม", finalAssessment.finalAssessment ? "มีบันทึกการประเมินสุดท้าย" : "ยังไม่มีบันทึกการประเมินสุดท้าย"],

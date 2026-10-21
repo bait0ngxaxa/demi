@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PatientProgramStatus } from "@prisma/client";
 import type { PatientProgramDetail } from "../services/patient-program-query-service";
+import type { PatientProgramServiceOneProjection } from "../services/patient-program-service-one-query-service";
 import { replacePatientEvidenceFile } from "../../patient-evidence/client/patient-evidence-upload-payload";
 
 const mockedUseActionState = vi.hoisted(() => vi.fn());
@@ -18,7 +19,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 vi.mock("@/modules/patient-program/transport/patient-program-service-one-server-actions", () => ({
@@ -32,6 +33,8 @@ vi.mock("@/modules/patient-program/transport/patient-program-service-one-server-
 import {
   PatientProgramServiceOneWorkspace,
   patientProgramServiceOneWorkspaceInternals,
+  ServiceOneToolStep,
+  type ServiceOneToolKey,
 } from "../../../../app/app/patients/[relationshipId]/programs/[programId]/service-one-workspace";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
@@ -57,6 +60,18 @@ function activity(recorded = false) {
   };
 }
 
+type ServiceOne = PatientProgramServiceOneProjection;
+
+function serviceOne(overrides: Partial<ServiceOne> = {}): ServiceOne {
+  return {
+    routine: { ...activity(), evidence: null },
+    floatingChart: { ...activity(), summary: null, evidence: null },
+    dreamCard: { ...activity(), description: null, evidence: null },
+    confidence: { ...activity(), score: null, improvementPlan: null },
+    ...overrides,
+  };
+}
+
 function detail(overrides: Partial<PatientProgramDetail> = {}): PatientProgramDetail {
   return {
     programId,
@@ -69,12 +84,10 @@ function detail(overrides: Partial<PatientProgramDetail> = {}): PatientProgramDe
     initialBaseline: null,
     patient,
     canManage: true,
-    serviceOne: {
-      routine: { ...activity(), evidence: null },
-      floatingChart: { ...activity(), summary: null, evidence: null },
-      dreamCard: { ...activity(), description: null, evidence: null },
-      confidence: { ...activity(), score: null, improvementPlan: null },
-    },
+    serviceOne: [
+      { roundNumber: 1, listedTools: ["routine", "floatingChart", "confidence"], ...serviceOne() },
+      { roundNumber: 3, listedTools: ["dreamCard", "confidence"], ...serviceOne() },
+    ],
     ...overrides,
   };
 }
@@ -87,88 +100,95 @@ function formatThaiDateTime(value: Date): string {
   }).format(value);
 }
 
-describe("Service 1 workspace presentation", () => {
-  it("renders the progressive Thai workflow with optional evidence and bounded text", () => {
+function renderStep(tool: ServiceOneToolKey, values: ServiceOne, canManage = true, roundNumber = 1): string {
+  return renderToStaticMarkup(
+    createElement(ServiceOneToolStep, {
+      canManage,
+      nextHref: `/app/patients/${relationshipId}/programs/${programId}/rounds/${roundNumber}?after=X`,
+      programId,
+      relationshipId,
+      roundNumber,
+      serviceOne: values,
+      tool,
+    }),
+  );
+}
+
+describe("Service 1 per-round tool steps (SR-D8)", () => {
+  it("renders each tool form with the round it records into and bounded text", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
 
-    const markup = renderToStaticMarkup(
-      createElement(PatientProgramServiceOneWorkspace, { detail: detail() }),
-    );
+    const routine = renderStep("routine", serviceOne());
+    expect(routine).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(routine).toContain('name="roundNumber"');
+    expect(routine).toContain('value="1"');
+    expect(routine).not.toContain("แนบหลักฐานรูป");
 
-    expect(markup).toContain("Service 1 — กิจกรรมเริ่มต้นของโปรแกรม");
-    expect(markup).toContain("ตารางกิจวัตร");
-    expect(markup).toContain("กราฟวัดลอยจม");
-    expect(markup).toContain("การ์ดความฝัน");
-    expect(markup).toContain("ไม้บรรทัดวัดใจ");
-    expect(markup).toContain("0 จาก 4 กิจกรรมถูกบันทึกแล้ว");
-    // D1/D2: ROUTINE is the whiteboard's ตารางชีวิตของฉัน; รู้จักตัวเอง is the name of round 1.
-    expect(markup).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
-    expect(markup).toContain("นับเป็นครั้งที่ 1 · รู้จักตัวเอง");
-    expect(markup).not.toContain("Service 1 — รู้จักตัวเอง");
-    expect(markup).toMatch(/(?:maxLength|maxlength)="2000"/u);
-    expect(markup).toContain('value="0"');
-    expect(markup).toContain("ไม่ใช่เกณฑ์ผ่าน");
-    expect(markup).not.toContain("bg-success-soft");
-    expect(markup).not.toContain("แนบหลักฐานรูป");
+    const ruler = renderStep("confidence", serviceOne(), true, 2);
+    expect(ruler).toContain("ไม้บรรทัดวัดใจ");
+    expect(ruler).toContain('value="0"');
+    expect(ruler).toMatch(/(?:maxLength|maxlength)="2000"/u);
+
+    expect(renderStep("dreamCard", serviceOne(), true, 3)).toContain("ความฝันของฉัน (การ์ดความฝัน)");
   });
 
-  it("renders recorded activities and completed Programs as read-only", () => {
+  it("renders recorded results and read-only steps without controls", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
-
-    const completed = detail({
-      status: PatientProgramStatus.COMPLETED,
-      completedAt: recordedAt,
-      serviceOne: {
-        routine: {
-          ...activity(true),
-          evidence: {
-            artifactId,
-            mediaType: "image/jpeg",
-            byteSize: 1024,
-            uploadedAt: artifactUploadedAt,
-            associatedAt: evidenceAssociatedAt,
-          },
+    const recorded = serviceOne({
+      routine: {
+        ...activity(true),
+        evidence: {
+          artifactId,
+          mediaType: "image/jpeg",
+          byteSize: 1024,
+          uploadedAt: artifactUploadedAt,
+          associatedAt: evidenceAssociatedAt,
         },
-        floatingChart: { ...activity(true), summary: "สรุปกราฟ", evidence: null },
-        dreamCard: { ...activity(true), description: "ความฝัน", evidence: null },
-        confidence: { ...activity(true), score: 7, improvementPlan: "แผนพัฒนา" },
       },
+      floatingChart: { ...activity(true), summary: "สรุปกราฟ", evidence: null },
+      confidence: { ...activity(true), score: 7, improvementPlan: "แผนพัฒนา" },
     });
 
-    const markup = renderToStaticMarkup(
-      createElement(PatientProgramServiceOneWorkspace, { detail: completed }),
-    );
-
-    expect(markup).toContain("4 จาก 4 กิจกรรมถูกบันทึกแล้ว");
-    expect(markup).toContain("อ่านกิจกรรมและหลักฐานเดิมได้");
-    expect(markup).toContain("สรุปกราฟ");
-    expect(markup).toContain("ความฝัน");
-    expect(markup).toContain(`/evidence/${artifactId}/content`);
-    expect(markup).toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(evidenceAssociatedAt)}`);
-    expect(markup).not.toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(artifactUploadedAt)}`);
-    expect(markup).not.toContain("<button");
-    expect(markup).not.toContain("แนบหลักฐานรูป");
+    const routine = renderStep("routine", recorded, false);
+    expect(routine).toContain(`/evidence/${artifactId}/content`);
+    expect(routine).toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(evidenceAssociatedAt)}`);
+    expect(routine).not.toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(artifactUploadedAt)}`);
+    expect(renderStep("floatingChart", recorded, false)).toContain("สรุปกราฟ");
+    expect(renderStep("confidence", recorded, false)).toContain("7 / 10");
+    expect(renderStep("confidence", serviceOne(), false)).not.toContain("<button");
   });
 
   it("offers the same optimized mobile image guidance after an activity is recorded", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
-    const active = detail({
-      serviceOne: {
-        routine: { ...activity(true), evidence: null },
-        floatingChart: { ...activity(), summary: null, evidence: null },
-        dreamCard: { ...activity(), description: null, evidence: null },
-        confidence: { ...activity(), score: null, improvementPlan: null },
-      },
-    });
-
-    const markup = renderToStaticMarkup(
-      createElement(PatientProgramServiceOneWorkspace, { detail: active }),
-    );
+    const markup = renderStep("routine", serviceOne({ routine: { ...activity(true), evidence: null } }));
 
     expect(markup).toContain('capture="environment"');
     expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");
     expect(markup).toContain("ระบบจะลดขนาดรูปให้อัตโนมัติก่อนอัปโหลด");
     expect(markup).not.toContain("ไม่เกิน 5 MB");
+  });
+
+  it("lists the Program's results by round read-only and links to the round stepper", () => {
+    mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
+    const markup = renderToStaticMarkup(
+      createElement(PatientProgramServiceOneWorkspace, {
+        detail: detail({
+          serviceOne: [
+            {
+              roundNumber: 1,
+              listedTools: ["routine", "floatingChart", "confidence"],
+              ...serviceOne({ confidence: { ...activity(true), score: 6, improvementPlan: null } }),
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(markup).toContain("เครื่องมือ Service 1 รายครั้ง");
+    expect(markup).toContain("ครั้งที่ 1");
+    expect(markup).toContain("6 / 10");
+    expect(markup).toContain(`/app/patients/${relationshipId}/programs/${programId}/rounds/1`);
+    expect(markup).not.toContain("<form");
   });
 
   it("keeps the Service 1 evidence caption in the upload payload while optimization resolves", async () => {
@@ -227,6 +247,7 @@ describe("Service 1 workspace presentation", () => {
       programId,
       refresh,
       relationshipId,
+      roundNumber: 3,
     });
 
     expect(result).toEqual({ status: "success", message: "แนบหลักฐานรูปเรียบร้อยแล้ว" });
@@ -244,6 +265,7 @@ describe("Service 1 workspace presentation", () => {
     expect(associationFormData?.get("patientProgramId")).toBe(programId);
     expect(associationFormData?.get("patientEvidenceArtifactId")).toBe(artifactId);
     expect(associationFormData?.get("activity")).toBe("DREAM_CARD");
+    expect(associationFormData?.get("roundNumber")).toBe("3");
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -266,6 +288,7 @@ describe("Service 1 workspace presentation", () => {
       programId,
       refresh,
       relationshipId,
+      roundNumber: 3,
     });
 
     expect(result).toEqual({ status: "error", message: "ไฟล์ไม่ถูกต้อง" });
@@ -296,6 +319,7 @@ describe("Service 1 workspace presentation", () => {
       programId,
       refresh,
       relationshipId,
+      roundNumber: 3,
     });
 
     expect(result).toEqual({
@@ -326,6 +350,7 @@ describe("Service 1 workspace presentation", () => {
       programId,
       refresh,
       relationshipId,
+      roundNumber: 3,
     });
 
     expect(result).toEqual({
@@ -356,6 +381,7 @@ describe("Service 1 workspace presentation", () => {
       programId,
       refresh,
       relationshipId,
+      roundNumber: 3,
     });
 
     expect(result).toEqual({

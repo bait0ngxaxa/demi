@@ -147,13 +147,18 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
       select: { roundNumber: true, toolCode: true, source: true },
       orderBy: [{ roundNumber: "asc" }],
     });
-    // Child A: the completed Program and the round-4 Program review the Dream Card in round 3 (planned); only the
-    // completed Program reaches round 5, whose Floating Chart review is an EXTRA activity.
+    // Phase R1: per-round tools are recorded, not reviewed. Only the completed Program reaches round 5 (a PAM
+    // review, EXTRA) and round 6 (the confirmed เส้นทางสุขภาพ review, PLANNED).
     expect(ledger).toEqual([
-      { roundNumber: 3, toolCode: "DREAM_CARD", source: "PLANNED" },
-      { roundNumber: 3, toolCode: "DREAM_CARD", source: "PLANNED" },
-      { roundNumber: 5, toolCode: "FLOATING_CHART", source: "EXTRA" },
+      { roundNumber: 5, toolCode: "PAM", source: "EXTRA" },
+      { roundNumber: 6, toolCode: "HEALTH_PATH", source: "PLANNED" },
     ]);
+    // Every round of the completed Program was completed in sequence through the real service (SR-D4/D5).
+    expect(
+      await prisma.patientProgramRoundCompletion.count({
+        where: { patientProgram: { patientHospitalRelationship: { hospitalId: childA.id }, status: "COMPLETED" } },
+      }),
+    ).toBe(6);
 
     // A second run (with an unrelated ADMIN now present) gives the same dataset with no duplicates.
     const otherAdmin = await prisma.user.create({

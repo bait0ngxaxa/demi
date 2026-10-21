@@ -10,6 +10,14 @@ import {
   type PatientProgramAccessContext,
 } from "@/modules/patient-program/services/patient-program-access-service";
 import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
+import {
+  GOAL_PLAN_ROUND,
+  toProgramRoundNumber,
+} from "@/modules/patient-program-rounds/domain/round-catalog";
+import {
+  assertFollowupRoundWritable,
+  assertRoundWritable,
+} from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import { getAccessibleScreeningSummary } from "@/modules/screening/services/screening-query-service";
 import {
@@ -218,10 +226,10 @@ async function assertAdjustedFollowupCanSourcePlan(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   sourceFollowupId: string,
-): Promise<void> {
+): Promise<{ followupRoundNumber: number }> {
   const followup = await transaction.patientFollowup.findFirst({
     where: { id: sourceFollowupId, patientProgramId },
-    select: { planAdjusted: true },
+    select: { planAdjusted: true, roundNumber: true },
   });
 
   if (!followup) {
@@ -240,6 +248,8 @@ async function assertAdjustedFollowupCanSourcePlan(
   if (linked) {
     throw new ConflictError("This Follow-up already has an adjusted Goal Plan");
   }
+
+  return { followupRoundNumber: followup.roundNumber };
 }
 
 function toSubmissionResult(input: {
@@ -363,8 +373,16 @@ async function createInTransaction(
     access = toGoalAccessContext(locked.access);
     authoritativeActor = locked.access.actor;
 
+    // SR-D5: the first plan is the round 2 step; an adjusted plan belongs to its Follow-up's round.
     if (normalizedSourceFollowupId) {
-      await assertAdjustedFollowupCanSourcePlan(transaction, normalizedProgramId, normalizedSourceFollowupId);
+      const { followupRoundNumber } = await assertAdjustedFollowupCanSourcePlan(
+        transaction,
+        normalizedProgramId,
+        normalizedSourceFollowupId,
+      );
+      await assertFollowupRoundWritable(transaction, normalizedProgramId, toProgramRoundNumber(followupRoundNumber));
+    } else {
+      await assertRoundWritable(transaction, normalizedProgramId, GOAL_PLAN_ROUND);
     }
   }
 

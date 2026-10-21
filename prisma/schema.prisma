@@ -347,6 +347,28 @@ enum PatientProgramRoundLinkedRecordType {
   GOAL_PLAN
 }
 
+enum PatientProgramRoundStepCode {
+  VITALS
+  KNOW_SELF
+  PAM
+  PROMS
+  FLOATING_CHART
+  CONFIDENCE_RULER
+  ROUTINE
+  HEALTH_PATH
+  HEALTH_PLAN_REVIEW
+  DREAM_CARD
+  HEALTHY_PLAN
+  HEALTH_PATH_REVIEW
+}
+
+enum PatientProgramRoundSkipReason {
+  PATIENT_DECLINED
+  PATIENT_UNABLE
+  EQUIPMENT_UNAVAILABLE
+  OTHER
+}
+
 enum PatientServiceCode {
   SCREENING
   FOLLOW_UP
@@ -481,6 +503,8 @@ model User {
   patientFinalAssessmentsRecorded PatientFinalAssessment[] @relation("PatientFinalAssessmentRecordedBy")
   patientProgramRoundActivitiesRecorded PatientProgramRoundActivity[] @relation("PatientProgramRoundActivityRecordedBy")
   patientProgramRoundVitalsRecorded PatientProgramRoundVitals[] @relation("PatientProgramRoundVitalsRecordedBy")
+  patientProgramRoundCompletions PatientProgramRoundCompletion[] @relation("PatientProgramRoundCompletionCompletedBy")
+  patientProgramRoundStepSkips PatientProgramRoundStepSkip[] @relation("PatientProgramRoundStepSkipSkippedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -990,6 +1014,8 @@ model PatientHospitalProfile {
   emergencyContactPhone         String?  @db.VarChar(32)
   emergencyContactRelationship  String?  @db.VarChar(200)
   occupation                    String?  @db.VarChar(200)
+  // SR-D12: "รู้จักตัวฉันเอง" — the name the patient wants to be called (round 1, trimmed).
+  preferredName                 String?  @db.VarChar(100)
   educationLevel                String?  @db.VarChar(200)
   version                       Int      @default(1)
   createdAt                     DateTime @default(now())
@@ -1431,14 +1457,16 @@ model PatientProgram {
   goalPlans                    PatientGoalPlan[]           @relation("PatientProgramGoalPlans")
   followups                    PatientFollowup[]           @relation("PatientProgramFollowups")
   finalAssessment              PatientFinalAssessment?
-  serviceOneRoutine           PatientProgramServiceOneRoutine?
-  serviceOneFloatingChart     PatientProgramServiceOneFloatingChart?
-  serviceOneDreamCard         PatientProgramServiceOneDreamCard?
-  serviceOneConfidence        PatientProgramServiceOneConfidence?
+  serviceOneRoutines          PatientProgramServiceOneRoutine[]
+  serviceOneFloatingCharts    PatientProgramServiceOneFloatingChart[]
+  serviceOneDreamCards        PatientProgramServiceOneDreamCard[]
+  serviceOneConfidences       PatientProgramServiceOneConfidence[]
   serviceOneArtifactAssociations PatientProgramServiceOneArtifactAssociation[]
   screeningAssessment         ScreeningAssessment?        @relation("PatientProgramScreening")
   roundActivities             PatientProgramRoundActivity[]
   roundVitals                 PatientProgramRoundVitals[]
+  roundCompletions            PatientProgramRoundCompletion[]
+  roundStepSkips              PatientProgramRoundStepSkip[]
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
@@ -1523,9 +1551,47 @@ model PatientProgramRoundVitals {
   @@index([recordedByUserId, recordedAt])
 }
 
+// SR-D4: explicit, immutable completion of a numbered round (a DB trigger forbids update/delete).
+model PatientProgramRoundCompletion {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId              String   @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  roundNumber                   Int
+  completedAt                   DateTime @default(now()) @db.Timestamptz(3)
+  completedByUserId             String   @db.Uuid
+  submissionNonce               String   @unique @db.Uuid
+
+  patientProgram  PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  completedByUser User           @relation("PatientProgramRoundCompletionCompletedBy", fields: [completedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber])
+  @@index([completedByUserId, completedAt])
+}
+
+// SR-D3: a reasoned skip of one checklist step; frozen once its round is completed (DB trigger).
+model PatientProgramRoundStepSkip {
+  id                            String                        @id @default(uuid()) @db.Uuid
+  patientProgramId              String                        @db.Uuid
+  patientHospitalRelationshipId String                        @db.Uuid
+  roundNumber                   Int
+  stepCode                      PatientProgramRoundStepCode
+  reasonCode                    PatientProgramRoundSkipReason
+  note                          String?                       @db.VarChar(500)
+  skippedByUserId               String                        @db.Uuid
+  createdAt                     DateTime                      @default(now()) @db.Timestamptz(3)
+
+  patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  skippedByUser  User           @relation("PatientProgramRoundStepSkipSkippedBy", fields: [skippedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber, stepCode])
+  @@index([skippedByUserId, createdAt])
+}
+
 model PatientProgramServiceOneRoutine {
   id               String   @id @default(uuid()) @db.Uuid
-  patientProgramId String   @unique @db.Uuid
+  patientProgramId String   @db.Uuid
+  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
 
@@ -1535,11 +1601,14 @@ model PatientProgramServiceOneRoutine {
 
   @@index([recordedByUserId, recordedAt])
   @@unique([id, patientProgramId])
+  @@unique([patientProgramId, roundNumber])
 }
 
 model PatientProgramServiceOneFloatingChart {
   id               String   @id @default(uuid()) @db.Uuid
-  patientProgramId String   @unique @db.Uuid
+  patientProgramId String   @db.Uuid
+  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
   summary          String?  @db.VarChar(2000)
@@ -1550,11 +1619,14 @@ model PatientProgramServiceOneFloatingChart {
 
   @@index([recordedByUserId, recordedAt])
   @@unique([id, patientProgramId])
+  @@unique([patientProgramId, roundNumber])
 }
 
 model PatientProgramServiceOneDreamCard {
   id               String   @id @default(uuid()) @db.Uuid
-  patientProgramId String   @unique @db.Uuid
+  patientProgramId String   @db.Uuid
+  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
   description      String?  @db.VarChar(2000)
@@ -1565,11 +1637,14 @@ model PatientProgramServiceOneDreamCard {
 
   @@index([recordedByUserId, recordedAt])
   @@unique([id, patientProgramId])
+  @@unique([patientProgramId, roundNumber])
 }
 
 model PatientProgramServiceOneConfidence {
   id               String   @id @default(uuid()) @db.Uuid
-  patientProgramId String   @unique @db.Uuid
+  patientProgramId String   @db.Uuid
+  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
   score            Int
@@ -1579,6 +1654,7 @@ model PatientProgramServiceOneConfidence {
   recordedByUser  User           @relation("PatientProgramServiceOneConfidenceRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
 
   @@index([recordedByUserId, recordedAt])
+  @@unique([patientProgramId, roundNumber])
 }
 
 model PatientEvidenceArtifact {

@@ -15,6 +15,8 @@ const optionalTextSchema = z
   .transform((value) => value?.trim() || null);
 
 const confidenceScoreSchema = z.number().int().min(0).max(10);
+/** SR-D8: Service 1 tools are recorded per round; the service checks that the round lists the tool. */
+const serviceOneRoundNumberSchema = z.number().int().min(1).max(6);
 
 export const patientProgramServiceOneActivitySchema = z.enum([
   "ROUTINE",
@@ -36,12 +38,14 @@ export type PatientProgramServiceOneArtifactActivity = z.output<
 export const patientProgramServiceOneRoutineRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
+    roundNumber: serviceOneRoundNumberSchema,
   })
   .strict();
 
 export const patientProgramServiceOneFloatingChartRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
+    roundNumber: serviceOneRoundNumberSchema,
     summary: optionalTextSchema,
   })
   .strict();
@@ -49,6 +53,7 @@ export const patientProgramServiceOneFloatingChartRequestSchema = z
 export const patientProgramServiceOneDreamCardRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
+    roundNumber: serviceOneRoundNumberSchema,
     description: optionalTextSchema,
   })
   .strict();
@@ -56,6 +61,7 @@ export const patientProgramServiceOneDreamCardRequestSchema = z
 export const patientProgramServiceOneConfidenceRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
+    roundNumber: serviceOneRoundNumberSchema,
     score: confidenceScoreSchema,
     improvementPlan: optionalTextSchema,
   })
@@ -64,6 +70,7 @@ export const patientProgramServiceOneConfidenceRequestSchema = z
 export const patientProgramServiceOneArtifactAssociationRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
+    roundNumber: serviceOneRoundNumberSchema,
     patientEvidenceArtifactId: patientEvidenceArtifactIdSchema,
     activity: patientProgramServiceOneArtifactActivitySchema,
   })
@@ -88,4 +95,5 @@ export type PatientProgramServiceOneArtifactAssociationRequest = z.output<
 export const patientProgramServiceOneSchemaInternals = {
   confidenceScoreSchema,
   optionalTextSchema,
+  serviceOneRoundNumberSchema,
 };

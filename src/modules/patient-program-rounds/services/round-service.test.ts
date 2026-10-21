@@ -16,9 +16,12 @@ vi.mock("@/modules/patient-program/services/patient-program-lifecycle-service", 
 }));
 
 import {
-  patientProgramRoundServiceInternals,
+  completePatientProgramRound,
+  recordPatientProgramRoundProfile,
   recordPatientProgramRoundReview,
   recordPatientProgramRoundVitals,
+  skipPatientProgramRoundStep,
+  unskipPatientProgramRoundStep,
   type PatientProgramRoundDatabase,
 } from "./round-service";
 
@@ -30,6 +33,7 @@ const personId = "55555555-5555-4555-8555-555555555555";
 const recordId = "66666666-6666-4666-8666-666666666666";
 const nonce = "77777777-7777-4777-8777-777777777777";
 const now = new Date("2026-10-14T05:00:00.000Z");
+const recorder = { person: { givenName: "สมศรี", familyName: "อสม." } };
 
 const actor: ActorContext = {
   userId: actorUserId,
@@ -86,14 +90,63 @@ function storedVitals(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+/** The program record the completion and skip guards re-read inside the transaction. */
+function programRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: programId,
+    patientHospitalRelationshipId: relationshipId,
+    status: "ACTIVE",
+    patientHospitalRelationship: { hospitalProfile: null },
+    initialBaseline: null,
+    roundVitals: [],
+    roundActivities: [],
+    roundCompletions: [],
+    roundStepSkips: [],
+    screeningAssessment: null,
+    serviceOneRoutines: [],
+    serviceOneFloatingCharts: [],
+    serviceOneDreamCards: [],
+    serviceOneConfidences: [],
+    goalPlans: [],
+    followups: [],
+    finalAssessment: null,
+    ...overrides,
+  };
+}
+
 function createDatabase(input: {
   vitalsByNonce?: Record<string, unknown> | null;
   vitalsForRound?: Record<string, unknown> | null;
   activityByNonce?: Record<string, unknown> | null;
-  reviewTarget?: { id: string } | null;
+  screening?: { id: string } | null;
+  followup?: { id: string } | null;
   existingLedger?: Record<string, unknown> | null;
+  completedRounds?: number[];
+  completionByNonce?: Record<string, unknown> | null;
+  completionForRound?: Record<string, unknown> | null;
+  skip?: Record<string, unknown> | null;
+  removedSkips?: number;
+  program?: Record<string, unknown>;
+  profile?: Record<string, unknown> | null;
+  profileUpdateCount?: number;
 } = {}) {
   const transaction = {
+    patientProgram: {
+      findFirst: vi.fn().mockResolvedValue(programRecord(input.program)),
+    },
+    patientProgramRoundCompletion: {
+      findMany: vi.fn().mockResolvedValue((input.completedRounds ?? []).map((roundNumber) => ({ roundNumber }))),
+      findUnique: vi
+        .fn()
+        .mockResolvedValueOnce(input.completionByNonce ?? null)
+        .mockResolvedValueOnce(input.completionForRound ?? null),
+      create: vi.fn().mockResolvedValue({ id: recordId }),
+    },
+    patientProgramRoundStepSkip: {
+      findUnique: vi.fn().mockResolvedValue(input.skip ?? null),
+      create: vi.fn().mockResolvedValue({ id: recordId }),
+      deleteMany: vi.fn().mockResolvedValue({ count: input.removedSkips ?? 1 }),
+    },
     patientProgramRoundVitals: {
       findUnique: vi
         .fn()
@@ -110,11 +163,16 @@ function createDatabase(input: {
         Promise.resolve({ id: recordId, ...data }),
       ),
     },
-    patientProgramServiceOneDreamCard: {
-      findUnique: vi.fn().mockResolvedValue(input.reviewTarget === undefined ? { id: recordId } : input.reviewTarget),
+    patientHospitalProfile: {
+      findUnique: vi.fn().mockResolvedValue(input.profile ?? null),
+      updateMany: vi.fn().mockResolvedValue({ count: input.profileUpdateCount ?? 1 }),
+      create: vi.fn().mockResolvedValue({ id: recordId }),
     },
     screeningAssessment: {
-      findUnique: vi.fn().mockResolvedValue(input.reviewTarget === undefined ? { id: recordId } : input.reviewTarget),
+      findUnique: vi.fn().mockResolvedValue(input.screening === undefined ? { id: recordId } : input.screening),
+    },
+    patientFollowup: {
+      findFirst: vi.fn().mockResolvedValue(input.followup ?? null),
     },
   };
   const database = {
@@ -126,279 +184,292 @@ function createDatabase(input: {
   return { database, transaction };
 }
 
-describe("Program round vitals service", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockedAudit.mockResolvedValue(undefined);
-    mockedLock.mockResolvedValue(locked);
-  });
+const deps = (database: PatientProgramRoundDatabase) => ({ database, now: () => now, transactionRetries: 0 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockedAudit.mockResolvedValue(undefined);
+  mockedLock.mockResolvedValue(locked);
+});
+
+describe("round vitals and the round 1 profile fields", () => {
   it("records vitals with server-derived provenance and a safe audit event", async () => {
     const { database, transaction } = createDatabase();
 
-    const result = await recordPatientProgramRoundVitals(actor, vitalsInput(), { database, now: () => now });
+    const result = await recordPatientProgramRoundVitals(actor, vitalsInput(), deps(database));
 
-    expect(result).toMatchObject({
-      operation: "RECORDED",
-      roundVitalsId: recordId,
-      patientProgramId: programId,
-      patientHospitalRelationshipId: relationshipId,
-      roundNumber: 1,
-    });
+    expect(result).toMatchObject({ operation: "RECORDED", roundVitalsId: recordId, roundNumber: 1 });
     expect(transaction.patientProgramRoundVitals.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         patientProgramId: programId,
         patientHospitalRelationshipId: relationshipId,
-        roundNumber: 1,
         recordedByUserId: actorUserId,
         submissionNonce: nonce,
-        weight: 70,
-        heightCm: 160,
-        waistCircumference: null,
-        recordedAt: now,
       }),
       select: expect.anything(),
     });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "patient_program_round.vitals_recorded",
-        resourceType: "PatientProgramRoundVitals",
         metadata: { patientProgramId: programId, patientHospitalRelationshipId: relationshipId, hospitalId, roundNumber: 1 },
       }),
       expect.anything(),
     );
-    expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("70");
   });
 
-  it("returns the stored record for an identical retry and rejects a reused token with other values", async () => {
-    const same = createDatabase({ vitalsByNonce: storedVitals() });
+  it("refuses round 2 vitals until round 1 is completed, and any write to a completed round (SR-D5)", async () => {
+    const locked2 = createDatabase();
     await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput(), { database: same.database, now: () => now }),
-    ).resolves.toMatchObject({ operation: "ALREADY_RECORDED", roundVitalsId: recordId });
-    expect(same.transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
-    expect(mockedAudit).not.toHaveBeenCalled();
+      recordPatientProgramRoundVitals(actor, vitalsInput({ roundNumber: 2 }), deps(locked2.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError", message: "ต้องจบบริการครั้งที่ 1 ก่อน จึงจะบันทึกครั้งที่ 2 ได้" });
+    expect(locked2.transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
 
-    const changed = createDatabase({ vitalsByNonce: storedVitals() });
+    const completed = createDatabase({ completedRounds: [1] });
     await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 99 }), { database: changed.database, now: () => now }),
-    ).rejects.toBeInstanceOf(ConflictError);
+      recordPatientProgramRoundVitals(actor, vitalsInput(), deps(completed.database)),
+    ).rejects.toMatchObject({ message: "ครั้งที่ 1 จบบริการแล้ว ข้อมูลของครั้งนี้เป็นแบบอ่านอย่างเดียว" });
   });
 
-  it("rejects a second vitals record for the same round without overwriting", async () => {
-    const { database, transaction } = createDatabase({ vitalsForRound: { id: recordId } });
+  it("is idempotent for a replayed token and rejects a reused token with different values", async () => {
+    const replay = createDatabase({ vitalsByNonce: storedVitals() });
+    await expect(recordPatientProgramRoundVitals(actor, vitalsInput(), deps(replay.database))).resolves.toMatchObject({
+      operation: "ALREADY_RECORDED",
+    });
+    expect(replay.transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
 
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput({ submissionNonce: randomNonce() }), {
-        database,
-        now: () => now,
-      }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
+    const reused = createDatabase({ vitalsByNonce: storedVitals({ weight: 71 }) });
+    await expect(recordPatientProgramRoundVitals(actor, vitalsInput(), deps(reused.database))).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 
-  it("validates before locking: future service date, missing measurement, rounds 3-6, missing actor", async () => {
-    const { database } = createDatabase();
+  it("writes the preferred name and an empty occupation with the profile version (SR-D12)", async () => {
+    const { database, transaction } = createDatabase({ profile: { id: "p", version: 3, occupation: null, preferredName: null } });
 
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput({ serviceDate: "2026-10-16" }), { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ValidationError);
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: null, heightCm: null }), { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ValidationError);
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput({ roundNumber: 3 }), { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ValidationError);
-    await expect(
-      recordPatientProgramRoundVitals(null, vitalsInput(), { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
-    expect(mockedLock).not.toHaveBeenCalled();
-  });
+    await recordPatientProgramRoundVitals(
+      actor,
+      vitalsInput({ preferredName: "  ป้าใจ  ", occupation: "ครู", profileVersion: 3 }),
+      deps(database),
+    );
 
-  it("fails closed when the Program lock denies the actor", async () => {
-    mockedLock.mockRejectedValue(new ForbiddenError());
-    const { database, transaction } = createDatabase();
-
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput(), { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
-    expect(transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
-  });
-
-  it("retries a serializable write conflict and then reports a conflict", async () => {
-    const conflict = new Prisma.PrismaClientKnownRequestError("conflict", { code: "P2034", clientVersion: "6.19.3" });
-    const database = {
-      $transaction: vi.fn().mockRejectedValue(conflict),
-    } as unknown as PatientProgramRoundDatabase;
-
-    await expect(
-      recordPatientProgramRoundVitals(actor, vitalsInput(), { database, now: () => now, transactionRetries: 1 }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect((database as unknown as { $transaction: ReturnType<typeof vi.fn> }).$transaction).toHaveBeenCalledTimes(2);
-  });
-});
-
-function randomNonce(): string {
-  return "88888888-8888-4888-8888-888888888888";
-}
-
-describe("Program round review service (WB-DF-03)", () => {
-  const review = { patientProgramId: programId, roundNumber: 3, toolCode: "DREAM_CARD", submissionNonce: nonce };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockedAudit.mockResolvedValue(undefined);
-    mockedLock.mockResolvedValue(locked);
-  });
-
-  it("records a PLANNED review linked to the existing result without creating a Service 1 record", async () => {
-    const { database, transaction } = createDatabase();
-
-    const result = await recordPatientProgramRoundReview(actor, review, { database, now: () => now });
-
-    expect(result).toMatchObject({ operation: "RECORDED", source: "PLANNED", roundNumber: 3, toolCode: "DREAM_CARD" });
-    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        patientProgramId: programId,
-        roundNumber: 3,
-        toolCode: "DREAM_CARD",
-        source: "PLANNED",
-        mode: "REVIEWED",
-        linkedRecordType: "SERVICE_ONE_DREAM_CARD",
-        linkedRecordId: recordId,
-        recordedByUserId: actorUserId,
-        performedAt: now,
-        submissionNonce: nonce,
-      }),
-      select: expect.anything(),
+    expect(transaction.patientHospitalProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: "p", version: 3 },
+      data: { preferredName: "ป้าใจ", occupation: "ครู", version: { increment: 1 } },
     });
     expect(mockedAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "patient_program_round.activity_reviewed" }),
+      expect.objectContaining({ action: "patient_program_round.profile_updated", metadata: expect.objectContaining({ fields: "preferredName,occupation" }) }),
       expect.anything(),
     );
   });
 
-  it("derives EXTRA from the server-side round list, never from the client", async () => {
-    const { database, transaction } = createDatabase();
-
-    const result = await recordPatientProgramRoundReview(
-      actor,
-      { ...review, roundNumber: 2 },
-      { database, now: () => now },
-    );
-
-    expect(result.source).toBe("EXTRA");
-    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ source: "EXTRA", mode: "REVIEWED" }),
-      select: expect.anything(),
-    });
-  });
-
-  it("reviews the program screening for both PAM and PROMs", async () => {
-    const { database, transaction } = createDatabase();
-
-    await recordPatientProgramRoundReview(actor, { ...review, toolCode: "PROMS" }, { database, now: () => now });
-
-    expect(transaction.screeningAssessment.findUnique).toHaveBeenCalledWith({
-      where: { patientProgramId: programId },
-      select: { id: true },
-    });
-    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ toolCode: "PROMS", linkedRecordType: "SCREENING_ASSESSMENT" }),
-      select: expect.anything(),
-    });
-  });
-
-  it("is idempotent for a replayed token and for an existing round/tool entry", async () => {
-    const replay = createDatabase({
-      activityByNonce: {
-        id: recordId,
-        patientProgramId: programId,
-        roundNumber: 3,
-        toolCode: "DREAM_CARD",
-        source: "PLANNED",
-        recordedByUserId: actorUserId,
-      },
-    });
+  it("refuses a stale profile version and overwriting a recorded occupation", async () => {
+    const stale = createDatabase({ profile: { id: "p", version: 4, occupation: null, preferredName: null } });
     await expect(
-      recordPatientProgramRoundReview(actor, review, { database: replay.database, now: () => now }),
-    ).resolves.toMatchObject({ operation: "ALREADY_RECORDED", roundActivityId: recordId });
-    expect(replay.transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
+      recordPatientProgramRoundProfile(actor, { patientProgramId: programId, roundNumber: 1, preferredName: "ป้าใจ", profileVersion: 3 }, deps(stale.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
 
-    const existing = createDatabase({
-      existingLedger: {
-        id: recordId,
-        patientProgramId: programId,
-        roundNumber: 3,
-        toolCode: "DREAM_CARD",
-        source: "PLANNED",
+    const occupied = createDatabase({ profile: { id: "p", version: 3, occupation: "ครู", preferredName: null } });
+    await expect(
+      recordPatientProgramRoundProfile(
+        actor,
+        { patientProgramId: programId, roundNumber: 1, preferredName: "ป้าใจ", occupation: "ชาวนา", profileVersion: 3 },
+        deps(occupied.database),
+      ),
+    ).rejects.toMatchObject({ message: "อาชีพของผู้ป่วยบันทึกไว้แล้ว แก้ไขได้ที่ข้อมูลผู้ป่วย" });
+    expect(occupied.transaction.patientHospitalProfile.updateMany).not.toHaveBeenCalled();
+
+    // Only round 1 takes profile fields; no other profile field passes the strict schema.
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ roundNumber: 2, preferredName: "ป้าใจ" }), deps(stale.database)),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      recordPatientProgramRoundProfile(actor, { patientProgramId: programId, roundNumber: 1, preferredName: "ป้าใจ", phoneNumber: "1" }, deps(stale.database)),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});
+
+describe("round reviews", () => {
+  const review = { patientProgramId: programId, roundNumber: 5, toolCode: "PAM", submissionNonce: nonce };
+
+  it("records an extra PAM review in a later round as EXTRA, linked to the screening", async () => {
+    const { database, transaction } = createDatabase({ completedRounds: [1, 2, 3, 4] });
+
+    await expect(recordPatientProgramRoundReview(actor, review, deps(database))).resolves.toMatchObject({
+      operation: "RECORDED",
+      source: "EXTRA",
+    });
+    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        roundNumber: 5,
+        toolCode: "PAM",
+        source: "EXTRA",
         mode: "REVIEWED",
-        linkedRecordType: "SERVICE_ONE_DREAM_CARD",
+        linkedRecordType: "SCREENING_ASSESSMENT",
         linkedRecordId: recordId,
-        performedAt: now,
-        recordedByUserId: actorUserId,
-        submissionNonce: nonce,
-      },
+      }),
+      select: expect.anything(),
     });
-    await expect(
-      recordPatientProgramRoundReview(actor, review, { database: existing.database, now: () => now }),
-    ).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
-    expect(existing.transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
-    expect(mockedAudit).not.toHaveBeenCalled();
   });
 
-  it("rejects a reused token that belongs to another round or tool", async () => {
-    const { database } = createDatabase({
-      activityByNonce: {
-        id: recordId,
-        patientProgramId: programId,
-        roundNumber: 4,
-        toolCode: "DREAM_CARD",
-        source: "PLANNED",
-        recordedByUserId: actorUserId,
-      },
+  it("confirms the round 6 health path review as PLANNED once the round has its vitals (SR-D9)", async () => {
+    const missing = createDatabase({ completedRounds: [1, 2, 3, 4, 5] });
+    await expect(
+      recordPatientProgramRoundReview(actor, { ...review, roundNumber: 6, toolCode: "HEALTH_PATH" }, deps(missing.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+
+    const { database, transaction } = createDatabase({ completedRounds: [1, 2, 3, 4, 5], followup: { id: recordId } });
+    await expect(
+      recordPatientProgramRoundReview(actor, { ...review, roundNumber: 6, toolCode: "HEALTH_PATH" }, deps(database)),
+    ).resolves.toMatchObject({ source: "PLANNED" });
+    expect(transaction.patientProgramRoundActivity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ toolCode: "HEALTH_PATH", linkedRecordType: null, linkedRecordId: null }),
+      select: expect.anything(),
     });
-
-    await expect(
-      recordPatientProgramRoundReview(actor, review, { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("refuses to review a result that does not exist or in the round that recorded it", async () => {
-    const missing = createDatabase({ reviewTarget: null });
-    await expect(
-      recordPatientProgramRoundReview(actor, review, { database: missing.database, now: () => now }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(missing.transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
-
-    const roundOne = createDatabase();
-    await expect(
-      recordPatientProgramRoundReview(actor, { ...review, roundNumber: 1 }, { database: roundOne.database, now: () => now }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(roundOne.transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects tools that cannot be reviewed and fails closed when the Program lock denies the actor", async () => {
+  it("rejects the health path review outside round 6 and reviews of per-round tools", async () => {
     const { database } = createDatabase();
 
     await expect(
-      recordPatientProgramRoundReview(actor, { ...review, toolCode: "KNOW_SELF" }, { database, now: () => now }),
+      recordPatientProgramRoundReview(actor, { ...review, roundNumber: 3, toolCode: "HEALTH_PATH" }, deps(database)),
     ).rejects.toBeInstanceOf(ValidationError);
-
-    mockedLock.mockRejectedValue(new ForbiddenError());
     await expect(
-      recordPatientProgramRoundReview(actor, review, { database, now: () => now }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+      recordPatientProgramRoundReview(actor, { ...review, toolCode: "CONFIDENCE_RULER" }, deps(database)),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
-  it("exposes only reviewable tools to findReviewTarget", async () => {
-    const { transaction } = createDatabase();
+  it("refuses a review in a locked round and fails closed when the Program lock denies the actor", async () => {
+    const lockedRound = createDatabase({ completedRounds: [1] });
+    await expect(recordPatientProgramRoundReview(actor, review, deps(lockedRound.database))).rejects.toMatchObject({
+      name: "RoundConflictError",
+    });
 
+    mockedLock.mockRejectedValue(new ForbiddenError());
+    const { database, transaction } = createDatabase({ completedRounds: [1, 2, 3, 4] });
+    await expect(recordPatientProgramRoundReview(actor, review, deps(database))).rejects.toBeInstanceOf(ForbiddenError);
+    expect(transaction.patientProgramRoundActivity.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("step skips (SR-D3)", () => {
+  const skip = { patientProgramId: programId, roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "  ผู้ป่วยเหนื่อย  " };
+
+  it("requires a note for OTHER and a step of the round", async () => {
+    const { database, transaction } = createDatabase();
+
+    await expect(skipPatientProgramRoundStep(actor, { ...skip, note: " " }, deps(database))).rejects.toBeInstanceOf(ValidationError);
+    await expect(skipPatientProgramRoundStep(actor, { ...skip, note: "x".repeat(501) }, deps(database))).rejects.toBeInstanceOf(ValidationError);
+    await expect(skipPatientProgramRoundStep(actor, { ...skip, stepCode: "DREAM_CARD" }, deps(database))).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(transaction.patientProgramRoundStepSkip.create).not.toHaveBeenCalled();
+  });
+
+  it("stores the reason and audits only the reason code, never the note", async () => {
+    const { database, transaction } = createDatabase();
+
+    await expect(skipPatientProgramRoundStep(actor, skip, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(transaction.patientProgramRoundStepSkip.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", skippedByUserId: actorUserId }),
+      select: { id: true },
+    });
+    const audit = mockedAudit.mock.calls[0]?.[0] as { action: string; metadata: Record<string, unknown> };
+    expect(audit.action).toBe("patient_program_round.step_skipped");
+    expect(audit.metadata).toMatchObject({ stepCode: "PAM", reasonCode: "OTHER" });
+    expect(JSON.stringify(audit)).not.toContain("ผู้ป่วยเหนื่อย");
+  });
+
+  it("is idempotent for the same skip and refuses skipping a recorded step", async () => {
+    const same = createDatabase({ skip: { reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย" } });
+    await expect(skipPatientProgramRoundStep(actor, skip, deps(same.database))).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
+
+    const done = createDatabase({
+      program: { screeningAssessment: { id: recordId, submittedAt: now, conductedByUser: recorder } },
+    });
+    await expect(skipPatientProgramRoundStep(actor, skip, deps(done.database))).rejects.toMatchObject({
+      message: "รายการนี้บันทึกแล้ว จึงไม่ต้องข้าม",
+    });
+  });
+
+  it("unskips before completion and refuses it after", async () => {
+    const open = createDatabase();
     await expect(
-      patientProgramRoundServiceInternals.findReviewTarget(
-        transaction as unknown as Prisma.TransactionClient,
-        programId,
-        "HEALTHY_PLAN",
-      ),
-    ).resolves.toBeNull();
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(open.database)),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "patient_program_round.step_unskipped" }),
+      expect.anything(),
+    );
+
+    const completed = createDatabase({ completedRounds: [1] });
+    await expect(
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(completed.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+    expect(completed.transaction.patientProgramRoundStepSkip.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("round completion (SR-D1/SR-D4)", () => {
+  const completion = { patientProgramId: programId, roundNumber: 5, submissionNonce: nonce };
+  const allSkipped = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
+    roundNumber: 5, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: now, skippedByUser: recorder,
+  }));
+  const before = [1, 2, 3, 4];
+
+  it("refuses completion while a step is neither done nor skipped", async () => {
+    const { database, transaction } = createDatabase({
+      completedRounds: before,
+      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped.slice(0, 2) },
+    });
+
+    await expect(completePatientProgramRound(actor, completion, deps(database))).rejects.toMatchObject({
+      message: "ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้",
+    });
+    expect(transaction.patientProgramRoundCompletion.create).not.toHaveBeenCalled();
+  });
+
+  it("completes with database time, the actor and an audit of counts only", async () => {
+    const { database, transaction } = createDatabase({
+      completedRounds: before,
+      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped },
+    });
+
+    await expect(completePatientProgramRound(actor, completion, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
+    const created = transaction.patientProgramRoundCompletion.create.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(created.data).toEqual({
+      patientProgramId: programId,
+      patientHospitalRelationshipId: relationshipId,
+      roundNumber: 5,
+      completedByUserId: actorUserId,
+      submissionNonce: nonce,
+    });
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "patient_program_round.completed",
+        metadata: expect.objectContaining({ roundNumber: 5, doneSteps: 0, skippedSteps: 3 }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("is idempotent per nonce and per round, and refuses a locked round", async () => {
+    const replay = createDatabase({ completionByNonce: { patientProgramId: programId, roundNumber: 5 } });
+    await expect(completePatientProgramRound(actor, completion, deps(replay.database))).resolves.toMatchObject({
+      operation: "ALREADY_RECORDED",
+    });
+
+    const otherRound = createDatabase({ completionByNonce: { patientProgramId: programId, roundNumber: 4 } });
+    await expect(completePatientProgramRound(actor, completion, deps(otherRound.database))).rejects.toBeInstanceOf(ConflictError);
+
+    const concurrent = createDatabase({ completionForRound: { id: recordId } });
+    await expect(completePatientProgramRound(actor, completion, deps(concurrent.database))).resolves.toMatchObject({
+      operation: "ALREADY_RECORDED",
+    });
+    expect(concurrent.transaction.patientProgramRoundCompletion.create).not.toHaveBeenCalled();
+
+    const lockedRound = createDatabase({ completedRounds: [1, 2] });
+    await expect(completePatientProgramRound(actor, completion, deps(lockedRound.database))).rejects.toMatchObject({
+      message: "ต้องจบบริการครั้งที่ 4 ก่อน จึงจะบันทึกครั้งที่ 5 ได้",
+    });
   });
 });

@@ -79,7 +79,8 @@ function coreRecord(overrides: Record<string, unknown> = {}): Record<string, unk
     completedAt,
     createdAt: startedAt,
     createdByUser: { id: recorderId, person: person("ผู้สร้าง", "รายงาน") },
-    serviceOneRoutine: {
+    serviceOneRoutines: [{
+      roundNumber: 1,
       recordedAt,
       recordedByUser: { person: person("ผู้บันทึก", "Service") },
       serviceOneArtifactAssociation: {
@@ -91,10 +92,10 @@ function coreRecord(overrides: Record<string, unknown> = {}): Record<string, unk
           createdAt: new Date("2026-08-20T05:30:00.000Z"),
         },
       },
-    },
-    serviceOneFloatingChart: null,
-    serviceOneDreamCard: null,
-    serviceOneConfidence: null,
+    }],
+    serviceOneFloatingCharts: [],
+    serviceOneDreamCards: [],
+    serviceOneConfidences: [],
     ...overrides,
   };
 }

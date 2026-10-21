@@ -29,10 +29,15 @@ import {
   type PatientProgramServiceOneRoutineRequest,
 } from "../schemas/patient-program-service-one-schemas";
 import {
+  isProgramRoundNumber,
   roundActivitySourceFor,
-  SERVICE_ONE_HOME_ROUND,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
+import {
+  isPerRoundToolInRound,
+  type PerRoundToolCode,
+} from "@/modules/patient-program-rounds/domain/round-steps";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
 
 import {
   lockActivePatientProgram,
@@ -63,6 +68,7 @@ export type PatientProgramServiceOneMutationResult = {
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   hospitalId: string;
+  roundNumber: number;
   recordedByUserId: string;
   recordedAt: Date;
 };
@@ -83,6 +89,7 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const routineMutationSelect = {
   id: true,
   patientProgramId: true,
+  roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
 } satisfies Prisma.PatientProgramServiceOneRoutineSelect;
@@ -90,6 +97,7 @@ const routineMutationSelect = {
 const floatingChartMutationSelect = {
   id: true,
   patientProgramId: true,
+  roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
   summary: true,
@@ -98,6 +106,7 @@ const floatingChartMutationSelect = {
 const dreamCardMutationSelect = {
   id: true,
   patientProgramId: true,
+  roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
   description: true,
@@ -106,6 +115,7 @@ const dreamCardMutationSelect = {
 const confidenceMutationSelect = {
   id: true,
   patientProgramId: true,
+  roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
   score: true,
@@ -192,6 +202,7 @@ function toMutationResult(
   record: {
     id: string;
     patientProgramId: string;
+    roundNumber: number;
     recordedByUserId: string;
     recordedAt: Date;
   },
@@ -205,6 +216,7 @@ function toMutationResult(
     patientProgramId: record.patientProgramId,
     patientHospitalRelationshipId,
     hospitalId,
+    roundNumber: record.roundNumber,
     recordedByUserId: record.recordedByUserId,
     recordedAt: record.recordedAt,
   };
@@ -221,6 +233,7 @@ async function auditRecordedActivity(
     patientHospitalRelationshipId: string;
     hospitalId: string;
     actorUserId: string;
+    roundNumber: number;
   },
 ): Promise<void> {
   await recordAuditEvent(
@@ -234,6 +247,7 @@ async function auditRecordedActivity(
         patientHospitalRelationshipId: input.patientHospitalRelationshipId,
         hospitalId: input.hospitalId,
         activity: input.activity,
+        roundNumber: input.roundNumber,
       },
     },
     transaction,
@@ -283,23 +297,31 @@ async function findActivityRecord(
   transaction: Prisma.TransactionClient,
   activity: PatientProgramServiceOneArtifactActivity,
   patientProgramId: string,
+  roundNumber: number,
 ): Promise<{ id: string } | null> {
+  const where = { patientProgramId_roundNumber: { patientProgramId, roundNumber } };
+
   switch (activity) {
     case "ROUTINE":
-      return transaction.patientProgramServiceOneRoutine.findUnique({
-        where: { patientProgramId },
-        select: { id: true },
-      });
+      return transaction.patientProgramServiceOneRoutine.findUnique({ where, select: { id: true } });
     case "FLOATING_CHART":
-      return transaction.patientProgramServiceOneFloatingChart.findUnique({
-        where: { patientProgramId },
-        select: { id: true },
-      });
+      return transaction.patientProgramServiceOneFloatingChart.findUnique({ where, select: { id: true } });
     case "DREAM_CARD":
-      return transaction.patientProgramServiceOneDreamCard.findUnique({
-        where: { patientProgramId },
-        select: { id: true },
-      });
+      return transaction.patientProgramServiceOneDreamCard.findUnique({ where, select: { id: true } });
+  }
+}
+
+const ACTIVITY_TOOL_CODES: Readonly<Record<PatientProgramServiceOneActivity, PerRoundToolCode>> = {
+  ROUTINE: "ROUTINE",
+  FLOATING_CHART: "FLOATING_CHART",
+  DREAM_CARD: "DREAM_CARD",
+  CONFIDENCE: "CONFIDENCE_RULER",
+};
+
+/** SR-D8: a per-round result can only be recorded in a round whose checklist lists the tool. */
+function assertToolInRound(activity: PatientProgramServiceOneActivity, roundNumber: number): void {
+  if (!isProgramRoundNumber(roundNumber) || !isPerRoundToolInRound(roundNumber, ACTIVITY_TOOL_CODES[activity])) {
+    throw new ValidationError("This Service 1 tool is not part of the selected round");
   }
 }
 
@@ -374,7 +396,8 @@ async function associateArtifactInTransaction(
     throw new ConflictError("หลักฐานรูปนี้ถูกผูกกับกิจกรรม Service 1 อื่นแล้ว");
   }
 
-  const activityRecord = await findActivityRecord(transaction, input.activity, patientProgramId);
+  assertToolInRound(input.activity, input.roundNumber);
+  const activityRecord = await findActivityRecord(transaction, input.activity, patientProgramId, input.roundNumber);
 
   if (!activityRecord) {
     throw new ConflictError("กรุณาบันทึกกิจกรรม Service 1 ก่อนแนบหลักฐานรูป");
@@ -388,6 +411,8 @@ async function associateArtifactInTransaction(
   if (existingForActivity) {
     throw new ConflictError("กิจกรรมนี้มีหลักฐานรูปแล้วและไม่สามารถเปลี่ยนแทนในรอบนี้ได้");
   }
+
+  await assertRoundWritable(transaction, patientProgramId, input.roundNumber);
 
   const association = await transaction.patientProgramServiceOneArtifactAssociation.create({
     data: {
@@ -414,6 +439,7 @@ async function associateArtifactInTransaction(
         hospitalId: access.target.hospitalId,
         activity: input.activity,
         artifactId: artifact.id,
+        roundNumber: input.roundNumber,
       },
     },
     transaction,
@@ -428,8 +454,8 @@ async function associateArtifactInTransaction(
 }
 
 /**
- * WB-DF-01: Service 1 tools are recorded in round 1. The ledger row links the new Service 1 record
- * to that round in the same transaction; it is not a second result.
+ * SR-D8: Service 1 tools are recorded per round. The ledger row links the new record to its round in
+ * the same transaction; it is not a second result.
  */
 async function linkServiceOneRoundActivity(
   transaction: Prisma.TransactionClient,
@@ -443,14 +469,19 @@ async function linkServiceOneRoundActivity(
       | "SERVICE_ONE_CONFIDENCE";
     linkedRecordId: string;
     performedAt: Date;
+    roundNumber: number;
   },
 ): Promise<void> {
+  if (!isProgramRoundNumber(input.roundNumber)) {
+    throw new ValidationError("The program round is invalid");
+  }
+
   await ensureRoundLedgerEntry(transaction, {
     patientProgramId: context.program.id,
     patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
-    roundNumber: SERVICE_ONE_HOME_ROUND,
+    roundNumber: input.roundNumber,
     toolCode: input.toolCode,
-    source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, input.toolCode),
+    source: roundActivitySourceFor(input.roundNumber, input.toolCode),
     mode: "RECORDED",
     linkedRecordType: input.linkedRecordType,
     linkedRecordId: input.linkedRecordId,
@@ -471,8 +502,9 @@ async function recordRoutineInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
+  assertToolInRound("ROUTINE", input.roundNumber);
   const existing = await transaction.patientProgramServiceOneRoutine.findUnique({
-    where: { patientProgramId: program.id },
+    where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: routineMutationSelect,
   });
 
@@ -486,9 +518,12 @@ async function recordRoutineInTransaction(
     );
   }
 
+  await assertRoundWritable(transaction, program.id, input.roundNumber);
+
   const record = await transaction.patientProgramServiceOneRoutine.create({
     data: {
       patientProgramId: program.id,
+      roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
     },
@@ -500,6 +535,7 @@ async function recordRoutineInTransaction(
     linkedRecordType: "SERVICE_ONE_ROUTINE",
     linkedRecordId: record.id,
     performedAt: now,
+    roundNumber: input.roundNumber,
   });
 
   await auditRecordedActivity(transaction, {
@@ -511,6 +547,7 @@ async function recordRoutineInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     actorUserId: access.actor.userId,
+    roundNumber: input.roundNumber,
   });
 
   return toMutationResult(
@@ -534,8 +571,9 @@ async function recordFloatingChartInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
+  assertToolInRound("FLOATING_CHART", input.roundNumber);
   const existing = await transaction.patientProgramServiceOneFloatingChart.findUnique({
-    where: { patientProgramId: program.id },
+    where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: floatingChartMutationSelect,
   });
 
@@ -553,9 +591,12 @@ async function recordFloatingChartInTransaction(
     );
   }
 
+  await assertRoundWritable(transaction, program.id, input.roundNumber);
+
   const record = await transaction.patientProgramServiceOneFloatingChart.create({
     data: {
       patientProgramId: program.id,
+      roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
       summary: input.summary,
@@ -568,6 +609,7 @@ async function recordFloatingChartInTransaction(
     linkedRecordType: "SERVICE_ONE_FLOATING_CHART",
     linkedRecordId: record.id,
     performedAt: now,
+    roundNumber: input.roundNumber,
   });
 
   await auditRecordedActivity(transaction, {
@@ -579,6 +621,7 @@ async function recordFloatingChartInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     actorUserId: access.actor.userId,
+    roundNumber: input.roundNumber,
   });
 
   return toMutationResult(
@@ -602,8 +645,9 @@ async function recordDreamCardInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
+  assertToolInRound("DREAM_CARD", input.roundNumber);
   const existing = await transaction.patientProgramServiceOneDreamCard.findUnique({
-    where: { patientProgramId: program.id },
+    where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: dreamCardMutationSelect,
   });
 
@@ -621,9 +665,12 @@ async function recordDreamCardInTransaction(
     );
   }
 
+  await assertRoundWritable(transaction, program.id, input.roundNumber);
+
   const record = await transaction.patientProgramServiceOneDreamCard.create({
     data: {
       patientProgramId: program.id,
+      roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
       description: input.description,
@@ -636,6 +683,7 @@ async function recordDreamCardInTransaction(
     linkedRecordType: "SERVICE_ONE_DREAM_CARD",
     linkedRecordId: record.id,
     performedAt: now,
+    roundNumber: input.roundNumber,
   });
 
   await auditRecordedActivity(transaction, {
@@ -647,6 +695,7 @@ async function recordDreamCardInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     actorUserId: access.actor.userId,
+    roundNumber: input.roundNumber,
   });
 
   return toMutationResult(
@@ -670,8 +719,9 @@ async function recordConfidenceInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
+  assertToolInRound("CONFIDENCE", input.roundNumber);
   const existing = await transaction.patientProgramServiceOneConfidence.findUnique({
-    where: { patientProgramId: program.id },
+    where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: confidenceMutationSelect,
   });
 
@@ -689,9 +739,12 @@ async function recordConfidenceInTransaction(
     );
   }
 
+  await assertRoundWritable(transaction, program.id, input.roundNumber);
+
   const record = await transaction.patientProgramServiceOneConfidence.create({
     data: {
       patientProgramId: program.id,
+      roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
       score: input.score,
@@ -705,6 +758,7 @@ async function recordConfidenceInTransaction(
     linkedRecordType: "SERVICE_ONE_CONFIDENCE",
     linkedRecordId: record.id,
     performedAt: now,
+    roundNumber: input.roundNumber,
   });
 
   await auditRecordedActivity(transaction, {
@@ -716,6 +770,7 @@ async function recordConfidenceInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     actorUserId: access.actor.userId,
+    roundNumber: input.roundNumber,
   });
 
   return toMutationResult(
@@ -859,6 +914,7 @@ export async function associatePatientProgramServiceOneArtifact(
 
 export const patientProgramServiceOneInternals = {
   artifactAssociationSelect,
+  assertToolInRound,
   associateArtifactInTransaction,
   confidenceMutationSelect,
   findActivityRecord,

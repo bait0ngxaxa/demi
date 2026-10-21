@@ -26,8 +26,8 @@ import {
 } from "./patient-program-access-service";
 import {
   patientProgramServiceOneSelect,
-  toPatientProgramServiceOneProjection,
-  type PatientProgramServiceOneProjection,
+  toPatientProgramServiceOneRounds,
+  type PatientProgramServiceOneRoundProjection,
 } from "./patient-program-service-one-query-service";
 
 export const PATIENT_PROGRAM_HISTORY_LIMIT = 50;
@@ -66,7 +66,8 @@ export type PatientProgramPageContext = {
 export type PatientProgramDetail = PatientProgramProjection & {
   patient: PatientProgramPatientSummary;
   canManage: boolean;
-  serviceOne: PatientProgramServiceOneProjection;
+  /** SR-D8: Service 1 results per round that lists a tool. */
+  serviceOne: PatientProgramServiceOneRoundProjection[];
 };
 
 export const patientProgramSelect = {
@@ -221,7 +222,7 @@ export async function getPatientProgramDetail(
       ...toProjection(record),
       patient: access.patient,
       canManage: getCanManage(access.actor, access.target),
-      serviceOne: toPatientProgramServiceOneProjection(record),
+      serviceOne: toPatientProgramServiceOneRounds(record),
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

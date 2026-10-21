@@ -187,12 +187,18 @@ function afterHba1cCell(program: HospitalReportProgramRow): number | string {
     : factCell(program.finalAssessment.value.hba1c);
 }
 
-// D7/D8: staff-entered Baseline facts (HbA1c %, confidence ruler 0-10, CVD risk %).
+// D7: staff-entered Baseline facts (HbA1c %, CVD risk %).
 function baselineFactCell(
   program: HospitalReportProgramRow,
-  key: "hba1c" | "confidenceScore" | "cvdRiskScore",
+  key: "hba1c" | "cvdRiskScore",
 ): number | string {
   return program.baseline.state === "MISSING" ? NO_BASELINE_LABEL : factCell(program.baseline.value[key]);
+}
+
+// D8 + R1-E: the Before ruler is the round-1 ไม้บรรทัดวัดใจ (0-10); skipped or missing = not recorded.
+function roundOneConfidenceCell(program: HospitalReportProgramRow): number | string {
+  const confidence = program.serviceOne.confidence;
+  return factCell(confidence.state === "PRESENT" ? { state: "RECORDED", value: confidence.value.score } : { state: "NOT_RECORDED" });
 }
 
 function afterCvdRiskCell(program: HospitalReportProgramRow): number | string {
@@ -540,7 +546,7 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
     row.getCell(11).value = screeningScoreCell(program, "pamScore");
     row.getCell(12).value = screeningScoreCell(program, "promsScore");
-    row.getCell(13).value = baselineFactCell(program, "confidenceScore");
+    row.getCell(13).value = roundOneConfidenceCell(program);
     row.getCell(14).value = weeklyExerciseCell(program, "before");
     row.getCell(15).value = finalMeasurementCell(program, "bloodSugar");
     row.getCell(16).value = finalMeasurementCell(program, "weight");
@@ -757,13 +763,13 @@ export async function generateHospitalReportWorkbook(
       : "ชุดข้อมูลนี้ไม่รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว",
   ]);
   const detailStartRow = appendNotes(serviceSheet, notesAnchorRow(serviceRowCount, serviceTemplateEndRow), [
-    "ครั้งที่ 1 “ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา",
+    "“ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา: กราฟวัดลอยจมและตารางกิจวัตรใช้ผลของครั้งที่ 1, การ์ดความฝันใช้ผลของครั้งที่ 3; รายการที่ข้ามพร้อมเหตุผลนับเป็น “ไม่ทำ”",
     "ครั้งที่ 2 ใช้ Goal Plan รอบแรกของ Program: การลดมื้ออาหาร = เป้าหมายลดข้าว/แป้ง, การเปลี่ยนอาหาร = เป้าหมายอาหารอื่น, จำนวนมื้อและจำนวนวันต่อสัปดาห์ = วันเป้าหมายสูงสุดของหมวด, รวมเวลา = ผลรวมวันเป้าหมาย × นาทีต่อครั้ง ของกิจกรรมออกกำลังกาย",
     "Goal Plan เป็นค่าเป้าหมาย ไม่ใช่ผลที่ทำได้; Follow-up ที่เกิน 4 ครั้งแสดงในแถวต่อเนื่องและตารางรายละเอียดท้ายรายงาน",
     "วันที่ติดตาม = วันที่ให้บริการ (รายการก่อนมีช่องนี้ใช้วันที่บันทึก); จำนวนวันที่ทำได้ = ผลรวมวันที่ทำได้ใน 7 วันก่อนวันให้บริการ; อัตราความสำเร็จ = จำนวนวันที่ทำได้ ÷ วันเป้าหมายของแผนที่อ้างอิง ไม่นับกิจกรรมที่ไม่เกี่ยวข้อง; >70% นับเฉพาะการติดตามที่คำนวณได้",
     "ผลลัพธ์ที่ได้ ยังรอรายการคำจาก Owner; ปรับแผนและอุปสรรคมาจากคำตอบในแบบบันทึกการติดตาม (รายการก่อนมีช่องนี้แสดง ไม่ได้บันทึก)",
     "Program COMPLETED เป็นสถานะ lifecycle ไม่ได้ยืนยันผลลัพธ์ทางคลินิก; generatedAt เป็นเวลาสร้างไฟล์ ไม่ใช่ dataAsOf",
-    "ไม้บรรทัดวัดใจ = คะแนน 0–10 จาก Baseline",
+    "ไม้บรรทัดวัดใจ (Before) = คะแนน 0–10 ของไม้บรรทัดวัดใจครั้งที่ 1; ข้ามหรือไม่มีบันทึก = ยังไม่บันทึก",
     "เวลาออกกำลังกาย/สัปดาห์ (ผู้ป่วยบันทึกเอง) = นาทีที่ผู้ป่วยบันทึกในบันทึกการออกกำลังกายช่วง 28 วันก่อนวันเริ่ม Program (Before) หรือก่อนวันประเมินหลังจบ (After) ÷ 4; ไม่นับรายการที่ไม่ระบุเวลา; ไม่มีรายการในช่วง = ไม่มีบันทึก",
   ]);
   appendDetailTable(serviceSheet, detailStartRow, goalAndProgressDetailRows(dataset.programs));

@@ -9,7 +9,10 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
+import {
+  lockActivePatientProgram,
+  type ActivePatientProgramMutationContext,
+} from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
   ConflictError,
@@ -20,18 +23,33 @@ import {
 import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import {
+  HEALTH_PATH_REVIEW_ROUND,
   isProgramRoundNumber,
   roundActivitySourceFor,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
+  toFollowupRoundNumber,
+  type ProgramRoundNumber,
 } from "../domain/round-catalog";
+import { RoundConflictError } from "../domain/round-conflict-error";
+import { computeRoundStatus, roundStepDefinition } from "../domain/round-steps";
 import {
+  roundCompletionRequestSchema,
+  roundProfileRequestSchema,
   roundReviewRequestSchema,
+  roundStepSkipRequestSchema,
+  roundStepUnskipRequestSchema,
   roundVitalsRequestSchema,
+  type RoundCompletionRequest,
+  type RoundProfileRequest,
   type RoundReviewRequest,
+  type RoundStepSkipRequest,
+  type RoundStepUnskipRequest,
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry } from "./round-ledger";
+import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
+import { assertRoundWritable } from "./round-sequencing";
 
 export type PatientProgramRoundDatabase = PrismaClient;
 
@@ -43,20 +61,20 @@ export type PatientProgramRoundServiceDependencies = {
 
 export type PatientProgramRoundOperation = "RECORDED" | "ALREADY_RECORDED";
 
-export type PatientProgramRoundVitalsResult = {
+/** Common result of every round write: enough for the caller to revalidate and move on. */
+export type PatientProgramRoundWriteResult = {
   operation: PatientProgramRoundOperation;
-  roundVitalsId: string;
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   roundNumber: number;
 };
 
-export type PatientProgramRoundReviewResult = {
-  operation: PatientProgramRoundOperation;
+export type PatientProgramRoundVitalsResult = PatientProgramRoundWriteResult & {
+  roundVitalsId: string;
+};
+
+export type PatientProgramRoundReviewResult = PatientProgramRoundWriteResult & {
   roundActivityId: string;
-  patientProgramId: string;
-  patientHospitalRelationshipId: string;
-  roundNumber: number;
   toolCode: PatientProgramRoundToolCode;
   source: "PLANNED" | "EXTRA";
 };
@@ -141,6 +159,57 @@ async function runSerializable<T>(
   }
 }
 
+async function runRoundWrite<TInput, TResult>(
+  schema: { safeParse: (input: unknown) => { success: true; data: TInput } | { success: false } },
+  invalidMessage: string,
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramRoundServiceDependencies,
+  operation: (transaction: Prisma.TransactionClient, actor: ActorContext, input: TInput, now: Date) => Promise<TResult>,
+): Promise<TResult> {
+  const parsed = schema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError(invalidMessage);
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) => operation(transaction, actor, parsed.data, getNow(dependencies)),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+function writeResult(
+  operation: PatientProgramRoundOperation,
+  context: ActivePatientProgramMutationContext,
+  roundNumber: number,
+): PatientProgramRoundWriteResult {
+  return {
+    operation,
+    patientProgramId: context.program.id,
+    patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+    roundNumber,
+  };
+}
+
+function auditMetadata(context: ActivePatientProgramMutationContext, roundNumber: number) {
+  return {
+    patientProgramId: context.program.id,
+    patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+    hospitalId: context.access.target.hospitalId,
+    roundNumber,
+  };
+}
+
 type PersistedRoundVitals = Prisma.PatientProgramRoundVitalsGetPayload<{
   select: typeof roundVitalsSelect;
 }>;
@@ -165,20 +234,70 @@ function hasSameVitals(
   );
 }
 
-function toVitalsResult(
-  operation: PatientProgramRoundOperation,
-  record: Pick<
-    PersistedRoundVitals,
-    "id" | "patientProgramId" | "patientHospitalRelationshipId" | "roundNumber"
-  >,
-): PatientProgramRoundVitalsResult {
-  return {
-    operation,
-    roundVitalsId: record.id,
-    patientProgramId: record.patientProgramId,
-    patientHospitalRelationshipId: record.patientHospitalRelationshipId,
-    roundNumber: record.roundNumber,
+/**
+ * SR-D12 / R1-B3: the round 1 actor may write only the preferred name and an empty occupation of the
+ * hospital profile, guarded by the profile version (optimistic concurrency).
+ */
+async function writeRoundProfileFields(
+  transaction: Prisma.TransactionClient,
+  context: ActivePatientProgramMutationContext,
+  input: { preferredName?: string | null; occupation?: string | null; profileVersion?: number | null },
+): Promise<void> {
+  const preferredName = input.preferredName ?? null;
+  const occupation = input.occupation ?? null;
+
+  if (!preferredName && !occupation) {
+    return;
+  }
+
+  const relationshipId = context.access.patient.patientHospitalRelationshipId;
+  const profile = await transaction.patientHospitalProfile.findUnique({
+    where: { patientHospitalRelationshipId: relationshipId },
+    select: { id: true, version: true, occupation: true, preferredName: true },
+  });
+
+  if ((profile?.version ?? null) !== (input.profileVersion ?? null)) {
+    throw new RoundConflictError("ข้อมูลผู้ป่วยถูกแก้ไขโดยคำขออื่น กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่");
+  }
+
+  if (occupation && profile?.occupation) {
+    throw new RoundConflictError("อาชีพของผู้ป่วยบันทึกไว้แล้ว แก้ไขได้ที่ข้อมูลผู้ป่วย");
+  }
+
+  const data = {
+    ...(preferredName ? { preferredName } : {}),
+    ...(occupation ? { occupation } : {}),
   };
+
+  if (profile) {
+    const updated = await transaction.patientHospitalProfile.updateMany({
+      where: { id: profile.id, version: profile.version },
+      data: { ...data, version: { increment: 1 } },
+    });
+
+    if (updated.count !== 1) {
+      throw new RoundConflictError("ข้อมูลผู้ป่วยถูกแก้ไขโดยคำขออื่น กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่");
+    }
+  } else {
+    await transaction.patientHospitalProfile.create({
+      data: { patientHospitalRelationshipId: relationshipId, ...data },
+      select: { id: true },
+    });
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId: context.access.actor.userId,
+      action: "patient_program_round.profile_updated",
+      resourceType: "PatientHospitalProfile",
+      resourceId: relationshipId,
+      metadata: {
+        ...auditMetadata(context, SERVICE_ONE_HOME_ROUND),
+        fields: Object.keys(data).join(","),
+      },
+    },
+    transaction,
+  );
 }
 
 async function recordVitalsInTransaction(
@@ -192,7 +311,8 @@ async function recordVitalsInTransaction(
   }
 
   const programId = input.patientProgramId.toLowerCase();
-  const { access, program } = await lockActivePatientProgram(transaction, actor, programId);
+  const context = await lockActivePatientProgram(transaction, actor, programId);
+  const { access, program } = context;
   const relationshipId = access.patient.patientHospitalRelationshipId;
 
   const byNonce = await transaction.patientProgramRoundVitals.findUnique({
@@ -205,7 +325,7 @@ async function recordVitalsInTransaction(
       throw new ConflictError("This round vitals submission token has already been used");
     }
 
-    return toVitalsResult("ALREADY_RECORDED", byNonce);
+    return { ...writeResult("ALREADY_RECORDED", context, byNonce.roundNumber), roundVitalsId: byNonce.id };
   }
 
   const existing = await transaction.patientProgramRoundVitals.findUnique({
@@ -219,8 +339,10 @@ async function recordVitalsInTransaction(
   });
 
   if (existing) {
-    throw new ConflictError("ครั้งนี้มีการบันทึกสัญญาณชีพไว้แล้วและไม่สามารถบันทึกซ้ำได้");
+    throw new RoundConflictError("ครั้งนี้มีการบันทึกสัญญาณชีพไว้แล้วและไม่สามารถบันทึกซ้ำได้");
   }
+
+  await assertRoundWritable(transaction, program.id, input.roundNumber);
 
   const record = await transaction.patientProgramRoundVitals.create({
     data: {
@@ -242,57 +364,59 @@ async function recordVitalsInTransaction(
     select: roundVitalsSelect,
   });
 
+  if (input.roundNumber === SERVICE_ONE_HOME_ROUND) {
+    await writeRoundProfileFields(transaction, context, input);
+  }
+
   await recordAuditEvent(
     {
       actorUserId: access.actor.userId,
       action: "patient_program_round.vitals_recorded",
       resourceType: "PatientProgramRoundVitals",
       resourceId: record.id,
-      metadata: {
-        patientProgramId: program.id,
-        patientHospitalRelationshipId: relationshipId,
-        hospitalId: access.target.hospitalId,
-        roundNumber: input.roundNumber,
-      },
+      metadata: auditMetadata(context, input.roundNumber),
     },
     transaction,
   );
 
-  return toVitalsResult("RECORDED", record);
+  return { ...writeResult("RECORDED", context, record.roundNumber), roundVitalsId: record.id };
 }
 
-/** Resolves the existing Program-level result a tool review points at, or null when none exists. */
+async function recordProfileInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: RoundProfileRequest,
+): Promise<PatientProgramRoundWriteResult> {
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
+  await assertRoundWritable(transaction, context.program.id, SERVICE_ONE_HOME_ROUND);
+  await writeRoundProfileFields(transaction, context, input);
+
+  return writeResult("RECORDED", context, SERVICE_ONE_HOME_ROUND);
+}
+
+/** Resolves the existing Program-level result a review points at, or null when none exists. */
 async function findReviewTarget(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
-  toolCode: PatientProgramRoundToolCode,
-): Promise<string | null> {
-  const where = { patientProgramId };
-  const select = { id: true } as const;
-  let record: { id: string } | null = null;
+  toolCode: RoundReviewRequest["toolCode"],
+  roundNumber: ProgramRoundNumber,
+): Promise<{ linkedRecordId: string | null } | null> {
+  if (toolCode === "HEALTH_PATH") {
+    // SR-D9: the path review needs the round's own vitals (round 6 = Follow-up 4).
+    const followup = await transaction.patientFollowup.findFirst({
+      where: { patientProgramId, roundNumber: toFollowupRoundNumber(roundNumber) },
+      select: { id: true },
+    });
 
-  switch (toolCode) {
-    case "PAM":
-    case "PROMS":
-      record = await transaction.screeningAssessment.findUnique({ where, select });
-      break;
-    case "ROUTINE":
-      record = await transaction.patientProgramServiceOneRoutine.findUnique({ where, select });
-      break;
-    case "FLOATING_CHART":
-      record = await transaction.patientProgramServiceOneFloatingChart.findUnique({ where, select });
-      break;
-    case "DREAM_CARD":
-      record = await transaction.patientProgramServiceOneDreamCard.findUnique({ where, select });
-      break;
-    case "CONFIDENCE_RULER":
-      record = await transaction.patientProgramServiceOneConfidence.findUnique({ where, select });
-      break;
-    default:
-      record = null;
+    return followup ? { linkedRecordId: null } : null;
   }
 
-  return record?.id ?? null;
+  const screening = await transaction.screeningAssessment.findUnique({
+    where: { patientProgramId },
+    select: { id: true },
+  });
+
+  return screening ? { linkedRecordId: screening.id } : null;
 }
 
 async function recordReviewInTransaction(
@@ -307,14 +431,8 @@ async function recordReviewInTransaction(
     throw new ValidationError("The program round is invalid");
   }
 
-  const programId = input.patientProgramId.toLowerCase();
-  const { access, program } = await lockActivePatientProgram(transaction, actor, programId);
-  const relationshipId = access.patient.patientHospitalRelationshipId;
-  const linkedRecordType = SERVICE_ONE_TOOL_LINKED_RECORD_TYPES[input.toolCode];
-
-  if (!linkedRecordType) {
-    throw new ValidationError("This tool cannot be reviewed");
-  }
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
+  const { access, program } = context;
 
   const byNonce = await transaction.patientProgramRoundActivity.findUnique({
     where: { submissionNonce: input.submissionNonce },
@@ -339,35 +457,45 @@ async function recordReviewInTransaction(
     }
 
     return {
-      operation: "ALREADY_RECORDED",
+      ...writeResult("ALREADY_RECORDED", context, roundNumber),
       roundActivityId: byNonce.id,
-      patientProgramId: program.id,
-      patientHospitalRelationshipId: relationshipId,
-      roundNumber,
       toolCode: byNonce.toolCode,
       source: byNonce.source,
     };
   }
 
-  if (roundNumber === SERVICE_ONE_HOME_ROUND) {
-    throw new ConflictError("เครื่องมือนี้บันทึกในครั้งที่ 1 ไม่ต้องทบทวนซ้ำในครั้งเดียวกัน");
+  if (input.toolCode === "HEALTH_PATH" && roundNumber !== HEALTH_PATH_REVIEW_ROUND) {
+    throw new ValidationError("The health path review belongs to round 6");
   }
 
-  const linkedRecordId = await findReviewTarget(transaction, program.id, input.toolCode);
-
-  if (!linkedRecordId) {
-    throw new ConflictError("ยังไม่มีผลเดิมของเครื่องมือนี้ให้ทบทวน กรุณาบันทึกในครั้งที่ 1 ก่อน");
+  if (input.toolCode !== "HEALTH_PATH" && roundNumber === SERVICE_ONE_HOME_ROUND) {
+    throw new RoundConflictError("เครื่องมือนี้บันทึกในครั้งที่ 1 ไม่ต้องทบทวนซ้ำในครั้งเดียวกัน");
   }
 
+  const target = await findReviewTarget(transaction, program.id, input.toolCode, roundNumber);
+
+  if (!target) {
+    throw new RoundConflictError(
+      input.toolCode === "HEALTH_PATH"
+        ? "บันทึกสัญญาณชีพของครั้งที่ 6 (การติดตามผล) ก่อน จึงจะทบทวนเส้นทางสุขภาพได้"
+        : "ยังไม่มีผลแบบประเมินให้ทบทวน กรุณาบันทึกในครั้งที่ 1 ก่อน",
+    );
+  }
+
+  await assertRoundWritable(transaction, program.id, roundNumber);
+
+  const linkedRecordType = target.linkedRecordId
+    ? (SERVICE_ONE_TOOL_LINKED_RECORD_TYPES[input.toolCode] ?? null)
+    : null;
   const { entry, created } = await ensureRoundLedgerEntry(transaction, {
     patientProgramId: program.id,
-    patientHospitalRelationshipId: relationshipId,
+    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     roundNumber,
     toolCode: input.toolCode,
     source: roundActivitySourceFor(roundNumber, input.toolCode),
     mode: "REVIEWED",
     linkedRecordType,
-    linkedRecordId,
+    linkedRecordId: linkedRecordType ? target.linkedRecordId : null,
     recordedByUserId: access.actor.userId,
     performedAt: now,
     submissionNonce: input.submissionNonce,
@@ -381,10 +509,7 @@ async function recordReviewInTransaction(
         resourceType: "PatientProgramRoundActivity",
         resourceId: entry.id,
         metadata: {
-          patientProgramId: program.id,
-          patientHospitalRelationshipId: relationshipId,
-          hospitalId: access.target.hospitalId,
-          roundNumber,
+          ...auditMetadata(context, roundNumber),
           toolCode: input.toolCode,
           source: entry.source,
           mode: entry.mode,
@@ -395,14 +520,196 @@ async function recordReviewInTransaction(
   }
 
   return {
-    operation: created ? "RECORDED" : "ALREADY_RECORDED",
+    ...writeResult(created ? "RECORDED" : "ALREADY_RECORDED", context, roundNumber),
     roundActivityId: entry.id,
-    patientProgramId: program.id,
-    patientHospitalRelationshipId: relationshipId,
-    roundNumber,
     toolCode: entry.toolCode,
     source: entry.source,
   };
+}
+
+async function loadRoundStatus(
+  transaction: Prisma.TransactionClient,
+  context: ActivePatientProgramMutationContext,
+  roundNumber: ProgramRoundNumber,
+) {
+  const record = await loadProgramRoundRecord(
+    transaction,
+    context.program.id,
+    context.access.patient.patientHospitalRelationshipId,
+  );
+
+  return computeRoundStatus(buildProgramRoundFacts(record), roundNumber);
+}
+
+function assertSkippableStep(roundNumber: number, stepCode: string): ProgramRoundNumber {
+  if (!isProgramRoundNumber(roundNumber) || !roundStepDefinition(roundNumber, stepCode)?.skippable) {
+    throw new ValidationError("This step cannot be skipped in the selected round");
+  }
+
+  return roundNumber;
+}
+
+async function skipStepInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: RoundStepSkipRequest,
+): Promise<PatientProgramRoundWriteResult> {
+  const roundNumber = assertSkippableStep(input.roundNumber, input.stepCode);
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
+  const where = {
+    patientProgramId_roundNumber_stepCode: {
+      patientProgramId: context.program.id,
+      roundNumber,
+      stepCode: input.stepCode,
+    },
+  };
+  const existing = await transaction.patientProgramRoundStepSkip.findUnique({
+    where,
+    select: { reasonCode: true, note: true },
+  });
+
+  if (existing) {
+    if (existing.reasonCode === input.reasonCode && existing.note === (input.note ?? null)) {
+      return writeResult("ALREADY_RECORDED", context, roundNumber);
+    }
+
+    throw new RoundConflictError("รายการนี้ถูกข้ามไว้แล้ว ยกเลิกการข้ามก่อนหากต้องการเปลี่ยนเหตุผล");
+  }
+
+  await assertRoundWritable(transaction, context.program.id, roundNumber);
+  const status = await loadRoundStatus(transaction, context, roundNumber);
+
+  if (status.steps.find((state) => state.code === input.stepCode)?.status === "DONE") {
+    throw new RoundConflictError("รายการนี้บันทึกแล้ว จึงไม่ต้องข้าม");
+  }
+
+  await transaction.patientProgramRoundStepSkip.create({
+    data: {
+      patientProgramId: context.program.id,
+      patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+      roundNumber,
+      stepCode: input.stepCode,
+      reasonCode: input.reasonCode,
+      note: input.note ?? null,
+      skippedByUserId: context.access.actor.userId,
+    },
+    select: { id: true },
+  });
+
+  // The note may contain patient details, so only the reason code is audited.
+  await recordAuditEvent(
+    {
+      actorUserId: context.access.actor.userId,
+      action: "patient_program_round.step_skipped",
+      resourceType: "PatientProgramRoundStepSkip",
+      resourceId: context.program.id,
+      metadata: { ...auditMetadata(context, roundNumber), stepCode: input.stepCode, reasonCode: input.reasonCode },
+    },
+    transaction,
+  );
+
+  return writeResult("RECORDED", context, roundNumber);
+}
+
+async function unskipStepInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: RoundStepUnskipRequest,
+): Promise<PatientProgramRoundWriteResult> {
+  const roundNumber = assertSkippableStep(input.roundNumber, input.stepCode);
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
+  await assertRoundWritable(transaction, context.program.id, roundNumber);
+  const removed = await transaction.patientProgramRoundStepSkip.deleteMany({
+    where: { patientProgramId: context.program.id, roundNumber, stepCode: input.stepCode },
+  });
+
+  if (removed.count === 0) {
+    return writeResult("ALREADY_RECORDED", context, roundNumber);
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId: context.access.actor.userId,
+      action: "patient_program_round.step_unskipped",
+      resourceType: "PatientProgramRoundStepSkip",
+      resourceId: context.program.id,
+      metadata: { ...auditMetadata(context, roundNumber), stepCode: input.stepCode },
+    },
+    transaction,
+  );
+
+  return writeResult("RECORDED", context, roundNumber);
+}
+
+async function completeRoundInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: RoundCompletionRequest,
+): Promise<PatientProgramRoundWriteResult> {
+  if (!isProgramRoundNumber(input.roundNumber)) {
+    throw new ValidationError("The program round is invalid");
+  }
+
+  const roundNumber = input.roundNumber;
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
+  const byNonce = await transaction.patientProgramRoundCompletion.findUnique({
+    where: { submissionNonce: input.submissionNonce },
+    select: { patientProgramId: true, roundNumber: true },
+  });
+
+  if (byNonce) {
+    if (byNonce.patientProgramId !== context.program.id || byNonce.roundNumber !== roundNumber) {
+      throw new ConflictError("This round completion token has already been used");
+    }
+
+    return writeResult("ALREADY_RECORDED", context, roundNumber);
+  }
+
+  const existing = await transaction.patientProgramRoundCompletion.findUnique({
+    where: { patientProgramId_roundNumber: { patientProgramId: context.program.id, roundNumber } },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return writeResult("ALREADY_RECORDED", context, roundNumber);
+  }
+
+  await assertRoundWritable(transaction, context.program.id, roundNumber);
+  // SR-D1 re-computed inside the transaction from the same rule the views use.
+  const status = await loadRoundStatus(transaction, context, roundNumber);
+
+  if (!status.canComplete) {
+    throw new RoundConflictError("ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้");
+  }
+
+  const completion = await transaction.patientProgramRoundCompletion.create({
+    // completedAt uses the database clock (column default).
+    data: {
+      patientProgramId: context.program.id,
+      patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+      roundNumber,
+      completedByUserId: context.access.actor.userId,
+      submissionNonce: input.submissionNonce,
+    },
+    select: { id: true },
+  });
+
+  await recordAuditEvent(
+    {
+      actorUserId: context.access.actor.userId,
+      action: "patient_program_round.completed",
+      resourceType: "PatientProgramRoundCompletion",
+      resourceId: completion.id,
+      metadata: {
+        ...auditMetadata(context, roundNumber),
+        doneSteps: status.steps.filter((state) => state.status === "DONE").length,
+        skippedSteps: status.steps.filter((state) => state.status === "SKIPPED").length,
+      },
+    },
+    transaction,
+  );
+
+  return writeResult("RECORDED", context, roundNumber);
 }
 
 export async function recordPatientProgramRoundVitals(
@@ -410,25 +717,29 @@ export async function recordPatientProgramRoundVitals(
   input: unknown,
   dependencies: PatientProgramRoundServiceDependencies = {},
 ): Promise<PatientProgramRoundVitalsResult> {
-  const parsed = roundVitalsRequestSchema.safeParse(input);
+  return runRoundWrite(
+    roundVitalsRequestSchema,
+    "Round vitals submission data is invalid",
+    actor,
+    input,
+    dependencies,
+    recordVitalsInTransaction,
+  );
+}
 
-  if (!parsed.success) {
-    throw new ValidationError("Round vitals submission data is invalid");
-  }
-
-  if (!actor) {
-    throw new ForbiddenError();
-  }
-
-  try {
-    return await runSerializable(
-      getDatabase(dependencies),
-      (transaction) => recordVitalsInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
-      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
-    );
-  } catch (error: unknown) {
-    throw normalizeDatabaseError(error);
-  }
+export async function recordPatientProgramRoundProfile(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramRoundServiceDependencies = {},
+): Promise<PatientProgramRoundWriteResult> {
+  return runRoundWrite(
+    roundProfileRequestSchema,
+    "Round profile submission data is invalid",
+    actor,
+    input,
+    dependencies,
+    (transaction, authorizedActor, parsed) => recordProfileInTransaction(transaction, authorizedActor, parsed),
+  );
 }
 
 export async function recordPatientProgramRoundReview(
@@ -436,32 +747,71 @@ export async function recordPatientProgramRoundReview(
   input: unknown,
   dependencies: PatientProgramRoundServiceDependencies = {},
 ): Promise<PatientProgramRoundReviewResult> {
-  const parsed = roundReviewRequestSchema.safeParse(input);
+  return runRoundWrite(
+    roundReviewRequestSchema,
+    "Round activity submission data is invalid",
+    actor,
+    input,
+    dependencies,
+    recordReviewInTransaction,
+  );
+}
 
-  if (!parsed.success) {
-    throw new ValidationError("Round activity submission data is invalid");
-  }
+export async function skipPatientProgramRoundStep(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramRoundServiceDependencies = {},
+): Promise<PatientProgramRoundWriteResult> {
+  return runRoundWrite(
+    roundStepSkipRequestSchema,
+    "Round step skip data is invalid",
+    actor,
+    input,
+    dependencies,
+    (transaction, authorizedActor, parsed) => skipStepInTransaction(transaction, authorizedActor, parsed),
+  );
+}
 
-  if (!actor) {
-    throw new ForbiddenError();
-  }
+export async function unskipPatientProgramRoundStep(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramRoundServiceDependencies = {},
+): Promise<PatientProgramRoundWriteResult> {
+  return runRoundWrite(
+    roundStepUnskipRequestSchema,
+    "Round step unskip data is invalid",
+    actor,
+    input,
+    dependencies,
+    (transaction, authorizedActor, parsed) => unskipStepInTransaction(transaction, authorizedActor, parsed),
+  );
+}
 
-  try {
-    return await runSerializable(
-      getDatabase(dependencies),
-      (transaction) => recordReviewInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
-      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
-    );
-  } catch (error: unknown) {
-    throw normalizeDatabaseError(error);
-  }
+export async function completePatientProgramRound(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientProgramRoundServiceDependencies = {},
+): Promise<PatientProgramRoundWriteResult> {
+  return runRoundWrite(
+    roundCompletionRequestSchema,
+    "Round completion data is invalid",
+    actor,
+    input,
+    dependencies,
+    (transaction, authorizedActor, parsed) => completeRoundInTransaction(transaction, authorizedActor, parsed),
+  );
 }
 
 export const patientProgramRoundServiceInternals = {
+  completeRoundInTransaction,
   findReviewTarget,
   hasSameVitals,
   normalizeDatabaseError,
+  recordProfileInTransaction,
   recordReviewInTransaction,
   recordVitalsInTransaction,
   runSerializable,
+  skipStepInTransaction,
+  unskipStepInTransaction,
+  writeRoundProfileFields,
 };

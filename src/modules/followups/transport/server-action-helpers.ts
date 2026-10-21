@@ -1,3 +1,4 @@
+import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 const FOLLOWUP_FORM_FIELDS = new Set([
@@ -35,9 +36,7 @@ const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
   "systolicBloodPressure",
   "diastolicBloodPressure",
   "bloodSugar",
-  "confidenceScore",
   "reflectionNote",
-  "confidencePlan",
   "generalNote",
   "activityProgress",
 ]);
@@ -172,9 +171,14 @@ export function buildProgramSubmissionInput(formData: FormData): unknown {
     return null;
   }
 
+  // One source of truth: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ (SR-D8).
+  const { confidenceScore, confidencePlan, ...payload } = buildFollowupPayloadInput(formData);
+  void confidenceScore;
+  void confidencePlan;
+
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
-    ...buildFollowupPayloadInput(formData),
+    ...payload,
   } satisfies Record<string, unknown>;
 }
 
@@ -200,7 +204,9 @@ export function mapFollowupError(error: unknown): {
     if (error.code === "CONFLICT") {
       return {
         code: "CONFLICT",
-        message: "การบันทึกการติดตามผลนี้ขัดแย้งกับข้อมูลล่าสุด หรือคำขอนี้ถูกใช้แล้ว",
+        message:
+          roundConflictMessage(error) ??
+          "การบันทึกการติดตามผลนี้ขัดแย้งกับข้อมูลล่าสุด หรือคำขอนี้ถูกใช้แล้ว",
       };
     }
 

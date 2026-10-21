@@ -98,11 +98,13 @@ export type HospitalReportProgramRow = {
     /** D7: staff-entered CVD risk score %, Before. */
     cvdRiskScore: HospitalReportFact<number>;
   }>;
+  /** R1-E: round-1 results ("Before"); the dream card is round 3 (SR-D11). A skipped tool is MISSING. */
   serviceOne: {
     routine: HospitalReportServiceOneActivity;
     floatingChart: HospitalReportServiceOneActivity;
     dreamCard: HospitalReportServiceOneActivity;
-    confidence: HospitalReportServiceOneActivity;
+    /** D8: 0-10 score of the round-1 ไม้บรรทัดวัดใจ. */
+    confidence: HospitalReportRecord<{ recordedAt: string; score: number }>;
   };
   goalPlans: {
     totalCount: number;
@@ -236,8 +238,9 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   baselineConfidence: {
     coverage: "SOURCE_BACKED_APPROVED_D8",
-    source: "PatientBaseline.confidenceScore",
-    limitation: "Confidence ruler approved as a 0-10 score (customer decision D8).",
+    source: "PatientProgramServiceOneConfidence.score of round 1 (Phase R1, SR-D8)",
+    limitation:
+      "Confidence ruler approved as a 0-10 score (customer decision D8). The Before column is the round-1 ruler; a skipped or missing round-1 ruler shows as not recorded. PatientBaseline.confidenceScore is not reported.",
   },
   cvdRisk: {
     coverage: "SOURCE_BACKED_NEW_RECORDS",
@@ -265,8 +268,10 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   serviceOne: {
     coverage: "SOURCE_BACKED_RECORD_PRESENCE",
-    source: "Program-owned Service 1 records",
-    limitation: "Record presence does not prove service delivery or outcome.",
+    source:
+      "Per-round Service 1 records (Phase R1, SR-D8): round 1 for กราฟวัดลอยจม / ตารางชีวิตของฉัน, round 3 for ความฝันของฉัน",
+    limitation:
+      "Record presence does not prove service delivery or outcome. A step skipped with a reason has no record and reports as ไม่ทำ.",
   },
   goalTargets: {
     coverage: "SOURCE_BACKED",

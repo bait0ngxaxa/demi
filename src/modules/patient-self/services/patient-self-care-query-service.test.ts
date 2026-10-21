@@ -171,10 +171,10 @@ function createDatabase() {
         status: PatientProgramStatus.COMPLETED,
         startedAt,
         completedAt: recordedAt,
-        serviceOneRoutine: { recordedAt },
-        serviceOneFloatingChart: null,
-        serviceOneDreamCard: { recordedAt },
-        serviceOneConfidence: { recordedAt, score: 10, improvementPlan: "gated" },
+        serviceOneRoutines: [{ recordedAt }],
+        serviceOneFloatingCharts: [],
+        serviceOneDreamCards: [{ recordedAt }],
+        serviceOneConfidences: [{ recordedAt, score: 10, improvementPlan: "gated" }],
         finalAssessment: {
           recordedAt,
           weight: 68,
@@ -718,11 +718,14 @@ describe("Patient SELF care read projections", () => {
         },
       ],
       roundActivities: [],
+      roundCompletions: [],
+      roundStepSkips: [],
+      patientHospitalRelationship: { hospitalProfile: null },
       screeningAssessment: null,
-      serviceOneRoutine: { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", recordedAt, recordedByUser: recorder },
-      serviceOneFloatingChart: null,
-      serviceOneDreamCard: null,
-      serviceOneConfidence: null,
+      serviceOneRoutines: [{ roundNumber: 1, recordedAt, recordedByUser: recorder, serviceOneArtifactAssociation: null }],
+      serviceOneFloatingCharts: [],
+      serviceOneDreamCards: [],
+      serviceOneConfidences: [],
       goalPlans: [],
       followups: [],
       finalAssessment: { serviceDate: null, recordedAt, recordedBy: recorder },
@@ -734,9 +737,11 @@ describe("Patient SELF care read projections", () => {
       expect.objectContaining({ where: { id: programId, patientHospitalRelationshipId: relationshipId } }),
     );
     expect(result.rounds).toHaveLength(6);
-    expect(result.overview.rounds[0]).toMatchObject({ status: "RECORDED", hasVitals: true, activityCount: 1 });
-    expect(result.rounds[0]?.vitals).toMatchObject({ weight: 72, bmi: 26.4 });
-    expect(result.overview.after.status).toBe("RECORDED");
+    // Vitals (7 items), the derived health path (1) and the routine (1).
+    expect(result.overview.rounds[0]).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 9, totalItems: 14 });
+    expect(result.rounds[0]?.vitals).toMatchObject({ weight: 72, bmi: 26.4, recordedByDisplayName: null });
+    expect(result.rounds[0]?.canManage).toBe(false);
+    expect(result.overview.after.state).toBe("RECORDED");
     expect(JSON.stringify(result)).not.toContain("ต้องไม่รั่ว");
     expect(JSON.stringify(result)).not.toContain("ชื่อเจ้าหน้าที่");
   });

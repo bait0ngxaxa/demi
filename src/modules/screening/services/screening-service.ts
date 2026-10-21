@@ -10,6 +10,7 @@ import {
   SERVICE_ONE_HOME_ROUND,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
@@ -260,6 +261,9 @@ async function submitInTransaction(
     if (linked) {
       throw new ConflictError("โปรแกรมนี้มีแบบประเมินที่บันทึกในครั้งที่ 1 แล้ว");
     }
+
+    // SR-D5: the program screening is a round 1 step.
+    await assertRoundWritable(transaction, programLink.program.id, SERVICE_ONE_HOME_ROUND);
   }
 
   const assessment = await transaction.screeningAssessment.create({

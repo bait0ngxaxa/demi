@@ -22,6 +22,17 @@ const childHospitalId = "22222222-2222-4222-8222-222222222222";
 const parentName = "โรงพยาบาลแม่ข่ายสังเคราะห์";
 const childName = "รพ.สต.ลูกข่ายสังเคราะห์";
 
+
+/** R1-E: Service 1 counts are Programs with the reported round's record, routed by relation name. */
+function serviceOneProgramCount(counts: Record<string, (args: unknown) => unknown>): ReturnType<typeof vi.fn> {
+  return vi.fn((args: { where: { AND: [unknown, Record<string, unknown>] } }) => {
+    const relation = Object.keys(args.where.AND[1])[0] ?? "";
+    const count = counts[relation];
+    if (!count) throw new Error(`Unexpected count ${relation}`);
+    return count(args);
+  });
+}
+
 function actorWith(membershipType: MembershipType, hospitalId = parentHospitalId, reportExportGranted = false): ActorContext {
   return {
     userId: "33333333-3333-4333-8333-333333333333",
@@ -56,11 +67,15 @@ function createDatabase() {
   const transaction = {
     hospitalServiceArea: { findFirst: findMembership },
     patientHospitalRelationship: { count: relationshipCount },
-    patientProgram: { groupBy: programGroupBy },
-    patientProgramServiceOneRoutine: { count: vi.fn().mockResolvedValue(7) },
-    patientProgramServiceOneFloatingChart: { count: vi.fn().mockResolvedValue(6) },
-    patientProgramServiceOneDreamCard: { count: vi.fn().mockResolvedValue(2) },
-    patientProgramServiceOneConfidence: { count: vi.fn().mockResolvedValue(1) },
+    patientProgram: {
+      groupBy: programGroupBy,
+      count: serviceOneProgramCount({
+        serviceOneRoutines: vi.fn().mockResolvedValue(7),
+        serviceOneFloatingCharts: vi.fn().mockResolvedValue(6),
+        serviceOneDreamCards: vi.fn().mockResolvedValue(2),
+        serviceOneConfidences: vi.fn().mockResolvedValue(1),
+      }),
+    },
   };
   const auditCreate = vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" });
   const database = {

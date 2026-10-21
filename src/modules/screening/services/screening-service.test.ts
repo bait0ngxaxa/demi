@@ -134,6 +134,9 @@ function createDatabase(input: {
       findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }),
     },
+    patientProgramRoundCompletion: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     screeningAssessment: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
       create: vi.fn().mockResolvedValue({
@@ -392,6 +395,17 @@ describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
     vi.clearAllMocks();
     mockedAudit.mockResolvedValue(undefined);
     mockedLockProgram.mockResolvedValue(lockedProgram());
+  });
+
+  it("refuses a Program screening once round 1 is completed (SR-D5)", async () => {
+    const { database, transaction } = createDatabase();
+    transaction.screeningAssessment.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    transaction.patientProgramRoundCompletion.findMany.mockResolvedValue([{ roundNumber: 1 }]);
+
+    await expect(
+      submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), { database, now: () => now }),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+    expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
   });
 
   it("links the screening to the Program and ledgers PAM and PROMs in round 1", async () => {

@@ -19,6 +19,10 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
+import {
+  DREAM_CARD_ROUND,
+  SERVICE_ONE_HOME_ROUND,
+} from "@/modules/patient-program-rounds/domain/round-catalog";
 import { screeningResultSchema } from "@/modules/screening/schemas/screening-schemas";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import { serviceDateToUtcDate, toServiceDateOnly } from "@/shared/time/service-date";
@@ -197,9 +201,11 @@ const reportProgramBaselineSelect = {
   },
 } satisfies Prisma.PatientProgramSelect["initialBaseline"];
 
-const reportProgramServiceOneSelect = {
+// R1-E: report columns read the round-1 result ("Before"), and the dream card from round 3 (SR-D11).
+const reportProgramServiceOneRoundOneSelect = {
+  where: { roundNumber: SERVICE_ONE_HOME_ROUND },
   select: { recordedAt: true },
-} satisfies Prisma.PatientProgramSelect["serviceOneRoutine"];
+} satisfies Prisma.PatientProgramSelect["serviceOneRoutines"];
 
 const reportProgramGoalPlanSelect = {
   orderBy: [{ roundNumber: "desc" }, { id: "desc" }],
@@ -289,10 +295,13 @@ const reportProgramBaseSelect = {
   completedAt: true,
   patientHospitalRelationship: reportProgramRelationshipSelect,
   initialBaseline: reportProgramBaselineSelect,
-  serviceOneRoutine: reportProgramServiceOneSelect,
-  serviceOneFloatingChart: reportProgramServiceOneSelect,
-  serviceOneDreamCard: reportProgramServiceOneSelect,
-  serviceOneConfidence: reportProgramServiceOneSelect,
+  serviceOneRoutines: reportProgramServiceOneRoundOneSelect,
+  serviceOneFloatingCharts: reportProgramServiceOneRoundOneSelect,
+  serviceOneDreamCards: { where: { roundNumber: DREAM_CARD_ROUND }, select: { recordedAt: true } },
+  serviceOneConfidences: {
+    where: { roundNumber: SERVICE_ONE_HOME_ROUND },
+    select: { recordedAt: true, score: true },
+  },
   finalAssessment: reportProgramFinalSelect,
   roundVitals: reportProgramRoundVitalsSelect,
   screeningAssessment: reportProgramScreeningSelect,
@@ -567,7 +576,7 @@ function toScreeningRecord(
   );
 }
 
-function toServiceOneActivity(record: { recordedAt: Date } | null): HospitalReportProgramRow["serviceOne"]["routine"] {
+function toServiceOneActivity(record: { recordedAt: Date } | undefined): HospitalReportProgramRow["serviceOne"]["routine"] {
   return record
     ? { state: "PRESENT", value: { recordedAt: record.recordedAt.toISOString() } }
     : { state: "MISSING" };
@@ -733,10 +742,18 @@ function toHospitalReportProgramRow(
         : null,
     ),
     serviceOne: {
-      routine: toServiceOneActivity(record.serviceOneRoutine),
-      floatingChart: toServiceOneActivity(record.serviceOneFloatingChart),
-      dreamCard: toServiceOneActivity(record.serviceOneDreamCard),
-      confidence: toServiceOneActivity(record.serviceOneConfidence),
+      routine: toServiceOneActivity(record.serviceOneRoutines[0]),
+      floatingChart: toServiceOneActivity(record.serviceOneFloatingCharts[0]),
+      dreamCard: toServiceOneActivity(record.serviceOneDreamCards[0]),
+      confidence: record.serviceOneConfidences[0]
+        ? {
+            state: "PRESENT",
+            value: {
+              recordedAt: record.serviceOneConfidences[0].recordedAt.toISOString(),
+              score: record.serviceOneConfidences[0].score,
+            },
+          }
+        : { state: "MISSING" },
     },
     goalPlans: {
       totalCount: counts.goalPlans,
@@ -861,14 +878,22 @@ async function loadParentChildHospitalReportingSourceSnapshot(
   // This exact-Child active cohort is not a historical Parent disclosure filter: access follows only the current
   // active network association (ADR-0016), so a former Parent loses the report immediately.
   const programWhere = reportHospitalProgramWhere(hospitalId);
-  const serviceProcessWhere = { patientProgram: { is: programWhere } };
   const [dashboard, programsWithRoutineRecord, programsWithFloatingChartRecord,
     programsWithDreamCardRecord, programsWithConfidenceRecord] = await Promise.all([
     loadSummary(database, hospitalId),
-    database.patientProgramServiceOneRoutine.count({ where: serviceProcessWhere }),
-    database.patientProgramServiceOneFloatingChart.count({ where: serviceProcessWhere }),
-    database.patientProgramServiceOneDreamCard.count({ where: serviceProcessWhere }),
-    database.patientProgramServiceOneConfidence.count({ where: serviceProcessWhere }),
+    // Programs (not per-round rows) with the result the workbook reports: round 1, dream card round 3.
+    database.patientProgram.count({
+      where: { AND: [programWhere, { serviceOneRoutines: { some: { roundNumber: SERVICE_ONE_HOME_ROUND } } }] },
+    }),
+    database.patientProgram.count({
+      where: { AND: [programWhere, { serviceOneFloatingCharts: { some: { roundNumber: SERVICE_ONE_HOME_ROUND } } }] },
+    }),
+    database.patientProgram.count({
+      where: { AND: [programWhere, { serviceOneDreamCards: { some: { roundNumber: DREAM_CARD_ROUND } } }] },
+    }),
+    database.patientProgram.count({
+      where: { AND: [programWhere, { serviceOneConfidences: { some: { roundNumber: SERVICE_ONE_HOME_ROUND } } }] },
+    }),
   ]);
 
   return {

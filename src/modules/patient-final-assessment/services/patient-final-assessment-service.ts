@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { assertRoundsFinished } from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
 import {
@@ -200,6 +201,9 @@ async function createInTransaction(
   if (existing) {
     throw new ConflictError("This Program already has a Final Assessment");
   }
+
+  // SR-D5: the After assessment follows a completed round 6.
+  await assertRoundsFinished(transaction, locked.program.id, "การประเมินหลังจบโปรแกรม");
 
   const finalAssessment = await transaction.patientFinalAssessment.create({
     data: {

@@ -15,6 +15,7 @@ import { recordPatientProgramRoundReviewAction } from "@/modules/patient-program
 
 export function RoundReviewButton({
   label,
+  nextHref = null,
   patientHospitalRelationshipId,
   patientProgramId,
   roundNumber,
@@ -22,6 +23,8 @@ export function RoundReviewButton({
   toolCode,
 }: {
   label: string;
+  /** SR-D7: inside the stepper a confirmed review moves on to the next step. */
+  nextHref?: string | null;
   patientHospitalRelationshipId: string;
   patientProgramId: string;
   roundNumber: number;
@@ -35,10 +38,15 @@ export function RoundReviewButton({
   );
 
   useEffect(() => {
+    if (state.status === "SUCCESS" && nextHref) {
+      router.push(nextHref);
+      return;
+    }
+
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
     <form action={action} className="space-y-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -31,6 +32,7 @@ import type {
   PatientProgramServiceOneActivityProjection,
   PatientProgramServiceOneEvidenceProjection,
   PatientProgramServiceOneProjection,
+  PatientProgramServiceOneRoundProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import type {
   PatientProgramServiceOneActivity,
@@ -112,6 +114,7 @@ type UploadAndAssociateEvidenceOptions = {
   activityKey: PatientProgramServiceOneArtifactActivity;
   formData: FormData;
   programId: string;
+  roundNumber: number;
   relationshipId: string;
   fetcher?: typeof fetch;
   associateAction?: (
@@ -124,6 +127,7 @@ async function uploadAndAssociateEvidence({
   activityKey,
   formData,
   programId,
+  roundNumber,
   relationshipId,
   fetcher = fetch,
   associateAction = associatePatientProgramServiceOneArtifactAction,
@@ -152,6 +156,7 @@ async function uploadAndAssociateEvidence({
 
   const associationFormData = new FormData();
   associationFormData.append("patientProgramId", programId);
+  associationFormData.append("roundNumber", String(roundNumber));
   associationFormData.append("activity", activityKey);
   associationFormData.append("patientEvidenceArtifactId", payload.artifactId);
 
@@ -270,6 +275,7 @@ function EvidenceAttachmentControl({
   programId,
   recorded,
   relationshipId,
+  roundNumber,
 }: {
   activityKey: PatientProgramServiceOneArtifactActivity;
   canManage: boolean;
@@ -278,6 +284,7 @@ function EvidenceAttachmentControl({
   programId: string;
   recorded: boolean;
   relationshipId: string;
+  roundNumber: number;
 }): React.JSX.Element | null {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -324,6 +331,7 @@ function EvidenceAttachmentControl({
         activityKey,
         formData: uploadFormData,
         programId,
+        roundNumber,
         refresh: router.refresh,
         relationshipId,
       });
@@ -429,13 +437,17 @@ function ActivityCard({
 function RoutineCard({
   activity,
   canManage,
+  nextHref,
   programId,
   relationshipId,
+  roundNumber,
 }: {
   activity: PatientProgramServiceOneProjection["routine"];
   canManage: boolean;
+  nextHref?: string | null;
   programId: string;
   relationshipId: string;
+  roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
@@ -444,22 +456,29 @@ function RoutineCard({
   );
 
   useEffect(() => {
+    // SR-D7: inside the round stepper a saved result moves on to the next step.
+    if (state.status === "SUCCESS" && nextHref) {
+      router.push(nextHref);
+      return;
+    }
+
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
-    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉัน (ตารางกิจวัตร) ของผู้ป่วยในครั้งที่ 1 แล้วทบทวนในครั้งต่อไป" id="ROUTINE" title="ตารางชีวิตของฉัน (ตารางกิจวัตร)">
+    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉัน (ตารางกิจวัตร) ของผู้ป่วยในครั้งนี้" id="ROUTINE" title="ตารางชีวิตของฉัน (ตารางกิจวัตร)">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
+          <input name="roundNumber" type="hidden" value={roundNumber} />
           <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
         </form>
       ) : (
-        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
+        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
@@ -471,6 +490,7 @@ function RoutineCard({
         programId={programId}
         recorded={activity.recorded}
         relationshipId={relationshipId}
+        roundNumber={roundNumber}
       />
     </ActivityCard>
   );
@@ -479,13 +499,17 @@ function RoutineCard({
 function FloatingChartCard({
   activity,
   canManage,
+  nextHref,
   programId,
   relationshipId,
+  roundNumber,
 }: {
   activity: PatientProgramServiceOneProjection["floatingChart"];
   canManage: boolean;
+  nextHref?: string | null;
   programId: string;
   relationshipId: string;
+  roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
@@ -494,16 +518,23 @@ function FloatingChartCard({
   );
 
   useEffect(() => {
+    // SR-D7: inside the round stepper a saved result moves on to the next step.
+    if (state.status === "SUCCESS" && nextHref) {
+      router.push(nextHref);
+      return;
+    }
+
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
     <ActivityCard activity={activity} description="บันทึกกราฟวัดลอยจมพร้อมสรุปสั้น ๆ ได้ถ้าจำเป็น" id="FLOATING_CHART" title="กราฟวัดลอยจม">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
+          <input name="roundNumber" type="hidden" value={roundNumber} />
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-floating-summary">
             <span>สรุป (ไม่บังคับ)</span>
             <textarea
@@ -522,7 +553,7 @@ function FloatingChartCard({
           </Button>
         </form>
       ) : (
-        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
+        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
       {activity.recorded && activity.summary ? (
         <div className="mt-4 border-t border-border pt-4">
@@ -540,6 +571,7 @@ function FloatingChartCard({
         programId={programId}
         recorded={activity.recorded}
         relationshipId={relationshipId}
+        roundNumber={roundNumber}
       />
     </ActivityCard>
   );
@@ -548,13 +580,17 @@ function FloatingChartCard({
 function DreamCard({
   activity,
   canManage,
+  nextHref,
   programId,
   relationshipId,
+  roundNumber,
 }: {
   activity: PatientProgramServiceOneProjection["dreamCard"];
   canManage: boolean;
+  nextHref?: string | null;
   programId: string;
   relationshipId: string;
+  roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
@@ -563,16 +599,23 @@ function DreamCard({
   );
 
   useEffect(() => {
+    // SR-D7: inside the round stepper a saved result moves on to the next step.
+    if (state.status === "SUCCESS" && nextHref) {
+      router.push(nextHref);
+      return;
+    }
+
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
-    <ActivityCard activity={activity} description="บันทึกการ์ดความฝันพร้อมคำอธิบายสั้น ๆ ได้ถ้าจำเป็น" id="DREAM_CARD" title="การ์ดความฝัน">
+    <ActivityCard activity={activity} description="บันทึกความฝันของฉัน (การ์ดความฝัน) พร้อมคำอธิบายสั้น ๆ ได้ถ้าจำเป็น" id="DREAM_CARD" title="ความฝันของฉัน (การ์ดความฝัน)">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
+          <input name="roundNumber" type="hidden" value={roundNumber} />
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-dream-description">
             <span>คำอธิบาย (ไม่บังคับ)</span>
             <textarea
@@ -591,7 +634,7 @@ function DreamCard({
           </Button>
         </form>
       ) : (
-        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
+        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
       {activity.recorded && activity.description ? (
         <div className="mt-4 border-t border-border pt-4">
@@ -609,6 +652,7 @@ function DreamCard({
         programId={programId}
         recorded={activity.recorded}
         relationshipId={relationshipId}
+        roundNumber={roundNumber}
       />
     </ActivityCard>
   );
@@ -617,11 +661,15 @@ function DreamCard({
 function ConfidenceCard({
   activity,
   canManage,
+  nextHref,
   programId,
+  roundNumber,
 }: {
   activity: PatientProgramServiceOneProjection["confidence"];
   canManage: boolean;
+  nextHref?: string | null;
   programId: string;
+  roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
@@ -630,16 +678,23 @@ function ConfidenceCard({
   );
 
   useEffect(() => {
+    // SR-D7: inside the round stepper a saved result moves on to the next step.
+    if (state.status === "SUCCESS" && nextHref) {
+      router.push(nextHref);
+      return;
+    }
+
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   return (
     <ActivityCard activity={activity} description="บันทึกคะแนนความมั่นใจ/การสะท้อนตนเองแบบชั่วคราวในช่วง 0–10" id="CONFIDENCE" title="ไม้บรรทัดวัดใจ">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5 space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
+          <input name="roundNumber" type="hidden" value={roundNumber} />
           <fieldset>
             <legend className="text-sm font-semibold text-text">เลือกคะแนนสะท้อนความมั่นใจ 0–10</legend>
             <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-11">
@@ -671,7 +726,7 @@ function ConfidenceCard({
           </Button>
         </form>
       ) : (
-        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในโปรแกรม</p>
+        <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
       {activity.recorded && activity.score !== null ? (
         <div className="mt-4 border-t border-border pt-4">
@@ -691,72 +746,119 @@ function ConfidenceCard({
   );
 }
 
+export type ServiceOneToolKey = "routine" | "floatingChart" | "dreamCard" | "confidence";
+
+/** R1-D: one per-round Service 1 tool, embedded as a step of the round stepper. */
+export function ServiceOneToolStep({
+  canManage,
+  nextHref,
+  programId,
+  relationshipId,
+  roundNumber,
+  serviceOne,
+  tool,
+}: {
+  canManage: boolean;
+  nextHref: string | null;
+  programId: string;
+  relationshipId: string;
+  roundNumber: number;
+  serviceOne: PatientProgramServiceOneProjection;
+  tool: ServiceOneToolKey;
+}): React.JSX.Element {
+  const shared = { canManage, nextHref, programId, roundNumber };
+
+  switch (tool) {
+    case "routine":
+      return <RoutineCard {...shared} activity={serviceOne.routine} relationshipId={relationshipId} />;
+    case "floatingChart":
+      return <FloatingChartCard {...shared} activity={serviceOne.floatingChart} relationshipId={relationshipId} />;
+    case "dreamCard":
+      return <DreamCard {...shared} activity={serviceOne.dreamCard} relationshipId={relationshipId} />;
+    case "confidence":
+      return <ConfidenceCard {...shared} activity={serviceOne.confidence} />;
+  }
+}
+
+const TOOL_LABELS: Readonly<Record<ServiceOneToolKey, string>> = {
+  routine: "ตารางชีวิตของฉัน",
+  floatingChart: "กราฟวัดลอยจม",
+  dreamCard: "ความฝันของฉัน",
+  confidence: "ไม้บรรทัดวัดใจ",
+};
+
+function toolDetail(round: PatientProgramServiceOneRoundProjection, tool: ServiceOneToolKey): string | null {
+  if (tool === "confidence") {
+    return round.confidence.score === null ? null : `${round.confidence.score} / 10`;
+  }
+
+  if (tool === "floatingChart") {
+    return round.floatingChart.summary;
+  }
+
+  return tool === "dreamCard" ? round.dreamCard.description : null;
+}
+
+/**
+ * SR-D8: Service 1 results are recorded per round inside the round stepper; the Program page lists
+ * them read-only by round.
+ */
 export function PatientProgramServiceOneWorkspace({
   detail,
 }: {
   detail: PatientProgramDetail;
 }): React.JSX.Element {
-  const { serviceOne } = detail;
   const relationshipId = detail.patient.patientHospitalRelationshipId;
-  const recordedCount = [
-    serviceOne.routine.recorded,
-    serviceOne.floatingChart.recorded,
-    serviceOne.dreamCard.recorded,
-    serviceOne.confidence.recorded,
-  ].filter(Boolean).length;
-  const canManage = detail.status === "ACTIVE" && detail.canManage;
+  const roundsPath = `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(detail.programId)}/rounds`;
 
   return (
     <section aria-labelledby="patient-program-service-one-heading">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-program-service-one-heading">
-            Service 1 — กิจกรรมเริ่มต้นของโปรแกรม
+            เครื่องมือ Service 1 รายครั้ง
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            บันทึกกิจกรรมแยกกันได้ตามความพร้อมของงานในโปรแกรมนี้ ภาพรวมด้านล่างเป็นความคืบหน้าเชิงโครงสร้าง ไม่ใช่เกณฑ์ผ่านหรือผลลัพธ์ทางคลินิก กิจกรรมในส่วนนี้นับเป็นครั้งที่ 1 · รู้จักตัวเอง
+            ไม้บรรทัดวัดใจ กราฟวัดลอยจม ตารางชีวิตของฉัน และความฝันของฉัน บันทึกผลใหม่ในทุกครั้งที่รายการของครั้งนั้นกำหนด
+            โดยบันทึกผ่านการจัดบริการรายครั้ง ส่วนนี้แสดงผลที่บันทึกแล้วแบบอ่านอย่างเดียว
           </p>
         </div>
-        <StatusBadge variant="neutral">
-          {recordedCount} จาก 4 กิจกรรมถูกบันทึกแล้ว
-        </StatusBadge>
+        <Link className={buttonClassName({ size: "compact", variant: "secondary" })} href={roundsPath}>
+          ไปที่การจัดบริการรายครั้ง
+        </Link>
       </div>
 
-      {detail.status === "COMPLETED" ? (
-        <Alert className="mt-5" variant="neutral">
-          โปรแกรมนี้เสร็จสิ้นแล้ว จึงอ่านกิจกรรมและหลักฐานเดิมได้ แต่ไม่สามารถบันทึกหรือแนบข้อมูลใหม่
-        </Alert>
-      ) : !detail.canManage ? (
-        <Alert className="mt-5" variant="info">
-          บัญชีนี้มีสิทธิ์อ่าน Service 1 ในขอบเขตนี้ แต่ไม่มีสิทธิ์บันทึกกิจกรรมหรือแนบหลักฐานใหม่
-        </Alert>
-      ) : null}
+      <ul className="mt-6 grid gap-4 lg:grid-cols-2">
+        {detail.serviceOne.map((round) => (
+          <li className="rounded-panel border border-border bg-surface p-5" key={round.roundNumber}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-base font-semibold text-text">ครั้งที่ {round.roundNumber}</h3>
+              <Link className="text-sm font-semibold text-brand-strong underline underline-offset-4" href={`${roundsPath}/${round.roundNumber}`}>
+                เปิดครั้งนี้
+              </Link>
+            </div>
+            <dl className="mt-3 divide-y divide-border">
+              {round.listedTools.map((tool) => {
+                const activity = round[tool];
+                const extra = activity.recorded ? toolDetail(round, tool) : null;
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <RoutineCard
-          activity={serviceOne.routine}
-          canManage={canManage}
-          programId={detail.programId}
-          relationshipId={relationshipId}
-        />
-        <FloatingChartCard
-          activity={serviceOne.floatingChart}
-          canManage={canManage}
-          programId={detail.programId}
-          relationshipId={relationshipId}
-        />
-        <DreamCard
-          activity={serviceOne.dreamCard}
-          canManage={canManage}
-          programId={detail.programId}
-          relationshipId={relationshipId}
-        />
-        <ConfidenceCard
-          activity={serviceOne.confidence}
-          canManage={canManage}
-          programId={detail.programId}
-        />
-      </div>
+                return (
+                  <div className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between" key={tool}>
+                    <dt className="text-sm font-semibold text-text">{TOOL_LABELS[tool]}</dt>
+                    <dd className="min-w-0 text-sm text-text-muted sm:text-right">
+                      <StatusBadge variant={activityStatusVariant(activity.recorded)}>
+                        {activityStatusLabel(activity.recorded)}
+                      </StatusBadge>
+                      {activity.recordedAt ? <span className="mt-1 block">{formatDateTime(activity.recordedAt)}</span> : null}
+                      {extra ? <span className="mt-1 block break-words whitespace-pre-wrap text-text">{extra}</span> : null}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

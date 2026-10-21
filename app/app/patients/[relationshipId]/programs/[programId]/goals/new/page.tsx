@@ -7,6 +7,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { goalPlanSourceFollowupIdSchema } from "@/modules/goals/schemas/goal-schemas";
 import { getGoalPlanCreateContextForProgram } from "@/modules/goals/services/goal-query-service";
 import { getPatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import { parseRoundReturnPath } from "@/modules/patient-program-rounds/presentation/round-return-path";
 import {
   ConflictError,
   ForbiddenError,
@@ -22,7 +23,11 @@ export const metadata: Metadata = {
 
 type NewProgramGoalPlanPageProps = {
   params: Promise<{ relationshipId: string; programId: string }>;
-  searchParams: Promise<{ screeningId?: string | string[]; sourceFollowupId?: string | string[] }>;
+  searchParams: Promise<{
+    screeningId?: string | string[];
+    sourceFollowupId?: string | string[];
+    returnTo?: string | string[];
+  }>;
 };
 
 async function resolveActor() {
@@ -99,6 +104,7 @@ export default async function NewProgramGoalPlanPage({
         patientProgramId: context.patientProgramId,
         relationshipId,
         sourceFollowupId: parsedSourceFollowupId.success ? parsedSourceFollowupId.data : null,
+        returnTo: parseRoundReturnPath(query.returnTo),
       }}
       submissionNonce={randomUUID()}
       template={context.template}

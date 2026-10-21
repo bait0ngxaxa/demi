@@ -42,12 +42,14 @@ const detail: PatientProgramDetail = {
   status: "ACTIVE", startedAt: now, completedAt: null, createdAt: now,
   createdBy: { id: "44444444-4444-4444-8444-444444444444", displayName: "ผู้เปิดโปรแกรม" },
   initialBaseline: null, canManage: true,
-  serviceOne: {
+  serviceOne: [{
+    roundNumber: 1,
+    listedTools: ["routine", "floatingChart", "confidence"],
     routine: { ...activity, evidence: null },
     floatingChart: { ...activity, summary: null, evidence: null },
     dreamCard: { ...activity, description: null, evidence: null },
     confidence: { ...activity, score: null, improvementPlan: null },
-  },
+  }],
 };
 const goalPatient = { ...patient, patientProfileId: "55555555-5555-4555-8555-555555555555", hospitalName: patient.hospital.name };
 const overview: GoalPlanProgramOverview = {
@@ -89,7 +91,7 @@ describe("Patient care journey and Program workspace", () => {
 
   it("labels actual record presence independently of clinical completion", () => {
     const html = renderProgram({
-      detail: { ...detail, serviceOne: { ...detail.serviceOne, routine: { ...detail.serviceOne.routine, recorded: true, recordedAt: now } } },
+      detail: { ...detail, serviceOne: detail.serviceOne.map((round) => ({ ...round, routine: { ...round.routine, recorded: true, recordedAt: now } })) },
       followupHistory: { ...history, totalCount: 1 },
       finalAssessment: { ...finalAssessment, finalAssessment: {
         id: "final-record", recordedBy: detail.createdBy, serviceDate: now, recordedAt: now, createdAt: now,

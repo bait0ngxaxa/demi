@@ -78,7 +78,8 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
       routine: { state: "PRESENT", value: { recordedAt: "2026-08-18T05:00:00.000Z" } },
       floatingChart: { state: "MISSING" },
       dreamCard: { state: "MISSING" },
-      confidence: { state: "MISSING" },
+      // R1-E: the Before ruler (column M) is the round-1 ไม้บรรทัดวัดใจ, not the Baseline score.
+      confidence: { state: "PRESENT", value: { recordedAt: "2026-07-02T03:00:00.000Z", score: 6 } },
     },
     goalPlans: {
       totalCount: 1,

@@ -123,7 +123,7 @@ export function ScreeningForm({
     if (state.status === "SUCCESS") {
       router.push(
         programId
-          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1`
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1?after=PROMS`
           : `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`,
       );
     }

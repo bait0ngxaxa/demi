@@ -29,6 +29,17 @@ const actor: ActorContext = {
   osmHospitalRelationships: [],
 };
 
+
+/** R1-E: Service 1 counts are Programs with the reported round's record, routed by relation name. */
+function serviceOneProgramCount(counts: Record<string, (args: unknown) => unknown>): ReturnType<typeof vi.fn> {
+  return vi.fn((args: { where: { AND: [unknown, Record<string, unknown>] } }) => {
+    const relation = Object.keys(args.where.AND[1])[0] ?? "";
+    const count = counts[relation];
+    if (!count) throw new Error(`Unexpected count ${relation}`);
+    return count(args);
+  });
+}
+
 function createDatabase() {
   // ADR-0016: the active network association supplies the exact Parent/Child scope and labels.
   const findArea = vi.fn().mockResolvedValue({
@@ -49,11 +60,15 @@ function createDatabase() {
   const transaction = {
     hospitalServiceArea: { findFirst: findArea },
     patientHospitalRelationship: { count: relationshipCount },
-    patientProgram: { groupBy: programGroupBy },
-    patientProgramServiceOneRoutine: { count: routineCount },
-    patientProgramServiceOneFloatingChart: { count: floatingChartCount },
-    patientProgramServiceOneDreamCard: { count: dreamCardCount },
-    patientProgramServiceOneConfidence: { count: confidenceCount },
+    patientProgram: {
+      groupBy: programGroupBy,
+      count: serviceOneProgramCount({
+        serviceOneRoutines: routineCount,
+        serviceOneFloatingCharts: floatingChartCount,
+        serviceOneDreamCards: dreamCardCount,
+        serviceOneConfidences: confidenceCount,
+      }),
+    },
   };
   const auditCreate = vi.fn().mockResolvedValue({ id: "66666666-6666-4666-8666-666666666666" });
   const database = {
@@ -133,20 +148,18 @@ describe("Parent-to-Child Hospital report query", () => {
       },
       _count: { _all: true },
     });
-    const serviceProcessWhere = {
-      where: {
-        patientProgram: {
-          is: {
-            patientHospitalRelationship: { is: { hospitalId: childHospitalId, endedAt: null } },
-            status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
-          },
-        },
-      },
+    const programWhere = {
+      patientHospitalRelationship: { is: { hospitalId: childHospitalId, endedAt: null } },
+      status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
     };
-    expect(routineCount).toHaveBeenCalledWith(serviceProcessWhere);
-    expect(floatingChartCount).toHaveBeenCalledWith(serviceProcessWhere);
-    expect(dreamCardCount).toHaveBeenCalledWith(serviceProcessWhere);
-    expect(confidenceCount).toHaveBeenCalledWith(serviceProcessWhere);
+    // R1-E: Programs with the reported result: round 1, and round 3 for the dream card.
+    const programsWith = (relation: string, roundNumber: number) => ({
+      where: { AND: [programWhere, { [relation]: { some: { roundNumber } } }] },
+    });
+    expect(routineCount).toHaveBeenCalledWith(programsWith("serviceOneRoutines", 1));
+    expect(floatingChartCount).toHaveBeenCalledWith(programsWith("serviceOneFloatingCharts", 1));
+    expect(dreamCardCount).toHaveBeenCalledWith(programsWith("serviceOneDreamCards", 3));
+    expect(confidenceCount).toHaveBeenCalledWith(programsWith("serviceOneConfidences", 1));
     expect(JSON.stringify(projection)).not.toMatch(/patientProgramId|patientHospitalRelationshipId|hospitalCode|hospitalNumber|displayName|measurement|bloodSugar|goalPlans|followups/iu);
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
