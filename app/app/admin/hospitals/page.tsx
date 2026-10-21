@@ -8,11 +8,9 @@ import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
 } from "@/modules/hospital-governance/policies/hospital-governance-policy";
-import { getHospitalHierarchyDirectory } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
 import { listHospitalNetworkDirectoryForAdmin } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { HospitalHierarchyDirectory } from "./hospital-hierarchy-directory";
 import { HospitalNetworkDirectory } from "./hospital-network-directory";
 
 export const metadata: Metadata = {
@@ -37,10 +35,7 @@ async function requirePlatformAdmin() {
 export default async function HospitalGovernanceDirectoryPage(): Promise<React.JSX.Element> {
   await connection();
   const actor = await requirePlatformAdmin();
-  const [network, directory] = await Promise.all([
-    listHospitalNetworkDirectoryForAdmin(actor),
-    getHospitalHierarchyDirectory(actor),
-  ]);
+  const network = await listHospitalNetworkDirectoryForAdmin(actor);
 
   return (
     <div>
@@ -50,13 +45,6 @@ export default async function HospitalGovernanceDirectoryPage(): Promise<React.J
         title="การกำกับดูแลโรงพยาบาล"
       />
       <HospitalNetworkDirectory hospitals={network} />
-      {/* Canonical Master placement is reference data only (ADR-0015); it grants nothing. */}
-      <details className="mt-8">
-        <summary className="cursor-pointer text-sm font-semibold text-text-muted">
-          โครงสร้างตามข้อมูลโรงพยาบาลกลาง (Hospital Master) เพื่ออ้างอิง
-        </summary>
-        <HospitalHierarchyDirectory directory={directory} />
-      </details>
     </div>
   );
 }

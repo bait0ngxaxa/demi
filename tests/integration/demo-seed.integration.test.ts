@@ -47,7 +47,7 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     hospitalIds.push(parent.id);
     for (const code of ["A", "B", "C"]) {
       const child = await prisma.hospital.create({
-        data: { hospitalCode: `DEMOP-${suffix}-${code}`, name: `รพ.สต.ทดสอบ ${code} ${suffix}`, status: HospitalStatus.PENDING_VERIFICATION, parentHospitalId: parent.id },
+        data: { hospitalCode: `DEMOP-${suffix}-${code}`, name: `รพ.สต.ทดสอบ ${code} ${suffix}`, status: HospitalStatus.PENDING_VERIFICATION },
         select: { id: true },
       });
       hospitalIds.push(child.id);
@@ -63,7 +63,6 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     await prisma.user.deleteMany({ where: { personId: outsiderPersonId } });
     await prisma.person.deleteMany({ where: { id: outsiderPersonId } });
     await prisma.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
-    await prisma.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { parentHospitalId: null } });
     await prisma.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   });
 

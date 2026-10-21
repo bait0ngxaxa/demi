@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import {
   HospitalContentCategory,
@@ -36,10 +34,7 @@ import { HospitalContentCategory as ContentCategory } from "@prisma/client";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const database = getPrisma();
-const execFileAsync = promisify(execFile);
-const seedScript = "scripts/seed-hospital-master.mjs";
 // The Master seed is read-only by default; integration tests apply it to the local test database.
-const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 const migrationPath = "prisma/migrations/20261005120000_hospital_content_publishing/migration.sql";
 const fixedNow = new Date("2026-10-05T12:00:00.000Z");
 let sequence = 0;
@@ -73,7 +68,6 @@ async function clearDatabase(): Promise<void> {
   await database.hospitalMembership.deleteMany();
   await database.userRole.deleteMany();
   await database.user.deleteMany();
-  await database.hospital.updateMany({ data: { parentHospitalId: null } });
   await database.hospital.deleteMany();
   await database.person.deleteMany();
 }
@@ -120,7 +114,6 @@ async function createHospital(input: {
       hospitalCode: input.hospitalCode ?? `HC-${randomUUID().slice(0, 8)}-${sequence}`,
       name: input.name ?? `โรงพยาบาลทดสอบ ${sequence}`,
       status: input.status ?? HospitalStatus.ACTIVE,
-      parentHospitalId: input.parentHospitalId,
     },
     select: { id: true, hospitalCode: true, name: true },
   });
@@ -233,9 +226,6 @@ async function auditRows(contentId?: string) {
   });
 }
 
-async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], { cwd: process.cwd(), env: process.env });
-}
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolvePromise: () => void = () => undefined;
@@ -1199,25 +1189,6 @@ describe("Phase 17I.2 Hospital Content PostgreSQL behavior", () => {
     const continuation = await listHospitalContentForOwner(owner.actor, hospital.id, firstPage.nextCursor);
     expect(continuation.items.some(({ id }) => id === movingId)).toBe(false);
     expect((await listHospitalContentForOwner(owner.actor, hospital.id)).items[0]?.id).toBe(movingId);
-  });
-
-  it("preserves seeded Hospital identity, Content and Contact across the real Master seed rerun", async () => {
-    await runHospitalMasterSeed();
-    const seeded = await database.hospital.findFirstOrThrow({ where: { hospitalCode: "KANG" }, select: { id: true, hospitalCode: true, name: true, parentHospitalId: true } });
-    await database.hospital.update({ where: { id: seeded.id }, data: { status: HospitalStatus.ACTIVE } });
-    const owner = await createOwner(seeded.id);
-    const content = await createContent(owner, seeded.id);
-    const contact = await database.hospitalContact.create({ data: { hospitalId: seeded.id, addressText: "ที่อยู่ทดสอบ", phoneNumber: "02-123-4567" } });
-    const beforeHospital = await database.hospital.findUniqueOrThrow({ where: { id: seeded.id }, select: { id: true, hospitalCode: true, name: true, parentHospitalId: true } });
-    const beforeContent = await database.hospitalContent.findUniqueOrThrow({ where: { id: content.id } });
-    const beforeContact = await database.hospitalContact.findUniqueOrThrow({ where: { id: contact.id } });
-
-    await runHospitalMasterSeed();
-
-    expect(await database.hospital.findUniqueOrThrow({ where: { id: seeded.id }, select: { id: true, hospitalCode: true, name: true, parentHospitalId: true } })).toEqual(beforeHospital);
-    expect(await database.hospitalContent.findUniqueOrThrow({ where: { id: content.id } })).toEqual(beforeContent);
-    expect(await database.hospitalContact.findUniqueOrThrow({ where: { id: contact.id } })).toEqual(beforeContact);
-    expect(await database.hospitalContent.count({ where: { hospitalId: seeded.id } })).toBe(1);
   });
 });
 

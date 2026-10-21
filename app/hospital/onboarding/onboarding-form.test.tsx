@@ -14,59 +14,21 @@ import type { OnboardingHospitalOption } from "./hospital-groups";
 const parentId = "00000000-0000-4000-8000-000000000001";
 const childId = "00000000-0000-4000-8000-000000000002";
 const duplicateChildId = "00000000-0000-4000-8000-000000000003";
-const ungroupedId = "00000000-0000-4000-8000-000000000004";
+const otherId = "00000000-0000-4000-8000-000000000004";
 const parentName = "โรงพยาบาลเครือกลาง";
-const childName = "โรงพยาบาลลูกข่าย ก";
+const childName = "รพ.สต.ลูกข่าย ก";
 
-const parentRelationship = {
-  id: parentId,
-  name: parentName,
-  parentHospitalId: null,
-};
-
-function hospitalOptions(options: {
-  eligibleParent?: boolean;
-  duplicateChild?: boolean;
-  ungrouped?: boolean;
-} = {}): OnboardingHospitalOption[] {
+function hospitalOptions(options: { duplicateChild?: boolean; other?: boolean } = {}): OnboardingHospitalOption[] {
   const hospitals: OnboardingHospitalOption[] = [
-    {
-      id: childId,
-      hospitalCode: "CHILD-CANONICAL-001",
-      name: childName,
-      parentHospitalId: parentId,
-      parentHospital: parentRelationship,
-    },
+    { id: parentId, hospitalCode: "PARENT-001", name: parentName, networkRole: "PARENT" },
+    { id: childId, hospitalCode: "CHILD-001", name: childName, networkRole: "CHILD" },
   ];
-
-  if (options.eligibleParent) {
-    hospitals.push({
-      id: parentId,
-      hospitalCode: "PARENT-CANONICAL-001",
-      name: parentName,
-      parentHospitalId: null,
-      parentHospital: null,
-    });
-  }
   if (options.duplicateChild) {
-    hospitals.push({
-      id: duplicateChildId,
-      hospitalCode: "CHILD-CANONICAL-002",
-      name: childName,
-      parentHospitalId: parentId,
-      parentHospital: parentRelationship,
-    });
+    hospitals.push({ id: duplicateChildId, hospitalCode: "CHILD-002", name: childName, networkRole: "CHILD" });
   }
-  if (options.ungrouped) {
-    hospitals.push({
-      id: ungroupedId,
-      hospitalCode: "OTHER-CANONICAL-001",
-      name: "โรงพยาบาลที่ไม่มีแม่ข่าย",
-      parentHospitalId: null,
-      parentHospital: null,
-    });
+  if (options.other) {
+    hospitals.push({ id: otherId, hospitalCode: "OTHER-001", name: "โรงพยาบาลที่ยังไม่กำหนดประเภท", networkRole: null });
   }
-
   return hospitals;
 }
 
@@ -113,78 +75,50 @@ function selectedHospitalCode(): string {
   return container.querySelector<HTMLInputElement>('input[name="hospitalCode"]')?.value ?? "";
 }
 
-describe("Hospital onboarding network selector", () => {
-  it("submits the selected child's canonical identity and keeps its parent context visible", () => {
+describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
+  it("groups Hospitals by network role and submits the selected identity", () => {
+    renderForm(hospitalOptions({ other: true }));
+
+    const headings = Array.from(container.querySelectorAll("section[aria-labelledby] h3")).map((heading) => heading.textContent);
+    expect(headings).toEqual(["โรงพยาบาลแม่ข่าย", "รพ.สต. / หน่วยบริการลูกข่าย", "โรงพยาบาลอื่น"]);
+
+    act(() => buttonByLabel(`เลือกโรงพยาบาล ${childName}`).click());
+
+    expect(selectedHospitalCode()).toBe("CHILD-001");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(`เลือกแล้ว: ${childName} รพ.สต. / หน่วยบริการลูกข่าย`);
+  });
+
+  it("selects a Parent and labels it by role", () => {
     renderForm(hospitalOptions());
 
-    act(() => buttonByLabel(`เลือกโรงพยาบาล ${childName} ในเครือ ${parentName}`).click());
+    act(() => buttonByLabel(`เลือกโรงพยาบาล ${parentName}`).click());
 
-    expect(selectedHospitalCode()).toBe("CHILD-CANONICAL-001");
-    expect(container.textContent).toContain(childName);
-    expect(container.textContent).toContain(`โรงพยาบาลในเครือ ${parentName}`);
-    expect(container.textContent).not.toContain("CHILD-CANONICAL-001");
+    expect(selectedHospitalCode()).toBe("PARENT-001");
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(`เลือกแล้ว: ${parentName} โรงพยาบาลแม่ข่าย`);
   });
 
-  it("lets an eligible parent be selected independently from its children", () => {
-    renderForm(hospitalOptions({ eligibleParent: true }));
-
-    act(() => buttonByLabel(`เลือกโรงพยาบาลแม่ข่าย ${parentName}`).click());
-
-    expect(selectedHospitalCode()).toBe("PARENT-CANONICAL-001");
-    expect(container.textContent).toContain("โรงพยาบาลแม่ข่าย");
-    expect(container.textContent).not.toContain("PARENT-CANONICAL-001");
-  });
-
-  it("shows a non-eligible parent as a heading only", () => {
-    renderForm(hospitalOptions());
-
-    expect(container.textContent).toContain(`เครือข่าย: ${parentName}`);
-    expect(
-      Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label]"))
-        .some((button) => button.getAttribute("aria-label") === `เลือกโรงพยาบาลแม่ข่าย ${parentName}`),
-    ).toBe(false);
-    expect(buttonByLabel(`เลือกโรงพยาบาล ${childName} ในเครือ ${parentName}`)).toBeTruthy();
-  });
-
-  it("searching by parent name shows its eligible children", () => {
-    renderForm(hospitalOptions({ eligibleParent: true }));
-    changeSearch("เครือกลาง");
-
-    expect(container.textContent).toContain(`เครือข่าย: ${parentName}`);
-    expect(buttonByLabel(`เลือกโรงพยาบาล ${childName} ในเครือ ${parentName}`)).toBeTruthy();
-    expect(buttonByLabel(`เลือกโรงพยาบาลแม่ข่าย ${parentName}`)).toBeTruthy();
-  });
-
-  it("searching by child name retains the parent group context", () => {
-    renderForm(hospitalOptions());
+  it("filters every group by name and hides empty groups", () => {
+    renderForm(hospitalOptions({ other: true }));
     changeSearch("ลูกข่าย ก");
 
     const region = container.querySelector('[role="region"][aria-label="รายการโรงพยาบาลที่เลือกได้"]');
-    expect(region?.textContent).toContain(`เครือข่าย: ${parentName}`);
     expect(region?.textContent).toContain(childName);
-  });
-
-  it("keeps an ungrouped Hospital selectable without creating a network", () => {
-    renderForm(hospitalOptions({ ungrouped: true }));
-
-    act(() => buttonByLabel("เลือกโรงพยาบาล โรงพยาบาลที่ไม่มีแม่ข่าย").click());
-
-    expect(selectedHospitalCode()).toBe("OTHER-CANONICAL-001");
-    expect(container.textContent).toContain("เลือกแล้ว: โรงพยาบาลที่ไม่มีแม่ข่าย");
+    expect(region?.textContent).not.toContain(parentName);
+    expect(region?.textContent).not.toContain("โรงพยาบาลอื่น");
   });
 
   it("preserves separate identities for duplicate Hospital names", () => {
     renderForm(hospitalOptions({ duplicateChild: true }));
-    const duplicateLabel = `เลือกโรงพยาบาล ${childName} ในเครือ ${parentName}`;
+    const label = `เลือกโรงพยาบาล ${childName}`;
 
     expect(
       Array.from(container.querySelectorAll<HTMLButtonElement>("button[aria-label]"))
-        .filter((button) => button.getAttribute("aria-label") === duplicateLabel),
+        .filter((button) => button.getAttribute("aria-label") === label),
     ).toHaveLength(2);
 
-    act(() => buttonByLabel(duplicateLabel, 1).click());
+    act(() => buttonByLabel(label, 1).click());
 
-    expect(selectedHospitalCode()).toBe("CHILD-CANONICAL-002");
+    expect(selectedHospitalCode()).toBe("CHILD-002");
   });
 
   it("distinguishes an empty eligible list from a search with no matches", () => {
@@ -201,12 +135,9 @@ describe("Hospital onboarding network selector", () => {
     renderForm(hospitalOptions());
     const group = container.querySelector("section[aria-labelledby]");
     const headingId = group?.getAttribute("aria-labelledby");
-    const option = buttonByLabel(`เลือกโรงพยาบาล ${childName} ในเครือ ${parentName}`);
+    const option = buttonByLabel(`เลือกโรงพยาบาล ${childName}`);
 
-    expect(group).toBeTruthy();
-    expect(headingId && document.getElementById(headingId)?.textContent).toBe(
-      `เครือข่าย: ${parentName}`,
-    );
+    expect(headingId && document.getElementById(headingId)?.textContent).toBe("โรงพยาบาลแม่ข่าย");
     expect(option.type).toBe("button");
     expect(option.tabIndex).toBe(0);
     expect(option.getAttribute("role")).toBeNull();
@@ -215,21 +146,20 @@ describe("Hospital onboarding network selector", () => {
     act(() => option.click());
 
     expect(document.activeElement).toBe(buttonByLabel("เปลี่ยนโรงพยาบาล"));
-    expect(container.querySelector('[role="status"]')?.textContent).toContain(parentName);
 
     act(() => buttonByLabel("เปลี่ยนโรงพยาบาล").click());
     expect(document.activeElement).toBe(container.querySelector("#hospitalSearch"));
   });
 
   it("does not expose Hospital codes in visible copy or accessible names", () => {
-    renderForm(hospitalOptions({ eligibleParent: true }));
+    renderForm(hospitalOptions({ other: true }));
 
-    expect(container.textContent).not.toContain("CHILD-CANONICAL-001");
-    expect(container.textContent).not.toContain("PARENT-CANONICAL-001");
     const accessibleLabels = Array.from(container.querySelectorAll<HTMLElement>("[aria-label]"))
       .map((element) => element.getAttribute("aria-label") ?? "")
       .join(" ");
-    expect(accessibleLabels).not.toContain("CHILD-CANONICAL-001");
-    expect(accessibleLabels).not.toContain("PARENT-CANONICAL-001");
+    for (const code of ["PARENT-001", "CHILD-001", "OTHER-001"]) {
+      expect(container.textContent).not.toContain(code);
+      expect(accessibleLabels).not.toContain(code);
+    }
   });
 });

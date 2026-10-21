@@ -67,7 +67,6 @@ async function cleanup(): Promise<void> {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
   if (hospitalIds.length) {
-    await prisma.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { parentHospitalId: null } });
     await prisma.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   }
   if (personIds.length) await prisma.person.deleteMany({ where: { id: { in: personIds } } });

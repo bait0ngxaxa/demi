@@ -22,7 +22,7 @@ Phase 4B implementation อยู่ใน `src/modules/workforce/`, `/app/workf
 
 ```text
 /hospital/onboarding
-  → canonical Hospital Master match by hospitalCode
+  → ADMIN-registered Hospital match by hospitalCode
   → identity resolution / Person + User reuse
   → HospitalOnboardingApplication PENDING
   → manual Platform ADMIN approve or reject
@@ -35,18 +35,16 @@ Phase 4B implementation อยู่ใน `src/modules/workforce/`, `/app/workf
 - application history แยกจาก Hospital lifecycle ด้วย `PENDING → APPROVED | REJECTED`
 - Phase 3B ต้อง reuse HMAC identity resolution, opaque Supabase alias, `User.authSubject` และ trusted password-auth provisioning ของ Phase 2.1
 - approval/rejection เป็น consistency-critical Application Service operation; PostgreSQL writes และ audit ที่รับรองผลต้อง atomic
-- authoritative external Hospital Master provider/update process และ exact real-world verification evidence ยัง unresolved; approved v2 seed data ใช้ผ่าน replaceable boundary ได้
-- Hospital Master เริ่มต้นมาจาก `demi_hospital_master_v2.xlsx` ที่ normalize แล้วเป็น approved seed dataset 78 records; `HH` ถูก exclude และ `KANG`/`KHON` เป็น canonical codes ตาม decision ที่ยืนยันแล้ว
-- Phase 3B เพิ่ม `Hospital.hospitalCode`, parent reference แบบ metadata เท่านั้น และ `HospitalOnboardingApplication` lifecycle `PENDING → APPROVED | REJECTED` พร้อม migration และ idempotent seed script
+- (ADR-0017) Hospital Master ถูกยกเลิกแล้ว: Platform ADMIN เพิ่มโรงพยาบาลและกำหนดประเภทแม่ข่าย/ลูกข่ายที่ `/app/admin/hospitals` (รหัสสร้างอัตโนมัติได้) ไม่มี seed dataset หรือ canonical parent link อีกต่อไป
+- Phase 3B เพิ่ม `Hospital.hospitalCode` และ `HospitalOnboardingApplication` lifecycle `PENDING → APPROVED | REJECTED`
 - Public submit ทำให้ applicant เป็น `User.PROVISIONED` และ application เป็น `PENDING`; approve จึงเปลี่ยน Hospital/User เป็น `ACTIVE`, ให้ `HOSPITAL` + `OWNER` และเขียน audit ใน PostgreSQL transaction เดียว
 
 ## Phase 3B implementation
 
-- Public route: `/hospital/onboarding` — เลือก Hospital Master จากรายการที่ควบคุม, Thai National ID, ชื่อ และ user-owned password โดยไม่มี role/status input
+- Public route: `/hospital/onboarding` — เลือกโรงพยาบาลที่ Platform ADMIN เพิ่มไว้ (รอขึ้นทะเบียน) จัดกลุ่มตามประเภทในเครือข่าย, Thai National ID, ชื่อ และ user-owned password โดยไม่มี role/status input
 - Platform review: `/app/admin/hospital-onboarding` และรายละเอียด application — ใช้ existing session/ActorContext และ server-side `ADMIN` capability checks
 - Application Service อยู่ใน `src/modules/hospital-onboarding/`; Server Actions เป็น transport adapter เท่านั้น และใช้ Phase 2.1 HMAC identity resolution กับ trusted password provisioning
-- `npm run db:seed` เป็น production-safe entrypoint ที่ import `prisma/seed/hospital-master-v2.json` ไปยัง database ตาม `DATABASE_URL` และ `DIRECT_URL` ด้วย stable `hospitalCode` upsert; ไม่ลบ record อื่นและไม่ reset `ACTIVE` status
-- ก่อนเปิด public traffic ต้องมี shared/deployment-level rate limiting และ production owner/process สำหรับ master data กับ verification evidence; ยังไม่มีการเพิ่ม Redis หรือ provider integration ใน slice นี้
+- ก่อนเปิด public traffic ต้องมี shared/deployment-level rate limiting และ verification evidence process; ยังไม่มีการเพิ่ม Redis หรือ provider integration ใน slice นี้
 
 ## Phase 3C Platform Admin bootstrap
 
@@ -86,13 +84,7 @@ Production deployment uses `npm run prisma:migrate:deploy` against the productio
 
 These scripts invoke standard Prisma commands; the configured `DATABASE_URL` and `DIRECT_URL` determine the actual database project. No application-level database target selector is required.
 
-The environment-agnostic seed entrypoint is:
-
-```bash
-npm run db:seed
-```
-
-It validates the approved 78-record Hospital Master dataset and imports it idempotently into the database selected by the current environment credentials. The external provider and long-term update ownership remain replaceable/open requirements, but the committed v2 dataset is the current seed input.
+There is no Hospital seed (ADR-0017): a Platform ADMIN registers Hospitals and their network role at `/app/admin/hospitals`.
 
 3. Run the development server:
 
@@ -228,8 +220,6 @@ app/app/                                protected authenticated application shel
 proxy.ts                                Supabase SSR session refresh boundary
 prisma/schema.prisma                    stable persistence model
 prisma/migrations/                      reproducible PostgreSQL migrations
-prisma/seed/hospital-master-v2.json     approved 78-record Hospital Master seed data
-scripts/seed-hospital-master.mjs        environment-agnostic idempotent Hospital Master seed
 scripts/admin-bootstrap.mjs             trusted interactive first Platform Admin CLI
 src/lib/env/                            server environment validation
 src/lib/auth/                           Supabase Auth server adapter

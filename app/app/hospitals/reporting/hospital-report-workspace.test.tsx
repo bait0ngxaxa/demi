@@ -23,17 +23,15 @@ const hierarchy: HospitalHierarchyContext = {
     hospitalCode: "DEMO-01",
     name: "โรงพยาบาลทดสอบ",
     status: "ACTIVE" as HospitalReportingHospital["status"],
-    parentHospitalId: null,
   },
   classification: "MAIN",
   parentHospital: null,
   directChildCount: 3,
   directChildren: [
-    { id: "child-active", hospitalCode: "DEMO-C1", name: "โรงพยาบาลลูกข่ายที่ใช้งาน", status: "ACTIVE", parentHospitalId: hospitalId },
-    { id: "child-pending", hospitalCode: "DEMO-C2", name: "โรงพยาบาลลูกข่ายรอยืนยัน", status: "PENDING_VERIFICATION", parentHospitalId: hospitalId },
-    { id: "child-suspended", hospitalCode: "DEMO-C3", name: "โรงพยาบาลลูกข่ายที่ถูกระงับ", status: "SUSPENDED", parentHospitalId: hospitalId },
+    { id: "child-active", hospitalCode: "DEMO-C1", name: "โรงพยาบาลลูกข่ายที่ใช้งาน", status: "ACTIVE" },
+    { id: "child-pending", hospitalCode: "DEMO-C2", name: "โรงพยาบาลลูกข่ายรอยืนยัน", status: "PENDING_VERIFICATION" },
+    { id: "child-suspended", hospitalCode: "DEMO-C3", name: "โรงพยาบาลลูกข่ายที่ถูกระงับ", status: "SUSPENDED" },
   ],
-  issues: [],
 };
 
 function program(id: string, status: PatientProgramStatus): HospitalReportProgramRow {
@@ -177,7 +175,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("หลัง Program · การประเมินครั้งสุดท้าย");
     expect(markup).toContain("ยังไม่บันทึก");
     expect(markup).toContain("โรงพยาบาลแม่ข่าย");
-    expect(markup).toContain("หน่วยบริการในเครือโดยตรง 3 แห่ง");
+    expect(markup).toContain("ลูกข่ายในเครือข่าย 3 แห่ง");
     expect(markup).toContain("ใช้งานอยู่");
     expect(markup).toContain("โรงพยาบาลลูกข่ายรอยืนยัน");
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
@@ -279,7 +277,6 @@ describe("Hospital reporting dashboard presentation", () => {
         hospitalCode: "DEMO-CHILD",
         name: "รพ.สต.ทดสอบ",
         status: "ACTIVE" as HospitalReportingHospital["status"],
-        parentHospitalId: "parent-id",
       },
       classification: "SUBORDINATE",
       parentHospital: {
@@ -287,11 +284,9 @@ describe("Hospital reporting dashboard presentation", () => {
         hospitalCode: "DEMO-PARENT",
         name: "โรงพยาบาลแม่ข่ายทดสอบ",
         status: "ACTIVE" as HospitalReportingHospital["status"],
-        parentHospitalId: null,
       },
       directChildCount: 0,
       directChildren: [],
-      issues: [],
     };
     const markup = render("overview", [], 0, childHierarchy);
 
@@ -300,7 +295,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).not.toContain("DEMO-CHILD");
     expect(markup).not.toContain("DEMO-PARENT");
     expect(markup).not.toContain("โรงพยาบาลลูกข่ายที่ใช้งาน");
-    expect(markup).not.toContain("หน่วยบริการในเครือโดยตรง");
+    expect(markup).not.toContain("ลูกข่ายในเครือข่าย");
     expect(markup).toContain("ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
   });
 });

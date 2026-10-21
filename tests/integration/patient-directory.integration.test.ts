@@ -30,7 +30,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -38,14 +37,12 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   code: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-  parentHospitalId?: string,
 ): Promise<{ id: string; status: HospitalStatus }> {
   return prisma.hospital.create({
     data: {
       hospitalCode: code,
       name: `โรงพยาบาล ${code}`,
       status,
-      parentHospitalId,
     },
     select: { id: true, status: true },
   });
@@ -321,8 +318,8 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
 
   it("keeps Patient reads inside the direct Hospital boundary and denies hierarchy, OSM, and ADMIN access", async () => {
     const parent = await createHospital("DIRECTORY-PARENT");
-    const child = await createHospital("DIRECTORY-CHILD", HospitalStatus.ACTIVE, parent.id);
-    const sibling = await createHospital("DIRECTORY-SIBLING", HospitalStatus.ACTIVE, parent.id);
+    const child = await createHospital("DIRECTORY-CHILD", HospitalStatus.ACTIVE);
+    const sibling = await createHospital("DIRECTORY-SIBLING", HospitalStatus.ACTIVE);
     const unrelated = await createHospital("DIRECTORY-UNRELATED");
     const parentActor = await createHospitalActor({ hospitalId: parent.id });
     const childActor = await createHospitalActor({ hospitalId: child.id });

@@ -8,7 +8,7 @@ Resolve apparent conflicts in this order: (1) latest confirmed Product Owner dir
 
 ## Current domain vocabulary — operational service areas (2026-10-20)
 
-- **Canonical Hospital hierarchy:** official organization identity and placement owned by Hospital Master reconciliation; it is independent of an operational assignment.
+- **Hospital registry:** every Hospital is registered by Platform ADMIN with a network role; Hospital Master and the canonical parent link were retired ([ADR-0017](./adr/0017-retire-hospital-master.md)).
 - **Hospital service area:** an OWNER-managed operational Parent–Child association with at most one active Parent per Child and retained ended history. It is neither direct workforce membership nor Patient/report authority.
 - **Network role (service-area eligibility):** an audited Platform ADMIN decision that a facility is a network PARENT or CHILD ([ADR-0015](./adr/0015-admin-governed-hospital-network.md)); hierarchy, names and codes alone do not establish it.
 - **Network Patient read:** read-only access by a Parent OWNER (or OWNER-granted Parent MEMBER) to the Patients of the Parent's active network Children, audited per read ([ADR-0016](./adr/0016-network-patient-read.md)).

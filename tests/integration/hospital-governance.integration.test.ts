@@ -55,7 +55,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -63,7 +62,6 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   code: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-  parentHospitalId?: string,
 ): Promise<{ id: string; status: HospitalStatus; updatedAt: Date }> {
   sequence += 1;
   return prisma.hospital.create({
@@ -71,7 +69,6 @@ async function createHospital(
       hospitalCode: `12B0-${code}-${sequence}`,
       name: `โรงพยาบาล 12B0 ${code}`,
       status,
-      parentHospitalId,
     },
     select: { id: true, status: true, updatedAt: true },
   });
@@ -417,14 +414,17 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
     });
     expect(await prisma.hospital.findUniqueOrThrow({
       where: { id: created.id },
-      select: { parentHospitalId: true, serviceAreaEligibility: { select: { kind: true, classifiedByUserId: true } } },
+      select: { serviceAreaEligibility: { select: { kind: true, classifiedByUserId: true } } },
     })).toEqual({
-      parentHospitalId: null,
       serviceAreaEligibility: { kind: "PARENT", classifiedByUserId: admin.userId },
     });
     await expect(
       registerHospital(admin.actor, { hospitalCode: "NEW-PARENT_1", name: "ซ้ำ", networkRole: "CHILD" }),
     ).rejects.toBeInstanceOf(ConflictError);
+    const generated = await registerHospital(admin.actor, { hospitalCode: " ", name: "รพ.สต.รหัสอัตโนมัติ", networkRole: "CHILD" });
+    expect(generated.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
+    expect((await registerHospital(admin.actor, { name: "รพ.สต.ไม่ส่งรหัส", networkRole: "CHILD" })).hospitalCode)
+      .not.toBe(generated.hospitalCode);
     await expect(
       registerHospital(admin.actor, { hospitalCode: "รหัสไทย", name: "x", networkRole: "CHILD" }),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -482,7 +482,7 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
 
   it("fails closed for a suspended Hospital, restores only valid scopes, and isolates another Hospital", async () => {
     const hospitalA = await createHospital("A");
-    const hospitalB = await createHospital("B", HospitalStatus.ACTIVE, hospitalA.id);
+    const hospitalB = await createHospital("B", HospitalStatus.ACTIVE);
     const admin = await createAdmin();
     const ownerA = await createOwner(hospitalA.id);
     const ownerB = await createOwner(hospitalB.id);

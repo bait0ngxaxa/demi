@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 import {
   HospitalOnboardingApplicationStatus,
@@ -20,11 +18,8 @@ import {
 } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
 import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 
-const execFileAsync = promisify(execFile);
 const prisma = getPrisma();
-const seedScript = "scripts/seed-hospital-master.mjs";
 // The Master seed is read-only by default; integration tests apply it to the local test database.
-const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 
 const nationalIds = {
   first: "1000000000009",
@@ -44,15 +39,17 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
 
-async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], {
-    cwd: process.cwd(),
-    env: process.env,
+/** ADR-0017: Hospitals are registered by Platform ADMIN (no Master seed); these are the pending ones under test. */
+async function registerPendingHospitals(): Promise<void> {
+  await prisma.hospital.createMany({
+    data: [
+      { hospitalCode: "KANG", name: "โรงพยาบาลแก่งคอย", status: HospitalStatus.PENDING_VERIFICATION },
+      { hospitalCode: "KHON", name: "โรงพยาบาลขอนแก่น", status: HospitalStatus.PENDING_VERIFICATION },
+    ],
   });
 }
 
@@ -101,37 +98,12 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
 
   beforeEach(async () => {
     await clearDatabase();
-    await runHospitalMasterSeed();
+    await registerPendingHospitals();
   });
 
   afterAll(async () => {
     await clearDatabase();
     await prisma.$disconnect();
-  });
-
-  it("imports exactly 78 canonical hospitals idempotently and preserves active status", async () => {
-    await runHospitalMasterSeed();
-    await prisma.hospital.update({
-      where: { hospitalCode: "KANG" },
-      data: { status: HospitalStatus.ACTIVE },
-    });
-    await runHospitalMasterSeed();
-
-    expect(await prisma.hospital.count()).toBe(78);
-    expect(await prisma.hospital.count({ where: { hospitalCode: "HH" } })).toBe(0);
-    expect(
-      await prisma.hospital.findUnique({
-        where: { hospitalCode: "KANG" },
-        select: { name: true, status: true },
-      }),
-    ).toEqual({ name: "โรงพยาบาลแก่งคอย", status: HospitalStatus.ACTIVE });
-    expect(
-      await prisma.hospital.findUnique({
-        where: { hospitalCode: "KHON" },
-        select: { name: true },
-      }),
-    ).toEqual({ name: "โรงพยาบาลขอนแก่น" });
-    expect(await prisma.hospital.count({ where: { parentHospitalId: { not: null } } })).toBe(35);
   });
 
   it("creates a provisioned applicant and pending application without authority", async () => {

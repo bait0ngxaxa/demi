@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import {
   HospitalStatus,
@@ -28,10 +26,7 @@ import { listWorkHospitalContacts } from "@/modules/hospital-contact/services/ho
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
-const execFileAsync = promisify(execFile);
-const seedScript = "scripts/seed-hospital-master.mjs";
 // The Master seed is read-only by default; integration tests apply it to the local test database.
-const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 
 type UserFixture = {
   userId: string;
@@ -52,7 +47,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.osmHospitalRelationship.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -71,7 +65,6 @@ async function createHospital(input: {
       hospitalCode: code,
       name: input.name ?? `โรงพยาบาลทดสอบ ${sequence}`,
       status: input.status ?? HospitalStatus.ACTIVE,
-      parentHospitalId: input.parentHospitalId,
     },
     select: { id: true, hospitalCode: true, name: true },
   });
@@ -193,12 +186,6 @@ function desiredState(
   return { hospitalId, expectedUpdatedAt, addressText, phoneNumber };
 }
 
-async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], {
-    cwd: process.cwd(),
-    env: process.env,
-  });
-}
 
 async function waitForPostgresLockWait(expectedWaiters: number): Promise<void> {
   const deadline = Date.now() + 7_000;
@@ -481,7 +468,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
     const owner = await createOwner(hospital.id);
     const identityBefore = await prisma.hospital.findUniqueOrThrow({
       where: { id: hospital.id },
-      select: { id: true, hospitalCode: true, name: true, status: true, parentHospitalId: true },
+      select: { id: true, hospitalCode: true, name: true, status: true },
     });
 
     const created = await updateHospitalContact(
@@ -492,7 +479,7 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
     expect(
       await prisma.hospital.findUniqueOrThrow({
         where: { id: hospital.id },
-        select: { id: true, hospitalCode: true, name: true, status: true, parentHospitalId: true },
+        select: { id: true, hospitalCode: true, name: true, status: true },
       }),
     ).toEqual(identityBefore);
     expect(await prisma.hospitalContact.count({ where: { hospitalId: hospital.id } })).toBe(1);
@@ -1361,35 +1348,5 @@ describe("Phase 17I.1 Hospital Contact PostgreSQL behavior", () => {
       await prisma.$executeRaw(Prisma.sql`DROP TRIGGER IF EXISTS hospital_contact_test_reject_audit_trigger ON "AuditEvent"`);
       await prisma.$executeRaw(Prisma.sql`DROP FUNCTION IF EXISTS hospital_contact_test_reject_audit()`);
     }
-  });
-
-  it("keeps Master seed identity-only when rerun after a real Contact exists", async () => {
-    await runHospitalMasterSeed();
-    const hospital = await prisma.hospital.findUniqueOrThrow({
-      where: { hospitalCode: "KANG" },
-      select: { id: true, hospitalCode: true, name: true },
-    });
-    await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
-    const owner = await createOwner(hospital.id);
-    const mutation = await updateHospitalContact(
-      owner.actor,
-      desiredState(hospital.id, null, "ถนนโรงพยาบาล", "02-345-6789"),
-    );
-    expect(mutation.outcome).toBe("CREATED");
-    const before = await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } });
-    const beforeHospital = await prisma.hospital.findUniqueOrThrow({
-      where: { id: hospital.id },
-      select: { id: true, hospitalCode: true, name: true, status: true, parentHospitalId: true },
-    });
-
-    await runHospitalMasterSeed();
-
-    expect(await prisma.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } })).toEqual(before);
-    expect(
-      await prisma.hospital.findUniqueOrThrow({
-        where: { id: hospital.id },
-        select: { id: true, hospitalCode: true, name: true, status: true, parentHospitalId: true },
-      }),
-    ).toEqual(beforeHospital);
   });
 });

@@ -12,8 +12,8 @@ import {
 import { submitHospitalOnboardingAction } from "@/modules/hospital-onboarding/transport/server-actions";
 
 import {
-  getVerifiedParentHospital,
   groupOnboardingHospitals,
+  hospitalRoleLabel,
   type OnboardingHospitalOption,
 } from "./hospital-groups";
 
@@ -37,17 +37,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
   const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
   const selectionGroups = useMemo(() => groupOnboardingHospitals(hospitals), [hospitals]);
   const selectedHospital = hospitals.find((hospital) => hospital.id === selectedHospitalId);
-  const selectedHospitalParent = selectedHospital
-    ? getVerifiedParentHospital(selectedHospital)
-    : null;
-  const selectedHospitalIsNetworkParent = selectionGroups.networks.some(
-    ({ eligibleParent }) => eligibleParent?.id === selectedHospital?.id,
-  );
-  const selectedHospitalContext = selectedHospitalParent
-    ? `โรงพยาบาลในเครือ ${selectedHospitalParent.name}`
-    : selectedHospitalIsNetworkParent
-      ? "โรงพยาบาลแม่ข่าย"
-      : null;
+  const selectedHospitalContext = selectedHospital ? hospitalRoleLabel(selectedHospital) : null;
   const selectedHospitalStatus = selectedHospital
     ? `เลือกแล้ว: ${selectedHospital.name}${selectedHospitalContext ? ` ${selectedHospitalContext}` : ""}`
     : "กรุณาเลือกโรงพยาบาลจากรายการ";
@@ -55,31 +45,14 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     const normalizedQuery = normalizeSearchValue(hospitalQuery);
     if (!normalizedQuery) return selectionGroups;
 
-    const matches = (value: string): boolean =>
-      normalizeSearchValue(value).includes(normalizedQuery);
-    const networks = selectionGroups.networks.flatMap((group) => {
-      const parentMatches = matches(group.parent.name);
-      const children = parentMatches
-        ? group.children
-        : group.children.filter((hospital) => matches(hospital.name));
-
-      if (!parentMatches && children.length === 0) return [];
-
-      return [{
-        ...group,
-        eligibleParent: parentMatches ? group.eligibleParent : null,
-        children,
-      }];
+    return selectionGroups.flatMap((group) => {
+      const hospitals = group.hospitals.filter((hospital) =>
+        normalizeSearchValue(hospital.name).includes(normalizedQuery),
+      );
+      return hospitals.length > 0 ? [{ ...group, hospitals }] : [];
     });
-    const otherHospitals = selectionGroups.otherHospitals.filter((hospital) =>
-      matches(hospital.name),
-    );
-
-    return { networks, otherHospitals };
   }, [hospitalQuery, selectionGroups]);
-  const hasVisibleHospitals =
-    visibleSelectionGroups.networks.length > 0 ||
-    visibleSelectionGroups.otherHospitals.length > 0;
+  const hasVisibleHospitals = visibleSelectionGroups.length > 0;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors ?? {} : {};
 
@@ -190,46 +163,23 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
                 </p>
               ) : (
                 <>
-                  {visibleSelectionGroups.networks.map((group) => {
-                    const headingId = `hospital-network-${group.parent.id}`;
-                    const eligibleParent = group.eligibleParent;
+                  {visibleSelectionGroups.map((group) => {
+                    const headingId = `hospital-group-${group.key}`;
 
                     return (
-                      <section
-                        aria-labelledby={headingId}
-                        className="min-w-0 rounded-[10px] bg-white/60 p-2"
-                        key={group.parent.id}
-                      >
+                      <section aria-labelledby={headingId} className="min-w-0" key={group.key}>
                         <h3
-                          className="break-words px-2 py-2 text-sm font-semibold text-ink"
+                          className="break-words px-3 py-2 text-sm font-semibold text-ink"
                           id={headingId}
                         >
-                          เครือข่าย: {group.parent.name}
+                          {group.title}
                         </h3>
                         <ul className="space-y-2">
-                          {eligibleParent ? (
-                            <li>
-                              <button
-                                aria-label={`เลือกโรงพยาบาลแม่ข่าย ${eligibleParent.name}`}
-                                className="w-full rounded-[10px] border border-transparent bg-white px-3 py-3 text-left transition-[border-color,background-color] hover:border-line focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-                                disabled={pending}
-                                onClick={() => selectHospital(eligibleParent.id)}
-                                type="button"
-                              >
-                                <span className="mb-1 block text-xs font-medium text-muted">
-                                  โรงพยาบาลแม่ข่าย
-                                </span>
-                                <span className="block break-words font-semibold text-ink">
-                                  {eligibleParent.name}
-                                </span>
-                              </button>
-                            </li>
-                          ) : null}
-                          {group.children.map((hospital) => (
+                          {group.hospitals.map((hospital) => (
                             <li key={hospital.id}>
                               <button
-                                aria-label={`เลือกโรงพยาบาล ${hospital.name} ในเครือ ${group.parent.name}`}
-                                className="w-full rounded-[10px] border border-transparent bg-white px-3 py-3 text-left transition-[border-color,background-color] hover:border-line focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+                                aria-label={`เลือกโรงพยาบาล ${hospital.name}`}
+                                className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
                                 disabled={pending}
                                 onClick={() => selectHospital(hospital.id)}
                                 type="button"
@@ -244,33 +194,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
                       </section>
                     );
                   })}
-                  {visibleSelectionGroups.otherHospitals.length > 0 ? (
-                    <section aria-labelledby="other-hospitals-heading" className="min-w-0">
-                      <h3
-                        className="break-words px-3 py-2 text-sm font-semibold text-ink"
-                        id="other-hospitals-heading"
-                      >
-                        โรงพยาบาลอื่น
-                      </h3>
-                      <ul className="space-y-2">
-                        {visibleSelectionGroups.otherHospitals.map((hospital) => (
-                          <li key={hospital.id}>
-                            <button
-                              aria-label={`เลือกโรงพยาบาล ${hospital.name}`}
-                              className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-                              disabled={pending}
-                              onClick={() => selectHospital(hospital.id)}
-                              type="button"
-                            >
-                              <span className="block break-words font-semibold text-ink">
-                                {hospital.name}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  ) : null}
                 </>
               )}
             </div>

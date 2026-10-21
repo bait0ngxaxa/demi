@@ -115,7 +115,6 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
     await prisma.user.deleteMany({ where: { id: { in: fixture.userIds } } });
   }
   if (fixture.hospitalIds.length > 0) {
-    await prisma.hospital.updateMany({ where: { id: { in: fixture.hospitalIds } }, data: { parentHospitalId: null } });
     await prisma.hospital.deleteMany({ where: { id: { in: fixture.hospitalIds } } });
   }
   if (fixture.personIds.length > 0) await prisma.person.deleteMany({ where: { id: { in: fixture.personIds } } });
@@ -123,16 +122,15 @@ async function cleanFixture(fixture: Fixture): Promise<void> {
 
 async function createHospital(
   fixture: Fixture,
-  input: { name: string; status?: HospitalStatus; parentHospitalId?: string },
+  input: { name: string; status?: HospitalStatus; kind?: "PARENT" | "CHILD" },
 ): Promise<{ id: string; name: string; hospitalCode: string; status: HospitalStatus }> {
   const hospital = await prisma.hospital.create({
     data: {
       hospitalCode: `HR-${randomUUID().slice(0, 20)}`,
       name: input.name,
       status: input.status ?? HospitalStatus.ACTIVE,
-      parentHospitalId: input.parentHospitalId,
-      // ADR-0015: canonical roots are network PARENTs, canonical children are CHILDren (system bootstrap shape).
-      serviceAreaEligibility: { create: { kind: input.parentHospitalId ? "CHILD" : "PARENT", verifiedAt: new Date() } },
+      // ADR-0015: network role; Parents by default.
+      serviceAreaEligibility: { create: { kind: input.kind ?? "PARENT", verifiedAt: new Date() } },
     },
     select: { id: true, name: true, hospitalCode: true, status: true },
   });
@@ -440,7 +438,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parent = await createHospital(fixture, { name: "โรงพยาบาลแม่" });
-    const hospitalA = await createHospital(fixture, { name: "โรงพยาบาล A", parentHospitalId: parent.id });
+    const hospitalA = await createHospital(fixture, { name: "โรงพยาบาล A", kind: "CHILD" });
     const hospitalB = await createHospital(fixture, { name: "โรงพยาบาล B" });
     const suspendedHospital = await createHospital(fixture, { name: "โรงพยาบาลระงับ", status: HospitalStatus.SUSPENDED });
     const ownerA = await createActor(fixture, { role: Role.HOSPITAL, hospital: hospitalA });
@@ -655,21 +653,22 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parent = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่ายสังเคราะห์" });
-    const child = await createHospital(fixture, { name: "หน่วยบริการลูกสังเคราะห์", parentHospitalId: parent.id });
-    const sibling = await createHospital(fixture, { name: "หน่วยบริการพี่น้องสังเคราะห์", parentHospitalId: parent.id });
+    const child = await createHospital(fixture, { name: "หน่วยบริการลูกสังเคราะห์", kind: "CHILD" });
+    const sibling = await createHospital(fixture, { name: "หน่วยบริการพี่น้องสังเคราะห์", kind: "CHILD" });
     const pending = await createHospital(fixture, {
       name: "หน่วยบริการรอตรวจสอบสังเคราะห์",
       status: HospitalStatus.PENDING_VERIFICATION,
-      parentHospitalId: parent.id,
+      kind: "CHILD",
     });
     const suspended = await createHospital(fixture, {
       name: "หน่วยบริการระงับสังเคราะห์",
       status: HospitalStatus.SUSPENDED,
-      parentHospitalId: parent.id,
+      kind: "CHILD",
     });
     const admin = await createActor(fixture, { role: Role.ADMIN });
     const childOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: child });
     const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parent });
+    await attachNetwork(parent.id, [child.id, sibling.id, pending.id, suspended.id], parentOwner.userId);
 
     const childProfile = await createPatientProfile(fixture, "ระเบียนลูกที่เลือก");
     const childRelationship = await createRelationship(fixture, childProfile.id, child.id, "GLOBAL-CHILD-01");
@@ -825,9 +824,9 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     currentFixture = fixture;
     const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
     const parentB = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย B สังเคราะห์" });
-    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายสังเคราะห์", parentHospitalId: parentA.id });
-    const sibling = await createHospital(fixture, { name: "โรงพยาบาลพี่น้องสังเคราะห์", parentHospitalId: parentA.id });
-    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", parentHospitalId: child.id });
+    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายสังเคราะห์", kind: "CHILD" });
+    const sibling = await createHospital(fixture, { name: "โรงพยาบาลพี่น้องสังเคราะห์", kind: "CHILD" });
+    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", kind: "CHILD" });
     const unrelated = await createHospital(fixture, { name: "โรงพยาบาลอื่นสังเคราะห์" });
     const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
     const member = await createActor(fixture, {
@@ -939,12 +938,6 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       .rejects.toBeInstanceOf(NotFoundError);
     await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
       .resolves.toMatchObject({ hospital: { id: child.id } });
-    // Canonical reparenting alone changes nothing: the network is authoritative (ADR-0016).
-    await prisma.hospital.update({ where: { id: child.id }, data: { parentHospitalId: parentB.id } });
-    await expect(resolveParentChildHospitalReportAccessContext(parentOwner.actor, parentA.id, child.id))
-      .resolves.toMatchObject({ hospital: { id: child.id } });
-    await expect(resolveParentChildHospitalReportAccessContext(parentBOwner.actor, parentB.id, child.id))
-      .rejects.toBeInstanceOf(NotFoundError);
     // A transfer (end + new association) moves report access immediately.
     await prisma.hospitalServiceArea.updateMany({
       where: { childHospitalId: child.id, endedAt: null },
@@ -962,15 +955,15 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     currentFixture = fixture;
     const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
     const parentB = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย B สังเคราะห์" });
-    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย A สังเคราะห์", parentHospitalId: parentA.id });
-    const sibling = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายข้างเคียงสังเคราะห์", parentHospitalId: parentA.id });
-    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", parentHospitalId: child.id });
+    const child = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย A สังเคราะห์", kind: "CHILD" });
+    const sibling = await createHospital(fixture, { name: "โรงพยาบาลลูกข่ายข้างเคียงสังเคราะห์", kind: "CHILD" });
+    const grandchild = await createHospital(fixture, { name: "โรงพยาบาลหลานสังเคราะห์", kind: "CHILD" });
     const inactiveChild = await createHospital(fixture, {
       name: "โรงพยาบาลลูกข่ายระงับสังเคราะห์",
-      parentHospitalId: parentA.id,
+      kind: "CHILD",
       status: HospitalStatus.SUSPENDED,
     });
-    const childB = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย B สังเคราะห์", parentHospitalId: parentB.id });
+    const childB = await createHospital(fixture, { name: "โรงพยาบาลลูกข่าย B สังเคราะห์", kind: "CHILD" });
     const parentOwner = await createActor(fixture, { role: Role.HOSPITAL, hospital: parentA });
     await prisma.hospitalMembership.create({
       data: {

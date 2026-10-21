@@ -1,6 +1,6 @@
 import "server-only";
 
-import { HospitalStatus, type Prisma, type PrismaClient } from "@prisma/client";
+import { HospitalStatus, type HospitalServiceAreaFacilityKind, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
@@ -11,12 +11,8 @@ export type HospitalMasterRecord = {
   id: string;
   hospitalCode: string;
   name: string;
-  parentHospitalId: string | null;
-  parentHospital: {
-    id: string;
-    name: string;
-    parentHospitalId: string | null;
-  } | null;
+  /** ADMIN-set network role (ADR-0015); a grouping label only. */
+  networkRole: HospitalServiceAreaFacilityKind | null;
 };
 
 export type HospitalMasterDatabase = Pick<PrismaClient, "hospital"> | Prisma.TransactionClient;
@@ -25,10 +21,7 @@ const hospitalMasterSelect = {
   id: true,
   hospitalCode: true,
   name: true,
-  parentHospitalId: true,
-  parentHospital: {
-    select: { id: true, name: true, parentHospitalId: true },
-  },
+  serviceAreaEligibility: { select: { kind: true } },
 } satisfies Prisma.HospitalSelect;
 
 function toHospitalMasterRecord(
@@ -38,14 +31,7 @@ function toHospitalMasterRecord(
     id: hospital.id,
     hospitalCode: hospital.hospitalCode,
     name: hospital.name,
-    parentHospitalId: hospital.parentHospitalId,
-    parentHospital: hospital.parentHospital
-      ? {
-          id: hospital.parentHospital.id,
-          name: hospital.parentHospital.name,
-          parentHospitalId: hospital.parentHospital.parentHospitalId,
-        }
-      : null,
+    networkRole: hospital.serviceAreaEligibility?.kind ?? null,
   };
 }
 

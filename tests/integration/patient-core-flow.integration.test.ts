@@ -59,7 +59,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -67,14 +66,12 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   code: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-  parentHospitalId?: string,
 ): Promise<{ id: string; status: HospitalStatus }> {
   return prisma.hospital.create({
     data: {
       hospitalCode: code,
       name: `โรงพยาบาล ${code}`,
       status,
-      parentHospitalId,
     },
     select: { id: true, status: true },
   });
@@ -344,7 +341,7 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
 
   it("does not widen lookup through hierarchy or another direct Hospital", async () => {
     const parent = await createHospital("LOOKUP-PARENT");
-    const child = await createHospital("LOOKUP-CHILD", HospitalStatus.ACTIVE, parent.id);
+    const child = await createHospital("LOOKUP-CHILD", HospitalStatus.ACTIVE);
     const { actor } = await createHospitalActor({ hospitalId: parent.id });
     await submitAccessRequest(nationalId, child.id);
     await expect(locateHospitalPatientAccessRequest(actor, { hospitalId: child.id, nationalId })).rejects.toMatchObject({ code: "FORBIDDEN" });

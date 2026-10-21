@@ -8,7 +8,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type {
-  HospitalHierarchyIssueCode,
   HospitalHierarchyUnit,
   HospitalHierarchyContext,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
@@ -35,14 +34,11 @@ function statusVariant(status: HospitalHierarchyUnit["status"]): StatusVariant {
   }
 }
 
-function issueLabel(issue: HospitalHierarchyIssueCode): string {
-  switch (issue) {
-    case "MISSING_PARENT": return "ไม่พบโรงพยาบาลแม่ข่ายที่อ้างอิง";
-    case "SELF_PARENT": return "หน่วยนี้อ้างอิงตัวเองเป็นโรงพยาบาลแม่ข่าย";
-    case "CYCLE": return "พบวงจรในความสัมพันธ์ของโรงพยาบาล";
-    case "PARENT_IS_SUBORDINATE": return "โรงพยาบาลแม่ข่ายที่อ้างอิงเป็นโรงพยาบาลลูกข่าย";
-    case "PARENT_INVALID": return "ไม่สามารถยืนยันความสัมพันธ์กับโรงพยาบาลแม่ข่ายได้";
-    case "DUPLICATE_IDENTITY": return "พบข้อมูลโรงพยาบาลซ้ำ";
+function classificationLabel(classification: HospitalHierarchyContext["classification"]): string {
+  switch (classification) {
+    case "MAIN": return "โรงพยาบาลแม่ข่าย";
+    case "SUBORDINATE": return "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ";
+    case "UNASSIGNED": return "ยังไม่อยู่ในเครือข่าย";
   }
 }
 
@@ -157,17 +153,14 @@ function GlobalHospitalDirectory({
     return [{ ...group, showMainAsResult: mainMatches, visibleChildren: matchingChildren }];
   }), [directory.hierarchy.groups, query, statusFilter]);
 
-  const visibleDiagnostics = useMemo(() => directory.hierarchy.diagnostics.filter(({ hospital, parentHospital }) => {
-    const hospitalMatches = matchesHospital(hospital, query, statusFilter);
-    const parentMatchesSearch = Boolean(
-      query && parentHospital && normalizeSearch(parentHospital.name).includes(query),
-    );
-    return hospitalMatches || parentMatchesSearch && statusFilter === "ALL";
-  }), [directory.hierarchy.diagnostics, query, statusFilter]);
+  const visibleOutsideNetwork = useMemo(
+    () => directory.hierarchy.outsideNetwork.filter((hospital) => matchesHospital(hospital, query, statusFilter)),
+    [directory.hierarchy.outsideNetwork, query, statusFilter],
+  );
 
   const visibleCount = visibleGroups.reduce(
     (count, group) => count + Number(group.showMainAsResult) + group.visibleChildren.length,
-    visibleDiagnostics.length,
+    visibleOutsideNetwork.length,
   );
 
   return (
@@ -273,27 +266,19 @@ function GlobalHospitalDirectory({
         </ul>
       )}
 
-      {visibleDiagnostics.length > 0 ? (
-        <section aria-labelledby="global-hospital-diagnostics-heading" className="mt-7">
-          <Alert variant="warning">
-            <h3 className="font-semibold" id="global-hospital-diagnostics-heading">รายการที่ต้องตรวจสอบโครงสร้าง</h3>
-            <p className="mt-1 text-sm leading-6">
-              มี {visibleDiagnostics.length.toLocaleString("th-TH")} แห่งที่ยังจัดกลุ่มไม่ได้ รายการเหล่านี้ยังอยู่ในฐานข้อมูลและแสดงเพื่อให้ตรวจสอบ
-            </p>
-          </Alert>
+      {visibleOutsideNetwork.length > 0 ? (
+        <section aria-labelledby="global-hospital-outside-network-heading" className="mt-7">
+          <h3 className="font-semibold text-text" id="global-hospital-outside-network-heading">
+            ยังไม่อยู่ในเครือข่าย ({visibleOutsideNetwork.length.toLocaleString("th-TH")})
+          </h3>
+          <p className="mt-1 text-sm leading-6 text-text-muted">
+            ลูกข่ายที่ยังไม่มีแม่ข่าย หรือโรงพยาบาลที่ยังไม่กำหนดประเภท จัดการได้ที่หน้าการกำกับดูแลโรงพยาบาล
+          </p>
           <ul className="mt-3 divide-y divide-border rounded-panel border border-border bg-surface px-4 sm:px-5">
-            {visibleDiagnostics.map(({ hospital, parentHospital, issues }) => (
+            {visibleOutsideNetwork.map((hospital) => (
               <li className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between" key={hospital.id}>
                 <div className="min-w-0">
-                  <HospitalIdentity hospital={hospital} label="โครงสร้างต้องตรวจสอบ" />
-                  <p className="mt-1 break-words text-sm text-text-muted">
-                    {parentHospital
-                      ? `แม่ข่ายที่อ้างอิง ${parentHospital.name}`
-                      : "ไม่พบโรงพยาบาลแม่ข่าย"}
-                  </p>
-                  <ul className="mt-2 space-y-1 text-sm leading-6 text-danger-strong">
-                    {issues.map((issue) => <li key={`${issue.code}:${issue.parentHospitalCode ?? "none"}`}>{issueLabel(issue.code)}</li>)}
-                  </ul>
+                  <HospitalIdentity hospital={hospital} label="ยังไม่อยู่ในเครือข่าย" />
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0">
                   <StatusBadge variant={statusVariant(hospital.status)}>{statusLabel(hospital.status)}</StatusBadge>
@@ -338,7 +323,7 @@ export function GlobalAdminReportingWorkspace({
           โครงสร้างองค์กรในระบบ
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-          จำนวนนี้นับโรงพยาบาลที่มีข้อมูลในระบบ ไม่ใช่จำนวนผู้ป่วยหรือยอดทางคลินิก รายชื่ออ้างอิง 78 แห่งไม่ได้หมายความว่าทุกแห่งมีข้อมูลในระบบ
+          จำนวนนี้นับโรงพยาบาลที่ลงทะเบียนในระบบตามเครือข่ายปัจจุบัน ไม่ใช่จำนวนผู้ป่วยหรือยอดทางคลินิก
         </p>
         <Panel className="mt-4 p-4 sm:p-5">
           <dl className="grid min-w-0 grid-cols-2 gap-x-6 sm:grid-cols-3 xl:grid-cols-6">
@@ -360,7 +345,7 @@ export function GlobalAdminReportingWorkspace({
             {selectedHospital.name}
           </h2>
           <p className="mt-1 break-words text-sm text-text-muted">
-            {hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}
+            {classificationLabel(hierarchy.classification)}
           </p>
           {selectedHospital.status !== "ACTIVE" ? (
             <Alert className="mt-4" variant={selectedHospital.status === "SUSPENDED" ? "warning" : "info"}>

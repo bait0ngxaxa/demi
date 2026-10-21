@@ -27,6 +27,6 @@ Reports: `resolveParentChildHospitalReportAccessContext` and `listParentChildHos
 ## Consequences
 
 - Platform ADMIN still has no Patient access through governing the network.
-- Canonical `parentHospitalId` grants nothing anymore; it remains reference data shown on the governance screen. If the customer stops using Hospital Master, stop running `npm run db:seed` on that environment; existing Hospital rows are reused (codes are unique) and unused ones are suspended, not deleted.
+- Canonical `parentHospitalId` grants nothing anymore; [ADR-0017](./0017-retire-hospital-master.md) later removed it together with Hospital Master.
 - Network reads are audited per page load, which grows `AuditEvent`; retention is unchanged.
 - The synthetic demo seed fills missing roles for its Parent/Children and attaches them through the OWNER service; the demo reset purges only demo-user-attributed association history via a transaction-local `demi.service_area_purge = 'demo-reset'` setting honoured by the history trigger (migration `20261030130000`). Application code never sets it.

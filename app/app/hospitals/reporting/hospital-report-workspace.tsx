@@ -91,14 +91,11 @@ function hierarchyStatusVariant(status: HospitalHierarchyContext["hospital"]["st
   }
 }
 
-function hierarchyIssueLabel(issue: HospitalHierarchyContext["issues"][number]): string {
-  switch (issue.code) {
-    case "MISSING_PARENT": return "ไม่พบโรงพยาบาลแม่ข่ายที่อ้างอิง";
-    case "SELF_PARENT": return "หน่วยนี้อ้างอิงตัวเองเป็นโรงพยาบาลแม่ข่าย";
-    case "CYCLE": return "พบวงจรในความสัมพันธ์ของโรงพยาบาล";
-    case "PARENT_IS_SUBORDINATE": return "โรงพยาบาลแม่ข่ายที่อ้างอิงเป็นโรงพยาบาลลูกข่าย";
-    case "PARENT_INVALID": return "ไม่สามารถยืนยันความสัมพันธ์กับโรงพยาบาลแม่ข่ายได้";
-    case "DUPLICATE_IDENTITY": return "พบข้อมูลโรงพยาบาลซ้ำ";
+function networkClassificationLabel(classification: HospitalHierarchyContext["classification"]): string {
+  switch (classification) {
+    case "MAIN": return "โรงพยาบาลแม่ข่าย";
+    case "SUBORDINATE": return "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ";
+    case "UNASSIGNED": return "ยังไม่อยู่ในเครือข่าย";
   }
 }
 
@@ -123,9 +120,7 @@ function HospitalReportingHierarchy({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge variant="info">
-              {isMain ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}
-            </StatusBadge>
+            <StatusBadge variant="info">{networkClassificationLabel(hierarchy.classification)}</StatusBadge>
             <StatusBadge variant={hierarchyStatusVariant(hospital.status)}>
               {hierarchyStatusLabel(hospital.status)}
             </StatusBadge>
@@ -135,12 +130,12 @@ function HospitalReportingHierarchy({
         {isMain ? (
           <div className="mt-4 border-t border-border pt-4">
             <p className="text-sm leading-6 text-text-muted">
-              หน่วยบริการในเครือโดยตรง {hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง
+              ลูกข่ายในเครือข่าย {hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง
             </p>
             {hierarchy.directChildren.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">ยังไม่มีโรงพยาบาลลูกข่ายโดยตรง</p>
+              <p className="mt-2 text-sm text-text-muted">ยังไม่มีลูกข่ายในเครือข่าย</p>
             ) : (
-              <ul aria-label="โรงพยาบาลลูกข่ายโดยตรง" className="mt-2 divide-y divide-border border-t border-border">
+              <ul aria-label="ลูกข่ายในเครือข่าย" className="mt-2 divide-y divide-border border-t border-border">
                 {hierarchy.directChildren.map((child) => (
                   <li className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={child.id}>
                     <div className="min-w-0">
@@ -154,7 +149,7 @@ function HospitalReportingHierarchy({
               </ul>
             )}
           </div>
-        ) : (
+        ) : hierarchy.classification === "SUBORDINATE" ? (
           <div className="mt-4 border-t border-border pt-4">
             <p className="text-sm text-text-muted">โรงพยาบาลแม่ข่าย</p>
             {hierarchy.parentHospital ? (
@@ -167,22 +162,9 @@ function HospitalReportingHierarchy({
                 </StatusBadge>
               </div>
             ) : (
-              <p className="mt-1 text-sm text-danger-strong">ไม่พบข้อมูลโรงพยาบาลแม่ข่าย</p>
+              <p className="mt-1 text-sm text-text-muted">ยังไม่มีแม่ข่ายดูแล</p>
             )}
           </div>
-        )}
-
-        {hierarchy.issues.length > 0 ? (
-          <Alert className="mt-4" variant="warning">
-            <p className="font-semibold">พบความสัมพันธ์ที่ต้องตรวจสอบ</p>
-            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm leading-6">
-              {hierarchy.issues.map((issue) => (
-                <li key={`${issue.code}:${issue.hospitalId}:${issue.parentHospitalCode ?? "none"}`}>
-                  {hierarchyIssueLabel(issue)}
-                </li>
-              ))}
-            </ul>
-          </Alert>
         ) : null}
 
         <Alert className="mt-4" variant="info">
@@ -678,7 +660,7 @@ export function HospitalReportWorkspace({
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold text-text" id="hospital-report-context-heading">{page.hospital.name}</h2>
-            <p className="mt-1 break-words text-sm text-text-muted">{hierarchy.classification === "MAIN" ? "โรงพยาบาลแม่ข่าย" : "โรงพยาบาลลูกข่าย / หน่วยบริการในเครือ"}</p>
+            <p className="mt-1 break-words text-sm text-text-muted">{networkClassificationLabel(hierarchy.classification)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>

@@ -335,13 +335,15 @@ async function migratePopulated(environment, runtime) {
       "--schema",
       temporarySchema,
     ], { env: environment });
-    run(process.execPath, [resolve(repositoryRoot, "scripts", "seed-hospital-master.mjs")], { env: environment });
 
     const { PrismaClient, HospitalStatus } = await import("@prisma/client");
     const prisma = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
     let hospitalBefore;
     let contactBefore;
     try {
+      // A registered Hospital as it existed before this migration (raw SQL: the generated client is newer).
+      await prisma.$executeRaw`INSERT INTO "Hospital" ("id", "hospitalCode", "name", "status", "updatedAt")
+        VALUES (gen_random_uuid(), 'KANG', 'โรงพยาบาลแก่งคอย', 'PENDING_VERIFICATION'::"HospitalStatus", CURRENT_TIMESTAMP)`;
       const hospital = await prisma.hospital.findUniqueOrThrow({
         where: { hospitalCode: "KANG" },
         select: { id: true },
@@ -352,7 +354,7 @@ async function migratePopulated(environment, runtime) {
       });
       hospitalBefore = await prisma.hospital.findUniqueOrThrow({
         where: { id: hospital.id },
-        select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true, updatedAt: true },
+        select: { id: true, hospitalCode: true, name: true, status: true, updatedAt: true },
       });
       contactBefore = await prisma.hospitalContact.findUniqueOrThrow({
         where: { hospitalId: hospital.id },
@@ -368,7 +370,7 @@ async function migratePopulated(environment, runtime) {
     try {
       const hospitalAfter = await verificationClient.hospital.findUniqueOrThrow({
         where: { id: hospitalBefore.id },
-        select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true, updatedAt: true },
+        select: { id: true, hospitalCode: true, name: true, status: true, updatedAt: true },
       });
       const contactAfter = await verificationClient.hospitalContact.findUniqueOrThrow({
         where: { id: contactBefore.id },
@@ -382,7 +384,7 @@ async function migratePopulated(environment, runtime) {
       ) {
         fail("populated Hospital migration changed existing identity/Contact or created Content rows");
       }
-      console.log("Hospital Content migration preserved a populated Hospital master and HospitalContact; no Content backfill created");
+      console.log("Hospital Content migration preserved a populated Hospital and HospitalContact; no Content backfill created");
     } finally {
       await verificationClient.$disconnect();
     }

@@ -72,7 +72,7 @@ export type DemoScenarioDependencies = {
   deleteAuthUser?: (authSubject: string) => Promise<void>;
   /** Asia/Bangkok service date treated as today (YYYY-MM-DD); defaults to the current date. */
   today?: string;
-  /** Parent hospital code; defaults to the first eligible Parent of the Hospital master. */
+  /** Demo Parent hospital code (Children use `<code>-A`, `<code>-B`); defaults to `DEMO`. Created when missing. */
   parentHospitalCode?: string;
   /** Called with a short step name (no data) as the seed advances. */
   onProgress?: (step: string) => void;
@@ -125,31 +125,53 @@ async function defaultDeleteAuthUser(authSubject: string): Promise<void> {
 // Hospital selection
 // ---------------------------------------------------------------------------------------------------------------
 
-/** One Parent and its first two Children, all PENDING_VERIFICATION with no onboarding decision yet. */
-async function selectDemoHospitals(parentHospitalCode?: string): Promise<{ parent: HospitalRef; children: [HospitalRef, HospitalRef] }> {
-  const available = { status: HospitalStatus.PENDING_VERIFICATION, onboardingApplications: { none: {} } };
-  const parents = await database().hospital.findMany({
-    where: {
-      ...available,
-      parentHospitalId: null,
-      ...(parentHospitalCode ? { hospitalCode: parentHospitalCode } : {}),
-    },
-    orderBy: { hospitalCode: "asc" },
-    select: {
-      id: true,
-      hospitalCode: true,
-      name: true,
-      childHospitals: { where: available, orderBy: { hospitalCode: "asc" }, take: 2, select: { id: true, hospitalCode: true, name: true } },
-    },
-  });
-  const parent = parents.find((candidate) => candidate.childHospitals.length === 2);
-  if (!parent) {
-    throw new Error(parentHospitalCode
-      ? "The requested Parent hospital is not available (needs PENDING_VERIFICATION and two such Children without onboarding)"
-      : "No Parent hospital with two available Children was found in the Hospital master");
+const DEMO_HOSPITALS = [
+  { suffix: "", name: "โรงพยาบาลแม่ข่ายทดสอบ (เดโม)", kind: "PARENT" },
+  { suffix: "-A", name: "รพ.สต.ทดสอบ A (เดโม)", kind: "CHILD" },
+  { suffix: "-B", name: "รพ.สต.ทดสอบ B (เดโม)", kind: "CHILD" },
+] as const;
+
+/**
+ * Dedicated demo Hospitals `<code>`, `<code>-A`, `<code>-B` (default code `DEMO`), created when missing with their
+ * network roles (ADR-0015). Each must be PENDING_VERIFICATION with no onboarding decision; reset restores that.
+ */
+async function selectDemoHospitals(parentHospitalCode = "DEMO"): Promise<{ parent: HospitalRef; children: [HospitalRef, HospitalRef] }> {
+  const refs: HospitalRef[] = [];
+  for (const demo of DEMO_HOSPITALS) {
+    const hospitalCode = `${parentHospitalCode}${demo.suffix}`;
+    const hospital = await database().hospital.upsert({
+      where: { hospitalCode },
+      create: {
+        hospitalCode,
+        name: demo.name,
+        status: HospitalStatus.PENDING_VERIFICATION,
+        serviceAreaEligibility: { create: { kind: demo.kind, verifiedAt: new Date(), classifiedByUserId: null } },
+      },
+      update: {},
+      select: {
+        id: true,
+        hospitalCode: true,
+        name: true,
+        status: true,
+        serviceAreaEligibility: { select: { kind: true } },
+        _count: { select: { onboardingApplications: true } },
+      },
+    });
+    if (hospital.status !== HospitalStatus.PENDING_VERIFICATION || hospital._count.onboardingApplications > 0) {
+      throw new Error(`Demo hospital ${hospitalCode} is not available (needs PENDING_VERIFICATION without onboarding)`);
+    }
+    if (hospital.serviceAreaEligibility && hospital.serviceAreaEligibility.kind !== demo.kind) {
+      throw new Error(`Demo hospital ${hospitalCode} has a different network role`);
+    }
+    if (!hospital.serviceAreaEligibility) {
+      await database().hospitalServiceAreaEligibility.create({
+        data: { hospitalId: hospital.id, kind: demo.kind, verifiedAt: new Date(), classifiedByUserId: null },
+      });
+    }
+    refs.push({ id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name });
   }
-  const [first, second] = parent.childHospitals;
-  return { parent: { id: parent.id, hospitalCode: parent.hospitalCode, name: parent.name }, children: [first!, second!] };
+  const [parent, first, second] = refs;
+  return { parent: parent!, children: [first!, second!] };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -531,15 +553,7 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   const ownerA = await actorOf(childAOwnerId);
   const ownerB = await actorOf(childBOwnerId);
 
-  // ADR-0015/0016: the operational network (not Master placement) scopes Parent reports and Patient reads.
-  // Keep any existing ADMIN decision; only fill a missing role as the Master-shaped system bootstrap would.
-  for (const [hospitalId, kind] of [[parent.id, "PARENT"], [childA.id, "CHILD"], [childB.id, "CHILD"]] as const) {
-    await database().hospitalServiceAreaEligibility.upsert({
-      where: { hospitalId },
-      create: { hospitalId, kind, verifiedAt: new Date(), classifiedByUserId: null },
-      update: {},
-    });
-  }
+  // ADR-0015/0016: the operational network scopes Parent reports and Patient reads.
   const parentOwner = await actorOf(parentOwnerId);
   for (const child of children) {
     await attachHospitalServiceArea(parentOwner, { parentHospitalId: parent.id, childHospitalId: child.id });

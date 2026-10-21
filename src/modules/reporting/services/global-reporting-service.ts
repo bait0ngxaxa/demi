@@ -28,9 +28,7 @@ function getUnits(directory: HospitalHierarchyDirectory): HospitalHierarchyUnit[
     units.set(group.mainHospital.id, group.mainHospital);
     for (const child of group.directChildren) units.set(child.id, child);
   }
-  for (const diagnostic of directory.diagnostics) {
-    units.set(diagnostic.hospital.id, diagnostic.hospital);
-  }
+  for (const hospital of directory.outsideNetwork) units.set(hospital.id, hospital);
   return [...units.values()];
 }
 
@@ -89,7 +87,7 @@ export function getGlobalReportingHospitalById(
     const child = group.directChildren.find(({ id }) => id === hospitalId);
     if (child) return child;
   }
-  return directory.hierarchy.diagnostics.find(({ hospital }) => hospital.id === hospitalId)?.hospital ?? null;
+  return directory.hierarchy.outsideNetwork.find(({ id }) => id === hospitalId) ?? null;
 }
 
 export const globalReportingServiceInternals = { getStatusCounts, getUnits };

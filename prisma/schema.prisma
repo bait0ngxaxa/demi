@@ -517,7 +517,6 @@ model Hospital {
   hospitalCode    String         @unique @db.VarChar(32)
   name            String         @db.VarChar(200)
   status          HospitalStatus @default(PENDING_VERIFICATION)
-  parentHospitalId String?       @db.Uuid
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -531,8 +530,6 @@ model Hospital {
   contact                  HospitalContact?
   contents                 HospitalContent[]
   supportReports           SupportReport[]
-  parentHospital           Hospital? @relation("HospitalHierarchy", fields: [parentHospitalId], references: [id], onDelete: Restrict)
-  childHospitals            Hospital[] @relation("HospitalHierarchy")
 
   @@index([status, name])
 }

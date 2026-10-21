@@ -42,7 +42,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -50,14 +49,12 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   code: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-  parentHospitalId?: string,
 ): Promise<{ id: string; status: HospitalStatus }> {
   return prisma.hospital.create({
     data: {
       hospitalCode: code,
       name: `โรงพยาบาล ${code}`,
       status,
-      parentHospitalId,
     },
     select: { id: true, status: true },
   });
@@ -276,7 +273,7 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
 
   it("enforces same-Hospital OWNER authority and target OSM validation", async () => {
     const parent = await createHospital("ASSIGN-PARENT");
-    const child = await createHospital("ASSIGN-CHILD", HospitalStatus.ACTIVE, parent.id);
+    const child = await createHospital("ASSIGN-CHILD", HospitalStatus.ACTIVE);
     const unrelated = await createHospital("ASSIGN-OTHER");
     const parentOwner = await createHospitalActor({ hospitalId: parent.id });
     const childOwner = await createHospitalActor({ hospitalId: child.id });

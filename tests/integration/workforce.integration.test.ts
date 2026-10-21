@@ -44,16 +44,37 @@ const nationalIds = {
   lifecycleProjection: "1000000000130",
 };
 
+/** Makes `parent` a network PARENT with `child` as its active network CHILD. */
+async function linkNetwork(
+  parent: { hospitalId: string; actor: { userId: string } },
+  child: { hospitalId: string },
+): Promise<void> {
+  await prisma.hospitalServiceAreaEligibility.createMany({
+    data: [
+      { hospitalId: parent.hospitalId, kind: "PARENT", verifiedAt: new Date() },
+      { hospitalId: child.hospitalId, kind: "CHILD", verifiedAt: new Date() },
+    ],
+  });
+  await prisma.hospitalServiceArea.create({
+    data: { parentHospitalId: parent.hospitalId, childHospitalId: child.hospitalId, createdByUserId: parent.actor.userId },
+  });
+}
+
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.workforceActivation.deleteMany();
   await prisma.osmHospitalRelationship.deleteMany();
   await prisma.hospitalOnboardingApplication.deleteMany();
+  // Disposable DB only: network history is append-only outside the explicit purge setting.
+  await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    prisma.hospitalServiceArea.deleteMany(),
+  ]);
+  await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -835,10 +856,8 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
   it("fails closed for non-owner roles, wrong or hierarchical Hospitals, and inactive boundaries", async () => {
     const parent = await createOwner("INTEGRATION-AUTH-PARENT");
     const child = await createOwner("INTEGRATION-AUTH-CHILD");
-    await prisma.hospital.update({
-      where: { id: child.hospitalId },
-      data: { parentHospitalId: parent.hospitalId },
-    });
+    // ADR-0016: an active network association (the only cross-Hospital structure) grants no workforce authority.
+    await linkNetwork(parent, child);
     const parentTarget = await createStaffRelationship({
       hospitalId: parent.hospitalId,
       nationalId: nationalIds.lifecycleProjection,

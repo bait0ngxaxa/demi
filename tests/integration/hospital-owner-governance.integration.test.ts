@@ -50,7 +50,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
   await prisma.user.deleteMany();
-  await prisma.hospital.updateMany({ data: { parentHospitalId: null } });
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
@@ -58,7 +57,6 @@ async function clearDatabase(): Promise<void> {
 async function createHospital(
   label: string,
   status: HospitalStatus = HospitalStatus.ACTIVE,
-  parentHospitalId?: string,
 ): Promise<{ id: string; status: HospitalStatus }> {
   sequence += 1;
   return prisma.hospital.create({
@@ -66,7 +64,6 @@ async function createHospital(
       hospitalCode: `12D0-${label}-${sequence}`,
       name: `โรงพยาบาล 12D0 ${label}`,
       status,
-      parentHospitalId,
     },
     select: { id: true, status: true },
   });
@@ -439,7 +436,7 @@ describe("Phase 12D.0 Hospital Owner governance PostgreSQL workflow", () => {
 
   it("fails closed for non-Owners, inactive scopes, and hierarchy-only authority", async () => {
     const parent = await createHospital("PARENT");
-    const child = await createHospital("CHILD", HospitalStatus.ACTIVE, parent.id);
+    const child = await createHospital("CHILD", HospitalStatus.ACTIVE);
     const owner = await createStaff({
       label: "เจ้าของเป้าหมาย",
       hospitalId: child.id,

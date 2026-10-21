@@ -27,8 +27,8 @@ async function actor(roles: Role[] = [Role.PATIENT], profile = true): Promise<Ac
 async function profileId(a: ActorContext): Promise<string> {
   return (await db.patientProfile.findUniqueOrThrow({ where: { personId: a.personId }, select: { id: true } })).id;
 }
-async function hospital(parentHospitalId?: string): Promise<string> {
-  const h = await db.hospital.create({ data: { hospitalCode: `HP-${randomUUID().slice(0, 12)}`, name: "โรงพยาบาลสังเคราะห์", status: "ACTIVE", parentHospitalId } }); hospitals.push(h.id); return h.id;
+async function hospital(): Promise<string> {
+  const h = await db.hospital.create({ data: { hospitalCode: `HP-${randomUUID().slice(0, 12)}`, name: "โรงพยาบาลสังเคราะห์", status: "ACTIVE" } }); hospitals.push(h.id); return h.id;
 }
 async function relate(a: ActorContext, hospitalId: string): Promise<string> {
   return (await db.patientHospitalRelationship.create({ data: { patientProfileId: await profileId(a), hospitalId } })).id;
@@ -61,7 +61,6 @@ async function cleanup(): Promise<void> {
   await db.patientProfile.deleteMany({ where: { personId: { in: persons } } });
   await db.userRole.deleteMany({ where: { userId: { in: users } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
-  await db.hospital.updateMany({ where: { id: { in: hospitals } }, data: { parentHospitalId: null } });
   await db.hospital.deleteMany({ where: { id: { in: hospitals } } });
   await db.person.deleteMany({ where: { id: { in: persons } } });
   persons.length = 0; users.length = 0; hospitals.length = 0;
@@ -215,7 +214,7 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     expect((await list(caregiver, {}, db)).emptyState).toBe("EMPTY_A"); await expect(detail(caregiver, id, db)).rejects.toBeInstanceOf(NotFoundError);
   });
   it("forms a globally ordered A+B private union, excluding Work C and hierarchy in both directions", async () => {
-    const parent = await hospital(); const child = await hospital(parent); const foreign = await hospital(); const a = await owner(foreign, [Role.PATIENT, Role.HOSPITAL, Role.ADMIN, Role.OSM]);
+    const parent = await hospital(); const child = await hospital(); const foreign = await hospital(); const a = await owner(foreign, [Role.PATIENT, Role.HOSPITAL, Role.ADMIN, Role.OSM]);
     await relate(a, parent); const old = await content(parent, { first: new Date(now.getTime() - 1000), latest: new Date(now.getTime() + 10000), updatedAt: new Date(now.getTime() + 20000) });
     const newer = await content(child); const unrelated = await content(foreign);
     expect((await list(a, {}, db)).items.map((row) => row.id)).toEqual([old]);

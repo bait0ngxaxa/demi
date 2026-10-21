@@ -65,7 +65,6 @@ const hospital: HospitalHierarchyUnit = {
   hospitalCode: "DEMO-01",
   name: "โรงพยาบาลสังเคราะห์",
   status: HospitalStatus.ACTIVE,
-  parentHospitalId: null,
 };
 const directory: GlobalReportingDirectory = {
   hierarchy: {
@@ -73,7 +72,7 @@ const directory: GlobalReportingDirectory = {
     mainHospitalCount: 1,
     subordinateHospitalCount: 0,
     groups: [{ mainHospital: hospital, directChildren: [] }],
-    diagnostics: [],
+    outsideNetwork: [],
   },
   statusCounts: {
     [HospitalStatus.ACTIVE]: 1,
@@ -87,7 +86,6 @@ const hierarchy: HospitalHierarchyContext = {
   parentHospital: null,
   directChildCount: 0,
   directChildren: [],
-  issues: [],
 };
 const page: HospitalReportingPageProjection = {
   hospital: { id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name },

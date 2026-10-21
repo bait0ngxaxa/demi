@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomInt } from "node:crypto";
+
 import { HospitalStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -355,6 +357,30 @@ export async function restoreHospital(
  * PENDING_VERIFICATION so the existing onboarding approval stays the only activation path.
  * Canonical placement (`parentHospitalId`) remains owned by Master reconciliation.
  */
+// Unambiguous characters only (no 0/O, 1/I/L) so a generated code can be read aloud or typed back.
+const GENERATED_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const GENERATED_CODE_ATTEMPTS = 5;
+
+function generateHospitalCode(): string {
+  let suffix = "";
+  for (let index = 0; index < 6; index += 1) {
+    suffix += GENERATED_CODE_ALPHABET[randomInt(GENERATED_CODE_ALPHABET.length)];
+  }
+  return `H-${suffix}`;
+}
+
+async function resolveNewHospitalCode(
+  transaction: Prisma.TransactionClient,
+  requested: string | undefined,
+): Promise<string> {
+  const candidates = requested ? [requested] : Array.from({ length: GENERATED_CODE_ATTEMPTS }, generateHospitalCode);
+  for (const hospitalCode of candidates) {
+    const existing = await transaction.hospital.findUnique({ where: { hospitalCode }, select: { id: true } });
+    if (!existing) return hospitalCode;
+  }
+  throw new ConflictError(requested ? "A Hospital with this code already exists" : "A unique Hospital code could not be generated");
+}
+
 export async function createHospital(
   actor: ActorContext | null | undefined,
   input: unknown,
@@ -374,18 +400,11 @@ export async function createHospital(
       async (transaction) => {
         await assertPlatformAdminInDatabase(transaction, currentActor.userId);
 
-        const existing = await transaction.hospital.findUnique({
-          where: { hospitalCode: parsed.data.hospitalCode },
-          select: { id: true },
-        });
-
-        if (existing) {
-          throw new ConflictError("A Hospital with this code already exists");
-        }
+        const hospitalCode = await resolveNewHospitalCode(transaction, parsed.data.hospitalCode);
 
         const created = await transaction.hospital.create({
           data: {
-            hospitalCode: parsed.data.hospitalCode,
+            hospitalCode,
             name: parsed.data.name,
             status: HospitalStatus.PENDING_VERIFICATION,
             serviceAreaEligibility: {

@@ -1,6 +1,4 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import {
   HospitalContentStatus,
@@ -37,10 +35,7 @@ import {
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const database = getPrisma();
-const execFileAsync = promisify(execFile);
-const seedScript = "scripts/seed-hospital-master.mjs";
 // The Master seed is read-only by default; integration tests apply it to the local test database.
-const SEED_APPLY_ARGUMENTS = ["--apply", "--integration"] as const;
 const fixedNow = new Date("2026-10-06T06:00:00.000Z");
 const users: string[] = [];
 const persons: string[] = [];
@@ -100,14 +95,13 @@ async function addOwner(actor: ActorContext, hospitalId: string): Promise<{ acto
   };
 }
 
-async function createHospital(parentHospitalId?: string): Promise<string> {
+async function createHospital(): Promise<string> {
   sequence += 1;
   const hospital = await database.hospital.create({
     data: {
       hospitalCode: `I4A-${randomUUID().slice(0, 12)}`,
       name: `โรงพยาบาลสังเคราะห์ ${sequence}`,
       status: HospitalStatus.ACTIVE,
-      parentHospitalId,
     },
     select: { id: true },
   });
@@ -161,9 +155,6 @@ async function publishDraft(actor: ActorContext, contentId: string, expectedUpda
   return result.content;
 }
 
-async function runHospitalMasterSeed(): Promise<void> {
-  await execFileAsync(process.execPath, [seedScript, ...SEED_APPLY_ARGUMENTS], { cwd: process.cwd(), env: process.env });
-}
 
 async function cleanup(): Promise<void> {
   if (!databaseConnected) return;
@@ -176,7 +167,6 @@ async function cleanup(): Promise<void> {
   await database.userRole.deleteMany({ where: { userId: { in: users } } });
   await database.user.deleteMany({ where: { id: { in: users } } });
   if (hospitalIds.length > 0) {
-    await database.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { parentHospitalId: null } });
     await database.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   }
   await database.person.deleteMany({ where: { id: { in: persons } } });
@@ -447,7 +437,7 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
 
   it("does not inherit Contact or Content authority through either Hospital hierarchy direction", async () => {
     const parentId = await createHospital();
-    const childId = await createHospital(parentId);
+    const childId = await createHospital();
     const parentOwner = await addOwner(await createActor([Role.HOSPITAL]), parentId);
     const childOwner = await addOwner(await createActor([Role.HOSPITAL]), childId);
     const parentPatient = await createActor([Role.PATIENT]);
@@ -479,38 +469,5 @@ describe("Phase 17I.4A Hospital Knowledge / Contact PostgreSQL integration", () 
     expect((await listPatientHospitalContent(childPatient, {}, database)).items.map(({ id }) => id)).toEqual([childDraft.id]);
     await expect(getPatientHospitalContent(parentPatient, childDraft.id, database)).rejects.toBeInstanceOf(NotFoundError);
     await expect(getPatientHospitalContent(childPatient, parentDraft.id, database)).rejects.toBeInstanceOf(NotFoundError);
-  });
-
-  it("preserves a published Content row and Contact value/version across a real Master seed rerun", async () => {
-    await runHospitalMasterSeed();
-    const hospital = await database.hospital.findUniqueOrThrow({
-      where: { hospitalCode: "KHON" },
-      select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true },
-    });
-    await database.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
-    const owner = await addOwner(await createActor([Role.HOSPITAL]), hospital.id);
-    const beforeSeedIdentity = await database.hospital.findUniqueOrThrow({ where: { id: hospital.id }, select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true } });
-    const contact = await saveContact(owner.actor, hospital.id, null, "ที่อยู่คงเดิมหลัง seed", "02-222-3333");
-    const contactRow = await database.hospitalContact.findUniqueOrThrow({ where: { hospitalId: hospital.id } });
-    contactIds.push(contactRow.id);
-    const draft = await createDraft(owner.actor, hospital.id, "บทความที่เผยแพร่ก่อน seed");
-    const published = await publishDraft(owner.actor, draft.id, draft.expectedUpdatedAt);
-    const beforeContact = await database.hospitalContact.findUniqueOrThrow({ where: { id: contactRow.id } });
-    const beforeContent = await database.hospitalContent.findUniqueOrThrow({ where: { id: draft.id } });
-    const beforeContactCount = await database.hospitalContact.count();
-    const beforeContentCount = await database.hospitalContent.count();
-    expect(beforeContent.status).toBe(HospitalContentStatus.PUBLISHED);
-
-    await runHospitalMasterSeed();
-
-    expect(await database.hospital.findUniqueOrThrow({ where: { id: hospital.id }, select: { id: true, hospitalCode: true, name: true, parentHospitalId: true, status: true } })).toEqual(beforeSeedIdentity);
-    expect(await database.hospitalContact.findUniqueOrThrow({ where: { id: contactRow.id } })).toEqual(beforeContact);
-    expect(await database.hospitalContent.findUniqueOrThrow({ where: { id: draft.id } })).toEqual(beforeContent);
-    expect(await database.hospitalContact.count()).toBe(beforeContactCount);
-    expect(await database.hospitalContent.count()).toBe(beforeContentCount);
-    expect(await database.hospitalContact.count({ where: { hospitalId: hospital.id } })).toBe(1);
-    expect(await database.hospitalContent.count({ where: { hospitalId: hospital.id } })).toBe(1);
-    expect(published.status).toBe(HospitalContentStatus.PUBLISHED);
-    expect(beforeContact.addressText).toBe(contact.addressText);
   });
 });

@@ -64,8 +64,18 @@ function CreateHospitalPanel(): React.JSX.Element {
       >
         <div className="grid gap-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,14rem)]">
           <div className="min-w-0">
-            <label className="text-sm font-semibold text-text" htmlFor="create-hospital-code">รหัส</label>
-            <Input autoCapitalize="characters" className="mt-2" id="create-hospital-code" maxLength={32} name="hospitalCode" required />
+            <label className="text-sm font-semibold text-text" htmlFor="create-hospital-code">
+              รหัส <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
+            </label>
+            <Input
+              aria-describedby="create-hospital-code-hint"
+              autoCapitalize="characters"
+              className="mt-2"
+              id="create-hospital-code"
+              maxLength={32}
+              name="hospitalCode"
+            />
+            <p className="mt-1 text-xs text-text-muted" id="create-hospital-code-hint">เว้นว่างเพื่อให้ระบบสร้างให้</p>
           </div>
           <div className="min-w-0">
             <label className="text-sm font-semibold text-text" htmlFor="create-hospital-name">ชื่อโรงพยาบาล</label>
