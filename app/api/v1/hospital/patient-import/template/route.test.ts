@@ -26,7 +26,7 @@ describe("GET /api/v1/hospital/patient-import/template", () => {
     vi.clearAllMocks();
     mockedActor.mockResolvedValue(actor);
     mockedTemplateDownload.mockResolvedValue({
-      filename: "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2.xlsx",
+      filename: "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3.xlsx",
       buffer: Buffer.from("xlsx-bytes"),
     });
   });
@@ -40,9 +40,9 @@ describe("GET /api/v1/hospital/patient-import/template", () => {
     );
     const contentDisposition = response.headers.get("content-disposition") ?? "";
     const encodedFilename = contentDisposition.match(/filename\*=UTF-8''([^;]+)/u)?.[1];
-    expect(contentDisposition).toContain('filename="DEMI_patient_import_v2.xlsx"');
+    expect(contentDisposition).toContain('filename="DEMI_patient_import_v3.xlsx"');
     expect(decodeURIComponent(encodedFilename ?? "")).toBe(
-      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2.xlsx",
+      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3.xlsx",
     );
     expect(contentDisposition).not.toContain("SYN-A");
     expect(response.headers.get("cache-control")).toContain("no-store");

@@ -9,6 +9,7 @@ import {
   PATIENT_IMPORT_TEMPLATE_COLUMNS,
   PATIENT_IMPORT_TEMPLATE_DATA_END_ROW,
   PATIENT_IMPORT_TEMPLATE_DATA_START_ROW,
+  PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWER_VALUES,
   PATIENT_IMPORT_TEMPLATE_INFO_SHEET_NAME,
   PATIENT_IMPORT_TEMPLATE_MAX_DATA_ROWS,
   PATIENT_IMPORT_TEMPLATE_MERGES,
@@ -19,6 +20,7 @@ import {
   PATIENT_IMPORT_TEMPLATE_SHEET_NAME,
   PATIENT_IMPORT_TEMPLATE_VERSION,
 } from "./patient-import-template-contract";
+import { isPatientImportHealthHistoryField } from "./patient-import-contract";
 
 export type PatientImportTemplateHospital = {
   hospitalCode: string;
@@ -107,6 +109,18 @@ function applyClassificationValidation(cell: Cell): void {
   };
 }
 
+function applyHealthHistoryAnswerValidation(cell: Cell): void {
+  cell.dataValidation = {
+    type: "list",
+    allowBlank: true,
+    formulae: [`"${PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWER_VALUES.join(",")}"`],
+    showErrorMessage: true,
+    errorStyle: "stop",
+    errorTitle: "ค่าประวัติสุขภาพไม่ถูกต้อง",
+    error: "กรุณาเลือก มี ไม่มี หรือ ไม่ทราบ",
+  };
+}
+
 function buildDataSheet(
   workbook: ExcelJS.Workbook,
   hospital: PatientImportTemplateHospital,
@@ -169,6 +183,8 @@ function buildDataSheet(
 
       if (column.field === "diabetesClassification") {
         applyClassificationValidation(cell);
+      } else if (column.field !== "otherConditions" && isPatientImportHealthHistoryField(column.field)) {
+        applyHealthHistoryAnswerValidation(cell);
       }
     }
 
@@ -200,6 +216,7 @@ async function buildInfoSheet(
     ["เวอร์ชัน Template", PATIENT_IMPORT_TEMPLATE_VERSION],
     ["การใช้งาน", "ไฟล์นี้ใช้นำเข้าผู้ป่วยของโรงพยาบาลนี้เท่านั้น ห้ามแก้ไขหัวตาราง"],
     ["การนำเข้าซ้ำ", "เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิมได้ ระบบนำเข้าเฉพาะผู้ป่วยใหม่"],
+    ["ประวัติโรคและประวัติครอบครัว", "เลือก มี / ไม่มี / ไม่ทราบ ช่องที่เว้นว่างถือว่า ไม่ทราบ (ไม่ใช่ ไม่มี)"],
   ];
 
   for (const [index, [label, value]] of rows.entries()) {

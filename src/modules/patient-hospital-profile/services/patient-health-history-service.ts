@@ -10,7 +10,11 @@ import { resolveOwnPatientRelationshipContext } from "@/modules/patient-self/ser
 import { resolveAppointmentAccessContext } from "@/modules/appointments/services/appointment-access-service";
 import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
-import { patientHealthHistorySchema } from "../schemas/patient-health-history-schemas";
+import {
+  importedPatientHealthHistorySchema,
+  patientHealthHistorySchema,
+  type ImportedPatientHealthHistory,
+} from "../schemas/patient-health-history-schemas";
 
 async function authorizeHealthRead(actor: ActorContext, relationshipId: string, database: PrismaClient): Promise<void> {
   // The patient SELF path and the care path re-read current authority from the database.
@@ -74,4 +78,29 @@ export async function updatePatientHealthHistory(
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) throw new ConflictError("Health history changed");
     throw new InfrastructureError("Health history could not be saved");
   }
+}
+
+/**
+ * Create-only initial history for a relationship the caller's (roster import)
+ * transaction just created. It never starts its own transaction, re-reads the
+ * actor's direct Hospital authority like `updatePatientHealthHistory`, and a
+ * history that already exists fails the caller's transaction (P2002).
+ */
+export async function createImportedPatientHealthHistoryInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  relationshipId: string,
+  values: ImportedPatientHealthHistory,
+): Promise<void> {
+  const parsed = importedPatientHealthHistorySchema.safeParse(values);
+  if (!parsed.success) throw new ValidationError("Health history data is invalid");
+  const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, transaction);
+  if (!access.scopes.directHospital) throw new ForbiddenError();
+  await transaction.patientHospitalHealthHistory.create({
+    data: { ...parsed.data, patientHospitalRelationshipId: relationshipId },
+  });
+  await recordAuditEvent({ actorUserId: actor.userId, action: "patient.health_history.imported",
+    resourceType: "PatientHospitalRelationship", resourceId: relationshipId,
+    metadata: { hospitalId: access.target.hospitalId, source: "ROSTER_IMPORT", toVersion: 1 },
+  }, transaction);
 }

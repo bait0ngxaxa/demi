@@ -150,6 +150,13 @@ const importFieldLabels: Record<PatientImportFieldKey, string> = {
   emergencyContactName: "ชื่อผู้ติดต่อฉุกเฉิน",
   emergencyContactPhone: "เบอร์ผู้ติดต่อฉุกเฉิน",
   emergencyContactRelationship: "ความสัมพันธ์กับผู้ติดต่อ",
+  historyDiabetes: "โรคประจำตัว: เบาหวาน",
+  historyHypertension: "โรคประจำตัว: ความดันโลหิตสูง",
+  otherConditions: "โรคประจำตัวอื่น ๆ",
+  familyHypertension: "ญาติสายตรง: ความดันโลหิตสูง",
+  familyDiabetes: "ญาติสายตรง: เบาหวาน",
+  familyHeartDisease: "ญาติสายตรง: โรคหัวใจ",
+  familyStroke: "ญาติสายตรง: หลอดเลือดสมอง / อัมพาต",
   sourceSequenceNumber: "ลำดับจากไฟล์",
 };
 

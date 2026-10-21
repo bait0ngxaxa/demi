@@ -153,7 +153,7 @@ describe("patient import template download", () => {
     const workbook = await loadWorkbook(download.buffer);
 
     expect(mockedResolveTarget).toHaveBeenCalledWith(actor, hospitalId);
-    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2.xlsx");
+    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3.xlsx");
     expect(workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME)?.getCell("B2").text).toBe("SYN-A");
   });
 
@@ -163,7 +163,7 @@ describe("patient import template download", () => {
     const contentDisposition = response.headers.get("Content-Disposition");
     const encodedFilename = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/u)?.[1];
 
-    expect(contentDisposition).toContain('filename="DEMI_patient_import_v2.xlsx"');
+    expect(contentDisposition).toContain('filename="DEMI_patient_import_v3.xlsx"');
     expect(decodeURIComponent(encodedFilename ?? "")).toBe(download.filename);
     expect(contentDisposition).not.toContain("SYN-A");
   });
@@ -199,12 +199,12 @@ describe("patient import failed-rows download", () => {
     const workbook = await loadWorkbook(download.buffer);
     const worksheet = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
 
-    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v2_failed_rows.xlsx");
-    expect(worksheet?.getCell("AA1").text).toBe("เหตุผล");
-    expect(worksheet?.getCell("AA3").text).toBe("เลขบัตรประชาชนไม่ถูกต้อง");
-    expect(worksheet?.getCell("AA4").text).toBe("HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน");
-    expect(worksheet?.getCell("AA5").text).toBe("พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
-    expect(worksheet?.getCell("AA6").value).toBeNull();
+    expect(download.filename).toBe("DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3_failed_rows.xlsx");
+    expect(worksheet?.getCell("AH1").text).toBe("เหตุผล");
+    expect(worksheet?.getCell("AH3").text).toBe("เลขบัตรประชาชนไม่ถูกต้อง");
+    expect(worksheet?.getCell("AH4").text).toBe("HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน");
+    expect(worksheet?.getCell("AH5").text).toBe("พบเลขบัตรประชาชนซ้ำในไฟล์เดียวกัน");
+    expect(worksheet?.getCell("AH6").value).toBeNull();
     // Original values of source rows 5, 6, 7 (sequence numbers 3, 4, 5), in order.
     expect([3, 4, 5].map((index) => worksheet?.getCell(`A${index}`).value)).toEqual([3, 4, 5]);
     expect(worksheet?.getCell("B3").text).toBe("1000000000029");
@@ -231,7 +231,7 @@ describe("patient import failed-rows download", () => {
     const worksheet = (await loadWorkbook(download.buffer)).getWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
 
     expect(worksheet?.getCell("A3").value).toBe(2);
-    expect(worksheet?.getCell("AA3").text).toContain("ระบบบันทึกแถวนี้ไม่สำเร็จ");
+    expect(worksheet?.getCell("AH3").text).toContain("ระบบบันทึกแถวนี้ไม่สำเร็จ");
     expect(worksheet?.getCell("A4").value).toBeNull();
   });
 

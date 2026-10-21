@@ -1,6 +1,6 @@
 # DEMI Redesign Architecture Baseline
 
-> **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
+> **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). *(Template note, 2026-10-21: the current strict template is v3 with medical/family history — see [Patient Import v3](../phases/PATIENT_IMPORT_V3_COMPLETE_INITIAL_HEALTH_DATA.md).)* MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
 
 **Status:** Accepted as initial architecture baseline
 

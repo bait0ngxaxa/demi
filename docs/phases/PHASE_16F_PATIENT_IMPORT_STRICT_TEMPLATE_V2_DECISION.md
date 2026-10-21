@@ -1,5 +1,7 @@
 # DEMI Phase 16F — Strict Per-Hospital Patient Import Template v2
 
+> **Superseded in part (2026-10-21) by [Patient Import v3](./PATIENT_IMPORT_V3_COMPLETE_INITIAL_HEALTH_DATA.md):** `patient-import-template-v2`, contract `patient-import-v2-hospital-template`, the A–Z column set and the reason column `AA` are replaced by template v3 (A–AG, reason column `AH`). Hospital binding, strict headers, create-only import and the pipeline decisions below still apply.
+
 - **สถานะ:** IMPLEMENTED — decision record + implementation handoff
 - **วันที่:** 2026-10-13 (Asia/Bangkok)
 - **Supersedes (เฉพาะประเด็นที่ระบุในหัวข้อ 3):** [Phase 16B.1](./PHASE_16B1_PATIENT_IMPORT_REQUIREMENT_DECISION_CLOSEOUT.md) `IMP-REQ-04` และการอ่านค่า `IMP-REQ-01/02` ว่าเป็น "assertion ที่ import ใช้แก้ข้อมูลเดิม", [Phase 16D.3](./PHASE_16D3_PATIENT_CLASSIFICATION_PERSISTENCE_HISTORY_RECONCILIATION.md) ส่วน roster reconciliation, [Phase 16D.4](./PHASE_16D4_OSM_ROSTER_RESOLUTION_RECONCILIATION_ASSIGNMENT.md) ทั้งฉบับ, [Phase 16D.4A](./PHASE_16D4A_CANONICAL_PATIENT_IMPORT_TEMPLATE.md) (template v1) และ compatibility/alias layer ของ [Phase 16B.0](./PHASE_16B0_PATIENT_IMPORT_ADAPTER_V2_COMPATIBILITY_FOUNDATION.md)

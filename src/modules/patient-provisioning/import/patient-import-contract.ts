@@ -1,4 +1,5 @@
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
+import type { HealthHistoryAnswer } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 
 import type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 
@@ -28,12 +29,19 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "emergencyContactName",
   "emergencyContactPhone",
   "emergencyContactRelationship",
+  "historyDiabetes",
+  "historyHypertension",
+  "otherConditions",
+  "familyHypertension",
+  "familyDiabetes",
+  "familyHeartDisease",
+  "familyStroke",
   "sourceSequenceNumber",
 ] as const;
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "patient-import-v2-hospital-template" as const;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "patient-import-v3-initial-health-data" as const;
 
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
   "weight",
@@ -57,6 +65,25 @@ export function isPatientImportClassificationField(
   return field === "diabetesClassification";
 }
 
+/** Template columns persisted to PatientHospitalHealthHistory for a new relationship. */
+export const PATIENT_IMPORT_HEALTH_HISTORY_FIELD_KEYS = [
+  "historyDiabetes",
+  "historyHypertension",
+  "otherConditions",
+  "familyHypertension",
+  "familyDiabetes",
+  "familyHeartDisease",
+  "familyStroke",
+] as const satisfies readonly PatientImportFieldKey[];
+
+export type PatientImportHealthHistoryFieldKey = (typeof PATIENT_IMPORT_HEALTH_HISTORY_FIELD_KEYS)[number];
+
+export function isPatientImportHealthHistoryField(
+  field: PatientImportFieldKey,
+): field is PatientImportHealthHistoryFieldKey {
+  return PATIENT_IMPORT_HEALTH_HISTORY_FIELD_KEYS.some((historyField) => historyField === field);
+}
+
 /** Every patient field is persisted for new relationships, subject to clinical rules. */
 export const PATIENT_IMPORT_SAVED_FIELD_KEYS = PATIENT_IMPORT_FIELD_KEYS.filter(
   (field) => field !== "sourceSequenceNumber",
@@ -70,6 +97,7 @@ export type PatientImportFieldStatus =
   | "SUPPORTED_FOR_CURRENT_PROVISIONING"
   | "PARSED_FOR_INITIAL_BASELINE"
   | "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
+  | "SUPPORTED_FOR_HEALTH_HISTORY"
   | "IMPORT_METADATA"
   | "INVALID"
   | "AMBIGUOUS";
@@ -80,7 +108,8 @@ export type PatientImportDiagnosticCode =
   | "AMBIGUOUS_VALUE"
   | "FORMULA_VALUE"
   | "EXCEL_ERROR"
-  | "CLASSIFICATION_DATA_INVALID";
+  | "CLASSIFICATION_DATA_INVALID"
+  | "HEALTH_HISTORY_DATA_INVALID";
 
 export type PatientImportDiagnostic = {
   code: PatientImportDiagnosticCode;
@@ -152,6 +181,16 @@ export type CanonicalPatientImportRow = {
   };
   organizationCandidates: {
     hospitalNumber: string | null;
+  };
+  /** Blank answers are already UNKNOWN here; a blank other-conditions cell stays null. */
+  healthHistoryCandidates: {
+    diabetes: HealthHistoryAnswer;
+    hypertension: HealthHistoryAnswer;
+    otherConditions: string | null;
+    familyHypertension: HealthHistoryAnswer;
+    familyDiabetes: HealthHistoryAnswer;
+    familyHeartDisease: HealthHistoryAnswer;
+    familyStroke: HealthHistoryAnswer;
   };
   fieldAssessments: PatientImportFieldAssessmentMap;
   diagnostics: readonly PatientImportDiagnostic[];

@@ -109,7 +109,7 @@ function readMetadataValue(worksheet: Worksheet, rowNumber: number, key: string)
 
 /**
  * The embedded metadata is the only hospital identity carried by a file. It must
- * be present, be template v2 and name the hospital selected on the server.
+ * be present, be the current template version and name the hospital selected on the server.
  */
 export function assertPatientImportTemplateMetadata(
   workbook: Workbook,

@@ -11,6 +11,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { createPatientBaselineInTransaction } from "@/modules/patient-baseline/services/patient-baseline-transaction";
 import { setPatientClassificationInTransaction } from "@/modules/patient-classification/services/patient-classification-transaction";
+import { createImportedPatientHealthHistoryInTransaction } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import {
   ForbiddenError,
   InfrastructureError,
@@ -37,6 +38,7 @@ import {
   patientRosterImportPreviewInternals,
   preparePatientRosterImportPreview,
   readBaselineImportState,
+  readHealthHistoryImportState,
   readPatientClassificationImportState,
   validateRosterImportTarget,
 } from "./patient-roster-import-preview";
@@ -110,6 +112,7 @@ function getResultStatusForPreview(
 type PatientRosterImportRowResult = {
   baselineStatus: PatientImportBaselineStatus;
   classificationCreated: boolean;
+  healthHistoryCreated: boolean;
 };
 
 /** The patient gained a relationship with this Hospital after the preview: nothing is written. */
@@ -134,7 +137,7 @@ async function importPatientRosterRow(
       async (transaction): Promise<PatientRosterImportRowResult | PatientRosterImportExistingRow> => {
         // Import creates new patients only. A relationship that appeared after the
         // preview (a double submit, another user) is only identity-checked, exactly
-        // like an existing row in the preview: no HN fill-in, baseline or classification.
+        // like an existing row in the preview: no HN fill-in, baseline, classification or health history.
         const person = await transaction.person.findUnique({
           where: { identityKeyHash: hashIdentityReference(patientInput.identity) },
           select: buildPreviewPersonSelect(patientInput.targetHospitalId),
@@ -172,6 +175,12 @@ async function importPatientRosterRow(
 
         if (classificationSource.status === "CLASSIFICATION_DATA_INVALID") {
           throw new ValidationError("สถานะผู้ป่วยจากไฟล์ไม่ใช่ค่าที่รองรับ");
+        }
+
+        const healthHistoryState = readHealthHistoryImportState(candidate);
+
+        if (healthHistoryState.status === "HEALTH_HISTORY_DATA_INVALID") {
+          throw new ValidationError("ประวัติโรคหรือประวัติครอบครัวของแถวนี้ไม่ถูกต้อง");
         }
 
         const patient = await provisionPatientInTransaction(
@@ -238,7 +247,21 @@ async function importPatientRosterRow(
           }
         }
 
-        return { baselineStatus, classificationCreated };
+        // The relationship was created above, so this history is local to it; another
+        // Hospital's history for the same patient is never copied.
+        let healthHistoryCreated = false;
+
+        if (healthHistoryState.status === "HEALTH_HISTORY_READY") {
+          await createImportedPatientHealthHistoryInTransaction(
+            transaction,
+            actor,
+            patient.relationshipId,
+            healthHistoryState.values,
+          );
+          healthHistoryCreated = true;
+        }
+
+        return { baselineStatus, classificationCreated, healthHistoryCreated };
       },
       dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
     );
@@ -262,6 +285,10 @@ function importResultReason(result: PatientRosterImportRowResult): string {
 
   if (result.classificationCreated) {
     parts.push("บันทึกสถานะผู้ป่วยแล้ว");
+  }
+
+  if (result.healthHistoryCreated) {
+    parts.push("บันทึกประวัติโรคและประวัติครอบครัวแล้ว");
   }
 
   return parts.join(" ");
