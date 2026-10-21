@@ -38,19 +38,25 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
+  await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.user.deleteMany();
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();
 }
 
-/** ADR-0017: Hospitals are registered by Platform ADMIN (no Master seed); these are the pending ones under test. */
+/**
+ * ADR-0017: Hospitals are registered by Platform ADMIN (no Master seed); these are the pending ones under test.
+ * ADR-0018: public onboarding is for Parents only, so they carry network role PARENT.
+ */
 async function registerPendingHospitals(): Promise<void> {
-  await prisma.hospital.createMany({
-    data: [
-      { hospitalCode: "KANG", name: "โรงพยาบาลแก่งคอย", status: HospitalStatus.PENDING_VERIFICATION },
-      { hospitalCode: "KHON", name: "โรงพยาบาลขอนแก่น", status: HospitalStatus.PENDING_VERIFICATION },
-    ],
-  });
+  for (const [hospitalCode, name] of [["KANG", "โรงพยาบาลแก่งคอย"], ["KHON", "โรงพยาบาลขอนแก่น"]] as const) {
+    await prisma.hospital.create({
+      data: {
+        hospitalCode, name, status: HospitalStatus.PENDING_VERIFICATION,
+        serviceAreaEligibility: { create: { kind: "PARENT", verifiedAt: new Date() } },
+      },
+    });
+  }
 }
 
 async function createAdmin(label: string): Promise<{ id: string }> {

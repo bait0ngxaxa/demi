@@ -36,6 +36,13 @@ describe("workforce activation credentials", () => {
     expect(getWorkforceActivationExpiry(now, "ASSISTED").toISOString()).toBe("2026-10-14T00:15:00.000Z");
   });
 
+  it("expires a Child OWNER invitation link after 24 hours and its assisted mode after 15 minutes (ADR-0018)", () => {
+    const now = new Date("2026-10-21T00:00:00.000Z");
+
+    expect(getWorkforceActivationExpiry(now, "REMOTE", "CHILD_OWNER_ONBOARDING").toISOString()).toBe("2026-10-22T00:00:00.000Z");
+    expect(getWorkforceActivationExpiry(now, "ASSISTED", "CHILD_OWNER_ONBOARDING").toISOString()).toBe("2026-10-21T00:15:00.000Z");
+  });
+
   it("does not accept an empty token for digest lookup", () => {
     expect(() => hashWorkforceActivationToken(" ")).toThrow();
   });

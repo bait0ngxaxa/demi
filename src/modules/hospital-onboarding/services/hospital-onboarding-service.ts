@@ -36,6 +36,8 @@ import {
   type HospitalOnboardingSubmissionInput,
 } from "../schemas/hospital-onboarding-schemas";
 
+import { onboardableHospitalWhere } from "./onboarding-hospital-service";
+
 export type HospitalOnboardingDatabase = PrismaClient;
 
 export type HospitalOnboardingDependencies = {
@@ -262,8 +264,8 @@ export async function submitHospitalOnboarding(
   let existingPerson: { id: string } | null;
 
   try {
-    hospital = await database.hospital.findUnique({
-      where: { hospitalCode },
+    hospital = await database.hospital.findFirst({
+      where: { hospitalCode, ...onboardableHospitalWhere },
       select: { id: true, status: true },
     });
 
@@ -383,8 +385,8 @@ export async function submitHospitalOnboarding(
   try {
     // Serializable with the status re-read: a concurrent ADMIN retire (N1-D2/D3) and this submit cannot both commit.
     const application = await database.$transaction(async (transaction) => {
-      const current = await transaction.hospital.findUnique({
-        where: { id: hospital.id },
+      const current = await transaction.hospital.findFirst({
+        where: { id: hospital.id, ...onboardableHospitalWhere },
         select: { status: true },
       });
 
@@ -562,6 +564,16 @@ export async function approveHospitalOnboarding(
       }
 
       if (application.hospital.status !== HospitalStatus.PENDING_VERIFICATION) {
+        throw new ConflictError("Hospital is not in an approvable state");
+      }
+
+      // ADR-0018: only an onboardable Parent; a Parent-created Child never takes the public path.
+      const onboardable = await transaction.hospital.findFirst({
+        where: { id: application.hospital.id, ...onboardableHospitalWhere },
+        select: { id: true },
+      });
+
+      if (!onboardable) {
         throw new ConflictError("Hospital is not in an approvable state");
       }
 

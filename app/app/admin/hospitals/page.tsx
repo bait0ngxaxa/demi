@@ -52,10 +52,15 @@ export default async function HospitalGovernanceDirectoryPage({
     <div>
       <PageHeader
         breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "การกำกับดูแลโรงพยาบาล" }]}
-        description="เพิ่มโรงพยาบาล กำหนดแม่ข่าย–ลูกข่าย ตรวจสอบสถานะ โอนย้ายลูกข่ายระหว่างแม่ข่าย และถอนโรงพยาบาลที่ไม่ใช้งานออกจากรายชื่อรอสมัคร"
+        description="เพิ่มโรงพยาบาลทีละแห่งหรือนำเข้าแม่ข่ายจากไฟล์ กำหนดแม่ข่าย–ลูกข่าย ตรวจสอบสถานะ โอนย้ายลูกข่ายระหว่างแม่ข่าย และถอนโรงพยาบาลที่ไม่ใช้งานออกจากรายชื่อรอสมัคร"
         title="การกำกับดูแลโรงพยาบาล"
       />
-      <HospitalNetworkDirectory filter={parseFilter(status)} hospitals={network} submissionNonce={randomUUID()} />
+      <HospitalNetworkDirectory
+        bulkSubmissionNonce={randomUUID()}
+        filter={parseFilter(status)}
+        hospitals={network}
+        submissionNonce={randomUUID()}
+      />
     </div>
   );
 }

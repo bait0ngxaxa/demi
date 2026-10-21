@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
 import type { PasswordAuthAdminProvider } from "@/modules/auth/services/password-auth-provisioning-service";
+import { createChildFacility } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 
@@ -19,6 +20,8 @@ import { countDemoData, resetDemoScenario, seedDemoScenario } from "../../script
 const prisma = getPrisma();
 const suffix = randomUUID().slice(0, 6).toUpperCase();
 const PASSWORD = "Demo-Password-For-Tests-Only-1";
+// Outside the demo identity range (demoNationalId) and not used by other suites.
+const CHILD_OWNER_NATIONAL_ID = "1999999999999";
 const liveAuthUsers = new Set<string>();
 const authProvider: PasswordAuthAdminProvider = {
   createUser: async () => {
@@ -45,6 +48,7 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
       select: { id: true },
     });
     hospitalIds.push(parent.id);
+    // Pre-ADR-0018 demo Child rows: the seed no longer onboards them and reset must leave them untouched (O-D9).
     for (const code of ["A", "B", "C"]) {
       const child = await prisma.hospital.create({
         data: { hospitalCode: `DEMOP-${suffix}-${code}`, name: `รพ.สต.ทดสอบ ${code} ${suffix}`, status: HospitalStatus.PENDING_VERIFICATION },
@@ -62,6 +66,11 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     await prisma.userRole.deleteMany({ where: { user: { personId: outsiderPersonId } } });
     await prisma.user.deleteMany({ where: { personId: outsiderPersonId } });
     await prisma.person.deleteMany({ where: { id: outsiderPersonId } });
+    // The Child OWNER invitee is not a demo identity, so reset keeps its (PROVISIONED, membership-less) account.
+    const invitee = { person: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: CHILD_OWNER_NATIONAL_ID }) } };
+    await prisma.userRole.deleteMany({ where: { user: invitee } });
+    await prisma.user.deleteMany({ where: invitee });
+    await prisma.person.deleteMany({ where: invitee.person });
     await prisma.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
     await prisma.hospital.deleteMany({ where: { id: { in: hospitalIds } } });
   });
@@ -111,7 +120,7 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     expect(liveAuthUsers.size).toBe(DEMO_ACCOUNT_LIST.length);
 
     // Child A workbook rounds 1–6 and Before/After for the completed Program, read as the OWNER sees it.
-    const childA = await prisma.hospital.findUniqueOrThrow({ where: { hospitalCode: `DEMOP-${suffix}-A` }, select: { id: true, status: true } });
+    const childA = await prisma.hospital.findUniqueOrThrow({ where: { hospitalCode: `DEMOP-${suffix}-CA` }, select: { id: true, status: true } });
     expect(childA.status).toBe(HospitalStatus.ACTIVE);
     const ownerA = await prisma.hospitalMembership.findFirstOrThrow({ where: { hospitalId: childA.id, membershipType: "OWNER" }, select: { userId: true } });
     const ownerActor = await resolveActorAccessByUserId(ownerA.userId);
@@ -150,8 +159,22 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     expect(second.verification).toEqual(first.verification);
     expect(liveAuthUsers.size).toBe(DEMO_ACCOUNT_LIST.length);
 
+    // ADR-0018: a Child facility the demo Parent OWNER registers is a demo artifact; reset removes it entirely.
+    const demoParent = await prisma.hospital.findUniqueOrThrow({ where: { hospitalCode: `DEMOP-${suffix}` }, select: { id: true } });
+    const parentOwner = await prisma.hospitalMembership.findFirstOrThrow({ where: { hospitalId: demoParent.id, membershipType: "OWNER", status: "ACTIVE" }, select: { userId: true } });
+    const parentOwnerAccess = await resolveActorAccessByUserId(parentOwner.userId);
+    if (parentOwnerAccess.status !== "AUTHORIZED") throw new Error("Parent OWNER must resolve");
+    const createdChild = await createChildFacility(parentOwnerAccess.actor, {
+      parentHospitalId: demoParent.id, name: `รพ.สต.สร้างในเดโม ${suffix}`, nationalId: CHILD_OWNER_NATIONAL_ID,
+      givenName: "ผู้ดูแล", familyName: "เดโม", mode: "REMOTE", submissionNonce: randomUUID(),
+    });
+
     const removed = await resetDemoScenario({ deleteAuthUser });
-    expect(removed).toMatchObject({ hospitals: 3, accounts: DEMO_ACCOUNT_LIST.length, relationships: 14 });
+    expect(removed).toMatchObject({ hospitals: 4, accounts: DEMO_ACCOUNT_LIST.length, relationships: 14 });
+    // Parent-created Children (the seeded ones and the extra one) are gone; the pre-ADR-0018 rows remain pending.
+    expect(await prisma.hospital.count({
+      where: { OR: [{ id: createdChild.child.id }, { hospitalCode: { in: [`DEMOP-${suffix}-CA`, `DEMOP-${suffix}-CB`] } }] },
+    })).toBe(0);
     expect(Object.values(await countDemoData()).every((count) => count === 0)).toBe(true);
     expect(liveAuthUsers.size).toBe(0);
     const hospitals = await prisma.hospital.findMany({ where: { id: { in: hospitalIds } }, select: { status: true } });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { HospitalStatus, type HospitalServiceAreaFacilityKind, type Prisma, type PrismaClient } from "@prisma/client";
+import { HospitalServiceAreaFacilityKind, HospitalStatus, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
@@ -36,15 +36,23 @@ function toOnboardingHospitalOption(
 }
 
 /**
- * Public onboarding list: ADMIN-registered Hospitals still waiting for their first OWNER (PENDING_VERIFICATION).
- * ACTIVE, SUSPENDED and RETIRED Hospitals are never offered.
+ * ADR-0018 (O-D1/O-D2): public onboarding is for Parents only. A Hospital is onboardable while it waits for its first
+ * OWNER (PENDING_VERIFICATION), has network role PARENT and has never been the Child of any area (active or ended),
+ * so a Parent-created Child is refused even when its code is known. Submit and ADMIN approval re-check this predicate.
  */
+export const onboardableHospitalWhere = {
+  status: HospitalStatus.PENDING_VERIFICATION,
+  serviceAreaEligibility: { is: { kind: HospitalServiceAreaFacilityKind.PARENT } },
+  serviceAreaAssignments: { none: {} },
+} satisfies Prisma.HospitalWhereInput;
+
+/** Public onboarding list: onboardable Parents only; ACTIVE, SUSPENDED, RETIRED and Child facilities are never offered. */
 export async function listOnboardingHospitals(
   database: OnboardingHospitalDatabase = getPrisma(),
 ): Promise<OnboardingHospitalOption[]> {
   try {
     const hospitals = await database.hospital.findMany({
-      where: { status: HospitalStatus.PENDING_VERIFICATION },
+      where: onboardableHospitalWhere,
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: onboardingHospitalSelect,
     });
@@ -67,7 +75,7 @@ export async function findOnboardingHospitalByCode(
 
   try {
     const hospital = await database.hospital.findFirst({
-      where: { hospitalCode: parsedCode.data, status: HospitalStatus.PENDING_VERIFICATION },
+      where: { hospitalCode: parsedCode.data, ...onboardableHospitalWhere },
       select: onboardingHospitalSelect,
     });
 

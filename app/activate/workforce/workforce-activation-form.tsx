@@ -162,7 +162,11 @@ export function WorkforceActivationForm(): React.JSX.Element {
     <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)}>
       <div className="rounded-[14px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         <p>
-          {purpose === "RESET" ? "รีเซ็ตรหัสผ่านของ" : "เปิดใช้งานบัญชีของ"}{" "}
+          {purpose === "RESET"
+            ? "รีเซ็ตรหัสผ่านของ"
+            : purpose === "CHILD_OWNER_ONBOARDING"
+              ? "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการของ"
+              : "เปิดใช้งานบัญชีของ"}{" "}
           <span className="font-semibold">{preview.maskedName}</span>
         </p>
         <p className="mt-1">

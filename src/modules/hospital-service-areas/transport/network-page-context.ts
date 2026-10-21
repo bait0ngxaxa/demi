@@ -3,25 +3,21 @@ import "server-only";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
+import { listManagedChildFacilities, type ManagedChildFacility } from "../services/child-facility-service";
 import { listNetworkScopes, type HospitalNetworkFacility } from "../services/hospital-network-access";
-import {
-  listEligibleServiceAreaCandidates,
-  listManagedHospitalServiceAreas,
-  type ServiceAreaCandidate,
-} from "../services/hospital-service-area-service";
+import { listEligibleServiceAreaCandidates, type ServiceAreaCandidate } from "../services/hospital-service-area-service";
 
 export type OwnerNetworkPageContext = {
   parents: HospitalNetworkFacility[];
   selected: {
     parent: HospitalNetworkFacility;
-    areas: { areaId: string; createdAt: Date; child: HospitalNetworkFacility }[];
+    children: ManagedChildFacility[];
     candidates: ServiceAreaCandidate[];
     hasMoreCandidates: boolean;
     query: string;
   } | null;
 };
 
-const MAX_AREAS = 100;
 const MAX_CANDIDATES = 30;
 
 /**
@@ -40,30 +36,21 @@ export async function getOwnerNetworkPageContext(
   if (!parent) return { parents, selected: null };
 
   const query = (input.query ?? "").trim().slice(0, 100);
-  const [areaPage, candidatePage] = await Promise.all([
-    listManagedHospitalServiceAreas(actor, { parentHospitalId: parent.id, limit: MAX_AREAS }),
+  const [children, candidatePage] = await Promise.all([
+    // ADR-0018: attached Children (Parent-created or attached free ones) with their OWNER invitation state.
+    listManagedChildFacilities(actor, { parentHospitalId: parent.id }),
     listEligibleServiceAreaCandidates(actor, {
       parentHospitalId: parent.id,
       limit: MAX_CANDIDATES,
       ...(query ? { query } : {}),
     }),
   ]);
-  const children = await database.hospital.findMany({
-    where: { id: { in: areaPage.items.map(({ childHospitalId }) => childHospitalId) } },
-    select: { id: true, hospitalCode: true, name: true },
-  });
-  const childById = new Map(children.map((child) => [child.id, child]));
 
   return {
     parents,
     selected: {
       parent,
-      areas: areaPage.items
-        .flatMap(({ id, createdAt, childHospitalId }) => {
-          const child = childById.get(childHospitalId);
-          return child ? [{ areaId: id, createdAt, child }] : [];
-        })
-        .sort((left, right) => left.child.name.localeCompare(right.child.name, "th")),
+      children,
       candidates: candidatePage.items,
       hasMoreCandidates: candidatePage.nextAfterId !== null,
       query,

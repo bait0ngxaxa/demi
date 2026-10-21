@@ -222,6 +222,7 @@ enum WorkforceActivationOperationState {
 enum WorkforceActivationPurpose {
   ACTIVATION
   RESET
+  CHILD_OWNER_ONBOARDING
 }
 
 enum AppointmentType {
@@ -418,6 +419,7 @@ model User {
   hospitalsRetired Hospital[] @relation("HospitalRetiredBy")
   hospitalsRegistered Hospital[] @relation("HospitalRegisteredBy")
   hospitalRetirementEvents HospitalRetirementEvent[] @relation("HospitalRetirementActor")
+  childOwnerInvitationsIssued HospitalMembership[] @relation("HospitalMembershipInvitedBy")
   id          String     @id @default(uuid()) @db.Uuid
   personId    String     @unique @db.Uuid
   authSubject String?    @unique @db.VarChar(255)
@@ -531,6 +533,10 @@ model Hospital {
   // Client submission nonce of the ADMIN registration (N1-D5); NULL for Hospitals registered before it.
   registrationNonce  String?     @unique @db.Uuid
   registeredByUserId String?     @db.Uuid
+  // ADR-0018: the Parent whose OWNER registered this Child (provenance only; authority stays in HospitalServiceArea).
+  registeredForParentHospitalId String? @db.Uuid
+  registeredForParent Hospital? @relation("HospitalRegisteredForParent", fields: [registeredForParentHospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  registeredChildren  Hospital[] @relation("HospitalRegisteredForParent")
   retirementEvents HospitalRetirementEvent[]
   retiredBy    User? @relation("HospitalRetiredBy", fields: [retiredByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   registeredBy User? @relation("HospitalRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -547,6 +553,7 @@ model Hospital {
   supportReports           SupportReport[]
 
   @@index([status, name])
+  @@index([registeredForParentHospitalId])
 }
 
 enum HospitalRetirementEventKind {
@@ -597,6 +604,7 @@ model HospitalServiceArea {
   child Hospital @relation("ServiceAreaChild", fields: [childHospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdBy User @relation("ServiceAreaCreator", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   endedBy User? @relation("ServiceAreaEnder", fields: [endedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ownerInvitations HospitalMembership[]
 
   // Partial active-child uniqueness and immutable-history trigger live in migration SQL.
   @@index([parentHospitalId, endedAt, id])
@@ -701,14 +709,22 @@ model HospitalMembership {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
+  // ADR-0018: Child OWNER invitation binding; all null for other memberships (SQL CHECK).
+  invitedByUserId         String?   @db.Uuid
+  invitedViaServiceAreaId String?   @db.Uuid
+  invitationDeclinedAt    DateTime? @db.Timestamptz(3)
+
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  invitedBy User? @relation("HospitalMembershipInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  invitedViaServiceArea HospitalServiceArea? @relation(fields: [invitedViaServiceAreaId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reportExportGrantedByUser User? @relation("HospitalMembershipReportExportGrantedBy", fields: [reportExportGrantedByUserId], references: [id], onDelete: Restrict)
   networkPatientReadGrantedByUser User? @relation("HospitalMembershipNetworkPatientReadGrantedBy", fields: [networkPatientReadGrantedByUserId], references: [id], onDelete: Restrict)
 
   @@index([userId, hospitalId])
   @@index([hospitalId, status])
   @@index([hospitalId, createdAt, id])
+  @@index([invitedViaServiceAreaId])
 }
 
 model PatientProfile {

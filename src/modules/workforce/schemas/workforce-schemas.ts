@@ -4,7 +4,7 @@ import { z } from "zod";
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 
-const personNameSchema = z.string().trim().min(1).max(120);
+export const personNameSchema = z.string().trim().min(1).max(120);
 
 export const workforceKindSchema = z.enum(["HOSPITAL_MEMBER", "OSM"]);
 export const workforceDetailKindSchema = z.enum(["staff", "osm"]);

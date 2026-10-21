@@ -8,6 +8,7 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type { HospitalNetworkDirectoryEntry } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { createNetworkHospitalAction } from "@/modules/hospital-service-areas/transport/server-actions";
 
+import { HospitalBulkRegistration } from "./hospital-bulk-registration";
 import { PendingHospitalRetirement } from "./pending-hospital-retirement";
 
 /** Directory views: the network (without RETIRED), the public onboarding list, and withdrawn Hospitals. */
@@ -167,16 +168,25 @@ function RetiredHospitalList({ hospitals }: { hospitals: readonly HospitalNetwor
 }
 
 /** ADR-0015: the operational network (not canonical Master placement) is the authoritative structure. */
+function provenanceLabel(hospital: HospitalNetworkDirectoryEntry, nameById: ReadonlyMap<string, string>): string {
+  const parentName = hospital.registeredForParentHospitalId ? nameById.get(hospital.registeredForParentHospitalId) : undefined;
+  return parentName ? ` · สร้างโดยแม่ข่าย ${parentName}` : "";
+}
+
 export function HospitalNetworkDirectory({
   filter,
   hospitals: allHospitals,
   submissionNonce,
+  bulkSubmissionNonce,
 }: {
   filter: HospitalDirectoryFilter;
   hospitals: readonly HospitalNetworkDirectoryEntry[];
   submissionNonce: string;
+  /** O1-A: a separate per-request nonce for the file import. */
+  bulkSubmissionNonce: string;
 }): React.JSX.Element {
   if (filter !== "network") {
+    const nameById = new Map(allHospitals.map(({ id, name }) => [id, name]));
     return (
       <div className="space-y-6 pt-8">
         <DirectoryFilterNavigation filter={filter} />
@@ -184,7 +194,12 @@ export function HospitalNetworkDirectory({
           <PendingHospitalRetirement
             hospitals={allHospitals
               .filter(({ status }) => status === "PENDING_VERIFICATION")
-              .map(({ id, hospitalCode, name, role }) => ({ id, hospitalCode, name, roleLabel: networkRoleLabel(role) }))}
+              .map((hospital) => ({
+                id: hospital.id,
+                hospitalCode: hospital.hospitalCode,
+                name: hospital.name,
+                roleLabel: `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital, nameById)}`,
+              }))}
           />
         ) : (
           <RetiredHospitalList hospitals={allHospitals.filter(({ status }) => status === "RETIRED")} />
@@ -208,6 +223,8 @@ export function HospitalNetworkDirectory({
   return (
     <div className="space-y-6 pt-8">
       <CreateHospitalPanel submissionNonce={submissionNonce} />
+
+      <HospitalBulkRegistration submissionNonce={bulkSubmissionNonce} />
 
       <DirectoryFilterNavigation filter={filter} />
 

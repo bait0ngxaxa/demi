@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
-import { WorkforceActivationMode } from "@prisma/client";
+import { WorkforceActivationMode, WorkforceActivationPurpose } from "@prisma/client";
 
 import { ValidationError } from "@/shared/errors/application-error";
 
@@ -14,6 +14,8 @@ import {
 
 export const WORKFORCE_REMOTE_ACTIVATION_TTL_MS = 72 * 60 * 60 * 1000;
 export const WORKFORCE_ASSISTED_ACTIVATION_TTL_MS = 15 * 60 * 1000;
+/** ADR-0018 (O-D6): a Child OWNER invitation link stays valid for 24 h; staff/OSM links keep 72 h. */
+export const CHILD_OWNER_REMOTE_ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type ActivationCredential = {
   plaintextToken: string;
@@ -58,11 +60,14 @@ export function toPrismaActivationMode(
 export function getWorkforceActivationExpiry(
   now: Date,
   mode: WorkforceActivationModeValue,
+  purpose: WorkforceActivationPurpose = WorkforceActivationPurpose.ACTIVATION,
 ): Date {
   const ttl =
     mode === "ASSISTED"
       ? WORKFORCE_ASSISTED_ACTIVATION_TTL_MS
-      : WORKFORCE_REMOTE_ACTIVATION_TTL_MS;
+      : purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING
+        ? CHILD_OWNER_REMOTE_ACTIVATION_TTL_MS
+        : WORKFORCE_REMOTE_ACTIVATION_TTL_MS;
 
   return new Date(now.getTime() + ttl);
 }

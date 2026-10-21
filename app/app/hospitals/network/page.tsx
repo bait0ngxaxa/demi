@@ -1,20 +1,24 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { Alert } from "@/components/ui/alert";
-import { Button, buttonClassName } from "@/components/ui/button";
-import { Input, inputClassName } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getOwnerNetworkPageContext } from "@/modules/hospital-service-areas/transport/network-page-context";
-import { attachServiceAreaAction, endServiceAreaAction } from "@/modules/hospital-service-areas/transport/server-actions";
+import { attachServiceAreaAction, createChildFacilityAction } from "@/modules/hospital-service-areas/transport/server-actions";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+import { ChildFacilityPanel } from "./child-facility-panel";
+import { ChildOwnerInvitationForm, ChildOwnerInviteeFields } from "./child-owner-invitation-form";
 
 export const metadata: Metadata = { title: "จัดการลูกข่าย" };
 
@@ -30,10 +34,6 @@ async function resolveActor(): Promise<ActorContext> {
     if (error instanceof ForbiddenError) redirect("/app");
     throw error;
   }
-}
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" }).format(value);
 }
 
 export default async function HospitalNetworkPage({
@@ -53,7 +53,7 @@ export default async function HospitalNetworkPage({
     <div className="content-workspace">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "จัดการลูกข่าย" }]}
-        description="เพิ่มหรือนำ รพ.สต. และหน่วยบริการลูกข่ายออกจากเครือข่ายของโรงพยาบาลแม่ข่าย เมื่อเพิ่มแล้วผู้ที่มีสิทธิ์ของแม่ข่ายจะดูรายชื่อและข้อมูลผู้ป่วยของลูกข่ายได้แบบอ่านอย่างเดียว"
+        description="สร้าง รพ.สต. และหน่วยบริการลูกข่ายพร้อมเชิญผู้ดูแลคนแรก เพิ่มหรือนำลูกข่ายออกจากเครือข่าย เมื่อลูกข่ายเปิดใช้งานแล้วผู้ที่มีสิทธิ์ของแม่ข่ายจะดูรายชื่อและข้อมูลผู้ป่วยของลูกข่ายได้แบบอ่านอย่างเดียว"
         title="จัดการลูกข่าย"
       />
 
@@ -80,73 +80,70 @@ export default async function HospitalNetworkPage({
 
           <section aria-labelledby="network-children-heading" className="mt-8 min-w-0">
             <h2 className="text-xl font-semibold text-text" id="network-children-heading">
-              ลูกข่ายของ {selected.parent.name} ({selected.areas.length.toLocaleString("th-TH")})
+              ลูกข่ายของ {selected.parent.name} ({selected.children.length.toLocaleString("th-TH")})
             </h2>
-            {selected.areas.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีลูกข่ายในเครือข่ายนี้ ค้นหาและเพิ่มลูกข่ายได้ด้านล่าง</p>
+            {selected.children.length === 0 ? (
+              <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีลูกข่ายในเครือข่ายนี้ สร้างหรือเพิ่มลูกข่ายได้ด้านล่าง</p>
             ) : (
               <ul className="mt-4 grid min-w-0 gap-4">
-                {selected.areas.map((area) => (
-                  <li className="min-w-0" key={area.areaId}>
-                    <Panel aria-labelledby={`network-area-${area.areaId}`} className="min-w-0">
-                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <h3 className="break-words text-lg font-semibold text-text" id={`network-area-${area.areaId}`}>{area.child.name}</h3>
-                          <p className="mt-1 text-sm text-text-muted">
-                            รหัส {area.child.hospitalCode} · อยู่ในเครือข่ายตั้งแต่ {formatDate(area.createdAt)}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Link
-                            className={buttonClassName({ variant: "secondary", size: "compact" })}
-                            href={`/app/patients?hospitalId=${encodeURIComponent(area.child.id)}`}
-                            prefetch={false}
-                          >
-                            ดูผู้ป่วย
-                          </Link>
-                          <Link
-                            className={buttonClassName({ variant: "ghost", size: "compact" })}
-                            href={`/app/hospitals/reporting?target=${encodeURIComponent(`PARENT_CHILD:${selected.parent.id}:${area.child.id}`)}`}
-                            prefetch={false}
-                          >
-                            รายงานสรุป
-                          </Link>
-                        </div>
-                      </div>
-                      <details className="mt-4 border-t border-border pt-4">
-                        <summary className="cursor-pointer text-sm font-semibold text-danger">นำออกจากเครือข่าย</summary>
-                        <NetworkMutationForm
-                          action={endServiceAreaAction}
-                          className="mt-3"
-                          confirmation={{
-                            title: `นำ ${area.child.name} ออกจากเครือข่ายหรือไม่`,
-                            description: "สิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้จะสิ้นสุดทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
-                            confirmLabel: "นำออกจากเครือข่าย",
-                            destructive: true,
-                          }}
-                          hidden={{ parentHospitalId: selected.parent.id, areaId: area.areaId, confirm: "true" }}
-                          submitLabel="นำออกจากเครือข่าย"
-                          submitVariant="danger"
-                        >
-                          <label className="text-sm font-semibold text-text" htmlFor={`end-reason-${area.areaId}`}>เหตุผล</label>
-                          <textarea
-                            className={`${inputClassName} mt-2 min-h-24 py-3`}
-                            id={`end-reason-${area.areaId}`}
-                            maxLength={500}
-                            name="endReason"
-                            required
-                          />
-                        </NetworkMutationForm>
-                      </details>
-                    </Panel>
+                {selected.children.map((item) => (
+                  <li className="min-w-0" key={item.areaId}>
+                    <ChildFacilityPanel
+                      areaId={item.areaId}
+                      attachedAt={item.attachedAt.toISOString()}
+                      child={{ id: item.child.id, hospitalCode: item.child.hospitalCode, name: item.child.name, updatedAt: item.child.updatedAt.toISOString() }}
+                      invitation={item.invitation ? {
+                        inviteeName: item.invitation.inviteeName,
+                        delivery: item.invitation.delivery,
+                        link: { ...item.invitation.link, expiresAt: item.invitation.link.expiresAt?.toISOString() ?? null },
+                      } : null}
+                      lastDeclinedAt={item.lastDeclinedAt?.toISOString() ?? null}
+                      parentHospitalId={selected.parent.id}
+                      registeredByThisParent={item.registeredByThisParent}
+                      state={item.state}
+                    />
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
+          <section aria-labelledby="network-create-heading" className="mt-10 min-w-0">
+            <h2 className="text-xl font-semibold text-text" id="network-create-heading">สร้างลูกข่ายใหม่</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
+              สร้าง รพ.สต. หรือหน่วยบริการที่ยังไม่มีในระบบ หน่วยบริการจะอยู่ในเครือข่ายนี้ทันทีในสถานะรอเปิดใช้งาน และเปิดใช้งานเมื่อผู้ดูแลคนแรกยืนยันตัวตนด้วยเลขบัตรประชาชนของตนเอง ผู้ดูแลของลูกข่ายจะจัดการบุคลากรและ อสม. ของหน่วยบริการเอง
+            </p>
+            <Panel className="mt-4 min-w-0">
+              <ChildOwnerInvitationForm
+                action={createChildFacilityAction}
+                // Rendered per request: a replay of this submission returns the facility it already created.
+                hidden={{ parentHospitalId: selected.parent.id, submissionNonce: randomUUID() }}
+                idempotent
+                submitLabel="สร้างลูกข่ายและเชิญผู้ดูแล"
+                submitVariant="primary"
+              >
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
+                  <div className="min-w-0">
+                    <label className="text-sm font-semibold text-text" htmlFor="create-child-name">ชื่อหน่วยบริการ</label>
+                    <Input className="mt-2" id="create-child-name" maxLength={200} name="name" required />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-sm font-semibold text-text" htmlFor="create-child-code">
+                      รหัส <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
+                    </label>
+                    <Input autoCapitalize="characters" className="mt-2" id="create-child-code" maxLength={32} name="hospitalCode" />
+                  </div>
+                </div>
+                <h3 className="mt-6 text-base font-semibold text-text">ผู้ดูแลคนแรก</h3>
+                <div className="mt-3">
+                  <ChildOwnerInviteeFields idPrefix="create-child" />
+                </div>
+              </ChildOwnerInvitationForm>
+            </Panel>
+          </section>
+
           <section aria-labelledby="network-add-heading" className="mt-10 min-w-0">
-            <h2 className="text-xl font-semibold text-text" id="network-add-heading">เพิ่มลูกข่าย</h2>
+            <h2 className="text-xl font-semibold text-text" id="network-add-heading">เพิ่มลูกข่ายที่มีในระบบแล้ว</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               แสดงเฉพาะหน่วยบริการประเภทลูกข่ายที่ผู้ดูแลระบบเพิ่มไว้ ขึ้นทะเบียนใช้งานแล้ว และยังไม่มีแม่ข่าย หากหน่วยบริการที่ต้องการมีแม่ข่ายอื่นอยู่แล้ว กรุณาติดต่อผู้ดูแลระบบเพื่อโอนย้าย
             </p>

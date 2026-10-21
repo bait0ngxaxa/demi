@@ -137,7 +137,7 @@ export type WorkforceBulkActionState =
   | { status: "SUCCESS"; result: WorkforceBulkResultState };
 
 export type WorkforceActivationPreviewState =
-  | { status: "SUCCESS"; maskedName: string; purpose: "ACTIVATION" | "RESET" }
+  | { status: "SUCCESS"; maskedName: string; purpose: "ACTIVATION" | "RESET" | "CHILD_OWNER_ONBOARDING" }
   | { status: "ERROR"; message: string };
 
 export type WorkforceMembershipMutationActionState =

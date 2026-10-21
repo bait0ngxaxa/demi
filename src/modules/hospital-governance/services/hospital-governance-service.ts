@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomInt } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 
 import {
   HospitalOnboardingApplicationStatus,
@@ -25,11 +25,21 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
+  HOSPITAL_BULK_REGISTRATION_LIMIT,
+  HospitalRegistrationCsvParseError,
+  normalizeHospitalName,
+  parseHospitalRegistrationCsv,
+  type HospitalRegistrationCsvError,
+  type HospitalRegistrationCsvRow,
+} from "../domain/hospital-registration-csv";
+import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
   type HospitalGovernanceCapability,
 } from "../policies/hospital-governance-policy";
 import {
+  hospitalGovernanceBulkRegistrationApplySchema,
+  hospitalGovernanceBulkRegistrationPreviewSchema,
   hospitalGovernanceBulkRetireSchema,
   hospitalGovernanceCreateSchema,
   hospitalGovernanceHospitalIdSchema,
@@ -380,7 +390,8 @@ function generateHospitalCode(): string {
   return `H-${suffix}`;
 }
 
-async function resolveNewHospitalCode(
+/** The requested code when free, else a generated `H-XXXXXX`; also used for Parent-registered Children (ADR-0018). */
+export async function resolveNewHospitalCode(
   transaction: Prisma.TransactionClient,
   requested: string | undefined,
 ): Promise<string> {
@@ -523,7 +534,7 @@ export async function createHospital(
   }
 }
 
-export type HospitalRetirementIneligibility = "NOT_FOUND" | "NOT_PENDING" | "PENDING_APPLICATION";
+export type HospitalRetirementIneligibility = "NOT_FOUND" | "NOT_PENDING" | "ACTIVE_SERVICE_AREA" | "PENDING_APPLICATION";
 
 export type HospitalRetirementIneligibleHospital = {
   hospitalId: string;
@@ -567,6 +578,9 @@ async function retireHospitalsInTransaction(
         take: 1,
         select: { id: true },
       },
+      // ADR-0018: a Hospital in an active network association (either side) is never retired here.
+      managedServiceAreas: { where: { endedAt: null }, take: 1, select: { id: true } },
+      serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { id: true } },
     },
   });
   const byId = new Map(current.map((hospital) => [hospital.id, hospital]));
@@ -594,9 +608,11 @@ async function retireHospitalsInTransaction(
       ? "NOT_FOUND"
       : hospital.status !== HospitalStatus.PENDING_VERIFICATION
         ? "NOT_PENDING"
-        : hospital.onboardingApplications.length > 0
-          ? "PENDING_APPLICATION"
-          : null;
+        : hospital.managedServiceAreas.length > 0 || hospital.serviceAreaAssignments.length > 0
+          ? "ACTIVE_SERVICE_AREA"
+          : hospital.onboardingApplications.length > 0
+            ? "PENDING_APPLICATION"
+            : null;
 
     if (reason) {
       ineligible.push({
@@ -903,6 +919,277 @@ export async function renameHospital(
     throw normalizeDatabaseError(error, "Hospital rename could not be completed");
   }
 }
+
+export type HospitalBulkRowStatus = "OK" | "INVALID" | "DUPLICATE_CODE_IN_FILE" | "CODE_EXISTS" | "SIMILAR_NAME";
+
+export type HospitalBulkSimilarMatch = {
+  source: "EXISTING" | "FILE";
+  name: string;
+  hospitalCode: string | null;
+  /** EXISTING only. */
+  status: HospitalStatus | null;
+};
+
+export type HospitalBulkPreviewRow = {
+  rowNumber: number;
+  name: string;
+  hospitalCode: string | null;
+  status: HospitalBulkRowStatus;
+  similarTo: HospitalBulkSimilarMatch[];
+};
+
+export type HospitalBulkRegistrationResult = { hospitals: HospitalGovernanceProjection[]; replayed: boolean };
+
+const BLOCKING_ROW_STATUSES: readonly HospitalBulkRowStatus[] = ["INVALID", "DUPLICATE_CODE_IN_FILE", "CODE_EXISTS"];
+
+/** O1-A: nothing was registered. `rows` is the re-evaluated preview; `fileError` a file-level problem. */
+export class HospitalBulkRegistrationRejectedError extends ValidationError {
+  readonly rows: readonly HospitalBulkPreviewRow[];
+  readonly fileError: HospitalRegistrationCsvError | null;
+  readonly unconfirmedRowNumbers: readonly number[];
+
+  constructor(input: { rows?: readonly HospitalBulkPreviewRow[]; fileError?: HospitalRegistrationCsvError; unconfirmedRowNumbers?: readonly number[] }) {
+    super("The Hospital registration file cannot be applied");
+    this.name = "HospitalBulkRegistrationRejectedError";
+    this.rows = input.rows ?? [];
+    this.fileError = input.fileError ?? null;
+    this.unconfirmedRowNumbers = input.unconfirmedRowNumbers ?? [];
+  }
+}
+
+function readRegistrationRows(csvText: string): HospitalRegistrationCsvRow[] {
+  try {
+    return parseHospitalRegistrationCsv(csvText);
+  } catch (error: unknown) {
+    if (error instanceof HospitalRegistrationCsvParseError) {
+      throw new HospitalBulkRegistrationRejectedError({ fileError: error.reason });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Per-row preview status. Blocking: invalid, a code repeated in the file, a code already registered. Not blocking but
+ * needing explicit confirmation: a name equal (whitespace/case-normalised) to an existing Hospital or another row.
+ */
+async function evaluateRegistrationRows(
+  database: Pick<Prisma.TransactionClient, "hospital">,
+  rows: readonly HospitalRegistrationCsvRow[],
+): Promise<HospitalBulkPreviewRow[]> {
+  const codeCounts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.valid && row.hospitalCode) codeCounts.set(row.hospitalCode, (codeCounts.get(row.hospitalCode) ?? 0) + 1);
+  }
+  // Whole registry by design: similarity is a normalised comparison, not an indexed lookup (ADMIN-only, bounded).
+  const existing = await database.hospital.findMany({ select: { hospitalCode: true, name: true, status: true } });
+  const existingCodes = new Set(existing.map(({ hospitalCode }) => hospitalCode));
+  const existingByName = new Map<string, HospitalBulkSimilarMatch[]>();
+  for (const hospital of existing) {
+    const key = normalizeHospitalName(hospital.name);
+    existingByName.set(key, [...(existingByName.get(key) ?? []), { source: "EXISTING", name: hospital.name, hospitalCode: hospital.hospitalCode, status: hospital.status }]);
+  }
+  const fileByName = new Map<string, HospitalRegistrationCsvRow[]>();
+  for (const row of rows) {
+    if (!row.valid) continue;
+    const key = normalizeHospitalName(row.name);
+    fileByName.set(key, [...(fileByName.get(key) ?? []), row]);
+  }
+
+  return rows.map((row) => {
+    if (!row.valid) return { rowNumber: row.rowNumber, name: row.name, hospitalCode: row.hospitalCode, status: "INVALID", similarTo: [] };
+    const key = normalizeHospitalName(row.name);
+    const similarTo = [
+      ...(existingByName.get(key) ?? []),
+      ...(fileByName.get(key) ?? [])
+        .filter(({ rowNumber }) => rowNumber !== row.rowNumber)
+        .map((other): HospitalBulkSimilarMatch => ({ source: "FILE", name: other.name, hospitalCode: other.hospitalCode, status: null })),
+    ];
+    const status: HospitalBulkRowStatus = row.hospitalCode && (codeCounts.get(row.hospitalCode) ?? 0) > 1
+      ? "DUPLICATE_CODE_IN_FILE"
+      : row.hospitalCode && existingCodes.has(row.hospitalCode)
+        ? "CODE_EXISTS"
+        : similarTo.length > 0 ? "SIMILAR_NAME" : "OK";
+    return { rowNumber: row.rowNumber, name: row.name, hospitalCode: row.hospitalCode, status, similarTo };
+  });
+}
+
+/**
+ * O1-A idempotency without a second token framework: row `index` of batch `nonce` is stored as an N1
+ * `registrationNonce` derived deterministically (RFC 9562 version-8 layout of a SHA-256 digest).
+ */
+export function deriveBulkRegistrationRowNonce(batchNonce: string, index: number): string {
+  const hex = createHash("sha256").update(`hospital-bulk-registration:${batchNonce.toLowerCase()}:${index}`, "utf8").digest("hex");
+  const variant = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/** The original result of a replayed batch by the same ADMIN with the same rows; any other use is a conflict. */
+async function findReplayedBulkRegistration(
+  database: Pick<Prisma.TransactionClient, "hospital">,
+  rows: readonly HospitalRegistrationCsvRow[],
+  batchNonce: string,
+  actorUserId: string,
+): Promise<HospitalGovernanceProjection[] | null> {
+  // One extra derived nonce detects an original batch with more rows than this one.
+  const nonces = Array.from({ length: rows.length + 1 }, (_, index) => deriveBulkRegistrationRowNonce(batchNonce, index));
+  const existing = await database.hospital.findMany({
+    where: { registrationNonce: { in: nonces } },
+    select: { ...hospitalGovernanceSelect, registrationNonce: true, registeredByUserId: true, serviceAreaEligibility: { select: { kind: true } } },
+  });
+  if (existing.length === 0) return null;
+
+  const byNonce = new Map(existing.map((hospital) => [hospital.registrationNonce, hospital]));
+  const matched = rows.map((row, index) => {
+    const hospital = byNonce.get(nonces[index] ?? "");
+    return hospital &&
+      hospital.registeredByUserId === actorUserId &&
+      hospital.name === row.name &&
+      hospital.serviceAreaEligibility?.kind === "PARENT" &&
+      (row.hospitalCode === null || hospital.hospitalCode === row.hospitalCode)
+      ? hospital
+      : null;
+  });
+  if (existing.length !== rows.length || matched.some((hospital) => hospital === null)) {
+    throw new ConflictError("This registration batch was already used for different Hospitals");
+  }
+  return matched.flatMap((hospital) => (hospital ? [toProjection(hospital)] : []));
+}
+
+/** O1-A preview: parses and evaluates the file; nothing is written. */
+export async function previewHospitalBulkRegistration(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalBulkPreviewRow[]> {
+  const parsed = hospitalGovernanceBulkRegistrationPreviewSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new HospitalBulkRegistrationRejectedError({ fileError: "EMPTY" });
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.create);
+  const rows = readRegistrationRows(parsed.data.csvText);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+        return evaluateRegistrationRows(transaction, rows);
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital registration preview could not be completed");
+  }
+}
+
+/**
+ * O1-A apply: every row becomes a PENDING_VERIFICATION Hospital with network role PARENT in ONE serializable
+ * transaction, all-or-nothing. Rows are re-evaluated here; a blocking row or an unconfirmed similar name rejects the
+ * whole file. One `hospital.created` per row plus one `hospital.bulk_registered` summary (row count only).
+ */
+export async function applyHospitalBulkRegistration(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalBulkRegistrationResult> {
+  const parsed = hospitalGovernanceBulkRegistrationApplySchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital bulk registration data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.create);
+  const rows = readRegistrationRows(parsed.data.csvText);
+  const confirmed = new Set(parsed.data.confirmedRowNumbers);
+  const database = getDatabase(dependencies);
+
+  try {
+    return await runSerializable(
+      database,
+      async (transaction) => {
+        await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+
+        const replayed = await findReplayedBulkRegistration(transaction, rows, parsed.data.submissionNonce, currentActor.userId);
+        if (replayed) return { hospitals: replayed, replayed: true };
+
+        const evaluated = await evaluateRegistrationRows(transaction, rows);
+        const unconfirmedRowNumbers = evaluated
+          .filter(({ status, rowNumber }) => status === "SIMILAR_NAME" && !confirmed.has(rowNumber))
+          .map(({ rowNumber }) => rowNumber);
+        if (evaluated.some(({ status }) => BLOCKING_ROW_STATUSES.includes(status)) || unconfirmedRowNumbers.length > 0) {
+          throw new HospitalBulkRegistrationRejectedError({ rows: evaluated, unconfirmedRowNumbers });
+        }
+
+        // A generated code must not take a code another row of this file asks for.
+        const requestedCodes = new Set(rows.flatMap(({ hospitalCode }) => (hospitalCode ? [hospitalCode] : [])));
+        const verifiedAt = new Date();
+        const created: HospitalGovernanceProjection[] = [];
+        for (const [index, row] of rows.entries()) {
+          let hospitalCode = await resolveNewHospitalCode(transaction, row.hospitalCode ?? undefined);
+          while (!row.hospitalCode && requestedCodes.has(hospitalCode)) {
+            hospitalCode = await resolveNewHospitalCode(transaction, undefined);
+          }
+          const hospital = await transaction.hospital.create({
+            data: {
+              hospitalCode,
+              name: row.name,
+              status: HospitalStatus.PENDING_VERIFICATION,
+              registrationNonce: deriveBulkRegistrationRowNonce(parsed.data.submissionNonce, index),
+              registeredByUserId: currentActor.userId,
+              serviceAreaEligibility: { create: { kind: "PARENT", verifiedAt, classifiedByUserId: currentActor.userId } },
+            },
+            select: hospitalGovernanceSelect,
+          });
+          created.push(toProjection(hospital));
+        }
+
+        await recordAuditEvents(
+          [
+            ...created.map((hospital) => ({
+              actorUserId: currentActor.userId,
+              action: "hospital.created",
+              resourceType: "Hospital",
+              resourceId: hospital.id,
+              metadata: { hospitalCode: hospital.hospitalCode, toStatus: hospital.status, networkRole: "PARENT", source: "bulk_registration" },
+            })),
+            {
+              actorUserId: currentActor.userId,
+              action: "hospital.bulk_registered",
+              resourceType: "HospitalBulkRegistration",
+              resourceId: parsed.data.submissionNonce,
+              metadata: { rowCount: created.length },
+            },
+          ],
+          transaction,
+        );
+
+        return { hospitals: created, replayed: false };
+      },
+      // A conflicting code or a concurrent replay surfaces as a conflict, never a silent retry into success.
+      0,
+    );
+  } catch (error: unknown) {
+    if (isRetryableTransactionError(error)) {
+      let replayed: HospitalGovernanceProjection[] | null;
+
+      try {
+        replayed = await findReplayedBulkRegistration(database, rows, parsed.data.submissionNonce, currentActor.userId);
+      } catch (replayError: unknown) {
+        throw normalizeDatabaseError(replayError, "Hospital bulk registration could not be completed");
+      }
+
+      if (replayed) {
+        return { hospitals: replayed, replayed: true };
+      }
+    }
+
+    throw normalizeDatabaseError(error, "Hospital bulk registration could not be completed");
+  }
+}
+
+export { HOSPITAL_BULK_REGISTRATION_LIMIT };
 
 export const hospitalGovernanceServiceInternals = {
   DEFAULT_DIRECTORY_LIMIT,

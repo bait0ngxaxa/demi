@@ -3,23 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   listOnboardingHospitals,
+  onboardableHospitalWhere,
   type OnboardingHospitalDatabase,
 } from "./onboarding-hospital-service";
 
 describe("public onboarding Hospital projection", () => {
-  it("returns only pending Hospital identities with their ADMIN-set network role", async () => {
+  it("offers only pending Parents that were never the Child of any area (ADR-0018)", async () => {
+    expect(onboardableHospitalWhere).toEqual({
+      status: HospitalStatus.PENDING_VERIFICATION,
+      serviceAreaEligibility: { is: { kind: "PARENT" } },
+      serviceAreaAssignments: { none: {} },
+    });
     const findMany = vi.fn().mockResolvedValue([
-      { id: "hospital-child-id", hospitalCode: "CHILD-001", name: "รพ.สต.ลูกข่าย", serviceAreaEligibility: { kind: "CHILD" } },
-      { id: "hospital-other-id", hospitalCode: "OTHER-001", name: "โรงพยาบาลอื่น", serviceAreaEligibility: null },
+      { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", serviceAreaEligibility: { kind: "PARENT" } },
     ]);
     const database = { hospital: { findMany } } as unknown as OnboardingHospitalDatabase;
 
     await expect(listOnboardingHospitals(database)).resolves.toEqual([
-      { id: "hospital-child-id", hospitalCode: "CHILD-001", name: "รพ.สต.ลูกข่าย", networkRole: "CHILD" },
-      { id: "hospital-other-id", hospitalCode: "OTHER-001", name: "โรงพยาบาลอื่น", networkRole: null },
+      { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", networkRole: "PARENT" },
     ]);
     expect(findMany).toHaveBeenCalledWith({
-      where: { status: HospitalStatus.PENDING_VERIFICATION },
+      where: onboardableHospitalWhere,
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: {
         id: true,

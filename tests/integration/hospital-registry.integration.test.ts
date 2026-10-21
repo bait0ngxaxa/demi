@@ -207,6 +207,18 @@ describe("Bulk retirement (N1-D4)", () => {
     expect(await db.auditEvent.count({ where: { action: "hospital.retired" , resourceId: { in: hospitalIds } } })).toBe(0);
   });
 
+  it("refuses a PENDING Hospital in an active network association (ADR-0018 ACTIVE_SERVICE_AREA)", async () => {
+    const parent = await hospital(HospitalStatus.ACTIVE, "PARENT");
+    const parentOwner = await owner(parent.id);
+    const attachedPending = await hospital();
+    await db.hospitalServiceArea.create({ data: { parentHospitalId: parent.id, childHospitalId: attachedPending.id, createdByUserId: parentOwner.userId } });
+    const eligible = await hospital();
+    await expect(retireHospitals(admin, { hospitalIds: [eligible.id, attachedPending.id], reason: "x" })).rejects.toMatchObject({
+      ineligible: [{ hospitalId: attachedPending.id, hospitalCode: attachedPending.hospitalCode, name: attachedPending.name, reason: "ACTIVE_SERVICE_AREA" }],
+    });
+    expect(await db.hospital.count({ where: { id: { in: [eligible.id, attachedPending.id] }, status: HospitalStatus.RETIRED } })).toBe(0);
+  });
+
   it("validates the selection size and uniqueness", async () => {
     await expect(retireHospitals(admin, { hospitalIds: Array.from({ length: 101 }, () => randomUUID()), reason: "x" }))
       .rejects.toMatchObject({ code: "VALIDATION" });

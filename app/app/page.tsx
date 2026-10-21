@@ -26,9 +26,12 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
+import { listChildOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+import { ChildOwnerInvitations } from "./child-owner-invitations";
 
 export const metadata: Metadata = {
   title: "หน้าหลัก",
@@ -164,8 +167,12 @@ export default async function ApplicationPage(
   const [actor, params] = await Promise.all([resolveProtectedActor(), paramsPromise]);
   const hospitalWorkspaces = await listActorHospitalWorkspaces(actor);
   const projection = projectApplicationWorkspace(actor, hospitalWorkspaces);
+  // ADR-0018: a pending Child OWNER invitation is answered here, so it keeps even a Patient-only account on this page.
+  const invitations = await loadHomeSection(() => listChildOwnerInvitationsForActor(actor));
+  const hasInvitations = invitations.status === "LOADED" && invitations.value.length > 0;
 
   if (
+    !hasInvitations &&
     projection.availableWorkspaces.length === 1 &&
     projection.availableWorkspaces[0] === "personal"
   ) {
@@ -209,6 +216,8 @@ export default async function ApplicationPage(
           </div>
         ) : null}
       </HomeHero>
+
+      <ChildOwnerInvitations invitations={invitations} />
 
       {home.tiles.length > 0 ? (
         <>
@@ -258,7 +267,7 @@ export default async function ApplicationPage(
 
       {home.unavailableHospitals.length > 0 ? <UnavailableHospitalList hospitals={home.unavailableHospitals} /> : null}
 
-      {hasNoActions ? (
+      {hasNoActions && !hasInvitations ? (
         <Alert className="mt-8" variant="neutral">
           <p className="font-semibold">ยังไม่มีการดำเนินงานที่พร้อมใช้งาน</p>
           <p className="mt-1">เมื่อมีบทบาทและความสัมพันธ์ที่ใช้งานได้ รายการตามสิทธิ์จะแสดงที่นี่</p>

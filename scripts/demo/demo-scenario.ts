@@ -33,7 +33,7 @@ import { acceptCaregiverInvitation, createCaregiverInvitation } from "@/modules/
 import { createFollowup, createFollowupForProgram } from "@/modules/followups/services/followup-service";
 import { createGoalPlanForProgram } from "@/modules/goals/services/goal-service";
 import { approveHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
-import { attachHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
+import { createChildFacility } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { createPersonalMedication } from "@/modules/medications/services/personal-medication-service";
 import { completePatientActivation, issuePatientActivation } from "@/modules/patient-activation/services/patient-activation-service";
@@ -72,7 +72,7 @@ export type DemoScenarioDependencies = {
   deleteAuthUser?: (authSubject: string) => Promise<void>;
   /** Asia/Bangkok service date treated as today (YYYY-MM-DD); defaults to the current date. */
   today?: string;
-  /** Demo Parent hospital code (Children use `<code>-A`, `<code>-B`); defaults to `DEMO`. Created when missing. */
+  /** Demo Parent hospital code (its Parent-created Children use `<code>-CA`, `<code>-CB`); defaults to `DEMO`. Created when missing. */
   parentHospitalCode?: string;
   /** Called with a short step name (no data) as the seed advances. */
   onProgress?: (step: string) => void;
@@ -125,53 +125,52 @@ async function defaultDeleteAuthUser(authSubject: string): Promise<void> {
 // Hospital selection
 // ---------------------------------------------------------------------------------------------------------------
 
-const DEMO_HOSPITALS = [
-  { suffix: "", name: "โรงพยาบาลแม่ข่ายทดสอบ (เดโม)", kind: "PARENT" },
-  { suffix: "-A", name: "รพ.สต.ทดสอบ A (เดโม)", kind: "CHILD" },
-  { suffix: "-B", name: "รพ.สต.ทดสอบ B (เดโม)", kind: "CHILD" },
+const DEMO_PARENT_NAME = "โรงพยาบาลแม่ข่ายทดสอบ (เดโม)";
+
+/**
+ * ADR-0018: demo Child facilities are created by the demo Parent OWNER (never onboarded publicly) with these code
+ * suffixes. Reset deletes them; the pre-ADR-0018 `<code>-A`/`<code>-B` rows are left untouched (O-D9).
+ */
+const DEMO_CHILDREN = [
+  { suffix: "-CA", name: "รพ.สต.ทดสอบ A (เดโม)" },
+  { suffix: "-CB", name: "รพ.สต.ทดสอบ B (เดโม)" },
 ] as const;
 
 /**
- * Dedicated demo Hospitals `<code>`, `<code>-A`, `<code>-B` (default code `DEMO`), created when missing with their
- * network roles (ADR-0015). Each must be PENDING_VERIFICATION with no onboarding decision; reset restores that.
+ * Dedicated demo Parent `<code>` (default code `DEMO`), created when missing with network role PARENT (ADR-0015).
+ * It must be PENDING_VERIFICATION with no onboarding decision; reset restores that.
  */
-async function selectDemoHospitals(parentHospitalCode = "DEMO"): Promise<{ parent: HospitalRef; children: [HospitalRef, HospitalRef] }> {
-  const refs: HospitalRef[] = [];
-  for (const demo of DEMO_HOSPITALS) {
-    const hospitalCode = `${parentHospitalCode}${demo.suffix}`;
-    const hospital = await database().hospital.upsert({
-      where: { hospitalCode },
-      create: {
-        hospitalCode,
-        name: demo.name,
-        status: HospitalStatus.PENDING_VERIFICATION,
-        serviceAreaEligibility: { create: { kind: demo.kind, verifiedAt: new Date(), classifiedByUserId: null } },
-      },
-      update: {},
-      select: {
-        id: true,
-        hospitalCode: true,
-        name: true,
-        status: true,
-        serviceAreaEligibility: { select: { kind: true } },
-        _count: { select: { onboardingApplications: true } },
-      },
-    });
-    if (hospital.status !== HospitalStatus.PENDING_VERIFICATION || hospital._count.onboardingApplications > 0) {
-      throw new Error(`Demo hospital ${hospitalCode} is not available (needs PENDING_VERIFICATION without onboarding)`);
-    }
-    if (hospital.serviceAreaEligibility && hospital.serviceAreaEligibility.kind !== demo.kind) {
-      throw new Error(`Demo hospital ${hospitalCode} has a different network role`);
-    }
-    if (!hospital.serviceAreaEligibility) {
-      await database().hospitalServiceAreaEligibility.create({
-        data: { hospitalId: hospital.id, kind: demo.kind, verifiedAt: new Date(), classifiedByUserId: null },
-      });
-    }
-    refs.push({ id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name });
+async function selectDemoParentHospital(parentHospitalCode = "DEMO"): Promise<HospitalRef> {
+  const hospital = await database().hospital.upsert({
+    where: { hospitalCode: parentHospitalCode },
+    create: {
+      hospitalCode: parentHospitalCode,
+      name: DEMO_PARENT_NAME,
+      status: HospitalStatus.PENDING_VERIFICATION,
+      serviceAreaEligibility: { create: { kind: "PARENT", verifiedAt: new Date(), classifiedByUserId: null } },
+    },
+    update: {},
+    select: {
+      id: true,
+      hospitalCode: true,
+      name: true,
+      status: true,
+      serviceAreaEligibility: { select: { kind: true } },
+      _count: { select: { onboardingApplications: true } },
+    },
+  });
+  if (hospital.status !== HospitalStatus.PENDING_VERIFICATION || hospital._count.onboardingApplications > 0) {
+    throw new Error(`Demo hospital ${parentHospitalCode} is not available (needs PENDING_VERIFICATION without onboarding)`);
   }
-  const [parent, first, second] = refs;
-  return { parent: parent!, children: [first!, second!] };
+  if (hospital.serviceAreaEligibility && hospital.serviceAreaEligibility.kind !== "PARENT") {
+    throw new Error(`Demo hospital ${parentHospitalCode} has a different network role`);
+  }
+  if (!hospital.serviceAreaEligibility) {
+    await database().hospitalServiceAreaEligibility.create({
+      data: { hospitalId: hospital.id, kind: "PARENT", verifiedAt: new Date(), classifiedByUserId: null },
+    });
+  }
+  return { id: hospital.id, hospitalCode: hospital.hospitalCode, name: hospital.name };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -230,6 +229,34 @@ async function onboardHospital(hospital: HospitalRef, owner: DemoAccount, adminU
     select: { userId: true },
   });
   return membership.userId;
+}
+
+/** ADR-0018: the Parent OWNER creates the Child in its network; the Child OWNER activates through the workforce link. */
+async function createDemoChild(
+  parentOwner: ActorContext,
+  parent: HospitalRef,
+  child: (typeof DEMO_CHILDREN)[number],
+  owner: DemoAccount,
+  dependencies: DemoScenarioDependencies,
+): Promise<{ hospital: HospitalRef; ownerUserId: string }> {
+  const nationalId = demoNationalId(owner.index);
+  const created = await createChildFacility(parentOwner, {
+    parentHospitalId: parent.id,
+    name: child.name,
+    hospitalCode: `${parent.hospitalCode}${child.suffix}`,
+    nationalId,
+    givenName: owner.givenName,
+    familyName: owner.familyName,
+    mode: "REMOTE",
+    submissionNonce: randomUUID(),
+  });
+  if (created.invitation.status !== "ACTIVATION_LINK") throw new Error(`Demo Child ${child.suffix} owner did not receive an activation link`);
+  const { userId } = await completeWorkforceActivation(
+    created.invitation.activationToken,
+    { nationalId, password: dependencies.password, passwordConfirmation: dependencies.password },
+    { provisionIdentity: provisioner(dependencies) },
+  );
+  return { hospital: created.child, ownerUserId: userId };
 }
 
 async function seedWorkforce(
@@ -542,22 +569,21 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   progress("ลบข้อมูล demo เดิม");
   await resetDemoScenario(dependencies);
   const today = dependencies.today ?? toServiceDateOnly(new Date());
-  const { parent, children } = await selectDemoHospitals(dependencies.parentHospitalCode);
-  const [childA, childB] = children;
+  const parent = await selectDemoParentHospital(dependencies.parentHospitalCode);
 
-  progress("Platform ADMIN และ onboarding โรงพยาบาล");
+  progress("Platform ADMIN, onboarding แม่ข่าย และลูกข่ายที่แม่ข่ายสร้าง");
   const adminUserId = await seedPlatformAdmin(dependencies);
   const parentOwnerId = await onboardHospital(parent, DEMO_ACCOUNTS.parentOwner, adminUserId, dependencies);
-  const childAOwnerId = await onboardHospital(childA, DEMO_ACCOUNTS.childAOwner, adminUserId, dependencies);
-  const childBOwnerId = await onboardHospital(childB, DEMO_ACCOUNTS.childBOwner, adminUserId, dependencies);
+  // ADR-0015/0016/0018: Children are created in the Parent's network; it scopes Parent reports and Patient reads.
+  const parentOwner = await actorOf(parentOwnerId);
+  const createdA = await createDemoChild(parentOwner, parent, DEMO_CHILDREN[0], DEMO_ACCOUNTS.childAOwner, dependencies);
+  const createdB = await createDemoChild(parentOwner, parent, DEMO_CHILDREN[1], DEMO_ACCOUNTS.childBOwner, dependencies);
+  const children: [HospitalRef, HospitalRef] = [createdA.hospital, createdB.hospital];
+  const [childA, childB] = children;
+  const childAOwnerId = createdA.ownerUserId;
+  const childBOwnerId = createdB.ownerUserId;
   const ownerA = await actorOf(childAOwnerId);
   const ownerB = await actorOf(childBOwnerId);
-
-  // ADR-0015/0016: the operational network scopes Parent reports and Patient reads.
-  const parentOwner = await actorOf(parentOwnerId);
-  for (const child of children) {
-    await attachHospitalServiceArea(parentOwner, { parentHospitalId: parent.id, childHospitalId: child.id });
-  }
 
   progress("บุคลากรและ อสม.");
   const memberExport = await seedWorkforce("MEMBER", DEMO_ACCOUNTS.memberExport, childA.id, ownerA, dependencies);
@@ -736,6 +762,8 @@ type DemoScope = {
   authSubjects: string[];
   profileIds: string[];
   hospitalIds: string[];
+  /** ADR-0018: Child facilities a demo Parent OWNER registered; they are demo artifacts and are deleted on reset. */
+  createdChildIds: string[];
   relationshipIds: string[];
 };
 
@@ -750,7 +778,12 @@ async function resolveDemoScope(): Promise<DemoScope> {
     where: { applicantUserId: { in: userIds } },
     select: { hospitalId: true },
   });
-  const hospitalIds = [...new Set(hospitals.map((application) => application.hospitalId))];
+  const createdChildren = await database().hospital.findMany({
+    where: { registeredByUserId: { in: userIds }, registeredForParentHospitalId: { not: null } },
+    select: { id: true },
+  });
+  const createdChildIds = createdChildren.map(({ id }) => id);
+  const hospitalIds = [...new Set([...hospitals.map((application) => application.hospitalId), ...createdChildIds])];
   const profileIds = persons.flatMap((person) => (person.patientProfile ? [person.patientProfile.id] : []));
   const relationships = await database().patientHospitalRelationship.findMany({
     where: { OR: [{ hospitalId: { in: hospitalIds } }, { patientProfileId: { in: profileIds } }] },
@@ -762,6 +795,7 @@ async function resolveDemoScope(): Promise<DemoScope> {
     authSubjects: persons.flatMap((person) => (person.user?.authSubject ? [person.user.authSubject] : [])),
     profileIds,
     hospitalIds,
+    createdChildIds,
     relationshipIds: relationships.map((relationship) => relationship.id),
   };
 }
@@ -882,13 +916,19 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.workforceBulkSubmission.deleteMany({ where: { OR: [{ hospitalId: { in: hospitalIds } }, { actorUserId: users }] } });
     await tx.workforceActivation.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }, { createdByUserId: users }] } });
     await tx.osmHospitalRelationship.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
+    // Before the area purge: a Child OWNER invitation references its area (migration 20261101110000).
+    await tx.hospitalMembership.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
     // Demo-attributed network history references demo users; purge only those rows (migration 20261030130000).
     await tx.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
-    await tx.hospitalServiceArea.deleteMany({ where: { OR: [{ createdByUserId: users }, { endedByUserId: users }] } });
+    await tx.hospitalServiceArea.deleteMany({
+      where: { OR: [{ createdByUserId: users }, { endedByUserId: users }, { childHospitalId: { in: scope.createdChildIds } }] },
+    });
     // Retire/restore history of the demo Hospitals or by demo users (append-only outside this setting; 20261031110000).
     await tx.hospitalRetirementEvent.deleteMany({ where: { OR: [{ hospitalId: { in: hospitalIds } }, { actorUserId: users }] } });
-    await tx.hospitalMembership.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
     await tx.hospitalOnboardingApplication.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
+    // Demo-registered Children (ADR-0018) reference their demo registrant; they go entirely, onboarded Hospitals stay.
+    await tx.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: scope.createdChildIds } } });
+    await tx.hospital.deleteMany({ where: { id: { in: scope.createdChildIds } } });
     await tx.userContactSetting.deleteMany({ where: { userId: users } });
 
     await tx.auditEvent.deleteMany({

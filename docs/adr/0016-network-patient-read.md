@@ -2,6 +2,7 @@
 
 - Status: Accepted (Product Owner, 2026-10-20)
 - Date: 2026-10-20
+- Superseded in part by [ADR-0018](./0018-parent-led-child-onboarding.md) (2026-10-21): a Parent-created Child is attached at creation, before it is ACTIVE; Patient reads and reports still require an ACTIVE Child.
 - Supersedes: [ADR-0013](./0013-responsibility-areas.md) H5 (Parent reports follow the canonical link) and §3 "Parent OWNER Patient list / clinical detail: Deny". Builds on [ADR-0015](./0015-admin-governed-hospital-network.md); supersedes ADR-0014's "an association grants no Patient/report authority" boundary.
 
 ## Customer decisions

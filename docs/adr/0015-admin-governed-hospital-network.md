@@ -2,6 +2,7 @@
 
 - Status: Accepted (Product Owner, 2026-10-20)
 - Date: 2026-10-20
+- Superseded in part by [ADR-0018](./0018-parent-led-child-onboarding.md) (2026-10-21): a Parent OWNER may also register CHILD facilities into its own network; ADMIN keeps every power listed here.
 - Supersedes: [ADR-0014](./0014-operational-hospital-service-areas.md) only for (1) the offline trusted-source eligibility attestation, (2) the canonical-placement/root/leaf candidate boundary and (3) the self-service transfer block. Everything else in ADR-0014 is unchanged.
 
 ## Context

@@ -33,6 +33,16 @@ function secureLineWorkflowResponse(response: NextResponse, pathname: string): N
   return response;
 }
 
+// ADR-0018: responses of these pages (including server action results) can carry a one-time activation link.
+const ACTIVATION_LINK_PATHS = new Set(["/app/hospitals/network"]);
+
+function secureActivationLinkResponse(response: NextResponse, pathname: string): NextResponse {
+  if (!ACTIVATION_LINK_PATHS.has(pathname)) return response;
+  response.headers.set("cache-control", "private, no-store");
+  response.headers.set("referrer-policy", "no-referrer");
+  return response;
+}
+
 // Probes must answer without a session refresh or valid auth configuration.
 const HEALTH_PATHS = new Set(["/api/health", "/api/health/live"]);
 
@@ -59,7 +69,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     request,
     getLineQuickActionReturnPathFromUrl(request.nextUrl),
   );
-  return secureLineWorkflowResponse(response, request.nextUrl.pathname);
+  return secureActivationLinkResponse(secureLineWorkflowResponse(response, request.nextUrl.pathname), request.nextUrl.pathname);
 }
 
 export const config = {

@@ -199,6 +199,8 @@ export async function getHospitalNetworkForAdmin(
 export type HospitalNetworkDirectoryEntry = HospitalNetworkFacilitySummary & {
   role: HospitalServiceAreaFacilityKind | null;
   networkParentId: string | null;
+  /** ADR-0018 provenance: the Parent whose OWNER registered this Child, if any. */
+  registeredForParentHospitalId: string | null;
 };
 
 /** Every Hospital with its network role and active Parent, for the governance directory. Identity data only. */
@@ -214,6 +216,7 @@ export async function listHospitalNetworkDirectoryForAdmin(
         ...summarySelect,
         serviceAreaEligibility: { select: { kind: true } },
         serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { parentHospitalId: true } },
+        registeredForParentHospitalId: true,
       },
     });
     return hospitals.map(({ serviceAreaEligibility, serviceAreaAssignments, ...hospital }) => ({

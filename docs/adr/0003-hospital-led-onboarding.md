@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-12
 - Refined: 2026-08-13 (Phase 3A requirement closure; original trust-chain decision unchanged)
+- Superseded in part by [ADR-0018](./0018-parent-led-child-onboarding.md) (2026-10-21): public onboarding is for Parent Hospitals only; Child facilities are created by their Parent OWNER, who invites their first OWNER.
 
 ## Context
 

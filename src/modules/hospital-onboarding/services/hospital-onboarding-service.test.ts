@@ -7,6 +7,7 @@ import {
   submitHospitalOnboarding,
   type HospitalOnboardingDatabase,
 } from "./hospital-onboarding-service";
+import { onboardableHospitalWhere } from "./onboarding-hospital-service";
 
 const personId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
@@ -20,10 +21,14 @@ function createDatabase(overrides: {
   applicationCreate?: () => Promise<{ id: string }>;
   /** Hospital status re-read inside the application transaction (a concurrent retire). */
   statusAtCommit?: HospitalStatus;
+  /** The code names a Hospital outside the onboardable-Parent predicate (e.g. a Parent-created Child). */
+  notOnboardable?: boolean;
 } = {}): HospitalOnboardingDatabase {
+  const statusAtCommit = overrides.statusAtCommit ?? HospitalStatus.PENDING_VERIFICATION;
   const transaction = {
     hospital: {
-      findUnique: vi.fn().mockResolvedValue({ status: overrides.statusAtCommit ?? HospitalStatus.PENDING_VERIFICATION }),
+      // The predicate filters a non-pending Hospital out, as the database would.
+      findFirst: vi.fn().mockResolvedValue(statusAtCommit === HospitalStatus.PENDING_VERIFICATION ? { status: statusAtCommit } : null),
     },
     person: {
       create: vi.fn().mockResolvedValue({ id: personId }),
@@ -47,7 +52,7 @@ function createDatabase(overrides: {
 
   return {
     hospital: {
-      findUnique: vi.fn().mockResolvedValue({ id: hospitalId, status: HospitalStatus.PENDING_VERIFICATION }),
+      findFirst: vi.fn().mockResolvedValue(overrides.notOnboardable ? null : { id: hospitalId, status: HospitalStatus.PENDING_VERIFICATION }),
     },
     hospitalOnboardingApplication: {
       findFirst: vi
@@ -90,6 +95,19 @@ describe("hospital onboarding application service", () => {
       where: { hospitalId },
       select: { id: true },
     });
+    expect(database.hospital.findFirst).toHaveBeenCalledWith({
+      where: { hospitalCode: validInput.hospitalCode, ...onboardableHospitalWhere },
+      select: { id: true, status: true },
+    });
+  });
+
+  it("refuses a known code outside the onboardable-Parent predicate before any account is created (ADR-0018)", async () => {
+    const database = createDatabase({ notOnboardable: true });
+    const provisionIdentity = vi.fn();
+
+    await expect(submitHospitalOnboarding(validInput, { database, provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(database.$transaction).not.toHaveBeenCalled();
   });
 
   it("fails closed for an existing identity without creating another account", async () => {

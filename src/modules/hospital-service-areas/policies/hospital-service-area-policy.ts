@@ -7,6 +7,9 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 export const HOSPITAL_SERVICE_AREA_CAPABILITIES = {
   read: "hospital-network:area:read",
   manage: "hospital-network:area:manage",
+  // ADR-0018: Parent OWNER creates a Child and manages it until its own OWNER takes over.
+  childCreate: "hospital-network:child:create",
+  childManage: "hospital-network:child:manage",
 } as const;
 
 export type HospitalServiceAreaCapability = (typeof HOSPITAL_SERVICE_AREA_CAPABILITIES)[keyof typeof HOSPITAL_SERVICE_AREA_CAPABILITIES];
@@ -17,8 +20,7 @@ export function assertHospitalServiceAreaPolicy(input: {
   capability: unknown;
   parentHospitalId: string;
 }): void {
-  if (input.capability !== HOSPITAL_SERVICE_AREA_CAPABILITIES.read &&
-      input.capability !== HOSPITAL_SERVICE_AREA_CAPABILITIES.manage) throw new ForbiddenError();
+  if (!Object.values<unknown>(HOSPITAL_SERVICE_AREA_CAPABILITIES).includes(input.capability)) throw new ForbiddenError();
   if (!decideHospitalOwnerPolicy({
     actor: input.actor,
     capability: HOSPITAL_OWNER_CAPABILITIES.readGovernance,

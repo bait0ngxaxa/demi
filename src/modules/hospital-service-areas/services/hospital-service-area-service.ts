@@ -24,7 +24,8 @@ export type ServiceAreaCandidate = { id: string; hospitalCode: string; name: str
 export type ServiceAreaPage<T> = { items: T[]; nextAfterId: string | null };
 export type HospitalServiceAreaDependencies = { database?: PrismaClient };
 
-async function authorize(
+/** Persisted Parent OWNER authority; every Parent-side network operation calls this inside its transaction. */
+export async function authorize(
   tx: Prisma.TransactionClient, actor: ActorContext, parentHospitalId: string,
   capability: HospitalServiceAreaCapability,
 ): Promise<ServiceAreaFacility> {

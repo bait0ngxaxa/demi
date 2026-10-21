@@ -714,7 +714,7 @@ export async function previewWorkforceActivationAction(
 
 export async function completeWorkforceActivationAction(
   token: string,
-  purpose: "ACTIVATION" | "RESET",
+  purpose: "ACTIVATION" | "RESET" | "CHILD_OWNER_ONBOARDING",
   _previousState: WorkforceCompletionActionState,
   formData: FormData,
 ): Promise<WorkforceCompletionActionState> {

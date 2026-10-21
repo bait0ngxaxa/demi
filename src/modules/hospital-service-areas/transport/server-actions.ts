@@ -5,8 +5,11 @@ import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  applyHospitalBulkRegistration,
   createHospital,
+  HospitalBulkRegistrationRejectedError,
   HospitalRetirementIneligibleError,
+  previewHospitalBulkRegistration,
   renameHospital,
   restoreRetiredHospital,
   retireHospital,
@@ -21,8 +24,24 @@ import {
   setHospitalNetworkRole,
   transferHospitalServiceArea,
 } from "../services/hospital-network-governance-service";
+import {
+  acceptChildOwnerInvitation,
+  cancelPendingChildFacility,
+  changeChildOwnerInvitee,
+  createChildFacility,
+  declineChildOwnerInvitation,
+  inviteReplacementChildOwner,
+  issueChildOwnerLink,
+  renameChildFacility,
+  revokeChildOwnerLink,
+  type ChildOwnerInvitationIssue,
+} from "../services/child-facility-service";
 import { attachHospitalServiceArea, endHospitalServiceArea } from "../services/hospital-service-area-service";
-import type { HospitalNetworkActionState } from "./action-state";
+import type {
+  ChildOwnerInvitationActionState,
+  HospitalBulkRegistrationActionState,
+  HospitalNetworkActionState,
+} from "./action-state";
 
 type ErrorCopy = Partial<Record<Extract<HospitalNetworkActionState, { status: "ERROR" }>["code"], string>>;
 
@@ -34,6 +53,7 @@ function getString(formData: FormData, field: string): string {
 const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, string> = {
   NOT_FOUND: "ไม่พบในระบบแล้ว",
   NOT_PENDING: "ไม่ได้อยู่ในสถานะรอขึ้นทะเบียน",
+  ACTIVE_SERVICE_AREA: "อยู่ในเครือข่ายแม่ข่าย–ลูกข่ายที่ใช้งานอยู่ ต้องนำออกจากเครือข่ายก่อน",
   PENDING_APPLICATION: "มีคำขอขึ้นทะเบียนรอพิจารณา ต้องปฏิเสธคำขอก่อน",
 };
 
@@ -254,4 +274,257 @@ export async function adminEndServiceAreaAction(
     { INVALID_INPUT: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)" },
     ["/app/admin/hospitals"],
   );
+}
+
+// ADR-0018: Parent OWNER creates Child facilities and invites their first or replacement OWNER.
+
+const NETWORK_PATHS = ["/app/hospitals/network", "/app/hospitals/areas"] as const;
+
+const childOwnerInviteeCopy: ErrorCopy = {
+  INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: ชื่อหน่วยบริการ (ไม่เกิน 200 ตัวอักษร) รหัส (A-Z, 0-9, - หรือ _) เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",
+  CONFLICT: "ดำเนินการไม่ได้ อาจมีรหัสนี้อยู่แล้ว บัญชีของผู้ถูกเชิญต้องตรวจสอบโดยผู้ดูแลระบบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  NOT_FOUND: "หน่วยบริการนี้ไม่ได้อยู่ในเครือข่ายของคุณแล้ว กรุณาโหลดหน้าใหม่",
+};
+
+function inviteeInput(formData: FormData): Record<string, string> {
+  return {
+    parentHospitalId: getString(formData, "parentHospitalId"),
+    nationalId: getString(formData, "nationalId"),
+    givenName: getString(formData, "givenName"),
+    familyName: getString(formData, "familyName"),
+    mode: getString(formData, "mode") || "REMOTE",
+  };
+}
+
+async function runInvitation(
+  work: (actor: ActorContext) => Promise<{ invitation: ChildOwnerInvitationIssue; message: string }>,
+  copy: ErrorCopy,
+): Promise<ChildOwnerInvitationActionState> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const { invitation, message } = await work(actor);
+    for (const path of NETWORK_PATHS) revalidatePath(path, "page");
+    return {
+      status: "SUCCESS",
+      message,
+      completedAt: Date.now(),
+      invitation: invitation.status === "ACTIVATION_LINK"
+        ? {
+            kind: "ACTIVATION_LINK",
+            activationToken: invitation.activationToken,
+            activationExpiresAt: invitation.activationExpiresAt.toISOString(),
+            activationMode: invitation.activationMode,
+          }
+        : { kind: invitation.status },
+    };
+  } catch (error: unknown) {
+    const state = toErrorState(error, copy);
+    return state.status === "ERROR" ? state : { status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" };
+  }
+}
+
+export async function createChildFacilityAction(
+  _previous: ChildOwnerInvitationActionState,
+  formData: FormData,
+): Promise<ChildOwnerInvitationActionState> {
+  return runInvitation(async (actor) => {
+    const result = await createChildFacility(actor, {
+      ...inviteeInput(formData),
+      name: getString(formData, "name"),
+      hospitalCode: getString(formData, "hospitalCode"),
+      submissionNonce: getString(formData, "submissionNonce"),
+    });
+    return { invitation: result.invitation, message: `สร้าง ${result.child.name} (${result.child.hospitalCode}) ในเครือข่ายแล้ว · รอเปิดใช้งาน` };
+  }, childOwnerInviteeCopy);
+}
+
+export async function issueChildOwnerLinkAction(
+  _previous: ChildOwnerInvitationActionState,
+  formData: FormData,
+): Promise<ChildOwnerInvitationActionState> {
+  return runInvitation(async (actor) => ({
+    invitation: await issueChildOwnerLink(actor, {
+      parentHospitalId: getString(formData, "parentHospitalId"),
+      childHospitalId: getString(formData, "childHospitalId"),
+      mode: getString(formData, "mode") || "REMOTE",
+    }),
+    message: "ออกลิงก์เปิดใช้งานใหม่แล้ว ลิงก์เดิมใช้ไม่ได้อีก",
+  }), { CONFLICT: "ออกลิงก์ไม่ได้ ผู้ถูกเชิญอาจกำลังเปิดใช้งาน ใช้บัญชีเดิมตอบรับ หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่" });
+}
+
+export async function changeChildOwnerInviteeAction(
+  _previous: ChildOwnerInvitationActionState,
+  formData: FormData,
+): Promise<ChildOwnerInvitationActionState> {
+  return runInvitation(async (actor) => ({
+    invitation: await changeChildOwnerInvitee(actor, { ...inviteeInput(formData), childHospitalId: getString(formData, "childHospitalId") }),
+    message: "เปลี่ยนผู้ถูกเชิญแล้ว คำเชิญเดิมสิ้นสุดทันที",
+  }), childOwnerInviteeCopy);
+}
+
+export async function inviteReplacementChildOwnerAction(
+  _previous: ChildOwnerInvitationActionState,
+  formData: FormData,
+): Promise<ChildOwnerInvitationActionState> {
+  return runInvitation(async (actor) => ({
+    invitation: await inviteReplacementChildOwner(actor, { ...inviteeInput(formData), childHospitalId: getString(formData, "childHospitalId") }),
+    message: "ส่งคำเชิญผู้ดูแลคนใหม่แล้ว",
+  }), childOwnerInviteeCopy);
+}
+
+export async function revokeChildOwnerLinkAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  return run(
+    (actor) => revokeChildOwnerLink(actor, {
+      parentHospitalId: getString(formData, "parentHospitalId"),
+      childHospitalId: getString(formData, "childHospitalId"),
+    }),
+    "ยกเลิกลิงก์เปิดใช้งานแล้ว ออกลิงก์ใหม่ได้เมื่อพร้อม",
+    { CONFLICT: "ยกเลิกไม่ได้ ผู้ถูกเชิญอาจกำลังเปิดใช้งานอยู่ กรุณาโหลดหน้าใหม่" },
+    NETWORK_PATHS,
+  );
+}
+
+export async function cancelPendingChildFacilityAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  return run(
+    (actor) => cancelPendingChildFacility(actor, {
+      parentHospitalId: getString(formData, "parentHospitalId"),
+      childHospitalId: getString(formData, "childHospitalId"),
+      confirm: confirmed(formData),
+      reason: getString(formData, "reason"),
+    }),
+    "ยกเลิกหน่วยบริการแล้ว คำเชิญและลิงก์ทั้งหมดใช้ไม่ได้อีก",
+    {
+      INVALID_INPUT: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)",
+      CONFLICT: "ยกเลิกไม่ได้ หน่วยบริการอาจเปิดใช้งานแล้ว หรือผู้ถูกเชิญกำลังเปิดใช้งานอยู่ กรุณาโหลดหน้าใหม่",
+    },
+    NETWORK_PATHS,
+  );
+}
+
+export async function renameChildFacilityAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  return run(
+    (actor) => renameChildFacility(actor, {
+      parentHospitalId: getString(formData, "parentHospitalId"),
+      childHospitalId: getString(formData, "childHospitalId"),
+      name: getString(formData, "name"),
+      expectedUpdatedAt: getString(formData, "expectedUpdatedAt"),
+    }),
+    "บันทึกชื่อหน่วยบริการแล้ว",
+    { INVALID_INPUT: "กรุณากรอกชื่อใหม่ที่ต่างจากชื่อเดิม (ไม่เกิน 200 ตัวอักษร)" },
+    NETWORK_PATHS,
+  );
+}
+
+// ADR-0018 (O-D6): the invitee answers in their own authenticated session.
+
+export async function acceptChildOwnerInvitationAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  return run(
+    (actor) => acceptChildOwnerInvitation(actor, { membershipId: getString(formData, "membershipId") }),
+    "ตอบรับแล้ว คุณเป็นผู้ดูแลหน่วยบริการนี้แล้ว",
+    {
+      CONFLICT: "คำเชิญนี้ใช้ไม่ได้แล้ว หน่วยบริการอาจถูกยกเลิก ย้ายออกจากเครือข่าย หรือมีผู้ดูแลแล้ว",
+      NOT_FOUND: "ไม่พบคำเชิญนี้แล้ว",
+    },
+    ["/app"],
+  );
+}
+
+export async function declineChildOwnerInvitationAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  return run(
+    (actor) => declineChildOwnerInvitation(actor, { membershipId: getString(formData, "membershipId") }),
+    "ปฏิเสธคำเชิญแล้ว แม่ข่ายจะเห็นว่าคุณปฏิเสธ",
+    { NOT_FOUND: "ไม่พบคำเชิญนี้แล้ว" },
+    ["/app"],
+  );
+}
+
+// O1-A: Platform ADMIN registers Parent Hospitals from a CSV file (preview, then apply).
+
+const bulkFileErrorCopy = {
+  EMPTY: "ไม่พบข้อมูลในไฟล์",
+  TOO_LARGE: "ไฟล์มีขนาดใหญ่เกินไป",
+  MALFORMED: "ไฟล์ CSV มีเครื่องหมายคำพูดไม่ครบหรือผิดรูปแบบ",
+  HEADER: "บรรทัดแรกของไฟล์ต้องเป็น name,hospitalCode",
+  NO_ROWS: "ไม่พบรายการโรงพยาบาลในไฟล์",
+  TOO_MANY_ROWS: "นำเข้าได้ครั้งละไม่เกิน 200 รายการ",
+} as const;
+
+async function readCsvFile(formData: FormData): Promise<string | null> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0 || file.size > 256 * 1024) return null;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+function toBulkErrorState(error: unknown, csvText: string, submissionNonce: string): HospitalBulkRegistrationActionState {
+  if (error instanceof HospitalBulkRegistrationRejectedError) {
+    if (error.fileError) return { status: "ERROR", message: bulkFileErrorCopy[error.fileError] };
+    return {
+      status: "PREVIEW",
+      csvText,
+      submissionNonce,
+      rows: [...error.rows],
+      message: error.unconfirmedRowNumbers.length > 0
+        ? "มีรายการชื่อใกล้เคียงที่ยังไม่ได้ยืนยัน ยังไม่ได้เพิ่มโรงพยาบาลใด"
+        : "ข้อมูลเปลี่ยนไปหรือมีรายการที่ต้องแก้ไข ยังไม่ได้เพิ่มโรงพยาบาลใด",
+    };
+  }
+  const state = toErrorState(error, {
+    CONFLICT: "ไฟล์นี้ถูกส่งไปแล้วด้วยข้อมูลอื่น หรือมีรหัสซ้ำกับรายการที่เพิ่งเพิ่ม กรุณาโหลดหน้าใหม่แล้วตรวจสอบอีกครั้ง",
+  });
+  return { status: "ERROR", message: state.status === "ERROR" ? state.message : "ระบบไม่พร้อมดำเนินการในขณะนี้" };
+}
+
+export async function previewHospitalBulkRegistrationAction(
+  _previous: HospitalBulkRegistrationActionState,
+  formData: FormData,
+): Promise<HospitalBulkRegistrationActionState> {
+  const submissionNonce = getString(formData, "submissionNonce");
+  const csvText = await readCsvFile(formData);
+  if (csvText === null) return { status: "ERROR", message: "กรุณาเลือกไฟล์ .csv ที่บันทึกแบบ UTF-8 ขนาดไม่เกิน 256 KB" };
+  try {
+    const actor = await getProtectedApplicationActor();
+    const rows = await previewHospitalBulkRegistration(actor, { csvText });
+    return { status: "PREVIEW", csvText, submissionNonce, rows, message: null };
+  } catch (error: unknown) {
+    return toBulkErrorState(error, csvText, submissionNonce);
+  }
+}
+
+export async function applyHospitalBulkRegistrationAction(
+  _previous: HospitalBulkRegistrationActionState,
+  formData: FormData,
+): Promise<HospitalBulkRegistrationActionState> {
+  const csvText = getString(formData, "csvText");
+  const submissionNonce = getString(formData, "submissionNonce");
+  const confirmedRowNumbers = formData.getAll("confirmRow").flatMap((value) => {
+    const rowNumber = typeof value === "string" ? Number(value) : Number.NaN;
+    return Number.isInteger(rowNumber) ? [rowNumber] : [];
+  });
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await applyHospitalBulkRegistration(actor, { csvText, submissionNonce, confirmedRowNumbers });
+    revalidatePath("/app/admin/hospitals", "layout");
+    return { status: "APPLIED", submissionNonce, count: result.hospitals.length, replayed: result.replayed, completedAt: Date.now() };
+  } catch (error: unknown) {
+    return toBulkErrorState(error, csvText, submissionNonce);
+  }
 }

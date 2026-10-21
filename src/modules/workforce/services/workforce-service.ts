@@ -30,6 +30,13 @@ import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credent
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
+  activatePendingChildOwner,
+  assertChildOwnerInvitationContext,
+  CHILD_OWNER_RELATIONSHIP_KIND,
+  parentOwnerMembershipWhere,
+  type ChildOwnerInvitationContext,
+} from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
+import {
   createIdentityStore,
   resolvePerson,
 } from "@/modules/identity/services/identity-service";
@@ -285,6 +292,11 @@ type ActivationClaim = {
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
+/** First-credential purposes: both set the User's first password and complete exactly one Hospital scope. */
+const INITIAL_ACTIVATION_PURPOSES: readonly WorkforceActivationPurpose[] = [
+  WorkforceActivationPurpose.ACTIVATION,
+  WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+];
 const workforceActivationSelect = {
   id: true,
   userId: true,
@@ -546,7 +558,7 @@ async function assertInitialCredentialStateInDatabase(
   permittedClaimId?: string,
 ): Promise<void> {
   const unsafe = await transaction.workforceActivation.findFirst({ where: {
-    userId, purpose: WorkforceActivationPurpose.ACTIVATION,
+    userId, purpose: { in: [...INITIAL_ACTIVATION_PURPOSES] },
     ...(permittedClaimId ? { id: { not: permittedClaimId } } : {}),
     OR: [{ claimedAt: { not: null }, usedAt: null }, { usedAt: { not: null } }],
   }, select: { id: true, claimedAt: true, usedAt: true } });
@@ -617,6 +629,130 @@ async function issueInitialActivation(
     activationExpiresAt: expiresAt,
     activationMode: "REMOTE",
   };
+}
+
+export type ChildOwnerActivationIssue = {
+  activationId: string;
+  activationToken: string;
+  activationExpiresAt: Date;
+  activationMode: WorkforceActivationModeValue;
+};
+
+/**
+ * ADR-0018 (O-D6): the workforce activation credential for a pending (PROVISIONED) Child OWNER membership. Same
+ * hash-only token, national-ID check, failure limit and single-use claim as staff activation; only the purpose,
+ * context kind and REMOTE TTL differ. An unclaimed credential already issued for this membership is revoked first.
+ */
+export async function issueChildOwnerActivation(
+  transaction: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    createdByUserId: string;
+    childHospitalId: string;
+    membershipId: string;
+    mode: WorkforceActivationModeValue;
+    now: Date;
+    source: "child_owner_invitation" | "explicit_regeneration";
+    generateCredential?: ActivationCredentialGenerator;
+  },
+): Promise<ChildOwnerActivationIssue> {
+  await assertInitialCredentialStateInDatabase(transaction, input.userId);
+  const current = await transaction.workforceActivation.findFirst({
+    where: { userId: input.userId, usedAt: null, revokedAt: null },
+    select: { id: true, purpose: true, relationshipId: true, claimedAt: true },
+  });
+
+  if (current) {
+    if (current.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING || current.relationshipId !== input.membershipId) {
+      throw new ConflictError(CROSS_HOSPITAL_PENDING_MESSAGE);
+    }
+
+    await revokeUnclaimedActivation(transaction, current, { actorUserId: input.createdByUserId, now: input.now, source: input.source });
+  }
+
+  const credential = (input.generateCredential ?? generateWorkforceActivationCredential)();
+  const mode = toPrismaActivationMode(input.mode);
+  const expiresAt = getWorkforceActivationExpiry(input.now, input.mode, WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING);
+  const activation = await transaction.workforceActivation.create({
+    data: {
+      userId: input.userId,
+      tokenHash: credential.tokenHash,
+      mode,
+      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      expiresAt,
+      createdByUserId: input.createdByUserId,
+      hospitalId: input.childHospitalId,
+      relationshipId: input.membershipId,
+      relationshipKind: CHILD_OWNER_RELATIONSHIP_KIND,
+    },
+    select: { id: true },
+  });
+
+  await recordAuditEvent(
+    {
+      actorUserId: input.createdByUserId,
+      action: "workforce_activation.issued",
+      resourceType: "WorkforceActivation",
+      resourceId: activation.id,
+      metadata: { mode, status: UserStatus.PROVISIONED, source: input.source },
+    },
+    transaction,
+  );
+
+  return { activationId: activation.id, activationToken: credential.plaintextToken, activationExpiresAt: expiresAt, activationMode: input.mode };
+}
+
+async function revokeUnclaimedActivation(
+  transaction: Prisma.TransactionClient,
+  activation: { id: string; claimedAt: Date | null },
+  input: { actorUserId: string; now: Date; source: string },
+): Promise<void> {
+  if (activation.claimedAt) {
+    throw new ConflictError(IN_USE_ACTIVATION_MESSAGE);
+  }
+
+  const revoked = await transaction.workforceActivation.updateMany({
+    where: { id: activation.id, claimedAt: null, usedAt: null, revokedAt: null },
+    data: { revokedAt: input.now },
+  });
+
+  if (revoked.count !== 1) {
+    throw new ConflictError("The activation credential changed during revocation");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId: input.actorUserId,
+      action: "workforce_activation.revoked",
+      resourceType: "WorkforceActivation",
+      resourceId: activation.id,
+      metadata: { source: input.source },
+    },
+    transaction,
+  );
+}
+
+/** Revokes the unclaimed Child OWNER credential of this membership, if any. A claimed credential is a conflict. */
+export async function revokeChildOwnerActivation(
+  transaction: Prisma.TransactionClient,
+  input: { membershipId: string; actorUserId: string; now: Date; source: string },
+): Promise<boolean> {
+  const current = await transaction.workforceActivation.findFirst({
+    where: {
+      relationshipId: input.membershipId,
+      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      usedAt: null,
+      revokedAt: null,
+    },
+    select: { id: true, claimedAt: true },
+  });
+
+  if (!current) {
+    return false;
+  }
+
+  await revokeUnclaimedActivation(transaction, current, input);
+  return true;
 }
 
 async function ensureHospitalMembership(
@@ -862,7 +998,7 @@ async function assertSingleHospitalPendingScope(
     }),
     transaction.workforceActivation.findFirst({
       where: {
-        userId, purpose: WorkforceActivationPurpose.ACTIVATION, usedAt: null, revokedAt: null,
+        userId, purpose: { in: [...INITIAL_ACTIVATION_PURPOSES] }, usedAt: null, revokedAt: null,
         OR: [{ hospitalId: null }, { hospitalId: { not: hospitalId } }],
       },
       select: { id: true },
@@ -872,27 +1008,21 @@ async function assertSingleHospitalPendingScope(
   if (membership || osm || activation) throw new ConflictError(CROSS_HOSPITAL_PENDING_MESSAGE);
 }
 
-async function createOrReuseWorkforceIdentity(
-  transaction: Prisma.TransactionClient,
-  input: {
-    actorUserId: string;
-    kind: WorkforceKind;
-    hospitalId: string;
-    nationalId: string;
-    givenName: string;
-    familyName: string;
-    profession: HospitalMemberProvisionInput["profession"] | null;
-    now: Date;
-    dependencies: WorkforceServiceDependencies;
-  },
-): Promise<WorkforceIdentity> {
-  await assertWorkforceProvisionerInDatabase(
-    transaction,
-    input.actorUserId,
-    input.hospitalId,
-    input.kind,
-  );
+export type WorkforceGrantee = {
+  personId: string;
+  user: { id: string; personId: string; status: UserStatus; authSubject: string | null };
+  reusedExistingUser: boolean;
+};
 
+/**
+ * Resolves the canonical Person and User behind a national ID for a workforce grant in one Hospital, creating a
+ * PROVISIONED User when none exists, and fails closed on every account state workforce provisioning refuses.
+ * The caller has already authorised the grant; nothing is granted here.
+ */
+export async function resolveWorkforceGrantee(
+  transaction: Prisma.TransactionClient,
+  input: { hospitalId: string; nationalId: string; givenName: string; familyName: string },
+): Promise<WorkforceGrantee> {
   const person = await resolvePerson(
     {
       identity: {
@@ -950,6 +1080,32 @@ async function createOrReuseWorkforceIdentity(
     where: { userId: user.id, ...unreconciledWorkforceResetWhere }, select: { id: true },
   });
   if (ambiguousReset) throw new ConflictError("Global credential recovery must be reconciled before workforce provisioning");
+
+  return { personId: person.id, user, reusedExistingUser };
+}
+
+async function createOrReuseWorkforceIdentity(
+  transaction: Prisma.TransactionClient,
+  input: {
+    actorUserId: string;
+    kind: WorkforceKind;
+    hospitalId: string;
+    nationalId: string;
+    givenName: string;
+    familyName: string;
+    profession: HospitalMemberProvisionInput["profession"] | null;
+    now: Date;
+    dependencies: WorkforceServiceDependencies;
+  },
+): Promise<WorkforceIdentity> {
+  await assertWorkforceProvisionerInDatabase(
+    transaction,
+    input.actorUserId,
+    input.hospitalId,
+    input.kind,
+  );
+
+  const { personId, user, reusedExistingUser } = await resolveWorkforceGrantee(transaction, input);
 
   await transaction.userRole.upsert({
     where: {
@@ -1015,7 +1171,7 @@ async function createOrReuseWorkforceIdentity(
         };
 
   return {
-    personId: person.id,
+    personId,
     userId: user.id,
     userStatus: user.status,
     authSubject: user.authSubject,
@@ -3091,12 +3247,12 @@ type WorkforceActivationClaimTarget = Prisma.WorkforceActivationGetPayload<{
 
 function isActivationUsable(
   activation: WorkforceActivationClaimTarget | null,
-  purpose: WorkforceActivationPurpose,
+  purposes: readonly WorkforceActivationPurpose[],
   now: Date,
 ): activation is WorkforceActivationClaimTarget {
   return Boolean(
     activation &&
-      activation.purpose === purpose &&
+      purposes.includes(activation.purpose) &&
       activation.operationState === WorkforceActivationOperationState.NOT_STARTED &&
       !activation.usedAt &&
       !activation.revokedAt &&
@@ -3108,12 +3264,37 @@ function isActivationUsable(
 
 function isActivationTargetEligible(
   activation: WorkforceActivationClaimTarget,
-  purpose: WorkforceActivationPurpose,
   allowMappedSubject = false,
 ): boolean {
-  if (purpose !== WorkforceActivationPurpose.ACTIVATION || !activation.hospitalId || !activation.relationshipId ||
+  if (!activation.hospitalId || !activation.relationshipId) return false;
+  if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
+    return activation.relationshipKind === CHILD_OWNER_RELATIONSHIP_KIND &&
+      isChildOwnerScopeEligible(activation.user, { hospitalId: activation.hospitalId, relationshipId: activation.relationshipId }, allowMappedSubject);
+  }
+  if (activation.purpose !== WorkforceActivationPurpose.ACTIVATION ||
     (activation.relationshipKind !== "OSM" && activation.relationshipKind !== "HOSPITAL_MEMBER")) return false;
   return isInitialWorkforceScopeEligible(activation.user, { hospitalId: activation.hospitalId, relationshipId: activation.relationshipId, kind: activation.relationshipKind }, allowMappedSubject);
+}
+
+/**
+ * ADR-0018: a Child OWNER first credential completes exactly its pending OWNER membership. Any other open workforce
+ * relationship needs an explicit trust decision, so it fails closed. The Child may still be PENDING_VERIFICATION
+ * (first OWNER) or ACTIVE (replacement); the persisted invitation context is re-checked separately.
+ */
+function isChildOwnerScopeEligible(
+  user: WorkforceActivationClaimTarget["user"],
+  context: { hospitalId: string; relationshipId: string },
+  allowMappedSubject = false,
+): boolean {
+  if (user.status !== UserStatus.PROVISIONED || (!allowMappedSubject && user.authSubject) ||
+    user.roles.some(({ role }) => role === Role.ADMIN || role === Role.PATIENT) || user.person.patientProfile ||
+    !user.roles.some(({ role }) => role === Role.HOSPITAL)) return false;
+  const openMemberships = user.memberships.filter(({ status }) => status !== MembershipStatus.ENDED);
+  if (openMemberships.length !== 1 || user.osmHospitalRelationships.some(({ status }) => status !== MembershipStatus.ENDED)) return false;
+  const [target] = openMemberships;
+  return Boolean(target && target.id === context.relationshipId && target.hospitalId === context.hospitalId &&
+    target.membershipType === MembershipType.OWNER && target.status === MembershipStatus.PROVISIONED &&
+    (target.hospital.status === HospitalStatus.PENDING_VERIFICATION || target.hospital.status === HospitalStatus.ACTIVE));
 }
 
 function isInitialWorkforceScopeEligible(
@@ -3147,6 +3328,30 @@ async function assertActivationContextAuthority(
 }
 
 /**
+ * Persisted issuing context of a claimable activation. Staff/OSM: the issuer still provisions that Hospital.
+ * Child OWNER (ADR-0018): the invitation context still holds and the issuer is still an OWNER of that Parent.
+ */
+async function assertActivationContext(
+  transaction: Prisma.TransactionClient,
+  activation: WorkforceActivationClaimTarget,
+): Promise<ChildOwnerInvitationContext | null> {
+  if (activation.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
+    await assertActivationContextAuthority(transaction, activation);
+    return null;
+  }
+  if (!activation.hospitalId || !activation.relationshipId) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+  const context = await assertChildOwnerInvitationContext(transaction, {
+    membershipId: activation.relationshipId, childHospitalId: activation.hospitalId,
+    userId: activation.userId, expectedStatus: MembershipStatus.PROVISIONED,
+  });
+  const issuer = await transaction.hospitalMembership.findFirst({
+    where: parentOwnerMembershipWhere(activation.createdByUserId, context.parentHospitalId), select: { id: true },
+  });
+  if (!issuer) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+  return context;
+}
+
+/**
  * Read-only: resolves the masked identity cue for a valid, unconsumed token.
  * Every failure is the same generic conflict; the full name is never returned.
  */
@@ -3170,15 +3375,15 @@ export async function previewWorkforceActivation(
 
     if (
       !activation ||
-      !isActivationUsable(activation, activation.purpose, now) ||
-      !isActivationTargetEligible(activation, activation.purpose)
+      !isActivationUsable(activation, [activation.purpose], now) ||
+      !isActivationTargetEligible(activation)
     ) {
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
 
     await getDatabase(dependencies).$transaction(async (transaction) => {
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
-      await assertActivationContextAuthority(transaction, activation);
+      await assertActivationContext(transaction, activation);
     });
     return {
       maskedName: maskPersonName(activation.user.person.givenName, activation.user.person.familyName),
@@ -3195,7 +3400,7 @@ export async function previewWorkforceActivation(
 
 async function claimWorkforceActivation(
   token: string,
-  purpose: WorkforceActivationPurpose,
+  purposes: readonly WorkforceActivationPurpose[],
   nationalId: string,
   dependencies: WorkforceServiceDependencies,
 ): Promise<ActivationClaim> {
@@ -3214,14 +3419,14 @@ async function claimWorkforceActivation(
         });
 
         if (
-          !isActivationUsable(activation, purpose, now) ||
-          !isActivationTargetEligible(activation, purpose)
+          !isActivationUsable(activation, purposes, now) ||
+          !isActivationTargetEligible(activation)
         ) {
           throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
         }
 
         await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
-        await assertActivationContextAuthority(transaction, activation);
+        await assertActivationContext(transaction, activation);
 
         if (!matchesPersonNationalId(activation.user.person.identityKeyHash, nationalId)) {
           await recordFailedVerification(transaction, activation, now);
@@ -3233,7 +3438,7 @@ async function claimWorkforceActivation(
           where: {
             id: activation.id,
             tokenHash,
-            purpose,
+            purpose: activation.purpose,
             claimedAt: null,
             usedAt: null,
             revokedAt: null,
@@ -3325,7 +3530,7 @@ async function finalizeWorkforceActivationLocally(
 
       if (
         !activation ||
-        activation.purpose !== WorkforceActivationPurpose.ACTIVATION ||
+        !INITIAL_ACTIVATION_PURPOSES.includes(activation.purpose) ||
         activation.operationState !== WorkforceActivationOperationState.PROVIDER_CONFIRMED ||
         activation.userId !== claim.userId ||
         activation.claimedAt?.getTime() !== claim.claimedAt.getTime() ||
@@ -3334,7 +3539,7 @@ async function finalizeWorkforceActivationLocally(
         activation.expiresAt <= now ||
         !activation.hospitalId ||
         activation.reconciliationRequiredAt ||
-        !isActivationTargetEligible(activation, WorkforceActivationPurpose.ACTIVATION, true) ||
+        !isActivationTargetEligible(activation, true) ||
         !user ||
         user.status !== UserStatus.PROVISIONED ||
         user.authSubject !== authSubject
@@ -3343,30 +3548,42 @@ async function finalizeWorkforceActivationLocally(
       }
 
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
-      await assertActivationContextAuthority(transaction, activation);
+      const childOwnerContext = await assertActivationContext(transaction, activation);
 
-      const activatedMemberships = await transaction.hospitalMembership.updateMany({
-        where: {
+      if (childOwnerContext && activation.relationshipId) {
+        // ADR-0018 (O-D3): the only activation that may complete while its Hospital is still PENDING_VERIFICATION.
+        await activatePendingChildOwner(transaction, {
+          membershipId: activation.relationshipId,
+          childHospitalId: activation.hospitalId,
           userId: claim.userId,
-          hospitalId: activation.hospitalId,
-          membershipType: MembershipType.MEMBER,
-          status: MembershipStatus.PROVISIONED,
-          hospital: { status: HospitalStatus.ACTIVE },
-        },
-        data: { status: MembershipStatus.ACTIVE },
-      });
-      const activatedOsmRelationships = await transaction.osmHospitalRelationship.updateMany({
-        where: {
-          userId: claim.userId,
-          hospitalId: activation.hospitalId,
-          status: MembershipStatus.PROVISIONED,
-          hospital: { status: HospitalStatus.ACTIVE },
-        },
-        data: { status: MembershipStatus.ACTIVE },
-      });
+          fromStatus: MembershipStatus.PROVISIONED,
+          context: childOwnerContext,
+          actorUserId: null,
+        });
+      } else {
+        const activatedMemberships = await transaction.hospitalMembership.updateMany({
+          where: {
+            userId: claim.userId,
+            hospitalId: activation.hospitalId,
+            membershipType: MembershipType.MEMBER,
+            status: MembershipStatus.PROVISIONED,
+            hospital: { status: HospitalStatus.ACTIVE },
+          },
+          data: { status: MembershipStatus.ACTIVE },
+        });
+        const activatedOsmRelationships = await transaction.osmHospitalRelationship.updateMany({
+          where: {
+            userId: claim.userId,
+            hospitalId: activation.hospitalId,
+            status: MembershipStatus.PROVISIONED,
+            hospital: { status: HospitalStatus.ACTIVE },
+          },
+          data: { status: MembershipStatus.ACTIVE },
+        });
 
-      if (activatedMemberships.count + activatedOsmRelationships.count === 0) {
-        throw new ConflictError("No workforce relationship is awaiting activation");
+        if (activatedMemberships.count + activatedOsmRelationships.count === 0) {
+          throw new ConflictError("No workforce relationship is awaiting activation");
+        }
       }
 
       const activatedUser = await transaction.user.updateMany({
@@ -3480,9 +3697,9 @@ async function transitionWorkforceProviderOperation(
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
     if (state === WorkforceActivationOperationState.PROVIDER_STARTED) {
-      if (!isActivationTargetEligible(activation, WorkforceActivationPurpose.ACTIVATION)) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+      if (!isActivationTargetEligible(activation)) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
-      await assertActivationContextAuthority(transaction, activation);
+      await assertActivationContext(transaction, activation);
     }
     const changed = await transaction.workforceActivation.updateMany({ where: { id: claim.activationId, claimedAt: claim.claimedAt, operationState: expectedState, usedAt: null, revokedAt: null }, data: { operationState: state } });
     if (changed.count !== 1) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
@@ -3534,7 +3751,7 @@ export async function completeWorkforceActivation(
 
   const claim = await claimWorkforceActivation(
     parsedToken.data,
-    WorkforceActivationPurpose.ACTIVATION,
+    INITIAL_ACTIVATION_PURPOSES,
     parsedInput.data.nationalId,
     dependencies,
   );
