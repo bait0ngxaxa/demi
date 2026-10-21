@@ -1,6 +1,6 @@
 import type { PatientImportFieldKey } from "./patient-import-contract";
 
-export const PATIENT_IMPORT_TEMPLATE_VERSION = "patient-import-template-v2" as const;
+export const PATIENT_IMPORT_TEMPLATE_VERSION = "patient-import-template-v3" as const;
 export const PATIENT_IMPORT_TEMPLATE_SHEET_NAME = "รายชื่อผู้ป่วย" as const;
 export const PATIENT_IMPORT_TEMPLATE_INFO_SHEET_NAME = "ข้อมูลโรงพยาบาล" as const;
 export const PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME = "_demi_meta" as const;
@@ -57,17 +57,27 @@ function safeHospitalFilenameSegment(hospitalName: string): string {
 }
 
 export function createPatientImportTemplateFilename(hospitalName: string): string {
-  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v2.xlsx`;
+  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v3.xlsx`;
 }
 
 export const PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER = "เหตุผล" as const;
 export const PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX = "failed_rows" as const;
 
 export function createPatientImportFailedRowsFilename(hospitalName: string): string {
-  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v2_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
+  return `DEMI_${safeHospitalFilenameSegment(hospitalName)}_patient_import_v3_${PATIENT_IMPORT_FAILED_ROWS_FILENAME_SUFFIX}.xlsx`;
 }
 
 export const PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES = ["กลุ่มเสี่ยง", "เบาหวาน"] as const;
+
+/** The only accepted medical/family history answers; a blank (or "-") cell means ไม่ทราบ. */
+export const PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWERS = {
+  "มี": "YES",
+  "ไม่มี": "NO",
+  "ไม่ทราบ": "UNKNOWN",
+} as const;
+export const PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWER_VALUES = Object.keys(
+  PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWERS,
+) as readonly (keyof typeof PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWERS)[];
 
 export type PatientImportTemplateColumnFormat = "text" | "date" | "integer" | "numeric";
 
@@ -142,21 +152,55 @@ export const PATIENT_IMPORT_TEMPLATE_COLUMNS = [
     format: "text",
     width: 18,
   },
+  { column: "AA", field: "historyDiabetes", header: "โรคประจำตัว: เบาหวาน", format: "text", width: 20 },
+  {
+    column: "AB",
+    field: "historyHypertension",
+    header: "โรคประจำตัว: ความดันโลหิตสูง",
+    format: "text",
+    width: 22,
+  },
+  { column: "AC", field: "otherConditions", header: "โรคประจำตัวอื่น ๆ", format: "text", width: 30 },
+  {
+    column: "AD",
+    field: "familyHypertension",
+    header: "ญาติสายตรง: ความดันโลหิตสูง",
+    format: "text",
+    width: 22,
+  },
+  { column: "AE", field: "familyDiabetes", header: "ญาติสายตรง: เบาหวาน", format: "text", width: 20 },
+  { column: "AF", field: "familyHeartDisease", header: "ญาติสายตรง: โรคหัวใจ", format: "text", width: 20 },
+  {
+    column: "AG",
+    field: "familyStroke",
+    header: "ญาติสายตรง: หลอดเลือดสมอง / อัมพาต",
+    format: "text",
+    width: 26,
+  },
 ] as const satisfies readonly PatientImportTemplateColumn[];
 
 export const PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT =
   PATIENT_IMPORT_TEMPLATE_COLUMNS.length;
 
 /** Failed-rows exports append exactly one trailing column; the parser ignores it. */
-export const PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN = "AA" as const;
+export const PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN = "AH" as const;
 export const PATIENT_IMPORT_FAILED_ROWS_COLUMN_COUNT =
   PATIENT_IMPORT_TEMPLATE_EXPECTED_COLUMN_COUNT + 1;
 
+const HEALTH_HISTORY_ANSWER_CAPTION = "มี / ไม่มี / ไม่ทราบ (เว้นว่าง = ไม่ทราบ)";
+
 export const PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS: Readonly<Record<string, string>> = {
   L: "กลุ่มเสี่ยง หรือ เบาหวาน (ไม่ต้องมี Type)",
+  AA: HEALTH_HISTORY_ANSWER_CAPTION,
+  AB: HEALTH_HISTORY_ANSWER_CAPTION,
+  AC: "ระบุชื่อโรค (ถ้ามี)",
+  AD: HEALTH_HISTORY_ANSWER_CAPTION,
+  AE: HEALTH_HISTORY_ANSWER_CAPTION,
+  AF: HEALTH_HISTORY_ANSWER_CAPTION,
+  AG: HEALTH_HISTORY_ANSWER_CAPTION,
 };
 
-/** Every column is a merged two-row header except the one carrying a secondary caption. */
+/** Every column is a merged two-row header except those carrying a secondary caption. */
 export const PATIENT_IMPORT_TEMPLATE_MERGES = [
   ...PATIENT_IMPORT_TEMPLATE_COLUMNS.filter(
     ({ column }) => PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column] === undefined,

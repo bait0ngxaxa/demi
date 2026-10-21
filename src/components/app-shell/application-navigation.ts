@@ -51,6 +51,7 @@ import {
 import { InfrastructureError } from "@/shared/errors/application-error";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
+import { CUSTOMER_PRIMARY_MENU, CUSTOMER_TOP_MENU, type CustomerMenuId } from "./customer-navigation";
 import {
   getNavigationSectionLabel,
   type NavigationAdministrationScope,
@@ -322,6 +323,49 @@ function projectWorkSections(
   ];
 }
 
+/**
+ * UI-01: the general Patient's customer menus (Personal workspace only). Every entry opens an existing Personal route;
+ * Hospital OWNER, MEMBER, OSM and Platform ADMIN keep their role navigation in the Work workspace.
+ */
+const PERSONAL_CUSTOMER_MENU_DESTINATIONS: Readonly<Record<CustomerMenuId, Pick<ApplicationNavigationItem, "href" | "match">>> = {
+  home: { href: "/app/personal", match: "exact" },
+  health: { href: "/app/personal/measurements", match: "prefix" },
+  appointments: { href: "/app/personal/appointments", match: "prefix" },
+  followup: { href: "/app/personal/care", match: "prefix" },
+  profile: { href: "/app/more", match: "exact" },
+  "appointment-history": { href: "/app/personal/appointments", match: "prefix" },
+  family: { href: "/app/family", match: "prefix" },
+  medications: { href: "/app/personal/medications", match: "prefix" },
+  "food-fitness": { href: "/app/personal/wellness", match: "prefix" },
+  contact: { href: "/app/personal#personal-hospital-contact", match: "exact" },
+};
+
+function projectPersonalCustomerSections(): ApplicationNavigationGroup[] {
+  const items = (menu: readonly { id: CustomerMenuId; label: string }[]): ApplicationNavigationItem[] =>
+    menu.map(({ id, label }) => ({ ...PERSONAL_CUSTOMER_MENU_DESTINATIONS[id], label, menuId: id }));
+
+  return [
+    ...section("primary", "personal", items(CUSTOMER_PRIMARY_MENU)),
+    ...section("top-menu", "personal", items(CUSTOMER_TOP_MENU)),
+  ];
+}
+
+/**
+ * UI-01: in the Personal workspace the customer menus come first; every other Personal item stays a secondary
+ * destination in its UI-4 section, minus the Personal home entry and any href a customer menu entry already opens.
+ */
+function withPersonalCustomerNavigation(groups: readonly ApplicationNavigationGroup[]): ApplicationNavigationGroup[] {
+  const customerGroups = projectPersonalCustomerSections();
+  const taken = new Set(customerGroups.flatMap(({ items }) => items.map(({ href }) => href)));
+  const otherGroups = groups
+    .map((group) => group.workspace !== "personal"
+      ? group
+      : { ...group, items: group.id === "home" ? [] : group.items.filter(({ href }) => !taken.has(href)) })
+    .filter(({ items }) => items.length > 0);
+
+  return [...customerGroups, ...otherGroups];
+}
+
 /** Shell navigation must not fail the page: without workspace data the areas entry is simply withheld (fail closed). */
 export async function listNavigationHospitalWorkspaces(actor: ActorContext): Promise<readonly ActorHospitalWorkspace[]> {
   try {
@@ -370,5 +414,5 @@ export function projectApplicationNavigation(
     groups.push(...section("account", workspace, accountItems(workspace)));
   }
 
-  return groups;
+  return hasPersonalWorkspace ? withPersonalCustomerNavigation(groups) : groups;
 }

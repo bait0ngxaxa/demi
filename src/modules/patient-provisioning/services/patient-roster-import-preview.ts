@@ -17,6 +17,10 @@ import {
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 import { patientClassificationTypeSchema } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 import {
+  importedPatientHealthHistorySchema,
+  type ImportedPatientHealthHistory,
+} from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
+import {
   ApplicationError,
   ForbiddenError,
   InfrastructureError,
@@ -24,6 +28,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import { validatePatientImportProfile } from "../import/patient-import-profile";
+import { PATIENT_IMPORT_COLUMN_BINDINGS } from "../import/patient-import-template-validation";
 
 import {
   assertPatientBulkProvisioningPolicy,
@@ -37,6 +42,8 @@ import {
   PATIENT_IMPORT_BASELINE_FIELD_KEYS,
   PATIENT_IMPORT_CONTRACT_VERSION,
   PATIENT_IMPORT_FIELD_KEYS,
+  PATIENT_IMPORT_HEALTH_HISTORY_FIELD_KEYS,
+  isPatientImportHealthHistoryField,
   type PatientImportBaselineFieldKey,
   type PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
@@ -300,6 +307,51 @@ export function classificationImportReason(
   }
 }
 
+export type HealthHistoryImportState =
+  | { status: "NOT_APPLICABLE" }
+  | { status: "HEALTH_HISTORY_READY"; values: ImportedPatientHealthHistory }
+  | { status: "HEALTH_HISTORY_DATA_INVALID"; invalidHeaders: readonly string[] };
+
+/**
+ * Medical and family history for a new relationship. Blank answers are UNKNOWN;
+ * a row whose answers are all UNKNOWN with no other conditions writes nothing, so
+ * the read model keeps showing "not recorded". It is never derived from the
+ * RISK/DIABETES classification.
+ */
+export function readHealthHistoryImportState(
+  candidate: PatientProvisioningImportCandidate,
+): HealthHistoryImportState {
+  const { fieldAssessments, healthHistoryCandidates } = candidate.canonicalRow;
+  const parsed = importedPatientHealthHistorySchema.safeParse(healthHistoryCandidates);
+  // Answers are always enum values here, so only other conditions (length) can fail the schema.
+  const invalidFields = PATIENT_IMPORT_HEALTH_HISTORY_FIELD_KEYS.filter(
+    (field) =>
+      fieldAssessments[field].diagnostics.length > 0 || (!parsed.success && field === "otherConditions"),
+  );
+
+  if (!parsed.success || invalidFields.length > 0) {
+    return {
+      status: "HEALTH_HISTORY_DATA_INVALID",
+      invalidHeaders: invalidFields.map((field) => PATIENT_IMPORT_COLUMN_BINDINGS.get(field)?.sourceHeader ?? field),
+    };
+  }
+
+  const { otherConditions, ...answers } = parsed.data;
+
+  return otherConditions === null && Object.values(answers).every((answer) => answer === "UNKNOWN")
+    ? { status: "NOT_APPLICABLE" }
+    : { status: "HEALTH_HISTORY_READY", values: parsed.data };
+}
+
+export function healthHistoryImportReason(state: HealthHistoryImportState): string | null {
+  if (state.status !== "HEALTH_HISTORY_DATA_INVALID") {
+    return null;
+  }
+
+  const columns = state.invalidHeaders.length > 0 ? ` (คอลัมน์ ${state.invalidHeaders.join(", ")})` : "";
+  return `ประวัติโรคหรือประวัติครอบครัวไม่ถูกต้อง${columns} กรุณาเลือก มี ไม่มี หรือ ไม่ทราบ และระบุโรคอื่นไม่เกิน 1,000 ตัวอักษร`;
+}
+
 export function buildBaselineCreateInput(
   relationshipId: string,
   state: BaselineImportState,
@@ -485,6 +537,7 @@ export function hasInvalidPatientImportProfile(candidate: PatientProvisioningImp
     field !== "sourceSequenceNumber" &&
     !PATIENT_IMPORT_BASELINE_FIELD_KEYS.some((baseline) => baseline === field) &&
     field !== "diabetesClassification" &&
+    !isPatientImportHealthHistoryField(field) &&
     candidate.canonicalRow.fieldAssessments[field].diagnostics.length > 0,
   );
 }
@@ -580,6 +633,18 @@ export function composePatientRosterPreviewRow(input: {
     );
   }
 
+  const healthHistoryState = readHealthHistoryImportState(input.candidate);
+
+  if (healthHistoryState.status === "HEALTH_HISTORY_DATA_INVALID") {
+    return toPreviewRow(
+      input.candidate,
+      "INVALID",
+      healthHistoryImportReason(healthHistoryState),
+      baselineState.status,
+      patientClassification,
+    );
+  }
+
   return toPreviewRow(
     input.candidate,
     "READY",
@@ -670,6 +735,8 @@ export const patientRosterImportPreviewInternals = {
   composePatientRosterPreviewRow,
   normalizeImportCandidates,
   normalizeImportOptions,
+  healthHistoryImportReason,
   readBaselineImportState,
+  readHealthHistoryImportState,
   readPatientClassificationImportState,
 };

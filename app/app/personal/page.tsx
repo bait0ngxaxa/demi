@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { HospitalContentCategory } from "@prisma/client";
 
+import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
 import { loadHomeSection } from "@/components/home/load-home-section";
+import { projectHomeTopMenu } from "@/components/home/home-top-menu";
 import { getOwnNextAppointmentForRelationship } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { listPatientHospitalContent } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
 import { getActivePatientHospitals, selectPatientPersonalHomeHospital } from "@/modules/patient-self/transport/patient-personal-home-selection";
@@ -73,6 +75,8 @@ export default async function PatientPersonalPage(
   return (
     <PatientPersonalHome
       activeHospitals={activeHospitalOptions}
+      // Hospital workspaces only gate the Work areas entry; the Personal top menu never reads them.
+      menu={projectHomeTopMenu(projectApplicationNavigation(patient.actor, []), "personal")}
       knowledgeFailed={knowledgePage?.status === "FAILED"}
       knowledgeItems={knowledgePage?.status === "LOADED" ? knowledgePage.value.items : []}
       newsFailed={newsPage?.status === "FAILED"}

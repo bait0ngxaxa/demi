@@ -14,6 +14,7 @@ import type { PatientClassificationType } from "@/modules/patient-classification
 import {
   PATIENT_IMPORT_CONTRACT_VERSION,
   PATIENT_IMPORT_FIELD_KEYS,
+  type CanonicalPatientImportRow,
   type PatientImportFieldAssessment,
   type PatientImportFieldAssessmentMap,
   type PatientProvisioningImportCandidate,
@@ -23,6 +24,7 @@ import type { ProvisionPatientInput } from "../schemas/patient-provisioning-sche
 const provisionPatientInTransaction = vi.hoisted(() => vi.fn());
 const createPatientBaselineInTransaction = vi.hoisted(() => vi.fn());
 const setPatientClassificationInTransaction = vi.hoisted(() => vi.fn());
+const createImportedPatientHealthHistoryInTransaction = vi.hoisted(() => vi.fn());
 
 vi.mock("./patient-provisioning-transaction", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./patient-provisioning-transaction")>()),
@@ -33,6 +35,9 @@ vi.mock("@/modules/patient-baseline/services/patient-baseline-transaction", () =
 }));
 vi.mock("@/modules/patient-classification/services/patient-classification-transaction", () => ({
   setPatientClassificationInTransaction,
+}));
+vi.mock("@/modules/patient-hospital-profile/services/patient-health-history-service", () => ({
+  createImportedPatientHealthHistoryInTransaction,
 }));
 
 import {
@@ -111,6 +116,7 @@ function createCandidate(options: {
   bloodSugarDtx?: number | null;
   hba1c?: number | null;
   classification?: PatientClassificationType | null;
+  healthHistory?: Partial<CanonicalPatientImportRow["healthHistoryCandidates"]>;
   assessments?: Partial<PatientImportFieldAssessmentMap>;
 } = {}): PatientProvisioningImportCandidate {
   const input = options.input === undefined ? defaultInput : options.input;
@@ -161,6 +167,16 @@ function createCandidate(options: {
         hba1c: options.hba1c ?? null,
       },
       organizationCandidates: { hospitalNumber: input?.hospitalNumber ?? null },
+      healthHistoryCandidates: {
+        diabetes: "UNKNOWN",
+        hypertension: "UNKNOWN",
+        otherConditions: null,
+        familyHypertension: "UNKNOWN",
+        familyDiabetes: "UNKNOWN",
+        familyHeartDisease: "UNKNOWN",
+        familyStroke: "UNKNOWN",
+        ...options.healthHistory,
+      },
       fieldAssessments: createAssessments(options.assessments),
       diagnostics: [],
     },
@@ -319,6 +335,29 @@ describe("Patient roster import: new patients only", () => {
     });
   });
 
+  it("carries medical and family history and names the column of an unsupported answer", () => {
+    const ready = compose(createCandidate({ healthHistory: { diabetes: "YES", familyStroke: "NO" } }), undefined);
+    const invalid = compose(
+      createCandidate({
+        assessments: {
+          familyHeartDisease: {
+            ...emptyAssessment,
+            present: true,
+            status: "INVALID",
+            sourceHeaders: ["ญาติสายตรง: โรคหัวใจ"],
+            diagnostics: ["HEALTH_HISTORY_DATA_INVALID"],
+          },
+        },
+      }),
+      undefined,
+    );
+
+    expect(ready).toMatchObject({ classification: "READY" });
+    expect(invalid.classification).toBe("INVALID");
+    expect(invalid.reason).toContain("ญาติสายตรง: โรคหัวใจ");
+    expect(invalid.reason).toContain("มี ไม่มี หรือ ไม่ทราบ");
+  });
+
   it("keeps invalid and duplicate precedence before anything else", () => {
     expect(compose(createCandidate({ input: null }), undefined).classification).toBe("INVALID");
     expect(compose(createCandidate(), undefined, { duplicateCount: 2 }).classification).toBe(
@@ -386,6 +425,20 @@ describe("Patient roster import: existing patients are an identity check only", 
       baselineStatus: "NOT_APPLICABLE",
       patientClassification: { status: "NOT_APPLICABLE", sourceClassification: null },
     });
+  });
+
+  it("ignores invalid medical/family history for a patient that already exists", () => {
+    const row = compose(
+      createCandidate({
+        healthHistory: { diabetes: "YES" },
+        assessments: {
+          historyHypertension: { ...emptyAssessment, present: true, status: "INVALID", diagnostics: ["HEALTH_HISTORY_DATA_INVALID"] },
+        },
+      }),
+      existingPerson({ relationship }),
+    );
+
+    expect(row.classification).toBe("ALREADY_EXISTS");
   });
 
   it("does not need the baseline date for rows that already exist", () => {
@@ -469,6 +522,40 @@ describe("Patient roster import: baseline and classification state readers", () 
   });
 });
 
+describe("Patient roster import: health history state reader", () => {
+  const read = patientRosterImportInternals.readHealthHistoryImportState;
+
+  it("writes nothing when every answer is UNKNOWN (blank) and no other condition is given", () => {
+    expect(read(createCandidate())).toEqual({ status: "NOT_APPLICABLE" });
+  });
+
+  it("keeps UNKNOWN distinct from NO and other conditions as nullable text", () => {
+    expect(read(createCandidate({ healthHistory: { hypertension: "NO", otherConditions: "หอบหืด" } }))).toEqual({
+      status: "HEALTH_HISTORY_READY",
+      values: {
+        diabetes: "UNKNOWN",
+        hypertension: "NO",
+        otherConditions: "หอบหืด",
+        familyHypertension: "UNKNOWN",
+        familyDiabetes: "UNKNOWN",
+        familyHeartDisease: "UNKNOWN",
+        familyStroke: "UNKNOWN",
+      },
+    });
+  });
+
+  it("never derives medical history from the RISK/DIABETES classification", () => {
+    expect(read(createCandidate({ classification: "DIABETES" }))).toEqual({ status: "NOT_APPLICABLE" });
+  });
+
+  it("rejects other conditions longer than the stored limit", () => {
+    expect(read(createCandidate({ healthHistory: { otherConditions: "ก".repeat(1001) } }))).toMatchObject({
+      status: "HEALTH_HISTORY_DATA_INVALID",
+      invalidHeaders: ["โรคประจำตัวอื่น ๆ"],
+    });
+  });
+});
+
 describe("Patient roster import: result summary", () => {
   function createResult(
     result: PatientImportRowResult["result"],
@@ -504,7 +591,7 @@ describe("Patient roster import: result summary", () => {
     const summary = patientRosterImportInternals.summarizePatientRosterImportRows({
       targetHospitalId,
       rows,
-      domainOutcomesByIndex: new Map([[0, { baselineStatus: "BASELINE_CREATED", classificationCreated: true }]]),
+      domainOutcomesByIndex: new Map([[0, { baselineStatus: "BASELINE_CREATED", classificationCreated: true, healthHistoryCreated: true }]]),
       file: null,
     });
 
@@ -573,6 +660,7 @@ describe("Patient roster import orchestration (re-validates and commits READY ro
     provisionPatientInTransaction.mockReset();
     createPatientBaselineInTransaction.mockReset();
     setPatientClassificationInTransaction.mockReset();
+    createImportedPatientHealthHistoryInTransaction.mockReset();
     provisionPatientInTransaction.mockImplementation(async (_tx: unknown, _actor: unknown, input: ProvisionPatientInput) => ({
       outcome: "CREATED",
       personId: "66666666-6666-4666-8666-666666666666",
@@ -615,6 +703,31 @@ describe("Patient roster import orchestration (re-validates and commits READY ro
     });
     expect(setPatientClassificationInTransaction.mock.calls[0]?.[2]).not.toHaveProperty(
       "explicitChangeConfirmation",
+    );
+  });
+
+  it("writes supplied medical/family history in the row transaction and skips rows with none", async () => {
+    const { database, transaction } = createDatabase();
+    const summary = await importPatientRoster(
+      actor,
+      targetHospitalId,
+      [
+        createCandidate({ rowNumber: 3, healthHistory: { diabetes: "YES", familyDiabetes: "NO", otherConditions: "ไขมันในเลือดสูง" } }),
+        createCandidate({ rowNumber: 4, input: inputFor("1000000000017") }),
+      ],
+      { database, now: () => now },
+      options,
+    );
+
+    expect(summary).toMatchObject({ imported: 2 });
+    expect(summary.rows[0]?.reason).toContain("บันทึกประวัติโรคและประวัติครอบครัวแล้ว");
+    expect(summary.rows[1]?.reason).not.toContain("ประวัติโรค");
+    expect(createImportedPatientHealthHistoryInTransaction).toHaveBeenCalledTimes(1);
+    expect(createImportedPatientHealthHistoryInTransaction).toHaveBeenCalledWith(
+      transaction,
+      actor,
+      newRelationshipId,
+      expect.objectContaining({ diabetes: "YES", hypertension: "UNKNOWN", familyDiabetes: "NO", otherConditions: "ไขมันในเลือดสูง" }),
     );
   });
 

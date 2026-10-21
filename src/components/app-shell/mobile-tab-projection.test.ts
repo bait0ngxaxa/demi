@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import { projectApplicationNavigation as projectNavigation } from "./application-navigation";
+import { resolveActiveMobileTabId } from "./mobile-navigation-state";
 import { projectMobileNavigation, projectMoreNavigation } from "./mobile-tab-projection";
 import type { ApplicationNavigationGroup, ApplicationWorkspaceContext } from "./navigation-types";
 
@@ -76,17 +77,38 @@ function primaryTabs(
 }
 
 describe("server-projected mobile navigation", () => {
-  it("uses the same Patient-first primary order for Patient-only and Patient plus Work roles", () => {
+  it("uses the customer bottom menu verbatim for Patient-only and Patient plus Work roles", () => {
     const patient = projectApplicationNavigation(actor([Role.PATIENT]));
     const patientOsm = projectApplicationNavigation(actor([Role.PATIENT, Role.OSM]));
-    const expectedIds = ["home", "appointments", "wellness", "care", "more"];
+    const patientOwner = projectApplicationNavigation(actor([Role.PATIENT, Role.HOSPITAL]));
+    const expectedIds = ["home", "health", "appointments", "followup", "more"];
+    const expectedLabels = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
+    const expectedHrefs = ["/app/personal", "/app/personal/measurements", "/app/personal/appointments", "/app/personal/care", "/app/more"];
 
     expect(projectMobileNavigation(patient).availableWorkspaces).toEqual(["personal"]);
-    expect(primaryTabs(patient, "personal").map(({ id }) => id)).toEqual(expectedIds);
-    expect(primaryTabs(patientOsm, "personal").map(({ id }) => id)).toEqual(expectedIds);
+    for (const navigation of [patient, patientOsm, patientOwner]) {
+      const tabs = primaryTabs(navigation, "personal");
+      expect(tabs.map(({ id }) => id)).toEqual(expectedIds);
+      expect(tabs.map(({ label }) => label)).toEqual(expectedLabels);
+      expect(tabs.map(({ href }) => href)).toEqual(expectedHrefs);
+    }
+    // Work roles keep their role-based tabs, including the เพิ่มเติม slot.
+    expect(primaryTabs(patientOwner, "work").map(({ id }) => id)).toEqual(["home", "patients", "workforce", "hospital-reports", "more"]);
     expect(hrefs(patientOsm).filter((href) => href.startsWith("/app/patients/"))).toContain(
       "/app/patients/assigned",
     );
+  });
+
+  it.each([
+    ["/app/personal", "", "home"],
+    ["/app/personal/measurements", "", "health"],
+    ["/app/personal/appointments/rel-1/apt-1", "", "appointments"],
+    ["/app/personal/care/rel-1/programs/program-1/rounds", "", "followup"],
+    ["/app/more", "workspace=personal", "more"],
+    ["/app/personal/news", "", null],
+  ] as const)("marks the Patient customer tab for %s", (pathname, search, expected) => {
+    const tabs = primaryTabs(projectApplicationNavigation(actor([Role.PATIENT])), "personal");
+    expect(resolveActiveMobileTabId(pathname, search, tabs)).toBe(expected);
   });
 
   it("projects OSM task tabs only from the authorized assigned-Patient destination", () => {

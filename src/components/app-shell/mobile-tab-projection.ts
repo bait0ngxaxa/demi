@@ -1,3 +1,4 @@
+import { CUSTOMER_PRIMARY_MENU, getCustomerMenuIcon } from "./customer-navigation";
 import type {
   ApplicationNavigationGroup,
   ApplicationNavigationItem,
@@ -306,6 +307,36 @@ function projectWorkTabs(
   return tabs;
 }
 
+/**
+ * UI-01: the Patient's customer bottom menu is the `primary` section itself, five tabs with no "เพิ่มเติม" slot.
+ * The โปรไฟล์ tab opens the More hub, so it keeps the `more` id and active route.
+ */
+function projectCustomerTabs(
+  navigation: readonly ApplicationNavigationGroup[],
+  workspace: ApplicationWorkspaceContext,
+): MobileNavigationTab[] | null {
+  const primary = navigation.find((group) => group.id === "primary" && group.workspace === workspace);
+  if (!primary) {
+    return null;
+  }
+
+  return primary.items.flatMap((item): MobileNavigationTab[] => {
+    const entry = CUSTOMER_PRIMARY_MENU.find(({ id }) => id === item.menuId);
+    if (!entry) {
+      return [];
+    }
+    const isProfile = entry.id === "profile";
+
+    return [tabFromItem(item, {
+      id: isProfile ? "more" : entry.id,
+      label: entry.label,
+      accessibleLabel: entry.label,
+      icon: getCustomerMenuIcon(entry.id),
+      activeRoute: isProfile ? "more" : entry.id === "home" ? "personal-home" : "navigation-item",
+    })];
+  });
+}
+
 export function projectMobileNavigation(
   navigation: readonly ApplicationNavigationGroup[],
 ): MobileNavigationProjection {
@@ -313,7 +344,7 @@ export function projectMobileNavigation(
     hasWorkspaceNavigation(navigation, workspace),
   );
   const personalTabs = availableWorkspaces.includes("personal")
-    ? [...projectPersonalTabs(navigation).slice(0, 4), moreTab]
+    ? projectCustomerTabs(navigation, "personal") ?? [...projectPersonalTabs(navigation).slice(0, 4), moreTab]
     : [];
   const workTabs = availableWorkspaces.includes("work")
     ? [...projectWorkTabs(navigation).slice(0, 4), moreTab]
@@ -332,11 +363,10 @@ export function projectMoreNavigation(
   navigation: readonly ApplicationNavigationGroup[],
   primaryTabs: readonly MobileNavigationTab[],
 ): readonly ApplicationNavigationGroup[] {
-  // Full hrefs: the OSM task tabs and their navigation items share the `?task=` query.
+  // Full hrefs: the OSM task tabs and their navigation items share the `?task=` query. The More tab is listed too:
+  // the Patient's โปรไฟล์ menu item opens this same hub, so it is never a row inside it.
   const primaryHrefs = new Set(
-    primaryTabs.flatMap(({ href, activeRoute }) =>
-      href && activeRoute !== "more" ? [href] : [],
-    ),
+    primaryTabs.flatMap(({ href }) => (href ? [href] : [])),
   );
 
   return navigation

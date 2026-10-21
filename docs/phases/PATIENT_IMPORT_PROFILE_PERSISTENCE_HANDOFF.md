@@ -1,5 +1,7 @@
 # Patient Import → Patient Detail reconciliation
 
+> **Superseded in part (2026-10-21):** Template v3 adds seven medical/family history columns (AA–AG) persisted to `PatientHospitalHealthHistory`; see [Patient Import v3](./PATIENT_IMPORT_V3_COMPLETE_INITIAL_HEALTH_DATA.md) for the current field mapping. The rows below remain accurate for the A–Z fields.
+
 Decision date: 2026-10-13. Base: main `ed69973` (Patient Import v2 merge).
 Authority: [ADR-0011](../adr/0011-patient-import-profile-persistence.md).
 

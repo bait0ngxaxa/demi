@@ -6,6 +6,9 @@ import type {
   PatientImportDiagnosticCode,
 } from "./patient-import-contract";
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
+import type { HealthHistoryAnswer } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
+
+import { PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWERS } from "./patient-import-template-contract";
 
 export type CellNormalizationResult<T> = {
   value: T | null;
@@ -139,7 +142,7 @@ export function normalizeIdentifierTextCell(cell: Cell): CellNormalizationResult
   return normalizeTextCell(cell);
 }
 
-function normalizePatientClassificationText(value: string): string {
+function normalizeChoiceText(value: string): string {
   return value
     .normalize("NFC")
     .replace(/[\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+/gu, " ")
@@ -175,7 +178,7 @@ export function normalizePatientClassificationCell(
     return { value: null, diagnostics: ["CLASSIFICATION_DATA_INVALID"] };
   }
 
-  const normalized = normalizePatientClassificationText(state.text);
+  const normalized = normalizeChoiceText(state.text);
 
   if (normalized === "กลุ่มเสี่ยง") {
     return { value: "RISK", diagnostics: [] };
@@ -186,6 +189,43 @@ export function normalizePatientClassificationCell(
   }
 
   return { value: null, diagnostics: ["CLASSIFICATION_DATA_INVALID"] };
+}
+
+/**
+ * Strict template answer: only มี / ไม่มี / ไม่ทราบ. A blank or "-" cell is UNKNOWN,
+ * never NO; anything else is rejected rather than guessed.
+ */
+export function normalizeHealthHistoryAnswerCell(
+  cell: Cell,
+): CellNormalizationResult<HealthHistoryAnswer> {
+  const state = readCellState(cell);
+
+  if (state.kind === "missing") {
+    return { value: "UNKNOWN", diagnostics: [] };
+  }
+
+  if (state.kind === "unsupported") {
+    return {
+      value: null,
+      diagnostics: [...new Set<PatientImportDiagnosticCode>([
+        ...diagnosticsForUnsupportedCell(cell),
+        "HEALTH_HISTORY_DATA_INVALID",
+      ])],
+    };
+  }
+
+  if (state.kind !== "text") {
+    return { value: null, diagnostics: ["HEALTH_HISTORY_DATA_INVALID"] };
+  }
+
+  const normalized = normalizeChoiceText(state.text);
+  const answer = Object.entries(PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWERS).find(
+    ([label]) => label === normalized,
+  )?.[1];
+
+  return answer
+    ? { value: answer, diagnostics: [] }
+    : { value: null, diagnostics: ["HEALTH_HISTORY_DATA_INVALID"] };
 }
 
 export function normalizeNationalIdCell(cell: Cell): CellNormalizationResult<string> {

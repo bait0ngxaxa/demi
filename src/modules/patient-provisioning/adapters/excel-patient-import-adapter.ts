@@ -14,6 +14,7 @@ import {
 import {
   isPatientImportClassificationField,
   isPatientImportBaselineField,
+  isPatientImportHealthHistoryField,
   PATIENT_IMPORT_FIELD_KEYS,
 } from "../import/patient-import-contract";
 import type {
@@ -36,6 +37,7 @@ import {
 } from "../import/patient-import-template-validation";
 import {
   normalizeDateCell,
+  normalizeHealthHistoryAnswerCell,
   normalizeNationalIdCell,
   normalizeNumericCell,
   normalizePhoneCell,
@@ -73,6 +75,7 @@ const diagnosticMessages: Readonly<Record<PatientImportDiagnosticCode, string>> 
   LOSSY_EXCEL_VALUE: "ค่าใน Excel อาจสูญเสียข้อมูลจากการจัดรูปแบบ",
   AMBIGUOUS_VALUE: "ค่าบางรายการตีความได้มากกว่าหนึ่งแบบ",
   CLASSIFICATION_DATA_INVALID: "ค่ากลุ่มสถานะผู้ป่วยไม่ใช่ค่าที่รองรับ",
+  HEALTH_HISTORY_DATA_INVALID: "ค่าประวัติโรคหรือประวัติครอบครัวต้องเป็น มี ไม่มี หรือ ไม่ทราบ",
   FORMULA_VALUE: "ไม่รับค่าจากสูตร Excel เป็นข้อมูลอ้างอิงโดยอัตโนมัติ",
   EXCEL_ERROR: "เซลล์ Excel มีค่าผิดพลาด",
 };
@@ -195,7 +198,9 @@ function assessmentStatus(
       ? "PARSED_FOR_INITIAL_BASELINE"
       : isPatientImportClassificationField(field)
         ? "SUPPORTED_FOR_PATIENT_CLASSIFICATION"
-        : field === "sourceSequenceNumber" ? "IMPORT_METADATA" : "SUPPORTED_FOR_CURRENT_PROVISIONING";
+        : isPatientImportHealthHistoryField(field)
+          ? "SUPPORTED_FOR_HEALTH_HISTORY"
+          : field === "sourceSequenceNumber" ? "IMPORT_METADATA" : "SUPPORTED_FOR_CURRENT_PROVISIONING";
 }
 
 function updateFieldAssessment(
@@ -211,6 +216,7 @@ function updateFieldAssessment(
     SUPPORTED_FOR_CURRENT_PROVISIONING: 1,
     PARSED_FOR_INITIAL_BASELINE: 2,
     SUPPORTED_FOR_PATIENT_CLASSIFICATION: 2,
+    SUPPORTED_FOR_HEALTH_HISTORY: 2,
     IMPORT_METADATA: 1,
     INVALID: 4,
     AMBIGUOUS: 5,
@@ -271,6 +277,15 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
   let emergencyContactPhone: string | null = null;
   let emergencyContactRelationship: string | null = null;
   let sourceSequenceNumber: string | null = null;
+  let otherConditions: string | null = null;
+  const healthHistoryAnswers: Omit<CanonicalPatientImportRow["healthHistoryCandidates"], "otherConditions"> = {
+    diabetes: "UNKNOWN",
+    hypertension: "UNKNOWN",
+    familyHypertension: "UNKNOWN",
+    familyDiabetes: "UNKNOWN",
+    familyHeartDisease: "UNKNOWN",
+    familyStroke: "UNKNOWN",
+  };
 
   const parseTextField = (
     field: PatientImportFieldKey,
@@ -303,6 +318,24 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
 
     const result = normalizePatientClassificationCell(row.getCell(binding.columnNumber));
     diabetesClassification = result.value;
+    const status = assessmentStatus(field, result.diagnostics);
+    updateFieldAssessment(assessments, field, binding.sourceHeader, status, result.diagnostics);
+    addDiagnostics(diagnostics, field, binding.sourceHeader, result.diagnostics);
+  };
+
+  const parseHealthHistoryAnswerField = (
+    field: PatientImportFieldKey,
+    target: keyof typeof healthHistoryAnswers,
+  ): void => {
+    const binding = bindingsByField.get(field);
+
+    if (!binding) {
+      return;
+    }
+
+    const result = normalizeHealthHistoryAnswerCell(row.getCell(binding.columnNumber));
+    // An invalid cell keeps UNKNOWN here; its diagnostics make the row INVALID downstream.
+    healthHistoryAnswers[target] = result.value ?? "UNKNOWN";
     const status = assessmentStatus(field, result.diagnostics);
     updateFieldAssessment(assessments, field, binding.sourceHeader, status, result.diagnostics);
     addDiagnostics(diagnostics, field, binding.sourceHeader, result.diagnostics);
@@ -361,6 +394,13 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
   parseTextField("emergencyContactRelationship", (value) => { emergencyContactRelationship = value; });
   parseTextField("sourceSequenceNumber", (value) => { sourceSequenceNumber = value; });
   parseTextField("emergencyContactPhone", (value) => { emergencyContactPhone = value; });
+  parseHealthHistoryAnswerField("historyDiabetes", "diabetes");
+  parseHealthHistoryAnswerField("historyHypertension", "hypertension");
+  parseTextField("otherConditions", (value) => { otherConditions = value; });
+  parseHealthHistoryAnswerField("familyHypertension", "familyHypertension");
+  parseHealthHistoryAnswerField("familyDiabetes", "familyDiabetes");
+  parseHealthHistoryAnswerField("familyHeartDisease", "familyHeartDisease");
+  parseHealthHistoryAnswerField("familyStroke", "familyStroke");
 
   const dateBinding = bindingsByField.get("dateOfBirth");
   if (dateBinding) {
@@ -428,6 +468,7 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
       hba1c,
     },
     organizationCandidates: { hospitalNumber },
+    healthHistoryCandidates: { ...healthHistoryAnswers, otherConditions },
     fieldAssessments: assessments,
     diagnostics,
   };
@@ -554,7 +595,7 @@ async function loadPatientImportWorkbook(buffer: Buffer): Promise<ExcelJS.Workbo
 }
 
 /**
- * Parses a hospital-bound template v2 workbook. Any contract failure (size,
+ * Parses a hospital-bound template v3 workbook. Any contract failure (size,
  * metadata, hospital, header, row capacity) rejects the whole file before a
  * single candidate is produced.
  */

@@ -98,13 +98,14 @@ function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>
   }
 }
 
+// UI-01: the Patient's customer bottom and top menus first; remaining Personal items stay as secondary sections.
 const personalSections = [
-  ["home", null, ["/app/personal"]],
-  ["care", "การดูแลของฉัน", ["/app/personal/appointments", "/app/personal/care", "/app/personal/services"]],
-  ["health-records", "บันทึกสุขภาพ", ["/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements"]],
+  ["primary", null, ["/app/personal", "/app/personal/measurements", "/app/personal/appointments", "/app/personal/care", "/app/more"]],
+  ["top-menu", "เมนูด่วน", ["/app/personal/appointments", "/app/family", "/app/personal/medications", "/app/personal/wellness", "/app/personal#personal-hospital-contact"]],
+  ["care", "การดูแลของฉัน", ["/app/personal/services"]],
   ["reports-info", "ข่าวสารและความรู้", ["/app/personal/news", "/app/personal/knowledge"]],
 ] as const;
-const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/family", "/app/settings", "/app/support"]] as const;
+const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/settings", "/app/support"]] as const;
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
@@ -255,7 +256,8 @@ describe("UI-4 task-based navigation per actor", () => {
   it("does not project the workspace switch as a navigation section", () => {
     const groups = project(actor({ roles: [Role.HOSPITAL, Role.PATIENT], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }));
     expect(groups.map(({ label }) => label)).not.toContain("พื้นที่ใช้งาน");
-    expect(groups.filter(({ id }) => id === "home").map(({ workspace: groupWorkspace, items }) => [groupWorkspace, items[0]?.href])).toEqual([
+    // UI-01: the Personal home is the first customer bottom-menu entry; the Work home keeps its own section.
+    expect(groups.filter(({ id }) => id === "home" || id === "primary").map(({ workspace: groupWorkspace, items }) => [groupWorkspace, items[0]?.href])).toEqual([
       ["personal", "/app/personal"],
       ["work", "/app"],
     ]);
@@ -398,10 +400,30 @@ describe("application navigation visibility (unchanged policies)", () => {
 
       expect(workspaces.length).toBeGreaterThan(0);
       for (const context of workspaces) {
-        const account = sectionsIn(groups, context).at(-1);
-        expect(account?.[0]).toBe("account");
-        expect(account?.[2]).toContain("/app/family");
+        const sections = sectionsIn(groups, context);
+        expect(sections.at(-1)?.[0]).toBe("account");
+        // UI-01: the Patient reaches Family as ครอบครัวของฉัน in the top menu; Work keeps it in the account section.
+        const familySection = context === "personal" ? sections.find(([id]) => id === "top-menu") : sections.at(-1);
+        expect(familySection?.[2]).toContain("/app/family");
       }
+    }
+  });
+
+  it("gives the Patient the customer menus verbatim in every Personal workspace and never in Work", () => {
+    const bottom = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
+    const top = ["ประวัติการนัดหมาย", "ครอบครัวของฉัน", "ยา", "Food & Finess", "ติดต่อเรา"];
+    for (const roles of [[Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN]] as const) {
+      const groups = project(actor({ roles, osmHospitalRelationships: [osm(hospitalId)], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }));
+      const labels = (id: string, context: ApplicationWorkspaceContext) =>
+        groups.filter((group) => group.id === id && group.workspace === context).flatMap(({ items }) => items.map(({ label }) => label));
+
+      expect(labels("primary", "personal")).toEqual(bottom);
+      expect(labels("top-menu", "personal")).toEqual(top);
+      expect(labels("primary", "work")).toEqual([]);
+      expect(labels("top-menu", "work")).toEqual([]);
+    }
+    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.ADMIN]] as const) {
+      expect(project(actor({ roles })).some(({ id }) => id === "primary" || id === "top-menu")).toBe(false);
     }
   });
 

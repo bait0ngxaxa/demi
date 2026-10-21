@@ -19,7 +19,9 @@ export function illnessDuration(diagnosisYear: number | null | undefined, now: D
     ? year - diagnosisYear : null;
 }
 
-const answer = z.enum(["YES", "NO", "UNKNOWN"]);
+export const healthHistoryAnswerSchema = z.enum(["YES", "NO", "UNKNOWN"]);
+export type HealthHistoryAnswer = z.output<typeof healthHistoryAnswerSchema>;
+const answer = healthHistoryAnswerSchema;
 export const patientHealthHistorySchema = z.object({
   expectedVersion: z.coerce.number().int().min(0),
   diabetes: answer,
@@ -33,3 +35,10 @@ export const patientHealthHistorySchema = z.object({
 }).strict();
 
 export type PatientHealthHistoryInput = z.output<typeof patientHealthHistorySchema>;
+
+/** Initial history from a roster import: no version (create-only) and no diagnosis year column. */
+export const importedPatientHealthHistorySchema = patientHealthHistorySchema
+  .omit({ expectedVersion: true, diagnosisYear: true })
+  .extend({ otherConditions: z.string().trim().min(1).max(1000).nullable() });
+
+export type ImportedPatientHealthHistory = z.output<typeof importedPatientHealthHistorySchema>;

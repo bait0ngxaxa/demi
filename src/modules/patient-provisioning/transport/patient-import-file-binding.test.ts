@@ -106,7 +106,7 @@ describe("patient import file binding", () => {
 
   it("no longer accepts a preview bound under the previous import contract", async () => {
     const fingerprint = await hashPatientImportFile(createFileSource("file-old-contract"));
-    const previousContractVersion = "phase-16d4-osm-assignment-v2";
+    const previousContractVersion = "patient-import-v2-hospital-template";
     const oldBinding = createPatientImportPreviewBinding(
       fingerprint,
       targetHospitalId,
