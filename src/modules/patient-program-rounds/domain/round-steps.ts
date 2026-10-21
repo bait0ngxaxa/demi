@@ -41,6 +41,34 @@ export const VITALS_ITEMS = [
   "ความดัน",
 ] as const;
 
+/** The measurements the vitals step needs; the order is the order the step UI lists them. */
+export const VITALS_MEASUREMENTS = [
+  "weight",
+  "heightCm",
+  "waistCircumference",
+  "bloodSugar",
+  "systolicBloodPressure",
+  "diastolicBloodPressure",
+] as const;
+
+export type VitalsMeasurement = (typeof VITALS_MEASUREMENTS)[number];
+
+export const VITALS_MEASUREMENT_LABELS: Readonly<Record<VitalsMeasurement, string>> = {
+  weight: "น้ำหนัก",
+  heightCm: "ส่วนสูง",
+  waistCircumference: "รอบเอว",
+  bloodSugar: "ค่าน้ำตาล",
+  systolicBloodPressure: "ความดันตัวบน",
+  diastolicBloodPressure: "ความดันตัวล่าง",
+};
+
+/** Height is measured in rounds 1-2 only; later rounds use the latest recorded height (WB-DF-05). */
+export function requiredVitalsMeasurements(roundNumber: ProgramRoundNumber): readonly VitalsMeasurement[] {
+  return roundNumber <= 2
+    ? VITALS_MEASUREMENTS
+    : VITALS_MEASUREMENTS.filter((measurement) => measurement !== "heightCm");
+}
+
 function step(
   code: RoundStepCode,
   label: string,
@@ -135,7 +163,12 @@ export type RoundCompletionFact = {
   completedByDisplayName: string | null;
 };
 
-export type RoundFollowupFact = RoundStepEvidence & {
+/** A recorded vitals source of a round and which of its measurements hold a value. */
+export type RoundVitalsFact = RoundStepEvidence & {
+  measurements: readonly VitalsMeasurement[];
+};
+
+export type RoundFollowupFact = RoundVitalsFact & {
   goalPlanLinked: boolean;
   planAdjusted: boolean | null;
   /** The Goal Plan adjusted from this Follow-up, if any. */
@@ -148,7 +181,7 @@ export type ProgramRoundFacts = {
   preferredName: string | null;
   screening: RoundStepEvidence | null;
   /** Rounds 1-2. */
-  roundVitals: Partial<Record<ProgramRoundNumber, RoundStepEvidence>>;
+  roundVitals: Partial<Record<ProgramRoundNumber, RoundVitalsFact>>;
   /** Rounds 3-6 (Follow-up k = round k + 2). */
   followups: Partial<Record<ProgramRoundNumber, RoundFollowupFact>>;
   tools: Readonly<Record<PerRoundToolCode, Partial<Record<ProgramRoundNumber, RoundStepEvidence>>>>;
@@ -164,6 +197,8 @@ export type RoundStepState = RoundStepDefinition & {
   status: RoundStepStatus;
   evidence: RoundStepEvidence | null;
   skip: RoundStepSkipFact | null;
+  /** VITALS only: required measurements without a value in the round's record; empty otherwise. */
+  missingMeasurements: readonly VitalsMeasurement[];
 };
 
 export type RoundState =
@@ -193,6 +228,20 @@ export function isRoundOpenForWrites(
   return !completedRounds.has(roundNumber) && (roundNumber === 1 || completedRounds.has(roundNumber - 1));
 }
 
+/** Rounds 1-2 record vitals in the round itself; rounds 3-6 in the round's Follow-up. */
+function roundVitalsSource(facts: ProgramRoundFacts, roundNumber: ProgramRoundNumber): RoundVitalsFact | null {
+  return (roundNumber <= 2 ? facts.roundVitals[roundNumber] : facts.followups[roundNumber]) ?? null;
+}
+
+function missingVitalsMeasurements(
+  facts: ProgramRoundFacts,
+  roundNumber: ProgramRoundNumber,
+): readonly VitalsMeasurement[] {
+  const recorded = roundVitalsSource(facts, roundNumber)?.measurements ?? [];
+
+  return requiredVitalsMeasurements(roundNumber).filter((measurement) => !recorded.includes(measurement));
+}
+
 /** How DONE is computed for each step (single source for every view and the completion guard). */
 function stepEvidence(
   facts: ProgramRoundFacts,
@@ -202,8 +251,14 @@ function stepEvidence(
   const followup = facts.followups[roundNumber] ?? null;
 
   switch (definition.code) {
-    case "VITALS":
-      return roundNumber <= 2 ? (facts.roundVitals[roundNumber] ?? null) : followup;
+    case "VITALS": {
+      // Items 1-7 count as done only when every required measurement has a value.
+      const source = roundVitalsSource(facts, roundNumber);
+
+      return source && missingVitalsMeasurements(facts, roundNumber).length === 0
+        ? { at: source.at, byDisplayName: source.byDisplayName }
+        : null;
+    }
     case "KNOW_SELF":
       return facts.preferredName ? { at: null, byDisplayName: null } : null;
     case "PAM":
@@ -250,7 +305,9 @@ export function computeRoundStatus(facts: ProgramRoundFacts, roundNumber: Progra
     const skip = evidence ? null : (skips.find((candidate) => candidate.stepCode === definition.code) ?? null);
     const status: RoundStepStatus = evidence ? "DONE" : skip ? "SKIPPED" : locked ? "LOCKED" : "TODO";
 
-    return { ...definition, status, evidence, skip };
+    const missingMeasurements = definition.code === "VITALS" ? missingVitalsMeasurements(facts, roundNumber) : [];
+
+    return { ...definition, status, evidence, skip, missingMeasurements };
   });
   const resolved = steps.filter((state) => state.status === "DONE" || state.status === "SKIPPED");
   const resolvedItems = resolved.reduce((total, state) => total + state.items.length, 0);

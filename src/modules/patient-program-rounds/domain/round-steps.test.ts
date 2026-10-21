@@ -18,6 +18,7 @@ import {
   isRoundOpenForWrites,
   nextRoundStep,
   ROUND_STEPS,
+  VITALS_MEASUREMENTS,
   type ProgramRoundFacts,
 } from "./round-steps";
 
@@ -39,6 +40,16 @@ function facts(overrides: Partial<ProgramRoundFacts> = {}): ProgramRoundFacts {
 
 const evidence = { at: new Date("2026-10-01T00:00:00.000Z"), byDisplayName: null };
 const completed = { completedAt: evidence.at, completedByDisplayName: null };
+const allVitals = { ...evidence, measurements: VITALS_MEASUREMENTS };
+const followupVitals = VITALS_MEASUREMENTS.filter((measurement) => measurement !== "heightCm");
+const followup = (measurements: typeof followupVitals) => ({
+  ...evidence,
+  measurements,
+  goalPlanLinked: true,
+  planAdjusted: false,
+  adjustedPlan: null,
+});
+const vitalsStep = (status: ReturnType<typeof computeRoundStatus>) => status.steps.find((step) => step.code === "VITALS");
 
 describe("round numbering (WB-DF-01, SR-D13)", () => {
   it("defines six rounds and vitals storage only for rounds 1-2", () => {
@@ -138,9 +149,63 @@ describe("round status (SR-D1, SR-D5)", () => {
   });
 });
 
+describe("vitals step: items 1-7 need every measurement", () => {
+  it("stays TODO with the missing list when one value is recorded", () => {
+    const status = computeRoundStatus(facts({ roundVitals: { 1: { ...evidence, measurements: ["weight"] } } }), 1);
+
+    expect(vitalsStep(status)).toMatchObject({
+      status: "TODO",
+      evidence: null,
+      missingMeasurements: ["heightCm", "waistCircumference", "bloodSugar", "systolicBloodPressure", "diastolicBloodPressure"],
+    });
+    // The health path starting point still derives from whatever round 1 recorded (SR-D9).
+    expect(status.steps.find((step) => step.code === "HEALTH_PATH")?.status).toBe("DONE");
+  });
+
+  it("is DONE with every measurement, including height in rounds 1-2", () => {
+    expect(vitalsStep(computeRoundStatus(facts({ roundVitals: { 1: allVitals } }), 1))).toMatchObject({
+      status: "DONE",
+      missingMeasurements: [],
+    });
+
+    const withoutHeight = { ...evidence, measurements: followupVitals };
+    expect(
+      vitalsStep(computeRoundStatus(facts({ completions: { 1: completed }, roundVitals: { 2: withoutHeight } }), 2)),
+    ).toMatchObject({ status: "TODO", missingMeasurements: ["heightCm"] });
+  });
+
+  it("uses the latest height in rounds 3-6, and a Follow-up without vitals leaves the plan review DONE", () => {
+    const opened = { 1: completed, 2: completed, 3: completed };
+    const full = computeRoundStatus(facts({ completions: opened, followups: { 4: followup(followupVitals) } }), 4);
+    expect(vitalsStep(full)).toMatchObject({ status: "DONE", missingMeasurements: [] });
+
+    const bare = computeRoundStatus(facts({ completions: opened, followups: { 4: followup([]) } }), 4);
+    expect(vitalsStep(bare)).toMatchObject({ status: "TODO", missingMeasurements: followupVitals });
+    expect(bare.steps.find((step) => step.code === "HEALTH_PLAN_REVIEW")?.status).toBe("DONE");
+  });
+
+  it("refuses completion until the vitals step is DONE or skipped", () => {
+    const resolvedOthers = ROUND_STEPS[5]
+      .filter((step) => step.code !== "VITALS")
+      .map((step) => ({ stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
+    const opened = { 1: completed, 2: completed, 3: completed, 4: completed };
+    const partial = { followups: { 5: followup(["weight"]) }, completions: opened };
+
+    expect(computeRoundStatus(facts({ ...partial, skips: { 5: resolvedOthers } }), 5).canComplete).toBe(false);
+
+    const skipVitals = { stepCode: "VITALS" as const, reasonCode: "EQUIPMENT_UNAVAILABLE" as const, note: null, at: evidence.at, byDisplayName: null };
+    const skipped = computeRoundStatus(facts({ ...partial, skips: { 5: [...resolvedOthers, skipVitals] } }), 5);
+    expect(vitalsStep(skipped)?.status).toBe("SKIPPED");
+    expect(skipped.canComplete).toBe(true);
+
+    const full = computeRoundStatus(facts({ followups: { 5: followup(followupVitals) }, completions: opened, skips: { 5: resolvedOthers } }), 5);
+    expect(full.canComplete).toBe(true);
+  });
+});
+
 describe("stepper navigation (SR-D7)", () => {
   it("goes to the next unresolved step after the saved one, then earlier ones, then the summary", () => {
-    const steps = computeRoundStatus(facts({ roundVitals: { 1: evidence } }), 1).steps;
+    const steps = computeRoundStatus(facts({ roundVitals: { 1: allVitals } }), 1).steps;
 
     expect(nextRoundStep(steps, null)).toBe("KNOW_SELF");
     expect(nextRoundStep(steps, "VITALS")).toBe("KNOW_SELF");
@@ -150,7 +215,7 @@ describe("stepper navigation (SR-D7)", () => {
     const done = computeRoundStatus(
       facts({
         completions: { 1: completed, 2: completed, 3: completed, 4: completed },
-        followups: { 5: { ...evidence, goalPlanLinked: true, planAdjusted: false, adjustedPlan: null } },
+        followups: { 5: followup(followupVitals) },
         tools: { CONFIDENCE_RULER: {}, ROUTINE: { 5: evidence }, FLOATING_CHART: {}, DREAM_CARD: {} },
       }),
       5,

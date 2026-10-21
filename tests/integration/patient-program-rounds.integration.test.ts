@@ -562,7 +562,10 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
 
     // Before round 6 vitals exist the review cannot be confirmed.
     await expectSequenced(recordPatientProgramRoundReview(fixture.osm.actor, reviewInput(programId, 6, "HEALTH_PATH")));
-    await createFollowupForProgram(fixture.osm.actor, followupInput(programId, { sourceGoalPlanId: plan.goalPlanId }));
+    await createFollowupForProgram(
+      fixture.osm.actor,
+      followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, waistCircumference: 90, systolicBloodPressure: 128, diastolicBloodPressure: 82 }),
+    );
     const round6 = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "6");
     expect(round6.healthPath).toHaveLength(6);
     expect(round6.status.steps.find((step) => step.code === "HEALTH_PATH_REVIEW")?.status).toBe("TODO");
@@ -583,6 +586,64 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
         weight: 69,
       }),
     ).resolves.toMatchObject({ patientProgramId: programId });
+  });
+
+  it("counts the vitals step done only with every measurement; missing values are added or skipped", async () => {
+    const fixture = await createFixture("vitals-complete");
+    const programId = fixture.programId;
+    const vitalsStep = async (roundNumber: number) =>
+      (await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, String(roundNumber))).status.steps.find(
+        (step) => step.code === "VITALS",
+      );
+
+    await recordPatientProgramRoundVitals(
+      fixture.osm.actor,
+      vitalsInput(programId, { waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null }),
+    );
+    expect(await vitalsStep(1)).toMatchObject({
+      status: "TODO",
+      missingMeasurements: ["waistCircumference", "bloodSugar", "systolicBloodPressure", "diastolicBloodPressure"],
+    });
+
+    // Every other step resolved: completion is still refused while the vitals step is open.
+    const detail = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "1");
+    for (const step of detail.status.steps.filter((candidate) => candidate.status === "TODO" && candidate.code !== "VITALS")) {
+      await skipPatientProgramRoundStep(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, stepCode: step.code, reasonCode: "PATIENT_UNABLE" });
+    }
+    await expectSequenced(
+      completePatientProgramRound(fixture.osm.actor, completion(programId, 1)),
+      "ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้",
+    );
+
+    // Recorded values cannot be changed; the missing ones are added to the same record.
+    await expectSequenced(
+      recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(programId, { weight: 75 })),
+      "ค่าที่บันทึกไว้แล้วแก้ไขไม่ได้ เพิ่มได้เฉพาะค่าที่ยังขาด",
+    );
+    await expect(
+      recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(programId, { weight: null, heightCm: null })),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(await prisma.patientProgramRoundVitals.findMany({ where: { patientProgramId: programId } })).toEqual([
+      expect.objectContaining({ weight: 74, heightCm: 162, waistCircumference: 92, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 118 }),
+    ]);
+    expect(await prisma.auditEvent.count({ where: { action: "patient_program_round.vitals_supplemented" } })).toBe(1);
+    expect(await vitalsStep(1)).toMatchObject({ status: "DONE", missingMeasurements: [] });
+    await completePatientProgramRound(fixture.osm.actor, completion(programId, 1));
+
+    // Rounds 3-6: a Follow-up without vitals leaves the vitals step open, the plan review is still done.
+    const plan = await createGoalPlanForProgram(fixture.osm.actor, goalInput(programId));
+    await skipRestAndComplete(fixture, 2);
+    await createFollowupForProgram(
+      fixture.osm.actor,
+      followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, weight: null, bloodSugar: null }),
+    );
+    expect(await vitalsStep(3)).toMatchObject({
+      status: "TODO",
+      missingMeasurements: ["weight", "waistCircumference", "bloodSugar", "systolicBloodPressure", "diastolicBloodPressure"],
+    });
+    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("DONE");
+    await skipPatientProgramRoundStep(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, stepCode: "VITALS", reasonCode: "EQUIPMENT_UNAVAILABLE" });
+    expect(await stepStatus(fixture, 3, "VITALS")).toBe("SKIPPED");
   });
 
   it("keeps one completion row under concurrent completes and one vitals row under concurrent saves", async () => {

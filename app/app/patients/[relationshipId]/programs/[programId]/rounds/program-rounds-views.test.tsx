@@ -125,6 +125,34 @@ describe("round stepper (SR-D7)", () => {
     expect(markup).toContain(`${roundPath(1)}?after=VITALS`);
   });
 
+  it("lists the missing vitals and offers adding them or a reasoned skip", () => {
+    const partial = {
+      id: "v1", roundNumber: 1, serviceDate: new Date("2026-10-01T00:00:00.000Z"), recordedAt: at, weight: 70, heightCm: 160,
+      waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: 110, recordedByUser: recorder,
+    };
+    const markup = renderDetail(1, "VITALS", { roundVitals: [partial] });
+
+    expect(markup).toContain("ยังขาด: รอบเอว · ความดันตัวบน · ความดันตัวล่าง");
+    expect(markup).toContain('name="waistCircumference"');
+    expect(markup).not.toContain('name="weight"');
+    expect(markup).not.toContain('name="preferredName"');
+    expect(markup).toContain('type="hidden" name="serviceDate" value="2026-10-01"');
+    expect(markup).toContain("บันทึกค่าที่ยังขาด");
+    expect(markup).toContain("ข้ามรายการนี้");
+
+    // Rounds 3-6 record vitals in the Follow-up, so a missing value is resolved by a reasoned skip.
+    const bareFollowup = {
+      id: "f1", roundNumber: 1, serviceDate: at, recordedAt: at, sourceGoalPlanId: null, planAdjusted: false, weight: 70,
+      waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null,
+      createdByUser: recorder, activityProgress: [],
+    };
+    const round3 = renderDetail(3, "VITALS", { roundCompletions: [completion(1), completion(2)], followups: [bareFollowup] });
+    // Height is not asked again in rounds 3-6 (WB-DF-05).
+    expect(round3).toContain("ยังขาด: รอบเอว · ค่าน้ำตาล · ความดันตัวบน · ความดันตัวล่าง หากวัดค่าที่ขาดไม่ได้");
+    expect(round3).not.toContain("บันทึกค่าที่ยังขาด");
+    expect(round3).toContain("ข้ามรายการนี้");
+  });
+
   it("embeds a per-round tool form with the round number", () => {
     const markup = renderDetail(2, "CONFIDENCE_RULER", { roundCompletions: [completion(1)] });
 

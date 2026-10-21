@@ -9,6 +9,7 @@ import { inputClassName } from "@/components/ui/input";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
+import type { VitalsMeasurement } from "@/modules/patient-program-rounds/domain/round-steps";
 import {
   initialPatientProgramRoundActionState,
   type PatientProgramRoundActionState,
@@ -18,7 +19,7 @@ import { recordPatientProgramRoundVitalsAction } from "@/modules/patient-program
 const STRUCTURAL_MAXIMUM = 1_000_000;
 
 type FieldDefinition = {
-  name: "weight" | "heightCm" | "waistCircumference" | "bloodSugar" | "systolicBloodPressure" | "diastolicBloodPressure";
+  name: VitalsMeasurement;
   label: string;
   unit: string;
 };
@@ -50,6 +51,12 @@ export type RoundVitalsProfileFields = {
   profileVersion: number | null;
 };
 
+/** Adds the missing values to the round's existing record; recorded values stay as they are. */
+export type RoundVitalsSupplement = {
+  serviceDate: string;
+  missing: readonly VitalsMeasurement[];
+};
+
 export function RoundVitalsForm({
   heightEditable,
   latestHeightCm,
@@ -61,6 +68,7 @@ export function RoundVitalsForm({
   profile,
   roundNumber,
   submissionNonce,
+  supplement = null,
   todayServiceDate,
 }: {
   heightEditable: boolean;
@@ -75,6 +83,7 @@ export function RoundVitalsForm({
   profile: RoundVitalsProfileFields | null;
   roundNumber: number;
   submissionNonce: string;
+  supplement?: RoundVitalsSupplement | null;
   todayServiceDate: string;
 }): React.JSX.Element {
   const router = useRouter();
@@ -87,6 +96,9 @@ export function RoundVitalsForm({
   const bmi = calculateBodyMassIndex(parseOptionalNumber(weight), parseOptionalNumber(height));
 
   const formRef = useRef<HTMLFormElement>(null);
+  const fields = supplement
+    ? fieldDefinitions.filter((field) => supplement.missing.includes(field.name))
+    : fieldDefinitions;
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
@@ -122,7 +134,7 @@ export function RoundVitalsForm({
           )}
         </dl>
 
-        {profile ? (
+        {profile && !supplement ? (
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             {occupation ? null : (
               <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-1-occupation">
@@ -144,21 +156,25 @@ export function RoundVitalsForm({
           </div>
         ) : null}
 
-        <label className="mt-5 block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor={`round-${roundNumber}-service-date`}>
-          <span>วันที่ให้บริการ</span>
-          <input
-            className={inputClassName}
-            defaultValue={todayServiceDate}
-            id={`round-${roundNumber}-service-date`}
-            max={todayServiceDate}
-            name="serviceDate"
-            required
-            type="date"
-          />
-        </label>
+        {supplement ? (
+          <input name="serviceDate" type="hidden" value={supplement.serviceDate} />
+        ) : (
+          <label className="mt-5 block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor={`round-${roundNumber}-service-date`}>
+            <span>วันที่ให้บริการ</span>
+            <input
+              className={inputClassName}
+              defaultValue={todayServiceDate}
+              id={`round-${roundNumber}-service-date`}
+              max={todayServiceDate}
+              name="serviceDate"
+              required
+              type="date"
+            />
+          </label>
+        )}
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
-          {fieldDefinitions.map((field) => {
+          {fields.map((field) => {
             const inputId = `round-${roundNumber}-${field.name}`;
             const isHeight = field.name === "heightCm";
             const controlled =
@@ -197,13 +213,15 @@ export function RoundVitalsForm({
           })}
         </div>
 
-        <p aria-live="polite" className="mt-5 text-sm text-text-muted">
-          BMI (kg/m²):{" "}
-          <span className="font-semibold text-text">
-            {bmi === null ? "คำนวณได้เมื่อมีน้ำหนักและส่วนสูง" : bmi}
-          </span>{" "}
-          · แสดงค่าเท่านั้น ไม่แปลผล
-        </p>
+        {supplement ? null : (
+          <p aria-live="polite" className="mt-5 text-sm text-text-muted">
+            BMI (kg/m²):{" "}
+            <span className="font-semibold text-text">
+              {bmi === null ? "คำนวณได้เมื่อมีน้ำหนักและส่วนสูง" : bmi}
+            </span>{" "}
+            · แสดงค่าเท่านั้น ไม่แปลผล
+          </p>
+        )}
       </fieldset>
 
       {state.status === "ERROR" ? (
@@ -220,7 +238,7 @@ export function RoundVitalsForm({
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <div className="mt-6">
         <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-          {pending ? "กำลังบันทึก…" : "บันทึกสัญญาณชีพ"}
+          {pending ? "กำลังบันทึก…" : supplement ? "บันทึกค่าที่ยังขาด" : "บันทึกสัญญาณชีพ"}
         </Button>
       </div>
     </form>

@@ -32,7 +32,12 @@ import {
   type ProgramRoundNumber,
 } from "../domain/round-catalog";
 import { RoundConflictError } from "../domain/round-conflict-error";
-import { computeRoundStatus, roundStepDefinition } from "../domain/round-steps";
+import {
+  computeRoundStatus,
+  roundStepDefinition,
+  VITALS_MEASUREMENTS,
+  type VitalsMeasurement,
+} from "../domain/round-steps";
 import {
   roundCompletionRequestSchema,
   roundProfileRequestSchema,
@@ -300,6 +305,70 @@ async function writeRoundProfileFields(
   );
 }
 
+/**
+ * The vitals step is DONE only with every measurement, so while the round is writable the missing
+ * values of an existing record may be added. Recorded values stay as they are.
+ */
+async function supplementVitalsInTransaction(
+  transaction: Prisma.TransactionClient,
+  context: ActivePatientProgramMutationContext,
+  existing: PersistedRoundVitals,
+  input: RoundVitalsRequest,
+): Promise<PatientProgramRoundVitalsResult> {
+  if (input.preferredName || input.occupation) {
+    throw new ValidationError("Profile fields are not part of a round vitals supplement");
+  }
+
+  if (existing.serviceDate.toISOString().slice(0, 10) !== input.serviceDate) {
+    throw new RoundConflictError("วันที่ให้บริการไม่ตรงกับที่บันทึกไว้ของครั้งนี้ กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่");
+  }
+
+  const added: Partial<Record<VitalsMeasurement, number>> = {};
+
+  for (const measurement of VITALS_MEASUREMENTS) {
+    const value = input[measurement] ?? null;
+
+    if (value === null || existing[measurement] === value) {
+      continue;
+    }
+
+    if (existing[measurement] !== null) {
+      throw new RoundConflictError("ค่าที่บันทึกไว้แล้วแก้ไขไม่ได้ เพิ่มได้เฉพาะค่าที่ยังขาด");
+    }
+
+    added[measurement] = value;
+  }
+
+  const fields = Object.keys(added) as VitalsMeasurement[];
+
+  if (fields.length === 0) {
+    // Same values as recorded (e.g. a retried supplement): nothing to add.
+    return { ...writeResult("ALREADY_RECORDED", context, existing.roundNumber), roundVitalsId: existing.id };
+  }
+
+  const updated = await transaction.patientProgramRoundVitals.updateMany({
+    where: { id: existing.id, ...Object.fromEntries(fields.map((field) => [field, null])) },
+    data: added,
+  });
+
+  if (updated.count !== 1) {
+    throw new RoundConflictError("สัญญาณชีพของครั้งนี้ถูกแก้ไขโดยคำขออื่น กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่");
+  }
+
+  await recordAuditEvent(
+    {
+      actorUserId: context.access.actor.userId,
+      action: "patient_program_round.vitals_supplemented",
+      resourceType: "PatientProgramRoundVitals",
+      resourceId: existing.id,
+      metadata: { ...auditMetadata(context, existing.roundNumber), fields: fields.join(",") },
+    },
+    transaction,
+  );
+
+  return { ...writeResult("RECORDED", context, existing.roundNumber), roundVitalsId: existing.id };
+}
+
 async function recordVitalsInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
@@ -335,14 +404,14 @@ async function recordVitalsInTransaction(
         roundNumber: input.roundNumber,
       },
     },
-    select: { id: true },
+    select: roundVitalsSelect,
   });
 
-  if (existing) {
-    throw new RoundConflictError("ครั้งนี้มีการบันทึกสัญญาณชีพไว้แล้วและไม่สามารถบันทึกซ้ำได้");
-  }
-
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+
+  if (existing) {
+    return supplementVitalsInTransaction(transaction, context, existing, input);
+  }
 
   const record = await transaction.patientProgramRoundVitals.create({
     data: {

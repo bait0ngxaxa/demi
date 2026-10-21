@@ -424,7 +424,7 @@ type FollowupSpec = {
   plan: typeof PLAN_V1;
 };
 
-async function seedProgramFollowup(osmActor: ActorContext, programId: string, goalPlanId: string, spec: FollowupSpec): Promise<string> {
+async function seedProgramFollowup(osmActor: ActorContext, programId: string, vitals: Vitals, goalPlanId: string, spec: FollowupSpec): Promise<string> {
   const status = (achieved: number, target: number) => (achieved >= target ? "DONE" : achieved === 0 ? "NOT_DONE" : "PARTIAL");
   const result = await createFollowupForProgram(osmActor, {
     patientProgramId: programId,
@@ -434,7 +434,11 @@ async function seedProgramFollowup(osmActor: ActorContext, programId: string, go
     planAdjusted: spec.planAdjusted,
     hasObstacle: spec.obstacle,
     obstacleNote: spec.obstacle ? "ทดสอบ: ช่วงเทศกาลควบคุมอาหารได้ยาก" : null,
+    // Every round records all vitals so its vitals step is done.
     weight: spec.weight,
+    waistCircumference: vitals.waist - 1,
+    systolicBloodPressure: vitals.systolic - 4,
+    diastolicBloodPressure: vitals.diastolic - 2,
     bloodSugar: spec.dtx,
     activityProgress: spec.plan.map((item, index) => ({
       goalActivityCode: item.activityCode,
@@ -490,7 +494,8 @@ async function seedProgram(input: {
   const round2 = day(14);
   await recordPatientProgramRoundVitals(osmActor, {
     patientProgramId: programId, roundNumber: 2, submissionNonce: randomUUID(), serviceDate: round2,
-    weight: vitals.weight - 1, heightCm: vitals.heightCm, bloodSugar: vitals.dtx - 12,
+    weight: vitals.weight - 1, heightCm: vitals.heightCm, waistCircumference: vitals.waist - 1, systolicBloodPressure: vitals.systolic - 2,
+    diastolicBloodPressure: vitals.diastolic - 1, bloodSugar: vitals.dtx - 12,
   }, clock(round2, "10:00"));
   const planV1 = await createGoalPlanForProgram(osmActor, {
     patientProgramId: programId, submissionNonce: randomUUID(), primaryGoalCode: "glucose", items: PLAN_V1,
@@ -502,7 +507,7 @@ async function seedProgram(input: {
   await completeRound(2, round2);
 
   // Round 3: Follow-up 1 (plan kept), ruler and ความฝันของฉัน.
-  await seedProgramFollowup(osmActor, programId, planV1.goalPlanId, {
+  await seedProgramFollowup(osmActor, programId, vitals, planV1.goalPlanId, {
     day: day(28), dtx: vitals.dtx - 20, weight: vitals.weight - 1.5, planAdjusted: false, obstacle: true, progress: [3, 4, 1], plan: PLAN_V1,
   });
   await ruler(3, day(28), 7);
@@ -510,7 +515,7 @@ async function seedProgram(input: {
   await completeRound(3, day(28));
 
   // Round 4: Follow-up 2 adjusts the plan (v2 = แผนสุขภาพดีของฉัน), floating chart, ruler and routine.
-  const adjustingFollowupId = await seedProgramFollowup(osmActor, programId, planV1.goalPlanId, {
+  const adjustingFollowupId = await seedProgramFollowup(osmActor, programId, vitals, planV1.goalPlanId, {
     day: day(42), dtx: vitals.dtx - 28, weight: vitals.weight - 2.5, planAdjusted: true, obstacle: false, progress: [5, 6, 2], plan: PLAN_V1,
   });
   const planV2 = await createGoalPlanForProgram(osmActor, {
@@ -524,7 +529,7 @@ async function seedProgram(input: {
   await completeRound(4, day(42));
 
   // Round 5: Follow-up 3, routine and an EXTRA activity (a PAM review that round 5 does not list).
-  await seedProgramFollowup(osmActor, programId, planV2.goalPlanId, {
+  await seedProgramFollowup(osmActor, programId, vitals, planV2.goalPlanId, {
     day: day(56), dtx: vitals.dtx - 35, weight: vitals.weight - 3.5, planAdjusted: false, obstacle: false, progress: [5, 7, 4], plan: PLAN_V2,
   });
   await routine(5, day(56));
@@ -535,7 +540,7 @@ async function seedProgram(input: {
   await completeRound(5, day(56));
 
   // Round 6: Follow-up 4, the health path review and the ruler; then Final Assessment (After) and completion.
-  await seedProgramFollowup(osmActor, programId, planV2.goalPlanId, {
+  await seedProgramFollowup(osmActor, programId, vitals, planV2.goalPlanId, {
     day: day(70), dtx: vitals.dtx - 40, weight: vitals.weight - 4, planAdjusted: false, obstacle: false, progress: [4, 7, 3], plan: PLAN_V2,
   });
   await recordPatientProgramRoundReview(osmActor, {

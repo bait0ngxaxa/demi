@@ -52,6 +52,8 @@ import {
   type RoundState,
   type RoundStatus,
   type RoundStepEvidence,
+  type RoundVitalsFact,
+  VITALS_MEASUREMENTS,
 } from "../domain/round-steps";
 
 export type PatientProgramRoundQueryDatabase = PrismaClient | Prisma.TransactionClient;
@@ -341,6 +343,11 @@ const PER_ROUND_TOOL_RECORDS = {
   DREAM_CARD: "serviceOneDreamCards",
 } as const satisfies Record<PerRoundToolCode, keyof ProgramRoundRecord>;
 
+/** Which vitals measurements of a record hold a value (a Follow-up has no height). */
+function recordedMeasurements(values: Partial<Record<(typeof VITALS_MEASUREMENTS)[number], number | null>>) {
+  return VITALS_MEASUREMENTS.filter((measurement) => values[measurement] != null);
+}
+
 /** Plain facts for the shared status computation (SR-D1); every view and the completion guard use it. */
 export function buildProgramRoundFacts(
   program: ProgramRoundRecord,
@@ -371,6 +378,7 @@ export function buildProgramRoundFacts(
     const adjusted = adjustedPlanFor(program, followup.id);
     followups[roundNumber] = {
       ...evidence(followup.serviceDate ?? followup.recordedAt, followup.createdByUser),
+      measurements: recordedMeasurements(followup),
       goalPlanLinked: followup.sourceGoalPlanId !== null,
       planAdjusted: followup.planAdjusted,
       adjustedPlan: adjusted ? evidence(adjusted.createdAt, adjusted.createdByUser) : null,
@@ -389,9 +397,9 @@ export function buildProgramRoundFacts(
       ? evidence(program.screeningAssessment.submittedAt, program.screeningAssessment.conductedByUser)
       : null,
     roundVitals: Object.fromEntries(
-      program.roundVitals.map((vitals) => [
+      program.roundVitals.map((vitals): [number, RoundVitalsFact] => [
         vitals.roundNumber,
-        evidence(vitals.serviceDate, vitals.recordedByUser),
+        { ...evidence(vitals.serviceDate, vitals.recordedByUser), measurements: recordedMeasurements(vitals) },
       ]),
     ),
     followups,

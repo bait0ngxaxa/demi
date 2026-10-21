@@ -7,6 +7,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   ROUND_SUMMARY_STEP,
+  VITALS_MEASUREMENT_LABELS,
   type RoundStepState,
 } from "@/modules/patient-program-rounds/domain/round-steps";
 import {
@@ -213,9 +214,36 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
   switch (step.code) {
     case "VITALS":
       if (detail.vitals) {
+        const missing = step.status === "TODO" ? step.missingMeasurements : [];
+        const vitalsServiceDate = detail.vitals.serviceDate?.toISOString().slice(0, 10) ?? null;
+
         return (
           <div className="space-y-4">
             <VitalsList vitals={detail.vitals} />
+            {missing.length > 0 ? (
+              <Alert variant="warning">
+                ยังขาด: {missing.map((measurement) => VITALS_MEASUREMENT_LABELS[measurement]).join(" · ")}
+                {detail.vitals.source === "ROUND_VITALS"
+                  ? " บันทึกค่าที่ยังขาดให้ครบ หรือข้ามขั้นตอนนี้พร้อมเหตุผล"
+                  : " หากวัดค่าที่ขาดไม่ได้ ให้ข้ามขั้นตอนนี้พร้อมเหตุผล"}
+              </Alert>
+            ) : null}
+            {missing.length > 0 && editable && detail.vitals.source === "ROUND_VITALS" && vitalsServiceDate ? (
+              <RoundVitalsForm
+                heightEditable={detail.vitalsForm.heightEditable}
+                latestHeightCm={detail.vitalsForm.latestHeightCm}
+                nextHref={nextHref}
+                occupation={detail.patient.occupation}
+                patientDisplayName={detail.patient.displayName}
+                patientHospitalRelationshipId={detail.patientHospitalRelationshipId}
+                patientProgramId={detail.patientProgramId}
+                profile={null}
+                roundNumber={detail.roundNumber}
+                submissionNonce={context.nonces.vitals}
+                supplement={{ serviceDate: vitalsServiceDate, missing }}
+                todayServiceDate={context.todayServiceDate}
+              />
+            ) : null}
             {detail.vitals.source === "FOLLOWUP" ? <FollowupEntry context={context} /> : null}
           </div>
         );

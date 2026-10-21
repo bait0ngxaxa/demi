@@ -129,6 +129,7 @@ function createDatabase(input: {
   program?: Record<string, unknown>;
   profile?: Record<string, unknown> | null;
   profileUpdateCount?: number;
+  vitalsUpdateCount?: number;
 } = {}) {
   const transaction = {
     patientProgram: {
@@ -153,6 +154,7 @@ function createDatabase(input: {
         .mockResolvedValueOnce(input.vitalsByNonce ?? null)
         .mockResolvedValueOnce(input.vitalsForRound ?? null),
       create: vi.fn().mockResolvedValue(storedVitals()),
+      updateMany: vi.fn().mockResolvedValue({ count: input.vitalsUpdateCount ?? 1 }),
     },
     patientProgramRoundActivity: {
       findUnique: vi
@@ -241,6 +243,60 @@ describe("round vitals and the round 1 profile fields", () => {
     await expect(recordPatientProgramRoundVitals(actor, vitalsInput(), deps(reused.database))).rejects.toBeInstanceOf(
       ConflictError,
     );
+  });
+
+  it("adds only the missing values to the round's existing record while the round is writable", async () => {
+    const { database, transaction } = createDatabase({ vitalsForRound: storedVitals() });
+    const supplement = vitalsInput({ waistCircumference: 88, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 110 });
+
+    await expect(recordPatientProgramRoundVitals(actor, supplement, deps(database))).resolves.toMatchObject({
+      operation: "RECORDED",
+      roundVitalsId: recordId,
+    });
+    expect(transaction.patientProgramRoundVitals.create).not.toHaveBeenCalled();
+    expect(transaction.patientProgramRoundVitals.updateMany).toHaveBeenCalledWith({
+      where: { id: recordId, waistCircumference: null, bloodSugar: null, systolicBloodPressure: null, diastolicBloodPressure: null },
+      data: { waistCircumference: 88, bloodSugar: 110, systolicBloodPressure: 130, diastolicBloodPressure: 85 },
+    });
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "patient_program_round.vitals_supplemented",
+        metadata: expect.objectContaining({ fields: "waistCircumference,bloodSugar,systolicBloodPressure,diastolicBloodPressure" }),
+      }),
+      expect.anything(),
+    );
+
+    // Values already recorded stay as they are; a retry with the same values is a no-op.
+    const changed = createDatabase({ vitalsForRound: storedVitals() });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71, bloodSugar: 110 }), deps(changed.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError", message: "ค่าที่บันทึกไว้แล้วแก้ไขไม่ได้ เพิ่มได้เฉพาะค่าที่ยังขาด" });
+    expect(changed.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+
+    const retried = createDatabase({ vitalsForRound: storedVitals() });
+    await expect(recordPatientProgramRoundVitals(actor, vitalsInput(), deps(retried.database))).resolves.toMatchObject({
+      operation: "ALREADY_RECORDED",
+    });
+    expect(retried.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+
+    const otherDate = createDatabase({ vitalsForRound: storedVitals() });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ serviceDate: "2026-10-13", bloodSugar: 110 }), deps(otherDate.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+
+    const raced = createDatabase({ vitalsForRound: storedVitals(), vitalsUpdateCount: 0 });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ bloodSugar: 110 }), deps(raced.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError" });
+  });
+
+  it("refuses a supplement to a completed round", async () => {
+    const { database, transaction } = createDatabase({ vitalsForRound: storedVitals(), completedRounds: [1] });
+
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ bloodSugar: 110 }), deps(database)),
+    ).rejects.toMatchObject({ message: "ครั้งที่ 1 จบบริการแล้ว ข้อมูลของครั้งนี้เป็นแบบอ่านอย่างเดียว" });
+    expect(transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
   });
 
   it("writes the preferred name and an empty occupation with the profile version (SR-D12)", async () => {

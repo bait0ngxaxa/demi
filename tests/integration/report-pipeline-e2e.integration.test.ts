@@ -267,6 +267,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
     signIn(osmUserId);
     expectSuccess(await recordPatientProgramRoundVitalsAction(IDLE, form({
       patientProgramId: programId, roundNumber: 1, submissionNonce: randomUUID(), serviceDate: today, weight: 79, heightCm: 160, bloodSugar: 170,
+      waistCircumference: 94, systolicBloodPressure: 138, diastolicBloodPressure: 88,
       preferredName: "ทดสอบลุงชาย", profileVersion: (await prisma.patientHospitalProfile.findUnique({
         where: { patientHospitalRelationshipId: relationshipId }, select: { version: true },
       }))?.version,
@@ -288,6 +289,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
     // Round 2: vitals, the first Goal Plan, ruler and routine.
     expectSuccess(await recordPatientProgramRoundVitalsAction(IDLE, form({
       patientProgramId: programId, roundNumber: 2, submissionNonce: randomUUID(), serviceDate: today, weight: 78, heightCm: 161, bloodSugar: 160,
+      waistCircumference: 93, systolicBloodPressure: 134, diastolicBloodPressure: 86,
     })), "round 2 vitals");
     const firstPlan = expectSuccess(await submitGoalPlanForProgramAction(IDLE, form({
       patientProgramId: programId,
@@ -316,6 +318,9 @@ describe("report pipeline end to end (P1 Part D)", () => {
       hasObstacle: input.hasObstacle,
       obstacleNote: input.hasObstacle ? "ทดสอบอุปสรรค" : undefined,
       weight: input.weight,
+      waistCircumference: 92,
+      systolicBloodPressure: 130,
+      diastolicBloodPressure: 84,
       bloodSugar: input.bloodSugar,
       activityProgress: JSON.stringify(input.progress),
     })), `follow-up ${input.bloodSugar}`).followupId);

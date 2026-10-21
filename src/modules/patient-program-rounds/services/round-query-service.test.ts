@@ -77,7 +77,7 @@ function vitals(roundNumber: number, overrides: Record<string, unknown> = {}): R
     serviceDate: new Date(`2026-10-0${roundNumber}T00:00:00.000Z`),
     recordedAt: at,
     weight: 64,
-    heightCm: null,
+    heightCm: 160,
     waistCircumference: 80,
     systolicBloodPressure: 120,
     diastolicBloodPressure: 80,
@@ -131,9 +131,9 @@ function followup(roundNumber: number, overrides: Record<string, unknown> = {}):
     sourceGoalPlanId: planId,
     planAdjusted: false,
     weight: 62,
-    waistCircumference: null,
-    systolicBloodPressure: null,
-    diastolicBloodPressure: null,
+    waistCircumference: 79,
+    systolicBloodPressure: 118,
+    diastolicBloodPressure: 78,
     bloodSugar: 95,
     createdByUser: recorder,
     activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 }],
@@ -230,6 +230,23 @@ describe("round detail read model", () => {
     expect(empty.status.steps.find((step) => step.code === "HEALTH_PATH")?.status).toBe("TODO");
 
     expect(stepStatuses(program({ roundVitals: [vitals(1)] }), 1)).toMatchObject({ VITALS: "DONE", HEALTH_PATH: "DONE" });
+  });
+
+  it("loads which vitals measurements each round recorded into the shared facts", () => {
+    const partial = buildProgramRoundDetail(
+      program({ roundVitals: [vitals(1, { waistCircumference: null, systolicBloodPressure: null })] }),
+      1,
+      patient,
+      staff,
+    );
+    expect(partial.status.steps.find((step) => step.code === "VITALS")).toMatchObject({
+      status: "TODO",
+      missingMeasurements: ["waistCircumference", "systolicBloodPressure"],
+    });
+
+    const bare = followup(1, { weight: null, waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null });
+    const round3 = program({ roundCompletions: [completion(1), completion(2)], goalPlans: [goalPlan(1, planId)], followups: [bare] });
+    expect(stepStatuses(round3, 3)).toMatchObject({ VITALS: "TODO", HEALTH_PLAN_REVIEW: "DONE" });
   });
 
   it("marks รู้จักตัวฉันเอง done once the preferred name is recorded (SR-D12)", () => {
@@ -365,7 +382,7 @@ describe("round detail read model", () => {
 
   it("computes BMI from the round's weight and the latest recorded height (WB-DF-04/05)", () => {
     const detail = buildProgramRoundDetail(
-      program({ roundVitals: [vitals(1, { heightCm: 160 }), vitals(2, { weight: 70 })] }),
+      program({ roundVitals: [vitals(1, { heightCm: 160 }), vitals(2, { weight: 70, heightCm: null })] }),
       2,
       patient,
       staff,
